@@ -1,0 +1,10 @@
+/* Reset all browser margins and force Edge-to-Edge rendering */
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100vh;
+  max-width: none !important; /* Destroys the Vite 1280px limit */
+  overflow-x: hidden;
+  background-color: #FFF8E1; /* Fallback brand color */
+}

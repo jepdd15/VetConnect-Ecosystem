@@ -1,7 +1,7 @@
 import React from 'react';
 import { 
   Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, 
-  Button, List, ListItem, ListItemIcon, ListItemText, Checkbox 
+  Button, List, ListItem, ListItemIcon, ListItemText, Checkbox, Paper
 } from '@mui/material';
 
 export default function EndOfDayModal({ 

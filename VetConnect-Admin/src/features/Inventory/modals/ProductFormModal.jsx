@@ -26,7 +26,6 @@ export default function ProductFormModal({ open, onClose, item, showToast }) {
 
   const noExtensionProps = { spellCheck: 'false', 'data-gramm': 'false' };
 
-  // --- THE FIX: useEffect SYNCS THE FORM WITH THE SELECTED ITEM ---
   useEffect(() => {
     // Only run this logic when the modal opens or the item changes
     if (open) {
@@ -56,7 +55,7 @@ export default function ProductFormModal({ open, onClose, item, showToast }) {
         });
       }
     }
-  }, [item, open]); // Dependency array ensures this runs at the right time
+  }, [item, open]); 
 
   // --- LIVE FINANCIAL CALCULATIONS ---
   const cost = parseFloat(formData.costPrice) || 0;

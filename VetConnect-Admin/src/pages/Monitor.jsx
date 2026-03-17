@@ -90,7 +90,6 @@ export default function Monitor() {
               {currentTicket.serviceType}
             </Typography>
 
-            {/* THE BADGE - This is what calms people down */}
             <Chip 
               label={isPriority ? "📅 SCHEDULED APPOINTMENT" : "👤 WALK-IN CLIENT"} 
               icon={<CampaignIcon />}

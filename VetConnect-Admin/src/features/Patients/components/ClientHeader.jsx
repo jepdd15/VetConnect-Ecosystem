@@ -1,8 +1,8 @@
 import React from 'react';
 import { 
   Box, Typography, Paper, Avatar, Stack, Chip, Button, 
-  Grid, // Standard Grid import
-  Alert // Make sure Alert is imported for the A/R warning
+  Grid, 
+  Alert 
 } from '@mui/material';
 
 // Icons
@@ -40,7 +40,6 @@ export default function ClientHeader({ client, balance, isEditing, onEdit, onCan
                      {client.seniorId && <Chip label="SC/PWD" size="small" color="secondary" sx={{fontWeight: 'bold', borderRadius: 1}} />}
                   </Stack>
                   {!isEditing && (
-                    // CORRECTED GRID SYNTAX
                     <Grid container spacing={2} sx={{ mt: 1, color: '#555' }}>
                       <Grid item xs={12} md={4} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <PhoneIcon fontSize="small" color="disabled"/> 

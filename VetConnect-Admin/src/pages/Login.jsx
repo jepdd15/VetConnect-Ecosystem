@@ -60,7 +60,6 @@ export default function Login() {
   return (
     <Box sx={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden' }}>
       
-      {/* LEFT SIDE: THE HERO BRANDING (Visible only on medium screens and up) */}
       <Box sx={{ 
         flex: 1.2, 
         bgcolor: '#5D4037', 
@@ -71,7 +70,6 @@ export default function Login() {
         p: 6,
         position: 'relative',
       }}>
-        {/* Background Decorative Paw Icon */}
         <PetsIcon sx={{ position: 'absolute', fontSize: 800, color: 'rgba(255,255,255,0.03)', right: -200, bottom: -200 }} />
         
         <Box sx={{ zIndex: 1, textAlign: 'center' }}>

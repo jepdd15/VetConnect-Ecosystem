@@ -15,7 +15,7 @@ export default function Sales() {
   const[sales, setSales] = useState([]);
   const [openRefund, setOpenRefund] = useState(false);
   const [selectedSale, setSelectedSale] = useState(null);
-  const [restock, setRestock] = useState(true); // Toggle to decide if items go back to inventory
+  const [restock, setRestock] = useState(true);
 
   // 1. Fetch Sales History (WITH ERROR LOGGING)
   useEffect(() => {

@@ -4,7 +4,7 @@ import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import { getStorage } from "firebase/storage";
 
-// --- PASTE YOUR KEYS FROM THE MOBILE APP HERE ---
+
 const firebaseConfig = {
 
   apiKey: "AIzaSyCjcteCNm5DwVfic1hI2vzKOGowXi48zH0",

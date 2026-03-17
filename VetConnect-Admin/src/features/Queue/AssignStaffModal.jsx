@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Dialog, DialogTitle, DialogContent, DialogActions, 
   Button, MenuItem, Box, Typography, Paper,
-  FormControl, InputLabel, Select, Chip, Avatar, Alert
+  FormControl, InputLabel, Select, Chip, Avatar, Alert, CircularProgress
 } from '@mui/material';
 
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
@@ -13,10 +13,9 @@ import { db } from '../../firebaseConfig';
 
 export default function AssignStaffModal({ open, onClose, patient, vetsList, activeAppointments }) {
   const [selectedVet, setSelectedVet] = useState('');
-  const[loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Automatically pre-fill the currently assigned vet when the modal opens
   useEffect(() => {
     if (open && patient) {
       setSelectedVet(patient.assignedVet && patient.assignedVet !== 'Unassigned' ? patient.assignedVet : '');
@@ -24,8 +23,8 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
     }
   }, [open, patient]);
 
-  // Helper to calculate real-time workload
   const getVetWorkload = (vetName) => {
+    if (!activeAppointments) return 0; // SAFETY CHECK
     return activeAppointments.filter(a => a.assignedVet === vetName).length;
   };
 
@@ -38,7 +37,6 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
       const isCheckIn = patient.status === 'confirmed';
 
       if (isCheckIn) {
-        // --- SCENARIO A: CHECK-IN (Generate Ticket) ---
         await runTransaction(db, async (transaction) => {
           const queueRef = doc(db, "queue", "daily_queue");
           const queueDoc = await transaction.get(queueRef);
@@ -55,18 +53,16 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
           transaction.update(appointmentRef, { 
               status: 'arrived', 
               queueNumber: newNumber, 
-              ticketPrefix: 'A', // 'A' for App-Booked
+              ticketPrefix: patient.priority === 'high' ? 'E' : 'A', 
               timeArrived: Timestamp.now(), 
               assignedVet: selectedVet || "Unassigned" 
           });
         });
       } else {
-        // --- SCENARIO B: RE-ASSIGNMENT (Just update Vet) ---
         await updateDoc(doc(db, "appointments", patient.id), { 
             assignedVet: selectedVet || "Unassigned" 
         });
       }
-
       onClose();
     } catch (error) {
       setErrorMsg("Error assigning staff: " + error.message);
@@ -89,7 +85,6 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
         
         {errorMsg ? <Alert severity="error" sx={{ mb: 3 }}>{errorMsg}</Alert> : null}
 
-        {/* CLINICAL CONTEXT CARD */}
         <Paper variant="outlined" sx={{ p: 2, mb: 4, bgcolor: 'white', borderRadius: 2, borderLeft: `4px solid ${isCheckIn ? '#2E7D32' : '#1565C0'}` }}>
             <Typography variant="overline" color="textSecondary" fontWeight="bold">Patient Routing Details</Typography>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 1 }}>
@@ -98,7 +93,7 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
                 </Avatar>
                 <Box>
                     <Typography variant="body1" fontWeight="bold" color="#3E2723">{patient.petName}</Typography>
-                    <Typography variant="body2" color="textSecondary">Owner: {patient.ownerName}</Typography>
+                    <Typography variant="body2" color="textSecondary">Owner: {patient.ownerName || 'Mobile App Client'}</Typography>
                 </Box>
             </Box>
             <Box sx={{ mt: 2, pt: 2, borderTop: '1px dashed #E0E0E0', display: 'flex', gap: 1 }}>
@@ -118,7 +113,8 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
                 <Typography fontStyle="italic" color="textSecondary">Leave Unassigned</Typography>
             </MenuItem>
             
-            {vetsList.map((v) => { 
+            {/* THE FIX: Safe mapping using (vetsList || []) */}
+            {(vetsList || []).map((v) => { 
                 const load = getVetWorkload(v.fullName || v.name); 
                 const isOverloaded = load >= 3; 
                 
@@ -148,8 +144,8 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
             })}
           </Select>
         </FormControl>
-
       </DialogContent>
+
       <DialogActions sx={{ p: 2, bgcolor: '#EFEBE9' }}>
         <Button onClick={onClose} sx={{ fontWeight: 'bold', color: '#5D4037' }}>Cancel</Button>
         <Button onClick={handleSubmit} disabled={loading} variant="contained" color={isCheckIn ? 'success' : 'primary'} sx={{ fontWeight: 'bold', px: 3 }}>

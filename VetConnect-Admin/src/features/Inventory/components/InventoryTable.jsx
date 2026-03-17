@@ -19,7 +19,7 @@ import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
 import FactCheckIcon from '@mui/icons-material/FactCheck';
 import EditIcon from '@mui/icons-material/Edit';
 
-// Note: No more direct Firebase imports needed in this component!
+
 
 export default function InventoryTable({ data, getStockDetails, onEdit, onAdjust, onViewHistory, onDelete, showToast, requestConfirm }) {
   const [expandedRows, setExpandedRows] = useState({});
@@ -29,8 +29,6 @@ export default function InventoryTable({ data, getStockDetails, onEdit, onAdjust
   const toggleRow = (id) => setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }));
   const handleOpenMenu = (e, item) => { e.stopPropagation(); setAnchorEl(e.currentTarget); setSelectedActionItem(item); };
   const handleCloseMenu = () => { setAnchorEl(null); };
-
-  // Note: handleDiscardBatch has been moved to the main Inventory.jsx since it uses requestConfirm
 
   return (
     <TableContainer component={Paper} sx={{ height: 'calc(100vh - 240px)', overflow: 'auto', border: '1px solid #e0e0e0', boxShadow: 3, borderRadius: 3 }}>

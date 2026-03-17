@@ -41,7 +41,6 @@ export function usePatientManager() {
   },[]);
 
   const handleSelectClient = async (client) => {
-    // Adapter for multi-rep legacy data
     let reps = client.emergencyContacts || [];
     if (reps.length === 0 && (client.emergencyName || client.emergencyPhone)) {
         reps = [{ name: client.emergencyName || '', phone: client.emergencyPhone || '', relation: 'Primary' }];

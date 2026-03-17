@@ -80,10 +80,8 @@ export default function Settings() {
   const hoursArray = Array.from({ length: 24 }, (_, i) => i);
 
   return (
-    // FIX: Removed the hardcoded #F5F5F5 background so the global App.jsx gradient shines through!
     <Box sx={{ p: { xs: 2, md: 4 }, minHeight: 'calc(100vh - 64px)' }}>
       
-      {/* HEADER */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
         <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#5D4037', display: 'flex', alignItems: 'center', gap: 1, textShadow: '0px 1px 2px rgba(255,255,255,0.8)' }}>
           <SettingsSuggestIcon fontSize="large" sx={{ color: '#8B4513' }} /> Global Configuration
@@ -97,14 +95,12 @@ export default function Settings() {
         </Button>
       </Box>
 
-      {/* FIX: Using MUI v6 Grid Syntax (size={{...}}) */}
       <Grid container spacing={4}>
         
         {/* CARD 1: CLINIC HOURS */}
         <Grid size={{ xs: 12, md: 6 }}>
           <Paper elevation={0} sx={{ ...glassStyle, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
-            
-            {/* Crisp Header Band */}
+
             <Box sx={{ bgcolor: 'rgba(255,255,255,0.7)', px: 3, py: 2, borderBottom: '1px solid rgba(255,255,255,0.5)', borderLeft: '4px solid #1565C0' }}>
               <Typography variant="subtitle1" color="#1565C0" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
                 <AccessTimeIcon /> Clinic Operating Hours
@@ -141,8 +137,7 @@ export default function Settings() {
         {/* CARD 2: SCHEDULING RULES */}
         <Grid size={{ xs: 12, md: 6 }}>
           <Paper elevation={0} sx={{ ...glassStyle, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
-            
-            {/* Crisp Header Band */}
+ 
             <Box sx={{ bgcolor: 'rgba(255,255,255,0.7)', px: 3, py: 2, borderBottom: '1px solid rgba(255,255,255,0.5)', borderLeft: '4px solid #E65100' }}>
               <Typography variant="subtitle1" color="#E65100" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
                 <EventBusyIcon /> Smart Routing Rules

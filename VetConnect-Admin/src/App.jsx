@@ -74,7 +74,14 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  const handleLogout = () => signOut(auth);
+  const handleLogout = () => {
+  signOut(auth).then(() => {
+    setUser(null); // Force React state update
+    window.location.reload(); // Hard reset
+  }).catch((error) => {
+    console.error("Logout Error:", error);
+  });
+};
 
   if (loading) return (
     <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', bgcolor: '#FFF8E1' }}>

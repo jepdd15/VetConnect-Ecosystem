@@ -14,7 +14,6 @@ export default function PatientDirectory({ owners, selectedId, onSelect, onNewCl
       </Box>
       <List sx={{ overflowY: 'auto', flex: 1, p: 0 }}>
         {owners.map((owner) => (
-          // FIX: Changed to ListItemButton to stop the console error!
           <ListItem key={owner.id} disablePadding>
             <ListItemButton selected={selectedId === owner.id} onClick={() => onSelect(owner)} sx={{ borderBottom: '1px solid #F5F5F5', '&.Mui-selected': { bgcolor: '#EFEBE9', borderLeft: '4px solid #8B4513' } }}>
               <ListItemIcon>

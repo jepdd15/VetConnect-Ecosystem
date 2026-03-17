@@ -88,7 +88,6 @@ export default function Inventory() {
         requestConfirm={requestConfirm}
       />
 
-      {/* THE KEY TRICK: Forces modal to rebuild purely from props, stopping ESLint errors! */}
       {openForm && (
         <ProductFormModal 
             key={selectedItem?.id || 'new_item'} 

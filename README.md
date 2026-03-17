@@ -1,62 +1,139 @@
-# 🐾 VetConnect: Integrated Practice Management System
+# 🐾 VetConnect: Appointment and Record Management System for Starbarks Veterinary Clinic
 
-**VetConnect** is an enterprise-grade Appointment and Record Management System developed for **Starbarks Veterinary Clinic** (Santa Barbara, Pangasinan). 
-
-Built as a capstone project for the Universidad De Dagupan, this system implements **Domain-Driven Feature Architecture** and **Separation of Concerns (SoC)** to deliver a highly scalable, decoupled ecosystem split into three distinct pillars.
+**VetConnect** is an integrated Practice Management System (PMS) designed and developed as a Capstone Research Project for **Universidad De Dagupan**. It provides a unified digital infrastructure for Starbarks Veterinary Clinic to streamline clinical workflows, automate scheduling, and secure sensitive medical records.
 
 ---
 
-## 🌟 Key Features
-*   **Smart Scheduling Engine:** A dynamic "Tetris" algorithm that calculates available slots based on staff capacity, service durations, and cleanup buffers.
-*   **Patient 360 (CRM/EMR):** Comprehensive clinical records featuring a vertical medical timeline, automatic weight-loss deltas, and e-prescribing.
-*   **Logistics & Supply Chain:** Advanced inventory control with **FIFO (First-In, First-Out)** batch tracking and expiration date quarantining.
-*   **BIR-Compliant Billing:** A professional POS system that handles VAT-exemptions and SC/PWD discounts automatically.
-*   **Automated Cloud Operations:** Server-side Cron Jobs that execute midnight queue resets and hardware push notifications.
+## 📖 Research Context
+As detailed in the **Chapter I: Introduction**, veterinary clinics face significant challenges in time management and workflow organization. VetConnect addresses the inefficiencies of manual, paper-based registration and fragmented digital communication by providing a centralized, role-based platform.
+
+### 🏛️ Regulatory & Global Alignment
+*   **Republic Act No. 10173 (Data Privacy Act of 2012):** Implemented via Firebase Authentication and strict Firestore Security Rules to protect pet owner PII.
+*   **Republic Act No. 8485 (Animal Welfare Act):** Supports humane treatment by ensuring continuity of care through digitized medical history.
+*   **Sustainable Development Goals (SDGs):** 
+    *   **Goal 3 (Good Health & Well-Being):** Proactive veterinary care via the "One Health" approach.
+    *   **Goal 9 (Industry & Innovation):** Modernization of small-scale service institutions.
+    *   **Goal 12 (Responsible Consumption):** Reducing resource waste via automated inventory monitoring.
 
 ---
 
-## 🏗️ System Architecture
+## 🔬 Theoretical & Methodological Framework
 
-This monorepo organizes the ecosystem into logical tiers:
+### 🔄 Conceptual Framework: IPO Model
+The system architecture follows the **Input–Process–Output (IPO)** model:
+*   **Input:** Interviews, direct observation of clinic workflows, and stakeholder feedback.
+*   **Process:** **Feature-Driven Development (FDD)** involving modeling, feature listing, planning, and iterative design/construction.
+*   **Output:** The VetConnect Ecosystem (Mobile App, Web Admin, and Cloud Backend).
+
+### 🛠️ Methodology: Feature-Driven Development (FDD)
+As an Agile methodology, FDD allowed the team to translate user needs into functional components across five distinct phases:
+1.  **Develop an Overall Model** (System Architecture)
+2.  **Build a Features List** (Requirements Gathering)
+3.  **Plan by Feature** (Development Roadmap)
+4.  **Design by Feature** (UI/UX Prototyping)
+5.  **Build by Feature** (React & Firebase Implementation)
+
+---
+
+## 🏗️ System Architecture (Monorepo)
 
 ```text
 📁 VetConnect-Capstone/
  ├── 📁 VetConnect/             # TIER 1: Patient Portal (React Native / Expo)
- ├── 📁 VetConnect-Admin/       # TIER 2: Staff Management System (React / Vite / MUI v6)
- └── 📁 VetConnect-Backend/     # TIER 3: Cloud Infrastructure (Firebase Functions / Node.js)
+ ├── 📁 VetConnect-Admin/       # TIER 2: Practice Management System (React / Vite / MUI v6)
+ └── 📁 VetConnect-Backend/     # TIER 3: Cloud Infrastructure (Node.js Functions)
 
+🛰️ The Tech Stack
+Frontend: React (Vite) for Widescreen Administration.
+Mobile: React Native (Expo) for Cross-Platform Client Access.
+Backend: Firebase Serverless Architecture (Firestore, Auth, Cloud Functions).
 
-⚙️ Installation & Setup Guide
-1. Clone the Repository
+## ⚙️ Installation & Local Setup
+
+This project is built using a modern JavaScript stack. Follow these steps precisely to replicate the development environment.
+
+### 📋 Prerequisites
+Before starting, ensure you have the following installed:
+*   **Node.js (LTS Version):** [Download here](https://nodejs.org/) (Recommended v18 or v20).
+*   **Git:** [Download here](https://git-scm.com/).
+*   **Expo Go App:** Download on your [Android](https://play.google.com/store/apps/details?id=host.exp.exponent) or [iOS](https://apps.apple.com/us/app/expo-go/id982107779) device to test the mobile app.
+*   **Firebase CLI:** Run `npm install -g firebase-tools` in your terminal.
+
+---
+
+### 1. Clone the Repository
+Open your terminal/command prompt and run:
+```bash
 git clone https://github.com/jepdd15/VetConnect-Ecosystem.git
-
 cd VetConnect-Ecosystem
+2. Configure Environment Variables (CRITICAL)
+For security, API keys are not stored in GitHub. You must manually link the apps to the Firebase project:
+Create a file named firebaseConfig.js in the following two locations:
+VetConnect/firebaseConfig.js
+VetConnect-Admin/firebaseConfig.js
+Paste your Firebase SDK configuration object into these files:
+code
+JavaScript
+import { initializeApp } from "firebase/app";
+import { getFirestore } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
 
-2. Setup the Web Admin Dashboard (Tier 2)
-This launches the command center used by doctors and receptionists.
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "starbarks-vetconnect.firebaseapp.com",
+  projectId: "starbarks-vetconnect",
+  storageBucket: "starbarks-vetconnect.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
 
+const app = initializeApp(firebaseConfig);
+export const db = getFirestore(app);
+export const auth = getAuth(app);
+3. Setup & Launch Web Admin Dashboard (Tier 2)
+Used by Veterinarians and Receptionists.
+code
+Bash
+# Navigate to the Admin directory
 cd VetConnect-Admin
+
+# Install all dependencies
 npm install
+
+# Start the local development server
 npm run dev
-
-Access: Open http://localhost:5173
-Live Site: https://starbarks-vetconnect.web.app
-
-3. Setup the Mobile App (Tier 1)
-This launches the patient portal for pet owners.
-
+Access: Open http://localhost:5173 in your browser.
+4. Setup & Launch Mobile App (Tier 1)
+Used by Pet Owners for booking and records.
+code
+Bash
+# Navigate to the Mobile directory (Open a new terminal window)
 cd VetConnect
+
+# Install all dependencies
 npm install
+
+# Start the Expo development bundler
 npx expo start --clear
+Testing:
+Ensure your phone and laptop are on the same Wi-Fi network.
+Scan the QR Code displayed in the terminal using the Expo Go app.
+5. Setup Cloud Backend (Tier 3)
+To modify or deploy the server-side logic and automated Cron Jobs:
+code
+Bash
+# Navigate to the Functions directory
+cd VetConnect-Backend/functions
 
-Testing: Open the Expo Go app on your physical device and scan the QR code generated in the terminal.
+# Install backend dependencies
+npm install
 
-Configuration & Security
-To run this project, a valid firebaseConfig.js must be present in the root of the VetConnect and VetConnect-Admin directories. This file contains the API keys required to connect to the Firebase instance.
+# Login to your Firebase account
+firebase login
 
-👥 Development Team
-Capua, Emerson Dave S.
-Desear, James Ed Patrick
-Gutierrez, Maria Teresita B.
-Gille, Chennie O.
-Villosillo, Jayvee Joshe O.
+# Deploy functions to the live server
+firebase deploy --only functions
+🛠️ Troubleshooting
+"Module not found": Ensure you ran npm install inside the specific folder (Mobile or Admin), not just the root.
+"Firebase Config Error": Double-check that firebaseConfig.js is correctly exported and that the API keys match your Firebase project settings.
+Mobile app not connecting: Ensure your firewall allows connections on port 8081, or try starting expo with the tunnel flag: npx expo start --tunnel.

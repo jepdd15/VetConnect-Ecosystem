@@ -1,4 +1,6 @@
 // src/firebaseConfig.js
+// The bridge to the database. Contains the API keys to establish the Web Socket connection to Firestore.
+
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";

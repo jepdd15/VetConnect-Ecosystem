@@ -1,3 +1,7 @@
+// DataGrid UI Configuration.
+// Calculates real-time wait times (e.g., ⏳ 15m wait) and renders dynamic action buttons 
+// (Check-In, Start, Invoice) based on the patient's exact step in the pipeline.
+
 import React from 'react';
 import { Box, Typography, Chip, Tooltip, IconButton, Button } from '@mui/material';
 

@@ -1,3 +1,6 @@
+// The Triage Resolution screen. 
+// Allows staff to selectively "Carry Over" or "Cancel" patients trapped in the queue at closing time.
+
 import React from 'react';
 import { 
   Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, 

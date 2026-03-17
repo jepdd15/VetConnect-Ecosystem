@@ -1,3 +1,5 @@
+// Business intelligence visualization, general ledgers, and the TV-friendly waiting room display.
+
 import React, { useEffect, useState } from 'react';
 import { DataGrid } from '@mui/x-data-grid';
 import { 

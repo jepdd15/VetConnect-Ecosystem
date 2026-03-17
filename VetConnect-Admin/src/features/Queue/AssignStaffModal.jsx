@@ -1,3 +1,7 @@
+// Workload balancing tool.
+// Calculates and displays how many active patients are currently assigned to each doctor, 
+// preventing the receptionist from routing a patient to an overloaded veterinarian.
+
 import React, { useState, useEffect } from 'react';
 import { 
   Dialog, DialogTitle, DialogContent, DialogActions, 

@@ -1,3 +1,7 @@
+// The master edge-to-edge CRM controller.
+// Orchestrates the multi-tab layout (Pets, Details, Ledger, Logs) and intercepts the user if the 
+// client has an outstanding financial balance.
+
 import React, { useState } from 'react';
 import { Box, Tabs, Tab, Typography, CircularProgress } from '@mui/material';
 import { doc, updateDoc, addDoc, collection, Timestamp } from 'firebase/firestore';

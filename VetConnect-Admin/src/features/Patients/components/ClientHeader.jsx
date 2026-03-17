@@ -1,3 +1,7 @@
+// Displays demographics and legally required contacts.
+// Features a dynamic "Authorized Representatives" array to hold multiple emergency contacts and 
+// flags marketing consent preferences.
+
 import React from 'react';
 import { 
   Box, Typography, Paper, Avatar, Stack, Chip, Button, 

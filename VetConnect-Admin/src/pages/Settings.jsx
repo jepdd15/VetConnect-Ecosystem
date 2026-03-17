@@ -1,3 +1,6 @@
+// Global config. Allows managers to dynamically alter clinic open/close times and booking buffer rules 
+// without touching source code.
+
 import React, { useState, useEffect } from 'react';
 import { 
   Box, Typography, Paper, Button, FormControl, InputLabel, Select, MenuItem,

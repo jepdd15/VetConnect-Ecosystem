@@ -1,3 +1,6 @@
+// The CRM Brain. Fetches and aggregates the client's pets, financial history, and 
+// staff logs into a single data object.
+
 import { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, getDocs, updateDoc, doc, addDoc, Timestamp } from 'firebase/firestore';
 import { db, auth } from '../../../firebaseConfig';

@@ -1,3 +1,7 @@
+// The Traffic Controller & Secure Router.
+// Wraps the app in the global Starbarks theme. Protects all internal routes from unauthenticated users 
+// and dynamically hides the sidebar for the full-screen TV monitor view.
+
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import { createTheme, ThemeProvider } from '@mui/material/styles';

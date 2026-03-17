@@ -1,4 +1,7 @@
-// src/hooks/useQueueActions.js
+// The Queue Database Engine (Custom Hook).
+// Enforces physical limits (e.g., blocking admission if MAX_CAGES is reached). 
+// Processes all status transitions atomically.
+
 import { doc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 

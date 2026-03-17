@@ -1,3 +1,13 @@
+// Executes server-side business logic that cannot be trusted to the client application.
+// midnightQueueSweep: A Cron Job that fires daily at 11:59 PM (PST) to securely reset the ticket counter 
+// to zero, leaving unfinished patients untouched for morning triage.
+
+// secureBookAppointment: The "Bouncer." Checks the server's atomic clock to prevent "Time Travel" hacks 
+// and blocks "Schedule Hoarders" by capping active appointments.
+
+// sendAppointmentUpdateNotification: The Hardware Trigger. Listens to Firestore document changes and 
+// pushes a real-time payload to Expo/Apple/Google servers to vibrate the client's phone when their status changes.
+
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const axios = require("axios");
@@ -19,9 +29,7 @@ exports.midnightQueueSweep = functions.pubsub
     try {
       const queueRef = db.collection("queue").doc("daily_queue");
       
-      // We ONLY reset the queue numbers so tomorrow starts at Ticket #1.
-      // Notice we DO NOT update 'lastResetDate' here.
-      // This forces the React Frontend to intercept the Receptionist the next morning.
+      
       await queueRef.update({ 
         currentServing: 0, 
         currentPrefix: '',
@@ -44,7 +52,7 @@ exports.midnightQueueSweep = functions.pubsub
 // Prevents Time-Travel Hacks and Schedule Hoarding.
 // ============================================================================
 exports.secureBookAppointment = functions.https.onCall(async (data, context) => {
-  // A. AUTHENTICATION CHECK
+  
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'You must be logged in to book an appointment.');
   }
@@ -52,9 +60,8 @@ exports.secureBookAppointment = functions.https.onCall(async (data, context) => 
 
   const { pets, service, baseDateTime, notes } = data;
   const requestedDate = new Date(baseDateTime);
-  const serverNow = new Date(); // The absolute, unhackable Google Server time
+  const serverNow = new Date(); 
 
-  // B. THE TIME-TRAVELER CHECK (Anti-Teleportation)
   // Add an absolute 2-hour buffer to the server time.
   const bufferTime = new Date(serverNow.getTime() + (2 * 60 * 60 * 1000));
   
@@ -65,8 +72,7 @@ exports.secureBookAppointment = functions.https.onCall(async (data, context) => 
     );
   }
 
-  // C. THE SCHEDULE HOARDER CHECK (Rate Limiting)
-  // Max 4 active appointments allowed per user.
+  
   const activeApptsQuery = await db.collection("appointments")
     .where("ownerId", "==", uid)
     .where("status", "in", ["pending", "confirmed"])
@@ -79,18 +85,18 @@ exports.secureBookAppointment = functions.https.onCall(async (data, context) => 
     );
   }
 
-  // D. ATOMIC BATCH WRITE
+  
   const batch = db.batch();
   const baseDuration = service.duration ? parseInt(service.duration) : 30;
   const serviceBuffer = service.bufferTime ? parseInt(service.bufferTime) : 0;
-  const trueTimePerPet = baseDuration + serviceBuffer; // Uses the buffer math!
+  const trueTimePerPet = baseDuration + serviceBuffer; 
 
   pets.forEach((pet, index) => {
-    // Stagger the time for multi-pet bookings based on True Duration
+    
     const petDateTime = new Date(requestedDate.getTime() + (index * trueTimePerPet * 60000));
     const qrData = `VC-${uid.slice(0,5)}-${Date.now()}-${index}`;
     
-    const newApptRef = db.collection("appointments").doc(); // Auto-generate ID
+    const newApptRef = db.collection("appointments").doc(); 
     
     batch.set(newApptRef, {
       ownerId: uid,

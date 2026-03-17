@@ -1,3 +1,9 @@
+// The Electronic Medical Record (EMR) Editor.
+// Features a polymorphic 3-pane layout. Auto-calculates weight-loss percentage deltas. 
+// Includes a 1-click "Auto-WNL" (Within Normal Limits) macro for fast charting, and an E-Prescribing Smart 
+// Cart that captures dosage instructions.
+
+
 import React, { useState, useEffect } from 'react';
 import { 
   Dialog, Slide, AppBar, Toolbar, IconButton, Typography, Button, 

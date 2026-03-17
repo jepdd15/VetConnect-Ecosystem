@@ -1,3 +1,5 @@
+// The split-screen entryway. Blocks mobile clients from accessing the admin panel.
+
 import React, { useState } from 'react';
 import { 
   Box, Typography, Paper, TextField, Button, IconButton, 

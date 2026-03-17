@@ -1,3 +1,6 @@
+// High-density stock visualization. Maps product margins and renders collapsible sub-tables for 
+// individual delivery batches.
+
 import React, { useState } from 'react';
 import { 
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, 

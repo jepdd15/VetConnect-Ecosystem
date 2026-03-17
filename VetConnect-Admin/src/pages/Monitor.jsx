@@ -1,3 +1,5 @@
+// Business intelligence visualization, general ledgers, and the TV-friendly waiting room display.
+
 import React, { useEffect, useState } from 'react';
 import { Box, Typography, Card, Chip, Grid, CircularProgress } from '@mui/material';
 import { doc, onSnapshot, collection, query, where, getDocs } from 'firebase/firestore';

@@ -1,3 +1,6 @@
+// Audit trails. Displays categorized (Medical, Financial, Behavioral) internal staff notes and a 
+// complete history of paid vs. unpaid invoices.
+
 import React from 'react';
 import { Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip } from '@mui/material';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';

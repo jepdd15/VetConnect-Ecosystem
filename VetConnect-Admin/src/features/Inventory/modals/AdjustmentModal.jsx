@@ -1,3 +1,7 @@
+// Physical stock modification.
+// Allows manual FIFO overrides for targeted medical recalls. 
+// Calculates mathematical variances during physical shelf audits.
+
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, Box, Typography, MenuItem, Select, FormControl, InputLabel, Paper, Grid, Alert } from '@mui/material';
 import FactCheckIcon from '@mui/icons-material/FactCheck';

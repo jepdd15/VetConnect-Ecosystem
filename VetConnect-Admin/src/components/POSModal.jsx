@@ -1,3 +1,7 @@
+// The BIR-Compliant Financial Engine.
+// Blocks OTC sales of isRxOnly drugs unless overridden by a vet's e-prescription. 
+// Automatically calculates 20% SC/PWD discounts only on eligible medical services.
+
 import React, { useState, useEffect } from 'react';
 import { 
   Dialog, DialogTitle, DialogContent, DialogActions, 

@@ -1,3 +1,7 @@
+// On-site patient registration.
+// Utilizes a smart autocomplete field to rapidly pull existing clients, or swaps to a 
+// Guest Intake form for new walk-ins, automatically capturing triage notes.
+
 import React, { useState, useEffect } from 'react';
 import { 
   Dialog, DialogTitle, DialogContent, DialogActions, 

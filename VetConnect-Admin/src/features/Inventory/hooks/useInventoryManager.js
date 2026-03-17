@@ -1,3 +1,7 @@
+// The Supply Chain Brain.
+// Executes the strict FIFO (First-In, First-Out) batch deduction algorithm. 
+// Evaluates active vs. expired stock based on current dates
+
 import { useState, useEffect } from 'react';
 import { collection, onSnapshot, doc, runTransaction, Timestamp, query, where, orderBy, getDocs } from 'firebase/firestore';
 import { db } from '../../../firebaseConfig';

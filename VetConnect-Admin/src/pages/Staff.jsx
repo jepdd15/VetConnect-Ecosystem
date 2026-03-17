@@ -1,3 +1,6 @@
+// HR configuration. Assigns "System Access Levels" (Admin vs Staff) and "Routing Departments" 
+// (Grooming, Surgery) to power the mobile booking algorithm.
+
 import React, { useEffect, useState } from 'react';
 import { DataGrid } from '@mui/x-data-grid';
 import { 

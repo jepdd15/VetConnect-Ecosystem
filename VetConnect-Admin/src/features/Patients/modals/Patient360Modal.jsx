@@ -1,3 +1,7 @@
+// The Read-Only Clinical Timeline.
+// Renders historical S.O.A.P. notes, charts weight trends using Recharts, displays e-prescriptions, and 
+// generates formatted, downloadable PDF visit summaries.
+
 import React from 'react';
 import { Dialog, DialogTitle, DialogContent, DialogActions, Box, Typography, Chip, Paper, Grid, Stack, Button, CircularProgress, Divider, List, ListItem, ListItemText } from '@mui/material';
 import HistoryIcon from '@mui/icons-material/History';

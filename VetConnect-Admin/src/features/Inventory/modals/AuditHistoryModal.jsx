@@ -1,3 +1,6 @@
+// The security ledger. Logs every single restock, wastage, or audit adjustment with user timestamps to 
+// prevent internal theft.
+
 import React from 'react';
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, List, Paper, Typography, Box, Chip, Divider } from '@mui/material';
 import HistoryIcon from '@mui/icons-material/History';

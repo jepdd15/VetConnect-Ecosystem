@@ -1,3 +1,7 @@
+// The master navigation drawer.
+// Highlights the active page, establishes brand identity, and securely executes the Firebase signOut() 
+// function.
+
 import React from 'react';
 import { Drawer, List, ListItemButton, ListItemIcon, ListItemText, Box, Typography, Divider, Button } from '@mui/material';
 import { useNavigate, useLocation } from 'react-router-dom';

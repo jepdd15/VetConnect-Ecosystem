@@ -1,3 +1,7 @@
+// The master view controller for daily operations.
+// Evaluates the isClosingTime state to trigger End-of-Day warnings. 
+// Manages the visual tabs for patient statuses (Online, Scheduled, Arrived, etc.).
+
 import React, { useEffect, useState, useRef } from 'react';
 import { DataGrid } from '@mui/x-data-grid';
 import { 

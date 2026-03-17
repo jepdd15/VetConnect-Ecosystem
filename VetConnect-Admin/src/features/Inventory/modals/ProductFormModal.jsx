@@ -1,3 +1,7 @@
+// Product configuration.
+// Captures PDEA Regulated flags. Manages Unit of Measure (UOM) conversions (1 Box = 20 Tablets). 
+// Features a live Profitability Margin calculator.
+
 import React, { useState, useEffect } from 'react';
 import { 
   Dialog, DialogTitle, DialogContent, DialogActions, 

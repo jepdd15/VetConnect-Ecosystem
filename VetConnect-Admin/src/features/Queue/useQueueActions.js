@@ -1,24 +1,26 @@
-// The Queue Database Engine (Custom Hook).
-// Enforces physical limits (e.g., blocking admission if MAX_CAGES is reached). 
-// Processes all status transitions atomically.
-
-import { doc, updateDoc, Timestamp } from 'firebase/firestore';
+import { doc, updateDoc, Timestamp, writeBatch, arrayUnion, getDoc } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 
 export function useQueueActions() {
   
-  // 1. FORWARD STATUS CHANGE
+  // 1. FORWARD STATUS CHANGE (ATOMIC BATCH + PAUSE MATH)
   const changeStatus = async (row, newStatus, currentConfinedCount, maxCages = 5) => {
-    // Medical/Physical validation before hitting the database
-    if (newStatus === 'confined') {
-      if (currentConfinedCount >= maxCages) {
-        throw new Error(`❌ ADMISSION BLOCKED\nAll ${maxCages} cages are currently occupied.`);
-      }
+    if (newStatus === 'confined' && currentConfinedCount >= maxCages) {
+      throw new Error(`❌ ADMISSION BLOCKED\nAll ${maxCages} cages are currently occupied.`);
     }
 
-    let updateData = { status: newStatus };
+    const batch = writeBatch(db);
+    const apptRef = doc(db, "appointments", row.id);
     
-    // Auto-stamp times based on clinical workflow
+    let updateData = { 
+        status: newStatus,
+        // Push the OLD status into history so we can accurately "Undo" later!
+        statusHistory: arrayUnion(row.status) 
+    };
+    
+    const now = new Date();
+
+    // CLINICAL WORKFLOW TIMESTAMPS
     if (newStatus === 'in-consult' && row.status !== 'on-hold') {
         updateData.timeStarted = Timestamp.now();
     }
@@ -26,57 +28,61 @@ export function useQueueActions() {
         updateData.timeCompleted = Timestamp.now();
     }
 
-    // Execute Database Update
-    await updateDoc(doc(db, "appointments", row.id), updateData);
+    // --- THE SMART PAUSE ENGINE ---
+    if (newStatus === 'on-hold') {
+        // Record the exact second they were put on hold
+        updateData.lastPausedAt = Timestamp.now();
+    }
     
-    // If pulling them into the consult room, update the Public Queue Board
+    if (row.status === 'on-hold' && newStatus === 'in-consult') {
+        // They are resuming! Calculate how long they were paused.
+        if (row.lastPausedAt) {
+            const pausedAt = row.lastPausedAt.toDate();
+            const pauseDurationMins = Math.floor((now - pausedAt) / 60000);
+            const previousTotal = row.totalPausedMinutes || 0;
+            
+            updateData.totalPausedMinutes = previousTotal + pauseDurationMins;
+            updateData.lastPausedAt = null; // Clear the timer
+        }
+    }
+
+    batch.update(apptRef, updateData);
+    
     if (newStatus === 'in-consult' && row.queueNumber) {
-      await updateDoc(doc(db, "queue", "daily_queue"), { 
+      const queueRef = doc(db, "queue", "daily_queue");
+      batch.update(queueRef, { 
           currentServing: row.queueNumber, 
           currentPrefix: row.ticketPrefix || '' 
       });
     }
+
+    await batch.commit();
   };
 
-  // 2. REVERT STATUS (UNDO)
+  // 2. THE SMART UNDO (Using History)
   const revertStatus = async (row) => {
-    // A strict State Machine for undoing accidental clicks
-    const transitions = { 
-        'completed': 'billing', 
-        'billing': 'dispensing', 
-        'dispensing': 'in-consult', 
-        'confined': 'in-consult', 
-        'on-hold': 'in-consult', 
-        'in-consult': 'arrived', 
-        'arrived': 'confirmed' 
-    };
+    const history = row.statusHistory ||[];
+    if (history.length === 0) throw new Error("Cannot revert. No previous status recorded.");
     
-    const prevStatus = transitions[row.status];
-    if (!prevStatus) throw new Error("Cannot revert from this status.");
+    // Get the last status they were in
+    const prevStatus = history[history.length - 1];
     
-    await updateDoc(doc(db, "appointments", row.id), { status: prevStatus });
+    // Create a new history array without the last item
+    const newHistory = history.slice(0, -1);
+
+    await updateDoc(doc(db, "appointments", row.id), { 
+        status: prevStatus,
+        statusHistory: newHistory 
+    });
   };
 
-  // 3. MARK NO-SHOW
   const markNoShow = async (id) => {
-    await updateDoc(doc(db, "appointments", id), { 
-        status: 'no-show', 
-        rejectReason: 'Auto-flagged: Late / No show' 
-    });
+    await updateDoc(doc(db, "appointments", id), { status: 'no-show', rejectReason: 'Auto-flagged: Late / No show' });
   };
 
-  // 4. REJECT APPOINTMENT
   const rejectAppointment = async (id, reason) => {
-    await updateDoc(doc(db, "appointments", id), { 
-        status: 'cancelled', 
-        rejectReason: reason || "No reason provided by staff." 
-    });
+    await updateDoc(doc(db, "appointments", id), { status: 'cancelled', rejectReason: reason || "No reason provided by staff." });
   };
 
-  return {
-    changeStatus,
-    revertStatus,
-    markNoShow,
-    rejectAppointment
-  };
+  return { changeStatus, revertStatus, markNoShow, rejectAppointment };
 }

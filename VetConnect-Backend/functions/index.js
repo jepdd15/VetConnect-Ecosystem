@@ -217,3 +217,68 @@ exports.sendAppointmentUpdateNotification = functions.firestore
       return null;
     }
   });
+
+  // --- THE FOREVER-GUEST KILLER (ACCOUNT MERGE ROBOT) ---
+exports.mergeGuestAccount = functions.auth.user().onCreate(async (user) => {
+    // 1. Get the phone number of the person who just signed up on the Mobile App
+    const phone = user.phoneNumber;
+    if (!phone) {
+        console.log("New user has no phone number, skipping guest check.");
+        return null;
+    }
+
+    try {
+        // 2. Search the database for an "unclaimed_guest" with the exact same phone number
+        const guestQuery = db.collection("users")
+            .where("phone", "==", phone)
+            .where("accountStatus", "==", "unclaimed_guest")
+            .limit(1);
+
+        const snapshot = await guestQuery.get();
+        if (snapshot.empty) {
+            console.log("No matching guest account found for this phone number.");
+            return null;
+        }
+
+        // 3. WE FOUND A MATCH!
+        const guestDoc = snapshot.docs[0];
+        console.log(`Match found! Merging new user ${user.uid} with guest profile ${guestDoc.id}.`);
+
+        // 4. MIGRATE DATA:
+        // Copy pets and other data from old guest ID to the new REAL ID.
+        // (This part can be expanded to move medical records, etc. For now, we move pets)
+        const petsQuery = db.collection("pets").where("ownerId", "==", guestDoc.id);
+        const petsSnapshot = await petsQuery.get();
+
+        const batch = db.batch();
+
+        petsSnapshot.forEach(petDoc => {
+            const petRef = db.collection("pets").doc(petDoc.id);
+            batch.update(petRef, { ownerId: user.uid });
+        });
+
+        // 5. UPGRADE GUEST TO FULL USER:
+        // Update the old guest document to become the new user's REAL profile.
+        // This preserves the "Client Since" date and any other notes.
+        const finalProfileRef = db.collection("users").doc(guestDoc.id);
+        batch.update(finalProfileRef, {
+            uid: user.uid, // Link to the Auth account
+            accountStatus: 'claimed', // Upgrade from Guest!
+            email: user.email // Add their new login email
+        });
+
+        // 6. DELETE THE REDUNDANT NEW USER PROFILE:
+        // When a user signs up, a blank profile is made. We must delete it
+        // because the Guest profile is now the main one.
+        const redundantProfileRef = db.collection("users").doc(user.uid);
+        batch.delete(redundantProfileRef);
+
+        await batch.commit();
+        console.log("Account merge successful!");
+        return null;
+
+    } catch (error) {
+        console.error("Error during guest account merge:", error);
+        return null;
+    }
+});

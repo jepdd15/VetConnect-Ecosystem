@@ -1,115 +1,79 @@
-// High-density stock visualization. Maps product margins and renders collapsible sub-tables for 
-// individual delivery batches.
-
 import React, { useState } from 'react';
-import { 
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, 
-  Paper, IconButton, Typography, Box, Chip, Tooltip, Collapse, Button, 
-  Stack, Menu, MenuItem, ListItemIcon, Divider 
-} from '@mui/material';
+import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, IconButton, Typography, Chip, Tooltip, Box, Menu, MenuItem, ListItemIcon, Divider } from '@mui/material';
 
-// Icons
-import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
-import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
-import WarningIcon from '@mui/icons-material/Warning';
-import AddCircleIcon from '@mui/icons-material/AddCircle'; 
-import MedicalServicesIcon from '@mui/icons-material/MedicalServices';
-import MoreVertIcon from '@mui/icons-material/MoreVert';
-import GppBadIcon from '@mui/icons-material/GppBad';
-import DeleteIcon from '@mui/icons-material/Delete';
-import HistoryIcon from '@mui/icons-material/History';
-import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
-import FactCheckIcon from '@mui/icons-material/FactCheck';
 import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
+import ExposureIcon from '@mui/icons-material/Exposure'; 
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import HistoryIcon from '@mui/icons-material/History';
+import FactCheckIcon from '@mui/icons-material/FactCheck';
 
-
-
-export default function InventoryTable({ data, getStockDetails, onEdit, onAdjust, onViewHistory, onDelete, showToast, requestConfirm }) {
-  const [expandedRows, setExpandedRows] = useState({});
+export default function InventoryTable({ data, onEdit, onAdjust, onDelete, glassStyle }) {
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedActionItem, setSelectedActionItem] = useState(null);
 
-  const toggleRow = (id) => setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }));
-  const handleOpenMenu = (e, item) => { e.stopPropagation(); setAnchorEl(e.currentTarget); setSelectedActionItem(item); };
-  const handleCloseMenu = () => { setAnchorEl(null); };
+  const handleOpenMenu = (event, item) => {
+    event.stopPropagation();
+    setAnchorEl(event.currentTarget);
+    setSelectedActionItem(item);
+  };
+  const handleCloseMenu = () => setAnchorEl(null);
+  
+  const headerSx = { fontWeight: 'bold', color: '#5D4037', bgcolor: 'rgba(255, 255, 255, 0.4)', fontSize: '1.05rem', borderBottom: '1px solid rgba(255, 255, 255, 0.5)' };
 
   return (
-    <TableContainer component={Paper} sx={{ height: 'calc(100vh - 240px)', overflow: 'auto', border: '1px solid #e0e0e0', boxShadow: 3, borderRadius: 3 }}>
-      <Table stickyHeader size="small">
+    <TableContainer component={Paper} sx={{ ...glassStyle, height: 'calc(100vh - 180px)', overflow: 'auto' }}>
+      <Table stickyHeader size="small" sx={{ bgcolor: 'transparent' }}>
         <TableHead>
           <TableRow>
-            <TableCell sx={{ width: 40, bgcolor: '#EFEBE9' }} />
-            <TableCell sx={{ fontWeight: 'bold', color: '#5D4037', bgcolor: '#EFEBE9' }}>Item Details</TableCell>
-            <TableCell sx={{ fontWeight: 'bold', color: '#5D4037', bgcolor: '#EFEBE9' }}>Stock Level</TableCell>
-            <TableCell sx={{ fontWeight: 'bold', color: '#5D4037', bgcolor: '#EFEBE9' }}>Financials</TableCell>
-            <TableCell sx={{ fontWeight: 'bold', color: '#5D4037', bgcolor: '#EFEBE9', align: 'center' }}>Actions</TableCell>
+            <TableCell sx={{ ...headerSx, pl: 3 }}>Product Name</TableCell>
+            <TableCell sx={headerSx}>Category</TableCell>
+            <TableCell sx={{ ...headerSx }} align="center">Stock Level</TableCell>
+            <TableCell sx={{ ...headerSx }} align="right">Retail Price</TableCell>
+            <TableCell sx={{ ...headerSx }} align="center">Actions</TableCell>
           </TableRow>
         </TableHead>
+        
         <TableBody>
-          {data.map((row) => {
-            const { active, expired } = getStockDetails(row);
-            const isLow = active <= (row.minStock || 10);
-            const isExpanded = expandedRows[row.id];
+          {(data ||[]).map((row) => {
+            const currentStock = row.stock || 0;
+            const minStock = row.minStock || 10;
+            const isLow = currentStock <= minStock;
 
             return (
-              <React.Fragment key={row.id}>
-                <TableRow hover onClick={() => toggleRow(row.id)} sx={{ cursor: 'pointer', bgcolor: isLow ? '#FFFDE7' : 'white' }}>
-                  <TableCell>
-                    <IconButton size="small">{isExpanded ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}</IconButton>
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2" fontWeight="bold">
-                        {row.itemName} {row.isRxOnly && <Chip label="Rx" size="small" color="error" sx={{ height: 16, fontSize: '0.6rem' }} />}
-                    </Typography>
-                    <Typography variant="caption" color="textSecondary">{row.category} {row.sku && `• SKU: ${row.sku}`}</Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Stack direction="row" spacing={1}>
-                        <Chip label={`${active} ${row.uomBase || 'units'}`} size="small" color={isLow ? "error" : "success"} />
-                        {expired > 0 && <Chip label={`${expired} Expired`} size="small" variant="outlined" color="error" />}
-                    </Stack>
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="caption" display="block">Cost: ₱{row.costPrice}</Typography>
-                    <Typography variant="body2" fontWeight="bold" color="green">Retail: ₱{row.price}</Typography>
-                  </TableCell>
-                  <TableCell align="center" onClick={(e) => e.stopPropagation()}>
-                    <IconButton size="small" color="primary" onClick={() => onAdjust(row, 'restock')}><AddCircleIcon /></IconButton>
-                    <IconButton size="small" color="secondary" onClick={() => onAdjust(row, 'internal_use')}><MedicalServicesIcon /></IconButton>
-                    <IconButton size="small" onClick={(e) => handleOpenMenu(e, row)}><MoreVertIcon /></IconButton>
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell colSpan={5} style={{ paddingBottom: 0, paddingTop: 0 }}>
-                    <Collapse in={isExpanded} timeout="auto" unmountOnExit>
-                      <Box sx={{ margin: 2, p: 2, bgcolor: '#FAFAFA', borderRadius: 2, borderLeft: '4px solid #8B4513' }}>
-                        <Typography variant="caption" fontWeight="bold">BATCH LOG (FIFO)</Typography>
-                        <Table size="small">
-                            <TableBody>
-                                {row.batches?.map((b, i) => (
-                                    <TableRow key={i}>
-                                        <TableCell><Typography variant="caption">#{b.batchNumber}</Typography></TableCell>
-                                        <TableCell><Typography variant="caption">Exp: {b.expiryDate}</Typography></TableCell>
-                                        <TableCell><Typography variant="caption">{b.qty} left</Typography></TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                      </Box>
-                    </Collapse>
-                  </TableCell>
-                </TableRow>
-              </React.Fragment>
+              <TableRow 
+                key={row.id} 
+                hover 
+                sx={{ 
+                  bgcolor: isLow ? 'rgba(255, 253, 231, 0.7)' : 'transparent', // THEME FIX
+                  '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.6)' },
+                  '& > td': { borderBottom: '1px solid rgba(224, 224, 224, 0.5)' }
+                }}
+              >
+                <TableCell sx={{ pl: 3 }}><Typography variant="body2" fontWeight="bold" color="#3E2723">{row.itemName}</Typography></TableCell>
+                <TableCell><Chip label={row.category} size="small" variant="outlined" /></TableCell>
+                <TableCell align="center"><Chip label={currentStock} size="small" color={isLow ? 'error' : 'success'} variant={isLow ? 'filled' : 'outlined'} sx={{ fontWeight: 'bold' }} /></TableCell>
+                <TableCell align="right"><Typography variant="body2" fontWeight="bold" color="#2E7D32">₱{parseFloat(row.price || 0).toFixed(2)}</Typography></TableCell>
+                <TableCell align="center">
+                  <IconButton size="small" onClick={(e) => handleOpenMenu(e, row)}>
+                    <MoreVertIcon fontSize="small" />
+                  </IconButton>
+                </TableCell>
+              </TableRow>
             );
           })}
+          
+          {(!data || data.length === 0) && (
+            <TableRow><TableCell colSpan={5} align="center" sx={{ py: 10, color: '#888', fontStyle: 'italic', border: 'none' }}>No items found. Click "Add Item" to start.</TableCell></TableRow>
+          )}
         </TableBody>
       </Table>
+      
+      {/* THEME FIX: Enterprise 3-dot Menu */}
       <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleCloseMenu}>
-        <MenuItem onClick={() => { onAdjust(selectedActionItem, 'reconcile'); handleCloseMenu(); }}><ListItemIcon><FactCheckIcon fontSize="small"/></ListItemIcon>Reconcile Count</MenuItem>
-        <MenuItem onClick={() => { onAdjust(selectedActionItem, 'wastage'); handleCloseMenu(); }} sx={{color:'warning.main'}}><ListItemIcon><RemoveCircleIcon fontSize="small" color="warning"/></ListItemIcon>Wastage</MenuItem>
-        <MenuItem onClick={() => { onViewHistory(selectedActionItem); handleCloseMenu(); }}><ListItemIcon><HistoryIcon fontSize="small"/></ListItemIcon>View History</MenuItem>
-        <Divider/>
-        <MenuItem onClick={() => { onEdit(selectedActionItem); handleCloseMenu(); }}><ListItemIcon><EditIcon fontSize="small"/></ListItemIcon>Edit Product</MenuItem>
+        <MenuItem onClick={() => { onAdjust(selectedActionItem); handleCloseMenu(); }}><ListItemIcon><ExposureIcon fontSize="small" color="primary"/></ListItemIcon>Adjust Stock</MenuItem>
+        <MenuItem onClick={() => { onEdit(selectedActionItem); handleCloseMenu(); }}><ListItemIcon><EditIcon fontSize="small" color="secondary"/></ListItemIcon>Edit Details</MenuItem>
+        <Divider />
         <MenuItem onClick={() => { onDelete(selectedActionItem); handleCloseMenu(); }} sx={{color:'error.main'}}><ListItemIcon><DeleteIcon fontSize="small" color="error"/></ListItemIcon>Delete</MenuItem>
       </Menu>
     </TableContainer>

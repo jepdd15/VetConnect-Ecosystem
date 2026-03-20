@@ -1,79 +1,99 @@
-// Displays demographics and legally required contacts.
-// Features a dynamic "Authorized Representatives" array to hold multiple emergency contacts and 
-// flags marketing consent preferences.
-
 import React from 'react';
-import { 
-  Box, Typography, Paper, Avatar, Stack, Chip, Button, 
-  Grid, 
-  Alert 
-} from '@mui/material';
+import { Box, Typography, Paper, Avatar, Chip, Button, Stack, Divider } from '@mui/material';
 
 // Icons
 import PhoneIcon from '@mui/icons-material/Phone';
 import EmailIcon from '@mui/icons-material/Email';
 import EditIcon from '@mui/icons-material/Edit';
 import SaveIcon from '@mui/icons-material/Save';
-import CancelIcon from '@mui/icons-material/Cancel';
-import PaidIcon from '@mui/icons-material/Paid';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 
 export default function ClientHeader({ client, balance, isEditing, onEdit, onCancel, onSave }) {
-  return (
-    <Box sx={{ p: 4, bgcolor: '#FAFAFA', borderBottom: '1px solid #E0E0E0' }}>
-      
-      {balance > 0 && (
-          <Alert severity="error" icon={<PaidIcon fontSize="inherit" />} sx={{ mb: 3, fontWeight: 'bold', fontSize: '1rem', alignItems: 'center', border: '1px solid #EF9A9A', py: 0 }}>
-              ATTENTION: This client has an Outstanding Balance of ₱{balance.toFixed(2)}. Check the Billing Ledger tab.
-          </Alert>
-      )}
-      
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-          <Typography variant="caption" color="textSecondary" fontStyle="italic">
-              Client Since: {client.createdAt ? new Date(client.createdAt.seconds * 1000).toLocaleDateString() : 'Legacy Record'}
-          </Typography>
-      </Box>
+  const hasDebt = balance > 0;
 
-      <Paper sx={{ p: 3, mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', bgcolor: isEditing ? '#E3F2FD' : 'white', border: isEditing ? '2px solid #2196F3' : '1px solid #e0e0e0', borderRadius: 2, boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
-          <Box sx={{ display: 'flex', gap: 3, width: '100%' }}>
-              <Avatar sx={{ width: 90, height: 90, bgcolor: '#5D4037', fontSize: 40, fontWeight: 'bold', boxShadow: 2 }}>{client.fullName[0]}</Avatar>
-              <Box sx={{ flex: 1 }}>
-                  <Typography variant="h3" fontWeight="bold" color="#3E2723" sx={{ letterSpacing: -0.5, mb: 1 }}>{client.fullName}</Typography>
-                  <Stack direction="row" spacing={1}>
-                     <Chip label="PET OWNER" size="small" sx={{ bgcolor: '#E0E0E0', color: '#555', fontWeight: 'bold', borderRadius: 1 }} />
-                     <Chip label={client.clientTag || 'Regular'} size="small" color={client.clientTag==='VIP'?'warning':client.clientTag==='Bad Payer'?'error':'primary'} variant={client.clientTag==='Regular' ? 'outlined' : 'filled'} sx={{fontWeight: 'bold', borderRadius: 1}} />
-                     {client.seniorId && <Chip label="SC/PWD" size="small" color="secondary" sx={{fontWeight: 'bold', borderRadius: 1}} />}
-                  </Stack>
-                  {!isEditing && (
-                    <Grid container spacing={2} sx={{ mt: 1, color: '#555' }}>
-                      <Grid item xs={12} md={4} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <PhoneIcon fontSize="small" color="disabled"/> 
-                        <Typography variant="body2" fontWeight="bold">{client.phone}</Typography>
-                      </Grid>
-                      <Grid item xs={12} md={8} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <EmailIcon fontSize="small" color="disabled"/> 
-                        <Typography variant="body2">{client.email || 'No email provided'}</Typography>
-                      </Grid>
-                    </Grid>
-                  )}
-              </Box>
+  return (
+    // THE UX FIX: Compressed Padding (p: 2 instead of p: 4), integrated Alert
+    <Box sx={{ px: 3, pt: 2, pb: 0, bgcolor: 'transparent' }}>
+      
+      <Paper sx={{ 
+          p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
+          bgcolor: isEditing ? 'rgba(227, 242, 253, 0.85)' : 'rgba(255, 255, 255, 0.7)', 
+          backdropFilter: 'blur(12px)',
+          border: isEditing ? '2px solid #2196F3' : '1px solid rgba(0,0,0,0.08)', 
+          borderRadius: 2, boxShadow: '0 4px 15px rgba(0,0,0,0.03)' 
+      }}>
+          
+          {/* LEFT SIDE: HIGH DENSITY IDENTITY */}
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flex: 1 }}>
+              {/* Shrunk Avatar from 90 to 56 */}
+              <Avatar sx={{ width: 56, height: 56, bgcolor: '#5D4037', fontSize: 24, fontWeight: 'bold', boxShadow: 1 }}>
+                {client.fullName ? client.fullName[0] : '?'}
+              </Avatar>
               
-              <Box sx={{ textAlign: 'right', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', borderLeft: '1px solid #eee', pl: 3, minWidth: 200 }}>
-                <Box>
-                    <Typography variant="overline" color="textSecondary" fontWeight="bold">Total Outstanding</Typography>
-                    <Typography variant="h6" color={balance > 0 ? "#D32F2F" : "#2E7D32"} fontWeight="bold">₱{balance.toFixed(2)}</Typography>
-                    {balance === 0 && <Typography variant="caption" color="success.main" fontWeight="bold">In Good Standing</Typography>}
-                </Box>
-                <Box sx={{ mt: 3 }}>
-                  {isEditing ? (
-                    <Stack direction="row" spacing={1} justifyContent="flex-end">
-                      <Button variant="outlined" color="error" size="small" onClick={onCancel}>Cancel</Button>
-                      <Button variant="contained" color="success" size="small" onClick={onSave} sx={{fontWeight: 'bold'}}>Save</Button>
-                    </Stack>
-                  ) : (
-                    <Button variant="outlined" startIcon={<EditIcon />} size="small" onClick={onEdit} sx={{borderColor: '#ccc', color: '#555', '&:hover':{borderColor: '#8B4513', color: '#8B4513'}, bgcolor: 'white', width: '100%'}}>Edit Profile</Button>
+              <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  
+                  {/* Row 1: Name and Tags on ONE line */}
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 0.5 }}>
+                    <Typography variant="h5" fontWeight="900" color="#3E2723" sx={{ letterSpacing: -0.5, lineHeight: 1 }}>
+                        {client.fullName}
+                    </Typography>
+                    <Chip label={client.clientTag || 'Regular'} size="small" color={client.clientTag==='VIP'?'warning':client.clientTag==='Bad Payer'?'error':'default'} variant={client.clientTag==='Regular' ? 'outlined' : 'filled'} sx={{fontWeight: 'bold', height: 20, fontSize: '0.65rem'}} />
+                    {client.seniorId && <Chip label="SC/PWD" size="small" color="secondary" sx={{fontWeight: 'bold', height: 20, fontSize: '0.65rem'}} />}
+                  </Box>
+
+                  {/* Row 2: Contacts on ONE line */}
+                  {!isEditing && (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, color: '#555' }}>
+                      <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, fontWeight: '600' }}>
+                        <PhoneIcon sx={{fontSize: 14, color: '#1565C0'}}/> {client.phone}
+                      </Typography>
+                      <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <EmailIcon sx={{fontSize: 14, color: '#888'}}/> {client.email || 'No email'}
+                      </Typography>
+                      <Typography variant="caption" color="textSecondary" sx={{ ml: 1, fontStyle: 'italic', borderLeft: '1px solid #ccc', pl: 2 }}>
+                        Since: {client.createdAt ? new Date(client.createdAt.seconds * 1000).toLocaleDateString() : 'N/A'}
+                      </Typography>
+                    </Box>
                   )}
-                </Box>
               </Box>
+          </Box>
+          
+          {/* RIGHT SIDE: INTEGRATED FINANCIALS & ACTIONS */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, borderLeft: '1px dashed #ccc', pl: 3 }}>
+            
+            {/* Integrated Balance - No more jumping UI! */}
+            <Box sx={{ textAlign: 'right' }}>
+                <Typography variant="caption" color="textSecondary" fontWeight="bold" sx={{ display: 'block', mb: -0.5 }}>Total Outstanding</Typography>
+                <Typography variant="h6" color={hasDebt ? "#D32F2F" : "#2E7D32"} fontWeight="900">
+                    ₱{balance.toFixed(2)}
+                </Typography>
+                {hasDebt ? (
+                    <Typography variant="caption" color="error" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, justifyContent: 'flex-end' }}>
+                        <WarningAmberIcon sx={{fontSize: 14}}/> Payment Due
+                    </Typography>
+                ) : (
+                    <Typography variant="caption" color="success.main" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, justifyContent: 'flex-end' }}>
+                        <CheckCircleOutlineIcon sx={{fontSize: 14}}/> Good Standing
+                    </Typography>
+                )}
+            </Box>
+
+            <Divider orientation="vertical" flexItem sx={{ my: 1 }} />
+
+            {/* Actions */}
+            <Box>
+                {isEditing ? (
+                <Stack direction="column" spacing={1}>
+                    <Button variant="contained" color="success" size="small" onClick={onSave} sx={{fontWeight: 'bold', fontSize: '0.7rem', py: 0.2}} startIcon={<SaveIcon fontSize="small"/>}>Save</Button>
+                    <Button variant="outlined" color="error" size="small" onClick={onCancel} sx={{fontWeight: 'bold', fontSize: '0.7rem', py: 0.2}} startIcon={<CancelIcon fontSize="small"/>}>Cancel</Button>
+                </Stack>
+                ) : (
+                <Button variant="outlined" startIcon={<EditIcon />} size="small" onClick={onEdit} sx={{borderColor: '#ccc', color: '#555', '&:hover':{borderColor: '#8B4513', color: '#8B4513'}, bgcolor: 'white', fontWeight: 'bold'}}>
+                    Edit Profile
+                </Button>
+                )}
+            </Box>
           </Box>
       </Paper>
     </Box>

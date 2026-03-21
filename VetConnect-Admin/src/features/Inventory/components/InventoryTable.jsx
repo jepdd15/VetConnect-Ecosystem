@@ -22,7 +22,7 @@ export default function InventoryTable({ data, onEdit, onAdjust, onDelete, glass
   const headerSx = { fontWeight: 'bold', color: '#5D4037', bgcolor: 'rgba(255, 255, 255, 0.4)', fontSize: '1.05rem', borderBottom: '1px solid rgba(255, 255, 255, 0.5)' };
 
   return (
-    <TableContainer component={Paper} sx={{ ...glassStyle, height: 'calc(100vh - 180px)', overflow: 'auto' }}>
+    <TableContainer component={Paper} sx={{ ...glassStyle, height: 'calc(100vh - 210px)', overflow: 'auto' }}>
       <Table stickyHeader size="small" sx={{ bgcolor: 'transparent' }}>
         <TableHead>
           <TableRow>

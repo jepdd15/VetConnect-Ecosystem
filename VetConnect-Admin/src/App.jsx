@@ -17,9 +17,9 @@ import Login from './pages/Login'; // <--- IMPORT THE NEW LOGIN PAGE
 import Dashboard from './pages/Dashboard';
 import Queue from './features/Queue/Queue';
 import Patients from './features/Patients/Patients'; 
-import Services from './pages/Services';
+import Services from './features/Services/Services';
 import Inventory from './features/Inventory/Inventory';
-import Staff from './pages/Staff';
+import Staff from './features/Staff/Staff';
 import Sales from './pages/Sales';       
 import Expenses from './pages/Expenses'; 
 import Monitor from './pages/Monitor';   

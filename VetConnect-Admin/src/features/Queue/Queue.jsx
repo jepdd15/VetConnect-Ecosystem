@@ -38,7 +38,8 @@ export default function Queue() {
   const [vets, setVets] = useState([]); 
   const[inventoryList, setInventoryList] = useState([]); 
   const [servicesList, setServicesList] = useState([]); 
-  
+  const [departments, setDepartments] = useState([]); // THE NEW COLOR MAP
+
   const [tabValue, setTabValue] = useState(0); 
   const[filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
   const[currentTime, setCurrentTime] = useState(new Date());
@@ -83,6 +84,7 @@ export default function Queue() {
   // ======================================================================
   // LOGIC & HANDLERS
   // ======================================================================
+  
   const confirmResetDay = async (isSilent = false) => { 
     try { 
       const batch = writeBatch(db); 
@@ -97,6 +99,7 @@ export default function Queue() {
           } else {
             batch.update(oldRef, { status: 'carried-over', notes: `(Re-booked) ${patient.notes || ""}` }); 
             const newDocRef = doc(collection(db, "appointments")); 
+            // eslint-disable-next-line no-unused-vars
             const { id, jsScheduled, jsArrived, jsStarted, jsCompleted, queueNumber, ticketPrefix, timeArrived, timeStarted, timeCompleted, ...preservedData } = patient;
             batch.set(newDocRef, { 
                ...preservedData,
@@ -232,7 +235,8 @@ export default function Queue() {
     const unsubVets = onSnapshot(collection(db, "users"), (snapshot) => setVets(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(u => u.role === 'veterinarian' || u.role === 'groomer' || u.accessLevel)));
     const unsubInv = onSnapshot(collection(db, "inventory"), (snapshot) => setInventoryList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
     const unsubServ = onSnapshot(collection(db, "services"), (snapshot) => setServicesList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
-    return () => { unsubVets(); unsubInv(); unsubServ(); };
+    const unsubDepts = onSnapshot(collection(db, "departments"), (snapshot) => setDepartments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
+    return () => { unsubVets(); unsubInv(); unsubServ(); unsubDepts(); };
   },[]);
 
   useEffect(() => {
@@ -251,6 +255,7 @@ export default function Queue() {
       } catch (error) { console.error(error); }
     };
     checkDailyReset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isToday]);
 
   // ======================================================================
@@ -288,7 +293,7 @@ export default function Queue() {
   const tableColumns = getQueueColumns(tabValue, currentTime, {
     handleStatusChange, handleOpenAssign, setSelectedId, setOpenReject, handleOpenConsult, handleOpenPOS, handleMenuClick,
     handleQuickNoShow: async (id) => { if(window.confirm("Mark as No-Show?")) await markNoShow(id); }
-  }, isToday);
+  }, isToday, departments);
 
   // LOGIC FLAGS FOR THE BANNER
   const isPastDate = new Date(filterDate) < new Date(new Date().setHours(0,0,0,0));

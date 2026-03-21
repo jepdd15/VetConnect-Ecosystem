@@ -27,7 +27,7 @@ const formatDuration = (totalMinutes) => {
   return remainingMins > 0 ? `${hours}h ${remainingMins}m` : `${hours}h`;
 };
 
-export const getQueueColumns = (tabValue, currentTime, actions, isToday) =>[
+export const getQueueColumns = (tabValue, currentTime, actions, isToday, departments) =>[
   { 
     field: 'identity', headerName: 'Patient Identity', flex: 1.8, minWidth: 260, 
     sortable: false, disableColumnMenu: true, // THE FIX: Locked Down
@@ -90,11 +90,33 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday) =>[
     sortable: false, disableColumnMenu: true, // THE FIX: Locked Down
     renderCell: (p) => {
       const hasNotes = p.row.notes && p.row.notes.trim().length > 0 && p.row.notes !== "—";
+      
+      // THE COLOR LOOKUP MAGIC
+      // 1. What category does this service belong to? (Fallback to General)
+      const serviceCategory = p.row.serviceCategory || 'General';
+      // 2. Find the department object in our master list that matches this category
+      const deptObj = (departments || []).find(d => d.name === serviceCategory);
+      // 3. Extract the color. If not found, use a professional dark grey.
+      const badgeColor = deptObj ? deptObj.color : '#424242';
+
       return (
         <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', py: 1, pr: 2 }}>
-          <Typography variant="body1" fontWeight="800" color="#1565C0" component="div" noWrap sx={{ mb: 0.5 }}>
-            {p.row.serviceType}
-          </Typography>
+          
+          {/* THE DYNAMIC COLOR CHIP */}
+          <Chip 
+            label={p.row.serviceType} 
+            size="small" 
+            sx={{ 
+                bgcolor: badgeColor, 
+                color: 'white', 
+                fontWeight: '900', 
+                fontSize: '0.7rem', 
+                alignSelf: 'flex-start', // Keeps the chip from stretching
+                mb: 0.5,
+                boxShadow: `0 2px 5px ${badgeColor}40` // Subtle glow matching the color
+            }} 
+          />
+          
           {hasNotes ? (
             <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5, bgcolor: '#FFF3E0', p: 1, borderRadius: 1, borderLeft: '3px solid #FF9800' }}>
               <WarningIcon sx={{ fontSize: 14, color: '#E65100', mt: 0.2 }} />

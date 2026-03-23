@@ -66,59 +66,101 @@ export default function Services() {
 
   return (
     <Box>
-      {/* THEME FIX: Unified High-Contrast Command Center Bar */}
-      <Paper sx={{ ...glassStyle, p: 2, mb: 3, display: 'flex', gap: 2, alignItems: 'center' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexGrow: 1 }}>
-            <Typography variant="h4" sx={{ fontWeight: '900', color: '#5D4037', textShadow: '0px 1px 2px rgba(255,255,255,0.8)', mr: 2 }}>
-                Services
-            </Typography>
-            
+      {/* THE UX FIX: Unified High-Contrast Command Center Bar */}
+      <Paper sx={{ ...glassStyle, p: 2, mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        
+        {/* LEFT SIDE: Title, Search, Filters, & Counter */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Typography variant="h4" sx={{ fontWeight: '900', color: '#5D4037', textShadow: '0px 1px 2px rgba(255,255,255,0.8)', mr: 1 }}>
+            Services
+          </Typography>
+          
+          <Box sx={{ display: 'flex', alignItems: 'center', bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 2, border: '1px solid rgba(255,255,255,0.9)' }}>
             <TextField 
-                variant="standard" size="small" placeholder="Search services..." value={searchText} onChange={(e) => setSearchText(e.target.value)} 
-                InputProps={{ 
-                    startAdornment: <InputAdornment position="start"><SearchIcon sx={{color: 'white'}}/></InputAdornment>,
-                    disableUnderline: true, style: { color: 'white', fontWeight: 'bold' }
-                }} 
-                sx={{ width: 280, bgcolor: '#5D4037', borderRadius: 2, p: '6px 12px', boxShadow: 2 }} 
-            />
+            variant="standard" 
+            placeholder="Search services..." 
+            value={searchText} 
+            onChange={(e) => setSearchText(e.target.value)} 
+            InputProps={{ 
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon sx={{ color: 'rgba(255,255,255,0.8)', fontSize: 20 }}/>
+                  </InputAdornment>
+                ),
+                disableUnderline: true, 
+            }} 
+            sx={{ 
+                width: 260, 
+                bgcolor: '#5D4037', 
+                borderRadius: 2, 
+                px: 2, 
+                py: 1, // Controls the overall thickness of the bar
+                boxShadow: 2, 
+                // THE PIXEL-PERFECT FIXES:
+                '& .MuiInputBase-root': { 
+                  color: 'white', 
+                  fontWeight: 'bold', 
+                  display: 'flex', 
+                  alignItems: 'center',
+                  height: '100%'
+                },
+                '& .MuiInputBase-input': { 
+                  padding: 0, // Kills the invisible padding pushing the text down!
+                  ml: 0.5, // Adds a tiny gap between icon and text
+                  '&::placeholder': { color: 'rgba(255,255,255,0.6)', opacity: 1 } 
+                },
+                '& .MuiInputAdornment-root': {
+                  marginTop: '0 !important', // Kills the invisible margin pushing the icon down!
+                }
+            }} 
+          />
+          </Box>
 
-            <FormControl size="small" sx={{ width: 200, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 1 }}>
-                <Select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} displayEmpty sx={{ '& fieldset': { border: 'none' }, fontWeight: 'bold' }}>
-                    <MenuItem value="All">All Departments</MenuItem>
-                    {departments.map(d => <MenuItem key={d.id} value={d.name}>{d.name}</MenuItem>)}
-                </Select>
-            </FormControl>
+          <FormControl size="small" sx={{ width: 180, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 1 }}>
+              <Select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} displayEmpty sx={{ '& fieldset': { border: 'none' }, fontWeight: 'bold' }}>
+                  <MenuItem value="All">All Departments</MenuItem>
+                  {departments.map(d => <MenuItem key={d.id} value={d.name}>{d.name}</MenuItem>)}
+              </Select>
+          </FormControl>
 
-            <FormControl size="small" sx={{ width: 160, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 1 }}>
-                <Select value={filterSpecies} onChange={(e) => setFilterSpecies(e.target.value)} sx={{ '& fieldset': { border: 'none' }, fontWeight: 'bold' }}>
-                    <MenuItem value="All">All Species</MenuItem>
-                    <MenuItem value="Universal">🐾 Universal</MenuItem>
-                    <MenuItem value="Canine">🐶 Canine</MenuItem>
-                    <MenuItem value="Feline">🐱 Feline</MenuItem>
-                </Select>
-            </FormControl>
+          <FormControl size="small" sx={{ width: 160, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 1 }}>
+              <Select value={filterSpecies} onChange={(e) => setFilterSpecies(e.target.value)} sx={{ '& fieldset': { border: 'none' }, fontWeight: 'bold' }}>
+                  <MenuItem value="All">All Species</MenuItem>
+                  <MenuItem value="Universal">🐾 Universal</MenuItem>
+                  <MenuItem value="Canine">🐶 Canine</MenuItem>
+                  <MenuItem value="Feline">🐱 Feline</MenuItem>
+              </Select>
+          </FormControl>
+          
+          {/* THE MISSING COUNTER FIX: Restored the catalog metric! */}
+          <Typography variant="body2" sx={{ color: '#5D4037', fontStyle: 'italic', fontWeight: '900', letterSpacing: 0.5, ml: 1 }}>
+            {filteredServices.length} {filteredServices.length === 1 ? 'Record' : 'Records'}
+          </Typography>
         </Box>
 
-        <Button 
-            variant="contained" startIcon={<AddIcon />} 
-            sx={{ bgcolor: '#FF9800', fontWeight: 'bold', px: 3, boxShadow: '0 4px 15px rgba(255, 152, 0, 0.4)' }} 
-            onClick={() => { setSelectedItem(null); setOpen(true); }}
-        >
-          New Service
-        </Button>
+        {/* RIGHT SIDE: Action Button */}
+        <Box>
+          <Button 
+              variant="contained" 
+              startIcon={<AddIcon />} 
+              sx={{ bgcolor: '#FF9800', fontWeight: '900', boxShadow: '0 4px 15px rgba(255, 152, 0, 0.4)', textTransform: 'uppercase', letterSpacing: 0.5, px: 3 }} 
+              onClick={() => { setSelectedItem(null); setOpen(true); }}
+          >
+            New Service
+          </Button>
+        </Box>
       </Paper>
 
       <ServiceTable data={filteredServices} onEdit={(row) => { setSelectedItem(row); setOpen(true); }} onDelete={handleDelete} glassStyle={glassStyle} />
 
       {open && (
         <ServiceFormModal 
-          // THE MAGIC LINE: Whenever 'selectedItem' changes, the modal is recreated.
-          key={selectedItem?.id || 'new-service'} 
+          key={selectedItem?.id || 'new'} 
           open={open} 
           onClose={() => setOpen(false)} 
           item={selectedItem} 
           inventory={inventory} 
-          departments={departments}
+          departments={departments} 
           onSave={handleSave} 
           showToast={showToast} 
         />

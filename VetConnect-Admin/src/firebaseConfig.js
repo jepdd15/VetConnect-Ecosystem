@@ -8,19 +8,12 @@ import { getStorage } from "firebase/storage";
 
 
 const firebaseConfig = {
-
-  apiKey: "AIzaSyCjcteCNm5DwVfic1hI2vzKOGowXi48zH0",
-
-  authDomain: "starbarks-vetconnect.firebaseapp.com",
-
-  projectId: "starbarks-vetconnect",
-
-  storageBucket: "starbarks-vetconnect.firebasestorage.app",
-
-  messagingSenderId: "491877746459",
-
-  appId: "1:491877746459:web:71e9b3d1acb3762894f5be"
-
+  apiKey: "AIzaSyDRM1GnQYQkNgZjGPG-ssQh2inHHgDDsO4",
+  authDomain: "starbarks-vetconnect-f6443.firebaseapp.com",
+  projectId: "starbarks-vetconnect-f6443",
+  storageBucket: "starbarks-vetconnect-f6443.firebasestorage.app",
+  messagingSenderId: "156967516393",
+  appId: "1:156967516393:web:da2f4bf88f0eba39cf5878"
 }; 
 
 // Initialize Firebase

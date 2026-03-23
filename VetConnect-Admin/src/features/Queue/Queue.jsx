@@ -3,7 +3,7 @@ import { DataGrid } from '@mui/x-data-grid';
 import { 
   Box, Typography, Paper, IconButton, Tooltip, 
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button,
-  Tabs, Tab, Menu, MenuItem, ListItemIcon, ListItemText, Divider, List, ListItem, Alert, Checkbox, DialogContentText
+  Tabs, Tab, Menu, MenuItem, ListItemIcon, ListItemText, Divider, List, ListItem, Alert
 } from '@mui/material';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, Timestamp, where, getDocs, writeBatch, getDoc } from 'firebase/firestore';
 
@@ -30,15 +30,16 @@ import PersonOffIcon from '@mui/icons-material/PersonOff';
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew'; 
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos'; 
 import UndoIcon from '@mui/icons-material/Undo'; 
+import LocalHospitalIcon from '@mui/icons-material/LocalHospital'; 
 
 const MAX_CAGES = 5;
 
 export default function Queue() {
   const [rows, setRows] = useState([]);
   const [vets, setVets] = useState([]); 
-  const[inventoryList, setInventoryList] = useState([]); 
+  const [inventoryList, setInventoryList] = useState([]); 
   const [servicesList, setServicesList] = useState([]); 
-  const [departments, setDepartments] = useState([]); // THE NEW COLOR MAP
+  const [departments, setDepartments] = useState([]);
 
   const [tabValue, setTabValue] = useState(0); 
   const[filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
@@ -52,27 +53,27 @@ export default function Queue() {
   const [openReject, setOpenReject] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   
+  // THE NEW TRIAGE STATES
   const[openEndDay, setOpenEndDay] = useState(false);
-  const [leftoverPatients, setLeftoverPatients] = useState([]);
-  const [carryOverSelection, setCarryOverSelection] = useState([]);
+  const[leftoverPatients, setLeftoverPatients] = useState([]);
+  const [patientResolutions, setPatientResolutions] = useState({}); // Stores the action for EACH patient
+  const [isForcedCleanup, setIsForcedCleanup] = useState(false); // The Hostage Lock
+  const [hasGhostPatients, setHasGhostPatients] = useState(false);
 
   const [openEdit, setOpenEdit] = useState(false);
   const [editName, setEditName] = useState('');
   const[editPet, setEditPet] = useState('');
   const [openReschedule, setOpenReschedule] = useState(false);
   const [newDate, setNewDate] = useState('');
-  const [openHistory, setOpenHistory] = useState(false);
+  const[openHistory, setOpenHistory] = useState(false);
   const [historyList, setHistoryList] = useState([]);
 
   const [openConsult, setOpenConsult] = useState(false);
-  const [openPOS, setOpenPOS] = useState(false); 
-  const[openWalkIn, setOpenWalkIn] = useState(false);
-  const[openAssign, setOpenAssign] = useState(false);
+  const[openPOS, setOpenPOS] = useState(false); 
+  const [openWalkIn, setOpenWalkIn] = useState(false);
+  const [openAssign, setOpenAssign] = useState(false);
 
-  // NEW: State to track if there are ghosts from yesterday!
-  const[hasGhostPatients, setHasGhostPatients] = useState(false);
-
-  const { changeStatus, revertStatus, markNoShow, rejectAppointment } = useQueueActions();
+  const { changeStatus, revertStatus, markNoShow, rejectAppointment, quickAdmitER } = useQueueActions();
   const hasCheckedAutoReset = useRef(false);
   const isToday = new Date(filterDate).toDateString() === new Date().toDateString();
 
@@ -87,48 +88,68 @@ export default function Queue() {
   
   const confirmResetDay = async (isSilent = false) => { 
     try { 
-      const batch = writeBatch(db); 
-      const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1); tomorrow.setHours(8, 0, 0, 0); 
       const todayStr = new Date().toISOString().split('T')[0];
+
+      // THE "RACE CONDITION" LOCK
+      const queueSnap = await getDoc(doc(db, "queue", "daily_queue"));
+      if (queueSnap.exists() && queueSnap.data().lastResetDate === todayStr && !isSilent) {
+         alert("Data Protected: Another staff member has already reset the queue for today.");
+         setOpenEndDay(false);
+         setHasGhostPatients(false);
+         setIsForcedCleanup(false);
+         return; 
+      }
+
+      const batch = writeBatch(db); 
+      
+      // If we are rebooking, we set the date to TODAY at 8:00 AM
+      const targetDate = new Date(); 
+      targetDate.setHours(8, 0, 0, 0); 
 
       leftoverPatients.forEach((patient) => { 
         const oldRef = doc(db, "appointments", patient.id); 
-        if (carryOverSelection.includes(patient.id)) { 
+        const action = patient.status === 'confined' ? 'confined' : (patientResolutions[patient.id] || 'cancel');
+
+        if (action === 'rebook' || action === 'confined') { 
           if (patient.status === 'carried-over') {
-            batch.update(oldRef, { scheduledDate: Timestamp.fromDate(tomorrow) });
+            batch.update(oldRef, { scheduledDate: Timestamp.fromDate(targetDate) });
           } else {
             batch.update(oldRef, { status: 'carried-over', notes: `(Re-booked) ${patient.notes || ""}` }); 
             const newDocRef = doc(collection(db, "appointments")); 
             // eslint-disable-next-line no-unused-vars
             const { id, jsScheduled, jsArrived, jsStarted, jsCompleted, queueNumber, ticketPrefix, timeArrived, timeStarted, timeCompleted, ...preservedData } = patient;
+            
             batch.set(newDocRef, { 
                ...preservedData,
-               status: 'confirmed', 
+               status: action === 'confined' ? 'confined' : 'confirmed', 
                queueNumber: null, 
                ticketPrefix: null, 
-               scheduledDate: Timestamp.fromDate(tomorrow), 
+               scheduledDate: Timestamp.fromDate(targetDate), 
                createdAt: Timestamp.now(), 
-               notes: `(Carried Over from ${new Date(filterDate).toLocaleDateString()})`, 
-               assignedVet: "Unassigned" 
+               notes: `(Carried Over from ${new Date(patient.createdAt?.toDate() || Date.now()).toLocaleDateString()})`, 
+               assignedVet: action === 'confined' ? patient.assignedVet : "Unassigned" 
             }); 
           }
-        } else { 
-          batch.update(oldRef, { status: 'cancelled', rejectReason: "End of Day Cleanup" }); 
-        } 
+        } else if (action === 'no-show') { 
+          batch.update(oldRef, { status: 'no-show', rejectReason: "Marked as No-Show during Triage" }); 
+        } else {
+          batch.update(oldRef, { status: 'cancelled', rejectReason: "Cancelled during Triage" }); 
+        }
       }); 
 
       const queueRef = doc(db, "queue", "daily_queue"); 
       batch.update(queueRef, { currentServing: 0, currentPrefix: '', lastNumberIssued: 0, status: 'active', lastResetDate: todayStr }); 
       await batch.commit(); 
+      
       setOpenEndDay(false); 
-      if (!isSilent) alert("Cleanup Complete: Queue reset for tomorrow."); 
-      setHasGhostPatients(false); // Clear the ghost warning
+      setIsForcedCleanup(false);
+      setHasGhostPatients(false); 
+      if (!isSilent) alert("Cleanup Complete: Board is ready."); 
     } catch (error) { alert("Error: " + error.message); } 
   };
 
   const initiateResetDay = async (isAuto = false) => { 
     try { 
-      // Query exactly the current board's date boundaries
       const startOfDay = new Date(filterDate); startOfDay.setHours(0,0,0,0); 
       const endOfDay = new Date(filterDate); endOfDay.setHours(23,59,59,999);
 
@@ -143,7 +164,12 @@ export default function Queue() {
       if (snapshot.size > 0) { 
         const patients = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); 
         setLeftoverPatients(patients); 
-        setCarryOverSelection(patients.map(p => p.id)); 
+        
+        // Initialize default actions (Cancel for normal, Confined for hospitalized)
+        const initialRes = {};
+        patients.forEach(p => initialRes[p.id] = p.status === 'confined' ? 'confined' : 'cancel');
+        setPatientResolutions(initialRes);
+        
         setOpenEndDay(true); 
       } else { 
         if (isAuto) confirmResetDay(true); 
@@ -152,19 +178,30 @@ export default function Queue() {
     } catch (error) { console.log(error); } 
   };
 
+  const handleBulkResolution = (action) => {
+    setPatientResolutions(prev => {
+      const updated = { ...prev };
+      leftoverPatients.forEach(p => {
+        // THE VETERINARIAN'S RULE: Never bulk-override confined patients!
+        if (p.status !== 'confined') {
+          updated[p.id] = action;
+        }
+      });
+      return updated;
+    });
+  };
+
+  const handleQuickAdmit = async () => {
+    try { await quickAdmitER(); } 
+    catch (error) { alert("Error admitting ER patient: " + error.message); }
+  };
+
   const handleMenuClick = (e, row) => { setAnchorEl(e.currentTarget); setSelectedRow(row); };
   const handleCloseMenu = () => { setAnchorEl(null); };
   const handleOpenAssign = (row) => { setSelectedRow(row); setOpenAssign(true); handleCloseMenu(); };
   const handleOpenConsult = (row) => { setSelectedRow(row); setOpenConsult(true); };
   const handleOpenPOS = (row) => { setSelectedRow(row); setOpenPOS(true); };
-
-  const handleStatusChange = async (row, newStatus) => {
-    try {
-      const confinedCount = rows.filter(r => r.status === 'confined').length;
-      await changeStatus(row, newStatus, confinedCount, MAX_CAGES);
-    } catch (e) { alert(e.message); }
-  };
-
+  const handleStatusChange = async (row, newStatus) => { try { const confinedCount = rows.filter(r => r.status === 'confined').length; await changeStatus(row, newStatus, confinedCount, MAX_CAGES); } catch (e) { alert(e.message); } };
   const handleEditOpen = () => { setEditName(selectedRow.ownerName||''); setEditPet(selectedRow.petName); setOpenEdit(true); handleCloseMenu(); };
   const saveEdit = async () => { await updateDoc(doc(db, "appointments", selectedRow.id), { ownerName: editName, petName: editPet }); setOpenEdit(false); };
   const handleRescheduleOpen = () => { setOpenReschedule(true); handleCloseMenu(); };
@@ -176,7 +213,7 @@ export default function Queue() {
   // DATA FETCHING & EFFECTS
   // ======================================================================
   
-  // 1. THE GHOST HUNTER (Checks for abandoned patients from the past)
+  // THE MORNING GATEKEEPER (Forces modal if ghosts exist)
   useEffect(() => {
     const checkGhosts = async () => {
       const todayStart = new Date(); todayStart.setHours(0,0,0,0);
@@ -186,17 +223,32 @@ export default function Queue() {
         where("createdAt", "<", Timestamp.fromDate(todayStart))
       );
       const snapshot = await getDocs(qGhosts);
-      setHasGhostPatients(!snapshot.empty);
+      
+      if (!snapshot.empty) {
+        setHasGhostPatients(true);
+        if (isToday) {
+            const ghosts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setLeftoverPatients(ghosts);
+            
+            const initialRes = {};
+            ghosts.forEach(p => initialRes[p.id] = p.status === 'confined' ? 'confined' : 'cancel');
+            setPatientResolutions(initialRes);
+            
+            setIsForcedCleanup(true);
+            setOpenEndDay(true);
+        }
+      } else {
+        setHasGhostPatients(false);
+      }
     };
     checkGhosts();
-  }, [filterDate]); // Re-check when they move tabs
+  },[filterDate, isToday]); 
 
-  // 2. THE MAIN BOARD QUERY (Fixed to use createdAt so Walk-Ins don't vanish)
+  // THE MAIN BOARD QUERY
   useEffect(() => {
     const start = new Date(filterDate); start.setHours(0, 0, 0, 0);
     const end = new Date(filterDate); end.setHours(23, 59, 59, 999);
     
-    // THE FIX: Reverted to createdAt. This ensures walk-ins ALWAYS appear on the day they walked in.
     const q = query(
       collection(db, "appointments"), 
       where("createdAt", ">=", Timestamp.fromDate(start)), 
@@ -212,14 +264,13 @@ export default function Queue() {
         jsCompleted: doc.data().timeCompleted?.toDate(),
       }));
 
-      // THE ENTERPRISE SORT ENGINE
       list.sort((a, b) => {
         const priorityA = a.priority === 'high' ? 0 : 1;
         const priorityB = b.priority === 'high' ? 0 : 1;
         if (priorityA !== priorityB) return priorityA - priorityB;
 
-        const timeA = a.jsScheduled ? a.jsScheduled.getTime() : Date.now();
-        const timeB = b.jsScheduled ? b.jsScheduled.getTime() : Date.now();
+        const timeA = a.jsScheduled ? a.jsScheduled.getTime() : (a.createdAt?.toDate().getTime() || 0);
+        const timeB = b.jsScheduled ? b.jsScheduled.getTime() : (b.createdAt?.toDate().getTime() || 0);
         if (timeA !== timeB) return timeA - timeB;
 
         return (a.petName || '').localeCompare(b.petName || '');
@@ -243,20 +294,6 @@ export default function Queue() {
     const interval = setInterval(() => { setCurrentTime(new Date()); setIsClosingTime(new Date().getHours() >= 17); }, 60000);
     return () => clearInterval(interval);
   },[]);
-
-  useEffect(() => {
-    const checkDailyReset = async () => {
-      if (!isToday || hasCheckedAutoReset.current) return;
-      hasCheckedAutoReset.current = true;
-      try {
-        const queueSnap = await getDoc(doc(db, "queue", "daily_queue"));
-        const todayStr = new Date().toISOString().split('T')[0];
-        if (!queueSnap.exists() || queueSnap.data().lastResetDate !== todayStr) initiateResetDay(true); 
-      } catch (error) { console.error(error); }
-    };
-    checkDailyReset();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isToday]);
 
   // ======================================================================
   // RENDER & UI CALCULATIONS
@@ -295,14 +332,13 @@ export default function Queue() {
     handleQuickNoShow: async (id) => { if(window.confirm("Mark as No-Show?")) await markNoShow(id); }
   }, isToday, departments);
 
-  // LOGIC FLAGS FOR THE BANNER
   const isPastDate = new Date(filterDate) < new Date(new Date().setHours(0,0,0,0));
   const showClosingWarning = isClosingTime && isToday && unfinishedCount > 0;
   const showPastDueWarning = isPastDate && unfinishedCount > 0;
 
   return (
     <Box>
-      {/* THE FIX: Highly precise warning banners */}
+      {/* WARNING BANNERS */}
       {showPastDueWarning && (
         <Alert severity="error" variant="filled" sx={{ mb: 2, fontWeight: 'bold', boxShadow: 2 }}>
           ⚠️ ATTENTION: You have {unfinishedCount} unresolved patient(s) from this date. Please click "Clean Up Records" to carry them over or cancel them.
@@ -315,13 +351,7 @@ export default function Queue() {
         </Alert>
       )}
 
-      {/* THE GHOST WARNING: Alerts the receptionist on TODAY'S board if yesterday was a mess. */}
-      {isToday && hasGhostPatients && !showClosingWarning && (
-        <Alert severity="error" sx={{ mb: 2, fontWeight: 'bold', border: '1px solid #D32F2F', bgcolor: '#FFEBEE' }}>
-          🚨 CRITICAL: There are abandoned patients from previous days in the system. Please click the Left Arrow (Previous Day) on the calendar to find and Clean Up those records.
-        </Alert>
-      )}
-
+      {/* HEADER CONTROLS */}
       <Paper sx={{ ...glassStyle, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#5D4037', textShadow: '0px 1px 2px rgba(255,255,255,0.8)' }}>Patient Queue</Typography>
@@ -333,16 +363,20 @@ export default function Queue() {
           <Typography variant="caption" sx={{ color: '#888', ml: 1, fontStyle: 'italic', fontWeight: 'bold' }}>{rows.length} {rows.length === 1 ? 'Record' : 'Records'}</Typography>
         </Box>
         
-        <Box sx={{ display: 'flex', gap: 2 }}>
+        {/* ACTION BUTTONS WITH QUICK ER */}
+        <Box sx={{ display: 'flex', gap: 1.5 }}>
+           {isToday && (
+             <Button variant="contained" startIcon={<LocalHospitalIcon />} sx={{ bgcolor: '#D32F2F', fontWeight: '900', boxShadow: '0 4px 15px rgba(211, 47, 47, 0.4)' }} onClick={handleQuickAdmit}>
+                QUICK ER
+             </Button>
+           )}
+
            {(isToday || (isPastDate && unfinishedCount > 0)) && (
-             <Button 
-                variant="contained" color="error" 
-                onClick={() => initiateResetDay(false)} 
-                sx={(isClosingTime && isToday) ? {animation: 'pulse 1.5s infinite', fontWeight: 'bold'} : { fontWeight: '900', boxShadow: 3, letterSpacing: 0.5 }}
-             >
+             <Button variant="contained" color="error" onClick={() => initiateResetDay(false)} sx={(isClosingTime && isToday) ? {animation: 'pulse 1.5s infinite', fontWeight: 'bold'} : { fontWeight: '900', boxShadow: 3, letterSpacing: 0.5 }}>
                 {isToday ? (isClosingTime ? "Close Clinic" : "Start New Day") : "Clean Up Records"}
              </Button>
            )}
+
            {isToday && (
              <Button variant="contained" startIcon={<PersonAddIcon />} sx={{ bgcolor: '#FF9800', fontWeight: 'bold', boxShadow: '0 4px 15px rgba(255, 152, 0, 0.4)' }} onClick={() => setOpenWalkIn(true)}>
                 + Walk-In
@@ -351,6 +385,7 @@ export default function Queue() {
         </Box>
       </Paper>
 
+      {/* TABS */}
       <Paper sx={{ ...glassStyle, mb: 2, p: 1 }}>
         <Tabs value={tabValue} onChange={(e, v) => setTabValue(v)} variant="fullWidth" scrollButtons="auto" TabIndicatorProps={{ style: { display: 'none' } }} sx={{ minHeight: 48, '& .MuiTab-root': { fontWeight: '800', fontSize: '0.85rem', textTransform: 'uppercase', minHeight: 40, py: 1, px: 2.5, m: 0.5, borderRadius: 8, color: '#757575', transition: 'all 0.2s ease', }, '& .Mui-selected': { bgcolor: '#5D4037', color: '#FFF !important', boxShadow: '0 4px 10px rgba(93, 64, 55, 0.3)' } }}>
           <Tab label={`🌐 Online (${countOnline})`} />
@@ -364,16 +399,31 @@ export default function Queue() {
         </Tabs>
       </Paper>
 
+      {/* DATA GRID */}
       <Paper sx={{ ...glassStyle, height: 'calc(100vh - 240px)', minHeight: 400, width: '100%', overflow: 'hidden' }}>
         <DataGrid rows={getFilteredRows()} columns={tableColumns} pageSize={10} disableSelectionOnClick rowHeight={96} getRowClassName={(params) => params.row.priority === 'high' ? 'emergency-row' : ''} sx={{ border: 'none', bgcolor: 'transparent', '& .MuiDataGrid-columnHeaders': { bgcolor: 'rgba(255, 255, 255, 0.4)', color: '#5D4037', fontWeight: 'bold', fontSize: '1.05rem', borderBottom: '1px solid rgba(255, 255, 255, 0.5)'}, '& .emergency-row': { bgcolor: 'rgba(255, 235, 238, 0.8)' }, '& .super-late-row': { bgcolor: 'rgba(255, 243, 224, 0.8)' }, '& .MuiDataGrid-row:hover': { bgcolor: 'rgba(255, 255, 255, 0.4)' }, '& .MuiDataGrid-cell': { display: 'flex', alignItems: 'center' } }} />
       </Paper>
 
+      {/* EXTERNAL MODULES */}
       <ClinicalWorkspace open={openConsult} onClose={() => setOpenConsult(false)} patient={selectedRow} inventoryList={inventoryList} servicesList={servicesList} />
       <POSModal open={openPOS} onClose={() => setOpenPOS(false)} patient={selectedRow} inventoryList={inventoryList} servicesList={servicesList} />
       <WalkInModal open={openWalkIn} onClose={() => setOpenWalkIn(false)} servicesList={servicesList} />
       <AssignStaffModal open={openAssign} onClose={() => setOpenAssign(false)} patient={selectedRow} vetsList={vets} activeAppointments={rows.filter(r =>['arrived', 'in-consult', 'confined'].includes(r.status))} />
-      <EndOfDayModal open={openEndDay} onClose={() => setOpenEndDay(false)} leftoverPatients={leftoverPatients} carryOverSelection={carryOverSelection} onToggleCarryOver={(id) => setCarryOverSelection(prev => prev.includes(id) ? prev.filter(x => x !== id) :[...prev, id])} onConfirmReset={() => confirmResetDay(false)} />
       
+      {/* THE NEW TRIAGE WIZARD MODAL */}
+      <EndOfDayModal 
+        open={openEndDay} 
+        onClose={() => { setOpenEndDay(false); setIsForcedCleanup(false); }} 
+        leftoverPatients={leftoverPatients} 
+        patientResolutions={patientResolutions} 
+        onResolutionChange={(id, action) => setPatientResolutions(prev => ({ ...prev, [id]: action }))}
+        onBulkResolution={handleBulkResolution}
+        onConfirmReset={() => { confirmResetDay(false); setIsForcedCleanup(false); }} 
+        isForced={isForcedCleanup}
+        departments={departments}
+      />
+      
+      {/* INTERNAL MODALS */}
       <Dialog open={openReject} onClose={() => setOpenReject(false)}><DialogTitle sx={{color:'#d32f2f'}}>Reject</DialogTitle><DialogContent><TextField autoFocus margin="dense" label="Reason" fullWidth value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} sx={{mt:1}} /></DialogContent><DialogActions><Button onClick={() => setOpenReject(false)}>Cancel</Button><Button onClick={confirmReject} variant="contained" color="error">Confirm</Button></DialogActions></Dialog>
       <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleCloseMenu}><MenuItem onClick={() => {revertStatus(selectedRow); handleCloseMenu();}}><ListItemIcon><UndoIcon fontSize="small" color="warning"/></ListItemIcon> <ListItemText sx={{color: '#E65100'}}>Revert Step (Undo)</ListItemText></MenuItem><Divider /><MenuItem onClick={() => handleOpenAssign(selectedRow)}><ListItemIcon><EditIcon fontSize="small"/></ListItemIcon> <ListItemText>Re-assign Staff</ListItemText></MenuItem><MenuItem onClick={handleEditOpen}><ListItemIcon><EditIcon fontSize="small"/></ListItemIcon> <ListItemText>Edit Details</ListItemText></MenuItem><MenuItem onClick={handleRescheduleOpen}><ListItemIcon><EventIcon fontSize="small"/></ListItemIcon> <ListItemText>Reschedule</ListItemText></MenuItem><MenuItem onClick={fetchHistory}><ListItemIcon><HistoryIcon fontSize="small"/></ListItemIcon> <ListItemText>History</ListItemText></MenuItem><Divider /><MenuItem onClick={() => { if(window.confirm("Mark as No-Show?")) { markNoShow(selectedRow?.id); handleCloseMenu(); } }} sx={{color:'error.main'}}><ListItemIcon><PersonOffIcon fontSize="small" color="error"/></ListItemIcon> <ListItemText>No Show</ListItemText></MenuItem></Menu>
       <Dialog open={openEdit} onClose={() => setOpenEdit(false)}><DialogTitle>Edit</DialogTitle><DialogContent><TextField margin="dense" label="Owner" fullWidth value={editName} onChange={(e) => setEditName(e.target.value)} /><TextField margin="dense" label="Pet" fullWidth value={editPet} onChange={(e) => setEditPet(e.target.value)} /></DialogContent><DialogActions><Button onClick={() => setOpenEdit(false)}>Cancel</Button><Button onClick={saveEdit} variant="contained">Save</Button></DialogActions></Dialog>

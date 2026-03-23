@@ -18,6 +18,8 @@ import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import DomainIcon from '@mui/icons-material/Domain';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import CircleIcon from '@mui/icons-material/Circle';
+import InventoryIcon from '@mui/icons-material/Inventory'; // <-- THE MISSING LINE!
+
 
 // Standard Brand Colors for the Color Picker
 const COLOR_PALETTE =[
@@ -50,10 +52,14 @@ export default function Settings() {
     maxCages: 5, autoNoShowMins: 30, trafficModerate: 6, trafficHigh: 13
   });
 
+  // --- NEW: DYNAMIC INVENTORY CATEGORIES STATE ---
+  const [invCategories, setInvCategories] = useState([]);
+  const [newInvCatName, setNewInvCatName] = useState('');
+
   // --- DYNAMIC DEPARTMENTS STATE ---
   const [departments, setDepartments] = useState([]);
   const [newDepartmentName, setNewDepartmentName] = useState('');
-  const [newDepartmentColor, setNewDepartmentColor] = useState('#616161');
+  const [newDepartmentColor, setNewDepartmentColor] = useState('#1565C0'); // Navy Blue
 
   const glassStyle = {
     background: 'rgba(255, 255, 255, 0.55)', backdropFilter: 'blur(16px)', 
@@ -66,15 +72,36 @@ export default function Settings() {
       if (docSnap.exists()) setSettings(prev => ({ ...prev, ...docSnap.data() }));
     });
 
-    // 2. Fetch Dynamic Departments
-    const unsubDepts = onSnapshot(collection(db, "departments"), (snapshot) => {
-      const depts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      depts.sort((a,b) => (a.name || '').localeCompare(b.name || ''));
-      setDepartments(depts);
+    // 2. Fetch Dynamic Categories & AUTO-SEED if empty!
+    const unsubDepts = onSnapshot(collection(db, "inventory_categories"), (snapshot) => {
+      if (snapshot.empty) {
+        // THE AUTO-SEEDER: If the database is empty, inject the premade ones!
+        const defaultCategories = ['Medicine', 'Vaccine', 'Food', 'Supplies', 'Accessories', 'Lab'];
+        defaultCategories.forEach(async (catName) => {
+          await addDoc(collection(db, "inventory_categories"), { name: catName });
+        });
+      } else {
+        // Normal behavior: load what's in the database
+        const cats = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        cats.sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+        setInvCategories(cats);
+      }
     });
 
     return () => { unsubSettings(); unsubDepts(); };
   },[]);
+
+  useEffect(() => {
+    const unsubInvCats = onSnapshot(collection(db, "inventory_categories"), (snapshot) => {
+      const cats = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      // Alphabetical sort so the dropdown looks professional
+      cats.sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+      setInvCategories(cats);
+    });
+
+    // Cleanup: This stops the listener when you leave the page
+    return () => unsubInvCats();
+  }, []);
 
   const handleChange = (field, value) => { setSettings(prev => ({ ...prev, [field]: value })); };
 
@@ -259,6 +286,52 @@ export default function Settings() {
             </Box>
           </Paper>
         </Grid>
+
+        {/* PILLAR 5: INVENTORY CATEGORIES */}
+        <Grid item xs={12}>
+          <Paper elevation={0} sx={{ ...glassStyle, overflow: 'hidden' }}>
+            <Box sx={{ bgcolor: 'rgba(139, 69, 19, 0.05)', px: 3, py: 2, borderBottom: '1px solid rgba(0,0,0,0.05)', borderLeft: '4px solid #8B4513' }}>
+              <Typography variant="subtitle1" color="#8B4513" fontWeight="900" sx={{ textTransform: 'uppercase', letterSpacing: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <InventoryIcon /> Inventory Categories
+              </Typography>
+            </Box>
+            <Box sx={{ p: 4, bgcolor: 'rgba(255,255,255,0.6)' }}>
+              <Typography variant="body1" color="textSecondary" sx={{ mb: 3, fontWeight: '500' }}>
+                Manage the taxonomy of your pharmacy and retail shop. These categories organize your search filters and financial reports.
+              </Typography>
+              
+              <Stack direction="row" spacing={2} sx={{ mb: 4, maxWidth: 500 }}>
+                <TextField 
+                  label="Category Name" size="small" fullWidth value={newInvCatName} 
+                  onChange={(e) => setNewInvCatName(e.target.value)} 
+                  sx={{ bgcolor: 'white', borderRadius: 1 }}
+                />
+                <Button 
+                  variant="contained" 
+                  onClick={async () => {
+                    if (!newInvCatName.trim()) return;
+                    await addDoc(collection(db, "inventory_categories"), { name: newInvCatName.trim() });
+                    setNewInvCatName('');
+                  }} 
+                  sx={{ bgcolor: '#8B4513', fontWeight: 'bold', px: 4 }}
+                >
+                  Add
+                </Button>
+              </Stack>
+
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
+                {invCategories.map(cat => (
+                  <Chip 
+                    key={cat.id} label={cat.name} 
+                    onDelete={async () => await deleteDoc(doc(db, "inventory_categories", cat.id))}
+                    sx={{ fontWeight: 'bold', bgcolor: 'white', border: '1px solid #ccc' }}
+                  />
+                ))}
+              </Box>
+            </Box>
+          </Paper>
+        </Grid>
+
       </Grid>
 
       <Snackbar open={toast.open} autoHideDuration={5000} onClose={() => setToast({...toast, open: false})} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>

@@ -155,7 +155,7 @@ export default function Services() {
 
       {open && (
         <ServiceFormModal 
-          key={selectedItem?.id || 'new'} 
+          key={selectedItem?.id || 'new-service'} // THE FIX: Forces a clean reboot!
           open={open} 
           onClose={() => setOpen(false)} 
           item={selectedItem} 

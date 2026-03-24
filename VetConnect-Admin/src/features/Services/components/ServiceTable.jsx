@@ -42,8 +42,19 @@ export default function ServiceTable({ data, onEdit, onDelete, glassStyle }) {
       ) 
     },
     { 
-      field: 'category', headerName: 'Category', flex: 1, minWidth: 140, 
-      renderCell: (p) => <Chip icon={getCategoryIcon(p.value)} label={p.value || 'Consultation'} size="small" variant="outlined" sx={{ borderColor: p.row.color || '#1976D2', color: p.row.color || '#1976D2', fontWeight:'bold', bgcolor: 'rgba(255,255,255,0.7)' }} />
+      field: 'department', headerName: 'Department', flex: 1, minWidth: 140, 
+      renderCell: (p) => {
+          const deptName = p.row.category || p.row.department || 'General';
+          return (
+            <Chip 
+              icon={getCategoryIcon(deptName)} 
+              label={deptName} 
+              size="small" 
+              variant="outlined" 
+              sx={{ borderColor: p.row.color || '#1976D2', color: p.row.color || '#1976D2', fontWeight:'bold', bgcolor: 'rgba(255,255,255,0.7)' }} 
+            />
+          );
+      }
     },
     { 
       field: 'duration', headerName: 'Time Block', flex: 1, minWidth: 120, 

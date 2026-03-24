@@ -1,27 +1,33 @@
 import React, { useState } from 'react';
 import { 
   Dialog, DialogTitle, DialogContent, DialogActions, 
-  TextField, Button, MenuItem, Switch, FormControlLabel, 
-  Typography, Box, Paper, Divider, InputAdornment, Stack,
+  TextField, MenuItem, Typography, Box, Paper, 
   FormControl, InputLabel, Select, OutlinedInput, Checkbox, ListItemText,
-  Alert, Grid // Standard MUI v6 Grid
+  Alert, Grid, Button // <--- THE FIX IS HERE!
 } from '@mui/material';
+
+import { useNavigate } from 'react-router-dom';
+// THE FIX: Exactly 3 dots (../../..) or an absolute path!
+import { useUser } from '../../../context/UserContext'; 
 
 // Icons
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import InfoIcon from '@mui/icons-material/Info';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 
 export default function StaffFormModal({ open, onClose, item, showToast, dynamicDepartments, onSave }) {
   
-  // THE FIX: State initializes ONCE directly from the 'item' prop.
-  // The parent's 'key' prop ensures this is a fresh state every time the modal opens.
+  const { isAdmin } = useUser();
+  const navigate = useNavigate();
+
+  // Initialize state directly from the prop. Parent 'key' prop ensures a fresh state.
   const [formData, setFormData] = useState({
     fullName: item?.fullName || '',
     email: item?.email || '',
     phone: item?.phone || '',
     specialty: item?.specialty || '',
     accessLevel: item?.accessLevel || (item?.role === 'admin' ? 'admin' : 'staff'),
-    departments: item?.departments || [],
+    departments: item?.departments ||[],
     prcLicense: item?.prcLicense || ''
   });
 
@@ -32,21 +38,34 @@ export default function StaffFormModal({ open, onClose, item, showToast, dynamic
     setFormData({ ...formData, departments: typeof value === 'string' ? value.split(',') : value });
   };
 
-  const handleSave = async () => {
-    if (!formData.fullName || !formData.email) {
-      return showToast("Name and Email are required.", "error");
-    }
+  const handleSave = () => {
+    if (!formData.fullName || !formData.email) return showToast("Name and Email are required.", "error");
     onSave(formData);
   };
 
   return (
-    // THE FIX: Upgraded to maxWidth="md" for a wider, more professional layout
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth> 
-      <DialogTitle sx={{ bgcolor: '#1565C0', color: 'white', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1 }}>
+    <Dialog 
+      open={open} 
+      onClose={onClose} 
+      maxWidth="md" 
+      fullWidth
+      PaperProps={{
+        sx: {
+          borderRadius: 3,
+          backgroundColor: 'rgba(255, 255, 255, 0.95)',
+          backdropFilter: 'blur(20px)',
+          boxShadow: '0 12px 40px rgba(0,0,0,0.2)'
+        }
+      }}
+    > 
+      <DialogTitle sx={{ 
+        background: 'linear-gradient(135deg, #1565C0 0%, #1976D2 100%)', 
+        color: 'white', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1, py: 2 
+      }}>
         <AdminPanelSettingsIcon /> {item ? 'Edit Staff Profile' : 'Authorize New Staff Member'}
       </DialogTitle>
       
-      <DialogContent dividers sx={{ p: 0, bgcolor: '#F5F5F5' }}>
+      <DialogContent dividers sx={{ p: 0, bgcolor: 'rgba(250, 250, 250, 0.5)' }}>
         <Box sx={{ p: 4 }}>
           
           <Typography variant="overline" color="primary" fontWeight="bold" sx={{ mb: 1, display: 'block' }}>
@@ -82,10 +101,10 @@ export default function StaffFormModal({ open, onClose, item, showToast, dynamic
             <Grid container spacing={2}>
                 <Grid size={{ xs: 12, md: 6 }}>
                   <FormControl fullWidth size="small" sx={{ bgcolor: 'white' }}>
-                    <InputLabel>System Access Level</InputLabel>
-                    <Select value={formData.accessLevel} label="System Access Level" onChange={e => setFormData({...formData, accessLevel: e.target.value})}>
-                      <MenuItem value="staff">Standard Staff (Clinical/Operational)</MenuItem>
-                      <MenuItem value="admin" sx={{ color: '#D32F2F', fontWeight: 'bold' }}>Administrator (Full Access)</MenuItem>
+                    <InputLabel>System Access</InputLabel>
+                    <Select value={formData.accessLevel} label="System Access" onChange={e => setFormData({...formData, accessLevel: e.target.value})}>
+                      <MenuItem value="staff">Standard Staff (Clinical)</MenuItem>
+                      <MenuItem value="admin">Administrator (Full Access)</MenuItem>
                     </Select>
                   </FormControl>
                 </Grid>
@@ -105,15 +124,24 @@ export default function StaffFormModal({ open, onClose, item, showToast, dynamic
                         </Box>
                       )}
                     >
-                      {/* THE FIX: Dynamic rendering from props, not a hardcoded array! */}
-                      {(dynamicDepartments || []).map((dept) => (
-                        <MenuItem key={dept} value={dept}>
-                          <Checkbox checked={formData.departments.indexOf(dept) > -1} size="small" />
-                          <ListItemText primary={dept} />
+                      {(dynamicDepartments ||[]).map((dept) => (
+                        <MenuItem key={dept.id} value={dept.name}>
+                          <Checkbox checked={formData.departments.indexOf(dept.name) > -1} size="small" />
+                          <ListItemText primary={dept.name} />
                         </MenuItem>
                       ))}
                     </Select>
                   </FormControl>
+
+                  {isAdmin && (
+                    <Typography 
+                      variant="caption" 
+                      onClick={() => { onClose(); navigate('/settings'); }} 
+                      sx={{ color: 'primary.main', fontWeight: 'bold', cursor: 'pointer', mt: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}
+                    >
+                      <OpenInNewIcon sx={{ fontSize: 14 }} /> Manage Departments in Settings
+                    </Typography>
+                  )}
                 </Grid>
             </Grid>
           </Paper>
@@ -128,9 +156,9 @@ export default function StaffFormModal({ open, onClose, item, showToast, dynamic
         </Box>
       </DialogContent>
       
-      <DialogActions sx={{ p: 2.5, bgcolor: '#EFEBE9', borderTop: '1px solid #D7CCC8' }}>
-        <Button onClick={onClose} sx={{ fontWeight: 'bold', color: '#5D4037', px: 3 }}>CANCEL</Button>
-        <Button onClick={handleSave} variant="contained" sx={{ bgcolor: '#2E7D32', fontWeight: 'bold', px: 4 }}>
+      <DialogActions sx={{ p: 2.5, bgcolor: 'white', borderTop: '1px solid #E0E0E0' }}>
+        <Button onClick={onClose} sx={{ fontWeight: 'bold', color: '#5D4037', px: 3, mr: 'auto' }}>CANCEL</Button>
+        <Button onClick={handleSave} variant="contained" sx={{ bgcolor: '#2E7D32', fontWeight: '900', px: 4, py: 1.2, borderRadius: 2, boxShadow: 3 }}>
           {item ? 'SAVE CHANGES' : 'AUTHORIZE STAFF'}
         </Button>
       </DialogActions>

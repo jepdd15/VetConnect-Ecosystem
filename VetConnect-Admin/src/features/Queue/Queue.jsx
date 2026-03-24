@@ -92,12 +92,13 @@ export default function Queue() {
 
       // THE "RACE CONDITION" LOCK
       const queueSnap = await getDoc(doc(db, "queue", "daily_queue"));
-      if (queueSnap.exists() && queueSnap.data().lastResetDate === todayStr && !isSilent) {
+      // BYPASS THE LOCK IF WE ARE IN GHOST HUNTER HOSTAGE MODE!
+      if (queueSnap.exists() && queueSnap.data().lastResetDate === todayStr && !isSilent && !isForcedCleanup) {
          alert("Data Protected: Another staff member has already reset the queue for today.");
          setOpenEndDay(false);
          setHasGhostPatients(false);
          setIsForcedCleanup(false);
-         return; 
+         return; // Abort the write!
       }
 
       const batch = writeBatch(db); 
@@ -352,34 +353,81 @@ export default function Queue() {
       )}
 
       {/* HEADER CONTROLS */}
-      <Paper sx={{ ...glassStyle, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#5D4037', textShadow: '0px 1px 2px rgba(255,255,255,0.8)' }}>Patient Queue</Typography>
-          <Box sx={{ display: 'flex', alignItems: 'center', bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 2, border: '1px solid rgba(255,255,255,0.9)' }}>
-             <Tooltip title="Previous Day"><IconButton onClick={() => {const d = new Date(filterDate); d.setDate(d.getDate() - 1); setFilterDate(d.toISOString().split('T')[0]);}} size="small"><ArrowBackIosNewIcon fontSize="small" color="primary"/></IconButton></Tooltip>
-             <TextField type="date" size="small" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} sx={{ width: 140, '& fieldset': { border: 'none' } }} />
-             <Tooltip title="Next Day"><IconButton onClick={() => {const d = new Date(filterDate); d.setDate(d.getDate() + 1); setFilterDate(d.toISOString().split('T')[0]);}} size="small"><ArrowForwardIosIcon fontSize="small" color="primary"/></IconButton></Tooltip>
+      <Paper sx={{ ...glassStyle, p: 2, mb: 3, display: 'flex', flexWrap: 'wrap', gap: 2, justifyContent: 'space-between', alignItems: 'center' }}>
+        
+        {/* LEFT SIDE: Title & Date Picker */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap', flexGrow: 1 }}>
+          <Typography variant="h4" sx={{ fontWeight: '900', color: '#5D4037', textShadow: '0px 1px 2px rgba(255,255,255,0.8)' }}>
+            Patient Queue
+          </Typography>
+          
+          <Box sx={{ display: 'flex', alignItems: 'center', bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 2, border: '1px solid rgba(255,255,255,0.9)', p: 0.5, boxShadow: 1 }}>
+             <Tooltip title="Previous Day"><IconButton onClick={() => {const d = new Date(filterDate); d.setDate(d.getDate() - 1); setFilterDate(d.toISOString().split('T')[0]);}} size="small"><ArrowBackIosNewIcon fontSize="small" sx={{ color: '#5D4037' }}/></IconButton></Tooltip>
+             <TextField 
+                type="date" 
+                variant="standard"
+                size="small" 
+                value={filterDate} 
+                onChange={(e) => setFilterDate(e.target.value)} 
+                InputProps={{ disableUnderline: true, style: { fontWeight: 'bold', color: '#5D4037' } }}
+                sx={{ width: 130, input: { textAlign: 'center' } }} 
+             />
+             <Tooltip title="Next Day"><IconButton onClick={() => {const d = new Date(filterDate); d.setDate(d.getDate() + 1); setFilterDate(d.toISOString().split('T')[0]);}} size="small"><ArrowForwardIosIcon fontSize="small" sx={{ color: '#5D4037' }}/></IconButton></Tooltip>
           </Box>
-          <Typography variant="caption" sx={{ color: '#888', ml: 1, fontStyle: 'italic', fontWeight: 'bold' }}>{rows.length} {rows.length === 1 ? 'Record' : 'Records'}</Typography>
         </Box>
         
-        {/* ACTION BUTTONS WITH QUICK ER */}
-        <Box sx={{ display: 'flex', gap: 1.5 }}>
+        {/* RIGHT SIDE: Counter & Action Buttons */}
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+           <Typography variant="body2" sx={{ color: '#5D4037', fontStyle: 'italic', fontWeight: '900', letterSpacing: 0.5, mr: 1 }}>
+              {rows.length} {rows.length === 1 ? 'Record' : 'Records'}
+           </Typography>
+
            {isToday && (
-             <Button variant="contained" startIcon={<LocalHospitalIcon />} sx={{ bgcolor: '#D32F2F', fontWeight: '900', boxShadow: '0 4px 15px rgba(211, 47, 47, 0.4)' }} onClick={handleQuickAdmit}>
+             <Button 
+                variant="contained" 
+                startIcon={<LocalHospitalIcon />} 
+                sx={{ bgcolor: '#D32F2F', fontWeight: '900', boxShadow: '0 4px 15px rgba(211, 47, 47, 0.4)', textTransform: 'uppercase', letterSpacing: 0.5 }} 
+                onClick={handleQuickAdmit}
+             >
                 QUICK ER
              </Button>
            )}
 
            {(isToday || (isPastDate && unfinishedCount > 0)) && (
-             <Button variant="contained" color="error" onClick={() => initiateResetDay(false)} sx={(isClosingTime && isToday) ? {animation: 'pulse 1.5s infinite', fontWeight: 'bold'} : { fontWeight: '900', boxShadow: 3, letterSpacing: 0.5 }}>
-                {isToday ? (isClosingTime ? "Close Clinic" : "Start New Day") : "Clean Up Records"}
-             </Button>
+             <Tooltip 
+                title={
+                  isPastDate 
+                    ? "Opens the Triage Board to resolve abandoned patients (Re-book, No-Show, Cancel) from this date." 
+                    : isClosingTime 
+                      ? (unfinishedCount > 0 
+                          ? "End-of-Day: Opens the Triage Board to resolve remaining patients before closing." 
+                          : "End-of-Day: Board is empty. Instantly resets ticket counters for tomorrow.")
+                      : (unfinishedCount > 0 
+                          ? "Manual Reset: Opens the Triage Board to clear current patients before restarting the queue." 
+                          : "Manual Reset: Instantly resets ticket counters to zero (useful for half-days or clearing test data).")
+                }
+                arrow
+                placement="bottom"
+             >
+               <Box>
+                 <Button 
+                    variant="contained" color="error" 
+                    onClick={() => initiateResetDay(false)} 
+                    sx={(isClosingTime && isToday) ? {animation: 'pulse 1.5s infinite', fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.5} : { fontWeight: '900', boxShadow: 3, letterSpacing: 0.5, textTransform: 'uppercase' }}
+                 >
+                    {isToday ? (isClosingTime ? "Close Clinic" : "Start New Day") : "Clean Up Records"}
+                 </Button>
+               </Box>
+             </Tooltip>
            )}
 
            {isToday && (
-             <Button variant="contained" startIcon={<PersonAddIcon />} sx={{ bgcolor: '#FF9800', fontWeight: 'bold', boxShadow: '0 4px 15px rgba(255, 152, 0, 0.4)' }} onClick={() => setOpenWalkIn(true)}>
-                + Walk-In
+             <Button 
+                variant="contained" startIcon={<PersonAddIcon />} 
+                sx={{ bgcolor: '#FF9800', fontWeight: '900', boxShadow: '0 4px 15px rgba(255, 152, 0, 0.4)', textTransform: 'uppercase', letterSpacing: 0.5, px: 3 }} 
+                onClick={() => setOpenWalkIn(true)}
+             >
+                Add Walk-In
              </Button>
            )}
         </Box>

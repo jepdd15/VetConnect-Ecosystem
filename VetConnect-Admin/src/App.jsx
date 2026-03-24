@@ -1,19 +1,15 @@
-// The Traffic Controller & Secure Router.
-// Wraps the app in the global Starbarks theme. Protects all internal routes from unauthenticated users 
-// and dynamically hides the sidebar for the full-screen TV monitor view.
-
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { Box, CssBaseline, CircularProgress } from '@mui/material';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { signOut } from 'firebase/auth';
 import { auth } from './firebaseConfig';
 
 // --- COMPONENTS ---
 import Sidebar from './components/Sidebar';
 
 // --- PAGES ---
-import Login from './pages/Login'; // <--- IMPORT THE NEW LOGIN PAGE
+import Login from './pages/Login'; 
 import Dashboard from './pages/Dashboard';
 import Queue from './features/Queue/Queue';
 import Patients from './features/Patients/Patients'; 
@@ -25,86 +21,58 @@ import Expenses from './pages/Expenses';
 import Monitor from './pages/Monitor';   
 import Settings from './pages/Settings';
 
+// --- USER CONTEXT ---
+// THE FIX: We will import BOTH the Provider and the Hook here!
+import { UserProvider, useUser } from './context/UserContext';
+
+// --- THEME ---
 const theme = createTheme({
-  palette: {
-    primary: { main: '#8B4513' }, 
-    secondary: { main: '#5D4037' }, 
-    background: { default: '#FFF8E1', paper: '#ffffff' }, 
-  },
+  palette: { primary: { main: '#8B4513' }, secondary: { main: '#5D4037' }, background: { default: '#FFF8E1', paper: '#ffffff' }, },
   shape: { borderRadius: 12 },
   typography: { fontFamily: 'Roboto, Arial, sans-serif' }
 });
 
+// --- SMART LAYOUT HANDLER (No changes needed here) ---
 const MainLayout = ({ children, onLogout }) => {
   const location = useLocation();
-  const isMonitor = location.pathname === '/monitor'; 
-
-  if (isMonitor) {
-    return (
-      <Box sx={{ width: '100vw', height: '100vh', overflow: 'hidden', bgcolor: '#212121' }}>
-        {children}
-      </Box>
-    );
+  if (location.pathname === '/monitor') {
+    return <Box sx={{ width: '100vw', height: '100vh', overflow: 'hidden', bgcolor: '#212121' }}>{children}</Box>;
   }
-
   return (
     <Box sx={{ display: 'flex', width: '100vw', minHeight: '100vh' }}>
       <CssBaseline />
       <Sidebar onLogout={onLogout} />
-      <Box 
-        component="main" 
-        sx={{ 
-          flexGrow: 1, 
-          p: 4, 
-          minHeight: '100vh',
-          background: 'linear-gradient(135deg, #FFF8E1 0%, #FFE0B2 100%)', 
-        }}
-      >
+      <Box component="main" sx={{ flexGrow: 1, p: 4, minHeight: '100vh', background: 'linear-gradient(135deg, #FFF8E1 0%, #FFE0B2 100%)' }}>
         {children}
       </Box>
     </Box>
   );
 };
 
-export default function App() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (u) => { 
-      setUser(u); 
-      setLoading(false); 
-    });
-    return () => unsubscribe();
-  }, []);
+// --- THE NEW "TRAFFIC COP" APP SHELL ---
+function AppShell() {
+  // THE FIX: We get our user state DIRECTLY from the context. App.jsx no longer has its own user state.
+  const { user, loading } = useUser();
 
   const handleLogout = () => {
-  signOut(auth).then(() => {
-    setUser(null); // Force React state update
-    window.location.reload(); // Hard reset
-  }).catch((error) => {
-    console.error("Logout Error:", error);
-  });
-};
+    signOut(auth).catch((error) => {
+      console.error("Logout Error:", error);
+    });
+    // No need for window.location.reload(), the context handles the state change!
+  };
 
+  // --- RENDER LOADING STATE ---
   if (loading) return (
     <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', bgcolor: '#FFF8E1' }}>
       <CircularProgress color="primary" />
     </Box>
   );
 
-  // --- RENDER LOGIN SCREEN (Unified and Professional) ---
-  if (!user) return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <Login /> {/* <--- The new professional component */}
-    </ThemeProvider>
-  );
-
-  // --- RENDER THE FULL SYSTEM ---
+  // --- RENDER THE FULL SYSTEM (Router controls which part to show) ---
   return (
-    <ThemeProvider theme={theme}>
-      <Router>
+    <Router>
+      {user ? (
+        // User is logged in, show the main dashboard
         <MainLayout onLogout={handleLogout}>
           <Routes>
             <Route path="/" element={<Dashboard />} />
@@ -119,7 +87,22 @@ export default function App() {
             <Route path="/settings" element={<Settings />} />
           </Routes>
         </MainLayout>
-      </Router>
+      ) : (
+        // No user, show the Login screen
+        <Login />
+      )}
+    </Router>
+  );
+}
+
+// --- THE MASTER WRAPPER ---
+export default function App() {
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <UserProvider>
+        <AppShell />
+      </UserProvider>
     </ThemeProvider>
   );
 }

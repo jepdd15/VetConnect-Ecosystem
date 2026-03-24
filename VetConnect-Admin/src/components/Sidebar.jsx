@@ -1,10 +1,9 @@
-// The master navigation drawer.
-// Highlights the active page, establishes brand identity, and securely executes the Firebase signOut() 
-// function.
-
 import React from 'react';
 import { Drawer, List, ListItemButton, ListItemIcon, ListItemText, Box, Typography, Divider, Button } from '@mui/material';
 import { useNavigate, useLocation } from 'react-router-dom';
+
+// THE FIX: Import the Context to check roles!
+import { useUser } from '../context/UserContext'; 
 
 // Icons
 import DashboardIcon from '@mui/icons-material/Dashboard';
@@ -20,22 +19,30 @@ import LogoutIcon from '@mui/icons-material/Logout';
 
 const drawerWidth = 260;
 
-const menuItems = [
-  { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
-  { text: 'Patient Queue', icon: <QueueIcon />, path: '/queue' },
-  { text: 'Patients (CRM)', icon: <PetsIcon />, path: '/patients' },
-  { text: 'Services', icon: <MedicalServicesIcon />, path: '/services' },
-  { text: 'Inventory', icon: <InventoryIcon />, path: '/inventory' },
-  { text: 'Staff', icon: <StaffIcon />, path: '/staff' },
-  { text: 'Transactions', icon: <TransactionIcon />, path: '/sales' },
-  { text: 'Expenses', icon: <ExpenseIcon />, path: '/expenses' },
-  { text: 'Settings', icon: <SettingsIcon />, path: '/settings' },
+// THE FIX: Mapped to "name" and "path" with explicit "adminOnly" security flags!
+const menuItems =[
+  { name: 'Dashboard', icon: <DashboardIcon />, path: '/' },
+  { name: 'Patient Queue', icon: <QueueIcon />, path: '/queue' },
+  { name: 'Patients (CRM)', icon: <PetsIcon />, path: '/patients' },
+  { name: 'Services', icon: <MedicalServicesIcon />, path: '/services' },
+  { name: 'Inventory', icon: <InventoryIcon />, path: '/inventory' },
+  
+  // RESTRICTED MODULES
+  { name: 'Staff', icon: <StaffIcon />, path: '/staff', adminOnly: true },
+  { name: 'Transactions', icon: <TransactionIcon />, path: '/sales', adminOnly: true },
+  { name: 'Expenses', icon: <ExpenseIcon />, path: '/expenses', adminOnly: true },
+  { name: 'Settings', icon: <SettingsIcon />, path: '/settings', adminOnly: true },
 ];
-
 
 export default function Sidebar({ onLogout }) {
   const navigate = useNavigate();
   const location = useLocation();
+  
+  // SECURE HOOK: Checks if the logged-in user has an 'admin' token in the database
+  const { isAdmin } = useUser(); 
+
+  // THE FIX: The array filter. If it requires admin and they aren't one, slice it out of the array!
+  const visibleMenuItems = menuItems.filter(item => !item.adminOnly || isAdmin);
 
   return (
     <Drawer
@@ -59,9 +66,10 @@ export default function Sidebar({ onLogout }) {
       </Box>
 
       <List sx={{ flexGrow: 1, mt: 2 }}>
-        {menuItems.map((item) => (
+        {/* Render ONLY the modules they have permission to see */}
+        {visibleMenuItems.map((item) => (
           <ListItemButton 
-            key={item.text} 
+            key={item.path} // Unique Key!
             onClick={() => navigate(item.path)}
             sx={{
               backgroundColor: location.pathname === item.path ? 'rgba(255,255,255,0.15)' : 'transparent',
@@ -72,7 +80,7 @@ export default function Sidebar({ onLogout }) {
             }}
           >
             <ListItemIcon sx={{ color: '#D7CCC8' }}>{item.icon}</ListItemIcon>
-            <ListItemText primary={item.text} primaryTypographyProps={{ fontWeight: '600' }} />
+            <ListItemText primary={item.name} primaryTypographyProps={{ fontWeight: '600' }} />
           </ListItemButton>
         ))}
       </List>

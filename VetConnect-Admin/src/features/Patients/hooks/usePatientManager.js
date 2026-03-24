@@ -30,14 +30,34 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
   };
   
   const calculateAge = useCallback((dob) => { 
-    if (!dob) return 'Age Unknown'; 
-    const birthDate = dob.toDate ? dob.toDate() : new Date(dob);
-    if(isNaN(birthDate.getTime())) return 'Age Unknown'; 
-    const today = new Date(); 
-    let age = today.getFullYear() - birthDate.getFullYear(); 
-    const m = today.getMonth() - birthDate.getMonth(); 
-    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--; 
-    return `${age} yrs`; 
+    // THE FIX: It now handles null, timestamps, and old string data
+    if (!dob) return 'Age TBD'; // "To Be Determined" is more professional
+    
+    let birthDate;
+    try {
+      if (dob.toDate) { // Check if it's a Firestore Timestamp
+        birthDate = dob.toDate();
+      } else {
+        birthDate = new Date(dob); // Try to parse it as a string
+      }
+      
+      if (isNaN(birthDate.getTime())) return 'Age TBD'; // If parsing fails, give up
+
+      const today = new Date(); 
+      let age = today.getFullYear() - birthDate.getFullYear(); 
+      const m = today.getMonth() - birthDate.getMonth(); 
+      if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--; 
+      
+      if (age < 0) return 'Age TBD'; // Handle future dates
+      if (age === 0) {
+        const months = Math.floor((today - birthDate) / (1000 * 60 * 60 * 24 * 30.44));
+        return months > 0 ? `${months} mo` : 'Newborn';
+      }
+
+      return `${age} yrs`;
+    } catch (e) {
+      return 'Age TBD';
+    }
   },[]);
 
   useEffect(() => {
@@ -53,6 +73,7 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
 
   useEffect(() => {
     if (!selectedClient) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setClientPets([]);
       setClientTransactions([]);
       setOutstandingBalance(0);
@@ -98,6 +119,7 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
             return petData;
           })
         );
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setClientPets(petsWithHistory);
         setLoadingClientData(false);
       }

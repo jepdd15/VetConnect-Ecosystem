@@ -39,7 +39,16 @@ export default function StaffFormModal({ open, onClose, item, showToast, dynamic
 
   const handleSave = () => {
     if (!formData.fullName || !formData.email) return showToast("Name and Email are required.", "error");
-    onSave(formData);
+    
+    // We package the data, ensuring the legacy 'role' syncs with 'accessLevel'
+    const payload = {
+        ...formData,
+        role: formData.accessLevel
+    };
+
+    // THE FIX: We only pass ONE package (the payload). 
+    // The parent (Staff.jsx) already knows the ID!
+    onSave(payload);
   };
 
   return (

@@ -1,6 +1,6 @@
 // src/features/Staff/hooks/useStaffManager.js
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc, query, where } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, deleteDoc, query, where } from 'firebase/firestore';
 import { db } from '../../../firebaseConfig';
 
 export function useStaffManager() {
@@ -40,15 +40,22 @@ export function useStaffManager() {
   };
 
   const saveStaff = async (editId, formData) => {
+    // THE FIX: Check for the existence of the email before trying to trim it!
+    const email = formData.email ? formData.email.trim().toLowerCase() : '';
+    
+    if (!formData.fullName || !email) {
+        throw new Error("Full Name and Email are required.");
+    }
+    
     const payload = {
       fullName: formData.fullName, 
-      email: formData.email.trim().toLowerCase(), 
-      phone: formData.phone, 
+      email: email, 
+      phone: formData.phone || '', // Also add fallbacks for other fields
       specialty: formData.specialty || 'N/A', 
       accessLevel: formData.accessLevel, 
-      departments: formData.departments, 
+      departments: formData.departments || [],
       role: formData.accessLevel,
-      prcLicense: formData.prcLicense,
+      prcLicense: formData.prcLicense || '',
       updatedAt: new Date()
     };
 
@@ -56,7 +63,6 @@ export function useStaffManager() {
       await updateDoc(doc(db, "users", editId), payload);
     } else {
       payload.createdAt = new Date();
-      await addDoc(collection(db, "users"), payload);
     }
   };
 

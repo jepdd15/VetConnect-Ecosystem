@@ -24,7 +24,7 @@ export default function ServiceFormModal({ open, onClose, item, onSave, showToas
   // State initializes directly from the prop. Parent 'key' prop ensures a fresh state.
   const [formData, setFormData] = useState({
     name: item?.name || '',
-    category: item?.category || item?.department || '',
+    department: item?.department || item?.category || '',
     price: item?.price?.toString() || '',
     duration: item?.duration?.toString() || '30',
     bufferTime: item?.bufferTime?.toString() || '5',
@@ -99,9 +99,9 @@ export default function ServiceFormModal({ open, onClose, item, onSave, showToas
                   <FormControl fullWidth size="small" sx={{bgcolor: 'white'}}>
                     <InputLabel>Target Department</InputLabel>
                     <Select 
-                      value={formData.category || ''} 
+                      value={formData.department || ''} 
                       label="Target Department" 
-                      onChange={(e) => setFormData({...formData, category: e.target.value})}
+                      onChange={(e) => setFormData({...formData, department: e.target.value})}
                     >
                         <MenuItem value=""><em>None / General</em></MenuItem>
                         {(departments ||[]).map((dept) => (

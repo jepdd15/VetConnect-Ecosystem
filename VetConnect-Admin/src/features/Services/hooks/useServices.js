@@ -33,14 +33,16 @@ export function useServices() {
   },[]);
 
   const saveService = async (editId, formData) => {
-    // DATA SANITIZATION
+    // THE FIX: Save to BOTH fields for perfect backward compatibility
+    const departmentName = formData.category || 'General';
+
     const payload = {
       ...formData,
       price: Number(formData.price) || 0,
       duration: Number(formData.duration) || 30,
       bufferTime: Number(formData.bufferTime) || 0,
-      // We map 'category' to 'department' in the database for better naming
-      department: formData.category || 'General' 
+      department: departmentName, // The NEW official key
+      category: departmentName,   // The OLD legacy key
     };
 
     if (editId) {

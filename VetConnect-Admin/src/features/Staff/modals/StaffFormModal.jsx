@@ -1,26 +1,25 @@
 import React, { useState } from 'react';
 import { 
   Dialog, DialogTitle, DialogContent, DialogActions, 
-  TextField, MenuItem, Typography, Box, Paper, 
+  TextField, Button, MenuItem, Typography, Box, Paper, 
   FormControl, InputLabel, Select, OutlinedInput, Checkbox, ListItemText,
-  Alert, Grid, Button // <--- THE FIX IS HERE!
+  Alert, Grid, Chip 
 } from '@mui/material';
 
 import { useNavigate } from 'react-router-dom';
-// THE FIX: Exactly 3 dots (../../..) or an absolute path!
 import { useUser } from '../../../context/UserContext'; 
 
 // Icons
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import InfoIcon from '@mui/icons-material/Info';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import CircleIcon from '@mui/icons-material/Circle';
 
 export default function StaffFormModal({ open, onClose, item, showToast, dynamicDepartments, onSave }) {
   
   const { isAdmin } = useUser();
   const navigate = useNavigate();
 
-  // Initialize state directly from the prop. Parent 'key' prop ensures a fresh state.
   const [formData, setFormData] = useState({
     fullName: item?.fullName || '',
     email: item?.email || '',
@@ -104,7 +103,7 @@ export default function StaffFormModal({ open, onClose, item, showToast, dynamic
                     <InputLabel>System Access</InputLabel>
                     <Select value={formData.accessLevel} label="System Access" onChange={e => setFormData({...formData, accessLevel: e.target.value})}>
                       <MenuItem value="staff">Standard Staff (Clinical)</MenuItem>
-                      <MenuItem value="admin">Administrator (Full Access)</MenuItem>
+                      <MenuItem value="admin" sx={{ color: '#D32F2F', fontWeight: 'bold' }}>Administrator (Full Access)</MenuItem>
                     </Select>
                   </FormControl>
                 </Grid>
@@ -116,17 +115,31 @@ export default function StaffFormModal({ open, onClose, item, showToast, dynamic
                   <FormControl fullWidth size="small" sx={{ bgcolor: 'white', mt: 1 }}>
                     <InputLabel>Assigned Departments</InputLabel>
                     <Select
-                      multiple value={formData.departments} onChange={handleDepartmentChange}
+                      multiple 
+                      value={formData.departments} 
+                      onChange={handleDepartmentChange}
                       input={<OutlinedInput label="Assigned Departments" />}
                       renderValue={(selected) => (
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                          {selected.map((value) => <Chip key={value} label={value} size="small" color="primary" sx={{ fontWeight: 'bold', height: 22 }} />)}
+                          {selected.map((value) => {
+                            const deptObj = (dynamicDepartments || []).find(d => d.name === value);
+                            const color = deptObj ? deptObj.color : '#616161';
+                            return (
+                                <Chip 
+                                  key={value} 
+                                  label={value} 
+                                  size="small" 
+                                  sx={{ color: 'white', bgcolor: color, fontWeight: 'bold', height: 22 }} 
+                                />
+                            );
+                          })}
                         </Box>
                       )}
                     >
                       {(dynamicDepartments ||[]).map((dept) => (
                         <MenuItem key={dept.id} value={dept.name}>
                           <Checkbox checked={formData.departments.indexOf(dept.name) > -1} size="small" />
+                          <CircleIcon sx={{ color: dept.color || '#616161', mr: 1, fontSize: 16 }} />
                           <ListItemText primary={dept.name} />
                         </MenuItem>
                       ))}
@@ -157,7 +170,7 @@ export default function StaffFormModal({ open, onClose, item, showToast, dynamic
       </DialogContent>
       
       <DialogActions sx={{ p: 2.5, bgcolor: 'white', borderTop: '1px solid #E0E0E0' }}>
-        <Button onClick={onClose} sx={{ fontWeight: 'bold', color: '#5D4037', px: 3, mr: 'auto' }}>CANCEL</Button>
+        <Button onClick={onClose} sx={{ fontWeight: 'bold', color: '#5D4037', px: 3, mr: 1 }}>CANCEL</Button>
         <Button onClick={handleSave} variant="contained" sx={{ bgcolor: '#2E7D32', fontWeight: '900', px: 4, py: 1.2, borderRadius: 2, boxShadow: 3 }}>
           {item ? 'SAVE CHANGES' : 'AUTHORIZE STAFF'}
         </Button>

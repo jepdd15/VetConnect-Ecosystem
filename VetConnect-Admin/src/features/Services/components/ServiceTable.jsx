@@ -1,7 +1,10 @@
-import React from 'react';
-import { DataGrid } from '@mui/x-data-grid';
-import { Box, Typography, Chip, IconButton, Paper } from '@mui/material';
+import React, { useState, useMemo } from 'react';
+import { 
+  Box, Typography, Chip, IconButton, Paper, Table, TableBody, 
+  TableCell, TableContainer, TableHead, TableRow, Collapse, TableSortLabel
+} from '@mui/material';
 
+// Icons
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import CircleIcon from '@mui/icons-material/Circle';
@@ -10,16 +13,63 @@ import ContentCutIcon from '@mui/icons-material/ContentCut';
 import ScienceIcon from '@mui/icons-material/Science';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import VaccineIcon from '@mui/icons-material/Medication';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
+import DescriptionIcon from '@mui/icons-material/Description';
 
-export default function ServiceTable({ data, onEdit, onDelete, glassStyle }) {
+export default function ServiceTable({ data, onEdit, onDelete, glassStyle, departments }) {
   
+  // --- STATE ---
+  const [expandedRows, setExpandedRows] = useState({});
+  const [order, setOrder] = useState('asc');
+  const [orderBy, setOrderBy] = useState('name');
+  
+  const toggleRow = (id) => {
+    setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  // --- SORTING ENGINE ---
+  const handleRequestSort = (property) => {
+    const isAsc = orderBy === property && order === 'asc';
+    setOrder(isAsc ? 'desc' : 'asc');
+    setOrderBy(property);
+  };
+
+  const sortedData = useMemo(() => {
+    const comparator = (a, b) => {
+      let valA, valB;
+      switch (orderBy) {
+        case 'name':
+          valA = a.name || '';
+          valB = b.name || '';
+          return order === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        case 'department':
+          valA = a.department || a.category || 'General';
+          valB = b.department || b.category || 'General';
+          return order === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        case 'duration':
+          valA = (parseInt(a.duration) || 30) + (parseInt(a.bufferTime) || 0);
+          valB = (parseInt(b.duration) || 30) + (parseInt(b.bufferTime) || 0);
+          return order === 'asc' ? valA - valB : valB - valA;
+        case 'price':
+          valA = parseFloat(a.price) || 0;
+          valB = parseFloat(b.price) || 0;
+          return order === 'asc' ? valA - valB : valB - valA;
+        default:
+          return 0;
+      }
+    };
+    return [...data].sort(comparator);
+  },[data, order, orderBy]);
+
+  // --- UI HELPERS ---
   const getCategoryIcon = (cat) => {
     switch(cat) {
-      case 'Grooming': return <ContentCutIcon fontSize="small" />;
-      case 'Laboratory': return <ScienceIcon fontSize="small" />;
-      case 'Surgery': return <LocalHospitalIcon fontSize="small" />;
-      case 'Vaccination': return <VaccineIcon fontSize="small" />;
-      default: return <MedicalServicesIcon fontSize="small" />;
+      case 'Grooming': return <ContentCutIcon fontSize="inherit" />;
+      case 'Laboratory': return <ScienceIcon fontSize="inherit" />;
+      case 'Surgery': return <LocalHospitalIcon fontSize="inherit" />;
+      case 'Vaccination': return <VaccineIcon fontSize="inherit" />;
+      default: return <MedicalServicesIcon fontSize="inherit" />;
     }
   };
 
@@ -27,79 +77,132 @@ export default function ServiceTable({ data, onEdit, onDelete, glassStyle }) {
       switch(species) { case 'Canine': return '🐶'; case 'Feline': return '🐱'; default: return '🐾'; }
   };
 
-  const columns =[
-    { 
-      field: 'color', headerName: '', width: 50, align: 'center', headerAlign: 'center', sortable: false, disableColumnMenu: true,
-      renderCell: (p) => <CircleIcon sx={{ color: p.value || '#1976D2', fontSize: 18 }} /> 
-    },
-    { 
-      field: 'name', headerName: 'Service Name', flex: 1.5, minWidth: 200, 
-      renderCell: (p) => (
-          <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%' }}>
-              <Typography variant="body2" fontWeight="900" color="#3E2723" noWrap>{getSpeciesEmoji(p.row.targetSpecies)} {p.value}</Typography>
-              <Typography variant="caption" color="textSecondary" sx={{ fontStyle: 'italic' }} noWrap>{p.row.description || "No description"}</Typography>
-          </Box>
-      ) 
-    },
-    { 
-      field: 'department', headerName: 'Department', flex: 1, minWidth: 140, 
-      renderCell: (p) => {
-          const deptName = p.row.category || p.row.department || 'General';
-          return (
-            <Chip 
-              icon={getCategoryIcon(deptName)} 
-              label={deptName} 
-              size="small" 
-              variant="outlined" 
-              sx={{ borderColor: p.row.color || '#1976D2', color: p.row.color || '#1976D2', fontWeight:'bold', bgcolor: 'rgba(255,255,255,0.7)' }} 
-            />
-          );
-      }
-    },
-    { 
-      field: 'duration', headerName: 'Time Block', flex: 1, minWidth: 120, 
-      renderCell: (p) => {
-          const dur = parseInt(p.value) || 30; const buff = parseInt(p.row.bufferTime) || 0;
-          return (
-            <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%' }}>
-                <Typography variant="body2" fontWeight="bold" color="#1565C0">{dur}m <Typography component="span" variant="caption" color="textSecondary" fontWeight="bold">+ {buff}m buff</Typography></Typography>
-            </Box>
-          );
-      }
-    },
-    { field: 'price', headerName: 'Price', width: 100, renderCell: (p) => <Typography fontWeight="bold" color="#2E7D32">₱{parseFloat(p.value||0).toFixed(2)}</Typography> },
-    { 
-      field: 'flags', headerName: 'Operational Tags', flex: 1.5, minWidth: 200, sortable: false, disableColumnMenu: true,
-      renderCell: (p) => (
-          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', alignItems: 'center', height: '100%' }}>
-              {p.row.isWalkIn && <Chip label="Walk-In" size="small" sx={{bgcolor:'#E3F2FD', color: '#1565C0', fontSize: 10, height: 20, fontWeight: 'bold'}} />}
-              {p.row.isInpatient && <Chip label="Confinement" size="small" sx={{bgcolor:'#FFF3E0', color: '#E65100', fontSize: 10, height: 20, fontWeight: 'bold'}} />}
-              {p.row.isEmergency && <Chip label="Emergency" size="small" sx={{bgcolor:'#FFEBEE', color: '#D32F2F', fontSize: 10, height: 20, fontWeight: 'bold'}} />}
-          </Box>
-      ) 
-    },
-    { 
-      field: 'actions', headerName: 'Actions', width: 100, align: 'center', headerAlign: 'center', sortable: false, disableColumnMenu: true,
-      renderCell: (p) => (
-          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', gap: 1 }}>
-              <IconButton size="small" sx={{ color: '#1565C0' }} onClick={() => onEdit(p.row)}><EditIcon fontSize="small" /></IconButton>
-              <IconButton size="small" color="error" onClick={() => onDelete(p.row.id, p.row.name)}><DeleteIcon fontSize="small" /></IconButton>
-          </Box>
-      ) 
-    }
-  ];
-
   return (
     <Paper elevation={0} sx={{ ...glassStyle, height: 'calc(100vh - 210px)', minHeight: 400, width: '100%', overflow: 'hidden' }}>
-      <DataGrid 
-          rows={data} columns={columns} pageSize={10} disableSelectionOnClick rowHeight={70} 
-          sx={{ 
-              border: 'none', bgcolor: 'transparent',
-              '& .MuiDataGrid-columnHeaders': { bgcolor: 'rgba(255, 255, 255, 0.4)', color: '#5D4037', fontWeight: 'bold', fontSize: '0.95rem', borderBottom: '1px solid rgba(255, 255, 255, 0.5)'},
-              '& .MuiDataGrid-cell': { display: 'flex', alignItems: 'center', borderBottom: '1px solid rgba(224, 224, 224, 0.4)' },
-              '& .MuiDataGrid-row:hover': { bgcolor: 'rgba(255, 255, 255, 0.6)' }
-          }} 
-      />
+      <TableContainer sx={{ height: '100%', overflow: 'auto' }}>
+        <Table stickyHeader size="small">
+          
+          <TableHead>
+            <TableRow>
+              <TableCell sx={{ width: 40, bgcolor: 'rgba(255, 255, 255, 0.4)', borderBottom: '1px solid rgba(0,0,0,0.1)' }} />
+              <TableCell sx={{ width: 50, bgcolor: 'rgba(255, 255, 255, 0.4)', borderBottom: '1px solid rgba(0,0,0,0.1)' }} />
+              
+              {/* THE FIX: Native Clickable Sort Headers! */}
+              <TableCell sx={{ fontWeight: 'bold', color: '#5D4037', bgcolor: 'rgba(255, 255, 255, 0.4)', fontSize: '0.9rem', borderBottom: '1px solid rgba(0,0,0,0.1)' }}>
+                <TableSortLabel active={orderBy === 'name'} direction={orderBy === 'name' ? order : 'asc'} onClick={() => handleRequestSort('name')}>
+                  Service Name
+                </TableSortLabel>
+              </TableCell>
+              
+              <TableCell sx={{ fontWeight: 'bold', color: '#5D4037', bgcolor: 'rgba(255, 255, 255, 0.4)', fontSize: '0.9rem', borderBottom: '1px solid rgba(0,0,0,0.1)' }}>
+                <TableSortLabel active={orderBy === 'department'} direction={orderBy === 'department' ? order : 'asc'} onClick={() => handleRequestSort('department')}>
+                  Department
+                </TableSortLabel>
+              </TableCell>
+              
+              <TableCell sx={{ fontWeight: 'bold', color: '#5D4037', bgcolor: 'rgba(255, 255, 255, 0.4)', fontSize: '0.9rem', borderBottom: '1px solid rgba(0,0,0,0.1)' }}>
+                <TableSortLabel active={orderBy === 'duration'} direction={orderBy === 'duration' ? order : 'asc'} onClick={() => handleRequestSort('duration')}>
+                  Time Block
+                </TableSortLabel>
+              </TableCell>
+              
+              <TableCell sx={{ fontWeight: 'bold', color: '#5D4037', bgcolor: 'rgba(255, 255, 255, 0.4)', fontSize: '0.9rem', borderBottom: '1px solid rgba(0,0,0,0.1)' }}>
+                <TableSortLabel active={orderBy === 'price'} direction={orderBy === 'price' ? order : 'asc'} onClick={() => handleRequestSort('price')}>
+                  Price
+                </TableSortLabel>
+              </TableCell>
+
+              <TableCell sx={{ fontWeight: 'bold', color: '#5D4037', bgcolor: 'rgba(255, 255, 255, 0.4)', fontSize: '0.9rem', borderBottom: '1px solid rgba(0,0,0,0.1)' }}>Operational Tags</TableCell>
+              <TableCell sx={{ fontWeight: 'bold', color: '#5D4037', bgcolor: 'rgba(255, 255, 255, 0.4)', fontSize: '0.9rem', borderBottom: '1px solid rgba(0,0,0,0.1)', align: 'center' }}>Actions</TableCell>
+            </TableRow>
+          </TableHead>
+
+          <TableBody>
+            {/* THE FIX: We map over sortedData instead of raw data */}
+            {sortedData.map((row) => {
+              const isExpanded = expandedRows[row.id];
+              const deptName = row.department || row.category || 'General';
+              const deptObj = (departments ||[]).find(d => d.name === deptName);
+              const badgeColor = deptObj ? deptObj.color : '#616161';
+              const hasDescription = row.description && row.description.trim().length > 0;
+
+              return (
+                <React.Fragment key={row.id}>
+                  <TableRow 
+                    hover 
+                    onClick={() => { if(hasDescription) toggleRow(row.id) }} 
+                    sx={{ '& > *': { borderBottom: 'unset' }, cursor: hasDescription ? 'pointer' : 'default' }}
+                  >
+                    <TableCell>
+                      {hasDescription && (
+                        <IconButton size="small">
+                          {isExpanded ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
+                        </IconButton>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <CircleIcon sx={{ color: badgeColor, fontSize: 18, boxShadow: `0 0 8px ${badgeColor}99`, borderRadius: '50%' }} /> 
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" fontWeight="900" color="#3E2723" noWrap>
+                        {getSpeciesEmoji(row.targetSpecies)} {row.name}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Chip 
+                        icon={getCategoryIcon(deptName)} 
+                        label={deptName} 
+                        size="small" 
+                        sx={{ color: 'white', bgcolor: badgeColor, fontWeight:'bold', boxShadow: `0 1px 3px ${badgeColor}99` }} 
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" fontWeight="bold" color="#1565C0">
+                        {row.duration || 30}m <Typography component="span" variant="caption" color="textSecondary" fontWeight="bold">+ {row.bufferTime || 0}m buff</Typography>
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography fontWeight="bold" color="#2E7D32">
+                        ₱{parseFloat(row.price||0).toFixed(2)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', gap: 0.5 }}>
+                          {row.isWalkIn && <Chip label="Walk-In" size="small" sx={{bgcolor:'#E3F2FD', color: '#1565C0', fontSize: 10, height: 20, fontWeight: 'bold'}} />}
+                          {row.isInpatient && <Chip label="Confinement" size="small" sx={{bgcolor:'#FFF3E0', color: '#E65100', fontSize: 10, height: 20, fontWeight: 'bold'}} />}
+                          {row.isEmergency && <Chip label="Emergency" size="small" sx={{bgcolor:'#FFEBEE', color: '#D32F2F', fontSize: 10, height: 20, fontWeight: 'bold'}} />}
+                      </Box>
+                    </TableCell>
+                    <TableCell align="center" onClick={(e) => e.stopPropagation()}>
+                      <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1 }}>
+                          <IconButton size="small" sx={{ color: '#1565C0' }} onClick={() => onEdit(row)}><EditIcon fontSize="small" /></IconButton>
+                          <IconButton size="small" color="error" onClick={() => onDelete(row.id, row.name)}><DeleteIcon fontSize="small" /></IconButton>
+                      </Box>
+                    </TableCell>
+                  </TableRow>
+                  
+                  {/* EXPANDABLE DESCRIPTION ROW */}
+                  <TableRow>
+                    <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={8}>
+                      <Collapse in={isExpanded} timeout="auto" unmountOnExit>
+                        <Box sx={{ margin: 1, my: 1, p: 2, bgcolor: '#F0F4F8', borderRadius: 2, borderLeft: '4px solid', borderColor: badgeColor }}>
+                          <Typography variant="caption" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: badgeColor }}>
+                            <DescriptionIcon fontSize="small" /> Standard Operating Procedure (SOP)
+                          </Typography>
+                          <Typography variant="body2" sx={{ mt: 1, whiteSpace: 'pre-wrap' }}>
+                            {row.description}
+                          </Typography>
+                        </Box>
+                      </Collapse>
+                    </TableCell>
+                  </TableRow>
+                </React.Fragment>
+              );
+            })}
+          </TableBody>
+
+        </Table>
+      </TableContainer>
     </Paper>
   );
 }

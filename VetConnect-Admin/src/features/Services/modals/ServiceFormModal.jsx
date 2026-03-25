@@ -21,7 +21,7 @@ export default function ServiceFormModal({ open, onClose, item, onSave, showToas
   const { isAdmin } = useUser();
   const navigate = useNavigate();
 
-  // THE FIX: Initialize state DIRECTLY from the prop. No useEffect needed.
+  // State initializes directly from the prop. Parent 'key' prop ensures a fresh state.
   const [formData, setFormData] = useState({
     name: item?.name || '',
     category: item?.category || item?.department || '',
@@ -40,6 +40,7 @@ export default function ServiceFormModal({ open, onClose, item, onSave, showToas
     if (!formData.name || formData.price === '') {
         return showToast("Service Name and Base Price are required.", "error");
     }
+    // Final data sanitization before sending up to the parent
     const finalData = {
         ...formData,
         price: parseFloat(formData.price) || 0,
@@ -104,7 +105,12 @@ export default function ServiceFormModal({ open, onClose, item, onSave, showToas
                     >
                         <MenuItem value=""><em>None / General</em></MenuItem>
                         {(departments ||[]).map((dept) => (
-                          <MenuItem key={dept.id} value={dept.name}>{dept.name}</MenuItem>
+                          <MenuItem key={dept.id} value={dept.name}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                              <CircleIcon sx={{ color: dept.color || '#616161', fontSize: 16 }} />
+                              <Typography variant="body2" fontWeight="bold">{dept.name}</Typography>
+                            </Box>
+                          </MenuItem>
                         ))}
                     </Select>
                   </FormControl>
@@ -138,7 +144,7 @@ export default function ServiceFormModal({ open, onClose, item, onSave, showToas
               </Grid>
             </Grid>
           </Paper>
-
+          
           <Typography variant="overline" color="textSecondary" fontWeight="bold" sx={{ display: 'block', mb: 1 }}>
             3. OPERATIONAL RULES
           </Typography>
@@ -152,8 +158,9 @@ export default function ServiceFormModal({ open, onClose, item, onSave, showToas
 
         </Box>
       </DialogContent>
+      
       <DialogActions sx={{ p: 2.5, bgcolor: 'white', borderTop: '1px solid #E0E0E0' }}>
-          <Button onClick={onClose} sx={{ fontWeight: 'bold', color: '#5D4037', px: 3, mr: 'auto' }}>CANCEL</Button>
+          <Button onClick={onClose} sx={{ fontWeight: 'bold', color: '#5D4037', px: 3, mr: 1 }}>CANCEL</Button>
           <Button onClick={handleSave} variant="contained" sx={{ bgcolor: '#2E7D32', fontWeight: '900', px: 4, py: 1.2, borderRadius: 2, boxShadow: 3 }}>
              SAVE CONFIGURATION
           </Button>

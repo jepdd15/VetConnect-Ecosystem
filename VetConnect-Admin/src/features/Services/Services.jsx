@@ -151,7 +151,13 @@ export default function Services() {
         </Box>
       </Paper>
 
-      <ServiceTable data={filteredServices} onEdit={(row) => { setSelectedItem(row); setOpen(true); }} onDelete={handleDelete} glassStyle={glassStyle} />
+      <ServiceTable 
+        data={filteredServices} 
+        onEdit={(row) => { setSelectedItem(row); setOpen(true); }} 
+        onDelete={handleDelete} 
+        glassStyle={glassStyle} 
+        departments={departments} // <--- THE FIX: Passing the color map down!
+      />
 
       {open && (
         <ServiceFormModal 

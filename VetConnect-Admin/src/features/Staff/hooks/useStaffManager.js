@@ -1,3 +1,4 @@
+// src/features/Staff/hooks/useStaffManager.js
 import { useState, useEffect } from 'react';
 import { collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc, query, where } from 'firebase/firestore';
 import { db } from '../../../firebaseConfig';
@@ -24,21 +25,21 @@ export function useStaffManager() {
       setActiveAppointments(snapshot.docs.map(d => d.data()));
     });
 
-    // 3. Fetch Dynamic Departments from Settings
+    // 3. THE FIX: Fetch Dynamic Departments as a clean string array
     const unsubDepts = onSnapshot(collection(db, "departments"), (snapshot) => {
-      setDepartments(snapshot.docs.map(d => d.data().name));
+      const depts = snapshot.docs.map(d => ({ id: d.id, ...d.data() })); // <--- Keep the full object!
+      depts.sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+      setDepartments(depts);
     });
 
     return () => { unsubStaff(); unsubAppts(); unsubDepts(); };
   },[]);
 
   const getWorkload = (vetId) => {
-    // THE FIX: Securely filtering by ID, not string name!
     return activeAppointments.filter(a => a.assignedVetId === vetId).length;
   };
 
   const saveStaff = async (editId, formData) => {
-    // THE SCHEMA CONTRACT: Ensuring we output the exact data structure required by the ecosystem
     const payload = {
       fullName: formData.fullName, 
       email: formData.email.trim().toLowerCase(), 
@@ -46,7 +47,8 @@ export function useStaffManager() {
       specialty: formData.specialty || 'N/A', 
       accessLevel: formData.accessLevel, 
       departments: formData.departments, 
-      role: formData.accessLevel, // Legacy sync for Bouncer
+      role: formData.accessLevel,
+      prcLicense: formData.prcLicense,
       updatedAt: new Date()
     };
 

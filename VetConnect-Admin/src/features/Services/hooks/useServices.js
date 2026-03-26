@@ -5,14 +5,13 @@ import { db } from '../../../firebaseConfig';
 export function useServices() {
   const [services, setServices] = useState([]);
   const [inventory, setInventory] = useState([]);
-  const [departments, setDepartments] = useState([]); // NEW: Dynamic State
+  const [departments, setDepartments] = useState([]); // Dynamic State
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     // 1. Listen for Services
     const unsubServices = onSnapshot(collection(db, "services"), (snapshot) => { 
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      list.sort((a,b) => (a.name || '').localeCompare(b.name || ''));
       setServices(list);
       setLoading(false);
     });
@@ -22,7 +21,7 @@ export function useServices() {
       setInventory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))); 
     });
 
-    // 3. THE FIX: Listen for Dynamic Departments
+    // 3. Listen for Dynamic Departments
     const unsubDepts = onSnapshot(collection(db, "departments"), (snapshot) => {
       const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       list.sort((a,b) => (a.name || '').localeCompare(b.name || ''));
@@ -34,7 +33,7 @@ export function useServices() {
 
   const saveService = async (editId, formData) => {
     // THE FIX: Save to BOTH fields for perfect backward compatibility
-    const departmentName = formData.category || 'General';
+    const departmentName = formData.department || 'General';
 
     const payload = {
       ...formData,

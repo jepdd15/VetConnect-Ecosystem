@@ -30,7 +30,7 @@ const formatDuration = (totalMinutes) => {
 export const getQueueColumns = (tabValue, currentTime, actions, isToday, departments) =>[
   { 
     field: 'identity', headerName: 'Patient Identity', flex: 1.8, minWidth: 260, 
-    sortable: false, disableColumnMenu: true, // THE FIX: Locked Down
+    sortable: false, disableColumnMenu: true,
     renderCell: (p) => {
       const isWalkIn = p.row.ownerId === 'WALK_IN_USER' || String(p.row.ownerId).includes('GUEST_');
       
@@ -86,23 +86,19 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
     }
   },
   { 
+    // THE FIX: This was the elusive 'context' field!
     field: 'context', headerName: 'Service Details', flex: 1.2, minWidth: 160,
-    sortable: false, disableColumnMenu: true, // THE FIX: Locked Down
+    sortable: false, disableColumnMenu: true,
     renderCell: (p) => {
       const hasNotes = p.row.notes && p.row.notes.trim().length > 0 && p.row.notes !== "—";
       
-      // THE COLOR LOOKUP MAGIC
-      // 1. What category does this service belong to? (Fallback to General)
       const serviceCategory = p.row.serviceCategory || 'General';
-      // 2. Find the department object in our master list that matches this category
       const deptObj = (departments || []).find(d => d.name === serviceCategory);
-      // 3. Extract the color. If not found, use a professional dark grey.
       const badgeColor = deptObj ? deptObj.color : '#424242';
 
       return (
-        <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', py: 1, pr: 2 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', py: 1, pr: 2, width: '100%' }}>
           
-          {/* THE DYNAMIC COLOR CHIP */}
           <Chip 
             label={p.row.serviceType} 
             size="small" 
@@ -111,19 +107,43 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                 color: 'white', 
                 fontWeight: '900', 
                 fontSize: '0.7rem', 
-                alignSelf: 'flex-start', // Keeps the chip from stretching
+                alignSelf: 'flex-start',
                 mb: 0.5,
-                boxShadow: `0 2px 5px ${badgeColor}40` // Subtle glow matching the color
+                boxShadow: `0 2px 5px ${badgeColor}40` 
             }} 
           />
           
+          {/* THE UX FIX: Smart Truncation & Hover Tooltip for massive paragraphs */}
           {hasNotes ? (
-            <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5, bgcolor: '#FFF3E0', p: 1, borderRadius: 1, borderLeft: '3px solid #FF9800' }}>
-              <WarningIcon sx={{ fontSize: 14, color: '#E65100', mt: 0.2 }} />
-              <Typography variant="caption" sx={{ color: '#E65100', fontWeight: '600', lineHeight: 1.2, whiteSpace: 'normal', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }} component="div">
-                "{p.row.notes}"
-              </Typography>
-            </Box>
+            <Tooltip 
+              title={p.row.notes} 
+              arrow 
+              placement="bottom-start"
+              componentsProps={{
+                tooltip: { sx: { bgcolor: '#3E2723', color: 'white', fontSize: '0.85rem', p: 1.5, boxShadow: 4, borderRadius: 2 } },
+                arrow: { sx: { color: '#3E2723' } }
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, bgcolor: '#FFF3E0', p: 1, borderRadius: 1, borderLeft: '3px solid #FF9800', cursor: 'help' }}>
+                <WarningIcon sx={{ fontSize: 14, color: '#E65100', flexShrink: 0 }} />
+                <Typography 
+                  variant="caption" 
+                  component="div"
+                  sx={{ 
+                    color: '#E65100', 
+                    fontWeight: '600', 
+                    lineHeight: 1.2, 
+                    display: '-webkit-box', 
+                    WebkitLineClamp: 1, // FORCE TO 1 LINE!
+                    WebkitBoxOrient: 'vertical', 
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis'
+                  }} 
+                >
+                  "{p.row.notes}"
+                </Typography>
+              </Box>
+            </Tooltip>
           ) : (
             <Typography variant="caption" color="textSecondary" component="div" sx={{ fontStyle: 'italic' }}>
               No triage notes provided.
@@ -135,7 +155,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
   },
   { 
     field: 'timing', headerName: 'Time Tracking', flex: 1, minWidth: 140, align: 'center', headerAlign: 'center',
-    sortable: false, disableColumnMenu: true, // THE FIX: Locked Down
+    sortable: false, disableColumnMenu: true,
     renderCell: (p) => {
       let relativeText = ""; let color = "textSecondary"; let exactTime = '-'; let isLate = false;
 
@@ -171,7 +191,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
   },
   { 
     field: 'statusAndStaff', headerName: 'Status & Staff', flex: 1, minWidth: 140, align: 'center', headerAlign: 'center',
-    sortable: false, disableColumnMenu: true, // THE FIX: Locked Down
+    sortable: false, disableColumnMenu: true,
     renderCell: (p) => {
       let color = 'default'; let label = p.row.status.toUpperCase();
       if (['completed', 'carried-over'].includes(p.row.status)) {
@@ -193,7 +213,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
   },
   {
     field: 'actions', headerName: 'Next Step / Action', flex: 1.5, minWidth: 260, align: 'center', headerAlign: 'center',
-    sortable: false, disableColumnMenu: true, // THE FIX: Locked Down
+    sortable: false, disableColumnMenu: true,
     renderCell: (params) => {
       const btnStyle = { textTransform: 'uppercase', fontWeight: '900', mr: 0.5, boxShadow: 2, px: 3, py: 1, borderRadius: 2, whiteSpace: 'nowrap', letterSpacing: 0.5 };
       const isUnassigned = !params.row.assignedVetId;

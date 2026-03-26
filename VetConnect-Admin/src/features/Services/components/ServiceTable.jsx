@@ -86,43 +86,28 @@ export default function ServiceTable({ data, onEdit, onDelete, glassStyle, depar
             <TableRow>
               <TableCell sx={{ width: 40, bgcolor: 'rgba(255, 255, 255, 0.4)', borderBottom: '1px solid rgba(0,0,0,0.1)' }} />
               <TableCell sx={{ width: 50, bgcolor: 'rgba(255, 255, 255, 0.4)', borderBottom: '1px solid rgba(0,0,0,0.1)' }} />
-              
-              {/* THE FIX: Native Clickable Sort Headers! */}
               <TableCell sx={{ fontWeight: 'bold', color: '#5D4037', bgcolor: 'rgba(255, 255, 255, 0.4)', fontSize: '0.9rem', borderBottom: '1px solid rgba(0,0,0,0.1)' }}>
-                <TableSortLabel active={orderBy === 'name'} direction={orderBy === 'name' ? order : 'asc'} onClick={() => handleRequestSort('name')}>
-                  Service Name
-                </TableSortLabel>
+                <TableSortLabel active={orderBy === 'name'} direction={orderBy === 'name' ? order : 'asc'} onClick={() => handleRequestSort('name')}>Service Name</TableSortLabel>
               </TableCell>
-              
               <TableCell sx={{ fontWeight: 'bold', color: '#5D4037', bgcolor: 'rgba(255, 255, 255, 0.4)', fontSize: '0.9rem', borderBottom: '1px solid rgba(0,0,0,0.1)' }}>
-                <TableSortLabel active={orderBy === 'department'} direction={orderBy === 'department' ? order : 'asc'} onClick={() => handleRequestSort('department')}>
-                  Department
-                </TableSortLabel>
+                <TableSortLabel active={orderBy === 'department'} direction={orderBy === 'department' ? order : 'asc'} onClick={() => handleRequestSort('department')}>Department</TableSortLabel>
               </TableCell>
-              
               <TableCell sx={{ fontWeight: 'bold', color: '#5D4037', bgcolor: 'rgba(255, 255, 255, 0.4)', fontSize: '0.9rem', borderBottom: '1px solid rgba(0,0,0,0.1)' }}>
-                <TableSortLabel active={orderBy === 'duration'} direction={orderBy === 'duration' ? order : 'asc'} onClick={() => handleRequestSort('duration')}>
-                  Time Block
-                </TableSortLabel>
+                <TableSortLabel active={orderBy === 'duration'} direction={orderBy === 'duration' ? order : 'asc'} onClick={() => handleRequestSort('duration')}>Time Block</TableSortLabel>
               </TableCell>
-              
               <TableCell sx={{ fontWeight: 'bold', color: '#5D4037', bgcolor: 'rgba(255, 255, 255, 0.4)', fontSize: '0.9rem', borderBottom: '1px solid rgba(0,0,0,0.1)' }}>
-                <TableSortLabel active={orderBy === 'price'} direction={orderBy === 'price' ? order : 'asc'} onClick={() => handleRequestSort('price')}>
-                  Price
-                </TableSortLabel>
+                <TableSortLabel active={orderBy === 'price'} direction={orderBy === 'price' ? order : 'asc'} onClick={() => handleRequestSort('price')}>Price</TableSortLabel>
               </TableCell>
-
               <TableCell sx={{ fontWeight: 'bold', color: '#5D4037', bgcolor: 'rgba(255, 255, 255, 0.4)', fontSize: '0.9rem', borderBottom: '1px solid rgba(0,0,0,0.1)' }}>Operational Tags</TableCell>
               <TableCell sx={{ fontWeight: 'bold', color: '#5D4037', bgcolor: 'rgba(255, 255, 255, 0.4)', fontSize: '0.9rem', borderBottom: '1px solid rgba(0,0,0,0.1)', align: 'center' }}>Actions</TableCell>
             </TableRow>
           </TableHead>
 
           <TableBody>
-            {/* THE FIX: We map over sortedData instead of raw data */}
             {sortedData.map((row) => {
               const isExpanded = expandedRows[row.id];
               const deptName = row.department || row.category || 'General';
-              const deptObj = (departments ||[]).find(d => d.name === deptName);
+              const deptObj = (departments || []).find(d => d.name === deptName);
               const badgeColor = deptObj ? deptObj.color : '#616161';
               const hasDescription = row.description && row.description.trim().length > 0;
 

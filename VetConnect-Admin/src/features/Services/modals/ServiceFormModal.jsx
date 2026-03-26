@@ -21,7 +21,6 @@ export default function ServiceFormModal({ open, onClose, item, onSave, showToas
   const { isAdmin } = useUser();
   const navigate = useNavigate();
 
-  // State initializes directly from the prop. Parent 'key' prop ensures a fresh state.
   const [formData, setFormData] = useState({
     name: item?.name || '',
     department: item?.department || item?.category || '',
@@ -40,14 +39,7 @@ export default function ServiceFormModal({ open, onClose, item, onSave, showToas
     if (!formData.name || formData.price === '') {
         return showToast("Service Name and Base Price are required.", "error");
     }
-    // Final data sanitization before sending up to the parent
-    const finalData = {
-        ...formData,
-        price: parseFloat(formData.price) || 0,
-        duration: parseInt(formData.duration) || 30,
-        bufferTime: parseInt(formData.bufferTime) || 0
-    };
-    onSave(finalData);
+    onSave(formData);
   };
 
   const noExtensionProps = { spellCheck: 'false', 'data-gramm': 'false' };
@@ -142,6 +134,22 @@ export default function ServiceFormModal({ open, onClose, item, onSave, showToas
               <Grid size={{ xs: 6, md: 4 }}>
                 <TextField label="Cleanup Buffer" type="number" fullWidth size="small" value={formData.bufferTime} onChange={(e) => setFormData({...formData, bufferTime: e.target.value})} InputProps={{ startAdornment: <InputAdornment position="start"><TimerIcon fontSize="small" sx={{color:'#aaa'}}/></InputAdornment>, endAdornment: <InputAdornment position="end">Mins</InputAdornment> }} sx={{bgcolor: 'white'}} />
               </Grid>
+              
+              {/* THE MISSING FIELD: Restored the Description / SOP input box */}
+              <Grid size={{ xs: 12 }}>
+                  <TextField 
+                    label="SOP / Description / Clinic Instructions" 
+                    fullWidth multiline rows={3} size="small" 
+                    value={formData.description} 
+                    onChange={(e) => setFormData({...formData, description: e.target.value})} 
+                    sx={{bgcolor: 'white', mt: 1}} 
+                    InputProps={{ 
+                        startAdornment: <InputAdornment position="start"><DescriptionIcon fontSize="small" sx={{color: '#aaa', mr: 1, mt: -4}}/></InputAdornment> 
+                    }}
+                    inputProps={{ spellCheck: 'false', 'data-gramm': 'false' }} 
+                  />
+              </Grid>
+
             </Grid>
           </Paper>
           

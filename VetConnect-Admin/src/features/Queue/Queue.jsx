@@ -127,7 +127,7 @@ export default function Queue() {
                ticketPrefix: null, 
                scheduledDate: Timestamp.fromDate(targetDate), 
                createdAt: Timestamp.now(), 
-               notes: `(Carried Over from ${new Date(patient.createdAt?.toDate() || Date.now()).toLocaleDateString()})`, 
+                notes: `[Carried Over from ${new Date(filterDate).toLocaleDateString()}] ${patient.notes || "No original notes."}`, 
                assignedVet: action === 'confined' ? patient.assignedVet : "Unassigned" 
             }); 
           }

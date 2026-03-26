@@ -89,7 +89,7 @@ export function useQueueActions() {
         petName: "EMERGENCY PATIENT",
         petSpecies: "Unknown",
         serviceType: "Trauma / ER",
-        serviceCategory: "Consultation",
+        serviceCategory: "General", // THE FIX: Use the universal fallback department
         requiredRole: "veterinarian",
         priority: "high", // THE FLAG THAT FORCES IT TO THE TOP OF THE LIST
         status: "arrived",

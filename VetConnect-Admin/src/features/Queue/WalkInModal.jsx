@@ -9,7 +9,7 @@ import {
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import WarningIcon from '@mui/icons-material/Warning';
 
-import { collection, doc, runTransaction, Timestamp, query, where, getDocs, writeBatch, addDoc, setDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, Timestamp, query, where, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 
 export default function WalkInModal({ open, onClose, servicesList }) {

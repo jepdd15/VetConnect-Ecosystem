@@ -453,10 +453,18 @@ export default function Queue() {
       </Paper>
 
       {/* EXTERNAL MODULES */}
-      <ClinicalWorkspace open={openConsult} onClose={() => setOpenConsult(false)} patient={selectedRow} inventoryList={inventoryList} servicesList={servicesList} />
+      <ClinicalWorkspace open={openConsult} onClose={() => setOpenConsult(false)} patient={selectedRow} inventoryList={inventoryList} servicesList={servicesList} departments={departments}/>
       <POSModal open={openPOS} onClose={() => setOpenPOS(false)} patient={selectedRow} inventoryList={inventoryList} servicesList={servicesList} />
-      <WalkInModal open={openWalkIn} onClose={() => setOpenWalkIn(false)} servicesList={servicesList} />
-      <AssignStaffModal open={openAssign} onClose={() => setOpenAssign(false)} patient={selectedRow} vetsList={vets} activeAppointments={rows.filter(r =>['arrived', 'in-consult', 'confined'].includes(r.status))} />
+      <WalkInModal open={openWalkIn} onClose={() => setOpenWalkIn(false)} servicesList={servicesList} departments={departments}/>
+      
+      <AssignStaffModal 
+        open={openAssign} 
+        onClose={() => setOpenAssign(false)} 
+        patient={selectedRow} 
+        vetsList={vets} 
+        activeAppointments={rows.filter(r =>['arrived', 'in-consult', 'confined'].includes(r.status))} 
+        departments={departments} 
+      />
       
       {/* THE NEW TRIAGE WIZARD MODAL */}
       <EndOfDayModal 

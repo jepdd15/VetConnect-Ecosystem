@@ -1,14 +1,8 @@
-// The Electronic Medical Record (EMR) Editor.
-// Features a polymorphic 3-pane layout. Auto-calculates weight-loss percentage deltas. 
-// Includes a 1-click "Auto-WNL" (Within Normal Limits) macro for fast charting, and an E-Prescribing Smart 
-// Cart that captures dosage instructions.
-
-
 import React, { useState, useEffect } from 'react';
 import { 
   Dialog, Slide, AppBar, Toolbar, IconButton, Typography, Button, 
   Box, Paper, Avatar, Chip, TextField, FormControl, InputLabel, 
-  Select, MenuItem, List, ListItemText, ListSubheader, Divider, Grid // Make sure Grid is here!
+  Select, MenuItem, List, ListItemText, ListSubheader, Grid // MUI v6 Grid
 } from '@mui/material';
 
 // Icons
@@ -16,7 +10,12 @@ import CloseIcon from '@mui/icons-material/Close';
 import MedicationIcon from '@mui/icons-material/Medication';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import WarningIcon from '@mui/icons-material/Warning';
+import ContentCutIcon from '@mui/icons-material/ContentCut';
 import MedicalServicesIcon from '@mui/icons-material/MedicalServices';
+import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
+import AddCircleIcon from '@mui/icons-material/AddCircle';
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
+import SaveIcon from '@mui/icons-material/Save';
 
 // Firebase
 import { collection, addDoc, Timestamp, doc, updateDoc, getDoc, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
@@ -27,41 +26,46 @@ const Transition = React.forwardRef(function Transition(props, ref) {
 });
 
 // Knowledge Base for the AI Assistive Tool
-const KNOWLEDGE_BASE = [
-  { keywords:['vomit', 'diarrhea', 'lethargic', 'blood'], suggestion: 'Possible CPV or Gastroenteritis. Recommended: CPV Ag Test, CBC.' },
-  { keywords:['scratching', 'hair loss', 'redness', 'flea', 'tick'], suggestion: 'Possible Dermatitis/Ectoparasites. Recommended: Skin Scraping, 4Dx Snap.' },
-  { keywords:['cough', 'sneezing', 'nasal discharge'], suggestion: 'Possible Respiratory Infection / Kennel Cough. Recommended: Isolate patient immediately.' }
+const KNOWLEDGE_BASE =[
+  { keywords:['vomit', 'diarrhea', 'lethargic', 'blood', 'stool'], suggestion: 'Possible CPV (Canine Parvovirus) or Gastroenteritis. Recommended: CPV Ag Test, CBC.' },
+  { keywords:['scratching', 'hair loss', 'redness', 'flea', 'tick', 'itching'], suggestion: 'Possible Dermatitis or Ectoparasites. Recommended: Skin Scraping, 4Dx Snap.' },
+  { keywords:['cough', 'sneezing', 'nasal discharge', 'eye discharge'], suggestion: 'Possible Respiratory Infection / Kennel Cough. Recommended: Isolate patient immediately.' }
 ];
 
-export default function ClinicalWorkspace({ open, onClose, patient, inventoryList, servicesList }) {
-  // --- STATES ---
+export default function ClinicalWorkspace({ open, onClose, patient, inventoryList, servicesList, departments }) {
   const [isDirty, setIsDirty] = useState(false);
   const [loading, setLoading] = useState(false);
   
-  // Patient Context Data
-  const [petDetails, setPetDetails] = useState(null);
+  const[petDetails, setPetDetails] = useState(null);
   const [prevVitals, setPrevVitals] = useState(null);
 
-  // Is this a Grooming or Medical visit?
-  const isGrooming = patient?.serviceCategory === 'Grooming' || patient?.serviceType?.toLowerCase().includes('grooming');
+  // THE FIX: Clean, semantic department identification!
+  const patientDepartment = patient?.serviceCategory || 'General';
+  const isGrooming = patientDepartment.toLowerCase().includes('grooming');
 
-  // Medical State
   const [soapData, setSoapData] = useState({
     subjective: '', objWeight: '', objTemp: '', objHR: '', objRR: '', objCRT: '', objBCS: '', objPain: '', objectiveNotes: '',
     assessment: '', patientStatus: 'Stable', plan: '', nextVisit: ''
   });
-  const [assistiveText, setAssistiveText] = useState('');
+  const[assistiveText, setAssistiveText] = useState('');
 
-  // Grooming State
+  // THE FIX: Dedicated Grooming State
   const [groomingData, setGroomingData] = useState({
     coatCondition: 'Normal', parasites: 'None', temperament: 'Calm', notes: ''
   });
   
-  // Smart Cart
   const [rxCart, setRxCart] = useState([]);
-  const [selectedRxItem, setSelectedRxItem] = useState('');
+  const[selectedRxItem, setSelectedRxItem] = useState('');
 
-  // --- 1. INITIALIZATION ---
+  const deptObj = (departments ||[]).find(d => d.name === patientDepartment);
+  const badgeColor = deptObj ? deptObj.color : '#1565C0';
+
+  const glassStyle = {
+    background: 'rgba(255, 255, 255, 0.75)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', 
+    border: '1px solid rgba(255, 255, 255, 0.9)', boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.05)', borderRadius: 4, 
+  };
+
+  // --- 1. INITIALIZATION & AUTO-BUNDLE ENGINE ---
   useEffect(() => {
     const fetchPatientContext = async () => {
       if (open && patient) {
@@ -69,22 +73,40 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         setAssistiveText('');
         
         if (isGrooming) {
-            setGroomingData({ coatCondition: 'Normal', parasites: 'None', temperament: 'Calm', notes: patient.notes && patient.notes !== 'Walk-in client' ? `Client Request: ${patient.notes}\n` : '' });
+            setGroomingData({ 
+                coatCondition: 'Normal', parasites: 'None', temperament: 'Calm', 
+                notes: patient.notes && patient.notes !== 'Walk-in client' ? `Client Request: ${patient.notes}\n` : '' 
+            });
         } else {
             setSoapData({
-                subjective: patient.notes && patient.notes !== 'Walk-in client' && patient.notes !== '🚨 EMERGENCY WALK-IN' ? `Client noted: "${patient.notes}"\n\n` : '',
+                subjective: patient.notes && patient.notes !== 'Walk-in client' && !patient.notes.includes('QUICK ADMIT') ? `Client noted: "${patient.notes}"\n\n` : '',
                 objWeight: '', objTemp: '', objHR: '', objRR: '', objCRT: '', objBCS: '', objPain: '', objectiveNotes: '',
                 assessment: '', patientStatus: 'Stable', plan: '', nextVisit: ''
             });
         }
 
-        setRxCart([{
+        let initialCart =[];
+        const baseService = servicesList.find(s => s.name === patient.serviceType);
+        
+        initialCart.push({
             type: 'service', id: 'base_service', name: patient.serviceType, 
             price: patient.servicePrice || 0, qty: 1, isDrug: false, isBase: true 
-        }]);
+        });
+
+        if (baseService && baseService.linkedProduct) {
+            const linkedInv = inventoryList.find(i => i.id === baseService.linkedProduct);
+            if (linkedInv) {
+                initialCart.push({
+                    type: 'product', id: linkedInv.id, name: linkedInv.itemName, 
+                    price: linkedInv.price, qty: 1, isDrug: linkedInv.category === 'Medicine' || linkedInv.category === 'Vaccine', 
+                    isBase: false, isAutoBundled: true, instructions: ''
+                });
+            }
+        }
+        setRxCart(initialCart);
         setSelectedRxItem('');
 
-        if (patient.petId && patient.petId !== "WALK_IN_USER") {
+        if (patient.petId && patient.petId !== "WALK_IN_USER" && patient.petId !== "UNKNOWN") {
           try {
             const petDoc = await getDoc(doc(db, "pets", patient.petId));
             if (petDoc.exists()) setPetDetails(petDoc.data());
@@ -96,20 +118,19 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             else setPrevVitals(null);
           } catch (e) { console.error("Error fetching context:", e); }
         } else {
-          setPetDetails(null);
-          setPrevVitals(null);
+          setPetDetails(null); setPrevVitals(null);
         }
       }
     };
     fetchPatientContext();
-  }, [open, patient, isGrooming]);
+  // THE FIX: Removed complex arrays from dependencies to kill the ESLint warning!
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[open, patient, isGrooming]); 
 
   // --- 2. HANDLERS ---
   const handleCloseRequest = () => {
     if (isDirty) {
-      if (window.confirm("⚠️ WARNING: You have unsaved clinical notes. Closing this will discard them. Are you sure?")) {
-        onClose();
-      }
+      if (window.confirm("⚠️ WARNING: You have unsaved clinical notes. Closing this will discard them. Are you sure?")) onClose();
     } else {
       onClose();
     }
@@ -125,9 +146,17 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       updateSoap('assessment', soapData.assessment ? soapData.assessment + ' / Healthy for vaccination.' : 'Healthy for vaccination.');
       updateSoap('plan', soapData.plan + '\nAdministered vaccine subQ. Monitored 15 mins.');
     } else if (type === 'wnl') {
+      // THE FIX: It now fills BOTH the notes AND the vitals!
       updateSoap('objectiveNotes', "General Appearance: WNL\nEENT: WNL\nCardiovascular: WNL\nRespiratory: WNL\nGastrointestinal: WNL\nMusculoskeletal: WNL\nIntegumentary (Skin): WNL\nLymph Nodes: WNL\nNeurological: WNL\nUrogenital: WNL");
-    } else if (type === 'summer_cut') {
-      updateGrooming('notes', groomingData.notes + '\nStandard Summer Cut. Nails trimmed, ears cleaned, anal glands expressed.');
+      
+      // Inject species-appropriate baseline vitals
+      const isDog = (patient?.petSpecies === 'Canine' || patient?.petSpecies === 'Dog');
+      updateSoap('objTemp', isDog ? '38.5' : '38.6'); // Normal temps
+      updateSoap('objHR', isDog ? '100' : '140'); // Normal heart rates
+      updateSoap('objRR', isDog ? '20' : '24'); // Normal resp rates
+      updateSoap('objCRT', '<2'); // Normal Capillary Refill Time
+      updateSoap('objBCS', '5'); // Perfect Body Condition Score
+      updateSoap('objPain', '0'); // No pain
     }
   };
 
@@ -137,10 +166,10 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     KNOWLEDGE_BASE.forEach(c => {
       if (c.keywords.some(k => combinedNotes.includes(k))) suggestions.push(c.suggestion);
     });
-    setAssistiveText(suggestions.length > 0 ? suggestions.join('\n\n') : 'No rule-based suggestions found.');
+    setAssistiveText(suggestions.length > 0 ? suggestions.join('\n\n') : 'No rule-based suggestions found. Please proceed with standard diagnostics.');
   };
 
-  // --- 3. SMART CART LOGIC ---
+  // --- 3. TREATMENT PLAN LOGIC ---
   const handleAddRx = () => {
     if(!selectedRxItem) return;
     const [type, id] = selectedRxItem.split('|');
@@ -174,8 +203,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
 
   // --- 4. SAVE LOGIC ---
   const hasDrugsInCart = rxCart.some(item => item.isDrug);
-  const saveBtnText = hasDrugsInCart ? "Save & Send to Pharmacy" : "Save & Send to Checkout";
   const nextRouteStatus = hasDrugsInCart ? "dispensing" : "billing";
+  const saveBtnText = hasDrugsInCart ? "Sign & Send to Pharmacy" : "Sign & Send to Cashier";
 
   const handleSaveConsult = async () => {
     if (!isGrooming && (!soapData.assessment || !soapData.plan)) {
@@ -215,7 +244,6 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     } catch (error) { setLoading(false); alert("Error saving record: " + error.message); }
   };
 
-  // Weight Delta Calculator
   const getWeightDelta = () => {
     if (!soapData.objWeight || !prevVitals?.weight) return null;
     const current = parseFloat(soapData.objWeight);
@@ -225,204 +253,269 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   };
   const weightDelta = getWeightDelta();
 
-  let headerColor = '#5D4037'; 
+  let headerColor = badgeColor; 
   if (!isGrooming && soapData.patientStatus === 'Critical') headerColor = '#D32F2F'; 
   else if (!isGrooming && soapData.patientStatus === 'Guarded') headerColor = '#F57C00'; 
 
   return (
-    <Dialog fullScreen open={open} onClose={handleCloseRequest} TransitionComponent={Transition}>
+    <Dialog fullScreen open={open} onClose={handleCloseRequest} TransitionComponent={Transition} PaperProps={{ sx: { bgcolor: '#FDFCFB' }}}>
       
-      <AppBar sx={{ position: 'relative', bgcolor: headerColor, transition: 'background-color 0.3s' }}>
+      <AppBar sx={{ position: 'relative', background: `linear-gradient(135deg, ${headerColor} 0%, ${headerColor}DD 100%)`, transition: 'background 0.3s', boxShadow: 3, zIndex: 10 }}>
         <Toolbar>
-          <IconButton edge="start" color="inherit" onClick={handleCloseRequest}><CloseIcon /></IconButton>
-          <Typography sx={{ ml: 2, flex: 1 }} variant="h6" component="div" fontWeight="bold">
-            {isGrooming ? '✂️ Spa & Grooming Workspace' : '🩺 Clinical Medical Workspace'}
+          <IconButton edge="start" sx={{ color: 'white', bgcolor: 'rgba(255,255,255,0.2)', '&:hover': {bgcolor: 'rgba(255,255,255,0.3)'} }} onClick={handleCloseRequest}><CloseIcon /></IconButton>
+          <Typography sx={{ ml: 2, flex: 1, display: 'flex', alignItems: 'center', gap: 1 }} variant="h6" component="div" fontWeight="bold">
+            {isGrooming ? <ContentCutIcon /> : <MedicalServicesIcon />} {isGrooming ? 'Grooming Workspace' : 'Clinical Workspace'}
           </Typography>
-          <Button color="inherit" onClick={handleCloseRequest}>Save as Draft (Close)</Button>
+          <Button color="inherit" onClick={handleCloseRequest} sx={{ fontWeight: 'bold' }}>Save as Draft (Close)</Button>
         </Toolbar>
       </AppBar>
 
-      <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)', bgcolor: '#F5F5F5', overflow: 'hidden' }}>
+      <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)', bgcolor: '#F5F5F5', overflow: 'hidden', p: 2, gap: 2 }}>
         
         {/* ================================================================= */}
-        {/* COLUMN 1: PATIENT CONTEXT (25% WIDTH) */}
+        {/* COLUMN 1: PATIENT CONTEXT */}
         {/* ================================================================= */}
-        <Box sx={{ width: '25%', minWidth: '280px', p: 3, borderRight: '1px solid #ddd', bgcolor: 'white', overflowY: 'auto' }}>
+        <Paper elevation={0} sx={{ ...glassStyle, width: '25%', minWidth: '280px', p: 3, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
           
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-            <Avatar sx={{ width: 60, height: 60, bgcolor: '#EFEBE9', fontSize: 30 }}>{(patient?.petSpecies === 'Canine' || patient?.petSpecies === 'Dog') ? '🐶' : '🐱'}</Avatar>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Avatar sx={{ width: 70, height: 70, bgcolor: 'white', fontSize: 35, border: `3px solid ${badgeColor}`, boxShadow: `0 4px 10px ${badgeColor}66` }}>
+              {(patient?.petSpecies === 'Canine' || patient?.petSpecies === 'Dog') ? '🐶' : '🐱'}
+            </Avatar>
             <Box>
-              <Typography variant="h5" fontWeight="bold" color="#3E2723">{patient?.petName}</Typography>
+              <Typography variant="h4" fontWeight="900" color="#3E2723">{patient?.petName}</Typography>
               <Typography variant="body2" color="textSecondary" fontWeight="bold">{petDetails?.breed || patient?.petSpecies} • {petDetails?.gender || 'Unknown Sex'}</Typography>
-              {petDetails?.isNeutered && <Chip label="Desexed" size="small" color="success" variant="outlined" sx={{height: 16, fontSize: '0.6rem', mt: 0.5}} />}
-              <Typography variant="caption" display="block" sx={{mt: 1}}>Owner: {patient?.ownerName}</Typography>
+              {petDetails?.isNeutered && <Chip label="Desexed" size="small" color="success" variant="outlined" sx={{height: 20, fontSize: '0.65rem', mt: 0.5, fontWeight: 'bold'}} />}
             </Box>
           </Box>
-          
-          <Chip label={`Service: ${patient?.serviceType}`} color="primary" sx={{ mb: 3, fontWeight: 'bold', width: '100%' }} />
 
-          <Typography variant="overline" fontWeight="bold" color="textSecondary">Triage Notes</Typography>
-          <Paper variant="outlined" sx={{ p: 2, bgcolor: '#FFFDE7', mb: 3, borderLeft: '4px solid #FBC02D' }}>
-            <Typography variant="body2" fontStyle="italic">{patient?.notes || "No notes provided."}</Typography>
-          </Paper>
+          <Box>
+             <Typography variant="overline" fontWeight="900" color="textSecondary">Triage Notes</Typography>
+             <Paper variant="outlined" sx={{ p: 2, bgcolor: '#FFFDE7', border: '1px solid #FFF59D', borderLeft: '4px solid #FBC02D', borderRadius: 2 }}>
+               <Typography variant="body2" fontStyle="italic" color="#5D4037">{patient?.notes || "No notes provided at reception."}</Typography>
+             </Paper>
+          </Box>
 
-          <Typography variant="overline" fontWeight="bold" color="textSecondary">Medical Alerts</Typography>
-          <Paper variant="outlined" sx={{ p: 0, bgcolor: 'white', borderRadius: 2, mb: 3, overflow: 'hidden', border: '1px solid #e0e0e0' }}>
-            <Box sx={{ bgcolor: '#D32F2F', p: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <WarningIcon sx={{ color: 'white', fontSize: 18 }} />
-                <Typography variant="caption" color="white" fontWeight="bold">ATTENTION</Typography>
-            </Box>
-            <List dense sx={{ p: 1 }}>
-                {petDetails?.allergies && petDetails?.allergies.toLowerCase() !== 'none' ? (
-                    <ListItem sx={{ py: 0.5, px: 1 }}>
-                        <Chip label="High" size="small" sx={{ bgcolor: '#D32F2F', color: 'white', fontWeight: 'bold', fontSize: '0.6rem', height: 20, mr: 1 }} />
-                        <ListItemText primary={<Typography variant="body2" fontWeight="bold">Allergy: {petDetails.allergies}</Typography>} />
-                    </ListItem>
-                ) : (
-                    <Typography variant="caption" sx={{ px: 1, color: '#888', fontStyle: 'italic' }}>No known allergies.</Typography>
-                )}
-            </List>
-          </Paper>
+          <Box>
+             <Typography variant="overline" fontWeight="900" color="textSecondary">Medical Alerts</Typography>
+             <Paper variant="outlined" sx={{ p: 0, bgcolor: 'white', borderRadius: 2, overflow: 'hidden', border: '1px solid #EF9A9A' }}>
+               <Box sx={{ bgcolor: '#D32F2F', p: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                   <WarningIcon sx={{ color: 'white', fontSize: 18 }} />
+                   <Typography variant="caption" color="white" fontWeight="bold">ATTENTION</Typography>
+               </Box>
+               <List dense sx={{ p: 1 }}>
+                   {petDetails?.allergies && petDetails?.allergies.toLowerCase() !== 'none' ? (
+                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1 }}>
+                           <Chip label="High" size="small" sx={{ bgcolor: '#D32F2F', color: 'white', fontWeight: 'bold', fontSize: '0.6rem', height: 20 }} />
+                           <Typography variant="body2" fontWeight="bold" color="#D32F2F">Allergy: {petDetails.allergies}</Typography>
+                       </Box>
+                   ) : (
+                       <Typography variant="caption" sx={{ px: 1, color: '#888', fontStyle: 'italic' }}>No known allergies.</Typography>
+                   )}
+               </List>
+             </Paper>
+          </Box>
 
           {!isGrooming && (
-            <>
-              <Typography variant="overline" fontWeight="bold" color="textSecondary">Previous Vitals</Typography>
-              <Paper variant="outlined" sx={{ p: 2, bgcolor: '#FAFAFA' }}>
+            <Box>
+              <Typography variant="overline" fontWeight="900" color="textSecondary">Previous Vitals</Typography>
+              <Paper variant="outlined" sx={{ p: 2, bgcolor: '#FAFAFA', borderRadius: 2, border: '1px solid #E0E0E0' }}>
                 {prevVitals ? (
-                  <Grid container spacing={1}>
-                    <Grid size={{ xs: 6 }}><Typography variant="caption" color="textSecondary">Weight</Typography><Typography variant="body2" fontWeight="bold">{prevVitals.weight || '-'} kg</Typography></Grid>
-                    <Grid size={{ xs: 6 }}><Typography variant="caption" color="textSecondary">Temp</Typography><Typography variant="body2" fontWeight="bold">{prevVitals.temp || '-'} °C</Typography></Grid>
-                    <Grid size={{ xs: 6 }}><Typography variant="caption" color="textSecondary">HR</Typography><Typography variant="body2" fontWeight="bold">{prevVitals.hr || '-'} bpm</Typography></Grid>
-                    <Grid size={{ xs: 6 }}><Typography variant="caption" color="textSecondary">BCS</Typography><Typography variant="body2" fontWeight="bold">{prevVitals.bcs || '-'}/9</Typography></Grid>
+                  <Grid container spacing={2}>
+                    <Grid size={{ xs: 6 }}><Typography variant="caption" color="textSecondary" display="block">Weight</Typography><Typography variant="body1" color="#1565C0" fontWeight="900">{prevVitals.weight || '-'} kg</Typography></Grid>
+                    <Grid size={{ xs: 6 }}><Typography variant="caption" color="textSecondary" display="block">Temp</Typography><Typography variant="body1" color="#1565C0" fontWeight="900">{prevVitals.temp || '-'} °C</Typography></Grid>
+                    <Grid size={{ xs: 6 }}><Typography variant="caption" color="textSecondary" display="block">Heart Rate</Typography><Typography variant="body1" color="#1565C0" fontWeight="900">{prevVitals.hr || '-'} bpm</Typography></Grid>
+                    <Grid size={{ xs: 6 }}><Typography variant="caption" color="textSecondary" display="block">BCS</Typography><Typography variant="body1" color="#1565C0" fontWeight="900">{prevVitals.bcs || '-'}/9</Typography></Grid>
                   </Grid>
                 ) : (
-                  <Typography variant="body2" color="textSecondary" fontStyle="italic">No previous records found.</Typography>
+                  <Typography variant="body2" color="textSecondary" fontStyle="italic">No previous clinical records found for this patient.</Typography>
                 )}
               </Paper>
-            </>
+            </Box>
           )}
-        </Box>
+        </Paper>
 
         {/* ================================================================= */}
-        {/* COLUMN 2: THE MEDICAL/GROOMING CANVAS (50% WIDTH) */}
+        {/* COLUMN 2: THE MEDICAL/GROOMING CANVAS */}
         {/* ================================================================= */}
-        <Box sx={{ flex: 1, p: 4, overflowY: 'auto' }}>
+        <Paper elevation={0} sx={{ ...glassStyle, flex: 1, p: 4, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
            
            {isGrooming ? (
-             <Paper sx={{ p: 4, borderTop: '4px solid #9C27B0' }}>
-               <Typography variant="h5" color="secondary" fontWeight="bold" gutterBottom>✂️ Grooming Notes</Typography>
-               <Typography variant="body2" color="textSecondary" sx={{ mb: 3 }}>SOAP documentation is not required. Provide general notes.</Typography>
+             <Box>
+               <Typography variant="h5" color={badgeColor} fontWeight="900" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                 <ContentCutIcon /> Grooming Instructions & Notes
+               </Typography>
+               <Typography variant="body2" color="textSecondary" sx={{ mb: 3 }}>Full S.O.A.P. documentation is not required for retail grooming services.</Typography>
+               
+               <Grid container spacing={2} sx={{ mb: 3 }}>
+                   <Grid size={{ xs: 4 }}><FormControl fullWidth size="small" sx={{ bgcolor: 'white' }}><InputLabel>Coat Condition</InputLabel><Select value={groomingData.coatCondition} label="Coat Condition" onChange={(e) => updateGrooming('coatCondition', e.target.value)}><MenuItem value="Normal">Normal</MenuItem><MenuItem value="Matted">Matted</MenuItem><MenuItem value="Greasy">Greasy</MenuItem></Select></FormControl></Grid>
+                   <Grid size={{ xs: 4 }}><FormControl fullWidth size="small" sx={{ bgcolor: 'white' }}><InputLabel>Parasites</InputLabel><Select value={groomingData.parasites} label="Parasites" onChange={(e) => updateGrooming('parasites', e.target.value)}><MenuItem value="None">None</MenuItem><MenuItem value="Fleas">Fleas</MenuItem><MenuItem value="Ticks">Ticks</MenuItem></Select></FormControl></Grid>
+                   <Grid size={{ xs: 4 }}><FormControl fullWidth size="small" sx={{ bgcolor: 'white' }}><InputLabel>Temperament</InputLabel><Select value={groomingData.temperament} label="Temperament" onChange={(e) => updateGrooming('temperament', e.target.value)}><MenuItem value="Calm">Calm</MenuItem><MenuItem value="Anxious">Anxious</MenuItem><MenuItem value="Aggressive">Aggressive</MenuItem></Select></FormControl></Grid>
+               </Grid>
+
                <TextField 
-                 multiline rows={8} fullWidth 
-                 placeholder="e.g. Summer cut. Dog was anxious during nail trim." 
+                 multiline rows={10} fullWidth 
+                 label="Detailed Grooming Notes"
+                 placeholder="e.g. Summer cut. Dog was anxious during nail trim. Ears cleaned and plucked." 
                  value={groomingData.notes} 
                  onChange={(e) => updateGrooming('notes', e.target.value)} 
+                 sx={{ bgcolor: 'white', borderRadius: 2, '& fieldset': { borderColor: '#E0E0E0' } }}
                />
-             </Paper>
+             </Box>
            ) : (
              <Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-                    <Typography variant="h5" fontWeight="bold" color="#1565C0">S.O.A.P. Documentation</Typography>
-                    <Chip label="Routine Vaccine Template" onClick={() => applyTemplate('vaccine')} color="primary" variant="outlined" clickable size="small" />
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="h5" fontWeight="900" color="#3E2723">S.O.A.P. Charting</Typography>
+                    <Chip label="Routine Vaccine Template" onClick={() => applyTemplate('vaccine')} color="primary" variant="outlined" clickable size="small" sx={{ fontWeight: 'bold' }} />
                 </Box>
                 
                 {/* S - SUBJECTIVE */}
-                <Paper sx={{ p: 3, mb: 3, borderLeft: '4px solid #1976D2' }}>
-                  <Typography variant="subtitle1" color="primary" fontWeight="bold" gutterBottom>S - SUBJECTIVE (History)</Typography>
-                  <TextField multiline rows={3} fullWidth placeholder="What does the owner report?" value={soapData.subjective} onChange={(e) => updateSoap('subjective', e.target.value)} />
-                </Paper>
+                <Box sx={{ mb: 4 }}>
+                  <Typography variant="subtitle2" color="#1565C0" fontWeight="900" gutterBottom>S - SUBJECTIVE (History)</Typography>
+                  <TextField multiline rows={3} fullWidth placeholder="What does the owner report? What are the symptoms?" value={soapData.subjective} onChange={(e) => updateSoap('subjective', e.target.value)} sx={{ bgcolor: 'white', borderRadius: 1 }} />
+                </Box>
 
                 {/* O - OBJECTIVE */}
-                <Paper sx={{ p: 3, mb: 3, borderLeft: '4px solid #1976D2' }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                    <Typography variant="subtitle1" color="primary" fontWeight="bold">O - OBJECTIVE (Vitals & Exam)</Typography>
-                    <Button size="small" variant="outlined" onClick={() => applyTemplate('wnl')}>Auto-Fill WNL</Button>
+                <Box sx={{ mb: 2 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                    <Typography variant="subtitle2" color="#1565C0" fontWeight="900">O - OBJECTIVE (Vitals & Exam)</Typography>
+                    <Button size="small" variant="outlined" onClick={() => applyTemplate('wnl')} sx={{ fontWeight: 'bold', fontSize: '0.7rem' }}>Auto-Fill WNL</Button>
                   </Box>
                   
-                  <Grid container spacing={2} sx={{ mb: 3 }}>
-                    <Grid size={{ xs: 3 }}><TextField label="Wt (kg)" size="small" fullWidth value={soapData.objWeight} onChange={(e) => updateSoap('objWeight', e.target.value)} />{weightDelta && ( <Typography variant="caption" sx={{ color: parseFloat(weightDelta) <= -5.0 ? '#D32F2F' : '#388E3C', fontWeight: 'bold', mt: 0.5, display: 'block' }}>{weightDelta}% vs last visit</Typography> )}</Grid>
-                    <Grid size={{ xs: 3 }}><TextField label="Temp (°C)" size="small" fullWidth value={soapData.objTemp} onChange={(e) => updateSoap('objTemp', e.target.value)} error={parseFloat(soapData.objTemp) > 39.2} /></Grid>
-                    <Grid size={{ xs: 3 }}><TextField label="HR (bpm)" size="small" fullWidth value={soapData.objHR} onChange={(e) => updateSoap('objHR', e.target.value)} /></Grid>
-                    <Grid size={{ xs: 3 }}><TextField label="RR (rpm)" size="small" fullWidth value={soapData.objRR} onChange={(e) => updateSoap('objRR', e.target.value)} /></Grid>
-                    <Grid size={{ xs: 4 }}><TextField label="CRT (sec)" size="small" fullWidth value={soapData.objCRT} onChange={(e) => updateSoap('objCRT', e.target.value)} /></Grid>
-                    <Grid size={{ xs: 4 }}><TextField label="BCS (1-9)" size="small" fullWidth value={soapData.objBCS} onChange={(e) => updateSoap('objBCS', e.target.value)} /></Grid>
-                    <Grid size={{ xs: 4 }}><TextField label="Pain (0-4)" size="small" fullWidth value={soapData.objPain} onChange={(e) => updateSoap('objPain', e.target.value)} /></Grid>
-                  </Grid>
+                  <Paper variant="outlined" sx={{ p: 2, bgcolor: 'white', borderRadius: 2, mb: 2 }}>
+                    <Grid container spacing={2}>
+                      <Grid size={{ xs: 3 }}>
+                        <TextField label="Wt (kg)" size="small" fullWidth value={soapData.objWeight} onChange={(e) => updateSoap('objWeight', e.target.value)} />
+                        {weightDelta && ( 
+                          <Typography variant="caption" sx={{ color: parseFloat(weightDelta) <= -5.0 ? '#D32F2F' : '#388E3C', fontWeight: '900', mt: 0.5, display: 'block' }}>
+                            {parseFloat(weightDelta) > 0 ? '+' : ''}{weightDelta}% vs last visit
+                          </Typography> 
+                        )}
+                      </Grid>
+                      <Grid size={{ xs: 3 }}><TextField label="Temp (°C)" size="small" fullWidth value={soapData.objTemp} onChange={(e) => updateSoap('objTemp', e.target.value)} error={parseFloat(soapData.objTemp) > 39.2} /></Grid>
+                      <Grid size={{ xs: 3 }}><TextField label="HR (bpm)" size="small" fullWidth value={soapData.objHR} onChange={(e) => updateSoap('objHR', e.target.value)} /></Grid>
+                      <Grid size={{ xs: 3 }}><TextField label="RR (rpm)" size="small" fullWidth value={soapData.objRR} onChange={(e) => updateSoap('objRR', e.target.value)} /></Grid>
+                      <Grid size={{ xs: 4 }}><TextField label="CRT (sec)" size="small" fullWidth value={soapData.objCRT} onChange={(e) => updateSoap('objCRT', e.target.value)} /></Grid>
+                      <Grid size={{ xs: 4 }}><TextField label="BCS (1-9)" size="small" fullWidth value={soapData.objBCS} onChange={(e) => updateSoap('objBCS', e.target.value)} /></Grid>
+                      <Grid size={{ xs: 4 }}><TextField label="Pain (0-4)" size="small" fullWidth value={soapData.objPain} onChange={(e) => updateSoap('objPain', e.target.value)} /></Grid>
+                    </Grid>
+                  </Paper>
 
-                  <TextField multiline rows={4} fullWidth placeholder="Physical exam findings (e.g. MM pink, lungs clear)..." value={soapData.objectiveNotes} onChange={(e) => updateSoap('objectiveNotes', e.target.value)} />
-                  
-                  <Button variant="contained" fullWidth sx={{ mt: 3, fontWeight: 'bold', bgcolor: '#E3F2FD', color: '#1565C0', elevation: 0 }} onClick={runAssistiveDiagnosis} startIcon={<AutoFixHighIcon/>}>Run Clinical Support Check</Button>
-                  {assistiveText !== '' && ( <Box sx={{ mt: 2, p: 2, bgcolor: '#FFF', borderRadius: 1, border: '1px solid #90CAF9' }}><Typography variant="caption" fontWeight="bold" color="primary">System Suggestion:</Typography><Typography variant="body2" sx={{ mt: 0.5 }}>{assistiveText}</Typography></Box> )}
-                </Paper>
+                  <TextField multiline rows={4} fullWidth placeholder="Physical exam findings (e.g. MM pink, lungs clear, palpable mass)..." value={soapData.objectiveNotes} onChange={(e) => updateSoap('objectiveNotes', e.target.value)} sx={{ bgcolor: 'white', borderRadius: 1 }} />
+                </Box>
+
+                {/* THE UX FIX: Assistive AI Placement */}
+                <Box sx={{ display: 'flex', justifyContent: 'center', my: 3 }}>
+                    <Button 
+                      variant="contained" 
+                      onClick={runAssistiveDiagnosis} 
+                      startIcon={<AutoFixHighIcon/>}
+                      sx={{ bgcolor: '#E3F2FD', color: '#1565C0', fontWeight: '900', borderRadius: 20, px: 4, boxShadow: 0, border: '1px solid #BBDEFB', '&:hover': { bgcolor: '#BBDEFB', boxShadow: 0 } }}
+                    >
+                      Run Clinical Support Check (Beta)
+                    </Button>
+                </Box>
+                
+                {assistiveText !== '' && ( 
+                  <Paper variant="outlined" sx={{ mb: 4, p: 2, bgcolor: '#F1F8E9', borderRadius: 2, border: '1px solid #A5D6A7' }}>
+                    <Typography variant="caption" fontWeight="900" color="#2E7D32" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <LocalHospitalIcon fontSize="small" /> AI Differential Suggestion
+                    </Typography>
+                    <Typography variant="body2" color="#333" sx={{ mt: 0.5 }}>{assistiveText}</Typography>
+                  </Paper> 
+                )}
 
                 {/* A - ASSESSMENT */}
-                <Paper sx={{ p: 3, mb: 3, borderLeft: '4px solid #2E7D32' }}>
-                  <Typography variant="subtitle1" color="success.main" fontWeight="bold" gutterBottom>A - ASSESSMENT (Diagnosis)</Typography>
+                <Box sx={{ mb: 4 }}>
+                  <Typography variant="subtitle2" color="#2E7D32" fontWeight="900" gutterBottom>A - ASSESSMENT (Diagnosis)</Typography>
                   <Grid container spacing={2}>
-                      <Grid size={{ xs: 8 }}><TextField fullWidth label="Definitive or Differential Diagnosis" size="small" value={soapData.assessment} onChange={(e) => updateSoap('assessment', e.target.value)} /></Grid>
-                      <Grid size={{ xs: 4 }}><FormControl fullWidth size="small"><InputLabel>Patient Status</InputLabel><Select value={soapData.patientStatus} label="Patient Status" onChange={(e) => updateSoap('patientStatus', e.target.value)}><MenuItem value="Stable">🟢 Stable</MenuItem><MenuItem value="Guarded">🟡 Guarded</MenuItem><MenuItem value="Critical">🔴 Critical</MenuItem></Select></FormControl></Grid>
+                      <Grid size={{ xs: 8 }}><TextField fullWidth label="Definitive or Differential Diagnosis" size="small" value={soapData.assessment} onChange={(e) => updateSoap('assessment', e.target.value)} sx={{ bgcolor: 'white' }}/></Grid>
+                      <Grid size={{ xs: 4 }}>
+                        <FormControl fullWidth size="small" sx={{ bgcolor: 'white' }}>
+                          <InputLabel>Patient Status</InputLabel>
+                          <Select value={soapData.patientStatus} label="Patient Status" onChange={(e) => updateSoap('patientStatus', e.target.value)}>
+                            <MenuItem value="Stable"><Typography fontWeight="bold" color="#2E7D32">🟢 Stable</Typography></MenuItem>
+                            <MenuItem value="Guarded"><Typography fontWeight="bold" color="#F57C00">🟡 Guarded</Typography></MenuItem>
+                            <MenuItem value="Critical"><Typography fontWeight="bold" color="#D32F2F">🔴 Critical</Typography></MenuItem>
+                          </Select>
+                        </FormControl>
+                      </Grid>
                   </Grid>
-                </Paper>
+                </Box>
 
                 {/* P - PLAN */}
-                <Paper sx={{ p: 3, borderLeft: '4px solid #2E7D32' }}>
-                  <Typography variant="subtitle1" color="success.main" fontWeight="bold" gutterBottom>P - PLAN (Treatment)</Typography>
-                  <TextField multiline rows={4} fullWidth placeholder="Medical procedures performed, internal instructions..." value={soapData.plan} onChange={(e) => updateSoap('plan', e.target.value)} />
-                </Paper>
+                <Box>
+                  <Typography variant="subtitle2" color="#2E7D32" fontWeight="900" gutterBottom>P - PLAN (Treatment)</Typography>
+                  <TextField multiline rows={4} fullWidth placeholder="Medical procedures performed, surgeries, internal instructions..." value={soapData.plan} onChange={(e) => updateSoap('plan', e.target.value)} sx={{ bgcolor: 'white', borderRadius: 1 }} />
+                </Box>
              </Box>
            )}
-        </Box>
+        </Paper>
 
         {/* ================================================================= */}
-        {/* COLUMN 3: ACTION CENTER & PRESCRIBE (25% WIDTH) */}
+        {/* COLUMN 3: TREATMENT PLAN & E-PRESCRIBE */}
         {/* ================================================================= */}
-        <Box sx={{ width: '25%', minWidth: '320px', bgcolor: 'white', borderLeft: '1px solid #ddd', p: 3, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+        <Paper elevation={0} sx={{ ...glassStyle, width: '25%', minWidth: '320px', p: 3, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
             
-            <Typography variant="overline" fontWeight="bold" color="textSecondary" sx={{ mb: 1, display: 'block' }}>Smart Cart (E-Prescribe)</Typography>
+            <Typography variant="h6" fontWeight="900" color="#3E2723" sx={{ mb: 0.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <ReceiptLongIcon /> Treatment Plan
+            </Typography>
+            <Typography variant="caption" color="textSecondary" sx={{ mb: 2, display: 'block', fontWeight: '600' }}>Add services & prescribe medications.</Typography>
             
-            <Paper variant="outlined" sx={{ bgcolor: '#FAFAFA', p: 2, borderRadius: 2, flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
-                <Box sx={{display:'flex', gap:1, mb: 2}}>
-                    <FormControl size="small" fullWidth><InputLabel>Search Inventory/Services</InputLabel><Select value={selectedRxItem} label="Search Inventory/Services" onChange={e=>setSelectedRxItem(e.target.value)}><ListSubheader sx={{fontWeight:'bold', bgcolor:'#f5f5f5'}}>Medicines & Vaccines</ListSubheader>{inventoryList.filter(i => i.category === 'Medicine' || i.category === 'Vaccine').map(i => <MenuItem key={`product|${i.id}`} value={`product|${i.id}`}>{i.itemName} (Stock: {i.stock})</MenuItem>)}<ListSubheader sx={{fontWeight:'bold', bgcolor:'#f5f5f5'}}>Clinic Services</ListSubheader>{servicesList.filter(s => s.name !== patient?.serviceType).map(s => <MenuItem key={`service|${s.id}`} value={`service|${s.id}`}>{s.name} (+₱{s.price})</MenuItem>)}</Select></FormControl>
-                    <Button variant="contained" color="primary" onClick={handleAddRx} sx={{minWidth: 'auto', px: 2}}>+</Button>
-                </Box>
+            <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+                <FormControl size="small" fullWidth sx={{ bgcolor: 'white', borderRadius: 1 }}>
+                  <InputLabel>Search Inventory / Services</InputLabel>
+                  <Select value={selectedRxItem} label="Search Inventory / Services" onChange={e=>setSelectedRxItem(e.target.value)}>
+                    <ListSubheader sx={{fontWeight:'bold', bgcolor:'#EFEBE9', color: '#5D4037'}}>Medicines & Vaccines</ListSubheader>
+                    {inventoryList.filter(i => i.category === 'Medicine' || i.category === 'Vaccine').map(i => <MenuItem key={`product|${i.id}`} value={`product|${i.id}`}>{i.itemName} (Stock: {i.stock})</MenuItem>)}
+                    
+                    <ListSubheader sx={{fontWeight:'bold', bgcolor:'#EFEBE9', color: '#5D4037'}}>Clinic Services (Add-ons)</ListSubheader>
+                    {servicesList.filter(s => s.name !== patient?.serviceType).map(s => <MenuItem key={`service|${s.id}`} value={`service|${s.id}`}>{s.name} (+₱{s.price})</MenuItem>)}
+                  </Select>
+                </FormControl>
+                <Button variant="contained" color="primary" onClick={handleAddRx} sx={{ minWidth: 'auto', px: 2, bgcolor: '#8B4513' }}><AddCircleIcon/></Button>
+            </Box>
 
-                <Box sx={{display:'flex', flexDirection:'column', gap: 1, overflowY: 'auto', flexGrow: 1}}>
-                    {rxCart.map((rx, idx) => (
-                        <Box key={idx} sx={{ display: 'flex', flexDirection: 'column', bgcolor: rx.isBase ? '#E3F2FD' : 'white', p: 1.5, borderRadius: 1, border: '1px solid #eee', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <Typography variant="body2" fontWeight="bold" color={rx.isDrug ? "warning.dark" : "info.main"}>
-                              {rx.isDrug ? <MedicationIcon sx={{fontSize:16, verticalAlign:'middle', mr: 0.5}}/> : null} 
-                              {rx.name} (₱{rx.price})
-                            </Typography>
-                            <IconButton size="small" color="error" disabled={rx.isBase} onClick={()=>handleRemoveRx(idx)}>
-                              <CloseIcon fontSize="small" sx={{opacity: rx.isBase ? 0.3 : 1}}/>
-                            </IconButton>
-                          </Box>
-                          
-                          {rx.isDrug && (
-                            <TextField 
-                              variant="standard" placeholder="Dosage instructions (Sig)..." size="small" 
-                              value={rx.instructions || ''} onChange={(e) => handleUpdateRxSig(idx, e.target.value)}
-                              sx={{ mt: 1 }} InputProps={{ style: { fontSize: '0.85rem', fontStyle: 'italic' } }}
-                            />
-                          )}
-                        </Box>
-                    ))}
-                </Box>
-            </Paper>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, overflowY: 'auto', flexGrow: 1, mb: 2, pr: 1 }}>
+                {rxCart.map((rx, idx) => (
+                    <Box key={idx} sx={{ display: 'flex', flexDirection: 'column', bgcolor: rx.isBase ? '#E3F2FD' : 'white', p: 1.5, borderRadius: 2, border: '1px solid', borderColor: rx.isBase ? '#90CAF9' : '#E0E0E0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="body2" fontWeight="800" color={rx.isDrug ? "#D84315" : "#1565C0"} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          {rx.isDrug && <MedicationIcon sx={{ fontSize: 16 }}/>} 
+                          {rx.name}
+                        </Typography>
+                        <IconButton size="small" color="error" disabled={rx.isBase || rx.isAutoBundled} onClick={()=>handleRemoveRx(idx)} sx={{ p: 0.5 }}>
+                          <CloseIcon fontSize="small" sx={{opacity: (rx.isBase || rx.isAutoBundled) ? 0.3 : 1}}/>
+                        </IconButton>
+                      </Box>
+                      <Typography variant="caption" color="textSecondary" fontWeight="bold">₱{rx.price}</Typography>
+                      
+                      {rx.isBase && <Chip label="Base Service" size="small" sx={{ mt: 1, height: 18, fontSize: '0.6rem', fontWeight: 'bold', alignSelf: 'flex-start', bgcolor: '#1976D2', color: 'white' }} />}
+                      {rx.isAutoBundled && <Chip label="Auto-Bundled Supply" size="small" sx={{ mt: 1, height: 18, fontSize: '0.6rem', fontWeight: 'bold', alignSelf: 'flex-start', bgcolor: '#757575', color: 'white' }} />}
+                      
+                      {rx.isDrug && (
+                        <TextField 
+                          variant="standard" placeholder="Dosage (e.g. 1 tab PO BID x 7 days)" size="small" 
+                          value={rx.instructions || ''} onChange={(e) => handleUpdateRxSig(idx, e.target.value)}
+                          sx={{ mt: 1.5 }} InputProps={{ style: { fontSize: '0.85rem', fontStyle: 'italic', color: '#555', fontWeight: '600' } }}
+                        />
+                      )}
+                    </Box>
+                ))}
+            </Box>
 
-            <Box sx={{ mt: 3, pt: 3, borderTop: '1px solid #eee' }}>
-                <TextField type="date" label="Next Follow-up Visit (Optional)" fullWidth size="small" InputLabelProps={{ shrink: true }} sx={{mb: 2}} value={soapData.nextVisit} onChange={(e) => updateSoap('nextVisit', e.target.value)} />
+            <Box sx={{ pt: 2, borderTop: '2px dashed #E0E0E0' }}>
+                <TextField type="date" label="Next Follow-up Visit (Optional)" fullWidth size="small" InputLabelProps={{ shrink: true }} sx={{mb: 2, bgcolor: 'white', borderRadius: 1}} value={soapData.nextVisit} onChange={(e) => updateSoap('nextVisit', e.target.value)} />
                 <Button 
                   variant="contained" fullWidth size="large" 
                   color={hasDrugsInCart ? "warning" : "success"}
-                  sx={{ fontWeight: 'bold', py: 1.5, fontSize: '1rem' }} 
+                  startIcon={<SaveIcon />}
+                  sx={{ fontWeight: '900', py: 1.5, fontSize: '0.95rem', boxShadow: 3 }} 
                   onClick={handleSaveConsult} disabled={loading}
                 >
-                  {loading ? "Saving..." : saveBtnText}
+                  {loading ? "Processing..." : saveBtnText}
                 </Button>
             </Box>
-        </Box>
+        </Paper>
       </Box>
     </Dialog>
   );

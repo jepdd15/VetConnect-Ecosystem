@@ -109,7 +109,7 @@ export default function Services() {
 
       {open && (
         <ServiceFormModal 
-          key={selectedItem?.id || 'new-service'} 
+          key={selectedItem?.id || 'new-service'}
           open={open} 
           onClose={() => setOpen(false)} 
           item={selectedItem} 

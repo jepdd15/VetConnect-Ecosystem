@@ -1,180 +1,79 @@
-// Business intelligence visualization, general ledgers, and the TV-friendly waiting room display.
-
 import React, { useEffect, useState } from 'react';
 import { DataGrid } from '@mui/x-data-grid';
 import { 
-  Box, Typography, Paper, Button, Dialog, DialogTitle, 
-  DialogContent, DialogActions, TextField, MenuItem, IconButton, Tooltip 
+  Box, Typography, Paper, IconButton, Dialog, DialogTitle, DialogContent, 
+  DialogActions, Button, TextField, InputAdornment, MenuItem, Alert
 } from '@mui/material';
-import { collection, onSnapshot, addDoc, doc, deleteDoc, orderBy, query, Timestamp } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, addDoc, deleteDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 
-// Icons
+import MoneyOffIcon from '@mui/icons-material/MoneyOff';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
-import MoneyOffIcon from '@mui/icons-material/MoneyOff'; // Icon for Expenses
 
 export default function Expenses() {
-  const [rows, setRows] = useState([]);
-  const [open, setOpen] = useState(false);
-  
-  // Form State
-  const [description, setDescription] = useState('');
-  const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState('Utilities');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]); // Default Today
+  const [expenses, setExpenses] = useState([]);
+  const[open, setOpen] = useState(false);
+  const [formData, setFormData] = useState({ category: 'Utilities', description: '', amount: '' });
 
-  // 1. Fetch Expenses
+  const glassStyle = {
+    background: 'rgba(255, 255, 255, 0.55)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', 
+    border: '1px solid rgba(255, 255, 255, 0.8)', boxShadow: '0 8px 32px 0 rgba(139, 69, 19, 0.08)', borderRadius: 3, 
+  };
+
   useEffect(() => {
     const q = query(collection(db, "expenses"), orderBy("date", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        // Convert Timestamp if needed, or use stored string date
-        displayDate: doc.data().date instanceof Timestamp ? doc.data().date.toDate().toLocaleDateString() : doc.data().date
-      }));
-      setRows(list);
+      setExpenses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), displayDate: doc.data().date?.toDate().toLocaleString() })));
     });
     return () => unsubscribe();
-  }, []);
+  },[]);
 
-  // 2. Add Expense
-  const handleSubmit = async () => {
-    if (!description || !amount) return alert("Please fill all fields");
-
+  const handleSave = async () => {
+    if (!formData.description || !formData.amount) return alert("Description and Amount are required.");
     try {
-      await addDoc(collection(db, "expenses"), {
-        description,
-        category,
-        amount: parseFloat(amount),
-        date: date, // Saving as string YYYY-MM-DD for simple sorting/filtering later
-        createdAt: Timestamp.now(),
-        user: "Admin"
-      });
-      setOpen(false);
-      // Reset form
-      setDescription('');
-      setAmount('');
-      setCategory('Utilities');
-    } catch (error) {
-      alert("Error adding expense: " + error.message);
-    }
+      await addDoc(collection(db, "expenses"), { ...formData, amount: parseFloat(formData.amount), date: Timestamp.now(), loggedBy: "Admin" });
+      setOpen(false); setFormData({ category: 'Utilities', description: '', amount: '' });
+    } catch (error) { alert("Error: " + error.message); }
   };
 
-  // 3. Delete Expense
   const handleDelete = async (id) => {
-    if(confirm("Are you sure you want to delete this record?")) {
-      await deleteDoc(doc(db, "expenses", id));
-    }
+    if (window.confirm("Delete this expense record?")) await deleteDoc(doc(db, "expenses", id));
   };
 
-  // Columns
-  const columns = [
-    { field: 'displayDate', headerName: 'Date', width: 150 },
-    { field: 'description', headerName: 'Description', flex: 1, minWidth: 200, fontWeight: 'bold' },
-    { 
-      field: 'category', headerName: 'Category', width: 150,
-      renderCell: (params) => (
-        <Box sx={{ 
-            bgcolor: '#EFEBE9', color: '#5D4037', px: 1, borderRadius: 1, fontSize: '0.8rem', fontWeight: 'bold' 
-        }}>
-            {params.value.toUpperCase()}
-        </Box>
-      )
-    },
-    { 
-      field: 'amount', headerName: 'Amount', width: 150,
-      renderCell: (params) => (
-        <Typography color="error" fontWeight="bold">- ₱{params.value.toLocaleString()}</Typography>
-      )
-    },
-    {
-      field: 'actions', headerName: 'Actions', width: 100,
-      renderCell: (params) => (
-        <IconButton color="error" onClick={() => handleDelete(params.row.id)}>
-          <DeleteIcon />
-        </IconButton>
-      )
-    }
+  const columns =[
+    { field: 'displayDate', headerName: 'Date Logged', width: 200 },
+    { field: 'category', headerName: 'Category', width: 150, renderCell: p => <Typography fontWeight="bold" color="textSecondary">{p.value}</Typography> },
+    { field: 'description', headerName: 'Description', flex: 1 },
+    { field: 'amount', headerName: 'Amount', width: 120, renderCell: p => <Typography fontWeight="900" color="#D32F2F">- ₱{p.value.toFixed(2)}</Typography> },
+    { field: 'actions', headerName: '', width: 60, renderCell: p => <IconButton color="error" onClick={() => handleDelete(p.row.id)}><DeleteIcon fontSize="small"/></IconButton> }
   ];
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-        <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#1565C0' }}>
-          Operational Expenses
-        </Typography>
-        <Button 
-          variant="contained" 
-          startIcon={<AddIcon />} 
-          color="error"
-          onClick={() => setOpen(true)}
-        >
-          Record Expense
-        </Button>
-      </Box>
-
-      <Paper sx={{ height: 600, width: '100%', boxShadow: 3 }}>
-        <DataGrid 
-          rows={rows} 
-          columns={columns} 
-          pageSize={10} 
-          disableSelectionOnClick 
-          sx={{ '& .MuiDataGrid-columnHeaders': { bgcolor: '#f5f5f5', fontWeight: 'bold' } }}
-        />
+      <Paper sx={{ ...glassStyle, p: 2, mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <MoneyOffIcon sx={{ fontSize: 35, color: '#D32F2F' }} />
+          <Typography variant="h4" sx={{ fontWeight: '900', color: '#5D4037', textShadow: '0px 1px 2px rgba(255,255,255,0.8)' }}>Operational Expenses</Typography>
+        </Box>
+        <Button variant="contained" color="error" startIcon={<AddIcon />} onClick={() => setOpen(true)} sx={{ fontWeight: 'bold', px: 3 }}>Log Expense</Button>
       </Paper>
 
-      {/* ADD EXPENSE MODAL */}
-      <Dialog open={open} onClose={() => setOpen(false)}>
-        <DialogTitle sx={{color: '#D32F2F', fontWeight: 'bold'}}>Record New Expense</DialogTitle>
-        <DialogContent>
-          <TextField
-            margin="dense"
-            label="Date"
-            type="date"
-            fullWidth
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
-          <TextField
-            autoFocus
-            margin="dense"
-            label="Description (e.g. Meralco Bill)"
-            fullWidth
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-          <TextField
-            margin="dense"
-            select
-            label="Category"
-            fullWidth
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-          >
-            {['Utilities', 'Rent', 'Payroll', 'Supplies', 'Maintenance', 'Marketing', 'Taxes', 'Other'].map((option) => (
-              <MenuItem key={option} value={option}>
-                {option}
-              </MenuItem>
-            ))}
+      <Paper sx={{ ...glassStyle, height: 'calc(100vh - 190px)', minHeight: 400, width: '100%', overflow: 'hidden' }}>
+        <DataGrid rows={expenses} columns={columns} disableSelectionOnClick initialState={{ pagination: { paginationModel: { pageSize: 25 } } }} pageSizeOptions={[10, 25, 50]} sx={{ border: 'none', bgcolor: 'transparent', '& .MuiDataGrid-columnHeaders': { bgcolor: 'rgba(255, 255, 255, 0.4)', color: '#5D4037', fontWeight: 'bold' } }} />
+      </Paper>
+
+      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ bgcolor: '#D32F2F', color: 'white', fontWeight: 'bold' }}>Log Cash Disbursement</DialogTitle>
+        <DialogContent sx={{ p: 3, bgcolor: '#FAFAFA' }}>
+          <Alert severity="info" sx={{ mb: 3, fontWeight: 'bold' }}>Recorded expenses are deducted from Gross Profit calculations on the Dashboard.</Alert>
+          <TextField select label="Category" fullWidth size="small" sx={{ mb: 2, bgcolor: 'white' }} value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
+            {['Utilities', 'Payroll', 'Supplies', 'Maintenance', 'Refunds', 'Other'].map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
           </TextField>
-          <TextField
-            margin="dense"
-            label="Amount (₱)"
-            type="number"
-            fullWidth
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            sx={{ input: { color: '#D32F2F', fontWeight: 'bold' } }}
-          />
+          <TextField label="Description" fullWidth size="small" sx={{ mb: 2, bgcolor: 'white' }} value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="e.g. Meralco Bill" />
+          <TextField label="Amount" type="number" fullWidth size="small" sx={{ bgcolor: 'white' }} value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} InputProps={{ startAdornment: <InputAdornment position="start">₱</InputAdornment> }} />
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={handleSubmit} variant="contained" color="error">
-            Record
-          </Button>
-        </DialogActions>
+        <DialogActions sx={{ p: 2 }}><Button onClick={() => setOpen(false)}>Cancel</Button><Button onClick={handleSave} variant="contained" color="error" sx={{ fontWeight: 'bold' }}>Save Record</Button></DialogActions>
       </Dialog>
     </Box>
   );

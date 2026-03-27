@@ -8,11 +8,12 @@ import {
 
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import WarningIcon from '@mui/icons-material/Warning';
+import CircleIcon from '@mui/icons-material/Circle';
 
 import { collection, doc, getDoc, Timestamp, query, where, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 
-export default function WalkInModal({ open, onClose, servicesList }) {
+export default function WalkInModal({ open, onClose, servicesList, departments }) {
   const [loading, setLoading] = useState(false);
   const[walkInType, setWalkInType] = useState('existing'); 
   
@@ -149,9 +150,11 @@ export default function WalkInModal({ open, onClose, servicesList }) {
         petSpecies: finalPetSpecies,
         serviceType: service, 
         servicePrice: selectedServiceObj?.price || 0, 
-        requiredRole: selectedServiceObj?.requiredRole || 'veterinarian',
+        // THE FIX: Save the new 'department' field for perfect routing!
+        serviceCategory: selectedServiceObj?.department || selectedServiceObj?.category || 'General',
+        requiredRole: selectedServiceObj?.department || selectedServiceObj?.requiredRole || 'veterinarian',
         status: 'arrived', 
-        queueNumber: newNumber, 
+        queueNumber: newNumber,  
         ticketPrefix: isEmergency ? 'E' : 'W', 
         priority: isEmergency ? 'high' : 'normal', 
         scheduledDate: Timestamp.now(), 
@@ -235,7 +238,20 @@ export default function WalkInModal({ open, onClose, servicesList }) {
             <FormControl fullWidth size="small" sx={{ mt: 2, mb: 2 }}>
                 <InputLabel>Service</InputLabel>
                 <Select value={service} label="Service" onChange={e => setService(e.target.value)}>
-                    {(servicesList ||[]).map(s => <MenuItem key={s.id} value={s.name}>{s.name} (₱{s.price})</MenuItem>)}
+                    {/* THE FIX: Now renders with colored dots! */}
+                    {(servicesList ||[]).map((s) => {
+                      const deptName = s.department || s.category || 'General';
+                      const deptObj = (departments ||[]).find(d => d.name === deptName);
+                      const badgeColor = deptObj ? deptObj.color : '#616161';
+                      return (
+                        <MenuItem key={s.id} value={s.name}>
+                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                              <CircleIcon sx={{ color: badgeColor, fontSize: 16 }} />
+                              <Typography variant="body2" fontWeight="bold">{s.name} (₱{s.price})</Typography>
+                            </Box>
+                        </MenuItem>
+                      );
+                    })}
                     <Divider />
                     <MenuItem value="Emergency" sx={{color:'red', fontWeight: 'bold'}}><WarningIcon fontSize="small" sx={{mr:1}}/> EMERGENCY</MenuItem>
                 </Select>

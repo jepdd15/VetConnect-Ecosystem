@@ -16,7 +16,7 @@ import Patients from './features/Patients/Patients';
 import Services from './features/Services/Services';
 import Inventory from './features/Inventory/Inventory';
 import Staff from './features/Staff/Staff';
-import Sales from './pages/Sales';       
+import Sales from './features/Sales/Sales';      
 import Expenses from './pages/Expenses'; 
 import Monitor from './pages/Monitor';   
 import Settings from './pages/Settings';

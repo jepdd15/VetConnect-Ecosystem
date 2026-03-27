@@ -124,7 +124,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                 arrow: { sx: { color: '#3E2723' } }
               }}
             >
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, bgcolor: '#FFF3E0', p: 1, borderRadius: 1, borderLeft: '3px solid #FF9800', cursor: 'help' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, bgcolor: '#FFF3E0', p: 1, borderRadius: 1, borderLeft: '3px solid #FF9800', cursor: 'help', width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}>
                 <WarningIcon sx={{ fontSize: 14, color: '#E65100', flexShrink: 0 }} />
                 <Typography 
                   variant="caption" 

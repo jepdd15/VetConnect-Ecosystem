@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Dialog, DialogTitle, DialogContent, DialogActions, 
-  Button, Box, Typography, Paper, Chip, Avatar, Alert, Divider, Stack
+  Button, Box, Typography, Paper, Chip, Avatar, Alert, 
+  Divider, Stack, Popover, List, ListItem // Added Popover, List, ListItem
 } from '@mui/material';
 
+// Icons
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import StarIcon from '@mui/icons-material/Star';
@@ -13,10 +15,62 @@ import PersonOffIcon from '@mui/icons-material/PersonOff';
 import { doc, runTransaction, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 
-export default function AssignStaffModal({ open, onClose, patient, vetsList, activeAppointments }) {
+// A dedicated sub-component for ultimate code cleanliness!
+const SkillChips = ({ departments, allDepts, onClickMore }) => {
+  if (!departments || departments.length === 0) {
+    return <Typography variant="caption" fontStyle="italic">No departments assigned</Typography>;
+  }
+
+  const MAX_VISIBLE = 3;
+  const visibleSkills = departments.slice(0, MAX_VISIBLE);
+  const hiddenSkills = departments.slice(MAX_VISIBLE);
+
+  return (
+    <Box sx={{ mt: 0.5, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+      {visibleSkills.map(deptName => {
+        const deptObj = (allDepts || []).find(d => d.name === deptName);
+        const chipColor = deptObj ? deptObj.color : '#616161';
+        return (
+          <Chip 
+            key={deptName} label={deptName} size="small"
+            sx={{ color: 'white', bgcolor: chipColor, fontWeight: 'bold', fontSize: '0.6rem', height: 18 }} 
+          />
+        );
+      })}
+      {hiddenSkills.length > 0 && (
+        <Chip 
+          label={`+${hiddenSkills.length}`}
+          size="small"
+          onClick={(e) => { e.stopPropagation(); onClickMore(e, hiddenSkills); }} // Stop propagation to prevent card click
+          sx={{ 
+            color: '#555', bgcolor: '#E0E0E0', fontWeight: 'bold', 
+            fontSize: '0.6rem', height: 18, cursor: 'pointer',
+            '&:hover': { bgcolor: '#BDBDBD' }
+          }} 
+        />
+      )}
+    </Box>
+  );
+};
+
+export default function AssignStaffModal({ open, onClose, patient, vetsList, activeAppointments, departments }) {
   const [selectedVet, setSelectedVet] = useState(null); 
   const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
+  const[errorMsg, setErrorMsg] = useState('');
+
+  // --- NEW: POPOVER STATE & HANDLERS ---
+  const [popoverAnchorEl, setPopoverAnchorEl] = useState(null);
+  const [popoverSkills, setPopoverSkills] = useState([]);
+
+  const handleSkillsPopoverOpen = (event, skills) => {
+    setPopoverAnchorEl(event.currentTarget);
+    setPopoverSkills(skills);
+  };
+
+  const handleSkillsPopoverClose = () => {
+    setPopoverAnchorEl(null);
+    setPopoverSkills([]);
+  };
 
   useEffect(() => {
     if (open && patient) {
@@ -39,7 +93,7 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
     if (!patient) return;
     
     if (!isUnassigning && !selectedVet) {
-        setErrorMsg("Please select a staff member, or click 'Send to Waiting Room'.");
+        setErrorMsg("Please select a staff member, or click 'Unassign'.");
         return;
     }
 
@@ -90,6 +144,8 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
 
   const isCheckIn = patient.status === 'confirmed';
   const targetCategory = patient.serviceCategory || 'Consultation';
+  const deptObj = (departments ||[]).find(d => d.name === targetCategory);
+  const badgeColor = deptObj ? deptObj.color : '#616161';
 
   const recommendedStaff = [];
   const otherStaff =[];
@@ -110,7 +166,7 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
 
     return (
       <Paper 
-        elevation={isSelected ? 2 : 0}
+        elevation={isSelected ? 4 : 0}
         onClick={() => setSelectedVet(v)}
         sx={{ 
             p: 2, mb: 1.5, display: 'flex', alignItems: 'center', gap: 2, cursor: 'pointer',
@@ -129,9 +185,8 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
             <Typography variant="subtitle1" fontWeight="bold" color={isSelected ? '#2E7D32' : '#333'} sx={{ lineHeight: 1.2 }}>
                 {v.fullName}
             </Typography>
-            <Typography variant="caption" color="textSecondary" fontWeight="500">
-                {v.specialty || 'General'} • {v.accessLevel ? v.accessLevel.toUpperCase() : 'STAFF'}
-            </Typography>
+            {/* The Scalable Skill Chips Component */}
+            <SkillChips departments={v.departments} allDepts={departments} onClickMore={handleSkillsPopoverOpen} />
         </Box>
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5 }}>
             {isSelected ? (
@@ -146,18 +201,22 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      {/* 1. THE DIALOG HEADER */}
-      <DialogTitle sx={{ bgcolor: isCheckIn ? '#2E7D32' : '#1565C0', color: 'white', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1 }}>
-        <AssignmentIndIcon /> {isCheckIn ? "Check-In & Dispatch Patient" : "Transfer / Re-assign"}
+      {/* DIALOG HEADER */}
+      <DialogTitle sx={{ 
+          // THE FIX: The header color now matches the department color!
+          background: `linear-gradient(135deg, ${badgeColor} 0%, ${badgeColor}CC 100%)`, 
+          color: 'white', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1 
+      }}>
+        <AssignmentIndIcon /> {isCheckIn ? "Check-In & Dispatch Patient" : "Transfer / Re-assign Visit"}
       </DialogTitle>
       
-      {/* 2. THE PINNED PATIENT TICKET (UX FIX: Moved outside the scroll area!) */}
+      {/* 2. THE PINNED PATIENT TICKET */}
       <Box sx={{ p: 3, pb: 2, bgcolor: '#FFF8E1', borderBottom: '2px dashed #D7CCC8', zIndex: 10, position: 'relative' }}>
           {errorMsg ? <Alert severity="error" sx={{ mb: 2, fontWeight: 'bold' }}>{errorMsg}</Alert> : null}
           
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
               <Typography variant="caption" color="#8B4513" fontWeight="bold" sx={{ letterSpacing: 1 }}>PATIENT ROUTING TICKET</Typography>
-              <Chip label={`DEPT: ${targetCategory.toUpperCase()}`} size="small" sx={{ bgcolor: 'white', color: '#5D4037', fontWeight: 'bold', border: '1px solid #D7CCC8', fontSize: '0.65rem' }} />
+              <Chip label={`DEPT: ${targetCategory.toUpperCase()}`} size="small" sx={{ bgcolor: badgeColor, color: 'white', fontWeight: 'bold', boxShadow: `0 2px 5px ${badgeColor}66`, fontSize: '0.65rem' }} />
           </Box>
           
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -170,12 +229,13 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
               </Box>
               <Box sx={{ textAlign: 'right' }}>
                   <Typography variant="caption" color="textSecondary" display="block" fontWeight="bold" sx={{mb: 0.5}}>REQUESTED SERVICE</Typography>
-                  <Chip label={patient.serviceType} color="primary" sx={{ fontWeight: 'bold', fontSize: '0.85rem' }} />
+                  {/* THE FIX: The service chip now uses the dynamic color! */}
+                  <Chip label={patient.serviceType} sx={{ fontWeight: 'bold', fontSize: '0.85rem', bgcolor: badgeColor, color: 'white', boxShadow: 3 }} />
               </Box>
           </Box>
       </Box>
 
-      {/* 3. THE SCROLLABLE STAFF LIST */}
+      {/* SCROLLABLE STAFF LIST */}
       <DialogContent sx={{ p: 0, bgcolor: '#F5F5F5', height: 400 }}>
         <Box sx={{ p: 3 }}>
             <Typography variant="body2" sx={{ mb: 2, color: '#555', fontWeight: 'bold' }}>
@@ -207,7 +267,7 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
         </Box>
       </DialogContent>
 
-      {/* 4. THE ACTION FOOTER (UX FIX: Better button balance) */}
+      {/* ACTION FOOTER */}
       <DialogActions sx={{ p: 2.5, bgcolor: '#EFEBE9', justifyContent: 'space-between', borderTop: '1px solid #D7CCC8' }}>
         <Button 
             onClick={() => handleSubmit(true)} 
@@ -231,6 +291,31 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
             </Button>
         </Stack>
       </DialogActions>
+
+      {/* THE POPOVER for "Show More" Skills */}
+      <Popover
+        open={Boolean(popoverAnchorEl)}
+        anchorEl={popoverAnchorEl}
+        onClose={handleSkillsPopoverClose}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+        PaperProps={{
+            sx: { p: 1, bgcolor: '#424242', borderRadius: 2, mt: 0.5 }
+        }}
+      >
+        <List dense>
+            {popoverSkills.map(skill => {
+                const deptObj = (departments || []).find(d => d.name === skill);
+                const chipColor = deptObj ? deptObj.color : '#616161';
+                return (
+                    <ListItem key={skill}>
+                        <Chip label={skill} size="small" sx={{ color: 'white', bgcolor: chipColor, fontWeight: 'bold' }} />
+                    </ListItem>
+                );
+            })}
+        </List>
+      </Popover>
+
     </Dialog>
   );
 }

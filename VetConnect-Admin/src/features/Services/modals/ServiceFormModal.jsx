@@ -2,9 +2,8 @@ import React, { useState } from 'react';
 import { 
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, 
   Chip, Button, Box, Typography, Paper, InputAdornment, FormControlLabel, 
-  Switch, Divider, FormControl, InputLabel, Select, Stack 
+  Switch, FormControl, InputLabel, Select, Stack, Grid // Standard MUI v6 Grid
 } from '@mui/material';
-import Grid from '@mui/material/Grid'; // Standard MUI v6 Grid
 
 import { useNavigate } from 'react-router-dom';
 import { useUser } from '../../../context/UserContext'; 
@@ -16,11 +15,12 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import CircleIcon from '@mui/icons-material/Circle';
 import MedicalServicesIcon from '@mui/icons-material/MedicalServices';
 
-export default function ServiceFormModal({ open, onClose, item, onSave, showToast, departments }) {
+export default function ServiceFormModal({ open, onClose, item, inventory, onSave, showToast, departments }) {
   
   const { isAdmin } = useUser();
   const navigate = useNavigate();
 
+  // THE FIX: Initialize state DIRECTLY. No useEffect needed.
   const [formData, setFormData] = useState({
     name: item?.name || '',
     department: item?.department || item?.category || '',
@@ -39,7 +39,13 @@ export default function ServiceFormModal({ open, onClose, item, onSave, showToas
     if (!formData.name || formData.price === '') {
         return showToast("Service Name and Base Price are required.", "error");
     }
-    onSave(formData);
+    const finalData = {
+        ...formData,
+        price: parseFloat(formData.price) || 0,
+        duration: parseInt(formData.duration) || 30,
+        bufferTime: parseInt(formData.bufferTime) || 0
+    };
+    onSave(finalData);
   };
 
   const noExtensionProps = { spellCheck: 'false', 'data-gramm': 'false' };
@@ -125,7 +131,7 @@ export default function ServiceFormModal({ open, onClose, item, onSave, showToas
           </Typography>
           <Paper elevation={0} sx={{ p: 3, mb: 4, bgcolor: '#E3F2FD', border: '1px solid #BBDEFB', borderRadius: 2 }}>
             <Grid container spacing={2}>
-              <Grid size={{ xs: 12, md: 4 }}>
+               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField label="Base Price" type="number" fullWidth size="small" value={formData.price} onChange={(e) => setFormData({...formData, price: e.target.value})} InputProps={{ startAdornment: <InputAdornment position="start">₱</InputAdornment> }} sx={{bgcolor: 'white'}} />
               </Grid>
               <Grid size={{ xs: 6, md: 4 }}>
@@ -134,22 +140,39 @@ export default function ServiceFormModal({ open, onClose, item, onSave, showToas
               <Grid size={{ xs: 6, md: 4 }}>
                 <TextField label="Cleanup Buffer" type="number" fullWidth size="small" value={formData.bufferTime} onChange={(e) => setFormData({...formData, bufferTime: e.target.value})} InputProps={{ startAdornment: <InputAdornment position="start"><TimerIcon fontSize="small" sx={{color:'#aaa'}}/></InputAdornment>, endAdornment: <InputAdornment position="end">Mins</InputAdornment> }} sx={{bgcolor: 'white'}} />
               </Grid>
+
+              <Grid size={{ xs: 12, md: 6 }}>
+                  <Paper variant="outlined" sx={{ p: 2, bgcolor: '#F9FBE7', borderRadius: 1, border: '1px dashed #A5D6A7', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                      <Typography variant="caption" fontWeight="bold" color="#2E7D32" sx={{display:'block', mb: 0.5}}>RESOURCE ROUTING</Typography>
+                      <Typography variant="body2" component="div" sx={{ lineHeight: 1.4, color: '#333' }}>
+                          Mobile bookings will automatically route to any staff assigned to the <Chip label={formData.department || 'General'} size="small" sx={{ height: 20, fontSize: '0.65rem', fontWeight: 'bold', bgcolor: '#E3F2FD', color: '#1565C0' }} /> department.
+                      </Typography>
+                  </Paper>
+              </Grid>
               
-              {/* THE MISSING FIELD: Restored the Description / SOP input box */}
+              <Grid size={{ xs: 12, md: 6 }}>
+                <FormControl fullWidth size="small" sx={{bgcolor: 'white', height: '100%', '& .MuiInputBase-root': {height: '100%'} }}>
+                    <InputLabel>Auto-Deduct Inventory (Bundle)</InputLabel>
+                    <Select value={formData.linkedProduct || ''} label="Auto-Deduct Inventory (Bundle)" onChange={(e) => setFormData({...formData, linkedProduct: e.target.value})}>
+                        <MenuItem value=""><em>None (Service Only)</em></MenuItem>
+                        {(inventory || []).map(i => (<MenuItem key={i.id} value={i.id}>{i.itemName}</MenuItem>))}
+                    </Select>
+                </FormControl>
+              </Grid>
+              
               <Grid size={{ xs: 12 }}>
                   <TextField 
                     label="SOP / Description / Clinic Instructions" 
                     fullWidth multiline rows={3} size="small" 
                     value={formData.description} 
                     onChange={(e) => setFormData({...formData, description: e.target.value})} 
-                    sx={{bgcolor: 'white', mt: 1}} 
+                    sx={{bgcolor: 'white', mt: 2}} 
                     InputProps={{ 
                         startAdornment: <InputAdornment position="start"><DescriptionIcon fontSize="small" sx={{color: '#aaa', mr: 1, mt: -4}}/></InputAdornment> 
                     }}
-                    inputProps={{ spellCheck: 'false', 'data-gramm': 'false' }} 
+                    inputProps={noExtensionProps} 
                   />
               </Grid>
-
             </Grid>
           </Paper>
           

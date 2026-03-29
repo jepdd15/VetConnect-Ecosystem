@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { 
-  collection, query, where, onSnapshot, getDocs, 
+  collection, query, where, onSnapshot, getDocs, getDoc,
   updateDoc, doc, addDoc, Timestamp, orderBy, limit
 } from 'firebase/firestore';
 import { db, auth } from '../../../firebaseConfig';
 
 export function usePatientManager(onClientSelected) { // <-- Added callback prop
   const [owners, setOwners] = useState([]);
+  const [allPetsSnapshot, setAllPetsSnapshot] = useState([]); // Global lightweight array for pet search
   const [searchText, setSearchText] = useState('');
   const [selectedClient, setSelectedClient] = useState(null);
   
@@ -77,7 +78,13 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
       setOwners(list);
       setLoadingDirectory(false);
     });
-    return () => unsubscribe();
+
+    const petsQ = query(collection(db, "pets"), where("status", "==", "active"));
+    const unsubPets = onSnapshot(petsQ, (snap) => {
+        setAllPetsSnapshot(snap.docs.map(d => ({ ownerId: d.data().ownerId, name: (d.data().name || '').toLowerCase() })));
+    });
+
+    return () => { unsubscribe(); unsubPets(); };
   },[]);
 
   useEffect(() => {
@@ -248,7 +255,7 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
   };
 
   return {
-    owners, searchText, setSearchText, selectedClient, setSelectedClient, 
+    owners, allPetsSnapshot, searchText, setSearchText, selectedClient, setSelectedClient, 
     clientPets, clientTransactions, outstandingBalance,
     loading: loadingDirectory || loadingClientData, 
     handleSelectClient, calculateAge,

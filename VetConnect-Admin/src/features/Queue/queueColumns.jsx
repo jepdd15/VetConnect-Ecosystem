@@ -18,6 +18,7 @@ import PhoneIcon from '@mui/icons-material/Phone';
 import PersonIcon from '@mui/icons-material/Person';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import ReceiptIcon from '@mui/icons-material/Receipt';
+import ScaleIcon from '@mui/icons-material/Scale';
 
 const formatDuration = (totalMinutes) => {
   const mins = Math.abs(totalMinutes);
@@ -33,6 +34,8 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
     sortable: false, disableColumnMenu: true,
     renderCell: (p) => {
       const isWalkIn = p.row.ownerId === 'WALK_IN_USER' || String(p.row.ownerId).includes('GUEST_');
+      const hasAllergies = p.row.petAllergies && p.row.petAllergies.trim().length > 0;
+      const breedLabel = p.row.petBreed ? ` · ${p.row.petBreed}` : '';
       
       return (
         <Box sx={{ display: 'flex', alignItems: 'center', height: '100%', py: 1 }}>
@@ -59,13 +62,27 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
             )}
           </Box>
           <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', overflow: 'hidden' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.25 }}>
               <Typography variant="h6" fontWeight="900" color="#3E2723" component="div" noWrap sx={{ lineHeight: 1.1 }}>
                 {p.row.petName} 
               </Typography>
               <Typography component="span" variant="caption" color="textSecondary" fontWeight="600" sx={{ mt: 0.5 }}>
-                ({p.row.petSpecies || 'Pet'})
+                ({p.row.petSpecies || 'Pet'}{breedLabel})
               </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.25, flexWrap: 'wrap' }}>
+              {p.row.petWeight && (
+                <Chip icon={<ScaleIcon sx={{ fontSize: '12px !important' }} />} label={`${p.row.petWeight} kg`} size="small" 
+                  sx={{ height: 18, fontSize: '0.6rem', fontWeight: 700, bgcolor: '#E3F2FD', color: '#1565C0', '& .MuiChip-icon': { color: '#1565C0' } }} />
+              )}
+              {hasAllergies ? (
+                <Tooltip title={`Allergies: ${p.row.petAllergies}`}>
+                  <Chip icon={<WarningIcon sx={{ fontSize: '12px !important' }} />} label={p.row.petAllergies.length > 15 ? p.row.petAllergies.slice(0, 15) + '…' : p.row.petAllergies} size="small" 
+                    sx={{ height: 18, fontSize: '0.6rem', fontWeight: 700, bgcolor: '#FFEBEE', color: '#C62828', '& .MuiChip-icon': { color: '#C62828' } }} />
+                </Tooltip>
+              ) : (
+                <Chip label="NKA" size="small" sx={{ height: 16, fontSize: '0.55rem', fontWeight: 600, bgcolor: '#F5F5F5', color: '#9E9E9E' }} />
+              )}
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
               <Tooltip title={isWalkIn ? "Walk-In" : "App Booking"}>

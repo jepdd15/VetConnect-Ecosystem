@@ -5,6 +5,7 @@ import {
   ToggleButton, ToggleButtonGroup, Popover, TextField, InputAdornment, 
   Paper // THE FATAL FIX: Paper is safely imported!
 } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
 
 import PetsIcon from '@mui/icons-material/Pets';
 import AssignmentIcon from '@mui/icons-material/Assignment';
@@ -20,6 +21,7 @@ import ScaleIcon from '@mui/icons-material/Scale';
 export default function PetList({ pets, onRegisterPet, onViewChart, onQuickBook, calculateAge, onArchive }) {
   const [anchorEl, setAnchorEl] = useState(null);
   const[selectedPet, setSelectedPet] = useState(null);
+  const navigate = useNavigate();
   
   // --- ADVANCED SORT & FILTER STATE ---
   const [sort, setSort] = useState('name_asc');
@@ -63,13 +65,13 @@ export default function PetList({ pets, onRegisterPet, onViewChart, onQuickBook,
       {/* COMMAND CENTER HEADER */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 2 }}>
         <Stack direction="row" spacing={2} alignItems="center">
-          <Typography variant="h5" fontWeight="900" color="#5D4037" sx={{ display: 'flex', alignItems: 'center' }}>
-            Registered Patients <Chip label={activePets.length} color="primary" sx={{ ml: 1.5, fontWeight: 'bold', bgcolor: '#8B4513' }} />
+          <Typography variant="h5" fontWeight="900" color="#3E2723" sx={{ display: 'flex', alignItems: 'center' }}>
+            Registered Patients <Chip label={activePets.length} color="primary" sx={{ ml: 1.5, fontWeight: 'bold', bgcolor: '#1976D2' }} />
           </Typography>
           <Button 
             variant="contained" size="small" startIcon={<PetsIcon />} 
             onClick={onRegisterPet} 
-            sx={{ bgcolor: '#FF9800', color: '#fff', fontWeight: 'bold', borderRadius: 2 }}
+            sx={{ bgcolor: '#1976D2', color: '#fff', fontWeight: 'bold', borderRadius: 2, boxShadow: 0, '&:hover': {bgcolor: '#1565C0'} }}
           >
             Register Pet
           </Button>
@@ -116,35 +118,45 @@ export default function PetList({ pets, onRegisterPet, onViewChart, onQuickBook,
             // THE FIX: Changed from `item xs={12}` to `size={{ xs: 12 }}` to clear the Yellow Console Warnings!
             <Grid size={{ xs: 12, md: 6, lg: 6, xl: 4 }} key={pet.id}>
               <Card sx={{ 
-                borderRadius: 3, boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '1px solid rgba(0,0,0,0.08)',
+                borderRadius: 3, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid rgba(0,0,0,0.08)',
                 bgcolor: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(10px)',
                 display: 'flex', flexDirection: 'column', height: '100%', transition: 'transform 0.2s, box-shadow 0.2s',
-                '&:hover': { transform: 'translateY(-4px)', boxShadow: '0 8px 30px rgba(0,0,0,0.1)' }
+                '&:hover': { transform: 'translateY(-4px)', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' }
               }}>
                 
+                {hasAllergies && (
+                  <Box sx={{ bgcolor: '#FFEBEE', color: '#D32F2F', py: 0.5, px: 3, display: 'flex', alignItems: 'center', gap: 1, borderBottom: '1px solid #EF9A9A' }}>
+                    <WarningAmberIcon fontSize="small" />
+                    <Typography variant="caption" fontWeight="900" sx={{ textTransform: 'uppercase' }}>Allergy: {pet.allergies}</Typography>
+                  </Box>
+                )}
+
                 <Box sx={{ p: 3, pb: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                   <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
-                    <Avatar sx={{ width: 64, height: 64, bgcolor: '#FFF8E1', mr: 2, border: '2px solid #D7CCC8', fontSize: '2rem', boxShadow: 1 }}>
+                    <Avatar sx={{ width: 64, height: 64, bgcolor: '#F5F5F5', mr: 2, border: '2px solid #E0E0E0', fontSize: '2rem', boxShadow: 1 }}>
                       {(pet.species === 'Canine' || pet.species === 'Dog') ? '🐶' : '🐱'}
                     </Avatar>
                     
                     <Box sx={{ flexGrow: 1, overflow: 'hidden' }}>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                          <Typography variant="h5" fontWeight="900" color="#3E2723" noWrap>{pet.name}</Typography>
+                          <Typography variant="h5" fontWeight="900" color="#3E2723" noWrap sx={{ textTransform: 'capitalize' }}>{pet.name}</Typography>
                           <IconButton size="small" onClick={(e) => handleMenuClick(e, pet)} sx={{ mt: -0.5, mr: -1 }}><MoreVertIcon /></IconButton>
                       </Box>
-                      <Typography variant="body2" color="#555" fontWeight="700" noWrap>{pet.breed || 'Unknown Breed'}</Typography>
-                      <Typography variant="caption" color="textSecondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }} noWrap>
-                        {pet.gender || 'Unknown'} • {displayAge} 
-                        {pet.lastWeight && <> • <ScaleIcon sx={{fontSize: 12}}/> {pet.lastWeight}kg</>}
+                      {(pet.breed && pet.breed !== 'Unknown Breed') ? (
+                          <Typography variant="body2" color="#555" fontWeight="700" noWrap>{pet.breed}</Typography>
+                      ) : (
+                          <Typography variant="body2" color="#1976D2" sx={{ cursor: 'pointer', fontWeight: 'bold' }} onClick={() => onViewChart(pet)}>+ Add Breed</Typography>
+                      )}
+                      <Typography variant="caption" color="textSecondary" sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                        {pet.gender === 'Male' ? (pet.isNeutered ? 'Male (Neutered)' : 'Male (Intact)') : (pet.gender === 'Female' ? (pet.isNeutered ? 'Female (Spayed)' : 'Female (Intact)') : 'Unknown Sex')} 
+                        {displayAge !== 'Age Unknown' ? ` • ${displayAge}` : <span style={{color: '#1976D2', cursor:'pointer', fontWeight:'bold'}} onClick={() => navigate(`/patients/${pet.id}`, { state: { pet } })}> • + Add Age</span>}
                       </Typography>
                     </Box>
                   </Box>
                   
                   <Box>
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.8, mb: 1.5 }}>
-                      {hasAllergies && <Chip icon={<WarningAmberIcon fontSize="small" />} label={`Allergy: ${pet.allergies}`} size="small" sx={{ bgcolor: '#FFEBEE', color: '#D32F2F', fontWeight: 'bold', border: '1px solid #EF9A9A' }} />}
-                      <Chip label={pet.isNeutered ? "Spayed/Neutered" : "Intact"} size="small" variant={pet.isNeutered ? "filled" : "outlined"} color={pet.isNeutered ? "success" : "default"} sx={{ fontWeight: 'bold', height: 24 }} />
+                      {pet.lastWeight && <Chip icon={<ScaleIcon fontSize="small"/>} label={`${pet.lastWeight} kg`} size="small" sx={{ bgcolor: '#FFF8E1', color: '#F57F17', fontWeight: 'bold', border: '1px solid #FFF59D' }} />}
                       {pet.microchip && <Chip label="Microchipped" size="small" sx={{ bgcolor: '#E3F2FD', color: '#1565C0', fontWeight: 'bold', height: 24 }} />}
                     </Box>
                     <Paper variant="outlined" sx={{ bgcolor: 'rgba(250,250,250,0.5)', p: 1, borderRadius: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -158,10 +170,10 @@ export default function PetList({ pets, onRegisterPet, onViewChart, onQuickBook,
 
                 <Box sx={{ p: 2, bgcolor: 'rgba(250,250,250,0.8)', borderTop: '1px solid rgba(0,0,0,0.05)', mt: 'auto' }}>
                   <Stack direction="row" spacing={2} justifyContent="center">
-                    <Button variant="outlined" startIcon={<AssignmentIcon />} onClick={() => onViewChart(pet)} sx={{ color: '#1565C0', borderColor: '#1565C0', fontWeight: 'bold', borderRadius: 2, bgcolor: 'white', flex: 1 }}>
+                    <Button variant="contained" startIcon={<AssignmentIcon />} onClick={() => navigate(`/patients/${pet.id}`, { state: { pet } })} sx={{ bgcolor: '#1976D2', color: 'white', fontWeight: 'bold', borderRadius: 2, boxShadow: 0, '&:hover': {bgcolor: '#1565C0'}, flex: 1 }}>
                       View Chart
                     </Button>
-                    <Button variant="contained" startIcon={<EventAvailableIcon />} onClick={() => onQuickBook(pet)} sx={{ bgcolor: '#2E7D32', color: 'white', fontWeight: 'bold', borderRadius: 2, boxShadow: 0, '&:hover': {bgcolor: '#1B5E20'}, flex: 1 }}>
+                    <Button variant="outlined" startIcon={<EventAvailableIcon />} onClick={() => onQuickBook(pet)} sx={{ color: '#2E7D32', borderColor: '#2E7D32', fontWeight: 'bold', borderRadius: 2, bgcolor: 'white', flex: 1 }}>
                       Book Visit
                     </Button>
                   </Stack>

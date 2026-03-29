@@ -31,12 +31,14 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
   // --- GUEST CLIENT STATES (Now with Full Data Parity!) ---
   const [guestName, setGuestName] = useState('');
   const [guestPhone, setGuestPhone] = useState('');
-  const[guestPetData, setGuestPetData] = useState({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', microchip: '', allergies: '' });
+  const [guestEmail, setGuestEmail] = useState('');
+  const [guestPetData, setGuestPetData] = useState({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', microchip: '', allergies: '', weight: '' });
   const [isNewPet, setIsNewPet] = useState(false); // For existing clients adding a new pet
 
   const [service, setService] = useState('');
   const [triageNotes, setTriageNotes] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [phoneCheckDone, setPhoneCheckDone] = useState(false);
   
   // --- PH PHONE VALIDATION ENGINE ---
   const isValidPHPhone = (number) => {
@@ -79,8 +81,9 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
 
   const handleClose = () => {
     setErrorMsg(''); setWalkInType('existing'); setSelectedClient(null);
-    setGuestName(''); setGuestPhone(''); setTriageNotes('');
-    setGuestPetData({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', microchip: '', allergies: '' });
+    setGuestName(''); setGuestPhone(''); setGuestEmail(''); setTriageNotes('');
+    setGuestPetData({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', microchip: '', allergies: '', weight: '' });
+    setPhoneCheckDone(false);
     onClose();
   };
 
@@ -90,14 +93,27 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
     // VALIDATION
     if (walkInType === 'existing' && !selectedClient) return setErrorMsg("Please select an existing client.");
     if (walkInType === 'existing' && !selectedPet && !isNewPet) return setErrorMsg("Please select a pet or choose 'Register New Pet'.");
-    if (walkInType === 'existing' && isNewPet && (!guestPetData.name || !guestPetData.breed)) return setErrorMsg("New pet name and breed are required."); // Added breed for new pet
-    if (walkInType === 'guest' && (!guestName || !guestPhone || !guestPetData.name || !guestPetData.breed)) return setErrorMsg("Owner Full Name, Contact Phone, Pet Name, and Breed are required."); // Mandatory for guest
+    if (walkInType === 'existing' && isNewPet && (!guestPetData.name || !guestPetData.breed)) return setErrorMsg("New pet name and breed are required.");
+    if (walkInType === 'guest' && (!guestName || !guestPhone || !guestPetData.name || !guestPetData.breed)) return setErrorMsg("Owner Full Name, Contact Phone, Pet Name, and Breed are required.");
     if (!triageNotes) return setErrorMsg("Triage Notes are required.");
     if (!service) return setErrorMsg("Please select a service.");
 
     // Phone validation for new guests
     if (walkInType === 'guest' && !isValidPHPhone(guestPhone)) {
       return setErrorMsg("Contact Phone must be a valid Philippine number starting with 09 (e.g., 09123456789).");
+    }
+
+    // DUPLICATE PHONE DETECTION (Hard Block)
+    if (walkInType === 'guest' && !phoneCheckDone) {
+      try {
+        const phoneQ = query(collection(db, 'users'), where('phone', '==', guestPhone.trim()));
+        const phoneSnap = await getDocs(phoneQ);
+        if (!phoneSnap.empty) {
+          const existing = phoneSnap.docs[0].data();
+          return setErrorMsg(`A client with this phone number already exists: "${existing.fullName || existing.displayName || 'Unknown'}". Please switch to Existing Client mode and search for them instead.`);
+        }
+        setPhoneCheckDone(true);
+      } catch (e) { console.warn('Phone check skipped:', e); }
     }
 
     setLoading(true);
@@ -108,14 +124,20 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
         if (walkInType === 'guest') {
           const newUserRef = doc(collection(db, "users"));
           transaction.set(newUserRef, { 
-              fullName: guestName, phone: guestPhone, role: 'pet_owner', 
-              accountStatus: 'unclaimed_guest', createdAt: Timestamp.now() 
+              fullName: guestName, displayName: guestName, name: guestName,
+              phone: guestPhone, email: guestEmail || null,
+              role: 'pet_owner', accountStatus: 'unclaimed_guest', createdAt: Timestamp.now() 
           });
           finalOwnerId = newUserRef.id; finalOwnerName = guestName;
           
+          const petPayload = { ...guestPetData };
+          const weightVal = parseFloat(petPayload.weight);
+          delete petPayload.weight; // Remove from spread, handle separately
+          
           const newPetRef = doc(collection(db, "pets"));
           transaction.set(newPetRef, { 
-              ownerId: finalOwnerId, ...guestPetData, 
+              ownerId: finalOwnerId, ...petPayload, 
+              lastWeight: weightVal > 0 ? weightVal : null,
               dob: guestPetData.dob ? Timestamp.fromDate(new Date(guestPetData.dob)) : null, 
               createdAt: Timestamp.now(), status: 'active' 
           });
@@ -123,15 +145,25 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
         } else { // Existing Client
           finalOwnerId = selectedClient.id; finalOwnerName = selectedClient.fullName;
           if (isNewPet) {
+             const petPayload = { ...guestPetData };
+             const weightVal = parseFloat(petPayload.weight);
+             delete petPayload.weight;
+             
              const newPetRef = doc(collection(db, "pets"));
              transaction.set(newPetRef, { 
-                 ownerId: finalOwnerId, ...guestPetData, // GuestPetData holds new pet info
+                 ownerId: finalOwnerId, ...petPayload,
+                 lastWeight: weightVal > 0 ? weightVal : null,
                  dob: guestPetData.dob ? Timestamp.fromDate(new Date(guestPetData.dob)) : null, 
                  createdAt: Timestamp.now(), status: 'active' 
              });
              finalPetId = newPetRef.id; finalPetName = guestPetData.name; finalPetSpecies = guestPetData.species;
           } else {
              finalPetId = selectedPet.id; finalPetName = selectedPet.name; finalPetSpecies = selectedPet.species;
+             // Write weight back to existing pet document if provided
+             const arrivalWeight = parseFloat(guestPetData.weight);
+             if (arrivalWeight > 0) {
+               transaction.update(doc(db, 'pets', selectedPet.id), { lastWeight: arrivalWeight });
+             }
           }
         }
         
@@ -144,8 +176,14 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
         const isEmergency = service === 'Emergency';
         const department = selectedServiceObj?.department || selectedServiceObj?.category || 'General';
         
+        // Resolve clinical data for appointment denormalization
+        const resolvedBreed = (walkInType === 'guest' || isNewPet) ? guestPetData.breed : (selectedPet?.breed || '');
+        const resolvedWeight = parseFloat(guestPetData.weight) || (selectedPet?.lastWeight ? parseFloat(selectedPet.lastWeight) : null);
+        const resolvedAllergies = (walkInType === 'guest' || isNewPet) ? guestPetData.allergies : (selectedPet?.allergies || '');
+
         const appointmentPayload = {
           ownerId: finalOwnerId, ownerName: finalOwnerName, petId: finalPetId, petName: finalPetName, petSpecies: finalPetSpecies,
+          petBreed: resolvedBreed, petWeight: resolvedWeight, petAllergies: resolvedAllergies,
           serviceType: service, servicePrice: selectedServiceObj?.price || 0, serviceCategory: department, requiredRole: department,
           status: 'arrived', queueNumber: newNumber, ticketPrefix: isEmergency ? 'E' : 'W', priority: isEmergency ? 'high' : 'normal', 
           scheduledDate: Timestamp.now(), createdAt: Timestamp.now(), timeArrived: Timestamp.now(), 
@@ -182,7 +220,8 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
           <RadioGroup row value={walkInType} onChange={(e) => {
             setWalkInType(e.target.value);
             // Reset guest data when switching type
-            setGuestName(''); setGuestPhone(''); setGuestPetData({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', microchip: '', allergies: '' });
+            setGuestName(''); setGuestPhone(''); setGuestEmail(''); setPhoneCheckDone(false);
+            setGuestPetData({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', microchip: '', allergies: '', weight: '' });
             setSelectedClient(null); setSelectedPet(null); setIsNewPet(false);
           }}>
             <FormControlLabel value="existing" control={<Radio />} label="Existing Client" />
@@ -209,7 +248,18 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
                                 {clientPets.map(p => <MenuItem key={p.id} value={p}>{(p.species === 'Dog' || p.species === 'Canine') ? '🐶' : '🐱'} {p.name}</MenuItem>)}
                             </Select>
                         </FormControl>
-                        <FormControlLabel control={<Switch checked={isNewPet} onChange={(e) => {setIsNewPet(e.target.checked); setSelectedPet(null); setGuestPetData({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', microchip: '', allergies: '' }); }} color="primary" />} label={<Typography fontWeight="bold" color="primary">Register New Pet for this Client</Typography>} />
+                        <FormControlLabel control={<Switch checked={isNewPet} onChange={(e) => {setIsNewPet(e.target.checked); setSelectedPet(null); setGuestPetData({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', microchip: '', allergies: '', weight: '' }); }} color="primary" />} label={<Typography fontWeight="bold" color="primary">Register New Pet for this Client</Typography>} />
+                        {selectedPet && !isNewPet && (
+                          <TextField 
+                            label="Arrival Weight (kg)" variant="filled" size="small" type="number"
+                            inputProps={{ step: '0.1', min: '0' }}
+                            value={guestPetData.weight} 
+                            onChange={e => setGuestPetData({...guestPetData, weight: e.target.value})}
+                            helperText={selectedPet.lastWeight ? `Last recorded: ${selectedPet.lastWeight} kg` : 'No previous weight on file'}
+                            sx={{ mt: 1.5 }}
+                            fullWidth
+                          />
+                        )}
                       </>
                     )
                 )}
@@ -225,20 +275,21 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
                 <Grid container spacing={2} sx={{ mt: 0.5 }}>
                     {walkInType === 'guest' && (
                         <>
-                           {/* THE FIX: Updated to MUI v6 Grid syntax! */}
-                           <Grid size={{ xs: 12, md: 7 }}><TextField label="Owner Full Name" variant="filled" size="small" fullWidth value={guestName} onChange={e => setGuestName(e.target.value)} /></Grid> 
-                           <Grid size={{ xs: 12, md: 5 }}><TextField label="Contact Phone" variant="filled" size="small" fullWidth value={guestPhone} onChange={e => setGuestPhone(e.target.value)} /></Grid> 
+                           <Grid size={{ xs: 12, md: 5 }}><TextField label="Owner Full Name" variant="filled" size="small" fullWidth value={guestName} onChange={e => setGuestName(e.target.value)} /></Grid> 
+                           <Grid size={{ xs: 12, md: 4 }}><TextField label="Contact Phone" variant="filled" size="small" fullWidth value={guestPhone} onChange={e => { setGuestPhone(e.target.value); setPhoneCheckDone(false); }} helperText="Must start with 09" /></Grid> 
+                           <Grid size={{ xs: 12, md: 3 }}><TextField label="Email (Optional)" variant="filled" size="small" fullWidth value={guestEmail} onChange={e => setGuestEmail(e.target.value)} /></Grid>
                            <Grid size={{ xs: 12 }}><Divider sx={{ my: 1 }} /></Grid>
                         </>
                     )}
-                {/* THE FIX: Replaced all 'item xs=' with 'size={{ xs: ... }}' */}
-                <Grid size={{ xs: 12, md: 8 }}><TextField label="Pet Name" variant="filled" size="small" fullWidth value={guestPetData.name} onChange={e => setGuestPetData({...guestPetData, name: e.target.value})} /></Grid>
-                <Grid size={{ xs: 12, md: 4 }}><TextField select label="Species" variant="filled" fullWidth size="small" value={guestPetData.species} onChange={e => setGuestPetData({...guestPetData, species: e.target.value})}><MenuItem value="Canine">Canine</MenuItem><MenuItem value="Feline">Feline</MenuItem></TextField></Grid>
+                <Grid size={{ xs: 12, md: 6 }}><TextField label="Pet Name" variant="filled" size="small" fullWidth value={guestPetData.name} onChange={e => setGuestPetData({...guestPetData, name: e.target.value})} /></Grid>
+                <Grid size={{ xs: 12, md: 3 }}><TextField select label="Species" variant="filled" fullWidth size="small" value={guestPetData.species} onChange={e => setGuestPetData({...guestPetData, species: e.target.value})}><MenuItem value="Canine">Canine</MenuItem><MenuItem value="Feline">Feline</MenuItem></TextField></Grid>
+                <Grid size={{ xs: 12, md: 3 }}><TextField label="Weight (kg)" variant="filled" size="small" fullWidth type="number" inputProps={{ step: '0.1', min: '0' }} value={guestPetData.weight} onChange={e => setGuestPetData({...guestPetData, weight: e.target.value})} /></Grid>
                 <Grid size={{ xs: 12, md: 6 }}><TextField label="Breed" variant="filled" size="small" fullWidth value={guestPetData.breed} onChange={e => setGuestPetData({...guestPetData, breed: e.target.value})} /></Grid>
                 <Grid size={{ xs: 12, md: 6 }}><TextField label="Color/Markings" variant="filled" size="small" fullWidth value={guestPetData.color} onChange={e => setGuestPetData({...guestPetData, color: e.target.value})} /></Grid>
-                <Grid size={{ xs: 12, md: 6 }}><TextField type="date" label="Birthday" variant="filled" size="small" fullWidth InputLabelProps={{shrink:true}} value={guestPetData.dob} onChange={e => setGuestPetData({...guestPetData, dob: e.target.value})} /></Grid>
-                <Grid size={{ xs: 12, md: 6 }}><TextField select label="Gender" variant="filled" fullWidth size="small" value={guestPetData.gender} onChange={e => setGuestPetData({...guestPetData, gender: e.target.value})}><MenuItem value="Male">Male</MenuItem><MenuItem value="Female">Female</MenuItem></TextField></Grid>
-                <Grid size={{ xs: 12 }}><TextField label="Allergies" variant="filled" size="small" fullWidth placeholder="e.g. Chicken, Beef" value={guestPetData.allergies} onChange={e => setGuestPetData({...guestPetData, allergies: e.target.value})} /></Grid>
+                <Grid size={{ xs: 12, md: 4 }}><TextField type="date" label="Birthday" variant="filled" size="small" fullWidth InputLabelProps={{shrink:true}} value={guestPetData.dob} onChange={e => setGuestPetData({...guestPetData, dob: e.target.value})} /></Grid>
+                <Grid size={{ xs: 12, md: 4 }}><TextField select label="Gender" variant="filled" fullWidth size="small" value={guestPetData.gender} onChange={e => setGuestPetData({...guestPetData, gender: e.target.value})}><MenuItem value="Male">Male</MenuItem><MenuItem value="Female">Female</MenuItem></TextField></Grid>
+                <Grid size={{ xs: 12, md: 4 }}><TextField label="Microchip #" variant="filled" size="small" fullWidth value={guestPetData.microchip} onChange={e => setGuestPetData({...guestPetData, microchip: e.target.value})} /></Grid>
+                <Grid size={{ xs: 12 }}><TextField label="Allergies" variant="filled" size="small" fullWidth placeholder="e.g. Chicken, Penicillin (leave blank if none)" value={guestPetData.allergies} onChange={e => setGuestPetData({...guestPetData, allergies: e.target.value})} /></Grid>
                 <Grid size={{ xs: 12 }}><FormControlLabel control={<Switch checked={guestPetData.isNeutered} onChange={e => setGuestPetData({...guestPetData, isNeutered: e.target.checked})} color="success"/>} label="Spayed/Neutered" /></Grid>
             </Grid>
             </Box>

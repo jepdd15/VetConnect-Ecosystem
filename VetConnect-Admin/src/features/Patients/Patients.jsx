@@ -13,7 +13,6 @@ import BillingLedger from './components/BillingLedger';
 import InternalLogs from './components/InternalLogs';
 
 // 3. Modals
-import Patient360Modal from './modals/Patient360Modal';
 import AddPetModal from './modals/AddPetModal';
 import QuickBookModal from './modals/QuickBookModal'; // The new modal
 
@@ -26,7 +25,7 @@ export default function Patients() {
   const [activeTab, setActiveTab] = useState(0);
 
   const { 
-    searchText, setSearchText, owners, selectedClient, 
+    owners, allPetsSnapshot, searchText, setSearchText, selectedClient, 
     clientPets, clientTransactions, outstandingBalance, 
     handleSelectClient, calculateAge, isEditing, setIsEditing, 
     editForm, setEditForm, handleSaveProfile,
@@ -37,30 +36,20 @@ export default function Patients() {
 
   // Modal States
   const [openAddPet, setOpenAddPet] = useState(false);
-  const[openPet360, setOpenPet360] = useState(false);
   const [openQuickBook, setOpenQuickBook] = useState(false); // For the new feature
   const [selectedPet, setSelectedPet] = useState(null);
-  
-  const [petHistory, setPetHistory] = useState([]);
-  const[vitalsTrend, setVitalsTrend] = useState([]);
-  const [loadingChart, setLoadingChart] = useState(false);
 
   const filteredOwners = useMemo(() => {
-    return owners.filter(o => 
-      (o.fullName || '').toLowerCase().includes(searchText.toLowerCase()) || 
-      (o.phone || '').includes(searchText)
-    );
-  }, [owners, searchText]);
+    if (!searchText) return owners;
+    const searchLower = searchText.toLowerCase();
+    return owners.filter(o => {
+      const matchesOwner = (o.fullName || '').toLowerCase().includes(searchLower) || (o.phone || '').includes(searchLower);
+      const matchesPet = allPetsSnapshot.some(p => p.ownerId === o.id && p.name.includes(searchLower));
+      return matchesOwner || matchesPet;
+    });
+  }, [owners, allPetsSnapshot, searchText]);
 
-  const openPetChart = async (pet) => {
-    setSelectedPet(pet);
-    setLoadingChart(true);
-    setOpenPet360(true);
-    const { history, vitals } = await fetchPetClinicalData(pet.id);
-    setPetHistory(history);
-    setVitalsTrend(vitals);
-    setLoadingChart(false);
-  };
+
 
   const handleQuickBookOpen = (pet) => {
     setSelectedPet(pet);
@@ -104,11 +93,15 @@ export default function Patients() {
               }}
             />
             
-            <Box sx={{ px: 3, pt: 0, pb: 0, borderBottom: '1px solid rgba(0,0,0,0.08)', bgcolor: 'rgba(255,255,255,0.4)' }}>
+            <Box sx={{ px: 4, pt: 1, borderBottom: '1px solid #E0E0E0', bgcolor: '#FAFAFA' }}>
               <Tabs 
                 value={activeTab} 
                 onChange={(e, v) => setActiveTab(v)} 
-                sx={{ minHeight: 40, '& .MuiTab-root': { fontWeight: '800', textTransform: 'uppercase', fontSize: '0.75rem', minHeight: 40, py: 0 } }}
+                sx={{ 
+                  minHeight: 44, 
+                  '& .MuiTabs-indicator': { height: 3, borderTopLeftRadius: 3, borderTopRightRadius: 3 },
+                  '& .MuiTab-root': { fontWeight: '800', textTransform: 'uppercase', fontSize: '0.75rem', minHeight: 44, py: 1, px: 3 } 
+                }}
               >
                 <Tab label={`Pets (${clientPets.filter(p => p.status !== 'archived').length})`} />
                 <Tab label="Owner Details" />
@@ -118,7 +111,7 @@ export default function Patients() {
             </Box>
 
             <Box sx={{ flexGrow: 1, overflowY: 'auto', bgcolor: '#F5F5F5' }}>
-                {activeTab === 0 && <PetList pets={clientPets} calculateAge={calculateAge} onRegisterPet={() => setOpenAddPet(true)} onViewChart={openPetChart} onArchive={archivePet} onQuickBook={handleQuickBookOpen} />}
+                {activeTab === 0 && <PetList pets={clientPets} calculateAge={calculateAge} onRegisterPet={() => setOpenAddPet(true)} onArchive={archivePet} onQuickBook={handleQuickBookOpen} />}
                 {activeTab === 1 && <ClientDetails editForm={editForm} setEditForm={setEditForm} isEditing={isEditing} calculateAge={calculateAge} />}
                 {activeTab === 2 && <BillingLedger transactions={clientTransactions} />}
                 {activeTab === 3 && <InternalLogs notes={selectedClient.staffNotes || []} newNote={newNote} setNewNote={setNewNote} category={noteCategory} setCategory={setNoteCategory} onAdd={handleAddNote} onDelete={(noteId) => alert(`Deleting note ${noteId}`)} />}
@@ -145,18 +138,7 @@ export default function Patients() {
         />
       )}
       
-      {openPet360 && selectedPet && (
-        <Patient360Modal 
-            open={openPet360} 
-            onClose={() => setOpenPet360(false)} 
-            pet={selectedPet}
-            history={petHistory}
-            vitalsData={vitalsTrend}
-            loading={loadingChart}
-            calculateAge={calculateAge}
-            onQuickBook={() => alert(`Booking for ${selectedPet.name}...`)}
-        />
-      )}
+
 
       {openQuickBook && selectedPet && (
         <QuickBookModal 

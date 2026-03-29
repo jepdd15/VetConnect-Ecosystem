@@ -15,7 +15,16 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
   const [outstandingBalance, setOutstandingBalance] = useState(0);
   
   const[isEditing, setIsEditing] = useState(false);
-  const [editForm, setEditForm] = useState({ emergencyContacts: [] });
+  const [editForm, setEditForm] = useState({ 
+    emergencyContacts: [], 
+    gender: null, // Re-introduce for data capture
+    seniorId: '',
+    clientTag: 'Regular', // Default for new clients
+    referralSource: '',
+    allowPromos: false,
+    preferredComm: 'SMS',
+    whatsappOptIn: false
+  });
   const [newNote, setNewNote] = useState('');
   const[noteCategory, setNoteCategory] = useState('General');
   const [newPetData, setNewPetData] = useState({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', allergies: 'None', microchip: '' });
@@ -129,12 +138,20 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
       query(collection(db, "sales"), where("ownerName", "==", selectedClient.fullName)),
       (snap) => {
         const sales = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => b.date.seconds - a.date.seconds);
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setClientTransactions(sales);
+        
+        // --- THE FINANCIAL FIX ---
         let owed = 0;
         sales.forEach(s => {
-          const bal = (parseFloat(s.total) || 0) - (parseFloat(s.depositPaid) || 0);
-          if (bal > 0) owed += bal;
+          const status = s.status || 'paid';
+          // Only calculate balance if the invoice is NOT fully paid and NOT refunded
+          if (status !== 'paid' && status !== 'refunded') {
+            const bal = (parseFloat(s.total) || 0) - (parseFloat(s.depositPaid) || 0);
+            if (bal > 0) owed += bal;
+          }
         });
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setOutstandingBalance(owed);
       }
     );
@@ -157,7 +174,25 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
   
   const handleSaveProfile = async () => { 
     if (!selectedClient) throw new Error("No client selected.");
-    await updateDoc(doc(db, "users", selectedClient.id), editForm); 
+    
+    // THE FIX: Add the new fields to the payload!
+    const payload = {
+        fullName: editForm.fullName,
+        phone: editForm.phone,
+        address: editForm.address,
+        city: editForm.city,
+        dob: editForm.dob ? Timestamp.fromDate(new Date(editForm.dob)) : null,
+        gender: editForm.gender, // Now saves gender!
+        seniorId: editForm.seniorId,
+        clientTag: editForm.clientTag, // Now saves client tag!
+        referralSource: editForm.referralSource, // Now saves referral source!
+        allowPromos: editForm.allowPromos, // Now saves promo opt-in!
+        preferredComm: editForm.preferredComm, // Now saves preferred comm channel!
+        whatsappOptIn: editForm.whatsappOptIn, // Now saves WhatsApp consent!
+        emergencyContacts: editForm.emergencyContacts,
+    };
+
+    await updateDoc(doc(db, "users", selectedClient.id), payload); 
     setIsEditing(false); 
   };
 

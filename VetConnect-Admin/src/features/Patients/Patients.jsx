@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Box, Tabs, Tab, Typography, CircularProgress } from '@mui/material';
 
 // 1. Logic (The Brain)
@@ -15,16 +15,16 @@ import InternalLogs from './components/InternalLogs';
 // 3. Modals
 import Patient360Modal from './modals/Patient360Modal';
 import AddPetModal from './modals/AddPetModal';
+import QuickBookModal from './modals/QuickBookModal'; // The new modal
 
 // Icons
 import PetsIcon from '@mui/icons-material/Pets';
+import CloseIcon from '@mui/icons-material/Close';
+import SaveIcon from '@mui/icons-material/Save';
 
 export default function Patients() {
   const [activeTab, setActiveTab] = useState(0);
 
-  // THE FIX: We pass a callback function directly into the hook.
-  // This tells the hook: "Hey, whenever you finish selecting a new client,
-  // run this function for me to reset the tab!"
   const { 
     searchText, setSearchText, owners, selectedClient, 
     clientPets, clientTransactions, outstandingBalance, 
@@ -38,17 +38,19 @@ export default function Patients() {
   // Modal States
   const [openAddPet, setOpenAddPet] = useState(false);
   const[openPet360, setOpenPet360] = useState(false);
+  const [openQuickBook, setOpenQuickBook] = useState(false); // For the new feature
   const [selectedPet, setSelectedPet] = useState(null);
+  
   const [petHistory, setPetHistory] = useState([]);
   const[vitalsTrend, setVitalsTrend] = useState([]);
   const [loadingChart, setLoadingChart] = useState(false);
 
-  const filteredOwners = owners.filter(o => 
-    (o.fullName || '').toLowerCase().includes(searchText.toLowerCase()) || 
-    (o.phone || '').includes(searchText)
-  );
-
-  // NOTE: The inefficient useEffect tab reset has been deleted!
+  const filteredOwners = useMemo(() => {
+    return owners.filter(o => 
+      (o.fullName || '').toLowerCase().includes(searchText.toLowerCase()) || 
+      (o.phone || '').includes(searchText)
+    );
+  }, [owners, searchText]);
 
   const openPetChart = async (pet) => {
     setSelectedPet(pet);
@@ -60,8 +62,14 @@ export default function Patients() {
     setLoadingChart(false);
   };
 
+  const handleQuickBookOpen = (pet) => {
+    setSelectedPet(pet);
+    setOpenQuickBook(true);
+  };
+
   return (
-    <Box sx={{ height: '100vh', display: 'flex', m: -4, bgcolor: '#FFF8E1', overflow: 'hidden' }}>
+    // THE FIX: m: -4 pulls the container to the absolute edges, filling the screen!
+    <Box sx={{ m: -4, display: 'flex', height: '100vh', width: 'calc(100% + 64px)', overflow: 'hidden', bgcolor: '#FAFAFA' }}>
       
       <PatientDirectory 
         owners={filteredOwners} 
@@ -85,7 +93,15 @@ export default function Patients() {
               isEditing={isEditing} 
               onEdit={() => setIsEditing(true)}
               onCancel={() => { setEditForm(selectedClient); setIsEditing(false); }}
-              onSave={async () => { try { await handleSaveProfile(); alert("Profile Saved!"); } catch(e) { alert(e.message) } }}
+              onSave={async () => { 
+                  try { 
+                      await handleSaveProfile(); 
+                      alert("Profile Saved!");
+                      setIsEditing(false); // Make sure to exit edit mode
+                  } catch(e) { 
+                      alert(e.message) 
+                  } 
+              }}
             />
             
             <Box sx={{ px: 3, pt: 0, pb: 0, borderBottom: '1px solid rgba(0,0,0,0.08)', bgcolor: 'rgba(255,255,255,0.4)' }}>
@@ -101,11 +117,11 @@ export default function Patients() {
               </Tabs>
             </Box>
 
-            <Box sx={{ flexGrow: 1, overflowY: 'auto' }}>
-                {activeTab === 0 && <PetList pets={clientPets} calculateAge={calculateAge} onRegisterPet={() => setOpenAddPet(true)} onViewChart={openPetChart} onArchive={archivePet} onQuickBook={(pet) => alert(`Quick booking for ${pet.name}...`)} />}
+            <Box sx={{ flexGrow: 1, overflowY: 'auto', bgcolor: '#F5F5F5' }}>
+                {activeTab === 0 && <PetList pets={clientPets} calculateAge={calculateAge} onRegisterPet={() => setOpenAddPet(true)} onViewChart={openPetChart} onArchive={archivePet} onQuickBook={handleQuickBookOpen} />}
                 {activeTab === 1 && <ClientDetails editForm={editForm} setEditForm={setEditForm} isEditing={isEditing} calculateAge={calculateAge} />}
                 {activeTab === 2 && <BillingLedger transactions={clientTransactions} />}
-                {activeTab === 3 && <InternalLogs notes={selectedClient.staffNotes || []} newNote={newNote} setNewNote={setNewNote} category={noteCategory} setCategory={setNoteCategory} onAdd={handleAddNote} />}
+                {activeTab === 3 && <InternalLogs notes={selectedClient.staffNotes || []} newNote={newNote} setNewNote={setNewNote} category={noteCategory} setCategory={setNoteCategory} onAdd={handleAddNote} onDelete={(noteId) => alert(`Deleting note ${noteId}`)} />}
             </Box>
           </>
         ) : (
@@ -137,7 +153,15 @@ export default function Patients() {
             history={petHistory}
             vitalsData={vitalsTrend}
             loading={loadingChart}
-            onQuickBook={() => alert(`Booking for ${selectedPet.name}...`)}
+            onQuickBook={() => { setOpenPet360(false); handleQuickBookOpen(selectedPet); }}
+        />
+      )}
+
+      {openQuickBook && selectedPet && (
+        <QuickBookModal 
+          open={openQuickBook} 
+          onClose={() => setOpenQuickBook(false)} 
+          pet={selectedPet} 
         />
       )}
     </Box>

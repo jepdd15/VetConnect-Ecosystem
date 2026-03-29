@@ -265,7 +265,21 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         } 
         
         const saleRef = doc(collection(db, "sales")); 
-        transaction.set(saleRef, { appointmentId: patient.id, petName: patient.petName, ownerName: patient.ownerName || 'Walk-In', items: cart, subtotal: parseFloat(financials.subtotal), discount: parseFloat(financials.discount), depositPaid: parseFloat(financials.deposit), total: parseFloat(financials.total), paymentMethod: paymentMethod, hasScPwdDiscount: applyScPwd, date: Timestamp.now(), cashier: "System" }); 
+        transaction.set(saleRef, { 
+            appointmentId: patient.id, 
+            petName: patient.petName, 
+            ownerName: patient.ownerName || 'Walk-In', 
+            items: cart, 
+            subtotal: parseFloat(financials.subtotal), 
+            discount: parseFloat(financials.discount), 
+            depositPaid: parseFloat(financials.deposit), 
+            total: parseFloat(financials.total), 
+            paymentMethod: paymentMethod, 
+            hasScPwdDiscount: applyScPwd, 
+            date: Timestamp.now(), 
+            cashier: "System",
+            status: 'paid' // <--- THE FIX: Explicitly stamp it as PAID!
+        }); 
         
         const apptRef = doc(db, "appointments", patient.id); 
         transaction.update(apptRef, { status: 'completed', timeCompleted: Timestamp.now() }); 

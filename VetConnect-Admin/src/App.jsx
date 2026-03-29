@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { Box, CssBaseline, CircularProgress } from '@mui/material';
 import { signOut } from 'firebase/auth';
@@ -22,7 +22,6 @@ import Monitor from './pages/Monitor';
 import Settings from './pages/Settings';
 
 // --- USER CONTEXT ---
-// THE FIX: We will import BOTH the Provider and the Hook here!
 import { UserProvider, useUser } from './context/UserContext';
 
 // --- THEME ---
@@ -32,7 +31,7 @@ const theme = createTheme({
   typography: { fontFamily: 'Roboto, Arial, sans-serif' }
 });
 
-// --- SMART LAYOUT HANDLER (No changes needed here) ---
+// --- SMART LAYOUT HANDLER ---
 const MainLayout = ({ children, onLogout }) => {
   const location = useLocation();
   if (location.pathname === '/monitor') {
@@ -49,49 +48,56 @@ const MainLayout = ({ children, onLogout }) => {
   );
 };
 
-// --- THE NEW "TRAFFIC COP" APP SHELL ---
+// --- THE SECURE APP SHELL ---
 function AppShell() {
-  // THE FIX: We get our user state DIRECTLY from the context. App.jsx no longer has its own user state.
   const { user, loading } = useUser();
 
   const handleLogout = () => {
     signOut(auth).catch((error) => {
       console.error("Logout Error:", error);
     });
-    // No need for window.location.reload(), the context handles the state change!
   };
 
-  // --- RENDER LOADING STATE ---
   if (loading) return (
     <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', bgcolor: '#FFF8E1' }}>
       <CircularProgress color="primary" />
     </Box>
   );
 
-  // --- RENDER THE FULL SYSTEM (Router controls which part to show) ---
+  // THE FIX: Using the <Navigate> component to handle secure routing paths correctly for Firebase Hosting.
   return (
-    <Router>
-      {user ? (
-        // User is logged in, show the main dashboard
-        <MainLayout onLogout={handleLogout}>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/queue" element={<Queue />} />
-            <Route path="/patients" element={<Patients />} />
-            <Route path="/services" element={<Services />} />
-            <Route path="/inventory" element={<Inventory />} />
-            <Route path="/staff" element={<Staff />} />
-            <Route path="/sales" element={<Sales />} />
-            <Route path="/expenses" element={<Expenses />} />
-            <Route path="/monitor" element={<Monitor />} />
-            <Route path="/settings" element={<Settings />} />
-          </Routes>
-        </MainLayout>
-      ) : (
-        // No user, show the Login screen
-        <Login />
-      )}
-    </Router>
+    <Routes>
+      <Route 
+        path="/login" 
+        element={!user ? <Login /> : <Navigate to="/" replace />} 
+      />
+      
+      <Route 
+        path="/*" 
+        element={
+          user ? (
+            <MainLayout onLogout={handleLogout}>
+              <Routes>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/queue" element={<Queue />} />
+                <Route path="/patients" element={<Patients />} />
+                <Route path="/services" element={<Services />} />
+                <Route path="/inventory" element={<Inventory />} />
+                <Route path="/staff" element={<Staff />} />
+                <Route path="/sales" element={<Sales />} />
+                <Route path="/expenses" element={<Expenses />} />
+                <Route path="/monitor" element={<Monitor />} />
+                <Route path="/settings" element={<Settings />} />
+                {/* Fallback for unknown internal routes */}
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </MainLayout>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        } 
+      />
+    </Routes>
   );
 }
 
@@ -101,7 +107,9 @@ export default function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <UserProvider>
-        <AppShell />
+        <Router>
+          <AppShell />
+        </Router>
       </UserProvider>
     </ThemeProvider>
   );

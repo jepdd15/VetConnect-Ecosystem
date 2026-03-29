@@ -153,7 +153,8 @@ export default function Patients() {
             history={petHistory}
             vitalsData={vitalsTrend}
             loading={loadingChart}
-            onQuickBook={() => { setOpenPet360(false); handleQuickBookOpen(selectedPet); }}
+            calculateAge={calculateAge}
+            onQuickBook={() => alert(`Booking for ${selectedPet.name}...`)}
         />
       )}
 

@@ -218,10 +218,28 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
     try {
       const q = query(collection(db, "medical_records"), where("petId", "==", petId), orderBy("date", "desc"));
       const snapshot = await getDocs(q);
-      const history = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      // THE FIX: We now do a deep fetch to get the Service Name and Prescriptions!
+      const history = await Promise.all(snapshot.docs.map(async (docSnap) => {
+          const rec = { id: docSnap.id, ...docSnap.data() };
+
+          if (rec.appointmentId) {
+              const apptDoc = await getDoc(doc(db, "appointments", rec.appointmentId));
+              if (apptDoc.exists()) {
+                  const apptData = apptDoc.data();
+                  rec.serviceType = apptData.serviceType;
+                  rec.prescriptions = apptData.prescribedItems || [];
+              }
+          }
+          return rec;
+      }));
+
       const vitals = history.map(rec => rec.vitals && rec.vitals.weight && rec.date ? { date: new Date(rec.date.seconds * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), weight: parseFloat(rec.vitals.weight) } : null).filter(Boolean).reverse(); 
       return { history, vitals };
-    } catch (error) { console.error("Error fetching clinical data:", error); return { history: [], vitals:[] }; }
+    } catch (error) { 
+      console.error("Error fetching clinical data:", error); 
+      return { history: [], vitals:[] }; 
+    }
   };
 
   const archivePet = async (petId) => {

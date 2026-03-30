@@ -96,6 +96,7 @@ const getExpiryStatus = (expiryDate) => {
             <SortableHeader id="category" label="Category" />
             <TableCell sx={{ ...headerSx }} align="center">Status</TableCell>
             <SortableHeader id="stock" label="Stock Level" align="center" />
+            <SortableHeader id="reserved" label="Reserved" align="center" />
             <SortableHeader id="costPrice" label="Cost Price" align="right" />
             <SortableHeader id="price" label="Retail Price" align="right" />
             <SortableHeader id="margin" label="Margin" align="right" />
@@ -186,6 +187,15 @@ const getExpiryStatus = (expiryDate) => {
                    <Typography variant="body2" sx={{ fontWeight: '900', color: currentStock <= minStock ? '#D32F2F' : '#212121' }}>
                        {currentStock}
                        {row.unit && <Typography component="span" variant="caption" color="textSecondary" sx={{ ml: 0.5 }}>{row.unit}</Typography>}
+                   </Typography>
+                   <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold', fontSize: '0.65rem' }}>
+                      Sellable: {currentStock - (row.reserved || 0)}
+                   </Typography>
+                </TableCell>
+
+                <TableCell align="center">
+                   <Typography variant="body2" sx={{ fontWeight: '900', color: (row.reserved || 0) > 0 ? '#E65100' : '#757575' }}>
+                       {row.reserved || 0}
                    </Typography>
                 </TableCell>
 

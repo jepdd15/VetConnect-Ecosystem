@@ -72,6 +72,7 @@ export default function Queue() {
   const[openPOS, setOpenPOS] = useState(false); 
   const [openWalkIn, setOpenWalkIn] = useState(false);
   const [openAssign, setOpenAssign] = useState(false);
+  const [lastCheckDate, setLastCheckDate] = useState(new Date().toDateString());
 
   const { changeStatus, revertStatus, markNoShow, rejectAppointment, quickAdmitER } = useQueueActions();
   const hasCheckedAutoReset = useRef(false);
@@ -282,6 +283,19 @@ export default function Queue() {
 
     return () => unsubscribe();
   }, [filterDate]);
+
+  // --- THE MIDNIGHT HEARTBEAT ---
+  useEffect(() => {
+    const heartbeat = setInterval(() => {
+      const today = new Date().toDateString();
+      if (today !== lastCheckDate) {
+        setLastCheckDate(today);
+        setOpenCleanup(true); // Force cleanup modal on day change
+        console.log("Day change detected! Triggering triage board cleanup.");
+      }
+    }, 15 * 60 * 1000); // 15 Minutes
+    return () => clearInterval(heartbeat);
+  }, [lastCheckDate]);
 
   useEffect(() => {
     const unsubVets = onSnapshot(collection(db, "users"), (snapshot) => setVets(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(u => u.role === 'veterinarian' || u.role === 'groomer' || u.accessLevel)));

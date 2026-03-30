@@ -47,7 +47,15 @@ export function useInventory() {
   // READ
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "inventory"), (snap) => {
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const list = snap.docs.map(d => {
+        const data = d.data();
+        // SELF-HEALING: Ensure 'reserved' exists for every item
+        return { 
+          id: d.id, 
+          ...data, 
+          reserved: data.reserved ?? 0 
+        };
+      });
       list.sort((a,b) => (a.itemName || '').localeCompare(b.itemName || ''));
       setInventory(list);
       setLoading(false);
@@ -78,7 +86,7 @@ export function useInventory() {
     const { openingStock, ...itemData } = data;
     const initialStock = Number(openingStock) || 0;
     const cleanData = { ...itemData, category: (itemData.category || '').trim().toLowerCase() };
-    const docRef = await addDoc(collection(db, "inventory"), { ...cleanData, stock: initialStock });
+    const docRef = await addDoc(collection(db, "inventory"), { ...cleanData, stock: initialStock, reserved: 0 });
     await logEvent(docRef.id, itemData.itemName, "CREATED", 0, "Initial Product Entry");
     if (initialStock > 0) {
       await logEvent(docRef.id, itemData.itemName, "ADJUSTED", initialStock, `Opening stock: ${initialStock} unit(s) set at creation`);
@@ -112,6 +120,21 @@ export function useInventory() {
     });
     
     await logEvent(id, itemName, "ADJUSTED", amount, reason);
+  };
+
+  // --- THE SOFT-RESERVE ENGINE ---
+  const reserveStock = async (id, qty) => {
+    if (!qty || qty <= 0) return;
+    await updateDoc(doc(db, "inventory", id), {
+      reserved: increment(qty)
+    });
+  };
+
+  const releaseStock = async (id, qty) => {
+    if (!qty || qty <= 0) return;
+    await updateDoc(doc(db, "inventory", id), {
+      reserved: increment(-qty)
+    });
   };
 
   // SCRUB DATABASE

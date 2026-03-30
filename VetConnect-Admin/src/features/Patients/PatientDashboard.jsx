@@ -362,6 +362,20 @@ export default function PatientDashboard() {
               </Typography>
               <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary }}>Age: <span style={{ color: COLORS.brand, fontWeight: 700 }}>{calculateAge(pet?.dob)}</span></Typography>
               <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary }}>Wt: <span style={{ color: '#E65100', fontWeight: 700 }}>{pet?.lastWeight ? `${pet.lastWeight}kg` : 'N/A'}</span></Typography>
+              {owner?.outstandingBalance > 0 && (
+                <Tooltip title="This client has an unpaid balance. Please settle at the front desk.">
+                  <Chip 
+                    label={`₱${owner.outstandingBalance.toLocaleString()} OWED`} 
+                    size="small" 
+                    sx={{ 
+                      bgcolor: '#FFEBEE', color: '#B71C1C', 
+                      fontWeight: 900, fontSize: '0.72rem', 
+                      height: 22, border: '1px solid #EF9A9A',
+                      fontFamily: FONT, animation: 'pulse 2s infinite'
+                    }} 
+                  />
+                </Tooltip>
+              )}
               {hasAllergies ? (
                 <Chip icon={<WarningAmberIcon sx={{ color: '#FFF !important', fontSize: 12 }} />} label={pet.allergies} size="small" sx={{ bgcolor: '#C62828', color: '#FFF', fontWeight: 700, fontSize: '0.72rem', height: 22, fontFamily: FONT }} />
               ) : (

@@ -258,7 +258,10 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             batches = batches.map(b => { if (remainingToDeduct <= 0) return b; let amountTaken = 0; if (b.qty >= remainingToDeduct) { amountTaken = remainingToDeduct; b.qty -= remainingToDeduct; remainingToDeduct = 0; } else { amountTaken = b.qty; remainingToDeduct -= b.qty; b.qty = 0; } if (amountTaken > 0) batchesUsed.push(`${b.batchNumber} (-${amountTaken})`); return b; }); 
             batches = batches.filter(b => b.qty > 0); 
             
-            transaction.update(itemRef, { stock: currentStock - item.qty, batches: batches }); 
+            transaction.update(itemRef, { 
+              stock: currentStock - item.qty, 
+              reserved: Math.max(0, (data.reserved || 0) - (item.isPrescribed ? item.qty : 0)) 
+            }); 
             const logRef = doc(collection(db, "inventory_logs")); const externalNote = item.isExternalRx ? `[Ext Rx: ${item.externalVet}]` : '';
             transaction.set(logRef, { itemId: item.id, itemName: item.name, type: 'sale', quantity: item.qty, reason: `Sold to ${patient.petName} ${externalNote}`, oldStock: currentStock, newStock: currentStock - item.qty, batchInfo: `FIFO: ${batchesUsed.join(', ')}`, user: "POS System", timestamp: Timestamp.now() }); 
           } 
@@ -282,9 +285,19 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         }); 
         
         const apptRef = doc(db, "appointments", patient.id); 
-        transaction.update(apptRef, { status: 'completed', timeCompleted: Timestamp.now() }); 
+        transaction.update(apptRef, { 
+            status: 'completed', 
+            timeCompleted: Timestamp.now(),
+            balanceRemaining: parseFloat(financials.balanceDue)
+        }); 
+
+        // --- THE CRM DEBT TAGGING ---
+        if (parseFloat(financials.balanceDue) > 0 && patient.ownerId && patient.ownerId !== 'WALK_IN_USER') {
+            const ownerRef = doc(db, "users", patient.ownerId);
+            transaction.update(ownerRef, { outstandingBalance: increment(parseFloat(financials.balanceDue)) });
+        }
         
-        return saleRef.id; // Throw the ID out of the transaction!
+        return saleRef.id; 
       }); 
 
       onClose(); 

@@ -119,20 +119,30 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
     setLoading(true);
     try {
       await runTransaction(db, async (transaction) => {
+        // 1. READS FIRST (Firestore Requirement)
+        const queueRef = doc(db, "queue", "daily_queue");
+        const queueDoc = await transaction.get(queueRef);
+        const newNumber = queueDoc.exists() ? (queueDoc.data().lastNumberIssued || 0) + 1 : 1;
+
         let finalOwnerId, finalOwnerName, finalPetId, finalPetName, finalPetSpecies;
 
         if (walkInType === 'guest') {
           const newUserRef = doc(collection(db, "users"));
           transaction.set(newUserRef, { 
-              fullName: guestName, displayName: guestName, name: guestName,
-              phone: guestPhone, email: guestEmail || null,
-              role: 'pet_owner', accountStatus: 'unclaimed_guest', createdAt: Timestamp.now() 
+              fullName: guestName || 'Guest Client', 
+              displayName: guestName || 'Guest Client', 
+              name: guestName || 'Guest Client',
+              phone: guestPhone, 
+              email: guestEmail || null,
+              role: 'pet_owner', 
+              accountStatus: 'unclaimed_guest', 
+              createdAt: Timestamp.now() 
           });
-          finalOwnerId = newUserRef.id; finalOwnerName = guestName;
+          finalOwnerId = newUserRef.id; finalOwnerName = guestName || 'Guest Client';
           
           const petPayload = { ...guestPetData };
           const weightVal = parseFloat(petPayload.weight);
-          delete petPayload.weight; // Remove from spread, handle separately
+          delete petPayload.weight;
           
           const newPetRef = doc(collection(db, "pets"));
           transaction.set(newPetRef, { 
@@ -143,7 +153,9 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
           });
           finalPetId = newPetRef.id; finalPetName = guestPetData.name; finalPetSpecies = guestPetData.species;
         } else { // Existing Client
-          finalOwnerId = selectedClient.id; finalOwnerName = selectedClient.fullName;
+          finalOwnerId = selectedClient.id; 
+          finalOwnerName = selectedClient.fullName || selectedClient.displayName || 'Existing Client';
+          
           if (isNewPet) {
              const petPayload = { ...guestPetData };
              const weightVal = parseFloat(petPayload.weight);
@@ -159,7 +171,6 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
              finalPetId = newPetRef.id; finalPetName = guestPetData.name; finalPetSpecies = guestPetData.species;
           } else {
              finalPetId = selectedPet.id; finalPetName = selectedPet.name; finalPetSpecies = selectedPet.species;
-             // Write weight back to existing pet document if provided
              const arrivalWeight = parseFloat(guestPetData.weight);
              if (arrivalWeight > 0) {
                transaction.update(doc(db, 'pets', selectedPet.id), { lastWeight: arrivalWeight });
@@ -167,23 +178,20 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
           }
         }
         
-        const queueRef = doc(db, "queue", "daily_queue");
-        const queueDoc = await transaction.get(queueRef);
-        const newNumber = queueDoc.exists() ? (queueDoc.data().lastNumberIssued || 0) + 1 : 1;
+        // 2. UPDATES & WRITES
         transaction.set(queueRef, { lastNumberIssued: newNumber }, { merge: true });
 
         const selectedServiceObj = servicesList.find(s => s.name === service);
         const isEmergency = service === 'Emergency';
         const department = selectedServiceObj?.department || selectedServiceObj?.category || 'General';
         
-        // Resolve clinical data for appointment denormalization
         const resolvedBreed = (walkInType === 'guest' || isNewPet) ? guestPetData.breed : (selectedPet?.breed || '');
         const resolvedWeight = parseFloat(guestPetData.weight) || (selectedPet?.lastWeight ? parseFloat(selectedPet.lastWeight) : null);
         const resolvedAllergies = (walkInType === 'guest' || isNewPet) ? guestPetData.allergies : (selectedPet?.allergies || '');
 
         const appointmentPayload = {
           ownerId: finalOwnerId, ownerName: finalOwnerName, petId: finalPetId, petName: finalPetName, petSpecies: finalPetSpecies,
-          petBreed: resolvedBreed, petWeight: resolvedWeight, petAllergies: resolvedAllergies,
+          petBreed: resolvedBreed || 'Mixed', petWeight: resolvedWeight || null, petAllergies: resolvedAllergies || '',
           serviceType: service, servicePrice: selectedServiceObj?.price || 0, serviceCategory: department, requiredRole: department,
           status: 'arrived', queueNumber: newNumber, ticketPrefix: isEmergency ? 'E' : 'W', priority: isEmergency ? 'high' : 'normal', 
           scheduledDate: Timestamp.now(), createdAt: Timestamp.now(), timeArrived: Timestamp.now(), 

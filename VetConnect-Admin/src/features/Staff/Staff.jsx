@@ -3,53 +3,99 @@ import { Box, Typography, Paper, Button, TextField, InputAdornment, Snackbar, Al
 
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import SearchIcon from '@mui/icons-material/Search';
+import PeopleIcon from '@mui/icons-material/People';
+import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
+import EventAvailableIcon from '@mui/icons-material/EventAvailable';
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
+
+// Design Tokens
+import { FONT, TYPE, COLORS, GLASS } from '../../theme/designTokens';
 
 // Logic & Components
 import { useStaffManager } from './hooks/useStaffManager';
 import StaffTable from './components/StaffTable';
 import StaffFormModal from './modals/StaffFormModal';
+import ConfirmRevokeModal from './modals/ConfirmRevokeModal';
+
+// ── Reusable KPI Card (shared token-driven variant) ──────────────
+const KPICard = ({ title, value, icon, color, bgcolor, border, onClick, active }) => (
+  <Paper
+    elevation={0}
+    onClick={onClick}
+    sx={{
+      p: 2, display: 'flex', alignItems: 'center', gap: 1.5,
+      bgcolor: active ? bgcolor : COLORS.cardBg,
+      border: `${active ? '2px' : '1px'} solid ${active ? color : (border || COLORS.borderLight)}`,
+      borderRadius: 2.5,
+      cursor: onClick ? 'pointer' : 'default',
+      transition: 'all 0.2s ease',
+      '&:hover': onClick ? { transform: 'translateY(-2px)', boxShadow: `0 6px 20px ${color}25` } : {},
+      height: '100%',
+    }}
+  >
+    <Box sx={{ width: 44, height: 44, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: `${color}1A` }}>
+      {React.cloneElement(icon, { sx: { fontSize: 22, color } })}
+    </Box>
+    <Box sx={{ minWidth: 0 }}>
+      <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, whiteSpace: 'nowrap' }}>
+        {title}
+      </Typography>
+      <Typography variant="h5" sx={{ fontFamily: FONT, fontWeight: 900, color: active ? color : COLORS.textPrimary, lineHeight: 1 }}>
+        {value}
+      </Typography>
+    </Box>
+  </Paper>
+);
 
 export default function Staff() {
-  // 1. THE BRAIN: We now pull 'activeAppointments' to calculate live status inside our filter!
   const { staffList, departments, getWorkload, activeAppointments, saveStaff, removeStaff } = useStaffManager();
   
-  // 2. UI STATES
+  // UI STATES
   const [searchText, setSearchText] = useState('');
-  const[open, setOpen] = useState(false);
+  const [open, setOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' });
   const showToast = (message, severity = 'success') => setToast({ open: true, message, severity });
 
-  // --- 3. THE NEW FILTER STATES ---
+  // Confirm Revoke modal state
+  const [openRevoke, setOpenRevoke] = useState(false);
+  const [revokeTarget, setRevokeTarget] = useState(null);
+
+  // FILTER STATES
   const [filterDept, setFilterDept] = useState('All');
   const [filterStatus, setFilterStatus] = useState('All');
-  const[filterAccess, setFilterAccess] = useState('All');
+  const [filterAccess, setFilterAccess] = useState('All');
 
-  // --- 4. THE UPGRADED MULTI-AXIAL FILTER ENGINE ---
+  // --- KPI ANALYTICS ENGINE ---
+  const kpis = useMemo(() => {
+    let admins = 0, busy = 0, available = 0;
+    staffList.forEach(u => {
+      const role = u.accessLevel || (u.role === 'admin' ? 'admin' : 'staff');
+      if (role === 'admin') admins++;
+      const load = activeAppointments.filter(a => a.assignedVetId === u.id).length;
+      if (load > 0) busy++;
+      else available++;
+    });
+    return { total: staffList.length, admins, busy, available };
+  }, [staffList, activeAppointments]);
+
+  // --- MULTI-AXIAL FILTER ENGINE ---
   const filteredStaff = useMemo(() => {
     return staffList.filter(u => {
-      // A. Search Filter
       const matchSearch = (u.fullName || '').toLowerCase().includes(searchText.toLowerCase());
-      
-      // B. Department Filter
-      const matchDept = filterDept === 'All' || (u.departments ||[]).includes(filterDept);
-      
-      // C. Access Level Filter
+      const matchDept = filterDept === 'All' || (u.departments || []).includes(filterDept);
       const role = u.accessLevel || (u.role === 'admin' ? 'admin' : 'staff');
       const matchAccess = filterAccess === 'All' || role.toLowerCase() === filterAccess.toLowerCase();
-      
-      // D. Live Status (Workload) Filter
       const load = activeAppointments.filter(a => a.assignedVetId === u.id).length;
       const isBusy = load > 0;
       let matchStatus = true;
       if (filterStatus === 'Available') matchStatus = !isBusy;
       if (filterStatus === 'Busy') matchStatus = isBusy;
-
       return matchSearch && matchDept && matchAccess && matchStatus;
     });
-  },[staffList, searchText, filterDept, filterStatus, filterAccess, activeAppointments]);
+  }, [staffList, searchText, filterDept, filterStatus, filterAccess, activeAppointments]);
 
-  // Action Handlers
+  // --- HANDLERS ---
   const handleSave = async (formData) => {
     try {
       await saveStaff(selectedItem?.id, formData);
@@ -58,87 +104,116 @@ export default function Staff() {
     } catch (e) { showToast(e.message, "error"); }
   };
 
-  const handleDelete = async (id, name) => {
-    if (window.confirm(`Are you sure you want to revoke system access for ${name}?`)) {
-      try { await removeStaff(id); showToast("Access Revoked.", "success"); } 
-      catch (e) { showToast(e.message, "error"); }
-    }
+  const handleDelete = (id, name) => {
+    setRevokeTarget({ id, name });
+    setOpenRevoke(true);
   };
 
-  const glassStyle = { 
-    background: 'rgba(255, 255, 255, 0.55)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', 
-    border: '1px solid rgba(255, 255, 255, 0.8)', boxShadow: '0 8px 32px 0 rgba(139, 69, 19, 0.08)', borderRadius: 3, 
+  const handleConfirmRevoke = async () => {
+    if (!revokeTarget) return;
+    try {
+      await removeStaff(revokeTarget.id);
+      showToast("Access Revoked.", "success");
+    } catch (e) { showToast(e.message, "error"); }
+    setOpenRevoke(false);
+    setRevokeTarget(null);
   };
 
   return (
-    <Box>
-      {/* THE UX FIX: Expanded Command Center Bar */}
-      <Paper sx={{ ...glassStyle, p: 2, mb: 3, display: 'flex', flexWrap: 'wrap', gap: 2, justifyContent: 'space-between', alignItems: 'center' }}>
-        
-        {/* LEFT & CENTER: Title, Search, and the New Filters */}
-        <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 2, flexGrow: 1 }}>
-          <Typography variant="h4" sx={{ fontWeight: '900', color: '#5D4037', textShadow: '0px 1px 2px rgba(255,255,255,0.8)', mr: 1 }}>
-            Staff
-          </Typography>
-          
-          {/* SEARCH BAR (Pixel-Perfect Alignment Preserved) */}
-          <Box sx={{ display: 'flex', alignItems: 'center', bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 2, border: '1px solid rgba(255,255,255,0.9)' }}>
-            <TextField 
-              variant="standard" size="small" placeholder="Search staff name..." value={searchText} onChange={(e) => setSearchText(e.target.value)} 
-              InputProps={{ 
-                startAdornment: <InputAdornment position="start" sx={{ mt: 0 }}><SearchIcon sx={{color: 'white'}}/></InputAdornment>,
-                disableUnderline: true, style: { color: 'white', fontWeight: 'bold', display: 'flex', alignItems: 'center', height: '100%' } 
-              }} 
-              sx={{ width: 220, bgcolor: '#5D4037', borderRadius: 2, p: '6px 12px', boxShadow: 2, display: 'flex', justifyContent: 'center', '& .MuiInputBase-input': { padding: 0, ml: 0.5, '&::placeholder': { color: 'rgba(255,255,255,0.6)', opacity: 1 } }, '& .MuiInputAdornment-root': { marginTop: '0 !important' } }} 
-            />
-          </Box>
+    <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
+      {/* COMMAND CENTER BAR */}
+      <Box sx={{ display: 'flex', flexWrap: 'nowrap', gap: 2, alignItems: 'center', mb: 2, minWidth: 0 }}>
+        <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.accent, whiteSpace: 'nowrap', flexShrink: 0 }}>
+          Staff
+        </Typography>
 
-          {/* THE NEW FILTERS */}
-          <TextField select size="small" value={filterDept} onChange={(e) => setFilterDept(e.target.value)} sx={{ minWidth: 160, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 1, '& fieldset': { border: 'none' } }}>
-              <MenuItem value="All">All Departments</MenuItem>
-              {departments.map(d => <MenuItem key={d.id} value={d.name}>{d.name}</MenuItem>)}
-          </TextField>
+        {/* Search */}
+        <TextField
+          variant="standard"
+          placeholder="Search staff name..."
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+          InputProps={{
+            startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: 'rgba(255,255,255,0.8)' }} /></InputAdornment>,
+            disableUnderline: true,
+            style: { color: 'white', fontWeight: 'bold', fontFamily: FONT },
+          }}
+          sx={{ width: 200, flexShrink: 0, bgcolor: COLORS.accent, borderRadius: 2, px: 2, py: 0.5, boxShadow: 2, '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.6)', opacity: 1 } }}
+        />
 
-          <TextField select size="small" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} sx={{ minWidth: 140, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 1, '& fieldset': { border: 'none' } }}>
-              <MenuItem value="All">All Statuses</MenuItem>
-              <MenuItem value="Available">🟢 Available</MenuItem>
-              <MenuItem value="Busy">🟠 Busy (Active)</MenuItem>
-          </TextField>
+        {/* Department filter */}
+        <TextField select size="small" value={filterDept} onChange={(e) => setFilterDept(e.target.value)} sx={{ minWidth: 160, bgcolor: COLORS.cardBg, borderRadius: 1, '& fieldset': { borderColor: COLORS.borderInput }, flexShrink: 0 }}>
+          <MenuItem value="All">All Departments</MenuItem>
+          {departments.map(d => <MenuItem key={d.id} value={d.name}>{d.name}</MenuItem>)}
+        </TextField>
 
-          <TextField select size="small" value={filterAccess} onChange={(e) => setFilterAccess(e.target.value)} sx={{ minWidth: 140, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 1, '& fieldset': { border: 'none' } }}>
-              <MenuItem value="All">All Access</MenuItem>
-              <MenuItem value="Admin">Admin Only</MenuItem>
-              <MenuItem value="Staff">Staff Only</MenuItem>
-          </TextField>
-          
-          <Typography variant="body2" sx={{ color: '#5D4037', fontStyle: 'italic', fontWeight: '900', letterSpacing: 0.5, ml: 1 }}>
-            {filteredStaff.length} {filteredStaff.length === 1 ? 'Record' : 'Records'}
-          </Typography>
+        {/* Status filter */}
+        <TextField select size="small" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} sx={{ minWidth: 140, bgcolor: COLORS.cardBg, borderRadius: 1, '& fieldset': { borderColor: COLORS.borderInput }, flexShrink: 0 }}>
+          <MenuItem value="All">All Statuses</MenuItem>
+          <MenuItem value="Available">🟢 Available</MenuItem>
+          <MenuItem value="Busy">🟠 Busy (Active)</MenuItem>
+        </TextField>
+
+        {/* Access filter */}
+        <TextField select size="small" value={filterAccess} onChange={(e) => setFilterAccess(e.target.value)} sx={{ minWidth: 140, bgcolor: COLORS.cardBg, borderRadius: 1, '& fieldset': { borderColor: COLORS.borderInput }, flexShrink: 0 }}>
+          <MenuItem value="All">All Access</MenuItem>
+          <MenuItem value="Admin">Admin Only</MenuItem>
+          <MenuItem value="Staff">Staff Only</MenuItem>
+        </TextField>
+
+        {/* Record count */}
+        <Typography variant="body2" sx={{ fontFamily: FONT, color: COLORS.accent, fontWeight: 900, whiteSpace: 'nowrap', flexShrink: 0 }}>
+          {filteredStaff.length} {filteredStaff.length === 1 ? 'Record' : 'Records'}
+        </Typography>
+
+        {/* Spacer */}
+        <Box sx={{ flexGrow: 1, flexShrink: 1, minWidth: 0 }} />
+
+        {/* Add Staff */}
+        <Button 
+          variant="contained" startIcon={<PersonAddIcon />} 
+          sx={{ bgcolor: COLORS.cta, fontFamily: FONT, fontWeight: 900, boxShadow: `0 4px 15px ${COLORS.cta}66`, textTransform: 'uppercase', letterSpacing: 0.5, px: 3, borderRadius: 2, '&:hover': { bgcolor: COLORS.ctaHover }, whiteSpace: 'nowrap', flexShrink: 0 }} 
+          onClick={() => { setSelectedItem(null); setOpen(true); }}
+        >
+          Add Staff
+        </Button>
+      </Box>
+
+      {/* KPI DASHBOARD ROW */}
+      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2, mb: 2, width: '100%', minWidth: 0 }}>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <KPICard title="Total Staff" value={kpis.total} icon={<PeopleIcon />} color={COLORS.info} bgcolor={COLORS.kpiBlueBg} border={COLORS.kpiBlueBorder} />
         </Box>
-
-        {/* RIGHT SIDE: Action Button */}
-        <Box>
-          <Button 
-            variant="contained" startIcon={<PersonAddIcon />} 
-            sx={{ bgcolor: '#FF9800', fontWeight: '900', boxShadow: '0 4px 15px rgba(255, 152, 0, 0.4)', textTransform: 'uppercase', letterSpacing: 0.5, px: 3, whiteSpace: 'nowrap' }} 
-            onClick={() => { setSelectedItem(null); setOpen(true); }}
-          >
-            Add Staff
-          </Button>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <KPICard title="Currently Busy" value={kpis.busy} icon={<LocalHospitalIcon />} color={COLORS.warning} bgcolor={COLORS.kpiOrangeBg} border={COLORS.kpiOrangeBorder} />
         </Box>
-      </Paper>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <KPICard title="Available Now" value={kpis.available} icon={<EventAvailableIcon />} color={COLORS.success} bgcolor={COLORS.kpiGreenBg} border={COLORS.kpiGreenBorder} />
+        </Box>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <KPICard title="Administrators" value={kpis.admins} icon={<AdminPanelSettingsIcon />} color={COLORS.danger} bgcolor={COLORS.kpiRedBg} border={COLORS.kpiRedBorder} />
+        </Box>
+      </Box>
 
       {/* THE TABLE */}
-      <StaffTable data={filteredStaff} getWorkload={getWorkload} onEdit={(row) => { setSelectedItem(row); setOpen(true); }} onDelete={handleDelete} glassStyle={glassStyle} departments={departments} />
+      <StaffTable data={filteredStaff} getWorkload={getWorkload} onEdit={(row) => { setSelectedItem(row); setOpen(true); }} onDelete={handleDelete} glassStyle={GLASS.panel} departments={departments} />
 
       {/* THE MODAL */}
       {open && (
         <StaffFormModal key={selectedItem?.id || 'new_staff'} open={open} onClose={() => setOpen(false)} item={selectedItem} dynamicDepartments={departments} onSave={handleSave} showToast={showToast} />
       )}
 
+      {/* CONFIRM REVOKE MODAL */}
+      <ConfirmRevokeModal
+        open={openRevoke}
+        onClose={() => { setOpenRevoke(false); setRevokeTarget(null); }}
+        staffName={revokeTarget?.name}
+        onConfirm={handleConfirmRevoke}
+      />
+
       {/* ALERTS */}
       <Snackbar open={toast.open} autoHideDuration={4000} onClose={() => setToast({...toast, open: false})} anchorOrigin={{vertical: 'bottom', horizontal: 'center'}}>
-        <Alert severity={toast.severity} sx={{ width: '100%', fontWeight: 'bold', boxShadow: 3 }}>{toast.message}</Alert>
+        <Alert severity={toast.severity} sx={{ width: '100%', fontFamily: FONT, fontWeight: 'bold', boxShadow: 3 }}>{toast.message}</Alert>
       </Snackbar>
     </Box>
   );

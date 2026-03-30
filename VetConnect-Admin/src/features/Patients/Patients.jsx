@@ -1,6 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { Box, Tabs, Tab, Typography, CircularProgress } from '@mui/material';
 
+// Design Tokens
+import { FONT, TYPE, COLORS } from '../../theme/designTokens';
+
 // 1. Logic (The Brain)
 import { usePatientManager } from './hooks/usePatientManager';
 
@@ -14,7 +17,9 @@ import InternalLogs from './components/InternalLogs';
 
 // 3. Modals
 import AddPetModal from './modals/AddPetModal';
-import QuickBookModal from './modals/QuickBookModal'; // The new modal
+import QuickBookModal from './modals/QuickBookModal';
+import EditPetModal from './modals/EditPetModal';
+import NewClientModal from './modals/NewClientModal';
 
 // Icons
 import PetsIcon from '@mui/icons-material/Pets';
@@ -29,14 +34,16 @@ export default function Patients() {
     clientPets, clientTransactions, outstandingBalance, 
     handleSelectClient, calculateAge, isEditing, setIsEditing, 
     editForm, setEditForm, handleSaveProfile,
-    newNote, setNewNote, noteCategory, setNoteCategory, handleAddNote,
+    newNote, setNewNote, noteCategory, setNoteCategory, handleAddNote, handleDeleteNote,
     newPetData, setNewPetData, handleAdminAddPet,
     loading, fetchPetClinicalData, archivePet 
   } = usePatientManager(() => setActiveTab(0)); 
 
   // Modal States
   const [openAddPet, setOpenAddPet] = useState(false);
-  const [openQuickBook, setOpenQuickBook] = useState(false); // For the new feature
+  const [openQuickBook, setOpenQuickBook] = useState(false);
+  const [openNewClient, setOpenNewClient] = useState(false);
+  const [openEditPet, setOpenEditPet] = useState(false);
   const [selectedPet, setSelectedPet] = useState(null);
 
   const filteredOwners = useMemo(() => {
@@ -58,7 +65,7 @@ export default function Patients() {
 
   return (
     // THE FIX: m: -4 pulls the container to the absolute edges, filling the screen!
-    <Box sx={{ m: -4, display: 'flex', height: '100vh', width: 'calc(100% + 64px)', overflow: 'hidden', bgcolor: '#FAFAFA' }}>
+    <Box sx={{ m: -4, display: 'flex', height: '100vh', width: 'calc(100% + 64px)', overflow: 'hidden', bgcolor: COLORS.surfaceAlt }}>
       
       <PatientDirectory 
         owners={filteredOwners} 
@@ -66,10 +73,10 @@ export default function Patients() {
         onSelect={handleSelectClient} 
         searchText={searchText}
         onSearchChange={(e) => setSearchText(e.target.value)}
-        onNewClient={() => alert("New Client Modal coming soon!")} 
+        onNewClient={() => setOpenNewClient(true)} 
       />
 
-      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'linear-gradient(135deg, #FFF8E1 0%, #FFE0B2 100%)' }}>
+      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: `linear-gradient(160deg, ${COLORS.surface} 0%, #FFE0B2 100%)` }}>
         {loading && !selectedClient ? (
            <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
              <CircularProgress />
@@ -93,14 +100,15 @@ export default function Patients() {
               }}
             />
             
-            <Box sx={{ px: 4, pt: 1, borderBottom: '1px solid #E0E0E0', bgcolor: '#FAFAFA' }}>
+            <Box sx={{ px: 4, pt: 1, borderBottom: `1px solid ${COLORS.border}`, bgcolor: COLORS.surfaceAlt }}>
               <Tabs 
                 value={activeTab} 
                 onChange={(e, v) => setActiveTab(v)} 
                 sx={{ 
                   minHeight: 44, 
-                  '& .MuiTabs-indicator': { height: 3, borderTopLeftRadius: 3, borderTopRightRadius: 3 },
-                  '& .MuiTab-root': { fontWeight: '800', textTransform: 'uppercase', fontSize: '0.75rem', minHeight: 44, py: 1, px: 3 } 
+                  '& .MuiTabs-indicator': { height: 3, borderTopLeftRadius: 3, borderTopRightRadius: 3, bgcolor: COLORS.cta },
+                  '& .MuiTab-root': { fontFamily: FONT, fontWeight: 800, textTransform: 'uppercase', fontSize: '0.75rem', minHeight: 44, py: 1, px: 3, color: COLORS.textMuted },
+                  '& .Mui-selected': { color: `${COLORS.cta} !important` },
                 }}
               >
                 <Tab label={`Pets (${clientPets.filter(p => p.status !== 'archived').length})`} />
@@ -110,18 +118,18 @@ export default function Patients() {
               </Tabs>
             </Box>
 
-            <Box sx={{ flexGrow: 1, overflowY: 'auto', bgcolor: '#F5F5F5' }}>
-                {activeTab === 0 && <PetList pets={clientPets} calculateAge={calculateAge} onRegisterPet={() => setOpenAddPet(true)} onArchive={archivePet} onQuickBook={handleQuickBookOpen} />}
+            <Box sx={{ flexGrow: 1, overflowY: 'auto', bgcolor: COLORS.surface }}>
+                {activeTab === 0 && <PetList pets={clientPets} calculateAge={calculateAge} onRegisterPet={() => setOpenAddPet(true)} onArchive={archivePet} onQuickBook={handleQuickBookOpen} onEditPet={(pet) => { setSelectedPet(pet); setOpenEditPet(true); }} />}
                 {activeTab === 1 && <ClientDetails editForm={editForm} setEditForm={setEditForm} isEditing={isEditing} calculateAge={calculateAge} />}
                 {activeTab === 2 && <BillingLedger transactions={clientTransactions} />}
-                {activeTab === 3 && <InternalLogs notes={selectedClient.staffNotes || []} newNote={newNote} setNewNote={setNewNote} category={noteCategory} setCategory={setNoteCategory} onAdd={handleAddNote} onDelete={(noteId) => alert(`Deleting note ${noteId}`)} />}
+                {activeTab === 3 && <InternalLogs notes={selectedClient.staffNotes || []} newNote={newNote} setNewNote={setNewNote} category={noteCategory} setCategory={setNoteCategory} onAdd={handleAddNote} onDelete={handleDeleteNote} />}
             </Box>
           </>
         ) : (
-           <Box sx={{ flex: 1, display:'flex', alignItems:'center', justifyContent:'center', flexDirection: 'column', color: '#aaa' }}>
+           <Box sx={{ flex: 1, display:'flex', alignItems:'center', justifyContent:'center', flexDirection: 'column', color: COLORS.textMuted }}>
              <PetsIcon sx={{ fontSize: 80, mb: 2, opacity: 0.15 }} />
-             <Typography variant="h6" color="textSecondary" fontWeight="bold">No Client Selected</Typography>
-             <Typography variant="body2">Search or select a client from the directory to view their profile.</Typography>
+             <Typography variant="h6" sx={{ fontFamily: FONT, color: COLORS.textMuted, fontWeight: 'bold' }}>No Client Selected</Typography>
+             <Typography variant="body2" sx={{ fontFamily: FONT, color: COLORS.textMuted }}>Search or select a client from the directory to view their profile.</Typography>
            </Box>
         )}
       </Box>
@@ -144,6 +152,21 @@ export default function Patients() {
         <QuickBookModal 
           open={openQuickBook} 
           onClose={() => setOpenQuickBook(false)} 
+          pet={selectedPet} 
+        />
+      )}
+
+      {openNewClient && (
+        <NewClientModal 
+          open={openNewClient} 
+          onClose={() => setOpenNewClient(false)} 
+        />
+      )}
+
+      {openEditPet && selectedPet && (
+        <EditPetModal 
+          open={openEditPet} 
+          onClose={() => setOpenEditPet(false)} 
           pet={selectedPet} 
         />
       )}

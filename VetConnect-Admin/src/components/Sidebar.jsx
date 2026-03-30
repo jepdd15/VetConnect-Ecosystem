@@ -2,6 +2,9 @@ import React from 'react';
 import { Drawer, List, ListItemButton, ListItemIcon, ListItemText, Box, Typography, Divider, Button } from '@mui/material';
 import { useNavigate, useLocation } from 'react-router-dom';
 
+// Design Tokens
+import { FONT, COLORS } from '../theme/designTokens';
+
 // THE FIX: Import the Context to check roles!
 import { useUser } from '../context/UserContext'; 
 
@@ -53,7 +56,7 @@ export default function Sidebar({ onLogout }) {
         [`& .MuiDrawer-paper`]: { 
           width: drawerWidth, 
           boxSizing: 'border-box',
-          backgroundColor: '#3E2723', 
+          backgroundColor: COLORS.brand, 
           color: 'white',
           display: 'flex',
           flexDirection: 'column'
@@ -61,8 +64,8 @@ export default function Sidebar({ onLogout }) {
       }}
     >
       <Box sx={{ p: 3, display: 'flex', alignItems: 'center', gap: 1.5, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-        <PetsIcon sx={{ color: '#FF9800' }} />
-        <Typography variant="h6" sx={{ fontWeight: 'bold' }}>VetConnect</Typography>
+        <PetsIcon sx={{ color: COLORS.cta }} />
+        <Typography variant="h6" sx={{ fontFamily: FONT, fontWeight: 'bold' }}>VetConnect</Typography>
       </Box>
 
       <List sx={{ flexGrow: 1, mt: 2 }}>
@@ -79,8 +82,8 @@ export default function Sidebar({ onLogout }) {
               borderRadius: 2
             }}
           >
-            <ListItemIcon sx={{ color: '#D7CCC8' }}>{item.icon}</ListItemIcon>
-            <ListItemText primary={item.name} primaryTypographyProps={{ fontWeight: '600' }} />
+            <ListItemIcon sx={{ color: COLORS.timelineRail }}>{item.icon}</ListItemIcon>
+            <ListItemText primary={item.name} primaryTypographyProps={{ fontFamily: FONT, fontWeight: '600' }} />
           </ListItemButton>
         ))}
       </List>

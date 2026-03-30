@@ -18,13 +18,21 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
   const[isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({ 
     emergencyContacts: [], 
-    gender: null, // Re-introduce for data capture
+    gender: null,
     seniorId: '',
-    clientTag: 'Regular', // Default for new clients
+    clientTag: 'Regular',
     referralSource: '',
     allowPromos: false,
     preferredComm: 'SMS',
-    whatsappOptIn: false
+    whatsappOptIn: false,
+    // New Fields
+    email: '',
+    secondaryPhone: '',
+    govIdType: '',
+    govIdNumber: '',
+    dpaConsent: false,
+    waiverSigned: false,
+    accountStanding: 'Good Standing'
   });
   const [newNote, setNewNote] = useState('');
   const[noteCategory, setNoteCategory] = useState('General');
@@ -169,7 +177,15 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
   const handleSelectClient = (client) => {
     let reps = client.emergencyContacts ||[];
     if (reps.length === 0 && (client.emergencyName || client.emergencyPhone)) reps =[{ name: client.emergencyName || '', phone: client.emergencyPhone || '', relation: 'Primary' }];
-    const cleanClient = { ...client, dob: formatFirestoreDate(client.dob), clientTag: client.clientTag || 'Regular', emergencyContacts: reps };
+    const cleanClient = { 
+      ...client, 
+      dob: formatFirestoreDate(client.dob), 
+      clientTag: client.clientTag || 'Regular', 
+      accountStanding: client.accountStanding || 'Good Standing',
+      dpaConsent: client.dpaConsent || false,
+      waiverSigned: client.waiverSigned || false,
+      emergencyContacts: reps 
+    };
     
     setSelectedClient(cleanClient);
     setEditForm(cleanClient);
@@ -186,16 +202,23 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
     const payload = {
         fullName: editForm.fullName,
         phone: editForm.phone,
+        email: editForm.email || null,
+        secondaryPhone: editForm.secondaryPhone || null,
         address: editForm.address,
         city: editForm.city,
         dob: editForm.dob ? Timestamp.fromDate(new Date(editForm.dob)) : null,
-        gender: editForm.gender, // Now saves gender!
+        gender: editForm.gender,
+        govIdType: editForm.govIdType || null,
+        govIdNumber: editForm.govIdNumber || null,
         seniorId: editForm.seniorId,
-        clientTag: editForm.clientTag, // Now saves client tag!
-        referralSource: editForm.referralSource, // Now saves referral source!
-        allowPromos: editForm.allowPromos, // Now saves promo opt-in!
-        preferredComm: editForm.preferredComm, // Now saves preferred comm channel!
-        whatsappOptIn: editForm.whatsappOptIn, // Now saves WhatsApp consent!
+        clientTag: editForm.clientTag,
+        accountStanding: editForm.accountStanding || 'Good Standing',
+        dpaConsent: editForm.dpaConsent || false,
+        waiverSigned: editForm.waiverSigned || false,
+        referralSource: editForm.referralSource,
+        allowPromos: editForm.allowPromos,
+        preferredComm: editForm.preferredComm,
+        whatsappOptIn: editForm.whatsappOptIn,
         emergencyContacts: editForm.emergencyContacts,
     };
 
@@ -209,6 +232,12 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
     const updatedNotes = [...(selectedClient.staffNotes || []), note];
     await updateDoc(doc(db, "users", selectedClient.id), { staffNotes: updatedNotes });
     setNewNote('');
+  };
+
+  const handleDeleteNote = async (noteId) => {
+    if(!selectedClient) return;
+    const updatedNotes = (selectedClient.staffNotes || []).filter(n => n.id !== noteId);
+    await updateDoc(doc(db, "users", selectedClient.id), { staffNotes: updatedNotes });
   };
 
   const handleAdminAddPet = async () => {
@@ -260,7 +289,7 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
     loading: loadingDirectory || loadingClientData, 
     handleSelectClient, calculateAge,
     isEditing, setIsEditing, editForm, setEditForm, handleSaveProfile,
-    newNote, setNewNote, noteCategory, setNoteCategory, handleAddNote,
+    newNote, setNewNote, noteCategory, setNoteCategory, handleAddNote, handleDeleteNote,
     newPetData, setNewPetData, handleAdminAddPet, fetchPetClinicalData, archivePet 
   };
 }

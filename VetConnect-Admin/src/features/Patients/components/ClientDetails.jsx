@@ -1,52 +1,58 @@
 import React from 'react';
-import { Box, Typography, Paper, IconButton, Button, TextField, MenuItem, Divider, Switch } from '@mui/material';
+import { Box, Typography, IconButton, Button, TextField, MenuItem, Divider, Switch } from '@mui/material';
 import Grid from '@mui/material/Grid';
 
+// Design Tokens
+import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
+
 // Icons
-import PersonIcon from '@mui/icons-material/Person';
-import PhoneIcon from '@mui/icons-material/Phone';
-import CakeIcon from '@mui/icons-material/Cake';
-import HomeIcon from '@mui/icons-material/Home';
-import GroupIcon from '@mui/icons-material/Group';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
-import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
 
-// --- THE UPGRADED LEDGER ROW ---
-const LedgerRow = ({ label, value, isEditing, onChange, select, children, type="text", extra, isLast }) => (
-  <Box sx={{ py: 2, px: 4 }}>
-    <Grid container spacing={2} alignItems={isEditing ? "center" : "flex-start"}>
-      {/* THE FIX: Replaced 'item xs={...}' with 'size={{ xs: ... }}' */}
-      <Grid size={{ xs: 12, sm: 4, md: 3 }}>
-        <Typography variant="caption" sx={{ color: '#757575', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', pt: isEditing && type !== 'switch' ? 0.5 : 0 }}>
-          {label}
-        </Typography>
-      </Grid>
-      {/* THE FIX: Replaced 'item xs={...}' with 'size={{ xs: ... }}' */}
-      <Grid size={{ xs: 12, sm: 8, md: 9 }}>
-        {isEditing ? (
-          type === 'switch' ? (
-             <Switch checked={!!value} onChange={(e) => onChange(e.target.checked)} color="primary" />
-          ) : (
-            <TextField 
-              select={select} fullWidth size="small" value={value || ''} 
-              onChange={(e) => onChange(e.target.value)} type={type} variant="outlined" 
-              sx={{ bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 1 } }} 
-            >
-              {children}
-            </TextField>
-          )
+// Vertical Stack DataField for ultra-high density Enterprise Layout
+const DataField = ({ label, value, isEditing, onChange, select, children, type="text", extra, width={ xs: 12, sm: 6, md: 3 } }) => (
+  <Grid size={width} sx={{ mb: isEditing ? 2 : 2.5 }}>
+    <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, display: 'block', lineHeight: 1.2, mb: 0.5 }}>
+      {label}
+    </Typography>
+    {isEditing ? (
+      <Box>
+        {type === 'switch' ? (
+           <Switch checked={!!value} onChange={(e) => onChange(e.target.checked)} color="primary" size="small" sx={{ ml: -1 }} />
         ) : (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minHeight: 24 }}>
-            <Typography variant="body1" sx={{ color: type === 'switch' ? (value ? '#2E7D32' : '#D32F2F') : '#212121', fontWeight: type === 'switch' ? 'bold' : '500' }}>
-              {type === 'switch' ? (value ? 'Opted In (Subscribed)' : 'Opted Out') : (value || <Typography component="span" fontStyle="italic" color="textSecondary">Not provided</Typography>)}
-            </Typography>
-            {extra && <Typography variant="body2" color="textSecondary" fontStyle="italic">({extra})</Typography>}
-          </Box>
+          <TextField 
+            select={select} fullWidth size="small" value={value || ''} 
+            onChange={(e) => onChange(e.target.value)} type={type} variant="outlined" 
+            sx={{ bgcolor: COLORS.formBg, '& .MuiOutlinedInput-root': { borderRadius: 1, fontFamily: FONT } }} 
+          >
+            {children}
+          </TextField>
         )}
-      </Grid>
-    </Grid>
-    {!isLast && <Divider sx={{ mt: 2, borderStyle: 'dashed', borderColor: 'rgba(0,0,0,0.06)' }} />}
+        {extra && type !== 'switch' && <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.textMuted, display: 'block', mt: 0.5, fontStyle: 'italic' }}>{extra}</Typography>}
+      </Box>
+    ) : (
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1, minHeight: 20 }}>
+        <Typography variant="body2" sx={{ 
+            fontFamily: FONT,
+            color: type === 'switch' ? (value ? COLORS.success : COLORS.danger) : (label === 'Account Standing' ? (value === 'Good Standing' ? COLORS.success : COLORS.danger) : COLORS.textPrimary), 
+            fontWeight: type === 'switch' || label === 'Account Standing' ? 900 : 600,
+            fontSize: '0.85rem'
+        }}>
+          {type === 'switch' ? (value ? 'YES' : 'NO') : (value || <Typography component="span" variant="caption" sx={{ fontFamily: FONT, fontStyle: 'italic', color: COLORS.textMuted }}>Not provided</Typography>)}
+        </Typography>
+        {extra && <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.textMuted, fontStyle: 'italic' }}>({extra})</Typography>}
+      </Box>
+    )}
+  </Grid>
+);
+
+// Unified warm brown section headers
+const SectionHeader = ({ title }) => (
+  <Box sx={{ mt: 3, mb: 2 }}>
+    <Typography variant="subtitle2" sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.accent, fontSize: '0.8rem' }}>
+      {title}
+    </Typography>
+    <Divider sx={{ mt: 0.5, borderColor: COLORS.border }} />
   </Box>
 );
 
@@ -59,91 +65,118 @@ export default function ClientDetails({ editForm, setEditForm, isEditing, calcul
   };
 
   return (
-    // THE FIX: Removed p: 4 to allow edge-to-edge rendering!
-    <Box sx={{ bgcolor: 'transparent', pb: 10 }}>
+    <Box sx={{ p: 4, pb: 10, bgcolor: 'transparent', minHeight: '100%' }}>
       
-      {/* --- SECTION 1: PERSONAL INFORMATION --- */}
-      {/* THE FIX: Removed borderRadius, margins, and external borders. It is now a flush stripe. */}
-      <Paper square elevation={0} sx={{ mb: 2, bgcolor: 'white', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
-        <Box sx={{ bgcolor: 'rgba(21, 101, 192, 0.05)', px: 4, py: 2, borderLeft: '6px solid #1565C0', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
-          <Typography variant="subtitle2" color="#1565C0" fontWeight="900" sx={{textTransform: 'uppercase', letterSpacing: 1}}>Personal Information</Typography>
-        </Box>
-        <Box sx={{ py: 1 }}>
-            <LedgerRow label="Full Name" value={editForm.fullName} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, fullName: val})} />
-            <LedgerRow label="Date of Birth" type="date" value={editForm.dob} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, dob: val})} extra={!isEditing && calculateAge(editForm.dob)} />
-            <LedgerRow label="Gender" select value={editForm.gender} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, gender: val})} isLast={true}>
-                <MenuItem value="Male">Male</MenuItem>
-                <MenuItem value="Female">Female</MenuItem>
-                <MenuItem value="Decline">Decline to state</MenuItem>
-            </LedgerRow>
-        </Box>
-      </Paper>
+      {/* SECTION: IDENTITY & DEMOGRAPHICS */}
+      <SectionHeader title="Identity & Demographics" />
+      <Grid container spacing={2}>
+         <DataField label="Full Name" value={editForm.fullName} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, fullName: val})} />
+         <DataField label="Date of Birth" type="date" value={editForm.dob} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, dob: val})} extra={!isEditing && calculateAge(editForm.dob)} />
+         <DataField label="Gender" select value={editForm.gender} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, gender: val})}>
+             <MenuItem value="Male">Male</MenuItem>
+             <MenuItem value="Female">Female</MenuItem>
+             <MenuItem value="Decline">Decline to state</MenuItem>
+         </DataField>
+         <DataField label="Account Standing" select value={editForm.accountStanding} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, accountStanding: val})}>
+             <MenuItem value="Good Standing"><Box sx={{ color: COLORS.success, fontWeight: 'bold' }}>Good Standing</Box></MenuItem>
+             <MenuItem value="Financial Warning"><Box sx={{ color: COLORS.warning, fontWeight: 'bold' }}>Financial Warning</Box></MenuItem>
+             <MenuItem value="Banned / Do Not Service"><Box sx={{ color: COLORS.danger, fontWeight: 'bold' }}>Banned / Do Not Service</Box></MenuItem>
+         </DataField>
+      </Grid>
 
-      {/* --- SECTION 2: CONTACT & ADDRESS --- */}
-      <Paper square elevation={0} sx={{ mb: 2, bgcolor: 'white', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
-        <Box sx={{ bgcolor: 'rgba(139, 69, 19, 0.05)', px: 4, py: 2, borderLeft: '6px solid #8B4513', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
-          <Typography variant="subtitle2" color="#8B4513" fontWeight="900" sx={{textTransform: 'uppercase', letterSpacing: 1}}>Contact & Address</Typography>
-        </Box>
-        <Box sx={{ py: 1 }}>
-            <LedgerRow label="Primary Phone" value={editForm.phone} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, phone: val})} />
-            <LedgerRow label="Street / Barangay" value={editForm.address} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, address: val})} />
-            <LedgerRow label="City / Municipality" value={editForm.city} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, city: val})} isLast={true} />
-        </Box>
-      </Paper>
+      {/* SECTION: GOVERNMENT VERIFICATION */}
+      <SectionHeader title="Government Verification" />
+      <Grid container spacing={2}>
+         <DataField label="Gov ID Type" select value={editForm.govIdType} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, govIdType: val})}>
+            <MenuItem value="Driver's License">Driver's License</MenuItem>
+            <MenuItem value="Passport">Passport</MenuItem>
+            <MenuItem value="PhilID">PhilID</MenuItem>
+            <MenuItem value="Other">Other</MenuItem>
+         </DataField>
+         <DataField label="ID Number" value={editForm.govIdNumber} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, govIdNumber: val})} />
+         <DataField label="Senior / PWD ID" value={editForm.seniorId} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, seniorId: val})} extra="For POS Discount Proof" />
+      </Grid>
 
-      {/* --- SECTION 3: BILLING & PREFERENCES --- */}
-      <Paper square elevation={0} sx={{ mb: 2, bgcolor: 'white', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
-        <Box sx={{ bgcolor: 'rgba(46, 125, 50, 0.05)', px: 4, py: 2, borderLeft: '6px solid #2E7D32', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
-          <Typography variant="subtitle2" color="#2E7D32" fontWeight="900" sx={{textTransform: 'uppercase', letterSpacing: 1}}>Billing & Account Preferences</Typography>
-        </Box>
-        <Box sx={{ py: 1 }}>
-            <LedgerRow label="Senior Citizen / PWD ID" value={editForm.seniorId} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, seniorId: val})} extra="Used for automatic POS discounts" />
-            <LedgerRow label="Marketing Promos" type="switch" value={editForm.allowPromos} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, allowPromos: val})} isLast={true} />
-        </Box>
-      </Paper>
+      {/* SECTION: CONTACT & ADDRESS */}
+      <SectionHeader title="Contact & Address" />
+      <Grid container spacing={2}>
+         <DataField label="Primary Phone" value={editForm.phone} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, phone: val})} />
+         <DataField label="Secondary Phone" value={editForm.secondaryPhone} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, secondaryPhone: val})} />
+         <DataField label="Email Address" type="email" value={editForm.email} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, email: val})} />
+         <DataField label="Street / Barangay" value={editForm.address} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, address: val})} width={{ xs: 12, sm: 12, md: 6 }} />
+         <DataField label="City / Municipality" value={editForm.city} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, city: val})} />
+      </Grid>
 
-      {/* --- SECTION 4: AUTHORIZED REPRESENTATIVES --- */}
-      <Paper square elevation={0} sx={{ bgcolor: 'white', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
-        <Box sx={{ bgcolor: 'rgba(211, 47, 47, 0.05)', px: 4, py: 2, borderLeft: '6px solid #D32F2F', borderBottom: '1px solid rgba(0,0,0,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography variant="subtitle2" color="#D32F2F" fontWeight="900" sx={{textTransform: 'uppercase', letterSpacing: 1}}>Authorized Representatives</Typography>
-          {isEditing && (
-             <Button size="small" variant="contained" color="error" startIcon={<AddCircleOutlineIcon/>} onClick={()=>setEditForm({...editForm, emergencyContacts:[...(editForm.emergencyContacts || []), {name:'', phone:'', relation:''}]})} sx={{fontWeight: 'bold', boxShadow: 0}}>
-               Add Contact
-             </Button>
-          )}
+      {/* SECTION: MARKETING & PREFERENCES */}
+      <SectionHeader title="Marketing & Preferences" />
+      <Grid container spacing={2}>
+         <DataField label="Client Tag" select value={editForm.clientTag} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, clientTag: val})}>
+             <MenuItem value="VIP">VIP</MenuItem>
+             <MenuItem value="Regular">Regular</MenuItem>
+             <MenuItem value="New">New</MenuItem>
+             <MenuItem value="Rescue/Shelter">Rescue / Shelter</MenuItem>
+         </DataField>
+         <DataField label="Lead Source" select value={editForm.referralSource} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, referralSource: val})}>
+             <MenuItem value="Walk-in">Walk-in</MenuItem>
+             <MenuItem value="Google">Google / Search</MenuItem>
+             <MenuItem value="Social Media">Social Media</MenuItem>
+             <MenuItem value="Referral">Client Referral</MenuItem>
+         </DataField>
+         <DataField label="Preferred Comm Method" select value={editForm.preferredComm} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, preferredComm: val})}>
+             <MenuItem value="SMS">SMS / Text</MenuItem>
+             <MenuItem value="Email">Email</MenuItem>
+             <MenuItem value="Voice Call">Voice Call</MenuItem>
+         </DataField>
+         <DataField label="WhatsApp Opt-In" type="switch" value={editForm.whatsappOptIn} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, whatsappOptIn: val})} />
+         <DataField label="Marketing Promos" type="switch" value={editForm.allowPromos} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, allowPromos: val})} />
+      </Grid>
+
+      {/* SECTION: LEGAL & COMPLIANCE */}
+      <SectionHeader title="Legal & Compliance" />
+      <Grid container spacing={2}>
+         <DataField label="DPA 2012 Consent" type="switch" value={editForm.dpaConsent} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, dpaConsent: val})} extra="Signed Data Privacy Act" />
+         <DataField label="Liability Waiver" type="switch" value={editForm.waiverSigned} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, waiverSigned: val})} extra="Physical signature on file" />
+      </Grid>
+
+      {/* SECTION: EMERGENCY CONTACTS */}
+      <Box sx={{ mt: 3, mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="subtitle2" sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.accent, fontSize: '0.8rem' }}>
+            Authorized Representatives
+          </Typography>
+          <Divider sx={{ mt: 0.5, borderColor: COLORS.border }} />
         </Box>
-        <Box sx={{ px: 4, py: 2 }}>
-          {editForm.emergencyContacts && editForm.emergencyContacts.length > 0 ? (
-            editForm.emergencyContacts.map((rep, i) => (
-              <Box key={i} sx={{ py: 2, position: 'relative' }}>
-                <Typography variant="caption" fontWeight="bold" color="textSecondary" sx={{ mb: 1.5, display: 'block' }}>CONTACT #{i + 1}</Typography>
-                
-                <Grid container spacing={2} alignItems="center">
-                  {/* THE FIX: Replaced 'item xs={...}' with 'size={{ xs: ... }}' */}
-                  <Grid size={{ xs: 12, md: 4 }}><TextField label="Name" fullWidth size="small" value={rep.name} onChange={(e)=>handleRepChange(i, 'name', e.target.value)} disabled={!isEditing} sx={{ '& .MuiInputBase-input.Mui-disabled': { WebkitTextFillColor: '#212121' } }} /></Grid>
-                  <Grid size={{ xs: 12, md: 4 }}><TextField label="Phone" fullWidth size="small" value={rep.phone} onChange={(e)=>handleRepChange(i, 'phone', e.target.value)} disabled={!isEditing} sx={{ '& .MuiInputBase-input.Mui-disabled': { WebkitTextFillColor: '#212121' } }} /></Grid>
-                  <Grid size={{ xs: 12, md: isEditing ? 3 : 4 }}><TextField label="Relation" fullWidth size="small" value={rep.relation} onChange={(e)=>handleRepChange(i, 'relation', e.target.value)} disabled={!isEditing} sx={{ '& .MuiInputBase-input.Mui-disabled': { WebkitTextFillColor: '#212121' } }} /></Grid>
-                  
-                  {isEditing && (
-                    <Grid size={{ xs: 12, md: 1 }} sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-                        <IconButton color="error" onClick={()=>{const r=[...editForm.emergencyContacts]; r.splice(i,1); setEditForm({...editForm, emergencyContacts:r})}}>
-                            <DeleteIcon />
-                        </IconButton>
-                    </Grid>
-                  )}
+        {isEditing && (
+           <Button size="small" variant="text" startIcon={<AddCircleOutlineIcon/>} onClick={()=>setEditForm({...editForm, emergencyContacts:[...(editForm.emergencyContacts || []), {name:'', phone:'', relation:''}]})} sx={{fontFamily: FONT, fontWeight: 'bold', ml: 2, mt: -1, color: COLORS.cta}}>
+             Add Contact
+           </Button>
+        )}
+      </Box>
+
+      {editForm.emergencyContacts && editForm.emergencyContacts.length > 0 ? (
+        editForm.emergencyContacts.map((rep, i) => (
+          <Box key={i} sx={{ py: 1, position: 'relative', bgcolor: COLORS.formBg, p: 2, borderRadius: 2, mb: 2, border: `1px solid ${COLORS.borderLight}` }}>
+            <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.accent, mb: 1, display: 'block' }}>REP #{i + 1}</Typography>
+            
+            <Grid container spacing={2} alignItems="center">
+              <DataField label="Name" value={rep.name} isEditing={isEditing} onChange={(val)=>handleRepChange(i, 'name', val)} width={{ xs: 12, md: 4 }} />
+              <DataField label="Phone" value={rep.phone} isEditing={isEditing} onChange={(val)=>handleRepChange(i, 'phone', val)} width={{ xs: 12, md: 3 }} />
+              <DataField label="Relation" value={rep.relation} isEditing={isEditing} onChange={(val)=>handleRepChange(i, 'relation', val)} width={{ xs: 12, md: isEditing ? 4 : 5 }} />
+              
+              {isEditing && (
+                <Grid size={{ xs: 12, md: 1 }} sx={{ display: 'flex', justifyContent: 'flex-end', mt: -1 }}>
+                    <IconButton size="small" sx={{ color: COLORS.danger }} onClick={()=>{const r=[...editForm.emergencyContacts]; r.splice(i,1); setEditForm({...editForm, emergencyContacts:r})}}>
+                        <DeleteIcon fontSize="small" />
+                    </IconButton>
                 </Grid>
-                {i !== editForm.emergencyContacts.length - 1 && <Divider sx={{ mt: 3, borderStyle: 'dashed', borderColor: 'rgba(0,0,0,0.06)' }} />}
-              </Box>
-            ))
-          ) : (
-            <Box sx={{ py: 4, textAlign: 'center' }}>
-                <VerifiedUserIcon sx={{ fontSize: 40, color: '#D32F2F', opacity: 0.2, mb: 1 }} />
-                <Typography variant="body2" color="textSecondary" fontStyle="italic">No authorized emergency contacts on file.</Typography>
-            </Box>
-          )}
-        </Box>
-      </Paper>
-      
+              )}
+            </Grid>
+          </Box>
+        ))
+      ) : (
+        <Typography variant="body2" sx={{ fontFamily: FONT, color: COLORS.textMuted, fontStyle: 'italic', mt: 1 }}>No authorized emergency contacts on file.</Typography>
+      )}
+
     </Box>
   );
 }

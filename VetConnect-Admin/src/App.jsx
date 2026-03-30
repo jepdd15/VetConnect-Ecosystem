@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { Box, CssBaseline, CircularProgress } from '@mui/material';
+import { FONT, COLORS } from './theme/designTokens';
 import { signOut } from 'firebase/auth';
 import { auth } from './firebaseConfig';
 
@@ -25,11 +26,19 @@ import Settings from './pages/Settings';
 // --- USER CONTEXT ---
 import { UserProvider, useUser } from './context/UserContext';
 
-// --- THEME ---
+// --- THEME (driven by designTokens.js) ---
 const theme = createTheme({
-  palette: { primary: { main: '#8B4513' }, secondary: { main: '#5D4037' }, background: { default: '#FFF8E1', paper: '#ffffff' }, },
+  palette: {
+    primary:    { main: COLORS.accentWarm },
+    secondary:  { main: COLORS.accent },
+    error:      { main: COLORS.danger },
+    warning:    { main: COLORS.warning },
+    success:    { main: COLORS.success },
+    info:       { main: COLORS.info },
+    background: { default: COLORS.surface, paper: COLORS.cardBg },
+  },
   shape: { borderRadius: 12 },
-  typography: { fontFamily: 'Roboto, Arial, sans-serif' }
+  typography: { fontFamily: FONT },
 });
 
 // --- SMART LAYOUT HANDLER ---
@@ -42,7 +51,7 @@ const MainLayout = ({ children, onLogout }) => {
     <Box sx={{ display: 'flex', width: '100vw', minHeight: '100vh' }}>
       <CssBaseline />
       <Sidebar onLogout={onLogout} />
-      <Box component="main" sx={{ flexGrow: 1, p: 4, minHeight: '100vh', background: 'linear-gradient(135deg, #FFF8E1 0%, #FFE0B2 100%)' }}>
+      <Box component="main" sx={{ flexGrow: 1, p: 4, minHeight: '100vh', minWidth: 0, overflowX: 'hidden', background: `linear-gradient(160deg, ${COLORS.surface} 0%, #FFE0B2 100%)` }}>
         {children}
       </Box>
     </Box>
@@ -60,7 +69,7 @@ function AppShell() {
   };
 
   if (loading) return (
-    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', bgcolor: '#FFF8E1' }}>
+    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', bgcolor: COLORS.surface }}>
       <CircularProgress color="primary" />
     </Box>
   );

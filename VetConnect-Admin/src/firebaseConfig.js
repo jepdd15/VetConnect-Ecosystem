@@ -7,7 +7,7 @@ import { getAuth } from "firebase/auth";
 import { getStorage } from "firebase/storage";
 
 
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: "AIzaSyDRM1GnQYQkNgZjGPG-ssQh2inHHgDDsO4",
   authDomain: "starbarks-vetconnect-f6443.firebaseapp.com",
   projectId: "starbarks-vetconnect-f6443",

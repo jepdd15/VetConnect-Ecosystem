@@ -47,31 +47,8 @@ import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 // Charting
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 
-// ── Design Tokens ──────────────────────────────────────────────
-const FONT = "'Inter', 'Roboto', sans-serif";
-const TYPE = {
-  label:    { fontSize: '0.7rem',   fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' },
-  meta:     { fontSize: '0.8rem',   fontWeight: 600 },
-  body:     { fontSize: '0.875rem', fontWeight: 400, lineHeight: 1.7 },
-  bodyBold: { fontSize: '0.875rem', fontWeight: 700, lineHeight: 1.7 },
-  emphasis: { fontSize: '1rem',     fontWeight: 700 },
-  heading:  { fontSize: '1.2rem',   fontWeight: 800 },
-  tiny:     { fontSize: '0.7rem',   fontWeight: 600 },
-};
-const COLORS = {
-  banner: '#FFFFFF', bannerBorder: '#A1887F', brand: '#3E2723',
-  accent: '#5D4037', accentLight: '#8D6E63',
-  medical: '#1565C0', grooming: '#7B1FA2', surgery: '#C62828',
-  surface: '#F5F0EB', cardBg: '#FFFFFF',
-  border: '#E0D6CC', borderLight: '#EDE7E0',
-  textPrimary: '#3E2723', textSecondary: '#795548', textMuted: '#A1887F',
-  rxBg: '#FFF7ED', rxBorder: '#FED7AA', rxText: '#9A3412',
-  planBg: '#F0FDF4', planBorder: '#86EFAC', planText: '#166534',
-  vitalsBg: '#FAFAF9', timelineRail: '#D7CCC8',
-};
-
-const getRecordColor = (t) => t === 'grooming' ? COLORS.grooming : t === 'surgery' ? COLORS.surgery : COLORS.medical;
-const getInitialColor = (n) => ['#5D4037','#6D4C41','#795548','#8D6E63','#A1887F','#4E342E'][(n||'').charCodeAt(0) % 6];
+// ── Design Tokens (shared across all VetConnect pages) ─────────
+import { FONT, TYPE, COLORS, getRecordColor, getInitialColor } from '../../theme/designTokens';
 
 // ── Analytics Widget Shell ──
 const Widget = ({ title, icon, children }) => (
@@ -426,7 +403,7 @@ export default function PatientDashboard() {
             sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.78rem', textTransform: 'none', color: COLORS.accent, borderColor: COLORS.border, borderRadius: 1.5, px: 2, height: 36, '&:hover': { borderColor: COLORS.accentLight, bgcolor: '#EFEBE9' } }}>
             Add Record
           </Button>
-          <Button variant="contained" size="small" startIcon={<EventAvailableIcon sx={{ fontSize: '15px !important' }} />}
+          <Button variant="contained" size="small" startIcon={<EventAvailableIcon sx={{ fontSize: '15px !important' }} />} onClick={() => navigate('/queue')}
             sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.78rem', textTransform: 'none', bgcolor: '#2E7D32', borderRadius: 1.5, px: 2, height: 36, boxShadow: 'none', '&:hover': { bgcolor: '#1B5E20' } }}>
             Book Visit
           </Button>

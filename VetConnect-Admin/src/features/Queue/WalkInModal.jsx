@@ -202,12 +202,23 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
         const primaryDept = mappedServices[0]?.department || 'General';
         
         const resolvedBreed = (walkInType === 'guest' || isNewPet) ? guestPetData.breed : (selectedPet?.breed || '');
+        const resolvedGender = (walkInType === 'guest' || isNewPet) ? guestPetData.gender : (selectedPet?.gender || 'Unknown');
+        const resolvedColor = (walkInType === 'guest' || isNewPet) ? guestPetData.color : (selectedPet?.color || 'N/A');
+        const resolvedIsNeutered = (walkInType === 'guest' || isNewPet) ? guestPetData.isNeutered : (selectedPet?.isNeutered || false);
+        const resolvedDOB = (walkInType === 'guest' || isNewPet) ? (guestPetData.dob ? Timestamp.fromDate(new Date(guestPetData.dob)) : null) : (selectedPet?.dob || null);
+
         const resolvedWeight = parseFloat(guestPetData.weight) || (selectedPet?.lastWeight ? parseFloat(selectedPet.lastWeight) : null);
         const resolvedAllergies = (walkInType === 'guest' || isNewPet) ? guestPetData.allergies : (selectedPet?.allergies || '');
 
         const appointmentPayload = {
           ownerId: finalOwnerId, ownerName: finalOwnerName, petId: finalPetId, petName: finalPetName, petSpecies: finalPetSpecies,
-          petBreed: resolvedBreed || 'Mixed', petWeight: resolvedWeight || null, petAllergies: resolvedAllergies || '',
+          petBreed: resolvedBreed || 'Mixed Breed', 
+          petGender: resolvedGender,
+          petColor: resolvedColor,
+          petIsNeutered: resolvedIsNeutered,
+          petBirthdate: resolvedDOB,
+          petWeight: resolvedWeight || null, 
+          petAllergies: resolvedAllergies || '',
           
           // Evolved Schema
           services: mappedServices, 

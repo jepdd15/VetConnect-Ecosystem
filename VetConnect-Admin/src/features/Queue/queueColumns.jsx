@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Typography, Chip, Tooltip, IconButton, Button, Stack } from '@mui/material';
+import { Box, Typography, Chip, Tooltip, IconButton, Button, Stack, Paper } from '@mui/material';
 
 // Icons
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'; 
@@ -19,227 +19,497 @@ import PersonIcon from '@mui/icons-material/Person';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import ReceiptIcon from '@mui/icons-material/Receipt';
 import ScaleIcon from '@mui/icons-material/Scale';
+import PersonOffIcon from '@mui/icons-material/PersonOff';
 
 const formatDuration = (totalMinutes) => {
   const mins = Math.abs(totalMinutes);
+  
+  // Universal Temporal Scaling for Clinical Clarity
+  if (mins >= 43200) { // 30+ Days
+    const months = Math.floor(mins / 43200);
+    return `${months}mo`;
+  }
+  
+  if (mins >= 10080) { // 7-30 Days
+    const weeks = Math.floor(mins / 10080);
+    return `${weeks}w`;
+  }
+  
+  if (mins >= 1440) { // 1-7 Days
+    const days = Math.floor(mins / 1440);
+    return `${days}d`;
+  }
+  
   if (mins < 60) return `${mins}m`;
   const hours = Math.floor(mins / 60);
   const remainingMins = mins % 60;
   return remainingMins > 0 ? `${hours}h ${remainingMins}m` : `${hours}h`;
 };
 
-export const getQueueColumns = (tabValue, currentTime, actions, isToday, departments) =>[
+const calculateAgeString = (dob) => {
+    if (!dob) return null;
+    const birthDate = dob.toDate ? dob.toDate() : new Date(dob);
+    const now = new Date();
+    let years = now.getFullYear() - birthDate.getFullYear();
+    let months = now.getMonth() - birthDate.getMonth();
+    if (months < 0) {
+        years--;
+        months += 12;
+    }
+    if (years > 0) return `${years}y ${months}m`;
+    return `${months}m`;
+};
+
+export const getQueueColumns = (tabValue, currentTime, actions, isToday, departments) => [
   { 
-    field: 'identity', headerName: 'Patient Identity', flex: 1.8, minWidth: 260, 
-    sortable: false, disableColumnMenu: true,
+    field: 'identity', headerName: 'Patient Identity', flex: 1, minWidth: 220, 
+    resizable: false, sortable: false, disableColumnMenu: true,
     renderCell: (p) => {
       const isWalkIn = p.row.ownerId === 'WALK_IN_USER' || String(p.row.ownerId).includes('GUEST_');
       const hasAllergies = p.row.petAllergies && p.row.petAllergies.trim().length > 0;
-      const breedLabel = p.row.petBreed ? ` · ${p.row.petBreed}` : '';
+      const petAge = calculateAgeString(p.row.petBirthdate);
+
+      const PassportCard = (
+        <Box sx={{ p: 1, minWidth: 200 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: '900', color: '#FFF3E0', mb: 1, fontSize: '1rem', borderBottom: '1px solid rgba(255,255,255,0.2)', pb: 0.5 }}>
+                {p.row.petName}
+            </Typography>
+            <Stack spacing={0.8}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="caption" sx={{ color: '#FFB74D', fontWeight: 'bold' }}>SPECIES / GENDER</Typography>
+                    <Typography variant="caption" sx={{ color: 'white', fontWeight: '900' }}>{p.row.petSpecies} / {p.row.petGender || 'UNK'}</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="caption" sx={{ color: '#FFB74D', fontWeight: 'bold' }}>AGE</Typography>
+                    <Typography variant="caption" sx={{ color: 'white', fontWeight: '900' }}>{petAge}</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="caption" sx={{ color: '#FFB74D', fontWeight: 'bold' }}>BREED</Typography>
+                    <Typography variant="caption" sx={{ color: 'white', fontWeight: '900' }}>{p.row.petBreed || 'Mixed'}</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="caption" sx={{ color: '#FFB74D', fontWeight: 'bold' }}>SURGICAL</Typography>
+                    <Typography variant="caption" sx={{ color: 'white', fontWeight: '900' }}>{p.row.petIsNeutered ? 'FIXED' : 'INTACT'}</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', pt: 0.5, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                    <Typography variant="caption" sx={{ color: '#81C784', fontWeight: 'bold' }}>OWNER</Typography>
+                    <Typography variant="caption" sx={{ color: 'white', fontWeight: '900' }}>{p.row.ownerName}</Typography>
+                </Box>
+                {hasAllergies && (
+                     <Box sx={{ mt: 1, p: 0.5, bgcolor: 'rgba(211, 47, 47, 0.2)', borderRadius: 1, border: '1px solid #D32F2F' }}>
+                        <Typography variant="caption" sx={{ color: '#FFCDD2', fontWeight: 'bold' }}>⚠️ ALLERGIES: {p.row.petAllergies}</Typography>
+                     </Box>
+                )}
+            </Stack>
+        </Box>
+      );
       
       return (
-        <Box sx={{ display: 'flex', alignItems: 'center', height: '100%', py: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', py: 1, px: 0.5, overflow: 'hidden', height: '100%' }}>
+          {/* THE TICKET ANCHOR (DYNAMIC) */}
           <Box sx={{ 
-              width: 55, height: 55, borderRadius: 2, mr: 2, flexShrink: 0,
+              width: 56, height: 56, borderRadius: '12px', mr: 2, flexShrink: 0,
               bgcolor: p.row.queueNumber ? '#FFF3E0' : '#F5F5F5', 
-              border: '2px solid', borderColor: p.row.queueNumber ? '#FFB74D' : '#E0E0E0',
+              border: '2px solid', borderColor: p.row.queueNumber ? '#FFB74D' : '#EEEEEE',
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              boxShadow: p.row.queueNumber ? '0 4px 8px rgba(255, 152, 0, 0.15)' : 'none'
+              boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
           }}>
             {p.row.queueNumber ? (
               <>
-                <Typography variant="caption" sx={{ fontSize: '0.6rem', fontWeight: '900', color: '#E65100', lineHeight: 1 }}>
-                    {p.row.ticketPrefix || 'TKT'}
-                </Typography>
-                <Typography variant="h5" sx={{ fontWeight: '900', color: '#D32F2F', lineHeight: 1 }}>
-                    {p.row.queueNumber}
-                </Typography>
+                <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: '900', color: '#E65100', lineHeight: 1 }}>{p.row.ticketPrefix || 'TKT'}</Typography>
+                <Typography variant="h6" sx={{ fontWeight: '900', color: '#D32F2F', lineHeight: 1, fontSize: '1.4rem' }}>{p.row.queueNumber}</Typography>
               </>
             ) : (
-              <Typography variant="caption" sx={{ fontSize: '0.65rem', fontWeight: 'bold', color: '#9E9E9E', textAlign: 'center', lineHeight: 1.2 }}>
-                NO<br/>TKT
-              </Typography>
+                <LocalHospitalIcon sx={{ fontSize: 24, color: '#BDBDBD', opacity: 0.8 }} />
             )}
           </Box>
-          <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', overflow: 'hidden' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.25 }}>
-              <Typography variant="h6" fontWeight="900" color="#3E2723" component="div" noWrap sx={{ lineHeight: 1.1 }}>
-                {p.row.petName} 
-              </Typography>
-              <Typography component="span" variant="caption" color="textSecondary" fontWeight="600" sx={{ mt: 0.5 }}>
-                ({p.row.petSpecies || 'Pet'}{breedLabel})
-              </Typography>
+
+          <Box sx={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0 }}>
+            {/* THE TOTAL IDENTITY STACK (GOD-VIEW TRIGGER) */}
+            <Box 
+                onMouseEnter={(e) => actions.handleHoverStart(e, 'identity', PassportCard)}
+                onMouseLeave={actions.handleHoverEnd}
+                sx={{ display: 'flex', flexDirection: 'column', width: '100%', cursor: 'zoom-in', gap: 0 }}
+            >
+                {/* LINE 1: THE PATIENT HERO */}
+                <Typography sx={{ fontSize: '1.18rem', fontWeight: '1000', color: '#1A1A1A', lineHeight: 1, letterSpacing: '-0.01rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', pb: 0.2 }}>
+                    {p.row.petName} 
+                </Typography>
+
+                {/* LINE 2: THE BIOMETRIC STACK (BIO + AGE) */}
+                <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '700', fontSize: '0.72rem', textTransform: 'capitalize', lineHeight: 1.1 }}>
+                    {String(p.row.petSpecies || 'PET').toLowerCase()} • {String(p.row.petBreed || 'Mixed Breed').toLowerCase()}
+                </Typography>
+
+                <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '700', fontSize: '0.72rem', textTransform: 'uppercase', lineHeight: 1.1 }}>
+                    {petAge ? `AGE: ${petAge}` : 'UNVERIFIED AGE'}
+                </Typography>
+
+                {/* LINE 3: THE CLINICAL DNA (BIOLOGICAL) */}
+                <Typography variant="caption" sx={{ 
+                    color: '#5D4037',
+                    fontWeight: '700', fontSize: '0.72rem', textTransform: 'uppercase', lineHeight: 1.1 
+                }}>
+                    {p.row.petGender && p.row.petGender !== 'Unknown' && p.row.petGender !== '???' ? p.row.petGender : 'SEX UNKNOWN'} • {p.row.petIsNeutered ? 'fixed' : 'intact'}
+                </Typography>
+
+                {/* LINE 4: THE PHYSICAL MAPPING (COLOR) */}
+                <Typography variant="caption" sx={{ 
+                    color: '#5D4037',
+                    fontWeight: '700', fontSize: '0.72rem', textTransform: 'uppercase', lineHeight: 1.1,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                }}>
+                    {p.row.petColor || 'COLOR UNRECORDED'}
+                </Typography>
             </Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.25, flexWrap: 'wrap' }}>
-              {p.row.petWeight && (
-                <Chip icon={<ScaleIcon sx={{ fontSize: '12px !important' }} />} label={`${p.row.petWeight} kg`} size="small" 
-                  sx={{ height: 18, fontSize: '0.6rem', fontWeight: 700, bgcolor: '#E3F2FD', color: '#1565C0', '& .MuiChip-icon': { color: '#1565C0' } }} />
-              )}
-              {hasAllergies ? (
-                <Tooltip title={`Allergies: ${p.row.petAllergies}`}>
-                  <Chip icon={<WarningIcon sx={{ fontSize: '12px !important' }} />} label={p.row.petAllergies.length > 15 ? p.row.petAllergies.slice(0, 15) + '…' : p.row.petAllergies} size="small" 
-                    sx={{ height: 18, fontSize: '0.6rem', fontWeight: 700, bgcolor: '#FFEBEE', color: '#C62828', '& .MuiChip-icon': { color: '#C62828' } }} />
-                </Tooltip>
-              ) : (
-                <Chip label="NKA" size="small" sx={{ height: 16, fontSize: '0.55rem', fontWeight: 600, bgcolor: '#F5F5F5', color: '#9E9E9E' }} />
-              )}
-            </Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
-              <Tooltip title={isWalkIn ? "Walk-In" : "App Booking"}>
-                {isWalkIn ? <DirectionsWalkIcon sx={{ fontSize: 14, color: '#757575' }} /> : <SmartphoneIcon sx={{ fontSize: 14, color: '#1976D2' }} />}
-              </Tooltip>
-              <Typography variant="body2" color="#555" component="div" fontWeight="bold" noWrap>
-                {p.row.ownerName && p.row.ownerName.trim() !== '' ? p.row.ownerName : 'Mobile App Client'}
+
+            {/* LINE 5: THE WAITING ROOM ANCHOR (HUMAN) */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+              {isWalkIn ? <DirectionsWalkIcon sx={{ fontSize: 13, color: 'rgba(255,255,255,0.5)' }} /> : <SmartphoneIcon sx={{ fontSize: 13, color: '#64B5F6' }} />}
+              <Typography variant="caption" sx={{ fontSize: '0.78rem', fontWeight: '900', color: '#5D4037', textTransform: 'uppercase', letterSpacing: '0.01rem', lineHeight: 1 }}>
+                {p.row.ownerName || 'Online Client'}
               </Typography>
-              {(p.row.ownerPhone || p.row.phone) && (
-                  <Typography variant="caption" color="textSecondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.2, ml: 1 }} component="div">
-                      <PhoneIcon sx={{ fontSize: 12 }} /> {p.row.ownerPhone || p.row.phone}
-                  </Typography>
+              {hasAllergies && (
+                  <Tooltip title={`Allergies: ${p.row.petAllergies}`}>
+                    <WarningIcon sx={{ fontSize: 13, color: '#D32F2F', ml: 0.5 }} />
+                  </Tooltip>
               )}
             </Box>
           </Box>
         </Box>
-      );
-    }
-  },
-  { 
-    field: 'context', headerName: 'Service Details', flex: 1.2, minWidth: 180,
-    sortable: false, disableColumnMenu: true,
-    renderCell: (p) => {
-      const services = p.row.services || [];
-      const hasNotes = p.row.notes && p.row.notes.trim().length > 0 && p.row.notes !== "—";
-
-      return (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, py: 1.5, width: '100%' }}>
-          {services.length > 0 ? (
-            services.map((svc, i) => {
-              const deptObj = (departments || []).find(d => d.name === svc.department);
-              const bColor = deptObj ? deptObj.color : '#616161';
-              return (
-                <Chip 
-                  key={i} label={svc.name} size="small" 
-                  sx={{ bgcolor: bColor, color: 'white', fontWeight: '900', fontSize: '0.65rem', height: 20, boxShadow: 1 }} 
-                />
-              );
-            })
-          ) : (
-             <Chip label={p.row.serviceType || 'Update Required'} size="small" sx={{ fontWeight: 'bold' }} />
-          )}
-          
-          {hasNotes && (
-            <Tooltip title={p.row.notes}>
-              <Box sx={{ mt: 0.5, bgcolor: '#FFF3E0', p: 0.5, borderRadius: 1, borderLeft: '3px solid #FF9800', display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <WarningIcon sx={{ fontSize: 12, color: '#E65100' }} />
-                <Typography variant="caption" noWrap sx={{ color: '#E65100', fontWeight: 'bold', fontSize: '0.6rem' }}>{p.row.notes}</Typography>
-              </Box>
-            </Tooltip>
-          )}
-        </Box>
-      );
-    }
-  },
-  { 
-    field: 'timing', headerName: 'Time Tracking', flex: 1, minWidth: 140, align: 'center', headerAlign: 'center',
-    sortable: false, disableColumnMenu: true,
-    renderCell: (p) => {
-      let relativeText = ""; let color = "textSecondary"; let exactTime = '-'; let isLate = false;
-
-      if (['pending', 'confirmed'].includes(p.row.status)) {
-        exactTime = `Sch: ${p.row.jsScheduled ? p.row.jsScheduled.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'N/A'}`;
-        if (p.row.jsScheduled) {
-            const diffMins = Math.floor((currentTime - p.row.jsScheduled) / 60000);
-            if (isToday) {
-                if (diffMins >= 15) { isLate = true; relativeText = `⚠️ LATE (${formatDuration(diffMins)})`; color = "error.main"; } 
-                else if (diffMins > 0 && diffMins < 15) { relativeText = `Expected now`; color = "warning.main"; } 
-                else { relativeText = `In ${formatDuration(Math.abs(diffMins))}`; }
-            } else {
-                if (diffMins > 0) { relativeText = `Past Due`; color = "error.main"; isLate = true; } 
-                else { relativeText = `Future Booking`; }
-            }
-        }
-      } 
-      else {
-        exactTime = p.row.jsArrived ? `Arr: ${p.row.jsArrived.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : '-';
-        if (p.row.status === 'on-hold') { relativeText = "⏸️ On Hold"; color = "warning.main"; }
-        else if (tabValue === 2 && p.row.jsArrived) { const diff = Math.floor((currentTime - p.row.jsArrived) / 60000); relativeText = `⏳ ${formatDuration(Math.max(0, diff))} wait`; if (diff > 20) color = "error.main"; }
-        else if (tabValue === 3 && p.row.jsStarted) { const rawDiff = Math.floor((currentTime - p.row.jsStarted) / 60000); const pausedMins = p.row.totalPausedMinutes || 0; const actualActiveTime = Math.max(0, rawDiff - pausedMins); relativeText = `⏱️ ${formatDuration(actualActiveTime)} active`; color = "info.main"; }
-        else if (tabValue === 6 && p.row.jsArrived && p.row.jsCompleted) { const diff = Math.floor((p.row.jsCompleted - p.row.jsArrived) / 60000); relativeText = `Total: ${formatDuration(Math.max(0, diff))}`; color = "textSecondary"; }
-      }
-
-      return (
-        <Box sx={{ textAlign: 'center', bgcolor: isLate && isToday ? '#FFEBEE' : 'transparent', px: 1.5, py: 0.8, borderRadius: 1.5, border: isLate && isToday ? '1px solid #FFCDD2' : '1px solid transparent' }}>
-          <Typography variant="body2" display="block" sx={{ fontWeight: 'bold', color: isLate && isToday ? '#C62828' : '#3E2723' }} component="div">{exactTime}</Typography>
-          <Typography variant="caption" color={color} sx={{ fontSize: '0.75rem', fontWeight: '900', mt: 0.2 }} component="div">{relativeText}</Typography>
-        </Box>
-      );
-    }
-  },
-  { 
-    field: 'statusAndStaff', headerName: 'Service Progress', flex: 1.2, minWidth: 180, align: 'left', headerAlign: 'center',
-    sortable: false, disableColumnMenu: true,
-    renderCell: (p) => {
-      const services = p.row.services || [];
-      
-      const getStatusColor = (s) => {
-        if (s === 'completed') return 'success';
-        if (s === 'in-consult' || s === 'in-progress') return 'primary';
-        if (s === 'pending') return 'warning';
-        return 'default';
-      };
-
-      return (
-        <Stack spacing={0.5} sx={{ py: 1.5, width: '100%', justifyContent: 'center' }}>
-          {services.length > 0 ? (
-            services.map((svc, idx) => (
-              <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Chip 
-                  label={svc.status.toUpperCase()} 
-                  color={getStatusColor(svc.status)} 
-                  size="small" 
-                  sx={{ height: 18, fontSize: '0.55rem', fontWeight: '900', minWidth: 70 }} 
-                />
-                <Typography variant="caption" fontWeight="bold" color="textSecondary" noWrap sx={{ maxWidth: 80 }}>
-                  {svc.staffName || 'Unassigned'}
-                </Typography>
-              </Box>
-            ))
-          ) : (
-            <Chip label={p.row.status.toUpperCase()} color="primary" size="small" />
-          )}
-        </Stack>
       );
     }
   },
   {
-    field: 'actions', headerName: 'Next Step / Action', flex: 1.5, minWidth: 260, align: 'center', headerAlign: 'center',
-    sortable: false, disableColumnMenu: true,
-    renderCell: (params) => {
-      const btnStyle = { textTransform: 'uppercase', fontWeight: '900', mr: 0.5, boxShadow: 2, px: 3, py: 1, borderRadius: 2, whiteSpace: 'nowrap', letterSpacing: 0.5 };
-      const isUnassigned = !params.row.assignedVetId;
-      let isVeryLate = false;
-      if (params.row.jsScheduled && isToday) { if ((currentTime - params.row.jsScheduled) / 60000 > 30) isVeryLate = true; }
+    field: 'notes', headerName: 'Medical Intake / Notes', flex: 1.2, minWidth: 200,
+    renderCell: (p) => (
+      <Box 
+        onMouseEnter={(e) => actions.handleHoverStart(e, 'notes', p.row.notes)}
+        onMouseLeave={actions.handleHoverEnd}
+        sx={{ 
+          display: 'flex',
+          alignItems: 'flex-start',
+          width: '100%', 
+          pt: 1.5, 
+          cursor: 'zoom-in',
+          '&:hover': { bgcolor: 'rgba(139, 69, 19, 0.04)' },
+          transition: 'background-color 0.2s'
+        }}
+      >
+        {p.row.notes ? (
+          <Typography 
+            variant="body2" 
+            sx={{ 
+              display: '-webkit-box',
+              WebkitLineClamp: 4,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+              fontSize: '0.82rem',
+              lineHeight: 1.4,
+              color: 'text.primary',
+              fontStyle: 'italic',
+              fontWeight: 400
+            }}
+          >
+            "{p.row.notes}"
+          </Typography>
+        ) : (
+          <Typography variant="caption" sx={{ color: 'text.disabled' }}>No notes provided</Typography>
+        )}
+      </Box>
+    )
+  },
+  { 
+    field: 'services', headerName: 'Services and Staff', flex: 1, minWidth: 220,
+    resizable: false, sortable: false, disableColumnMenu: true,
+    renderCell: (p) => {
+      const services = [...(p.row.services || [])].sort((a,b) => a.name.localeCompare(b.name));
+      if (services.length === 0) return <Chip label={p.row.status.toUpperCase()} color="primary" size="small" sx={{fontWeight:'900', height: 24}}/>;
 
-      if (['completed', 'carried-over'].includes(params.row.status)) {
+      return (
+        <Box 
+          /* FORCE RELOAD: VETCONNECT-HUD-SERVICES-SCALED */
+          onMouseEnter={(e) => actions.handleHoverStart(e, 'services', services)}
+          onMouseLeave={actions.handleHoverEnd}
+          sx={{ 
+            display: 'flex', 
+            flexDirection: 'column',
+            justifyContent: 'center',
+            width: '100%', 
+            height: '100%',
+            cursor: 'zoom-in',
+            position: 'relative',
+            pr: 2
+          }}
+        >
+          {/* THE MEDICAL BUNDLE BADGE (TOTAL COUNT) */}
+          <Box sx={{ 
+              position: 'absolute', right: 4, top: 4, 
+              width: 18, height: 18, borderRadius: '50%',
+              bgcolor: '#5D4037', color: 'white',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+              zIndex: 5
+          }}>
+              <Typography sx={{ fontSize: '0.65rem', fontWeight: '1000' }}>{services.length}</Typography>
+          </Box>
+
+          {/* CLINICAL VITALS PILOT (WEIGHT) */}
+          {p.row.petWeight && (
+            <Box sx={{ 
+              display: 'flex', alignItems: 'center', gap: 0.3, px: 0.8, py: 0.2, 
+              borderRadius: 1, bgcolor: '#E3F2FD', border: '1px solid #BBDEFB',
+              mb: 0.8, alignSelf: 'flex-start'
+            }}>
+               <ScaleIcon sx={{ fontSize: 11, color: '#1565C0' }} />
+               <Typography sx={{ fontSize: '0.65rem', fontWeight: '900', color: '#1565C0' }}>
+                  {p.row.petWeight}KG
+               </Typography>
+            </Box>
+          )}
+
+          <Stack spacing={0.8} sx={{ width: '100%' }}>
+            {services.slice(0, 2).map((svc, idx) => {
+                const dept = (departments || []).find(d => d.name === svc.department);
+                const barColor = dept ? dept.color : '#9E9E9E';
+
+                return (
+                    <Box key={idx} sx={{ 
+                        borderLeft: `3px solid ${barColor}`, 
+                        pl: 1, py: 0.2, lineHeight: 1,
+                        display: 'flex', flexDirection: 'column', gap: 0.2
+                    }}>
+                        <Typography sx={{ fontWeight: '1000', fontSize: '0.75rem', color: '#5D4037', textTransform: 'uppercase', letterSpacing: '0.01rem', lineHeight: 1 }} noWrap>
+                            {svc.name}
+                        </Typography>
+                        <Typography variant="caption" sx={{ fontWeight: '800', color: '#5D4037', opacity: 0.6, fontSize: '0.65rem', fontStyle: 'italic', lineHeight: 1 }}>
+                            {svc.staffName || 'Unassigned'}
+                        </Typography>
+                    </Box>
+                );
+            })}
+            
+            {/* THE DEPARTMENT PILE (REMAINING VOLUME SIGNAL) */}
+            {services.length > 2 && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, pl: 1, pt: 0.2 }}>
+                    {services.slice(2, 7).map((svc, idx) => {
+                        const dept = (departments || []).find(d => d.name === svc.department);
+                        return (
+                            <Box key={idx} sx={{ width: 12, height: 3, bgcolor: dept ? dept.color : '#9E9E9E', borderRadius: 1 }} />
+                        );
+                    })}
+                    {services.length > 7 && (
+                        <Typography variant="caption" sx={{ fontWeight: '1000', color: '#5D4037', opacity: 0.4, fontSize: '0.6rem' }}>
+                            ...
+                        </Typography>
+                    )}
+                </Box>
+            )}
+          </Stack>
+        </Box>
+      );
+    }
+  },
+  { 
+    field: 'timing', headerName: 'Triage Clock', width: 250, align: 'center', headerAlign: 'center',
+    resizable: false, sortable: false, disableColumnMenu: true,
+    renderCell: (p) => {
+      const scheduled = p.row.jsScheduled;
+      const isToday = scheduled && scheduled.toDateString() === currentTime.toDateString();
+      const arrived = p.row.timeArrived ? (p.row.timeArrived.toDate ? p.row.timeArrived.toDate() : new Date(p.row.timeArrived)) : null;
+      const started = p.row.timeStarted ? (p.row.timeStarted.toDate ? p.row.timeStarted.toDate() : new Date(p.row.timeStarted)) : null;
+      
+      let baseTime = isToday ? (started || arrived || scheduled) : scheduled;
+      let primaryLabel = "";
+      let secondaryLabel = "";
+      let triageColor = "#5D4037"; // Coffee default
+
+      // DYNAMIC TEMPORAL ANCHORS: Adapting to both Phase AND Date!
+      if (!isToday && scheduled) {
+          // FUTURE/PAST VIEW: Promote the Date
+          primaryLabel = scheduled.toLocaleDateString([], { month: 'short', day: 'numeric' }).toUpperCase();
+          secondaryLabel = scheduled.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          triageColor = "#9E9E9E"; // Neutral for future/past
+      } else {
+          // TODAY VIEW: Promote the Clinical Milestone
+          switch (p.row.status) {
+            case 'pending':
+            case 'confirmed':
+                primaryLabel = `APPT: ${scheduled.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+                const diffMins = Math.floor((currentTime - scheduled) / 60000);
+                secondaryLabel = diffMins > 0 ? `LATE (${formatDuration(diffMins)})` : `IN ${formatDuration(Math.abs(diffMins))}`;
+                if (diffMins > 30) triageColor = "#D32F2F"; 
+                break;
+            
+            case 'arrived':
+                baseTime = arrived || scheduled;
+                const waitMins = Math.floor((currentTime - baseTime) / 60000);
+                const driftMins = scheduled ? Math.floor((baseTime - scheduled) / 60000) : 0;
+                
+                primaryLabel = `ARRIVED: ${baseTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+                secondaryLabel = `WAITING: ${formatDuration(waitMins)}`;
+                triageColor = waitMins > 20 ? "#E65100" : "#2E7D32"; 
+                
+                return (
+                    <Box 
+                      /* FORCE RELOAD: VETCONNECT-HUD-TIMING-ADAPTIVE */
+                      sx={{ 
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', 
+                        height: '100%', width: '100%', position: 'relative',
+                        paddingLeft: '12px', cursor: 'help'
+                      }}
+                      onMouseEnter={(e) => actions.handleHoverStart(e, 'timing', p.row)}
+                      onMouseLeave={actions.handleHoverEnd}
+                    >
+                        <Box sx={{ position: 'absolute', left: 0, top: 4, bottom: 4, width: 4, bgcolor: triageColor, borderRadius: '0 4px 4px 0' }} />
+                        <Typography sx={{ color: '#5D4037', fontWeight: '1000', lineHeight: 1, fontSize: '1.25rem', letterSpacing: '-0.5px' }}>
+                          {primaryLabel}
+                        </Typography>
+                        {scheduled && (
+                            <Typography variant="caption" sx={{ color: driftMins > 20 ? '#E65100' : '#5D4037', fontWeight: '900', opacity: 0.8, fontSize: '0.62rem', letterSpacing: 0.5 }}>
+                                APPT: {scheduled.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} ({driftMins > 0 ? '+' : ''}{formatDuration(driftMins)} {driftMins > 0 ? 'LATE' : 'EARLY'})
+                            </Typography>
+                        )}
+                        <Typography sx={{ color: triageColor === "#5D4037" ? "#5D4037" : triageColor, fontWeight: '1000', fontSize: '0.72rem', mt: 0.5, letterSpacing: 0.5 }}>
+                           {`IN LOBBY: ${formatDuration(waitMins)}`.toUpperCase()}
+                        </Typography>
+                    </Box>
+                );
+            
+            case 'in-consult':
+                baseTime = started || arrived || scheduled;
+                const consultMins = Math.floor((currentTime - baseTime) / 60000);
+                primaryLabel = `STARTED: ${baseTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+                secondaryLabel = `CONSULTING: ${formatDuration(consultMins)}`;
+                triageColor = "#2E7D32"; 
+                break;
+                
+            default:
+                primaryLabel = scheduled?.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) || "";
+                secondaryLabel = "PROCESSED";
+                break;
+          }
+      }
+
+      return (
+        <Box 
+          /* FORCE RELOAD: VETCONNECT-HUD-TIMING-ADAPTIVE */
+          sx={{ 
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', 
+            height: '100%', width: '100%', position: 'relative',
+            paddingLeft: '12px', cursor: 'help'
+          }}
+          onMouseEnter={(e) => actions.handleHoverStart(e, 'timing', p.row)}
+          onMouseLeave={actions.handleHoverEnd}
+        >
+            {/* THE PHASE INDICATOR PILLAR */}
+            <Box sx={{ 
+                position: 'absolute', left: 0, top: 4, bottom: 4, width: 4, 
+                bgcolor: triageColor,
+                borderRadius: '0 4px 4px 0'
+            }} />
+
+            <Typography sx={{ color: '#5D4037', fontWeight: '1000', lineHeight: 1, fontSize: '1.25rem', letterSpacing: '-0.5px' }}>
+              {primaryLabel}
+            </Typography>
+            
+            {p.row.status === 'arrived' && scheduled && (
+                <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '800', opacity: 0.5, fontSize: '0.62rem' }}>
+                    APPT: {scheduled.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                </Typography>
+            )}
+
+            <Typography sx={{ color: triageColor === "#5D4037" ? "#5D4037" : triageColor, fontWeight: '1000', fontSize: '0.72rem', mt: 0.5, letterSpacing: 0.5 }}>
+               {secondaryLabel.toUpperCase()}
+            </Typography>
+        </Box>
+      );
+    }
+  },
+  {
+    field: 'actions', headerName: 'Command Action', width: 320, sortable: false, disableColumnMenu: true,
+    align: 'center', headerAlign: 'center', resizable: false,
+    renderCell: (params) => {
+      const btnStyle = { textTransform: 'uppercase', fontWeight: '900', px: 2, borderRadius: 2, letterSpacing: 0.5, height: 32, fontSize: '0.75rem' };
+      const scheduled = params.row.jsScheduled;
+      const isVeryLate = scheduled && (currentTime - scheduled) / 60000 >= 30;
+
+      if (params.row.status === 'pending') {
         return (
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', overflow: 'hidden' }}>
-            <Button size="small" variant="outlined" sx={{...btnStyle, color: '#1565C0', borderColor: '#1565C0', boxShadow: 0}} startIcon={<AssignmentIcon/>} onClick={() => alert('Open Patient Chart (Go to CRM)')}>Chart</Button>
-            {params.row.status === 'completed' && <Button size="small" variant="outlined" sx={{...btnStyle, color: '#2E7D32', borderColor: '#2E7D32', boxShadow: 0}} startIcon={<ReceiptIcon/>} onClick={() => alert('View Invoice (Go to Transactions)')}>Invoice</Button>}
-            <IconButton onClick={(e) => actions.handleMenuClick(e, params.row)} size="small" sx={{ ml: 'auto' }}><MoreVertIcon fontSize="small" /></IconButton>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, width: '100%', height: '100%' }}>
+            <Button size="small" variant="contained" color="success" sx={btnStyle} startIcon={<CheckCircleIcon sx={{fontSize:'16px !important'}} />} onClick={() => actions.handleStatusChange(params.row, 'confirmed')}>Accept</Button>
+            <Button size="small" variant="outlined" color="error" sx={btnStyle} onClick={() => { actions.setSelectedId(params.row.id); actions.setOpenReject(true); }}>Reject</Button>
+          </Box>
+        );
+      }
+
+      if (params.row.status === 'confirmed') {
+        const isWalkIn = params.row.ownerId === 'WALK_IN_USER' || String(params.row.ownerId).includes('GUEST_');
+        
+        return (
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 0.8, width: '100%', height: '100%', py: 1 }}>
+            {/* PRIMARY: CHECK-IN GATE */}
+            <Button 
+                variant="contained" 
+                size="small" 
+                color="primary" 
+                fullWidth
+                sx={{ ...btnStyle, bgcolor: '#1565C0', height: 36 }} 
+                startIcon={<DirectionsWalkIcon sx={{ fontSize: '16px !important' }} />} 
+                onClick={() => actions.handleOpenAssign(params.row)}
+            >
+                Check In
+            </Button>
+            
+            {/* SECONDARY UTILITIES */}
+            <Stack direction="row" spacing={0.8} sx={{ width: '100%' }}>
+                <Button 
+                    variant="outlined" 
+                    size="small" 
+                    fullWidth
+                    sx={{ ...btnStyle, fontSize: '0.65rem', px: 0.5, borderColor: 'rgba(255,255,255,0.2)', color: '#FFF3E0' }} 
+                    startIcon={<PersonAddIcon sx={{ fontSize: '12px !important' }} />} 
+                    onClick={() => actions.handleOpenAssign(params.row)}
+                >
+                    Assign
+                </Button>
+                <Button 
+                    variant="outlined" 
+                    size="small" 
+                    color="error"
+                    fullWidth
+                    sx={{ ...btnStyle, fontSize: '0.65rem', px: 0.5, borderColor: 'rgba(211, 47, 47, 0.4)' }} 
+                    startIcon={<PersonOffIcon sx={{ fontSize: '12px !important' }} />} 
+                    onClick={() => actions.handleQuickNoShow(params.row.id, params.row.services)}
+                >
+                    No-Show
+                </Button>
+            </Stack>
+          </Box>
+        );
+      }
+
+      if (params.row.status === 'arrived') {
+        return (
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.8, width: '100%', height: '100%' }}>
+            <Button 
+                variant="contained" 
+                size="small" 
+                sx={{...btnStyle, bgcolor: '#5D4037', '&:hover': { bgcolor: '#3E2723' }, minWidth: 120}} 
+                onClick={() => actions.handleStatusChange(params.row, 'in-consult')}
+            >
+                START CONSULT
+            </Button>
+            <Button variant="outlined" size="small" sx={{...btnStyle, color: '#5D4037', borderColor: '#D7CCC8', minWidth: 80}} onClick={(e) => actions.handleMenuClick(e, params.row)}>Options</Button>
+            <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)}><MoreVertIcon fontSize="small" /></IconButton>
           </Box>
         );
       }
 
       return (
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', overflow: 'hidden' }}>
-          {params.row.status === 'pending' && <><Button size="small" variant="contained" color="success" sx={btnStyle} startIcon={<CheckCircleIcon />} onClick={() => actions.handleStatusChange(params.row, 'confirmed')}>Accept</Button><Button size="small" variant="outlined" color="error" sx={{...btnStyle, boxShadow: 0}} onClick={() => { actions.setSelectedId(params.row.id); actions.setOpenReject(true); }}>Reject</Button></>}
-          {params.row.status === 'confirmed' && ( <> <Button size="small" variant="contained" color="primary" sx={{...btnStyle, bgcolor: '#1565C0', '&:hover': {bgcolor: '#0D47A1'} }} startIcon={<DirectionsWalkIcon />} onClick={() => actions.handleOpenAssign(params.row)}>CHECK IN</Button> {isVeryLate && <Button size="small" variant="outlined" color="error" sx={{...btnStyle, ml: 1, px: 1, borderWidth: 2, boxShadow: 0 }} onClick={() => actions.handleQuickNoShow(params.row.id)}>No-Show</Button>} </> )}
-          {params.row.status === 'arrived' && (isUnassigned ? <Button size="small" variant="contained" color="error" sx={btnStyle} startIcon={<PersonAddIcon />} onClick={() => actions.handleOpenAssign(params.row)}>ASSIGN VET</Button> : <Button size="small" variant="contained" color="success" sx={{...btnStyle, bgcolor: '#2E7D32', fontSize: '0.8rem'}} startIcon={<PlayCircleFilledWhiteIcon />} onClick={() => actions.handleStatusChange(params.row, 'in-consult')}>START VISIT</Button>)}
-          {params.row.status === 'in-consult' && ( <> <Button size="small" variant="contained" disabled={isUnassigned} sx={{...btnStyle, bgcolor: isUnassigned ? '#ccc' : '#5D4037'}} onClick={() => actions.handleOpenConsult(params.row)}>Consult Space</Button> <Tooltip title="Wait for Labs"><IconButton size="small" color="warning" sx={{ml: 1}} onClick={() => actions.handleStatusChange(params.row, 'on-hold')}><PauseCircleIcon fontSize="large" /></IconButton></Tooltip> <Tooltip title="Confine"><IconButton size="small" color="error" onClick={() => actions.handleStatusChange(params.row, 'confined')}><LocalHospitalIcon fontSize="large" /></IconButton></Tooltip> </> )}
-          {params.row.status === 'on-hold' && <Button size="small" variant="contained" color="warning" sx={btnStyle} startIcon={<PlayCircleFilledWhiteIcon/>} onClick={() => actions.handleStatusChange(params.row, 'in-consult')}>Resume</Button>}
-          {params.row.status === 'confined' && <Button size="small" variant="contained" color="warning" sx={btnStyle} startIcon={<ReceiptLongIcon />} onClick={() => actions.handleStatusChange(params.row, 'billing')}>Discharge</Button>}
-          {params.row.status === 'dispensing' && <Button size="small" variant="contained" color="success" sx={btnStyle} startIcon={<ReceiptLongIcon />} onClick={() => actions.handleStatusChange(params.row, 'billing')}>To Cashier</Button>}
-          {params.row.status === 'billing' && <Button size="small" variant="contained" color="success" sx={btnStyle} startIcon={<PaidIcon />} onClick={() => actions.handleOpenPOS(params.row)}>Generate Invoice</Button>}
-          <IconButton onClick={(e) => actions.handleMenuClick(e, params.row)} size="small" sx={{ ml: 'auto' }}><MoreVertIcon fontSize="small" /></IconButton>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, width: '100%', height: '100%' }}>
+           <Button variant="outlined" size="small" sx={{...btnStyle, color: '#5D4037', borderColor: '#D7CCC8', minWidth: 100}} onClick={(e) => actions.handleMenuClick(e, params.row)}>Options</Button>
+           <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)}><MoreVertIcon fontSize="small" /></IconButton>
         </Box>
       );
     }

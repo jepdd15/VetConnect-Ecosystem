@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { DataGrid } from '@mui/x-data-grid';
 import { 
-  Box, Typography, Paper, IconButton, Tooltip, 
+  Box, Typography, Paper, IconButton, Tooltip, Stack,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button,
-  Tabs, Tab, Menu, MenuItem, ListItemIcon, ListItemText, Divider, List, ListItem, Alert
+  Tabs, Tab, Menu, MenuItem, ListItemIcon, ListItemText, Divider, List, ListItem, Alert,
+  Popover
 } from '@mui/material';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, Timestamp, where, getDocs, writeBatch, getDoc } from 'firebase/firestore';
 
@@ -32,7 +33,7 @@ import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 import UndoIcon from '@mui/icons-material/Undo'; 
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital'; 
 
-const MAX_CAGES = 5;
+// THE FIX: Removed static MAX_CAGES constant. Pulled from clinic_settings/general instead.
 
 export default function Queue() {
   const [rows, setRows] = useState([]);
@@ -40,6 +41,7 @@ export default function Queue() {
   const [inventoryList, setInventoryList] = useState([]); 
   const [servicesList, setServicesList] = useState([]); 
   const [departments, setDepartments] = useState([]);
+  const [clinicSettings, setClinicSettings] = useState({ maxCages: 5 }); // THE FIX: Live Dynamic Capacity state!
 
   const [tabValue, setTabValue] = useState(0); 
   const[filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
@@ -75,6 +77,21 @@ export default function Queue() {
   const [lastCheckDate, setLastCheckDate] = useState(new Date().toDateString());
 
   const { changeStatus, revertStatus, markNoShow, rejectAppointment, quickAdmitER } = useQueueActions();
+
+  // --- 🛰️ UNIVERSAL CLINICAL HOVER ENGINE ---
+  const [hoverAnchor, setHoverAnchor] = useState(null);
+  const [hoverMetadata, setHoverMetadata] = useState({ type: null, data: null });
+
+  const handleHoverStart = (event, type, data) => {
+    if (!data) return;
+    setHoverAnchor(event.currentTarget);
+    setHoverMetadata({ type, data });
+  };
+
+  const handleHoverEnd = () => {
+    setHoverAnchor(null);
+    setHoverMetadata({ type: null, data: null });
+  };
   const hasCheckedAutoReset = useRef(false);
   const isToday = new Date(filterDate).toDateString() === new Date().toDateString();
 
@@ -203,7 +220,33 @@ export default function Queue() {
   const handleOpenAssign = (row) => { setSelectedRow(row); setOpenAssign(true); handleCloseMenu(); };
   const handleOpenConsult = (row) => { setSelectedRow(row); setOpenConsult(true); };
   const handleOpenPOS = (row) => { setSelectedRow(row); setOpenPOS(true); };
-  const handleStatusChange = async (row, newStatus) => { try { const confinedCount = rows.filter(r => r.status === 'confined').length; await changeStatus(row, newStatus, confinedCount, MAX_CAGES); } catch (e) { alert(e.message); } };
+  const handleStatusChange = async (row, newStatus) => { 
+    try { 
+      // --- 🛡️ CLINICAL REALITY PRE-CHECK ---
+      if (newStatus === 'confirmed') {
+        const services = row.services || [];
+        const missingDepts = [];
+        
+        services.forEach(svc => {
+          const dept = svc.department || 'General';
+          const hasStaff = vets.some(v => v.departments?.includes(dept) || v.role?.toLowerCase() === dept.toLowerCase());
+          if (!hasStaff) missingDepts.push(dept);
+        });
+
+        if (missingDepts.length > 0) {
+          alert(
+            `❌ STAFFING GAP DETECTED\n\nCannot accept this appointment. There are currently no staff members assigned to the following departments: ${missingDepts.join(", ")}.\n\nPlease assign staff to these departments in the Staff module before accepting.`
+          );
+          return;
+        }
+      }
+
+      const confinedCount = rows.filter(r => r.status === 'confined').length; 
+      await changeStatus(row, newStatus, confinedCount, clinicSettings.maxCages || 5); 
+    } catch (e) { 
+      alert(e.message); 
+    } 
+  };
   const handleEditOpen = () => { setEditName(selectedRow.ownerName||''); setEditPet(selectedRow.petName); setOpenEdit(true); handleCloseMenu(); };
   const saveEdit = async () => { await updateDoc(doc(db, "appointments", selectedRow.id), { ownerName: editName, petName: editPet }); setOpenEdit(false); };
   const handleRescheduleOpen = () => { setOpenReschedule(true); handleCloseMenu(); };
@@ -258,7 +301,7 @@ export default function Queue() {
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list = snapshot.docs.map(doc => ({
+      let list = snapshot.docs.map(doc => ({
         id: doc.id, ...doc.data(),
         jsScheduled: doc.data().scheduledDate?.toDate(), 
         jsArrived: doc.data().timeArrived?.toDate(),
@@ -266,6 +309,7 @@ export default function Queue() {
         jsCompleted: doc.data().timeCompleted?.toDate(),
       }));
 
+      // --- 🦴 PRIMARY SORT (Priority -> Time -> Owner) ---
       list.sort((a, b) => {
         const priorityA = a.priority === 'high' ? 0 : 1;
         const priorityB = b.priority === 'high' ? 0 : 1;
@@ -275,10 +319,27 @@ export default function Queue() {
         const timeB = b.jsScheduled ? b.jsScheduled.getTime() : (b.createdAt?.toDate().getTime() || 0);
         if (timeA !== timeB) return timeA - timeB;
 
-        return (a.petName || '').localeCompare(b.petName || '');
+        return (a.ownerId || '').localeCompare(b.ownerId || '');
       });
 
-      setRows(list);
+      // --- 🐾 THE BOOKING BRIDGE (Grouping Detection) ---
+      const processedList = list.map((item, idx) => {
+        const prev = list[idx - 1];
+        const next = list[idx + 1];
+        
+        const isWithPrev = prev && prev.ownerId === item.ownerId && Math.abs((prev.jsScheduled || prev.createdAt?.toDate()) - (item.jsScheduled || item.createdAt?.toDate())) < 120000;
+        const isWithNext = next && next.ownerId === item.ownerId && Math.abs((next.jsScheduled || next.createdAt?.toDate()) - (item.jsScheduled || item.createdAt?.toDate())) < 120000;
+
+        return {
+          ...item,
+          isGroupHeader: isWithNext && !isWithPrev,
+          isGroupMid: isWithNext && isWithPrev,
+          isGroupTail: !isWithNext && isWithPrev,
+          isStandalone: !isWithNext && !isWithPrev
+        };
+      });
+
+      setRows(processedList);
     });
 
     return () => unsubscribe();
@@ -302,7 +363,10 @@ export default function Queue() {
     const unsubInv = onSnapshot(collection(db, "inventory"), (snapshot) => setInventoryList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
     const unsubServ = onSnapshot(collection(db, "services"), (snapshot) => setServicesList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
     const unsubDepts = onSnapshot(collection(db, "departments"), (snapshot) => setDepartments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
-    return () => { unsubVets(); unsubInv(); unsubServ(); unsubDepts(); };
+    const unsubSettings = onSnapshot(doc(db, "clinic_settings", "general"), (docSnap) => {
+        if (docSnap.exists()) setClinicSettings(prev => ({ ...prev, ...docSnap.data() }));
+    });
+    return () => { unsubVets(); unsubInv(); unsubServ(); unsubDepts(); unsubSettings(); };
   },[]);
 
   useEffect(() => {
@@ -343,7 +407,15 @@ export default function Queue() {
   };
 
   const tableColumns = getQueueColumns(tabValue, currentTime, {
-    handleStatusChange, handleOpenAssign, setSelectedId, setOpenReject, handleOpenConsult, handleOpenPOS, handleMenuClick,
+    handleStatusChange, 
+    handleOpenAssign, 
+    setSelectedId, 
+    setOpenReject, 
+    handleOpenConsult, 
+    handleOpenPOS, 
+    handleMenuClick,
+    handleHoverStart,
+    handleHoverEnd,
     handleQuickNoShow: async (id) => { if(window.confirm("Mark as No-Show?")) await markNoShow(id); }
   }, isToday, departments);
 
@@ -463,7 +535,38 @@ export default function Queue() {
 
       {/* DATA GRID */}
       <Paper sx={{ ...glassStyle, height: 'calc(100vh - 240px)', minHeight: 400, width: '100%', overflow: 'hidden' }}>
-        <DataGrid rows={getFilteredRows()} columns={tableColumns} pageSize={10} disableSelectionOnClick rowHeight={96} getRowClassName={(params) => params.row.priority === 'high' ? 'emergency-row' : ''} sx={{ border: 'none', bgcolor: 'transparent', '& .MuiDataGrid-columnHeaders': { bgcolor: 'rgba(255, 255, 255, 0.4)', color: '#5D4037', fontWeight: 'bold', fontSize: '1.05rem', borderBottom: '1px solid rgba(255, 255, 255, 0.5)'}, '& .emergency-row': { bgcolor: 'rgba(255, 235, 238, 0.8)' }, '& .super-late-row': { bgcolor: 'rgba(255, 243, 224, 0.8)' }, '& .MuiDataGrid-row:hover': { bgcolor: 'rgba(255, 255, 255, 0.4)' }, '& .MuiDataGrid-cell': { display: 'flex', alignItems: 'center' } }} />
+        <DataGrid 
+          rows={getFilteredRows()} 
+          columns={tableColumns} 
+          pageSize={10} 
+          disableSelectionOnClick 
+          disableColumnResize
+          disableColumnReorder
+          disableColumnMenu
+          rowHeight={110} 
+          columnHeaderHeight={48}
+          getRowClassName={(params) => {
+            const classes = [];
+            if (params.row.priority === 'high') classes.push('emergency-row');
+            if (params.row.isGroupHeader) classes.push('group-header');
+            if (params.row.isGroupMid) classes.push('group-mid');
+            if (params.row.isGroupTail) classes.push('group-tail');
+            return classes.join(' ');
+          }} 
+          sx={{ 
+            border: 'none', 
+            bgcolor: 'transparent', 
+            '& .MuiDataGrid-columnHeaders': { bgcolor: 'rgba(255, 255, 255, 0.4)', color: '#5D4037', fontWeight: 'bold', fontSize: '1.05rem', borderBottom: '1px solid rgba(255, 255, 255, 0.5)'}, 
+            '& .emergency-row': { bgcolor: 'rgba(255, 235, 238, 0.8)' }, 
+            '& .group-header': { borderTop: '2.5px solid #8B4513 !important', bgcolor: 'rgba(255, 255, 255, 0.45)' },
+            '& .group-mid': { borderLeft: '5px solid #8B4513 !important', bgcolor: 'rgba(255, 255, 255, 0.45)' },
+            '& .group-tail': { borderLeft: '5px solid #8B4513 !important', borderBottom: '2.5px solid #8B4513 !important', bgcolor: 'rgba(255, 255, 255, 0.45)' },
+            '& .super-late-row': { bgcolor: 'rgba(255, 243, 224, 0.8)' }, 
+            '& .MuiDataGrid-row:hover': { bgcolor: 'rgba(255, 255, 255, 0.6)' }, 
+            '& .MuiDataGrid-cell': { borderBottom: '1px solid rgba(255, 255, 255, 0.2)' },
+            '& .MuiDataGrid-cell[data-field="timing"]': { padding: 0 }
+          }} 
+        />
       </Paper>
 
       {/* EXTERNAL MODULES */}
@@ -499,6 +602,168 @@ export default function Queue() {
       <Dialog open={openEdit} onClose={() => setOpenEdit(false)}><DialogTitle>Edit</DialogTitle><DialogContent><TextField margin="dense" label="Owner" fullWidth value={editName} onChange={(e) => setEditName(e.target.value)} /><TextField margin="dense" label="Pet" fullWidth value={editPet} onChange={(e) => setEditPet(e.target.value)} /></DialogContent><DialogActions><Button onClick={() => setOpenEdit(false)}>Cancel</Button><Button onClick={saveEdit} variant="contained">Save</Button></DialogActions></Dialog>
       <Dialog open={openReschedule} onClose={() => setOpenReschedule(false)}><DialogTitle>Reschedule</DialogTitle><DialogContent><TextField type="datetime-local" fullWidth value={newDate} onChange={(e) => setNewDate(e.target.value)} /></DialogContent><DialogActions><Button onClick={() => setOpenReschedule(false)}>Cancel</Button><Button onClick={saveReschedule} variant="contained">Update</Button></DialogActions></Dialog>
       <Dialog open={openHistory} onClose={() => setOpenHistory(false)} maxWidth="sm" fullWidth><DialogTitle>Medical History</DialogTitle><DialogContent dividers>{historyList.length === 0 ? <Typography>No records.</Typography> : <List>{historyList.map((rec,i) => <ListItem key={i} divider><ListItemText primary={rec.diagnosis} secondary={rec.treatment}/></ListItem>)}</List>}</DialogContent><DialogActions><Button onClick={() => setOpenHistory(false)}>Close</Button></DialogActions></Dialog>
+      
+      {/* 📡 UNIVERSAL CLINICAL HUD (NOTES & SERVICES) */}
+      <Popover
+        id="clinical-hover-popover"
+        sx={{ pointerEvents: 'none' }}
+        open={Boolean(hoverAnchor)}
+        anchorEl={hoverAnchor}
+        anchorOrigin={{ vertical: 'center', horizontal: 'center' }}
+        transformOrigin={{ vertical: 'center', horizontal: 'center' }}
+        onClose={handleHoverEnd}
+        disableRestoreFocus
+        PaperProps={{
+          sx: {
+            p: 3, 
+            width: hoverMetadata.type === 'timing' ? 260 : 440,
+            maxHeight: 520,
+            overflow: 'hidden',
+            pointerEvents: 'none',
+            bgcolor: '#FFF', 
+            border: '2px solid #5D4037',
+            boxShadow: '0 24px 64px rgba(0,0,0,0.22)',
+            borderRadius: 2
+          }
+        }}
+      >
+        {hoverMetadata.type === 'notes' && (
+          <Box>
+            <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 2, display: 'block', mb: 1.5, opacity: 0.8 }}>
+              CLINICAL INTAKE / NOTES
+            </Typography>
+            <Typography sx={{ 
+              fontSize: '1.05rem', lineHeight: 1.6, color: '#3E2723', fontStyle: 'italic', whiteSpace: 'pre-wrap', 
+              fontFamily: '"Merriweather", serif',
+              fontWeight: 700,
+              letterSpacing: '-0.01rem'
+            }}>
+              "{hoverMetadata.data}"
+            </Typography>
+          </Box>
+        )}
+
+        {hoverMetadata.type === 'services' && (
+          <Box>
+            <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1.5, display: 'block', mb: 1.5 }}>
+              SERVICE BUNDLE SUMMARY ({hoverMetadata.data?.length})
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 2, mb: 2, pb: 1, borderBottom: '1px dashed #eee' }}>
+                <Typography variant="caption" sx={{ fontWeight: 'bold' }}>
+                    TOTAL TIME: {hoverMetadata.data?.reduce((acc, s) => acc + (s.duration || 0), 0)}m
+                </Typography>
+                <Typography variant="caption" sx={{ fontWeight: 'bold', color: 'success.main' }}>
+                    EST: ₱{hoverMetadata.data?.reduce((acc, s) => acc + (s.price || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </Typography>
+            </Box>
+            <List sx={{ p: 0 }}>
+              {([...(hoverMetadata.data || [])].sort((a,b) => a.name.localeCompare(b.name))).map((svc, i) => {
+                const deptObj = (departments || []).find(d => d.name === svc.department);
+                const bColor = deptObj ? deptObj.color : '#616161';
+                return (
+                  <ListItem key={i} sx={{ px: 1.5, py: 0.8, mb: 1, borderLeft: `6px solid ${bColor}`, bgcolor: 'rgba(0,0,0,0.02)', borderRadius: '0 4px 4px 0' }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>{svc.name}</Typography>
+                        <Typography variant="caption" sx={{ display: 'block', color: svc.staffName ? '#5D4037' : '#D32F2F', fontWeight: '900', fontSize: '0.65rem' }}>
+                          {svc.staffName ? `👤 ${svc.staffName}` : '❌ UNASSIGNED'}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ textAlign: 'right' }}>
+                        <Typography variant="caption" sx={{ display: 'block', fontSize: '0.6rem', fontWeight: 'bold' }}>
+                          ₱{svc.price?.toLocaleString()}
+                        </Typography>
+                        <Typography variant="caption" sx={{ display: 'block', fontSize: '0.55rem', color: bColor, fontWeight: '900' }}>
+                          {svc.department?.toUpperCase()}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  </ListItem>
+                );
+              })}
+            </List>
+          </Box>
+        )}
+
+        {hoverMetadata.type === 'timing' && hoverMetadata.data && (
+          <Box>
+            <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1.5, display: 'block', mb: 2 }}>
+              ⌛ CLINICAL TEMPORAL AUDIT
+            </Typography>
+            <Stack spacing={2} sx={{ position: 'relative', pl: 3 }}>
+                <Box sx={{ position: 'absolute', left: 8, top: 8, bottom: 8, width: '2px', borderLeft: '2px dashed #D7CCC8' }} />
+                {[
+                  { id: 'booked', label: 'BOOKED (ONLINE)', val: hoverMetadata.data.createdAt },
+                  { id: 'scheduled', label: 'APPOINTMENT SLOT', val: hoverMetadata.data.jsScheduled },
+                  { id: 'arrived', label: 'ARRIVED (CHECK-IN)', val: hoverMetadata.data.timeArrived },
+                  { id: 'started', label: 'CONSULT STARTED', val: hoverMetadata.data.timeStarted }
+                ].filter(i => i.val).map((item, idx, filteredArray) => {
+                  const isLast = idx === filteredArray.length - 1;
+                  const date = item.val.toDate ? item.val.toDate() : new Date(item.val);
+                  const color = isLast ? '#2E7D32' : '#9E9E9E';
+                  let deltaLabel = null;
+                  let deltaColor = '#5D4037';
+                  if (!isLast) {
+                    const nextItem = filteredArray[idx + 1];
+                    const nextDate = nextItem.val.toDate ? nextItem.val.toDate() : new Date(nextItem.val);
+                    const diffMins = Math.floor((nextDate - date) / 60000);
+                    if (item.id === 'scheduled' && nextItem.id === 'arrived') {
+                       deltaLabel = diffMins > 0 ? `Punctuality: ${diffMins}m Late` : `Punctuality: ${Math.abs(diffMins)}m Early`;
+                    } else if (item.id === 'arrived' && nextItem.id === 'started') {
+                       deltaLabel = `Lobby Wait: ${diffMins}m`;
+                       if (diffMins >= 30) deltaColor = '#D32F2F';
+                    }
+                  } else if (item.id === 'started') {
+                    const consultMins = Math.floor((new Date() - date) / 60000);
+                    deltaLabel = `Active Consult: ${consultMins}m so far`;
+                  }
+                  return (
+                    <Box key={idx} sx={{ position: 'relative', mb: 0.5 }}>
+                      <Box sx={{ position: 'absolute', left: -26, top: 4, width: 8, height: 8, borderRadius: '50%', bgcolor: color, zIndex: 5 }} />
+                      <Typography variant="caption" sx={{ fontWeight: '1000', color: color, letterSpacing: 0.5, display: 'block', fontSize: '0.65rem' }}>{item.label}</Typography>
+                      <Typography sx={{ fontWeight: '1000', color: isLast ? '#1A1A1A' : '#9E9E9E', fontSize: '0.85rem' }}>
+                        {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                      </Typography>
+                      {deltaLabel && (
+                        <Typography variant="caption" sx={{ fontStyle: 'italic', color: deltaColor, fontWeight: '800', fontSize: '0.62rem', display: 'block', mt: 0.2 }}>
+                            ↳ {deltaLabel.toUpperCase()}
+                        </Typography>
+                      )}
+                    </Box>
+                  );
+                })}
+            </Stack>
+            <Box sx={{ mt: 2, pt: 1.5, borderTop: '1px solid #D7CCC8' }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <Box>
+                        <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', letterSpacing: 0.5, display: 'block', fontSize: '0.6rem' }}>PUNCTUALITY</Typography>
+                        <Typography sx={{ fontWeight: '1000', color: (hoverMetadata.data.timeArrived && hoverMetadata.data.jsScheduled && Math.floor(((hoverMetadata.data.timeArrived.toDate ? hoverMetadata.data.timeArrived.toDate() : new Date(hoverMetadata.data.timeArrived)) - (hoverMetadata.data.jsScheduled.toDate ? hoverMetadata.data.jsScheduled.toDate() : new Date(hoverMetadata.data.jsScheduled))) / 60000) > 15) ? '#D32F2F' : '#2E7D32', fontSize: '0.8rem' }}>
+                            {(() => {
+                                if (!hoverMetadata.data.timeArrived || !hoverMetadata.data.jsScheduled) return 'N/A';
+                                const arr = hoverMetadata.data.timeArrived.toDate ? hoverMetadata.data.timeArrived.toDate() : new Date(hoverMetadata.data.timeArrived);
+                                const sch = hoverMetadata.data.jsScheduled.toDate ? hoverMetadata.data.jsScheduled.toDate() : new Date(hoverMetadata.data.jsScheduled);
+                                const diff = Math.floor((arr - sch) / 60000);
+                                if (Math.abs(diff) <= 5) return 'ON-TIME';
+                                return diff > 0 ? `${diff}M LATE` : `${Math.abs(diff)}M EARLY`;
+                            })()}
+                        </Typography>
+                    </Box>
+                    <Box sx={{ textAlign: 'right' }}>
+                        <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', letterSpacing: 0.5, display: 'block', fontSize: '0.6rem' }}>TOTAL WAIT</Typography>
+                        <Typography sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' }}>
+                            {(() => {
+                                if (!hoverMetadata.data.timeArrived) return '0M';
+                                const arr = hoverMetadata.data.timeArrived.toDate ? hoverMetadata.data.timeArrived.toDate() : new Date(hoverMetadata.data.timeArrived);
+                                const end = hoverMetadata.data.timeStarted ? (hoverMetadata.data.timeStarted.toDate ? hoverMetadata.data.timeStarted.toDate() : new Date(hoverMetadata.data.timeStarted)) : new Date();
+                                return `${Math.floor((end - arr) / 60000)}M`;
+                            })()}
+                        </Typography>
+                    </Box>
+                </Box>
+            </Box>
+          </Box>
+        )}
+      </Popover>
     </Box>
   );
 }

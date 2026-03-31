@@ -3,46 +3,50 @@ import { db } from '../../firebaseConfig';
 
 export function useQueueActions() {
   
-  // 1. FORWARD STATUS CHANGE
+  // 1. FORWARD STATUS CHANGE (NOW ATOMIC TRANSACTIONS!)
   const changeStatus = async (row, newStatus, currentConfinedCount, maxCages = 5) => {
     if (newStatus === 'confined' && currentConfinedCount >= maxCages) {
       throw new Error(`❌ ADMISSION BLOCKED\nAll ${maxCages} cages are currently occupied.`);
     }
 
-    const batch = writeBatch(db);
-    const apptRef = doc(db, "appointments", row.id);
-    
-    let updateData = { 
-        status: newStatus,
-        statusHistory: arrayUnion(row.status) 
-    };
-    
-    const now = new Date();
+    await runTransaction(db, async (transaction) => {
+        const apptRef = doc(db, "appointments", row.id);
+        const apptDoc = await transaction.get(apptRef);
+        if (!apptDoc.exists()) throw new Error("Appointment not found!");
 
-    if (newStatus === 'in-consult' && row.status !== 'on-hold') updateData.timeStarted = Timestamp.now();
-    if (newStatus === 'completed') updateData.timeCompleted = Timestamp.now();
+        const now = new Date();
+        let updateData = { 
+            status: newStatus,
+            statusHistory: arrayUnion(row.status) 
+        };
 
-    // SMART PAUSE ENGINE
-    if (newStatus === 'on-hold') updateData.lastPausedAt = Timestamp.now();
-    
-    if (row.status === 'on-hold' && newStatus === 'in-consult') {
-        if (row.lastPausedAt) {
-            const pausedAt = row.lastPausedAt.toDate();
-            const pauseDurationMins = Math.floor((now - pausedAt) / 60000);
-            const previousTotal = row.totalPausedMinutes || 0;
-            updateData.totalPausedMinutes = previousTotal + pauseDurationMins;
-            updateData.lastPausedAt = null; 
+        if (newStatus === 'confirmed' && row.status === 'pending') updateData.timeAccepted = Timestamp.now();
+        if (newStatus === 'in-consult' && row.status !== 'on-hold') updateData.timeStarted = Timestamp.now();
+        if (newStatus === 'completed') updateData.timeCompleted = Timestamp.now();
+
+        // SMART PAUSE ENGINE
+        if (newStatus === 'on-hold') updateData.lastPausedAt = Timestamp.now();
+        
+        if (row.status === 'on-hold' && newStatus === 'in-consult') {
+            if (row.lastPausedAt) {
+                const pausedAt = row.lastPausedAt.toDate();
+                const pauseDurationMins = Math.floor((now - pausedAt) / 60000);
+                const previousTotal = row.totalPausedMinutes || 0;
+                updateData.totalPausedMinutes = previousTotal + pauseDurationMins;
+                updateData.lastPausedAt = null; 
+            }
         }
-    }
 
-    batch.update(apptRef, updateData);
-    
-    if (newStatus === 'in-consult' && row.queueNumber) {
-      const queueRef = doc(db, "queue", "daily_queue");
-      batch.update(queueRef, { currentServing: row.queueNumber, currentPrefix: row.ticketPrefix || '' });
-    }
-
-    await batch.commit();
+        transaction.update(apptRef, updateData);
+        
+        if (newStatus === 'in-consult' && row.queueNumber) {
+            const queueRef = doc(db, "queue", "daily_queue");
+            transaction.update(queueRef, { 
+                currentServing: row.queueNumber, 
+                currentPrefix: row.ticketPrefix || '' 
+            });
+        }
+    });
   };
 
   // 2. THE SMART UNDO
@@ -58,12 +62,27 @@ export function useQueueActions() {
     });
   };
 
-  const markNoShow = async (id) => {
-    await updateDoc(doc(db, "appointments", id), { status: 'no-show', rejectReason: 'Auto-flagged: Late / No show' });
+  const markNoShow = async (id, currentServices = []) => {
+    const clearedServices = (currentServices || []).map(s => ({ ...s, staffId: null, staffName: 'Unassigned' }));
+    await updateDoc(doc(db, "appointments", id), { 
+      status: 'no-show', 
+      rejectReason: 'Auto-flagged: Late / No show',
+      assignedVet: "Unassigned",
+      assignedVetId: null,
+      services: clearedServices
+    });
   };
 
-  const rejectAppointment = async (id, reason) => {
-    await updateDoc(doc(db, "appointments", id), { status: 'cancelled', rejectReason: reason || "No reason provided by staff." });
+  const rejectAppointment = async (id, reason, currentServices = []) => {
+    const clearedServices = (currentServices || []).map(s => ({ ...s, staffId: null, staffName: 'Unassigned' }));
+    await updateDoc(doc(db, "appointments", id), { 
+      status: 'cancelled', 
+      rejectReason: reason || "No reason provided by staff.",
+      assignedVet: "Unassigned",
+      assignedVetId: null,
+      services: clearedServices,
+      timeRejected: Timestamp.now()
+    });
   };
 
   // 3. THE NEW "CODE BLUE" EMERGENCY ENGINE (Free-Tier Safe)

@@ -174,10 +174,11 @@ export default function Settings() {
     const serviceCount = allServices.filter(s => (s.department || s.category) === name).length;
 
     if (staffCount > 0 || serviceCount > 0) {
-        return Alert.alert(
-            "Department In Use",
-            `The "${name}" department cannot be deleted because it is currently assigned to:\n\n• ${staffCount} Staff Members\n• ${serviceCount} Clinical Services\n\nPlease re-assign these entities before deleting the department.`
-        );
+        return setToast({ 
+            open: true, 
+            message: `Department In Use: Assigned to ${staffCount} staff and ${serviceCount} services. Re-assign them first.`, 
+            severity: 'error' 
+        });
     }
 
     if (window.confirm(`Delete the "${name}" department?`)) {
@@ -249,10 +250,10 @@ export default function Settings() {
                 </Grid>
                 <Grid size={{ xs: 12 }}><Divider sx={{ my: 1 }} /><FormControlLabel control={<Switch checked={settings.lunchEnabled} onChange={(e) => handleChange('lunchEnabled', e.target.checked)} color="primary" />} label={<Typography fontWeight="bold" color="primary">Enforce Lunch Break</Typography>} /></Grid>
                 {settings.lunchEnabled && (
-                    <>
+                    <React.Fragment>
                         <Grid size={{ xs: 6 }}><FormControl fullWidth size="small" sx={{ bgcolor: 'white', borderRadius: 1 }}><InputLabel>Start</InputLabel><Select value={settings.lunchStart} label="Start" onChange={(e) => handleChange('lunchStart', e.target.value)}>{hoursArray.map(h => <MenuItem key={h} value={h}>{formatHour(h)}</MenuItem>)}</Select></FormControl></Grid>
                         <Grid size={{ xs: 6 }}><FormControl fullWidth size="small" sx={{ bgcolor: 'white', borderRadius: 1 }}><InputLabel>End</InputLabel><Select value={settings.lunchEnd} label="End" onChange={(e) => handleChange('lunchEnd', e.target.value)}>{hoursArray.map(h => <MenuItem key={h} value={h}>{formatHour(h)}</MenuItem>)}</Select></FormControl></Grid>
-                    </>
+                    </React.Fragment>
                 )}
               </Grid>
             </Box>

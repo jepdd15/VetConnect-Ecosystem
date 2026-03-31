@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Dialog, DialogTitle, DialogContent, DialogActions, 
   Button, Box, Typography, Paper, Chip, Avatar, Alert, 
-  Divider, Stack, Popover, List, ListItem // Added Popover, List, ListItem
+  Divider, Stack, Popover, List, ListItem, Menu, MenuItem
 } from '@mui/material';
 
 // Icons
@@ -11,304 +11,376 @@ import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import StarIcon from '@mui/icons-material/Star';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import PersonOffIcon from '@mui/icons-material/PersonOff';
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
 
 import { doc, runTransaction, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 
-// A dedicated sub-component for ultimate code cleanliness!
-const SkillChips = ({ departments, allDepts, onClickMore }) => {
-  if (!departments || departments.length === 0) {
-    return <Typography variant="caption" fontStyle="italic">No departments assigned</Typography>;
-  }
-
-  const MAX_VISIBLE = 3;
-  const visibleSkills = departments.slice(0, MAX_VISIBLE);
-  const hiddenSkills = departments.slice(MAX_VISIBLE);
-
-  return (
-    <Box sx={{ mt: 0.5, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-      {visibleSkills.map(deptName => {
-        const deptObj = (allDepts || []).find(d => d.name === deptName);
-        const chipColor = deptObj ? deptObj.color : '#616161';
-        return (
-          <Chip 
-            key={deptName} label={deptName} size="small"
-            sx={{ color: 'white', bgcolor: chipColor, fontWeight: 'bold', fontSize: '0.6rem', height: 18 }} 
-          />
-        );
-      })}
-      {hiddenSkills.length > 0 && (
-        <Chip 
-          label={`+${hiddenSkills.length}`}
-          size="small"
-          onClick={(e) => { e.stopPropagation(); onClickMore(e, hiddenSkills); }} // Stop propagation to prevent card click
-          sx={{ 
-            color: '#555', bgcolor: '#E0E0E0', fontWeight: 'bold', 
-            fontSize: '0.6rem', height: 18, cursor: 'pointer',
-            '&:hover': { bgcolor: '#BDBDBD' }
-          }} 
-        />
-      )}
-    </Box>
-  );
-};
-
 export default function AssignStaffModal({ open, onClose, patient, vetsList, activeAppointments, departments }) {
-  const [selectedVet, setSelectedVet] = useState(null); 
   const [loading, setLoading] = useState(false);
-  const[errorMsg, setErrorMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  
+  // THE BUFFER: Stores local changes before they hit the cloud!
+  const [tempServices, setTempServices] = useState([]);
 
-  // --- NEW: POPOVER STATE & HANDLERS ---
-  const [popoverAnchorEl, setPopoverAnchorEl] = useState(null);
-  const [popoverSkills, setPopoverSkills] = useState([]);
-
-  const handleSkillsPopoverOpen = (event, skills) => {
-    setPopoverAnchorEl(event.currentTarget);
-    setPopoverSkills(skills);
-  };
-
-  const handleSkillsPopoverClose = () => {
-    setPopoverAnchorEl(null);
-    setPopoverSkills([]);
-  };
+  // --- DROPDOWN STATE ---
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [activeSvcIdx, setActiveSvcIdx] = useState(null); // null = BATCH Assign
+  const [sortBy, setSortBy] = useState('alpha'); // alpha | load
 
   useEffect(() => {
     if (open && patient) {
-      if (patient.assignedVetId && patient.assignedVetId !== 'Unassigned') {
-        const vetObj = vetsList.find(v => v.id === patient.assignedVetId);
-        setSelectedVet(vetObj || null);
-      } else {
-        setSelectedVet(null); 
-      }
+      const sortedServices = (patient.services || []).sort((a, b) => a.name.localeCompare(b.name));
+      setTempServices(sortedServices);
       setErrorMsg('');
     }
-  }, [open, patient, vetsList]);
+  }, [open, patient]);
+
+  // --- 🧬 TRIAGE ANALYTICS ENGINE ---
+  const servicesCount = tempServices.length;
+  const uniqueDeptsCount = [...new Set(tempServices.map(s => s.department))].length;
+
+  const getMasterQualifiedStaff = () => {
+    if (!tempServices || tempServices.length === 0) return [];
+    const requiredDepts = [...new Set(tempServices.map(s => s.department))];
+    return (vetsList || []).filter(vet => 
+        requiredDepts.every(dept => vet.departments?.includes(dept))
+    );
+  };
+
+  const masterStaff = getMasterQualifiedStaff();
 
   const getVetWorkload = (vetId) => {
     if (!activeAppointments) return 0;
     return activeAppointments.filter(a => a.assignedVetId === vetId).length;
   };
 
+  // --- 🖋️ THE DYNAMIC SORTING PIPELINE ---
+  const sortStaff = (list) => {
+    return [...list].sort((a, b) => {
+      if (sortBy === 'alpha') return a.fullName.localeCompare(b.fullName);
+      return getVetWorkload(a.id) - getVetWorkload(b.id);
+    });
+  };
+
+  const handleOpenMenu = (event, idx) => {
+    setAnchorEl(event.currentTarget);
+    setActiveSvcIdx(idx);
+  };
+
+  const handleCloseMenu = () => {
+    setAnchorEl(null);
+    setActiveSvcIdx(null);
+  };
+
+  const handleSelectStaff = (vId, vName) => {
+    if (activeSvcIdx === null) {
+      const updated = tempServices.map(s => ({ ...s, staffId: vId, staffName: vName }));
+      setTempServices(updated);
+    } else {
+      const updated = [...tempServices];
+      updated[activeSvcIdx] = { ...updated[activeSvcIdx], staffId: vId, staffName: vName };
+      setTempServices(updated);
+    }
+    handleCloseMenu();
+  };
+
+  const handleUnassignAll = () => {
+    const cleared = tempServices.map(s => ({ ...s, staffId: null, staffName: 'Unassigned' }));
+    setTempServices(cleared);
+  };
+
   const handleSubmit = async () => {
-    if (!patient || !patient.services) return;
-    
     setLoading(true);
     setErrorMsg('');
 
     try {
-      const isCheckIn = patient.status === 'confirmed';
-      
-      // we already have the modified services array in the state-like mapping if we were careful
-      // BUT, let's just update the appointment document with the current selectedVet logic
-      // In a real multi-staff world, we would have a local state tracking which service gets which vet.
-      // FOR THE MVP: We'll assume the user picks a vet for the PRIMARY service if we haven't built the full list yet.
-      // WAIT, let's build the full list UI first below!
-    } catch (e) { console.error(e); }
+      if (patient.status === 'confirmed') {
+        await runTransaction(db, async (transaction) => {
+            const queueRef = doc(db, "queue", "daily_queue");
+            const queueDoc = await transaction.get(queueRef);
+            const newNumber = queueDoc.exists() ? (queueDoc.data().lastNumberIssued || 0) + 1 : 1;
+            
+            // --- 🛡️ STATUS PRIMING: Ensuring all services start as 'pending' ---
+            const primedServices = tempServices.map(s => ({ ...s, status: 'pending' }));
+
+            transaction.set(queueRef, { lastNumberIssued: newNumber }, { merge: true });
+            transaction.update(doc(db, "appointments", patient.id), { 
+                status: 'arrived', 
+                queueNumber: newNumber, 
+                ticketPrefix: patient.priority === 'high' ? 'E' : 'W', 
+                timeArrived: Timestamp.now(),
+                services: primedServices,
+                assignedVet: primedServices[0]?.staffName || "Unassigned",
+                assignedVetId: primedServices[0]?.staffId || null
+            });
+        });
+      } else {
+        await updateDoc(doc(db, "appointments", patient.id), { 
+            services: tempServices,
+            assignedVet: tempServices[0]?.staffName || "Unassigned",
+            assignedVetId: tempServices[0]?.staffId || null
+        });
+      }
+      onClose();
+    } catch (e) { 
+      setErrorMsg("Failed to process assignment: " + e.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (!patient) return null;
 
   const isCheckIn = patient.status === 'confirmed';
-  const targetCategory = patient?.serviceCategory || patient?.services?.[0]?.department || 'General';
-  const mainDeptObj = (departments || []).find(d => d.name === targetCategory);
-  const badgeColor = mainDeptObj ? mainDeptObj.color : '#6D4C41';
-  
-  // --- 🧬 MULTI-SERVICE ASSIGNMENT RENDERER ---
-  const ServiceAssignmentRow = ({ svc, idx }) => {
-    const deptObj = (departments || []).find(d => d.name === svc.department);
-    const badgeColor = deptObj ? deptObj.color : '#616161';
-    
-    // Filter staff for THIS specific service's department
-    const qualifiedStaff = (vetsList || []).filter(v => v.departments?.includes(svc.department));
-    const others = (vetsList || []).filter(v => !v.departments?.includes(svc.department));
+  const BRAND_BROWN = '#3E2723';
+  const isBundle = tempServices.length > 1;
 
-    return (
-        <Paper key={idx} sx={{ p: 2, mb: 2, border: '1px solid #E0E0E0', borderRadius: 2 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-                <Box>
-                  <Typography variant="caption" sx={{ color: badgeColor, fontWeight: '900', letterSpacing: 1 }}>SERVICE {idx + 1}</Typography>
-                  <Typography variant="subtitle1" fontWeight="900" color="#3E2723">{svc.name}</Typography>
-                </Box>
-                <Chip label={svc.department} size="small" sx={{ bgcolor: `${badgeColor}20`, color: badgeColor, fontWeight: 'bold' }} />
-            </Box>
+  // --- UNITARY BRANDING LOGIC ---
+  const singleSvc = !isBundle ? tempServices[0] : null;
+  const dObj = singleSvc ? (departments || []).find(d => d.name === singleSvc.department) : null;
+  const headerChipColor = isBundle ? BRAND_BROWN : (dObj?.color || BRAND_BROWN);
+  const headerChipLabel = isBundle ? "SERVICE BUNDLE" : (singleSvc?.name?.toUpperCase() || "VISIT");
 
-            <Box sx={{ mt: 1 }}>
-                <Typography variant="caption" color="textSecondary" fontWeight="bold" sx={{ display: 'block', mb: 1 }}>Assign Professional:</Typography>
-                <Stack direction="row" spacing={1} sx={{ overflowX: 'auto', pb: 1 }}>
-                    {qualifiedStaff.map(v => (
-                        <Chip 
-                            key={v.id} 
-                            avatar={<Avatar>{v.fullName[0]}</Avatar>} 
-                            label={v.fullName} 
-                            onClick={async () => {
-                                // --- DIRECT ASSIGNMENT TRIGGER ---
-                                const newServices = [...patient.services];
-                                newServices[idx].staffId = v.id;
-                                newServices[idx].staffName = v.fullName;
-                                await updateDoc(doc(db, "appointments", patient.id), { 
-                                    services: newServices,
-                                    assignedVet: v.fullName, // Legacy Fallback
-                                    assignedVetId: v.id     // Legacy Fallback
-                                });
-                            }}
-                            variant={svc.staffId === v.id ? "filled" : "outlined"}
-                            color={svc.staffId === v.id ? "success" : "default"}
-                            sx={{ fontWeight: '900' }}
-                        />
-                    ))}
-                    {qualifiedStaff.length === 0 && (
-                        <Typography variant="caption" fontStyle="italic">No {svc.department} staff found in the directory.</Typography>
-                    )}
-                </Stack>
-            </Box>
-            
-            {svc.staffId && (
-                <Box sx={{ mt: 1.5, p: 1, bgcolor: '#F1F8E9', borderRadius: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <CheckCircleIcon color="success" sx={{ fontSize: 16 }} />
-                    <Typography variant="caption" fontWeight="bold" color="#2E7D32">Assigned to: {svc.staffName}</Typography>
-                </Box>
-            )}
-        </Paper>
-    );
-  };
+  const allAssigned = tempServices.every(s => s.staffId);
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      {/* DIALOG HEADER */}
+    <Dialog 
+      open={open} 
+      onClose={onClose} 
+      maxWidth="lg"
+      PaperProps={{ 
+        sx: { 
+          // --- THE STATIC RECTANGLE: 1000x700 Dashboard Configurations ---
+          width: 1000, height: 700, maxHeight: 900, 
+          borderRadius: 3, overflow: 'hidden',
+          display: 'flex', flexDirection: 'column'
+        } 
+      }}
+    >
+      {/* DIALOG HEADER: STARBARKS BRANDING */}
       <DialogTitle sx={{ 
-          // THE FIX: The header color now matches the department color!
-          background: `linear-gradient(135deg, ${badgeColor} 0%, ${badgeColor}CC 100%)`, 
-          color: 'white', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1 
+          background: `linear-gradient(135deg, ${BRAND_BROWN} 0%, #1A0D0A 100%)`, 
+          color: 'white', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1, py: 2,
+          zIndex: 10
       }}>
-        <AssignmentIndIcon /> {isCheckIn ? "Check-In & Dispatch Patient" : "Transfer / Re-assign Visit"}
+        <AssignmentIndIcon /> Assign Staff
       </DialogTitle>
       
-      {/* 2. THE PINNED PATIENT TICKET */}
-      <Box sx={{ p: 3, pb: 2, bgcolor: '#FFF8E1', borderBottom: '2px dashed #D7CCC8', zIndex: 10, position: 'relative' }}>
-          {errorMsg ? <Alert severity="error" sx={{ mb: 2, fontWeight: 'bold' }}>{errorMsg}</Alert> : null}
+      {/* --- 🧬 THE CLINICAL IDENTITY TOWER (MATCHES MAIN QUEUE) --- */}
+      <Box sx={{ p: 3, bgcolor: '#FFF8E1', borderBottom: '2px dashed #D7CCC8', display: 'flex', alignItems: 'flex-start', gap: 5, zIndex: 10 }}>
+          <Avatar sx={{ bgcolor: 'white', color: BRAND_BROWN, border: `3px solid ${BRAND_BROWN}`, width: 90, height: 90, fontSize: 45, boxShadow: 3, mt: 0.5 }}>
+              {(patient.petSpecies === 'Canine' || patient.petSpecies === 'Dog') ? '🐶' : '🐱'}
+          </Avatar>
           
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-              <Typography variant="caption" color="#8B4513" fontWeight="bold" sx={{ letterSpacing: 1 }}>PATIENT ROUTING TICKET</Typography>
-              <Chip label={`DEPT: ${targetCategory.toUpperCase()}`} size="small" sx={{ bgcolor: badgeColor, color: 'white', fontWeight: 'bold', boxShadow: `0 2px 5px ${badgeColor}66`, fontSize: '0.65rem' }} />
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+              {/* THE 5-TIER PASSPORT: EXACT QUEUE SYMMETRY */}
+              <Stack spacing={0.2}>
+                  <Typography variant="h4" fontWeight="1000" color={BRAND_BROWN} sx={{ lineHeight: 1, maxWidth: 600, noWrap: true, overflow: 'hidden', textOverflow: 'ellipsis', letterSpacing: -1 }}>
+                    {patient.petName || "Unnamed Pet"}
+                  </Typography>
+
+                  <Typography variant="caption" sx={{ fontWeight: '800', color: BRAND_BROWN, display: 'flex', gap: 1.5, letterSpacing: 0.5, mt: 0.5 }}>
+                      <span style={{ opacity: 0.5 }}>SPECIES AND BREED:</span> {patient.petSpecies} • {patient.petBreed || "Mixed Breed"}
+                  </Typography>
+                  <Typography variant="caption" sx={{ fontWeight: '800', color: BRAND_BROWN, display: 'flex', gap: 1.5, letterSpacing: 0.5 }}>
+                      <span style={{ opacity: 0.5 }}>SEX/STATUS:</span> {patient.petGender && patient.petGender !== 'Unknown' && patient.petGender !== '???' ? patient.petGender.toUpperCase() : "SEX UNKNOWN"} • {patient.reproductiveStatus?.toUpperCase() || "INTACT"}
+                  </Typography>
+                  <Typography variant="caption" sx={{ fontWeight: '800', color: BRAND_BROWN, display: 'flex', gap: 1.5, letterSpacing: 0.5 }}>
+                      <span style={{ opacity: 0.5 }}>PHYSICAL:</span> {patient.petColor?.toUpperCase() || "COLOR UNRECORDED"} {patient.petMarkings ? `• ${patient.petMarkings.toUpperCase()}` : ""}
+                  </Typography>
+                  
+                  <Typography variant="caption" sx={{ fontWeight: '800', color: BRAND_BROWN, display: 'flex', gap: 1.5, letterSpacing: 0.5 }}>
+                    <span style={{ opacity: 0.5 }}>OWNER:</span> {patient.ownerName || "No Owner Registered"}
+                  </Typography>
+              </Stack>
+
+              {/* --- 📜 CLIENT NOTES BADGE --- */}
+              <Box sx={{ mt: 1.5 }}>
+                  <Box 
+                    sx={{ 
+                      display: 'inline-flex', alignItems: 'center', gap: 1, cursor: 'help',
+                      bgcolor: BRAND_BROWN, color: 'white', borderRadius: 1.2, px: 2, py: 0.4,
+                      transition: 'all 0.2s', '&:hover': { transform: 'scale(1.03)', boxShadow: 4 }
+                    }}
+                    title={patient.notes || "No client notes recorded for this visit."}
+                  >
+                      <LocalHospitalIcon sx={{ fontSize: 13 }} />
+                      <Typography variant="caption" sx={{ fontWeight: '900', fontSize: '0.65rem', letterSpacing: 1, textTransform: 'uppercase' }}>
+                          view client notes
+                      </Typography>
+                  </Box>
+              </Box>
           </Box>
-          
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Avatar sx={{ bgcolor: 'white', color: '#5D4037', border: '2px solid #8B4513', width: 60, height: 60, fontSize: 28, boxShadow: 2 }}>
-                  {(patient.petSpecies === 'Canine' || patient.petSpecies === 'Dog') ? '🐶' : '🐱'}
-              </Avatar>
-              <Box sx={{ flex: 1 }}>
-                  <Typography variant="h5" fontWeight="900" color="#3E2723" sx={{ lineHeight: 1.1 }}>{patient.petName}</Typography>
-                  <Typography variant="body2" color="textSecondary" sx={{fontWeight: '600', mt: 0.5}}>Owner: {patient.ownerName || 'Mobile App Client'}</Typography>
-              </Box>
-              <Box sx={{ textAlign: 'right' }}>
-                  <Typography variant="caption" color="textSecondary" display="block" fontWeight="bold" sx={{mb: 0.5}}>REQUESTED SERVICE</Typography>
-                  {/* THE FIX: The service chip now uses the dynamic color! */}
-                  <Chip label={patient.serviceType} sx={{ fontWeight: 'bold', fontSize: '0.85rem', bgcolor: badgeColor, color: 'white', boxShadow: 3 }} />
-              </Box>
+
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1.5 }}>
+              <Chip 
+                label={headerChipLabel} 
+                size="small" 
+                sx={{ bgcolor: headerChipColor, color: 'white', fontWeight: '1000', fontSize: '0.8rem', height: 28, px: 2, boxShadow: 2 }} 
+              />
           </Box>
       </Box>
 
-      {/* SCROLLABLE STAFF LIST */}
-      <DialogContent sx={{ p: 0, bgcolor: '#F5F5F5', minHeight: 400 }}>
-        <Box sx={{ p: 3 }}>
-            {/* 🧬 THE MULTI-SERVICE ROUTING CORRIDOR */}
-            <Typography variant="overline" color="#5D4037" fontWeight="bold" sx={{ mb: 2, display: 'block', letterSpacing: 1 }}>
-              Service-Level Staff Routing
-            </Typography>
+      {/* COMPACT PILL DISPATCH AREA (HORIZONTAL 3-COLUMN GRID) */}
+      <DialogContent sx={{ p: 0, bgcolor: '#F5F5F5', overflowY: 'auto', flex: 1 }}>
+        <Box sx={{ p: 4 }}>
+            
+            {/* --- CRYSTALLINE TOOLBAR: Hardened against text-wrapping --- */}
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                    <Typography variant="overline" color={BRAND_BROWN} fontWeight="1000" sx={{ display: 'block', letterSpacing: 2, opacity: 0.9, fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+                        Visit Routing
+                    </Typography>
 
-            {patient.services && patient.services.length > 0 ? (
-                patient.services.map((svc, idx) => (
-                    <ServiceAssignmentRow key={idx} svc={svc} idx={idx} />
-                ))
-            ) : (
-                <Alert severity="warning">No services found for this appointment. Using legacy fallback.</Alert>
-            )}
-
-            {isCheckIn && (
-                <Box sx={{ mt: 4, p: 3, bgcolor: '#E8F5E9', borderRadius: 2, border: '2px solid #2E7D32', textAlign: 'center' }}>
-                    <Typography variant="h6" fontWeight="bold" color="#2E7D32" gutterBottom>Ready to Dispatch?</Typography>
-                    <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>This will issue a Queue Ticket and notify the assigned staff.</Typography>
-                    <Button 
-                        fullWidth variant="contained" color="success" size="large" 
-                        startIcon={<CheckCircleIcon />} 
-                        sx={{ fontWeight: '900', py: 2, borderRadius: 2 }}
-                        onClick={async () => {
-                            setLoading(true);
-                            try {
-                                await runTransaction(db, async (transaction) => {
-                                    const queueRef = doc(db, "queue", "daily_queue");
-                                    const queueDoc = await transaction.get(queueRef);
-                                    const newNumber = queueDoc.exists() ? (queueDoc.data().lastNumberIssued || 0) + 1 : 1;
-                                    
-                                    transaction.set(queueRef, { lastNumberIssued: newNumber }, { merge: true });
-                                    transaction.update(doc(db, "appointments", patient.id), { 
-                                        status: 'arrived', 
-                                        queueNumber: newNumber, 
-                                        ticketPrefix: patient.priority === 'high' ? 'E' : 'W', 
-                                        timeArrived: Timestamp.now() 
-                                    });
-                                });
-                                onClose();
-                            } catch (e) { setErrorMsg(e.message); }
-                            finally { setLoading(false); }
-                        }}
-                    >
-                        {loading ? "Generating Ticket..." : "Issue Ticket & Dispatch"}
-                    </Button>
+                    <Box sx={{ display: 'flex', gap: 1.5 }}>
+                        <Chip label={`${servicesCount} SERVICES`} size="small" sx={{ fontWeight: '1000', fontSize: '0.7rem', height: 20, bgcolor: '#D7CCC8', color: BRAND_BROWN }} />
+                        <Chip label={`${uniqueDeptsCount} DEPTS`} size="small" sx={{ fontWeight: '1000', fontSize: '0.7rem', height: 20, bgcolor: '#D7CCC8', color: BRAND_BROWN }} />
+                    </Box>
                 </Box>
+
+                <Button 
+                    size="small"
+                    variant="contained" 
+                    startIcon={<PersonAddIcon sx={{ fontSize: 16 }} />}
+                    onClick={(e) => handleOpenMenu(e, null)}
+                    disabled={masterStaff.length === 0}
+                    sx={{ 
+                        fontSize: '0.7rem', fontWeight: '1000', py: 0.6, px: 3,
+                        bgcolor: '#2E7D32', '&:hover': { bgcolor: '#1B5E20' },
+                        boxShadow: 2,
+                        whiteSpace: 'nowrap'
+                    }}
+                >
+                    BATCH ASSIGN
+                </Button>
+            </Box>
+
+            {/* --- 3-COLUMN TACTICAL PILL GRID --- */}
+            <Box sx={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(3, 1fr)', 
+                gap: 2 
+            }}>
+                {tempServices.map((svc, idx) => {
+                    const svcDept = (departments || []).find(d => d.name === svc.department);
+                    const bColor = svcDept ? svcDept.color : '#616161';
+                    const isUnassigned = !svc.staffId;
+
+                    return (
+                        <Box 
+                            key={idx} 
+                            onClick={(e) => handleOpenMenu(e, idx)}
+                            sx={{ 
+                                display: 'flex', alignItems: 'center', 
+                                border: '1px solid', borderColor: isUnassigned ? '#E0E0E0' : `${bColor}40`,
+                                borderRadius: 1.5, overflow: 'hidden', height: 50, cursor: 'pointer',
+                                bgcolor: 'white', transition: 'all 0.15s',
+                                '&:hover': { transform: 'translateY(-2px)', boxShadow: 6, borderColor: bColor }
+                            }}
+                        >
+                            <Box sx={{ px: 2, bgcolor: bColor, color: 'white', display: 'flex', alignItems: 'center', height: '100%', minWidth: 100 }}>
+                                <Typography variant="caption" sx={{ fontWeight: '1000', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5, lineHeight: 1 }}>
+                                  {svc.name}
+                                </Typography>
+                            </Box>
+                            <Box sx={{ px: 2, display: 'flex', alignItems: 'center', minWidth: 140 }}>
+                                <Typography variant="body2" sx={{ fontWeight: '800', fontSize: '0.85rem', color: isUnassigned ? '#BDBDBD' : BRAND_BROWN }}>
+                                   {svc.staffName || 'Assign Personnel'}
+                                </Typography>
+                            </Box>
+                        </Box>
+                    );
+                })}
+            </Box>
+            
+            {masterStaff.length === 0 && isBundle && (
+                <Alert severity="info" sx={{ mt: 5, fontWeight: '900', fontSize: '0.9rem', border: '1px solid currentColor', borderRadius: 1.5 }}>
+                    Note: Clinical complexity threshold reached. Please perform individual service routing.
+                </Alert>
             )}
         </Box>
       </DialogContent>
 
-      {/* ACTION FOOTER */}
-      <DialogActions sx={{ p: 2.5, bgcolor: '#EFEBE9', justifyContent: 'space-between', borderTop: '1px solid #D7CCC8' }}>
-        <Button 
-            onClick={() => handleSubmit(true)} 
-            color="error" 
-            variant="outlined"
-            startIcon={<PersonOffIcon />}
-            sx={{ fontWeight: 'bold', bgcolor: 'white' }}
-        >
-            Unassign (Waiting Room)
+      {/* ACTION FOOTER: COMPACT & RECLAIMED */}
+      <DialogActions sx={{ p: 2, px: 3, bgcolor: '#EFEBE9', justifyContent: 'space-between', borderTop: '1px solid #D7CCC8' }}>
+        <Button onClick={handleUnassignAll} color="error" size="small" sx={{ fontWeight: '1000', px: 2 }}>
+          Unassign All
         </Button>
         <Stack direction="row" spacing={2}>
-            <Button onClick={onClose} sx={{ fontWeight: 'bold', color: '#5D4037' }}>Cancel</Button>
+            <Button onClick={onClose} size="small" sx={{ fontWeight: 'bold', color: BRAND_BROWN, px: 2 }}>Cancel</Button>
             <Button 
-              onClick={() => handleSubmit(false)} 
-              disabled={loading || !selectedVet} 
+              onClick={handleSubmit} 
+              disabled={loading || (isCheckIn && !allAssigned)} 
               variant="contained" 
-              color={isCheckIn ? 'success' : 'primary'} 
-              sx={{ fontWeight: 'bold', px: 4, py: 1 }}
+              size="small"
+              sx={{ 
+                  fontWeight: '1000', px: 4, py: 1, 
+                  bgcolor: BRAND_BROWN, '&:hover': { bgcolor: '#1A0D0A' }, boxShadow: 4, borderRadius: 1.5 
+              }}
             >
-              {loading ? "Processing..." : (isCheckIn ? "Check-In" : "Update")}
+              {loading ? "Processing..." : (isCheckIn ? "ISSUE TICKET & DISPATCH" : "UPDATE ROUTING")}
             </Button>
         </Stack>
       </DialogActions>
 
-      {/* THE POPOVER for "Show More" Skills */}
-      <Popover
-        open={Boolean(popoverAnchorEl)}
-        anchorEl={popoverAnchorEl}
-        onClose={handleSkillsPopoverClose}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
-        PaperProps={{
-            sx: { p: 1, bgcolor: '#424242', borderRadius: 2, mt: 0.5 }
-        }}
+      {/* DROPDOWN DISPATCH MENU: DYNAMICALLY SORTED & ELITE FILTERED */}
+      <Menu
+        anchorEl={anchorEl}
+        open={Boolean(anchorEl)}
+        onClose={handleCloseMenu}
+        PaperProps={{ sx: { minWidth: 350, mt: 1, borderRadius: 2, boxShadow: 16 } }}
       >
-        <List dense>
-            {popoverSkills.map(skill => {
-                const deptObj = (departments || []).find(d => d.name === skill);
-                const chipColor = deptObj ? deptObj.color : '#616161';
-                return (
-                    <ListItem key={skill}>
-                        <Chip label={skill} size="small" sx={{ color: 'white', bgcolor: chipColor, fontWeight: 'bold' }} />
-                    </ListItem>
-                );
-            })}
-        </List>
-      </Popover>
+            <Box>
+                {/* --- 📈 DROPDOWN SORT HEADER: EXPANSIVE SPACING --- */}
+                <Box sx={{ px: 4, py: 2.5, bgcolor: '#F5F5F5', display: 'flex', alignItems: 'center' }}>
+                   <Typography variant="overline" sx={{ fontWeight: '1000', color: activeSvcIdx === null ? '#2E7D32' : BRAND_BROWN, fontSize: '0.85rem', letterSpacing: 1.5, flexGrow: 1 }}>
+                      {activeSvcIdx === null ? "BATCH ASSIGNMENT TOOL" : `Assignment: ${tempServices[activeSvcIdx].department}`}
+                   </Typography>
+                   
+                   <Box sx={{ display: 'flex', gap: 1.5, ml: 4 }}>
+                        <Button 
+                            variant={sortBy === 'alpha' ? "contained" : "text"} 
+                            onClick={() => setSortBy('alpha')}
+                            sx={{ minWidth: 40, p: 1, py: 0.5, fontSize: '0.75rem', fontWeight: '1000', bgcolor: sortBy === 'alpha' ? BRAND_BROWN : 'transparent', color: sortBy === 'alpha' ? 'white' : BRAND_BROWN }}
+                        >
+                            A-Z
+                        </Button>
+                        <Button 
+                            variant={sortBy === 'load' ? "contained" : "text"} 
+                            onClick={() => setSortBy('load')}
+                            sx={{ minWidth: 40, p: 1, py: 0.5, fontSize: '0.75rem', fontWeight: '1000', bgcolor: sortBy === 'load' ? BRAND_BROWN : 'transparent', color: sortBy === 'load' ? 'white' : BRAND_BROWN }}
+                        >
+                            LOAD
+                        </Button>
+                   </Box>
+                </Box>
+                <Divider />
 
+                {sortStaff(activeSvcIdx === null ? masterStaff : (vetsList || []).filter(v => v.departments?.includes(tempServices[activeSvcIdx].department)))
+                    .map(v => {
+                        const load = getVetWorkload(v.id);
+                        return (
+                            <MenuItem key={v.id} onClick={() => handleSelectStaff(v.id, v.fullName)} sx={{ py: 2.5, px: 4 }}>
+                                <Avatar sx={{ width: 40, height: 40, fontSize: 16, mr: 3, bgcolor: BRAND_BROWN }}>{v.fullName[0]}</Avatar>
+                                
+                                <Typography variant="body1" sx={{ fontWeight: '800', maxWidth: 220, noWrap: true, textOverflow: 'ellipsis', overflow: 'hidden', flexGrow: 1 }}>
+                                    {v.fullName}
+                                </Typography>
+
+                                <Typography variant="caption" sx={{ ml: 4, color: load > 2 ? '#D32F2F' : '#2E7D32', fontWeight: '1000', fontSize: '0.9rem' }}>
+                                    {load} Active
+                                </Typography>
+                            </MenuItem>
+                        );
+                    })
+                }
+                
+                {((activeSvcIdx === null ? masterStaff : (vetsList || []).filter(v => v.departments?.includes(tempServices[activeSvcIdx].department))).length === 0) && (
+                    <MenuItem disabled><Typography variant="caption" sx={{ px: 4, py: 2 }}>No universally qualified personnel found</Typography></MenuItem>
+                )}
+            </Box>
+      </Menu>
     </Dialog>
   );
 }

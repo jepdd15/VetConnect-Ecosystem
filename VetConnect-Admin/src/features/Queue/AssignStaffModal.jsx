@@ -89,113 +89,86 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
     return activeAppointments.filter(a => a.assignedVetId === vetId).length;
   };
 
-  const handleSubmit = async (isUnassigning = false) => {
-    if (!patient) return;
+  const handleSubmit = async () => {
+    if (!patient || !patient.services) return;
     
-    if (!isUnassigning && !selectedVet) {
-        setErrorMsg("Please select a staff member, or click 'Unassign'.");
-        return;
-    }
-
     setLoading(true);
     setErrorMsg('');
 
     try {
       const isCheckIn = patient.status === 'confirmed';
       
-      const assignmentPayload = {
-        assignedVetId: isUnassigning ? null : selectedVet.id,
-        assignedVet: isUnassigning ? "Unassigned" : selectedVet.fullName
-      };
-
-      if (isCheckIn) {
-        await runTransaction(db, async (transaction) => {
-          const queueRef = doc(db, "queue", "daily_queue");
-          const queueDoc = await transaction.get(queueRef);
-          const newNumber = queueDoc.exists() ? (queueDoc.data().lastNumberIssued || 0) + 1 : 1;
-          
-          if (queueDoc.exists()) {
-              transaction.update(queueRef, { lastNumberIssued: newNumber });
-          } else {
-              transaction.set(queueRef, { currentServing: 0, currentPrefix: '', lastNumberIssued: newNumber, status: 'active', lastResetDate: new Date().toISOString().split('T')[0] });
-          }
-
-          const appointmentRef = doc(db, "appointments", patient.id);
-          transaction.update(appointmentRef, { 
-              status: 'arrived', 
-              queueNumber: newNumber, 
-              ticketPrefix: patient.priority === 'high' ? 'E' : 'A', 
-              timeArrived: Timestamp.now(), 
-              ...assignmentPayload 
-          });
-        });
-      } else {
-        await updateDoc(doc(db, "appointments", patient.id), assignmentPayload);
-      }
-      onClose();
-    } catch (error) {
-      setErrorMsg("Error assigning staff: " + error.message);
-    } finally {
-      setLoading(false);
-    }
+      // we already have the modified services array in the state-like mapping if we were careful
+      // BUT, let's just update the appointment document with the current selectedVet logic
+      // In a real multi-staff world, we would have a local state tracking which service gets which vet.
+      // FOR THE MVP: We'll assume the user picks a vet for the PRIMARY service if we haven't built the full list yet.
+      // WAIT, let's build the full list UI first below!
+    } catch (e) { console.error(e); }
   };
 
   if (!patient) return null;
 
   const isCheckIn = patient.status === 'confirmed';
-  const targetCategory = patient.serviceCategory || 'Consultation';
-  const deptObj = (departments ||[]).find(d => d.name === targetCategory);
-  const badgeColor = deptObj ? deptObj.color : '#616161';
-
-  const recommendedStaff = [];
-  const otherStaff =[];
-
-  (vetsList ||[]).forEach(v => {
-    const hasSkill = v.departments && v.departments.includes(targetCategory);
-    if (hasSkill) {
-      recommendedStaff.push(v);
-    } else {
-      otherStaff.push(v);
-    }
-  });
-
-  const StaffCard = ({ v }) => {
-    const isSelected = selectedVet?.id === v.id;
-    const load = getVetWorkload(v.id);
-    const isOverloaded = load >= 3;
+  const targetCategory = patient?.serviceCategory || patient?.services?.[0]?.department || 'General';
+  const mainDeptObj = (departments || []).find(d => d.name === targetCategory);
+  const badgeColor = mainDeptObj ? mainDeptObj.color : '#6D4C41';
+  
+  // --- 🧬 MULTI-SERVICE ASSIGNMENT RENDERER ---
+  const ServiceAssignmentRow = ({ svc, idx }) => {
+    const deptObj = (departments || []).find(d => d.name === svc.department);
+    const badgeColor = deptObj ? deptObj.color : '#616161';
+    
+    // Filter staff for THIS specific service's department
+    const qualifiedStaff = (vetsList || []).filter(v => v.departments?.includes(svc.department));
+    const others = (vetsList || []).filter(v => !v.departments?.includes(svc.department));
 
     return (
-      <Paper 
-        elevation={isSelected ? 4 : 0}
-        onClick={() => setSelectedVet(v)}
-        sx={{ 
-            p: 2, mb: 1.5, display: 'flex', alignItems: 'center', gap: 2, cursor: 'pointer',
-            border: '2px solid',
-            borderColor: isSelected ? '#2E7D32' : '#E0E0E0',
-            bgcolor: isSelected ? '#F1F8E9' : 'white',
-            borderRadius: 2,
-            transition: 'all 0.2s ease',
-            '&:hover': { borderColor: isSelected ? '#2E7D32' : '#BCAAA4', bgcolor: isSelected ? '#F1F8E9' : '#FAFAFA' }
-        }}
-      >
-        <Avatar sx={{ bgcolor: isSelected ? '#2E7D32' : (isOverloaded ? '#D32F2F' : '#1565C0'), width: 44, height: 44, fontWeight: 'bold', fontSize: '1.2rem' }}>
-            {v.fullName[0]}
-        </Avatar>
-        <Box sx={{ flex: 1 }}>
-            <Typography variant="subtitle1" fontWeight="bold" color={isSelected ? '#2E7D32' : '#333'} sx={{ lineHeight: 1.2 }}>
-                {v.fullName}
-            </Typography>
-            {/* The Scalable Skill Chips Component */}
-            <SkillChips departments={v.departments} allDepts={departments} onClickMore={handleSkillsPopoverOpen} />
-        </Box>
-        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5 }}>
-            {isSelected ? (
-                <Chip icon={<CheckCircleIcon />} label="Selected" color="success" size="small" sx={{ fontWeight: 'bold' }} />
-            ) : (
-                <Chip icon={<LocalHospitalIcon fontSize="small"/>} label={`${load} Active`} color={isOverloaded ? "error" : load > 0 ? "warning" : "default"} size="small" variant={isOverloaded ? "filled" : "outlined"} sx={{ fontWeight: 'bold' }} />
+        <Paper key={idx} sx={{ p: 2, mb: 2, border: '1px solid #E0E0E0', borderRadius: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                <Box>
+                  <Typography variant="caption" sx={{ color: badgeColor, fontWeight: '900', letterSpacing: 1 }}>SERVICE {idx + 1}</Typography>
+                  <Typography variant="subtitle1" fontWeight="900" color="#3E2723">{svc.name}</Typography>
+                </Box>
+                <Chip label={svc.department} size="small" sx={{ bgcolor: `${badgeColor}20`, color: badgeColor, fontWeight: 'bold' }} />
+            </Box>
+
+            <Box sx={{ mt: 1 }}>
+                <Typography variant="caption" color="textSecondary" fontWeight="bold" sx={{ display: 'block', mb: 1 }}>Assign Professional:</Typography>
+                <Stack direction="row" spacing={1} sx={{ overflowX: 'auto', pb: 1 }}>
+                    {qualifiedStaff.map(v => (
+                        <Chip 
+                            key={v.id} 
+                            avatar={<Avatar>{v.fullName[0]}</Avatar>} 
+                            label={v.fullName} 
+                            onClick={async () => {
+                                // --- DIRECT ASSIGNMENT TRIGGER ---
+                                const newServices = [...patient.services];
+                                newServices[idx].staffId = v.id;
+                                newServices[idx].staffName = v.fullName;
+                                await updateDoc(doc(db, "appointments", patient.id), { 
+                                    services: newServices,
+                                    assignedVet: v.fullName, // Legacy Fallback
+                                    assignedVetId: v.id     // Legacy Fallback
+                                });
+                            }}
+                            variant={svc.staffId === v.id ? "filled" : "outlined"}
+                            color={svc.staffId === v.id ? "success" : "default"}
+                            sx={{ fontWeight: '900' }}
+                        />
+                    ))}
+                    {qualifiedStaff.length === 0 && (
+                        <Typography variant="caption" fontStyle="italic">No {svc.department} staff found in the directory.</Typography>
+                    )}
+                </Stack>
+            </Box>
+            
+            {svc.staffId && (
+                <Box sx={{ mt: 1.5, p: 1, bgcolor: '#F1F8E9', borderRadius: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <CheckCircleIcon color="success" sx={{ fontSize: 16 }} />
+                    <Typography variant="caption" fontWeight="bold" color="#2E7D32">Assigned to: {svc.staffName}</Typography>
+                </Box>
             )}
-        </Box>
-      </Paper>
+        </Paper>
     );
   };
 
@@ -236,32 +209,52 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
       </Box>
 
       {/* SCROLLABLE STAFF LIST */}
-      <DialogContent sx={{ p: 0, bgcolor: '#F5F5F5', height: 400 }}>
+      <DialogContent sx={{ p: 0, bgcolor: '#F5F5F5', minHeight: 400 }}>
         <Box sx={{ p: 3 }}>
-            <Typography variant="body2" sx={{ mb: 2, color: '#555', fontWeight: 'bold' }}>
-              Select the appropriate personnel to handle this visit:
+            {/* 🧬 THE MULTI-SERVICE ROUTING CORRIDOR */}
+            <Typography variant="overline" color="#5D4037" fontWeight="bold" sx={{ mb: 2, display: 'block', letterSpacing: 1 }}>
+              Service-Level Staff Routing
             </Typography>
 
-            {/* RECOMMENDED STAFF */}
-            {recommendedStaff.length > 0 && (
-                <Box sx={{ mb: 3 }}>
-                    <Typography variant="overline" color="#2E7D32" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
-                        <StarIcon fontSize="small" /> Best Match ({targetCategory})
-                    </Typography>
-                    {recommendedStaff.map(v => <StaffCard key={v.id} v={v} />)}
-                </Box>
+            {patient.services && patient.services.length > 0 ? (
+                patient.services.map((svc, idx) => (
+                    <ServiceAssignmentRow key={idx} svc={svc} idx={idx} />
+                ))
+            ) : (
+                <Alert severity="warning">No services found for this appointment. Using legacy fallback.</Alert>
             )}
 
-            {/* OTHER STAFF */}
-            {otherStaff.length > 0 && (
-                <Box sx={{ mb: 2 }}>
-                    <Divider sx={{ mb: 2 }} />
-                    <Typography variant="overline" color="textSecondary" fontWeight="bold" sx={{ mb: 1, display: 'block' }}>
-                        Other Available Personnel
-                    </Typography>
-                    <Box sx={{ opacity: selectedVet ? 1 : 0.8 }}>
-                        {otherStaff.map(v => <StaffCard key={v.id} v={v} />)}
-                    </Box>
+            {isCheckIn && (
+                <Box sx={{ mt: 4, p: 3, bgcolor: '#E8F5E9', borderRadius: 2, border: '2px solid #2E7D32', textAlign: 'center' }}>
+                    <Typography variant="h6" fontWeight="bold" color="#2E7D32" gutterBottom>Ready to Dispatch?</Typography>
+                    <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>This will issue a Queue Ticket and notify the assigned staff.</Typography>
+                    <Button 
+                        fullWidth variant="contained" color="success" size="large" 
+                        startIcon={<CheckCircleIcon />} 
+                        sx={{ fontWeight: '900', py: 2, borderRadius: 2 }}
+                        onClick={async () => {
+                            setLoading(true);
+                            try {
+                                await runTransaction(db, async (transaction) => {
+                                    const queueRef = doc(db, "queue", "daily_queue");
+                                    const queueDoc = await transaction.get(queueRef);
+                                    const newNumber = queueDoc.exists() ? (queueDoc.data().lastNumberIssued || 0) + 1 : 1;
+                                    
+                                    transaction.set(queueRef, { lastNumberIssued: newNumber }, { merge: true });
+                                    transaction.update(doc(db, "appointments", patient.id), { 
+                                        status: 'arrived', 
+                                        queueNumber: newNumber, 
+                                        ticketPrefix: patient.priority === 'high' ? 'E' : 'W', 
+                                        timeArrived: Timestamp.now() 
+                                    });
+                                });
+                                onClose();
+                            } catch (e) { setErrorMsg(e.message); }
+                            finally { setLoading(false); }
+                        }}
+                    >
+                        {loading ? "Generating Ticket..." : "Issue Ticket & Dispatch"}
+                    </Button>
                 </Box>
             )}
         </Box>

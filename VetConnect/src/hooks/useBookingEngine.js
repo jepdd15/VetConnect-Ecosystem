@@ -11,7 +11,7 @@ import {
 import { useEffect, useState } from "react";
 import { auth, db } from "../../firebaseConfig";
 
-export function useBookingEngine(date, selectedService, selectedPets) {
+export function useBookingEngine(date, selectedServices = [], selectedPets) {
   const [pets, setPets] = useState([]);
   const [services, setServices] = useState([]);
 
@@ -148,10 +148,10 @@ export function useBookingEngine(date, selectedService, selectedPets) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date]);
 
-  // 3. THE ENTERPRISE TETRIS ALGORITHM
+  // 3. THE ENTERPRISE TETRIS ALGORITHM (Now with Multi-Service Prowess!)
   useEffect(() => {
     const generateSlots = async () => {
-      if (!selectedService || selectedPets.length === 0) {
+      if (!selectedServices || selectedServices.length === 0 || selectedPets.length === 0) {
         setAvailableSlots([]);
         return;
       }
@@ -170,51 +170,49 @@ export function useBookingEngine(date, selectedService, selectedPets) {
         );
         const snap = await getDocs(q);
 
-        // THE FIX: Check required capacity based on Department!
-        const requiredDept = (
-          selectedService.department ||
-          selectedService.category ||
-          selectedService.requiredRole ||
-          "General"
-        ).toLowerCase();
+        // --- 🧬 CALCULATE BUNDLE PARAMETERS ---
+        let bundleTotalMinutes = 0;
+        const requiredDepts = []; // Track every department involved!
 
-        const bookedRanges = snap.docs
-          .filter((d) => {
-            const apptDept = (
-              d.data().department ||
-              d.data().serviceCategory ||
-              "General"
-            ).toLowerCase();
-            return apptDept === requiredDept;
-          })
-          .map((d) => {
-            const s = d.data().scheduledDate.toDate();
-            const dur = d.data().serviceDuration || 30;
-            const buff = d.data().serviceBuffer || 0;
-            return {
-              start: s,
-              end: new Date(s.getTime() + (dur + buff) * 60000),
-            };
-          });
+        selectedServices.forEach(s => {
+            const dur = parseInt(String(s.duration).replace(/[^0-9]/g, "")) || 30;
+            const buff = parseInt(String(s.bufferTime).replace(/[^0-9]/g, "")) || 0;
+            bundleTotalMinutes += (dur + buff);
+            
+            const dept = (s.department || s.category || "General").toLowerCase();
+            requiredDepts.push({ name: dept, duration: (dur + buff) });
+        });
 
-        const baseDur =
-          parseInt(String(selectedService.duration).replace(/[^0-9]/g, "")) ||
-          30;
-        const servBuff =
-          parseInt(String(selectedService.bufferTime).replace(/[^0-9]/g, "")) ||
-          0;
-        const trueTimePerPet = baseDur + servBuff;
+        // Total time per pet = bundle duration
+        const totalDurationPerPet = bundleTotalMinutes;
 
-        // THE FIX: Pull the capacity from the new state variable! (Fallback to 1 if no staff assigned yet)
-        const capacity = departmentCapacity[requiredDept] || 1;
+        // THE FIX: Collect all booked ranges categorized by department
+        const bookedRangesByDept = {};
+        snap.docs.forEach(d => {
+            const data = d.data();
+            const s = data.scheduledDate.toDate();
+            const dur = data.serviceDuration || 30;
+            const buff = data.serviceBuffer || 0;
+            const end = new Date(s.getTime() + (dur + buff) * 60000);
+            
+            // Check legacy field AND new multi-service array
+            const deptsInAppt = new Set();
+            if (data.services && Array.isArray(data.services)) {
+                data.services.forEach(svc => deptsInAppt.add((svc.department || "General").toLowerCase()));
+            } else {
+                deptsInAppt.add((data.department || data.serviceCategory || "General").toLowerCase());
+            }
+
+            deptsInAppt.forEach(dept => {
+                if (!bookedRangesByDept[dept]) bookedRangesByDept[dept] = [];
+                bookedRangesByDept[dept].push({ start: s, end });
+            });
+        });
 
         let slots = [];
         const now = new Date();
-        const advanceNoticeTime = new Date(
-          now.getTime() + (clinicSettings.advanceNoticeMins || 0) * 60000,
-        );
+        const advanceNoticeTime = new Date(now.getTime() + (clinicSettings.advanceNoticeMins || 0) * 60000);
         const slotInterval = clinicSettings.minSlotInterval || 30;
-
         const openH = clinicSettings.openHour || 8;
         const closeH = clinicSettings.closeHour || 17;
         const lEnabled = clinicSettings.lunchEnabled;
@@ -235,80 +233,62 @@ export function useBookingEngine(date, selectedService, selectedPets) {
               slotStatus = "TOO_SOON";
             } else {
               let canFitAll = true;
-              let conflictType = "TAKEN"; // Default fallback
+              let conflictType = "TAKEN";
 
+              // Verify SLOTS for EACH PET
               for (let i = 0; i < selectedPets.length; i++) {
-                const checkStart = new Date(
-                  slotStart.getTime() + i * trueTimePerPet * 60000,
-                );
-                const checkEnd = new Date(
-                  checkStart.getTime() + trueTimePerPet * 60000,
-                );
+                const petStartOffset = i * totalDurationPerPet * 60000;
+                const petStartTime = new Date(slotStart.getTime() + petStartOffset);
+                const petEndTime = new Date(petStartTime.getTime() + totalDurationPerPet * 60000);
 
-                // FAILURE 1: CLOSING TIME BOUNDARY
-                if (
-                  checkStart.getHours() >= closeH ||
-                  checkEnd > new Date(date).setHours(closeH, 0, 0, 0)
-                ) {
-                  canFitAll = false;
-                  conflictType = "OVERFLOW";
-                  break;
+                // FAILURE 1: BOUNDARIES
+                if (petStartTime.getHours() >= closeH || petEndTime > new Date(date).setHours(closeH, 0, 0, 0)) {
+                  canFitAll = false; conflictType = "OVERFLOW"; break;
+                }
+                
+                // FAILURE 2: LUNCH
+                if (lEnabled && ((petStartTime.getHours() >= lStart && petStartTime.getHours() < lEnd) || (petEndTime > new Date(date).setHours(lStart, 0, 0, 0) && petStartTime < new Date(date).setHours(lEnd, 0, 0, 0)))) {
+                  canFitAll = false; conflictType = "OVERFLOW"; break;
                 }
 
-                // FAILURE 2: LUNCH BREAK BOUNDARY
-                if (lEnabled) {
-                  if (
-                    checkStart.getHours() >= lStart &&
-                    checkStart.getHours() < lEnd
-                  ) {
-                    canFitAll = false;
-                    conflictType = "OVERFLOW";
-                    break;
-                  }
-                  if (
-                    checkEnd > new Date(date).setHours(lStart, 0, 0, 0) &&
-                    checkStart < new Date(date).setHours(lEnd, 0, 0, 0)
-                  ) {
-                    canFitAll = false;
-                    conflictType = "OVERFLOW";
-                    break;
-                  }
-                }
+                // FAILURE 3: MULTI-DEPARTMENT CAPACITY CHECK (THE BRAIN!)
+                let serviceOffset = 0;
+                for (let rd of requiredDepts) {
+                    const svcStart = new Date(petStartTime.getTime() + serviceOffset);
+                    const svcEnd = new Date(svcStart.getTime() + rd.duration * 60000);
+                    
+                    let overlaps = 0;
+                    const ranges = bookedRangesByDept[rd.name] || [];
+                    for (let r of ranges) {
+                        if (svcStart < r.end && svcEnd > r.start) overlaps++;
+                    }
 
-                // FAILURE 3: DOUBLE-BOOKING (Someone actually took it)
-                let overlaps = 0;
-                for (let r of bookedRanges) {
-                  if (checkStart < r.end && checkEnd > r.start) overlaps++;
+                    const capacity = departmentCapacity[rd.name] || 1;
+                    if (overlaps >= capacity) {
+                        canFitAll = false; 
+                        conflictType = "TAKEN"; 
+                        break; 
+                    }
+                    serviceOffset += rd.duration * 60000; // Move to next service in bundle
                 }
-
-                if (overlaps >= capacity) {
-                  canFitAll = false;
-                  conflictType = "TAKEN";
-                  break;
-                }
+                if (!canFitAll) break;
               }
-              if (!canFitAll) slotStatus = conflictType; // Pass the exact reason to the UI!
+              if (!canFitAll) slotStatus = conflictType;
             }
 
             slots.push({
               timeValue: `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`,
-              display: slotStart.toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
+              display: slotStart.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
               status: slotStatus,
             });
           }
         }
         setAvailableSlots(slots);
-      } catch (error) {
-        console.log(error);
-      } finally {
-        setLoadingSlots(false);
-      }
+      } catch (error) { console.log(error); }
+      finally { setLoadingSlots(false); }
     };
     generateSlots();
-  }, [date, selectedService, selectedPets, clinicSettings, departmentCapacity]);
+  }, [date, selectedServices, selectedPets, clinicSettings, departmentCapacity]);
 
   return {
     pets,

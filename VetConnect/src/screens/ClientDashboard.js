@@ -19,7 +19,9 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Animated,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { auth, db } from "../../firebaseConfig";
 
 // --- PUSH NOTIFICATION IMPORTS ---
@@ -39,7 +41,20 @@ Notifications.setNotificationHandler({
 const ClientDashboard = ({ navigation }) => {
   const [activeAppointments, setActiveAppointments] = useState([]);
   const [reminders, setReminders] = useState([]);
+  const [userProfile, setUserProfile] = useState(null);
+  const [queueAhead, setQueueAhead] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [pulseAnim] = useState(new Animated.Value(1));
+
+  // PULSE ANIMATION FOR ALERTS
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.1, duration: 1000, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
 
   // ======================================================================
   // 1. PUSH NOTIFICATION SETUP
@@ -97,6 +112,16 @@ const ClientDashboard = ({ navigation }) => {
   }
 
   // ======================================================================
+  // 1.5 FETCH USER PROFILE (For Balance & Name)
+  // ======================================================================
+  useEffect(() => {
+    const unsubProfile = onSnapshot(doc(db, "users", auth.currentUser.uid), (doc) => {
+      if (doc.exists()) setUserProfile(doc.data());
+    });
+    return () => unsubProfile();
+  }, []);
+
+  // ======================================================================
   // 2. FETCH ACTIVE APPOINTMENTS (The Live Feed)
   // ======================================================================
   useEffect(() => {
@@ -150,6 +175,34 @@ const ClientDashboard = ({ navigation }) => {
 
     return () => unsubscribe();
   }, []);
+
+  // ======================================================================
+  // 2.5 LIVE QUEUE TRACKING (People Ahead Logic)
+  // ======================================================================
+  useEffect(() => {
+    const arrivedAppt = activeAppointments.find(a => a.status === 'arrived');
+    if (!arrivedAppt) {
+      setQueueAhead(0);
+      return;
+    }
+
+    // Query for all other arrived patients with a lower queue number for the same day
+    const q = query(
+      collection(db, "appointments"),
+      where("status", "==", "arrived"),
+      where("date", "==", arrivedAppt.date) // Assumes date is a string YYYY-MM-DD for equality
+    );
+
+    const unsubQueue = onSnapshot(q, (snap) => {
+      let ahead = 0;
+      snap.forEach(doc => {
+        if (doc.data().queueNumber < arrivedAppt.queueNumber) ahead++;
+      });
+      setQueueAhead(ahead);
+    });
+
+    return () => unsubQueue();
+  }, [activeAppointments]);
 
   // ======================================================================
   // 3. FETCH HEALTH REMINDERS
@@ -250,7 +303,7 @@ const ClientDashboard = ({ navigation }) => {
         key={appt.id}
         style={[
           styles.notifCard,
-          { backgroundColor: bgColor, borderColor: borderColor },
+          { backgroundColor: bgColor, borderColor: borderColor, borderLeftWidth: 6 },
         ]}
         onPress={() => navigation.navigate("ClientAppointments")}
       >
@@ -258,8 +311,26 @@ const ClientDashboard = ({ navigation }) => {
           <Text style={styles.notifIcon}>{icon}</Text>
         </View>
         <View style={styles.notifContent}>
-          <Text style={styles.notifTitle}>{title}</Text>
+           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+             <Text style={styles.notifTitle}>{title}</Text>
+             {appt.status === 'arrived' && (
+               <View style={styles.queueTag}>
+                 <Text style={styles.queueTagText}>#{appt.queueNumber}</Text>
+               </View>
+             )}
+           </View>
           <Text style={styles.notifMsg}>{msg}</Text>
+          
+          {appt.status === 'arrived' && (
+            <View style={styles.queueProgressContainer}>
+              <View style={styles.queueProgressBar}>
+                <View style={[styles.queueProgressFill, { width: queueAhead === 0 ? '100%' : '60%' }]} />
+              </View>
+              <Text style={styles.queueAheadText}>
+                {queueAhead === 0 ? "You're next in line! 🎉" : `${queueAhead} pets ahead of you`}
+              </Text>
+            </View>
+          )}
         </View>
         <Text style={styles.arrow}>➔</Text>
       </TouchableOpacity>
@@ -268,11 +339,29 @@ const ClientDashboard = ({ navigation }) => {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      {/* BALANCE ALERT BANNER */}
+      {userProfile?.outstandingBalance > 0 && (
+        <Animated.View style={[styles.balanceBanner, { transform: [{ scale: pulseAnim }] }]}>
+          <LinearGradient colors={["#D32F2F", "#B71C1C"]} style={styles.balanceGradient}>
+            <Text style={styles.balanceIcon}>💸</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.balanceTitle}>Outstanding Balance</Text>
+              <Text style={styles.balanceMsg}>₱{userProfile.outstandingBalance.toLocaleString()} — Please settle at the counter.</Text>
+            </View>
+            <TouchableOpacity onPress={() => navigation.navigate("UserProfile")}>
+              <Text style={styles.balanceAction}>VIEW ➔</Text>
+            </TouchableOpacity>
+          </LinearGradient>
+        </Animated.View>
+      )}
+
       {/* HEADER */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.welcome}>Welcome Back!</Text>
-          <Text style={styles.subtitle}>How are your pets doing?</Text>
+          <Text style={styles.welcome}>Hi, {userProfile?.fullName?.split(' ')[0] || 'Member'}! 👋</Text>
+          <Text style={styles.subtitle}>
+            {activeAppointments.length > 0 ? "Your visit is in progress." : "Your pets are waiting for you!"}
+          </Text>
         </View>
         <TouchableOpacity
           style={styles.profileIcon}
@@ -324,52 +413,63 @@ const ClientDashboard = ({ navigation }) => {
 
       <View style={styles.grid}>
         <TouchableOpacity
-          style={styles.card}
+          style={styles.cardWrapper}
           onPress={() => navigation.navigate("MyPets")}
         >
-          <Text style={styles.cardIcon}>🐾</Text>
-          <Text style={styles.cardText}>My Pets</Text>
+          <LinearGradient colors={["#8D6E63", "#5D4037"]} style={styles.card}>
+            <Text style={styles.cardIcon}>🐾</Text>
+            <Text style={styles.cardText}>My Pets</Text>
+          </LinearGradient>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.card}
+          style={styles.cardWrapper}
           onPress={() => navigation.navigate("BookAppointment")}
         >
-          <Text style={styles.cardIcon}>📅</Text>
-          <Text style={styles.cardText}>Schedule Visit</Text>
+          <LinearGradient colors={["#8D6E63", "#5D4037"]} style={styles.card}>
+            <Text style={styles.cardIcon}>📅</Text>
+            <Text style={styles.cardText}>Schedule Visit</Text>
+          </LinearGradient>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.card}
+          style={styles.cardWrapper}
           onPress={() => navigation.navigate("ClientAppointments")}
         >
-          <Text style={styles.cardIcon}>🎫</Text>
-          <Text style={styles.cardText}>My Bookings</Text>
+          <LinearGradient colors={["#8D6E63", "#5D4037"]} style={styles.card}>
+            <Text style={styles.cardIcon}>🎫</Text>
+            <Text style={styles.cardText}>My Bookings</Text>
+          </LinearGradient>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.card}
+          style={styles.cardWrapper}
           onPress={() => navigation.navigate("QueueScreen")}
         >
-          <Text style={styles.cardIcon}>🔢</Text>
-          <Text style={styles.cardText}>Live Queue</Text>
+          <LinearGradient colors={["#8D6E63", "#5D4037"]} style={styles.card}>
+            <Text style={styles.cardIcon}>🔢</Text>
+            <Text style={styles.cardText}>Live Queue</Text>
+          </LinearGradient>
         </TouchableOpacity>
 
-        {/* LAUNCHES THE RULE-BASED CHATBOT */}
         <TouchableOpacity
-          style={[styles.card, { backgroundColor: "#1565C0" }]}
+          style={styles.cardWrapper}
           onPress={() => navigation.navigate("Chatbot")}
         >
-          <Text style={styles.cardIcon}>🤖</Text>
-          <Text style={styles.cardText}>Help Center</Text>
+          <LinearGradient colors={["#1976D2", "#1565C0"]} style={styles.card}>
+            <Text style={styles.cardIcon}>🤖</Text>
+            <Text style={styles.cardText}>Help Center</Text>
+          </LinearGradient>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.card, { backgroundColor: "#D32F2F" }]}
+          style={styles.cardWrapper}
           onPress={handleLogout}
         >
-          <Text style={styles.cardIcon}>🚪</Text>
-          <Text style={styles.cardText}>Logout</Text>
+          <LinearGradient colors={["#EF5350", "#D32F2F"]} style={styles.card}>
+            <Text style={styles.cardIcon}>🚪</Text>
+            <Text style={styles.cardText}>Logout</Text>
+          </LinearGradient>
         </TouchableOpacity>
       </View>
     </ScrollView>
@@ -442,17 +542,47 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     justifyContent: "space-between",
   },
-  card: {
-    backgroundColor: "#6D4C41",
+  cardWrapper: {
     width: "48%",
-    paddingVertical: 25,
-    borderRadius: 16,
     marginBottom: 15,
+  },
+  card: {
+    paddingVertical: 25,
+    borderRadius: 24, // Smoother corners for premium look
     alignItems: "center",
-    elevation: 3,
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   cardIcon: { fontSize: 36, marginBottom: 10 },
-  cardText: { color: "white", fontSize: 15, fontWeight: "bold" },
+  cardText: { color: "white", fontSize: 14, fontWeight: "800", letterSpacing: 0.5 },
+
+  // BALANCE BANNER
+  balanceBanner: {
+    marginBottom: 20,
+    borderRadius: 16,
+    overflow: "hidden",
+    elevation: 5,
+  },
+  balanceGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 15,
+  },
+  balanceIcon: { fontSize: 28, marginRight: 15 },
+  balanceTitle: { color: "white", fontWeight: "900", fontSize: 16 },
+  balanceMsg: { color: "rgba(255,255,255,0.8)", fontSize: 12, fontWeight: "600" },
+  balanceAction: { color: "white", fontWeight: "900", fontSize: 12, marginLeft: 10 },
+
+  // QUEUE PROGRESS
+  queueTag: { backgroundColor: 'rgba(0,0,0,0.1)', paddingHorizontal: 10, paddingVertical: 2, borderRadius: 10 },
+  queueTagText: { fontWeight: '900', fontSize: 12, color: '#333' },
+  queueProgressContainer: { marginTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)', paddingTop: 10 },
+  queueProgressBar: { height: 6, backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 3, overflow: 'hidden', marginBottom: 5 },
+  queueProgressFill: { height: '100%', backgroundColor: '#1976D2', borderRadius: 3 },
+  queueAheadText: { fontSize: 11, fontWeight: '700', color: '#1976D2' },
 });
 
 export default ClientDashboard;

@@ -3,7 +3,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, 
   Button, TextField, MenuItem, Box, Typography, 
   FormControl, InputLabel, Select, RadioGroup, FormControlLabel, Radio, 
-  Autocomplete, Alert, CircularProgress, Paper, Divider, Switch, Accordion, AccordionSummary, AccordionDetails
+  Autocomplete, Alert, CircularProgress, Paper, Divider, Switch, Accordion, AccordionSummary, AccordionDetails, Chip
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
 
@@ -35,7 +35,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
   const [guestPetData, setGuestPetData] = useState({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', microchip: '', allergies: '', weight: '' });
   const [isNewPet, setIsNewPet] = useState(false); // For existing clients adding a new pet
 
-  const [service, setService] = useState('');
+  const [selectedServices, setSelectedServices] = useState([]); // THE FIX: Changed to Array for Multi-Service support
   const [triageNotes, setTriageNotes] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [phoneCheckDone, setPhoneCheckDone] = useState(false);
@@ -84,6 +84,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
     setGuestName(''); setGuestPhone(''); setGuestEmail(''); setTriageNotes('');
     setGuestPetData({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', microchip: '', allergies: '', weight: '' });
     setPhoneCheckDone(false);
+    setSelectedServices([]); // Multi-reset
     onClose();
   };
 
@@ -96,7 +97,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
     if (walkInType === 'existing' && isNewPet && (!guestPetData.name || !guestPetData.breed)) return setErrorMsg("New pet name and breed are required.");
     if (walkInType === 'guest' && (!guestName || !guestPhone || !guestPetData.name || !guestPetData.breed)) return setErrorMsg("Owner Full Name, Contact Phone, Pet Name, and Breed are required.");
     if (!triageNotes) return setErrorMsg("Triage Notes are required.");
-    if (!service) return setErrorMsg("Please select a service.");
+    if (selectedServices.length === 0) return setErrorMsg("Please select at least one service.");
 
     // Phone validation for new guests
     if (walkInType === 'guest' && !isValidPHPhone(guestPhone)) {
@@ -181,9 +182,24 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
         // 2. UPDATES & WRITES
         transaction.set(queueRef, { lastNumberIssued: newNumber }, { merge: true });
 
-        const selectedServiceObj = servicesList.find(s => s.name === service);
-        const isEmergency = service === 'Emergency';
-        const department = selectedServiceObj?.department || selectedServiceObj?.category || 'General';
+        // --- 🧬 MULTI-SERVICE MAPPING ENGINE ---
+        const mappedServices = selectedServices.map(svcName => {
+           const s = servicesList.find(item => item.name === svcName);
+           const dept = s?.department || s?.category || 'General';
+           return {
+              id: s?.id || Math.random().toString(36).substr(2, 9),
+              name: svcName,
+              price: s?.price || 0,
+              department: dept,
+              status: 'pending', // Independent Status!
+              workflowType: (dept === 'Grooming' || dept === 'Aesthetic') ? 'AESTHETIC' : 'MEDICAL',
+              staffId: null,
+              staffName: 'Unassigned'
+           };
+        });
+
+        const isEmergency = selectedServices.includes('Emergency');
+        const primaryDept = mappedServices[0]?.department || 'General';
         
         const resolvedBreed = (walkInType === 'guest' || isNewPet) ? guestPetData.breed : (selectedPet?.breed || '');
         const resolvedWeight = parseFloat(guestPetData.weight) || (selectedPet?.lastWeight ? parseFloat(selectedPet.lastWeight) : null);
@@ -192,8 +208,14 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
         const appointmentPayload = {
           ownerId: finalOwnerId, ownerName: finalOwnerName, petId: finalPetId, petName: finalPetName, petSpecies: finalPetSpecies,
           petBreed: resolvedBreed || 'Mixed', petWeight: resolvedWeight || null, petAllergies: resolvedAllergies || '',
-          serviceType: service, servicePrice: selectedServiceObj?.price || 0, serviceCategory: department, requiredRole: department,
-          status: 'arrived', queueNumber: newNumber, ticketPrefix: isEmergency ? 'E' : 'W', priority: isEmergency ? 'high' : 'normal', 
+          
+          // Evolved Schema
+          services: mappedServices, 
+          primaryService: mappedServices[0]?.name || 'Unknown', 
+          serviceCategory: primaryDept, // For legacy queue tabs
+          
+          status: 'arrived', // Overall context
+          queueNumber: newNumber, ticketPrefix: isEmergency ? 'E' : 'W', priority: isEmergency ? 'high' : 'normal', 
           scheduledDate: Timestamp.now(), createdAt: Timestamp.now(), timeArrived: Timestamp.now(), 
           notes: isEmergency ? `🚨 EMERGENCY: ${triageNotes}` : triageNotes, 
           assignedVetId: null, assignedVet: 'Unassigned' 
@@ -203,7 +225,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
         transaction.set(newApptRef, appointmentPayload);
       });
       
-      alert(`Walk-In Logged!`);
+      alert(`Multi-Service Visit Logged!`);
       handleClose();
     } catch (error) { 
       setErrorMsg("Error: " + error.message); 
@@ -306,8 +328,24 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
         <Box sx={{ p: 3, borderRadius: 2, background: 'rgba(255, 255, 255, 0.6)', border: '1px solid rgba(0,0,0,0.08)' }}>
             <Typography variant="overline" color="error" fontWeight="bold">Visit Details</Typography>
             <FormControl fullWidth size="small" variant="filled" sx={{ mt: 2, mb: 2 }}>
-                <InputLabel>Service</InputLabel>
-                <Select value={service} label="Service" onChange={e => setService(e.target.value)}>
+                <InputLabel>Bundled Services</InputLabel>
+                <Select 
+                    multiple 
+                    value={selectedServices} 
+                    label="Bundled Services" 
+                    onChange={e => setSelectedServices(e.target.value)}
+                    renderValue={(selected) => (
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                            {selected.map((value) => {
+                                const s = servicesList.find(item => item.name === value);
+                                const deptName = s?.department || s?.category || 'General';
+                                const deptObj = (departments || []).find(d => d.name === deptName);
+                                const badgeColor = deptObj ? deptObj.color : '#616161';
+                                return <Chip key={value} label={value} size="small" sx={{ bgcolor: badgeColor, color: 'white', fontWeight: 'bold', fontSize: '0.65rem' }} />;
+                            })}
+                        </Box>
+                    )}
+                >
                     {(servicesList ||[]).map((s) => {
                       const deptName = s.department || s.category || 'General';
                       const deptObj = (departments ||[]).find(d => d.name === deptName);
@@ -323,7 +361,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
       </DialogContent>
       <DialogActions sx={{ p: 2.5, bgcolor: '#EFEBE9', borderTop: '1px solid #D7CCC8' }}>
         <Button onClick={handleClose} sx={{ fontWeight: 'bold', color: '#555' }}>Cancel</Button>
-        <Button onClick={handleSubmit} variant="contained" disabled={loading} color={service === 'Emergency' ? 'error' : 'success'} sx={{ px: 3, fontWeight: 'bold' }}>
+        <Button onClick={handleSubmit} variant="contained" disabled={loading} color={selectedServices?.includes('Emergency') ? 'error' : 'success'} sx={{ px: 3, fontWeight: 'bold' }}>
           {loading ? "Processing..." : "Add to Queue"}
         </Button>
       </DialogActions>

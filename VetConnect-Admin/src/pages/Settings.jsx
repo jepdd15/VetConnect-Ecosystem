@@ -6,8 +6,8 @@ import {
 } from '@mui/material';
 import Grid from '@mui/material/Grid'; // MUI v6 Standard
 
-import { doc, setDoc, Timestamp, collection, onSnapshot, addDoc, deleteDoc } from 'firebase/firestore';
-import { db } from '../firebaseConfig';
+import { doc, setDoc, Timestamp, collection, onSnapshot, addDoc, deleteDoc, query } from 'firebase/firestore';
+import { db, auth } from '../firebaseConfig';
 
 // Icons
 import SettingsSuggestIcon from '@mui/icons-material/SettingsSuggest';
@@ -64,6 +64,10 @@ export default function Settings() {
   const[invCatSearch, setInvCatSearch] = useState('');
   const [invCatSort, setInvCatSort] = useState('asc'); // THE FIX: Sort state for Inventory
 
+  // --- DEPENDENCY STATES (For Usage Shield) ---
+  const [allServices, setAllServices] = useState([]);
+  const [allStaff, setAllStaff] = useState([]);
+
   const glassStyle = {
     background: 'rgba(255, 255, 255, 0.55)', backdropFilter: 'blur(16px)', 
     border: '1px solid rgba(255, 255, 255, 0.8)', boxShadow: '0 8px 32px 0 rgba(139, 69, 19, 0.08)', borderRadius: 3, 
@@ -87,13 +91,42 @@ export default function Settings() {
       setInvCategories(cats);
     });
 
-    return () => { unsubSettings(); unsubDepts(); unsubInvCats(); };
+    // 4. THE FIX: Fetch Services for Usage Mapping
+    const unsubAllServices = onSnapshot(collection(db, "services"), (snapshot) => {
+        setAllServices(snapshot.docs.map(d => d.data()));
+    });
+
+    // 5. THE FIX: Fetch Users (Staff) for Usage Mapping
+    const unsubAllStaff = onSnapshot(collection(db, "users"), (snapshot) => {
+        setAllStaff(snapshot.docs.map(d => d.data()));
+    });
+
+    return () => { unsubSettings(); unsubDepts(); unsubInvCats(); unsubAllServices(); unsubAllStaff(); };
   },[]);
 
   const handleChange = (field, value) => { setSettings(prev => ({ ...prev, [field]: value })); };
 
+  // --- 🛡️ THE BOUNDARY SHIELD (Validation Engine) ---
+  const validateSettings = () => {
+    if (settings.openHour >= settings.closeHour) {
+        return "Clinic Opening time must be earlier than the Closing time.";
+    }
+    if (settings.lunchEnabled) {
+        if (settings.lunchStart >= settings.lunchEnd) {
+            return "Lunch Start must be earlier than the Lunch End.";
+        }
+        if (settings.lunchStart < settings.openHour || settings.lunchEnd > settings.closeHour) {
+            return "Lunch break must fall within clinic operating hours.";
+        }
+    }
+    return null; // All systems go!
+  };
+
   // --- SAVE SETTINGS ---
   const handleSave = async () => {
+    const error = validateSettings();
+    if (error) return setToast({ open: true, message: error, severity: 'error' });
+
     setLoading(true);
     try {
       const sanitizedSettings = {
@@ -107,7 +140,13 @@ export default function Settings() {
         trafficModerate: parseInt(settings.trafficModerate) || 6,
         trafficHigh: parseInt(settings.trafficHigh) || 13
       };
-      await setDoc(doc(db, "clinic_settings", "general"), { ...sanitizedSettings, updatedAt: Timestamp.now(), updatedBy: "Admin" }, { merge: true });
+      
+      const adminIdentity = auth.currentUser?.displayName || auth.currentUser?.email || "Unknown Admin";
+      await setDoc(doc(db, "clinic_settings", "general"), { 
+          ...sanitizedSettings, 
+          updatedAt: Timestamp.now(), 
+          updatedBy: adminIdentity // THE FIX: Atomic Accountability!
+      }, { merge: true });
       setToast({ open: true, message: 'Global Clinic Settings Updated Successfully!', severity: 'success' });
     } catch (error) { setToast({ open: true, message: error.message, severity: 'error' }); } 
     finally { setLoading(false); }
@@ -126,7 +165,22 @@ export default function Settings() {
   };
 
   const handleDeleteDepartment = async (id, name) => {
-    if (window.confirm(`Delete the "${name}" department? Make sure no staff or services are using it!`)) {
+    // --- 🧬 THE USAGE SHIELD (Dependency Check) ---
+    const staffCount = allStaff.filter(u => 
+        u.role === 'staff' && 
+        (Array.isArray(u.departments) ? u.departments.includes(name) : u.department === name)
+    ).length;
+    
+    const serviceCount = allServices.filter(s => (s.department || s.category) === name).length;
+
+    if (staffCount > 0 || serviceCount > 0) {
+        return Alert.alert(
+            "Department In Use",
+            `The "${name}" department cannot be deleted because it is currently assigned to:\n\n• ${staffCount} Staff Members\n• ${serviceCount} Clinical Services\n\nPlease re-assign these entities before deleting the department.`
+        );
+    }
+
+    if (window.confirm(`Delete the "${name}" department?`)) {
       try {
           await deleteDoc(doc(db, "departments", id));
           setToast({ open: true, message: 'Department Deleted.', severity: 'success' });
@@ -304,14 +358,27 @@ export default function Settings() {
                 {[...departments]
                   .sort((a, b) => deptSort === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name))
                   .filter(d => d.name.toLowerCase().includes(deptSearch.toLowerCase()))
-                  .map(dept => (
-                    <Chip 
-                      key={dept.id} 
-                      label={dept.name} 
-                      onDelete={() => handleDeleteDepartment(dept.id, dept.name)}
-                      sx={{ fontWeight: 'bold', color: 'white', bgcolor: dept.color || '#616161', border: '2px solid rgba(0,0,0,0.1)', fontSize: '0.9rem', py: 2.5, px: 1, '& .MuiChip-deleteIcon': { color: 'rgba(255,255,255,0.7)', '&:hover': { color: 'white' } } }}
-                    />
-                ))}
+                  .map(dept => {
+                    // Calculate real-time usage for the UI Chip
+                    const staffU = allStaff.filter(u => u.role === 'staff' && (Array.isArray(u.departments) ? u.departments.includes(dept.name) : u.department === dept.name)).length;
+                    const serviceU = allServices.filter(s => (s.department || s.category) === dept.name).length;
+                    const totalU = staffU + serviceU;
+
+                    return (
+                        <Chip 
+                          key={dept.id} 
+                          label={`${dept.name} (${totalU})`} // THE FIX: High-Visibility Usage HUD!
+                          onDelete={() => handleDeleteDepartment(dept.id, dept.name)}
+                          sx={{ 
+                              fontWeight: 'bold', color: 'white', bgcolor: dept.color || '#616161', 
+                              border: totalU > 0 ? '2px solid rgba(255,255,255,0.4)' : '2px solid rgba(0,0,0,0.1)', 
+                              fontSize: '0.9rem', py: 2.5, px: 1, 
+                              '& .MuiChip-deleteIcon': { color: 'rgba(255,255,255,0.7)', '&:hover': { color: 'white' } } 
+                          }}
+                          title={`Assigned to ${staffU} staff and ${serviceU} services`}
+                        />
+                    );
+                })}
                 {departments.filter(d => d.name.toLowerCase().includes(deptSearch.toLowerCase())).length === 0 && (<Typography variant="body2" color="textSecondary" sx={{ width: '100%', textAlign: 'center', mt: 4, fontStyle: 'italic' }}>No departments match your search.</Typography>)}
               </Box>
             </Box>

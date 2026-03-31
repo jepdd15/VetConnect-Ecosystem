@@ -321,7 +321,6 @@ export default function PetHistoryScreen({ route, navigation }) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* THE UX FIX: Sleek, Modern Floating Header */}
       <View style={styles.headerBox}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}

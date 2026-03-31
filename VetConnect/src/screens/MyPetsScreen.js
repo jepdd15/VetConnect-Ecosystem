@@ -183,7 +183,6 @@ export default function MyPetsScreen({ navigation }) {
             </View>
           </View>
 
-          {/* THE FIX: Upgraded to premium Pressable buttons */}
           <View style={styles.actionRow}>
             <Pressable
               style={styles.iconBtn}
@@ -232,7 +231,6 @@ export default function MyPetsScreen({ navigation }) {
           </View>
           <View style={styles.demoItem}>
             <Text style={styles.demoLabel}>STATUS</Text>
-            {/* THE FIX: Replaced angry red with neutral brown */}
             <Text
               style={[
                 styles.demoValue,

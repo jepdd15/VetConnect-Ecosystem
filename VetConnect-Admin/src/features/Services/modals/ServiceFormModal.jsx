@@ -32,7 +32,8 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
     linkedProduct: item?.linkedProduct || '',
     isWalkIn: item ? item.isWalkIn : true,
     isInpatient: item?.isInpatient || false,
-    isEmergency: item?.isEmergency || false
+    isEmergency: item?.isEmergency || false,
+    workflowType: item?.workflowType || 'MEDICAL'
   });
 
   const handleSave = () => {
@@ -93,7 +94,26 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
                     </Select>
                   </FormControl>
               </Grid>
-              <Grid size={{ xs: 12 }}>
+
+              {/* NEW: DYNAMIC WORKFLOW MAPPING */}
+              <Grid size={{ xs: 12, md: 6 }}>
+                  <FormControl fullWidth size="small" sx={{bgcolor: '#FFF8E1'}}>
+                    <InputLabel sx={{ fontWeight: 'bold', color: '#B26500' }}>Clinical Workflow Template</InputLabel>
+                    <Select 
+                        value={formData.workflowType || 'MEDICAL'} 
+                        label="Clinical Workflow Template" 
+                        onChange={(e) => setFormData({...formData, workflowType: e.target.value})}
+                        sx={{ fontWeight: 'bold' }}
+                    >
+                        <MenuItem value="MEDICAL">🏥 Medical (Standard SOAP)</MenuItem>
+                        <MenuItem value="AESTHETIC">✂️ Aesthetic / Grooming / Lifestyle</MenuItem>
+                        <MenuItem value="SURGICAL">🔪 Surgical / Critical Care</MenuItem>
+                        <MenuItem value="REHAB">🐕 Rehabilitative / Mobility</MenuItem>
+                    </Select>
+                  </FormControl>
+              </Grid>
+
+              <Grid size={{ xs: 12, md: 6 }}>
                   <FormControl fullWidth size="small" sx={{bgcolor: 'white'}}>
                     <InputLabel>Target Department</InputLabel>
                     <Select 
@@ -112,16 +132,6 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
                         ))}
                     </Select>
                   </FormControl>
-                  
-                  {isAdmin && (
-                    <Typography 
-                      variant="caption" 
-                      onClick={() => { onClose(); navigate('/settings'); }} 
-                      sx={{ color: 'primary.main', fontWeight: 'bold', cursor: 'pointer', mt: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}
-                    >
-                      <OpenInNewIcon sx={{ fontSize: 14 }} /> Manage Departments in Settings
-                    </Typography>
-                  )}
               </Grid>
             </Grid>
           </Paper>

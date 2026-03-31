@@ -36,7 +36,7 @@ export default function BookAppointment({ navigation }) {
 
   // --- DATA STATES ---
   const [selectedPets, setSelectedPets] = useState([]);
-  const [selectedService, setSelectedService] = useState(null);
+  const [selectedServices, setSelectedServices] = useState([]); // THE FIX: Moving to Array for Bundles!
   const [notes, setNotes] = useState("");
   const [date, setDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -57,7 +57,7 @@ export default function BookAppointment({ navigation }) {
     fetching,
     loadingSlots,
     clinicSettings,
-  } = useBookingEngine(date, selectedService, selectedPets);
+  } = useBookingEngine(date, selectedServices, selectedPets); // Passing the array to the brain!
 
   // --- INITIALIZATION ---
   useEffect(() => {
@@ -124,7 +124,16 @@ export default function BookAppointment({ navigation }) {
       setSelectedPets([...selectedPets, pet]);
     }
     // Always reset downstream choices to prevent conflicting biological filters
-    setSelectedService(null);
+    setSelectedServices([]);
+    setSelectedSlot(null);
+  };
+
+  const toggleServiceSelection = (srv) => {
+    if (selectedServices.find(s => s.id === srv.id)) {
+        setSelectedServices(selectedServices.filter(s => s.id !== srv.id));
+    } else {
+        setSelectedServices([...selectedServices, srv]);
+    }
     setSelectedSlot(null);
   };
 
@@ -136,7 +145,7 @@ export default function BookAppointment({ navigation }) {
     }
   };
 
-  // --- THE FATAL FLAW FIX: JIT CONCURRENCY CHECK ---
+  // --- THE FATAL FLAW FIX: JIT CONCURRENCY CHECK (Now Multi-Service Aware!) ---
   const submitBooking = async () => {
     setLoading(true);
     try {
@@ -144,14 +153,30 @@ export default function BookAppointment({ navigation }) {
       const baseDateTime = new Date(date);
       baseDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
 
-      // Data Sanitization (Regex cleanup)
-      const baseDuration = selectedService.duration
-        ? parseInt(String(selectedService.duration).replace(/[^0-9]/g, ""))
-        : 30;
-      const serviceBuffer = selectedService.bufferTime
-        ? parseInt(String(selectedService.bufferTime).replace(/[^0-9]/g, ""))
-        : 0;
-      const trueTimePerPet = baseDuration + serviceBuffer;
+      // --- 🧬 CALCULATE BUNDLE PARAMETERS ---
+      let bundleTotalMinutes = 0;
+      let bundleTotalPrice = 0;
+      const mappedServices = selectedServices.map(s => {
+          const dur = parseInt(String(s.duration).replace(/[^0-9]/g, "")) || 30;
+          const buff = parseInt(String(s.bufferTime).replace(/[^0-9]/g, "")) || 0;
+          const price = parseFloat(s.price) || 0;
+          
+          bundleTotalMinutes += (dur + buff);
+          bundleTotalPrice += price;
+
+          return {
+              id: s.id || Math.random().toString(36).substr(2, 9),
+              name: s.name,
+              price: price,
+              department: (s.department || s.category || "General"),
+              status: "pending",
+              workflowType: (s.department === "Grooming" || s.category === "Grooming") ? "AESTHETIC" : "MEDICAL",
+              staffId: null,
+              staffName: "Unassigned",
+              duration: dur,
+              buffer: buff
+          };
+      });
 
       // JIT PRE-FLIGHT CHECK
       const startOfDay = new Date(baseDateTime);
@@ -168,54 +193,43 @@ export default function BookAppointment({ navigation }) {
         ),
       );
 
-      const requiredDept = (
-        selectedService.department ||
-        selectedService.category ||
-        selectedService.requiredRole ||
-        "General"
-      ).toLowerCase();
+      // Verify availability for EACH service in the bundle
+      let serviceOffset = 0;
+      for (let svc of mappedServices) {
+          const svcStart = new Date(baseDateTime.getTime() + serviceOffset * 60000);
+          const svcEnd = new Date(svcStart.getTime() + (svc.duration + svc.buffer) * 60000);
+          const requiredDept = svc.department.toLowerCase();
 
-      const competing = checkSnap.docs.filter(
-        (d) =>
-          (
-            d.data().serviceCategory ||
-            d.data().requiredRole ||
-            "General"
-          ).toLowerCase() === requiredDept,
-      );
-      const requestedEnd = new Date(
-        baseDateTime.getTime() + trueTimePerPet * selectedPets.length * 60000,
-      );
+          const competing = checkSnap.docs.filter(d => {
+              const data = d.data();
+              const deptsInAppt = new Set();
+              if (data.services && Array.isArray(data.services)) {
+                  data.services.forEach(s => deptsInAppt.add((s.department || "General").toLowerCase()));
+              } else {
+                  deptsInAppt.add((data.department || data.serviceCategory || "General").toLowerCase());
+              }
+              return deptsInAppt.has(requiredDept);
+          });
 
-      let currentOverlaps = 0;
-      competing.forEach((d) => {
-        const s = d.data().scheduledDate.toDate();
-        const e = new Date(
-          s.getTime() +
-            ((d.data().serviceDuration || 30) + (d.data().serviceBuffer || 0)) *
-              60000,
-        );
-        if (baseDateTime < e && requestedEnd > s) currentOverlaps++;
-      });
+          let currentOverlaps = 0;
+          competing.forEach(d => {
+              const s = d.data().scheduledDate.toDate();
+              const e = new Date(s.getTime() + ((d.data().serviceDuration || 30) + (d.data().serviceBuffer || 0)) * 60000);
+              if (svcStart < e && svcEnd > s) currentOverlaps++;
+          });
 
-      // Abort if the slot was snatched by someone else while the user was typing
-      if (currentOverlaps >= 1) {
-        Alert.alert(
-          "Slot Taken",
-          "We're sorry, another client just booked this time block. Please select another time.",
-        );
-        setStep(3);
-        setSelectedSlot(null);
-        setLoading(false);
-        return;
+          const capacity = departmentCapacity[requiredDept] || 1;
+          if (currentOverlaps >= capacity) {
+              Alert.alert("Slot Taken", `Another client just booked a ${svc.department} specialist during this window. Please select another time.`);
+              setStep(3); setSelectedSlot(null); setLoading(false); return;
+          }
+          serviceOffset += (svc.duration + svc.buffer);
       }
 
       // ATOMIC BATCH WRITE
       const batch = writeBatch(db);
       selectedPets.forEach((pet, index) => {
-        const petDateTime = new Date(
-          baseDateTime.getTime() + index * trueTimePerPet * 60000,
-        );
+        const petDateTime = new Date(baseDateTime.getTime() + index * bundleTotalMinutes * 60000);
         const qrData = `VC-${auth.currentUser.uid.slice(0, 5)}-${Date.now()}-${index}`;
         const newApptRef = doc(collection(db, "appointments"));
 
@@ -225,25 +239,19 @@ export default function BookAppointment({ navigation }) {
           petId: pet.id,
           petName: pet.name,
           petSpecies: pet.species,
-          serviceType: selectedService.name,
-          servicePrice: selectedService.price,
-          // THE FIX: Save it correctly to the appointment document
-          serviceCategory:
-            selectedService.department || selectedService.category || "General",
-          requiredRole:
-            selectedService.department ||
-            selectedService.requiredRole ||
-            "veterinarian",
-          serviceDuration: baseDuration,
-          serviceBuffer: serviceBuffer,
-          notes:
-            selectedPets.length > 1
-              ? `[Group Booking ${index + 1}/${selectedPets.length}] ${notes}`
-              : notes,
+          
+          // --- EVOLVED SCHEMA ---
+          services: mappedServices,
+          primaryService: mappedServices[0].name,
+          serviceCategory: mappedServices[0].department,
+          serviceDuration: bundleTotalMinutes, // Total visit duration
+          servicePrice: bundleTotalPrice,
+          
           status: "pending",
           scheduledDate: Timestamp.fromDate(petDateTime),
           createdAt: Timestamp.now(),
           qrCode: qrData,
+          notes: selectedPets.length > 1 ? `[Group Booking ${index + 1}/${selectedPets.length}] ${notes}` : notes,
         });
       });
 
@@ -294,7 +302,7 @@ export default function BookAppointment({ navigation }) {
   const getButtonText = () => {
     if (loading) return "Processing...";
     if (step === 1 && selectedPets.length === 0) return "1. Select a Pet";
-    if (step === 2 && !selectedService) return "2. Select a Service";
+    if (step === 2 && selectedServices.length === 0) return "2. Select Service(s)";
     if (step === 3 && !selectedSlot) return "3. Select a Time";
     if (step === 4)
       return `Book ${selectedPets.length} Appointment${selectedPets.length > 1 ? "s" : ""}`;
@@ -443,6 +451,7 @@ export default function BookAppointment({ navigation }) {
     return (
       <View style={styles.stepContainer}>
         <Text style={styles.stepHeader}>What do they need?</Text>
+        <Text style={styles.subText}>You can select multiple services to bundle them into one visit.</Text>
 
         <TextInput
           style={styles.searchInput}
@@ -474,28 +483,44 @@ export default function BookAppointment({ navigation }) {
           ))}
         </View>
 
+        {/* --- 🧬 SERVICE BUNDLE BAR --- */}
+        {selectedServices.length > 0 && (
+            <View style={{ backgroundColor: '#EFEBE9', padding: 10, borderRadius: 12, marginBottom: 10, borderLeftWidth: 4, borderLeftColor: '#8B4513' }}>
+                <Text style={{ fontWeight: 'bold', color: '#5D4037', fontSize: 13 }}>Selected Bundle ({selectedServices.length}):</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 5 }}>
+                    {selectedServices.map(s => (
+                        <View key={s.id} style={{ backgroundColor: '#8B4513', borderRadius: 15, paddingHorizontal: 10, paddingVertical: 4, marginRight: 5, marginBottom: 5 }}>
+                            <Text style={{ color: 'white', fontSize: 11, fontWeight: 'bold' }}>{s.name}</Text>
+                        </View>
+                    ))}
+                </View>
+            </View>
+        )}
+
         <ScrollView
           style={{ flex: 1, marginTop: 10 }}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 120 }}
+          contentContainerStyle={{ paddingBottom: 150 }}
         >
           {displayedServices.length === 0 ? (
             <Text style={styles.emptyText}>No services found.</Text>
           ) : (
-            displayedServices.map((srv) => (
+            displayedServices.map((srv) => {
+              const isSelected = selectedServices.find(s => s.id === srv.id);
+              return (
               <TouchableOpacity
                 key={srv.id}
                 style={[
                   styles.serviceRow,
-                  selectedService?.id === srv.id && styles.selectedServiceRow,
+                  isSelected && styles.selectedServiceRow,
                 ]}
-                onPress={() => setSelectedService(srv)}
+                onPress={() => toggleServiceSelection(srv)}
               >
                 <View style={{ flex: 1 }}>
                   <Text
                     style={[
                       styles.serviceName,
-                      selectedService?.id === srv.id && styles.selectedTextBold,
+                      isSelected && styles.selectedTextBold,
                     ]}
                   >
                     {srv.name}
@@ -507,16 +532,23 @@ export default function BookAppointment({ navigation }) {
                     mins
                   </Text>
                 </View>
-                <Text
-                  style={[
-                    styles.servicePrice,
-                    selectedService?.id === srv.id && styles.selectedTextBold,
-                  ]}
-                >
-                  ₱{srv.price}
-                </Text>
+                <View style={{ alignItems: 'flex-end' }}>
+                    <Text
+                        style={[
+                            styles.servicePrice,
+                            isSelected && styles.selectedTextBold,
+                        ]}
+                    >
+                        ₱{srv.price}
+                    </Text>
+                    {isSelected && (
+                        <View style={{ backgroundColor: '#2E7D32', width: 20, height: 20, borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginTop: 4 }}>
+                            <Text style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>✓</Text>
+                        </View>
+                    )}
+                </View>
               </TouchableOpacity>
-            ))
+            )})
           )}
         </ScrollView>
       </View>
@@ -735,9 +767,12 @@ export default function BookAppointment({ navigation }) {
           <Text style={styles.summaryText}>
             🐾 Patient(s): {selectedPets.map((p) => p.name).join(", ")}
           </Text>
-          <Text style={styles.summaryText}>
-            ⚕️ Service: {selectedService?.name}
-          </Text>
+          <View style={{ marginVertical: 5, padding: 8, backgroundColor: 'rgba(255,255,255,0.4)', borderRadius: 8 }}>
+            <Text style={{ fontWeight: 'bold', fontSize: 13, color: '#5D4037', marginBottom: 4 }}>Selected Services:</Text>
+            {selectedServices.map(s => (
+                <Text key={s.id} style={{ fontSize: 13, color: '#5D4037' }}>• {s.name} (₱{s.price})</Text>
+            ))}
+          </View>
           <Text style={styles.summaryText}>
             🕒 Time: {date.toLocaleDateString()} at {selectedSlot}
           </Text>
@@ -752,7 +787,7 @@ export default function BookAppointment({ navigation }) {
               },
             ]}
           >
-            Total: ₱{selectedService?.price * selectedPets.length}
+            Total: ₱{selectedServices.reduce((sum, s) => sum + (parseFloat(s.price) || 0), 0) * selectedPets.length}
           </Text>
         </View>
 

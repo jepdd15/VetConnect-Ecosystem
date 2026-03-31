@@ -103,68 +103,36 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
     }
   },
   { 
-    // THE FIX: This was the elusive 'context' field!
-    field: 'context', headerName: 'Service Details', flex: 1.2, minWidth: 160,
+    field: 'context', headerName: 'Service Details', flex: 1.2, minWidth: 180,
     sortable: false, disableColumnMenu: true,
     renderCell: (p) => {
+      const services = p.row.services || [];
       const hasNotes = p.row.notes && p.row.notes.trim().length > 0 && p.row.notes !== "—";
-      
-      const serviceCategory = p.row.serviceCategory || 'General';
-      const deptObj = (departments || []).find(d => d.name === serviceCategory);
-      const badgeColor = deptObj ? deptObj.color : '#424242';
 
       return (
-        <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', py: 1, pr: 2, width: '100%' }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, py: 1.5, width: '100%' }}>
+          {services.length > 0 ? (
+            services.map((svc, i) => {
+              const deptObj = (departments || []).find(d => d.name === svc.department);
+              const bColor = deptObj ? deptObj.color : '#616161';
+              return (
+                <Chip 
+                  key={i} label={svc.name} size="small" 
+                  sx={{ bgcolor: bColor, color: 'white', fontWeight: '900', fontSize: '0.65rem', height: 20, boxShadow: 1 }} 
+                />
+              );
+            })
+          ) : (
+             <Chip label={p.row.serviceType || 'Update Required'} size="small" sx={{ fontWeight: 'bold' }} />
+          )}
           
-          <Chip 
-            label={p.row.serviceType} 
-            size="small" 
-            sx={{ 
-                bgcolor: badgeColor, 
-                color: 'white', 
-                fontWeight: '900', 
-                fontSize: '0.7rem', 
-                alignSelf: 'flex-start',
-                mb: 0.5,
-                boxShadow: `0 2px 5px ${badgeColor}40` 
-            }} 
-          />
-          
-          {/* THE UX FIX: Smart Truncation & Hover Tooltip for massive paragraphs */}
-          {hasNotes ? (
-            <Tooltip 
-              title={p.row.notes} 
-              arrow 
-              placement="bottom-start"
-              componentsProps={{
-                tooltip: { sx: { bgcolor: '#3E2723', color: 'white', fontSize: '0.85rem', p: 1.5, boxShadow: 4, borderRadius: 2 } },
-                arrow: { sx: { color: '#3E2723' } }
-              }}
-            >
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, bgcolor: '#FFF3E0', p: 1, borderRadius: 1, borderLeft: '3px solid #FF9800', cursor: 'help', width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}>
-                <WarningIcon sx={{ fontSize: 14, color: '#E65100', flexShrink: 0 }} />
-                <Typography 
-                  variant="caption" 
-                  component="div"
-                  sx={{ 
-                    color: '#E65100', 
-                    fontWeight: '600', 
-                    lineHeight: 1.2, 
-                    display: '-webkit-box', 
-                    WebkitLineClamp: 1, // FORCE TO 1 LINE!
-                    WebkitBoxOrient: 'vertical', 
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis'
-                  }} 
-                >
-                  "{p.row.notes}"
-                </Typography>
+          {hasNotes && (
+            <Tooltip title={p.row.notes}>
+              <Box sx={{ mt: 0.5, bgcolor: '#FFF3E0', p: 0.5, borderRadius: 1, borderLeft: '3px solid #FF9800', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <WarningIcon sx={{ fontSize: 12, color: '#E65100' }} />
+                <Typography variant="caption" noWrap sx={{ color: '#E65100', fontWeight: 'bold', fontSize: '0.6rem' }}>{p.row.notes}</Typography>
               </Box>
             </Tooltip>
-          ) : (
-            <Typography variant="caption" color="textSecondary" component="div" sx={{ fontStyle: 'italic' }}>
-              No triage notes provided.
-            </Typography>
           )}
         </Box>
       );
@@ -207,24 +175,38 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
     }
   },
   { 
-    field: 'statusAndStaff', headerName: 'Status & Staff', flex: 1, minWidth: 140, align: 'center', headerAlign: 'center',
+    field: 'statusAndStaff', headerName: 'Service Progress', flex: 1.2, minWidth: 180, align: 'left', headerAlign: 'center',
     sortable: false, disableColumnMenu: true,
     renderCell: (p) => {
-      let color = 'default'; let label = p.row.status.toUpperCase();
-      if (['completed', 'carried-over'].includes(p.row.status)) {
-        return ( <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}> <Chip label={label} color={p.row.status === 'completed' ? "success" : "default"} size="small" variant="filled" sx={{ height: 24, fontSize: '0.65rem', fontWeight: 'bold', letterSpacing: 0.5 }} /> </Box> );
-      }
-      if (p.row.status === 'confirmed') color = 'info'; if (p.row.status === 'pending') color = 'warning'; if (p.row.status === 'arrived') { color = 'secondary'; label = "LOBBY"; } if (p.row.status === 'in-consult') { color = 'primary'; label = "DOCTOR"; } if (p.row.status === 'on-hold') { color = 'warning'; label = "ON HOLD"; } if (p.row.status === 'dispensing') { color = 'warning'; label = "PHARMACY"; } if (p.row.status === 'billing') { color = 'success'; label = "PAYMENT"; } if (p.row.status === 'confined') { color = 'error'; label = "CONFINED"; } 
+      const services = p.row.services || [];
       
-      const chip = <Chip label={label} color={color} size="small" variant="filled" sx={{ height: 26, fontSize: '0.7rem', fontWeight: '900', letterSpacing: 0.5, mb: 0.5 }} />;
-      const isUnassigned = !p.row.assignedVetId; 
-      
+      const getStatusColor = (s) => {
+        if (s === 'completed') return 'success';
+        if (s === 'in-consult' || s === 'in-progress') return 'primary';
+        if (s === 'pending') return 'warning';
+        return 'default';
+      };
+
       return (
-        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 0.5 }}>
-          {p.row.status === 'cancelled' || p.row.status === 'no-show' ? ( <Tooltip title={p.row.rejectReason}><Chip label={label} color="error" size="small" variant="outlined" sx={{ height: 24, fontSize: '0.65rem', fontWeight: 'bold', mb: 0.5 }} /></Tooltip> ) : chip}
-          {p.row.depositPaid > 0 && p.row.status !== 'completed' && ( <Tooltip title={`₱${p.row.depositPaid} Deposit Held`}><Chip label="DEPOSIT" size="small" sx={{ bgcolor: '#E8F5E9', color: '#2E7D32', height: 16, fontSize: '0.55rem', fontWeight: 'bold', border: '1px solid #81C784' }} /></Tooltip> )}
-          {!['pending', 'cancelled', 'no-show', 'completed', 'carried-over'].includes(p.row.status) && ( isUnassigned ? ( <Button size="small" variant="outlined" color="error" sx={{ fontSize: '0.65rem', fontWeight: 'bold', py: 0.2, mt: 0.5, borderRadius: 2 }} onClick={() => actions.handleOpenAssign(p.row)}> + Assign Staff </Button> ) : ( <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, bgcolor: '#F5F5F5', px: 1, py: 0.2, borderRadius: 1, mt: 0.5 }}> <PersonIcon sx={{ fontSize: 14, color: '#1565C0' }} /> <Typography variant="caption" color="textSecondary" fontWeight="bold" noWrap sx={{ maxWidth: 100 }} component="div">{p.row.assignedVet}</Typography> </Box> ) )}
-        </Box>
+        <Stack spacing={0.5} sx={{ py: 1.5, width: '100%', justifyContent: 'center' }}>
+          {services.length > 0 ? (
+            services.map((svc, idx) => (
+              <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Chip 
+                  label={svc.status.toUpperCase()} 
+                  color={getStatusColor(svc.status)} 
+                  size="small" 
+                  sx={{ height: 18, fontSize: '0.55rem', fontWeight: '900', minWidth: 70 }} 
+                />
+                <Typography variant="caption" fontWeight="bold" color="textSecondary" noWrap sx={{ maxWidth: 80 }}>
+                  {svc.staffName || 'Unassigned'}
+                </Typography>
+              </Box>
+            ))
+          ) : (
+            <Chip label={p.row.status.toUpperCase()} color="primary" size="small" />
+          )}
+        </Stack>
       );
     }
   },

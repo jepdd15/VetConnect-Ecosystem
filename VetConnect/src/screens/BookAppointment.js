@@ -332,7 +332,7 @@ export default function BookAppointment({ navigation }) {
         const qrData = `VC-${auth.currentUser.uid.slice(0, 5)}-${Date.now()}-${index}`;
         const newApptRef = doc(collection(db, "appointments"));
 
-        batch.set(newApptRef, {
+         batch.set(newApptRef, {
           ownerId: auth.currentUser.uid,
           ownerName: ownerName,
           petId: pet.id,
@@ -353,6 +353,7 @@ export default function BookAppointment({ navigation }) {
           servicePrice: bundleTotalPrice,
           
           status: "pending",
+          caseDay: 1, // INITIAL PULSE
           scheduledDate: Timestamp.fromDate(petDateTime),
           createdAt: Timestamp.now(),
           qrCode: qrData,

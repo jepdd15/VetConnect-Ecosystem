@@ -4,7 +4,7 @@ import {
   Box, Typography, Paper, IconButton, Tooltip, Stack,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button,
   Tabs, Tab, Menu, MenuItem, ListItemIcon, ListItemText, Divider, List, ListItem, Alert,
-  Popover
+  Popover, Chip
 } from '@mui/material';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, Timestamp, where, getDocs, writeBatch, getDoc } from 'firebase/firestore';
 
@@ -32,8 +32,16 @@ import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos'; 
 import UndoIcon from '@mui/icons-material/Undo'; 
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital'; 
+import WarningIcon from '@mui/icons-material/Warning';
 
 // THE FIX: Removed static MAX_CAGES constant. Pulled from clinic_settings/general instead.
+const formatDuration = (mins) => {
+  const m = Math.abs(mins);
+  if (m < 60) return `${m}M`;
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  return rem > 0 ? `${h}H ${rem}M` : `${h}H`;
+};
 
 export default function Queue() {
   const [rows, setRows] = useState([]);
@@ -74,6 +82,7 @@ export default function Queue() {
   const[openPOS, setOpenPOS] = useState(false); 
   const [openWalkIn, setOpenWalkIn] = useState(false);
   const [openAssign, setOpenAssign] = useState(false);
+  const [assignMode, setAssignMode] = useState('check-in'); // 'check-in' or 'assign'
   const [lastCheckDate, setLastCheckDate] = useState(new Date().toDateString());
 
   const { changeStatus, revertStatus, markNoShow, rejectAppointment, quickAdmitER } = useQueueActions();
@@ -95,16 +104,25 @@ export default function Queue() {
   const hasCheckedAutoReset = useRef(false);
   const isToday = new Date(filterDate).toDateString() === new Date().toDateString();
 
-  const glassStyle = {
-    background: 'rgba(255, 255, 255, 0.55)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', 
-    border: '1px solid rgba(255, 255, 255, 0.8)', boxShadow: '0 8px 32px 0 rgba(139, 69, 19, 0.08)', borderRadius: 3, 
+  const clinicalFlatStyle = {
+    background: '#FFF', 
+    border: '2px solid #5D4037',
+    boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)', 
+    borderRadius: 1, 
+  };
+
+  const headerFlatStyle = {
+    background: '#FFF8E1', 
+    border: '2px solid #5D4037',
+    boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)', 
+    borderRadius: 1, 
   };
 
   // ======================================================================
   // LOGIC & HANDLERS
   // ======================================================================
   
-  const confirmResetDay = async (isSilent = false) => { 
+  const confirmResetDay = async (isSilent = false, targetDateMap = {}) => { 
     try { 
       const todayStr = new Date().toISOString().split('T')[0];
 
@@ -143,9 +161,11 @@ export default function Queue() {
                status: action === 'confined' ? 'confined' : 'confirmed', 
                queueNumber: null, 
                ticketPrefix: null, 
-               scheduledDate: Timestamp.fromDate(targetDate), 
+               scheduledDate: Timestamp.fromDate(targetDateMap[patient.id] || targetDate), 
                createdAt: Timestamp.now(), 
-                notes: `[Carried Over from ${new Date(filterDate).toLocaleDateString()}] ${patient.notes || "No original notes."}`, 
+               originApptId: patient.id, // THE ANCESTRY LINK
+               caseDay: (patient.caseDay || 1) + 1, // THE GENERATIONAL COUNTER
+               notes: `[Carried Over from ${new Date(filterDate).toLocaleDateString()}] ${patient.notes || "No original notes."}`, 
                assignedVet: action === 'confined' ? patient.assignedVet : "Unassigned" 
             }); 
           }
@@ -181,12 +201,43 @@ export default function Queue() {
 
       const snapshot = await getDocs(qLeftovers); 
       if (snapshot.size > 0) { 
-        const patients = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); 
-        setLeftoverPatients(patients); 
+        const rawPatients = snapshot.docs.map(doc => ({ 
+          id: doc.id, 
+          ...doc.data(), 
+          services: doc.data().services || [] 
+        })); 
+
+        // THE FIX: "Live Identity Healing" — Restore missing biometrics from the CRM master record
+        const enrichedPatients = await Promise.all(rawPatients.map(async (p) => {
+           const currentGender = (p.petGender || '').toUpperCase();
+           const isMissingBio = !p.petGender || currentGender === 'UNKNOWN' || currentGender === 'SEX UNK' || currentGender === '???';
+
+           if (p.petId && isMissingBio) {
+              try {
+                 const petSnap = await getDoc(doc(db, 'pets', p.petId));
+                 if (petSnap.exists()) {
+                    const petData = petSnap.data();
+                    // Aggressive Multi-Key Probe: CRM Gender Restoration
+                    const recoveredGender = petData.gender || petData.sex || petData.petSex || petData.petGender;
+                    const genderIsReal = recoveredGender && recoveredGender.toLowerCase() !== 'unknown';
+
+                    return {
+                       ...p,
+                       petGender: genderIsReal ? recoveredGender : p.petGender, // Only overwrite if real
+                       petBreed: petData.breed || petData.petBreed || p.petBreed,
+                       petIsNeutered: petData.isNeutered ?? petData.petIsNeutered ?? p.petIsNeutered
+                    };
+                 }
+              } catch (e) { console.warn('Identity Healing skipped for:', p.petName); }
+           }
+           return p;
+        }));
+
+        setLeftoverPatients(enrichedPatients); 
         
         // Initialize default actions (Cancel for normal, Confined for hospitalized)
         const initialRes = {};
-        patients.forEach(p => initialRes[p.id] = p.status === 'confined' ? 'confined' : 'cancel');
+        enrichedPatients.forEach(p => initialRes[p.id] = p.status === 'confined' ? 'confined' : 'cancel');
         setPatientResolutions(initialRes);
         
         setOpenEndDay(true); 
@@ -217,7 +268,12 @@ export default function Queue() {
 
   const handleMenuClick = (e, row) => { setAnchorEl(e.currentTarget); setSelectedRow(row); };
   const handleCloseMenu = () => { setAnchorEl(null); };
-  const handleOpenAssign = (row) => { setSelectedRow(row); setOpenAssign(true); handleCloseMenu(); };
+  const handleOpenAssign = (row, mode = 'check-in') => { 
+    setSelectedRow(row); 
+    setAssignMode(mode);
+    setOpenAssign(true); 
+    handleCloseMenu(); 
+  };
   const handleOpenConsult = (row) => { setSelectedRow(row); setOpenConsult(true); };
   const handleOpenPOS = (row) => { setSelectedRow(row); setOpenPOS(true); };
   const handleStatusChange = async (row, newStatus) => { 
@@ -250,7 +306,32 @@ export default function Queue() {
   const handleEditOpen = () => { setEditName(selectedRow.ownerName||''); setEditPet(selectedRow.petName); setOpenEdit(true); handleCloseMenu(); };
   const saveEdit = async () => { await updateDoc(doc(db, "appointments", selectedRow.id), { ownerName: editName, petName: editPet }); setOpenEdit(false); };
   const handleRescheduleOpen = () => { setOpenReschedule(true); handleCloseMenu(); };
-  const saveReschedule = async () => { if(!newDate) return; await updateDoc(doc(db, "appointments", selectedRow.id), { scheduledDate: Timestamp.fromDate(new Date(newDate)), status: 'confirmed' }); setOpenReschedule(false); };
+  const saveReschedule = async () => { 
+    if(!newDate) return; 
+
+    try {
+        const currentSchDate = selectedRow.scheduledDate ? selectedRow.scheduledDate.toDate() : (selectedRow.createdAt?.toDate() || new Date());
+        const updatedSchDate = new Date(newDate);
+
+        // GAP B FIX: The Reliability Highlight (Day-Slip Detection)
+        const currentDayStr = currentSchDate.toISOString().split('T')[0];
+        const updatedDayStr = updatedSchDate.toISOString().split('T')[0];
+        
+        let updateData = { 
+            scheduledDate: Timestamp.fromDate(updatedSchDate), 
+            status: 'confirmed' 
+        };
+
+        if (currentDayStr !== updatedDayStr) {
+            updateData.caseDay = (selectedRow.caseDay || 1) + 1;
+        }
+
+        await updateDoc(doc(db, "appointments", selectedRow.id), updateData);
+        setOpenReschedule(false); 
+    } catch (e) {
+        alert("Reschedule failed: " + e.message);
+    }
+  };
   const fetchHistory = async () => { if (!selectedRow.petId) return alert("Walk-In Account Required"); const q = query(collection(db, "medical_records"), where("petId", "==", selectedRow.petId), orderBy("date", "desc")); const s = await getDocs(q); setHistoryList(s.docs.map(d => d.data())); setOpenHistory(true); handleCloseMenu(); };
   const confirmReject = async () => { if (!selectedId) return; try { await rejectAppointment(selectedId, rejectReason); setOpenReject(false); setRejectReason(''); } catch (err) { alert(err.message); } };
 
@@ -416,7 +497,8 @@ export default function Queue() {
     handleMenuClick,
     handleHoverStart,
     handleHoverEnd,
-    handleQuickNoShow: async (id) => { if(window.confirm("Mark as No-Show?")) await markNoShow(id); }
+    handleQuickNoShow: async (id) => { if(window.confirm("Mark as No-Show?")) await markNoShow(id); },
+    handleRescheduleOpen: (row) => { setSelectedRow(row); setOpenReschedule(true); }
   }, isToday, departments);
 
   const isPastDate = new Date(filterDate) < new Date(new Date().setHours(0,0,0,0));
@@ -439,7 +521,7 @@ export default function Queue() {
       )}
 
       {/* HEADER CONTROLS */}
-      <Paper sx={{ ...glassStyle, p: 2, mb: 3, display: 'flex', flexWrap: 'wrap', gap: 2, justifyContent: 'space-between', alignItems: 'center' }}>
+      <Paper sx={{ ...headerFlatStyle, p: 2, mb: 3, display: 'flex', flexWrap: 'wrap', gap: 2, justifyContent: 'space-between', alignItems: 'center' }}>
         
         {/* LEFT SIDE: Title & Date Picker */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap', flexGrow: 1 }}>
@@ -468,16 +550,6 @@ export default function Queue() {
               {rows.length} {rows.length === 1 ? 'Record' : 'Records'}
            </Typography>
 
-           {isToday && (
-             <Button 
-                variant="contained" 
-                startIcon={<LocalHospitalIcon />} 
-                sx={{ bgcolor: '#D32F2F', fontWeight: '900', boxShadow: '0 4px 15px rgba(211, 47, 47, 0.4)', textTransform: 'uppercase', letterSpacing: 0.5 }} 
-                onClick={handleQuickAdmit}
-             >
-                QUICK ER
-             </Button>
-           )}
 
            {(isToday || (isPastDate && unfinishedCount > 0)) && (
              <Tooltip 
@@ -520,7 +592,7 @@ export default function Queue() {
       </Paper>
 
       {/* TABS */}
-      <Paper sx={{ ...glassStyle, mb: 2, p: 1 }}>
+      <Paper sx={{ ...clinicalFlatStyle, mb: 2, p: 0.5 }}>
         <Tabs value={tabValue} onChange={(e, v) => setTabValue(v)} variant="fullWidth" scrollButtons="auto" TabIndicatorProps={{ style: { display: 'none' } }} sx={{ minHeight: 48, '& .MuiTab-root': { fontWeight: '800', fontSize: '0.85rem', textTransform: 'uppercase', minHeight: 40, py: 1, px: 2.5, m: 0.5, borderRadius: 8, color: '#757575', transition: 'all 0.2s ease', }, '& .Mui-selected': { bgcolor: '#5D4037', color: '#FFF !important', boxShadow: '0 4px 10px rgba(93, 64, 55, 0.3)' } }}>
           <Tab label={`🌐 Online (${countOnline})`} />
           <Tab label={`📅 Scheduled (${countScheduled})`} />
@@ -533,8 +605,23 @@ export default function Queue() {
         </Tabs>
       </Paper>
 
+      {/* HISTORICAL ALERT BANNER */}
+      {!isToday && (
+        <Alert 
+            severity="warning" 
+            icon={<WarningIcon sx={{ color: '#5D4037' }} />}
+            sx={{ 
+                mb: 2, bgcolor: '#FFFDE7', color: '#5D4037', border: '2px solid #5D4037', 
+                fontWeight: '1000', letterSpacing: 1.5,
+                '& .MuiAlert-message': { width: '100%', textAlign: 'center' }
+            }}
+        >
+            FORENSIC ARCHIVE: VIEWING HISTORICAL RECORDS (READ-ONLY MODE)
+        </Alert>
+      )}
+
       {/* DATA GRID */}
-      <Paper sx={{ ...glassStyle, height: 'calc(100vh - 240px)', minHeight: 400, width: '100%', overflow: 'hidden' }}>
+      <Paper sx={{ ...clinicalFlatStyle, height: 'calc(100vh - 240px)', minHeight: 400, width: '100%', overflow: 'hidden' }}>
         <DataGrid 
           rows={getFilteredRows()} 
           columns={tableColumns} 
@@ -581,23 +668,87 @@ export default function Queue() {
         vetsList={vets} 
         activeAppointments={rows.filter(r =>['arrived', 'in-consult', 'confined'].includes(r.status))} 
         departments={departments} 
+        mode={assignMode}
       />
       
-      {/* THE NEW TRIAGE WIZARD MODAL */}
+      {/* THE NEW TRIAGE WIZARD SHIELD (PAGE-LEVEL OVERLAY) */}
       <EndOfDayModal 
         open={openEndDay} 
-        onClose={() => { setOpenEndDay(false); setIsForcedCleanup(false); }} 
         leftoverPatients={leftoverPatients} 
         patientResolutions={patientResolutions} 
         onResolutionChange={(id, action) => setPatientResolutions(prev => ({ ...prev, [id]: action }))}
         onBulkResolution={handleBulkResolution}
-        onConfirmReset={() => { confirmResetDay(false); setIsForcedCleanup(false); }} 
+        onConfirmReset={(targetDates) => { confirmResetDay(false, targetDates); setIsForcedCleanup(false); }} 
         isForced={isForcedCleanup}
         departments={departments}
+        onClose={() => { setOpenEndDay(false); setIsForcedCleanup(false); }} 
       />
       
       {/* INTERNAL MODALS */}
-      <Dialog open={openReject} onClose={() => setOpenReject(false)}><DialogTitle sx={{color:'#d32f2f'}}>Reject</DialogTitle><DialogContent><TextField autoFocus margin="dense" label="Reason" fullWidth value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} sx={{mt:1}} /></DialogContent><DialogActions><Button onClick={() => setOpenReject(false)}>Cancel</Button><Button onClick={confirmReject} variant="contained" color="error">Confirm</Button></DialogActions></Dialog>
+      <Dialog 
+        open={openReject} 
+        onClose={() => setOpenReject(false)}
+        PaperProps={{ 
+          sx: { 
+            border: '2px solid #5D4037', borderRadius: 1, p: 1,
+            boxShadow: '8px 8px 0px rgba(93, 64, 55, 0.1)'
+          } 
+        }}
+      >
+        <DialogTitle sx={{ 
+            bgcolor: '#FFF8E1', color: '#5D4037', fontWeight: '1000', borderBottom: '1px solid #D7CCC8',
+            display: 'flex', alignItems: 'center', gap: 1, py: 2
+        }}>
+          <PersonOffIcon /> CANCEL APPOINTMENT
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          <Typography variant="overline" sx={{ fontWeight: '1000', color: '#9E9E9E', letterSpacing: 1.5 }}>
+            QUICK CHOICE REASON
+          </Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1, mb: 3 }}>
+            {['CLIENT REQUEST', 'VET UNAVAILABLE', 'EMERGENCY', 'DUPLICATE', 'WRONG DATE'].map((reason) => (
+              <Chip 
+                key={reason} 
+                label={reason} 
+                onClick={() => setRejectReason(reason)}
+                sx={{ 
+                    fontWeight: '900', fontSize: '0.65rem', 
+                    border: '1.5px solid #5D4037',
+                    bgcolor: rejectReason === reason ? '#5D4037' : 'transparent',
+                    color: rejectReason === reason ? '#FFF' : '#5D4037',
+                    '&:hover': { bgcolor: rejectReason === reason ? '#3E2723' : '#F5F5F5' }
+                }}
+              />
+            ))}
+          </Box>
+          <TextField 
+            autoFocus 
+            margin="dense" 
+            label="Manual Details / Notes" 
+            fullWidth 
+            multiline
+            rows={2}
+            value={rejectReason} 
+            onChange={(e) => setRejectReason(e.target.value)} 
+            sx={{ 
+                '& .MuiOutlinedInput-root': { fontWeight: '900', bgcolor: '#F9FBE7' }
+            }} 
+          />
+        </DialogContent>
+        <DialogActions sx={{ p: 2, bgcolor: '#F5F5F5', borderTop: '1px solid #D7CCC8' }}>
+          <Button onClick={() => setOpenReject(false)} sx={{ fontWeight: 'bold', color: '#5D4037' }}>Go Back</Button>
+          <Button 
+            onClick={confirmReject} 
+            variant="contained" 
+            sx={{ 
+                bgcolor: '#5D4037', fontWeight: '1000', px: 4,
+                '&:hover': { bgcolor: '#3E2723' }
+            }}
+          >
+            Confirm Cancellation
+          </Button>
+        </DialogActions>
+      </Dialog>
       <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleCloseMenu}><MenuItem onClick={() => {revertStatus(selectedRow); handleCloseMenu();}}><ListItemIcon><UndoIcon fontSize="small" color="warning"/></ListItemIcon> <ListItemText sx={{color: '#E65100'}}>Revert Step (Undo)</ListItemText></MenuItem><Divider /><MenuItem onClick={() => handleOpenAssign(selectedRow)}><ListItemIcon><EditIcon fontSize="small"/></ListItemIcon> <ListItemText>Re-assign Staff</ListItemText></MenuItem><MenuItem onClick={handleEditOpen}><ListItemIcon><EditIcon fontSize="small"/></ListItemIcon> <ListItemText>Edit Details</ListItemText></MenuItem><MenuItem onClick={handleRescheduleOpen}><ListItemIcon><EventIcon fontSize="small"/></ListItemIcon> <ListItemText>Reschedule</ListItemText></MenuItem><MenuItem onClick={fetchHistory}><ListItemIcon><HistoryIcon fontSize="small"/></ListItemIcon> <ListItemText>History</ListItemText></MenuItem><Divider /><MenuItem onClick={() => { if(window.confirm("Mark as No-Show?")) { markNoShow(selectedRow?.id); handleCloseMenu(); } }} sx={{color:'error.main'}}><ListItemIcon><PersonOffIcon fontSize="small" color="error"/></ListItemIcon> <ListItemText>No Show</ListItemText></MenuItem></Menu>
       <Dialog open={openEdit} onClose={() => setOpenEdit(false)}><DialogTitle>Edit</DialogTitle><DialogContent><TextField margin="dense" label="Owner" fullWidth value={editName} onChange={(e) => setEditName(e.target.value)} /><TextField margin="dense" label="Pet" fullWidth value={editPet} onChange={(e) => setEditPet(e.target.value)} /></DialogContent><DialogActions><Button onClick={() => setOpenEdit(false)}>Cancel</Button><Button onClick={saveEdit} variant="contained">Save</Button></DialogActions></Dialog>
       <Dialog open={openReschedule} onClose={() => setOpenReschedule(false)}><DialogTitle>Reschedule</DialogTitle><DialogContent><TextField type="datetime-local" fullWidth value={newDate} onChange={(e) => setNewDate(e.target.value)} /></DialogContent><DialogActions><Button onClick={() => setOpenReschedule(false)}>Cancel</Button><Button onClick={saveReschedule} variant="contained">Update</Button></DialogActions></Dialog>
@@ -703,26 +854,36 @@ export default function Queue() {
                   const color = isLast ? '#2E7D32' : '#9E9E9E';
                   let deltaLabel = null;
                   let deltaColor = '#5D4037';
-                  if (!isLast) {
-                    const nextItem = filteredArray[idx + 1];
-                    const nextDate = nextItem.val.toDate ? nextItem.val.toDate() : new Date(nextItem.val);
-                    const diffMins = Math.floor((nextDate - date) / 60000);
-                    if (item.id === 'scheduled' && nextItem.id === 'arrived') {
-                       deltaLabel = diffMins > 0 ? `Punctuality: ${diffMins}m Late` : `Punctuality: ${Math.abs(diffMins)}m Early`;
-                    } else if (item.id === 'arrived' && nextItem.id === 'started') {
-                       deltaLabel = `Lobby Wait: ${diffMins}m`;
-                       if (diffMins >= 30) deltaColor = '#D32F2F';
+                  
+                  if (item.id === 'arrived') {
+                    // PUNCTUALITY: Arrived vs. Scheduled
+                    const schItem = filteredArray.find(i => i.id === 'scheduled');
+                    if (schItem) {
+                      const schDate = schItem.val.toDate ? schItem.val.toDate() : new Date(schItem.val);
+                      const diff = Math.floor((date - schDate) / 60000);
+                      deltaLabel = diff > 0 ? `Punctuality: ${formatDuration(diff)} Late` : `Punctuality: ${formatDuration(diff)} Early`;
                     }
                   } else if (item.id === 'started') {
-                    const consultMins = Math.floor((new Date() - date) / 60000);
-                    deltaLabel = `Active Consult: ${consultMins}m so far`;
+                    // LOBBY WAIT: Started vs. Arrived
+                    const arrItem = filteredArray.find(i => i.id === 'arrived');
+                    if (arrItem) {
+                      const arrDate = arrItem.val.toDate ? arrItem.val.toDate() : new Date(arrItem.val);
+                      const waitDiff = Math.floor((date - arrDate) / 60000);
+                      deltaLabel = `Lobby Wait: ${formatDuration(waitDiff)}`;
+                      if (waitDiff >= 30) deltaColor = '#D32F2F';
+                    }
+                    // ACTIVE TIMER: If it is the LAST item and is started
+                    if (isLast) {
+                      const consultDiff = Math.floor((new Date() - date) / 60000);
+                      deltaLabel += ` | Active Consult: ${formatDuration(consultDiff)} so far`;
+                    }
                   }
                   return (
                     <Box key={idx} sx={{ position: 'relative', mb: 0.5 }}>
                       <Box sx={{ position: 'absolute', left: -26, top: 4, width: 8, height: 8, borderRadius: '50%', bgcolor: color, zIndex: 5 }} />
                       <Typography variant="caption" sx={{ fontWeight: '1000', color: color, letterSpacing: 0.5, display: 'block', fontSize: '0.65rem' }}>{item.label}</Typography>
                       <Typography sx={{ fontWeight: '1000', color: isLast ? '#1A1A1A' : '#9E9E9E', fontSize: '0.85rem' }}>
-                        {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                        {date.toLocaleDateString([], { month: 'short', day: 'numeric' }).toUpperCase()} ● {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                       </Typography>
                       {deltaLabel && (
                         <Typography variant="caption" sx={{ fontStyle: 'italic', color: deltaColor, fontWeight: '800', fontSize: '0.62rem', display: 'block', mt: 0.2 }}>
@@ -744,7 +905,7 @@ export default function Queue() {
                                 const sch = hoverMetadata.data.jsScheduled.toDate ? hoverMetadata.data.jsScheduled.toDate() : new Date(hoverMetadata.data.jsScheduled);
                                 const diff = Math.floor((arr - sch) / 60000);
                                 if (Math.abs(diff) <= 5) return 'ON-TIME';
-                                return diff > 0 ? `${diff}M LATE` : `${Math.abs(diff)}M EARLY`;
+                                return `${formatDuration(Math.abs(diff))} ${diff > 0 ? 'LATE' : 'EARLY'}`;
                             })()}
                         </Typography>
                     </Box>
@@ -754,8 +915,13 @@ export default function Queue() {
                             {(() => {
                                 if (!hoverMetadata.data.timeArrived) return '0M';
                                 const arr = hoverMetadata.data.timeArrived.toDate ? hoverMetadata.data.timeArrived.toDate() : new Date(hoverMetadata.data.timeArrived);
-                                const end = hoverMetadata.data.timeStarted ? (hoverMetadata.data.timeStarted.toDate ? hoverMetadata.data.timeStarted.toDate() : new Date(hoverMetadata.data.timeStarted)) : new Date();
-                                return `${Math.floor((end - arr) / 60000)}M`;
+                                // TOTAL WAIT should only 'freeze' if the patient is fully DONE or CANCELLED.
+                                // Otherwise, it shows the total time they have been in the clinic so far.
+                                const isFinished = ['done', 'cancelled'].includes(hoverMetadata.data.status);
+                                const end = isFinished && hoverMetadata.data.timeCompleted 
+                                    ? (hoverMetadata.data.timeCompleted.toDate ? hoverMetadata.data.timeCompleted.toDate() : new Date(hoverMetadata.data.timeCompleted)) 
+                                    : new Date();
+                                return formatDuration(Math.floor((end - arr) / 60000));
                             })()}
                         </Typography>
                     </Box>

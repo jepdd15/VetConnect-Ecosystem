@@ -55,7 +55,7 @@ export default function AddPetScreen({ navigation }) {
   const [species, setSpecies] = useState("Canine");
   const [breed, setBreed] = useState("");
   const [color, setColor] = useState("");
-  const [gender, setGender] = useState("Male");
+  const [gender, setGender] = useState(""); // EMPTY: Force explicit selection
   const [isNeutered, setIsNeutered] = useState(false);
   const [allergies, setAllergies] = useState("");
   const [microchip, setMicrochip] = useState("");
@@ -82,10 +82,11 @@ export default function AddPetScreen({ navigation }) {
   };
 
   const handleAddPet = async () => {
-    if (!name.trim() || !breed || !color.trim()) {
+    // THE FIX: Mandatory Clinical Passport Validation
+    if (!name.trim() || !species || !gender || !breed || !color.trim()) {
       Alert.alert(
-        "Missing Info",
-        "Please fill in Name, Breed, and Color/Markings.",
+        "Required Fields",
+        "Please provide all clinical details: Name, Species, Gender, Breed, and Color.",
       );
       return;
     }
@@ -103,21 +104,44 @@ export default function AddPetScreen({ navigation }) {
       } else if (dobMode === "approximate") {
         const years = parseInt(estYears || "0");
         const months = parseInt(estMonths || "0");
-        if (years === 0 && months === 0) {
+
+        // --- 🛡️ BIOLOGY SHIELD (30-YEAR CAP) ---
+        if (years > 30) {
           Alert.alert(
-            "Missing Age",
-            "Please enter an approximate age in years or months.",
+            "Biometric Error",
+            "Physiological Outlier: Please verify the patient age. We currently only accept registrations for patients under 30 years old."
           );
           setLoading(false);
           return;
         }
-        const now = new Date();
-        const calculatedDob = new Date(
-          now.getFullYear() - years,
-          now.getMonth() - months,
-          now.getDate(),
-        );
-        finalDob = Timestamp.fromDate(calculatedDob);
+
+        if (months > 11) {
+          Alert.alert(
+            "Validation Error",
+            "Month Overflow: Please enter a month value between 0 and 11. Use the 'Years' field for larger increments."
+          );
+          setLoading(false);
+          return;
+        }
+
+        if (years === 0 && months === 0) {
+          Alert.alert(
+            "Missing Age",
+            "Please enter an approximate age in years or months, or use 'Vet to Estimate' mode."
+          );
+          setLoading(false);
+          return;
+        }
+
+        // --- 🗓️ STANDARD ANCHORING (1st of the Month) ---
+        // This prevents the "31st Roll-Over Trap" and provides a stable clinical baseline.
+        const d = new Date();
+        d.setFullYear(d.getFullYear() - years);
+        d.setMonth(d.getMonth() - months);
+        d.setDate(1); // UNIVERSAL ANCHOR
+        d.setHours(0, 0, 0, 0);
+
+        finalDob = Timestamp.fromDate(d);
         isAgeExact = false;
       }
       // If dobMode is "unknown", finalDob remains null and isAgeExact remains false
@@ -132,8 +156,8 @@ export default function AddPetScreen({ navigation }) {
         isNeutered,
         microchip: microchip.trim() || "N/A",
         allergies: allergies.trim() || "None",
-        dob: finalDob, // Will be null if they don't know
-        isAgeExact, // True, False, or False
+        dob: finalDob,
+        isAgeExact,
         createdAt: Timestamp.now(),
         status: "active",
       });
@@ -165,118 +189,103 @@ export default function AddPetScreen({ navigation }) {
 
           {/* 1. BASIC INFO */}
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>1. Basic Demographics</Text>
+            <Text style={styles.sectionTitle}>1. Basic Info</Text>
 
-            <Text style={styles.label}>Pet Name *</Text>
+            <Text style={styles.label}>Patient Name (*)</Text>
             <TextInput
               style={styles.input}
               value={name}
               onChangeText={setName}
-              placeholder="e.g. Bantay"
+              placeholder="e.g. Buddy"
               placeholderTextColor="#aaa"
             />
 
-            <View style={styles.row}>
-              <View style={{ flex: 1, marginRight: 5 }}>
-                <Text style={styles.label}>Species</Text>
-                <View style={styles.toggleRow}>
-                  <TouchableOpacity
-                    style={[
-                      styles.toggleBtn,
-                      species === "Canine" && styles.activeBtn,
-                    ]}
-                    onPress={() => handleSpeciesChange("Canine")}
-                  >
-                    <Text
-                      style={[
-                        styles.toggleText,
-                        species === "Canine" && styles.activeText,
-                      ]}
-                    >
-                      Dog
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.toggleBtn,
-                      species === "Feline" && styles.activeBtn,
-                    ]}
-                    onPress={() => handleSpeciesChange("Feline")}
-                  >
-                    <Text
-                      style={[
-                        styles.toggleText,
-                        species === "Feline" && styles.activeText,
-                      ]}
-                    >
-                      Cat
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-              <View style={{ flex: 1, marginLeft: 5 }}>
-                <Text style={styles.label}>Gender</Text>
-                <View style={styles.toggleRow}>
-                  <TouchableOpacity
-                    style={[
-                      styles.toggleBtn,
-                      gender === "Male" && styles.activeBtn,
-                    ]}
-                    onPress={() => setGender("Male")}
-                  >
-                    <Text
-                      style={[
-                        styles.toggleText,
-                        gender === "Male" && styles.activeText,
-                      ]}
-                    >
-                      Male
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.toggleBtn,
-                      gender === "Female" && styles.activeBtn,
-                    ]}
-                    onPress={() => setGender("Female")}
-                  >
-                    <Text
-                      style={[
-                        styles.toggleText,
-                        gender === "Female" && styles.activeText,
-                      ]}
-                    >
-                      Female
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
+            <Text style={styles.label}>Species (*)</Text>
+            <View style={styles.toggleRow}>
+              <TouchableOpacity
+                style={[
+                  styles.toggleBtn,
+                  species === "Canine" && styles.activeBtn,
+                ]}
+                onPress={() => handleSpeciesChange("Canine")}
+              >
+                <Text
+                  style={[
+                    styles.toggleText,
+                    species === "Canine" && styles.activeText,
+                  ]}
+                >
+                  Canine
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.toggleBtn,
+                  species === "Feline" && styles.activeBtn,
+                ]}
+                onPress={() => handleSpeciesChange("Feline")}
+              >
+                <Text
+                  style={[
+                    styles.toggleText,
+                    species === "Feline" && styles.activeText,
+                  ]}
+                >
+                  Feline
+                </Text>
+              </TouchableOpacity>
             </View>
 
-            <Text style={styles.label}>Breed *</Text>
+            <Text style={styles.label}>Gender (*)</Text>
+            <View style={styles.toggleRow}>
+              <TouchableOpacity
+                style={[styles.toggleBtn, gender === "Male" && styles.activeBtn]}
+                onPress={() => setGender("Male")}
+              >
+                <Text
+                  style={[
+                    styles.toggleText,
+                    gender === "Male" && styles.activeText,
+                  ]}
+                >
+                  Male
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.toggleBtn,
+                  gender === "Female" && styles.activeBtn,
+                ]}
+                onPress={() => setGender("Female")}
+              >
+                <Text
+                  style={[
+                    styles.toggleText,
+                    gender === "Female" && styles.activeText,
+                  ]}
+                >
+                  Female
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.label}>Breed (*)</Text>
             <TouchableOpacity
               style={styles.selectBtn}
               onPress={() => setShowBreedModal(true)}
             >
-              <Text
-                style={{
-                  color: breed ? "#333" : "#aaa",
-                  fontSize: 16,
-                  fontWeight: breed ? "600" : "400",
-                }}
-              >
-                {breed ||
-                  `Select ${species === "Canine" ? "Dog" : "Cat"} Breed`}
+              <Text style={{ color: breed ? "#333" : "#aaa" }}>
+                {breed || "Select breed..."}
               </Text>
-              <Text style={{ color: "#8B4513" }}>▼</Text>
+              <Text style={{ color: "#8B4513", fontWeight: "900" }}>▼</Text>
             </TouchableOpacity>
 
-            <Text style={styles.label}>Color / Markings *</Text>
+            <Text style={styles.label}>Primary Color / Markings (*)</Text>
             <TextInput
               style={styles.input}
               value={color}
               onChangeText={setColor}
-              placeholder="e.g. Brown with white paws"
+              placeholder="e.g. Golden, Black & White"
               placeholderTextColor="#aaa"
             />
           </View>

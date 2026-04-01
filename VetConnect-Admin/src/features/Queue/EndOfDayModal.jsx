@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
-  Dialog, DialogTitle, DialogContent, DialogActions, 
-  Button, Typography, List, ListItem, Box, Chip,
-  ToggleButtonGroup, ToggleButton, Divider, Stack, Paper 
+  Box, Typography, Button, Stack, Paper, 
+  ToggleButtonGroup, ToggleButton, List, ListItem, Divider,
+  Menu, MenuItem, ListItemIcon, ListItemText, IconButton, TextField, CircularProgress
 } from '@mui/material';
 
 // Icons
@@ -13,173 +13,569 @@ import DoNotDisturbIcon from '@mui/icons-material/DoNotDisturb';
 import PetsIcon from '@mui/icons-material/Pets';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh'; 
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital'; 
+import SmartphoneIcon from '@mui/icons-material/Smartphone'; 
+import AlternateEmailIcon from '@mui/icons-material/AlternateEmail';
+import FemaleIcon from '@mui/icons-material/Female';
+import MaleIcon from '@mui/icons-material/Male';
+import HelpCenterIcon from '@mui/icons-material/HelpCenter';
+import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
+import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
+import { getDoc, doc, query, collection, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import { db } from '../../firebaseConfig';
+import TwitterIcon from '@mui/icons-material/Twitter'; 
+
+const sidebarWidth = 260; // Absolute mapping from Sidebar.jsx
+const CARD_HEIGHT = 240;  // STRICT clinical geometry for vertical rhythm
+
+// HELPER: To keep consistency with main grid
+const formatDuration = (mins) => {
+  const m = Math.abs(mins);
+  if (m < 60) return `${m}M`;
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  return rem > 0 ? `${h}H ${rem}M` : `${h}H`;
+};
+
+// HELPER: Species Icon Logic (Hardened for Feline/Canine Distinctions)
+const getSpeciesIcon = (species) => {
+  const s = String(species || "").toLowerCase();
+  
+  // NOTE: Standard MUI only has PetsIcon (Paw). We distinguish by flipping/styling.
+  if (s === 'dog' || s === 'canine') {
+    return <PetsIcon sx={{ fontSize: 32, color: '#5D4037' }} />; 
+  }
+  
+  if (s === 'cat' || s === 'feline') {
+    // FELINE DISTINCTION: Mirrored Paw + Slightly lighter tone
+    return <PetsIcon sx={{ fontSize: 32, transform: 'scaleX(-1) rotate(-15deg)', color: '#8D6E63' }} />; 
+  }
+  
+  if (s === 'bird' || s === 'avian') return <TwitterIcon sx={{ fontSize: 32, color: '#3949AB' }} />;
+  
+  return <PetsIcon sx={{ fontSize: 32, opacity: 0.4, color: '#9E9E9E' }} />; 
+};
 
 export default function EndOfDayModal({ 
-  open, onClose, leftoverPatients, patientResolutions, 
-  onResolutionChange, onBulkResolution, onConfirmReset, isForced, departments 
+  open, leftoverPatients, patientResolutions, 
+  onResolutionChange, onBulkResolution, onConfirmReset, isForced, departments, onClose 
 }) {
-  return (
-    <Dialog 
-      open={open} 
-      onClose={isForced ? null : onClose} 
-      disableEscapeKeyDown={isForced}
-      maxWidth="md" 
-      fullWidth
-      PaperProps={{
-        sx: {
-          borderRadius: 3,
-          backgroundColor: 'rgba(255, 255, 255, 0.95)',
-          backdropFilter: 'blur(20px)',
-          boxShadow: '0 12px 40px rgba(0,0,0,0.2)'
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [exitConfirm, setExitConfirm] = useState(false);
+  
+  // DNA CORRECTION STATE
+  const [genderAnchor, setGenderAnchor] = useState(null);
+  const [targetedPid, setTargetedPid] = useState(null);
+
+  // SCHEDULING & ANCESTRY STATE
+  const [targetDates, setTargetDates] = useState({}); // { pid: DateString }
+  const [ancestorData, setAncestorData] = useState({}); // { pid: { milestones: [], currentIdx: 0 } }
+  const [loadingHistory, setLoadingHistory] = useState({});
+
+  if (!open) return null;
+
+  const handleProcessClick = () => {
+    if (!isConfirming) {
+      setIsConfirming(true);
+      setTimeout(() => setIsConfirming(false), 3000);
+    } else {
+      onConfirmReset(targetDates);
+      setIsConfirming(false);
+    }
+  };
+
+  const handleFetchHistory = async (patient) => {
+     let originId = patient.originApptId;
+     
+     setLoadingHistory(prev => ({ ...prev, [patient.id]: true }));
+     try {
+        let ancestorDoc = null;
+
+        if (originId) {
+           const snap = await getDoc(doc(db, "appointments", originId));
+           if (snap.exists()) ancestorDoc = snap;
+        } else {
+           // FORENSIC FALLBACK: Search for the most recent previous appointment for this pet
+           const qAnc = query(
+              collection(db, "appointments"),
+              where("petId", "==", patient.petId),
+              where("createdAt", "<", patient.createdAt),
+              orderBy("createdAt", "desc"),
+              limit(1)
+           );
+           const snap = await getDocs(qAnc);
+           if (!snap.empty) ancestorDoc = snap.docs[0];
         }
-      }}
-    >
-      <DialogTitle sx={{ 
-        background: isForced ? 'linear-gradient(135deg, #D32F2F 0%, #B71C1C 100%)' : 'linear-gradient(135deg, #E65100 0%, #BF360C 100%)',
-        color: 'white', fontWeight: '900', display: 'flex', alignItems: 'center', gap: 1.5,
-        textTransform: 'uppercase', letterSpacing: 1, py: 2.5
-      }}>
-        <WarningAmberIcon fontSize="large" /> 
-        {isForced ? "Mandatory Daily Reconciliation" : "End-of-Day Cleanup"}
-      </DialogTitle>
+
+        if (ancestorDoc) {
+           const data = ancestorDoc.data();
+           const prevMilestones = [
+              { id: 'booked', label: 'BOOKED', val: data.createdAt },
+              { id: 'scheduled', label: 'SCHED', val: data.jsScheduled },
+              { id: 'arrived', label: 'ARRIVED', val: data.timeArrived },
+              { id: 'started', label: 'STARTED', val: data.timeStarted }
+           ].filter(m => m.val);
+
+           setAncestorData(prev => ({ 
+              ...prev, 
+              [patient.id]: { 
+                 milestones: prevMilestones, 
+                 caseDay: (patient.caseDay || 1) + 1,
+                 dateLabel: data.createdAt?.toDate ? data.createdAt.toDate().toLocaleDateString() : 'Previous' 
+              } 
+           }));
+        } else {
+           alert("No further ancestry found for this clinical case.");
+        }
+     } catch (err) { console.error("History fetch failed:", err); }
+     setLoadingHistory(prev => ({ ...prev, [patient.id]: false }));
+  };
+
+  const handleExitClick = () => {
+    if (!exitConfirm) {
+      setExitConfirm(true);
+      setTimeout(() => setExitConfirm(false), 3000);
+    } else {
+      onClose();
+      setExitConfirm(false);
+    }
+  };
+
+  const handleGenderOpen = (e, pid) => {
+    setTargetedPid(pid);
+    setGenderAnchor(e.currentTarget);
+  };
+
+  const handleGenderSelect = (gender) => {
+     // Here we simulate healing the local record for the session
+     const p = leftoverPatients.find(item => item.id === targetedPid);
+     if (p) {
+        p.petGender = gender;
+        p.gender = gender; // Ensure all keys are healed
+     }
+     setGenderAnchor(null);
+  };
+
+  return (
+    <Box sx={{ 
+      position: 'fixed', top: 0, left: sidebarWidth, right: 0, bottom: 0, 
+      width: `calc(100% - ${sidebarWidth}px)`,
+      zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      bgcolor: 'rgba(255, 255, 255, 0.45)', backdropFilter: 'blur(30px)',
+      animation: 'fadeIn 0.2s ease-out', p: 4
+    }}>
+      <style>{`
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+      `}</style>
       
-      <DialogContent dividers sx={{ bgcolor: 'rgba(250, 250, 250, 0.5)', p: 0 }}>
+      <Paper elevation={0} sx={{ 
+        width: '98%', maxWidth: '1440px', maxHeight: '94vh', 
+        display: 'flex', flexDirection: 'column',
+        borderRadius: 2, border: '2px solid #5D4037', overflow: 'hidden',
+        boxShadow: '0 32px 100px rgba(93, 64, 55, 0.45)'
+      }}>
         
-        {/* INSTRUCTIONS AREA */}
-        <Box sx={{ p: 3, pb: 2, borderBottom: '1px solid #E0E0E0', bgcolor: 'white', display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Box sx={{ width: 40, height: 40, borderRadius: 2, bgcolor: isForced ? '#FFEBEE' : '#FFF3E0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <WarningAmberIcon sx={{ color: isForced ? '#D32F2F' : '#E65100' }} />
+        {/* HEADER: CLINICAL ZOOM STYLE */}
+        <Box sx={{ 
+          bgcolor: '#5D4037', color: 'white', p: 2.5, 
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+        }}>
+          <Stack direction="row" spacing={2} alignItems="center" sx={{ width: '100%' }}>
+            <WarningAmberIcon fontSize="large" sx={{ color: '#FFD180' }} />
+            <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Typography variant="h5" sx={{ fontWeight: '1000', textTransform: 'uppercase', whiteSpace: 'nowrap', letterSpacing: 1.2, fontSize: '1.25rem' }}>
+                FORENSIC RECONCILIATION
+              </Typography>
+              <Box sx={{ flex: 1, borderBottom: '2px dashed rgba(255,255,255,0.3)', mx: 1, height: '2px' }} />
+              <Typography variant="h5" sx={{ fontWeight: '1000', color: '#FFD180', fontSize: '1.25rem' }}>
+                {leftoverPatients.length} {leftoverPatients.length === 1 ? 'RECORD' : 'RECORDS'}
+              </Typography>
             </Box>
-            <Typography variant="body2" sx={{ color: '#555', fontWeight: isForced ? 'bold' : '500', fontSize: '0.95rem' }}>
-            {isForced 
-                ? "You cannot begin today's queue until you resolve these abandoned patient records from previous days. Please select a final action for each."
-                : "Please triage the remaining patients on the board. Unresolved non-confined patients will default to Cancelled."}
-            </Typography>
+          </Stack>
         </Box>
 
-        {/* BULK ACTION TOOLBAR */}
+        {/* BULK ACTION TOOLBAR (GOD-VIEW STYLE) */}
         {leftoverPatients.length > 1 && (
-          <Box sx={{ px: 3, py: 1.5, bgcolor: '#E3F2FD', borderBottom: '1px solid #BBDEFB', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-             <Typography variant="caption" fontWeight="900" color="#1565C0" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, textTransform: 'uppercase' }}>
-                <AutoFixHighIcon fontSize="small" /> Quick Apply to All (Unlocked)
+          <Box sx={{ px: 3, py: 1.2, bgcolor: '#FAFAFA', borderBottom: '2px solid #5D4037', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+             <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+                 BATCH ACTION WIZARD (UNLOCKED)
              </Typography>
-             <Stack direction="row" spacing={1}>
-                <Button size="small" variant="outlined" color="success" sx={{ bgcolor: 'white', fontWeight: 'bold' }} onClick={() => onBulkResolution('rebook')}>
-                  All Re-book
+             <Stack direction="row" spacing={0} sx={{ border: '2px solid #5D4037', borderRadius: 1.2, overflow: 'hidden' }}>
+                <Button size="small" sx={{ borderRadius: 0, px: 3, py: 0.6, color: '#5D4037', fontWeight: '1000', fontSize: '0.75rem', '&:hover': { bgcolor: '#E8F5E9' } }} onClick={() => onBulkResolution('rebook')}>
+                  ALL RE-BOOK
                 </Button>
-                <Button size="small" variant="outlined" color="warning" sx={{ bgcolor: 'white', fontWeight: 'bold' }} onClick={() => onBulkResolution('no-show')}>
-                  All No-Show
+                <Divider orientation="vertical" flexItem sx={{ borderRightWidth: 2, borderColor: '#5D4037' }} />
+                <Button size="small" sx={{ borderRadius: 0, px: 3, py: 0.6, color: '#5D4037', fontWeight: '1000', fontSize: '0.75rem', '&:hover': { bgcolor: '#FFF3E0' } }} onClick={() => onBulkResolution('no-show')}>
+                  ALL NO-SHOW
                 </Button>
-                <Button size="small" variant="outlined" color="error" sx={{ bgcolor: 'white', fontWeight: 'bold' }} onClick={() => onBulkResolution('cancel')}>
-                  All Cancel
+                <Divider orientation="vertical" flexItem sx={{ borderRightWidth: 2, borderColor: '#5D4037' }} />
+                <Button size="small" sx={{ borderRadius: 0, px: 3, py: 0.6, color: '#5D4037', fontWeight: '1000', fontSize: '0.75rem', '&:hover': { bgcolor: '#FFEBEE' } }} onClick={() => onBulkResolution('cancel')}>
+                  ALL CANCEL
                 </Button>
              </Stack>
           </Box>
         )}
 
-        <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {leftoverPatients.map((patient) => {
-            const isConfined = patient.status === 'confined';
-            const resolution = isConfined ? 'confined' : (patientResolutions[patient.id] || 'cancel');
+        {/* CONTENT AREA: HIGH DENSITY LIST WITH SCROLLING */}
+        <Box sx={{ flex: 1, overflowY: 'auto', p: 3, bgcolor: '#F5F5F5' }}>
+          <Stack spacing={3}>
+            {leftoverPatients.map((patient) => {
+              const isConfined = patient.status === 'confined';
+              const resolution = isConfined ? 'confined' : (patientResolutions[patient.id] || 'cancel');
+              
+              const milestones = [
+                { id: 'booked', label: 'BOOKED', val: patient.createdAt },
+                { id: 'scheduled', label: 'SCHED', val: patient.jsScheduled },
+                { id: 'arrived', label: 'ARRIVED', val: patient.timeArrived },
+                { id: 'started', label: 'STARTED', val: patient.timeStarted }
+              ].filter(m => m.val);
 
-            let borderColor, bgTint;
-            if (isConfined) { borderColor = '#90CAF9'; bgTint = '#F3E5F5'; }
-            else if (resolution === 'rebook') { borderColor = '#81C784'; bgTint = '#F1F8E9'; }
-            else if (resolution === 'no-show') { borderColor = '#FFB74D'; bgTint = '#FFF8E1'; }
-            else { borderColor = '#E57373'; bgTint = '#FFEBEE'; }
+              const totalEstMins = (patient.services || []).reduce((sum, s) => sum + (Number(s.duration || s.estMinutes) || 0), 0);
+              const totalPrice = (patient.services || []).reduce((sum, s) => sum + (Number(s.price) || 0), 0);
 
-            // --- THE DYNAMIC COLOR ENGINE ---
-            const serviceCategory = patient.serviceCategory || 'General';
-            const deptObj = (departments || []).find(d => d.name === serviceCategory);
-            const badgeColor = deptObj ? deptObj.color : '#424242'; // Default to dark grey
+              // THE FIX: DNA Symbol Restoration & Forensic Labeling
+              const rawGender = patient.petGender || patient.gender || patient.petSex || patient.sex || '';
+              const upGender = rawGender.toUpperCase();
+              const isUnknownGender = !rawGender || upGender === 'UNKNOWN' || upGender === 'SEX UNK' || upGender === '???' || upGender === 'IDENTITY UNKNOWN';
+              
+              const isFemale = upGender.startsWith('F');
+              const isMale = upGender.startsWith('M');
 
-            return (
-              <Paper 
-                key={patient.id} elevation={0}
+              const petGenderLabel = isUnknownGender ? 'IDENTITY UNKNOWN' : upGender;
+              const petGenderColor = isUnknownGender ? '#D32F2F' : '#5D4037';
+              
+              const petFixedStr = patient.petIsNeutered || patient.isNeutered ? 'FIXED' : 'INTACT';
+
+              return (
+                <Paper key={patient.id} elevation={0} sx={{ 
+                  borderRadius: 1.5, border: '2px solid #5D4037', display: 'flex', bgcolor: 'white',
+                  overflow: 'hidden', position: 'relative', height: CARD_HEIGHT
+                }}>
+                  {/* 1. PATIENT IDENTITY (280px) */}
+                  <Box sx={{ width: 280, borderRight: '2px solid #5D4037', p: 2, bgcolor: '#FAFAFA', display: 'flex', flexDirection: 'column' }}>
+                     <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1.5 }}>
+                        <Box sx={{ width: 56, height: 56, borderRadius: 1.2, border: '2px solid #5D4037', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#FFF', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+                           {getSpeciesIcon(patient.petSpecies)}
+                        </Box>
+                        <Box sx={{ minWidth: 0 }}>
+                           <Typography variant="h6" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: -0.5, lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{patient.petName}</Typography>
+                           <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', textTransform: 'uppercase', fontSize: '0.62rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
+                             {patient.petSpecies || 'UNK'} • {patient.petBreed || 'MIXED'}
+                           </Typography>
+                           <Typography 
+                             variant="caption" 
+                             onClick={(e) => handleGenderOpen(e, patient.id)}
+                             sx={{ 
+                               fontWeight: '1000', color: petGenderColor, textTransform: 'uppercase', fontSize: '0.62rem', 
+                               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 0.5, mt: -0.2,
+                               cursor: 'pointer', '&:hover': { opacity: 0.7, textDecoration: 'underline' }
+                             }}
+                           >
+                             {isFemale ? <FemaleIcon sx={{ fontSize: 13, color: '#E91E63' }} /> : isMale ? <MaleIcon sx={{ fontSize: 13, color: '#1976D2' }} /> : <HelpCenterIcon sx={{ fontSize: 13, color: '#D32F2F' }} />}
+                             {petGenderLabel} • {petFixedStr}
+                           </Typography>
+                        </Box>
+                     </Stack>
+
+                     <Divider sx={{ mb: 1.5, borderBottomWidth: 2, borderStyle: 'dashed' }} />
+
+                     <Box sx={{ mb: 1 }}>
+                        <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', display: 'block', mb: 0.3, letterSpacing: 0.8, fontSize: '0.6rem' }}>OWNER IDENTITY</Typography>
+                        <Typography variant="subtitle2" sx={{ fontWeight: '1000', color: '#1A1A1A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{patient.ownerName?.toUpperCase()}</Typography>
+                        <Stack spacing={0.3} sx={{ mt: 0.5 }}>
+                           {patient.ownerPhone || patient.ownerEmail ? (
+                             <>
+                               {patient.ownerPhone && (
+                                 <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: '#5D4037', fontWeight: '800', fontSize: '0.6rem' }}>
+                                    <SmartphoneIcon sx={{ fontSize: 12 }} /> {patient.ownerPhone}
+                                 </Typography>
+                               )}
+                               {patient.ownerEmail && (
+                                 <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: '#5D4037', fontWeight: '800', opacity: 0.8, fontSize: '0.6rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    <AlternateEmailIcon sx={{ fontSize: 12 }} /> {patient.ownerEmail}
+                                 </Typography>
+                               )}
+                             </>
+                           ) : (
+                             <Typography variant="caption" sx={{ fontWeight: '1000', color: '#D32F2F', fontSize: '0.6rem', fontStyle: 'italic', opacity: 0.8 }}>
+                                NO CONTACT REGISTERED
+                             </Typography>
+                           )}
+                        </Stack>
+                     </Box>
+
+                     <Box sx={{ mt: 'auto', p: 1, border: '1px solid #D7CCC8', bgcolor: 'rgba(93, 64, 55, 0.04)' }}>
+                        <Typography variant="caption" sx={{ fontWeight: '1000', color: '#5D4037', display: 'block', mb: 0.2, letterSpacing: 0.5, fontSize: '0.55rem' }}>CLOSING STATUS</Typography>
+                        <Typography variant="body2" sx={{ fontWeight: '1000', color: '#E65100', fontSize: '0.72rem', textTransform: 'uppercase' }}>
+                           {patient.status}
+                        </Typography>
+                     </Box>
+                  </Box>
+
+                  {/* 2. SERVICE WATERFALL LEDGER (SYMMETRIC 300px) */}
+                  <Box sx={{ width: 300, borderRight: '2px solid #5D4037', bgcolor: '#FFF', display: 'flex', flexDirection: 'column' }}>
+                     <Box sx={{ p: 1.2, borderBottom: '1px solid #eee', bgcolor: '#FAFAFA' }}>
+                        <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1, display: 'block', fontSize: '0.6rem' }}>
+                          🏥 SERVICES ({patient.services?.length || 0})
+                        </Typography>
+                     </Box>
+                     <List sx={{ p: 0, flex: 1, overflowY: 'auto' }}>
+                        {(patient.services || []).map((svc, i) => {
+                           const deptObj = (departments || []).find(d => d.name === svc.department);
+                           const bColor = deptObj ? deptObj.color : '#616161';
+                           return (
+                             <ListItem key={i} sx={{ px: 1.2, py: 0.8, borderLeft: `6px solid ${bColor}`, borderBottom: '1px solid #eee', display: 'block' }}>
+                               <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                                 <Typography variant="caption" sx={{ fontWeight: '1000', textTransform: 'uppercase', fontSize: '0.62rem', lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, pr: 1 }}>
+                                    {svc.name}
+                                 </Typography>
+                                 <Typography variant="caption" sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '0.6rem', textAlign: 'right', minWidth: '40px' }}>
+                                    ₱{Number(svc.price || 0).toLocaleString()}
+                                 </Typography>
+                               </Stack>
+                               <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 0.2 }}>
+                                 <Typography variant="caption" sx={{ color: svc.staffName ? '#5D4037' : '#D32F2F', fontWeight: '900', fontSize: '0.55rem', display: 'flex', alignItems: 'center', gap: 0.3 }}>
+                                    {svc.staffName ? `👤 ${svc.staffName}` : '❌ UNASSIGNED'}
+                                 </Typography>
+                                 <Typography variant="caption" sx={{ fontWeight: '800', color: '#9E9E9E', fontSize: '0.55rem' }}>
+                                    {svc.duration || svc.estMinutes || 0}M
+                                 </Typography>
+                               </Stack>
+                             </ListItem>
+                           );
+                        })}
+                     </List>
+                     <Box sx={{ mt: 'auto', p: 1.5, borderTop: '2px solid #5D4037', bgcolor: '#FAFAFA', display: 'flex', justifyContent: 'space-between' }}>
+                         <Box>
+                            <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', fontSize: '0.52rem', display: 'block' }}>EST. TIME</Typography>
+                            <Typography sx={{ fontWeight: '1000', fontSize: '0.75rem', color: '#5D4037' }}>{totalEstMins}M</Typography>
+                         </Box>
+                         <Box sx={{ textAlign: 'right' }}>
+                            <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', fontSize: '0.52rem', display: 'block' }}>TOTAL VALUE</Typography>
+                            <Typography sx={{ fontWeight: '1000', fontSize: '0.75rem', color: '#1B5E20' }}>₱{totalPrice.toLocaleString()}</Typography>
+                         </Box>
+                     </Box>
+                  </Box>
+
+                  {/* 3. FORENSIC TEMPORAL AUDIT (SYMMETRIC 300px) */}
+                  <Box sx={{ width: 300, borderRight: '2px solid #5D4037', bgcolor: '#FAFAFA', p: 1.5, display: 'flex', flexDirection: 'column' }}>
+                     <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
+                        <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1.2, fontSize: '0.6rem' }}>
+                           ⌛ {ancestorData[patient.id] ? `DAY ${ancestorData[patient.id].caseDay}` : `DAY ${patient.caseDay || 1}`} • {ancestorData[patient.id]?.dateLabel || 'TEMPORAL AUDIT'}
+                        </Typography>
+                        <Stack direction="row" spacing={0.5}>
+                           <IconButton 
+                             size="small" 
+                             onClick={() => handleFetchHistory(patient)} 
+                             disabled={!!ancestorData[patient.id] || loadingHistory[patient.id]}
+                             sx={{ border: '1px solid #D7CCC8' }}
+                           >
+                              {loadingHistory[patient.id] ? <CircularProgress size={12} /> : <ArrowBackIosNewIcon sx={{ fontSize: 10 }} />}
+                           </IconButton>
+                           <IconButton 
+                             size="small" 
+                             onClick={() => setAncestorData(prev => { const d = {...prev}; delete d[patient.id]; return d; })} 
+                             disabled={!ancestorData[patient.id]}
+                             sx={{ border: '1px solid #D7CCC8' }}
+                           >
+                              <ArrowForwardIosIcon sx={{ fontSize: 10 }} />
+                           </IconButton>
+                        </Stack>
+                     </Stack>
+                     
+                     <Stack spacing={1.5} sx={{ position: 'relative', pl: 2.2, flex: 1, overflowY: 'auto' }}>
+                        <Box sx={{ position: 'absolute', left: 8, top: 4, bottom: 4, width: '2px', borderLeft: '2px dashed #D7CCC8' }} />
+                        {(ancestorData[patient.id]?.milestones || milestones).map((m, idx) => {
+                           const date = m.val.toDate ? m.val.toDate() : new Date(m.val);
+                           const isLast = idx === (ancestorData[patient.id]?.milestones || milestones).length - 1;
+                           
+                           let metricLabel = null;
+                           if (m.id === 'arrived') {
+                             const schVal = patient.jsScheduled;
+                             if (schVal) {
+                               const schD = schVal.toDate ? schVal.toDate() : new Date(schVal);
+                               const diff = Math.floor((date - schD) / 60000);
+                               metricLabel = `Punctuality: ${formatDuration(diff)} ${diff > 0 ? 'Late' : 'Early'}`;
+                             }
+                           } else if (m.id === 'started') {
+                             const arr = (ancestorData[patient.id]?.milestones || milestones).find(i => i.id === 'arrived');
+                             if (arr) {
+                               const arrD = arr.val.toDate ? arr.val.toDate() : new Date(arr.val);
+                               metricLabel = `Lobby Wait: ${formatDuration(Math.floor((date - arrD) / 60000))}`;
+                             }
+                           }
+
+                           return (
+                             <Box key={m.id} sx={{ position: 'relative' }}>
+                               <Box sx={{ position: 'absolute', left: -20, top: 4, width: 8, height: 8, borderRadius: '50%', bgcolor: isLast ? '#2E7D32' : '#9E9E9E', border: '2px solid white' }} />
+                               <Typography variant="caption" sx={{ fontWeight: '1000', color: isLast ? '#2E7D32' : '#9E9E9E', fontSize: '0.58rem', display: 'block', letterSpacing: 0.3 }}>{m.label}</Typography>
+                               <Typography sx={{ fontWeight: '1000', fontSize: '0.8rem', color: '#1A1A1A' }}>
+                                 {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                               </Typography>
+                               {metricLabel && (
+                                 <Typography variant="caption" sx={{ fontStyle: 'italic', fontWeight: '1000', fontSize: '0.55rem', color: '#5D4037', mt: -0.2, display: 'block', textTransform: 'uppercase' }}>
+                                    ↳ {metricLabel}
+                                 </Typography>
+                               )}
+                             </Box>
+                           );
+                        })}
+                     </Stack>
+
+                     <Box sx={{ mt: 'auto', pt: 1.5, borderTop: '2px solid #5D4037', display: 'flex', justifyContent: 'space-between' }}>
+                         <Box>
+                            <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', fontSize: '0.52rem', display: 'block' }}>PUNCTUALITY</Typography>
+                            <Typography sx={{ fontWeight: '1000', fontSize: '0.75rem', color: '#2E7D32' }}>
+                               {(() => {
+                                  const arr = (ancestorData[patient.id]?.milestones || milestones).find(i => i.id === 'arrived');
+                                  const schVal = patient.jsScheduled;
+                                  if (!arr || !schVal) return 'N/A';
+                                  const arrD = arr.val.toDate ? arr.val.toDate() : new Date(arr.val);
+                                  const schD = schVal.toDate ? schVal.toDate() : new Date(schVal);
+                                  const diff = Math.floor((arrD - schD) / 60000);
+                                  if (Math.abs(diff) <= 5) return 'ON-TIME';
+                                  return `${formatDuration(Math.abs(diff))} ${diff > 0 ? 'LATE' : 'EARLY'}`;
+                               })()}
+                            </Typography>
+                         </Box>
+                         <Box sx={{ textAlign: 'right' }}>
+                            <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', fontSize: '0.52rem', display: 'block' }}>TOTAL WAIT</Typography>
+                            <Typography sx={{ fontWeight: '1000', fontSize: '0.75rem', color: '#5D4037' }}>
+                               {(() => {
+                                  const arr = (ancestorData[patient.id]?.milestones || milestones).find(i => i.id === 'arrived');
+                                  if (!arr) return 'N/A';
+                                  const arrD = arr.val.toDate ? arr.val.toDate() : new Date(arr.val);
+                                  return formatDuration(Math.floor((new Date() - arrD) / 60000));
+                               })()}
+                            </Typography>
+                         </Box>
+                     </Box>
+                  </Box>
+
+                  {/* 4. RECOMMENDATION & VERDICT (FLEX) */}
+                  <Box sx={{ flex: 1, p: 2, display: 'flex', flexDirection: 'column' }}>
+                     <Box sx={{ p: 1.5, bgcolor: '#FFF3E0', border: '1px solid #FFE0B2', borderRadius: 1.2, mb: 1.5 }}>
+                        <Typography variant="caption" sx={{ fontWeight: '1000', color: '#E65100', textTransform: 'uppercase', letterSpacing: 1, display: 'block', mb: 0.3, fontSize: '0.6rem' }}>
+                           🧠 CLINICAL INTELLIGENCE
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '0.78rem', lineHeight: 1.4 }}>
+                           {patient.status === 'in-consult' || patient.status === 'dispensing' ? 
+                             "CRITICAL: Finalize patient data. Re-book to capture clinical billing and medical notes to prevent revenue leakage." : 
+                            patient.status === 'arrived' ? 
+                             "SERVICE FAILURE detected. Patient check-in recorded but consult never started. Suggest Re-book for priority recovery." :
+                             "RECORD EXPIRED: No-show detected. Forensic purge recommended to maintain board accuracy."}
+                        </Typography>
+                     </Box>
+
+                     <Box sx={{ mt: 'auto' }}>
+                        <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 2, display: 'block', mb: 1, fontSize: '0.6rem' }}>
+                           FORENSIC VERDICT
+                        </Typography>
+                        <ToggleButtonGroup
+                           value={resolution}
+                           exclusive
+                           onChange={(e, newAction) => { if(newAction) onResolutionChange(patient.id, newAction) }}
+                           sx={{ 
+                             width: '100%', gap: 0.8,
+                             '& .MuiToggleButton-root': { 
+                               borderRadius: 1.2, border: '2px solid #5D4037 !important', flex: 1, height: '36px',
+                               fontWeight: '1000', textTransform: 'uppercase', letterSpacing: 1.2, fontSize: '0.68rem',
+                               bgcolor: '#FFF',
+                               '&.Mui-selected': { bgcolor: '#5D4037', color: 'white', '&:hover': { bgcolor: '#3E2723' } }
+                             }
+                           }}
+                        >
+                           <ToggleButton value="rebook"><EventRepeatIcon sx={{mr:0.5, fontSize: 16}} /> Re-book</ToggleButton>
+                           <ToggleButton value="no-show"><HelpOutlineIcon sx={{mr:0.5, fontSize: 16}} /> No-Show</ToggleButton>
+                           <ToggleButton value="cancel"><DoNotDisturbIcon sx={{mr:0.5, fontSize: 16}} /> Cancel</ToggleButton>
+                        </ToggleButtonGroup>
+                        
+                        {resolution === 'rebook' && (
+                           <Box sx={{ mt: 1.5, p: 1.2, border: '2px solid #5D4037', borderRadius: 1.2, bgcolor: '#FFF' }}>
+                              <Typography variant="caption" sx={{ fontWeight: '1000', color: '#5D4037', display: 'block', mb: 0.5, fontSize: '0.6rem' }}>
+                                 TARGET RE-BOOK DATE
+                              </Typography>
+                              <TextField 
+                                 type="date"
+                                 size="small"
+                                 fullWidth
+                                 value={targetDates[patient.id] || new Date(new Date().setDate(new Date().getDate() + 1)).toISOString().split('T')[0]}
+                                 onChange={(e) => setTargetDates(prev => ({ ...prev, [patient.id]: e.target.value }))}
+                                 InputProps={{ sx: { fontWeight: '1000', fontSize: '0.75rem' } }}
+                              />
+                           </Box>
+                        )}
+                     </Box>
+                  </Box>
+                </Paper>
+              );
+            })}
+          </Stack>
+        </Box>
+
+        {/* FOOTER */}
+        <Box sx={{ px: 3, py: 2, borderTop: '2px solid #5D4037', display: 'flex', justifyContent: 'space-between', alignItems: 'center', bgcolor: 'white' }}>
+           <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', maxWidth: '600px', lineHeight: 1.3, fontSize: '0.72rem' }}>
+              RECONCILIATION PROTOCOL: Historical records analyzed here will be purged from the live grid and transitioned to permanent clinical archive. Processing will unlock the current day's queue.
+           </Typography>
+           
+           <Stack direction="row" spacing={2}>
+              <Button 
+                variant={exitConfirm ? "contained" : "outlined"} 
+                onClick={handleExitClick}
                 sx={{ 
-                  display: 'flex', alignItems: 'center', border: '2px solid', borderColor: borderColor, 
-                  bgcolor: 'white', borderRadius: 3, overflow: 'hidden',
-                  transition: 'all 0.2s ease-in-out', boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+                   borderRadius: 1.5, 
+                   borderColor: '#5D4037', 
+                   bgcolor: exitConfirm ? '#5D4037' : 'transparent',
+                   color: exitConfirm ? 'white' : '#5D4037', 
+                   fontWeight: '1000', px: 4,
+                   '&:hover': { 
+                      bgcolor: exitConfirm ? '#3E2723' : 'rgba(93, 64, 55, 0.05)', 
+                      borderColor: '#3E2723' 
+                   },
+                   transition: 'all 0.2s ease-out'
                 }}
               >
-                
-                {/* LEFT SIDE: Patient Identity */}
-                <Box sx={{ flex: 1, p: 2.5, bgcolor: bgTint, display: 'flex', gap: 2, alignItems: 'center' }}>
-                    <Box sx={{ width: 48, height: 48, borderRadius: '50%', bgcolor: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid', borderColor: borderColor }}>
-                        <PetsIcon sx={{ color: borderColor }} />
-                    </Box>
-                    <Box>
-                        <Typography fontWeight="900" color="#3E2723" component="div" sx={{ fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 1 }}>
-                            {patient.petName}
-                            <Chip 
-                              label={patient.serviceType} 
-                              size="small" 
-                              sx={{ 
-                                  fontWeight: 'bold', 
-                                  color: 'white', 
-                                  bgcolor: badgeColor, // <-- USING THE DYNAMIC COLOR!
-                                  height: 20
-                              }} 
-                            />
-                        </Typography>
-                        <Typography variant="body2" color="textSecondary" sx={{ mt: 0.5, fontWeight: '600' }}>
-                            Owner: {patient.ownerName || 'Unknown'}
-                        </Typography>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
-                            <Typography variant="caption" color="textSecondary" fontWeight="bold">Status at closing:</Typography>
-                            <Chip label={patient.status.toUpperCase()} size="small" sx={{ height: 20, fontSize: '0.65rem', fontWeight: '900', bgcolor: 'white', border: '1px solid #ccc' }} />
-                        </Box>
-                    </Box>
-                </Box>
+                {exitConfirm ? "CONFIRM EXIT?" : "EXIT AUDIT"}
+              </Button>
 
-                <Box sx={{ borderLeft: '2px dashed #E0E0E0', height: '100px', mx: 2 }} />
-
-                {/* RIGHT SIDE: Action Toggles */}
-                <Box sx={{ p: 2.5, minWidth: 420 }}>
-                    <Typography variant="caption" color="textSecondary" fontWeight="bold" sx={{ display: 'block', mb: 1, textTransform: 'uppercase' }}>
-                        Required Action
-                    </Typography>
-
-                    {isConfined ? (
-                        <Chip icon={<LocalHospitalIcon />} label="AUTO-CONTINUE CONFINEMENT" color="primary" sx={{ fontWeight: '900', width: '100%', py: 3, fontSize: '0.9rem', bgcolor: '#E3F2FD', color: '#1565C0', borderRadius: 2 }} />
-                    ) : (
-                        <ToggleButtonGroup
-                            value={resolution}
-                            exclusive
-                            onChange={(e, newAction) => { if(newAction) onResolutionChange(patient.id, newAction) }}
-                            size="small"
-                            fullWidth
-                            sx={{ 
-                                bgcolor: '#F5F5F5', p: 0.5, borderRadius: 2,
-                                '& .MuiToggleButtonGroup-grouped': { border: 'none', borderRadius: 1.5, mx: 0.5 }
-                            }}
-                        >
-                            <ToggleButton value="rebook" sx={{ fontWeight: 'bold', '&.Mui-selected': { bgcolor: '#2E7D32', color: 'white', '&:hover': { bgcolor: '#1B5E20' } } }}>
-                                <EventRepeatIcon sx={{mr:0.5, fontSize: 18}} /> Re-book
-                            </ToggleButton>
-                            <ToggleButton value="no-show" sx={{ fontWeight: 'bold', '&.Mui-selected': { bgcolor: '#E65100', color: 'white', '&:hover': { bgcolor: '#BF360C' } } }}>
-                                <HelpOutlineIcon sx={{mr:0.5, fontSize: 18}} /> No-Show
-                            </ToggleButton>
-                            <ToggleButton value="cancel" sx={{ fontWeight: 'bold', '&.Mui-selected': { bgcolor: '#D32F2F', color: 'white', '&:hover': { bgcolor: '#B71C1C' } } }}>
-                                <DoNotDisturbIcon sx={{mr:0.5, fontSize: 18}} /> Cancel
-                            </ToggleButton>
-                        </ToggleButtonGroup>
-                    )}
-                </Box>
-              </Paper>
-            );
-          })}
+              <Button 
+                variant="contained" 
+                onClick={handleProcessClick}
+                sx={{ 
+                  borderRadius: 1.5, 
+                  bgcolor: isConfirming ? '#E65100' : '#D32F2F', 
+                  color: 'white', fontWeight: '1000', px: 5, py: 1.2,
+                  '&:hover': { bgcolor: isConfirming ? '#BF360C' : '#B71C1C' }, 
+                  boxShadow: isConfirming ? '0 8px 24px rgba(230, 81, 0, 0.4)' : '0 8px 16px rgba(211, 47, 47, 0.3)', 
+                  letterSpacing: 1.5, fontSize: '0.9rem'
+                }}
+              >
+                {isConfirming ? "⚠️ ARE YOU SURE? CLICK TO CONFIRM" : "PROCESS & UNLOCK QUEUE"}
+              </Button>
+           </Stack>
         </Box>
-      </DialogContent>
-      
-      <DialogActions sx={{ p: 3, bgcolor: 'white', borderTop: '1px solid #E0E0E0' }}>
-        {!isForced && (
-            <Button onClick={onClose} sx={{ color: '#5D4037', fontWeight: 'bold', mr: 'auto', px: 3 }}>CANCEL</Button>
-        )}
-        <Button onClick={onConfirmReset} variant="contained" color="error" sx={{ fontWeight: '900', px: 5, py: 1.5, borderRadius: 2, boxShadow: '0 4px 14px rgba(211, 47, 47, 0.4)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-          {isForced ? "Process & Unlock Queue" : "Process & Reset Board"}
-        </Button>
-      </DialogActions>
-    </Dialog>
+
+        {/* CLINICAL DNA OVERRIDE MENU */}
+        <Menu
+          anchorEl={genderAnchor}
+          open={Boolean(genderAnchor)}
+          onClose={() => setGenderAnchor(null)}
+          PaperProps={{ sx: { border: '2px solid #5D4037', borderRadius: 1.2, mt: 1 } }}
+        >
+          <MenuItem onClick={() => handleGenderSelect('Male')}>
+             <ListItemIcon><MaleIcon sx={{ color: '#1976D2' }} /></ListItemIcon>
+             <ListItemText primary="SET AS MALE" primaryTypographyProps={{ fontWeight: 1000, fontSize: '0.75rem' }} />
+          </MenuItem>
+          <MenuItem onClick={() => handleGenderSelect('Female')}>
+             <ListItemIcon><FemaleIcon sx={{ color: '#E91E63' }} /></ListItemIcon>
+             <ListItemText primary="SET AS FEMALE" primaryTypographyProps={{ fontWeight: 1000, fontSize: '0.75rem' }} />
+          </MenuItem>
+          <Divider />
+          <MenuItem onClick={() => setGenderAnchor(null)} sx={{ color: '#9E9E9E' }}>
+             <ListItemText primary="CANCEL" primaryTypographyProps={{ fontWeight: 1000, fontSize: '0.75rem', textAlign: 'center' }} />
+          </MenuItem>
+        </Menu>
+      </Paper>
+    </Box>
   );
 }

@@ -56,10 +56,19 @@ export function useQueueActions() {
     const prevStatus = history[history.length - 1];
     const newHistory = history.slice(0, -1);
 
-    await updateDoc(doc(db, "appointments", row.id), { 
+    const updateData = { 
         status: prevStatus,
         statusHistory: newHistory 
-    });
+    };
+
+    // GAP A FIX: If we are reverting to Scheduled, wipe the arrival artifacts!
+    if (prevStatus === 'confirmed') {
+        updateData.queueNumber = null;
+        updateData.ticketPrefix = null;
+        updateData.timeArrived = null;
+    }
+
+    await updateDoc(doc(db, "appointments", row.id), updateData);
   };
 
   const markNoShow = async (id, currentServices = []) => {

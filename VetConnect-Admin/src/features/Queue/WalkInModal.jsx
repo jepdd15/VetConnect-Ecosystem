@@ -94,8 +94,8 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
     // VALIDATION
     if (walkInType === 'existing' && !selectedClient) return setErrorMsg("Please select an existing client.");
     if (walkInType === 'existing' && !selectedPet && !isNewPet) return setErrorMsg("Please select a pet or choose 'Register New Pet'.");
-    if (walkInType === 'existing' && isNewPet && (!guestPetData.name || !guestPetData.breed)) return setErrorMsg("New pet name and breed are required.");
-    if (walkInType === 'guest' && (!guestName || !guestPhone || !guestPetData.name || !guestPetData.breed)) return setErrorMsg("Owner Full Name, Contact Phone, Pet Name, and Breed are required.");
+    if (walkInType === 'existing' && isNewPet && (!guestPetData.name || !guestPetData.breed || !guestPetData.gender || !guestPetData.species)) return setErrorMsg("New pet name, species, breed, and gender are required.");
+    if (walkInType === 'guest' && (!guestName || !guestPhone || !guestPetData.name || !guestPetData.breed || !guestPetData.gender || !guestPetData.species)) return setErrorMsg("Owner Full Name, Phone, and all Pet Biometrics (Name, Species, Breed, Gender) are required.");
     if (!triageNotes) return setErrorMsg("Triage Notes are required.");
     if (selectedServices.length === 0) return setErrorMsg("Please select at least one service.");
 

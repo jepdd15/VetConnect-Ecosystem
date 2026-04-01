@@ -9,7 +9,7 @@ import {
   where,
   writeBatch,
 } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -22,6 +22,8 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  FlatList, // THE FIX: Mandatory for high-performance large lists!
+  Modal, // THE FIX: New Explorer Modal!
 } from "react-native";
 import { auth, db } from "../../firebaseConfig";
 
@@ -45,8 +47,14 @@ export default function BookAppointment({ navigation }) {
 
   // --- SCALABILITY STATES ---
   const [serviceSearch, setServiceSearch] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [selectedDepartment, setSelectedDepartment] = useState("All");
   const [ownerName, setOwnerName] = useState("");
+  const [petSearch, setPetSearch] = useState(""); // THE FIX: Searchable Pets!
+  
+  // --- DEPARTMENT EXPLORER MODAL STATES ---
+  const [isDeptModalVisible, setIsDeptModalVisible] = useState(false);
+  const [deptModalSearch, setDeptModalSearch] = useState("");
+  const [deptSortOrder, setDeptSortOrder] = useState("name"); // "name" (A-Z) or "count" (high to low)
 
   // THE FIX: Destructuring clinicSettings from the hook!
   const {
@@ -57,7 +65,98 @@ export default function BookAppointment({ navigation }) {
     fetching,
     loadingSlots,
     clinicSettings,
+    departmentCapacity, // THE FIX: Essential for the final submitBooking calculation!
   } = useBookingEngine(date, selectedServices, selectedPets); // Passing the array to the brain!
+  
+  // THE FIX: High performance searching for large pet lists!
+  const filteredPets = useMemo(() => {
+    if (!petSearch) return pets;
+    return pets.filter(p => p.name.toLowerCase().includes(petSearch.toLowerCase()));
+  }, [pets, petSearch]);
+
+  // THE FIX: High performance department statistics & sorting!
+  const departmentStats = useMemo(() => {
+    // 1. First, get the list of services allowed for the current species
+    const speciesSet = new Set(
+        selectedPets.map((p) =>
+          p.species === "Dog" || p.species === "Canine" ? "Canine" : "Feline"
+        )
+      );
+    
+    let baseList = services;
+    if (speciesSet.size > 0) {
+        if (speciesSet.size > 1) {
+            baseList = baseList.filter((s) => !s.targetSpecies || s.targetSpecies === "Universal");
+        } else {
+            const targetSp = [...speciesSet][0];
+            baseList = baseList.filter((s) => !s.targetSpecies || s.targetSpecies === "Universal" || s.targetSpecies === targetSp);
+        }
+    }
+
+    // 2. Count occurrences per department
+    const counts = {};
+    baseList.forEach(s => {
+        const d = s.department || s.category || "General";
+        counts[d] = (counts[d] || 0) + 1;
+    });
+
+    // 3. Convert to filterable/sortable array
+    let statsArray = Object.keys(counts).map(name => ({
+        name,
+        count: counts[name]
+    }));
+
+    // 4. Filter by Modal Search
+    if (deptModalSearch) {
+        statsArray = statsArray.filter(d => 
+            d.name.toLowerCase().includes(deptModalSearch.toLowerCase())
+        );
+    }
+
+    // 5. Sort
+    if (deptSortOrder === "name") {
+        statsArray.sort((a, b) => a.name.localeCompare(b.name));
+    } else {
+        statsArray.sort((a, b) => b.count - a.count);
+    }
+
+    return statsArray;
+  }, [services, selectedPets, deptModalSearch, deptSortOrder]);
+
+  // THE FIX: Memoized filtering for services by department, search, AND species!
+  const displayedServices = useMemo(() => {
+    // 1. Biological Filter Step
+    const speciesSet = new Set(
+      selectedPets.map((p) =>
+        p.species === "Dog" || p.species === "Canine" ? "Canine" : "Feline"
+      )
+    );
+    
+    let list = services;
+    if (speciesSet.size > 1) {
+      // Mixed species: Only show "Universal" services
+      list = list.filter((s) => !s.targetSpecies || s.targetSpecies === "Universal");
+    } else if (speciesSet.size === 1) {
+      // Single species: Show Universal + Species-specific
+      const targetSp = [...speciesSet][0];
+      list = list.filter((s) => 
+        !s.targetSpecies || 
+        s.targetSpecies === "Universal" || 
+        s.targetSpecies === targetSp
+      );
+    }
+
+    // 2. Department & Search Filter Step
+    if (selectedDepartment !== "All") {
+      list = list.filter((s) => (s.department || s.category) === selectedDepartment);
+    }
+    if (serviceSearch) {
+      list = list.filter((s) =>
+        s.name.toLowerCase().includes(serviceSearch.toLowerCase())
+      );
+    }
+    return list;
+  }, [services, selectedDepartment, serviceSearch, selectedPets]);
 
   // --- INITIALIZATION ---
   useEffect(() => {
@@ -240,7 +339,13 @@ export default function BookAppointment({ navigation }) {
           petName: pet.name,
           petSpecies: pet.species,
           
-          // --- EVOLVED SCHEMA ---
+          // --- EVOLVED SCHEMA: The Clinical Passport ---
+          petBreed: pet.breed || "Mixed/Unknown",
+          petGender: pet.gender || "UNK",
+          petColor: pet.color || "N/A",
+          petIsNeutered: pet.isNeutered || false,
+          petBirthdate: pet.dob || null,
+          
           services: mappedServices,
           primaryService: mappedServices[0].name,
           serviceCategory: mappedServices[0].department,
@@ -272,7 +377,7 @@ export default function BookAppointment({ navigation }) {
   const handleNext = () => {
     if (step === 1 && selectedPets.length === 0)
       return Alert.alert("Required", "Please select at least one pet.");
-    if (step === 2 && !selectedService)
+    if (step === 2 && selectedServices.length === 0)
       return Alert.alert("Required", "Please select a service.");
     if (step === 3 && !selectedSlot)
       return Alert.alert("Required", "Please select a time slot.");
@@ -309,248 +414,186 @@ export default function BookAppointment({ navigation }) {
     return "Continue";
   };
 
-  // --- STEP 1 RENDER: PATIENTS ---
+  // --- STEP 1 RENDER: PATIENTS (NOW HIGH-PERFORMANCE FLATLIST!) ---
   const renderStep1 = () => (
     <View style={styles.stepContainer}>
-      <Text style={styles.stepHeader}>Who is visiting?</Text>
-      <Text style={styles.subText}>
-        Select up to {clinicSettings?.maxPetsPerBooking || 3} pets for a group
-        booking.
-      </Text>
-      {fetching ? (
-        <ActivityIndicator
-          color="#8B4513"
-          size="large"
-          style={{ marginTop: 20 }}
-        />
-      ) : (
-        <View style={styles.gridWrap}>
-          {pets.map((pet) => {
-            const isSelected = selectedPets.find((p) => p.id === pet.id);
-            return (
-              <TouchableOpacity
-                key={pet.id}
-                style={[
-                  styles.card,
-                  isSelected ? styles.selectedCard : styles.unselectedCard,
-                ]}
-                onPress={() => togglePetSelection(pet)}
-              >
-                {isSelected && (
-                  <View style={styles.checkBadge}>
-                    <Text
-                      style={{
-                        color: "white",
-                        fontSize: 12,
-                        fontWeight: "900",
-                      }}
-                    >
-                      ✓
-                    </Text>
-                  </View>
-                )}
-                <Text style={{ fontSize: 32, marginBottom: 8 }}>
-                  {pet.species === "Canine" || pet.species === "Dog"
-                    ? "🐶"
-                    : "🐱"}
-                </Text>
-                <Text
-                  style={[
-                    styles.cardText,
-                    isSelected && styles.selectedTextBold,
-                  ]}
-                >
-                  {pet.name}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-
-          {/* THE SEAMLESS FIX: Add Pet Button injected directly into the funnel without Android Shadow Bleed */}
-          <TouchableOpacity
-            style={[
-              styles.card,
-              {
-                backgroundColor: "rgba(255,255,255,0.5)",
-                borderWidth: 2,
-                borderColor: "#D7CCC8",
-                justifyContent: "center",
-                alignItems: "center",
-                shadowOpacity: 0, // Explicitly kill shadow if needed
-              },
-            ]}
-            onPress={() => navigation.navigate("AddPet")}
-          >
-            <View
-              style={{
-                width: 48,
-                height: 48,
-                borderRadius: 24,
-                backgroundColor: "#EFEBE9",
-                justifyContent: "center",
-                alignItems: "center",
-                marginBottom: 12,
-              }}
-            >
-              <Text
-                style={{ fontSize: 24, color: "#8B4513", fontWeight: "bold" }}
-              >
-                +
-              </Text>
-            </View>
-            <Text style={{ fontWeight: "900", color: "#8B4513", fontSize: 15 }}>
-              Add New Pet
+      <FlatList
+        data={filteredPets}
+        numColumns={2}
+        keyExtractor={item => item.id}
+        columnWrapperStyle={styles.columnWrapper}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 150 }}
+        ListEmptyComponent={
+            petSearch ? <Text style={styles.emptyText}>No pets found matching "{petSearch}"</Text> : null
+        }
+        ListHeaderComponent={
+          <View>
+            <Text style={styles.stepHeader}>Who is visiting?</Text>
+            <Text style={styles.subText}>
+              Select up to {clinicSettings?.maxPetsPerBooking || 3} pets for a group booking.
             </Text>
-          </TouchableOpacity>
-        </View>
-      )}
+            
+            {/* THE SEARCH & QUICK-ADD HUB */}
+            <View style={styles.searchAndLinkRow}>
+                <TextInput
+                    style={[styles.searchInput, { flex: 1, marginBottom: 0 }]}
+                    placeholder="🔍 Search pets..."
+                    placeholderTextColor="#aaa"
+                    value={petSearch}
+                    onChangeText={setPetSearch}
+                />
+                <TouchableOpacity 
+                    style={styles.inlineAddBtn}
+                    onPress={() => navigation.navigate("AddPet")}
+                >
+                    <Text style={styles.inlineAddText}>+</Text>
+                </TouchableOpacity>
+            </View>
+            
+            {fetching && (
+                <ActivityIndicator color="#8B4513" size="large" style={{ marginVertical: 20 }} />
+            )}
+          </View>
+        }
+        renderItem={({ item: pet }) => {
+          const isSelected = selectedPets.find((p) => p.id === pet.id);
+          return (
+            <TouchableOpacity
+              key={pet.id}
+              style={[
+                styles.card,
+                isSelected ? styles.selectedCard : styles.unselectedCard,
+              ]}
+              onPress={() => togglePetSelection(pet)}
+            >
+              {isSelected && (
+                <View style={styles.checkBadge}>
+                  <Text style={{ color: "white", fontSize: 12, fontWeight: "900" }}>✓</Text>
+                </View>
+              )}
+              <Text style={{ fontSize: 32, marginBottom: 8 }}>
+                {pet.species === "Canine" || pet.species === "Dog" ? "🐶" : "🐱"}
+              </Text>
+              <Text style={[styles.cardText, isSelected && styles.selectedTextBold]} numberOfLines={1}>
+                {pet.name}
+              </Text>
+            </TouchableOpacity>
+          );
+        }}
+      />
     </View>
   );
 
-  // --- STEP 2 RENDER: SERVICES ---
+  // --- STEP 2 RENDER: SERVICES (NOW HIGH-PERFORMANCE FLATLIST!) ---
   const renderStep2 = () => {
-    let filteredServices = [];
-    let availableCategories = ["All"];
-
-    // Biological Filter
-    const speciesSet = new Set(
-      selectedPets.map((p) =>
-        p.species === "Dog" || p.species === "Canine" ? "Canine" : "Feline",
-      ),
-    );
-    if (speciesSet.size > 1)
-      filteredServices = services.filter(
-        (s) => !s.targetSpecies || s.targetSpecies === "Universal",
-      );
-    else {
-      const targetSp = [...speciesSet][0];
-      filteredServices = services.filter(
-        (s) =>
-          !s.targetSpecies ||
-          s.targetSpecies === "Universal" ||
-          s.targetSpecies === targetSp,
-      );
-    }
-    availableCategories = [
-      "All",
-      ...new Set(
-        filteredServices.map((s) => s.department || s.category || "General"),
-      ),
-    ];
-
-    // Category & Search Filter
-    const displayedServices = filteredServices.filter((s) => {
-      const sCat = s.department || s.category || "General";
-      const matchCat = selectedCategory === "All" || sCat === selectedCategory;
-      const matchSearch = s.name
-        .toLowerCase()
-        .includes(serviceSearch.toLowerCase());
-      return matchCat && matchSearch;
-    });
-
     return (
       <View style={styles.stepContainer}>
-        <Text style={styles.stepHeader}>What do they need?</Text>
-        <Text style={styles.subText}>You can select multiple services to bundle them into one visit.</Text>
-
-        <TextInput
-          style={styles.searchInput}
-          placeholder="🔍 Search for a service..."
-          placeholderTextColor="#aaa"
-          value={serviceSearch}
-          onChangeText={setServiceSearch}
-        />
-
-        <View style={styles.chipWrap}>
-          {availableCategories.map((cat, index) => (
-            <TouchableOpacity
-              key={index}
-              style={[
-                styles.catChip,
-                selectedCategory === cat && styles.catChipSelected,
-              ]}
-              onPress={() => setSelectedCategory(cat)}
-            >
-              <Text
-                style={[
-                  styles.catText,
-                  selectedCategory === cat && styles.catTextSelected,
-                ]}
-              >
-                {cat}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* --- 🧬 SERVICE BUNDLE BAR --- */}
-        {selectedServices.length > 0 && (
-            <View style={{ backgroundColor: '#EFEBE9', padding: 10, borderRadius: 12, marginBottom: 10, borderLeftWidth: 4, borderLeftColor: '#8B4513' }}>
-                <Text style={{ fontWeight: 'bold', color: '#5D4037', fontSize: 13 }}>Selected Bundle ({selectedServices.length}):</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 5 }}>
-                    {selectedServices.map(s => (
-                        <View key={s.id} style={{ backgroundColor: '#8B4513', borderRadius: 15, paddingHorizontal: 10, paddingVertical: 4, marginRight: 5, marginBottom: 5 }}>
-                            <Text style={{ color: 'white', fontSize: 11, fontWeight: 'bold' }}>{s.name}</Text>
-                        </View>
-                    ))}
-                </View>
-            </View>
-        )}
-
-        <ScrollView
-          style={{ flex: 1, marginTop: 10 }}
+        <FlatList
+          data={displayedServices}
+          keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 150 }}
-        >
-          {displayedServices.length === 0 ? (
-            <Text style={styles.emptyText}>No services found.</Text>
-          ) : (
-            displayedServices.map((srv) => {
-              const isSelected = selectedServices.find(s => s.id === srv.id);
-              return (
+          ListEmptyComponent={
+            <Text style={styles.emptyText}>
+              No services found matching your criteria.
+            </Text>
+          }
+          ListHeaderComponent={
+            <View>
+              <Text style={styles.stepHeader}>What do they need?</Text>
+              <Text style={styles.subText}>
+                You can select multiple services to bundle them into one visit.
+              </Text>
+
+              {/* SEARCH HUB */}
+              <TextInput
+                style={styles.searchInput}
+                placeholder="🔍 Search for a service..."
+                placeholderTextColor="#aaa"
+                value={serviceSearch}
+                onChangeText={setServiceSearch}
+              />
+
+               {/* TRIGGER FOR DEPARTMENT EXPLORER */}
+              <TouchableOpacity 
+                  style={styles.deptTriggerBtn}
+                  onPress={() => setIsDeptModalVisible(true)}
+              >
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 18, marginRight: 8 }}>🏷️</Text>
+                    <View>
+                        <Text style={styles.deptTriggerLabel}>Filter by Department</Text>
+                        <Text style={styles.deptTriggerSub}>Currently: {selectedDepartment}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.deptTriggerArrow}>❯</Text>
+              </TouchableOpacity>
+
+              {/* THE OPTIMIZED BUNDLE BOX */}
+              {selectedServices.length > 0 && (
+                <View style={styles.bundleBox}>
+                  <Text style={styles.bundleTitle}>
+                    Selected Bundle ({selectedServices.length}):
+                  </Text>
+                  <View style={styles.bundleScrollContainer}>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.bundlePillScroll}
+                    >
+                      {selectedServices.map((s) => (
+                        <TouchableOpacity
+                          key={s.id}
+                          style={styles.bundlePill}
+                          onPress={() => toggleServiceSelection(s)}
+                        >
+                          <Text style={styles.bundlePillText}>{s.name}</Text>
+                          <Text style={styles.bundlePillRemove}>✕</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                </View>
+              )}
+            </View>
+          }
+          renderItem={({ item: s }) => {
+            const isSelected = selectedServices.some((serv) => serv.id === s.id);
+            return (
               <TouchableOpacity
-                key={srv.id}
+                key={s.id}
                 style={[
                   styles.serviceRow,
                   isSelected && styles.selectedServiceRow,
                 ]}
-                onPress={() => toggleServiceSelection(srv)}
+                onPress={() => toggleServiceSelection(s)}
               >
                 <View style={{ flex: 1 }}>
-                  <Text
-                    style={[
-                      styles.serviceName,
-                      isSelected && styles.selectedTextBold,
-                    ]}
-                  >
-                    {srv.name}
-                  </Text>
-                  <Text style={styles.serviceDuration}>
-                    ⏱️{" "}
-                    {parseInt(String(srv.duration).replace(/[^0-9]/g, "")) ||
-                      30}{" "}
-                    mins
-                  </Text>
+                  <Text style={styles.serviceName}>{s.name}</Text>
+                  <Text style={styles.serviceDuration}>⏱️ {s.duration} mins</Text>
                 </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                    <Text
-                        style={[
-                            styles.servicePrice,
-                            isSelected && styles.selectedTextBold,
-                        ]}
+                <View style={{ alignItems: "flex-end" }}>
+                  <Text style={styles.servicePrice}>₱{s.price}</Text>
+                  {isSelected && (
+                    <View
+                      style={[
+                        styles.checkBadge,
+                        { position: "relative", top: 5, right: 0 },
+                      ]}
                     >
-                        ₱{srv.price}
-                    </Text>
-                    {isSelected && (
-                        <View style={{ backgroundColor: '#2E7D32', width: 20, height: 20, borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginTop: 4 }}>
-                            <Text style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>✓</Text>
-                        </View>
-                    )}
+                      <Text
+                        style={{ color: "white", fontSize: 10, fontWeight: "900" }}
+                      >
+                        ✓
+                      </Text>
+                    </View>
+                  )}
                 </View>
               </TouchableOpacity>
-            )})
-          )}
-        </ScrollView>
+            );
+          }}
+        />
       </View>
     );
   };
@@ -565,6 +608,20 @@ export default function BookAppointment({ navigation }) {
     const afternoonSlots = futureSlots.filter(
       (s) => parseInt(s.timeValue.split(":")[0]) >= 12,
     );
+    
+    // --- SCHEDULING INTELLIGENCE MATH ---
+    const totalBundleDuration = selectedServices.reduce((sum, s) => {
+        const d = parseInt(String(s.duration).replace(/[^0-9]/g, "")) || 30;
+        const b = parseInt(String(s.bufferTime).replace(/[^0-9]/g, "")) || 0;
+        return sum + d + b;
+    }, 0);
+
+    const leadHours = clinicSettings?.advanceNoticeBuffer || 2;
+    const now = new Date();
+    const readyTime = new Date(now.getTime() + leadHours * 60 * 60 * 1000);
+    const isToday = date.toDateString() === now.toDateString();
+    
+    const readyTimeString = readyTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     // Dynamic cutoff time based on Web Admin settings
     const minDateAllowed = new Date();
@@ -576,6 +633,22 @@ export default function BookAppointment({ navigation }) {
     return (
       <View style={styles.stepContainer}>
         <Text style={styles.stepHeader}>When should we expect you?</Text>
+
+        {/* CLINICAL INSIGHT BOX (🩺) */}
+        <View style={styles.insightBox}>
+            <View style={styles.insightHeaderRow}>
+                <Text style={{ fontSize: 20 }}>🩺</Text>
+                <Text style={styles.insightTitle}>Scheduling Insight</Text>
+            </View>
+            <Text style={styles.insightText}>
+                Your <Text style={{ fontWeight: '900' }}>{totalBundleDuration} minute</Text> visit is ready to be scheduled.
+                {isToday && (
+                    <>
+                        {"\n"}Same-day bookings require a <Text style={{ fontWeight: '900' }}>{leadHours} hour</Text> notice. Available after <Text style={{ fontWeight: '900' }}>{readyTimeString}</Text>.
+                    </>
+                )}
+            </Text>
+        </View>
 
         <TouchableOpacity
           style={styles.modernDateBtn}
@@ -603,7 +676,7 @@ export default function BookAppointment({ navigation }) {
           />
         )}
 
-        {!selectedService || selectedPets.length === 0 ? (
+        {selectedServices.length === 0 || selectedPets.length === 0 ? (
           <Text style={styles.subtlePrompt}>
             🕒 Select a service to see available time slots.
           </Text>
@@ -661,7 +734,7 @@ export default function BookAppointment({ navigation }) {
                     {!isAvailable && (
                       <Text style={styles.slotSubText}>
                         {slot.status === "TOO_SOON"
-                          ? "LEAD TIME"
+                          ? "TOO SOON"
                           : slot.status === "OVERFLOW"
                             ? "UNAVAILABLE"
                             : "TAKEN"}
@@ -708,7 +781,7 @@ export default function BookAppointment({ navigation }) {
                     {!isAvailable && (
                       <Text style={styles.slotSubText}>
                         {slot.status === "TOO_SOON"
-                          ? "LEAD TIME"
+                          ? "TOO SOON"
                           : slot.status === "OVERFLOW"
                             ? "UNAVAILABLE"
                             : "TAKEN"}
@@ -720,97 +793,178 @@ export default function BookAppointment({ navigation }) {
             </View>
           </ScrollView>
         )}
+
+        {/* BOTTOM LEGEND */}
+        <View style={styles.legendContainer}>
+            <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: '#8B4513'}]} />
+                <Text style={styles.legendText}>Selected</Text>
+            </View>
+            <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: '#E0E0E0'}]} />
+                <Text style={styles.legendText}>Available</Text>
+            </View>
+            <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: '#FF8A65'}]} />
+                <Text style={styles.legendText}>Too Soon</Text>
+            </View>
+            <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: '#BDBDBD'}]} />
+                <Text style={styles.legendText}>Taken/Closed</Text>
+            </View>
+        </View>
       </View>
     );
   };
 
+  // --- NEW: THE DEPARTMENT EXPLORER MODAL ---
+  const renderDepartmentModal = () => (
+    <Modal
+      visible={isDeptModalVisible}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={() => setIsDeptModalVisible(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalSheet}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Visit Department</Text>
+            <TouchableOpacity onPress={() => setIsDeptModalVisible(false)}>
+              <Text style={styles.modalCloseText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* SEARCH & SORT TOOLS */}
+          <TextInput
+            style={styles.modalSearchInput}
+            placeholder="Search departments..."
+            placeholderTextColor="#aaa"
+            value={deptModalSearch}
+            onChangeText={setDeptModalSearch}
+          />
+          
+          <View style={styles.sortOptionsRow}>
+            <TouchableOpacity 
+                style={[styles.sortChip, deptSortOrder === 'name' && styles.sortChipActive]}
+                onPress={() => setDeptSortOrder('name')}
+            >
+                <Text style={[styles.sortChipText, deptSortOrder === 'name' && styles.sortChipTextActive]}>A-Z</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+                style={[styles.sortChip, deptSortOrder === 'count' && styles.sortChipActive]}
+                onPress={() => setDeptSortOrder('count')}
+            >
+                <Text style={[styles.sortChipText, deptSortOrder === 'count' && styles.sortChipTextActive]}>By Volume</Text>
+            </TouchableOpacity>
+          </View>
+
+          <FlatList
+            data={[{ name: 'All', count: services.length }, ...departmentStats]}
+            keyExtractor={item => item.name}
+            showsVerticalScrollIndicator={false}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={[
+                    styles.deptModalRow,
+                    selectedDepartment === item.name && styles.deptModalRowSelected
+                ]}
+                onPress={() => {
+                  setSelectedDepartment(item.name);
+                  setIsDeptModalVisible(false);
+                }}
+              >
+                <Text style={[
+                    styles.deptModalName,
+                    selectedDepartment === item.name && styles.deptModalTextSelected
+                ]}>
+                    {item.name}
+                </Text>
+                <View style={styles.deptCountBadge}>
+                  <Text style={styles.deptCountText}>{item.count}</Text>
+                </View>
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+      </View>
+    </Modal>
+  );
+
   // --- STEP 4 RENDER: REVIEW & NOTES ---
   const renderStep4 = () => {
-    const isSurgery = selectedService?.category === "Surgery";
+    // RESILIENT HINTS (Safety check stays for surgery warnings)
+    const hasSurgery = selectedServices.some(s => 
+        (s.department || s.category || '').toLowerCase().includes('surg') ||
+        (s.name || '').toLowerCase().includes('surg')
+    );
+    
+    // MAXIMUM RESILIENCE: Use generic labels that work for ANY visit type
+    const notesTitle = "Comments / Special Instructions";
+    const notesPlaceholder = "e.g. Symptoms, special requests, or notes for the clinical staff...";
 
-    // Dynamic Phrasing based on service
-    const notesConfig = (() => {
-      const cat = selectedService?.category || "Consultation";
-      switch (cat) {
-        case "Grooming":
-          return {
-            title: "Styling Instructions",
-            ph: "e.g. Summer cut, leave tail fluffy...",
-          };
-        case "Surgery":
-          return {
-            title: "Pre-Surgical Notes",
-            ph: "e.g. Acknowledged fasting protocol...",
-          };
-        case "Vaccination":
-          return {
-            title: "Health Status",
-            ph: "Is your pet currently healthy? Any sneezing?",
-          };
-        default:
-          return {
-            title: "Reason for Visit / Symptoms",
-            ph: "e.g. Vomiting, lethargic for 2 days...",
-          };
-      }
-    })();
+    // Helper for Title Case
+
+    // Helper for Title Case
+    const toTitleCase = (str) => str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
 
     return (
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.stepContainer}
       >
-        <Text style={styles.stepHeader}>Final Details</Text>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+            <Text style={styles.stepHeader}>Final Details</Text>
 
-        <View style={styles.summaryBox}>
-          <Text style={styles.summaryTitle}>Booking Summary</Text>
-          <Text style={styles.summaryText}>
-            🐾 Patient(s): {selectedPets.map((p) => p.name).join(", ")}
-          </Text>
-          <View style={{ marginVertical: 5, padding: 8, backgroundColor: 'rgba(255,255,255,0.4)', borderRadius: 8 }}>
-            <Text style={{ fontWeight: 'bold', fontSize: 13, color: '#5D4037', marginBottom: 4 }}>Selected Services:</Text>
-            {selectedServices.map(s => (
-                <Text key={s.id} style={{ fontSize: 13, color: '#5D4037' }}>• {s.name} (₱{s.price})</Text>
-            ))}
-          </View>
-          <Text style={styles.summaryText}>
-            🕒 Time: {date.toLocaleDateString()} at {selectedSlot}
-          </Text>
-          <Text
-            style={[
-              styles.summaryText,
-              {
-                color: "#2E7D32",
-                fontWeight: "900",
-                marginTop: 10,
-                fontSize: 18,
-              },
-            ]}
-          >
-            Total: ₱{selectedServices.reduce((sum, s) => sum + (parseFloat(s.price) || 0), 0) * selectedPets.length}
-          </Text>
-        </View>
+            <View style={styles.summaryBox}>
+                <Text style={styles.summaryTitle}>Booking Summary</Text>
+                
+                <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#5D4037', marginBottom: 8 }}>🐾 Patient(s):</Text>
+                <View style={styles.summaryPetsContainer}>
+                    {selectedPets.map(p => (
+                        <View key={p.id} style={styles.summaryPetChip}>
+                            <Text style={styles.summaryPetName}>{p.name}</Text>
+                        </View>
+                    ))}
+                </View>
 
-        <Text style={styles.inputLabel}>{notesConfig.title}</Text>
-        <TextInput
-          style={styles.notesInput}
-          placeholder={notesConfig.ph}
-          placeholderTextColor="#aaa"
-          multiline
-          numberOfLines={4}
-          value={notes}
-          onChangeText={setNotes}
-        />
+                {/* SCROLLABLE SERVICE LIST (Scalability Fix) */}
+                <Text style={{ fontWeight: 'bold', fontSize: 13, color: '#5D4037', marginTop: 15, marginBottom: 4 }}>Selected Services:</Text>
+                <View style={styles.summaryServiceScroll}>
+                    <ScrollView nestedScrollEnabled={true}>
+                        {selectedServices.map(s => (
+                            <Text key={s.id} style={{ fontSize: 13, color: '#5D4037', marginBottom: 4 }}>• {toTitleCase(s.name)} (₱{s.price})</Text>
+                        ))}
+                    </ScrollView>
+                </View>
 
-        {isSurgery && (
-          <View style={styles.warningBox}>
-            <Text style={styles.warningTitle}>⚠️ SURGICAL REQUIREMENT</Text>
-            <Text style={styles.warningText}>
-              Strict fasting required: NO food or water for 8-12 hours prior to
-              the visit.
-            </Text>
-          </View>
-        )}
+                <Text style={styles.summaryText}>
+                    🕒 Time: {date.toLocaleDateString()} at {selectedSlot}
+                </Text>
+                <Text style={styles.summaryTotalBig}>
+                    Total: ₱{selectedServices.reduce((sum, s) => sum + (parseFloat(s.price) || 0), 0) * selectedPets.length}
+                </Text>
+            </View>
+
+            <Text style={styles.inputLabel}>{notesTitle}</Text>
+            <TextInput
+                style={styles.notesInput}
+                placeholder={notesPlaceholder}
+                placeholderTextColor="#aaa"
+                multiline
+                numberOfLines={4}
+                value={notes}
+                onChangeText={setNotes}
+            />
+
+            {hasSurgery && (
+                <View style={styles.warningBox}>
+                    <Text style={styles.warningTitle}>⚠️ SURGICAL REQUIREMENT</Text>
+                    <Text style={styles.warningText}>
+                        Strict fasting required: NO food or water for 8-12 hours prior to the visit.
+                    </Text>
+                </View>
+            )}
+        </ScrollView>
       </KeyboardAvoidingView>
     );
   };
@@ -857,7 +1011,7 @@ export default function BookAppointment({ navigation }) {
               styles.nextBtn,
               (loading ||
                 (step === 1 && selectedPets.length === 0) ||
-                (step === 2 && !selectedService) ||
+                (step === 2 && selectedServices.length === 0) ||
                 (step === 3 && !selectedSlot)) &&
                 styles.disabledNextBtn,
             ]}
@@ -872,7 +1026,7 @@ export default function BookAppointment({ navigation }) {
                   styles.nextBtnText,
                   (loading ||
                     (step === 1 && selectedPets.length === 0) ||
-                    (step === 2 && !selectedService) ||
+                    (step === 2 && selectedServices.length === 0) ||
                     (step === 3 && !selectedSlot)) && { color: "#9E9E9E" },
                 ]}
               >
@@ -882,6 +1036,7 @@ export default function BookAppointment({ navigation }) {
           </TouchableOpacity>
         </View>
       </View>
+      {renderDepartmentModal()}
     </SafeAreaView>
   );
 }
@@ -1152,4 +1307,276 @@ const styles = StyleSheet.create({
   },
   disabledNextBtn: { backgroundColor: "#E0E0E0", elevation: 0 },
   nextBtnText: { color: "white", fontWeight: "900", fontSize: 16 },
+
+  // --- THE SCALABILITY FIX: NEW STYLES ---
+  columnWrapper: { justifyContent: "space-between", marginBottom: 15 },
+  searchAndLinkRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 20,
+  },
+  inlineAddBtn: {
+    width: 50,
+    height: 50,
+    borderRadius: 12,
+    backgroundColor: "#EFEBE9",
+    borderWidth: 2,
+    borderColor: "#D7CCC8",
+    justifyContent: "center",
+    alignItems: "center",
+    elevation: 1,
+  },
+  inlineAddText: {
+    fontSize: 24,
+    color: "#8B4513",
+    fontWeight: "bold",
+  },
+
+  // --- THE BUNDLE BOX OPTIMIZATION ---
+  bundleBox: {
+    backgroundColor: "#EFEBE9",
+    padding: 15,
+    borderRadius: 14,
+    marginBottom: 15,
+    borderLeftWidth: 5,
+    borderLeftColor: "#8B4513",
+  },
+  bundleTitle: {
+    fontWeight: "900",
+    color: "#5D4037",
+    fontSize: 14,
+    marginBottom: 10,
+  },
+  bundleScrollContainer: {
+    flexDirection: "row",
+  },
+  bundlePillScroll: {
+    gap: 8,
+    paddingRight: 10,
+  },
+  bundlePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#8B4513",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 6,
+  },
+  bundlePillText: {
+    color: "white",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  bundlePillRemove: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 14,
+    fontWeight: "bold",
+  },
+
+  // --- DEPARTMENT EXPLORER STYLES ---
+  deptTriggerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+    padding: 15,
+    borderRadius: 14,
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: '#EFEBE9',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  deptTriggerLabel: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#8B4513',
+  },
+  deptTriggerSub: {
+    fontSize: 12,
+    color: '#795548',
+    marginTop: 2,
+  },
+  deptTriggerArrow: {
+    fontSize: 18,
+    color: '#BDBDBD',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    padding: 24,
+    height: '75%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#2E2E2E',
+  },
+  modalCloseText: {
+    color: '#8B4513',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  modalSearchInput: {
+    backgroundColor: '#F5F5F5',
+    padding: 15,
+    borderRadius: 14,
+    fontSize: 16,
+    marginBottom: 15,
+    color: '#333',
+  },
+  sortOptionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 20,
+  },
+  sortChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#F5F5F5',
+  },
+  sortChipActive: {
+    backgroundColor: '#8B4513',
+  },
+  sortChipText: {
+    fontSize: 12,
+    color: '#795548',
+    fontWeight: 'bold',
+  },
+  sortChipTextActive: {
+    color: 'white',
+  },
+  deptModalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F5F5F5',
+  },
+  deptModalRowSelected: {
+    backgroundColor: '#FFF8E1',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+  },
+  deptModalName: {
+    fontSize: 16,
+    color: '#424242',
+    fontWeight: '600',
+  },
+  deptModalTextSelected: {
+    color: '#8B4513',
+    fontWeight: '900',
+  },
+  deptCountBadge: {
+    backgroundColor: '#EFEBE9',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  deptCountText: {
+    fontSize: 12,
+    color: '#8B4513',
+    fontWeight: 'bold',
+  },
+
+  // --- SCHEDULING INTELLIGENCE STYLES ---
+  insightBox: {
+    backgroundColor: '#F5F5F5',
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 20,
+    borderLeftWidth: 4,
+    borderLeftColor: '#8B4513',
+  },
+  insightHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  insightTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#3E2723',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  insightText: {
+    fontSize: 13,
+    color: '#5D4037',
+    lineHeight: 18,
+  },
+  legendContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: '#EEEEEE',
+    marginTop: 10,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  legendDot: {
+    width: 8, height: 8, borderRadius: 4,
+  },
+  legendText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#9E9E9E',
+    textTransform: 'uppercase',
+  },
+
+  // --- STEP 4 SCALABILITY STYLES ---
+  summaryPetsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  summaryPetChip: {
+    backgroundColor: '#8B4513',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
+  },
+  summaryPetName: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  summaryServiceScroll: {
+    maxHeight: 120, // Critical for preventing screen take-over
+    marginVertical: 5,
+    padding: 10,
+    backgroundColor: 'rgba(255,255,255,0.4)',
+    borderRadius: 12,
+  },
+  summaryTotalBig: {
+    color: "#2E7D32",
+    fontWeight: "900",
+    marginTop: 12,
+    fontSize: 22,
+    textAlign: 'right',
+  },
 });

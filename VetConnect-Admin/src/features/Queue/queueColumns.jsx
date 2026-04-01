@@ -20,6 +20,8 @@ import AssignmentIcon from '@mui/icons-material/Assignment';
 import ReceiptIcon from '@mui/icons-material/Receipt';
 import ScaleIcon from '@mui/icons-material/Scale';
 import PersonOffIcon from '@mui/icons-material/PersonOff';
+import HowToRegIcon from '@mui/icons-material/HowToReg';
+import EventNoteIcon from '@mui/icons-material/EventNote';
 
 const formatDuration = (totalMinutes) => {
   const mins = Math.abs(totalMinutes);
@@ -181,46 +183,74 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
     }
   },
   {
-    field: 'notes', headerName: 'Medical Intake / Notes', flex: 1.2, minWidth: 200,
-    renderCell: (p) => (
-      <Box 
-        onMouseEnter={(e) => actions.handleHoverStart(e, 'notes', p.row.notes)}
-        onMouseLeave={actions.handleHoverEnd}
-        sx={{ 
-          display: 'flex',
-          alignItems: 'flex-start',
-          width: '100%', 
-          pt: 1.5, 
-          cursor: 'zoom-in',
-          '&:hover': { bgcolor: 'rgba(139, 69, 19, 0.04)' },
-          transition: 'background-color 0.2s'
-        }}
-      >
-        {p.row.notes ? (
-          <Typography 
-            variant="body2" 
-            sx={{ 
-              display: '-webkit-box',
-              WebkitLineClamp: 4,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden',
-              fontSize: '0.82rem',
-              lineHeight: 1.4,
-              color: 'text.primary',
-              fontStyle: 'italic',
-              fontWeight: 400
-            }}
-          >
-            "{p.row.notes}"
-          </Typography>
-        ) : (
-          <Typography variant="caption" sx={{ color: 'text.disabled' }}>No notes provided</Typography>
-        )}
-      </Box>
-    )
+    field: 'notes', headerName: 'Medical Intake / Notes', flex: 1.2, minWidth: 200, sortable: false,
+    renderCell: (p) => {
+      const notes = p.row.notes || "";
+      const carryMatch = notes.match(/^\[Carried Over from (.*?)\]\s*(.*)/i);
+      
+      return (
+        <Box 
+          onMouseEnter={(e) => actions.handleHoverStart(e, 'notes', p.row.notes)}
+          onMouseLeave={actions.handleHoverEnd}
+          sx={{ 
+            display: 'flex',
+            flexDirection: 'column',
+            width: '100%', 
+            pt: 1.5, 
+            cursor: 'zoom-in',
+            '&:hover': { bgcolor: 'rgba(139, 69, 19, 0.04)' },
+            transition: 'background-color 0.2s'
+          }}
+        >
+          {carryMatch ? (
+             <>
+               <Typography variant="overline" sx={{ fontWeight: '1000', fontSize: '0.6rem', color: '#8D6E63', lineHeight: 1, mb: 0.5, letterSpacing: 1 }}>
+                  ⏳ CARRIED OVER FROM {carryMatch[1]}
+               </Typography>
+               <Typography 
+                 variant="body2" 
+                 sx={{ 
+                   display: '-webkit-box',
+                   WebkitLineClamp: 3,
+                   WebkitBoxOrient: 'vertical',
+                   overflow: 'hidden',
+                   fontSize: '0.82rem',
+                   lineHeight: 1.3,
+                   color: 'text.primary',
+                   fontStyle: carryMatch[2] === "No original notes." ? 'italic' : 'normal',
+                   fontWeight: 500,
+                   opacity: carryMatch[2] === "No original notes." ? 0.5 : 1
+                 }}
+               >
+                 {carryMatch[2]}
+               </Typography>
+             </>
+          ) : notes ? (
+            <Typography 
+              variant="body2" 
+              sx={{ 
+                display: '-webkit-box',
+                WebkitLineClamp: 4,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+                fontSize: '0.82rem',
+                lineHeight: 1.4,
+                color: 'text.primary',
+                fontStyle: 'italic',
+                fontWeight: 400
+              }}
+            >
+              "{notes}"
+            </Typography>
+          ) : (
+            <Typography variant="caption" sx={{ color: 'text.disabled' }}>No notes provided</Typography>
+          )}
+        </Box>
+      );
+    }
   },
   { 
-    field: 'services', headerName: 'Services and Staff', flex: 1, minWidth: 220,
+    field: 'services', headerName: 'Services and Staff', flex: 1, minWidth: 220, sortable: false,
     resizable: false, sortable: false, disableColumnMenu: true,
     renderCell: (p) => {
       const services = [...(p.row.services || [])].sort((a,b) => a.name.localeCompare(b.name));
@@ -254,19 +284,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
               <Typography sx={{ fontSize: '0.65rem', fontWeight: '1000' }}>{services.length}</Typography>
           </Box>
 
-          {/* CLINICAL VITALS PILOT (WEIGHT) */}
-          {p.row.petWeight && (
-            <Box sx={{ 
-              display: 'flex', alignItems: 'center', gap: 0.3, px: 0.8, py: 0.2, 
-              borderRadius: 1, bgcolor: '#E3F2FD', border: '1px solid #BBDEFB',
-              mb: 0.8, alignSelf: 'flex-start'
-            }}>
-               <ScaleIcon sx={{ fontSize: 11, color: '#1565C0' }} />
-               <Typography sx={{ fontSize: '0.65rem', fontWeight: '900', color: '#1565C0' }}>
-                  {p.row.petWeight}KG
-               </Typography>
-            </Box>
-          )}
+          {/* WEIGHT HIDDEN FROM SERVICES CELL PER FORENSIC CLEANUP */}
 
           <Stack spacing={0.8} sx={{ width: '100%' }}>
             {services.slice(0, 2).map((svc, idx) => {
@@ -324,14 +342,11 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
       let secondaryLabel = "";
       let triageColor = "#5D4037"; // Coffee default
 
-      // DYNAMIC TEMPORAL ANCHORS: Adapting to both Phase AND Date!
       if (!isToday && scheduled) {
-          // FUTURE/PAST VIEW: Promote the Date
           primaryLabel = scheduled.toLocaleDateString([], { month: 'short', day: 'numeric' }).toUpperCase();
           secondaryLabel = scheduled.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          triageColor = "#9E9E9E"; // Neutral for future/past
+          triageColor = "#9E9E9E";
       } else {
-          // TODAY VIEW: Promote the Clinical Milestone
           switch (p.row.status) {
             case 'pending':
             case 'confirmed':
@@ -340,28 +355,20 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                 secondaryLabel = diffMins > 0 ? `LATE (${formatDuration(diffMins)})` : `IN ${formatDuration(Math.abs(diffMins))}`;
                 if (diffMins > 30) triageColor = "#D32F2F"; 
                 break;
-            
             case 'arrived':
                 baseTime = arrived || scheduled;
                 const waitMins = Math.floor((currentTime - baseTime) / 60000);
                 const driftMins = scheduled ? Math.floor((baseTime - scheduled) / 60000) : 0;
-                
                 primaryLabel = `ARRIVED: ${baseTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
                 secondaryLabel = `WAITING: ${formatDuration(waitMins)}`;
                 triageColor = waitMins > 20 ? "#E65100" : "#2E7D32"; 
                 
                 return (
                     <Box 
-                      /* FORCE RELOAD: VETCONNECT-HUD-TIMING-ADAPTIVE */
-                      sx={{ 
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', 
-                        height: '100%', width: '100%', position: 'relative',
-                        paddingLeft: '12px', cursor: 'help'
-                      }}
+                      sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%', position: 'relative', paddingLeft: 0, cursor: 'help' }}
                       onMouseEnter={(e) => actions.handleHoverStart(e, 'timing', p.row)}
                       onMouseLeave={actions.handleHoverEnd}
                     >
-                        <Box sx={{ position: 'absolute', left: 0, top: 4, bottom: 4, width: 4, bgcolor: triageColor, borderRadius: '0 4px 4px 0' }} />
                         <Typography sx={{ color: '#5D4037', fontWeight: '1000', lineHeight: 1, fontSize: '1.25rem', letterSpacing: '-0.5px' }}>
                           {primaryLabel}
                         </Typography>
@@ -375,7 +382,6 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                         </Typography>
                     </Box>
                 );
-            
             case 'in-consult':
                 baseTime = started || arrived || scheduled;
                 const consultMins = Math.floor((currentTime - baseTime) / 60000);
@@ -383,7 +389,6 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                 secondaryLabel = `CONSULTING: ${formatDuration(consultMins)}`;
                 triageColor = "#2E7D32"; 
                 break;
-                
             default:
                 primaryLabel = scheduled?.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) || "";
                 secondaryLabel = "PROCESSED";
@@ -393,32 +398,18 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
 
       return (
         <Box 
-          /* FORCE RELOAD: VETCONNECT-HUD-TIMING-ADAPTIVE */
-          sx={{ 
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', 
-            height: '100%', width: '100%', position: 'relative',
-            paddingLeft: '12px', cursor: 'help'
-          }}
+          sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%', position: 'relative', paddingLeft: 0, cursor: 'help' }}
           onMouseEnter={(e) => actions.handleHoverStart(e, 'timing', p.row)}
           onMouseLeave={actions.handleHoverEnd}
         >
-            {/* THE PHASE INDICATOR PILLAR */}
-            <Box sx={{ 
-                position: 'absolute', left: 0, top: 4, bottom: 4, width: 4, 
-                bgcolor: triageColor,
-                borderRadius: '0 4px 4px 0'
-            }} />
-
             <Typography sx={{ color: '#5D4037', fontWeight: '1000', lineHeight: 1, fontSize: '1.25rem', letterSpacing: '-0.5px' }}>
               {primaryLabel}
             </Typography>
-            
             {p.row.status === 'arrived' && scheduled && (
                 <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '800', opacity: 0.5, fontSize: '0.62rem' }}>
                     APPT: {scheduled.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                 </Typography>
             )}
-
             <Typography sx={{ color: triageColor === "#5D4037" ? "#5D4037" : triageColor, fontWeight: '1000', fontSize: '0.72rem', mt: 0.5, letterSpacing: 0.5 }}>
                {secondaryLabel.toUpperCase()}
             </Typography>
@@ -430,6 +421,16 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
     field: 'actions', headerName: 'Command Action', width: 320, sortable: false, disableColumnMenu: true,
     align: 'center', headerAlign: 'center', resizable: false,
     renderCell: (params) => {
+        if (!isToday) {
+          return (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', opacity: 0.5 }}>
+              <WarningIcon sx={{ color: '#5D4037', fontSize: 18, mb: 0.5, opacity: 0.6 }} />
+              <Typography variant="caption" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1, fontSize: '0.65rem' }}>
+                ARCHIVED
+              </Typography>
+            </Box>
+          );
+        }
       const btnStyle = { textTransform: 'uppercase', fontWeight: '900', px: 2, borderRadius: 2, letterSpacing: 0.5, height: 32, fontSize: '0.75rem' };
       const scheduled = params.row.jsScheduled;
       const isVeryLate = scheduled && (currentTime - scheduled) / 60000 >= 30;
@@ -448,43 +449,68 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
         
         return (
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 0.8, width: '100%', height: '100%', py: 1 }}>
-            {/* PRIMARY: CHECK-IN GATE */}
+            {/* PRIMARY: CHECK-IN */}
             <Button 
                 variant="contained" 
                 size="small" 
-                color="primary" 
                 fullWidth
-                sx={{ ...btnStyle, bgcolor: '#1565C0', height: 36 }} 
-                startIcon={<DirectionsWalkIcon sx={{ fontSize: '16px !important' }} />} 
-                onClick={() => actions.handleOpenAssign(params.row)}
+                startIcon={<HowToRegIcon sx={{ fontSize: '14px !important' }} />} 
+                sx={{ 
+                    ...btnStyle, 
+                    bgcolor: '#1976D2', 
+                    fontWeight: '1000', 
+                    mb: 0.6,
+                    height: 32,
+                    boxShadow: '0 4px 10px rgba(25, 118, 210, 0.3)'
+                }} 
+                onClick={() => actions.handleOpenAssign(params.row, 'check-in')}
             >
                 Check In
             </Button>
             
-            {/* SECONDARY UTILITIES */}
-            <Stack direction="row" spacing={0.8} sx={{ width: '100%' }}>
+            {/* SECONDARY UTILITY GRID (100% CASE COVERAGE) */}
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.5, width: '100%' }}>
                 <Button 
                     variant="outlined" 
                     size="small" 
-                    fullWidth
-                    sx={{ ...btnStyle, fontSize: '0.65rem', px: 0.5, borderColor: 'rgba(255,255,255,0.2)', color: '#FFF3E0' }} 
-                    startIcon={<PersonAddIcon sx={{ fontSize: '12px !important' }} />} 
-                    onClick={() => actions.handleOpenAssign(params.row)}
+                    sx={{ ...btnStyle, fontSize: '0.6rem', px: 0, borderColor: '#5D4037', color: '#5D4037', opacity: 0.8, minWidth: 0, height: 26 }} 
+                    startIcon={<PersonAddIcon sx={{ fontSize: '10px !important' }} />} 
+                    onClick={() => actions.handleOpenAssign(params.row, 'assign')}
                 >
                     Assign
                 </Button>
                 <Button 
                     variant="outlined" 
                     size="small" 
+                    sx={{ ...btnStyle, fontSize: '0.6rem', px: 0, borderColor: '#5D4037', color: '#5D4037', opacity: 0.8, minWidth: 0, height: 26 }} 
+                    startIcon={<EventNoteIcon sx={{ fontSize: '10px !important' }} />} 
+                    onClick={() => actions.handleRescheduleOpen(params.row)}
+                >
+                    Time
+                </Button>
+                <Button 
+                    variant="outlined" 
+                    size="small" 
                     color="error"
-                    fullWidth
-                    sx={{ ...btnStyle, fontSize: '0.65rem', px: 0.5, borderColor: 'rgba(211, 47, 47, 0.4)' }} 
-                    startIcon={<PersonOffIcon sx={{ fontSize: '12px !important' }} />} 
-                    onClick={() => actions.handleQuickNoShow(params.row.id, params.row.services)}
+                    sx={{ ...btnStyle, fontSize: '0.6rem', px: 0, borderColor: 'rgba(211, 47, 47, 0.3)', minWidth: 0, height: 26 }} 
+                    startIcon={<PersonOffIcon sx={{ fontSize: '10px !important' }} />} 
+                    onClick={() => actions.handleQuickNoShow(params.row.id)}
                 >
                     No-Show
                 </Button>
-            </Stack>
+                <Button 
+                    variant="outlined" 
+                    size="small" 
+                    color="inherit"
+                    sx={{ ...btnStyle, fontSize: '0.6rem', px: 0, borderColor: 'rgba(0,0,0,0.1)', color: '#757575', minWidth: 0, height: 26 }} 
+                    onClick={() => {
+                        actions.setSelectedId(params.row.id);
+                        actions.setOpenReject(true);
+                    }}
+                >
+                    Cancel
+                </Button>
+            </Box>
           </Box>
         );
       }
@@ -506,9 +532,26 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
         );
       }
 
+      if (params.row.status === 'in-consult') {
+        return (
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.8, width: '100%', height: '100%' }}>
+            <Button 
+                variant="contained" 
+                size="small" 
+                sx={{...btnStyle, bgcolor: '#5D4037', '&:hover': { bgcolor: '#3E2723' }, minWidth: 120}} 
+                onClick={() => actions.handleOpenConsult(params.row)}
+            >
+                CONSULT
+            </Button>
+            <Button variant="outlined" size="small" sx={{...btnStyle, color: '#5D4037', borderColor: '#D7CCC8', minWidth: 80}} onClick={(e) => actions.handleMenuClick(e, params.row)}>Options</Button>
+            <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)}><MoreVertIcon fontSize="small" /></IconButton>
+          </Box>
+        );
+      }
+
       return (
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, width: '100%', height: '100%' }}>
-           <Button variant="outlined" size="small" sx={{...btnStyle, color: '#5D4037', borderColor: '#D7CCC8', minWidth: 100}} onClick={(e) => actions.handleMenuClick(e, params.row)}>Options</Button>
+           <Button variant="outlined" size="small" sx={{...btnStyle, color: '#5D4037', borderColor: '#D7CCC8', minWidth: 120}} onClick={(e) => actions.handleMenuClick(e, params.row)}>Options</Button>
            <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)}><MoreVertIcon fontSize="small" /></IconButton>
         </Box>
       );

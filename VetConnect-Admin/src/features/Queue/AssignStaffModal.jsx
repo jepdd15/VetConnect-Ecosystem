@@ -16,7 +16,7 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import { doc, runTransaction, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 
-export default function AssignStaffModal({ open, onClose, patient, vetsList, activeAppointments, departments }) {
+export default function AssignStaffModal({ open, onClose, patient, vetsList, activeAppointments, departments, mode = 'check-in' }) {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   
@@ -95,7 +95,7 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
     setErrorMsg('');
 
     try {
-      if (patient.status === 'confirmed') {
+      if (patient.status === 'confirmed' && mode === 'check-in') {
         await runTransaction(db, async (transaction) => {
             const queueRef = doc(db, "queue", "daily_queue");
             const queueDoc = await transaction.get(queueRef);
@@ -116,6 +116,7 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
             });
         });
       } else {
+        // PREP ONLY OR EXISTING PATIENT: NO STATUS CHANGE
         await updateDoc(doc(db, "appointments", patient.id), { 
             services: tempServices,
             assignedVet: tempServices[0]?.staffName || "Unassigned",
@@ -132,7 +133,7 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
 
   if (!patient) return null;
 
-  const isCheckIn = patient.status === 'confirmed';
+  const isCheckInAction = patient.status === 'confirmed' && mode === 'check-in';
   const BRAND_BROWN = '#3E2723';
   const isBundle = tempServices.length > 1;
 
@@ -311,7 +312,7 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
             <Button onClick={onClose} size="small" sx={{ fontWeight: 'bold', color: BRAND_BROWN, px: 2 }}>Cancel</Button>
             <Button 
               onClick={handleSubmit} 
-              disabled={loading || (isCheckIn && !allAssigned)} 
+              disabled={loading || (isCheckInAction && !allAssigned)} 
               variant="contained" 
               size="small"
               sx={{ 
@@ -319,7 +320,7 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
                   bgcolor: BRAND_BROWN, '&:hover': { bgcolor: '#1A0D0A' }, boxShadow: 4, borderRadius: 1.5 
               }}
             >
-              {loading ? "Processing..." : (isCheckIn ? "ISSUE TICKET & DISPATCH" : "UPDATE ROUTING")}
+              {loading ? "Processing..." : (isCheckInAction ? "ISSUE TICKET & DISPATCH" : "SAVE ASSIGNMENTS")}
             </Button>
         </Stack>
       </DialogActions>

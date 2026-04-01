@@ -263,8 +263,8 @@ export function useBookingEngine(date, selectedServices = [], selectedPets) {
                         if (svcStart < r.end && svcEnd > r.start) overlaps++;
                     }
 
-                    const capacity = departmentCapacity[rd.name] || 1;
-                    if (overlaps >= capacity) {
+                    const capacity = departmentCapacity[rd.name] || 0; // THE FIX: Default to 0, ensuring unstaffed departments are blocked!
+                    if (capacity === 0 || overlaps >= capacity) {
                         canFitAll = false; 
                         conflictType = "TAKEN"; 
                         break; 
@@ -299,5 +299,6 @@ export function useBookingEngine(date, selectedServices = [], selectedPets) {
     fetching,
     loadingSlots,
     clinicSettings,
+    departmentCapacity,
   };
 }

@@ -1,7 +1,10 @@
 import { doc, updateDoc, Timestamp, writeBatch, arrayUnion, runTransaction, collection } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
+import { useUser } from '../../context/UserContext'; 
 
 export function useQueueActions() {
+  const { profile } = useUser();
+  const staffSignature = profile?.fullName || 'System/Admin';
   
   // 1. FORWARD STATUS CHANGE (NOW ATOMIC TRANSACTIONS!)
   const changeStatus = async (row, newStatus, currentConfinedCount, maxCages = 5) => {
@@ -20,9 +23,21 @@ export function useQueueActions() {
             statusHistory: arrayUnion(row.status) 
         };
 
-        if (newStatus === 'confirmed' && row.status === 'pending') updateData.timeAccepted = Timestamp.now();
-        if (newStatus === 'in-consult' && row.status !== 'on-hold') updateData.timeStarted = Timestamp.now();
-        if (newStatus === 'completed') updateData.timeCompleted = Timestamp.now();
+        if (newStatus === 'confirmed' && row.status === 'pending') {
+            updateData.timeAccepted = Timestamp.now();
+            updateData.acceptedBy = staffSignature;
+        }
+        if (newStatus === 'arrived') {
+            updateData.arrivedBy = staffSignature;
+        }
+        if (newStatus === 'in-consult' && row.status !== 'on-hold') {
+            updateData.timeStarted = Timestamp.now();
+            updateData.startedBy = staffSignature;
+        }
+        if (newStatus === 'completed') {
+            updateData.timeCompleted = Timestamp.now();
+            updateData.completedBy = staffSignature;
+        }
 
         // SMART PAUSE ENGINE
         if (newStatus === 'on-hold') updateData.lastPausedAt = Timestamp.now();
@@ -58,7 +73,8 @@ export function useQueueActions() {
 
     const updateData = { 
         status: prevStatus,
-        statusHistory: newHistory 
+        statusHistory: newHistory,
+        revertedBy: staffSignature 
     };
 
     // GAP A FIX: If we are reverting to Scheduled, wipe the arrival artifacts!
@@ -78,7 +94,8 @@ export function useQueueActions() {
       rejectReason: 'Auto-flagged: Late / No show',
       assignedVet: "Unassigned",
       assignedVetId: null,
-      services: clearedServices
+      services: clearedServices,
+      cancelledBy: 'System (Auto-NoShow)'
     });
   };
 
@@ -90,7 +107,8 @@ export function useQueueActions() {
       assignedVet: "Unassigned",
       assignedVetId: null,
       services: clearedServices,
-      timeRejected: Timestamp.now()
+      timeRejected: Timestamp.now(),
+      cancelledBy: staffSignature
     });
   };
 
@@ -121,6 +139,7 @@ export function useQueueActions() {
         requiredRole: "veterinarian",
         priority: "high", // THE FLAG THAT FORCES IT TO THE TOP OF THE LIST
         status: "arrived",
+        caseDay: 1,
         queueNumber: nextNum,
         ticketPrefix: "E", // E-Series Ticket!
         timeArrived: Timestamp.now(),

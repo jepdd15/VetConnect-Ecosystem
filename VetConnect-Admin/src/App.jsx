@@ -51,7 +51,7 @@ const MainLayout = ({ children, onLogout }) => {
     <Box sx={{ display: 'flex', width: '100vw', minHeight: '100vh' }}>
       <CssBaseline />
       <Sidebar onLogout={onLogout} />
-      <Box component="main" sx={{ flexGrow: 1, p: 4, minHeight: '100vh', minWidth: 0, overflowX: 'hidden', background: `linear-gradient(160deg, ${COLORS.surface} 0%, #FFE0B2 100%)` }}>
+      <Box component="main" sx={{ flexGrow: 1, p: 3, pb: 0, minHeight: '100vh', minWidth: 0, overflowX: 'hidden', background: `linear-gradient(160deg, ${COLORS.surface} 0%, #FFE0B2 100%)` }}>
         {children}
       </Box>
     </Box>

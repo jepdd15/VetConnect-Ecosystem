@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { 
   Box, Typography, Button, Stack, Paper, 
   ToggleButtonGroup, ToggleButton, List, ListItem, Divider,
-  Menu, MenuItem, ListItemIcon, ListItemText, IconButton, TextField, CircularProgress
+  Menu, MenuItem, ListItemIcon, ListItemText, IconButton, TextField, CircularProgress,
+  Chip
 } from '@mui/material';
 
 // Icons
@@ -25,7 +26,7 @@ import { db } from '../../firebaseConfig';
 import TwitterIcon from '@mui/icons-material/Twitter'; 
 
 const sidebarWidth = 260; // Absolute mapping from Sidebar.jsx
-const CARD_HEIGHT = 240;  // STRICT clinical geometry for vertical rhythm
+const CARD_HEIGHT = 400;  // FULL BREATHING ROOM for V2 Clinical Re-booking UI
 
 // HELPER: To keep consistency with main grid
 const formatDuration = (mins) => {
@@ -119,7 +120,7 @@ export default function EndOfDayModal({
               ...prev, 
               [patient.id]: { 
                  milestones: prevMilestones, 
-                 caseDay: (patient.caseDay || 1) + 1,
+                 caseDay: Math.max(1, (patient.caseDay || 1) - 1),
                  dateLabel: data.createdAt?.toDate ? data.createdAt.toDate().toLocaleDateString() : 'Previous' 
               } 
            }));
@@ -232,8 +233,8 @@ export default function EndOfDayModal({
               const totalEstMins = (patient.services || []).reduce((sum, s) => sum + (Number(s.duration || s.estMinutes) || 0), 0);
               const totalPrice = (patient.services || []).reduce((sum, s) => sum + (Number(s.price) || 0), 0);
 
-              // THE FIX: DNA Symbol Restoration & Forensic Labeling
-              const rawGender = patient.petGender || patient.gender || patient.petSex || patient.sex || '';
+              // THE FIX: DNA Symbol Restoration & Forensic Labeling (Defensive Guards added for Resilience)
+              const rawGender = String(patient.petGender || patient.gender || patient.petSex || patient.sex || 'UNKNOWN');
               const upGender = rawGender.toUpperCase();
               const isUnknownGender = !rawGender || upGender === 'UNKNOWN' || upGender === 'SEX UNK' || upGender === '???' || upGender === 'IDENTITY UNKNOWN';
               
@@ -243,7 +244,7 @@ export default function EndOfDayModal({
               const petGenderLabel = isUnknownGender ? 'IDENTITY UNKNOWN' : upGender;
               const petGenderColor = isUnknownGender ? '#D32F2F' : '#5D4037';
               
-              const petFixedStr = patient.petIsNeutered || patient.isNeutered ? 'FIXED' : 'INTACT';
+              const petFixedStr = (patient.petIsNeutered || patient.isNeutered) ? 'FIXED' : 'INTACT';
 
               return (
                 <Paper key={patient.id} elevation={0} sx={{ 
@@ -305,9 +306,29 @@ export default function EndOfDayModal({
 
                      <Box sx={{ mt: 'auto', p: 1, border: '1px solid #D7CCC8', bgcolor: 'rgba(93, 64, 55, 0.04)' }}>
                         <Typography variant="caption" sx={{ fontWeight: '1000', color: '#5D4037', display: 'block', mb: 0.2, letterSpacing: 0.5, fontSize: '0.55rem' }}>CLOSING STATUS</Typography>
-                        <Typography variant="body2" sx={{ fontWeight: '1000', color: '#E65100', fontSize: '0.72rem', textTransform: 'uppercase' }}>
-                           {patient.status}
-                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
+                           <Chip 
+                              size="small" 
+                              label={(() => {
+                                 const statusMap = {
+                                    'confirmed': 'SCHEDULED',
+                                    'pending': 'SCHEDULED',
+                                    'arrived': 'ARRIVED',
+                                    'in-consult': 'CONSULT',
+                                    'dispensing': 'PHARMACY',
+                                    'billing': 'PAYMENT',
+                                    'done': 'COMPLETED',
+                                    'cancelled': 'CANCELLED',
+                                    'carried-over': 'CARRIED OVER'
+                                 };
+                                 const rawStatus = (patient.status || 'unknown').toLowerCase();
+                                 return statusMap[rawStatus] || rawStatus.toUpperCase();
+                              })()} 
+                              sx={{ 
+                                 bgcolor: '#E65100', color: 'white', fontWeight: '1000', fontSize: '0.65rem', height: '22px', borderRadius: 1 
+                              }} 
+                           />
+                        </Box>
                      </Box>
                   </Box>
 
@@ -453,16 +474,26 @@ export default function EndOfDayModal({
 
                   {/* 4. RECOMMENDATION & VERDICT (FLEX) */}
                   <Box sx={{ flex: 1, p: 2, display: 'flex', flexDirection: 'column' }}>
-                     <Box sx={{ p: 1.5, bgcolor: '#FFF3E0', border: '1px solid #FFE0B2', borderRadius: 1.2, mb: 1.5 }}>
-                        <Typography variant="caption" sx={{ fontWeight: '1000', color: '#E65100', textTransform: 'uppercase', letterSpacing: 1, display: 'block', mb: 0.3, fontSize: '0.6rem' }}>
-                           🧠 CLINICAL INTELLIGENCE
+                     <Box sx={{ p: 1.5, bgcolor: resolution === 'rebook' ? '#FFF9C4' : resolution === 'no-show' ? '#FFEBEE' : '#F5F5F5', border: '1px solid #D7CCC8', borderRadius: 1.2, mb: 1.5, transition: 'all 0.2s ease-out' }}>
+                        <Typography variant="caption" sx={{ fontWeight: '1000', color: '#5D4037', textTransform: 'uppercase', letterSpacing: 1, display: 'block', mb: 0.3, fontSize: '0.6rem' }}>
+                           🧠 {resolution === 'cancel' ? 'FORENSIC ALERT' : resolution === 'rebook' ? 'RECOVERY ADVISORY' : 'CLINICAL INTELLIGENCE'}
                         </Typography>
-                        <Typography variant="body2" sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '0.78rem', lineHeight: 1.4 }}>
-                           {patient.status === 'in-consult' || patient.status === 'dispensing' ? 
-                             "CRITICAL: Finalize patient data. Re-book to capture clinical billing and medical notes to prevent revenue leakage." : 
-                            patient.status === 'arrived' ? 
-                             "SERVICE FAILURE detected. Patient check-in recorded but consult never started. Suggest Re-book for priority recovery." :
-                             "RECORD EXPIRED: No-show detected. Forensic purge recommended to maintain board accuracy."}
+                        <Typography variant="body2" sx={{ fontWeight: '1000', color: '#1A1A1A', fontSize: '0.78rem', lineHeight: 1.4 }}>
+                           {(() => {
+                              const scenarioMap = {
+                                 'in-consult': "CRITICAL: Consult unfinished.",
+                                 'dispensing': "FINANCIAL RISK: Pharmacy items unbilled.",
+                                 'arrived': "SERVICE FAILURE: Patient never seen.",
+                                 'pending': "RECORD EXPIRED: No-show detected.",
+                                 'confirmed': "RECORD EXPIRED: No-show detected."
+                              };
+                              const advisoryMap = {
+                                 'rebook': `📍 RECOVERY PLAN: Prioritizing record for ${new Date(targetDates[patient.id] || new Date().setDate(new Date().getDate() + 1)).toLocaleDateString()}. Medical notes preserved.`,
+                                 'no-show': "⚠️ AUDIT WARNING: Flagged as No-Show. Clinic policy for deposits may apply.",
+                                 'cancel': "🚨 DATA PURGE: Record archived as Cancelled. No revenue captured."
+                              };
+                              return `${scenarioMap[patient.status] || 'UNFINISHED RECORD:'} ${advisoryMap[resolution]}`;
+                           })()}
                         </Typography>
                      </Box>
 
@@ -490,18 +521,55 @@ export default function EndOfDayModal({
                         </ToggleButtonGroup>
                         
                         {resolution === 'rebook' && (
-                           <Box sx={{ mt: 1.5, p: 1.2, border: '2px solid #5D4037', borderRadius: 1.2, bgcolor: '#FFF' }}>
-                              <Typography variant="caption" sx={{ fontWeight: '1000', color: '#5D4037', display: 'block', mb: 0.5, fontSize: '0.6rem' }}>
-                                 TARGET RE-BOOK DATE
+                           <Box sx={{ mt: 1.2, p: 1, border: '2px solid #5D4037', borderRadius: 1.2, bgcolor: '#FFF6E0', animation: 'slideIn 0.2s ease-out' }}>
+                              <style>{`@keyframes slideIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+                              <Typography variant="caption" sx={{ fontWeight: '1000', color: '#5D4037', display: 'block', mb: 0.8, fontSize: '0.6rem', letterSpacing: 0.5 }}>
+                                 🗓️ TARGET CLINICAL WINDOW
                               </Typography>
-                              <TextField 
-                                 type="date"
-                                 size="small"
-                                 fullWidth
-                                 value={targetDates[patient.id] || new Date(new Date().setDate(new Date().getDate() + 1)).toISOString().split('T')[0]}
-                                 onChange={(e) => setTargetDates(prev => ({ ...prev, [patient.id]: e.target.value }))}
-                                 InputProps={{ sx: { fontWeight: '1000', fontSize: '0.75rem' } }}
-                              />
+                              
+                              <Stack spacing={1.5}>
+                                 <Stack direction="row" spacing={0.5}>
+                                    {[
+                                      { label: 'TOMORROW', days: 1 },
+                                      { label: '+2 DAYS', days: 2 },
+                                      { label: 'NEXT WEEK', days: 7 }
+                                    ].map((pick) => {
+                                      const d = new Date(); d.setDate(d.getDate() + pick.days);
+                                      const dateStr = d.toISOString().split('T')[0];
+                                      const isActive = targetDates[patient.id] === dateStr || (!targetDates[patient.id] && pick.days === 1);
+                                      
+                                      return (
+                                        <Button 
+                                          key={pick.label}
+                                          size="small" 
+                                          variant={isActive ? "contained" : "outlined"}
+                                          onClick={() => setTargetDates(prev => ({ ...prev, [patient.id]: dateStr }))}
+                                          sx={{ 
+                                             flex: 1, fontSize: '0.55rem', fontWeight: '1000', py: 0.2, 
+                                             bgcolor: isActive ? '#5D4037' : 'transparent',
+                                             color: isActive ? 'white' : '#5D4037',
+                                             borderColor: '#5D4037',
+                                             '&:hover': { bgcolor: isActive ? '#3E2723' : 'rgba(93, 64, 55, 0.05)', borderColor: '#5D4037' }
+                                          }}
+                                        >
+                                           {pick.label}
+                                        </Button>
+                                      );
+                                    })}
+                                 </Stack>
+
+                                 <TextField 
+                                    label="MANUAL DATE PICKER"
+                                    type="date"
+                                    size="small"
+                                    fullWidth
+                                    value={targetDates[patient.id] || new Date(new Date().setDate(new Date().getDate() + 1)).toISOString().split('T')[0]}
+                                    onChange={(e) => setTargetDates(prev => ({ ...prev, [patient.id]: e.target.value }))}
+                                    inputProps={{ sx: { fontWeight: '1000', fontSize: '0.8rem', bgcolor: 'white', borderRadius: 1 } }}
+                                    InputLabelProps={{ shrink: true, sx: { fontSize: '0.65rem', fontWeight: 1000, color: '#5D4037' } }}
+                                    sx={{ mt: 1 }}
+                                 />
+                              </Stack>
                            </Box>
                         )}
                      </Box>

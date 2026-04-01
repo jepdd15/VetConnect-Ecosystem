@@ -12,6 +12,7 @@ import { collection, query, orderBy, onSnapshot, doc, updateDoc, Timestamp, wher
 import { db } from '../../firebaseConfig'; 
 import { useQueueActions } from './useQueueActions';
 import { getQueueColumns } from './queueColumns';
+import { useUser } from '../../context/UserContext'; // THE SIGNATURE HOOK
 
 // 2. SHARED COMPONENTS
 import ClinicalWorkspace from '../../components/ClinicalWorkspace';
@@ -33,6 +34,7 @@ import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 import UndoIcon from '@mui/icons-material/Undo'; 
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital'; 
 import WarningIcon from '@mui/icons-material/Warning';
+import NightlightRoundIcon from '@mui/icons-material/NightlightRound';
 
 // THE FIX: Removed static MAX_CAGES constant. Pulled from clinic_settings/general instead.
 const formatDuration = (mins) => {
@@ -49,12 +51,20 @@ export default function Queue() {
   const [inventoryList, setInventoryList] = useState([]); 
   const [servicesList, setServicesList] = useState([]); 
   const [departments, setDepartments] = useState([]);
-  const [clinicSettings, setClinicSettings] = useState({ maxCages: 5 }); // THE FIX: Live Dynamic Capacity state!
-
+  const [clinicSettings, setClinicSettings] = useState({ maxCages: 5, closeHour: 17 }); // Live Dynamic Configuration!
   const [tabValue, setTabValue] = useState(0); 
   const[filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
   const[currentTime, setCurrentTime] = useState(new Date());
-  const [isClosingTime, setIsClosingTime] = useState(new Date().getHours() >= 17);
+  
+  const { user, profile } = useUser(); // Forensic Attribution
+  const { changeStatus, revertStatus, markNoShow, rejectAppointment, quickAdmitER } = useQueueActions();
+
+  // THE FIX: isClosingTime now dynamically calculates against live clinicSettings!
+  const isToday = new Date(filterDate).toDateString() === new Date().toDateString();
+  const isClosingTime = useMemo(() => {
+    if (!isToday) return false;
+    return currentTime.getHours() >= (clinicSettings.closeHour || 17);
+  }, [currentTime, clinicSettings, isToday]);
 
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedRow, setSelectedRow] = useState(null);
@@ -85,7 +95,7 @@ export default function Queue() {
   const [assignMode, setAssignMode] = useState('check-in'); // 'check-in' or 'assign'
   const [lastCheckDate, setLastCheckDate] = useState(new Date().toDateString());
 
-  const { changeStatus, revertStatus, markNoShow, rejectAppointment, quickAdmitER } = useQueueActions();
+
 
   // --- 🛰️ UNIVERSAL CLINICAL HOVER ENGINE ---
   const [hoverAnchor, setHoverAnchor] = useState(null);
@@ -102,21 +112,31 @@ export default function Queue() {
     setHoverMetadata({ type: null, data: null });
   };
   const hasCheckedAutoReset = useRef(false);
-  const isToday = new Date(filterDate).toDateString() === new Date().toDateString();
 
   const clinicalFlatStyle = {
     background: '#FFF', 
     border: '2px solid #5D4037',
     boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)', 
-    borderRadius: 1, 
+    borderRadius: 0, 
   };
 
   const headerFlatStyle = {
     background: '#FFF8E1', 
     border: '2px solid #5D4037',
     boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)', 
-    borderRadius: 1, 
+    borderRadius: 0, 
   };
+
+  // --- 🛰️ SYNC CLINIC CONFIGURATION (CLOSING HOURS & CAPACITY) ---
+  useEffect(() => {
+    const unsubSettings = onSnapshot(doc(db, "clinic_settings", "general"), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setClinicSettings(prev => ({ ...prev, ...data }));
+      }
+    });
+    return () => unsubSettings();
+  }, []);
 
   // ======================================================================
   // LOGIC & HANDLERS
@@ -145,13 +165,28 @@ export default function Queue() {
 
       leftoverPatients.forEach((patient) => { 
         const oldRef = doc(db, "appointments", patient.id); 
-        const action = patient.status === 'confined' ? 'confined' : (patientResolutions[patient.id] || 'cancel');
+        const action = patient.status === 'confined' ? 'confined' : (targetDateMap[patient.id] ? 'rebook' : (patientResolutions[patient.id] || 'cancel'));
+        const staffSignature = profile?.fullName || user?.email || "System Triage";
 
         if (action === 'rebook' || action === 'confined') { 
+          // THE TEMPORAL BRIDGE: Convert manual string date to Date @ 08:00 AM
+          const manualDate = targetDateMap[patient.id] ? new Date(`${targetDateMap[patient.id]}T08:00:00`) : targetDate;
+          
           if (patient.status === 'carried-over') {
-            batch.update(oldRef, { scheduledDate: Timestamp.fromDate(targetDate) });
+            batch.update(oldRef, { 
+               scheduledDate: Timestamp.fromDate(manualDate),
+               caseDay: (patient.caseDay || 1) + 1, // THE RE-INKING: Ensuring counts don't stop!
+               processedBy: staffSignature,
+               processedAt: Timestamp.now()
+            });
           } else {
-            batch.update(oldRef, { status: 'carried-over', notes: `(Re-booked) ${patient.notes || ""}` }); 
+            batch.update(oldRef, { 
+               status: 'carried-over', 
+               notes: `(Re-booked by ${staffSignature}) ${patient.notes || ""}`,
+               processedBy: staffSignature,
+               processedAt: Timestamp.now()
+            }); 
+            
             const newDocRef = doc(collection(db, "appointments")); 
             // eslint-disable-next-line no-unused-vars
             const { id, jsScheduled, jsArrived, jsStarted, jsCompleted, queueNumber, ticketPrefix, timeArrived, timeStarted, timeCompleted, ...preservedData } = patient;
@@ -161,18 +196,29 @@ export default function Queue() {
                status: action === 'confined' ? 'confined' : 'confirmed', 
                queueNumber: null, 
                ticketPrefix: null, 
-               scheduledDate: Timestamp.fromDate(targetDateMap[patient.id] || targetDate), 
+               scheduledDate: Timestamp.fromDate(manualDate), 
                createdAt: Timestamp.now(), 
                originApptId: patient.id, // THE ANCESTRY LINK
                caseDay: (patient.caseDay || 1) + 1, // THE GENERATIONAL COUNTER
-               notes: `[Carried Over from ${new Date(filterDate).toLocaleDateString()}] ${patient.notes || "No original notes."}`, 
+               notes: `[Triage Re-book] ${patient.notes || "No original notes."}`, 
+               processedBy: staffSignature,
                assignedVet: action === 'confined' ? patient.assignedVet : "Unassigned" 
             }); 
           }
         } else if (action === 'no-show') { 
-          batch.update(oldRef, { status: 'no-show', rejectReason: "Marked as No-Show during Triage" }); 
+          batch.update(oldRef, { 
+             status: 'no-show', 
+             rejectReason: "Marked as No-Show during Triage",
+             processedBy: staffSignature,
+             processedAt: Timestamp.now()
+          }); 
         } else {
-          batch.update(oldRef, { status: 'cancelled', rejectReason: "Cancelled during Triage" }); 
+          batch.update(oldRef, { 
+             status: 'cancelled', 
+             rejectReason: "Cancelled during Triage",
+             processedBy: staffSignature,
+             processedAt: Timestamp.now()
+          }); 
         }
       }); 
 
@@ -207,29 +253,28 @@ export default function Queue() {
           services: doc.data().services || [] 
         })); 
 
-        // THE FIX: "Live Identity Healing" — Restore missing biometrics from the CRM master record
+        // THE FIX: "Live Identity Healing" — Restore missing biometrics from the CRM master record (Resilience Patch)
         const enrichedPatients = await Promise.all(rawPatients.map(async (p) => {
-           const currentGender = (p.petGender || '').toUpperCase();
-           const isMissingBio = !p.petGender || currentGender === 'UNKNOWN' || currentGender === 'SEX UNK' || currentGender === '???';
+           try {
+              const currentGender = String(p.petGender || p.gender || '').toUpperCase();
+              const isMissingBio = !p.petGender || currentGender === 'UNKNOWN' || currentGender === 'SEX UNK' || currentGender === '???';
 
-           if (p.petId && isMissingBio) {
-              try {
+              if (p.petId && isMissingBio) {
                  const petSnap = await getDoc(doc(db, 'pets', p.petId));
                  if (petSnap.exists()) {
                     const petData = petSnap.data();
-                    // Aggressive Multi-Key Probe: CRM Gender Restoration
                     const recoveredGender = petData.gender || petData.sex || petData.petSex || petData.petGender;
-                    const genderIsReal = recoveredGender && recoveredGender.toLowerCase() !== 'unknown';
+                    const genderIsReal = recoveredGender && String(recoveredGender).toLowerCase() !== 'unknown';
 
                     return {
                        ...p,
-                       petGender: genderIsReal ? recoveredGender : p.petGender, // Only overwrite if real
+                       petGender: genderIsReal ? recoveredGender : p.petGender, 
                        petBreed: petData.breed || petData.petBreed || p.petBreed,
                        petIsNeutered: petData.isNeutered ?? petData.petIsNeutered ?? p.petIsNeutered
                     };
                  }
-              } catch (e) { console.warn('Identity Healing skipped for:', p.petName); }
-           }
+              }
+           } catch (e) { console.error('Triage Identity Restoration failed for record:', p.id, e); }
            return p;
         }));
 
@@ -319,7 +364,8 @@ export default function Queue() {
         
         let updateData = { 
             scheduledDate: Timestamp.fromDate(updatedSchDate), 
-            status: 'confirmed' 
+            status: 'confirmed',
+            rescheduledBy: profile?.fullName || 'System/Admin'
         };
 
         if (currentDayStr !== updatedDayStr) {
@@ -432,7 +478,7 @@ export default function Queue() {
       const today = new Date().toDateString();
       if (today !== lastCheckDate) {
         setLastCheckDate(today);
-        setOpenCleanup(true); // Force cleanup modal on day change
+        setOpenEndDay(true); // Force cleanup modal on day change
         console.log("Day change detected! Triggering triage board cleanup.");
       }
     }, 15 * 60 * 1000); // 15 Minutes
@@ -451,7 +497,9 @@ export default function Queue() {
   },[]);
 
   useEffect(() => {
-    const interval = setInterval(() => { setCurrentTime(new Date()); setIsClosingTime(new Date().getHours() >= 17); }, 60000);
+    const interval = setInterval(() => { 
+      setCurrentTime(new Date()); 
+    }, 60000);
     return () => clearInterval(interval);
   },[]);
 
@@ -506,8 +554,15 @@ export default function Queue() {
   const showPastDueWarning = isPastDate && unfinishedCount > 0;
 
   return (
-    <Box>
-      {/* WARNING BANNERS */}
+    <Box sx={{ 
+        display: 'flex', 
+        flexDirection: 'column', 
+        height: 'calc(100vh - 24px)', 
+        gap: 0, 
+        overflow: 'hidden' 
+    }}>
+      {/* WARNING BANNERS (FLEX-SHRINK: 0) */}
+      <Box sx={{ flexShrink: 0 }}>
       {showPastDueWarning && (
         <Alert severity="error" variant="filled" sx={{ mb: 2, fontWeight: 'bold', boxShadow: 2 }}>
           ⚠️ ATTENTION: You have {unfinishedCount} unresolved patient(s) from this date. Please click "Clean Up Records" to carry them over or cancel them.
@@ -515,13 +570,27 @@ export default function Queue() {
       )}
 
       {showClosingWarning && !showPastDueWarning && (
-        <Alert severity="warning" variant="filled" sx={{ mb: 2, fontWeight: 'bold', boxShadow: 2 }}>
-          Clinic hours have ended. You have {unfinishedCount} unfinished patient(s). Please process them or click "Close Clinic" to carry over.
+        <Alert 
+          icon={<NightlightRoundIcon sx={{ color: '#FFF' }} />}
+          severity="info" 
+          variant="filled" 
+          sx={{ 
+            mb: 2, 
+            fontWeight: 'bold', 
+            boxShadow: 2, 
+            bgcolor: '#1A237E', // The Midnight Clinical Baseline
+            '& .MuiAlert-icon': { color: '#FFF' }
+          }}
+        >
+          AFTER-HOURS MODE: You have {unfinishedCount} unresolved clinical record(s) remaining for today's final audit. 🧴✨
         </Alert>
       )}
 
-      {/* HEADER CONTROLS */}
-      <Paper sx={{ ...headerFlatStyle, p: 2, mb: 3, display: 'flex', flexWrap: 'wrap', gap: 2, justifyContent: 'space-between', alignItems: 'center' }}>
+      </Box>
+
+      {/* HEADER CONTROLS (FLEX-SHRINK: 0) */}
+      <Box sx={{ flexShrink: 0, mb: 3 }}>
+        <Paper sx={{ ...headerFlatStyle, p: 2, display: 'flex', flexWrap: 'wrap', gap: 2, justifyContent: 'space-between', alignItems: 'center' }}>
         
         {/* LEFT SIDE: Title & Date Picker */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap', flexGrow: 1 }}>
@@ -573,7 +642,7 @@ export default function Queue() {
                     onClick={() => initiateResetDay(false)} 
                     sx={(isClosingTime && isToday) ? {animation: 'pulse 1.5s infinite', fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.5} : { fontWeight: '900', boxShadow: 3, letterSpacing: 0.5, textTransform: 'uppercase' }}
                  >
-                    {isToday ? (isClosingTime ? "Close Clinic" : "Start New Day") : "Clean Up Records"}
+                    CLEAR AND RESET QUEUE
                  </Button>
                </Box>
              </Tooltip>
@@ -590,9 +659,11 @@ export default function Queue() {
            )}
         </Box>
       </Paper>
+      </Box>
 
-      {/* TABS */}
-      <Paper sx={{ ...clinicalFlatStyle, mb: 2, p: 0.5 }}>
+      {/* TABS (FLEX-SHRINK: 0) */}
+      <Box sx={{ flexShrink: 0, mb: 2 }}>
+        <Paper sx={{ ...clinicalFlatStyle, p: 0.5 }}>
         <Tabs value={tabValue} onChange={(e, v) => setTabValue(v)} variant="fullWidth" scrollButtons="auto" TabIndicatorProps={{ style: { display: 'none' } }} sx={{ minHeight: 48, '& .MuiTab-root': { fontWeight: '800', fontSize: '0.85rem', textTransform: 'uppercase', minHeight: 40, py: 1, px: 2.5, m: 0.5, borderRadius: 8, color: '#757575', transition: 'all 0.2s ease', }, '& .Mui-selected': { bgcolor: '#5D4037', color: '#FFF !important', boxShadow: '0 4px 10px rgba(93, 64, 55, 0.3)' } }}>
           <Tab label={`🌐 Online (${countOnline})`} />
           <Tab label={`📅 Scheduled (${countScheduled})`} />
@@ -604,8 +675,10 @@ export default function Queue() {
           <Tab label={`🚫 Cancelled (${countCancelled})`} /> 
         </Tabs>
       </Paper>
+      </Box>
 
-      {/* HISTORICAL ALERT BANNER */}
+      {/* HISTORICAL ALERT BANNER (FLEX-SHRINK: 0) */}
+      <Box sx={{ flexShrink: 0 }}>
       {!isToday && (
         <Alert 
             severity="warning" 
@@ -619,13 +692,14 @@ export default function Queue() {
             FORENSIC ARCHIVE: VIEWING HISTORICAL RECORDS (READ-ONLY MODE)
         </Alert>
       )}
+      </Box>
 
-      {/* DATA GRID */}
-      <Paper sx={{ ...clinicalFlatStyle, height: 'calc(100vh - 240px)', minHeight: 400, width: '100%', overflow: 'hidden' }}>
+      {/* DATA GRID (FLEX: 1 - THE FILLER) */}
+      <Paper sx={{ ...clinicalFlatStyle, flex: 1, minHeight: 0, width: '100%', overflow: 'hidden' }}>
         <DataGrid 
           rows={getFilteredRows()} 
           columns={tableColumns} 
-          pageSize={10} 
+          hideFooter
           disableSelectionOnClick 
           disableColumnResize
           disableColumnReorder
@@ -846,8 +920,8 @@ export default function Queue() {
                 {[
                   { id: 'booked', label: 'BOOKED (ONLINE)', val: hoverMetadata.data.createdAt },
                   { id: 'scheduled', label: 'APPOINTMENT SLOT', val: hoverMetadata.data.jsScheduled },
-                  { id: 'arrived', label: 'ARRIVED (CHECK-IN)', val: hoverMetadata.data.timeArrived },
-                  { id: 'started', label: 'CONSULT STARTED', val: hoverMetadata.data.timeStarted }
+                  { id: 'arrived', label: 'ARRIVED (CHECK-IN)', val: hoverMetadata.data.timeArrived, by: hoverMetadata.data.arrivedBy },
+                  { id: 'started', label: 'CONSULT STARTED', val: hoverMetadata.data.timeStarted, by: hoverMetadata.data.startedBy }
                 ].filter(i => i.val).map((item, idx, filteredArray) => {
                   const isLast = idx === filteredArray.length - 1;
                   const date = item.val.toDate ? item.val.toDate() : new Date(item.val);
@@ -884,6 +958,7 @@ export default function Queue() {
                       <Typography variant="caption" sx={{ fontWeight: '1000', color: color, letterSpacing: 0.5, display: 'block', fontSize: '0.65rem' }}>{item.label}</Typography>
                       <Typography sx={{ fontWeight: '1000', color: isLast ? '#1A1A1A' : '#9E9E9E', fontSize: '0.85rem' }}>
                         {date.toLocaleDateString([], { month: 'short', day: 'numeric' }).toUpperCase()} ● {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                        {item.by && <span style={{ opacity: 0.6, fontWeight: '700', marginLeft: '6px' }}>● {item.by}</span>}
                       </Typography>
                       {deltaLabel && (
                         <Typography variant="caption" sx={{ fontStyle: 'italic', color: deltaColor, fontWeight: '800', fontSize: '0.62rem', display: 'block', mt: 0.2 }}>

@@ -210,7 +210,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
         const resolvedWeight = parseFloat(guestPetData.weight) || (selectedPet?.lastWeight ? parseFloat(selectedPet.lastWeight) : null);
         const resolvedAllergies = (walkInType === 'guest' || isNewPet) ? guestPetData.allergies : (selectedPet?.allergies || '');
 
-        const appointmentPayload = {
+         const appointmentPayload = {
           ownerId: finalOwnerId, ownerName: finalOwnerName, petId: finalPetId, petName: finalPetName, petSpecies: finalPetSpecies,
           petBreed: resolvedBreed || 'Mixed Breed', 
           petGender: resolvedGender,
@@ -226,6 +226,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
           serviceCategory: primaryDept, // For legacy queue tabs
           
           status: 'arrived', // Overall context
+          caseDay: 1, // THE INITIAL PULSE (Fixes "Day 1" amnesia)
           queueNumber: newNumber, ticketPrefix: isEmergency ? 'E' : 'W', priority: isEmergency ? 'high' : 'normal', 
           scheduledDate: Timestamp.now(), createdAt: Timestamp.now(), timeArrived: Timestamp.now(), 
           notes: isEmergency ? `🚨 EMERGENCY: ${triageNotes}` : triageNotes, 

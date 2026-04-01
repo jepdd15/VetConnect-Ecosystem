@@ -37,12 +37,22 @@ import WarningIcon from '@mui/icons-material/Warning';
 import NightlightRoundIcon from '@mui/icons-material/NightlightRound';
 
 // THE FIX: Removed static MAX_CAGES constant. Pulled from clinic_settings/general instead.
-const formatDuration = (mins) => {
-  const m = Math.abs(mins);
-  if (m < 60) return `${m}M`;
-  const h = Math.floor(m / 60);
-  const rem = m % 60;
-  return rem > 0 ? `${h}H ${rem}M` : `${h}H`;
+const formatDuration = (totalMinutes) => {
+  const mins = Math.abs(Math.round(totalMinutes));
+  
+  if (mins >= 525600) {
+      const years = Math.floor(mins / 525600);
+      const remainingMonths = Math.floor((mins % 525600) / 43200);
+      return remainingMonths > 0 ? `${years}y ${remainingMonths}mo` : `${years}y`;
+  }
+  if (mins >= 43200) return `${Math.floor(mins / 43200)}mo`;
+  if (mins >= 10080) return `${Math.floor(mins / 10080)}w`;
+  if (mins >= 1440) return `${Math.floor(mins / 1440)}d`;
+  
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  const remainingMins = mins % 60;
+  return remainingMins > 0 ? `${hours}h ${remainingMins}m` : `${hours}h`;
 };
 
 export default function Queue() {
@@ -385,36 +395,68 @@ export default function Queue() {
   // DATA FETCHING & EFFECTS
   // ======================================================================
   
-  // THE MORNING GATEKEEPER (Forces modal if ghosts exist)
+  // THE MORNING GATEKEEPER (Forces modal if ghosts exist - REAL-TIME SYNC!)
   useEffect(() => {
-    const checkGhosts = async () => {
-      const todayStart = new Date(); todayStart.setHours(0,0,0,0);
-      const qGhosts = query(
-        collection(db, "appointments"),
-        where("status", "in",["pending", "confirmed", "arrived", "in-consult", "confined", "on-hold", "dispensing", "billing"]),
-        where("createdAt", "<", Timestamp.fromDate(todayStart))
-      );
-      const snapshot = await getDocs(qGhosts);
-      
-      if (!snapshot.empty) {
+    const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+    const qGhosts = query(
+      collection(db, "appointments"),
+      where("status", "in",["pending", "confirmed", "arrived", "in-consult", "confined", "on-hold", "dispensing", "billing"]),
+      where("createdAt", "<", Timestamp.fromDate(todayStart))
+    );
+
+    const unsubGhosts = onSnapshot(qGhosts, async (snapshot) => {
+      if (snapshot.empty) {
+        setHasGhostPatients(false);
+        setOpenEndDay(false);
+        setIsForcedCleanup(false);
+        setLeftoverPatients([]);
+      } else {
         setHasGhostPatients(true);
         if (isToday) {
             const ghosts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setLeftoverPatients(ghosts);
             
-            const initialRes = {};
-            ghosts.forEach(p => initialRes[p.id] = p.status === 'confined' ? 'confined' : 'cancel');
-            setPatientResolutions(initialRes);
+            // THE FIX: "Live Identity Healing" inside the sync loop!
+            const enrichedGhosts = await Promise.all(ghosts.map(async (p) => {
+              try {
+                if (p.petId && (!p.petGender || p.petGender === 'Unknown' || p.petGender === '???')) {
+                  const petSnap = await getDoc(doc(db, 'pets', p.petId));
+                  if (petSnap.exists()) {
+                    const petData = petSnap.data();
+                    return {
+                      ...p,
+                      petGender: petData.gender || petData.sex || p.petGender,
+                      petBreed: petData.breed || p.petBreed,
+                      petIsNeutered: petData.isNeutered ?? p.petIsNeutered
+                    };
+                  }
+                }
+              } catch (e) { console.error('Ghost Identity Restoration failed:', p.id, e); }
+              return p;
+            }));
+
+            setLeftoverPatients(enrichedGhosts);
+            
+            // Incrementally update resolutions, keeping existing ones in state
+            setPatientResolutions(prev => {
+              const updated = { ...prev };
+              enrichedGhosts.forEach(p => {
+                if (!updated[p.id]) {
+                  updated[p.id] = p.status === 'confined' ? 'confined' : 'cancel';
+                }
+              });
+              return updated;
+            });
             
             setIsForcedCleanup(true);
             setOpenEndDay(true);
         }
-      } else {
-        setHasGhostPatients(false);
       }
-    };
-    checkGhosts();
-  },[filterDate, isToday]); 
+    }, (error) => {
+      console.error("Ghost Listener Error:", error);
+    });
+
+    return () => unsubGhosts();
+  }, [filterDate, isToday]); 
 
   // THE MAIN BOARD QUERY
   useEffect(() => {
@@ -922,7 +964,14 @@ export default function Queue() {
                   { id: 'scheduled', label: 'APPOINTMENT SLOT', val: hoverMetadata.data.jsScheduled },
                   { id: 'arrived', label: 'ARRIVED (CHECK-IN)', val: hoverMetadata.data.timeArrived, by: hoverMetadata.data.arrivedBy },
                   { id: 'started', label: 'CONSULT STARTED', val: hoverMetadata.data.timeStarted, by: hoverMetadata.data.startedBy }
-                ].filter(i => i.val).map((item, idx, filteredArray) => {
+                ]
+                .filter(i => i.val)
+                .sort((a,b) => {
+                    const da = a.val.toDate ? a.val.toDate() : new Date(a.val);
+                    const db = b.val.toDate ? b.val.toDate() : new Date(b.val);
+                    return da - db;
+                })
+                .map((item, idx, filteredArray) => {
                   const isLast = idx === filteredArray.length - 1;
                   const date = item.val.toDate ? item.val.toDate() : new Date(item.val);
                   const color = isLast ? '#2E7D32' : '#9E9E9E';
@@ -934,7 +983,7 @@ export default function Queue() {
                     const schItem = filteredArray.find(i => i.id === 'scheduled');
                     if (schItem) {
                       const schDate = schItem.val.toDate ? schItem.val.toDate() : new Date(schItem.val);
-                      const diff = Math.floor((date - schDate) / 60000);
+                      const diff = Math.round((date - schDate) / 60000);
                       deltaLabel = diff > 0 ? `Punctuality: ${formatDuration(diff)} Late` : `Punctuality: ${formatDuration(diff)} Early`;
                     }
                   } else if (item.id === 'started') {
@@ -942,22 +991,30 @@ export default function Queue() {
                     const arrItem = filteredArray.find(i => i.id === 'arrived');
                     if (arrItem) {
                       const arrDate = arrItem.val.toDate ? arrItem.val.toDate() : new Date(arrItem.val);
-                      const waitDiff = Math.floor((date - arrDate) / 60000);
+                      const waitDiff = Math.round((date - arrDate) / 60000);
                       deltaLabel = `Lobby Wait: ${formatDuration(waitDiff)}`;
                       if (waitDiff >= 30) deltaColor = '#D32F2F';
                     }
-                    // ACTIVE TIMER: If it is the LAST item and is started
-                    if (isLast) {
-                      const consultDiff = Math.floor((new Date() - date) / 60000);
-                      deltaLabel += ` | Active Consult: ${formatDuration(consultDiff)} so far`;
+                  }
+                  
+                  // LIVE DYNAMIC UPDATES (If it is the LAST element, we show the ticking clock)
+                  if (isLast) {
+                    if (item.id === 'started' && !['done', 'cancelled'].includes(hoverMetadata.data.status)) {
+                      const consultDiff = Math.round((currentTime - date) / 60000);
+                      deltaLabel = (deltaLabel ? deltaLabel + " | " : "") + `ACTIVE: ${formatDuration(consultDiff)} so far`;
+                    } else if (item.id === 'arrived' && hoverMetadata.data.status === 'arrived') {
+                       const lobbyWait = Math.round((currentTime - date) / 60000);
+                       deltaLabel = `CURRENT LOBBY WAIT: ${formatDuration(lobbyWait)}`;
+                       if (lobbyWait >= 20) deltaColor = '#D32F2F';
                     }
                   }
+
                   return (
                     <Box key={idx} sx={{ position: 'relative', mb: 0.5 }}>
                       <Box sx={{ position: 'absolute', left: -26, top: 4, width: 8, height: 8, borderRadius: '50%', bgcolor: color, zIndex: 5 }} />
                       <Typography variant="caption" sx={{ fontWeight: '1000', color: color, letterSpacing: 0.5, display: 'block', fontSize: '0.65rem' }}>{item.label}</Typography>
                       <Typography sx={{ fontWeight: '1000', color: isLast ? '#1A1A1A' : '#9E9E9E', fontSize: '0.85rem' }}>
-                        {date.toLocaleDateString([], { month: 'short', day: 'numeric' }).toUpperCase()} ● {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                        {date.toLocaleDateString([], { month: 'short', day: 'numeric', year: date.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined }).toUpperCase()} ● {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                         {item.by && <span style={{ opacity: 0.6, fontWeight: '700', marginLeft: '6px' }}>● {item.by}</span>}
                       </Typography>
                       {deltaLabel && (
@@ -970,37 +1027,49 @@ export default function Queue() {
                 })}
             </Stack>
             <Box sx={{ mt: 2, pt: 1.5, borderTop: '1px solid #D7CCC8' }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <Box>
-                        <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', letterSpacing: 0.5, display: 'block', fontSize: '0.6rem' }}>PUNCTUALITY</Typography>
-                        <Typography sx={{ fontWeight: '1000', color: (hoverMetadata.data.timeArrived && hoverMetadata.data.jsScheduled && Math.floor(((hoverMetadata.data.timeArrived.toDate ? hoverMetadata.data.timeArrived.toDate() : new Date(hoverMetadata.data.timeArrived)) - (hoverMetadata.data.jsScheduled.toDate ? hoverMetadata.data.jsScheduled.toDate() : new Date(hoverMetadata.data.jsScheduled))) / 60000) > 15) ? '#D32F2F' : '#2E7D32', fontSize: '0.8rem' }}>
-                            {(() => {
-                                if (!hoverMetadata.data.timeArrived || !hoverMetadata.data.jsScheduled) return 'N/A';
-                                const arr = hoverMetadata.data.timeArrived.toDate ? hoverMetadata.data.timeArrived.toDate() : new Date(hoverMetadata.data.timeArrived);
-                                const sch = hoverMetadata.data.jsScheduled.toDate ? hoverMetadata.data.jsScheduled.toDate() : new Date(hoverMetadata.data.jsScheduled);
-                                const diff = Math.floor((arr - sch) / 60000);
-                                if (Math.abs(diff) <= 5) return 'ON-TIME';
-                                return `${formatDuration(Math.abs(diff))} ${diff > 0 ? 'LATE' : 'EARLY'}`;
-                            })()}
-                        </Typography>
-                    </Box>
-                    <Box sx={{ textAlign: 'right' }}>
-                        <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', letterSpacing: 0.5, display: 'block', fontSize: '0.6rem' }}>TOTAL WAIT</Typography>
-                        <Typography sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' }}>
-                            {(() => {
-                                if (!hoverMetadata.data.timeArrived) return '0M';
-                                const arr = hoverMetadata.data.timeArrived.toDate ? hoverMetadata.data.timeArrived.toDate() : new Date(hoverMetadata.data.timeArrived);
-                                // TOTAL WAIT should only 'freeze' if the patient is fully DONE or CANCELLED.
-                                // Otherwise, it shows the total time they have been in the clinic so far.
-                                const isFinished = ['done', 'cancelled'].includes(hoverMetadata.data.status);
-                                const end = isFinished && hoverMetadata.data.timeCompleted 
-                                    ? (hoverMetadata.data.timeCompleted.toDate ? hoverMetadata.data.timeCompleted.toDate() : new Date(hoverMetadata.data.timeCompleted)) 
-                                    : new Date();
-                                return formatDuration(Math.floor((end - arr) / 60000));
-                            })()}
-                        </Typography>
-                    </Box>
-                </Box>
+                {(() => {
+                    const resolveDate = (d) => {
+                       if (!d) return null;
+                       if (d.toDate) return d.toDate();
+                       const parsed = new Date(d);
+                       return isNaN(parsed.getTime()) ? null : parsed;
+                    };
+
+                    const sch = resolveDate(hoverMetadata.data.jsScheduled);
+                    const arr = resolveDate(hoverMetadata.data.timeArrived);
+                    const completed = resolveDate(hoverMetadata.data.timeCompleted);
+                    
+                    // Punctuality Delta
+                    const puncDiff = arr && sch ? Math.round((arr - sch) / 60000) 
+                                   : (!arr && sch) ? Math.round((currentTime - sch) / 60000)
+                                   : 0;
+                    
+                    const isFinished = ['done', 'cancelled'].includes(hoverMetadata.data.status);
+                    const waitEnd = isFinished && completed ? completed : currentTime;
+                    const totalWaitDiff = Math.round((waitEnd - (arr || sch || currentTime)) / 60000);
+
+                    const severityColor = (puncDiff > 15 || totalWaitDiff > 60) ? '#D32F2F' : '#2E7D32';
+
+                    return (
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <Box>
+                                <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', letterSpacing: 0.5, display: 'block', fontSize: '0.6rem' }}>PUNCTUALITY</Typography>
+                                <Typography sx={{ fontWeight: '1000', color: severityColor, fontSize: '0.8rem' }}>
+                                    {!arr 
+                                        ? (puncDiff > 1 ? `LATE (${formatDuration(puncDiff)})` : 'PENDING')
+                                        : (Math.abs(puncDiff) <= 5 ? 'ON-TIME' : `${formatDuration(Math.abs(puncDiff))} ${puncDiff > 0 ? 'LATE' : 'EARLY'}`)
+                                    }
+                                </Typography>
+                            </Box>
+                            <Box sx={{ textAlign: 'right' }}>
+                                <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', letterSpacing: 0.5, display: 'block', fontSize: '0.6rem' }}>TOTAL WAIT</Typography>
+                                <Typography sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' }}>
+                                    {formatDuration(totalWaitDiff)}
+                                </Typography>
+                            </Box>
+                        </Box>
+                    );
+                })()}
             </Box>
           </Box>
         )}

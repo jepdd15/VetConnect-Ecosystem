@@ -29,6 +29,7 @@ export function useQueueActions() {
         }
         if (newStatus === 'arrived') {
             updateData.arrivedBy = staffSignature;
+            updateData.timeArrived = Timestamp.now();
         }
         if (newStatus === 'in-consult' && row.status !== 'on-hold') {
             updateData.timeStarted = Timestamp.now();

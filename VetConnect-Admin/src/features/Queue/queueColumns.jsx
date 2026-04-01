@@ -24,23 +24,16 @@ import HowToRegIcon from '@mui/icons-material/HowToReg';
 import EventNoteIcon from '@mui/icons-material/EventNote';
 
 const formatDuration = (totalMinutes) => {
-  const mins = Math.abs(totalMinutes);
+  const mins = Math.abs(Math.round(totalMinutes));
   
-  // Universal Temporal Scaling for Clinical Clarity
-  if (mins >= 43200) { // 30+ Days
-    const months = Math.floor(mins / 43200);
-    return `${months}mo`;
+  if (mins >= 525600) {
+      const years = Math.floor(mins / 525600);
+      const remainingMonths = Math.floor((mins % 525600) / 43200);
+      return remainingMonths > 0 ? `${years}y ${remainingMonths}mo` : `${years}y`;
   }
-  
-  if (mins >= 10080) { // 7-30 Days
-    const weeks = Math.floor(mins / 10080);
-    return `${weeks}w`;
-  }
-  
-  if (mins >= 1440) { // 1-7 Days
-    const days = Math.floor(mins / 1440);
-    return `${days}d`;
-  }
+  if (mins >= 43200) return `${Math.floor(mins / 43200)}mo`;
+  if (mins >= 10080) return `${Math.floor(mins / 10080)}w`;
+  if (mins >= 1440) return `${Math.floor(mins / 1440)}d`;
   
   if (mins < 60) return `${mins}m`;
   const hours = Math.floor(mins / 60);
@@ -332,63 +325,88 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
     field: 'timing', headerName: 'Triage Clock', width: 250, align: 'center', headerAlign: 'center',
     resizable: false, sortable: false, disableColumnMenu: true,
     renderCell: (p) => {
-      const scheduled = p.row.jsScheduled;
-      const isToday = scheduled && scheduled.toDateString() === currentTime.toDateString();
-      const arrived = p.row.timeArrived ? (p.row.timeArrived.toDate ? p.row.timeArrived.toDate() : new Date(p.row.timeArrived)) : null;
-      const started = p.row.timeStarted ? (p.row.timeStarted.toDate ? p.row.timeStarted.toDate() : new Date(p.row.timeStarted)) : null;
+      const resolveDate = (d) => {
+        if (!d) return null;
+        if (d.toDate) return d.toDate();
+        const parsed = new Date(d);
+        return isNaN(parsed.getTime()) ? null : parsed;
+      };
+
+      const scheduled = resolveDate(p.row.jsScheduled);
+      const booked = resolveDate(p.row.createdAt);
+      const arrived = resolveDate(p.row.timeArrived);
+      const started = resolveDate(p.row.timeStarted);
+      const completed = resolveDate(p.row.timeCompleted);
       
-      let baseTime = isToday ? (started || arrived || scheduled) : scheduled;
+      const isHistorical = !isToday || (scheduled && scheduled.toDateString() !== currentTime.toDateString());
+      
       let primaryLabel = "";
       let secondaryLabel = "";
-      let triageColor = "#5D4037"; // Coffee default
+      let triageColor = "#5D4037"; // Forensic Coffee Default
 
-      if (!isToday && scheduled) {
-          primaryLabel = scheduled.toLocaleDateString([], { month: 'short', day: 'numeric' }).toUpperCase();
-          secondaryLabel = scheduled.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          triageColor = "#9E9E9E";
+      if (isHistorical && scheduled) {
+          primaryLabel = scheduled.toLocaleDateString([], { 
+            month: 'short', 
+            day: 'numeric',
+            year: scheduled.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined 
+          }).toUpperCase();
+          const timeStr = scheduled.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          
+          if (p.row.status === 'completed' || p.row.status === 'done') {
+             const end = completed || currentTime;
+             const start = arrived || scheduled;
+             const totalMins = Math.round((end - start) / 60000);
+             secondaryLabel = `VISIT: ${formatDuration(totalMins)}`;
+          } else {
+             secondaryLabel = timeStr;
+          }
       } else {
           switch (p.row.status) {
             case 'pending':
             case 'confirmed':
-                primaryLabel = `APPT: ${scheduled.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
-                const diffMins = Math.floor((currentTime - scheduled) / 60000);
+                primaryLabel = `APPT: ${scheduled?.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) || '??:??'}`;
+                const diffMins = scheduled ? Math.round((currentTime - scheduled) / 60000) : 0;
+                const bookedDiff = (booked && scheduled) ? Math.round((scheduled - booked) / 60000) : 0;
+                
                 secondaryLabel = diffMins > 0 ? `LATE (${formatDuration(diffMins)})` : `IN ${formatDuration(Math.abs(diffMins))}`;
+                if (bookedDiff > 0) secondaryLabel += ` | BOOKED: ${formatDuration(bookedDiff)} AGO`;
+                
                 if (diffMins > 30) triageColor = "#D32F2F"; 
                 break;
+
             case 'arrived':
-                baseTime = arrived || scheduled;
-                const waitMins = Math.floor((currentTime - baseTime) / 60000);
-                const driftMins = scheduled ? Math.floor((baseTime - scheduled) / 60000) : 0;
-                primaryLabel = `ARRIVED: ${baseTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
-                secondaryLabel = `WAITING: ${formatDuration(waitMins)}`;
-                triageColor = waitMins > 20 ? "#E65100" : "#2E7D32"; 
+                const waitMins = arrived ? Math.round((currentTime - arrived) / 60000) : 0;
+                const driftMins = (scheduled && arrived) ? Math.round((arrived - scheduled) / 60000) : 0;
                 
-                return (
-                    <Box 
-                      sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%', position: 'relative', paddingLeft: 0, cursor: 'help' }}
-                      onMouseEnter={(e) => actions.handleHoverStart(e, 'timing', p.row)}
-                      onMouseLeave={actions.handleHoverEnd}
-                    >
-                        <Typography sx={{ color: '#5D4037', fontWeight: '1000', lineHeight: 1, fontSize: '1.25rem', letterSpacing: '-0.5px' }}>
-                          {primaryLabel}
-                        </Typography>
-                        {scheduled && (
-                            <Typography variant="caption" sx={{ color: driftMins > 20 ? '#E65100' : '#5D4037', fontWeight: '900', opacity: 0.8, fontSize: '0.62rem', letterSpacing: 0.5 }}>
-                                APPT: {scheduled.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} ({driftMins > 0 ? '+' : ''}{formatDuration(driftMins)} {driftMins > 0 ? 'LATE' : 'EARLY'})
-                            </Typography>
-                        )}
-                        <Typography sx={{ color: triageColor === "#5D4037" ? "#5D4037" : triageColor, fontWeight: '1000', fontSize: '0.72rem', mt: 0.5, letterSpacing: 0.5 }}>
-                           {`IN LOBBY: ${formatDuration(waitMins)}`.toUpperCase()}
-                        </Typography>
-                    </Box>
-                );
+                primaryLabel = `ARRIVED: ${arrived?.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) || '??:??'}`;
+                secondaryLabel = `WAITING: ${formatDuration(waitMins)}`;
+                if (scheduled) secondaryLabel += ` | APPT ${scheduled.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} (${driftMins > 0 ? '+' : ''}${formatDuration(driftMins)})`;
+                
+                triageColor = waitMins > 20 ? "#E65100" : "#2E7D32"; 
+                break;
+
             case 'in-consult':
-                baseTime = started || arrived || scheduled;
-                const consultMins = Math.floor((currentTime - baseTime) / 60000);
-                primaryLabel = `STARTED: ${baseTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+                const consultMins = started ? Math.round((currentTime - started) / 60000) : 0;
+                const lobbyWait = (started && (arrived || scheduled)) ? Math.round((started - (arrived || scheduled)) / 60000) : 0;
+                
+                primaryLabel = `STARTED: ${started?.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) || '??:??'}`;
                 secondaryLabel = `CONSULTING: ${formatDuration(consultMins)}`;
+                if (lobbyWait > 0) secondaryLabel += ` | WAITED: ${formatDuration(lobbyWait)}`;
+                
                 triageColor = "#2E7D32"; 
                 break;
+
+            case 'done':
+            case 'completed':
+            case 'payment':
+                const end = completed || currentTime;
+                const start = arrived || scheduled || booked;
+                const totalMins = start ? Math.round((end - start) / 60000) : 0;
+                
+                primaryLabel = `DONE: ${end.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+                secondaryLabel = `TOTAL VISIT: ${formatDuration(totalMins)}`;
+                break;
+
             default:
                 primaryLabel = scheduled?.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) || "";
                 secondaryLabel = "PROCESSED";
@@ -402,15 +420,10 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
           onMouseEnter={(e) => actions.handleHoverStart(e, 'timing', p.row)}
           onMouseLeave={actions.handleHoverEnd}
         >
-            <Typography sx={{ color: '#5D4037', fontWeight: '1000', lineHeight: 1, fontSize: '1.25rem', letterSpacing: '-0.5px' }}>
+            <Typography sx={{ color: '#5D4037', fontWeight: '1000', lineHeight: 1, fontSize: '1.2rem', letterSpacing: '-0.5px' }}>
               {primaryLabel}
             </Typography>
-            {p.row.status === 'arrived' && scheduled && (
-                <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '800', opacity: 0.5, fontSize: '0.62rem' }}>
-                    APPT: {scheduled.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                </Typography>
-            )}
-            <Typography sx={{ color: triageColor === "#5D4037" ? "#5D4037" : triageColor, fontWeight: '1000', fontSize: '0.72rem', mt: 0.5, letterSpacing: 0.5 }}>
+            <Typography sx={{ color: triageColor === "#5D4037" ? "#5D4037" : triageColor, fontWeight: '900', fontSize: '0.68rem', mt: 0.5, letterSpacing: 0.5, textAlign: 'center', px: 1 }}>
                {secondaryLabel.toUpperCase()}
             </Typography>
         </Box>

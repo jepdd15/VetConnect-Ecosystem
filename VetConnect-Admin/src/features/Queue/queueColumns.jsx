@@ -55,7 +55,7 @@ const calculateAgeString = (dob) => {
     return `${months}m`;
 };
 
-export const getQueueColumns = (tabValue, currentTime, actions, isToday, departments) => [
+export const getQueueColumns = (tabValue, currentTime, actions, isToday, departments, isTomorrow) => [
   { 
     field: 'identity', headerName: 'Patient Identity', flex: 1, minWidth: 220, 
     resizable: false, sortable: false, disableColumnMenu: true,
@@ -175,6 +175,23 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
       );
     }
   },
+  ...(tabValue === 0 ? [{
+    field: 'intakeAge', headerName: 'Intake Age', width: 140, sortable: false, disableColumnMenu: true,
+    renderCell: (p) => {
+        const intakeDate = p.row.createdAt?.toDate ? p.row.createdAt.toDate() : new Date(p.row.createdAt);
+        const days = Math.floor((currentTime - intakeDate) / (1000 * 60 * 60 * 24));
+        return (
+            <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', width: '100%' }}>
+                <Typography sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '1rem' }}>
+                    {days === 0 ? '< 1 DAY' : `${days} ${days === 1 ? 'DAY' : 'DAYS'}`}
+                </Typography>
+                <Typography variant="caption" sx={{ fontWeight: '800', opacity: 0.6, fontSize: '0.6rem' }}>
+                    INTAKE AGE
+                </Typography>
+            </Box>
+        );
+    }
+  }] : []),
   {
     field: 'notes', headerName: 'Medical Intake / Notes', flex: 1.2, minWidth: 200, sortable: false,
     renderCell: (p) => {
@@ -338,7 +355,9 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
       const started = resolveDate(p.row.timeStarted);
       const completed = resolveDate(p.row.timeCompleted);
       
-      const isHistorical = !isToday || (scheduled && scheduled.toDateString() !== currentTime.toDateString());
+      // THE FIX: Distinguish between the Dead Past and the Planned Future
+      const isHistorical = !isToday && !isTomorrow;
+      const isPreview = isTomorrow; 
       
       let primaryLabel = "";
       let secondaryLabel = "";
@@ -396,9 +415,22 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                 triageColor = "#2E7D32"; 
                 break;
 
+            case 'dispense':
+                const dispenseMins = resolveDate(p.row.timeDispenseStarted) ? Math.round((currentTime - resolveDate(p.row.timeDispenseStarted)) / 60000) : 0;
+                const dispenseTotal = (arrived || scheduled) ? Math.round((currentTime - (arrived || scheduled)) / 60000) : 0;
+                primaryLabel = `DISPENSING: ${formatDuration(dispenseMins)}`;
+                secondaryLabel = `TOTAL VISIT: ${formatDuration(dispenseTotal)}`;
+                break;
+
+            case 'payment':
+                const paymentMins = resolveDate(p.row.timePaymentStarted) ? Math.round((currentTime - resolveDate(p.row.timePaymentStarted)) / 60000) : 0;
+                const paymentTotal = (arrived || scheduled) ? Math.round((currentTime - (arrived || scheduled)) / 60000) : 0;
+                primaryLabel = `PAYING: ${formatDuration(paymentMins)}`;
+                secondaryLabel = `TOTAL VISIT: ${formatDuration(paymentTotal)}`;
+                break;
+
             case 'done':
             case 'completed':
-            case 'payment':
                 const end = completed || currentTime;
                 const start = arrived || scheduled || booked;
                 const totalMins = start ? Math.round((end - start) / 60000) : 0;
@@ -434,7 +466,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
     field: 'actions', headerName: 'Command Action', width: 320, sortable: false, disableColumnMenu: true,
     align: 'center', headerAlign: 'center', resizable: false,
     renderCell: (params) => {
-        if (!isToday) {
+        if (!isToday && !isTomorrow) {
           return (
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', opacity: 0.5 }}>
               <WarningIcon sx={{ color: '#5D4037', fontSize: 18, mb: 0.5, opacity: 0.6 }} />
@@ -452,7 +484,11 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
         return (
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, width: '100%', height: '100%' }}>
             <Button size="small" variant="contained" color="success" sx={btnStyle} startIcon={<CheckCircleIcon sx={{fontSize:'16px !important'}} />} onClick={() => actions.handleStatusChange(params.row, 'confirmed')}>Accept</Button>
-            <Button size="small" variant="outlined" color="error" sx={btnStyle} onClick={() => { actions.setSelectedId(params.row.id); actions.setOpenReject(true); }}>Reject</Button>
+            <Button size="small" variant="outlined" color="error" sx={btnStyle} onClick={() => { 
+                actions.setSelectedId(params.row.id); 
+                actions.handleMenuClick({ currentTarget: null }, params.row); // SENSOR SYNC
+                actions.setOpenReject(true); 
+            }}>Reject</Button>
           </Box>
         );
       }
@@ -462,23 +498,25 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
         
         return (
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 0.8, width: '100%', height: '100%', py: 1 }}>
-            {/* PRIMARY: CHECK-IN */}
+            {/* PRIMARY: CHECK-IN (LOCKED IN PREVIEW) */}
             <Button 
                 variant="contained" 
                 size="small" 
                 fullWidth
+                disabled={isTomorrow}
                 startIcon={<HowToRegIcon sx={{ fontSize: '14px !important' }} />} 
                 sx={{ 
                     ...btnStyle, 
-                    bgcolor: '#1976D2', 
+                    bgcolor: isTomorrow ? '#BDBDBD' : '#1976D2', 
                     fontWeight: '1000', 
                     mb: 0.6,
                     height: 32,
-                    boxShadow: '0 4px 10px rgba(25, 118, 210, 0.3)'
+                    boxShadow: isTomorrow ? 'none' : '0 4px 10px rgba(25, 118, 210, 0.3)',
+                    '&.Mui-disabled': { bgcolor: 'rgba(0,0,0,0.08)', color: 'rgba(0,0,0,0.26)' }
                 }} 
                 onClick={() => actions.handleOpenAssign(params.row, 'check-in')}
             >
-                Check In
+                {isTomorrow ? 'Check-In Locked' : 'Check In'}
             </Button>
             
             {/* SECONDARY UTILITY GRID (100% CASE COVERAGE) */}
@@ -486,7 +524,11 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                 <Button 
                     variant="outlined" 
                     size="small" 
-                    sx={{ ...btnStyle, fontSize: '0.6rem', px: 0, borderColor: '#5D4037', color: '#5D4037', opacity: 0.8, minWidth: 0, height: 26 }} 
+                    disabled={isTomorrow}
+                    sx={{ 
+                      ...btnStyle, fontSize: '0.6rem', px: 0, borderColor: '#5D4037', color: '#5D4037', opacity: 0.8, minWidth: 0, height: 26,
+                      '&.Mui-disabled': { borderColor: 'rgba(0,0,0,0.05)', opacity: 0.3 }
+                    }} 
                     startIcon={<PersonAddIcon sx={{ fontSize: '10px !important' }} />} 
                     onClick={() => actions.handleOpenAssign(params.row, 'assign')}
                 >
@@ -507,7 +549,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                     color="error"
                     sx={{ ...btnStyle, fontSize: '0.6rem', px: 0, borderColor: 'rgba(211, 47, 47, 0.3)', minWidth: 0, height: 26 }} 
                     startIcon={<PersonOffIcon sx={{ fontSize: '10px !important' }} />} 
-                    onClick={() => actions.handleQuickNoShow(params.row.id)}
+                    onClick={() => actions.handleQuickNoShow(params.row)}
                 >
                     No-Show
                 </Button>
@@ -518,6 +560,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                     sx={{ ...btnStyle, fontSize: '0.6rem', px: 0, borderColor: 'rgba(0,0,0,0.1)', color: '#757575', minWidth: 0, height: 26 }} 
                     onClick={() => {
                         actions.setSelectedId(params.row.id);
+                        actions.handleMenuClick({ currentTarget: null }, params.row); // SYNCING SENSOR
                         actions.setOpenReject(true);
                     }}
                 >

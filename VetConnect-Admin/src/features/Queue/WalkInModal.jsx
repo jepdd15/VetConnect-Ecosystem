@@ -19,6 +19,8 @@ import { db } from '../../firebaseConfig';
 
 export default function WalkInModal({ open, onClose, servicesList, departments }) {
   const [loading, setLoading] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [confirmSubmit, setConfirmSubmit] = useState(false);
   const [walkInType, setWalkInType] = useState('existing'); 
   
   // --- EXISTING CLIENT STATES ---
@@ -84,7 +86,9 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
     setGuestName(''); setGuestPhone(''); setGuestEmail(''); setTriageNotes('');
     setGuestPetData({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', microchip: '', allergies: '', weight: '' });
     setPhoneCheckDone(false);
-    setSelectedServices([]); // Multi-reset
+    setSelectedServices([]); 
+    setConfirmDiscard(false);
+    setConfirmSubmit(false);
     onClose();
   };
 
@@ -94,6 +98,9 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
     // VALIDATION
     if (walkInType === 'existing' && !selectedClient) return setErrorMsg("Please select an existing client.");
     if (walkInType === 'existing' && !selectedPet && !isNewPet) return setErrorMsg("Please select a pet or choose 'Register New Pet'.");
+    
+    // Alphabetical Synthesis Sorting
+    const sortedServices = [...(servicesList || [])].sort((a,b) => (a.name || '').localeCompare(b.name || ''));
     if (walkInType === 'existing' && isNewPet && (!guestPetData.name || !guestPetData.breed || !guestPetData.gender || !guestPetData.species)) return setErrorMsg("New pet name, species, breed, and gender are required.");
     if (walkInType === 'guest' && (!guestName || !guestPhone || !guestPetData.name || !guestPetData.breed || !guestPetData.gender || !guestPetData.species)) return setErrorMsg("Owner Full Name, Phone, and all Pet Biometrics (Name, Species, Breed, Gender) are required.");
     if (!triageNotes) return setErrorMsg("Triage Notes are required.");
@@ -246,135 +253,281 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
     }
   };
 
+
+  const handleDiscardClick = () => {
+    if (!confirmDiscard) {
+      setConfirmDiscard(true);
+      setTimeout(() => setConfirmDiscard(false), 3000);
+    } else {
+      handleClose();
+    }
+  };
+
+  const handleQueueClick = () => {
+     if (!confirmSubmit) {
+        setConfirmSubmit(true);
+        setTimeout(() => setConfirmSubmit(false), 3000);
+     } else {
+        handleSubmit();
+     }
+  };
+
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
+    <Dialog 
+      open={open} 
+      onClose={handleClose} 
+      maxWidth="md" 
+      fullWidth
+    >
       <DialogTitle sx={{ 
-          background: 'linear-gradient(135deg, #8B4513 0%, #5D4037 100%)', 
-          color: 'white', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1 
+          bgcolor: '#5D4037', 
+          color: 'white', 
+          fontWeight: '1000', 
+          textTransform: 'uppercase',
+          letterSpacing: 1.2,
+          fontSize: '1.1rem',
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 1.5,
+          p: 2,
+          borderBottom: '2px solid rgba(0,0,0,0.1)'
       }}>
-        <DirectionsWalkIcon /> Register Walk-In Patient
+        <DirectionsWalkIcon sx={{ fontSize: 24 }} /> Register Walk-In Patient
       </DialogTitle>
       
-      <DialogContent dividers sx={{ p: 3, bgcolor: '#F5F5F5' }}>
-        {errorMsg && <Alert severity="error" sx={{ mb: 2 }}>{errorMsg}</Alert>}
+      <DialogContent dividers sx={{ p: 2, bgcolor: '#F5F5F5', minHeight: '520px', display: 'flex', flexDirection: 'column' }}>
+        {errorMsg && <Alert severity="error" sx={{ mb: 2, fontWeight: '1000', borderRadius: 1, border: '2px solid #D32F2F', py: 0.5 }}>{errorMsg}</Alert>}
         
         <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
-          <RadioGroup row value={walkInType} onChange={(e) => {
-            setWalkInType(e.target.value);
-            // Reset guest data when switching type
-            setGuestName(''); setGuestPhone(''); setGuestEmail(''); setPhoneCheckDone(false);
-            setGuestPetData({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', microchip: '', allergies: '', weight: '' });
-            setSelectedClient(null); setSelectedPet(null); setIsNewPet(false);
-          }}>
-            <FormControlLabel value="existing" control={<Radio />} label="Existing Client" />
-            <FormControlLabel value="guest" control={<Radio />} label="Guest / New Client" />
+          <RadioGroup 
+            row 
+            value={walkInType} 
+            onChange={(e) => {
+              setWalkInType(e.target.value);
+              setGuestName(''); setGuestPhone(''); setGuestEmail(''); setPhoneCheckDone(false);
+              setGuestPetData({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', microchip: '', allergies: '', weight: '' });
+              setSelectedClient(null); setSelectedPet(null); setIsNewPet(false);
+              setConfirmDiscard(false); setConfirmSubmit(false);
+            }}
+          >
+            <FormControlLabel value="existing" control={<Radio size="small" sx={{ color: '#5D4037', '&.Mui-checked': { color: '#5D4037' } }} />} label={<Typography sx={{ fontWeight: '1000', fontSize: '0.8rem' }}>EXISTING CLIENT</Typography>} />
+            <FormControlLabel value="guest" control={<Radio size="small" sx={{ color: '#5D4037', '&.Mui-checked': { color: '#5D4037' } }} />} label={<Typography sx={{ fontWeight: '1000', fontSize: '0.8rem' }}>GUEST / NEW CLIENT</Typography>} />
           </RadioGroup>
         </Box>
 
         {walkInType === 'existing' ? (
-            <Box sx={{ p: 3, mb: 3, borderRadius: 2, background: 'rgba(255, 255, 255, 0.6)', border: '1px solid rgba(0,0,0,0.08)' }}>
-              <Typography variant="overline" color="primary" fontWeight="bold">Client & Pet Selection</Typography>
+            <Paper elevation={0} sx={{ p: 2, mb: 2, borderRadius: 1, border: '1px solid #D7CCC8', bgcolor: '#FFF' }}>
+              <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1, fontSize: '0.65rem', display: 'block', mb: 1 }}>
+                  IDENTITY RECONCILIATION
+              </Typography>
+              
                 <Autocomplete
                     options={clients}
-                    getOptionLabel={(option) => `${option.fullName} (${option.phone || 'No phone'})`}
+                    getOptionLabel={(option) => `${option.fullName?.toUpperCase()} (${option.phone || 'NO PHONE'})`}
                     value={selectedClient}
                     onChange={(e, v) => setSelectedClient(v)}
-                    renderInput={(params) => <TextField {...params} variant="filled" label="Search Client..." size="small" fullWidth sx={{mt: 2, mb: 2}} />}
+                    renderInput={(params) => (
+                      <TextField 
+                        {...params} 
+                        size="small"
+                        variant="outlined" 
+                        label="SEARCH CLIENT DATABASE..." 
+                        fullWidth 
+                        inputProps={{ ...params.inputProps, style: { fontWeight: '1000', fontSize: '0.85rem' } }}
+                        InputLabelProps={{ sx: { fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' } }}
+                        sx={{ mb: 1.5 }} 
+                      />
+                    )}
                 />
+                
                 {selectedClient && (
-                    fetchingPets ? <CircularProgress size={24} /> : (
-                      <>
-                        <FormControl fullWidth size="small" variant="filled" sx={{mb: 2}}>
-                            <InputLabel>Select Pet</InputLabel>
-                            <Select value={selectedPet || ''} label="Select Pet" onChange={(e) => {setSelectedPet(e.target.value); setIsNewPet(false);}} disabled={isNewPet}>
-                                {clientPets.map(p => <MenuItem key={p.id} value={p}>{(p.species === 'Dog' || p.species === 'Canine') ? '🐶' : '🐱'} {p.name}</MenuItem>)}
+                    fetchingPets ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 1 }}><CircularProgress size={24} sx={{ color: '#5D4037' }} /></Box> : (
+                      <Stack spacing={1.5}>
+                        <FormControl fullWidth size="small" variant="outlined">
+                            <InputLabel sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' }}>SELECT PET IDENTITY</InputLabel>
+                            <Select 
+                              value={selectedPet || ''} 
+                              onChange={(e) => {setSelectedPet(e.target.value); setIsNewPet(false);}} 
+                              disabled={isNewPet}
+                              label="SELECT PET IDENTITY"
+                              sx={{ fontWeight: '1000', fontSize: '0.85rem' }}
+                            >
+                                {clientPets.map(p => <MenuItem key={p.id} value={p} sx={{ fontWeight: '800', fontSize: '0.85rem' }}>{(p.species === 'Dog' || p.species === 'Canine') ? '🐶' : '🐱'} {p.name?.toUpperCase()}</MenuItem>)}
                             </Select>
                         </FormControl>
-                        <FormControlLabel control={<Switch checked={isNewPet} onChange={(e) => {setIsNewPet(e.target.checked); setSelectedPet(null); setGuestPetData({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', microchip: '', allergies: '', weight: '' }); }} color="primary" />} label={<Typography fontWeight="bold" color="primary">Register New Pet for this Client</Typography>} />
+                        
+                        <FormControlLabel 
+                          control={<Switch size="small" checked={isNewPet} onChange={(e) => {setIsNewPet(e.target.checked); setSelectedPet(null); setGuestPetData({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', microchip: '', allergies: '', weight: '' }); }} />} 
+                          label={<Typography sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' }}>REGISTER NEW PET</Typography>} 
+                        />
+                        
                         {selectedPet && !isNewPet && (
                           <TextField 
-                            label="Arrival Weight (kg)" variant="filled" size="small" type="number"
-                            inputProps={{ step: '0.1', min: '0' }}
+                            label="ARRIVAL WEIGHT (KG)" 
+                            size="small"
+                            variant="outlined" 
+                            type="number"
+                            inputProps={{ step: '0.1', min: '0', style: { fontWeight: '1000', fontSize: '1rem', color: '#1B5E20' } }}
+                            InputLabelProps={{ sx: { fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' } }}
                             value={guestPetData.weight} 
                             onChange={e => setGuestPetData({...guestPetData, weight: e.target.value})}
-                            helperText={selectedPet.lastWeight ? `Last recorded: ${selectedPet.lastWeight} kg` : 'No previous weight on file'}
-                            sx={{ mt: 1.5 }}
+                            helperText={selectedPet.lastWeight ? `LAST WEIGHT: ${selectedPet.lastWeight} KG` : 'NO PREVIOUS WEIGHT'}
+                            FormHelperTextProps={{ sx: { fontWeight: '1000', color: '#5D4037', fontSize: '0.7rem' } }}
                             fullWidth
                           />
                         )}
-                      </>
+                      </Stack>
                     )
                 )}
-            </Box>
+            </Paper>
         ) : null}
 
         {(walkInType === 'guest' || isNewPet) && (
-            <Box sx={{ p: 3, mb: 3, borderRadius: 2, background: 'rgba(255, 255, 255, 0.6)', border: '1px solid rgba(0,0,0,0.08)' }}>
-                <Typography variant="overline" color="primary" fontWeight="bold">
-                    {walkInType === 'guest' ? 'Guest & Pet Information' : 'New Pet Information'}
+            <Paper elevation={0} sx={{ p: 2, mb: 2, borderRadius: 1, border: '1px solid #D7CCC8', bgcolor: '#FFF' }}>
+                <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1, fontSize: '0.65rem', display: 'block', mb: 1.5 }}>
+                    {walkInType === 'guest' ? 'GUEST & PATIENT GENOME' : 'NEW PATIENT DNA LOG'}
                 </Typography>
                 
-                <Grid container spacing={2} sx={{ mt: 0.5 }}>
+                <Grid container spacing={2}>
                     {walkInType === 'guest' && (
                         <>
-                           <Grid size={{ xs: 12, md: 5 }}><TextField label="Owner Full Name" variant="filled" size="small" fullWidth value={guestName} onChange={e => setGuestName(e.target.value)} /></Grid> 
-                           <Grid size={{ xs: 12, md: 4 }}><TextField label="Contact Phone" variant="filled" size="small" fullWidth value={guestPhone} onChange={e => { setGuestPhone(e.target.value); setPhoneCheckDone(false); }} helperText="Must start with 09" /></Grid> 
-                           <Grid size={{ xs: 12, md: 3 }}><TextField label="Email (Optional)" variant="filled" size="small" fullWidth value={guestEmail} onChange={e => setGuestEmail(e.target.value)} /></Grid>
-                           <Grid size={{ xs: 12 }}><Divider sx={{ my: 1 }} /></Grid>
+                           <Grid size={{ xs: 12, md: 5 }}><TextField size="small" label="OWNER FULL NAME" variant="outlined" fullWidth value={guestName} onChange={e => setGuestName(e.target.value)} InputLabelProps={{ sx: { fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' } }} inputProps={{ style: { fontWeight: '1000', fontSize: '0.85rem' } }} /></Grid> 
+                           <Grid size={{ xs: 12, md: 4 }}><TextField size="small" label="CONTACT PHONE" variant="outlined" fullWidth value={guestPhone} onChange={e => { setGuestPhone(e.target.value); setPhoneCheckDone(false); }} helperText="MUST START WITH 09" FormHelperTextProps={{sx:{fontWeight:1000, fontSize:'0.7rem'}}} InputLabelProps={{ sx: { fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' } }} inputProps={{ style: { fontWeight: '1000', fontSize: '0.85rem' } }} /></Grid> 
+                           <Grid size={{ xs: 12, md: 3 }}><TextField size="small" label="EMAIL (OPTIONAL)" variant="outlined" fullWidth value={guestEmail} onChange={e => setGuestEmail(e.target.value)} InputLabelProps={{ sx: { fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' } }} inputProps={{ style: { fontWeight: '1000', fontSize: '0.85rem' } }} /></Grid>
+                           <Grid size={{ xs: 12 }}><Divider sx={{ my: 0.5, borderStyle: 'dashed' }} /></Grid>
                         </>
                     )}
-                <Grid size={{ xs: 12, md: 6 }}><TextField label="Pet Name" variant="filled" size="small" fullWidth value={guestPetData.name} onChange={e => setGuestPetData({...guestPetData, name: e.target.value})} /></Grid>
-                <Grid size={{ xs: 12, md: 3 }}><TextField select label="Species" variant="filled" fullWidth size="small" value={guestPetData.species} onChange={e => setGuestPetData({...guestPetData, species: e.target.value})}><MenuItem value="Canine">Canine</MenuItem><MenuItem value="Feline">Feline</MenuItem></TextField></Grid>
-                <Grid size={{ xs: 12, md: 3 }}><TextField label="Weight (kg)" variant="filled" size="small" fullWidth type="number" inputProps={{ step: '0.1', min: '0' }} value={guestPetData.weight} onChange={e => setGuestPetData({...guestPetData, weight: e.target.value})} /></Grid>
-                <Grid size={{ xs: 12, md: 6 }}><TextField label="Breed" variant="filled" size="small" fullWidth value={guestPetData.breed} onChange={e => setGuestPetData({...guestPetData, breed: e.target.value})} /></Grid>
-                <Grid size={{ xs: 12, md: 6 }}><TextField label="Color/Markings" variant="filled" size="small" fullWidth value={guestPetData.color} onChange={e => setGuestPetData({...guestPetData, color: e.target.value})} /></Grid>
-                <Grid size={{ xs: 12, md: 4 }}><TextField type="date" label="Birthday" variant="filled" size="small" fullWidth InputLabelProps={{shrink:true}} value={guestPetData.dob} onChange={e => setGuestPetData({...guestPetData, dob: e.target.value})} /></Grid>
-                <Grid size={{ xs: 12, md: 4 }}><TextField select label="Gender" variant="filled" fullWidth size="small" value={guestPetData.gender} onChange={e => setGuestPetData({...guestPetData, gender: e.target.value})}><MenuItem value="Male">Male</MenuItem><MenuItem value="Female">Female</MenuItem></TextField></Grid>
-                <Grid size={{ xs: 12, md: 4 }}><TextField label="Microchip #" variant="filled" size="small" fullWidth value={guestPetData.microchip} onChange={e => setGuestPetData({...guestPetData, microchip: e.target.value})} /></Grid>
-                <Grid size={{ xs: 12 }}><TextField label="Allergies" variant="filled" size="small" fullWidth placeholder="e.g. Chicken, Penicillin (leave blank if none)" value={guestPetData.allergies} onChange={e => setGuestPetData({...guestPetData, allergies: e.target.value})} /></Grid>
-                <Grid size={{ xs: 12 }}><FormControlLabel control={<Switch checked={guestPetData.isNeutered} onChange={e => setGuestPetData({...guestPetData, isNeutered: e.target.checked})} color="success"/>} label="Spayed/Neutered" /></Grid>
-            </Grid>
-            </Box>
+                    <Grid size={{ xs: 12, md: 4 }}><TextField size="small" label="PET NAME" variant="outlined" fullWidth value={guestPetData.name} onChange={e => setGuestPetData({...guestPetData, name: e.target.value})} InputLabelProps={{ sx: { fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' } }} inputProps={{ style: { fontWeight: '1000', fontSize: '0.85rem' } }} /></Grid>
+                    <Grid size={{ xs: 12, md: 2.5 }}>
+                      <FormControl fullWidth size="small" variant="outlined">
+                        <InputLabel sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' }}>SPECIES</InputLabel>
+                        <Select label="SPECIES" value={guestPetData.species} onChange={e => setGuestPetData({...guestPetData, species: e.target.value})} sx={{ fontWeight: '1000', fontSize: '0.85rem' }}><MenuItem value="Canine" sx={{fontWeight:800, fontSize:'0.85rem'}}>CANINE 🐶</MenuItem><MenuItem value="Feline" sx={{fontWeight:800, fontSize:'0.85rem'}}>FELINE 🐱</MenuItem></Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid size={{ xs: 12, md: 2.5 }}><TextField size="small" label="WEIGHT (KG)" variant="outlined" fullWidth type="number" inputProps={{ step: '0.1', min: '0', style: { fontWeight: '1000', color: '#1B5E20', fontSize: '0.85rem' } }} InputLabelProps={{ sx: { fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' } }} value={guestPetData.weight} onChange={e => setGuestPetData({...guestPetData, weight: e.target.value})} /></Grid>
+                    <Grid size={{ xs: 12, md: 3 }}><TextField size="small" label="BREED / LINEAGE" variant="outlined" fullWidth value={guestPetData.breed} onChange={e => setGuestPetData({...guestPetData, breed: e.target.value})} InputLabelProps={{ sx: { fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' } }} inputProps={{ style: { fontWeight: '1000', fontSize: '0.85rem' } }} /></Grid>
+                    
+                    <Grid size={{ xs: 12, md: 3 }}><TextField size="small" label="COLOR / MARKINGS" variant="outlined" fullWidth value={guestPetData.color} onChange={e => setGuestPetData({...guestPetData, color: e.target.value})} InputLabelProps={{ sx: { fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' } }} inputProps={{ style: { fontWeight: '1000', fontSize: '0.85rem' } }} /></Grid>
+                    <Grid size={{ xs: 12, md: 3 }}><TextField size="small" type="date" label="PET BIRTHDAY" variant="outlined" fullWidth InputLabelProps={{shrink:true, sx: { fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' }}} inputProps={{ style: { fontWeight: '1000', fontSize: '0.85rem' } }} value={guestPetData.dob} onChange={e => setGuestPetData({...guestPetData, dob: e.target.value})} /></Grid>
+                    <Grid size={{ xs: 12, md: 2.5 }}>
+                      <FormControl fullWidth size="small" variant="outlined">
+                        <InputLabel sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' }}>GENDER</InputLabel>
+                        <Select label="GENDER" value={guestPetData.gender} onChange={e => setGuestPetData({...guestPetData, gender: e.target.value})} sx={{ fontWeight: '1000', fontSize: '0.85rem' }}><MenuItem value="Male" sx={{fontWeight:800, fontSize:'0.85rem'}}>MALE</MenuItem><MenuItem value="Female" sx={{fontWeight:800, fontSize:'0.85rem'}}>FEMALE</MenuItem></Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid size={{ xs: 12, md: 3.5 }}><TextField size="small" label="MICROCHIP ID" variant="outlined" fullWidth value={guestPetData.microchip} onChange={e => setGuestPetData({...guestPetData, microchip: e.target.value})} InputLabelProps={{ sx: { fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' } }} inputProps={{ style: { fontWeight: '1000', fontSize: '0.85rem' } }} /></Grid>
+                    
+                    <Grid size={{ xs: 12 }}><TextField size="small" label="ALLERGIES / CLINICAL CONTRAINDICATIONS" variant="outlined" fullWidth multiline rows={1} placeholder="LEAVE BLANK IF NONE" value={guestPetData.allergies} onChange={e => setGuestPetData({...guestPetData, allergies: e.target.value})} InputLabelProps={{ sx: { fontWeight: '1000', color: '#D32F2F', fontSize: '0.8rem' } }} inputProps={{ style: { fontWeight: '1000', fontSize: '0.85rem' } }} /></Grid>
+                    <Grid size={{ xs: 12 }}><FormControlLabel control={<Switch size="small" checked={guestPetData.isNeutered} onChange={e => setGuestPetData({...guestPetData, isNeutered: e.target.checked})} color="success"/>} label={<Typography sx={{ fontWeight: '1000', fontSize: '0.75rem', color: '#5D4037' }}>SPAYED / NEUTERED</Typography>} /></Grid>
+                </Grid>
+            </Paper>
         )}
 
-        <Box sx={{ p: 3, borderRadius: 2, background: 'rgba(255, 255, 255, 0.6)', border: '1px solid rgba(0,0,0,0.08)' }}>
-            <Typography variant="overline" color="error" fontWeight="bold">Visit Details</Typography>
-            <FormControl fullWidth size="small" variant="filled" sx={{ mt: 2, mb: 2 }}>
-                <InputLabel>Bundled Services</InputLabel>
-                <Select 
-                    multiple 
-                    value={selectedServices} 
-                    label="Bundled Services" 
-                    onChange={e => setSelectedServices(e.target.value)}
-                    renderValue={(selected) => (
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                            {selected.map((value) => {
-                                const s = servicesList.find(item => item.name === value);
-                                const deptName = s?.department || s?.category || 'General';
-                                const deptObj = (departments || []).find(d => d.name === deptName);
-                                const badgeColor = deptObj ? deptObj.color : '#616161';
-                                return <Chip key={value} label={value} size="small" sx={{ bgcolor: badgeColor, color: 'white', fontWeight: 'bold', fontSize: '0.65rem' }} />;
-                            })}
-                        </Box>
-                    )}
-                >
-                    {(servicesList ||[]).map((s) => {
-                      const deptName = s.department || s.category || 'General';
-                      const deptObj = (departments ||[]).find(d => d.name === deptName);
-                      const badgeColor = deptObj ? deptObj.color : '#616161';
-                      return ( <MenuItem key={s.id} value={s.name} disabled={!s.isWalkIn}> <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}> <CircleIcon sx={{ color: badgeColor, fontSize: 16 }} /> <Typography variant="body2" fontWeight="bold">{s.name} (₱{s.price})</Typography> </Box> </MenuItem> );
-                    })}
-                    <Divider />
-                    <MenuItem value="Emergency" sx={{color:'red', fontWeight: 'bold'}}><WarningIcon fontSize="small" sx={{mr:1}}/> EMERGENCY</MenuItem>
-                </Select>
-            </FormControl>
-            <TextField label="Triage Notes / Reason for Visit" multiline rows={3} fullWidth size="small" variant="filled" value={triageNotes} onChange={e => setTriageNotes(e.target.value)} />
-        </Box>
+        <Paper elevation={0} sx={{ p: 2, borderRadius: 1, border: '1px solid #D7CCC8', bgcolor: '#FFF' }}>
+            <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1, fontSize: '0.65rem', display: 'block', mb: 1.2 }}>
+                VISIT LOGISTICS (TYPABLE / SEARCHABLE)
+            </Typography>
+            
+            <Autocomplete
+                multiple
+                options={[...(servicesList || [])].sort((a,b) => (a.name || '').localeCompare(b.name || ''))}
+                getOptionLabel={(option) => option.name?.toUpperCase() || ''}
+                value={servicesList?.filter(s => selectedServices.includes(s.name)) || []}
+                onChange={(e, newValue) => {
+                    setSelectedServices(newValue.map(v => v.name));
+                }}
+                renderInput={(params) => (
+                    <TextField 
+                      {...params} 
+                      size="small"
+                      variant="outlined" 
+                      label="SEARCH & SELECT BUNDLED SERVICES" 
+                      InputLabelProps={{ sx: { fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' } }} 
+                      inputProps={{ ...params.inputProps, style: { fontWeight: '1000', fontSize: '0.85rem' } }}
+                    />
+                )}
+                renderOption={(props, option) => {
+                    const deptName = option.department || option.category || 'General';
+                    const deptObj = (departments || []).find(d => d.name === deptName);
+                    const badgeColor = deptObj ? deptObj.color : '#616161';
+                    return (
+                        <li {...props} style={{ fontWeight: 800, fontSize: '0.85rem' }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                                <CircleIcon sx={{ color: badgeColor, fontSize: 14 }} />
+                                <Typography variant="caption" sx={{ fontWeight: 1000 }}>
+                                    {option.name?.toUpperCase()} (₱{option.price?.toLocaleString()})
+                                </Typography>
+                            </Box>
+                        </li>
+                    );
+                }}
+                renderTags={(selected, getTagProps) => (
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {selected.map((option, index) => {
+                            const deptName = option.department || option.category || 'General';
+                            const deptObj = (departments || []).find(d => d.name === deptName);
+                            const badgeColor = deptObj ? deptObj.color : '#616161';
+                            return (
+                                <Chip 
+                                    key={option.id}
+                                    label={option.name?.toUpperCase()} 
+                                    size="small" 
+                                    {...getTagProps({ index })}
+                                    sx={{ bgcolor: badgeColor, color: 'white', fontWeight: '1000', fontSize: '0.6rem', height: '20px', borderRadius: 0.5 }} 
+                                />
+                            );
+                        })}
+                    </Box>
+                )}
+                sx={{ mb: 1.5 }}
+            />
+            <TextField 
+              label="TRIAGE NOTES / CHIEF COMPLAINT" 
+              multiline 
+              rows={2} 
+              fullWidth 
+              size="small"
+              variant="outlined" 
+              value={triageNotes} 
+              onChange={e => setTriageNotes(e.target.value)} 
+              InputLabelProps={{ sx: { fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' } }} 
+              inputProps={{ style: { fontWeight: '1000', fontSize: '0.85rem' } }}
+            />
+        </Paper>
       </DialogContent>
-      <DialogActions sx={{ p: 2.5, bgcolor: '#EFEBE9', borderTop: '1px solid #D7CCC8' }}>
-        <Button onClick={handleClose} sx={{ fontWeight: 'bold', color: '#555' }}>Cancel</Button>
-        <Button onClick={handleSubmit} variant="contained" disabled={loading} color={selectedServices?.includes('Emergency') ? 'error' : 'success'} sx={{ px: 3, fontWeight: 'bold' }}>
-          {loading ? "Processing..." : "Add to Queue"}
+      
+      <DialogActions sx={{ p: 2, bgcolor: '#FFF', borderTop: '1px solid #D7CCC8', display: 'flex', justifyContent: 'space-between' }}>
+        <Button 
+          onClick={handleDiscardClick} 
+          variant={confirmDiscard ? "contained" : "text"}
+          sx={{ 
+            fontWeight: '1000', 
+            color: confirmDiscard ? 'white' : '#9E9E9E', 
+            letterSpacing: 1, 
+            fontSize: '0.75rem',
+            bgcolor: confirmDiscard ? '#D32F2F' : 'transparent',
+            '&:hover': { bgcolor: confirmDiscard ? '#B71C1C' : 'rgba(0,0,0,0.04)' }
+          }}
+        >
+          {confirmDiscard ? "⚠️ CONFIRM DISCARD?" : "DISCARD REGISTRATION"}
+        </Button>
+        <Button 
+          onClick={handleQueueClick} 
+          variant="contained" 
+          disabled={loading} 
+          sx={{ 
+            px: 4, 
+            py: 1,
+            fontWeight: '1000', 
+            bgcolor: confirmSubmit ? '#E65100' : (selectedServices?.includes('Emergency') ? '#D32F2F' : '#5D4037'),
+            borderRadius: 1,
+            letterSpacing: 1.2,
+            fontSize: '0.85rem',
+            '&:hover': { bgcolor: confirmSubmit ? '#BF360C' : (selectedServices?.includes('Emergency') ? '#B71C1C' : '#3E2723') },
+            boxShadow: '0 4px 12px rgba(93, 64, 55, 0.2)'
+          }}
+        >
+          {loading ? "PROCESSING..." : (confirmSubmit ? "⚠️ CLICK TO CONFIRM ENTRY" : "OFFICIALLY ADD TO QUEUE")}
         </Button>
       </DialogActions>
     </Dialog>

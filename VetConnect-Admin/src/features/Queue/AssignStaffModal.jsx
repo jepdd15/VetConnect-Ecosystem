@@ -96,6 +96,9 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
 
     try {
       if (patient.status === 'confirmed' && mode === 'check-in') {
+        const allAssigned = tempServices.every(s => s.staffId);
+        if (!allAssigned) throw new Error("SECURITY BLOCK: All clinical services must have assigned personnel before check-in.");
+
         await runTransaction(db, async (transaction) => {
           const queueRef = doc(db, "queue", "daily_queue");
           const queueDoc = await transaction.get(queueRef);
@@ -112,11 +115,16 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
             timeArrived: Timestamp.now(),
             services: primedServices,
             assignedVet: primedServices[0]?.staffName || "Unassigned",
-            assignedVetId: primedServices[0]?.staffId || null
+            assignedVetId: primedServices[0]?.staffId || null // THE RESPONSIBILITY STAMP
           });
         });
       } else {
-        // PREP ONLY OR EXISTING PATIENT: NO STATUS CHANGE
+        // PREP ONLY OR EXISTING PATIENT: Enforce assignment if they already arrived
+        if (patient.status !== 'confirmed' && patient.status !== 'pending') {
+            const allAssigned = tempServices.every(s => s.staffId);
+            if (!allAssigned) throw new Error("CLINICAL SAFETY: Cannot unassign personnel from an active patient.");
+        }
+
         await updateDoc(doc(db, "appointments", patient.id), {
           services: tempServices,
           assignedVet: tempServices[0]?.staffName || "Unassigned",

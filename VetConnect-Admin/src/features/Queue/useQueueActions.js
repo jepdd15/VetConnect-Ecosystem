@@ -39,6 +39,12 @@ export function useQueueActions() {
             updateData.timeCompleted = Timestamp.now();
             updateData.completedBy = staffSignature;
         }
+        if (newStatus === 'dispense') {
+            updateData.timeDispenseStarted = Timestamp.now();
+        }
+        if (newStatus === 'payment') {
+            updateData.timePaymentStarted = Timestamp.now();
+        }
 
         // SMART PAUSE ENGINE
         if (newStatus === 'on-hold') updateData.lastPausedAt = Timestamp.now();
@@ -75,7 +81,9 @@ export function useQueueActions() {
     const updateData = { 
         status: prevStatus,
         statusHistory: newHistory,
-        revertedBy: staffSignature 
+        revertedBy: staffSignature,
+        revertReason: row.revertReason || "Manual Status Reversion", // PHASE 4: THE AUDIT TRAIL
+        revertedAt: Timestamp.now()
     };
 
     // GAP A FIX: If we are reverting to Scheduled, wipe the arrival artifacts!
@@ -88,19 +96,28 @@ export function useQueueActions() {
     await updateDoc(doc(db, "appointments", row.id), updateData);
   };
 
-  const markNoShow = async (id, currentServices = []) => {
+  const markNoShow = async (row) => {
+    // THE PHYSICAL INTEGRITY GUARD: If they arrived, they are NOT a no-show.
+    if (row.timeArrived || row.jsArrived) {
+      throw new Error(`❌ INTEGRITY REFUSAL: This patient is physically present (Arrived). Use Cancel or Re-book instead.`);
+    }
+
+    const currentServices = row.services || [];
     const clearedServices = (currentServices || []).map(s => ({ ...s, staffId: null, staffName: 'Unassigned' }));
-    await updateDoc(doc(db, "appointments", id), { 
+    
+    await updateDoc(doc(db, "appointments", row.id), { 
       status: 'no-show', 
-      rejectReason: 'Auto-flagged: Late / No show',
+      rejectReason: 'Individually flagged as No-Show',
       assignedVet: "Unassigned",
       assignedVetId: null,
       services: clearedServices,
-      cancelledBy: 'System (Auto-NoShow)'
+      cancelledBy: staffSignature,
+      isForensicAudit: true, // THE FORENSIC SEAL
+      auditReason: 'Client failed to arrive for scheduled slot.'
     });
   };
 
-  const rejectAppointment = async (id, reason, currentServices = []) => {
+  const rejectAppointment = async (id, reason, currentServices = [], isForensic = false) => {
     const clearedServices = (currentServices || []).map(s => ({ ...s, staffId: null, staffName: 'Unassigned' }));
     await updateDoc(doc(db, "appointments", id), { 
       status: 'cancelled', 
@@ -109,7 +126,9 @@ export function useQueueActions() {
       assignedVetId: null,
       services: clearedServices,
       timeRejected: Timestamp.now(),
-      cancelledBy: staffSignature
+      cancelledBy: staffSignature,
+      isForensicAudit: isForensic, // STAMPING THE AUDIT
+      auditReason: isForensic ? `Forensic Triage Cleanup: ${reason}` : (reason || 'Individually cancelled')
     });
   };
 

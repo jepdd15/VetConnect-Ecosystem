@@ -11,7 +11,20 @@ import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import WorkIcon from '@mui/icons-material/Work';
 import PhoneIcon from '@mui/icons-material/Phone';
 
-export default function StaffTable({ data, getWorkload, onEdit, onDelete, glassStyle,departments }) {
+export default function StaffTable({ data, getWorkload, onEdit, onDelete, departments }) {
+
+  const clinicalFlatStyle = {
+    background: '#FFF', 
+    border: '2px solid #5D4037',
+    boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)', 
+    borderRadius: 0, 
+  };
+
+  const headerSx = { 
+    fontWeight: '1000', color: '#5D4037', bgcolor: '#FFF8E1', 
+    fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 1, 
+    borderBottom: '2px solid #5D4037' 
+  };
 
   const columns =[
     { 
@@ -122,19 +135,53 @@ export default function StaffTable({ data, getWorkload, onEdit, onDelete, glassS
   ];
 
   return (
-    // THE FIX: Stretched the table to the bottom of the screen
-    <Paper elevation={0} sx={{ ...glassStyle, height: 'calc(100vh - 210px)', minHeight: 400, width: '100%', overflow: 'hidden' }}>
+    <Paper elevation={0} sx={{ 
+      ...clinicalFlatStyle, 
+      flex: 1,
+      minHeight: 0,
+      width: '100%', 
+      overflow: 'hidden',
+      display: 'flex',
+      flexDirection: 'column'
+    }}>
 
       <DataGrid 
         rows={data} 
-        columns={columns} 
+        columns={columns.map(c => ({
+          ...c,
+          headerClassName: 'forensic-header',
+          headerName: c.headerName?.toUpperCase()
+        }))} 
         disableSelectionOnClick 
-        rowHeight={90} // THE FIX: Taller rows to fit the phone number
+        rowHeight={90}
+        hideFooter={true}
         sx={{ 
-          border: 'none', bgcolor: 'transparent',
-          '& .MuiDataGrid-columnHeaders': { bgcolor: 'rgba(255, 255, 255, 0.4)', color: '#5D4037', fontWeight: 'bold', fontSize: '0.95rem', borderBottom: '1px solid rgba(255, 255, 255, 0.5)'},
-          '& .MuiDataGrid-cell': { display: 'flex', alignItems: 'center', borderBottom: '1px solid rgba(224, 224, 224, 0.4)' }, 
-          '& .MuiDataGrid-row:hover': { bgcolor: 'rgba(255, 255, 255, 0.6)' }
+          border: 'none', 
+          bgcolor: 'white',
+          flex: 1,
+          '& .forensic-header': {
+            bgcolor: '#FFF8E1 !important',
+            color: '#5D4037',
+            fontWeight: '1000 !important',
+            fontSize: '0.75rem',
+            letterSpacing: 1,
+            textTransform: 'uppercase',
+            borderBottom: '2px solid #5D4037 !important',
+          },
+          '& .MuiDataGrid-columnSeparator': { display: 'none' },
+          '& .MuiDataGrid-cell': { 
+            display: 'flex', 
+            alignItems: 'center', 
+            borderBottom: '1px solid rgba(93, 64, 55, 0.08)',
+            fontFamily: 'Inter, sans-serif'
+          }, 
+          '& .MuiDataGrid-row:hover': { bgcolor: 'rgba(93, 64, 55, 0.04)' },
+          '& .MuiDataGrid-virtualScroller': {
+            '&::-webkit-scrollbar': { width: '8px', height: '8px' },
+            '&::-webkit-scrollbar-track': { background: '#FFF8E1' },
+            '&::-webkit-scrollbar-thumb': { background: '#5D4037', borderRadius: '4px' },
+            '&::-webkit-scrollbar-thumb:hover': { background: '#3E2723' }
+          }
         }} 
       />
     </Paper>

@@ -37,9 +37,9 @@ export default function App() {
       <Stack.Navigator
         initialRouteName="Login"
         screenOptions={{
-          headerStyle: { backgroundColor: "#FFF8E1" }, // Beige header for everyone
-          headerTintColor: "#5D4037", // Brown text
-          headerTitleStyle: { fontWeight: "bold" },
+          headerStyle: { backgroundColor: "#3E2723", borderBottomWidth: 0, elevation: 0, shadowOpacity: 0 }, // Coffee Brown Header
+          headerTintColor: "#FAF9F7", // Cream text
+          headerTitleStyle: { fontWeight: "900", letterSpacing: 0.5, textTransform: 'uppercase', fontSize: 16 },
         }}
       >
         {/* --- AUTHENTICATION GROUP --- */}
@@ -71,8 +71,8 @@ export default function App() {
           options={{
             title: "Staff Portal",
             headerLeft: null,
-            headerStyle: { backgroundColor: "#EFEBE9" },
-            headerTintColor: "#3E2723",
+            headerStyle: { backgroundColor: "#3E2723" },
+            headerTintColor: "#FAF9F7",
           }}
         />
 
@@ -132,7 +132,8 @@ export default function App() {
           component={StaffAppointments}
           options={{
             title: "Incoming Requests",
-            headerStyle: { backgroundColor: "#EFEBE9" },
+            headerStyle: { backgroundColor: "#3E2723" },
+            headerTintColor: "#FAF9F7",
           }}
         />
 
@@ -141,7 +142,8 @@ export default function App() {
           component={ManageQueueScreen}
           options={{
             title: "Queue Controller",
-            headerStyle: { backgroundColor: "#EFEBE9" },
+            headerStyle: { backgroundColor: "#3E2723" },
+            headerTintColor: "#FAF9F7",
           }}
         />
 
@@ -150,7 +152,8 @@ export default function App() {
           component={ConsultationScreen}
           options={{
             title: "Medical Consultation",
-            headerStyle: { backgroundColor: "#EFEBE9" },
+            headerStyle: { backgroundColor: "#3E2723" },
+            headerTintColor: "#FAF9F7",
           }}
         />
 
@@ -159,7 +162,8 @@ export default function App() {
           component={ScannerScreen}
           options={{
             title: "QR Check-In",
-            headerStyle: { backgroundColor: "#EFEBE9" },
+            headerStyle: { backgroundColor: "#3E2723" },
+            headerTintColor: "#FAF9F7",
           }}
         />
 

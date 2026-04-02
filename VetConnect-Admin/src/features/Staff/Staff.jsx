@@ -23,26 +23,23 @@ const KPICard = ({ title, value, icon, color, bgcolor, border, onClick, active }
     elevation={0}
     onClick={onClick}
     sx={{
-      p: 2, display: 'flex', alignItems: 'center', gap: 1.5,
-      bgcolor: active ? bgcolor : COLORS.cardBg,
-      border: `${active ? '2px' : '1px'} solid ${active ? color : (border || COLORS.borderLight)}`,
-      borderRadius: 2.5,
+      p: 2.5, display: 'flex', alignItems: 'center', gap: 2,
+      borderRadius: 0, 
+      border: `2px solid ${active ? color : '#5D4037'}`,
+      bgcolor: active ? `${color}18` : '#FFF9F7', // Forensic Flat background
+      boxShadow: active ? `4px 4px 0px ${color}30` : '4px 4px 0px rgba(93, 64, 55, 0.1)',
       cursor: onClick ? 'pointer' : 'default',
-      transition: 'all 0.2s ease',
-      '&:hover': onClick ? { transform: 'translateY(-2px)', boxShadow: `0 6px 20px ${color}25` } : {},
+      transition: 'all 0.1s ease',
+      '&:hover': onClick ? { transform: 'translate(1px, 1px)', boxShadow: `2px 2px 0px ${color}25`, border: `2px solid ${color}` } : {},
       height: '100%',
     }}
   >
-    <Box sx={{ width: 44, height: 44, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: `${color}1A` }}>
+    <Box sx={{ width: 44, height: 44, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: `${color}1A`, color: color, border: `1px solid ${color}33` }}>
       {React.cloneElement(icon, { sx: { fontSize: 22, color } })}
     </Box>
-    <Box sx={{ minWidth: 0 }}>
-      <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, whiteSpace: 'nowrap' }}>
-        {title}
-      </Typography>
-      <Typography variant="h5" sx={{ fontFamily: FONT, fontWeight: 900, color: active ? color : COLORS.textPrimary, lineHeight: 1 }}>
-        {value}
-      </Typography>
+    <Box>
+      <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, fontSize: '0.65rem' }}>{title}</Typography>
+      <Typography variant="h5" sx={{ fontFamily: FONT, color: active ? color : '#3E2723', fontWeight: 1000, fontSize: '1.4rem' }}>{value}</Typography>
     </Box>
   </Paper>
 );
@@ -120,83 +117,64 @@ export default function Staff() {
   };
 
   return (
-    <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
-      {/* COMMAND CENTER BAR */}
-      <Box sx={{ display: 'flex', flexWrap: 'nowrap', gap: 2, alignItems: 'center', mb: 2, minWidth: 0 }}>
-        <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.accent, whiteSpace: 'nowrap', flexShrink: 0 }}>
-          Staff
-        </Typography>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 24px)', overflow: 'hidden' }}>
+      
+      {/* 1. BOXED FORENSIC HEADER */}
+      <Box sx={{ flexShrink: 0, mb: 3 }}>
+        <Paper sx={{ 
+          p: 2, display: 'flex', flexWrap: 'nowrap', gap: 2, alignItems: 'center',
+          bgcolor: '#FFF8E1', border: '2px solid #5D4037', borderRadius: 0, boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)'
+        }}>
+          <Typography variant="h5" sx={{ fontFamily: FONT, fontWeight: 1000, color: '#5D4037', whiteSpace: 'nowrap', textTransform: 'uppercase', flexShrink: 0, mr: 1, letterSpacing: 0.5, fontSize: '1.25rem' }}>
+            Staff Registry
+          </Typography>
 
-        {/* Search */}
-        <TextField
-          variant="standard"
-          placeholder="Search staff name..."
-          value={searchText}
-          onChange={(e) => setSearchText(e.target.value)}
-          InputProps={{
-            startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: 'rgba(255,255,255,0.8)' }} /></InputAdornment>,
-            disableUnderline: true,
-            style: { color: 'white', fontWeight: 'bold', fontFamily: FONT },
-          }}
-          sx={{ width: 200, flexShrink: 0, bgcolor: COLORS.accent, borderRadius: 2, px: 2, py: 0.5, boxShadow: 2, '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.6)', opacity: 1 } }}
-        />
+          {/* Search */}
+          <TextField
+            variant="standard"
+            placeholder="SEARCH STAFF NAME..."
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            InputProps={{
+              startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: '#5D4037', opacity: 0.6, ml: 1 }} /></InputAdornment>,
+              disableUnderline: true,
+              style: { color: '#3E2723', fontWeight: 'bold', fontFamily: FONT, fontSize: '0.9rem' },
+            }}
+            sx={{ width: 220, flexShrink: 0, bgcolor: 'rgba(93, 64, 55, 0.05)', border: '1px solid #5D403733', borderRadius: 1, px: 1.5, py: 0.5 }}
+          />
 
-        {/* Department filter */}
-        <TextField select size="small" value={filterDept} onChange={(e) => setFilterDept(e.target.value)} sx={{ minWidth: 160, bgcolor: COLORS.cardBg, borderRadius: 1, '& fieldset': { borderColor: COLORS.borderInput }, flexShrink: 0 }}>
-          <MenuItem value="All">All Departments</MenuItem>
-          {departments.map(d => <MenuItem key={d.id} value={d.name}>{d.name}</MenuItem>)}
-        </TextField>
+          {/* Filters grouped */}
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+            <TextField select size="small" value={filterDept} onChange={(e) => setFilterDept(e.target.value)} sx={{ minWidth: 160, bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#5D403733' } }}>
+              <MenuItem value="All">All Departments</MenuItem>
+              {departments.map(d => <MenuItem key={d.id} value={d.name}>{d.name}</MenuItem>)}
+            </TextField>
 
-        {/* Status filter */}
-        <TextField select size="small" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} sx={{ minWidth: 140, bgcolor: COLORS.cardBg, borderRadius: 1, '& fieldset': { borderColor: COLORS.borderInput }, flexShrink: 0 }}>
-          <MenuItem value="All">All Statuses</MenuItem>
-          <MenuItem value="Available">🟢 Available</MenuItem>
-          <MenuItem value="Busy">🟠 Busy (Active)</MenuItem>
-        </TextField>
+            <TextField select size="small" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} sx={{ minWidth: 140, bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#5D403733' } }}>
+              <MenuItem value="All">All Statuses</MenuItem>
+              <MenuItem value="Available">🟢 Available</MenuItem>
+              <MenuItem value="Busy">🟠 Busy (Active)</MenuItem>
+            </TextField>
+          </Box>
 
-        {/* Access filter */}
-        <TextField select size="small" value={filterAccess} onChange={(e) => setFilterAccess(e.target.value)} sx={{ minWidth: 140, bgcolor: COLORS.cardBg, borderRadius: 1, '& fieldset': { borderColor: COLORS.borderInput }, flexShrink: 0 }}>
-          <MenuItem value="All">All Access</MenuItem>
-          <MenuItem value="Admin">Admin Only</MenuItem>
-          <MenuItem value="Staff">Staff Only</MenuItem>
-        </TextField>
+          <Typography variant="body2" sx={{ fontFamily: FONT, color: '#5D4037', fontWeight: 900, whiteSpace: 'nowrap', flexShrink: 0, fontStyle: 'italic', ml: 1 }}>
+            {filteredStaff.length} Records
+          </Typography>
 
-        {/* Record count */}
-        <Typography variant="body2" sx={{ fontFamily: FONT, color: COLORS.accent, fontWeight: 900, whiteSpace: 'nowrap', flexShrink: 0 }}>
-          {filteredStaff.length} {filteredStaff.length === 1 ? 'Record' : 'Records'}
-        </Typography>
+          <Box sx={{ flexGrow: 1 }} />
 
-        {/* Spacer */}
-        <Box sx={{ flexGrow: 1, flexShrink: 1, minWidth: 0 }} />
-
-        {/* Add Staff */}
-        <Button 
-          variant="contained" startIcon={<PersonAddIcon />} 
-          sx={{ bgcolor: COLORS.cta, fontFamily: FONT, fontWeight: 900, boxShadow: `0 4px 15px ${COLORS.cta}66`, textTransform: 'uppercase', letterSpacing: 0.5, px: 3, borderRadius: 2, '&:hover': { bgcolor: COLORS.ctaHover }, whiteSpace: 'nowrap', flexShrink: 0 }} 
-          onClick={() => { setSelectedItem(null); setOpen(true); }}
-        >
-          Add Staff
-        </Button>
+          <Button 
+            variant="contained" startIcon={<PersonAddIcon />} 
+            sx={{ bgcolor: '#D32F2F', fontFamily: FONT, fontWeight: 1000, boxShadow: '4px 4px 0px rgba(211, 47, 47, 0.1)', textTransform: 'uppercase', letterSpacing: 1, px: 3, py: 1, borderRadius: 0, border: '2px solid #B71C1C', '&:hover': { bgcolor: '#B71C1C' } }} 
+            onClick={() => { setSelectedItem(null); setOpen(true); }}
+          >
+            Authorize Staff
+          </Button>
+        </Paper>
       </Box>
 
-      {/* KPI DASHBOARD ROW */}
-      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2, mb: 2, width: '100%', minWidth: 0 }}>
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <KPICard title="Total Staff" value={kpis.total} icon={<PeopleIcon />} color={COLORS.info} bgcolor={COLORS.kpiBlueBg} border={COLORS.kpiBlueBorder} />
-        </Box>
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <KPICard title="Currently Busy" value={kpis.busy} icon={<LocalHospitalIcon />} color={COLORS.warning} bgcolor={COLORS.kpiOrangeBg} border={COLORS.kpiOrangeBorder} />
-        </Box>
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <KPICard title="Available Now" value={kpis.available} icon={<EventAvailableIcon />} color={COLORS.success} bgcolor={COLORS.kpiGreenBg} border={COLORS.kpiGreenBorder} />
-        </Box>
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <KPICard title="Administrators" value={kpis.admins} icon={<AdminPanelSettingsIcon />} color={COLORS.danger} bgcolor={COLORS.kpiRedBg} border={COLORS.kpiRedBorder} />
-        </Box>
-      </Box>
-
-      {/* THE TABLE */}
-      <StaffTable data={filteredStaff} getWorkload={getWorkload} onEdit={(row) => { setSelectedItem(row); setOpen(true); }} onDelete={handleDelete} glassStyle={GLASS.panel} departments={departments} />
+      {/* 2. BOXED TABLE AREA (FLEX: 1) */}
+      <StaffTable data={filteredStaff} getWorkload={getWorkload} onEdit={(row) => { setSelectedItem(row); setOpen(true); }} onDelete={handleDelete} departments={departments} />
 
       {/* THE MODAL */}
       {open && (

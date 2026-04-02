@@ -33,7 +33,7 @@ const BREED_DATA = {
     "Pug",
     "Bulldog",
     "German Shepherd",
-    "Mixed",
+    "Mixed Breed",
     "Unknown",
     "Other",
   ],
@@ -44,7 +44,7 @@ const BREED_DATA = {
     "British Shorthair",
     "Maine Coon",
     "Bengal",
-    "Mixed",
+    "Mixed Breed",
     "Unknown",
     "Other",
   ],
@@ -57,6 +57,7 @@ export default function AddPetScreen({ navigation }) {
   const [color, setColor] = useState("");
   const [gender, setGender] = useState(""); // EMPTY: Force explicit selection
   const [isNeutered, setIsNeutered] = useState(false);
+  const [weight, setWeight] = useState("");
   const [allergies, setAllergies] = useState("");
   const [microchip, setMicrochip] = useState("");
 
@@ -150,10 +151,12 @@ export default function AddPetScreen({ navigation }) {
         ownerId: auth.currentUser.uid,
         name: name.trim(),
         species,
-        breed,
+        breed: breed === "Mixed" ? "Mixed Breed" : breed,
         color: color.trim(),
-        gender,
+        gender: gender === "UNK" ? "Unknown" : gender,
         isNeutered,
+        weight: parseFloat(weight) || null,
+        lastWeight: parseFloat(weight) || null,
         microchip: microchip.trim() || "N/A",
         allergies: allergies.trim() || "None",
         dob: finalDob,
@@ -286,6 +289,16 @@ export default function AddPetScreen({ navigation }) {
               value={color}
               onChangeText={setColor}
               placeholder="e.g. Golden, Black & White"
+              placeholderTextColor="#aaa"
+            />
+
+            <Text style={styles.label}>Current Weight (kg) (Optional)</Text>
+            <TextInput
+              style={styles.input}
+              value={weight}
+              onChangeText={setWeight}
+              placeholder="e.g. 12.5"
+              keyboardType="numeric"
               placeholderTextColor="#aaa"
             />
           </View>

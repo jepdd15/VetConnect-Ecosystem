@@ -17,7 +17,7 @@ import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import DescriptionIcon from '@mui/icons-material/Description';
 
-export default function ServiceTable({ data, onEdit, onDelete, glassStyle, departments }) {
+export default function ServiceTable({ data, onEdit, onDelete, clinicalFlatStyle, departments }) {
   
   // --- STATE ---
   const [expandedRows, setExpandedRows] = useState({});
@@ -78,28 +78,35 @@ export default function ServiceTable({ data, onEdit, onDelete, glassStyle, depar
   };
 
   return (
-    <Paper elevation={0} sx={{ ...glassStyle, height: 'calc(100vh - 210px)', minHeight: 400, width: '100%', overflow: 'hidden' }}>
-      <TableContainer sx={{ height: '100%', overflow: 'auto' }}>
+    <Paper sx={{ ...clinicalFlatStyle, flex: 1, minHeight: 0, width: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <TableContainer sx={{ 
+        flex: 1, 
+        overflow: 'auto',
+        '&::-webkit-scrollbar': { width: '8px', height: '8px' },
+        '&::-webkit-scrollbar-track': { background: '#FFF8E1' },
+        '&::-webkit-scrollbar-thumb': { background: '#5D4037', borderRadius: '4px' },
+        '&::-webkit-scrollbar-thumb:hover': { background: '#3E2723' }
+      }}>
         <Table stickyHeader size="small">
           
           <TableHead>
             <TableRow>
-              <TableCell sx={{ width: 40, bgcolor: 'rgba(255, 255, 255, 0.4)', borderBottom: '1px solid rgba(0,0,0,0.1)' }} />
-              <TableCell sx={{ width: 50, bgcolor: 'rgba(255, 255, 255, 0.4)', borderBottom: '1px solid rgba(0,0,0,0.1)' }} />
-              <TableCell sx={{ fontWeight: 'bold', color: '#5D4037', bgcolor: 'rgba(255, 255, 255, 0.4)', fontSize: '0.9rem', borderBottom: '1px solid rgba(0,0,0,0.1)' }}>
+              <TableCell sx={{ width: 40, bgcolor: '#FFF8E1', borderBottom: '2px solid #5D4037' }} />
+              <TableCell sx={{ width: 50, bgcolor: '#FFF8E1', borderBottom: '2px solid #5D4037' }} />
+              <TableCell sx={{ fontWeight: '1000', color: '#5D4037', bgcolor: '#FFF8E1', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: 1, borderBottom: '2px solid #5D4037' }}>
                 <TableSortLabel active={orderBy === 'name'} direction={orderBy === 'name' ? order : 'asc'} onClick={() => handleRequestSort('name')}>Service Name</TableSortLabel>
               </TableCell>
-              <TableCell sx={{ fontWeight: 'bold', color: '#5D4037', bgcolor: 'rgba(255, 255, 255, 0.4)', fontSize: '0.9rem', borderBottom: '1px solid rgba(0,0,0,0.1)' }}>
+              <TableCell sx={{ fontWeight: '1000', color: '#5D4037', bgcolor: '#FFF8E1', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: 1, borderBottom: '2px solid #5D4037' }}>
                 <TableSortLabel active={orderBy === 'department'} direction={orderBy === 'department' ? order : 'asc'} onClick={() => handleRequestSort('department')}>Department</TableSortLabel>
               </TableCell>
-              <TableCell sx={{ fontWeight: 'bold', color: '#5D4037', bgcolor: 'rgba(255, 255, 255, 0.4)', fontSize: '0.9rem', borderBottom: '1px solid rgba(0,0,0,0.1)' }}>
+              <TableCell sx={{ fontWeight: '1000', color: '#5D4037', bgcolor: '#FFF8E1', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: 1, borderBottom: '2px solid #5D4037' }}>
                 <TableSortLabel active={orderBy === 'duration'} direction={orderBy === 'duration' ? order : 'asc'} onClick={() => handleRequestSort('duration')}>Time Block</TableSortLabel>
               </TableCell>
-              <TableCell sx={{ fontWeight: 'bold', color: '#5D4037', bgcolor: 'rgba(255, 255, 255, 0.4)', fontSize: '0.9rem', borderBottom: '1px solid rgba(0,0,0,0.1)' }}>
+              <TableCell sx={{ fontWeight: '1000', color: '#5D4037', bgcolor: '#FFF8E1', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: 1, borderBottom: '2px solid #5D4037' }}>
                 <TableSortLabel active={orderBy === 'price'} direction={orderBy === 'price' ? order : 'asc'} onClick={() => handleRequestSort('price')}>Price</TableSortLabel>
               </TableCell>
-              <TableCell sx={{ fontWeight: 'bold', color: '#5D4037', bgcolor: 'rgba(255, 255, 255, 0.4)', fontSize: '0.9rem', borderBottom: '1px solid rgba(0,0,0,0.1)' }}>Operational Tags</TableCell>
-              <TableCell sx={{ fontWeight: 'bold', color: '#5D4037', bgcolor: 'rgba(255, 255, 255, 0.4)', fontSize: '0.9rem', borderBottom: '1px solid rgba(0,0,0,0.1)', align: 'center' }}>Actions</TableCell>
+              <TableCell sx={{ fontWeight: '1000', color: '#5D4037', bgcolor: '#FFF8E1', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: 1, borderBottom: '2px solid #5D4037' }}>Operational Tags</TableCell>
+              <TableCell sx={{ fontWeight: '1000', color: '#5D4037', bgcolor: '#FFF8E1', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: 1, borderBottom: '2px solid #5D4037', align: 'center' }}>Actions</TableCell>
             </TableRow>
           </TableHead>
 

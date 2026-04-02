@@ -62,8 +62,9 @@ const EditPetScreen = ({ route, navigation }) => {
   const [species, setSpecies] = useState(pet.species || "Canine");
   const [breed, setBreed] = useState(pet.breed || "");
   const [color, setColor] = useState(pet.color || "");
-  const [gender, setGender] = useState(pet.gender || "Male");
+  const [gender, setGender] = useState(pet.gender === "UNK" ? "Unknown" : (pet.gender || "Unknown"));
   const [isNeutered, setIsNeutered] = useState(pet.isNeutered || false);
+  const [weight, setWeight] = useState(pet.weight ? String(pet.weight) : "");
   const [allergies, setAllergies] = useState(pet.allergies || "");
   const [microchip, setMicrochip] = useState(pet.microchip || "");
 
@@ -108,8 +109,10 @@ const EditPetScreen = ({ route, navigation }) => {
         species,
         breed,
         color,
-        gender,
+        gender: gender === "UNK" ? "Unknown" : gender,
         isNeutered,
+        weight: parseFloat(weight) || null,
+        lastWeight: parseFloat(weight) || null,
         microchip: microchip || "N/A",
         allergies: allergies || "None",
         dob: isAgeTotallyUnknown ? null : Timestamp.fromDate(dob),
@@ -227,6 +230,15 @@ const EditPetScreen = ({ route, navigation }) => {
 
         <Text style={styles.label}>Color / Markings *</Text>
         <TextInput style={styles.input} value={color} onChangeText={setColor} />
+
+        <Text style={styles.label}>Current Weight (kg)</Text>
+        <TextInput
+          style={styles.input}
+          value={weight}
+          onChangeText={setWeight}
+          placeholder="e.g. 12.5"
+          keyboardType="numeric"
+        />
       </View>
 
       {/* 2. MEDICAL DETAILS */}

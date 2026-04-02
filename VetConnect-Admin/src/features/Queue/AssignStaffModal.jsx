@@ -22,6 +22,8 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
 
   // THE BUFFER: Stores local changes before they hit the cloud!
   const [tempServices, setTempServices] = useState([]);
+  const [arrivalWeight, setArrivalWeight] = useState('');
+  const [confirmedAllergies, setConfirmedAllergies] = useState('');
 
   // --- DROPDOWN STATE ---
   const [anchorEl, setAnchorEl] = useState(null);
@@ -32,6 +34,8 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
     if (open && patient) {
       const sortedServices = (patient.services || []).sort((a, b) => a.name.localeCompare(b.name));
       setTempServices(sortedServices);
+      setArrivalWeight(patient.petWeight ? String(patient.petWeight) : '');
+      setConfirmedAllergies(patient.petAllergies || '');
       setErrorMsg('');
     }
   }, [open, patient]);
@@ -115,8 +119,23 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
             timeArrived: Timestamp.now(),
             services: primedServices,
             assignedVet: primedServices[0]?.staffName || "Unassigned",
-            assignedVetId: primedServices[0]?.staffId || null // THE RESPONSIBILITY STAMP
+            assignedVetId: primedServices[0]?.staffId || null, // THE RESPONSIBILITY STAMP
+            
+            // --- CLINICAL VITAL SYNC ---
+            petWeight: parseFloat(arrivalWeight) || null,
+            petAllergies: confirmedAllergies || 'None'
           });
+
+          // --- 🧬 DUAL-SYNC: Update the Master Pet Record ---
+          if (patient.petId) {
+            const petRef = doc(db, "pets", patient.petId);
+            transaction.update(petRef, {
+                lastWeight: parseFloat(arrivalWeight) || null,
+                weight: parseFloat(arrivalWeight) || null, // Ensure both are synced
+                allergies: confirmedAllergies || 'None',
+                lastVisit: Timestamp.now()
+            });
+          }
         });
       } else {
         // PREP ONLY OR EXISTING PATIENT: Enforce assignment if they already arrived
@@ -128,8 +147,19 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
         await updateDoc(doc(db, "appointments", patient.id), {
           services: tempServices,
           assignedVet: tempServices[0]?.staffName || "Unassigned",
-          assignedVetId: tempServices[0]?.staffId || null
+          assignedVetId: tempServices[0]?.staffId || null,
+          petWeight: parseFloat(arrivalWeight) || null,
+          petAllergies: confirmedAllergies || 'None'
         });
+
+        // Sync to pet master record even if just updating assignments
+        if (patient.petId) {
+            await updateDoc(doc(db, "pets", patient.petId), {
+                lastWeight: parseFloat(arrivalWeight) || null,
+                weight: parseFloat(arrivalWeight) || null,
+                allergies: confirmedAllergies || 'None'
+            });
+        }
       }
       onClose();
     } catch (e) {
@@ -232,6 +262,38 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
             sx={{ bgcolor: headerChipColor, color: 'white', fontWeight: '1000', fontSize: '0.8rem', height: 28, px: 2, boxShadow: 2 }}
           />
         </Box>
+      </Box>
+
+      {/* --- 🏥 VITALS & TRIAGE (CRITICAL PATH) --- */}
+      <Box sx={{ px: 3, py: 2, bgcolor: '#FBE9E7', borderBottom: '1px solid #FFCCBC', display: 'flex', gap: 3, alignItems: 'center' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
+              <Typography variant="caption" sx={{ fontWeight: '1000', color: '#D84315', minWidth: 100 }}>ARRIVAL WEIGHT (KG)</Typography>
+              <input 
+                  type="number"
+                  step="0.1"
+                  value={arrivalWeight}
+                  onChange={(e) => setArrivalWeight(e.target.value)}
+                  placeholder="0.0"
+                  style={{
+                      width: '100px', padding: '8px 12px', borderRadius: '8px', border: '2px solid #FFAB91',
+                      fontSize: '1rem', fontWeight: '900', color: '#3E2723', outline: 'none'
+                  }}
+              />
+              {!arrivalWeight && <Typography variant="caption" sx={{ color: '#D84315', fontWeight: 'bold', fontStyle: 'italic' }}>⚠️ WEIGHING REQUIRED</Typography>}
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 2 }}>
+              <Typography variant="caption" sx={{ fontWeight: '1000', color: '#D84315', minWidth: 120 }}>CONFIRMED ALLERGIES</Typography>
+              <input 
+                  type="text"
+                  value={confirmedAllergies}
+                  onChange={(e) => setConfirmedAllergies(e.target.value)}
+                  placeholder="None reported"
+                  style={{
+                      flex: 1, padding: '8px 12px', borderRadius: '8px', border: '2px solid #FFAB91',
+                      fontSize: '0.9rem', fontWeight: '700', color: '#3E2723', outline: 'none'
+                  }}
+              />
+          </Box>
       </Box>
 
       {/* COMPACT PILL DISPATCH AREA (DYNAMIC VERTICAL FILL) */}

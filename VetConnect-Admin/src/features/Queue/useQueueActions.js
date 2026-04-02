@@ -170,5 +170,29 @@ export function useQueueActions() {
     });
   };
 
-  return { changeStatus, revertStatus, markNoShow, rejectAppointment, quickAdmitER }; // Exported!
+  // 4. THE INBOX ENGINE (NEW: Real-Time Triage)
+  const deferAppointment = async (id, staffName) => {
+    await runTransaction(db, async (transaction) => {
+        const apptRef = doc(db, "appointments", id);
+        const apptDoc = await transaction.get(apptRef);
+        if (!apptDoc.exists()) throw new Error("Appointment not found!");
+        
+        // CALCULATION: Shift the administrative triage focus to tomorrow
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const triageKey = tomorrow.toISOString().split('T')[0];
+        
+        const currentNotes = apptDoc.data().notes || "";
+        const signature = staffName || staffSignature;
+
+        transaction.update(apptRef, {
+            triageDate: triageKey,
+            notes: `(Deferred to next shift by ${signature}) ${currentNotes}`,
+            lastTriagedAt: Timestamp.now(),
+            triagedBy: signature
+        });
+    });
+  };
+
+  return { changeStatus, revertStatus, markNoShow, rejectAppointment, quickAdmitER, deferAppointment }; // Exported!
 }

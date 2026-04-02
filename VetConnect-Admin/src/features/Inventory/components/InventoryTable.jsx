@@ -10,7 +10,14 @@ import ExposureIcon from '@mui/icons-material/Exposure';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import HistoryIcon from '@mui/icons-material/History';
 
-export default function InventoryTable({ data, onEdit, onAdjust, onDelete, onLog, glassStyle }) {
+export default function InventoryTable({ data, onEdit, onAdjust, onDelete, onLog }) {
+  
+  const clinicalFlatStyle = {
+    background: '#FFF', 
+    border: '2px solid #5D4037',
+    boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)', 
+    borderRadius: 0, 
+  };
   
 // ── Expiry Status Helper ─────────────────────────────────────────────────
 const getExpiryStatus = (expiryDate) => {
@@ -69,9 +76,9 @@ const getExpiryStatus = (expiryDate) => {
   }, [data, order, orderBy]);
 
   const headerSx = { 
-    fontWeight: '900', color: '#757575', bgcolor: 'rgba(255, 255, 255, 0.8)', 
+    fontWeight: '1000', color: '#5D4037', bgcolor: '#FFF8E1', 
     fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 1, 
-    borderBottom: '2px solid rgba(0,0,0,0.06)' 
+    borderBottom: '2px solid #5D4037' 
   };
 
   const SortableHeader = ({ id, label, align = "left", pl }) => (
@@ -88,19 +95,29 @@ const getExpiryStatus = (expiryDate) => {
   );
 
   return (
-    <TableContainer component={Paper} sx={{ ...glassStyle, height: 'calc(100vh - 280px)', overflow: 'auto', borderRadius: 3 }}>
-      <Table stickyHeader size="medium" sx={{ bgcolor: 'transparent' }}>
+    <TableContainer component={Paper} elevation={0} sx={{ 
+        ...clinicalFlatStyle, 
+        flex: 1,
+        minHeight: 0,
+        width: '100%',
+        overflow: 'auto',
+        '&::-webkit-scrollbar': { width: '8px', height: '8px' },
+        '&::-webkit-scrollbar-track': { background: '#FFF8E1' },
+        '&::-webkit-scrollbar-thumb': { background: '#5D4037', borderRadius: '4px' },
+        '&::-webkit-scrollbar-thumb:hover': { background: '#3E2723' }
+    }}>
+      <Table stickyHeader size="small" sx={{ bgcolor: 'white' }}>
         <TableHead>
           <TableRow>
-            <SortableHeader id="itemName" label="Product Name" pl={3} />
-            <SortableHeader id="category" label="Category" />
-            <TableCell sx={{ ...headerSx }} align="center">Status</TableCell>
-            <SortableHeader id="stock" label="Stock Level" align="center" />
-            <SortableHeader id="reserved" label="Reserved" align="center" />
-            <SortableHeader id="costPrice" label="Cost Price" align="right" />
-            <SortableHeader id="price" label="Retail Price" align="right" />
-            <SortableHeader id="margin" label="Margin" align="right" />
-            <TableCell sx={{ ...headerSx }} align="center">Actions</TableCell>
+            <SortableHeader id="itemName" label="PRODUCT NAME" pl={3} />
+            <SortableHeader id="category" label="CATEGORY" />
+            <TableCell sx={{ ...headerSx, bgcolor: '#FFF8E1', borderBottom: '2px solid #5D4037', fontWeight: 1000, color: '#5D4037' }} align="center">STATUS</TableCell>
+            <SortableHeader id="stock" label="STOCK LEVEL" align="center" />
+            <SortableHeader id="reserved" label="RESERVED" align="center" />
+            <SortableHeader id="costPrice" label="COST" align="right" />
+            <SortableHeader id="price" label="RETAIL" align="right" />
+            <SortableHeader id="margin" label="MARGIN" align="right" />
+            <TableCell sx={{ ...headerSx, bgcolor: '#FFF8E1', borderBottom: '2px solid #5D4037', fontWeight: 1000, color: '#5D4037' }} align="center">ACTIONS</TableCell>
           </TableRow>
         </TableHead>
         

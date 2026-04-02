@@ -80,21 +80,25 @@ export default function StaffFormModal({ open, onClose, item, showToast, dynamic
       fullWidth
       PaperProps={{
         sx: {
-          borderRadius: 3,
-          backgroundColor: 'rgba(255, 255, 255, 0.97)',
-          backdropFilter: 'blur(20px)',
-          boxShadow: '0 12px 40px rgba(93, 64, 55, 0.25)',
+          borderRadius: 0,
+          border: '2px solid #5D4037',
+          backgroundColor: '#FFF',
+          boxShadow: '8px 8px 0px rgba(93, 64, 55, 0.1)',
           maxHeight: '90vh',
         }
       }}
     > 
       {/* ── HEADER — VetConnect warm brown ── */}
       <DialogTitle sx={{ 
-        background: 'linear-gradient(135deg, #4E342E 0%, #6D4C41 100%)', 
-        color: 'white', fontWeight: '900', display: 'flex', alignItems: 'center', gap: 1.5, py: 2,
-        borderBottom: '3px solid #D84315',
+        bgcolor: '#FFF8E1', 
+        color: '#3E2723', fontWeight: '1000', display: 'flex', alignItems: 'center', gap: 1.5, py: 2,
+        borderBottom: '2px solid #5D4037',
+        fontFamily: 'Inter, sans-serif',
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+        fontSize: '1.1rem'
       }}>
-        {isEditing ? <BadgeIcon /> : <AdminPanelSettingsIcon />}
+        {isEditing ? <BadgeIcon sx={{ color: '#5D4037' }} /> : <AdminPanelSettingsIcon sx={{ color: '#5D4037' }} />}
         {isEditing ? 'Edit Staff Profile' : 'Authorize New Staff Member'}
       </DialogTitle>
       
@@ -343,15 +347,17 @@ export default function StaffFormModal({ open, onClose, item, showToast, dynamic
       </DialogContent>
       
       {/* ── ACTIONS — VetConnect deep orange ── */}
-      <DialogActions sx={{ p: 2.5, bgcolor: 'white', borderTop: '1px solid #D7CCC8' }}>
-        <Button onClick={onClose} sx={{ fontWeight: 'bold', color: '#5D4037', px: 3, mr: 1 }}>CANCEL</Button>
+      <DialogActions sx={{ p: 2.5, bgcolor: '#FFF8E1', borderTop: '2px solid #5D4037' }}>
+        <Button onClick={onClose} sx={{ fontWeight: '1000', color: '#5D4037', px: 3, mr: 1, fontFamily: 'Inter, sans-serif' }}>CANCEL</Button>
         <Button 
           onClick={handleSave} 
           variant="contained" 
           sx={{ 
-            bgcolor: '#D84315', fontWeight: '900', px: 4, py: 1.2, borderRadius: 2, 
-            boxShadow: '0 4px 15px rgba(216,67,21,0.4)',
-            '&:hover': { bgcolor: '#BF360C' },
+            bgcolor: '#D84315', fontWeight: '1000', px: 4, py: 1.2, borderRadius: 0, 
+            boxShadow: '4px 4px 0px rgba(216,67,21,0.2)',
+            border: '2px solid #BF360C',
+            '&:hover': { bgcolor: '#BF360C', boxShadow: '2px 2px 0px rgba(216,67,21,0.2)' },
+            fontFamily: 'Inter, sans-serif'
           }}
         >
           {isEditing ? 'SAVE CHANGES' : 'AUTHORIZE STAFF'}

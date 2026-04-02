@@ -340,11 +340,13 @@ export default function BookAppointment({ navigation }) {
           petSpecies: pet.species,
           
           // --- EVOLVED SCHEMA: The Clinical Passport ---
-          petBreed: pet.breed || "Mixed/Unknown",
-          petGender: pet.gender || "UNK",
+          petBreed: pet.breed === "Mixed/Unknown" || pet.breed === "Mixed" ? "Mixed Breed" : (pet.breed || "Mixed Breed"),
+          petGender: pet.gender === "UNK" ? "Unknown" : (pet.gender || "Unknown"),
           petColor: pet.color || "N/A",
           petIsNeutered: pet.isNeutered || false,
           petBirthdate: pet.dob || null,
+          petWeight: pet.weight || pet.lastWeight || null,
+          petAllergies: pet.allergies || "None",
           
           services: mappedServices,
           primaryService: mappedServices[0].name,
@@ -355,6 +357,7 @@ export default function BookAppointment({ navigation }) {
           status: "pending",
           caseDay: 1, // INITIAL PULSE
           scheduledDate: Timestamp.fromDate(petDateTime),
+          triageDate: new Date().toISOString().split('T')[0], // THE REAL-TIME INBOX ANCHOR
           createdAt: Timestamp.now(),
           qrCode: qrData,
           notes: selectedPets.length > 1 ? `[Group Booking ${index + 1}/${selectedPets.length}] ${notes}` : notes,

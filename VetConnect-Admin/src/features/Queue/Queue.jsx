@@ -271,13 +271,14 @@ export default function Queue() {
         } else if (action === 'defer') {
           const tomorrow = new Date();
           tomorrow.setDate(tomorrow.getDate() + 1);
-          tomorrow.setHours(8, 0, 0, 0); 
+          const triageKey = tomorrow.toISOString().split('T')[0];
           
           batch.update(oldRef, {
-             scheduledDate: Timestamp.fromDate(tomorrow),
+             triageDate: triageKey,
              notes: `(Deferred to next shift by ${staffSignature}) ${patient.notes || ""}`,
              processedBy: staffSignature,
-             processedAt: Timestamp.now()
+             processedAt: Timestamp.now(),
+             lastTriagedAt: Timestamp.now()
           });
         } else {
           // --- ⚖️ THE FORENSIC TRIAGE: Map the terminal status correctly! ---
@@ -582,23 +583,36 @@ export default function Queue() {
 
   // THE MAIN BOARD QUERY
   useEffect(() => {
-    const start = new Date(filterDate); start.setHours(0, 0, 0, 0);
-    const end = new Date(filterDate); end.setHours(23, 59, 59, 999);
-    
-    const q = query(
-      collection(db, "appointments"), 
-      where("scheduledDate", ">=", Timestamp.fromDate(start)), 
-      where("scheduledDate", "<=", Timestamp.fromDate(end))
-    );
+    // THE NEW TRIAGE INBOX QUERY:
+    // Online requests (pending) are visible based on triageDate, ignoring scheduledDate filter.
+    // Scheduled/Arrived/etc. remain date-locked.
+    const q = query(collection(db, "appointments"));
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      let list = snapshot.docs.map(doc => ({
+      let allAppts = snapshot.docs.map(doc => ({
         id: doc.id, ...doc.data(),
         jsScheduled: doc.data().scheduledDate?.toDate(), 
         jsArrived: doc.data().timeArrived?.toDate(),
         jsStarted: doc.data().timeStarted?.toDate(), 
         jsCompleted: doc.data().timeCompleted?.toDate(),
       }));
+
+      // Filter for the current shift date context
+      const start = new Date(filterDate); start.setHours(0, 0, 0, 0);
+      const end = new Date(filterDate); end.setHours(23, 59, 59, 999);
+      const filterDateStr = filterDate; // e.g. "2026-04-02"
+
+      const list = allAppts.filter(appt => {
+        const isPending = appt.status === 'pending';
+        
+        if (isPending) {
+           const triageDate = appt.triageDate || appt.createdAt?.toDate()?.toISOString().split('T')[0] || filterDateStr;
+           return triageDate === filterDateStr;
+        }
+
+        // For all non-pending statuses, keep the strict scheduledDate pulse
+        return appt.jsScheduled >= start && appt.jsScheduled <= end;
+      });
 
       // --- 🦴 PRIMARY SORT (Priority -> Time -> Owner) ---
       list.sort((a, b) => {
@@ -753,8 +767,16 @@ export default function Queue() {
       } catch (e) {
         alert(e.message); // Catching the "Integrity Refusal"
       }
+      }
     },
-    handleRescheduleOpen: (row) => { setSelectedRow(row); setOpenReschedule(true); }
+    handleRescheduleOpen: (row) => { setSelectedRow(row); setOpenReschedule(true); },
+    handleDefer: async (row) => {
+      try {
+        await deferAppointment(row.id, profile?.fullName);
+      } catch (e) {
+        alert("Deferral failed: " + e.message);
+      }
+    }
   }, isToday, departments, isTomorrowView);
 
   const showClosingWarning = isClosingTime && isToday && unfinishedCount > 0;

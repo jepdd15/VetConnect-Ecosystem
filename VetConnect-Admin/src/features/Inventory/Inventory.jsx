@@ -44,21 +44,21 @@ const KPICard = ({ title, value, icon, color, bgcolor, border, onClick, active }
     onClick={onClick}
     sx={{
       p: 2.5, display: 'flex', alignItems: 'center', gap: 2,
-      borderRadius: 2.5,
-      border: `${active ? 2 : 1}px solid ${active ? color : border}`,
-      bgcolor: active ? `${color}18` : bgcolor,
-      boxShadow: active ? `0 6px 20px ${color}30` : '0 4px 20px rgba(0,0,0,0.02)',
+      borderRadius: 0, 
+      border: `2px solid ${active ? color : '#5D4037'}`,
+      bgcolor: active ? `${color}18` : '#FFF9F7', // Forensic Flat background
+      boxShadow: active ? `4px 4px 0px ${color}30` : '4px 4px 0px rgba(93, 64, 55, 0.1)',
       cursor: onClick ? 'pointer' : 'default',
-      transition: 'all 0.2s ease',
-      '&:hover': onClick ? { transform: 'translateY(-2px)', boxShadow: `0 8px 24px ${color}25`, border: `2px solid ${color}` } : {},
+      transition: 'all 0.1s ease',
+      '&:hover': onClick ? { transform: 'translate(1px, 1px)', boxShadow: `2px 2px 0px ${color}25`, border: `2px solid ${color}` } : {},
     }}
   >
-    <Box sx={{ width: 48, height: 48, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: `${color}1A`, color: color }}>
+    <Box sx={{ width: 44, height: 44, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: `${color}1A`, color: color, border: `1px solid ${color}33` }}>
       {icon}
     </Box>
     <Box>
-      <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted }}>{title}</Typography>
-      <Typography variant="h5" sx={{ fontFamily: FONT, color: active ? color : COLORS.textPrimary, fontWeight: 900 }}>{value}</Typography>
+      <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, fontSize: '0.65rem' }}>{title}</Typography>
+      <Typography variant="h5" sx={{ fontFamily: FONT, color: active ? color : '#3E2723', fontWeight: 1000, fontSize: '1.4rem' }}>{value}</Typography>
     </Box>
   </Paper>
 );
@@ -199,119 +199,100 @@ export default function Inventory() {
   const glassStyle = GLASS.panel;
 
   return (
-    <Box sx={{ overflow: 'hidden', width: '100%' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 24px)', overflow: 'hidden' }}>
       
-      {/* SINGLE-ROW ACTION BAR — matches Services / Staff pattern */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, flexWrap: 'nowrap', minWidth: 0 }}>
+      {/* 1. BOXED FORENSIC HEADER */}
+      <Box sx={{ flexShrink: 0, mb: 2 }}>
+        <Paper sx={{ 
+          p: 2, display: 'flex', flexWrap: 'nowrap', gap: 2, alignItems: 'center',
+          bgcolor: '#FFF8E1', border: '2px solid #5D4037', borderRadius: 0, boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)'
+        }}>
+          <Typography variant="h5" sx={{ fontFamily: FONT, fontWeight: 1000, color: '#5D4037', textTransform: 'uppercase', letterSpacing: 0.5, flexShrink: 0, mr: 1, fontSize: '1.25rem' }}>
+            Inventory Command Center
+          </Typography>
 
-        {/* Title */}
-        <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.accent, letterSpacing: -0.5, flexShrink: 0, mr: 1 }}>
-          Inventory Command Center
-        </Typography>
+          {/* Search */}
+          <TextField
+            variant="standard"
+            placeholder="SEARCH ITEMS..."
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            InputProps={{
+              startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: '#5D4037', opacity: 0.6, ml: 1 }} /></InputAdornment>,
+              disableUnderline: true,
+              style: { color: '#3E2723', fontWeight: 'bold', fontSize: '0.9rem' },
+            }}
+            sx={{ width: 220, flexShrink: 0, bgcolor: 'rgba(93, 64, 55, 0.05)', border: '1px solid #5D403733', borderRadius: 1, px: 1.5, py: 0.5 }}
+          />
 
-        {/* Search — dark brown pill, same as Services */}
-        <TextField
-          variant="standard"
-          placeholder="Search items..."
-          value={searchText}
-          onChange={(e) => setSearchText(e.target.value)}
-          InputProps={{
-            startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: 'rgba(255,255,255,0.8)' }} /></InputAdornment>,
-            disableUnderline: true,
-            style: { color: 'white', fontWeight: 'bold' },
-          }}
-          sx={{ width: 200, flexShrink: 0, bgcolor: COLORS.accent, borderRadius: 2, px: 2, py: 0.5, boxShadow: 2, '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.6)', opacity: 1 } }}
-        />
+          {/* Category dropdown */}
+          <FormControl size="small" sx={{ minWidth: 160, flexShrink: 0 }}>
+            <Select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} displayEmpty sx={{ bgcolor: 'white', fontWeight: 'bold', fontSize: '0.85rem', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#5D403733' } }}>
+              <MenuItem value="All">All Categories</MenuItem>
+              {invCategories.map(c => <MenuItem key={c} value={c}>{formatCategory(c)}</MenuItem>)}
+            </Select>
+          </FormControl>
 
-        {/* Category dropdown */}
-        <FormControl size="small" sx={{ minWidth: 150, flexShrink: 0 }}>
-          <Select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} displayEmpty sx={{ borderRadius: 2, fontWeight: 'bold', bgcolor: 'white' }}>
-            <MenuItem value="All">All Categories</MenuItem>
-            {invCategories.map(c => <MenuItem key={c} value={c}>{formatCategory(c)}</MenuItem>)}
-          </Select>
-        </FormControl>
+          {/* Low Stock toggle */}
+          <FormControlLabel
+            control={<Switch checked={stockFilter === 'low'} onChange={(e) => setStockFilter(e.target.checked ? 'low' : null)} color="error" size="small" />}
+            label={<Typography variant="body2" sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.65rem', textTransform: 'uppercase' }} color={stockFilter === 'low' ? 'error.main' : '#5D4037'}>Low Stock</Typography>}
+            sx={{ ml: 1, flexShrink: 0 }}
+          />
 
-        {/* Low Stock toggle — linked to stockFilter state */}
-        <FormControlLabel
-          control={<Switch checked={stockFilter === 'low'} onChange={(e) => setStockFilter(e.target.checked ? 'low' : null)} color="error" size="small" />}
-          label={<Typography variant="body2" fontWeight="900" sx={{ whiteSpace: 'nowrap' }} color={stockFilter === 'low' ? 'error.main' : 'textSecondary'}>Low Stock Only</Typography>}
-          sx={{ ml: 0, flexShrink: 0 }}
-        />
+          <Typography variant="body2" sx={{ fontFamily: FONT, color: '#5D4037', fontWeight: 900, whiteSpace: 'nowrap', flexShrink: 0, fontStyle: 'italic', ml: 1 }}>
+            {filteredItems.length} Records
+          </Typography>
 
-        {/* Record count */}
-        <Typography variant="body2" sx={{ fontFamily: FONT, color: COLORS.accent, fontWeight: 900, whiteSpace: 'nowrap', flexShrink: 0 }}>
-          {filteredItems.length} {filteredItems.length === 1 ? 'Record' : 'Records'}
-        </Typography>
+          <Box sx={{ flexGrow: 1 }} />
 
-        {/* Spacer */}
-        <Box sx={{ flexGrow: 1, flexShrink: 1, minWidth: 0 }} />
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            sx={{ bgcolor: '#D32F2F', fontFamily: FONT, fontWeight: 1000, boxShadow: '4px 4px 0px rgba(211, 47, 47, 0.1)', textTransform: 'uppercase', letterSpacing: 1, px: 3, py: 1, borderRadius: 0, border: '2px solid #B71C1C', '&:hover': { bgcolor: '#B71C1C' } }}
+            onClick={() => { setSelectedItem(null); setOpenForm(true); }}
+          >
+            Add Item
+          </Button>
 
-        {/* Add Item */}
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          sx={{ bgcolor: COLORS.cta, fontFamily: FONT, fontWeight: 900, boxShadow: `0 4px 15px ${COLORS.cta}66`, textTransform: 'uppercase', letterSpacing: 0.5, px: 3, borderRadius: 2, '&:hover': { bgcolor: COLORS.ctaHover }, whiteSpace: 'nowrap', flexShrink: 0 }}
-          onClick={() => { setSelectedItem(null); setOpenForm(true); }}
-        >
-          Add Item
-        </Button>
-
-        {/* Scrub DB */}
-        <IconButton size="small" onClick={handleScrubDB} sx={{ color: '#9E9E9E', bgcolor: 'white', border: '1px solid #E0E0E0', flexShrink: 0 }}>
-          <AutoFixHighIcon fontSize="small" />
-        </IconButton>
+          <IconButton size="small" onClick={handleScrubDB} sx={{ color: '#5D4037', bgcolor: 'transparent', border: '1px solid #5D403733', ml: 1 }}>
+            <AutoFixHighIcon fontSize="small" />
+          </IconButton>
+        </Paper>
       </Box>
 
-      {/* KPI DASHBOARD ROW */}
-      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2, mb: 2, width: '100%', minWidth: 0 }}>
-       <Box sx={{ flex: 1, minWidth: 0 }}>
-           <KPICard title="Total Value" value={`₱${kpis.totalValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`} icon={<AttachMoneyIcon />} color={COLORS.success} bgcolor={COLORS.kpiGreenBg} border={COLORS.kpiGreenBorder} />
-         </Box>
-         <Box sx={{ flex: 1, minWidth: 0 }}>
-           <KPICard title="Active SKUs" value={kpis.totalItems} icon={<InventoryIcon />} color={COLORS.info} bgcolor={COLORS.kpiBlueBg} border={COLORS.kpiBlueBorder} />
-         </Box>
-         <Box sx={{ flex: 1, minWidth: 0 }}>
-           <KPICard
-             title="Expiring ≤30d" value={kpis.expiringSoon}
-             icon={<EventBusyIcon />} color={COLORS.grooming} bgcolor={COLORS.kpiPurpleBg} border={COLORS.kpiPurpleBorder}
-             onClick={() => toggleStockFilter('expiring')}
-             active={stockFilter === 'expiring'}
-           />
-         </Box>
-         <Box sx={{ flex: 1, minWidth: 0 }}>
-           <KPICard
-             title="Critically Low" value={kpis.lowStock}
-             icon={<WarningAmberIcon />} color="#E65100" bgcolor="#FFF7ED" border="#FDBA74"
-             onClick={() => toggleStockFilter('low')}
-             active={stockFilter === 'low'}
-           />
-         </Box>
-         <Box sx={{ flex: 1, minWidth: 0 }}>
-           <KPICard
-             title="Out of Stock" value={kpis.outOfStock}
-             icon={<ErrorOutlineIcon />} color={COLORS.danger} bgcolor={COLORS.kpiRedBg} border={COLORS.kpiRedBorder}
-             onClick={() => toggleStockFilter('out')}
-             active={stockFilter === 'out'}
-           />
-         </Box>
+      {/* 2. BOXED KPI ROW */}
+      <Box sx={{ flexShrink: 0, mb: 2 }}>
+        <Paper sx={{ p: 1.5, bgcolor: '#F5F5F5', border: '2px solid #5D4037', borderRadius: 0, boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.05)' }}>
+          <Grid container spacing={2}>
+             <Grid item xs><KPICard title="Total Value" value={`₱${kpis.totalValue.toLocaleString(undefined, {minimumFractionDigits: 2})}`} icon={<AttachMoneyIcon />} color="#2E7D32" /></Grid>
+             <Grid item xs><KPICard title="Active SKUs" value={kpis.totalItems} icon={<InventoryIcon />} color="#1565C0" /></Grid>
+             <Grid item xs><KPICard title="Expiring Soon" value={kpis.expiringSoon} icon={<EventBusyIcon />} color="#6A1B9A" onClick={() => toggleStockFilter('expiring')} active={stockFilter === 'expiring'} /></Grid>
+             <Grid item xs><KPICard title="Low Stock" value={kpis.lowStock} icon={<WarningAmberIcon />} color="#E65100" onClick={() => toggleStockFilter('low')} active={stockFilter === 'low'} /></Grid>
+             <Grid item xs><KPICard title="Out of Stock" value={kpis.outOfStock} icon={<ErrorOutlineIcon />} color="#D32F2F" onClick={() => toggleStockFilter('out')} active={stockFilter === 'out'} /></Grid>
+          </Grid>
+        </Paper>
       </Box>
 
       {/* VIEW TABS */}
-      <Box sx={{ mb: 1.5 }}>
+      <Box sx={{ mb: 1, borderBottom: `1px solid ${COLORS.border}` }}>
         <Tabs
           value={activeTab}
           onChange={(_, v) => setActiveTab(v)}
           sx={{
-            '& .MuiTab-root': { fontFamily: FONT, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 0.5, fontSize: '0.75rem', minHeight: 40 },
-            '& .MuiTabs-indicator': { bgcolor: COLORS.cta, height: 3, borderRadius: 2 },
+            '& .MuiTab-root': { fontFamily: FONT, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 0.8, fontSize: '0.75rem', minHeight: 44, px: 3 },
+            '& .MuiTabs-indicator': { bgcolor: COLORS.cta, height: 3, borderTopLeftRadius: 3, borderTopRightRadius: 3 },
             '& .Mui-selected': { color: `${COLORS.cta} !important` },
-            minHeight: 40,
+            minHeight: 44,
           }}
         >
           <Tab label="Inventory Table" />
           <Tab label="Activity Log" icon={<span style={{ fontSize: '0.85rem' }}>🕑</span>} iconPosition="start" />
         </Tabs>
       </Box>
+
+      {/* 3. BOXED CONTENT AREA (FLEX: 1) */}
+      <Box sx={{ flexGrow: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
 
       {/* THE TABLE */}
       {activeTab === 0 && (
@@ -321,12 +302,12 @@ export default function Inventory() {
           onAdjust={(item) => { setSelectedItem(item); setOpenAdjust(true); }}
           onLog={(item) => { setSelectedItem(item); setOpenLog(true); }}
           onDelete={handleDelete}
-          glassStyle={glassStyle}
         />
       )}
 
       {/* GLOBAL ACTIVITY LOG */}
-      {activeTab === 1 && <GlobalActivityLog glassStyle={glassStyle} />}
+      {activeTab === 1 && <GlobalActivityLog />}
+      </Box>
 
       {/* MODALS */}
       {openForm && (

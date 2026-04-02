@@ -22,6 +22,7 @@ import ScaleIcon from '@mui/icons-material/Scale';
 import PersonOffIcon from '@mui/icons-material/PersonOff';
 import HowToRegIcon from '@mui/icons-material/HowToReg';
 import EventNoteIcon from '@mui/icons-material/EventNote';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 
 const formatDuration = (totalMinutes) => {
   const mins = Math.abs(Math.round(totalMinutes));
@@ -95,6 +96,10 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                         <Typography variant="caption" sx={{ color: '#FFCDD2', fontWeight: 'bold' }}>⚠️ ALLERGIES: {p.row.petAllergies}</Typography>
                      </Box>
                 )}
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', pt: 0.5 }}>
+                    <Typography variant="caption" sx={{ color: '#81C784', fontWeight: 'bold' }}>WEIGHT</Typography>
+                    <Typography variant="caption" sx={{ color: 'white', fontWeight: '900' }}>{p.row.petWeight ? `${p.row.petWeight} kg` : 'UNVERIFIED'}</Typography>
+                </Box>
             </Stack>
         </Box>
       );
@@ -145,17 +150,25 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                     color: '#5D4037',
                     fontWeight: '700', fontSize: '0.72rem', textTransform: 'uppercase', lineHeight: 1.1 
                 }}>
-                    {p.row.petGender && p.row.petGender !== 'Unknown' && p.row.petGender !== '???' ? p.row.petGender : 'SEX UNKNOWN'} • {p.row.petIsNeutered ? 'fixed' : 'intact'}
+                    {p.row.petGender && p.row.petGender !== 'Unknown' && p.row.petGender !== '???' && p.row.petGender !== 'UNK' ? p.row.petGender : 'SEX UNKNOWN'} • {p.row.petIsNeutered ? 'fixed' : 'intact'}
                 </Typography>
 
-                {/* LINE 4: THE PHYSICAL MAPPING (COLOR) */}
-                <Typography variant="caption" sx={{ 
-                    color: '#5D4037',
-                    fontWeight: '700', fontSize: '0.72rem', textTransform: 'uppercase', lineHeight: 1.1,
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
-                }}>
-                    {p.row.petColor || 'COLOR UNRECORDED'}
-                </Typography>
+                {/* LINE 4: THE PHYSICAL MAPPING (COLOR + WEIGHT) */}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography variant="caption" sx={{ 
+                        color: '#5D4037',
+                        fontWeight: '700', fontSize: '0.72rem', textTransform: 'uppercase', lineHeight: 1.1,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                    }}>
+                        {p.row.petColor || 'COLOR UNRECORDED'}
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.3, bgcolor: p.row.petWeight ? 'rgba(93, 64, 55, 0.1)' : 'rgba(211, 47, 47, 0.1)', px: 0.5, borderRadius: 1 }}>
+                        <ScaleIcon sx={{ fontSize: 10, color: p.row.petWeight ? '#5D4037' : '#D32F2F' }} />
+                        <Typography variant="caption" sx={{ fontWeight: '1000', fontSize: '0.65rem', color: p.row.petWeight ? '#5D4037' : '#D32F2F' }}>
+                            {p.row.petWeight ? `${p.row.petWeight}KG` : 'WEIGH'}
+                        </Typography>
+                    </Box>
+                </Box>
             </Box>
 
             {/* LINE 5: THE WAITING ROOM ANCHOR (HUMAN) */}
@@ -382,6 +395,13 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
       } else {
           switch (p.row.status) {
             case 'pending':
+                primaryLabel = scheduled?.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) || "ASAP";
+                // THE REAL-TIME TRIAGE INDICATOR: If for a future date, show the day/month
+                const isLater = !isToday; 
+                secondaryLabel = isLater ? scheduled?.toLocaleDateString([], { month: 'short', day: 'numeric', weekday: 'short' }) : "REQUESTED";
+                triageColor = isLater ? "#1976D2" : "#5D4037"; // Blue for future, Brown for today
+                break;
+
             case 'confirmed':
                 primaryLabel = `APPT: ${scheduled?.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) || '??:??'}`;
                 const diffMins = scheduled ? Math.round((currentTime - scheduled) / 60000) : 0;
@@ -484,6 +504,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
         return (
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, width: '100%', height: '100%' }}>
             <Button size="small" variant="contained" color="success" sx={btnStyle} startIcon={<CheckCircleIcon sx={{fontSize:'16px !important'}} />} onClick={() => actions.handleStatusChange(params.row, 'confirmed')}>Accept</Button>
+            <Button size="small" variant="outlined" sx={{ ...btnStyle, color: '#5D4037', borderColor: '#D7CCC8' }} onClick={() => actions.handleDefer(params.row)}>Defer</Button>
             <Button size="small" variant="outlined" color="error" sx={btnStyle} onClick={() => { 
                 actions.setSelectedId(params.row.id); 
                 actions.handleMenuClick({ currentTarget: null }, params.row); // SENSOR SYNC

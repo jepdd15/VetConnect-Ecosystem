@@ -253,43 +253,43 @@ const ClientDashboard = ({ navigation }) => {
 
     switch (appt.status) {
       case "confirmed":
-        bgColor = "#E8F5E9";
-        borderColor = "#A5D6A7";
+        bgColor = "#F0FDF4"; // planBg
+        borderColor = "#86EFAC"; // planBorder
         title = "Booking Confirmed";
         msg = `${appt.petName} is scheduled for ${appt.scheduledDate?.toDate().toLocaleDateString()}.`;
         icon = "📅";
         break;
       case "arrived":
-        bgColor = "#E3F2FD";
-        borderColor = "#90CAF9";
+        bgColor = "#EFF6FF"; // kpiBlueBg
+        borderColor = "#93C5FD"; // kpiBlueBorder
         title = "Checked In";
         msg = `You are in the lobby. Ticket #${appt.ticketPrefix || ""}${appt.queueNumber}.`;
         icon = "🎟️";
         break;
       case "in-consult":
-        bgColor = "#FFF3E0";
-        borderColor = "#FFCC80";
+        bgColor = "#FFF7ED"; // kpiOrangeBg
+        borderColor = "#FDBA74"; // kpiOrangeBorder
         title = "In Consultation";
         msg = `${appt.petName} is currently with the Vet.`;
         icon = "🩺";
         break;
       case "dispensing":
-        bgColor = "#FFF3E0";
-        borderColor = "#FFCC80";
+        bgColor = "#FFF7ED"; // rxBg
+        borderColor = "#FED7AA"; // rxBorder
         title = "Pharmacy";
         msg = `Medications are being prepared for ${appt.petName}.`;
         icon = "💊";
         break;
       case "confined":
-        bgColor = "#F3E5F5";
-        borderColor = "#CE93D8";
+        bgColor = "#F3E8FF"; // kpiPurpleBg
+        borderColor = "#D8B4FE"; // kpiPurpleBorder
         title = "Admitted";
         msg = `${appt.petName} is currently confined at the clinic.`;
         icon = "🏥";
         break;
       case "billing":
-        bgColor = "#E8F5E9";
-        borderColor = "#A5D6A7";
+        bgColor = "#F0FDF4"; // planBg
+        borderColor = "#86EFAC"; // planBorder
         title = "Ready for Checkout";
         msg = `Services complete. Please proceed to the front desk.`;
         icon = "💰";
@@ -416,60 +416,60 @@ const ClientDashboard = ({ navigation }) => {
           style={styles.cardWrapper}
           onPress={() => navigation.navigate("MyPets")}
         >
-          <LinearGradient colors={["#8D6E63", "#5D4037"]} style={styles.card}>
+          <View style={styles.card}>
             <Text style={styles.cardIcon}>🐾</Text>
             <Text style={styles.cardText}>My Pets</Text>
-          </LinearGradient>
+          </View>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.cardWrapper}
           onPress={() => navigation.navigate("BookAppointment")}
         >
-          <LinearGradient colors={["#8D6E63", "#5D4037"]} style={styles.card}>
+          <View style={styles.card}>
             <Text style={styles.cardIcon}>📅</Text>
             <Text style={styles.cardText}>Schedule Visit</Text>
-          </LinearGradient>
+          </View>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.cardWrapper}
           onPress={() => navigation.navigate("ClientAppointments")}
         >
-          <LinearGradient colors={["#8D6E63", "#5D4037"]} style={styles.card}>
+          <View style={styles.card}>
             <Text style={styles.cardIcon}>🎫</Text>
             <Text style={styles.cardText}>My Bookings</Text>
-          </LinearGradient>
+          </View>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.cardWrapper}
           onPress={() => navigation.navigate("QueueScreen")}
         >
-          <LinearGradient colors={["#8D6E63", "#5D4037"]} style={styles.card}>
+          <View style={styles.card}>
             <Text style={styles.cardIcon}>🔢</Text>
             <Text style={styles.cardText}>Live Queue</Text>
-          </LinearGradient>
+          </View>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.cardWrapper}
           onPress={() => navigation.navigate("Chatbot")}
         >
-          <LinearGradient colors={["#1976D2", "#1565C0"]} style={styles.card}>
+          <View style={[styles.card, { borderColor: "#1565C0" }]}>
             <Text style={styles.cardIcon}>🤖</Text>
-            <Text style={styles.cardText}>Help Center</Text>
-          </LinearGradient>
+            <Text style={[styles.cardText, { color: "#1565C0" }]}>Help Center</Text>
+          </View>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.cardWrapper}
           onPress={handleLogout}
         >
-          <LinearGradient colors={["#EF5350", "#D32F2F"]} style={styles.card}>
+          <View style={[styles.card, { backgroundColor: "#D32F2F", borderColor: "#3E2723" }]}>
             <Text style={styles.cardIcon}>🚪</Text>
-            <Text style={styles.cardText}>Logout</Text>
-          </LinearGradient>
+            <Text style={[styles.cardText, { color: "#FFFFFF" }]}>Logout</Text>
+          </View>
         </TouchableOpacity>
       </View>
     </ScrollView>
@@ -477,7 +477,7 @@ const ClientDashboard = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flexGrow: 1, padding: 20, backgroundColor: "#FFF8E1" },
+  container: { flexGrow: 1, padding: 20, backgroundColor: "#F5F0EB" },
 
   header: {
     flexDirection: "row",
@@ -486,8 +486,8 @@ const styles = StyleSheet.create({
     marginBottom: 25,
     marginTop: 10,
   },
-  welcome: { fontSize: 26, fontWeight: "bold", color: "#5D4037" },
-  subtitle: { fontSize: 15, color: "#8B4513", marginTop: 2 },
+  welcome: { fontSize: 26, fontWeight: "800", color: "#3E2723" },
+  subtitle: { fontSize: 15, color: "#795548", marginTop: 2, fontWeight: "600" },
   profileIcon: {
     width: 50,
     height: 50,
@@ -499,12 +499,12 @@ const styles = StyleSheet.create({
   },
 
   sectionHeader: {
-    fontSize: 16,
-    fontWeight: "bold",
+    fontSize: 13,
+    fontWeight: "900",
     color: "#8D6E63",
     marginBottom: 12,
     textTransform: "uppercase",
-    letterSpacing: 1,
+    letterSpacing: 1.2,
   },
 
   feedSection: { marginBottom: 20 },
@@ -550,14 +550,18 @@ const styles = StyleSheet.create({
     paddingVertical: 25,
     borderRadius: 24, // Smoother corners for premium look
     alignItems: "center",
-    elevation: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    backgroundColor: "#FAF9F7", // admin formBg color (Cream)
+    borderWidth: 3, // Slightly thicker border for "Forensic" look
+    borderColor: "#3E2723", // admin brand color (Coffee Brown)
   },
   cardIcon: { fontSize: 36, marginBottom: 10 },
-  cardText: { color: "white", fontSize: 14, fontWeight: "800", letterSpacing: 0.5 },
+  cardText: { 
+    color: "#3E2723", 
+    fontSize: 13, 
+    fontWeight: "900", 
+    letterSpacing: 0.8, 
+    textTransform: 'uppercase' // Uppercase like reference screenshot
+  },
 
   // BALANCE BANNER
   balanceBanner: {

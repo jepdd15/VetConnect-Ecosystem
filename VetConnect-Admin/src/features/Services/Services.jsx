@@ -13,6 +13,9 @@ import { useServices } from './hooks/useServices';
 import ServiceTable from './components/ServiceTable';
 import ServiceFormModal from './modals/ServiceFormModal';
 
+// Design Tokens
+import { COLORS } from '../../theme/designTokens';
+
 export default function Services() {
   const { services, inventory, departments, saveService, removeService } = useServices();
 
@@ -50,26 +53,35 @@ export default function Services() {
     }
   };
 
-  const glassStyle = { 
-    background: 'rgba(255, 255, 255, 0.55)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', 
-    border: '1px solid rgba(255, 255, 255, 0.8)', boxShadow: '0 8px 32px 0 rgba(139, 69, 19, 0.08)', borderRadius: 3, 
+  const headerFlatStyle = {
+    background: '#FFF8E1', 
+    border: '2px solid #5D4037',
+    boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)', 
+    borderRadius: 0, 
+  };
+
+  const clinicalFlatStyle = {
+    background: '#FFF', 
+    border: '2px solid #5D4037',
+    boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)', 
+    borderRadius: 0, 
   };
 
   return (
-    <Box>
-      <Paper sx={{ ...glassStyle, p: 2, mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+    <Box sx={{ height: 'calc(100vh - 24px)', display: 'flex', flexDirection: 'column', gap: 0, overflow: 'hidden', bgcolor: COLORS.surfaceAlt }}>
+      <Paper sx={{ ...headerFlatStyle, p: 2, mx: 2, mt: 2, mb: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, flexShrink: 0 }}>
         
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', flexGrow: 1 }}>
-          <Typography variant="h4" sx={{ fontWeight: '900', color: '#5D4037', textShadow: '0px 1px 2px rgba(255,255,255,0.8)', mr: 1 }}>Services</Typography>
+          <Typography variant="h4" sx={{ fontWeight: '1000', color: '#5D4037', textTransform: 'uppercase', letterSpacing: 0.5, mr: 1, fontSize: '1.5rem' }}>Services</Typography>
           
-          <Box sx={{ display: 'flex', alignItems: 'center', bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 2, border: '1px solid rgba(255,255,255,0.9)' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', bgcolor: '#EFEBE9', borderRadius: '12px', border: '2px solid #5D4037', p: 0.5, boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)' }}>
             <TextField 
-              variant="standard" placeholder="Search services..." value={searchText} onChange={(e) => setSearchText(e.target.value)} 
+              variant="standard" placeholder="SEARCH SERVICES..." value={searchText} onChange={(e) => setSearchText(e.target.value)} 
               InputProps={{ 
-                  startAdornment: <InputAdornment position="start"><SearchIcon sx={{color: 'rgba(255,255,255,0.8)'}}/></InputAdornment>,
-                  disableUnderline: true, style: { color: 'white', fontWeight: 'bold' } 
+                  startAdornment: <InputAdornment position="start"><SearchIcon sx={{color: 'rgba(255,255,255,0.8)', ml: 1}}/></InputAdornment>,
+                  disableUnderline: true, style: { color: 'white', fontWeight: 'bold', textTransform: 'uppercase' } 
               }} 
-              sx={{ width: 260, bgcolor: '#5D4037', borderRadius: 2, px: 2, py: 1, boxShadow: 2, '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.6)', opacity: 1 } }} 
+              sx={{ width: 260, bgcolor: '#5D4037', borderRadius: '8px', px: 2, py: 0.5, '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.6)', opacity: 1 } }} 
             />
           </Box>
 
@@ -97,7 +109,7 @@ export default function Services() {
         <Box>
           <Button 
               variant="contained" startIcon={<AddIcon />} 
-              sx={{ bgcolor: '#FF9800', fontWeight: '900', boxShadow: '0 4px 15px rgba(255, 152, 0, 0.4)', textTransform: 'uppercase', letterSpacing: 0.5, px: 3, whiteSpace: 'nowrap' }} 
+              sx={{ bgcolor: '#FF9800', fontWeight: '1000', boxShadow: '0 4px 15px rgba(255, 152, 0, 0.4)', textTransform: 'uppercase', letterSpacing: 0.5, px: 3, whiteSpace: 'nowrap' }} 
               onClick={() => { setSelectedItem(null); setOpen(true); }}
           >
             New Service
@@ -105,7 +117,9 @@ export default function Services() {
         </Box>
       </Paper>
 
-      <ServiceTable data={filteredServices} onEdit={(row) => { setSelectedItem(row); setOpen(true); }} onDelete={handleDelete} glassStyle={glassStyle} departments={departments} />
+      <Box sx={{ flexGrow: 1, overflow: 'hidden', px: 2, pt: 2, pb: 0, bgcolor: COLORS.surface, display: 'flex', flexDirection: 'column' }}>
+        <ServiceTable data={filteredServices} onEdit={(row) => { setSelectedItem(row); setOpen(true); }} onDelete={handleDelete} clinicalFlatStyle={clinicalFlatStyle} departments={departments} />
+      </Box>
 
       {open && (
         <ServiceFormModal 

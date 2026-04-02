@@ -3,33 +3,47 @@ import { Paper, Typography } from '@mui/material';
 import Grid from '@mui/material/Grid'; // THE FIX: Standard MUI Grid, NO Grid2!
 
 export default function EodSummary({ totals }) {
+  const forensicTile = {
+    p: 2, 
+    borderRadius: 0, 
+    border: '2px solid #5D4037',
+    bgcolor: '#FFF9F7',
+    boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
+    height: '100%',
+    transition: 'all 0.1s ease',
+    '&:hover': { transform: 'translate(1px, 1px)', boxShadow: '2px 2px 0px rgba(93, 64, 55, 0.1)' }
+  };
+
   return (
     <Grid container spacing={2}>
         <Grid size={{ xs: 6, md: 3 }}>
-            <Paper sx={{ p: 1.5, borderRadius: 2, borderLeft: '4px solid #2E7D32', bgcolor: 'rgba(255,255,255,0.7)' }}>
-                <Typography variant="caption" fontWeight="900" color="textSecondary" sx={{ fontSize: '0.6rem' }}>CASH IN DRAWER</Typography>
-                <Typography variant="h6" fontWeight="900" color="#2E7D32">₱{totals.cash.toFixed(2)}</Typography>
+            <Paper sx={{ ...forensicTile, borderLeft: '6px solid #2E7D32' }}>
+                <Typography variant="caption" sx={{ fontWeight: '1000', color: '#757575', fontSize: '0.65rem', letterSpacing: 0.5 }}>CASH IN DRAWER</Typography>
+                <Typography variant="h5" sx={{ fontWeight: '1000', color: '#2E7D32' }}>₱{totals.cash.toFixed(2)}</Typography>
             </Paper>
         </Grid>
         <Grid size={{ xs: 6, md: 3 }}>
-            <Paper sx={{ p: 1.5, borderRadius: 2, borderLeft: '4px solid #1565C0', bgcolor: 'rgba(255,255,255,0.7)' }}>
-                <Typography variant="caption" fontWeight="900" color="textSecondary" sx={{ fontSize: '0.6rem' }}>GCASH / MAYA</Typography>
-                <Typography variant="h6" fontWeight="900" color="#1565C0">₱{totals.gcash.toFixed(2)}</Typography>
+            <Paper sx={{ ...forensicTile, borderLeft: '6px solid #1565C0' }}>
+                <Typography variant="caption" sx={{ fontWeight: '1000', color: '#757575', fontSize: '0.65rem', letterSpacing: 0.5 }}>GCASH / MAYA</Typography>
+                <Typography variant="h5" sx={{ fontWeight: '1000', color: '#1565C0' }}>₱{totals.gcash.toFixed(2)}</Typography>
             </Paper>
         </Grid>
         <Grid size={{ xs: 6, md: 3 }}>
-            <Paper sx={{ p: 1.5, borderRadius: 2, borderLeft: '4px solid #F57C00', bgcolor: 'rgba(255,255,255,0.7)' }}>
-                <Typography variant="caption" fontWeight="900" color="textSecondary" sx={{ fontSize: '0.6rem' }}>CARD & BANK</Typography>
-                <Typography variant="h6" fontWeight="900" color="#F57C00">₱{(totals.card + totals.bank).toFixed(2)}</Typography>
+            <Paper sx={{ ...forensicTile, borderLeft: '6px solid #F57C00' }}>
+                <Typography variant="caption" sx={{ fontWeight: '1000', color: '#757575', fontSize: '0.65rem', letterSpacing: 0.5 }}>CARD & BANK</Typography>
+                <Typography variant="h5" sx={{ fontWeight: '1000', color: '#F57C00' }}>₱{(totals.card + totals.bank).toFixed(2)}</Typography>
             </Paper>
         </Grid>
         <Grid size={{ xs: 6, md: 3 }}>
-            <Paper sx={{ p: 1.5, borderRadius: 2, borderLeft: '4px solid #5D4037', bgcolor: '#EFEBE9' }}>
-                <Typography variant="caption" fontWeight="900" color="#5D4037" sx={{ fontSize: '0.6rem' }}>TOTAL REVENUE</Typography>
-                <Typography variant="h5" fontWeight="900" color="#3E2723">₱{totals.total.toFixed(2)}</Typography>
-                {totals.refunds > 0 && <Typography variant="caption" color="error" fontWeight="900">- ₱{totals.refunds.toFixed(2)}</Typography>}
+            <Paper sx={{ ...forensicTile, borderLeft: '6px solid #5D4037', bgcolor: '#FFF8E1', border: '2px solid #3E2723' }}>
+                <Typography variant="caption" sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '0.65rem', letterSpacing: 0.8 }}>TOTAL REVENUE</Typography>
+                <Typography variant="h4" sx={{ fontWeight: '1000', color: '#3E2723', fontSize: '1.6rem' }}>₱{totals.total.toFixed(2)}</Typography>
+                {totals.refunds > 0 && <Typography variant="caption" color="error" sx={{ fontWeight: '1000' }}>- ₱{totals.refunds.toFixed(2)} [REFUNDS]</Typography>}
             </Paper>
         </Grid>
     </Grid>
   );
-}
+}

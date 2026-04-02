@@ -23,17 +23,19 @@ const ACTION_CONFIG = {
 };
 
 const headerSx = {
-  fontWeight: '900',
-  color: '#757575',
-  bgcolor: 'rgba(255,255,255,0.9)',
-  fontSize: '0.72rem',
-  textTransform: 'uppercase',
-  letterSpacing: 1,
-  borderBottom: '2px solid rgba(0,0,0,0.06)',
+  fontWeight: '1000', color: '#5D4037', bgcolor: '#FFF8E1', 
+  fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: 1, 
+  borderBottom: '2px solid #5D4037',
   py: 1.5,
 };
 
-export default function GlobalActivityLog({ glassStyle }) {
+export default function GlobalActivityLog() {
+  const clinicalFlatStyle = {
+    background: '#FFF', 
+    border: '2px solid #5D4037',
+    boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)', 
+    borderRadius: 0, 
+  };
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -102,19 +104,24 @@ export default function GlobalActivityLog({ glassStyle }) {
   return (
     <TableContainer
       component={Paper}
+      elevation={0}
       sx={{
-        ...glassStyle,
-        height: 'calc(100vh - 340px)',
+        ...clinicalFlatStyle,
+        flex: 1,
+        minHeight: 0,
         overflow: 'auto',
-        borderRadius: 3,
+        '&::-webkit-scrollbar': { width: '8px', height: '8px' },
+        '&::-webkit-scrollbar-track': { background: '#FFF8E1' },
+        '&::-webkit-scrollbar-thumb': { background: '#5D4037', borderRadius: '4px' },
+        '&::-webkit-scrollbar-thumb:hover': { background: '#3E2723' }
       }}
     >
       {/* Header bar with record count */}
       <Box sx={{
         px: 3, py: 1.5,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        borderBottom: '1px solid rgba(0,0,0,0.06)',
-        bgcolor: 'rgba(255,255,255,0.95)',
+        borderBottom: '2px solid #5D4037',
+        bgcolor: '#FFF8E1',
         position: 'sticky', top: 0, zIndex: 2,
       }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>

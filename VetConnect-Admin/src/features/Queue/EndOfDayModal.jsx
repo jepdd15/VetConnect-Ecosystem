@@ -56,11 +56,31 @@ const getSpeciesIcon = (species) => {
     return <PetsIcon sx={{ fontSize: 32, opacity: 0.4, color: '#9E9E9E' }} />;
 };
 
+// --- 🛰️ FORENSIC TEMPORAL ENGINE (Aligned with Queue.jsx) ---
+const getLocalDateStr = (d = new Date()) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
 // --- 📡 MEMOIZED AUDIT CARD: THE PERFORMANCE CURE ---
 const AuditPatientCard = React.memo(({
     patient, resolution, targetDate, auditReason, realTimeStatus, tabMode, ancestorData, loadingHistory, departments,
     onResolutionChange, onAuditReasonChange, onFetchHistory, onClearHistory, onGenderOpen, CARD_HEIGHT
 }) => {
+    // PHASE 4.4.2.5: LOCAL-FIRST FOCUS SHIELD
+    const [localReason, setLocalReason] = useState(auditReason || "");
+
+    // Keep pulse in sync if external props change (e.g. Batch Action)
+    React.useEffect(() => {
+        setLocalReason(auditReason || "");
+    }, [auditReason]);
+
+    const handleReasonChange = (newVal) => {
+        setLocalReason(newVal);
+        onAuditReasonChange(patient.id, newVal);
+    };
     const milestones = [
         { id: 'booked', label: 'BOOKED', val: patient.createdAt },
         { id: 'scheduled', label: 'SCHED', val: patient.jsScheduled },
@@ -101,7 +121,7 @@ const AuditPatientCard = React.memo(({
             borderRadius: 1.5,
             border: isResolvedRemotely ? '2px solid #2E7D32' : `2px solid ${clinicalBorder}`,
             display: 'flex', bgcolor: isResolvedRemotely ? 'rgba(46, 125, 50, 0.05)' : forensicBg,
-            overflow: 'hidden', position: 'relative', height: CARD_HEIGHT,
+            overflow: 'hidden', position: 'relative', minHeight: CARD_HEIGHT,
             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
             boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
             opacity: isResolvedRemotely ? 0.8 : 1,
@@ -344,8 +364,8 @@ const AuditPatientCard = React.memo(({
                 </Box>
             </Box>
 
-            {/* 4. RECOMMENDATION & VERDICT (FLEX) */}
-            <Box sx={{ flex: 1, p: 2, display: 'flex', flexDirection: 'column' }}>
+            {/* 4. RECOMMENDATION & VERDICT (FLEX - EXPANDS ON TRIAGE) */}
+            <Box sx={{ flex: 1, p: 2, display: 'flex', flexDirection: 'column', pb: resolution ? 4 : 2 }}>
                 <Box sx={{ p: 1.5, bgcolor: !resolution ? '#F5F5F5' : (isHighStakes ? '#FFF9C4' : (resolution === 'rebook' ? '#FFF9C4' : resolution === 'no-show' ? '#FFEBEE' : '#F5F5F5')), border: `2px solid ${forensicColor}`, borderRadius: 1.2, mb: 1.5, transition: 'all 0.2s ease-out' }}>
                     <Typography variant="caption" sx={{ fontWeight: '1000', color: forensicColor, textTransform: 'uppercase', letterSpacing: 1, display: 'block', mb: 0.3, fontSize: '0.6rem' }}>
                         🧠 {!resolution ? 'UNRESOLVED ASSET' : (isPhysical ? 'PHYSICAL INTEGRITY GUARD' : (resolution === 'cancel' ? 'FORENSIC ALERT' : resolution === 'rebook' ? 'RECOVERY ADVISORY' : 'CLINICAL INTELLIGENCE'))}
@@ -400,15 +420,15 @@ const AuditPatientCard = React.memo(({
                     >
                         {/* 📡 ONLINE SILO ACTIONS */}
                         {tabMode === 0 && (
-                            <>
-                                <ToggleButton value="defer"><AutoFixHighIcon sx={{ mr: 0.5, fontSize: 16 }} /> Defer</ToggleButton>
-                                <ToggleButton value="rebook"><EventRepeatIcon sx={{ mr: 0.5, fontSize: 16 }} /> Re-book</ToggleButton>
-                            </>
+                            <ToggleButton value="defer"><AutoFixHighIcon sx={{ mr: 0.5, fontSize: 16 }} /> Defer</ToggleButton>
+                        )}
+                        {tabMode === 0 && (
+                            <ToggleButton value="rebook"><EventRepeatIcon sx={{ mr: 0.5, fontSize: 16 }} /> Re-book</ToggleButton>
                         )}
 
                         {/* 📅 SCHEDULED / 🚑 ACTIVE ACTIONS */}
                         {tabMode !== 0 && (
-                            <ToggleButton value="rebook">
+                            <ToggleButton value={tabMode === 2 ? 'carry-over' : 'rebook'}>
                                 <EventRepeatIcon sx={{ mr: 0.5, fontSize: 16 }} /> {tabMode === 2 ? 'Carry-over' : 'Re-book'}
                             </ToggleButton>
                         )}
@@ -421,7 +441,8 @@ const AuditPatientCard = React.memo(({
                         <ToggleButton value="cancel"><DoNotDisturbIcon sx={{ mr: 0.5, fontSize: 16 }} /> Cancel</ToggleButton>
                     </ToggleButtonGroup>
 
-                    {(resolution === 'cancel' || resolution === 'no-show') && (
+                    {/* UNIVERSAL REASON FOR EVERY RESOLUTION */}
+                    {resolution && (
                         <Box sx={{ mt: 1.5, p: 1, border: `2px solid ${forensicColor}`, borderRadius: 1.2, bgcolor: isHighStakes ? '#FFF9C4' : '#FAFAFA', animation: 'slideIn 0.2s ease-out' }}>
                             <Typography variant="caption" sx={{ fontWeight: '1000', color: forensicColor, display: 'block', mb: 0.8, fontSize: '0.6rem', letterSpacing: 0.5 }}>
                                 ✍️ MANDATORY FORENSIC JUSTIFICATION
@@ -430,19 +451,19 @@ const AuditPatientCard = React.memo(({
                                 fullWidth
                                 multiline
                                 rows={2}
-                                placeholder={isHighStakes ? "Provide medical/admin reason for cancellation (Required)" : "Reason for cancellation (Optional)"}
-                                value={auditReason || ""}
-                                onChange={(e) => onAuditReasonChange(patient.id, e.target.value)}
+                                placeholder="Provide clinical justification for this resolution (Required)"
+                                value={localReason}
+                                onChange={(e) => handleReasonChange(e.target.value)}
                                 sx={{
                                     '& .MuiOutlinedInput-root': {
                                         fontWeight: '900', fontSize: '0.75rem', bgcolor: 'white',
-                                        '& fieldset': { borderColor: (isHighStakes && !auditReason) ? '#D32F2F' : forensicColor }
+                                        '& fieldset': { borderColor: !auditReason ? '#D32F2F' : forensicColor }
                                     }
                                 }}
                             />
-                            {isHighStakes && !auditReason && (
+                            {!auditReason && (
                                 <Typography variant="caption" sx={{ color: '#D32F2F', fontWeight: '1000', fontSize: '0.55rem', mt: 0.5, display: 'block' }}>
-                                    🛑 LOCK ACTIVE: This cancellation requires a justification.
+                                    🛑 LOCK ACTIVE: This action requires a forensic justification.
                                 </Typography>
                             )}
                         </Box>
@@ -463,7 +484,7 @@ const AuditPatientCard = React.memo(({
                                         { label: 'NEXT WEEK', days: 7 }
                                     ].map((pick) => {
                                         const d = new Date(); d.setDate(d.getDate() + pick.days);
-                                        const dateStr = d.toISOString().split('T')[0];
+                                        const dateStr = getLocalDateStr(d);
                                         const isActive = targetDate === dateStr || (!targetDate && pick.days === 1);
 
                                         return (
@@ -494,10 +515,10 @@ const AuditPatientCard = React.memo(({
     );
 });
 
-export default function EndOfDayModal({
-    open, leftoverPatients, patientResolutions, touchedPatients, auditReasons,
+const EndOfDayModal = React.memo(({
+    open, leftoverPatients, patientResolutions, touchedPatients, auditReasons, targetDates,
     onResolutionChange, onAuditReasonChange, onBulkResolution, onConfirmReset, isForced, departments, onClose
-}) {
+}) => {
     const [activeTab, setActiveTab] = useState(0);
 
     // PHASE 5: THE LIVE PULSE - TIER 1 (Anti-Stale Guard)
@@ -538,6 +559,7 @@ export default function EndOfDayModal({
     }, [open, leftoverPatients]);
 
     // PHASE 4: THE FORENSIC GATE LOCK (MULTI-SILO AWARE)
+    // PHASE 4.4.2: THE UNIVERSAL FORENSIC LOCK
     const isGateLocked = leftoverPatients.some(p => {
         const rawStatus = (p.status || 'unknown').toLowerCase();
         const rtStatus = (realTimeStatuses[p.id] || rawStatus).toLowerCase();
@@ -553,10 +575,8 @@ export default function EndOfDayModal({
         // Logic: Every record MUST have a resolution selected
         if (!resolution) return true;
 
-        // High-Stakes Audit: If cancelling or no-showing an active/committed patient, reason is mandatory
-        const isCommitted = ['arrived', 'in-consult', 'dispensing', 'billing', 'confirmed', 'scheduled', 'payment'].includes(rawStatus);
-        const isTerminal = resolution === 'cancel' || resolution === 'no-show';
-        if (isCommitted && isTerminal && !hasReason) return true;
+        // UNIVERSAL AUDIT: Every action REQUIRES a manual forensic reason
+        if (!hasReason) return true;
 
         return false;
     });
@@ -564,13 +584,30 @@ export default function EndOfDayModal({
     const resolvedCount = leftoverPatients.filter(p => !!patientResolutions[p.id] || ['completed', 'done', 'cancelled', 'no-show', 'carried-over'].includes((realTimeStatuses[p.id] || p.status || "").toLowerCase())).length;
     const pendingTriageCount = leftoverPatients.length - resolvedCount;
 
-    // PHASE 6: PRE-FLIGHT CENSUS
+    // PHASE 6: SILO-AWARE PRE-FLIGHT CENSUS
     const census = {
-        defer: Object.values(patientResolutions).filter(v => v === 'defer').length,
-        carryOver: Object.values(patientResolutions).filter(v => v === 'rebook').length,
-        noShow: Object.values(patientResolutions).filter(v => v === 'no-show').length,
-        cancel: Object.values(patientResolutions).filter(v => v === 'cancel').length
+        defer: 0,
+        rebook: 0,
+        carryOver: 0,
+        noShow: 0,
+        cancel: 0
     };
+
+    leftoverPatients.forEach(p => {
+        const res = patientResolutions[p.id];
+        if (!res) return;
+
+        const rawStatus = (p.status || "").toLowerCase();
+        const isActive = ['arrived', 'in-consult', 'dispensing', 'billing', 'payment', 'on-hold', 'confined'].includes(rawStatus);
+
+        if (res === 'defer') census.defer++;
+        else if (res === 'no-show') census.noShow++;
+        else if (res === 'cancel') census.cancel++;
+        else if (res === 'rebook') {
+            if (isActive) census.carryOver++;
+            else census.rebook++;
+        }
+    });
 
     const [isConfirming, setIsConfirming] = useState(false);
     const [exitConfirm, setExitConfirm] = useState(false);
@@ -580,22 +617,19 @@ export default function EndOfDayModal({
     const [targetedPid, setTargetedPid] = useState(null);
 
     // SCHEDULING & ANCESTRY STATE
-    const [targetDates, setTargetDates] = useState({}); // { pid: DateString }
     const [ancestorData, setAncestorData] = useState({}); // { pid: { milestones: [], currentIdx: 0 } }
     const [loadingHistory, setLoadingHistory] = useState({});
 
-    if (!open) return null;
-
-    const handleProcessClick = () => {
+    const handleProcessClick = React.useCallback(() => {
         if (!isConfirming) {
             setIsConfirming(true);
         } else {
             onConfirmReset(targetDates);
             setIsConfirming(false);
         }
-    };
+    }, [isConfirming, onConfirmReset, targetDates]);
 
-    const handleFetchHistory = async (patient) => {
+    const handleFetchHistory = React.useCallback(async (patient) => {
         let originId = patient.originApptId;
 
         setLoadingHistory(prev => ({ ...prev, [patient.id]: true }));
@@ -640,7 +674,7 @@ export default function EndOfDayModal({
             }
         } catch (err) { console.error("History fetch failed:", err); }
         setLoadingHistory(prev => ({ ...prev, [patient.id]: false }));
-    };
+    }, [leftoverPatients]);
 
     const handleExitClick = () => {
         if (!exitConfirm) {
@@ -651,10 +685,10 @@ export default function EndOfDayModal({
         }
     };
 
-    const handleGenderOpen = (e, pid) => {
+    const handleGenderOpen = React.useCallback((e, pid) => {
         setTargetedPid(pid);
         setGenderAnchor(e.currentTarget);
-    };
+    }, []);
 
     const handleGenderSelect = async (gender) => {
         // Here we simulate healing the local record for the session
@@ -675,6 +709,16 @@ export default function EndOfDayModal({
         }
         setGenderAnchor(null);
     };
+
+    const handleClearHistory = React.useCallback((id) => {
+        setAncestorData(prev => {
+            const d = { ...prev };
+            delete d[id];
+            return d;
+        });
+    }, []);
+
+    if (!open) return null;
 
     return (
         <Box sx={{
@@ -709,15 +753,20 @@ export default function EndOfDayModal({
                             🛡️ FINAL CLINICAL TRIAGE SIGN-OFF
                         </Typography>
 
-                        <Stack direction="row" spacing={5} justifyContent="center" sx={{ bgcolor: 'rgba(0,0,0,0.3)', p: 3, borderRadius: 2, mb: 3 }}>
+                        <Stack direction="row" spacing={4} justifyContent="center" sx={{ bgcolor: 'rgba(0,0,0,0.3)', p: 3, borderRadius: 2, mb: 3 }}>
                             <Box sx={{ textAlign: 'center' }}>
                                 <Typography variant="h2" sx={{ fontWeight: 1000, color: '#81C784' }}>{census.defer}</Typography>
                                 <Typography variant="caption" sx={{ fontWeight: 900, opacity: 0.9, letterSpacing: 1.5 }}>DEFER</Typography>
                             </Box>
                             <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
                             <Box sx={{ textAlign: 'center' }}>
+                                <Typography variant="h2" sx={{ fontWeight: 1000, color: '#4FC3F7' }}>{census.rebook}</Typography>
+                                <Typography variant="caption" sx={{ fontWeight: 900, opacity: 0.9, letterSpacing: 1.5 }}>RE-BOOK</Typography>
+                            </Box>
+                            <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
+                            <Box sx={{ textAlign: 'center' }}>
                                 <Typography variant="h2" sx={{ fontWeight: 1000, color: '#64B5F6' }}>{census.carryOver}</Typography>
-                                <Typography variant="caption" sx={{ fontWeight: 900, opacity: 0.9, letterSpacing: 1.5 }}>REBOOK</Typography>
+                                <Typography variant="caption" sx={{ fontWeight: 900, opacity: 0.9, letterSpacing: 1.5 }}>CARRY OVER</Typography>
                             </Box>
                             <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
                             <Box sx={{ textAlign: 'center' }}>
@@ -784,12 +833,12 @@ export default function EndOfDayModal({
                     </Stack>
                 </Box>
 
-                {/* BULK ACTION TOOLBAR (SILO-AWARE - RESTRICTED TO ONLINE TRIAGE) */}
-                {activeTab === 0 && currentSiloPatients.length > 1 && (
+                {/* BULK ACTION TOOLBAR (SILO-AWARE - UNLOCKED FOR ALL ENTITIES) */}
+                {currentSiloPatients.length > 0 && (
                     <Box sx={{ px: 3, py: 1.2, bgcolor: '#FAFAFA', borderBottom: '2px solid #5D4037', display: 'flex', flexDirection: 'column', gap: 1 }}>
                         <Stack direction="row" justifyContent="space-between" alignItems="center">
                             <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-                                {activeTab === 0 ? '📡 ONLINE TRIAGE ACTIONS' : '📅 ABSENTEEISM ACTIONS'}
+                                {activeTab === 0 ? '📡 ONLINE TRIAGE ACTIONS' : activeTab === 1 ? '📅 ABSENTEEISM ACTIONS' : '🚑 ACTIVE TRIAGE ACTIONS'}
                                 <span style={{ color: '#E65100', marginLeft: '10px' }}>⚠️ {currentSiloPatients.length} RECORDS IN THIS SILO</span>
                             </Typography>
                             <Stack direction="row" spacing={0} sx={{ border: '2px solid #5D4037', borderRadius: 1.2, overflow: 'hidden' }}>
@@ -805,31 +854,68 @@ export default function EndOfDayModal({
                                         <Divider orientation="vertical" flexItem sx={{ borderRightWidth: 2, borderColor: '#5D4037' }} />
                                         <Button
                                             size="small"
+                                            sx={{ borderRadius: 0, px: 3, py: 0.6, color: '#8B4513', fontWeight: '1000', fontSize: '0.75rem', '&:hover': { bgcolor: '#FFF3E0' } }}
+                                            onClick={() => onBulkResolution('rebook', bulkReason)}
+                                        >
+                                            BATCH: RE-BOOK ALL
+                                        </Button>
+                                        <Divider orientation="vertical" flexItem sx={{ borderRightWidth: 2, borderColor: '#5D4037' }} />
+                                        <Button
+                                            size="small"
                                             sx={{ borderRadius: 0, px: 3, py: 0.6, color: '#D32F2F', fontWeight: '1000', fontSize: '0.75rem', '&:hover': { bgcolor: '#FFEBEE' } }}
                                             onClick={() => onBulkResolution('cancel', bulkReason)}
                                         >
-                                            BATCH: CANCEL ALL ({currentSiloPatients.length})
+                                            BATCH: CANCEL ALL
+                                        </Button>
+                                    </>
+                                ) : activeTab === 1 ? (
+                                    <>
+                                        <Button
+                                            size="small"
+                                            sx={{ borderRadius: 0, px: 3, py: 0.6, color: '#E65100', fontWeight: '1000', fontSize: '0.75rem', '&:hover': { bgcolor: '#FFF3E0' } }}
+                                            onClick={() => onBulkResolution('no-show', bulkReason)}
+                                        >
+                                            BATCH: NO-SHOW ALL ({currentSiloPatients.length})
+                                        </Button>
+                                        <Divider orientation="vertical" flexItem sx={{ borderRightWidth: 2, borderColor: '#5D4037' }} />
+                                        <Button
+                                            size="small"
+                                            sx={{ borderRadius: 0, px: 3, py: 0.6, color: '#8B4513', fontWeight: '1000', fontSize: '0.75rem', '&:hover': { bgcolor: '#FFF3E0' } }}
+                                            onClick={() => onBulkResolution('rebook', bulkReason)}
+                                        >
+                                            BATCH: RE-BOOK ALL
                                         </Button>
                                     </>
                                 ) : (
-                                    <Button
-                                        size="small"
-                                        sx={{ borderRadius: 0, px: 3, py: 0.6, color: '#E65100', fontWeight: '1000', fontSize: '0.75rem', '&:hover': { bgcolor: '#FFF3E0' } }}
-                                        onClick={() => onBulkResolution('no-show', bulkReason)}
-                                    >
-                                        BATCH: MARK ALL AS NO-SHOW ({currentSiloPatients.length})
-                                    </Button>
+                                    <>
+                                        <Button
+                                            size="small"
+                                            sx={{ borderRadius: 0, px: 3, py: 0.6, color: '#1B5E20', fontWeight: '1000', fontSize: '0.75rem', '&:hover': { bgcolor: '#E8F5E9' } }}
+                                            onClick={() => onBulkResolution('carry-over', bulkReason)}
+                                        >
+                                            BATCH: CARRY-OVER ALL ({currentSiloPatients.length})
+                                        </Button>
+                                        <Divider orientation="vertical" flexItem sx={{ borderRightWidth: 2, borderColor: '#5D4037' }} />
+                                        <Button
+                                            size="small"
+                                            sx={{ borderRadius: 0, px: 3, py: 0.6, color: '#D32F2F', fontWeight: '1000', fontSize: '0.75rem', '&:hover': { bgcolor: '#FFEBEE' } }}
+                                            onClick={() => onBulkResolution('cancel', bulkReason)}
+                                        >
+                                            BATCH: CANCEL ALL
+                                        </Button>
+                                    </>
                                 )}
                             </Stack>
                         </Stack>
 
-                        {/* BATCH REASON FIELD (Forensic Mirror - Only shows in terminal silos) */}
+                        {/* BATCH REASON FIELD (Forensic Mirror) */}
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, bgcolor: '#FFF', p: 1, border: '1px dashed #5D4037', borderRadius: 1 }}>
-                            <Typography variant="caption" sx={{ fontWeight: 1000, color: '#5D4037', whiteSpace: 'nowrap' }}>✍️ UNIVERSAL REASON FOR {currentSiloPatients.length} {activeTab === 0 ? 'ONLINE' : 'SCHEDULED'} RECORDS:</Typography>
+                            <Typography variant="caption" sx={{ fontWeight: 1000, color: '#5D4037', whiteSpace: 'nowrap' }}>✍️ UNIVERSAL REASON FOR {currentSiloPatients.length} {activeTab === 0 ? 'ONLINE' : activeTab === 1 ? 'SCHEDULED' : 'ACTIVE'} RECORDS:</Typography>
                             <TextField
+                                id="bulk-reason-field"
                                 fullWidth
                                 size="small"
-                                placeholder="e.g., Abandoned requests / Shift reset / Absenteeism..."
+                                placeholder={activeTab === 2 ? "e.g., Medical Handover / Shift reset / Cont. care..." : "e.g., Abandoned requests / Shift reset / Absenteeism..."}
                                 variant="standard"
                                 value={bulkReason}
                                 onChange={(e) => setBulkReason(e.target.value)}
@@ -857,7 +943,7 @@ export default function EndOfDayModal({
                                 onResolutionChange={onResolutionChange}
                                 onAuditReasonChange={onAuditReasonChange}
                                 onFetchHistory={handleFetchHistory}
-                                onClearHistory={(id) => setAncestorData(prev => { const d = { ...prev }; delete d[id]; return d; })}
+                                onClearHistory={handleClearHistory}
                                 onGenderOpen={handleGenderOpen}
                                 CARD_HEIGHT={CARD_HEIGHT}
                             />
@@ -941,4 +1027,6 @@ export default function EndOfDayModal({
             </Paper>
         </Box>
     );
-}
+});
+
+export default EndOfDayModal;

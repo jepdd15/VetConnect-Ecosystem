@@ -4,9 +4,9 @@ import {
   Box, Typography, Paper, IconButton, Tooltip, Stack,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button,
   Tabs, Tab, Menu, MenuItem, ListItemIcon, ListItemText, Divider, List, ListItem, Alert,
-  Popover, Chip
+  Popover, Chip, keyframes
 } from '@mui/material';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, Timestamp, where, getDocs, writeBatch, getDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, Timestamp, where, getDocs, writeBatch, getDoc, arrayUnion } from 'firebase/firestore';
 
 // 1. BACKEND & BRAIN
 import { db } from '../../firebaseConfig'; 
@@ -55,7 +55,7 @@ const formatDuration = (totalMinutes) => {
   return remainingMins > 0 ? `${hours}h ${remainingMins}m` : `${hours}h`;
 };
 
-// --- 📡 FORENSIC TEMPORAL ENGINE (Local Timezone Guard) ---
+// --- ðŸ“¡ FORENSIC TEMPORAL ENGINE (Local Timezone Guard) ---
 const getLocalDateStr = (d = new Date()) => {
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -134,9 +134,10 @@ export default function Queue() {
 
 
 
-  // --- 🛰️ UNIVERSAL CLINICAL HOVER ENGINE ---
+  // --- ðŸ›°ï¸ UNIVERSAL CLINICAL HOVER ENGINE ---
   const [hoverAnchor, setHoverAnchor] = useState(null);
   const [hoverMetadata, setHoverMetadata] = useState({ type: null, data: null });
+  const [expandedPulseId, setExpandedPulseId] = useState(null);
 
   const handleHoverStart = (event, type, data) => {
     if (!data) return;
@@ -164,7 +165,7 @@ export default function Queue() {
     borderRadius: 0, 
   };
 
-  // --- 🛰️ SYNC CLINIC CONFIGURATION (CLOSING HOURS & CAPACITY) ---
+  // --- ðŸ›°ï¸ SYNC CLINIC CONFIGURATION (CLOSING HOURS & CAPACITY) ---
   useEffect(() => {
     const unsubSettings = onSnapshot(doc(db, "clinic_settings", "general"), (docSnap) => {
       if (docSnap.exists()) {
@@ -179,109 +180,144 @@ export default function Queue() {
   // LOGIC & HANDLERS
   // ======================================================================
   
-  const confirmResetDay = async (isSilent = false, targetDateMap = {}) => { 
+const confirmResetDay = async (isSilent = false, targetDateMap = {}) => { 
     try { 
       const todayStr = new Date().toISOString().split('T')[0];
 
-      // TIER 2: THE FINAL PULSE CHECK (ZOMBIE PREVENTION)
-      // We fetch a fresh snapshot of all audited IDs to ensure they haven't been resolved remotely.
+      // TIER 2: THE FINAL PULSE CHECK (ZOMBIE PREVENTION - IDs verified in real-time)
       const freshSnap = await getDocs(query(collection(db, "appointments"), where("__name__", "in", leftoverPatients.map(p => p.id))));
       const freshStatuses = {};
       freshSnap.docs.forEach(doc => { freshStatuses[doc.id] = doc.data().status; });
 
-      // THE "RACE CONDITION" LOCK (System Table Check)
       const queueSnap = await getDoc(doc(db, "queue", "daily_queue"));
       if (queueSnap.exists() && queueSnap.data().lastResetDate === todayStr && !isSilent && !isForcedCleanup) {
          alert("Data Protected: Another staff member has already reset the queue for today.");
          setOpenEndDay(false);
-         setHasGhostPatients(false);
-         setIsForcedCleanup(false);
          return;
       }
 
       const batch = writeBatch(db); 
-      const targetDate = new Date(); 
-      targetDate.setHours(8, 0, 0, 0); 
+      // PHASE 4.4.4: THE CLEAN-SLATE SAFETY (Default to Tomorrow, not Today)
+      const defaultTargetDate = new Date(); 
+      defaultTargetDate.setDate(defaultTargetDate.getDate() + 1); 
+      defaultTargetDate.setHours(8, 0, 0, 0); 
 
       leftoverPatients.forEach((patient) => { 
         const oldRef = doc(db, "appointments", patient.id); 
         const currentStatus = (freshStatuses[patient.id] || patient.status || 'unknown').toLowerCase();
         
-        // --- 🧊 THE ZOMBIE BYPASS: If they were resolved remotely, WE SKIP THEM! ---
-        const isResolvedRemotely = ['completed', 'done', 'cancelled', 'no-show', 'carried-over'].includes(currentStatus);
-        if (isResolvedRemotely) {
-           console.log(`[Forensic Guard] Skipping Zombie Update for ${patient.petName} (Already Resolved: ${currentStatus})`);
-           return; 
-        }
+        // Skip records already resolved remotely while wizard was open
+        if (['completed', 'done', 'cancelled', 'no-show', 'carried-over'].includes(currentStatus)) return;
 
         const rawStatus = (patient.status || 'unknown').toLowerCase();
-        const action = patient.status === 'confined' ? 'confined' : (patientResolutions[patient.id] || (patient.status === 'pending' ? 'defer' : 'cancel'));
+        const action = (patientResolutions[patient.id] || (patient.status === 'pending' ? 'defer' : 'cancel'));
         const staffSignature = profile?.fullName || user?.email || "System Triage";
         const forensicNote = auditReasons[patient.id] || "No reason provided in triage.";
-        const isHighStakes = ['arrived', 'in-consult', 'dispensing', 'billing', 'confirmed', 'scheduled', 'payment'].includes(rawStatus);
+        const isHighStakes = ['arrived', 'in-consult', 'dispensing', 'billing', 'confirmed', 'scheduled', 'payment', 'on-hold'].includes(rawStatus);
 
-        // --- 🧬 THE BIOMETRIC HEAL: Save Wizard corrections to the Master Pet Record! ---
-        const currentGender = String(patient.petGender || '').toUpperCase();
-        const isHealedGender = patient.petGender && currentGender !== 'UNKNOWN' && currentGender !== 'SEX UNK' && currentGender !== '???';
-        if (patient.petId && isHealedGender) {
-           const petRef = doc(db, "pets", patient.petId);
-           batch.update(petRef, { 
-              gender: patient.petGender, // Sync master biometrics
-              breed: patient.petBreed,
-              isNeutered: patient.petIsNeutered 
-           });
-        }
+        // --- 🧬 FORENSIC COMMIT ENGINE: TRIAGE DYNAMICS ---
+        if (action === 'rebook' || action === 'confined' || action === 'carry-over') { 
+          // PHASE 4.4.3: Support dynamic re-booking clinical windows
+          const manualDate = targetDateMap[patient.id] ? new Date(`${targetDateMap[patient.id]}T08:00:00`) : defaultTargetDate;
+          const pulseType = (rawStatus === 'confirmed' || rawStatus === 'scheduled') ? 'TRIAGE_REBOOK' : 'TRIAGE_CARRY_OVER';
 
-        if (action === 'rebook' || action === 'confined') { 
-          const manualDate = targetDateMap[patient.id] ? new Date(`${targetDateMap[patient.id]}T08:00:00`) : targetDate;
-          
           if (patient.status === 'carried-over') {
             batch.update(oldRef, { 
                scheduledDate: Timestamp.fromDate(manualDate),
                caseDay: (patient.caseDay || 1) + 1,
                processedBy: staffSignature,
-               processedAt: Timestamp.now()
+               processedAt: Timestamp.now(),
+               clinicalPulse: arrayUnion({
+                  eventId: `pulse_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                  type: pulseType,
+                  fromStatus: rawStatus,
+                  toStatus: 'carried-over',
+                  timestamp: Timestamp.now(),
+                  staffId: user?.uid || 'system',
+                  staffName: staffSignature,
+                  note: `Shift Cleanup: Carry-over to ${manualDate.toDateString()}. Justification: ${forensicNote}`
+               }),
+               isTriaged: true // THE FORENSIC SHIELD STAMP
             });
           } else {
+            // Create a clean Action-Aware prefix
+            const actionLabel = action === 'carry-over' ? 'Carry-over' : 'Re-book';
+            const triagePrefix = `[Clinical Triage: ${actionLabel}]`;
+            
+            // Avoid stacking duplicate prefixes
+            const cleanNotes = patient.notes?.startsWith('[Clinical Triage:') 
+              ? patient.notes 
+              : `${triagePrefix} ${patient.notes || ""}`;
+
             batch.update(oldRef, { 
                status: 'carried-over', 
-               notes: `(Re-booked by ${staffSignature}) ${patient.notes || ""}`,
+               isTriaged: true, // THE FORENSIC SHIELD STAMP
+               notes: cleanNotes,
                processedBy: staffSignature,
-               processedAt: Timestamp.now()
+               processedAt: Timestamp.now(),
+               clinicalPulse: arrayUnion({
+                  eventId: `pulse_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                  type: pulseType,
+                  fromStatus: rawStatus,
+                  toStatus: 'carried-over',
+                  timestamp: Timestamp.now(),
+                  staffId: user?.uid || 'system',
+                  staffName: staffSignature,
+                  note: `Shift Cleanup: ${actionLabel} to ${manualDate.toDateString()}. Justification: ${forensicNote}`
+               })
             }); 
             
             const newDocRef = doc(collection(db, "appointments")); 
-            const { id, jsScheduled, jsArrived, jsStarted, jsCompleted, queueNumber, ticketPrefix, timeArrived, timeStarted, timeCompleted, ...preservedData } = patient;
+            const { id, jsScheduled, jsArrived, jsStarted, jsCompleted, queueNumber, ticketPrefix, timeArrived, timeStarted, timeCompleted, isTriaged: oldIsTriaged, ...preservedData } = patient;
             
-            // THE ANCESTRY LOCK: Ensure original createdAt is NEVER lost during generation transfer!
             batch.set(newDocRef, { 
                ...preservedData,
                status: action === 'confined' ? 'confined' : 'confirmed', 
                queueNumber: null, 
                ticketPrefix: null, 
                scheduledDate: Timestamp.fromDate(manualDate), 
-               createdAt: patient.createdAt || Timestamp.now(), // THE HEALING FIX: Preserve Original Birth Date
+               createdAt: patient.createdAt || Timestamp.now(),
                originApptId: patient.id,
                caseDay: (patient.caseDay || 1) + 1,
-               notes: `[Triage Re-book] ${patient.notes || "No original notes."}`, 
+               notes: cleanNotes, 
                processedBy: staffSignature,
-               assignedVet: action === 'confined' ? patient.assignedVet : "Unassigned" 
+               assignedVet: action === 'confined' ? patient.assignedVet : "Unassigned",
+               clinicalPulse: [
+                  {
+                    eventId: `pulse_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                    type: 'INCEPTION',
+                    toStatus: action === 'confined' ? 'confined' : 'confirmed',
+                    timestamp: Timestamp.now(),
+                    staffId: user?.uid || 'system',
+                    staffName: staffSignature,
+                    note: `Generated via Triage Re-booking from Appt ${patient.id}`
+                  }
+               ]
             }); 
           }
         } else if (action === 'defer') {
-          const tomorrow = new Date();
-          tomorrow.setDate(tomorrow.getDate() + 1);
-          const triageKey = tomorrow.toISOString().split('T')[0];
+          // PHASE 4.4.3: Support dynamic deferral windows instead of hardcoded tomorrow
+          const triageKey = targetDateMap[patient.id] || new Date(Date.now() + 86400000).toISOString().split('T')[0];
           
           batch.update(oldRef, {
              triageDate: triageKey,
-             notes: `(Deferred to next shift by ${staffSignature}) ${patient.notes || ""}`,
+             notes: `(Deferred to ${triageKey} by ${staffSignature}) ${patient.notes || ""}`,
              processedBy: staffSignature,
              processedAt: Timestamp.now(),
-             lastTriagedAt: Timestamp.now()
+             lastTriagedAt: Timestamp.now(),
+             clinicalPulse: arrayUnion({
+                eventId: `pulse_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                type: 'TRIAGE_DEFERRED',
+                fromStatus: rawStatus,
+                toStatus: rawStatus,
+                timestamp: Timestamp.now(),
+                staffId: user?.uid || 'system',
+                staffName: staffSignature,
+                note: `Shift Triage: Deferred to ${triageKey}. Justification: ${forensicNote}`
+             })
           });
         } else {
-          // --- ⚖️ THE FORENSIC TRIAGE: Map the terminal status correctly! ---
+          // TERMINAL AUDIT (Cancel or No-Show)
           const finalStatus = action === 'no-show' ? 'no-show' : 'cancelled';
           const defaultReason = action === 'no-show' ? "Client failed to arrive" : "Appointment cancelled during triage";
 
@@ -290,8 +326,18 @@ export default function Queue() {
              rejectReason: `[Triage Audit] ${forensicNote}`,
              processedBy: staffSignature,
              processedAt: Timestamp.now(),
-             isForensicAudit: isHighStakes, // BOTH Cancel and No-Show are High-Stakes Audit
-             auditReason: forensicNote || defaultReason
+             isForensicAudit: isHighStakes,
+             auditReason: forensicNote || defaultReason,
+             clinicalPulse: arrayUnion({
+                eventId: `pulse_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                type: action === 'no-show' ? 'TRIAGE_NO_SHOW' : 'TRIAGE_CANCELLED',
+                fromStatus: rawStatus,
+                toStatus: finalStatus,
+                timestamp: Timestamp.now(),
+                staffId: user?.uid || 'system',
+                staffName: staffSignature,
+                note: `Shift Cleanup Sign-off: ${forensicNote || defaultReason}`
+             })
           }); 
         }
       }); 
@@ -303,7 +349,7 @@ export default function Queue() {
       setOpenEndDay(false); 
       setIsForcedCleanup(false);
       setHasGhostPatients(false); 
-      if (!isSilent) alert("Cleanup Complete: Board is ready."); 
+      if (!isSilent) alert("Cleanup Complete."); 
     } catch (error) { alert("Error: " + error.message); } 
   };
 
@@ -327,7 +373,7 @@ export default function Queue() {
           services: doc.data().services || [] 
         })); 
 
-        // THE FIX: "Live Identity Healing" — Restore missing biometrics from the CRM master record (Resilience Patch)
+        // THE FIX: "Live Identity Healing" â€” Restore missing biometrics from the CRM master record (Resilience Patch)
         const enrichedPatients = await Promise.all(rawPatients.map(async (p) => {
            try {
               const currentGender = String(p.petGender || p.gender || '').toUpperCase();
@@ -414,7 +460,7 @@ export default function Queue() {
   const handleOpenPOS = (row) => { setSelectedRow(row); setOpenPOS(true); };
   const handleStatusChange = async (row, newStatus) => { 
     try { 
-      // --- 🛡️ CLINICAL REALITY PRE-CHECK ---
+      // --- ðŸ›¡ï¸ CLINICAL REALITY PRE-CHECK ---
       if (newStatus === 'confirmed') {
         const services = row.services || [];
         const missingDepts = [];
@@ -427,7 +473,7 @@ export default function Queue() {
 
         if (missingDepts.length > 0) {
           alert(
-            `❌ STAFFING GAP DETECTED\n\nCannot accept this appointment. There are currently no staff members assigned to the following departments: ${missingDepts.join(", ")}.\n\nPlease assign staff to these departments in the Staff module before accepting.`
+            `âŒ STAFFING GAP DETECTED\n\nCannot accept this appointment. There are currently no staff members assigned to the following departments: ${missingDepts.join(", ")}.\n\nPlease assign staff to these departments in the Staff module before accepting.`
           );
           return;
         }
@@ -504,14 +550,38 @@ export default function Queue() {
   // THE MORNING GATEKEEPER (Forces modal if ghosts exist - REAL-TIME SYNC!)
   useEffect(() => {
     const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+    const todayStr = getLocalDateStr();
+
     const qGhosts = query(
       collection(db, "appointments"),
-      where("status", "in",["pending", "confirmed", "arrived", "in-consult", "confined", "on-hold", "dispensing", "billing"]),
-      where("scheduledDate", "<", Timestamp.fromDate(todayStart))
+      where("status", "in",["pending", "confirmed", "arrived", "in-consult", "confined", "on-hold", "dispensing", "billing", "scheduled"])
     );
 
     const unsubGhosts = onSnapshot(qGhosts, async (snapshot) => {
-      if (snapshot.empty) {
+      // 🧬 FORENSIC FILTER: Only flag records that AREN'T triaged and ARE from the past.
+      const rawGhosts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const ghosts = rawGhosts.filter(appt => {
+          // SHIELD 1: THE FORENSIC STAMP
+          if (appt.isTriaged === true) return false;
+          
+          // SHIELD 2: THE DEFERRAL GATE
+          if (appt.triageDate && appt.triageDate >= todayStr) return false;
+
+          // SHIELD 3: THE NOTES CHECK
+          if (appt.notes?.includes('[Clinical Triage:')) return false;
+
+          // DETERMINATION: Is it actually a ghost?
+          let checkDate;
+          if (appt.scheduledDate?.toDate) checkDate = appt.scheduledDate.toDate();
+          else if (appt.scheduledDate) checkDate = new Date(appt.scheduledDate);
+          else checkDate = appt.createdAt?.toDate ? appt.createdAt.toDate() : new Date();
+          
+          const finalCheck = new Date(checkDate);
+          finalCheck.setHours(0,0,0,0);
+          return finalCheck < todayStart;
+      });
+
+      if (ghosts.length === 0) {
         setHasGhostPatients(false);
         setOpenEndDay(false);
         setIsForcedCleanup(false);
@@ -519,8 +589,6 @@ export default function Queue() {
       } else {
         setHasGhostPatients(true);
         if (isToday) {
-            const ghosts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            
             // THE FIX: "Live Identity Healing" inside the sync loop!
             const enrichedGhosts = await Promise.all(ghosts.map(async (p) => {
               try {
@@ -542,8 +610,6 @@ export default function Queue() {
 
             setLeftoverPatients(enrichedGhosts);
             
-            // PHASE 3: THE HARD-GATE GHOST HUNTER
-            // Ensure Legacy records (Ghosts) follow the Clean-Slate security rules
             setPatientResolutions(prev => {
               const updated = { ...prev };
               enrichedGhosts.forEach(p => {
@@ -560,7 +626,6 @@ export default function Queue() {
               return updated;
             });
 
-            // PHASE 3: Update touched set for ghosts (Online are auto-passed)
             setTouchedPatients(prev => {
               const updated = new Set(prev);
               enrichedGhosts.forEach(p => {
@@ -579,7 +644,7 @@ export default function Queue() {
     });
 
     return () => unsubGhosts();
-  }, [filterDate, isToday]); 
+  }, [filterDate, isToday]);
 
   // THE MAIN BOARD QUERY
   useEffect(() => {
@@ -611,10 +676,27 @@ export default function Queue() {
         }
 
         // For all non-pending statuses, keep the strict scheduledDate pulse
+        // PHASE 4.4.4: THE TEMPORAL HEALER - Hide re-booked records from 'Today' if they were accidentally created for the past
+        // PHASE 4.4.10: DEEP CLEAN - Also hide legacy triage notes to clear 'Old Ghosts'
+        const isTriagedRecord = 
+          appt.isTriaged === true || 
+          appt.notes?.includes('[Triage Re-book]') || 
+          appt.notes?.includes('[Clinical Triage:');
+        
+        if (isTriagedRecord) {
+          // 🛡️ THE IDENTITY RESURRECTION:
+          // If the record is scheduled for the dashboard's current shift or the future, 
+          // we MUST show it even if it has triage stamps from its history.
+          const apptDate = appt.jsScheduled || (appt.createdAt?.toDate ? appt.createdAt.toDate() : new Date());
+          const today = new Date(); today.setHours(0,0,0,0);
+          
+          if (apptDate < today) return false; 
+        }
+
         return appt.jsScheduled >= start && appt.jsScheduled <= end;
       });
 
-      // --- 🦴 PRIMARY SORT (Priority -> Time -> Owner) ---
+      // --- ðŸ¦´ PRIMARY SORT (Priority -> Time -> Owner) ---
       list.sort((a, b) => {
         const priorityA = a.priority === 'high' ? 0 : 1;
         const priorityB = b.priority === 'high' ? 0 : 1;
@@ -627,7 +709,7 @@ export default function Queue() {
         return (a.ownerId || '').localeCompare(b.ownerId || '');
       });
 
-      // --- 🐾 THE BOOKING BRIDGE (Grouping Detection) ---
+      // --- ðŸ¾ THE BOOKING BRIDGE (Grouping Detection) ---
       const processedList = list.map((item, idx) => {
         const prev = list[idx - 1];
         const next = list[idx + 1];
@@ -678,16 +760,46 @@ export default function Queue() {
   useEffect(() => {
     const today = new Date();
     today.setHours(0,0,0,0);
+    const todayStr = getLocalDateStr();
 
+    // Query for any unresolved record
     const qGhost = query(
       collection(db, "appointments"),
-      where("status", "in", ['pending', 'confirmed', 'arrived', 'in-consult', 'dispensing', 'billing', 'scheduled']),
-      where("scheduledDate", "<", Timestamp.fromDate(today))
+      where("status", "in", ['pending', 'confirmed', 'arrived', 'in-consult', 'dispensing', 'billing', 'scheduled'])
     );
 
     const unsubscribeGhosts = onSnapshot(qGhost, (snapshot) => {
-      if (!snapshot.empty) {
-        setLeftoverPatients(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      const ghosts = snapshot.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(appt => {
+          // SHIELD 1: THE FORENSIC STAMP - If it was triaged today, it's NOT a ghost.
+          if (appt.isTriaged === true) return false;
+          
+          // SHIELD 2: THE TEMPORAL RESET - If it has triage notes, it's NOT a past ghost.
+          if (appt.notes?.includes('[Triage Re-book]') || appt.notes?.includes('[Clinical Triage:')) return false;
+
+          // SHIELD 3: THE DEFERRAL GATE - If it has a future triageDate, it's safe.
+          const apptTriageDate = appt.triageDate;
+          if (apptTriageDate && apptTriageDate >= todayStr) return false;
+
+          // DETERMINATION: Check scheduling context
+          let checkDate;
+          if (appt.scheduledDate?.toDate) {
+            checkDate = appt.scheduledDate.toDate();
+          } else if (appt.scheduledDate) {
+            checkDate = new Date(appt.scheduledDate);
+          } else {
+            checkDate = appt.createdAt?.toDate ? appt.createdAt.toDate() : new Date();
+          }
+          
+          const finalCheck = new Date(checkDate);
+          finalCheck.setHours(0,0,0,0);
+
+          return finalCheck < today;
+        });
+
+      if (ghosts.length > 0) {
+        setLeftoverPatients(ghosts);
         setHasGhostPatients(true);
         // FORCE-OPEN the cleanup wizard if we have historical debris
         setOpenEndDay(true); 
@@ -712,13 +824,13 @@ export default function Queue() {
   // ======================================================================
   const { countOnline, countScheduled, countArrived, countStarted, countDispense, countPayment, countDone, countCancelled } = useMemo(() => {
     return {
-      countOnline: rows.filter(r => r.status === 'pending').length,
-      countScheduled: rows.filter(r => r.status === 'confirmed').length,
-      countArrived: rows.filter(r => r.status === 'arrived').length,
-      countStarted: rows.filter(r => r.status === 'in-consult' || r.status === 'confined' || r.status === 'on-hold').length,
-      countDispense: rows.filter(r => r.status === 'dispensing').length,
-      countPayment: rows.filter(r => r.status === 'billing').length,
-      countDone: rows.filter(r => r.status === 'completed' || r.status === 'carried-over').length,
+      countOnline: rows.filter(r => r.status === 'pending' && (isToday ? !r.isTriaged : true)).length,
+      countScheduled: rows.filter(r => r.status === 'confirmed' && r.status !== 'carried-over' && (isToday ? !r.isTriaged : true)).length,
+      countArrived: rows.filter(r => r.status === 'arrived' && r.status !== 'carried-over' && (isToday ? !r.isTriaged : true)).length,
+      countStarted: rows.filter(r => (r.status === 'in-consult' || r.status === 'confined' || r.status === 'on-hold') && r.status !== 'carried-over' && (isToday ? !r.isTriaged : true)).length,
+      countDispense: rows.filter(r => r.status === 'dispensing' && r.status !== 'carried-over' && (isToday ? !r.isTriaged : true)).length,
+      countPayment: rows.filter(r => r.status === 'billing' && r.status !== 'carried-over' && (isToday ? !r.isTriaged : true)).length,
+      countDone: rows.filter(r => r.status === 'completed' || r.status === 'carried-over' || (r.isTriaged && r.status === 'pending')).length,
       countCancelled: rows.filter(r => r.status === 'cancelled' || r.status === 'no-show').length,
     };
   }, [rows]);
@@ -728,13 +840,13 @@ export default function Queue() {
   const getFilteredRows = () => {
     let filtered = [];
     switch (tabValue) {
-      case 0: filtered = rows.filter(r => r.status === 'pending'); break;
-      case 1: filtered = rows.filter(r => r.status === 'confirmed'); break;
-      case 2: filtered = rows.filter(r => r.status === 'arrived'); break;
-      case 3: filtered = rows.filter(r => r.status === 'in-consult' || r.status === 'confined' || r.status === 'on-hold'); break;
-      case 4: filtered = rows.filter(r => r.status === 'dispensing'); break;
-      case 5: filtered = rows.filter(r => r.status === 'billing'); break;
-      case 6: filtered = rows.filter(r => r.status === 'completed' || r.status === 'carried-over'); break;
+      case 0: filtered = rows.filter(r => r.status === 'pending' && (isToday ? !r.isTriaged : true)); break;
+      case 1: filtered = rows.filter(r => r.status === 'confirmed' && r.status !== 'carried-over' && (isToday ? !r.isTriaged : true)); break;
+      case 2: filtered = rows.filter(r => r.status === 'arrived' && r.status !== 'carried-over' && (isToday ? !r.isTriaged : true)); break;
+      case 3: filtered = rows.filter(r => (r.status === 'in-consult' || r.status === 'confined' || r.status === 'on-hold') && r.status !== 'carried-over' && (isToday ? !r.isTriaged : true)); break;
+      case 4: filtered = rows.filter(r => r.status === 'dispensing' && r.status !== 'carried-over' && (isToday ? !r.isTriaged : true)); break;
+      case 5: filtered = rows.filter(r => r.status === 'billing' && r.status !== 'carried-over' && (isToday ? !r.isTriaged : true)); break;
+      case 6: filtered = rows.filter(r => r.status === 'completed' || r.status === 'carried-over' || (r.isTriaged && r.status === 'pending')); break;
       case 7: filtered = rows.filter(r => r.status === 'cancelled' || r.status === 'no-show'); break;
       default: filtered = rows; 
     }
@@ -766,7 +878,6 @@ export default function Queue() {
         await markNoShow(row); 
       } catch (e) {
         alert(e.message); // Catching the "Integrity Refusal"
-      }
       }
     },
     handleRescheduleOpen: (row) => { setSelectedRow(row); setOpenReschedule(true); },
@@ -804,7 +915,7 @@ export default function Queue() {
             '& .MuiAlert-icon': { color: '#FFF' }
           }}
         >
-          AFTER-HOURS MODE: You have {unfinishedCount} unresolved clinical record(s) remaining for today's final audit. 🧴✨
+           AFTER-HOURS MODE: You have {unfinishedCount} unresolved clinical record(s) remaining for today's final audit. 🧴✨
         </Alert>
       )}
 
@@ -824,7 +935,7 @@ export default function Queue() {
               {isTomorrowView ? '🚀 NEXT-DAY PREVIEW' : '🩺 ACTIVE CLINICAL SHIFT'}
             </Typography>
           </Box>
-          
+
           <Box sx={{ display: 'flex', alignItems: 'center', bgcolor: '#EFEBE9', borderRadius: '12px', border: '2px solid #5D4037', p: 0.5, boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)' }}>
              <Button 
                 onClick={() => setIsTomorrowView(false)} 
@@ -992,265 +1103,104 @@ export default function Queue() {
         leftoverPatients={leftoverPatients} 
         patientResolutions={patientResolutions} 
         auditReasons={auditReasons}
-        onResolutionChange={(id, action) => {
+        targetDates={targetDates}
+        onResolutionChange={React.useCallback((id, action, targetDate) => {
           setPatientResolutions(prev => ({ ...prev, [id]: action }));
-          // CLEAR REASON IF NO LONGER A TERMINAL ACTION (CANCEL/NO-SHOW)
-          if (action !== 'cancel' && action !== 'no-show') {
-            setAuditReasons(prev => { const upd = {...prev}; delete upd[id]; return upd; });
+          if (targetDate) {
+            setTargetDates(prev => ({ ...prev, [id]: targetDate }));
           }
-        }}
-        onAuditReasonChange={(id, reason) => {
+        }, [])}
+        onAuditReasonChange={React.useCallback((id, reason) => {
           setAuditReasons(prev => ({ ...prev, [id]: reason }));
-        }}
-        onBulkResolution={(action, reason) => {
-           // PHASE 6: SILO-AWARE BATCH PROCESSING
-           const newRes = { ...patientResolutions };
-           const newReasons = { ...auditReasons };
+        }, [])}
+        onBulkResolution={React.useCallback((action, reason) => {
+           // PHASE 4.4.1: UNIVERSAL SILO-AWARE BATCH PROCESSING (Functional Update - NO DEPS)
+           setPatientResolutions(prevRes => {
+                const newRes = { ...prevRes };
+                setAuditReasons(prevReasons => {
+                    const newReasons = { ...prevReasons };
+                    
+                    leftoverPatients.forEach(p => {
+                        const rtStatus = (p.status || "").toLowerCase();
+                        const isOnline = rtStatus === 'pending';
+                        const isScheduled = ['confirmed', 'scheduled'].includes(rtStatus);
+                        const isActive = ['arrived', 'in-consult', 'dispensing', 'billing', 'payment', 'confined'].includes(rtStatus);
 
-           leftoverPatients.forEach(p => {
-             const rtStatus = (p.status || "").toLowerCase();
-             
-             // SILO MAPPING: 
-             // If action is Defer/Cancel -> Target Pending
-             // If action is No-Show -> Target Scheduled/Confirmed
-             const isOnline = rtStatus === 'pending';
-             const isScheduled = ['confirmed', 'scheduled'].includes(rtStatus);
-
-             if ((action === 'defer' || action === 'cancel') && isOnline) {
-               newRes[p.id] = action;
-               newReasons[p.id] = reason || "";
-             } else if (action === 'no-show' && isScheduled) {
-               newRes[p.id] = action;
-               newReasons[p.id] = reason || "";
-             }
+                        if ((action === 'defer' || action === 'cancel' || action === 'rebook') && isOnline) {
+                            newRes[p.id] = action;
+                            newReasons[p.id] = reason || "";
+                        } else if ((action === 'no-show' || action === 'rebook' || action === 'cancel') && isScheduled) {
+                            newRes[p.id] = action;
+                            newReasons[p.id] = reason || "";
+                        } else if ((action === 'carry-over' || action === 'cancel') && isActive) {
+                            newRes[p.id] = action;
+                            newReasons[p.id] = reason || "";
+                        }
+                    });
+                    return newReasons;
+                });
+                return newRes;
            });
-           setPatientResolutions(newRes);
-           setAuditReasons(newReasons);
-        }}
+        }, [leftoverPatients])}
         onConfirmReset={(targetDates) => { confirmResetDay(false, targetDates); setIsForcedCleanup(false); }} 
         isForced={isForcedCleanup}
         departments={departments}
-        onClose={() => { setOpenEndDay(false); setIsForcedCleanup(false); }} 
+        onClose={React.useCallback(() => { setOpenEndDay(false); setIsForcedCleanup(false); }, [])} 
       />
       
       {/* INTERNAL MODALS */}
-      <Dialog 
-        open={openReject} 
-        onClose={() => setOpenReject(false)}
-        PaperProps={{ 
-          sx: { 
-            border: '2px solid #5D4037', borderRadius: 1, p: 1,
-            boxShadow: '8px 8px 0px rgba(93, 64, 55, 0.1)'
-          } 
-        }}
-      >
-        <DialogTitle sx={{ 
-            bgcolor: '#FFF8E1', color: '#5D4037', fontWeight: '1000', borderBottom: '1px solid #D7CCC8',
-            display: 'flex', alignItems: 'center', gap: 1, py: 2
-        }}>
-          <PersonOffIcon /> CANCEL APPOINTMENT
-        </DialogTitle>
-        <DialogContent sx={{ mt: 2 }}>
-          <Typography variant="overline" sx={{ fontWeight: '1000', color: '#9E9E9E', letterSpacing: 1.5 }}>
-            QUICK CHOICE REASON
-          </Typography>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1, mb: 3 }}>
-            {['CLIENT REQUEST', 'VET UNAVAILABLE', 'EMERGENCY', 'DUPLICATE', 'WRONG DATE'].map((reason) => (
-              <Chip 
-                key={reason} 
-                label={reason} 
-                onClick={() => setRejectReason(reason)}
-                sx={{ 
-                    fontWeight: '900', fontSize: '0.65rem', 
-                    border: '1.5px solid #5D4037',
-                    bgcolor: rejectReason === reason ? '#5D4037' : 'transparent',
-                    color: rejectReason === reason ? '#FFF' : '#5D4037',
-                    '&:hover': { bgcolor: rejectReason === reason ? '#3E2723' : '#F5F5F5' }
-                }}
-              />
-            ))}
-          </Box>
-          <TextField 
-            autoFocus 
-            margin="dense" 
-            label="Manual Details / Notes" 
-            fullWidth 
-            multiline
-            rows={2}
-            value={rejectReason} 
-            onChange={(e) => setRejectReason(e.target.value)} 
-            sx={{ 
-                '& .MuiOutlinedInput-root': { fontWeight: '900', bgcolor: '#F9FBE7' }
-            }} 
+      <Dialog open={openReject} onClose={() => setOpenReject(false)}>
+        <DialogTitle sx={{ fontWeight: '1000', color: '#5D4037' }}>Reject Appointment</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Reason for Rejection"
+            fullWidth
+            variant="outlined"
+            value={rejectReason}
+            onChange={(e) => setRejectReason(e.target.value)}
+            sx={{ mt: 1 }}
           />
         </DialogContent>
-        <DialogActions sx={{ p: 2, bgcolor: '#F5F5F5', borderTop: '1px solid #D7CCC8' }}>
-          <Button onClick={() => setOpenReject(false)} sx={{ fontWeight: 'bold', color: '#5D4037' }}>Go Back</Button>
-          <Button 
-            onClick={confirmReject} 
-            variant="contained" 
-            sx={{ 
-                bgcolor: '#5D4037', fontWeight: '1000', px: 4,
-                '&:hover': { bgcolor: '#3E2723' }
-            }}
-          >
-            Confirm Cancellation
-          </Button>
+        <DialogActions>
+          <Button onClick={() => setOpenReject(false)} sx={{ fontWeight: 'bold', color: '#757575' }}>Cancel</Button>
+          <Button onClick={confirmReject} variant="contained" color="error" sx={{ fontWeight: 'bold' }}>Reject</Button>
         </DialogActions>
       </Dialog>
 
-      {/* 🛡️ THE FORENSIC REVERT OVERLAY (UNDO ACCOUNTABILITY) */}
-      <Dialog 
-        open={openRevert} 
-        onClose={() => setOpenRevert(false)}
-        PaperProps={{ 
-          sx: { 
-            border: '2px solid #E65100', borderRadius: 1.5, p: 0.5,
-            boxShadow: '12px 12px 0px rgba(230, 81, 0, 0.1)'
-          } 
-        }}
-      >
-        <DialogTitle sx={{ 
-            bgcolor: '#FFF3E0', color: '#E65100', fontWeight: '1000', borderBottom: '1px solid #FFE0B2',
-            display: 'flex', alignItems: 'center', gap: 1.5, py: 2
-        }}>
-          <UndoIcon /> REVERT FORENSIC STATUS
-        </DialogTitle>
-        <DialogContent sx={{ mt: 2 }}>
-          <Typography variant="body2" sx={{ fontWeight: '800', color: '#5D4037', mb: 2 }}>
-            You are backtracking clinical progress for <strong>{selectedRow?.petName}</strong>. This action is audited.
-          </Typography>
-          <Typography variant="overline" sx={{ fontWeight: '1000', color: '#9E9E9E', letterSpacing: 1.5 }}>
-            QUICK CHOICE REASON
-          </Typography>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1, mb: 3 }}>
-            {['MISCLICK', 'PROTOCOL CHANGE', 'RESUMING CONSULT', 'DATA CORRECTION'].map((reason) => (
-              <Chip 
-                key={reason} 
-                label={reason} 
-                onClick={() => setRevertReason(reason)}
-                sx={{ 
-                    fontWeight: '900', fontSize: '0.65rem', 
-                    border: '1.5px solid #E65100',
-                    bgcolor: revertReason === reason ? '#E65100' : 'transparent',
-                    color: revertReason === reason ? '#FFF' : '#E65100',
-                    '&:hover': { bgcolor: revertReason === reason ? '#BF360C' : '#FFF9F1' }
-                }}
-              />
-            ))}
-          </Box>
-          <TextField 
-            autoFocus 
-            margin="dense" 
-            label="Provide Forensic Justification" 
-            fullWidth 
-            multiline
-            rows={2}
-            value={revertReason} 
-            onChange={(e) => setRevertReason(e.target.value)} 
-            placeholder="e.g., Accidental check-out, staff corrected medical record..."
-            sx={{ 
-                '& .MuiOutlinedInput-root': { fontWeight: '900', bgcolor: '#FFF9F1' }
-            }} 
-          />
-        </DialogContent>
-        <DialogActions sx={{ p: 2, bgcolor: '#F5F5F5', borderTop: '1px solid #DDD' }}>
-          <Button onClick={() => setOpenRevert(false)} sx={{ fontWeight: 'bold', color: '#757575' }}>Go Back</Button>
-          <Button 
-            onClick={confirmRevert} 
-            variant="contained" 
-            disabled={!revertReason.trim()}
-            sx={{ 
-                bgcolor: '#E65100', fontWeight: '1000', px: 4,
-                '&:hover': { bgcolor: '#BF360C' },
-                '&.Mui-disabled': { bgcolor: '#BDBDBD', opacity: 0.5 }
-            }}
-          >
-            CONFIRM REVERT
-          </Button>
-        </DialogActions>
-      </Dialog>
-      <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleCloseMenu}>
-        <MenuItem onClick={() => { revertStatusWithReason(selectedRow); handleCloseMenu(); }}>
-          <ListItemIcon><UndoIcon fontSize="small" color="warning"/></ListItemIcon> 
-          <ListItemText sx={{color: '#E65100'}}>Revert Step (Undo)</ListItemText>
-        </MenuItem>
-        
-        <Divider />
-        
-        {!['completed', 'carried-over', 'cancelled', 'payment'].includes(selectedRow?.status) && (
-          <MenuItem onClick={() => handleOpenAssign(selectedRow)}>
-            <ListItemIcon><EditIcon fontSize="small"/></ListItemIcon> 
-            <ListItemText>Re-assign Staff</ListItemText>
-          </MenuItem>
-        )}
-
-        <MenuItem onClick={handleEditOpen}>
-          <ListItemIcon><EditIcon fontSize="small"/></ListItemIcon> 
-          <ListItemText>Edit Details</ListItemText>
-        </MenuItem>
-        
-        {['confirmed', 'pending'].includes(selectedRow?.status) && (
-          <MenuItem onClick={handleRescheduleOpen}>
-            <ListItemIcon><EventIcon fontSize="small"/></ListItemIcon> 
-            <ListItemText>Reschedule</ListItemText>
-          </MenuItem>
-        )}
-        
-        <MenuItem onClick={fetchHistory}>
-          <ListItemIcon><HistoryIcon fontSize="small"/></ListItemIcon> 
-          <ListItemText>History</ListItemText>
-        </MenuItem>
-        
-        <Divider />
-        
-        {['confirmed', 'pending', 'arrived'].includes(selectedRow?.status) && (
-          <MenuItem 
-            onClick={async () => { 
-                await actions.handleQuickNoShow(selectedRow); 
-                handleCloseMenu(); 
-            }} 
-            sx={{color:'error.main'}}
-          >
-            <ListItemIcon><PersonOffIcon fontSize="small" color="error"/></ListItemIcon> 
-            <ListItemText>No Show</ListItemText>
-          </MenuItem>
-        )}
-
-        <MenuItem onClick={() => {
-            setSelectedId(selectedRow?.id);
-            setOpenReject(true);
-            handleCloseMenu();
-          }} sx={{color:'error.main'}}>
-          <ListItemIcon><PersonOffIcon fontSize="small" color="error"/></ListItemIcon> 
-          <ListItemText>Cancel Appointment</ListItemText>
-        </MenuItem>
-      </Menu>
-      <Dialog open={openEdit} onClose={() => setOpenEdit(false)}><DialogTitle>Edit</DialogTitle><DialogContent><TextField margin="dense" label="Owner" fullWidth value={editName} onChange={(e) => setEditName(e.target.value)} /><TextField margin="dense" label="Pet" fullWidth value={editPet} onChange={(e) => setEditPet(e.target.value)} /></DialogContent><DialogActions><Button onClick={() => setOpenEdit(false)}>Cancel</Button><Button onClick={saveEdit} variant="contained">Save</Button></DialogActions></Dialog>
-      <Dialog open={openReschedule} onClose={() => setOpenReschedule(false)}><DialogTitle>Reschedule</DialogTitle><DialogContent><TextField type="datetime-local" fullWidth value={newDate} onChange={(e) => setNewDate(e.target.value)} /></DialogContent><DialogActions><Button onClick={() => setOpenReschedule(false)}>Cancel</Button><Button onClick={saveReschedule} variant="contained">Update</Button></DialogActions></Dialog>
-      <Dialog open={openHistory} onClose={() => setOpenHistory(false)} maxWidth="sm" fullWidth><DialogTitle>Medical History</DialogTitle><DialogContent dividers>{historyList.length === 0 ? <Typography>No records.</Typography> : <List>{historyList.map((rec,i) => <ListItem key={i} divider><ListItemText primary={rec.diagnosis} secondary={rec.treatment}/></ListItem>)}</List>}</DialogContent><DialogActions><Button onClick={() => setOpenHistory(false)}>Close</Button></DialogActions></Dialog>
       
       {/* 📡 UNIVERSAL CLINICAL HUD (NOTES & SERVICES) */}
       <Popover
         id="clinical-hover-popover"
-        sx={{ pointerEvents: 'none' }}
+        sx={{ 
+            pointerEvents: 'none', 
+            '& .MuiBackdrop-root': { pointerEvents: 'none', backdropFilter: 'blur(1px)' } 
+        }}
         open={Boolean(hoverAnchor)}
         anchorEl={hoverAnchor}
         anchorOrigin={{ vertical: 'center', horizontal: 'center' }}
         transformOrigin={{ vertical: 'center', horizontal: 'center' }}
-        onClose={handleHoverEnd}
+        onClose={() => {
+            handleHoverEnd();
+            setExpandedPulseId(null);
+        }}
         disableRestoreFocus
         PaperProps={{
+          onMouseLeave: () => { if (!expandedPulseId) handleHoverEnd(); },
           sx: {
             p: 3, 
-            width: hoverMetadata.type === 'timing' ? 260 : 440,
-            maxHeight: 520,
-            overflow: 'hidden',
-            pointerEvents: 'none',
+            width: hoverMetadata.type === 'timing' ? 300 : 480,
+            maxHeight: 600,
+            overflowX: 'hidden',
+            overflowY: 'auto',
+            pointerEvents: 'auto', 
             bgcolor: '#FFF', 
-            border: '2px solid #5D4037',
-            boxShadow: '0 24px 64px rgba(0,0,0,0.22)',
-            borderRadius: 2
+            border: '3px solid #5D4037',
+            boxShadow: '0 32px 64px rgba(93, 64, 55, 0.45)',
+            transform: 'scale(1.05)', 
+            transition: 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important',
+            borderRadius: '20px'
           }
         }}
       >
@@ -1311,6 +1261,7 @@ export default function Queue() {
             </List>
           </Box>
         )}
+        {hoverMetadata.type === 'identity' && hoverMetadata.data}
 
         {hoverMetadata.type === 'timing' && hoverMetadata.data && (
           <Box>
@@ -1319,74 +1270,87 @@ export default function Queue() {
             </Typography>
             <Stack spacing={2} sx={{ position: 'relative', pl: 3 }}>
                 <Box sx={{ position: 'absolute', left: 8, top: 8, bottom: 8, width: '2px', borderLeft: '2px dashed #D7CCC8' }} />
-                {[
-                  { id: 'booked', label: 'BOOKED (ONLINE)', val: hoverMetadata.data.createdAt },
-                  { id: 'scheduled', label: 'APPOINTMENT SLOT', val: hoverMetadata.data.jsScheduled },
-                  { id: 'arrived', label: 'ARRIVED (CHECK-IN)', val: hoverMetadata.data.timeArrived, by: hoverMetadata.data.arrivedBy },
-                  { id: 'started', label: 'CONSULT STARTED', val: hoverMetadata.data.timeStarted, by: hoverMetadata.data.startedBy }
-                ]
-                .filter(i => i.val)
-                .sort((a,b) => {
-                    const da = a.val.toDate ? a.val.toDate() : new Date(a.val);
-                    const db = b.val.toDate ? b.val.toDate() : new Date(b.val);
-                    return da - db;
-                })
-                .map((item, idx, filteredArray) => {
-                  const isLast = idx === filteredArray.length - 1;
-                  const date = item.val.toDate ? item.val.toDate() : new Date(item.val);
-                  const color = isLast ? '#2E7D32' : '#9E9E9E';
-                  let deltaLabel = null;
-                  let deltaColor = '#5D4037';
-                  
-                  if (item.id === 'arrived') {
-                    // PUNCTUALITY: Arrived vs. Scheduled
-                    const schItem = filteredArray.find(i => i.id === 'scheduled');
-                    if (schItem) {
-                      const schDate = schItem.val.toDate ? schItem.val.toDate() : new Date(schItem.val);
-                      const diff = Math.round((date - schDate) / 60000);
-                      deltaLabel = diff > 0 ? `Punctuality: ${formatDuration(diff)} Late` : `Punctuality: ${formatDuration(diff)} Early`;
-                    }
-                  } else if (item.id === 'started') {
-                    // LOBBY WAIT: Started vs. Arrived
-                    const arrItem = filteredArray.find(i => i.id === 'arrived');
-                    if (arrItem) {
-                      const arrDate = arrItem.val.toDate ? arrItem.val.toDate() : new Date(arrItem.val);
-                      const waitDiff = Math.round((date - arrDate) / 60000);
-                      deltaLabel = `Lobby Wait: ${formatDuration(waitDiff)}`;
-                      if (waitDiff >= 30) deltaColor = '#D32F2F';
-                    }
-                  }
-                  
-                  // LIVE DYNAMIC UPDATES (If it is the LAST element, we show the ticking clock)
-                  if (isLast) {
-                    if (item.id === 'started' && !['done', 'cancelled'].includes(hoverMetadata.data.status)) {
-                      const consultDiff = Math.round((currentTime - date) / 60000);
-                      deltaLabel = (deltaLabel ? deltaLabel + " | " : "") + `ACTIVE: ${formatDuration(consultDiff)} so far`;
-                    } else if (item.id === 'arrived' && hoverMetadata.data.status === 'arrived') {
-                       const lobbyWait = Math.round((currentTime - date) / 60000);
-                       deltaLabel = `CURRENT LOBBY WAIT: ${formatDuration(lobbyWait)}`;
-                       if (lobbyWait >= 20) deltaColor = '#D32F2F';
-                    }
-                  }
+                
+                {(() => {
+                    let events = [];
+                    const pulse = hoverMetadata.data.clinicalPulse || [];
+                    
+                    if (pulse.length > 0) {
+                        const voidedIds = new Set(pulse.filter(p => p.correctedEventId).map(p => p.correctedEventId));
 
-                  return (
-                    <Box key={idx} sx={{ position: 'relative', mb: 0.5 }}>
-                      <Box sx={{ position: 'absolute', left: -26, top: 4, width: 8, height: 8, borderRadius: '50%', bgcolor: color, zIndex: 5 }} />
-                      <Typography variant="caption" sx={{ fontWeight: '1000', color: color, letterSpacing: 0.5, display: 'block', fontSize: '0.65rem' }}>{item.label}</Typography>
-                      <Typography sx={{ fontWeight: '1000', color: isLast ? '#1A1A1A' : '#9E9E9E', fontSize: '0.85rem' }}>
-                        {date.toLocaleDateString([], { month: 'short', day: 'numeric', year: date.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined }).toUpperCase()} ● {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                        {item.by && <span style={{ opacity: 0.6, fontWeight: '700', marginLeft: '6px' }}>● {item.by}</span>}
-                      </Typography>
-                      {deltaLabel && (
-                        <Typography variant="caption" sx={{ fontStyle: 'italic', color: deltaColor, fontWeight: '800', fontSize: '0.62rem', display: 'block', mt: 0.2 }}>
-                            ↳ {deltaLabel.toUpperCase()}
-                        </Typography>
-                      )}
-                    </Box>
-                  );
-                })}
+                        events = pulse.map(p => ({
+                            id: p.eventId,
+                            label: p.toStatus ? p.toStatus.toUpperCase() : 'EVENT',
+                            val: p.timestamp,
+                            by: p.staffName,
+                            note: p.note,
+                            type: p.type,
+                            isCorrection: p.isCorrection || p.type === 'CORRECTION',
+                            isVoided: voidedIds.has(p.eventId) 
+                        }));
+                    } else {
+                        events = [
+                          { id: 'booked', label: hoverMetadata.data.ticketPrefix ? 'INTAKE CREATED' : 'BOOKED (ONLINE)', val: hoverMetadata.data.createdAt },
+                          { id: 'scheduled', label: hoverMetadata.data.ticketPrefix ? 'QUEUE POSITION' : 'APPOINTMENT SLOT', val: hoverMetadata.data.jsScheduled },
+                          { id: 'arrived', label: 'ARRIVED (CHECK-IN)', val: hoverMetadata.data.timeArrived, by: hoverMetadata.data.arrivedBy },
+                          { id: 'started', label: 'CONSULT STARTED', val: hoverMetadata.data.timeStarted, by: hoverMetadata.data.startedBy }
+                        ].filter(i => i.val);
+                    }
+
+                    return events
+                    .sort((a,b) => {
+                        const da = a.val && a.val.toDate ? a.val.toDate() : new Date(a.val || 0);
+                        const db = b.val && b.val.toDate ? b.val.toDate() : new Date(b.val || 0);
+                        return da - db;
+                    })
+                    .map((item, idx, filteredArray) => {
+                        const isLast = idx === filteredArray.length - 1;
+                        const date = item.val && item.val.toDate ? item.val.toDate() : new Date(item.val || 0);
+                        const color = item.isCorrection ? '#1976D2' : (item.isVoided ? '#BDBDBD' : (isLast ? '#2E7D32' : '#9E9E9E'));
+                        const isExpanded = expandedPulseId === item.id;
+                        
+                        return (
+                            <Box key={item.id || idx} sx={{ position: 'relative', mb: 0.5, cursor: item.note ? 'pointer' : 'default', pointerEvents: 'auto' }} onClick={() => item.note && setExpandedPulseId(isExpanded ? null : item.id)}>
+                                <Box sx={{ position: 'absolute', left: -26, top: 4, width: 8, height: 8, borderRadius: '50%', bgcolor: color, zIndex: 5, border: item.isCorrection ? '2px solid #BBDEFB' : 'none' }} />
+                                <Typography variant="caption" sx={{ fontWeight: '1000', color: color, letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 1, fontSize: '0.65rem' }}>
+                                    {item.isCorrection ? 'CORRECTION REVERSION' : item.label}
+                                    {item.isCorrection && <Chip label="CORRECTION" size="small" sx={{ height: 14, fontSize: '0.5rem', fontWeight: 1000, bgcolor: '#BBDEFB', color: '#1976D2' }} />}
+                                    {item.isVoided && <Chip label="VOIDED" size="small" sx={{ height: 14, fontSize: '0.5rem', fontWeight: 1000, bgcolor: '#EEEEEE', color: '#9E9E9E' }} />}
+                                </Typography>
+                                <Typography sx={{ 
+                                    fontWeight: '1000', 
+                                    color: (isLast && !item.isVoided) ? '#1A1A1A' : '#9E9E9E', 
+                                    fontSize: '0.85rem',
+                                    textDecoration: item.isVoided ? 'line-through' : 'none',
+                                    opacity: item.isVoided ? 0.4 : 1
+                                }}>
+                                    {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                    {(item.by || item.staffName) && <span style={{ opacity: 0.6, fontWeight: '700', marginLeft: '6px' }}>● {item.by || item.staffName}</span>}
+                                </Typography>
+                                
+                                {item.note && (
+                                    <Typography variant="caption" sx={{ 
+                                        fontStyle: 'italic', 
+                                        color: '#5D4037', 
+                                        fontWeight: '800', 
+                                        fontSize: '0.62rem', 
+                                        display: 'block', 
+                                        mt: 0.2,
+                                        whiteSpace: isExpanded ? 'normal' : 'nowrap',
+                                        overflow: isExpanded ? 'visible' : 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        maxWidth: '220px'
+                                    }}>
+                                        ↳ {isExpanded ? item.note : (item.note.substring(0, 40) + (item.note.length > 40 ? "..." : ""))}
+                                        {!isExpanded && item.note.length > 40 && <span style={{ color: "#1976D2", marginLeft: "4px", fontWeight: "1000" }}>[MORE]</span>}
+                                    </Typography>
+                                )}
+                            </Box>
+                        );
+                    });
+                })()}
             </Stack>
-            <Box sx={{ mt: 2, pt: 1.5, borderTop: '1px solid #D7CCC8' }}>
+            <Box sx={{ mt: 2, pt: 1.5, borderTop: "1px solid #D7CCC8" }}>
                 {(() => {
                     const resolveDate = (d) => {
                        if (!d) return null;
@@ -1397,33 +1361,35 @@ export default function Queue() {
 
                     const sch = resolveDate(hoverMetadata.data.jsScheduled);
                     const arr = resolveDate(hoverMetadata.data.timeArrived);
+                    const booked = resolveDate(hoverMetadata.data.createdAt);
                     const completed = resolveDate(hoverMetadata.data.timeCompleted);
                     
-                    // Punctuality Delta
                     const puncDiff = arr && sch ? Math.round((arr - sch) / 60000) 
                                    : (!arr && sch) ? Math.round((currentTime - sch) / 60000)
                                    : 0;
                     
-                    const isFinished = ['done', 'cancelled'].includes(hoverMetadata.data.status);
+                    const isFinished = ["done", "cancelled"].includes(hoverMetadata.data.status);
                     const waitEnd = isFinished && completed ? completed : currentTime;
-                    const totalWaitDiff = Math.round((waitEnd - (arr || sch || currentTime)) / 60000);
+                    
+                    const waitStart = arr || (hoverMetadata.data.status === "pending" ? booked : sch) || currentTime;
+                    const totalWaitDiff = Math.round((waitEnd - (waitStart || currentTime)) / 60000);
 
-                    const severityColor = (puncDiff > 15 || totalWaitDiff > 60) ? '#D32F2F' : '#2E7D32';
+                    const severityColor = (puncDiff > 15 || totalWaitDiff > 60) ? "#D32F2F" : "#2E7D32";
 
                     return (
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                             <Box>
-                                <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', letterSpacing: 0.5, display: 'block', fontSize: '0.6rem' }}>PUNCTUALITY</Typography>
-                                <Typography sx={{ fontWeight: '1000', color: severityColor, fontSize: '0.8rem' }}>
+                                <Typography variant="caption" sx={{ fontWeight: "1000", color: "#9E9E9E", letterSpacing: 0.5, display: "block", fontSize: "0.6rem" }}>PUNCTUALITY</Typography>
+                                <Typography sx={{ fontWeight: "1000", color: severityColor, fontSize: "0.8rem" }}>
                                     {!arr 
-                                        ? (puncDiff > 1 ? `LATE (${formatDuration(puncDiff)})` : 'PENDING')
-                                        : (Math.abs(puncDiff) <= 5 ? 'ON-TIME' : `${formatDuration(Math.abs(puncDiff))} ${puncDiff > 0 ? 'LATE' : 'EARLY'}`)
+                                        ? (puncDiff > 1 ? "LATE (" + formatDuration(puncDiff) + ")" : "PENDING")
+                                        : (Math.abs(puncDiff) <= 5 ? "ON-TIME" : formatDuration(Math.abs(puncDiff)) + " " + (puncDiff > 0 ? "LATE" : "EARLY"))
                                     }
                                 </Typography>
                             </Box>
-                            <Box sx={{ textAlign: 'right' }}>
-                                <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', letterSpacing: 0.5, display: 'block', fontSize: '0.6rem' }}>TOTAL WAIT</Typography>
-                                <Typography sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' }}>
+                            <Box sx={{ textAlign: "right" }}>
+                                <Typography variant="caption" sx={{ fontWeight: "1000", color: "#9E9E9E", letterSpacing: 0.5, display: "block", fontSize: "0.6rem" }}>TOTAL WAIT</Typography>
+                                <Typography sx={{ fontWeight: "1000", color: "#5D4037", fontSize: "0.8rem" }}>
                                     {formatDuration(totalWaitDiff)}
                                 </Typography>
                             </Box>
@@ -1434,6 +1400,73 @@ export default function Queue() {
           </Box>
         )}
       </Popover>
+      {/* INTERNAL ADMINISTRATIVE MODALS (RESTORED) */}
+      <Dialog open={openEdit} onClose={() => setOpenEdit(false)}>
+        <DialogTitle sx={{ fontWeight: '1000', color: '#5D4037' }}>Edit Patient Info</DialogTitle>
+        <DialogContent>
+          <TextField autoFocus margin="dense" label="Owner Name" fullWidth variant="outlined" value={editName} onChange={(e) => setEditName(e.target.value)} sx={{ mt: 1 }} />
+          <TextField margin="dense" label="Pet Name" fullWidth variant="outlined" value={editPet} onChange={(e) => setEditPet(e.target.value)} sx={{ mt: 2 }} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenEdit(false)} sx={{ fontWeight: 'bold', color: '#757575' }}>Cancel</Button>
+          <Button onClick={saveEdit} variant="contained" sx={{ bgcolor: '#5D4037', fontWeight: 'bold' }}>Save Changes</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={openReschedule} onClose={() => setOpenReschedule(false)}>
+        <DialogTitle sx={{ fontWeight: '1000', color: '#5D4037' }}>Reschedule Appointment</DialogTitle>
+        <DialogContent>
+          <TextField margin="dense" label="New Date/Time" type="datetime-local" fullWidth variant="outlined" InputLabelProps={{ shrink: true }} value={newDate} onChange={(e) => setNewDate(e.target.value)} sx={{ mt: 1 }} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenReschedule(false)} sx={{ fontWeight: 'bold', color: '#757575' }}>Cancel</Button>
+          <Button onClick={saveReschedule} variant="contained" sx={{ bgcolor: '#1976D2', fontWeight: 'bold' }}>Update Schedule</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={openHistory} onClose={() => setOpenHistory(false)} fullWidth maxWidth="md">
+        <DialogTitle sx={{ fontWeight: '1000', color: '#5D4037' }}>Patient Medical History</DialogTitle>
+        <DialogContent>
+          <List>
+            {historyList.length === 0 ? <Typography sx={{ fontStyle: 'italic', color: '#9E9E9E', p: 3, textAlign: 'center' }}>No historical records found for this patient.</Typography> : 
+              historyList.map((h, i) => (
+                <Paper key={i} sx={{ p: 2, mb: 2, bgcolor: '#F5F5F5', borderLeft: '5px solid #5D4037' }}>
+                   <Typography variant="caption" sx={{ fontWeight: 'bold', color: '#757575' }}>{h.date?.toDate().toLocaleDateString()} ● {h.type || 'Clinical Record'}</Typography>
+                   <Typography variant="body2" sx={{ mt: 1, whiteSpace: 'pre-wrap' }}>{h.notes}</Typography>
+                </Paper>
+              ))
+            }
+          </List>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenHistory(false)} sx={{ fontWeight: 'bold' }}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={openRevert} onClose={() => setOpenRevert(false)}>
+        <DialogTitle sx={{ fontWeight: '1000', color: '#D32F2F', display: 'flex', alignItems: 'center', gap: 1 }}>
+          <UndoIcon /> Forensic Reversion
+        </DialogTitle>
+        <DialogContent>
+          <Typography sx={{ mb: 2, fontSize: '0.9rem', color: '#757575' }}>
+            Warning: You are reverting a clinical status change. Please provide a forensic justification for this action.
+          </Typography>
+          <TextField autoFocus margin="dense" label="Reversion Note / Justification" fullWidth multiline rows={3} variant="outlined" value={revertReason} onChange={(e) => setRevertReason(e.target.value)} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenRevert(false)} sx={{ fontWeight: 'bold' }}>Cancel</Button>
+          <Button onClick={confirmRevert} variant="contained" color="error" sx={{ fontWeight: 'bold' }} disabled={!revertReason.trim()}>
+            Confirm Reversion
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
+
+// THE CLINICAL PULSE EFFECT
+const pulse = keyframes`
+  0% { box-shadow: 0 0 0 0 rgba(211, 47, 47, 0.7); }
+  70% { box-shadow: 0 0 0 10px rgba(211, 47, 47, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(211, 47, 47, 0); }
+`;

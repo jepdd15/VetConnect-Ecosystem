@@ -42,8 +42,8 @@ const formatDuration = (totalMinutes) => {
   return remainingMins > 0 ? `${hours}h ${remainingMins}m` : `${hours}h`;
 };
 
-const calculateAgeString = (dob) => {
-    if (!dob) return null;
+const calculateAgeString = (dob, isAgeExact) => {
+    if (!dob) return "AGE UNKNOWN";
     const birthDate = dob.toDate ? dob.toDate() : new Date(dob);
     const now = new Date();
     let years = now.getFullYear() - birthDate.getFullYear();
@@ -52,8 +52,8 @@ const calculateAgeString = (dob) => {
         years--;
         months += 12;
     }
-    if (years > 0) return `${years}y ${months}m`;
-    return `${months}m`;
+    const ageBase = years > 0 ? `${years}y ${months}m` : `${months}m`;
+    return isAgeExact === false ? `${ageBase} (EST)` : ageBase;
 };
 
 export const getQueueColumns = (tabValue, currentTime, actions, isToday, departments, isTomorrow) => [
@@ -62,44 +62,74 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
     resizable: false, sortable: false, disableColumnMenu: true,
     renderCell: (p) => {
       const isWalkIn = p.row.ownerId === 'WALK_IN_USER' || String(p.row.ownerId).includes('GUEST_');
-      const hasAllergies = p.row.petAllergies && p.row.petAllergies.trim().length > 0;
-      const petAge = calculateAgeString(p.row.petBirthdate);
+      const petAllergies = p.row.petAllergies || '';
+      const hasSpecificAllergies = petAllergies.trim().length > 0 && petAllergies.toUpperCase() !== 'NONE';
+      const petAge = calculateAgeString(p.row.petBirthdate, p.row.isAgeExact);
 
       const PassportCard = (
-        <Box sx={{ p: 1, minWidth: 200 }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: '900', color: '#FFF3E0', mb: 1, fontSize: '1rem', borderBottom: '1px solid rgba(255,255,255,0.2)', pb: 0.5 }}>
-                {p.row.petName}
+        <Box sx={{ p: 1, minWidth: 220 }}>
+            <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1.5, display: 'block', mb: 1, opacity: 0.8 }}>
+                🩺 CLINICAL PASSPORT
             </Typography>
-            <Stack spacing={0.8}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="caption" sx={{ color: '#FFB74D', fontWeight: 'bold' }}>SPECIES / GENDER</Typography>
-                    <Typography variant="caption" sx={{ color: 'white', fontWeight: '900' }}>{p.row.petSpecies} / {p.row.petGender || 'UNK'}</Typography>
+            <Typography variant="h6" sx={{ fontWeight: '1000', color: '#1A1A1A', mb: 2, fontSize: '1.2rem', lineHeight: 1 }}>
+                {p.row.petName?.toUpperCase()}
+            </Typography>
+            
+            <Stack spacing={1.2}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5 }}>SPECIES</Typography>
+                    <Typography sx={{ color: '#1A1A1A', fontWeight: '900', fontSize: '0.85rem' }}>{p.row.petSpecies?.toUpperCase()}</Typography>
                 </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="caption" sx={{ color: '#FFB74D', fontWeight: 'bold' }}>AGE</Typography>
-                    <Typography variant="caption" sx={{ color: 'white', fontWeight: '900' }}>{petAge}</Typography>
+
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5 }}>GENDER</Typography>
+                    <Typography sx={{ color: '#1A1A1A', fontWeight: '900', fontSize: '0.85rem' }}>{p.row.petGender?.toUpperCase() || 'UNKNOWN'}</Typography>
                 </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="caption" sx={{ color: '#FFB74D', fontWeight: 'bold' }}>BREED</Typography>
-                    <Typography variant="caption" sx={{ color: 'white', fontWeight: '900' }}>{p.row.petBreed || 'Mixed'}</Typography>
+                
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5 }}>AGE</Typography>
+                    <Typography sx={{ color: p.row.petBirthdate ? '#1A1A1A' : '#D32F2F', fontWeight: '900', fontSize: '0.85rem' }}>
+                        {petAge}
+                    </Typography>
                 </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="caption" sx={{ color: '#FFB74D', fontWeight: 'bold' }}>SURGICAL</Typography>
-                    <Typography variant="caption" sx={{ color: 'white', fontWeight: '900' }}>{p.row.petIsNeutered ? 'FIXED' : 'INTACT'}</Typography>
+                
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5 }}>BREED</Typography>
+                    <Typography sx={{ color: '#1A1A1A', fontWeight: '900', fontSize: '0.82rem' }}>{p.row.petBreed || 'Mixed Breed'}</Typography>
                 </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', pt: 0.5, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-                    <Typography variant="caption" sx={{ color: '#81C784', fontWeight: 'bold' }}>OWNER</Typography>
-                    <Typography variant="caption" sx={{ color: 'white', fontWeight: '900' }}>{p.row.ownerName}</Typography>
+                
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pt: 0.5, borderTop: '1px dashed #D7CCC8' }}>
+                    <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5 }}>SURGICAL</Typography>
+                    <Chip size="small" label={p.row.petIsNeutered ? 'FIXED' : 'INTACT'} sx={{ height: 18, fontSize: '0.6rem', fontWeight: '1000', bgcolor: p.row.petIsNeutered ? '#E8F5E9' : '#FFF3E0', color: p.row.petIsNeutered ? '#2E7D32' : '#E65100', borderRadius: '4px' }} />
                 </Box>
-                {hasAllergies && (
-                     <Box sx={{ mt: 1, p: 0.5, bgcolor: 'rgba(211, 47, 47, 0.2)', borderRadius: 1, border: '1px solid #D32F2F' }}>
-                        <Typography variant="caption" sx={{ color: '#FFCDD2', fontWeight: 'bold' }}>⚠️ ALLERGIES: {p.row.petAllergies}</Typography>
+                
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5 }}>PHYSICAL</Typography>
+                    <Typography sx={{ color: '#1A1A1A', fontWeight: '900', fontSize: '0.85rem' }}>{p.row.petWeight ? `${p.row.petWeight} KG` : 'WEIGH REQUIRED'}</Typography>
+                </Box>
+
+                {/* 🧬 FORENSIC ALLERGY HARDENING: THE VERIFIED NEGATIVE */}
+                {/* 🧬 FORENSIC ALLERGY HARDENING: THE ATOMIC ALERT */}
+                {hasSpecificAllergies ? (
+                     <Box sx={{ mt: 1, p: 0.8, bgcolor: 'rgba(211, 47, 47, 0.05)', borderRadius: 1, border: '1.5px solid #D32F2F' }}>
+                        <Typography variant="caption" sx={{ color: '#D32F2F', fontWeight: '1000', fontSize: '0.65rem', display: 'block', mb: 1 }}>
+                            ⚠️ CRITICAL MEDICAL ALERTS:
+                        </Typography>
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                            {petAllergies.split(',').map((allergy, index) => (
+                                <Box key={index} sx={{ bgcolor: '#D32F2F', color: 'white', px: 0.8, py: 0.2, borderRadius: '4px', fontSize: '0.65rem', fontWeight: '1000', textTransform: 'uppercase' }}>
+                                    {allergy.trim()}
+                                </Box>
+                            ))}
+                        </Box>
                      </Box>
+                ) : (
+                    <Box sx={{ mt: 1, p: 0.8, bgcolor: '#F5F5F5', borderRadius: 1, border: '1px solid #E0E0E0', opacity: 0.8 }}>
+                        <Typography variant="caption" sx={{ color: '#757575', fontWeight: '1000', fontSize: '0.62rem' }}>
+                            ✅ ALLERGIES: NONE DISCLOSED
+                        </Typography>
+                    </Box>
                 )}
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', pt: 0.5 }}>
-                    <Typography variant="caption" sx={{ color: '#81C784', fontWeight: 'bold' }}>WEIGHT</Typography>
-                    <Typography variant="caption" sx={{ color: 'white', fontWeight: '900' }}>{p.row.petWeight ? `${p.row.petWeight} kg` : 'UNVERIFIED'}</Typography>
-                </Box>
             </Stack>
         </Box>
       );
@@ -124,64 +154,33 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
             )}
           </Box>
 
-          <Box sx={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0 }}>
-            {/* THE TOTAL IDENTITY STACK (GOD-VIEW TRIGGER) */}
+          <Box sx={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0, justifyContent: 'center' }}>
             <Box 
                 onMouseEnter={(e) => actions.handleHoverStart(e, 'identity', PassportCard)}
-                onMouseLeave={actions.handleHoverEnd}
                 sx={{ display: 'flex', flexDirection: 'column', width: '100%', cursor: 'zoom-in', gap: 0 }}
             >
                 {/* LINE 1: THE PATIENT HERO */}
-                <Typography sx={{ fontSize: '1.18rem', fontWeight: '1000', color: '#1A1A1A', lineHeight: 1, letterSpacing: '-0.01rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', pb: 0.2 }}>
+                <Typography sx={{ fontSize: '1.25rem', fontWeight: '1000', color: '#1A1A1A', lineHeight: 1.1, letterSpacing: '-0.02rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {p.row.petName} 
                 </Typography>
 
-                {/* LINE 2: THE BIOMETRIC STACK (BIO + AGE) */}
-                <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '700', fontSize: '0.72rem', textTransform: 'capitalize', lineHeight: 1.1 }}>
-                    {String(p.row.petSpecies || 'PET').toLowerCase()} • {String(p.row.petBreed || 'Mixed Breed').toLowerCase()}
+                {/* LINE 2: THE SEMANTIC ANCHOR (SPECIES * BREED) */}
+                <Typography variant="caption" sx={{ color: '#795548', fontWeight: '900', fontSize: '0.75rem', textTransform: 'uppercase', lineHeight: 1.3, letterSpacing: '0.02rem' }}>
+                    {String(p.row.petSpecies || 'PET')} ★ {String(p.row.petBreed || 'Mixed Breed')}
                 </Typography>
 
-                <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '700', fontSize: '0.72rem', textTransform: 'uppercase', lineHeight: 1.1 }}>
-                    {petAge ? `AGE: ${petAge}` : 'UNVERIFIED AGE'}
-                </Typography>
-
-                {/* LINE 3: THE CLINICAL DNA (BIOLOGICAL) */}
-                <Typography variant="caption" sx={{ 
-                    color: '#5D4037',
-                    fontWeight: '700', fontSize: '0.72rem', textTransform: 'uppercase', lineHeight: 1.1 
-                }}>
-                    {p.row.petGender && p.row.petGender !== 'Unknown' && p.row.petGender !== '???' && p.row.petGender !== 'UNK' ? p.row.petGender : 'SEX UNKNOWN'} • {p.row.petIsNeutered ? 'fixed' : 'intact'}
-                </Typography>
-
-                {/* LINE 4: THE PHYSICAL MAPPING (COLOR + WEIGHT) */}
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography variant="caption" sx={{ 
-                        color: '#5D4037',
-                        fontWeight: '700', fontSize: '0.72rem', textTransform: 'uppercase', lineHeight: 1.1,
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
-                    }}>
-                        {p.row.petColor || 'COLOR UNRECORDED'}
+                {/* LINE 3: THE WAITING ROOM ANCHOR (HUMAN) */}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, mt: 0.2 }}>
+                    {isWalkIn ? <DirectionsWalkIcon sx={{ fontSize: 13, color: 'rgba(0,0,0,0.4)' }} /> : <SmartphoneIcon sx={{ fontSize: 13, color: '#1976D2' }} />}
+                    <Typography variant="caption" sx={{ fontSize: '0.85rem', fontWeight: '800', color: '#5D4037', textTransform: 'uppercase', letterSpacing: '0.01rem', lineHeight: 1 }}>
+                        {p.row.ownerName || 'Online Client'}
                     </Typography>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.3, bgcolor: p.row.petWeight ? 'rgba(93, 64, 55, 0.1)' : 'rgba(211, 47, 47, 0.1)', px: 0.5, borderRadius: 1 }}>
-                        <ScaleIcon sx={{ fontSize: 10, color: p.row.petWeight ? '#5D4037' : '#D32F2F' }} />
-                        <Typography variant="caption" sx={{ fontWeight: '1000', fontSize: '0.65rem', color: p.row.petWeight ? '#5D4037' : '#D32F2F' }}>
-                            {p.row.petWeight ? `${p.row.petWeight}KG` : 'WEIGH'}
-                        </Typography>
-                    </Box>
+                    {hasSpecificAllergies && (
+                        <Tooltip title={`Allergies: ${petAllergies}`}>
+                            <WarningIcon sx={{ fontSize: 14, color: '#D32F2F' }} />
+                        </Tooltip>
+                    )}
                 </Box>
-            </Box>
-
-            {/* LINE 5: THE WAITING ROOM ANCHOR (HUMAN) */}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-              {isWalkIn ? <DirectionsWalkIcon sx={{ fontSize: 13, color: 'rgba(255,255,255,0.5)' }} /> : <SmartphoneIcon sx={{ fontSize: 13, color: '#64B5F6' }} />}
-              <Typography variant="caption" sx={{ fontSize: '0.78rem', fontWeight: '900', color: '#5D4037', textTransform: 'uppercase', letterSpacing: '0.01rem', lineHeight: 1 }}>
-                {p.row.ownerName || 'Online Client'}
-              </Typography>
-              {hasAllergies && (
-                  <Tooltip title={`Allergies: ${p.row.petAllergies}`}>
-                    <WarningIcon sx={{ fontSize: 13, color: '#D32F2F', ml: 0.5 }} />
-                  </Tooltip>
-              )}
             </Box>
           </Box>
         </Box>
@@ -214,7 +213,6 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
       return (
         <Box 
           onMouseEnter={(e) => actions.handleHoverStart(e, 'notes', p.row.notes)}
-          onMouseLeave={actions.handleHoverEnd}
           sx={{ 
             display: 'flex',
             flexDirection: 'column',
@@ -283,7 +281,6 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
         <Box 
           /* FORCE RELOAD: VETCONNECT-HUD-SERVICES-SCALED */
           onMouseEnter={(e) => actions.handleHoverStart(e, 'services', services)}
-          onMouseLeave={actions.handleHoverEnd}
           sx={{ 
             display: 'flex', 
             flexDirection: 'column',
@@ -375,6 +372,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
       let primaryLabel = "";
       let secondaryLabel = "";
       let triageColor = "#5D4037"; // Forensic Coffee Default
+      const apptLabel = (p.row.ticketPrefix === 'W' || p.row.ticketPrefix === 'E') ? 'QUEUED' : 'APPT';
 
       if (isHistorical && scheduled) {
           primaryLabel = scheduled.toLocaleDateString([], { 
@@ -403,7 +401,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                 break;
 
             case 'confirmed':
-                primaryLabel = `APPT: ${scheduled?.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) || '??:??'}`;
+                primaryLabel = `${apptLabel}: ${scheduled?.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) || '??:??'}`;
                 const diffMins = scheduled ? Math.round((currentTime - scheduled) / 60000) : 0;
                 const bookedDiff = (booked && scheduled) ? Math.round((scheduled - booked) / 60000) : 0;
                 
@@ -419,7 +417,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                 
                 primaryLabel = `ARRIVED: ${arrived?.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) || '??:??'}`;
                 secondaryLabel = `WAITING: ${formatDuration(waitMins)}`;
-                if (scheduled) secondaryLabel += ` | APPT ${scheduled.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} (${driftMins > 0 ? '+' : ''}${formatDuration(driftMins)})`;
+                if (scheduled) secondaryLabel += ` | ${apptLabel} ${scheduled.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} (${driftMins > 0 ? '+' : ''}${formatDuration(driftMins)})`;
                 
                 triageColor = waitMins > 20 ? "#E65100" : "#2E7D32"; 
                 break;
@@ -470,7 +468,6 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
         <Box 
           sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%', position: 'relative', paddingLeft: 0, cursor: 'help' }}
           onMouseEnter={(e) => actions.handleHoverStart(e, 'timing', p.row)}
-          onMouseLeave={actions.handleHoverEnd}
         >
             <Typography sx={{ color: '#5D4037', fontWeight: '1000', lineHeight: 1, fontSize: '1.2rem', letterSpacing: '-0.5px' }}>
               {primaryLabel}

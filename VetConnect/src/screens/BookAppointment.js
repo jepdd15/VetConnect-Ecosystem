@@ -916,7 +916,7 @@ export default function BookAppointment({ navigation }) {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.stepContainer}
       >
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
             <Text style={styles.stepHeader}>Final Details</Text>
 
             <View style={styles.summaryBox}>

@@ -65,7 +65,9 @@ const EditPetScreen = ({ route, navigation }) => {
   const [gender, setGender] = useState(pet.gender === "UNK" ? "Unknown" : (pet.gender || "Unknown"));
   const [isNeutered, setIsNeutered] = useState(pet.isNeutered || false);
   const [weight, setWeight] = useState(pet.weight ? String(pet.weight) : "");
-  const [allergies, setAllergies] = useState(pet.allergies || "");
+  const [showAllergyToggle, setShowAllergyToggle] = useState(pet.allergies && pet.allergies !== "None" && pet.allergies !== "");
+  const [allergyArray, setAllergyArray] = useState(pet.allergies && pet.allergies !== "None" && pet.allergies !== "" ? pet.allergies.split(", ") : []);
+  const [currentAllergy, setCurrentAllergy] = useState("");
   const [microchip, setMicrochip] = useState(pet.microchip || "");
 
   // Date Logic
@@ -105,18 +107,18 @@ const EditPetScreen = ({ route, navigation }) => {
       const petRef = doc(db, "pets", pet.id);
 
       await updateDoc(petRef, {
-        name,
+        name: name.trim(),
         species,
-        breed,
-        color,
+        breed: (breed === "Mixed" || !breed) ? "Mixed Breed" : breed,
+        color: color.trim(),
         gender: gender === "UNK" ? "Unknown" : gender,
         isNeutered,
         weight: parseFloat(weight) || null,
         lastWeight: parseFloat(weight) || null,
-        microchip: microchip || "N/A",
-        allergies: allergies || "None",
+        microchip: microchip.trim() || "N/A",
+        allergies: showAllergyToggle && allergyArray.length > 0 ? allergyArray.join(", ") : "None",
         dob: isAgeTotallyUnknown ? null : Timestamp.fromDate(dob),
-        isAgeUnknown: isAgeTotallyUnknown,
+        isAgeExact: !isAgeTotallyUnknown, // Forensic Parity!
         updatedAt: Timestamp.now(), // Track when it was edited
       });
 
@@ -298,12 +300,79 @@ const EditPetScreen = ({ route, navigation }) => {
           />
         </View>
 
-        <Text style={styles.label}>Known Allergies</Text>
-        <TextInput
-          style={styles.input}
-          value={allergies}
-          onChangeText={setAllergies}
-        />
+        <View
+          style={[
+            styles.allergyContainer,
+            showAllergyToggle && styles.allergyContainerActive,
+          ]}
+        >
+          <View style={styles.switchRow}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Text style={[styles.switchLabel, { color: showAllergyToggle ? "#D32F2F" : "#5D4037" }]}>
+                Record Medical Allergies?
+              </Text>
+            </View>
+            <Switch
+              value={showAllergyToggle}
+              onValueChange={(val) => {
+                setShowAllergyToggle(val);
+                if (!val) setAllergyArray([]);
+              }}
+              trackColor={{ false: "#ccc", true: "#FFCDD2" }}
+              thumbColor={showAllergyToggle ? "#D32F2F" : "#f4f3f4"}
+            />
+          </View>
+
+          {showAllergyToggle && (
+            <View style={{ marginTop: 10 }}>
+              <View style={styles.tagCloud}>
+                {allergyArray.map((item, index) => (
+                  <View key={index} style={styles.tag}>
+                    <Text style={styles.tagText}>{item.toUpperCase()}</Text>
+                    <TouchableOpacity
+                      onPress={() =>
+                        setAllergyArray((prev) =>
+                          prev.filter((_, i) => i !== index)
+                        )
+                      }
+                    >
+                      <Text style={styles.tagClose}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                {allergyArray.length === 0 && (
+                  <Text style={styles.emptyTags}>No allergies added...</Text>
+                )}
+              </View>
+
+              <View style={styles.inputRow}>
+                <TextInput
+                  style={[styles.input, { flex: 1, marginBottom: 0 }]}
+                  value={currentAllergy}
+                  onChangeText={setCurrentAllergy}
+                  placeholder="e.g. Chicken"
+                  placeholderTextColor="#aaa"
+                />
+                <TouchableOpacity
+                  style={[
+                    styles.addBtn,
+                    !currentAllergy.trim() && { opacity: 0.5 },
+                  ]}
+                  disabled={!currentAllergy.trim()}
+                  onPress={() => {
+                    setAllergyArray((prev) => [
+                      ...prev,
+                      currentAllergy.trim(),
+                    ]);
+                    setCurrentAllergy("");
+                  }}
+                >
+                  <Text style={styles.addBtnText}>+</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </View>
 
         <Text style={styles.label}>Microchip ID</Text>
         <TextInput
@@ -519,6 +588,65 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   closeText: { color: "#D32F2F", fontWeight: "bold" },
+  
+  // --- ATOMIC ALLERGY STYLES ---
+  switchRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 5,
+  },
+  switchLabel: { fontSize: 14, fontWeight: "800", color: "#5D4037" },
+  allergyContainer: {
+    backgroundColor: "#F5F5F5",
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+    marginTop: 10,
+    marginBottom: 20,
+  },
+  allergyContainerActive: {
+    borderColor: "#D32F2F",
+    backgroundColor: "#FFF8F8",
+  },
+  tagCloud: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginBottom: 10,
+  },
+  tag: {
+    backgroundColor: "#D32F2F",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 4,
+  },
+  tagText: {
+    color: "white",
+    fontSize: 11,
+    fontWeight: "900",
+    marginRight: 6,
+  },
+  tagClose: { color: "white", fontSize: 12, fontWeight: "900" },
+  emptyTags: {
+    fontSize: 12,
+    color: "#D32F2F",
+    fontStyle: "italic",
+    fontWeight: "600",
+  },
+  inputRow: { flexDirection: "row", gap: 10, alignItems: "center" },
+  addBtn: {
+    backgroundColor: "#D32F2F",
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  addBtnText: { color: "white", fontSize: 24, fontWeight: "900" },
 });
 
 export default EditPetScreen;

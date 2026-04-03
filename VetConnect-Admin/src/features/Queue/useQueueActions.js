@@ -18,9 +18,21 @@ export function useQueueActions() {
         if (!apptDoc.exists()) throw new Error("Appointment not found!");
 
         const now = new Date();
+        const pulseEvent = {
+            eventId: `pulse_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+            type: 'STATUS_CHANGE',
+            fromStatus: row.status || 'unknown',
+            toStatus: newStatus,
+            timestamp: Timestamp.now(),
+            staffId: profile?.id || 'unknown',
+            staffName: staffSignature,
+            note: (newStatus === 'on-hold') ? "Patient placed on-hold (Pause Engine Triggered)" : `Status transition to ${newStatus}`
+        };
+
         let updateData = { 
             status: newStatus,
-            statusHistory: arrayUnion(row.status) 
+            statusHistory: arrayUnion(row.status || 'unknown'),
+            clinicalPulse: arrayUnion(pulseEvent)
         };
 
         if (newStatus === 'confirmed' && row.status === 'pending') {
@@ -78,9 +90,28 @@ export function useQueueActions() {
     const prevStatus = history[history.length - 1];
     const newHistory = history.slice(0, -1);
 
+    // PHASE 4.3: Capture the ID of the mistake being corrected
+    const pulseArray = row.clinicalPulse || [];
+    const lastChange = [...pulseArray].reverse().find(p => p.type === 'STATUS_CHANGE');
+    const correctedId = lastChange?.eventId || null;
+
+    const pulseEvent = {
+        eventId: `pulse_rev_${Date.now()}`,
+        type: 'CORRECTION',
+        correctedEventId: correctedId, // THE FORENSIC LINK
+        fromStatus: row.status,
+        toStatus: prevStatus,
+        timestamp: Timestamp.now(),
+        staffId: profile?.id || 'unknown',
+        staffName: staffSignature,
+        note: `REVERSION: ${row.revertReason || "Manual Status Reversion"}`,
+        isCorrection: true
+    };
+
     const updateData = { 
         status: prevStatus,
         statusHistory: newHistory,
+        clinicalPulse: arrayUnion(pulseEvent),
         revertedBy: staffSignature,
         revertReason: row.revertReason || "Manual Status Reversion", // PHASE 4: THE AUDIT TRAIL
         revertedAt: Timestamp.now()
@@ -105,6 +136,17 @@ export function useQueueActions() {
     const currentServices = row.services || [];
     const clearedServices = (currentServices || []).map(s => ({ ...s, staffId: null, staffName: 'Unassigned' }));
     
+    const pulseEvent = {
+      eventId: `pulse_noshow_${Date.now()}`,
+      type: 'STATUS_CHANGE',
+      fromStatus: row.status || 'unknown',
+      toStatus: 'no-show',
+      timestamp: Timestamp.now(),
+      staffId: profile?.id || 'unknown',
+      staffName: staffSignature,
+      note: 'Client failed to arrive for scheduled slot.'
+    };
+    
     await updateDoc(doc(db, "appointments", row.id), { 
       status: 'no-show', 
       rejectReason: 'Individually flagged as No-Show',
@@ -112,6 +154,7 @@ export function useQueueActions() {
       assignedVetId: null,
       services: clearedServices,
       cancelledBy: staffSignature,
+      clinicalPulse: arrayUnion(pulseEvent),
       isForensicAudit: true, // THE FORENSIC SEAL
       auditReason: 'Client failed to arrive for scheduled slot.'
     });
@@ -119,6 +162,16 @@ export function useQueueActions() {
 
   const rejectAppointment = async (id, reason, currentServices = [], isForensic = false) => {
     const clearedServices = (currentServices || []).map(s => ({ ...s, staffId: null, staffName: 'Unassigned' }));
+    const pulseEvent = {
+        eventId: `pulse_cancel_${Date.now()}`,
+        type: 'STATUS_CHANGE',
+        toStatus: 'cancelled',
+        timestamp: Timestamp.now(),
+        staffId: profile?.id || 'unknown',
+        staffName: staffSignature,
+        note: isForensic ? `Forensic Triage Cleanup: ${reason}` : (reason || 'Individually cancelled')
+    };
+
     await updateDoc(doc(db, "appointments", id), { 
       status: 'cancelled', 
       rejectReason: reason || "No reason provided by staff.",
@@ -127,6 +180,7 @@ export function useQueueActions() {
       services: clearedServices,
       timeRejected: Timestamp.now(),
       cancelledBy: staffSignature,
+      clinicalPulse: arrayUnion(pulseEvent),
       isForensicAudit: isForensic, // STAMPING THE AUDIT
       auditReason: isForensic ? `Forensic Triage Cleanup: ${reason}` : (reason || 'Individually cancelled')
     });
@@ -165,7 +219,18 @@ export function useQueueActions() {
         timeArrived: Timestamp.now(),
         createdAt: Timestamp.now(),
         notes: "QUICK ADMIT: Bypassed registration for immediate triage.",
-        assignedVet: "Unassigned"
+        assignedVet: "Unassigned",
+        clinicalPulse: [
+          {
+            eventId: `pulse_er_${Date.now()}`,
+            type: 'INCEPTION',
+            toStatus: 'arrived',
+            timestamp: Timestamp.now(),
+            staffId: profile?.id || 'unknown',
+            staffName: staffSignature,
+            note: 'Emergency ' + (profile?.fullName ? 'admitted by ' + profile.fullName : 'quick admission')
+          }
+        ]
       });
     });
   };
@@ -185,11 +250,22 @@ export function useQueueActions() {
         const currentNotes = apptDoc.data().notes || "";
         const signature = staffName || staffSignature;
 
+        const pulseEvent = {
+            eventId: `pulse_defer_${Date.now()}`,
+            type: 'STATUS_CHANGE',
+            toStatus: 'pending (deferred)',
+            timestamp: Timestamp.now(),
+            staffId: profile?.id || 'unknown',
+            staffName: signature,
+            note: `Shift Deferred to ${triageKey} by triage.`
+        };
+
         transaction.update(apptRef, {
             triageDate: triageKey,
             notes: `(Deferred to next shift by ${signature}) ${currentNotes}`,
             lastTriagedAt: Timestamp.now(),
-            triagedBy: signature
+            triagedBy: signature,
+            clinicalPulse: arrayUnion(pulseEvent)
         });
     });
   };

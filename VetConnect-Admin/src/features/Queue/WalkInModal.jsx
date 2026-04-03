@@ -3,7 +3,8 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, 
   Button, TextField, MenuItem, Box, Typography, 
   FormControl, InputLabel, Select, RadioGroup, FormControlLabel, Radio, 
-  Autocomplete, Alert, CircularProgress, Paper, Divider, Switch, Accordion, AccordionSummary, AccordionDetails, Chip
+  Autocomplete, Alert, CircularProgress, Paper, Divider, Switch, Accordion, AccordionSummary, AccordionDetails, Chip, Stack,
+  ToggleButton, ToggleButtonGroup
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
 
@@ -12,7 +13,8 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import WarningIcon from '@mui/icons-material/Warning';
 import CircleIcon from '@mui/icons-material/Circle';
 import DirectionsWalkIcon from '@mui/icons-material/DirectionsWalk';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore'; // Added for accordion functionality
+import AccessTimeIcon from '@mui/icons-material/AccessTime'; 
+import CakeIcon from '@mui/icons-material/Cake';
 
 import { collection, doc, runTransaction, Timestamp, query, where, getDocs, writeBatch, setDoc } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
@@ -35,12 +37,17 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
   const [guestPhone, setGuestPhone] = useState('');
   const [guestEmail, setGuestEmail] = useState('');
   const [guestPetData, setGuestPetData] = useState({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', microchip: '', allergies: '', weight: '' });
-  const [isNewPet, setIsNewPet] = useState(false); // For existing clients adding a new pet
-
-  const [selectedServices, setSelectedServices] = useState([]); // THE FIX: Changed to Array for Multi-Service support
   const [triageNotes, setTriageNotes] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [isNewPet, setIsNewPet] = useState(false); // For existing clients adding a new pet
+  const [selectedServices, setSelectedServices] = useState([]); // THE FIX: Changed to Array for Multi-Service support
   const [phoneCheckDone, setPhoneCheckDone] = useState(false);
+  const [dobMode, setDobMode] = useState('exact'); // 'exact', 'approximate', 'unknown'
+  const [estYears, setEstYears] = useState('');
+  const [estMonths, setEstMonths] = useState('');
+  const [showAllergyInput, setShowAllergyInput] = useState(false);
+  const [allergyArray, setAllergyArray] = useState([]);
+  const [currentAllergyInput, setCurrentAllergyInput] = useState('');
   
   // --- PH PHONE VALIDATION ENGINE ---
   const isValidPHPhone = (number) => {
@@ -148,15 +155,43 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
           });
           finalOwnerId = newUserRef.id; finalOwnerName = guestName || 'Guest Client';
           
-          const petPayload = { ...guestPetData };
+          // --- 🗓️ TEMPORAL ALIGNMENT ENGINE (CHRONOS) ---
+          let finalDOB = null;
+          let finalIsAgeExact = true;
+
+          if (dobMode === 'exact') {
+              finalDOB = guestPetData.dob ? Timestamp.fromDate(new Date(guestPetData.dob)) : null;
+              finalIsAgeExact = true;
+          } else if (dobMode === 'approximate') {
+              const years = parseInt(estYears) || 0;
+              const months = parseInt(estMonths) || 0;
+              const d = new Date();
+              d.setFullYear(d.getFullYear() - years);
+              d.setMonth(d.getMonth() - months);
+              d.setDate(1); // CLINICAL ANCHOR
+              d.setHours(0, 0, 0, 0);
+              finalDOB = Timestamp.fromDate(d);
+              finalIsAgeExact = false;
+          } else {
+              finalDOB = null;
+              finalIsAgeExact = false;
+          }
+
+          const petPayload = { 
+              ...guestPetData,
+              breed: guestPetData.breed === 'Mixed' ? 'Mixed Breed' : guestPetData.breed,
+              microchip: guestPetData.microchip ? guestPetData.microchip.trim() : 'N/A'
+          };
           const weightVal = parseFloat(petPayload.weight);
           delete petPayload.weight;
           
           const newPetRef = doc(collection(db, "pets"));
           transaction.set(newPetRef, { 
               ownerId: finalOwnerId, ...petPayload, 
+              weight: weightVal > 0 ? weightVal : null,
               lastWeight: weightVal > 0 ? weightVal : null,
-              dob: guestPetData.dob ? Timestamp.fromDate(new Date(guestPetData.dob)) : null, 
+              dob: finalDOB,
+              isAgeExact: finalIsAgeExact,
               createdAt: Timestamp.now(), status: 'active' 
           });
           finalPetId = newPetRef.id; finalPetName = guestPetData.name; finalPetSpecies = guestPetData.species;
@@ -165,18 +200,46 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
           finalOwnerName = selectedClient.fullName || selectedClient.displayName || 'Existing Client';
           
           if (isNewPet) {
-             const petPayload = { ...guestPetData };
-             const weightVal = parseFloat(petPayload.weight);
-             delete petPayload.weight;
-             
-             const newPetRef = doc(collection(db, "pets"));
-             transaction.set(newPetRef, { 
-                 ownerId: finalOwnerId, ...petPayload,
-                 lastWeight: weightVal > 0 ? weightVal : null,
-                 dob: guestPetData.dob ? Timestamp.fromDate(new Date(guestPetData.dob)) : null, 
-                 createdAt: Timestamp.now(), status: 'active' 
-             });
-             finalPetId = newPetRef.id; finalPetName = guestPetData.name; finalPetSpecies = guestPetData.species;
+              // --- 🗓️ TEMPORAL ALIGNMENT ENGINE (CHRONOS) ---
+              let mFinalDOB = null;
+              let mFinalIsAgeExact = true;
+
+              if (dobMode === 'exact') {
+                  mFinalDOB = guestPetData.dob ? Timestamp.fromDate(new Date(guestPetData.dob)) : null;
+                  mFinalIsAgeExact = true;
+              } else if (dobMode === 'approximate') {
+                  const years = parseInt(estYears) || 0;
+                  const months = parseInt(estMonths) || 0;
+                  const d = new Date();
+                  d.setFullYear(d.getFullYear() - years);
+                  d.setMonth(d.getMonth() - months);
+                  d.setDate(1); // CLINICAL ANCHOR
+                  d.setHours(0, 0, 0, 0);
+                  mFinalDOB = Timestamp.fromDate(d);
+                  mFinalIsAgeExact = false;
+              } else {
+                  mFinalDOB = null;
+                  mFinalIsAgeExact = false;
+              }
+
+              const petPayload = { 
+                  ...guestPetData,
+                  breed: guestPetData.breed === 'Mixed' ? 'Mixed Breed' : guestPetData.breed,
+                  microchip: guestPetData.microchip ? guestPetData.microchip.trim() : 'N/A'
+              };
+              const weightVal = parseFloat(petPayload.weight);
+              delete petPayload.weight;
+              
+              const newPetRef = doc(collection(db, "pets"));
+              transaction.set(newPetRef, { 
+                  ownerId: finalOwnerId, ...petPayload,
+                  weight: weightVal > 0 ? weightVal : null,
+                  lastWeight: weightVal > 0 ? weightVal : null,
+                  dob: mFinalDOB,
+                  isAgeExact: mFinalIsAgeExact,
+                  createdAt: Timestamp.now(), status: 'active' 
+              });
+              finalPetId = newPetRef.id; finalPetName = guestPetData.name; finalPetSpecies = guestPetData.species;
           } else {
              finalPetId = selectedPet.id; finalPetName = selectedPet.name; finalPetSpecies = selectedPet.species;
              const arrivalWeight = parseFloat(guestPetData.weight);
@@ -208,24 +271,54 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
         const isEmergency = selectedServices.includes('Emergency');
         const primaryDept = mappedServices[0]?.department || 'General';
         
-        const resolvedBreed = (walkInType === 'guest' || isNewPet) ? guestPetData.breed : (selectedPet?.breed || '');
+        const rawBreed = (walkInType === 'guest' || isNewPet) ? guestPetData.breed : (selectedPet?.breed || '');
+        const resolvedBreed = rawBreed === 'Mixed' ? 'Mixed Breed' : (rawBreed || 'Mixed Breed');
+        
         const resolvedGender = (walkInType === 'guest' || isNewPet) ? guestPetData.gender : (selectedPet?.gender || 'Unknown');
         const resolvedColor = (walkInType === 'guest' || isNewPet) ? guestPetData.color : (selectedPet?.color || 'N/A');
         const resolvedIsNeutered = (walkInType === 'guest' || isNewPet) ? guestPetData.isNeutered : (selectedPet?.isNeutered || false);
-        const resolvedDOB = (walkInType === 'guest' || isNewPet) ? (guestPetData.dob ? Timestamp.fromDate(new Date(guestPetData.dob)) : null) : (selectedPet?.dob || null);
+        
+        // --- 🗓️ TEMPORAL ALIGNMENT ENGINE (CHRONOS) - APPOINTMENT SNAPSHOT ---
+        let finalDOB = null;
+        let finalIsAgeExact = true;
+
+        if (walkInType === 'existing' && !isNewPet) {
+            finalDOB = selectedPet?.dob || null;
+            finalIsAgeExact = selectedPet?.isAgeExact !== false;
+        } else {
+            // Re-calculate for the appointment snapshot (redundant but safe for the closure)
+            if (dobMode === 'exact') {
+                finalDOB = guestPetData.dob ? Timestamp.fromDate(new Date(guestPetData.dob)) : null;
+                finalIsAgeExact = true;
+            } else if (dobMode === 'approximate') {
+                const years = parseInt(estYears) || 0;
+                const months = parseInt(estMonths) || 0;
+                const d = new Date();
+                d.setFullYear(d.getFullYear() - years);
+                d.setMonth(d.getMonth() - months);
+                d.setDate(1); // CLINICAL ANCHOR
+                d.setHours(0, 0, 0, 0);
+                finalDOB = Timestamp.fromDate(d);
+                finalIsAgeExact = false;
+            } else {
+                finalDOB = null;
+                finalIsAgeExact = false;
+            }
+        }
 
         const resolvedWeight = parseFloat(guestPetData.weight) || (selectedPet?.lastWeight ? parseFloat(selectedPet.lastWeight) : null);
-        const resolvedAllergies = (walkInType === 'guest' || isNewPet) ? guestPetData.allergies : (selectedPet?.allergies || '');
+        const resolvedAllergies = showAllergyInput && allergyArray.length > 0 ? allergyArray.join(', ') : 'None';
 
          const appointmentPayload = {
           ownerId: finalOwnerId, ownerName: finalOwnerName, petId: finalPetId, petName: finalPetName, petSpecies: finalPetSpecies,
           petBreed: resolvedBreed || 'Mixed Breed', 
           petGender: resolvedGender,
           petColor: resolvedColor,
-          petIsNeutered: resolvedIsNeutered,
-          petBirthdate: resolvedDOB,
-          petWeight: resolvedWeight || null, 
-          petAllergies: resolvedAllergies || '',
+           petIsNeutered: resolvedIsNeutered,
+           petBirthdate: finalDOB,
+           isAgeExact: finalIsAgeExact,
+           petWeight: resolvedWeight || null, 
+          petAllergies: resolvedAllergies,
           
           // Evolved Schema
           services: mappedServices, 
@@ -233,11 +326,22 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
           serviceCategory: primaryDept, // For legacy queue tabs
           
           status: 'arrived', // Overall context
-          caseDay: 1, // THE INITIAL PULSE (Fixes "Day 1" amnesia)
+          caseDay: 1, // THE INITIAL PULSE
           queueNumber: newNumber, ticketPrefix: isEmergency ? 'E' : 'W', priority: isEmergency ? 'high' : 'normal', 
           scheduledDate: Timestamp.now(), createdAt: Timestamp.now(), timeArrived: Timestamp.now(), 
           notes: isEmergency ? `🚨 EMERGENCY: ${triageNotes}` : triageNotes, 
-          assignedVetId: null, assignedVet: 'Unassigned' 
+          assignedVetId: null, assignedVet: 'Unassigned',
+          clinicalPulse: [
+            {
+              eventId: `pulse_walkin_${Date.now()}`,
+              type: 'INCEPTION',
+              toStatus: 'arrived',
+              timestamp: Timestamp.now(),
+              staffId: 'system_walkin', // In a real scenario, this would be the logged-in staff
+              staffName: 'Front Desk / Walk-In',
+              note: `Manual Intake: ${isEmergency ? 'URGENT ER ' : ''}${triageNotes.substring(0, 50)}${triageNotes.length > 50 ? '...' : ''}`
+            }
+          ]
         };
 
         const newApptRef = doc(collection(db, "appointments")); 
@@ -408,7 +512,39 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
                     <Grid size={{ xs: 12, md: 3 }}><TextField size="small" label="BREED / LINEAGE" variant="outlined" fullWidth value={guestPetData.breed} onChange={e => setGuestPetData({...guestPetData, breed: e.target.value})} InputLabelProps={{ sx: { fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' } }} inputProps={{ style: { fontWeight: '1000', fontSize: '0.85rem' } }} /></Grid>
                     
                     <Grid size={{ xs: 12, md: 3 }}><TextField size="small" label="COLOR / MARKINGS" variant="outlined" fullWidth value={guestPetData.color} onChange={e => setGuestPetData({...guestPetData, color: e.target.value})} InputLabelProps={{ sx: { fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' } }} inputProps={{ style: { fontWeight: '1000', fontSize: '0.85rem' } }} /></Grid>
-                    <Grid size={{ xs: 12, md: 3 }}><TextField size="small" type="date" label="PET BIRTHDAY" variant="outlined" fullWidth InputLabelProps={{shrink:true, sx: { fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' }}} inputProps={{ style: { fontWeight: '1000', fontSize: '0.85rem' } }} value={guestPetData.dob} onChange={e => setGuestPetData({...guestPetData, dob: e.target.value})} /></Grid>
+                    
+                    <Grid size={{ xs: 12, md: 9 }}>
+                        <Box sx={{ p: 1.5, border: '1px solid #D7CCC8', borderRadius: 1.5, bgcolor: '#FAFAFA' }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 1 }}>
+                                <CakeIcon sx={{ fontSize: 18, color: '#8B4513' }} />
+                                <Typography sx={{ fontWeight: '1000', fontSize: '0.75rem', color: '#5D4037' }}>PROBABLE BIRTHDATE / AGE MODE</Typography>
+                                <ToggleButtonGroup
+                                    size="small"
+                                    value={dobMode}
+                                    exclusive
+                                    onChange={(e, val) => val && setDobMode(val)}
+                                    sx={{ ml: 'auto', height: 26 }}
+                                >
+                                    <ToggleButton value="exact" sx={{ fontSize: '0.65rem', fontWeight: 1000, px: 2 }}>EXACT</ToggleButton>
+                                    <ToggleButton value="approximate" sx={{ fontSize: '0.65rem', fontWeight: 1000, px: 2 }}>ESTIMATE</ToggleButton>
+                                    <ToggleButton value="unknown" sx={{ fontSize: '0.65rem', fontWeight: 1000, px: 2 }}>UNKNOWN</ToggleButton>
+                                </ToggleButtonGroup>
+                            </Box>
+
+                            {dobMode === 'exact' && (
+                                <TextField size="small" type="date" label="PET BIRTHDAY" variant="outlined" fullWidth InputLabelProps={{shrink:true, sx: { fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' }}} inputProps={{ style: { fontWeight: '1000', fontSize: '0.85rem' } }} value={guestPetData.dob} onChange={e => setGuestPetData({...guestPetData, dob: e.target.value})} />
+                            )}
+                            {dobMode === 'approximate' && (
+                                <Box sx={{ display: 'flex', gap: 1 }}>
+                                    <TextField size="small" placeholder="YEARS" type="number" label="YEARS" fullWidth value={estYears} onChange={e => setEstYears(e.target.value)} InputLabelProps={{ sx: { fontWeight: '1000', fontSize: '0.75rem' } }} inputProps={{ style: { fontWeight: '1000' } }} />
+                                    <TextField size="small" placeholder="MONTHS" type="number" label="MONTHS" fullWidth value={estMonths} onChange={e => setEstMonths(e.target.value)} InputLabelProps={{ sx: { fontWeight: '1000', fontSize: '0.75rem' } }} inputProps={{ style: { fontWeight: '1000' } }} />
+                                </Box>
+                            )}
+                            {dobMode === 'unknown' && (
+                                <Typography variant="caption" sx={{ color: '#8B4513', fontStyle: 'italic', fontWeight: '800' }}>Age will be determined by the veterinarian during the physical exam.</Typography>
+                            )}
+                        </Box>
+                    </Grid>
                     <Grid size={{ xs: 12, md: 2.5 }}>
                       <FormControl fullWidth size="small" variant="outlined">
                         <InputLabel sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' }}>GENDER</InputLabel>
@@ -417,7 +553,77 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
                     </Grid>
                     <Grid size={{ xs: 12, md: 3.5 }}><TextField size="small" label="MICROCHIP ID" variant="outlined" fullWidth value={guestPetData.microchip} onChange={e => setGuestPetData({...guestPetData, microchip: e.target.value})} InputLabelProps={{ sx: { fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' } }} inputProps={{ style: { fontWeight: '1000', fontSize: '0.85rem' } }} /></Grid>
                     
-                    <Grid size={{ xs: 12 }}><TextField size="small" label="ALLERGIES / CLINICAL CONTRAINDICATIONS" variant="outlined" fullWidth multiline rows={1} placeholder="LEAVE BLANK IF NONE" value={guestPetData.allergies} onChange={e => setGuestPetData({...guestPetData, allergies: e.target.value})} InputLabelProps={{ sx: { fontWeight: '1000', color: '#D32F2F', fontSize: '0.8rem' } }} inputProps={{ style: { fontWeight: '1000', fontSize: '0.85rem' } }} /></Grid>
+                    
+                    <Grid size={{ xs: 12 }}>
+                        <Box sx={{ p: 2, borderRadius: 1.5, border: '1.2px solid', borderColor: showAllergyInput ? '#D32F2F' : '#E0E0E0', bgcolor: showAllergyInput ? 'rgba(211, 47, 47, 0.02)' : '#FAFAFA', transition: '0.2s all' }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: showAllergyInput ? 1.5 : 0 }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <WarningIcon sx={{ color: showAllergyInput ? '#D32F2F' : '#BDBDBD', fontSize: 20 }} />
+                                    <Typography sx={{ fontWeight: '1000', fontSize: '0.85rem', color: showAllergyInput ? '#D32F2F' : '#757575' }}>
+                                        RECORD MEDICAL ALLERGIES?
+                                    </Typography>
+                                </Box>
+                                <Switch 
+                                    size="small" 
+                                    color="error" 
+                                    checked={showAllergyInput} 
+                                    onChange={(e) => {
+                                        setShowAllergyInput(e.target.checked);
+                                        if (!e.target.checked) setAllergyArray([]); // Reset on OFF
+                                    }} 
+                                />
+                            </Box>
+
+                            {showAllergyInput && (
+                                <>
+                                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1.5 }}>
+                                        {allergyArray.map((allergy, index) => (
+                                            <Chip 
+                                                key={index}
+                                                label={allergy.toUpperCase()}
+                                                onDelete={() => setAllergyArray(prev => prev.filter((_, i) => i !== index))}
+                                                sx={{ bgcolor: '#D32F2F', color: 'white', fontWeight: '1000', fontSize: '0.7rem', borderRadius: '4px', '& .MuiChip-deleteIcon': { color: 'white!important', opacity: 0.8 } }}
+                                            />
+                                        ))}
+                                        {allergyArray.length === 0 && (
+                                            <Typography variant="caption" sx={{ color: '#D32F2F', fontStyle: 'italic', fontWeight: '800' }}>
+                                                No allergens added yet...
+                                            </Typography>
+                                        )}
+                                    </Box>
+                                    <Box sx={{ display: 'flex', gap: 1 }}>
+                                        <TextField 
+                                            fullWidth 
+                                            size="small" 
+                                            placeholder="Type allergy (e.g. Peanuts, Chicken)" 
+                                            value={currentAllergyInput}
+                                            onChange={(e) => setCurrentAllergyInput(e.target.value)}
+                                            onKeyPress={(e) => {
+                                                if (e.key === 'Enter' && currentAllergyInput.trim()) {
+                                                    e.preventDefault();
+                                                    setAllergyArray(prev => [...prev, currentAllergyInput.trim()]);
+                                                    setCurrentAllergyInput('');
+                                                }
+                                            }}
+                                            inputProps={{ style: { fontWeight: '900', fontSize: '0.85rem' } }}
+                                        />
+                                        <Button 
+                                            variant="contained" 
+                                            color="error" 
+                                            disabled={!currentAllergyInput.trim()}
+                                            onClick={() => {
+                                                setAllergyArray(prev => [...prev, currentAllergyInput.trim()]);
+                                                setCurrentAllergyInput('');
+                                            }}
+                                            sx={{ fontWeight: '1000', minWidth: 40 }}
+                                        >
+                                            +
+                                        </Button>
+                                    </Box>
+                                </>
+                            )}
+                        </Box>
+                    </Grid>
                     <Grid size={{ xs: 12 }}><FormControlLabel control={<Switch size="small" checked={guestPetData.isNeutered} onChange={e => setGuestPetData({...guestPetData, isNeutered: e.target.checked})} color="success"/>} label={<Typography sx={{ fontWeight: '1000', fontSize: '0.75rem', color: '#5D4037' }}>SPAYED / NEUTERED</Typography>} /></Grid>
                 </Grid>
             </Paper>

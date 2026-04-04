@@ -90,15 +90,16 @@ export function useQueueActions() {
     const prevStatus = history[history.length - 1];
     const newHistory = history.slice(0, -1);
 
-    // PHASE 4.3: Capture the ID of the mistake being corrected
+    // PHASE 4.3: THE FORENSIC LINKER
+    // We identify the EXACT event ID of the mistake we are about to invalidate.
     const pulseArray = row.clinicalPulse || [];
     const lastChange = [...pulseArray].reverse().find(p => p.type === 'STATUS_CHANGE');
     const correctedId = lastChange?.eventId || null;
 
     const pulseEvent = {
-        eventId: `pulse_rev_${Date.now()}`,
+        eventId: `pulse_rev_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
         type: 'CORRECTION',
-        correctedEventId: correctedId, // THE FORENSIC LINK
+        correctedEventId: correctedId, // THE DNA LINK
         fromStatus: row.status,
         toStatus: prevStatus,
         timestamp: Timestamp.now(),
@@ -113,7 +114,7 @@ export function useQueueActions() {
         statusHistory: newHistory,
         clinicalPulse: arrayUnion(pulseEvent),
         revertedBy: staffSignature,
-        revertReason: row.revertReason || "Manual Status Reversion", // PHASE 4: THE AUDIT TRAIL
+        revertReason: row.revertReason || "Manual Status Reversion",
         revertedAt: Timestamp.now()
     };
 
@@ -127,10 +128,14 @@ export function useQueueActions() {
     await updateDoc(doc(db, "appointments", row.id), updateData);
   };
 
-  const markNoShow = async (row) => {
+  const markNoShow = async (row, reason) => {
     // THE PHYSICAL INTEGRITY GUARD: If they arrived, they are NOT a no-show.
     if (row.timeArrived || row.jsArrived) {
       throw new Error(`❌ INTEGRITY REFUSAL: This patient is physically present (Arrived). Use Cancel or Re-book instead.`);
+    }
+
+    if (!reason || reason.trim().length === 0) {
+      throw new Error("❌ AUDIT FAILURE: No-Show flagging requires a mandatory clinical justification.");
     }
 
     const currentServices = row.services || [];
@@ -144,19 +149,19 @@ export function useQueueActions() {
       timestamp: Timestamp.now(),
       staffId: profile?.id || 'unknown',
       staffName: staffSignature,
-      note: 'Client failed to arrive for scheduled slot.'
+      note: `Individually flagged as No-Show: ${reason}`
     };
     
     await updateDoc(doc(db, "appointments", row.id), { 
       status: 'no-show', 
-      rejectReason: 'Individually flagged as No-Show',
+      rejectReason: reason,
       assignedVet: "Unassigned",
       assignedVetId: null,
       services: clearedServices,
       cancelledBy: staffSignature,
       clinicalPulse: arrayUnion(pulseEvent),
       isForensicAudit: true, // THE FORENSIC SEAL
-      auditReason: 'Client failed to arrive for scheduled slot.'
+      auditReason: reason
     });
   };
 
@@ -236,7 +241,11 @@ export function useQueueActions() {
   };
 
   // 4. THE INBOX ENGINE (NEW: Real-Time Triage)
-  const deferAppointment = async (id, staffName) => {
+  const deferAppointment = async (id, reason, staffName) => {
+    if (!reason || reason.trim().length === 0) {
+        throw new Error("❌ AUDIT FAILURE: Deferring clinical triage requires a mandatory justification.");
+    }
+
     await runTransaction(db, async (transaction) => {
         const apptRef = doc(db, "appointments", id);
         const apptDoc = await transaction.get(apptRef);
@@ -257,7 +266,7 @@ export function useQueueActions() {
             timestamp: Timestamp.now(),
             staffId: profile?.id || 'unknown',
             staffName: signature,
-            note: `Shift Deferred to ${triageKey} by triage.`
+            note: `Shift Deferred to ${triageKey} (Reason: ${reason})`
         };
 
         transaction.update(apptRef, {
@@ -265,7 +274,8 @@ export function useQueueActions() {
             notes: `(Deferred to next shift by ${signature}) ${currentNotes}`,
             lastTriagedAt: Timestamp.now(),
             triagedBy: signature,
-            clinicalPulse: arrayUnion(pulseEvent)
+            clinicalPulse: arrayUnion(pulseEvent),
+            auditReason: reason // THE FORENSIC SEAL
         });
     });
   };

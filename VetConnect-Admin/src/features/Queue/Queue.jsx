@@ -4,8 +4,10 @@ import {
   Box, Typography, Paper, IconButton, Tooltip, Stack,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button,
   Tabs, Tab, Menu, MenuItem, ListItemIcon, ListItemText, Divider, List, ListItem, Alert,
-  Popover, Chip, keyframes
+  Popover, Chip, keyframes, FormControl, InputLabel, Select, Switch,
+  ToggleButton, ToggleButtonGroup, FormControlLabel, Autocomplete
 } from '@mui/material';
+import Grid from '@mui/material/Grid';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, Timestamp, where, getDocs, writeBatch, getDoc, arrayUnion } from 'firebase/firestore';
 
 // 1. BACKEND & BRAIN
@@ -35,8 +37,24 @@ import UndoIcon from '@mui/icons-material/Undo';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital'; 
 import WarningIcon from '@mui/icons-material/Warning';
 import NightlightRoundIcon from '@mui/icons-material/NightlightRound';
+import CloseIcon from '@mui/icons-material/Close';
+import CakeIcon from '@mui/icons-material/Cake';
+import MaleIcon from '@mui/icons-material/Male';
+import FemaleIcon from '@mui/icons-material/Female';
+import PetsIcon from '@mui/icons-material/Pets';
 
-// THE FIX: Removed static MAX_CAGES constant. Pulled from clinic_settings/general instead.
+const BREED_DATA = {
+  Canine: [
+    "Aspin (Asong Pinoy)", "Shih Tzu", "Pomeranian", "Golden Retriever", "Labrador", 
+    "Poodle", "Chihuahua", "Husky", "Beagle", "Pug", "Bulldog", "German Shepherd", 
+    "Mixed Breed", "Unknown", "Other",
+  ],
+  Feline: [
+    "Puspin (Pusang Pinoy)", "Persian", "Siamese", "British Shorthair", "Maine Coon", 
+    "Bengal", "Mixed Breed", "Unknown", "Other",
+  ],
+};
+
 const formatDuration = (totalMinutes) => {
   const mins = Math.abs(Math.round(totalMinutes));
   
@@ -76,7 +94,7 @@ export default function Queue() {
   const[currentTime, setCurrentTime] = useState(new Date());
   
   const { user, profile } = useUser(); // Forensic Attribution
-  const { changeStatus, revertStatus, markNoShow, rejectAppointment, quickAdmitER } = useQueueActions();
+  const { changeStatus, revertStatus, markNoShow, rejectAppointment, quickAdmitER, deferAppointment } = useQueueActions();
 
   // THE FIX: Timezone-aware isToday logic targets local computer time instead of UTC toISOString.
   const isToday = filterDate === getLocalDateStr();
@@ -117,8 +135,23 @@ export default function Queue() {
 
   const [openEdit, setOpenEdit] = useState(false);
   const [editName, setEditName] = useState('');
-  const[editPet, setEditPet] = useState('');
+  const [editPet, setEditPet] = useState('');
+  const [editSpecies, setEditSpecies] = useState('Canine');
+  const [editBreed, setEditBreed] = useState('');
+  const [editGender, setEditGender] = useState('Male');
+  const [editIsNeutered, setEditIsNeutered] = useState(false);
+  const [editPhone, setEditPhone] = useState('');
+  const [editDobMode, setEditDobMode] = useState('exact');
+  const [editDob, setEditDob] = useState('');
+  const [editEstYears, setEditEstYears] = useState('');
+  const [editEstMonths, setEditEstMonths] = useState('');
+  const [editColor, setEditColor] = useState('');
+  const [isAgeExact, setIsAgeExact] = useState(true);
+
   const [openReschedule, setOpenReschedule] = useState(false);
+  const [openDefer, setOpenDefer] = useState(false);
+  const [openNoShow, setOpenNoShow] = useState(false);
+  const [auditReason, setAuditReason] = useState("");
   const [newDate, setNewDate] = useState('');
   const[openHistory, setOpenHistory] = useState(false);
   const [historyList, setHistoryList] = useState([]);
@@ -138,16 +171,47 @@ export default function Queue() {
   const [hoverAnchor, setHoverAnchor] = useState(null);
   const [hoverMetadata, setHoverMetadata] = useState({ type: null, data: null });
   const [expandedPulseId, setExpandedPulseId] = useState(null);
+  const [activeCaseDay, setActiveCaseDay] = useState(0); 
+  const [isPinned, setIsPinned] = useState(false);
+  const hoverTimer = useRef(null);
+  const closeTimer = useRef(null);
 
   const handleHoverStart = (event, type, data) => {
     if (!data) return;
-    setHoverAnchor(event.currentTarget);
-    setHoverMetadata({ type, data });
+    
+    // INDUSTRIAL FIX: Cancel any pending close timers (Safe Passage Hand-off)
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+
+    // If already pinned, don't trigger new hover changes unless we are moving to a different category
+    if (isPinned) return;
+
+    const target = event.currentTarget;
+    
+    // INTENT DEBOUNCE (200ms): Only show if the user 'stops' on the cell
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    hoverTimer.current = setTimeout(() => {
+        setHoverAnchor(target);
+        setHoverMetadata({ type, data });
+        // RESET Temporal DeLorean to latest session
+        setActiveCaseDay(0); 
+    }, 200); 
   };
 
   const handleHoverEnd = () => {
-    setHoverAnchor(null);
-    setHoverMetadata({ type: null, data: null });
+    // INDUSTRIAL FIX: Cancel any pending open timers (Gliding Filtering)
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+
+    // If pinned, we ignore the hover-leave entirely
+    if (isPinned) return;
+
+    // GRACE PERIOD (150ms): Allow the cursor time to travel into the popup
+    closeTimer.current = setTimeout(() => {
+        if (!isPinned) {
+            setHoverAnchor(null);
+            setHoverMetadata({ type: null, data: null });
+            setExpandedPulseId(null);
+        }
+    }, 150);
   };
   const hasCheckedAutoReset = useRef(false);
 
@@ -485,9 +549,90 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
       alert(e.message); 
     } 
   };
-  const handleEditOpen = () => { setEditName(selectedRow.ownerName||''); setEditPet(selectedRow.petName); setOpenEdit(true); handleCloseMenu(); };
-  const saveEdit = async () => { await updateDoc(doc(db, "appointments", selectedRow.id), { ownerName: editName, petName: editPet }); setOpenEdit(false); };
-  const handleRescheduleOpen = () => { setOpenReschedule(true); handleCloseMenu(); };
+  const handleEditOpen = () => {
+    if (selectedRow) {
+      setEditName(selectedRow.ownerName || '');
+      setEditPet(selectedRow.petName || '');
+      setEditSpecies(selectedRow.petSpecies || 'Canine');
+      setEditBreed(selectedRow.petBreed || '');
+      setEditGender(selectedRow.petGender || 'Male');
+      setEditIsNeutered(selectedRow.petIsNeutered || false);
+      setEditPhone(selectedRow.ownerPhone || '');
+      setEditColor(selectedRow.color || selectedRow.petColor || '');
+      
+      const rawDob = selectedRow.petBirthdate;
+      if (rawDob) {
+        const d = rawDob.toDate();
+        setEditDob(d.toISOString().split('T')[0]);
+      } else {
+        setEditDob('');
+      }
+      
+      setEditDobMode(selectedRow.isAgeExact === false ? 'approximate' : (rawDob ? 'exact' : 'unknown'));
+      setIsAgeExact(selectedRow.isAgeExact !== false);
+      setEditEstYears('');
+      setEditEstMonths('');
+      
+      setOpenEdit(true);
+      handleCloseMenu();
+    }
+  };
+
+  const saveEdit = async () => {
+    try {
+      let finalDob = null;
+      let finalIsAgeExact = true;
+
+      if (editDobMode === 'exact') {
+        finalDob = editDob ? Timestamp.fromDate(new Date(editDob)) : null;
+        finalIsAgeExact = true;
+      } else if (editDobMode === 'approximate') {
+        const years = parseInt(editEstYears) || 0;
+        const months = parseInt(editEstMonths) || 0;
+        const d = new Date();
+        d.setFullYear(d.getFullYear() - years);
+        d.setMonth(d.getMonth() - months);
+        d.setDate(1); 
+        d.setHours(0, 0, 0, 0);
+        finalDob = Timestamp.fromDate(d);
+        finalIsAgeExact = false;
+      } else {
+        finalDob = null;
+        finalIsAgeExact = false;
+      }
+
+      await updateDoc(doc(db, "appointments", selectedRow.id), {
+        ownerName: editName,
+        petName: editPet,
+        petSpecies: editSpecies,
+        petBreed: editBreed,
+        petGender: editGender,
+        petIsNeutered: editIsNeutered,
+        ownerPhone: editPhone,
+        color: editColor,
+        petBirthdate: finalDob,
+        isAgeExact: finalIsAgeExact
+      });
+      setOpenEdit(false);
+    } catch (e) { console.error(e); }
+  };
+  const handleRescheduleOpen = () => { 
+    setAuditReason(""); // RESET FOR NEW ACTION
+    setOpenReschedule(true); 
+    handleCloseMenu(); 
+  };
+  const handleDeferOpen = (row) => {
+    setSelectedRow(row || selectedRow);
+    setAuditReason("");
+    setOpenDefer(true);
+    handleCloseMenu();
+  };
+  const handleNoShowOpen = (row) => {
+    setSelectedRow(row || selectedRow);
+    setAuditReason("");
+    setOpenNoShow(true);
+    handleCloseMenu();
+  };
   const revertStatusWithReason = async (row) => {
     setSelectedRow(row);
     setRevertReason(""); // Reset for new forensic session
@@ -504,7 +649,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
   };
 
   const saveReschedule = async () => { 
-    if(!newDate) return; 
+    if(!newDate || !auditReason.trim()) return; 
 
     try {
         const currentSchDate = selectedRow.scheduledDate ? selectedRow.scheduledDate.toDate() : (selectedRow.createdAt?.toDate() || new Date());
@@ -514,10 +659,38 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
         const currentDayStr = currentSchDate.toISOString().split('T')[0];
         const updatedDayStr = updatedSchDate.toISOString().split('T')[0];
         
+        const isCarryOver = selectedRow.status === 'arrived' || 
+                           selectedRow.status === 'in-consult' || 
+                           selectedRow.status === 'confined' || 
+                           selectedRow.status === 'on-hold' || 
+                           selectedRow.status === 'dispensing' || 
+                           selectedRow.status === 'billing';
+        let additionalWaitMins = 0;
+
+        if (isCarryOver) {
+            const arr = selectedRow.timeArrived?.toDate() || selectedRow.jsScheduled?.toDate() || new Date();
+            additionalWaitMins = Math.round((new Date() - arr) / 60000);
+        }
+
+        const pulseEvent = {
+            eventId: `pulse_shift_${Date.now()}`,
+            type: 'STATUS_CHANGE',
+            toStatus: isCarryOver ? 'carried-over (shifted)' : 'confirmed (shifted)',
+            timestamp: Timestamp.now(),
+            staffId: profile?.id || 'unknown',
+            staffName: staffSignature,
+            note: isCarryOver 
+                  ? `CLINICAL CARRY-OVER to ${updatedDayStr} [Wait: ${additionalWaitMins}m] (Reason: ${auditReason})`
+                  : `Manual Clinical Shift to ${updatedDayStr} (Reason: ${auditReason})`
+        };
+
         let updateData = { 
             scheduledDate: Timestamp.fromDate(updatedSchDate), 
             status: 'confirmed',
-            rescheduledBy: profile?.fullName || 'System/Admin'
+            rescheduledBy: staffSignature,
+            clinicalPulse: arrayUnion(pulseEvent),
+            auditReason: auditReason,
+            accumulatedWaitMins: (selectedRow.accumulatedWaitMins || 0) + additionalWaitMins
         };
 
         if (currentDayStr !== updatedDayStr) {
@@ -526,9 +699,28 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
 
         await updateDoc(doc(db, "appointments", selectedRow.id), updateData);
         setOpenReschedule(false); 
+        setAuditReason("");
     } catch (e) {
         alert("Reschedule failed: " + e.message);
     }
+  };
+
+  const saveDefer = async () => {
+    if (!auditReason.trim()) return;
+    try {
+        await deferAppointment(selectedRow.id, auditReason);
+        setOpenDefer(false);
+        setAuditReason("");
+    } catch (e) { alert(e.message); }
+  };
+
+  const saveNoShow = async () => {
+    if (!auditReason.trim()) return;
+    try {
+        await markNoShow(selectedRow, auditReason);
+        setOpenNoShow(false);
+        setAuditReason("");
+    } catch (e) { alert(e.message); }
   };
   const fetchHistory = async () => { if (!selectedRow.petId) return alert("Walk-In Account Required"); const q = query(collection(db, "medical_records"), where("petId", "==", selectedRow.petId), orderBy("date", "desc")); const s = await getDocs(q); setHistoryList(s.docs.map(d => d.data())); setOpenHistory(true); handleCloseMenu(); };
   const confirmReject = async () => { 
@@ -873,21 +1065,9 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
     handleMenuClick,
     handleHoverStart,
     handleHoverEnd,
-    handleQuickNoShow: async (row) => { 
-      try {
-        await markNoShow(row); 
-      } catch (e) {
-        alert(e.message); // Catching the "Integrity Refusal"
-      }
-    },
-    handleRescheduleOpen: (row) => { setSelectedRow(row); setOpenReschedule(true); },
-    handleDefer: async (row) => {
-      try {
-        await deferAppointment(row.id, profile?.fullName);
-      } catch (e) {
-        alert("Deferral failed: " + e.message);
-      }
-    }
+    handleQuickNoShow: (row) => handleNoShowOpen(row),
+    handleRescheduleOpen: (row) => { setSelectedRow(row); handleRescheduleOpen(); },
+    handleDefer: (row) => handleDeferOpen(row)
   }, isToday, departments, isTomorrowView);
 
   const showClosingWarning = isClosingTime && isToday && unfinishedCount > 0;
@@ -1170,26 +1350,93 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
       </Dialog>
 
       
+      {/* 📡 THE COMMAND MENU (GAP 2 FIX) */}
+      <Menu
+        anchorEl={anchorEl}
+        open={Boolean(anchorEl)}
+        onClose={handleCloseMenu}
+        PaperProps={{
+          sx: {
+            minWidth: 220,
+            border: '2px solid #5D4037',
+            boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.15)',
+            borderRadius: 0,
+            '& .MuiMenuItem-root': { fontWeight: '1000', py: 1.5, fontSize: '0.85rem' },
+            '& .MuiListItemIcon-root': { color: '#5D4037' }
+          }
+        }}
+      >
+         <MenuItem onClick={handleEditOpen}>
+            <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
+            <ListItemText primary="Edit Patient Identity" />
+         </MenuItem>
+ 
+         {selectedRow?.status === 'confirmed' && (
+          <MenuItem onClick={() => handleNoShowOpen()}>
+             <ListItemIcon><PersonOffIcon fontSize="small" /></ListItemIcon>
+             <ListItemText primary="Flag as No-Show" />
+          </MenuItem>
+        )}
+
+        {selectedRow?.status !== 'pending' && (
+          <MenuItem onClick={handleRescheduleOpen}>
+             <ListItemIcon><EventIcon fontSize="small" /></ListItemIcon>
+             <ListItemText primary="Reschedule / Shift" />
+          </MenuItem>
+        )}
+        <MenuItem onClick={fetchHistory}>
+           <ListItemIcon><HistoryIcon fontSize="small" /></ListItemIcon>
+           <ListItemText primary="View Medical History" />
+        </MenuItem>
+
+        {selectedRow?.statusHistory && selectedRow.statusHistory.length > 0 && (
+          <MenuItem onClick={() => revertStatusWithReason(selectedRow)}>
+             <ListItemIcon><UndoIcon fontSize="small" sx={{ color: '#E65100' }} /></ListItemIcon>
+             <ListItemText primary="Revert Status (Undo)" sx={{ color: '#E65100' }} />
+          </MenuItem>
+        )}
+        
+        {/* CONTEXTUAL REDUNDANCY SHIELD: Hide Void for Online Requests */}
+        {selectedRow?.status !== 'pending' && <Divider />}
+        {selectedRow?.status !== 'pending' && (
+          <MenuItem onClick={() => { setOpenReject(true); handleCloseMenu(); }} sx={{ color: '#D32F2F' }}>
+             <ListItemIcon><PersonOffIcon fontSize="small" sx={{ color: '#D32F2F' }} /></ListItemIcon>
+             <ListItemText primary="Cancel / Void Record" />
+          </MenuItem>
+        )}
+      </Menu>
+
       {/* 📡 UNIVERSAL CLINICAL HUD (NOTES & SERVICES) */}
       <Popover
         id="clinical-hover-popover"
         sx={{ 
             pointerEvents: 'none', 
-            '& .MuiBackdrop-root': { pointerEvents: 'none', backdropFilter: 'blur(1px)' } 
+            '& .MuiBackdrop-root': { pointerEvents: 'none' } 
         }}
         open={Boolean(hoverAnchor)}
         anchorEl={hoverAnchor}
-        anchorOrigin={{ vertical: 'center', horizontal: 'center' }}
-        transformOrigin={{ vertical: 'center', horizontal: 'center' }}
+        anchorOrigin={{ 
+            vertical: 'center', 
+            horizontal: 'center' 
+        }}
+        transformOrigin={{ 
+            vertical: 'center', 
+            horizontal: 'center' 
+        }}
         onClose={() => {
             handleHoverEnd();
-            setExpandedPulseId(null);
+            setIsPinned(false);
         }}
         disableRestoreFocus
         PaperProps={{
-          onMouseLeave: () => { if (!expandedPulseId) handleHoverEnd(); },
+          onMouseEnter: () => { 
+            if (closeTimer.current) clearTimeout(closeTimer.current); 
+            // Allow clicking into the popup
+          },
+          onMouseLeave: () => { if (!isPinned) handleHoverEnd(); },
           sx: {
             p: 3, 
+            ml: 0, // Absolute Centered Overlay
             width: hoverMetadata.type === 'timing' ? 300 : 480,
             maxHeight: 600,
             overflowX: 'hidden',
@@ -1198,229 +1445,486 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
             bgcolor: '#FFF', 
             border: '3px solid #5D4037',
             boxShadow: '0 32px 64px rgba(93, 64, 55, 0.45)',
-            transform: 'scale(1.05)', 
-            transition: 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important',
-            borderRadius: '20px'
+            borderRadius: 0,
+            zIndex: 10000,
+            '&::before': { display: 'none' } 
           }
         }}
       >
-        {hoverMetadata.type === 'notes' && (
-          <Box>
-            <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 2, display: 'block', mb: 1.5, opacity: 0.8 }}>
-              CLINICAL INTAKE / NOTES
-            </Typography>
-            <Typography sx={{ 
-              fontSize: '1.05rem', lineHeight: 1.6, color: '#3E2723', fontStyle: 'italic', whiteSpace: 'pre-wrap', 
-              fontFamily: '"Merriweather", serif',
-              fontWeight: 700,
-              letterSpacing: '-0.01rem'
-            }}>
-              "{hoverMetadata.data}"
-            </Typography>
-          </Box>
-        )}
+        {hoverMetadata.data && (
+            <Box sx={{ position: 'relative' }}>
+                {isPinned && (
+                    <IconButton 
+                        size="small" 
+                        onClick={() => {
+                            setIsPinned(false);
+                            handleHoverEnd();
+                        }}
+                        sx={{ position: 'absolute', top: -16, right: -16, color: '#5D4037', zIndex: 10 }}
+                    >
+                        <CloseIcon fontSize="small" />
+                    </IconButton>
+                )}
 
-        {hoverMetadata.type === 'services' && (
-          <Box>
-            <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1.5, display: 'block', mb: 1.5 }}>
-              SERVICE BUNDLE SUMMARY ({hoverMetadata.data?.length})
-            </Typography>
-            <Box sx={{ display: 'flex', gap: 2, mb: 2, pb: 1, borderBottom: '1px dashed #eee' }}>
-                <Typography variant="caption" sx={{ fontWeight: 'bold' }}>
-                    TOTAL TIME: {hoverMetadata.data?.reduce((acc, s) => acc + (s.duration || 0), 0)}m
-                </Typography>
-                <Typography variant="caption" sx={{ fontWeight: 'bold', color: 'success.main' }}>
-                    EST: ₱{hoverMetadata.data?.reduce((acc, s) => acc + (s.price || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </Typography>
-            </Box>
-            <List sx={{ p: 0 }}>
-              {([...(hoverMetadata.data || [])].sort((a,b) => a.name.localeCompare(b.name))).map((svc, i) => {
-                const deptObj = (departments || []).find(d => d.name === svc.department);
-                const bColor = deptObj ? deptObj.color : '#616161';
-                return (
-                  <ListItem key={i} sx={{ px: 1.5, py: 0.8, mb: 1, borderLeft: `6px solid ${bColor}`, bgcolor: 'rgba(0,0,0,0.02)', borderRadius: '0 4px 4px 0' }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-                      <Box>
-                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>{svc.name}</Typography>
-                        <Typography variant="caption" sx={{ display: 'block', color: svc.staffName ? '#5D4037' : '#D32F2F', fontWeight: '900', fontSize: '0.65rem' }}>
-                          {svc.staffName ? `👤 ${svc.staffName}` : '❌ UNASSIGNED'}
+                {hoverMetadata.type === 'notes' && (
+                  <Box>
+                    <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 2, display: 'block', mb: 1.5, opacity: 0.8 }}>
+                      CLINICAL INTAKE / NOTES
+                    </Typography>
+                    <Typography sx={{ 
+                      fontSize: '1.05rem', lineHeight: 1.6, color: '#3E2723', fontStyle: 'italic', whiteSpace: 'pre-wrap', 
+                      fontFamily: '"Merriweather", serif',
+                      fontWeight: 700,
+                      letterSpacing: '-0.01rem'
+                    }}>
+                      "{hoverMetadata.data}"
+                    </Typography>
+                  </Box>
+                )}
+
+                {hoverMetadata.type === 'services' && (
+                  <Box>
+                    <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1.5, display: 'block', mb: 1.5 }}>
+                      SERVICE BUNDLE SUMMARY ({hoverMetadata.data?.length})
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 2, mb: 2, pb: 1, borderBottom: '1px dashed #eee' }}>
+                        <Typography variant="caption" sx={{ fontWeight: 'bold' }}>
+                            TOTAL TIME: {hoverMetadata.data?.reduce((acc, s) => acc + (s.duration || 0), 0)}m
                         </Typography>
-                      </Box>
-                      <Box sx={{ textAlign: 'right' }}>
-                        <Typography variant="caption" sx={{ display: 'block', fontSize: '0.6rem', fontWeight: 'bold' }}>
-                          ₱{svc.price?.toLocaleString()}
+                        <Typography variant="caption" sx={{ fontWeight: 'bold', color: 'success.main' }}>
+                            EST: ₱{hoverMetadata.data?.reduce((acc, s) => acc + (s.price || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </Typography>
-                        <Typography variant="caption" sx={{ display: 'block', fontSize: '0.55rem', color: bColor, fontWeight: '900' }}>
-                          {svc.department?.toUpperCase()}
-                        </Typography>
-                      </Box>
                     </Box>
-                  </ListItem>
-                );
-              })}
-            </List>
-          </Box>
-        )}
-        {hoverMetadata.type === 'identity' && hoverMetadata.data}
-
-        {hoverMetadata.type === 'timing' && hoverMetadata.data && (
-          <Box>
-            <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1.5, display: 'block', mb: 2 }}>
-              ⌛ CLINICAL TEMPORAL AUDIT
-            </Typography>
-            <Stack spacing={2} sx={{ position: 'relative', pl: 3 }}>
-                <Box sx={{ position: 'absolute', left: 8, top: 8, bottom: 8, width: '2px', borderLeft: '2px dashed #D7CCC8' }} />
-                
-                {(() => {
-                    let events = [];
-                    const pulse = hoverMetadata.data.clinicalPulse || [];
-                    
-                    if (pulse.length > 0) {
-                        const voidedIds = new Set(pulse.filter(p => p.correctedEventId).map(p => p.correctedEventId));
-
-                        events = pulse.map(p => ({
-                            id: p.eventId,
-                            label: p.toStatus ? p.toStatus.toUpperCase() : 'EVENT',
-                            val: p.timestamp,
-                            by: p.staffName,
-                            note: p.note,
-                            type: p.type,
-                            isCorrection: p.isCorrection || p.type === 'CORRECTION',
-                            isVoided: voidedIds.has(p.eventId) 
-                        }));
-                    } else {
-                        events = [
-                          { id: 'booked', label: hoverMetadata.data.ticketPrefix ? 'INTAKE CREATED' : 'BOOKED (ONLINE)', val: hoverMetadata.data.createdAt },
-                          { id: 'scheduled', label: hoverMetadata.data.ticketPrefix ? 'QUEUE POSITION' : 'APPOINTMENT SLOT', val: hoverMetadata.data.jsScheduled },
-                          { id: 'arrived', label: 'ARRIVED (CHECK-IN)', val: hoverMetadata.data.timeArrived, by: hoverMetadata.data.arrivedBy },
-                          { id: 'started', label: 'CONSULT STARTED', val: hoverMetadata.data.timeStarted, by: hoverMetadata.data.startedBy }
-                        ].filter(i => i.val);
-                    }
-
-                    return events
-                    .sort((a,b) => {
-                        const da = a.val && a.val.toDate ? a.val.toDate() : new Date(a.val || 0);
-                        const db = b.val && b.val.toDate ? b.val.toDate() : new Date(b.val || 0);
-                        return da - db;
-                    })
-                    .map((item, idx, filteredArray) => {
-                        const isLast = idx === filteredArray.length - 1;
-                        const date = item.val && item.val.toDate ? item.val.toDate() : new Date(item.val || 0);
-                        const color = item.isCorrection ? '#1976D2' : (item.isVoided ? '#BDBDBD' : (isLast ? '#2E7D32' : '#9E9E9E'));
-                        const isExpanded = expandedPulseId === item.id;
-                        
+                    <List sx={{ p: 0 }}>
+                      {([...(hoverMetadata.data || [])].sort((a,b) => a.name.localeCompare(b.name))).map((svc, i) => {
+                        const deptObj = (departments || []).find(d => d.name === svc.department);
+                        const bColor = deptObj ? deptObj.color : '#616161';
                         return (
-                            <Box key={item.id || idx} sx={{ position: 'relative', mb: 0.5, cursor: item.note ? 'pointer' : 'default', pointerEvents: 'auto' }} onClick={() => item.note && setExpandedPulseId(isExpanded ? null : item.id)}>
-                                <Box sx={{ position: 'absolute', left: -26, top: 4, width: 8, height: 8, borderRadius: '50%', bgcolor: color, zIndex: 5, border: item.isCorrection ? '2px solid #BBDEFB' : 'none' }} />
-                                <Typography variant="caption" sx={{ fontWeight: '1000', color: color, letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 1, fontSize: '0.65rem' }}>
-                                    {item.isCorrection ? 'CORRECTION REVERSION' : item.label}
-                                    {item.isCorrection && <Chip label="CORRECTION" size="small" sx={{ height: 14, fontSize: '0.5rem', fontWeight: 1000, bgcolor: '#BBDEFB', color: '#1976D2' }} />}
-                                    {item.isVoided && <Chip label="VOIDED" size="small" sx={{ height: 14, fontSize: '0.5rem', fontWeight: 1000, bgcolor: '#EEEEEE', color: '#9E9E9E' }} />}
+                          <ListItem key={i} sx={{ px: 1.5, py: 0.8, mb: 1, borderLeft: `6px solid ${bColor}`, bgcolor: 'rgba(0,0,0,0.02)', borderRadius: '0 4px 4px 0' }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                              <Box>
+                                <Typography variant="body2" sx={{ fontWeight: 'bold' }}>{svc.name}</Typography>
+                                <Typography variant="caption" sx={{ display: 'block', color: svc.staffName ? '#5D4037' : '#D32F2F', fontWeight: '900', fontSize: '0.65rem' }}>
+                                  {svc.staffName ? `👤 ${svc.staffName}` : '❌ UNASSIGNED'}
                                 </Typography>
-                                <Typography sx={{ 
-                                    fontWeight: '1000', 
-                                    color: (isLast && !item.isVoided) ? '#1A1A1A' : '#9E9E9E', 
-                                    fontSize: '0.85rem',
-                                    textDecoration: item.isVoided ? 'line-through' : 'none',
-                                    opacity: item.isVoided ? 0.4 : 1
-                                }}>
-                                    {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                                    {(item.by || item.staffName) && <span style={{ opacity: 0.6, fontWeight: '700', marginLeft: '6px' }}>● {item.by || item.staffName}</span>}
+                              </Box>
+                              <Box sx={{ textAlign: 'right' }}>
+                                <Typography variant="caption" sx={{ display: 'block', fontSize: '0.6rem', fontWeight: 'bold' }}>
+                                  ₱{svc.price?.toLocaleString()}
                                 </Typography>
-                                
-                                {item.note && (
-                                    <Typography variant="caption" sx={{ 
-                                        fontStyle: 'italic', 
-                                        color: '#5D4037', 
-                                        fontWeight: '800', 
-                                        fontSize: '0.62rem', 
-                                        display: 'block', 
-                                        mt: 0.2,
-                                        whiteSpace: isExpanded ? 'normal' : 'nowrap',
-                                        overflow: isExpanded ? 'visible' : 'hidden',
-                                        textOverflow: 'ellipsis',
-                                        maxWidth: '220px'
-                                    }}>
-                                        ↳ {isExpanded ? item.note : (item.note.substring(0, 40) + (item.note.length > 40 ? "..." : ""))}
-                                        {!isExpanded && item.note.length > 40 && <span style={{ color: "#1976D2", marginLeft: "4px", fontWeight: "1000" }}>[MORE]</span>}
-                                    </Typography>
-                                )}
+                                <Typography variant="caption" sx={{ display: 'block', fontSize: '0.55rem', color: bColor, fontWeight: '900' }}>
+                                  {svc.department?.toUpperCase()}
+                                </Typography>
+                              </Box>
                             </Box>
+                          </ListItem>
                         );
-                    });
-                })()}
-            </Stack>
-            <Box sx={{ mt: 2, pt: 1.5, borderTop: "1px solid #D7CCC8" }}>
-                {(() => {
-                    const resolveDate = (d) => {
-                       if (!d) return null;
-                       if (d.toDate) return d.toDate();
-                       const parsed = new Date(d);
-                       return isNaN(parsed.getTime()) ? null : parsed;
-                    };
+                      })}
+                    </List>
+                  </Box>
+                )}
 
-                    const sch = resolveDate(hoverMetadata.data.jsScheduled);
-                    const arr = resolveDate(hoverMetadata.data.timeArrived);
-                    const booked = resolveDate(hoverMetadata.data.createdAt);
-                    const completed = resolveDate(hoverMetadata.data.timeCompleted);
-                    
-                    const puncDiff = arr && sch ? Math.round((arr - sch) / 60000) 
-                                   : (!arr && sch) ? Math.round((currentTime - sch) / 60000)
-                                   : 0;
-                    
-                    const isFinished = ["done", "cancelled"].includes(hoverMetadata.data.status);
-                    const waitEnd = isFinished && completed ? completed : currentTime;
-                    
-                    const waitStart = arr || (hoverMetadata.data.status === "pending" ? booked : sch) || currentTime;
-                    const totalWaitDiff = Math.round((waitEnd - (waitStart || currentTime)) / 60000);
+                {hoverMetadata.type === 'identity' && hoverMetadata.data}
 
-                    const severityColor = (puncDiff > 15 || totalWaitDiff > 60) ? "#D32F2F" : "#2E7D32";
+                {hoverMetadata.type === 'timing' && hoverMetadata.data && (
+                  <Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                        <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1.5 }}>
+                        ⌛ CLINICAL TEMPORAL AUDIT
+                        </Typography>
+                        
+                        {(() => {
+                            const pulse = hoverMetadata.data.clinicalPulse || [];
+                            const dates = [...new Set(pulse.map(p => {
+                                const d = p.timestamp?.toDate ? p.timestamp.toDate() : new Date(p.timestamp);
+                                return d.toDateString();
+                            }))].sort((a,b) => new Date(a) - new Date(b));
+                            
+                            if (dates.length <= 1) return null;
 
-                    return (
-                        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                            <Box>
-                                <Typography variant="caption" sx={{ fontWeight: "1000", color: "#9E9E9E", letterSpacing: 0.5, display: "block", fontSize: "0.6rem" }}>PUNCTUALITY</Typography>
-                                <Typography sx={{ fontWeight: "1000", color: severityColor, fontSize: "0.8rem" }}>
-                                    {!arr 
-                                        ? (puncDiff > 1 ? "LATE (" + formatDuration(puncDiff) + ")" : "PENDING")
-                                        : (Math.abs(puncDiff) <= 5 ? "ON-TIME" : formatDuration(Math.abs(puncDiff)) + " " + (puncDiff > 0 ? "LATE" : "EARLY"))
-                                    }
-                                </Typography>
-                            </Box>
-                            <Box sx={{ textAlign: "right" }}>
-                                <Typography variant="caption" sx={{ fontWeight: "1000", color: "#9E9E9E", letterSpacing: 0.5, display: "block", fontSize: "0.6rem" }}>TOTAL WAIT</Typography>
-                                <Typography sx={{ fontWeight: "1000", color: "#5D4037", fontSize: "0.8rem" }}>
-                                    {formatDuration(totalWaitDiff)}
-                                </Typography>
-                            </Box>
-                        </Box>
-                    );
-                })()}
+                            return (
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, bgcolor: '#F5F5F5', px: 1, borderRadius: 1 }}>
+                                    <IconButton 
+                                        size="small" 
+                                        disabled={activeCaseDay === 0} 
+                                        onClick={() => setActiveCaseDay(prev => Math.max(0, prev - 1))}
+                                        sx={{ p: 0.2, color: '#5D4037' }}
+                                    >
+                                        <ArrowBackIosNewIcon sx={{ fontSize: 10 }} />
+                                    </IconButton>
+                                    <Typography sx={{ fontSize: '0.6rem', fontWeight: '1000', color: '#5D4037', minWidth: 50, textAlign: 'center' }}>
+                                        DAY {activeCaseDay + 1} OF {dates.length}
+                                    </Typography>
+                                    <IconButton 
+                                        size="small" 
+                                        disabled={activeCaseDay === dates.length - 1} 
+                                        onClick={() => setActiveCaseDay(prev => Math.min(dates.length - 1, prev + 1))}
+                                        sx={{ p: 0.2, color: '#5D4037' }}
+                                    >
+                                        <ArrowForwardIosIcon sx={{ fontSize: 10 }} />
+                                    </IconButton>
+                                </Box>
+                            );
+                        })()}
+                    </Box>
+
+                    <Stack spacing={2} sx={{ position: 'relative', pl: 3 }}>
+                        <Box sx={{ position: 'absolute', left: 8, top: 8, bottom: 8, width: '2px', borderLeft: '2px dashed #D7CCC8' }} />
+                        
+                        {(() => {
+                            const pulse = hoverMetadata.data.clinicalPulse || [];
+                            const dates = [...new Set(pulse.map(p => {
+                                const d = p.timestamp?.toDate ? p.timestamp.toDate() : new Date(p.timestamp);
+                                return d.toDateString();
+                            }))].sort((a,b) => new Date(a) - new Date(b));
+
+                            const targetDateStr = dates[activeCaseDay] || dates[dates.length - 1];
+                            const filteredPulse = pulse.filter(p => {
+                                const d = p.timestamp?.toDate ? p.timestamp.toDate() : new Date(p.timestamp);
+                                return d.toDateString() === targetDateStr;
+                            });
+
+                            let events = [];
+                            if (filteredPulse.length > 0) {
+                                const voidedIds = new Set(pulse.filter(p => p.correctedEventId).map(p => p.correctedEventId));
+
+                                events = filteredPulse.map(p => ({
+                                    id: p.eventId,
+                                    label: p.toStatus ? p.toStatus.toUpperCase() : 'EVENT',
+                                    val: p.timestamp,
+                                    by: p.staffName,
+                                    note: p.note,
+                                    type: p.type,
+                                    isCorrection: p.isCorrection || p.type === 'CORRECTION',
+                                    isVoided: voidedIds.has(p.eventId) 
+                                }));
+                            } else {
+                                events = [
+                                  { id: 'booked', label: hoverMetadata.data.ticketPrefix ? 'INTAKE CREATED' : 'BOOKED (ONLINE)', val: hoverMetadata.data.createdAt },
+                                  { id: 'scheduled', label: hoverMetadata.data.ticketPrefix ? 'QUEUE POSITION' : 'APPOINTMENT SLOT', val: hoverMetadata.data.jsScheduled },
+                                  { id: 'arrived', label: 'ARRIVED (CHECK-IN)', val: hoverMetadata.data.timeArrived, by: hoverMetadata.data.arrivedBy },
+                                  { id: 'started', label: 'CONSULT STARTED', val: hoverMetadata.data.timeStarted, by: hoverMetadata.data.startedBy }
+                                ].filter(i => i.val);
+                            }
+
+                            return events
+                            .sort((a,b) => {
+                                const da = a.val && a.val.toDate ? a.val.toDate() : new Date(a.val || 0);
+                                const db = b.val && b.val.toDate ? b.val.toDate() : new Date(b.val || 0);
+                                return da - db;
+                            })
+                            .map((item, idx, filteredArray) => {
+                                const isLatestTotal = item.id === events[events.length - 1]?.id;
+                                const date = item.val && item.val.toDate ? item.val.toDate() : new Date(item.val || 0);
+                                const color = item.isCorrection ? '#1976D2' : (item.isVoided ? '#BDBDBD' : (isLatestTotal ? '#2E7D32' : '#9E9E9E'));
+                                const isExpanded = expandedPulseId === item.id;
+                                
+                                return (
+                                    <Box 
+                                        key={item.id || idx} 
+                                        sx={{ position: 'relative', mb: 0.5, cursor: item.note ? 'pointer' : 'default', pointerEvents: 'auto' }} 
+                                        onClick={() => {
+                                            if (item.note) {
+                                                setExpandedPulseId(isExpanded ? null : item.id);
+                                                setIsPinned(true); 
+                                            }
+                                        }}
+                                    >
+                                        <Box sx={{ position: 'absolute', left: -26, top: 4, width: 8, height: 8, borderRadius: '50%', bgcolor: color, zIndex: 5, border: item.isCorrection ? '2px solid #BBDEFB' : 'none' }} />
+                                        <Typography variant="caption" sx={{ fontWeight: '1000', color: color, letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 1, fontSize: '0.65rem' }}>
+                                            {item.isCorrection ? '↺ CLINICAL CORRECTION' : item.label}
+                                            {item.isCorrection && <Chip label="CORRECTION" size="small" sx={{ height: 14, fontSize: '0.5rem', fontWeight: 1000, bgcolor: '#C8E6C9', color: '#2E7D32' }} />}
+                                            {item.isVoided && <Chip label="REVERTED" size="small" sx={{ height: 14, fontSize: '0.5rem', fontWeight: 1000, bgcolor: '#FFEBEE', color: '#D32F2F' }} />}
+                                        </Typography>
+                                        <Typography sx={{ 
+                                            fontWeight: '1000', 
+                                            color: (isLatestTotal && !item.isVoided) ? '#1A1A1A' : '#9E9E9E', 
+                                            fontSize: '0.85rem',
+                                            textDecoration: item.isVoided ? 'line-through' : 'none',
+                                            opacity: item.isVoided ? 0.4 : 1
+                                        }}>
+                                            {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                            {(item.by || item.staffName) && <span style={{ opacity: 0.6, fontWeight: '700', marginLeft: '6px' }}>● {item.by || item.staffName}</span>}
+                                        </Typography>
+                                        
+                                        {item.note && (
+                                            <Box sx={{ mt: 0.5 }}>
+                                                <Typography variant="caption" sx={{ 
+                                                    fontStyle: 'italic', 
+                                                    color: '#5D4037', 
+                                                    fontWeight: '800', 
+                                                    fontSize: '0.62rem',
+                                                    lineHeight: 1.3,
+                                                    display: 'block',
+                                                    textDecoration: item.isVoided ? 'line-through' : 'none',
+                                                    opacity: item.isVoided ? 0.6 : 1,
+                                                    whiteSpace: 'pre-wrap'
+                                                }}>
+                                                    ↳ {(!isExpanded && item.note.length > 50) 
+                                                        ? `${item.note.substring(0, 47)}...` 
+                                                        : item.note}
+                                                    {!isExpanded && item.note.length > 50 && (
+                                                        <span style={{ color: "#1976D2", marginLeft: "4px", fontWeight: "1000", cursor: "pointer" }}>
+                                                            [MORE]
+                                                        </span>
+                                                    )}
+                                                </Typography>
+                                            </Box>
+                                        )}
+                                    </Box>
+                                );
+                            });
+                        })()}
+                    </Stack>
+
+                    <Box sx={{ mt: 2, pt: 1.5, borderTop: "1px solid #D7CCC8" }}>
+                        {(() => {
+                            const resolveDate = (d) => {
+                               if (!d) return null;
+                               if (d.toDate) return d.toDate();
+                               const parsed = new Date(d);
+                               return isNaN(parsed.getTime()) ? null : parsed;
+                            };
+
+                            const sch = resolveDate(hoverMetadata.data.jsScheduled);
+                            const arr = resolveDate(hoverMetadata.data.timeArrived);
+                            const booked = resolveDate(hoverMetadata.data.createdAt);
+                            const completed = resolveDate(hoverMetadata.data.timeCompleted);
+                            
+                            const puncDiff = arr && sch ? Math.round((arr - sch) / 60000) 
+                                           : (!arr && sch) ? Math.round((currentTime - sch) / 60000)
+                                           : 0;
+                            
+                            const isFinished = ["done", "cancelled"].includes(hoverMetadata.data.status);
+                            const waitEnd = isFinished && completed ? completed : currentTime;
+                            
+                            const waitStart = arr || (hoverMetadata.data.status === "pending" ? booked : sch) || currentTime;
+                            const totalWaitDiff = Math.round((waitEnd - (waitStart || currentTime)) / 60000);
+
+                            const puncColor = puncDiff > 15 ? "#D32F2F" : "#2E7D32";
+                            const waitColor = totalWaitDiff > 60 ? "#D32F2F" : "#5D4037";
+
+                            return (
+                                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                                    <Box>
+                                        <Typography variant="caption" sx={{ fontWeight: "1000", color: "#5D4037", letterSpacing: 0.5, display: "block", fontSize: "0.6rem" }}>PUNCTUALITY</Typography>
+                                        <Typography sx={{ fontWeight: "1000", color: puncColor, fontSize: "0.8rem" }}>
+                                            {!arr 
+                                                ? (puncDiff > 1 ? "LATE (" + formatDuration(puncDiff) + ")" : "PENDING")
+                                                : (Math.abs(puncDiff) <= 5 ? "ON-TIME" : formatDuration(Math.abs(puncDiff)) + " " + (puncDiff > 0 ? "LATE" : "EARLY"))
+                                            }
+                                        </Typography>
+                                    </Box>
+                                    <Box sx={{ textAlign: "right" }}>
+                                        <Typography variant="caption" sx={{ fontWeight: "1000", color: "#5D4037", letterSpacing: 0.5, display: "block", fontSize: "0.6rem" }}>TOTAL WAIT</Typography>
+                                        <Typography sx={{ fontWeight: "1000", color: waitColor, fontSize: "0.8rem" }}>
+                                            {formatDuration(totalWaitDiff)}
+                                        </Typography>
+                                        {hoverMetadata.data.accumulatedWaitMins > 0 && (
+                                            <Typography variant="caption" sx={{ fontWeight: "1000", color: "#E65100", fontSize: "0.55rem", display: "block", mt: -0.2 }}>
+                                                + {formatDuration(hoverMetadata.data.accumulatedWaitMins)} CARRIED
+                                            </Typography>
+                                        )}
+                                    </Box>
+                                </Box>
+                            );
+                        })()}
+                    </Box>
+                  </Box>
+                )}
             </Box>
-          </Box>
         )}
       </Popover>
       {/* INTERNAL ADMINISTRATIVE MODALS (RESTORED) */}
-      <Dialog open={openEdit} onClose={() => setOpenEdit(false)}>
-        <DialogTitle sx={{ fontWeight: '1000', color: '#5D4037' }}>Edit Patient Info</DialogTitle>
-        <DialogContent>
-          <TextField autoFocus margin="dense" label="Owner Name" fullWidth variant="outlined" value={editName} onChange={(e) => setEditName(e.target.value)} sx={{ mt: 1 }} />
-          <TextField margin="dense" label="Pet Name" fullWidth variant="outlined" value={editPet} onChange={(e) => setEditPet(e.target.value)} sx={{ mt: 2 }} />
+      <Dialog open={openEdit} onClose={() => setOpenEdit(false)} fullWidth maxWidth="sm">
+        <DialogTitle sx={{ 
+          bgcolor: '#5D4037', 
+          color: 'white', 
+          fontWeight: '1000', 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 1.5,
+          py: 1.5
+        }}>
+          <EditIcon /> EDIT CLINICAL IDENTITY
+        </DialogTitle>
+        <DialogContent dividers sx={{ bgcolor: '#F5F5F5' }}>
+          <Grid container spacing={2} sx={{ mt: 0.5 }}>
+            <Grid size={{ xs: 12 }}>
+              <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1 }}>OWNER & CONTACT</Typography>
+            </Grid>
+            <Grid size={{ xs: 12, md: 7 }}>
+              <TextField label="OWNER FULL NAME" fullWidth variant="outlined" size="small" value={editName} onChange={(e) => setEditName(e.target.value)} InputLabelProps={{ sx: { fontWeight: '1000', fontSize: '0.75rem' } }} inputProps={{ style: { fontWeight: '1000' } }} />
+            </Grid>
+            <Grid size={{ xs: 12, md: 5 }}>
+              <TextField label="OWNER PHONE" fullWidth variant="outlined" size="small" placeholder="09xxxxxxxxx" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} InputLabelProps={{ sx: { fontWeight: '1000', fontSize: '0.75rem' } }} inputProps={{ style: { fontWeight: '1000' } }} />
+            </Grid>
+
+            <Grid item xs={12}><Divider sx={{ my: 1 }} /></Grid>
+
+            <Grid size={{ xs: 12 }}>
+              <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1 }}>PATIENT BIOMETRICS</Typography>
+            </Grid>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <TextField label="PATIENT NAME" fullWidth variant="outlined" size="small" value={editPet} onChange={(e) => setEditPet(e.target.value)} InputLabelProps={{ sx: { fontWeight: '1000', fontSize: '0.75rem' } }} inputProps={{ style: { fontWeight: '1000' } }} />
+            </Grid>
+            <Grid size={{ xs: 12, md: 3 }}>
+              <FormControl fullWidth size="small">
+                <InputLabel sx={{ fontWeight: '1000', fontSize: '0.75rem' }}>SPECIES</InputLabel>
+                <Select label="SPECIES" value={editSpecies} onChange={(e) => setEditSpecies(e.target.value)} sx={{ fontWeight: '1000' }}>
+                  <MenuItem value="Canine" sx={{ fontWeight: '800' }}>CANINE 🐶</MenuItem>
+                  <MenuItem value="Feline" sx={{ fontWeight: '800' }}>FELINE 🐱</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid size={{ xs: 12, md: 3 }}>
+              <FormControl fullWidth size="small">
+                <InputLabel sx={{ fontWeight: '1000', fontSize: '0.75rem' }}>GENDER</InputLabel>
+                <Select label="GENDER" value={editGender} onChange={(e) => setEditGender(e.target.value)} sx={{ fontWeight: '1000' }}>
+                  <MenuItem value="Male" sx={{ fontWeight: '800' }}>MALE</MenuItem>
+                  <MenuItem value="Female" sx={{ fontWeight: '800' }}>FEMALE</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+
+            <Grid size={{ xs: 12, md: 7 }}>
+              <Autocomplete
+                freeSolo
+                size="small"
+                options={BREED_DATA[editSpecies] || []}
+                value={editBreed}
+                onInputChange={(event, newValue) => setEditBreed(newValue)}
+                renderInput={(params) => (
+                  <TextField 
+                    {...params} 
+                    label="BREED / LINEAGE" 
+                    variant="outlined" 
+                    InputLabelProps={{ sx: { fontWeight: '1000', fontSize: '0.75rem' } }} 
+                    inputProps={{ ...params.inputProps, style: { fontWeight: '1000' } }} 
+                  />
+                )}
+              />
+            </Grid>
+            
+            <Grid size={{ xs: 12, md: 5 }}>
+               <Box sx={{ p: 1, border: '1px solid #E0E0E0', borderRadius: 1.5, bgcolor: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Typography variant="caption" sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '0.7rem' }}>SPAYED / NEUTERED</Typography>
+                  <Switch size="small" checked={editIsNeutered} onChange={(e) => setEditIsNeutered(e.target.checked)} color="success" />
+               </Box>
+            </Grid>
+
+            <Grid size={{ xs: 12 }}>
+                <TextField 
+                    label="COLOR / MARKINGS" 
+                    fullWidth 
+                    variant="outlined" 
+                    size="small" 
+                    placeholder="e.g. Black/White, Tabby, Spotted" 
+                    value={editColor} 
+                    onChange={(e) => setEditColor(e.target.value)} 
+                    InputLabelProps={{ sx: { fontWeight: '1000', fontSize: '0.75rem' } }} 
+                    inputProps={{ style: { fontWeight: '1000' } }} 
+                />
+            </Grid>
+
+            <Grid size={{ xs: 12 }}><Divider sx={{ my: 1 }} /></Grid>
+
+            <Grid size={{ xs: 12 }}>
+              <Box sx={{ p: 1.5, border: '1px solid #D7CCC8', borderRadius: 1.5, bgcolor: '#FFF8F1' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5, gap: 1 }}>
+                  <CakeIcon sx={{ fontSize: 18, color: '#8B4513' }} />
+                  <Typography sx={{ fontWeight: '1000', fontSize: '0.7rem', color: '#5D4037' }}>PROBABLE BIRTHDATE / AGE MODE</Typography>
+                  <ToggleButtonGroup
+                    size="small"
+                    value={editDobMode}
+                    exclusive
+                    onChange={(e, val) => val && setEditDobMode(val)}
+                    sx={{ ml: 'auto', height: 24 }}
+                  >
+                    <ToggleButton value="exact" sx={{ fontSize: '0.6rem', fontWeight: 1000, px: 1.5 }}>EXACT</ToggleButton>
+                    <ToggleButton value="approximate" sx={{ fontSize: '0.6rem', fontWeight: 1000, px: 1.5 }}>ESTIMATE</ToggleButton>
+                    <ToggleButton value="unknown" sx={{ fontSize: '0.6rem', fontWeight: 1000, px: 1.5 }}>UNKNOWN</ToggleButton>
+                  </ToggleButtonGroup>
+                </Box>
+
+                {editDobMode === 'exact' && (
+                  <TextField size="small" type="date" label="PET BIRTHDAY" variant="outlined" fullWidth InputLabelProps={{shrink:true, sx: { fontWeight: '1000', fontSize: '0.75rem' }}} inputProps={{ style: { fontWeight: '1000' } }} value={editDob} onChange={e => setEditDob(e.target.value)} />
+                )}
+                {editDobMode === 'approximate' && (
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <TextField size="small" placeholder="YEARS" type="number" label="YEARS" fullWidth value={editEstYears} onChange={e => setEditEstYears(e.target.value)} InputLabelProps={{ sx: { fontWeight: '1000', fontSize: '0.75rem' } }} inputProps={{ style: { fontWeight: '1000' } }} />
+                    <TextField size="small" placeholder="MONTHS" type="number" label="MONTHS" fullWidth value={editEstMonths} onChange={e => setEditEstMonths(e.target.value)} InputLabelProps={{ sx: { fontWeight: '1000', fontSize: '0.75rem' } }} inputProps={{ style: { fontWeight: '1000' } }} />
+                  </Box>
+                )}
+                {editDobMode === 'unknown' && (
+                  <Typography variant="caption" sx={{ color: '#8B4513', fontStyle: 'italic', fontWeight: '800' }}>Age to be manually verified during clinical consultation.</Typography>
+                )}
+              </Box>
+            </Grid>
+          </Grid>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenEdit(false)} sx={{ fontWeight: 'bold', color: '#757575' }}>Cancel</Button>
-          <Button onClick={saveEdit} variant="contained" sx={{ bgcolor: '#5D4037', fontWeight: 'bold' }}>Save Changes</Button>
+        <DialogActions sx={{ p: 2, bgcolor: '#FFF' }}>
+          <Button onClick={() => setOpenEdit(false)} sx={{ fontWeight: '1000', color: '#757575' }}>DISCARD CHANGES</Button>
+          <Button onClick={saveEdit} variant="contained" sx={{ bgcolor: '#5D4037', fontWeight: '1000', px: 4 }}>SAVE CLINICAL IDENTITY</Button>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={openReschedule} onClose={() => setOpenReschedule(false)}>
-        <DialogTitle sx={{ fontWeight: '1000', color: '#5D4037' }}>Reschedule Appointment</DialogTitle>
+      <Dialog open={openReschedule} onClose={() => setOpenReschedule(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: '1000', color: (selectedRow?.status === 'arrived' || selectedRow?.status === 'in-consult' || selectedRow?.status === 'confined' || selectedRow?.status === 'on-hold' || selectedRow?.status === 'dispensing' || selectedRow?.status === 'billing') ? '#D32F2F' : '#5D4037', pb: 1 }}>
+          {(selectedRow?.status === 'arrived' || selectedRow?.status === 'in-consult' || selectedRow?.status === 'confined' || selectedRow?.status === 'on-hold' || selectedRow?.status === 'dispensing' || selectedRow?.status === 'billing') ? 'CLINICAL CARRY-OVER' : 'Reschedule Appointment'}
+        </DialogTitle>
         <DialogContent>
-          <TextField margin="dense" label="New Date/Time" type="datetime-local" fullWidth variant="outlined" InputLabelProps={{ shrink: true }} value={newDate} onChange={(e) => setNewDate(e.target.value)} sx={{ mt: 1 }} />
+          <Typography variant="caption" sx={{ display: 'block', mb: 2, color: '#5D4037', fontStyle: 'italic', lineHeight: 1.4 }}>
+            { (selectedRow?.status === 'arrived' || selectedRow?.status === 'in-consult' || selectedRow?.status === 'confined' || selectedRow?.status === 'on-hold' || selectedRow?.status === 'dispensing' || selectedRow?.status === 'billing') 
+              ? "This patient has already entered the clinical or financial pipeline. Shifting this record will preserve their existing wait-time and increment their Case Day status."
+              : "Performing a Manual Schedule Shift authorizes this visit and sets a new temporal baseline."
+            }
+          </Typography>
+
+          <TextField
+              label="New Date/Time"
+              type="datetime-local"
+              fullWidth
+              size="small"
+              value={newDate}
+              onChange={(e) => setNewDate(e.target.value)}
+              InputLabelProps={{ shrink: true, sx: { fontWeight: 'bold' } }}
+              sx={{ mb: 3 }}
+          />
+
+          <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', display: 'block', mb: 1, fontSize: '0.65rem', letterSpacing: 1 }}>
+              ✍️ MANDATORY FORENSIC JUSTIFICATION
+          </Typography>
+          <TextField
+              fullWidth
+              multiline
+              rows={2}
+              placeholder="Provide clinical justification for this shift (Required)"
+              value={auditReason}
+              onChange={(e) => setAuditReason(e.target.value)}
+              sx={{
+                  '& .MuiOutlinedInput-root': {
+                      fontWeight: '900', fontSize: '0.75rem', bgcolor: '#FAFAFA',
+                      '& fieldset': { borderColor: !auditReason.trim() ? '#D32F2F' : '#5D4037' }
+                  }
+              }}
+          />
+          {!auditReason.trim() && (
+              <Typography variant="caption" sx={{ color: '#D32F2F', fontWeight: '1000', fontSize: '0.55rem', mt: 0.5, display: 'block' }}>
+                  🛑 LOCK ACTIVE: Every shift requires a forensic justification.
+              </Typography>
+          )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ p: 2, pt: 0 }}>
           <Button onClick={() => setOpenReschedule(false)} sx={{ fontWeight: 'bold', color: '#757575' }}>Cancel</Button>
-          <Button onClick={saveReschedule} variant="contained" sx={{ bgcolor: '#1976D2', fontWeight: 'bold' }}>Update Schedule</Button>
+          <Button 
+            onClick={saveReschedule} 
+            variant="contained" 
+            disabled={!newDate || !auditReason.trim()}
+            sx={{ bgcolor: '#1976D2', fontWeight: 'bold', '&.Mui-disabled': { bgcolor: '#e0e0e0' } }}
+          >
+            Update Schedule
+          </Button>
         </DialogActions>
       </Dialog>
 
@@ -1445,11 +1949,11 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
 
       <Dialog open={openRevert} onClose={() => setOpenRevert(false)}>
         <DialogTitle sx={{ fontWeight: '1000', color: '#D32F2F', display: 'flex', alignItems: 'center', gap: 1 }}>
-          <UndoIcon /> Forensic Reversion
+          <UndoIcon /> Undo Status
         </DialogTitle>
         <DialogContent>
           <Typography sx={{ mb: 2, fontSize: '0.9rem', color: '#757575' }}>
-            Warning: You are reverting a clinical status change. Please provide a forensic justification for this action.
+            Warning: You are reverting a clinical status change.
           </Typography>
           <TextField autoFocus margin="dense" label="Reversion Note / Justification" fullWidth multiline rows={3} variant="outlined" value={revertReason} onChange={(e) => setRevertReason(e.target.value)} />
         </DialogContent>
@@ -1457,6 +1961,94 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
           <Button onClick={() => setOpenRevert(false)} sx={{ fontWeight: 'bold' }}>Cancel</Button>
           <Button onClick={confirmRevert} variant="contained" color="error" sx={{ fontWeight: 'bold' }} disabled={!revertReason.trim()}>
             Confirm Reversion
+          </Button>
+        </DialogActions>
+      </Dialog>
+      {/* DEFER CONFIRMATION DIALOG */}
+      <Dialog open={openDefer} onClose={() => setOpenDefer(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: '1000', color: '#E65100', pb: 1 }}>Defer Clinical Intake</DialogTitle>
+        <DialogContent>
+          <Typography variant="caption" sx={{ display: 'block', mb: 2, color: '#5D4037', fontStyle: 'italic', lineHeight: 1.4 }}>
+            Postponing intake decision.
+          </Typography>
+
+          <Typography variant="overline" sx={{ fontWeight: '1000', color: '#E65100', display: 'block', mb: 1, fontSize: '0.65rem', letterSpacing: 1 }}>
+              ✍️ MANDATORY FORENSIC JUSTIFICATION
+          </Typography>
+          <TextField
+              fullWidth
+              multiline
+              rows={2}
+              placeholder="e.g., Clinic at capacity, Vet unavailable today"
+              value={auditReason}
+              onChange={(e) => setAuditReason(e.target.value)}
+              sx={{
+                  '& .MuiOutlinedInput-root': {
+                      fontWeight: '900', fontSize: '0.75rem', bgcolor: '#FAFAFA',
+                      '& fieldset': { borderColor: !auditReason.trim() ? '#D32F2F' : '#E65100' }
+                  }
+              }}
+          />
+          {!auditReason.trim() && (
+              <Typography variant="caption" sx={{ color: '#D32F2F', fontWeight: '1000', fontSize: '0.55rem', mt: 0.5, display: 'block' }}>
+                  🛑 LOCK ACTIVE: Deferral requires a forensic justification.
+              </Typography>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2, pt: 0 }}>
+          <Button onClick={() => setOpenDefer(false)} sx={{ fontWeight: 'bold', color: '#757575' }}>Cancel</Button>
+          <Button 
+            onClick={saveDefer} 
+            variant="contained" 
+            disabled={!auditReason.trim()}
+            sx={{ bgcolor: '#E65100', fontWeight: 'bold', '&.Mui-disabled': { bgcolor: '#e0e0e0' } }}
+          >
+            Confirm Deferral
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* NO-SHOW CONFIRMATION DIALOG */}
+      <Dialog open={openNoShow} onClose={() => setOpenNoShow(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: '1000', color: '#D32F2F', pb: 1 }}>Flag as No-Show</DialogTitle>
+        <DialogContent>
+          <Typography variant="caption" sx={{ display: 'block', mb: 2, color: '#5D4037', fontStyle: 'italic', lineHeight: 1.4 }}>
+            Flagging a patient as <strong>No-Show</strong> closes the slot and impacts the client's reliability score. 
+            This action is permanent for the today's audit.
+          </Typography>
+
+          <Typography variant="overline" sx={{ fontWeight: '1000', color: '#D32F2F', display: 'block', mb: 1, fontSize: '0.65rem', letterSpacing: 1 }}>
+              ✍️ MANDATORY FORENSIC JUSTIFICATION
+          </Typography>
+          <TextField
+              fullWidth
+              multiline
+              rows={2}
+              placeholder="e.g., Patient failed to arrive after 30 mins"
+              value={auditReason}
+              onChange={(e) => setAuditReason(e.target.value)}
+              sx={{
+                  '& .MuiOutlinedInput-root': {
+                      fontWeight: '900', fontSize: '0.75rem', bgcolor: '#FAFAFA',
+                      '& fieldset': { borderColor: !auditReason.trim() ? '#D32F2F' : '#D32F2F' }
+                  }
+              }}
+          />
+          {!auditReason.trim() && (
+              <Typography variant="caption" sx={{ color: '#D32F2F', fontWeight: '1000', fontSize: '0.55rem', mt: 0.5, display: 'block' }}>
+                  🛑 LOCK ACTIVE: This audit action requires a reason.
+              </Typography>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2, pt: 0 }}>
+          <Button onClick={() => setOpenNoShow(false)} sx={{ fontWeight: 'bold', color: '#757575' }}>Cancel</Button>
+          <Button 
+            onClick={saveNoShow} 
+            variant="contained" 
+            disabled={!auditReason.trim()}
+            sx={{ bgcolor: '#D32F2F', fontWeight: 'bold', '&.Mui-disabled': { bgcolor: '#e0e0e0' } }}
+          >
+            Confirm No-Show
           </Button>
         </DialogActions>
       </Dialog>

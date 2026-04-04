@@ -3,7 +3,7 @@ import {
   Dialog, Slide, AppBar, Toolbar, IconButton, Typography, Button, 
   Box, Paper, Avatar, Chip, TextField, FormControl, InputLabel, 
   Select, MenuItem, List, ListItemText, ListSubheader, Grid, // MUI v6 Grid
-  Stack, Divider, Collapse, Tooltip, InputBase, alpha
+  Stack, Divider, Collapse, Tooltip, InputBase, alpha, FormControlLabel, Switch
 } from '@mui/material';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, 
@@ -185,6 +185,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   const [nutritionFactor, setNutritionFactor] = useState(1.6); // Default: Neutered Adult
   const [fullscreenField, setFullscreenField] = useState(null); 
   const [isUnifiedZen, setIsUnifiedZen] = useState(false);
+  const [syncToCRM, setSyncToCRM] = useState(false); // SHIFT 5.6: THE CLINICAL SOVEREIGNTY GATE
   
   // --- 🆕 REHAB & MOBILITY STATES ---
   const [lamenessGrade, setLamenessGrade] = useState(0); // 0-5
@@ -680,7 +681,44 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         processedBy: vetName
       });
 
-      // 4. PROPAGATE VITALS TO PET PROFILE (DASHBOARD TRENDS)
+      // 4. THE CLINICAL SOVEREIGNTY GATE (IDENTITY SYNC)
+      if (syncToCRM && patient.petId && patient.petId !== "WALK_IN_PET") {
+          // A. UPDATE MASTER PET (Biometric Alignment)
+          await updateDoc(doc(db, "pets", patient.petId), {
+              name: patient.petName,
+              species: patient.petSpecies,
+              breed: patient.petBreed,
+              gender: patient.petGender,
+              isNeutered: patient.petIsNeutered,
+              dob: patient.petBirthdate,
+              isAgeExact: patient.isAgeExact !== false,
+              "audit.lastSyncDate": Timestamp.now(),
+              "audit.syncStaff": vetName,
+              "audit.syncReason": "Clinical Session Biometric Sync"
+          });
+
+          // B. UPDATE MASTER CLIENT (Logistical Alignment)
+          if (patient.ownerId && patient.ownerId !== "WALK_IN") {
+              await updateDoc(doc(db, "clients", patient.ownerId), {
+                  fullName: patient.ownerName,
+                  phone: patient.ownerPhone,
+                  "audit.lastPhoneUpdate": Timestamp.now()
+              });
+          }
+
+          // C. LOG FORENSIC OVERRIDE IN PULSE
+          await updateDoc(doc(db, "appointments", patient.id), {
+              clinicalPulse: arrayUnion({
+                  eventId: `sync_${Date.now()}`,
+                  type: 'CRM_SYNC_SUCCESS',
+                  timestamp: Timestamp.now(),
+                  staffName: vetName,
+                  note: "Master CRM updated with clinical corrections."
+              })
+          });
+      }
+
+      // 5. PROPAGATE VITALS TO PET PROFILE (DASHBOARD TRENDS)
       if (patient.petId && patient.petId !== "WALK_IN_PET") {
           await updateDoc(doc(db, "pets", patient.petId), {
               "lastVitals.weight": soapData.objWeight || null,
@@ -1873,6 +1911,32 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
 
             <Grid size={{ xs: 12 }}>
               <Box sx={{ py: 4, textAlign: 'center' }}>
+                  {/* 🧬 SHIFT 5.6: CLINICAL SOVEREIGNTY SYNC BOX */}
+                  {!isRecordLocked && (
+                      <Box sx={{ 
+                          maxWidth: 800, mx: 'auto', mb: 4, p: 3, 
+                          bgcolor: '#FFF8E1', border: '1px solid #FFD54F', borderLeft: '8px solid #FF8F00',
+                          textAlign: 'left', borderRadius: 2, boxShadow: '0 8px 32px rgba(255, 143, 0, 0.1)'
+                      }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 1.5 }}>
+                              <WarningIcon sx={{ color: '#FF8F00', fontSize: 28 }} />
+                              <Typography variant="h6" sx={{ fontWeight: 900, color: '#FF8F00', letterSpacing: 0.5 }}>⚠️ PERMANENT CRM DATA SYNCHRONIZATION</Typography>
+                          </Box>
+                          <Typography variant="body2" sx={{ fontWeight: 700, color: '#5D4037', lineHeight: 1.6, mb: 2 }}>
+                              By enabling this toggle, you are authorizing the system to overwrite the <b>Master CRM Record</b> (Owner Info & Pet Biometrics) with today's intake corrections. This action is <b>irreversible</b> and establishes a new baseline for all future clinical visits and historical audits.
+                          </Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, bgcolor: 'rgba(0,0,0,0.03)', borderRadius: 1 }}>
+                              <Typography sx={{ fontWeight: 900, fontSize: '0.8rem', color: '#3E2723' }}>PROPAGATE CHANGES TO MASTER DATABASE</Typography>
+                              <FormControlLabel
+                                  control={<Switch checked={syncToCRM} onChange={(e) => setSyncToCRM(e.target.checked)} color="warning" />}
+                                  label={syncToCRM ? "AUTHORIZED" : "LOCALIZED ONLY"}
+                                  labelPlacement="start"
+                                  sx={{ '& .MuiFormControlLabel-label': { fontWeight: 1000, fontSize: '0.7rem', mr: 2, color: syncToCRM ? '#2E7D32' : '#757575' } }}
+                              />
+                          </Box>
+                      </Box>
+                  )}
+
                   {!isRecordLocked ? (
                       <>
                         <Typography variant="body2" color="textSecondary" sx={{ fontStyle: 'italic', mb: 2, fontSize: '0.7rem' }}>Authorized Clinician: <span style={{fontWeight: 900, color: COLORS.brand}}>{auth.currentUser?.displayName || 'Session User'}</span></Typography>

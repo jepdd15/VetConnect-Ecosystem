@@ -22,6 +22,7 @@ import ScaleIcon from '@mui/icons-material/Scale';
 import PersonOffIcon from '@mui/icons-material/PersonOff';
 import HowToRegIcon from '@mui/icons-material/HowToReg';
 import EventNoteIcon from '@mui/icons-material/EventNote';
+import UndoIcon from '@mui/icons-material/Undo';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 
 const formatDuration = (totalMinutes) => {
@@ -61,7 +62,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
     field: 'identity', headerName: 'Patient Identity', flex: 1, minWidth: 220, 
     resizable: false, sortable: false, disableColumnMenu: true,
     renderCell: (p) => {
-      const isWalkIn = p.row.ownerId === 'WALK_IN_USER' || String(p.row.ownerId).includes('GUEST_');
+      const isWalkIn = p.row.isWalkIn === true || p.row.ownerId === 'WALK_IN_USER' || String(p.row.ownerId).includes('GUEST_') || p.row.ticketPrefix === 'W' || p.row.ticketPrefix === 'E';
       const petAllergies = p.row.petAllergies || '';
       const hasSpecificAllergies = petAllergies.trim().length > 0 && petAllergies.toUpperCase() !== 'NONE';
       const petAge = calculateAgeString(p.row.petBirthdate, p.row.isAgeExact);
@@ -104,8 +105,15 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                 </Box>
                 
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5 }}>PHYSICAL</Typography>
+                    <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5 }}>WEIGHT</Typography>
                     <Typography sx={{ color: '#1A1A1A', fontWeight: '900', fontSize: '0.85rem' }}>{p.row.petWeight ? `${p.row.petWeight} KG` : 'WEIGH REQUIRED'}</Typography>
+                </Box>
+
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5 }}>COLOR / MARKINGS</Typography>
+                    <Typography sx={{ color: '#1A1A1A', fontWeight: '900', fontSize: '0.82rem', maxWidth: 120, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {p.row.color || p.row.petColor || 'NOT RECORDED'}
+                    </Typography>
                 </Box>
 
                 {/* 🧬 FORENSIC ALLERGY HARDENING: THE VERIFIED NEGATIVE */}
@@ -157,6 +165,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
           <Box sx={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0, justifyContent: 'center' }}>
             <Box 
                 onMouseEnter={(e) => actions.handleHoverStart(e, 'identity', PassportCard)}
+                onMouseLeave={actions.handleHoverEnd}
                 sx={{ display: 'flex', flexDirection: 'column', width: '100%', cursor: 'zoom-in', gap: 0 }}
             >
                 {/* LINE 1: THE PATIENT HERO */}
@@ -213,6 +222,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
       return (
         <Box 
           onMouseEnter={(e) => actions.handleHoverStart(e, 'notes', p.row.notes)}
+          onMouseLeave={actions.handleHoverEnd}
           sx={{ 
             display: 'flex',
             flexDirection: 'column',
@@ -281,6 +291,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
         <Box 
           /* FORCE RELOAD: VETCONNECT-HUD-SERVICES-SCALED */
           onMouseEnter={(e) => actions.handleHoverStart(e, 'services', services)}
+          onMouseLeave={actions.handleHoverEnd}
           sx={{ 
             display: 'flex', 
             flexDirection: 'column',
@@ -468,7 +479,21 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
         <Box 
           sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%', position: 'relative', paddingLeft: 0, cursor: 'help' }}
           onMouseEnter={(e) => actions.handleHoverStart(e, 'timing', p.row)}
+          onMouseLeave={actions.handleHoverEnd}
         >
+            {p.row.caseDay > 1 && (
+                <Box sx={{ 
+                    position: 'absolute', top: 8, right: 12, 
+                    bgcolor: '#FFF', border: '1.5px solid #5D4037', 
+                    borderRadius: '50%', width: 16, height: 16, 
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                    zIndex: 2, boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                }}>
+                    <Typography sx={{ color: '#5D4037', fontSize: '0.65rem', fontWeight: '1000' }}>
+                        {p.row.caseDay}
+                    </Typography>
+                </Box>
+            )}
             <Typography sx={{ color: '#5D4037', fontWeight: '1000', lineHeight: 1, fontSize: '1.2rem', letterSpacing: '-0.5px' }}>
               {primaryLabel}
             </Typography>
@@ -499,14 +524,33 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
 
       if (params.row.status === 'pending') {
         return (
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, width: '100%', height: '100%' }}>
-            <Button size="small" variant="contained" color="success" sx={btnStyle} startIcon={<CheckCircleIcon sx={{fontSize:'16px !important'}} />} onClick={() => actions.handleStatusChange(params.row, 'confirmed')}>Accept</Button>
-            <Button size="small" variant="outlined" sx={{ ...btnStyle, color: '#5D4037', borderColor: '#D7CCC8' }} onClick={() => actions.handleDefer(params.row)}>Defer</Button>
-            <Button size="small" variant="outlined" color="error" sx={btnStyle} onClick={() => { 
-                actions.setSelectedId(params.row.id); 
-                actions.handleMenuClick({ currentTarget: null }, params.row); // SENSOR SYNC
-                actions.setOpenReject(true); 
-            }}>Reject</Button>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 0.8, width: '100%', height: '100%', py: 1 }}>
+            
+            {/* TOP ROW: PRIMARY ACCEPTANCE GATE & AUDIT ANCHOR */}
+            <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', gap: 1, mb: 0.6 }}>
+                <Button 
+                    variant="contained" 
+                    size="small" 
+                    fullWidth
+                    color="success"
+                    startIcon={<CheckCircleIcon sx={{ fontSize: '14px !important' }} />} 
+                    sx={{ ...btnStyle, flexGrow: 1, fontWeight: '1000', height: 32, bgcolor: '#2E7D32' }} 
+                    onClick={() => actions.handleStatusChange(params.row, 'confirmed')}
+                >
+                    Accept
+                </Button>
+                <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)} sx={{ border: '1px solid rgba(0,0,0,0.1)', color: '#5D4037', flexShrink: 0 }}><MoreVertIcon fontSize="small" /></IconButton>
+            </Box>
+
+            {/* SECONDARY TRIAGE UTILITIES (DEFER/REJECT) */}
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.5, width: '100%' }}>
+                <Button variant="outlined" size="small" sx={{...btnStyle, fontSize: '0.65rem', px: 0, color: '#5D4037', borderColor: '#D7CCC8', minWidth: 0, height: 26}} onClick={() => actions.handleDefer(params.row)}>Defer</Button>
+                <Button variant="outlined" size="small" color="error" sx={{...btnStyle, fontSize: '0.65rem', px: 0, fontWeight: 'bold', minWidth: 0, height: 26}} onClick={() => { 
+                    actions.setSelectedId(params.row.id); 
+                    actions.handleMenuClick({ currentTarget: null }, params.row); // SENSOR SYNC
+                    actions.setOpenReject(true); 
+                }}>Reject</Button>
+            </Box>
           </Box>
         );
       }
@@ -516,26 +560,30 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
         
         return (
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 0.8, width: '100%', height: '100%', py: 1 }}>
-            {/* PRIMARY: CHECK-IN (LOCKED IN PREVIEW) */}
-            <Button 
-                variant="contained" 
-                size="small" 
-                fullWidth
-                disabled={isTomorrow}
-                startIcon={<HowToRegIcon sx={{ fontSize: '14px !important' }} />} 
-                sx={{ 
-                    ...btnStyle, 
-                    bgcolor: isTomorrow ? '#BDBDBD' : '#1976D2', 
-                    fontWeight: '1000', 
-                    mb: 0.6,
-                    height: 32,
-                    boxShadow: isTomorrow ? 'none' : '0 4px 10px rgba(25, 118, 210, 0.3)',
-                    '&.Mui-disabled': { bgcolor: 'rgba(0,0,0,0.08)', color: 'rgba(0,0,0,0.26)' }
-                }} 
-                onClick={() => actions.handleOpenAssign(params.row, 'check-in')}
-            >
-                {isTomorrow ? 'Check-In Locked' : 'Check In'}
-            </Button>
+            
+            {/* TOP ROW: PRIMARY GATEKEEPER & AUDIT ANCHOR */}
+            <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', gap: 1, mb: 0.6 }}>
+                <Button 
+                    variant="contained" 
+                    size="small" 
+                    fullWidth
+                    disabled={isTomorrow}
+                    startIcon={<HowToRegIcon sx={{ fontSize: '14px !important' }} />} 
+                    sx={{ 
+                        ...btnStyle, 
+                        flexGrow: 1,
+                        bgcolor: isTomorrow ? '#BDBDBD' : '#1976D2', 
+                        fontWeight: '1000', 
+                        height: 32,
+                        boxShadow: isTomorrow ? 'none' : '0 4px 10px rgba(25, 118, 210, 0.3)',
+                        '&.Mui-disabled': { bgcolor: 'rgba(0,0,0,0.08)', color: 'rgba(0,0,0,0.26)' }
+                    }} 
+                    onClick={() => actions.handleOpenAssign(params.row, 'check-in')}
+                >
+                    {isTomorrow ? 'Locked' : 'Check In'}
+                </Button>
+                <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)} sx={{ border: '1px solid rgba(0,0,0,0.1)', color: '#5D4037', flexShrink: 0 }}><MoreVertIcon fontSize="small" /></IconButton>
+            </Box>
             
             {/* SECONDARY UTILITY GRID (100% CASE COVERAGE) */}
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.5, width: '100%' }}>
@@ -595,13 +643,12 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
             <Button 
                 variant="contained" 
                 size="small" 
-                sx={{...btnStyle, bgcolor: '#5D4037', '&:hover': { bgcolor: '#3E2723' }, minWidth: 120}} 
+                sx={{...btnStyle, bgcolor: '#5D4037', '&:hover': { bgcolor: '#3E2723' }, minWidth: 140}} 
                 onClick={() => actions.handleStatusChange(params.row, 'in-consult')}
             >
                 START CONSULT
             </Button>
-            <Button variant="outlined" size="small" sx={{...btnStyle, color: '#5D4037', borderColor: '#D7CCC8', minWidth: 80}} onClick={(e) => actions.handleMenuClick(e, params.row)}>Options</Button>
-            <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)}><MoreVertIcon fontSize="small" /></IconButton>
+            <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)} sx={{ color: '#5D4037' }}><MoreVertIcon fontSize="small" /></IconButton>
           </Box>
         );
       }
@@ -612,21 +659,54 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
             <Button 
                 variant="contained" 
                 size="small" 
-                sx={{...btnStyle, bgcolor: '#5D4037', '&:hover': { bgcolor: '#3E2723' }, minWidth: 120}} 
+                startIcon={<AutoFixHighIcon sx={{ fontSize: '14px !important' }} />}
+                sx={{...btnStyle, bgcolor: '#006064', '&:hover': { bgcolor: '#004D40' }, minWidth: 140}} 
                 onClick={() => actions.handleOpenConsult(params.row)}
             >
-                CONSULT
+                WORKSPACE
             </Button>
-            <Button variant="outlined" size="small" sx={{...btnStyle, color: '#5D4037', borderColor: '#D7CCC8', minWidth: 80}} onClick={(e) => actions.handleMenuClick(e, params.row)}>Options</Button>
-            <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)}><MoreVertIcon fontSize="small" /></IconButton>
+            <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)} sx={{ color: '#5D4037' }}><MoreVertIcon fontSize="small" /></IconButton>
+          </Box>
+        );
+      }
+
+      if (params.row.status === 'dispense') {
+        return (
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.8, width: '100%', height: '100%' }}>
+            <Button 
+                variant="contained" 
+                size="small" 
+                startIcon={<LocalHospitalIcon sx={{ fontSize: '14px !important' }} />}
+                sx={{...btnStyle, bgcolor: '#C62828', '&:hover': { bgcolor: '#B71C1C' }, minWidth: 140}} 
+                onClick={() => actions.handleStatusChange(params.row, 'payment')}
+            >
+                DISPENSE
+            </Button>
+            <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)} sx={{ color: '#5D4037' }}><MoreVertIcon fontSize="small" /></IconButton>
+          </Box>
+        );
+      }
+
+      if (params.row.status === 'payment') {
+        return (
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.8, width: '100%', height: '100%' }}>
+            <Button 
+                variant="contained" 
+                size="small" 
+                startIcon={<PaidIcon sx={{ fontSize: '14px !important' }} />}
+                sx={{...btnStyle, bgcolor: '#FF8F00', '&:hover': { bgcolor: '#FF6F00' }, minWidth: 140}} 
+                onClick={() => actions.handleOpenPOS?.(params.row)}
+            >
+                BILLING
+            </Button>
+            <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)} sx={{ color: '#5D4037' }}><MoreVertIcon fontSize="small" /></IconButton>
           </Box>
         );
       }
 
       return (
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, width: '100%', height: '100%' }}>
-           <Button variant="outlined" size="small" sx={{...btnStyle, color: '#5D4037', borderColor: '#D7CCC8', minWidth: 120}} onClick={(e) => actions.handleMenuClick(e, params.row)}>Options</Button>
-           <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)}><MoreVertIcon fontSize="small" /></IconButton>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>
+           <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)} sx={{ border: '1px solid rgba(0,0,0,0.1)', color: '#5D4037' }}><MoreVertIcon fontSize="small" /></IconButton>
         </Box>
       );
     }

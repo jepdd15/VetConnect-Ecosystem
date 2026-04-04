@@ -18,8 +18,12 @@ import CakeIcon from '@mui/icons-material/Cake';
 
 import { collection, doc, runTransaction, Timestamp, query, where, getDocs, writeBatch, setDoc } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
+import { useUser } from '../../context/UserContext';
 
 export default function WalkInModal({ open, onClose, servicesList, departments }) {
+  const { profile } = useUser();
+  const staffSignature = profile?.fullName || 'System/Admin';
+  
   const [loading, setLoading] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [confirmSubmit, setConfirmSubmit] = useState(false);
@@ -271,12 +275,12 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
         const isEmergency = selectedServices.includes('Emergency');
         const primaryDept = mappedServices[0]?.department || 'General';
         
-        const rawBreed = (walkInType === 'guest' || isNewPet) ? guestPetData.breed : (selectedPet?.breed || '');
+        const rawBreed = (walkInType === 'guest' || isNewPet) ? guestPetData.breed : (guestPetData.breed || selectedPet?.breed || '');
         const resolvedBreed = rawBreed === 'Mixed' ? 'Mixed Breed' : (rawBreed || 'Mixed Breed');
         
-        const resolvedGender = (walkInType === 'guest' || isNewPet) ? guestPetData.gender : (selectedPet?.gender || 'Unknown');
-        const resolvedColor = (walkInType === 'guest' || isNewPet) ? guestPetData.color : (selectedPet?.color || 'N/A');
-        const resolvedIsNeutered = (walkInType === 'guest' || isNewPet) ? guestPetData.isNeutered : (selectedPet?.isNeutered || false);
+        const resolvedGender = (walkInType === 'guest' || isNewPet) ? guestPetData.gender : (guestPetData.gender || selectedPet?.gender || 'Unknown');
+        const resolvedColor = (walkInType === 'guest' || isNewPet) ? guestPetData.color : (guestPetData.color || selectedPet?.color || 'N/A');
+        const resolvedIsNeutered = (walkInType === 'guest' || isNewPet) ? guestPetData.isNeutered : (guestPetData.isNeutered !== undefined ? guestPetData.isNeutered : (selectedPet?.isNeutered || false));
         
         // --- 🗓️ TEMPORAL ALIGNMENT ENGINE (CHRONOS) - APPOINTMENT SNAPSHOT ---
         let finalDOB = null;
@@ -333,13 +337,13 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
           assignedVetId: null, assignedVet: 'Unassigned',
           clinicalPulse: [
             {
-              eventId: `pulse_walkin_${Date.now()}`,
+              eventId: `pulse_walkin_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
               type: 'INCEPTION',
               toStatus: 'arrived',
               timestamp: Timestamp.now(),
-              staffId: 'system_walkin', // In a real scenario, this would be the logged-in staff
-              staffName: 'Front Desk / Walk-In',
-              note: `Manual Intake: ${isEmergency ? 'URGENT ER ' : ''}${triageNotes.substring(0, 50)}${triageNotes.length > 50 ? '...' : ''}`
+              staffId: profile?.id || 'system_walkin', 
+              staffName: staffSignature,
+              note: `Physical Intake [WT: ${resolvedWeight || 'N/A'}kg]: ${isEmergency ? '🚨 URGENT ER ' : ''}${triageNotes}`
             }
           ]
         };
@@ -348,7 +352,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
         transaction.set(newApptRef, appointmentPayload);
       });
       
-      alert(`Multi-Service Visit Logged!`);
+      showToast(`Patient successfully added to queue.`, "success");
       handleClose();
     } catch (error) { 
       setErrorMsg("Error: " + error.message); 
@@ -466,19 +470,33 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
                         />
                         
                         {selectedPet && !isNewPet && (
-                          <TextField 
-                            label="ARRIVAL WEIGHT (KG)" 
-                            size="small"
-                            variant="outlined" 
-                            type="number"
-                            inputProps={{ step: '0.1', min: '0', style: { fontWeight: '1000', fontSize: '1rem', color: '#1B5E20' } }}
-                            InputLabelProps={{ sx: { fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' } }}
-                            value={guestPetData.weight} 
-                            onChange={e => setGuestPetData({...guestPetData, weight: e.target.value})}
-                            helperText={selectedPet.lastWeight ? `LAST WEIGHT: ${selectedPet.lastWeight} KG` : 'NO PREVIOUS WEIGHT'}
-                            FormHelperTextProps={{ sx: { fontWeight: '1000', color: '#5D4037', fontSize: '0.7rem' } }}
-                            fullWidth
-                          />
+                          <Box sx={{ display: 'flex', gap: 1 }}>
+                            <TextField 
+                              label="ARRIVAL WEIGHT (KG)" 
+                              size="small"
+                              variant="outlined" 
+                              type="number"
+                              inputProps={{ step: '0.1', min: '0', style: { fontWeight: '1000', fontSize: '1rem', color: '#1B5E20' } }}
+                              InputLabelProps={{ sx: { fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' } }}
+                              value={guestPetData.weight} 
+                              onChange={e => setGuestPetData({...guestPetData, weight: e.target.value})}
+                              helperText={selectedPet.lastWeight ? `LAST WEIGHT: ${selectedPet.lastWeight} KG` : 'NO PREVIOUS WEIGHT'}
+                              FormHelperTextProps={{ sx: { fontWeight: '1000', color: '#5D4037', fontSize: '0.7rem' } }}
+                              fullWidth
+                            />
+                            <TextField 
+                              label="COLOR / MARKINGS" 
+                              size="small"
+                              variant="outlined" 
+                              sx={{ flex: 1.5 }}
+                              inputProps={{ style: { fontWeight: '1000', fontSize: '0.85rem' } }}
+                              InputLabelProps={{ sx: { fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' } }}
+                              value={guestPetData.color || selectedPet.color || ''} 
+                              onChange={e => setGuestPetData({...guestPetData, color: e.target.value})}
+                              helperText="VERIFY IDENTITY"
+                              FormHelperTextProps={{ sx: { fontWeight: '1000', color: '#5D4037', fontSize: '0.7rem' } }}
+                            />
+                          </Box>
                         )}
                       </Stack>
                     )

@@ -131,7 +131,7 @@ export function useQueueActions() {
   const markNoShow = async (row, reason) => {
     // THE PHYSICAL INTEGRITY GUARD: If they arrived, they are NOT a no-show.
     if (row.timeArrived || row.jsArrived) {
-      throw new Error(`❌ INTEGRITY REFUSAL: This patient is physically present (Arrived). Use Cancel or Re-book instead.`);
+      throw new Error(`❌ INTEGRITY REFUSAL: This patient is physically present (Arrived). Use Cancel or Reschedule instead.`);
     }
 
     if (!reason || reason.trim().length === 0) {

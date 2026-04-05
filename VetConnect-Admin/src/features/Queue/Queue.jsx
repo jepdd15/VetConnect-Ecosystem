@@ -129,7 +129,7 @@ export default function Queue() {
   const [patientResolutions, setPatientResolutions] = useState({}); // Stores the action for EACH patient
   const [touchedPatients, setTouchedPatients] = useState(new Set()); // PHASE 3: THE HARD-GATE
   const [auditReasons, setAuditReasons] = useState({}); // PHASE 4: FORENSIC JUSTIFICATIONS
-  const [targetDates, setTargetDates] = useState({}); // PHASE 2/3: RE-BOOKING WINDOWS
+  const [targetDates, setTargetDates] = useState({}); // PHASE 2/3: RESCHEDULING WINDOWS
   const [isForcedCleanup, setIsForcedCleanup] = useState(false); // The Hostage Lock
   const [hasGhostPatients, setHasGhostPatients] = useState(false);
 
@@ -280,10 +280,31 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
         const isHighStakes = ['arrived', 'in-consult', 'dispensing', 'billing', 'confirmed', 'scheduled', 'payment', 'on-hold'].includes(rawStatus);
 
         // --- 🧬 FORENSIC COMMIT ENGINE: TRIAGE DYNAMICS ---
-        if (action === 'rebook' || action === 'confined' || action === 'carry-over') { 
-          // PHASE 4.4.3: Support dynamic re-booking clinical windows
-          const manualDate = targetDateMap[patient.id] ? new Date(`${targetDateMap[patient.id]}T08:00:00`) : defaultTargetDate;
-          const pulseType = (rawStatus === 'confirmed' || rawStatus === 'scheduled') ? 'TRIAGE_REBOOK' : 'TRIAGE_CARRY_OVER';
+        if (action === 'rebook' || action === 'confined' || action === 'carry-over' || action === 'defer') { 
+          // --- 🧬 SMART-SHIFT CALCULATION ---
+          // Determine if we are CLOSING today's shift or RECOVERING yesterday's ghosts
+          let recordDateObj;
+          if (patient.scheduledDate?.toDate) recordDateObj = patient.scheduledDate.toDate();
+          else if (patient.scheduledDate) recordDateObj = new Date(patient.scheduledDate);
+          else recordDateObj = patient.createdAt?.toDate ? patient.createdAt.toDate() : new Date();
+
+          const recordDayStr = recordDateObj.toISOString().split('T')[0];
+          const isFromPast = recordDayStr < todayStr;
+
+          // LOGIC: If a Friday ghost is processed on Sunday, "Defer" targets Sunday (Today).
+          // If a Friday record is processed on Friday night, "Defer" targets Saturday (Tomorrow).
+          const calculatedDefault = new Date();
+          if (isFromPast) {
+            // Recovery Mode: Pull to Today at 8 AM
+            calculatedDefault.setHours(8, 0, 0, 0);
+          } else {
+            // Maintenance Mode: Push to Tomorrow at 8 AM
+            calculatedDefault.setDate(calculatedDefault.getDate() + 1); 
+            calculatedDefault.setHours(8, 0, 0, 0);
+          }
+
+          const manualDate = targetDateMap[patient.id] ? new Date(`${targetDateMap[patient.id]}T08:00:00`) : calculatedDefault;
+          const pulseType = (action === 'defer') ? 'TRIAGE_DEFER' : ((rawStatus === 'confirmed' || rawStatus === 'scheduled') ? 'TRIAGE_REBOOK' : 'TRIAGE_CARRY_OVER');
 
           if (patient.status === 'carried-over') {
             batch.update(oldRef, { 
@@ -305,7 +326,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
             });
           } else {
             // Create a clean Action-Aware prefix
-            const actionLabel = action === 'carry-over' ? 'Carry-over' : 'Re-book';
+            const actionLabel = action === 'carry-over' ? 'Carry-over' : 'Reschedule';
             const triagePrefix = `[Clinical Triage: ${actionLabel}]`;
             
             // Avoid stacking duplicate prefixes
@@ -354,7 +375,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
                     timestamp: Timestamp.now(),
                     staffId: user?.uid || 'system',
                     staffName: staffSignature,
-                    note: `Generated via Triage Re-booking from Appt ${patient.id}`
+                    note: `Generated via Triage Rescheduling from Appt ${patient.id}`
                   }
                ]
             }); 
@@ -485,7 +506,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
         setPatientResolutions(initialRes);
         setTouchedPatients(initialTouched);
         setAuditReasons({}); // Reset justifications
-        setTargetDates({}); // Reset re-booking windows
+        setTargetDates({}); // Reset rescheduling windows
         setOpenEndDay(true); 
       } else { 
         if (isAuto) confirmResetDay(true); 
@@ -800,17 +821,28 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
               return p;
             }));
 
-            setLeftoverPatients(enrichedGhosts);
+            // --- 🧬 MASTER REGISTRY CONSOLIDATION ---
+            // Combine Today's Unfinished Rows + Historical Ghosts
+            const unfinishedRows = rows.filter(r => ['pending', 'confirmed', 'arrived', 'in-consult', 'dispensing', 'billing', 'scheduled', 'on-hold', 'confined'].includes(r.status));
+            
+            // Forensic Unique Merge (Deduplication by ID)
+            const masterMap = new Map();
+            enrichedGhosts.forEach(p => masterMap.set(p.id, p));
+            unfinishedRows.forEach(p => {
+               if (!masterMap.has(p.id)) masterMap.set(p.id, p);
+            });
+
+            const unifiedList = Array.from(masterMap.values());
+            setLeftoverPatients(unifiedList);
             
             setPatientResolutions(prev => {
               const updated = { ...prev };
-              enrichedGhosts.forEach(p => {
+              unifiedList.forEach(p => {
                 if (!updated[p.id]) {
                   const rawStatus = (p.status || 'unknown').toLowerCase();
-                  const isHighStakes = ['arrived', 'in-consult', 'dispensing', 'billing', 'confirmed', 'scheduled', 'payment'].includes(rawStatus);
+                  const isHighStakes = ['arrived', 'in-consult', 'dispensing', 'billing', 'confirmed', 'scheduled', 'payment', 'on-hold', 'confined'].includes(rawStatus);
 
-                  if (rawStatus === 'confined') updated[p.id] = 'confined';
-                  else if (rawStatus === 'pending') updated[p.id] = 'defer';
+                  if (rawStatus === 'pending') updated[p.id] = 'defer';
                   else if (isHighStakes) updated[p.id] = null; // FORCE MANUAL CHOICE
                   else updated[p.id] = 'cancel';
                 }
@@ -820,7 +852,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
 
             setTouchedPatients(prev => {
               const updated = new Set(prev);
-              enrichedGhosts.forEach(p => {
+              unifiedList.forEach(p => {
                 const rawStatus = (p.status || 'unknown').toLowerCase();
                 if (rawStatus === 'pending') updated.add(p.id);
               });
@@ -868,11 +900,11 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
         }
 
         // For all non-pending statuses, keep the strict scheduledDate pulse
-        // PHASE 4.4.4: THE TEMPORAL HEALER - Hide re-booked records from 'Today' if they were accidentally created for the past
+        // PHASE 4.4.4: THE TEMPORAL HEALER - Hide rescheduled records from 'Today' if they were accidentally created for the past
         // PHASE 4.4.10: DEEP CLEAN - Also hide legacy triage notes to clear 'Old Ghosts'
         const isTriagedRecord = 
           appt.isTriaged === true || 
-          appt.notes?.includes('[Triage Re-book]') || 
+          appt.notes?.includes('[Triage Reschedule]') || 
           appt.notes?.includes('[Clinical Triage:');
         
         if (isTriagedRecord) {
@@ -968,7 +1000,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
           if (appt.isTriaged === true) return false;
           
           // SHIELD 2: THE TEMPORAL RESET - If it has triage notes, it's NOT a past ghost.
-          if (appt.notes?.includes('[Triage Re-book]') || appt.notes?.includes('[Clinical Triage:')) return false;
+          if (appt.notes?.includes('[Triage Reschedule]') || appt.notes?.includes('[Clinical Triage:')) return false;
 
           // SHIELD 3: THE DEFERRAL GATE - If it has a future triageDate, it's safe.
           const apptTriageDate = appt.triageDate;

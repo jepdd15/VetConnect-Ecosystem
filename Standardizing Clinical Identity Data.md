@@ -1774,3 +1774,130 @@ I have successfully sealed the logic leak and synchronized the system constants.
 The "Temporal DeLorean" is now fully calibrated and the logic is bulletproof across the entire dashboard.
 
 **Shall we proceed to Phase 5.7: Pharmacy & Financial Audit Signatures?**
+
+### User Input
+
+can you list down some possible github commit titles based on all the changes and implementations we made to the vetconnect codebase since the previous commit (feat: Implementation of the 'Forensic Clinical Command Center' with real-time triage and shift-reconciliation)?
+
+### Planner Response
+
+We have made significant forensic and clinical strides since the last commit. Based on our work in **Phase 5.6**, here are some structured GitHub commit titles and descriptions, ranging from a single "Master" commit to more detailed "Atomic" options.
+
+### 🧬 Option 1: The "Unified Forensic" Commit
+*Use this if you want to bundle all these refinements into one high-impact update.*
+
+**Title**: `feat: Clinical Identity Standardization & Forensic Temporal Ancestry`
+**Description**:
+- Hardened the "Clinical Carry-Over" engine with `accumulatedWaitMins` and `caseDay` tracking.
+- Implemented "Temporal DeLorean" navigation in the audit popup with `< DAY X OF Y >` arrows.
+- Standardized biometric fields (WEIGHT, COLOR/MARKINGS) across the ecosystem for data parity.
+- Implemented "Logic Shields" to prevent contradictory actions (No-Show gating, Arrived Reschedules).
+- Refined UI aesthetic with Coffee Brown branding and minimalist "Subtle Awareness" badges.
+
+---
+
+### 🧬 Option 2: Grouped Atomic Commits (Recommended)
+*Use these to keep your git history clean and traceable by feature area.*
+
+#### 1. Biometric Parity
+**Title**: `feat: Biometric Standardization & Mobile-to-Admin Data Parity`
+- Synchronized "COLOR / MARKINGS" as a first-class citizen across all intake touchpoints.
+- Standardized "WEIGHT" labeling in the `PassportCard` view to match clinical terminology.
+- Refactored the "Chronos" engine (Walk-In) to prioritize manual biometric intake over historical records.
+
+#### 2. Forensic UI Hardening
+**Title**: `feat: Forensic UI Hardening & Logical Action Gating`
+- Renamed "Forensic Reversion" to "Undo Status" for improved administrative clarity.
+- Decoupled Punctuality vs. Wait Time color logic to prevent "Arrival Stain" on long visits.
+- Strictly gated the "Flag as No-Show" action to prevent impossible actions on arrived patients.
+- Applied "Coffee Brown" branding to static audit metadata labels.
+
+#### 3. Temporal Continuity
+**Title**: `feat: Temporal DeLorean Navigation & Clinical Carry-Over Engine`
+- Implemented "Sticky Popover" logic to allow interactive temporal audit navigation.
+- Added `< DAY X OF Y >` session swapping to view exact timestamps from past visit days.
+- Introduced the "Case Day" minimalist badge system on the Triage Clock grid.
+- Hardened the Reschedule logic to "freeze" wait times during clinical carry-over events.
+
+---
+
+### 🧬 My Honest Recommendation:
+If your repository is being audited for a thesis or professional work, **Option 2** is superior. It demonstrates that you are treating **Identity**, **Logic**, and **Temporal Physics** as three distinct, professional engineering challenges.
+
+**Which of these directions fits your current deployment workflow best?**
+
+### User Input
+
+i used (option 1) "feat: Clinical Identity Standardization & Forensic Temporal Ancestry" as the title.
+
+now i manually triggered the @[VetConnect-Admin/src/features/Queue/EndOfDayModal.jsx] by clicking on the clear and reset queue button in the patient queue dashboard header and it seems that the online tab is missing or not counting the yoko record (second screenshot shows the @[VetConnect-Admin/src/features/Queue/EndOfDayModal.jsx]wizard).  it is current;y 11:15 pm saturday, april 4 for context.
+
+what could be the reason behind this? the other yoko record (our test walk-in we are using to test the various tabs in the patient queue dashboard grid) appears to be present or counted by the @[VetConnect-Admin/src/features/Queue/EndOfDayModal.jsx]wizard.
+
+please also clarify why the identity and the temporal audit is mismatched from the dashboard grid.
+
+
+
+*Viewed [Queue.jsx](file:///c:/Users/jepdd/Documents/VetConnect-Capstone/VetConnect-Admin/src/features/Queue/Queue.jsx) *
+
+*Grep searched codebase*
+
+*Grep searched codebase*
+
+*Viewed [Queue.jsx](file:///c:/Users/jepdd/Documents/VetConnect-Capstone/VetConnect-Admin/src/features/Queue/Queue.jsx) *
+
+*Viewed [Queue.jsx](file:///c:/Users/jepdd/Documents/VetConnect-Capstone/VetConnect-Admin/src/features/Queue/Queue.jsx) *
+
+*Viewed [Queue.jsx](file:///c:/Users/jepdd/Documents/VetConnect-Capstone/VetConnect-Admin/src/features/Queue/Queue.jsx) *
+
+*Viewed [Queue.jsx](file:///c:/Users/jepdd/Documents/VetConnect-Capstone/VetConnect-Admin/src/features/Queue/Queue.jsx) *
+
+### Planner Response
+
+I have completed the forensic research into why Yoko is "Missing" from the Online tab in your wizard.
+
+### 🧬 The Forensic Discovery:
+1.  **The "Ghost Scanner" Leak**: The `EndOfDayModal` (Wizard) currently relies on the `leftoverPatients` state, which is powered by a "Ghost Scanner." This scanner is programmed to strictly look for **past** unresolved records (`date < today`). 
+2.  **The Today Disconnect**: Because it's currently Saturday, April 4, the wizard assumes any record from "Today" is still active and doesn't need "clearing." However, since you are in **After-Hours Mode** and manually clicked **Clear and Reset**, you expect the wizard to account for *everything* you see on your screen—including "Today's" unresolved Online and Arrived records.
+3.  **The Identity Mismatch**: The wizard is likely pulling a different set of filtered "Ghost" data from the database than what your dashboard grid is displaying (which is strictly "Today's" shift). This creates a logical mismatch where the grid shows Yoko (Bengal), but the wizard might be seeing a different legacy record or nothing at all.
+
+### 🧬 The Solution:
+We need to unify the **Dashboard View** and the **Wizard Registry**. When the clinic "Clears the Queue," the wizard must ingest **100% of the unfinished records** currently visible in your tabs, plus any historical ghosts discovered in the background.
+
+I will now prepare a Phased Implementation Plan to unify these registries and fix the identity mismatches in the wizard cards.
+
+---
+
+# Implementation Plan: Forensic Wizard Unification & Identity Sync
+
+## User Review Required
+> [!IMPORTANT]
+> **Registry Unification**: I will be merging the "Ghost Scanner" (Background Past Records) with the "Active Shift" (Current Dashboard Rows) into a single `masterTriageAudit` list. This ensures that when you click "Clear," the wizard shows you exactly what was on your screen.
+
+## Proposed Changes
+
+### [Queue Component]
+
+#### [MODIFY] [Queue.jsx](file:///c:/Users/jepdd/Documents/VetConnect-Capstone/VetConnect-Admin/src/features/Queue/Queue.jsx)
+- **State Logic**: Refactor how `leftoverPatients` is calculated. It will now be a derived `useMemo` that combines the `ghosts` (past) with any `rows` (today) that have an unresolved status (`pending`, `arrived`, `in-consult`, etc.).
+- **Wizard Trigger**: Ensure the "Clear and Reset" button passes this unified list to the `EndOfDayModal`.
+
+### [Wizard Component]
+
+#### [MODIFY] [EndOfDayModal.jsx](file:///c:/Users/jepdd/Documents/VetConnect-Capstone/VetConnect-Admin/src/features/Queue/EndOfDayModal.jsx)
+- **Identity Sync**: Update the patient summary cards within the wizard to display the new **"COLOR / MARKINGS"** and **"WEIGHT"** fields, ensuring parity with the main dashboard grid.
+- **Audit Sync**: Standardize the timestamp labels to match the "Clinical Temporal Audit" branding we just finalized.
+
+## Open Questions
+- Do you want the "Online" records from *today* to be automatically deferred to *tomorrow* during a manual reset, or should they stay in the "Pending Audit" state for manual decision?
+
+## Verification Plan
+
+### Automated Tests
+- I will verify that the `countOnline` matches the number of online records displayed in the Wizard's first tab.
+
+### Manual Verification
+1. Open the Dashboard with at least 1 Online and 1 Arrived record for "Today."
+2. Click **Clear and Reset Queue**.
+3. Verify that the Wizard now shows both records across their respective tabs (Online and Active).
+4. Verify that the patient identity card in the wizard shows "BENGAL" and the correct Color/Weight.

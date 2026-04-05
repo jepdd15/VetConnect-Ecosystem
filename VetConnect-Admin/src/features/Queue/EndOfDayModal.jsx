@@ -77,16 +77,74 @@ const AuditPatientCard = React.memo(({
         setLocalReason(auditReason || "");
     }, [auditReason]);
 
+    const [expandedNotes, setExpandedNotes] = useState({});
+    const toggleNote = (id) => setExpandedNotes(prev => ({ ...prev, [id]: !prev[id] }));
+
     const handleReasonChange = (newVal) => {
         setLocalReason(newVal);
         onAuditReasonChange(patient.id, newVal);
     };
-    const milestones = [
-        { id: 'booked', label: 'BOOKED', val: patient.createdAt },
-        { id: 'scheduled', label: 'SCHED', val: patient.jsScheduled },
-        { id: 'arrived', label: 'ARRIVED', val: patient.timeArrived },
-        { id: 'started', label: 'STARTED', val: patient.timeStarted }
-    ].filter(m => m.val);
+    // --- 🧬 CHRONOS DATE-INDEXING ENGINE (V2 UNIFICATION) ---
+    const uniqueDates = React.useMemo(() => {
+        const pulse = patient.clinicalPulse || [];
+        if (pulse.length === 0) return [new Date().toDateString()];
+        
+        const dates = [...new Set(pulse.map(p => {
+            const d = p.timestamp?.toDate ? p.timestamp.toDate() : new Date(p.timestamp);
+            return d.toDateString();
+        }))].sort((a,b) => new Date(a) - new Date(b));
+        return dates;
+    }, [patient.clinicalPulse]);
+
+    const [activeCaseDay, setActiveCaseDay] = useState(uniqueDates.length - 1);
+
+    // --- ⚓ TEMPORAL ANCHOR (THE MIDNIGHT DETERRENT) ---
+    const operationalEnd = React.useMemo(() => {
+        const targetDateStr = uniqueDates[activeCaseDay];
+        const todayStr = new Date().toDateString();
+
+        if (targetDateStr === todayStr) {
+            return new Date(); // LIVE CLOCK for Today
+        } else {
+            // CAPPED at Midnight of that day (Operationally Fixed)
+            const endOfDay = new Date(targetDateStr);
+            endOfDay.setHours(23, 59, 59, 999);
+            return endOfDay;
+        }
+    }, [uniqueDates, activeCaseDay]);
+
+    const filteredPulse = React.useMemo(() => {
+        const pulse = patient.clinicalPulse || [];
+        const targetDateStr = uniqueDates[activeCaseDay];
+        return pulse.filter(p => {
+            const d = p.timestamp?.toDate ? p.timestamp.toDate() : new Date(p.timestamp);
+            return d.toDateString() === targetDateStr;
+        });
+    }, [patient.clinicalPulse, uniqueDates, activeCaseDay]);
+
+    const milestones = React.useMemo(() => {
+        const pulse = patient.clinicalPulse || [];
+        const voidedIds = new Set(pulse.filter(p => p.correctedEventId).map(p => p.correctedEventId));
+
+        if (filteredPulse.length === 0 && activeCaseDay === 0) {
+            // FALLBACK: If Day 1 Pulse is missing, use basic static milestones
+            return [
+                { id: 'booked', label: 'BOOKED', val: patient.createdAt },
+                { id: 'scheduled', label: 'SCHED', val: patient.jsScheduled },
+                { id: 'arrived', label: 'ARRIVED', val: patient.timeArrived, by: patient.arrivedBy },
+                { id: 'started', label: 'STARTED', val: patient.timeStarted, by: patient.startedBy }
+            ].filter(m => m.val);
+        }
+        return filteredPulse.map(p => ({
+            id: p.eventId,
+            label: p.toStatus ? p.toStatus.toUpperCase() : (p.type || 'EVENT'),
+            val: p.timestamp,
+            by: p.staffName,
+            isVoided: voidedIds.has(p.eventId), 
+            type: p.type,
+            note: p.note
+        }));
+    }, [filteredPulse, patient, activeCaseDay]);
 
     const totalEstMins = (patient.services || []).reduce((sum, s) => sum + (Number(s.duration || s.estMinutes) || 0), 0);
     const totalPrice = (patient.services || []).reduce((sum, s) => sum + (Number(s.price) || 0), 0);
@@ -152,7 +210,8 @@ const AuditPatientCard = React.memo(({
                     <Box sx={{ minWidth: 0 }}>
                         <Typography variant="h6" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: -0.5, lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{patient.petName}</Typography>
                         <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', textTransform: 'uppercase', fontSize: '0.62rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
-                            {patient.petSpecies || 'UNK'} • {patient.petBreed || 'MIXED'}
+                            {patient.petSpecies || 'UNK'} • {patient.petBreed || 'MIXED'} 
+                            {patient.petColor ? ` • ${patient.petColor.toUpperCase()}` : ''}
                         </Typography>
                         <Typography
                             variant="caption"
@@ -164,7 +223,7 @@ const AuditPatientCard = React.memo(({
                             }}
                         >
                             {isFemale ? <FemaleIcon sx={{ fontSize: 13, color: '#E91E63' }} /> : isMale ? <MaleIcon sx={{ fontSize: 13, color: '#1976D2' }} /> : <HelpCenterIcon sx={{ fontSize: 13, color: '#D32F2F' }} />}
-                            {petGenderLabel} • {petFixedStr}
+                            {petGenderLabel} • {petFixedStr} {patient.petWeight ? ` • ${patient.petWeight}kg` : ''}
                         </Typography>
                     </Box>
                 </Stack>
@@ -273,21 +332,21 @@ const AuditPatientCard = React.memo(({
             <Box sx={{ width: 300, borderRight: `1px solid ${clinicalBorder}`, bgcolor: '#FFF', p: 1.5, display: 'flex', flexDirection: 'column' }}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
                     <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1.2, fontSize: '0.6rem' }}>
-                        ⌛ {ancestorData ? `DAY ${ancestorData.caseDay}` : `DAY ${patient.caseDay || 1}`} • {ancestorData?.dateLabel || 'TEMPORAL AUDIT'}
+                        ⌛ DAY {activeCaseDay + 1} OF {uniqueDates.length} • {uniqueDates[activeCaseDay]}
                     </Typography>
                     <Stack direction="row" spacing={0.5}>
                         <IconButton
                             size="small"
-                            onClick={() => onFetchHistory(patient)}
-                            disabled={!!ancestorData || loadingHistory}
+                            onClick={() => setActiveCaseDay(prev => Math.max(0, prev - 1))}
+                            disabled={activeCaseDay === 0}
                             sx={{ border: '1px solid #D7CCC8' }}
                         >
-                            {loadingHistory ? <CircularProgress size={12} /> : <ArrowBackIosNewIcon sx={{ fontSize: 10 }} />}
+                            <ArrowBackIosNewIcon sx={{ fontSize: 10 }} />
                         </IconButton>
                         <IconButton
                             size="small"
-                            onClick={() => onClearHistory(patient.id)}
-                            disabled={!ancestorData}
+                            onClick={() => setActiveCaseDay(prev => Math.min(uniqueDates.length - 1, prev + 1))}
+                            disabled={activeCaseDay === uniqueDates.length - 1}
                             sx={{ border: '1px solid #D7CCC8' }}
                         >
                             <ArrowForwardIosIcon sx={{ fontSize: 10 }} />
@@ -318,14 +377,49 @@ const AuditPatientCard = React.memo(({
                         }
 
                         return (
-                            <Box key={m.id} sx={{ position: 'relative' }}>
-                                <Box sx={{ position: 'absolute', left: -20, top: 4, width: 8, height: 8, borderRadius: '50%', bgcolor: isLast ? '#2E7D32' : '#9E9E9E', border: '2px solid white' }} />
-                                <Typography variant="caption" sx={{ fontWeight: '1000', color: isLast ? '#2E7D32' : '#9E9E9E', fontSize: '0.58rem', display: 'block', letterSpacing: 0.3 }}>{m.label}</Typography>
-                                <Typography sx={{ fontWeight: '1000', fontSize: '0.8rem', color: '#1A1A1A' }}>
-                                    {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            <Box key={m.id || idx} sx={{ position: 'relative', opacity: m.isVoided ? 0.4 : 1 }}>
+                                <Box sx={{ position: 'absolute', left: -20, top: 4, width: 8, height: 8, borderRadius: '50%', bgcolor: m.isVoided ? '#BDBDBD' : (isLast ? '#2E7D32' : '#9E9E9E'), border: '2px solid white' }} />
+                                <Typography variant="caption" sx={{ 
+                                    fontWeight: '1000', 
+                                    color: m.isVoided ? '#BDBDBD' : (isLast ? '#2E7D32' : '#9E9E9E'), 
+                                    fontSize: '0.58rem', 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: 0.5, 
+                                    letterSpacing: 0.3 
+                                }}>
+                                    {m.label}
+                                    {m.isVoided && <Chip label="REVERTED" size="small" sx={{ height: 12, fontSize: '0.45rem', fontWeight: 1000, bgcolor: '#FFEBEE', color: '#D32F2F', borderRadius: 0.5 }} />}
                                 </Typography>
-                                {metricLabel && (
-                                    <Typography variant="caption" sx={{ fontStyle: 'italic', fontWeight: '1000', fontSize: '0.55rem', color: '#5D4037', mt: -0.2, display: 'block', textTransform: 'uppercase' }}>
+                                <Typography sx={{ 
+                                    fontWeight: '1000', 
+                                    fontSize: '0.8rem', 
+                                    color: m.isVoided ? '#9E9E9E' : '#1A1A1A',
+                                    textDecoration: m.isVoided ? 'line-through' : 'none'
+                                }}>
+                                    {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    {m.by && <span style={{ fontWeight: '1000', marginLeft: '6px', fontSize: '0.75rem', color: m.isVoided ? '#9E9E9E' : '#1A1A1A' }}>● {m.by}</span>}
+                                </Typography>
+                                {m.note && (
+                                    <Typography variant="caption" sx={{ 
+                                        fontStyle: 'italic', 
+                                        color: '#5D4037', 
+                                        fontWeight: '800', 
+                                        fontSize: '0.62rem',
+                                        lineHeight: 1.3,
+                                        display: 'block',
+                                        textDecoration: m.isVoided ? 'line-through' : 'none',
+                                        opacity: m.isVoided ? 0.6 : 1,
+                                        whiteSpace: 'pre-wrap',
+                                        mt: 0.5,
+                                        cursor: 'pointer'
+                                    }} onClick={() => toggleNote(m.id)}>
+                                        ↳ {(!expandedNotes[m.id] && m.note.length > 60) ? `${m.note.substring(0, 57)}...` : m.note}
+                                        {m.note.length > 60 && <span style={{ color: '#1976D2', marginLeft: '4px', fontWeight: '1000' }}>[{expandedNotes[m.id] ? 'LESS' : 'MORE'}]</span>}
+                                    </Typography>
+                                )}
+                                {metricLabel && !m.isVoided && (
+                                    <Typography variant="caption" sx={{ fontStyle: 'italic', fontWeight: '1000', fontSize: '0.55rem', color: '#5D4037', mt: 0.5, display: 'block', textTransform: 'uppercase' }}>
                                         ↳ {metricLabel}
                                     </Typography>
                                 )}
@@ -339,12 +433,14 @@ const AuditPatientCard = React.memo(({
                         <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', fontSize: '0.52rem', display: 'block' }}>PUNCTUALITY</Typography>
                         <Typography sx={{ fontWeight: '1000', fontSize: '0.75rem', color: '#2E7D32' }}>
                             {(() => {
-                                const arr = (ancestorData?.milestones || milestones).find(i => i.id === 'arrived');
+                                const arr = milestones.find(i => i.label === 'ARRIVED');
                                 const schVal = patient.jsScheduled;
                                 if (!arr || !schVal) return 'N/A';
                                 const arrD = arr.val.toDate ? arr.val.toDate() : new Date(arr.val);
                                 const schD = schVal.toDate ? schVal.toDate() : new Date(schVal);
-                                const diff = Math.floor((arrD - schD) / 60000);
+                                
+                                // Anchor to operationalEnd for historical punctuality
+                                const diff = Math.floor((Math.min(arrD, operationalEnd) - schD) / 60000);
                                 if (Math.abs(diff) <= 5) return 'ON-TIME';
                                 return `${formatDuration(Math.abs(diff))} ${diff > 0 ? 'LATE' : 'EARLY'}`;
                             })()}
@@ -354,10 +450,10 @@ const AuditPatientCard = React.memo(({
                         <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', fontSize: '0.52rem', display: 'block' }}>TOTAL WAIT</Typography>
                         <Typography sx={{ fontWeight: '1000', fontSize: '0.75rem', color: '#5D4037' }}>
                             {(() => {
-                                const arr = (ancestorData?.milestones || milestones).find(i => i.id === 'arrived');
+                                const arr = milestones.find(i => i.label === 'ARRIVED');
                                 if (!arr) return 'N/A';
                                 const arrD = arr.val.toDate ? arr.val.toDate() : new Date(arr.val);
-                                return formatDuration(Math.floor((new Date() - arrD) / 60000));
+                                return formatDuration(Math.floor((operationalEnd - arrD) / 60000));
                             })()}
                         </Typography>
                     </Box>
@@ -367,30 +463,44 @@ const AuditPatientCard = React.memo(({
             {/* 4. RECOMMENDATION & VERDICT (FLEX - EXPANDS ON TRIAGE) */}
             <Box sx={{ flex: 1, p: 2, display: 'flex', flexDirection: 'column', pb: resolution ? 4 : 2 }}>
                 <Box sx={{ p: 1.5, bgcolor: !resolution ? '#F5F5F5' : (isHighStakes ? '#FFF9C4' : (resolution === 'rebook' ? '#FFF9C4' : resolution === 'no-show' ? '#FFEBEE' : '#F5F5F5')), border: `2px solid ${forensicColor}`, borderRadius: 1.2, mb: 1.5, transition: 'all 0.2s ease-out' }}>
-                    <Typography variant="caption" sx={{ fontWeight: '1000', color: forensicColor, textTransform: 'uppercase', letterSpacing: 1, display: 'block', mb: 0.3, fontSize: '0.6rem' }}>
-                        🧠 {!resolution ? 'UNRESOLVED ASSET' : (isPhysical ? 'PHYSICAL INTEGRITY GUARD' : (resolution === 'cancel' ? 'FORENSIC ALERT' : resolution === 'rebook' ? 'RECOVERY ADVISORY' : 'CLINICAL INTELLIGENCE'))}
-                    </Typography>
-                    <Typography variant="body2" sx={{ fontWeight: '1000', color: !resolution ? '#9E9E9E' : '#1A1A1A', fontSize: '0.78rem', lineHeight: 1.4 }}>
-                        {(() => {
-                            const scenarioMap = {
-                                'in-consult': "🚨 CLINICAL INTERRUPTION: Patient is mid-consult. notes may be orphaned.",
-                                'dispensing': "💰 FINANCIAL LEAK: Pharmacy items are unbilled. Inventory audit required.",
-                                'payment': "💸 REVENUE GAP: Services rendered. Invoice is currently unpaid.",
-                                'arrived': "🐕 PATIENT ABANDONMENT: Client checked in but never seen.",
-                                'pending': "ADMINISTRATIVE INTAKE: Online request pending triage.",
-                                'confirmed': "👤 ABSENTEEISM AUDIT: Scheduled record but never arrived."
-                            };
-                            const advisoryMap = {
-                                'rebook': `📍 RECOVERY PLAN: Prioritizing record for tomorrow's shift.`,
-                                'defer': `📍 INTAKE BUFFER: Request pending triage. Will carry forward.`,
-                                'no-show': "⚠️ AUDIT WARNING: Flagged as No-Show. Reliability updated.",
-                                'cancel': "🚨 ADMINISTRATIVE VOID: Record archived as Cancelled."
-                            };
-                            const baseScenario = scenarioMap[rawStatus] || 'UNFINISHED RECORD:';
-                            const baseAdvisory = !resolution ? "⚠️ DECISION REQUIRED: Select a forensic resolution below to unlock the shift reset." : (advisoryMap[resolution] || '');
-                            return `${baseScenario} ${baseAdvisory}`;
-                        })()}
-                    </Typography>
+                    {(() => {
+                        const scenarioMap = {
+                            'in-consult': "Patient is mid-consult and requires record closing.",
+                            'dispensing': "Pharmacy items are unbilled and require a final inventory audit.",
+                            'payment': "Invoice is currently unpaid and requires reconciliation.",
+                            'arrived': "Patient arrived but was never seen by a clinician.",
+                            'pending': "Pending online clinical request awaiting triage.",
+                            'confirmed': "Patient was scheduled but never arrived at the clinic."
+                        };
+                        const advisoryMap = {
+                            'rebook': "Move this record to the next operational shift.",
+                            'defer': "Carry this request forward for triage in the next shift.",
+                            'carry-over': "Carry this active patient forward for treatment in the next shift.",
+                            'no-show': "Mark the patient as absent for today's appointment.",
+                            'cancel': "Archive this record as a cancellation and clear it from the queue."
+                        };
+
+                        const scenarioText = scenarioMap[rawStatus] || 'Unfinished record detected.';
+                        const advisoryText = resolution ? advisoryMap[resolution] : null;
+
+                        return (
+                            <>
+                                <Typography variant="body2" sx={{ fontWeight: '1000', color: '#1A1A1A', fontSize: '0.78rem', lineHeight: 1.4 }}>
+                                    {scenarioText}
+                                </Typography>
+                                {advisoryText ? (
+                                    <Typography variant="body2" sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '0.78rem', mt: 0.5 }}>
+                                        Action: {advisoryText}
+                                    </Typography>
+                                ) : (
+                                    <Typography variant="body2" sx={{ fontWeight: '1000', color: '#9E9E9E', fontSize: '0.78rem', mt: 0.5, fontStyle: 'italic' }}>
+                                        Decision required: Select a resolution below.
+                                    </Typography>
+                                )}
+                            </>
+                        );
+                    })()}
+
                     <Typography variant="overline" sx={{ fontWeight: '1000', color: forensicColor, mt: 1, display: 'block', letterSpacing: 1.5, opacity: 0.8, fontSize: '0.65rem' }}>
                         {intakeAgeLabel}
                     </Typography>
@@ -404,9 +514,7 @@ const AuditPatientCard = React.memo(({
                         value={resolution}
                         exclusive
                         onChange={(e, newAction) => {
-                            if (newAction) {
-                                onResolutionChange(patient.id, newAction);
-                            }
+                            onResolutionChange(patient.id, newAction);
                         }}
                         sx={{
                             width: '100%', gap: 0.8,
@@ -423,13 +531,13 @@ const AuditPatientCard = React.memo(({
                             <ToggleButton value="defer"><AutoFixHighIcon sx={{ mr: 0.5, fontSize: 16 }} /> Defer</ToggleButton>
                         )}
                         {tabMode === 0 && (
-                            <ToggleButton value="rebook"><EventRepeatIcon sx={{ mr: 0.5, fontSize: 16 }} /> Re-book</ToggleButton>
+                            <ToggleButton value="rebook"><EventRepeatIcon sx={{ mr: 0.5, fontSize: 16 }} /> Reschedule</ToggleButton>
                         )}
 
                         {/* 📅 SCHEDULED / 🚑 ACTIVE ACTIONS */}
                         {tabMode !== 0 && (
                             <ToggleButton value={tabMode === 2 ? 'carry-over' : 'rebook'}>
-                                <EventRepeatIcon sx={{ mr: 0.5, fontSize: 16 }} /> {tabMode === 2 ? 'Carry-over' : 'Re-book'}
+                                <EventRepeatIcon sx={{ mr: 0.5, fontSize: 16 }} /> {tabMode === 2 ? 'Carry-over' : 'Reschedule'}
                             </ToggleButton>
                         )}
 
@@ -527,6 +635,7 @@ const EndOfDayModal = React.memo(({
 
     // PHASE 6: BATCH FORENSIC LITERACY
     const [bulkReason, setBulkReason] = useState("");
+    const [stagedBulkAction, setStagedBulkAction] = useState(null); // PHASE 5.6.19: STAGED BATCHING
 
     // SILO FILTERING LOGIC
     const siloOnline = leftoverPatients.filter(p => (p.status || "").toLowerCase() === 'pending');
@@ -557,6 +666,12 @@ const EndOfDayModal = React.memo(({
 
         return () => unsubscribe();
     }, [open, leftoverPatients]);
+
+    // RESET STAGED ACTION ON TAB CHANGE
+    React.useEffect(() => {
+        setStagedBulkAction(null);
+        setBulkReason(""); // Clear the reason too to keep the logic clean
+    }, [activeTab]);
 
     // PHASE 4: THE FORENSIC GATE LOCK (MULTI-SILO AWARE)
     // PHASE 4.4.2: THE UNIVERSAL FORENSIC LOCK
@@ -761,7 +876,7 @@ const EndOfDayModal = React.memo(({
                             <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
                             <Box sx={{ textAlign: 'center' }}>
                                 <Typography variant="h2" sx={{ fontWeight: 1000, color: '#4FC3F7' }}>{census.rebook}</Typography>
-                                <Typography variant="caption" sx={{ fontWeight: 900, opacity: 0.9, letterSpacing: 1.5 }}>RE-BOOK</Typography>
+                                <Typography variant="caption" sx={{ fontWeight: 900, opacity: 0.9, letterSpacing: 1.5 }}>RESCHEDULE</Typography>
                             </Box>
                             <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
                             <Box sx={{ textAlign: 'center' }}>
@@ -833,95 +948,99 @@ const EndOfDayModal = React.memo(({
                     </Stack>
                 </Box>
 
-                {/* BULK ACTION TOOLBAR (SILO-AWARE - UNLOCKED FOR ALL ENTITIES) */}
+                {/* 🕹️ BATCH COMMAND STRIP (Phase 5.6.19: Action-First Architecture) */}
                 {currentSiloPatients.length > 0 && (
-                    <Box sx={{ px: 3, py: 1.2, bgcolor: '#FAFAFA', borderBottom: '2px solid #5D4037', display: 'flex', flexDirection: 'column', gap: 1 }}>
-                        <Stack direction="row" justifyContent="space-between" alignItems="center">
-                            <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-                                {activeTab === 0 ? '📡 ONLINE TRIAGE ACTIONS' : activeTab === 1 ? '📅 ABSENTEEISM ACTIONS' : '🚑 ACTIVE TRIAGE ACTIONS'}
-                                <span style={{ color: '#E65100', marginLeft: '10px' }}>⚠️ {currentSiloPatients.length} RECORDS IN THIS SILO</span>
-                            </Typography>
-                            <Stack direction="row" spacing={0} sx={{ border: '2px solid #5D4037', borderRadius: 1.2, overflow: 'hidden' }}>
-                                {activeTab === 0 ? (
-                                    <>
-                                        <Button
-                                            size="small"
-                                            sx={{ borderRadius: 0, px: 3, py: 0.6, color: '#2E7D32', fontWeight: '1000', fontSize: '0.75rem', '&:hover': { bgcolor: '#E8F5E9' } }}
-                                            onClick={() => onBulkResolution('defer', bulkReason)}
-                                        >
-                                            BATCH: DEFER ALL ({currentSiloPatients.length})
-                                        </Button>
-                                        <Divider orientation="vertical" flexItem sx={{ borderRightWidth: 2, borderColor: '#5D4037' }} />
-                                        <Button
-                                            size="small"
-                                            sx={{ borderRadius: 0, px: 3, py: 0.6, color: '#8B4513', fontWeight: '1000', fontSize: '0.75rem', '&:hover': { bgcolor: '#FFF3E0' } }}
-                                            onClick={() => onBulkResolution('rebook', bulkReason)}
-                                        >
-                                            BATCH: RE-BOOK ALL
-                                        </Button>
-                                        <Divider orientation="vertical" flexItem sx={{ borderRightWidth: 2, borderColor: '#5D4037' }} />
-                                        <Button
-                                            size="small"
-                                            sx={{ borderRadius: 0, px: 3, py: 0.6, color: '#D32F2F', fontWeight: '1000', fontSize: '0.75rem', '&:hover': { bgcolor: '#FFEBEE' } }}
-                                            onClick={() => onBulkResolution('cancel', bulkReason)}
-                                        >
-                                            BATCH: CANCEL ALL
-                                        </Button>
-                                    </>
-                                ) : activeTab === 1 ? (
-                                    <>
-                                        <Button
-                                            size="small"
-                                            sx={{ borderRadius: 0, px: 3, py: 0.6, color: '#E65100', fontWeight: '1000', fontSize: '0.75rem', '&:hover': { bgcolor: '#FFF3E0' } }}
-                                            onClick={() => onBulkResolution('no-show', bulkReason)}
-                                        >
-                                            BATCH: NO-SHOW ALL ({currentSiloPatients.length})
-                                        </Button>
-                                        <Divider orientation="vertical" flexItem sx={{ borderRightWidth: 2, borderColor: '#5D4037' }} />
-                                        <Button
-                                            size="small"
-                                            sx={{ borderRadius: 0, px: 3, py: 0.6, color: '#8B4513', fontWeight: '1000', fontSize: '0.75rem', '&:hover': { bgcolor: '#FFF3E0' } }}
-                                            onClick={() => onBulkResolution('rebook', bulkReason)}
-                                        >
-                                            BATCH: RE-BOOK ALL
-                                        </Button>
-                                    </>
-                                ) : (
-                                    <>
-                                        <Button
-                                            size="small"
-                                            sx={{ borderRadius: 0, px: 3, py: 0.6, color: '#1B5E20', fontWeight: '1000', fontSize: '0.75rem', '&:hover': { bgcolor: '#E8F5E9' } }}
-                                            onClick={() => onBulkResolution('carry-over', bulkReason)}
-                                        >
-                                            BATCH: CARRY-OVER ALL ({currentSiloPatients.length})
-                                        </Button>
-                                        <Divider orientation="vertical" flexItem sx={{ borderRightWidth: 2, borderColor: '#5D4037' }} />
-                                        <Button
-                                            size="small"
-                                            sx={{ borderRadius: 0, px: 3, py: 0.6, color: '#D32F2F', fontWeight: '1000', fontSize: '0.75rem', '&:hover': { bgcolor: '#FFEBEE' } }}
-                                            onClick={() => onBulkResolution('cancel', bulkReason)}
-                                        >
-                                            BATCH: CANCEL ALL
-                                        </Button>
-                                    </>
-                                )}
-                            </Stack>
+                    <Box sx={{ 
+                        px: 3, py: 1.5, bgcolor: '#FAFAFA', borderBottom: '2px solid #5D4037', 
+                        display: 'flex', alignItems: 'center', gap: 2, 
+                        transition: 'all 0.3s ease-in-out'
+                    }}>
+                        {/* 1. BATCH ACTION BUTTONS */}
+                        <Stack direction="row" sx={{ border: '2px solid #5D4037', borderRadius: 1.2, overflow: 'hidden', bgcolor: '#FFF' }}>
+                            {activeTab === 0 ? (
+                                <>
+                                    <Button
+                                        size="small"
+                                        sx={{ borderRadius: 0, px: 3, py: 0.6, color: '#2E7D32', fontWeight: '1000', fontSize: '0.75rem', '&:hover': { bgcolor: '#E8F5E9' } }}
+                                        onClick={() => setStagedBulkAction('defer')}
+                                    >
+                                        BATCH: DEFER ALL ({currentSiloPatients.length})
+                                    </Button>
+                                    <Divider orientation="vertical" flexItem sx={{ borderRightWidth: 2, borderColor: '#5D4037' }} />
+                                    <Button
+                                        size="small"
+                                        sx={{ borderRadius: 0, px: 3, py: 0.6, color: '#8B4513', fontWeight: '1000', fontSize: '0.75rem', '&:hover': { bgcolor: '#FFF3E0' } }}
+                                        onClick={() => setStagedBulkAction('rebook')}
+                                    >
+                                        BATCH: RESCHEDULE ALL
+                                    </Button>
+                                </>
+                            ) : activeTab === 1 ? (
+                                <>
+                                    <Button
+                                        size="small"
+                                        sx={{ borderRadius: 0, px: 3, py: 0.6, color: '#E65100', fontWeight: '1000', fontSize: '0.75rem', '&:hover': { bgcolor: '#FFF3E0' } }}
+                                        onClick={() => setStagedBulkAction('no-show')}
+                                    >
+                                        BATCH: NO-SHOW ALL ({currentSiloPatients.length})
+                                    </Button>
+                                    <Divider orientation="vertical" flexItem sx={{ borderRightWidth: 2, borderColor: '#5D4037' }} />
+                                    <Button
+                                        size="small"
+                                        sx={{ borderRadius: 0, px: 3, py: 0.6, color: '#8B4513', fontWeight: '1000', fontSize: '0.75rem', '&:hover': { bgcolor: '#FFF3E0' } }}
+                                        onClick={() => setStagedBulkAction('rebook')}
+                                    >
+                                        BATCH: RESCHEDULE ALL
+                                    </Button>
+                                </>
+                            ) : (
+                                <>
+                                    <Button
+                                        size="small"
+                                        sx={{ borderRadius: 0, px: 3, py: 0.6, color: '#1B5E20', fontWeight: '1000', fontSize: '0.75rem', '&:hover': { bgcolor: '#E8F5E9' } }}
+                                        onClick={() => setStagedBulkAction('carry-over')}
+                                    >
+                                        BATCH: CARRY-OVER ALL ({currentSiloPatients.length})
+                                    </Button>
+                                </>
+                            )}
+                            <Divider orientation="vertical" flexItem sx={{ borderRightWidth: 2, borderColor: '#5D4037' }} />
+                            <Button
+                                size="small"
+                                sx={{ borderRadius: 0, px: 3, py: 0.6, color: '#D32F2F', fontWeight: '1000', fontSize: '0.75rem', '&:hover': { bgcolor: '#FFEBEE' } }}
+                                onClick={() => setStagedBulkAction('cancel')}
+                            >
+                                BATCH: CANCEL ALL
+                            </Button>
                         </Stack>
 
-                        {/* BATCH REASON FIELD (Forensic Mirror) */}
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, bgcolor: '#FFF', p: 1, border: '1px dashed #5D4037', borderRadius: 1 }}>
-                            <Typography variant="caption" sx={{ fontWeight: 1000, color: '#5D4037', whiteSpace: 'nowrap' }}>✍️ UNIVERSAL REASON FOR {currentSiloPatients.length} {activeTab === 0 ? 'ONLINE' : activeTab === 1 ? 'SCHEDULED' : 'ACTIVE'} RECORDS:</Typography>
-                            <TextField
-                                id="bulk-reason-field"
-                                fullWidth
-                                size="small"
-                                placeholder={activeTab === 2 ? "e.g., Medical Handover / Shift reset / Cont. care..." : "e.g., Abandoned requests / Shift reset / Absenteeism..."}
-                                variant="standard"
-                                value={bulkReason}
-                                onChange={(e) => setBulkReason(e.target.value)}
-                                InputProps={{ disableUnderline: true, sx: { fontSize: '0.75rem', fontWeight: 900 } }}
-                            />
-                        </Box>
+                        {/* 2. DYNAMIC STAGING AREA */}
+                        {stagedBulkAction && (
+                            <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 1.5, animation: 'slideInRight 0.3s ease-out' }}>
+                                <Divider orientation="vertical" flexItem sx={{ height: 24, borderRightWidth: 2, borderColor: '#D7CCC8' }} />
+                                <Typography variant="caption" sx={{ fontWeight: 1000, color: '#5D4037', whiteSpace: 'nowrap' }}>
+                                    ✍️ REASON FOR {currentSiloPatients.length} {stagedBulkAction.toUpperCase()}S:
+                                </Typography>
+                                <TextField
+                                    fullWidth
+                                    size="small"
+                                    placeholder="Enter universal clinical justification..."
+                                    variant="standard"
+                                    value={bulkReason}
+                                    onChange={(e) => setBulkReason(e.target.value)}
+                                    InputProps={{ disableUnderline: true, sx: { fontSize: '0.75rem', fontWeight: 900 } }}
+                                    autoFocus
+                                />
+                                <Stack direction="row" spacing={0.5}>
+                                    <IconButton size="small" onClick={() => onBulkResolution(stagedBulkAction, bulkReason)} sx={{ color: '#2E7D32', border: '1px solid #2E7D32' }}>
+                                        <AutoFixHighIcon sx={{ fontSize: 16 }} />
+                                    </IconButton>
+                                    <IconButton size="small" onClick={() => setStagedBulkAction(null)} sx={{ color: '#D32F2F', border: '1px solid #D32F2F' }}>
+                                        <DoNotDisturbIcon sx={{ fontSize: 16 }} />
+                                    </IconButton>
+                                </Stack>
+                            </Box>
+                        )}
                     </Box>
                 )}
 

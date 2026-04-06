@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Box, Typography, Paper, Button, FormControl, InputLabel, Select, MenuItem,
   Snackbar, Alert, InputAdornment, TextField, Switch, FormControlLabel, 
-  Divider, Stack, Chip, ListItemText 
+  Divider, Stack, Chip, ListItemText, ToggleButton, ToggleButtonGroup 
 } from '@mui/material';
 import Grid from '@mui/material/Grid'; // MUI v6 Standard
 
@@ -49,7 +49,8 @@ export default function Settings() {
     openHour: 8, closeHour: 17,
     lunchEnabled: true, lunchStart: 12, lunchEnd: 13,
     minSlotInterval: 30, advanceNoticeMins: 120, maxFutureBookingDays: 30, maxPetsPerBooking: 3,
-    maxCages: 5, autoNoShowMins: 30, trafficModerate: 6, trafficHigh: 13
+    maxCages: 5, autoNoShowMins: 30, trafficModerate: 6, trafficHigh: 13,
+    workingDays: [1, 2, 3, 4, 5, 6, 0] // [0:Sun, 1:Mon... 6:Sat]
   });
 
   // --- DYNAMIC STATES ---
@@ -248,6 +249,44 @@ export default function Settings() {
                 <Grid size={{ xs: 12 }}>
                   <FormControl fullWidth size="medium" sx={{ bgcolor: 'white', borderRadius: 1 }}><InputLabel>Clinic Closes</InputLabel><Select value={settings.closeHour} label="Clinic Closes" onChange={(e) => handleChange('closeHour', e.target.value)}>{hoursArray.map(h => <MenuItem key={h} value={h}>{formatHour(h)}</MenuItem>)}</Select></FormControl>
                 </Grid>
+                
+                {/* 🧬 CLINIC WORKING DAYS SELECTOR (Phase 6.1) */}
+                <Grid size={{ xs: 12 }}>
+                    <Typography variant="overline" sx={{ fontWeight: '1000', color: '#1565C0', letterSpacing: 1, display: 'block', mb: 1 }}>
+                        Clinic Working Days
+                    </Typography>
+                    <ToggleButtonGroup
+                        value={settings.workingDays || []}
+                        onChange={(e, val) => handleChange('workingDays', val)}
+                        fullWidth
+                        size="small"
+                        sx={{ 
+                            gap: 0.5, 
+                            '& .MuiToggleButton-root': {
+                                border: '1px solid rgba(0,0,0,0.1) !important',
+                                borderRadius: '50% !important',
+                                width: 32,
+                                height: 32,
+                                minWidth: 32,
+                                fontWeight: '900',
+                                fontSize: '0.65rem',
+                                color: '#1565C0',
+                                '&.Mui-selected': {
+                                    bgcolor: '#1565C0 !important',
+                                    color: '#FFF !important',
+                                    boxShadow: '0 4px 8px rgba(21, 101, 192, 0.2)'
+                                }
+                            }
+                        }}
+                    >
+                        {['S','M','T','W','T','F','S'].map((day, i) => (
+                            <ToggleButton key={i} value={i} title={['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][i]}>
+                                {day}
+                            </ToggleButton>
+                        ))}
+                    </ToggleButtonGroup>
+                </Grid>
+
                 <Grid size={{ xs: 12 }}><Divider sx={{ my: 1 }} /><FormControlLabel control={<Switch checked={settings.lunchEnabled} onChange={(e) => handleChange('lunchEnabled', e.target.checked)} color="primary" />} label={<Typography fontWeight="bold" color="primary">Enforce Lunch Break</Typography>} /></Grid>
                 {settings.lunchEnabled && (
                     <React.Fragment>

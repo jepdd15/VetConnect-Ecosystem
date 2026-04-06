@@ -33,6 +33,10 @@ import HistoryIcon from '@mui/icons-material/History';
 import PersonOffIcon from '@mui/icons-material/PersonOff';
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew'; 
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos'; 
+
+// 🧬 PHASE 6 COMPONENTS
+import { ForensicMetricGrid } from './ForensicMetricGrid'; 
+import { calculatePulseMetrics } from '../../utils/pulseUtils';
 import UndoIcon from '@mui/icons-material/Undo'; 
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital'; 
 import HomeIcon from '@mui/icons-material/Home'; 
@@ -169,6 +173,10 @@ export default function Queue() {
   const [openAssign, setOpenAssign] = useState(false);
   const [assignMode, setAssignMode] = useState('check-in'); // 'check-in' or 'assign'
   const [lastCheckDate, setLastCheckDate] = useState(new Date().toDateString());
+  
+  // --- 🧬 FORENSIC RECONCILIATION STATES (Phase 4.4) ---
+  const [ancestorData, setAncestorData] = useState({});
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
 
 
@@ -294,8 +302,16 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
         const rawStatus = (patient.status || 'unknown').toLowerCase();
         const action = (patientResolutions[patient.id] || (patient.status === 'pending' ? 'defer' : 'cancel'));
         const staffSignature = profile?.fullName || user?.email || "System Triage";
-        const forensicNote = auditReasons[patient.id] || "No reason provided in triage.";
         const isHighStakes = ['arrived', 'in-consult', 'dispensing', 'billing', 'confirmed', 'scheduled', 'payment', 'on-hold'].includes(rawStatus);
+
+        // --- 🧬 SUB-PHASE 4.1: THE FORENSIC CALCULATION HOOK ---
+        // We mathematically seal the record's performance at the exact moment of sign-off.
+        const forensicSeal = calculatePulseMetrics(
+          patient.clinicalPulse || [], 
+          clinicSettings, 
+          patient.createdAt, 
+          new Date()
+        );
 
         // --- 🧬 FORENSIC COMMIT ENGINE: TRIAGE DYNAMICS ---
         if (action === 'rebook' || action === 'confined' || action === 'carry-over' || action === 'defer') { 
@@ -336,6 +352,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
                caseDay: (patient.caseDay || 1) + 1,
                processedBy: staffSignature,
                processedAt: Timestamp.now(),
+               forensicSeal, // THE 8-METRIC AUDIT SEAL
                clinicalPulse: arrayUnion({
                   eventId: `pulse_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
                   type: pulseType,
@@ -360,6 +377,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
                 notes: cleanNotes,
                 processedBy: staffSignature,
                 processedAt: Timestamp.now(),
+                forensicSeal, // THE 8-METRIC AUDIT SEAL
                 clinicalPulse: arrayUnion({
                    eventId: `pulse_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
                    type: pulseType,
@@ -758,7 +776,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
   const saveNoShow = async () => {
     if (!auditReason.trim()) return;
     try {
-        await markNoShow(selectedRow, auditReason);
+        await markNoShow(selectedRow, auditReason, clinicSettings);
         setOpenNoShow(false);
         setAuditReason("");
     } catch (e) { alert(e.message); }
@@ -770,7 +788,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
       const rawStatus = (selectedRow.status || 'unknown').toLowerCase();
       const isHighStakes = ['arrived', 'in-consult', 'dispensing', 'billing', 'confirmed', 'scheduled', 'payment'].includes(rawStatus);
       
-      await rejectAppointment(selectedRow.id, rejectReason, selectedRow.services, isHighStakes); 
+      await rejectAppointment(selectedRow.id, rejectReason, selectedRow.services, isHighStakes, clinicSettings, selectedRow); 
       setOpenReject(false); 
       setRejectReason(''); 
     } catch (err) { alert(err.message); } 
@@ -975,6 +993,56 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
 
     return () => unsubscribe();
   }, [filterDate]);
+  
+  // --- 🧬 PHASE 4.4: FORENSIC RECONCILIATION EFFECT ---
+  // When the Triage Wizard opens, fetch historical shift documents for all active cases
+  // to ensure their previous "Seals" are visible in the pager.
+  useEffect(() => {
+    if (!openEndDay || leftoverPatients.length === 0) return;
+
+    const fetchAllAncestors = async () => {
+      setLoadingHistory(true);
+      const masterRegistry = {};
+
+      try {
+        await Promise.all(leftoverPatients.map(async (patient) => {
+          if (!patient.petId) return;
+
+          // Query for past documents associated with this medical case/pet
+          const q = query(
+            collection(db, "appointments"),
+            where("petId", "==", patient.petId),
+            orderBy("scheduledDate", "desc"),
+            limit(10) // Audit depth
+          );
+
+          const snap = await getDocs(q);
+          const patientHistory = {};
+          
+          snap.docs.forEach(d => {
+            const data = d.data();
+            const dateStr = data.scheduledDate?.toDate 
+                ? data.scheduledDate.toDate().toDateString() 
+                : (data.scheduledDate ? new Date(data.scheduledDate).toDateString() : null);
+            
+            if (dateStr && d.id !== patient.id) {
+               patientHistory[dateStr] = { ...data, id: d.id };
+            }
+          });
+
+          masterRegistry[patient.id] = patientHistory;
+        }));
+
+        setAncestorData(masterRegistry);
+      } catch (e) {
+        console.error("Forensic Reconciliation Failure:", e);
+      } finally {
+        setLoadingHistory(false);
+      }
+    };
+
+    fetchAllAncestors();
+  }, [openEndDay, leftoverPatients.length]);
 
   // --- THE MIDNIGHT HEARTBEAT ---
   useEffect(() => {
@@ -1336,8 +1404,10 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
         patientResolutions={patientResolutions} 
         auditReasons={auditReasons}
         targetDates={targetDates}
+        touchedPatients={touchedPatients}
         onResolutionChange={React.useCallback((id, action, targetDate) => {
           setPatientResolutions(prev => ({ ...prev, [id]: action }));
+          setTouchedPatients(prev => new Set([...prev, id]));
           if (targetDate) {
             setTargetDates(prev => ({ ...prev, [id]: targetDate }));
           }
@@ -1351,23 +1421,24 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
                 const newRes = { ...prevRes };
                 setAuditReasons(prevReasons => {
                     const newReasons = { ...prevReasons };
-                    
-                    leftoverPatients.forEach(p => {
-                        const rtStatus = (p.status || "").toLowerCase();
-                        const isOnline = rtStatus === 'pending';
-                        const isScheduled = ['confirmed', 'scheduled'].includes(rtStatus);
-                        const isActive = ['arrived', 'in-consult', 'dispensing', 'billing', 'payment', 'confined'].includes(rtStatus);
+                    setTouchedPatients(prevTouched => {
+                        const newTouched = new Set(prevTouched);
+                        
+                        leftoverPatients.forEach(p => {
+                            const rtStatus = (p.status || "").toLowerCase();
+                            const isOnline = rtStatus === 'pending';
+                            const isScheduled = ['confirmed', 'scheduled'].includes(rtStatus);
+                            const isActive = ['arrived', 'in-consult', 'dispensing', 'billing', 'payment', 'confined'].includes(rtStatus);
 
-                        if ((action === 'defer' || action === 'cancel' || action === 'rebook') && isOnline) {
-                            newRes[p.id] = action;
-                            newReasons[p.id] = reason || "";
-                        } else if ((action === 'no-show' || action === 'rebook' || action === 'cancel') && isScheduled) {
-                            newRes[p.id] = action;
-                            newReasons[p.id] = reason || "";
-                        } else if ((action === 'carry-over' || action === 'cancel') && isActive) {
-                            newRes[p.id] = action;
-                            newReasons[p.id] = reason || "";
-                        }
+                            if (((action === 'defer' || action === 'cancel' || action === 'rebook') && isOnline) ||
+                                ((action === 'no-show' || action === 'rebook' || action === 'cancel') && isScheduled) ||
+                                ((action === 'carry-over' || action === 'cancel') && isActive)) {
+                                newRes[p.id] = action;
+                                newReasons[p.id] = reason || "";
+                                newTouched.add(p.id);
+                            }
+                        });
+                        return newTouched;
                     });
                     return newReasons;
                 });
@@ -1377,6 +1448,8 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
         onConfirmReset={(targetDates) => { confirmResetDay(false, targetDates); setIsForcedCleanup(false); }} 
         isForced={isForcedCleanup}
         departments={departments}
+        ancestorData={ancestorData}
+        loadingHistory={loadingHistory}
         onClose={React.useCallback(() => { setOpenEndDay(false); setIsForcedCleanup(false); }, [])} 
       />
       
@@ -1476,7 +1549,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
                 handleCloseMenu(); 
               }}>
                 <ListItemIcon><LocalHospitalIcon fontSize="small" sx={{ color: '#E65100' }} /></ListItemIcon>
-                <ListItemText primary="🏥 Confine (Hospitalize)" sx={{ color: '#E65100' }} />
+                <ListItemText primary="🏥 Confine Patient" sx={{ color: '#E65100' }} />
               </MenuItem>
               <MenuItem onClick={() => { 
                 setTriageMode('rebook');
@@ -1560,11 +1633,10 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
           onMouseLeave: () => { if (!isPinned) handleHoverEnd(); },
           sx: {
             p: 3, 
-            ml: 0, // Absolute Centered Overlay
-            width: hoverMetadata.type === 'timing' ? 300 : 480,
+            ml: 0, 
+            width: hoverMetadata.type === 'timing' ? 420 : 480,
             maxHeight: 600,
-            overflowX: 'hidden',
-            overflowY: 'auto',
+            overflow: 'hidden', // Contain the forensic layout
             pointerEvents: 'auto', 
             bgcolor: '#FFF', 
             border: '3px solid #5D4037',
@@ -1651,8 +1723,9 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
                 {hoverMetadata.type === 'identity' && hoverMetadata.data}
 
                 {hoverMetadata.type === 'timing' && hoverMetadata.data && (
-                  <Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', maxHeight: 540 }}>
+                    {/* 🧬 STICKY HEADER: NAVIGATION */}
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexShrink: 0 }}>
                         <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1.5 }}>
                         ⌛ CLINICAL TEMPORAL AUDIT
                         </Typography>
@@ -1692,166 +1765,133 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
                         })()}
                     </Box>
 
-                    <Stack spacing={2} sx={{ position: 'relative', pl: 3 }}>
-                        <Box sx={{ position: 'absolute', left: 8, top: 8, bottom: 8, width: '2px', borderLeft: '2px dashed #D7CCC8' }} />
-                        
-                        {(() => {
-                            const pulse = hoverMetadata.data.clinicalPulse || [];
-                            const dates = [...new Set(pulse.map(p => {
-                                const d = p.timestamp?.toDate ? p.timestamp.toDate() : new Date(p.timestamp);
-                                return d.toDateString();
-                            }))].sort((a,b) => new Date(a) - new Date(b));
-
-                            const targetDateStr = dates[activeCaseDay] || dates[dates.length - 1];
-                            const filteredPulse = pulse.filter(p => {
-                                const d = p.timestamp?.toDate ? p.timestamp.toDate() : new Date(p.timestamp);
-                                return d.toDateString() === targetDateStr;
-                            });
-
-                            let events = [];
-                            if (filteredPulse.length > 0) {
-                                const voidedIds = new Set(pulse.filter(p => p.correctedEventId).map(p => p.correctedEventId));
-
-                                events = filteredPulse.map(p => ({
-                                    id: p.eventId,
-                                    label: p.toStatus ? p.toStatus.toUpperCase() : 'EVENT',
-                                    val: p.timestamp,
-                                    by: p.staffName,
-                                    note: p.note,
-                                    type: p.type,
-                                    isCorrection: p.isCorrection || p.type === 'CORRECTION',
-                                    isVoided: voidedIds.has(p.eventId) 
-                                }));
-                            } else {
-                                events = [
-                                  { id: 'booked', label: hoverMetadata.data.ticketPrefix ? 'INTAKE CREATED' : 'BOOKED (ONLINE)', val: hoverMetadata.data.createdAt },
-                                  { id: 'scheduled', label: hoverMetadata.data.ticketPrefix ? 'QUEUE POSITION' : 'APPOINTMENT SLOT', val: hoverMetadata.data.jsScheduled },
-                                  { id: 'arrived', label: 'ARRIVED (CHECK-IN)', val: hoverMetadata.data.timeArrived, by: hoverMetadata.data.arrivedBy },
-                                  { id: 'started', label: 'CONSULT STARTED', val: hoverMetadata.data.timeStarted, by: hoverMetadata.data.startedBy }
-                                ].filter(i => i.val);
-                            }
-
-                            return events
-                            .sort((a,b) => {
-                                const da = a.val && a.val.toDate ? a.val.toDate() : new Date(a.val || 0);
-                                const db = b.val && b.val.toDate ? b.val.toDate() : new Date(b.val || 0);
-                                return da - db;
-                            })
-                            .map((item, idx, filteredArray) => {
-                                const isLatestTotal = item.id === events[events.length - 1]?.id;
-                                const date = item.val && item.val.toDate ? item.val.toDate() : new Date(item.val || 0);
-                                const color = item.isCorrection ? '#1976D2' : (item.isVoided ? '#BDBDBD' : (isLatestTotal ? '#2E7D32' : '#9E9E9E'));
-                                const isExpanded = expandedPulseId === item.id;
-                                
-                                return (
-                                    <Box 
-                                        key={item.id || idx} 
-                                        sx={{ position: 'relative', mb: 0.5, cursor: item.note ? 'pointer' : 'default', pointerEvents: 'auto' }} 
-                                        onClick={() => {
-                                            if (item.note) {
-                                                setExpandedPulseId(isExpanded ? null : item.id);
-                                                setIsPinned(true); 
-                                            }
-                                        }}
-                                    >
-                                        <Box sx={{ position: 'absolute', left: -26, top: 4, width: 8, height: 8, borderRadius: '50%', bgcolor: color, zIndex: 5, border: item.isCorrection ? '2px solid #BBDEFB' : 'none' }} />
-                                        <Typography variant="caption" sx={{ fontWeight: '1000', color: color, letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 1, fontSize: '0.65rem' }}>
-                                            {item.isCorrection ? '↺ CLINICAL CORRECTION' : item.label}
-                                            {item.isCorrection && <Chip label="CORRECTION" size="small" sx={{ height: 14, fontSize: '0.5rem', fontWeight: 1000, bgcolor: '#C8E6C9', color: '#2E7D32' }} />}
-                                            {item.isVoided && <Chip label="REVERTED" size="small" sx={{ height: 14, fontSize: '0.5rem', fontWeight: 1000, bgcolor: '#FFEBEE', color: '#D32F2F' }} />}
-                                        </Typography>
-                                        <Typography sx={{ 
-                                            fontWeight: '1000', 
-                                            color: (isLatestTotal && !item.isVoided) ? '#1A1A1A' : '#9E9E9E', 
-                                            fontSize: '0.85rem',
-                                            textDecoration: item.isVoided ? 'line-through' : 'none',
-                                            opacity: item.isVoided ? 0.4 : 1
-                                        }}>
-                                            {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                                            {(item.by || item.staffName) && <span style={{ opacity: 0.6, fontWeight: '700', marginLeft: '6px' }}>● {item.by || item.staffName}</span>}
-                                        </Typography>
-                                        
-                                        {item.note && (
-                                            <Box sx={{ mt: 0.5 }}>
-                                                <Typography variant="caption" sx={{ 
-                                                    fontStyle: 'italic', 
-                                                    color: '#5D4037', 
-                                                    fontWeight: '800', 
-                                                    fontSize: '0.62rem',
-                                                    lineHeight: 1.3,
-                                                    display: 'block',
-                                                    textDecoration: item.isVoided ? 'line-through' : 'none',
-                                                    opacity: item.isVoided ? 0.6 : 1,
-                                                    whiteSpace: 'pre-wrap'
-                                                }}>
-                                                    ↳ {(!isExpanded && item.note.length > 50) 
-                                                        ? `${item.note.substring(0, 47)}...` 
-                                                        : item.note}
-                                                    {!isExpanded && item.note.length > 50 && (
-                                                        <span style={{ color: "#1976D2", marginLeft: "4px", fontWeight: "1000", cursor: "pointer" }}>
-                                                            [MORE]
-                                                        </span>
-                                                    )}
-                                                </Typography>
-                                            </Box>
-                                        )}
-                                    </Box>
-                                );
-                            });
-                        })()}
-                    </Stack>
-
-                    <Box sx={{ mt: 2, pt: 1.5, borderTop: "1px solid #D7CCC8" }}>
-                        {(() => {
-                            const resolveDate = (d) => {
-                               if (!d) return null;
-                               if (d.toDate) return d.toDate();
-                               const parsed = new Date(d);
-                               return isNaN(parsed.getTime()) ? null : parsed;
-                            };
-
-                            const sch = resolveDate(hoverMetadata.data.jsScheduled);
-                            const arr = resolveDate(hoverMetadata.data.timeArrived);
-                            const booked = resolveDate(hoverMetadata.data.createdAt);
-                            const completed = resolveDate(hoverMetadata.data.timeCompleted);
+                    {/* 🧬 SCROLLABLE CONTENT: TIMELINE */}
+                    <Box sx={{ flexGrow: 1, overflowY: 'auto', pr: 1, mb: 2, '&::-webkit-scrollbar': { width: '4px' }, '&::-webkit-scrollbar-thumb': { bgcolor: '#D7CCC8', borderRadius: '4px' } }}>
+                        <Stack spacing={2} sx={{ position: 'relative', pl: 3 }}>
+                            <Box sx={{ position: 'absolute', left: 8, top: 8, bottom: 8, width: '2px', borderLeft: '2px dashed #D7CCC8' }} />
                             
-                            const puncDiff = arr && sch ? Math.round((arr - sch) / 60000) 
-                                           : (!arr && sch) ? Math.round((currentTime - sch) / 60000)
-                                           : 0;
-                            
-                            const isFinished = ["done", "cancelled"].includes(hoverMetadata.data.status);
-                            const waitEnd = isFinished && completed ? completed : currentTime;
-                            
-                            const waitStart = arr || (hoverMetadata.data.status === "pending" ? booked : sch) || currentTime;
-                            const totalWaitDiff = Math.round((waitEnd - (waitStart || currentTime)) / 60000);
+                            {(() => {
+                                const pulse = hoverMetadata.data.clinicalPulse || [];
+                                const dates = [...new Set(pulse.map(p => {
+                                    const d = p.timestamp?.toDate ? p.timestamp.toDate() : new Date(p.timestamp);
+                                    return d.toDateString();
+                                }))].sort((a,b) => new Date(a) - new Date(b));
 
-                            const puncColor = puncDiff > 15 ? "#D32F2F" : "#2E7D32";
-                            const waitColor = totalWaitDiff > 60 ? "#D32F2F" : "#5D4037";
+                                const targetDateStr = dates[activeCaseDay] || dates[dates.length - 1];
+                                const filteredPulse = pulse.filter(p => {
+                                    const d = p.timestamp?.toDate ? p.timestamp.toDate() : new Date(p.timestamp);
+                                    return d.toDateString() === targetDateStr;
+                                });
 
-                            return (
-                                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                                    <Box>
-                                        <Typography variant="caption" sx={{ fontWeight: "1000", color: "#5D4037", letterSpacing: 0.5, display: "block", fontSize: "0.6rem" }}>PUNCTUALITY</Typography>
-                                        <Typography sx={{ fontWeight: "1000", color: puncColor, fontSize: "0.8rem" }}>
-                                            {!arr 
-                                                ? (puncDiff > 1 ? "LATE (" + formatDuration(puncDiff) + ")" : "PENDING")
-                                                : (Math.abs(puncDiff) <= 5 ? "ON-TIME" : formatDuration(Math.abs(puncDiff)) + " " + (puncDiff > 0 ? "LATE" : "EARLY"))
-                                            }
-                                        </Typography>
-                                    </Box>
-                                    <Box sx={{ textAlign: "right" }}>
-                                        <Typography variant="caption" sx={{ fontWeight: "1000", color: "#5D4037", letterSpacing: 0.5, display: "block", fontSize: "0.6rem" }}>TOTAL WAIT</Typography>
-                                        <Typography sx={{ fontWeight: "1000", color: waitColor, fontSize: "0.8rem" }}>
-                                            {formatDuration(totalWaitDiff)}
-                                        </Typography>
-                                        <Typography variant="caption" sx={{ fontWeight: "1000", color: "#1A1A1A", letterSpacing: 0.5, display: "block", fontSize: "0.6rem", mt: 0.5 }}>TOTAL TENURE</Typography>
-                                        <Typography sx={{ fontWeight: "1000", color: "#5D4037", fontSize: "0.75rem" }}>
-                                            {booked ? formatTenure(Math.round((currentTime - booked) / 60000)) : "NEW"}
-                                        </Typography>
-                                    </Box>
-                                </Box>
-                            );
-                        })()}
+                                let events = [];
+                                if (filteredPulse.length > 0) {
+                                    const voidedIds = new Set(pulse.filter(p => p.correctedEventId).map(p => p.correctedEventId));
+
+                                    events = filteredPulse.map(p => ({
+                                        id: p.eventId,
+                                        label: p.toStatus ? p.toStatus.toUpperCase() : 'EVENT',
+                                        val: p.timestamp,
+                                        by: p.staffName,
+                                        note: p.note,
+                                        type: p.type,
+                                        isCorrection: p.isCorrection || p.type === 'CORRECTION',
+                                        isVoided: voidedIds.has(p.eventId) 
+                                    }));
+                                } else {
+                                    events = [
+                                    { id: 'booked', label: hoverMetadata.data.ticketPrefix ? 'INTAKE CREATED' : 'BOOKED (ONLINE)', val: hoverMetadata.data.createdAt },
+                                    { id: 'scheduled', label: hoverMetadata.data.ticketPrefix ? 'QUEUE POSITION' : 'APPOINTMENT SLOT', val: hoverMetadata.data.jsScheduled },
+                                    { id: 'arrived', label: 'ARRIVED (CHECK-IN)', val: hoverMetadata.data.timeArrived, by: hoverMetadata.data.arrivedBy },
+                                    { id: 'started', label: 'CONSULT STARTED', val: hoverMetadata.data.timeStarted, by: hoverMetadata.data.startedBy }
+                                    ].filter(i => i.val);
+                                }
+
+                                return events
+                                .sort((a,b) => {
+                                    const da = a.val && a.val.toDate ? a.val.toDate() : new Date(a.val || 0);
+                                    const db = b.val && b.val.toDate ? b.val.toDate() : new Date(b.val || 0);
+                                    return da - db;
+                                })
+                                .map((item, idx) => {
+                                    const isLatestTotal = item.id === events[events.length - 1]?.id;
+                                    const date = item.val && item.val.toDate ? item.val.toDate() : new Date(item.val || 0);
+                                    const color = item.isCorrection ? '#1976D2' : (item.isVoided ? '#BDBDBD' : (isLatestTotal ? '#2E7D32' : '#9E9E9E'));
+                                    const isExpanded = expandedPulseId === item.id;
+                                    
+                                    return (
+                                        <Box 
+                                            key={item.id || idx} 
+                                            sx={{ position: 'relative', mb: 0.5, cursor: item.note ? 'pointer' : 'default', pointerEvents: 'auto' }} 
+                                            onClick={() => {
+                                                if (item.note) {
+                                                    setExpandedPulseId(isExpanded ? null : item.id);
+                                                    setIsPinned(true); 
+                                                }
+                                            }}
+                                        >
+                                            <Box sx={{ position: 'absolute', left: -26, top: 4, width: 8, height: 8, borderRadius: '50%', bgcolor: color, zIndex: 5, border: item.isCorrection ? '2px solid #BBDEFB' : 'none' }} />
+                                            <Typography variant="caption" sx={{ fontWeight: '1000', color: color, letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 1, fontSize: '0.65rem' }}>
+                                                {item.isCorrection ? '↺ CLINICAL CORRECTION' : item.label}
+                                                {item.isCorrection && <Chip label="CORRECTION" size="small" sx={{ height: 14, fontSize: '0.5rem', fontWeight: 1000, bgcolor: '#C8E6C9', color: '#2E7D32' }} />}
+                                                {item.isVoided && <Chip label="REVERTED" size="small" sx={{ height: 14, fontSize: '0.5rem', fontWeight: 1000, bgcolor: '#FFEBEE', color: '#D32F2F' }} />}
+                                            </Typography>
+                                            <Typography sx={{ 
+                                                fontWeight: '1000', 
+                                                color: (isLatestTotal && !item.isVoided) ? '#1A1A1A' : '#9E9E9E', 
+                                                fontSize: '0.85rem',
+                                                textDecoration: item.isVoided ? 'line-through' : 'none',
+                                                opacity: item.isVoided ? 0.4 : 1
+                                            }}>
+                                                {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                                {(item.by || item.staffName) && <span style={{ opacity: 0.6, fontWeight: '700', marginLeft: '6px' }}>● {item.by || item.staffName}</span>}
+                                            </Typography>
+                                            
+                                            {item.note && (
+                                                <Box sx={{ mt: 0.5 }}>
+                                                    <Typography variant="caption" sx={{ 
+                                                        fontStyle: 'italic', 
+                                                        color: '#5D4037', 
+                                                        fontWeight: '800', 
+                                                        fontSize: '0.62rem',
+                                                        lineHeight: 1.3,
+                                                        display: 'block',
+                                                        textDecoration: item.isVoided ? 'line-through' : 'none',
+                                                        opacity: item.isVoided ? 0.6 : 1,
+                                                        whiteSpace: 'pre-wrap'
+                                                    }}>
+                                                        ↳ {(!isExpanded && item.note.length > 50) 
+                                                            ? `${item.note.substring(0, 47)}...` 
+                                                            : item.note}
+                                                        {!isExpanded && item.note.length > 50 && (
+                                                            <span style={{ color: "#1976D2", marginLeft: "4px", fontWeight: "1000", cursor: "pointer" }}>
+                                                                [MORE]
+                                                            </span>
+                                                        )}
+                                                    </Typography>
+                                                </Box>
+                                            )}
+                                        </Box>
+                                    );
+                                });
+                            })()}
+                        </Stack>
+                    </Box>
+
+                    <Box sx={{ flexShrink: 0 }}>
+                        <ForensicMetricGrid 
+                            pulse={hoverMetadata.data.clinicalPulse || []}
+                            settings={settings}
+                            createdAt={hoverMetadata.data.createdAt}
+                            sealedMetrics={hoverMetadata.data.forensicSeal}
+                            targetDate={(() => {
+                                const pulse = hoverMetadata.data.clinicalPulse || [];
+                                const dates = [...new Set(pulse.map(p => {
+                                    const d = p.timestamp?.toDate ? p.timestamp.toDate() : new Date(p.timestamp);
+                                    return d.toDateString();
+                                }))].sort((a,b) => new Date(a) - new Date(b));
+                                return new Date(dates[activeCaseDay] || Date.now());
+                            })()}
+                        />
                     </Box>
                   </Box>
                 )}
@@ -2246,7 +2286,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
           borderBottom: '1px solid #FFE0B2'
         }}>
           {triageMode === 'hospitalize' ? <LocalHospitalIcon /> : <HomeIcon />}
-          {triageMode === 'hospitalize' ? 'PATIENT HOSPITALIZATION' : 'PATIENT REBOOKING'}
+          {triageMode === 'hospitalize' ? 'PATIENT CONFINEMENT' : 'PATIENT REBOOKING'}
         </DialogTitle>
         <DialogContent sx={{ pt: 3 }}>
           <Box sx={{ p: 1.5, bgcolor: '#FFF', border: '1px dashed #FFE0B2', borderRadius: 2, mb: 3 }}>

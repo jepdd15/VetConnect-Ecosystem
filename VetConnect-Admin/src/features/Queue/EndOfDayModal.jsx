@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo, memo } from 'react';
 import {
     Box, Typography, Button, Stack, Paper,
     ToggleButtonGroup, ToggleButton, List, ListItem, Divider,
@@ -24,6 +24,10 @@ import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 import { getDoc, doc, query, collection, where, orderBy, limit, getDocs, onSnapshot, updateDoc } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 import TwitterIcon from '@mui/icons-material/Twitter';
+
+// 🧬 PHASE 6 COMPONENTS
+import { ForensicMetricGrid } from './ForensicMetricGrid';
+import { calculatePulseMetrics } from '../../utils/pulseUtils';
 
 const sidebarWidth = 260; // Absolute mapping from Sidebar.jsx
 const CARD_HEIGHT = 400;  // FULL BREATHING ROOM for V2 Clinical Re-booking UI
@@ -81,14 +85,14 @@ const getLocalDateStr = (d = new Date()) => {
 
 // --- 📡 MEMOIZED AUDIT CARD: THE PERFORMANCE CURE ---
 const AuditPatientCard = React.memo(({
-    patient, resolution, targetDate, auditReason, realTimeStatus, tabMode, ancestorData, loadingHistory, departments,
+    patient, resolution, targetDate, auditReason, realTimeStatus, tabMode, ancestorData, loadingHistory, departments, settings,
     onResolutionChange, onAuditReasonChange, onFetchHistory, onClearHistory, onGenderOpen, CARD_HEIGHT
 }) => {
     // PHASE 4.4.2.5: LOCAL-FIRST FOCUS SHIELD
     const [localReason, setLocalReason] = useState(auditReason || "");
 
     // Keep pulse in sync if external props change (e.g. Batch Action)
-    React.useEffect(() => {
+    useEffect(() => {
         setLocalReason(auditReason || "");
     }, [auditReason]);
 
@@ -100,7 +104,7 @@ const AuditPatientCard = React.memo(({
         onAuditReasonChange(patient.id, newVal);
     };
     // --- 🧬 CHRONOS DATE-INDEXING ENGINE (V2 UNIFICATION) ---
-    const uniqueDates = React.useMemo(() => {
+    const uniqueDates = useMemo(() => {
         const pulse = patient.clinicalPulse || [];
         if (pulse.length === 0) return [new Date().toDateString()];
         
@@ -114,7 +118,7 @@ const AuditPatientCard = React.memo(({
     const [activeCaseDay, setActiveCaseDay] = useState(uniqueDates.length - 1);
 
     // --- ⚓ TEMPORAL ANCHOR (THE MIDNIGHT DETERRENT) ---
-    const operationalEnd = React.useMemo(() => {
+    const operationalEnd = useMemo(() => {
         const targetDateStr = uniqueDates[activeCaseDay];
         const todayStr = new Date().toDateString();
 
@@ -128,7 +132,7 @@ const AuditPatientCard = React.memo(({
         }
     }, [uniqueDates, activeCaseDay]);
 
-    const filteredPulse = React.useMemo(() => {
+    const filteredPulse = useMemo(() => {
         const pulse = patient.clinicalPulse || [];
         const targetDateStr = uniqueDates[activeCaseDay];
         return pulse.filter(p => {
@@ -137,7 +141,7 @@ const AuditPatientCard = React.memo(({
         });
     }, [patient.clinicalPulse, uniqueDates, activeCaseDay]);
 
-    const milestones = React.useMemo(() => {
+    const milestones = useMemo(() => {
         const pulse = patient.clinicalPulse || [];
         const voidedIds = new Set(pulse.filter(p => p.correctedEventId).map(p => p.correctedEventId));
 
@@ -442,48 +446,88 @@ const AuditPatientCard = React.memo(({
                         );
                     })}
                 </Stack>
+                    {/* PHASE 3: THE MULTI-SHIFT FORENSIC FOOTER (Pivot 6.9.5) */}
+                {(() => {
+                    // 🧬 Footer Calculus (Pager-Synced)
+                    const targetDateStr = uniqueDates[activeCaseDay];
+                    const targetDate = new Date(targetDateStr);
+                    
+                    // 🛡️ THE AUDIT PRIORITY LOCK: Check for a database seal for this specific shift
+                    const apptSeal = (activeCaseDay === 0) 
+                        ? patient.forensicSeal 
+                        : (ancestorData?.[patient.id]?.[targetDateStr]?.forensicSeal);
 
-                <Box sx={{ mt: 'auto', pt: 1.5, borderTop: `2px solid ${forensicColor}`, display: 'flex', justifyContent: 'space-between', gap: 1 }}>
-                    <Box sx={{ flex: 1 }}>
-                        <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', fontSize: '0.52rem', display: 'block' }}>PUNCTUALITY</Typography>
-                        <Typography sx={{ fontWeight: '1000', fontSize: '0.7rem', color: '#2E7D32', whiteSpace: 'nowrap' }}>
-                            {(() => {
-                                const arr = milestones.find(i => i.label === 'ARRIVED');
-                                const schVal = patient.jsScheduled;
-                                if (!arr || !schVal) return 'N/A';
-                                const arrD = arr.val.toDate ? arr.val.toDate() : new Date(arr.val);
-                                const schD = schVal.toDate ? schVal.toDate() : new Date(schVal);
-                                
-                                // Anchor to operationalEnd for historical punctuality
-                                const diff = Math.floor((Math.min(arrD, operationalEnd) - schD) / 60000);
-                                if (Math.abs(diff) <= 5) return 'ON-TIME';
-                                return `${formatDuration(Math.abs(diff))} ${diff > 0 ? 'LATE' : 'EARLY'}`;
-                            })()}
-                        </Typography>
-                    </Box>
+                    const footerMetrics = apptSeal || calculatePulseMetrics(patient.clinicalPulse || [], settings, patient.createdAt, targetDate);
 
-                    <Box sx={{ flex: 1.2, textAlign: 'center', borderLeft: '1px dashed #D7CCC8', borderRight: '1px dashed #D7CCC8', px: 0.5 }}>
-                        <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', fontSize: '0.52rem', display: 'block' }}>TOTAL TENURE</Typography>
-                        <Typography sx={{ fontWeight: '1000', fontSize: '0.7rem', color: '#1565C0', whiteSpace: 'nowrap' }}>
-                            {(() => {
-                                const inception = patient.createdAt?.toDate ? patient.createdAt.toDate() : new Date(patient.createdAt || Date.now());
-                                return formatTenure(Math.floor((new Date() - inception) / 60000));
-                            })()}
-                        </Typography>
-                    </Box>
+                    // 🧬 Multi-Shift Punctuality Decider
+                    const getPunctualityLabel = () => {
+                        const pulse = patient.clinicalPulse || [];
+                        const currentDayArrival = pulse.find(p => {
+                           if (p.toStatus !== 'arrived') return false;
+                           const d = p.timestamp?.toDate ? p.timestamp.toDate() : new Date(p.timestamp);
+                           return d.toDateString() === targetDateStr;
+                        });
 
-                    <Box sx={{ flex: 1, textAlign: 'right' }}>
-                        <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', fontSize: '0.52rem', display: 'block' }}>TOTAL WAIT</Typography>
-                        <Typography sx={{ fontWeight: '1000', fontSize: '0.7rem', color: '#5D4037', whiteSpace: 'nowrap' }}>
-                            {(() => {
-                                const arr = milestones.find(i => i.label === 'ARRIVED');
-                                if (!arr) return 'N/A';
-                                const arrD = arr.val.toDate ? arr.val.toDate() : new Date(arr.val);
-                                return formatDuration(Math.floor((operationalEnd - arrD) / 60000));
-                            })()}
-                        </Typography>
-                    </Box>
-                </Box>
+                        // 🏥 Check for In-Residence (Confined) status during this shift
+                        const isConfinedNow = pulse.some(p => {
+                           const d = p.timestamp?.toDate ? p.timestamp.toDate() : new Date(p.timestamp);
+                           return d.toDateString() === targetDateStr && p.toStatus === 'confined';
+                        });
+
+                        if (currentDayArrival) {
+                            const arrDate = currentDayArrival.timestamp?.toDate ? currentDayArrival.timestamp.toDate() : new Date(currentDayArrival.timestamp);
+                            
+                            // Look for original or rebooked schedule matching THIS day
+                            const schValue = patient.jsScheduled;
+                            if (schValue) {
+                                const schDate = schValue.toDate ? schValue.toDate() : new Date(schValue);
+                                if (schDate.toDateString() === targetDateStr) {
+                                    const diff = Math.floor((arrDate - schDate) / 60000);
+                                    if (diff === 0) return "ON-TIME";
+                                    return `${formatDuration(diff)} ${diff > 0 ? 'LATE' : 'EARLY'}`;
+                                }
+                            }
+                            return "WALK-IN";
+                        }
+
+                        if (isConfinedNow) return "IN-RESIDENCE";
+                        
+                        // FALLBACK: Inception Check for Day 1
+                        if (activeCaseDay === 0) {
+                            const isWalkIn = patient.isWalkIn === true || patient.ownerId === 'WALK_IN_USER' || String(patient.ownerId || "").includes('GUEST_') || patient.ticketPrefix === 'W' || patient.ticketPrefix === 'E';
+                            return isWalkIn ? "WALK-IN" : "PENDING";
+                        }
+
+                        return "N/A";
+                    };
+
+                    const punctualityVal = getPunctualityLabel();
+
+                    return (
+                        <Box sx={{ mt: 'auto', py: 1.2, px: 2, borderTop: `2px solid ${forensicColor}`, display: 'flex', justifyContent: 'space-between', gap: 1, bgcolor: 'rgba(93, 64, 55, 0.02)' }}>
+                            <Box sx={{ flex: 1.2 }}>
+                                <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', fontSize: '0.52rem', display: 'block' }}>PUNCTUALITY</Typography>
+                                <Typography sx={{ fontWeight: '1000', fontSize: '0.72rem', color: (punctualityVal.includes('LATE') || punctualityVal === 'WALK-IN') ? '#D32F2F' : '#2E7D32', whiteSpace: 'nowrap', textTransform: 'uppercase' }}>
+                                    {punctualityVal}
+                                </Typography>
+                            </Box>
+
+                            <Box sx={{ flex: 1, textAlign: 'center', borderLeft: '1px dashed #D7CCC8', borderRight: '1px dashed #D7CCC8', px: 0.5 }}>
+                                <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', fontSize: '0.52rem', display: 'block' }}>SHIFT WAIT</Typography>
+                                <Typography sx={{ fontWeight: '1000', fontSize: '0.72rem', color: '#5D4037', whiteSpace: 'nowrap' }}>
+                                    {footerMetrics.shiftQueue}
+                                </Typography>
+                            </Box>
+
+                            <Box sx={{ flex: 1, textAlign: 'right' }}>
+                                <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', fontSize: '0.52rem', display: 'block' }}>SHIFT CONSULT</Typography>
+                                <Typography sx={{ fontWeight: '1000', fontSize: '0.72rem', color: '#1565C0', whiteSpace: 'nowrap' }}>
+                                    {footerMetrics.shiftConsult}
+                                </Typography>
+                            </Box>
+                        </Box>
+                    );
+                })()}
             </Box>
 
             {/* 4. RECOMMENDATION & VERDICT (FLEX - EXPANDS ON TRIAGE) */}
@@ -523,13 +567,19 @@ const AuditPatientCard = React.memo(({
                                         Decision required: Select a resolution below.
                                     </Typography>
                                 )}
+                                
+                                <Box sx={{ mt: 2 }}>
+                                    <ForensicMetricGrid 
+                                        pulse={patient.clinicalPulse || []}
+                                        settings={settings}
+                                        createdAt={patient.createdAt}
+                                        sealedMetrics={activeCaseDay === 0 ? patient.forensicSeal : (ancestorData?.[patient.id]?.[uniqueDates[activeCaseDay]]?.forensicSeal)}
+                                        targetDate={uniqueDates[activeCaseDay] ? new Date(uniqueDates[activeCaseDay]) : new Date()} 
+                                    />
+                                </Box>
                             </>
                         );
                     })()}
-
-                    <Typography variant="overline" sx={{ fontWeight: '1000', color: forensicColor, mt: 1, display: 'block', letterSpacing: 1.5, opacity: 0.8, fontSize: '0.65rem' }}>
-                        {intakeAgeLabel}
-                    </Typography>
                 </Box>
 
                 <Box sx={{ mt: 'auto' }}>
@@ -566,7 +616,7 @@ const AuditPatientCard = React.memo(({
 
                         {/* 🏥 ACTIVE SILO BINARY TRIAGE */}
                         {tabMode === 2 && [
-                            <ToggleButton key="hospitalize" value="hospitalize"><LocalHospitalIcon sx={{ mr: 0.5, fontSize: 16 }} /> Confine</ToggleButton>,
+                            <ToggleButton key="hospitalize" value="hospitalize"><LocalHospitalIcon sx={{ mr: 0.5, fontSize: 16 }} /> CONFINE</ToggleButton>,
                             <ToggleButton key="rebook" value="rebook"><EventRepeatIcon sx={{ mr: 0.5, fontSize: 16 }} /> Rebook</ToggleButton>
                         ]}
 
@@ -672,6 +722,17 @@ const EndOfDayModal = React.memo(({
     // PHASE 6: BATCH FORENSIC LITERACY
     const [bulkReason, setBulkReason] = useState("");
     const [stagedBulkAction, setStagedBulkAction] = useState(null); // PHASE 5.6.19: STAGED BATCHING
+    
+    // 🧬 CLINIC SETTINGS (For Pulse Math)
+    const [settings, setSettings] = useState({ openHour: 8, closeHour: 17, workingDays: [0,1,2,3,4,5,6] });
+
+    useEffect(() => {
+        // Fetch Settings for pulse math consistency
+        const unsub = onSnapshot(doc(db, "clinic_settings", "general"), (docSnap) => {
+            if (docSnap.exists()) setSettings(prev => ({ ...prev, ...docSnap.data() }));
+        });
+        return () => unsub();
+    }, []);
 
     // SILO FILTERING LOGIC
     const siloOnline = leftoverPatients.filter(p => (p.status || "").toLowerCase() === 'pending');
@@ -681,7 +742,7 @@ const EndOfDayModal = React.memo(({
     const currentSiloPatients = activeTab === 0 ? siloOnline : activeTab === 1 ? siloScheduled : siloActive;
 
     // --- 🛰️ THE LIVE HUD SYNC (STALE DATA GUARD) ---
-    React.useEffect(() => {
+    useEffect(() => {
         if (!open || leftoverPatients.length === 0) return;
 
         setLoadingRealTime(true);
@@ -704,7 +765,7 @@ const EndOfDayModal = React.memo(({
     }, [open, leftoverPatients]);
 
     // RESET STAGED ACTION ON TAB CHANGE
-    React.useEffect(() => {
+    useEffect(() => {
         setStagedBulkAction(null);
         setBulkReason(""); // Clear the reason too to keep the logic clean
     }, [activeTab]);
@@ -1090,6 +1151,7 @@ const EndOfDayModal = React.memo(({
                                 ancestorData={ancestorData[patient.id]}
                                 loadingHistory={loadingHistory[patient.id]}
                                 departments={departments}
+                                settings={settings}
                                 onResolutionChange={onResolutionChange}
                                 onAuditReasonChange={onAuditReasonChange}
                                 onFetchHistory={handleFetchHistory}

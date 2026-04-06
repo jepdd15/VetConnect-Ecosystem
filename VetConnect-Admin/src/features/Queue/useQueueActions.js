@@ -1,6 +1,7 @@
 import { doc, updateDoc, Timestamp, writeBatch, arrayUnion, runTransaction, collection } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 import { useUser } from '../../context/UserContext'; 
+import { calculatePulseMetrics } from '../../utils/pulseUtils';
 
 export function useQueueActions() {
   const { profile } = useUser();
@@ -128,7 +129,7 @@ export function useQueueActions() {
     await updateDoc(doc(db, "appointments", row.id), updateData);
   };
 
-  const markNoShow = async (row, reason) => {
+  const markNoShow = async (row, reason, settings) => {
     // THE PHYSICAL INTEGRITY GUARD: If they arrived, they are NOT a no-show.
     if (row.timeArrived || row.jsArrived) {
       throw new Error(`❌ INTEGRITY REFUSAL: This patient is physically present (Arrived). Use Cancel or Reschedule instead.`);
@@ -137,6 +138,14 @@ export function useQueueActions() {
     if (!reason || reason.trim().length === 0) {
       throw new Error("❌ AUDIT FAILURE: No-Show flagging requires a mandatory clinical justification.");
     }
+
+    // --- 🧬 SUB-PHASE 4.2: THE INDIVIDUAL FORENSIC SEAL ---
+    const forensicSeal = calculatePulseMetrics(
+      row.clinicalPulse || [], 
+      settings, 
+      row.createdAt, 
+      new Date()
+    );
 
     const currentServices = row.services || [];
     const clearedServices = (currentServices || []).map(s => ({ ...s, staffId: null, staffName: 'Unassigned' }));
@@ -161,11 +170,23 @@ export function useQueueActions() {
       cancelledBy: staffSignature,
       clinicalPulse: arrayUnion(pulseEvent),
       isForensicAudit: true, // THE FORENSIC SEAL
-      auditReason: reason
+      auditReason: reason,
+      forensicSeal // THE 8-METRIC STAMP
     });
   };
 
-  const rejectAppointment = async (id, reason, currentServices = [], isForensic = false) => {
+  const rejectAppointment = async (id, reason, currentServices = [], isForensic = false, settings, rowData) => {
+    // --- 🧬 SUB-PHASE 4.2: THE INDIVIDUAL FORENSIC SEAL ---
+    let forensicSeal = null;
+    if (rowData) {
+        forensicSeal = calculatePulseMetrics(
+          rowData.clinicalPulse || [], 
+          settings, 
+          rowData.createdAt, 
+          new Date()
+        );
+    }
+
     const clearedServices = (currentServices || []).map(s => ({ ...s, staffId: null, staffName: 'Unassigned' }));
     const pulseEvent = {
         eventId: `pulse_cancel_${Date.now()}`,
@@ -187,7 +208,8 @@ export function useQueueActions() {
       cancelledBy: staffSignature,
       clinicalPulse: arrayUnion(pulseEvent),
       isForensicAudit: isForensic, // STAMPING THE AUDIT
-      auditReason: isForensic ? `Forensic Triage Cleanup: ${reason}` : (reason || 'Individually cancelled')
+      auditReason: isForensic ? `Forensic Triage Cleanup: ${reason}` : (reason || 'Individually cancelled'),
+      forensicSeal // THE 8-METRIC STAMP
     });
   };
 

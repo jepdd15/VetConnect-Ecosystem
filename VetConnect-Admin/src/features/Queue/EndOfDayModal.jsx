@@ -37,6 +37,21 @@ const formatDuration = (mins) => {
     return rem > 0 ? `${h}H ${rem}M` : `${h}H`;
 };
 
+// HELPER: Absolute Tenure Formatter (Days/Hours/Minutes)
+const formatTenure = (mins) => {
+    const m = Math.abs(mins);
+    const d = Math.floor(m / 1440);
+    const h = Math.floor((m % 1440) / 60);
+    const rem = m % 60;
+    
+    let parts = [];
+    if (d > 0) parts.push(`${d}D`);
+    if (h > 0) parts.push(`${h}H`);
+    if (rem > 0 || (rem === 0 && parts.length === 0)) parts.push(`${rem}M`);
+    
+    return parts.join(' ');
+};
+
 // HELPER: Species Icon Logic (Hardened for Feline/Canine Distinctions)
 const getSpeciesIcon = (species) => {
     const s = String(species || "").toLowerCase();
@@ -428,10 +443,10 @@ const AuditPatientCard = React.memo(({
                     })}
                 </Stack>
 
-                <Box sx={{ mt: 'auto', pt: 1.5, borderTop: `2px solid ${forensicColor}`, display: 'flex', justifyContent: 'space-between' }}>
-                    <Box>
+                <Box sx={{ mt: 'auto', pt: 1.5, borderTop: `2px solid ${forensicColor}`, display: 'flex', justifyContent: 'space-between', gap: 1 }}>
+                    <Box sx={{ flex: 1 }}>
                         <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', fontSize: '0.52rem', display: 'block' }}>PUNCTUALITY</Typography>
-                        <Typography sx={{ fontWeight: '1000', fontSize: '0.75rem', color: '#2E7D32' }}>
+                        <Typography sx={{ fontWeight: '1000', fontSize: '0.7rem', color: '#2E7D32', whiteSpace: 'nowrap' }}>
                             {(() => {
                                 const arr = milestones.find(i => i.label === 'ARRIVED');
                                 const schVal = patient.jsScheduled;
@@ -446,9 +461,20 @@ const AuditPatientCard = React.memo(({
                             })()}
                         </Typography>
                     </Box>
-                    <Box sx={{ textAlign: 'right' }}>
+
+                    <Box sx={{ flex: 1.2, textAlign: 'center', borderLeft: '1px dashed #D7CCC8', borderRight: '1px dashed #D7CCC8', px: 0.5 }}>
+                        <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', fontSize: '0.52rem', display: 'block' }}>TOTAL TENURE</Typography>
+                        <Typography sx={{ fontWeight: '1000', fontSize: '0.7rem', color: '#1565C0', whiteSpace: 'nowrap' }}>
+                            {(() => {
+                                const inception = patient.createdAt?.toDate ? patient.createdAt.toDate() : new Date(patient.createdAt || Date.now());
+                                return formatTenure(Math.floor((new Date() - inception) / 60000));
+                            })()}
+                        </Typography>
+                    </Box>
+
+                    <Box sx={{ flex: 1, textAlign: 'right' }}>
                         <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', fontSize: '0.52rem', display: 'block' }}>TOTAL WAIT</Typography>
-                        <Typography sx={{ fontWeight: '1000', fontSize: '0.75rem', color: '#5D4037' }}>
+                        <Typography sx={{ fontWeight: '1000', fontSize: '0.7rem', color: '#5D4037', whiteSpace: 'nowrap' }}>
                             {(() => {
                                 const arr = milestones.find(i => i.label === 'ARRIVED');
                                 if (!arr) return 'N/A';
@@ -473,9 +499,9 @@ const AuditPatientCard = React.memo(({
                             'confirmed': "Patient was scheduled but never arrived at the clinic."
                         };
                         const advisoryMap = {
-                            'rebook': "Move this record to the next operational shift.",
+                            'rebook': "Patient returns home. Status reverts to SCHEDULED for next arrival.",
                             'defer': "Carry this request forward for triage in the next shift.",
-                            'carry-over': "Carry this active patient forward for treatment in the next shift.",
+                            'hospitalize': "Patient stays overnight (Confined). Status remains ACTIVE for resumption.",
                             'no-show': "Mark the patient as absent for today's appointment.",
                             'cancel': "Archive this record as a cancellation and clear it from the queue."
                         };
@@ -527,24 +553,22 @@ const AuditPatientCard = React.memo(({
                         }}
                     >
                         {/* 📡 ONLINE SILO ACTIONS */}
-                        {tabMode === 0 && (
-                            <ToggleButton value="defer"><AutoFixHighIcon sx={{ mr: 0.5, fontSize: 16 }} /> Defer</ToggleButton>
-                        )}
-                        {tabMode === 0 && (
-                            <ToggleButton value="rebook"><EventRepeatIcon sx={{ mr: 0.5, fontSize: 16 }} /> Reschedule</ToggleButton>
-                        )}
+                        {tabMode === 0 && [
+                            <ToggleButton key="defer" value="defer"><AutoFixHighIcon sx={{ mr: 0.5, fontSize: 16 }} /> Defer</ToggleButton>,
+                            <ToggleButton key="rebook" value="rebook"><EventRepeatIcon sx={{ mr: 0.5, fontSize: 16 }} /> Reschedule</ToggleButton>
+                        ]}
+                        
+                        {/* 📅 SCHEDULED ACTIONS */}
+                        {tabMode === 1 && [
+                            <ToggleButton key="rebook" value="rebook"><EventRepeatIcon sx={{ mr: 0.5, fontSize: 16 }} /> Reschedule</ToggleButton>,
+                            <ToggleButton key="no-show" value="no-show"><HelpOutlineIcon sx={{ mr: 0.5, fontSize: 16 }} /> No-Show</ToggleButton>
+                        ]}
 
-                        {/* 📅 SCHEDULED / 🚑 ACTIVE ACTIONS */}
-                        {tabMode !== 0 && (
-                            <ToggleButton value={tabMode === 2 ? 'carry-over' : 'rebook'}>
-                                <EventRepeatIcon sx={{ mr: 0.5, fontSize: 16 }} /> {tabMode === 2 ? 'Carry-over' : 'Reschedule'}
-                            </ToggleButton>
-                        )}
-
-                        {/* ABSENTEEISM ONLY FOR SCHEDULED TAB */}
-                        {tabMode === 1 && (
-                            <ToggleButton value="no-show"><HelpOutlineIcon sx={{ mr: 0.5, fontSize: 16 }} /> No-Show</ToggleButton>
-                        )}
+                        {/* 🏥 ACTIVE SILO BINARY TRIAGE */}
+                        {tabMode === 2 && [
+                            <ToggleButton key="hospitalize" value="hospitalize"><LocalHospitalIcon sx={{ mr: 0.5, fontSize: 16 }} /> Confine</ToggleButton>,
+                            <ToggleButton key="rebook" value="rebook"><EventRepeatIcon sx={{ mr: 0.5, fontSize: 16 }} /> Rebook</ToggleButton>
+                        ]}
 
                         <ToggleButton value="cancel"><DoNotDisturbIcon sx={{ mr: 0.5, fontSize: 16 }} /> Cancel</ToggleButton>
                     </ToggleButtonGroup>
@@ -577,19 +601,20 @@ const AuditPatientCard = React.memo(({
                         </Box>
                     )}
 
-                    {resolution === 'rebook' && (
+                    {/* 🗓️ SMART-SHIFT CALENDAR (Prescriptive Scheduling) */}
+                    {(resolution === 'rebook' || resolution === 'defer' || resolution === 'hospitalize') && (
                         <Box sx={{ mt: 1.2, p: 1, border: `2px solid ${forensicColor}`, borderRadius: 1.2, bgcolor: '#FFF6E0', animation: 'slideIn 0.2s ease-out' }}>
                             <style>{`@keyframes slideIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }`}</style>
                             <Typography variant="caption" sx={{ fontWeight: '1000', color: '#5D4037', display: 'block', mb: 0.8, fontSize: '0.6rem', letterSpacing: 0.5 }}>
                                 🗓️ TARGET CLINICAL WINDOW
                             </Typography>
 
-                            <Stack spacing={1.5}>
+                            <Stack spacing={1}>
                                 <Stack direction="row" spacing={0.5}>
                                     {[
-                                        { label: 'TOMORROW', days: 1 },
-                                        { label: '+2 DAYS', days: 2 },
-                                        { label: 'NEXT WEEK', days: 7 }
+                                        { label: 'TOMO', days: 1 },
+                                        { label: '+2D', days: 2 },
+                                        { label: '+1W', days: 7 }
                                     ].map((pick) => {
                                         const d = new Date(); d.setDate(d.getDate() + pick.days);
                                         const dateStr = getLocalDateStr(d);
@@ -613,6 +638,17 @@ const AuditPatientCard = React.memo(({
                                             </Button>
                                         );
                                     })}
+                                    <Box sx={{ flex: 1.5, display: 'flex', alignItems: 'center', gap: 0.5, border: `1px solid ${forensicColor}`, borderRadius: '4px', px: 0.5, bgcolor: 'white' }}>
+                                        <input
+                                            type="date"
+                                            value={targetDate || getLocalDateStr(new Date(Date.now() + 86400000))}
+                                            onChange={(e) => onResolutionChange(patient.id, resolution, e.target.value)}
+                                            style={{
+                                                border: 'none', background: 'transparent', fontSize: '0.6rem', fontWeight: '1000',
+                                                color: '#5D4037', outline: 'none', width: '100%', cursor: 'pointer'
+                                            }}
+                                        />
+                                    </Box>
                                 </Stack>
                             </Stack>
                         </Box>
@@ -703,7 +739,7 @@ const EndOfDayModal = React.memo(({
     const census = {
         defer: 0,
         rebook: 0,
-        carryOver: 0,
+        hospitalize: 0,
         noShow: 0,
         cancel: 0
     };
@@ -712,16 +748,11 @@ const EndOfDayModal = React.memo(({
         const res = patientResolutions[p.id];
         if (!res) return;
 
-        const rawStatus = (p.status || "").toLowerCase();
-        const isActive = ['arrived', 'in-consult', 'dispensing', 'billing', 'payment', 'on-hold', 'confined'].includes(rawStatus);
-
         if (res === 'defer') census.defer++;
         else if (res === 'no-show') census.noShow++;
         else if (res === 'cancel') census.cancel++;
-        else if (res === 'rebook') {
-            if (isActive) census.carryOver++;
-            else census.rebook++;
-        }
+        else if (res === 'hospitalize') census.hospitalize++;
+        else if (res === 'rebook') census.rebook++;
     });
 
     const [isConfirming, setIsConfirming] = useState(false);
@@ -875,13 +906,13 @@ const EndOfDayModal = React.memo(({
                             </Box>
                             <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
                             <Box sx={{ textAlign: 'center' }}>
-                                <Typography variant="h2" sx={{ fontWeight: 1000, color: '#4FC3F7' }}>{census.rebook}</Typography>
-                                <Typography variant="caption" sx={{ fontWeight: 900, opacity: 0.9, letterSpacing: 1.5 }}>RESCHEDULE</Typography>
+                                <Typography variant="h2" sx={{ fontWeight: 1000, color: '#4FC3F7' }}>{census.hospitalize}</Typography>
+                                <Typography variant="caption" sx={{ fontWeight: 900, opacity: 0.9, letterSpacing: 1.5 }}>STAY</Typography>
                             </Box>
                             <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
                             <Box sx={{ textAlign: 'center' }}>
-                                <Typography variant="h2" sx={{ fontWeight: 1000, color: '#64B5F6' }}>{census.carryOver}</Typography>
-                                <Typography variant="caption" sx={{ fontWeight: 900, opacity: 0.9, letterSpacing: 1.5 }}>CARRY OVER</Typography>
+                                <Typography variant="h2" sx={{ fontWeight: 1000, color: '#64B5F6' }}>{census.rebook}</Typography>
+                                <Typography variant="caption" sx={{ fontWeight: 900, opacity: 0.9, letterSpacing: 1.5 }}>REBOOK</Typography>
                             </Box>
                             <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
                             <Box sx={{ textAlign: 'center' }}>

@@ -572,7 +572,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                     sx={{ 
                         ...btnStyle, 
                         flexGrow: 1,
-                        bgcolor: isTomorrow ? '#BDBDBD' : '#1976D2', 
+                        bgcolor: isTomorrow ? '#BDBDBD' : (params.row.caseDay > 1 ? '#E65100' : '#1976D2'), 
                         fontWeight: '1000', 
                         height: 32,
                         boxShadow: isTomorrow ? 'none' : '0 4px 10px rgba(25, 118, 210, 0.3)',
@@ -580,7 +580,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                     }} 
                     onClick={() => actions.handleOpenAssign(params.row, 'check-in')}
                 >
-                    {isTomorrow ? 'Locked' : 'Check In'}
+                    {isTomorrow ? 'Locked' : (params.row.caseDay > 1 ? '🗂️ RE-ARRIVE & RESUME' : 'Check In')}
                 </Button>
                 <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)} sx={{ border: '1px solid rgba(0,0,0,0.1)', color: '#5D4037', flexShrink: 0 }}><MoreVertIcon fontSize="small" /></IconButton>
             </Box>
@@ -643,27 +643,38 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
             <Button 
                 variant="contained" 
                 size="small" 
-                sx={{...btnStyle, bgcolor: '#5D4037', '&:hover': { bgcolor: '#3E2723' }, minWidth: 140}} 
+                sx={{
+                  ...btnStyle, 
+                  bgcolor: params.row.caseDay > 1 ? '#E65100' : '#5D4037', 
+                  '&:hover': { bgcolor: params.row.caseDay > 1 ? '#BF360C' : '#3E2723' }, 
+                  minWidth: params.row.caseDay > 1 ? 160 : 140
+                }} 
                 onClick={() => actions.handleStatusChange(params.row, 'in-consult')}
             >
-                START CONSULT
+                {params.row.caseDay > 1 ? '🔥 RESUME' : 'START CONSULT'}
             </Button>
             <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)} sx={{ color: '#5D4037' }}><MoreVertIcon fontSize="small" /></IconButton>
           </Box>
         );
       }
 
-      if (params.row.status === 'in-consult') {
+      if (['in-consult', 'confined', 'on-hold'].includes(params.row.status)) {
+        const isResuming = params.row.caseDay > 1;
         return (
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.8, width: '100%', height: '100%' }}>
             <Button 
                 variant="contained" 
                 size="small" 
                 startIcon={<AutoFixHighIcon sx={{ fontSize: '14px !important' }} />}
-                sx={{...btnStyle, bgcolor: '#006064', '&:hover': { bgcolor: '#004D40' }, minWidth: 140}} 
+                sx={{
+                  ...btnStyle, 
+                  bgcolor: isResuming ? '#E65100' : '#006064', 
+                  '&:hover': { bgcolor: isResuming ? '#BF360C' : '#004D40' }, 
+                  minWidth: isResuming ? 160 : 140
+                }} 
                 onClick={() => actions.handleOpenConsult(params.row)}
             >
-                WORKSPACE
+                {isResuming ? '🔥 RESUME' : 'WORKSPACE'}
             </Button>
             <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)} sx={{ color: '#5D4037' }}><MoreVertIcon fontSize="small" /></IconButton>
           </Box>

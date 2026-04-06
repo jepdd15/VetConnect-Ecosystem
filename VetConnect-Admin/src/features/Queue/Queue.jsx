@@ -35,6 +35,7 @@ import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos'; 
 import UndoIcon from '@mui/icons-material/Undo'; 
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital'; 
+import HomeIcon from '@mui/icons-material/Home'; 
 import WarningIcon from '@mui/icons-material/Warning';
 import NightlightRoundIcon from '@mui/icons-material/NightlightRound';
 import CloseIcon from '@mui/icons-material/Close';
@@ -132,6 +133,10 @@ export default function Queue() {
   const [targetDates, setTargetDates] = useState({}); // PHASE 2/3: RESCHEDULING WINDOWS
   const [isForcedCleanup, setIsForcedCleanup] = useState(false); // The Hostage Lock
   const [hasGhostPatients, setHasGhostPatients] = useState(false);
+  const [openTriageShield, setOpenTriageShield] = useState(false); 
+  const [triageMode, setTriageMode] = useState(null); // 'hospitalize' or 'rebook'
+  const [triageDate, setTriageDate] = useState("");
+  const [triageReason, setTriageReason] = useState("");
 
   const [openEdit, setOpenEdit] = useState(false);
   const [editName, setEditName] = useState('');
@@ -261,10 +266,23 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
       }
 
       const batch = writeBatch(db); 
-      // PHASE 4.4.4: THE CLEAN-SLATE SAFETY (Default to Tomorrow, not Today)
+      
+      // PHASE 5.6.20: DYNAMIC SHIFT BOUNDARIES (Universal Precision)
+      const [openH, openM = 0] = (clinicSettings.openingTime || "08:00").split(':').map(Number);
+      const [closeH, closeM = 0] = (clinicSettings.closingTime || "17:00").split(':').map(Number);
+      
+      const now = new Date();
+      const closingToday = new Date();
+      closingToday.setHours(closeH, closeM, 0, 0);
+      const isAfterHours = now > closingToday;
+
+      // Default Target: If closing today, target Tomorrow at OpeningTime. 
+      // If recovering yesterday, target Today at OpeningTime (Unless it's after hours).
       const defaultTargetDate = new Date(); 
-      defaultTargetDate.setDate(defaultTargetDate.getDate() + 1); 
-      defaultTargetDate.setHours(8, 0, 0, 0); 
+      if (isAfterHours) {
+        defaultTargetDate.setDate(defaultTargetDate.getDate() + 1);
+      }
+      defaultTargetDate.setHours(openH, openM, 0, 0); 
 
       leftoverPatients.forEach((patient) => { 
         const oldRef = doc(db, "appointments", patient.id); 
@@ -294,17 +312,23 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
           // LOGIC: If a Friday ghost is processed on Sunday, "Defer" targets Sunday (Today).
           // If a Friday record is processed on Friday night, "Defer" targets Saturday (Tomorrow).
           const calculatedDefault = new Date();
-          if (isFromPast) {
-            // Recovery Mode: Pull to Today at 8 AM
-            calculatedDefault.setHours(8, 0, 0, 0);
+          if (isFromPast && !isAfterHours) {
+            // Recovery Mode (During Shift): Pull to Today at Opening Time
+            calculatedDefault.setHours(openH, openM, 0, 0);
           } else {
-            // Maintenance Mode: Push to Tomorrow at 8 AM
+            // Maintenance Mode OR Recovery Mode (After-Hours): Push to Tomorrow at Opening Time
             calculatedDefault.setDate(calculatedDefault.getDate() + 1); 
-            calculatedDefault.setHours(8, 0, 0, 0);
+            calculatedDefault.setHours(openH, openM, 0, 0);
           }
 
-          const manualDate = targetDateMap[patient.id] ? new Date(`${targetDateMap[patient.id]}T08:00:00`) : calculatedDefault;
-          const pulseType = (action === 'defer') ? 'TRIAGE_DEFER' : ((rawStatus === 'confirmed' || rawStatus === 'scheduled') ? 'TRIAGE_REBOOK' : 'TRIAGE_CARRY_OVER');
+          // PHASE 5.6.20: DYNAMIC MANUAL TIME ATTACHMENT
+          const openStr = `${String(openH).padStart(2, '0')}:${String(openM).padStart(2, '0')}:00`;
+          const manualDate = targetDateMap[patient.id] ? new Date(`${targetDateMap[patient.id]}T${openStr}`) : calculatedDefault;
+          const pulseType = (action === 'defer') ? 'TRIAGE_DEFER' : ((action === 'hospitalize') ? 'TRIAGE_CONFINE' : 'TRIAGE_REBOOK');
+
+          // PHASE 5.6.20: THE FORENSIC ACTION TRANSLATOR
+          const actionLabel = action === 'hospitalize' ? 'CONFINE' : (action === 'rebook' ? 'REBOOK' : (action === 'defer' ? 'DEFER' : 'CARRY-OVER'));
+          const triagePrefix = `[Clinical Triage: ${actionLabel}]`;
 
           if (patient.status === 'carried-over') {
             batch.update(oldRef, { 
@@ -320,66 +344,62 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
                   timestamp: Timestamp.now(),
                   staffId: user?.uid || 'system',
                   staffName: staffSignature,
-                  note: `Shift Cleanup: Carry-over to ${manualDate.toDateString()}. Justification: ${forensicNote}`
+                  note: `Shift Cleanup: ${actionLabel} to ${manualDate.toDateString()}. Justification: ${forensicNote}`
                }),
                isTriaged: true // THE FORENSIC SHIELD STAMP
             });
           } else {
-            // Create a clean Action-Aware prefix
-            const actionLabel = action === 'carry-over' ? 'Carry-over' : 'Reschedule';
-            const triagePrefix = `[Clinical Triage: ${actionLabel}]`;
-            
             // Avoid stacking duplicate prefixes
             const cleanNotes = patient.notes?.startsWith('[Clinical Triage:') 
               ? patient.notes 
               : `${triagePrefix} ${patient.notes || ""}`;
-
-            batch.update(oldRef, { 
-               status: 'carried-over', 
-               isTriaged: true, // THE FORENSIC SHIELD STAMP
-               notes: cleanNotes,
-               processedBy: staffSignature,
-               processedAt: Timestamp.now(),
-               clinicalPulse: arrayUnion({
-                  eventId: `pulse_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                  type: pulseType,
-                  fromStatus: rawStatus,
-                  toStatus: 'carried-over',
-                  timestamp: Timestamp.now(),
-                  staffId: user?.uid || 'system',
-                  staffName: staffSignature,
-                  note: `Shift Cleanup: ${actionLabel} to ${manualDate.toDateString()}. Justification: ${forensicNote}`
-               })
-            }); 
-            
-            const newDocRef = doc(collection(db, "appointments")); 
-            const { id, jsScheduled, jsArrived, jsStarted, jsCompleted, queueNumber, ticketPrefix, timeArrived, timeStarted, timeCompleted, isTriaged: oldIsTriaged, ...preservedData } = patient;
-            
-            batch.set(newDocRef, { 
-               ...preservedData,
-               status: action === 'confined' ? 'confined' : 'confirmed', 
-               queueNumber: null, 
-               ticketPrefix: null, 
-               scheduledDate: Timestamp.fromDate(manualDate), 
-               createdAt: patient.createdAt || Timestamp.now(),
-               originApptId: patient.id,
-               caseDay: (patient.caseDay || 1) + 1,
-               notes: cleanNotes, 
-               processedBy: staffSignature,
-               assignedVet: action === 'confined' ? patient.assignedVet : "Unassigned",
-               clinicalPulse: [
-                  {
-                    eventId: `pulse_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                    type: 'INCEPTION',
-                    toStatus: action === 'confined' ? 'confined' : 'confirmed',
-                    timestamp: Timestamp.now(),
-                    staffId: user?.uid || 'system',
-                    staffName: staffSignature,
-                    note: `Generated via Triage Rescheduling from Appt ${patient.id}`
-                  }
-               ]
-            }); 
-          }
+ 
+             batch.update(oldRef, { 
+                status: 'carried-over', 
+                isTriaged: true, // THE FORENSIC SHIELD STAMP
+                notes: cleanNotes,
+                processedBy: staffSignature,
+                processedAt: Timestamp.now(),
+                clinicalPulse: arrayUnion({
+                   eventId: `pulse_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                   type: pulseType,
+                   fromStatus: rawStatus,
+                   toStatus: 'carried-over',
+                   timestamp: Timestamp.now(),
+                   staffId: user?.uid || 'system',
+                   staffName: staffSignature,
+                   note: `Shift Cleanup: ${actionLabel} to ${manualDate.toDateString()}. Justification: ${forensicNote}`
+                })
+             }); 
+             
+             const newDocRef = doc(collection(db, "appointments")); 
+             const { id, jsScheduled, jsArrived, jsStarted, jsCompleted, queueNumber, ticketPrefix, timeArrived, timeStarted, timeCompleted, isTriaged: oldIsTriaged, ...preservedData } = patient;
+             
+             batch.set(newDocRef, { 
+                ...preservedData,
+                status: action === 'hospitalize' ? 'confined' : 'confirmed', 
+                queueNumber: null, 
+                ticketPrefix: null, 
+                scheduledDate: Timestamp.fromDate(manualDate), 
+                createdAt: patient.createdAt || Timestamp.now(),
+                originApptId: patient.id,
+                caseDay: (patient.caseDay || 1) + 1,
+                notes: cleanNotes, 
+                processedBy: staffSignature,
+                assignedVet: action === 'hospitalize' ? (patient.assignedVet || "Unassigned") : "Unassigned",
+                clinicalPulse: [
+                   {
+                     eventId: `pulse_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                     type: 'INCEPTION',
+                     toStatus: action === 'hospitalize' ? 'confined' : 'confirmed',
+                     timestamp: Timestamp.now(),
+                     staffId: user?.uid || 'system',
+                     staffName: staffSignature,
+                     note: `Generated via Triage ${actionLabel} from Appt ${patient.id}`
+                   }
+                ]
+             }); 
+           }
         } else if (action === 'defer') {
           // PHASE 4.4.3: Support dynamic deferral windows instead of hardcoded tomorrow
           const triageKey = targetDateMap[patient.id] || new Date(Date.now() + 86400000).toISOString().split('T')[0];
@@ -1361,25 +1381,74 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
       />
       
       {/* INTERNAL MODALS */}
-      <Dialog open={openReject} onClose={() => setOpenReject(false)}>
-        <DialogTitle sx={{ fontWeight: '1000', color: '#5D4037' }}>Reject Appointment</DialogTitle>
-        <DialogContent>
+      <Dialog 
+        open={openReject} 
+        onClose={() => setOpenReject(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 3, border: '2px solid #D32F2F', boxShadow: '0 12px 32px rgba(211, 47, 47, 0.25)' } }}
+      >
+        <DialogTitle sx={{ 
+          bgcolor: '#FFEBEE', 
+          color: '#D32F2F', 
+          fontWeight: '1000', 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 1.5,
+          borderBottom: '1px solid #FFCDD2'
+        }}>
+          <PersonOffIcon /> TERMINAL CLINICAL VOID
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3 }}>
+          <Box sx={{ p: 1.5, bgcolor: '#FFF', border: '1px dashed #FFCDD2', borderRadius: 2, mb: 3 }}>
+            <Typography variant="body2" sx={{ fontWeight: '800', color: '#5D4037', lineHeight: 1.5 }}>
+              🚩 <strong>Warning:</strong> You are archiving this clinical record as a <strong>Void/Cancellation</strong>. This action is audited and permanently removes the patient from the active queue.
+            </Typography>
+          </Box>
+
+          <Typography variant="overline" sx={{ fontWeight: '1000', color: '#D32F2F', display: 'block', mb: 1, fontSize: '0.65rem', letterSpacing: 1 }}>
+              ✍️ MANDATORY VOID JUSTIFICATION
+          </Typography>
           <TextField
-            autoFocus
-            margin="dense"
-            label="Reason for Rejection"
-            fullWidth
-            variant="outlined"
-            value={rejectReason}
-            onChange={(e) => setRejectReason(e.target.value)}
-            sx={{ mt: 1 }}
+              fullWidth
+              multiline
+              rows={3}
+              autoFocus
+              placeholder="e.g., Client cancelled via phone, duplicate triage record, patient seen elsewhere (Required)"
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              sx={{
+                  '& .MuiOutlinedInput-root': {
+                      fontWeight: '900', fontSize: '0.85rem', bgcolor: '#FAFAFA',
+                      '& fieldset': { borderColor: !rejectReason.trim() ? '#B71C1C' : '#D32F2F' }
+                  }
+              }}
           />
+          {!rejectReason.trim() && (
+              <Typography variant="caption" sx={{ color: '#D32F2F', fontWeight: '1000', fontSize: '0.55rem', mt: 0.5, display: 'block' }}>
+                  🛑 LOCK ACTIVE: Terminal voids require a mandatory forensic audit justification.
+              </Typography>
+          )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ p: 2, pt: 1, borderTop: '1px solid #FFCDD2' }}>
           <Button onClick={() => setOpenReject(false)} sx={{ fontWeight: 'bold', color: '#757575' }}>Cancel</Button>
-          <Button onClick={confirmReject} variant="contained" color="error" sx={{ fontWeight: 'bold' }}>Reject</Button>
+          <Button 
+            onClick={confirmReject} 
+            variant="contained" 
+            disabled={!rejectReason.trim()}
+            sx={{ 
+                bgcolor: '#D32F2F', 
+                fontWeight: '1000', 
+                px: 3,
+                '&.Mui-disabled': { bgcolor: '#e0e0e0' },
+                '&:hover': { bgcolor: '#B71C1C' }
+            }}
+          >
+            CONFIRM CANCELLATION
+          </Button>
         </DialogActions>
       </Dialog>
+
 
       
       {/* 📡 THE COMMAND MENU (GAP 2 FIX) */}
@@ -1398,6 +1467,29 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
           }
         }}
       >
+         {['arrived', 'in-consult', 'dispensing', 'billing', 'on-hold', 'confined'].includes(selectedRow?.status) && (
+           <>
+              <MenuItem onClick={() => { 
+                setTriageMode('hospitalize');
+                setTriageDate(new Date(Date.now() + 86400000).toISOString().split('T')[0]);
+                setOpenTriageShield(true); 
+                handleCloseMenu(); 
+              }}>
+                <ListItemIcon><LocalHospitalIcon fontSize="small" sx={{ color: '#E65100' }} /></ListItemIcon>
+                <ListItemText primary="🏥 Confine (Hospitalize)" sx={{ color: '#E65100' }} />
+              </MenuItem>
+              <MenuItem onClick={() => { 
+                setTriageMode('rebook');
+                setTriageDate(new Date(Date.now() + 86400000).toISOString().split('T')[0]);
+                setOpenTriageShield(true); 
+                handleCloseMenu(); 
+              }}>
+                <ListItemIcon><HomeIcon fontSize="small" sx={{ color: '#E65100' }} /></ListItemIcon>
+                <ListItemText primary="🏠 Rebook (Home Return)" sx={{ color: '#E65100' }} />
+              </MenuItem>
+           </>
+         )}
+
          <MenuItem onClick={handleEditOpen}>
             <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
             <ListItemText primary="Edit Patient Identity" />
@@ -1752,11 +1844,10 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
                                         <Typography sx={{ fontWeight: "1000", color: waitColor, fontSize: "0.8rem" }}>
                                             {formatDuration(totalWaitDiff)}
                                         </Typography>
-                                        {hoverMetadata.data.accumulatedWaitMins > 0 && (
-                                            <Typography variant="caption" sx={{ fontWeight: "1000", color: "#E65100", fontSize: "0.55rem", display: "block", mt: -0.2 }}>
-                                                + {formatDuration(hoverMetadata.data.accumulatedWaitMins)} CARRIED
-                                            </Typography>
-                                        )}
+                                        <Typography variant="caption" sx={{ fontWeight: "1000", color: "#1A1A1A", letterSpacing: 0.5, display: "block", fontSize: "0.6rem", mt: 0.5 }}>TOTAL TENURE</Typography>
+                                        <Typography sx={{ fontWeight: "1000", color: "#5D4037", fontSize: "0.75rem" }}>
+                                            {booked ? formatTenure(Math.round((currentTime - booked) / 60000)) : "NEW"}
+                                        </Typography>
                                     </Box>
                                 </Box>
                             );
@@ -1979,23 +2070,75 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={openRevert} onClose={() => setOpenRevert(false)}>
-        <DialogTitle sx={{ fontWeight: '1000', color: '#D32F2F', display: 'flex', alignItems: 'center', gap: 1 }}>
-          <UndoIcon /> Undo Status
+
+      <Dialog 
+        open={openRevert} 
+        onClose={() => setOpenRevert(false)} 
+        maxWidth="xs" 
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 3, border: '2px solid #E65100', boxShadow: '0 12px 32px rgba(230, 81, 0, 0.25)' } }}
+      >
+        <DialogTitle sx={{ 
+          bgcolor: '#FFF3E0', 
+          color: '#E65100', 
+          fontWeight: '1000', 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 1.5,
+          borderBottom: '1px solid #FFE0B2'
+        }}>
+          <UndoIcon /> TIMELINE CORRECTION
         </DialogTitle>
-        <DialogContent>
-          <Typography sx={{ mb: 2, fontSize: '0.9rem', color: '#757575' }}>
-            Warning: You are reverting a clinical status change.
+        <DialogContent sx={{ pt: 3 }}>
+          <Box sx={{ p: 1.5, bgcolor: '#FFF', border: '1px dashed #FFE0B2', borderRadius: 2, mb: 3 }}>
+            <Typography variant="body2" sx={{ fontWeight: '800', color: '#5D4037', lineHeight: 1.5 }}>
+              🚩 <strong>Warning:</strong> You are reverting a clinical status change. This action is audited and will appear in the patient's Forensic Pulse.
+            </Typography>
+          </Box>
+
+          <Typography variant="overline" sx={{ fontWeight: '1000', color: '#E65100', display: 'block', mb: 1, fontSize: '0.65rem', letterSpacing: 1 }}>
+              ✍️ MANDATORY REVERSION JUSTIFICATION
           </Typography>
-          <TextField autoFocus margin="dense" label="Reversion Note / Justification" fullWidth multiline rows={3} variant="outlined" value={revertReason} onChange={(e) => setRevertReason(e.target.value)} />
+          <TextField
+              fullWidth
+              multiline
+              rows={3}
+              autoFocus
+              placeholder="e.g., Accidental status click, patient is still in triage (Required)"
+              value={revertReason}
+              onChange={(e) => setRevertReason(e.target.value)}
+              sx={{
+                  '& .MuiOutlinedInput-root': {
+                      fontWeight: '900', fontSize: '0.85rem', bgcolor: '#FAFAFA',
+                      '& fieldset': { borderColor: !revertReason.trim() ? '#D32F2F' : '#E65100' }
+                  }
+              }}
+          />
+          {!revertReason.trim() && (
+              <Typography variant="caption" sx={{ color: '#D32F2F', fontWeight: '1000', fontSize: '0.55rem', mt: 0.5, display: 'block' }}>
+                  🛑 LOCK ACTIVE: This timeline correction requires a forensic audit justification.
+              </Typography>
+          )}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenRevert(false)} sx={{ fontWeight: 'bold' }}>Cancel</Button>
-          <Button onClick={confirmRevert} variant="contained" color="error" sx={{ fontWeight: 'bold' }} disabled={!revertReason.trim()}>
-            Confirm Reversion
+        <DialogActions sx={{ p: 2, pt: 1, borderTop: '1px solid #FFE0B2' }}>
+          <Button onClick={() => setOpenRevert(false)} sx={{ fontWeight: 'bold', color: '#757575' }}>Cancel</Button>
+          <Button 
+            onClick={confirmRevert} 
+            variant="contained" 
+            disabled={!revertReason.trim()}
+            sx={{ 
+                bgcolor: '#E65100', 
+                fontWeight: '1000', 
+                px: 3,
+                '&.Mui-disabled': { bgcolor: '#e0e0e0' },
+                '&:hover': { bgcolor: '#BF360C' }
+            }}
+          >
+            CONFIRM REVERSION
           </Button>
         </DialogActions>
       </Dialog>
+
       {/* DEFER CONFIRMATION DIALOG */}
       <Dialog open={openDefer} onClose={() => setOpenDefer(false)} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ fontWeight: '1000', color: '#E65100', pb: 1 }}>Defer Clinical Intake</DialogTitle>
@@ -2081,6 +2224,119 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
             sx={{ bgcolor: '#D32F2F', fontWeight: 'bold', '&.Mui-disabled': { bgcolor: '#e0e0e0' } }}
           >
             Confirm No-Show
+          </Button>
+        </DialogActions>
+      </Dialog>
+ 
+      {/* 🧬 PHASE 5.8.1: THE CLINICAL TRIAGE FLASH-SHIELD */}
+      <Dialog 
+        open={openTriageShield} 
+        onClose={() => setOpenTriageShield(false)} 
+        maxWidth="xs" 
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 3, border: '2px solid #E65100', boxShadow: '0 12px 32px rgba(230, 81, 0, 0.25)' } }}
+      >
+        <DialogTitle sx={{ 
+          bgcolor: '#FFF3E0', 
+          color: '#E65100', 
+          fontWeight: '1000', 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 1.5,
+          borderBottom: '1px solid #FFE0B2'
+        }}>
+          {triageMode === 'hospitalize' ? <LocalHospitalIcon /> : <HomeIcon />}
+          {triageMode === 'hospitalize' ? 'PATIENT HOSPITALIZATION' : 'PATIENT REBOOKING'}
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3 }}>
+          <Box sx={{ p: 1.5, bgcolor: '#FFF', border: '1px dashed #FFE0B2', borderRadius: 2, mb: 3 }}>
+            <Typography variant="body2" sx={{ fontWeight: '800', color: '#5D4037', lineHeight: 1.5 }}>
+              {triageMode === 'hospitalize' ? (
+                <>🏥 <strong>Action:</strong> Patient stays overnight in the ward. Case status remains <strong>ACTIVE</strong> for continued medical rounds.</>
+              ) : (
+                <>🏠 <strong>Action:</strong> Patient leaves the clinic and returns home. Case status reverts to <strong>SCHEDULED</strong> for their next clinical visit.</>
+              )}
+            </Typography>
+          </Box>
+
+          <Typography variant="overline" sx={{ fontWeight: '1000', color: '#E65100', letterSpacing: 1, mb: 1, display: 'block' }}>
+            📅 TARGET CLINICAL WINDOW
+          </Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+            {[
+              { label: 'TOMO', val: new Date(Date.now() + 86400000).toISOString().split('T')[0] },
+              { label: '+1D', val: new Date(Date.now() + 172800000).toISOString().split('T')[0] },
+              { label: '+1W', val: new Date(Date.now() + 604800000).toISOString().split('T')[0] },
+            ].map(btn => (
+              <Button 
+                key={btn.label}
+                variant={triageDate === btn.val ? "contained" : "outlined"}
+                size="small"
+                onClick={() => setTriageDate(btn.val)}
+                sx={{ 
+                  fontWeight: '1000', 
+                  borderRadius: 1,
+                  bgcolor: triageDate === btn.val ? '#E65100' : 'transparent',
+                  color: triageDate === btn.val ? '#FFF' : '#E65100',
+                  borderColor: '#E65100'
+                }}
+              >
+                {btn.label}
+              </Button>
+            ))}
+            <TextField 
+              type="date" 
+              size="small" 
+              value={triageDate} 
+              onChange={(e) => setTriageDate(e.target.value)} 
+              sx={{ flexGrow: 1, '& .MuiInputBase-input': { fontWeight: '1000', fontSize: '0.75rem' } }}
+            />
+          </Box>
+
+          <Typography variant="overline" sx={{ fontWeight: '1000', color: '#E65100', display: 'block', mb: 1, fontSize: '0.65rem', letterSpacing: 1 }}>
+              ✍️ MANDATORY FORENSIC JUSTIFICATION
+          </Typography>
+          <TextField
+              fullWidth
+              multiline
+              rows={3}
+              autoFocus
+              placeholder={triageMode === 'hospitalize' ? "e.g., Clinical stabilization required (Required)" : "e.g., Client requested home return (Required)"}
+              value={triageReason}
+              onChange={(e) => setTriageReason(e.target.value)}
+              sx={{
+                  '& .MuiOutlinedInput-root': {
+                      fontWeight: '900', fontSize: '0.85rem', bgcolor: '#FAFAFA',
+                      '& fieldset': { borderColor: !triageReason.trim() ? '#D32F2F' : '#E65100' }
+                  }
+              }}
+          />
+          {!triageReason.trim() && (
+              <Typography variant="caption" sx={{ color: '#D32F2F', fontWeight: '1000', fontSize: '0.55rem', mt: 0.5, display: 'block' }}>
+                  🛑 LOCK ACTIVE: This mid-shift transfer requires a forensic audit justification.
+              </Typography>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2, pt: 1, borderTop: '1px solid #FFE0B2' }}>
+          <Button onClick={() => setOpenTriageShield(false)} sx={{ fontWeight: 'bold', color: '#757575' }}>Cancel</Button>
+          <Button 
+            onClick={() => {
+              // EXECUTION: Re-using the core rollover batch logic with a 1-patient array
+              confirmResetDay(false, { [selectedRow.id]: triageDate }, { [selectedRow.id]: triageMode }, { [selectedRow.id]: triageReason });
+              setOpenTriageShield(false);
+              setTriageReason("");
+            }} 
+            variant="contained" 
+            disabled={!triageReason.trim()}
+            sx={{ 
+                bgcolor: '#E65100', 
+                fontWeight: '1000', 
+                px: 3,
+                '&.Mui-disabled': { bgcolor: '#e0e0e0' },
+                '&:hover': { bgcolor: '#BF360C' }
+            }}
+          >
+            AUTHORIZE TRIAGE
           </Button>
         </DialogActions>
       </Dialog>

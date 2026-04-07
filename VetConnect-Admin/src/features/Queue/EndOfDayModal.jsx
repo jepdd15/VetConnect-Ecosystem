@@ -23,12 +23,11 @@ import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 import { getDoc, doc, query, collection, where, orderBy, limit, getDocs, onSnapshot, updateDoc } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
+import { calculatePulseMetrics, getSmartShiftDate } from '../../utils/pulseUtils';
+import { ForensicMetricGrid } from './ForensicMetricGrid';
 import TwitterIcon from '@mui/icons-material/Twitter';
 
 // 🧬 PHASE 6 COMPONENTS
-import { ForensicMetricGrid } from './ForensicMetricGrid';
-import { calculatePulseMetrics } from '../../utils/pulseUtils';
-
 const sidebarWidth = 260; // Absolute mapping from Sidebar.jsx
 const CARD_HEIGHT = 400;  // FULL BREATHING ROOM for V2 Clinical Re-booking UI
 
@@ -85,7 +84,7 @@ const getLocalDateStr = (d = new Date()) => {
 
 // --- 📡 MEMOIZED AUDIT CARD: THE PERFORMANCE CURE ---
 const AuditPatientCard = React.memo(({
-    patient, resolution, targetDate, auditReason, realTimeStatus, tabMode, ancestorData, loadingHistory, departments, settings,
+    patient, resolution, targetDate, targetTime, auditReason, realTimeStatus, tabMode, ancestorData, loadingHistory, departments, settings,
     onResolutionChange, onAuditReasonChange, onFetchHistory, onClearHistory, onGenderOpen, CARD_HEIGHT
 }) => {
     // PHASE 4.4.2.5: LOCAL-FIRST FOCUS SHIELD
@@ -590,7 +589,7 @@ const AuditPatientCard = React.memo(({
                         value={resolution}
                         exclusive
                         onChange={(e, newAction) => {
-                            onResolutionChange(patient.id, newAction);
+                            onResolutionChange(patient.id, newAction, targetDate, targetTime);
                         }}
                         sx={{
                             width: '100%', gap: 0.8,
@@ -656,26 +655,20 @@ const AuditPatientCard = React.memo(({
                         <Box sx={{ mt: 1.2, p: 1, border: `2px solid ${forensicColor}`, borderRadius: 1.2, bgcolor: '#FFF6E0', animation: 'slideIn 0.2s ease-out' }}>
                             <style>{`@keyframes slideIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }`}</style>
                             <Typography variant="caption" sx={{ fontWeight: '1000', color: '#5D4037', display: 'block', mb: 0.8, fontSize: '0.6rem', letterSpacing: 0.5 }}>
-                                🗓️ TARGET CLINICAL WINDOW
+                                🗓️ PRESCRIPTIVE SHIFT SCHEDULING
                             </Typography>
-
                             <Stack spacing={1}>
                                 <Stack direction="row" spacing={0.5}>
-                                    {[
-                                        { label: 'TOMO', days: 1 },
-                                        { label: '+2D', days: 2 },
-                                        { label: '+1W', days: 7 }
-                                    ].map((pick) => {
-                                        const d = new Date(); d.setDate(d.getDate() + pick.days);
-                                        const dateStr = getLocalDateStr(d);
-                                        const isActive = targetDate === dateStr || (!targetDate && pick.days === 1);
+                                    {[0, 1, 2].map((idx) => {
+                                        const { dateStr, label } = getSmartShiftDate(idx, settings?.openHour || 8);
+                                        const isActive = targetDate === dateStr || (!targetDate && idx === 0);
 
                                         return (
                                             <Button
-                                                key={pick.label}
+                                                key={label}
                                                 size="small"
                                                 variant={isActive ? "contained" : "outlined"}
-                                                onClick={() => onResolutionChange(patient.id, resolution, dateStr)}
+                                                onClick={() => onResolutionChange(patient.id, resolution, dateStr, targetTime || settings?.openingTime || "08:00")}
                                                 sx={{
                                                     flex: 1, fontSize: '0.55rem', fontWeight: '1000', py: 0.2,
                                                     bgcolor: isActive ? forensicColor : 'transparent',
@@ -684,18 +677,28 @@ const AuditPatientCard = React.memo(({
                                                     '&:hover': { bgcolor: isActive ? '#E65100' : 'rgba(255, 160, 0, 0.05)', borderColor: forensicColor }
                                                 }}
                                             >
-                                                {pick.label}
+                                                {label}
                                             </Button>
                                         );
                                     })}
-                                    <Box sx={{ flex: 1.5, display: 'flex', alignItems: 'center', gap: 0.5, border: `1px solid ${forensicColor}`, borderRadius: '4px', px: 0.5, bgcolor: 'white' }}>
+                                    <Box sx={{ flex: 2, display: 'flex', alignItems: 'center', gap: 0.2, border: `1px solid ${forensicColor}`, borderRadius: '4px', px: 0.5, bgcolor: 'white' }}>
                                         <input
                                             type="date"
-                                            value={targetDate || getLocalDateStr(new Date(Date.now() + 86400000))}
-                                            onChange={(e) => onResolutionChange(patient.id, resolution, e.target.value)}
+                                            value={targetDate || getSmartShiftDate(0, settings?.openHour || 8).dateStr}
+                                            onChange={(e) => onResolutionChange(patient.id, resolution, e.target.value, targetTime || settings?.openingTime || "08:00")}
                                             style={{
                                                 border: 'none', background: 'transparent', fontSize: '0.6rem', fontWeight: '1000',
                                                 color: '#5D4037', outline: 'none', width: '100%', cursor: 'pointer'
+                                            }}
+                                        />
+                                        <Box sx={{ width: '1px', height: '14px', bgcolor: forensicColor, opacity: 0.3, mx: 0.2 }} />
+                                        <input
+                                            type="time"
+                                            value={targetTime || (settings?.openingTime || "08:00")}
+                                            onChange={(e) => onResolutionChange(patient.id, resolution, targetDate || getSmartShiftDate(0, settings?.openHour || 8).dateStr, e.target.value)}
+                                            style={{
+                                                border: 'none', background: 'transparent', fontSize: '0.6rem', fontWeight: '1000',
+                                                color: '#5D4037', outline: 'none', width: '85px'
                                             }}
                                         />
                                     </Box>
@@ -710,7 +713,7 @@ const AuditPatientCard = React.memo(({
 });
 
 const EndOfDayModal = React.memo(({
-    open, leftoverPatients, patientResolutions, touchedPatients, auditReasons, targetDates,
+    open, leftoverPatients, patientResolutions, touchedPatients, auditReasons, targetDates, targetTimes,
     onResolutionChange, onAuditReasonChange, onBulkResolution, onConfirmReset, isForced, departments, onClose
 }) => {
     const [activeTab, setActiveTab] = useState(0);
@@ -719,12 +722,14 @@ const EndOfDayModal = React.memo(({
     const [realTimeStatuses, setRealTimeStatuses] = useState({});
     const [loadingRealTime, setLoadingRealTime] = useState(false);
 
+    // 🧬 CLINIC SETTINGS (For Pulse Math)
+    const [settings, setSettings] = useState({ openHour: 8, closeHour: 17, workingDays: [0,1,2,3,4,5,6] });
+
     // PHASE 6: BATCH FORENSIC LITERACY
     const [bulkReason, setBulkReason] = useState("");
     const [stagedBulkAction, setStagedBulkAction] = useState(null); // PHASE 5.6.19: STAGED BATCHING
-    
-    // 🧬 CLINIC SETTINGS (For Pulse Math)
-    const [settings, setSettings] = useState({ openHour: 8, closeHour: 17, workingDays: [0,1,2,3,4,5,6] });
+    const [batchDate, setBatchDate] = useState(getLocalDateStr());
+    const [batchTime, setBatchTime] = useState(settings?.openingTime || "08:00");
 
     useEffect(() => {
         // Fetch Settings for pulse math consistency
@@ -831,10 +836,10 @@ const EndOfDayModal = React.memo(({
         if (!isConfirming) {
             setIsConfirming(true);
         } else {
-            onConfirmReset(targetDates);
+            onConfirmReset(targetDates, targetTimes);
             setIsConfirming(false);
         }
-    }, [isConfirming, onConfirmReset, targetDates]);
+    }, [isConfirming, onConfirmReset, targetDates, targetTimes]);
 
     const handleFetchHistory = React.useCallback(async (patient) => {
         let originId = patient.originApptId;
@@ -1090,9 +1095,17 @@ const EndOfDayModal = React.memo(({
                                     <Button
                                         size="small"
                                         sx={{ borderRadius: 0, px: 3, py: 0.6, color: '#1B5E20', fontWeight: '1000', fontSize: '0.75rem', '&:hover': { bgcolor: '#E8F5E9' } }}
-                                        onClick={() => setStagedBulkAction('carry-over')}
+                                        onClick={() => setStagedBulkAction('hospitalize')}
                                     >
-                                        BATCH: CARRY-OVER ALL ({currentSiloPatients.length})
+                                        BATCH: CONFINE ALL ({currentSiloPatients.length})
+                                    </Button>
+                                    <Divider orientation="vertical" flexItem sx={{ borderRightWidth: 2, borderColor: '#5D4037' }} />
+                                    <Button
+                                        size="small"
+                                        sx={{ borderRadius: 0, px: 3, py: 0.6, color: '#8B4513', fontWeight: '1000', fontSize: '0.75rem', '&:hover': { bgcolor: '#FFF3E0' } }}
+                                        onClick={() => setStagedBulkAction('rebook')}
+                                    >
+                                        BATCH: REBOOK ALL
                                     </Button>
                                 </>
                             )}
@@ -1111,7 +1124,11 @@ const EndOfDayModal = React.memo(({
                             <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 1.5, animation: 'slideInRight 0.3s ease-out' }}>
                                 <Divider orientation="vertical" flexItem sx={{ height: 24, borderRightWidth: 2, borderColor: '#D7CCC8' }} />
                                 <Typography variant="caption" sx={{ fontWeight: 1000, color: '#5D4037', whiteSpace: 'nowrap' }}>
-                                    ✍️ REASON FOR {currentSiloPatients.length} {stagedBulkAction.toUpperCase()}S:
+                                    ✍️ REASON FOR {currentSiloPatients.length} {
+                                        stagedBulkAction === 'rebook' 
+                                            ? (activeTab === 2 ? 'REBOOKS' : 'RESCHEDULES') 
+                                            : stagedBulkAction.toUpperCase() + 'S'
+                                    }:
                                 </Typography>
                                 <TextField
                                     fullWidth
@@ -1123,8 +1140,27 @@ const EndOfDayModal = React.memo(({
                                     InputProps={{ disableUnderline: true, sx: { fontSize: '0.75rem', fontWeight: 900 } }}
                                     autoFocus
                                 />
+                                
+                                {(stagedBulkAction === 'defer' || stagedBulkAction === 'rebook' || stagedBulkAction === 'hospitalize') && (
+                                    <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', bgcolor: '#FFF', border: '1px solid #5D4037', borderRadius: '4px', px: 1, py: 0.2 }}>
+                                        <input 
+                                            type="date" value={batchDate} onChange={(e) => setBatchDate(e.target.value)} 
+                                            style={{ border: 'none', background: 'transparent', fontSize: '0.65rem', fontWeight: '1000', outline: 'none', cursor: 'pointer' }}
+                                        />
+                                        <Box sx={{ width: '1px', height: '14px', bgcolor: '#5D4037', opacity: 0.3, mx: 0.2 }} />
+                                        <input 
+                                            type="time" value={batchTime} onChange={(e) => setBatchTime(e.target.value)} 
+                                            style={{ border: 'none', background: 'transparent', fontSize: '0.65rem', fontWeight: '1000', outline: 'none', width: '85px' }}
+                                        />
+                                    </Box>
+                                )}
+
                                 <Stack direction="row" spacing={0.5}>
-                                    <IconButton size="small" onClick={() => onBulkResolution(stagedBulkAction, bulkReason)} sx={{ color: '#2E7D32', border: '1px solid #2E7D32' }}>
+                                    <IconButton size="small" onClick={() => {
+                                        onBulkResolution(stagedBulkAction, bulkReason, batchDate, batchTime);
+                                        setStagedBulkAction(null);
+                                        setBulkReason("");
+                                    }} sx={{ color: '#2E7D32', border: '1px solid #2E7D32' }}>
                                         <AutoFixHighIcon sx={{ fontSize: 16 }} />
                                     </IconButton>
                                     <IconButton size="small" onClick={() => setStagedBulkAction(null)} sx={{ color: '#D32F2F', border: '1px solid #D32F2F' }}>
@@ -1146,6 +1182,7 @@ const EndOfDayModal = React.memo(({
                                 tabMode={activeTab} // 0: Online, 1: Scheduled, 2: Active
                                 resolution={patient.status === 'confined' ? 'confined' : patientResolutions[patient.id]}
                                 targetDate={targetDates[patient.id]}
+                                targetTime={targetTimes[patient.id]}
                                 auditReason={auditReasons[patient.id]}
                                 realTimeStatus={realTimeStatuses[patient.id]}
                                 ancestorData={ancestorData[patient.id]}

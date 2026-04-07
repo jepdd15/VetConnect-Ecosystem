@@ -210,3 +210,50 @@ const formatDuration = (totalMins) => {
 
   return parts.join(' ');
 };
+
+/**
+ * 🧬 SMART SHIFT ANCHOR (Phase 5.1)
+ * Calculates the target clinical date and dynamic UI label based on the shift pivot.
+ * @param {number} offsetIndex - 0: Next Shift, 1: Following Shift, 2: Weekly
+ * @param {number} openHour - The clinic's configured opening hour (Pivot).
+ * @returns {Object} { dateStr, label }
+ */
+export const getSmartShiftDate = (offsetIndex, openHour = 8) => {
+  const now = new Date();
+  const currentHour = now.getHours();
+  const isEarlyMorning = currentHour < openHour;
+
+  // The "Clinical Anchor" is the day the work logically belongs to.
+  // If it's 2:00 AM Tuesday, the anchor is Monday.
+  let anchor = new Date();
+  if (isEarlyMorning) {
+    anchor.setDate(anchor.getDate() - 1);
+  }
+
+  // Define offsets from clinical anchor
+  const offsets = [1, 2, 7];
+  const target = new Date(anchor);
+  target.setDate(target.getDate() + offsets[offsetIndex]);
+  
+  const dateStr = target.toISOString().split('T')[0];
+  
+  // Dynamic Labeling logic
+  const todayStr = new Date().toISOString().split('T')[0];
+  const tomorrow = new Date(); 
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+  let label = "";
+  if (offsetIndex === 0) {
+    // Next shift
+    label = (dateStr === todayStr) ? "TODAY" : "TOMO";
+  } else if (offsetIndex === 1) {
+    // Shift after next
+    label = (dateStr === tomorrowStr) ? "TOMO" : "+2D";
+  } else {
+    // Standard weekly
+    label = "+1W";
+  }
+
+  return { dateStr, label };
+};

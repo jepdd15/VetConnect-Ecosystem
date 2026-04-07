@@ -8,7 +8,7 @@ import {
   ToggleButton, ToggleButtonGroup, FormControlLabel, Autocomplete
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, Timestamp, where, getDocs, writeBatch, getDoc, arrayUnion } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, Timestamp, where, getDocs, writeBatch, getDoc, arrayUnion, limit } from 'firebase/firestore';
 
 // 1. BACKEND & BRAIN
 import { db } from '../../firebaseConfig'; 
@@ -35,8 +35,8 @@ import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos'; 
 
 // 🧬 PHASE 6 COMPONENTS
+import { calculatePulseMetrics, getSmartShiftDate } from '../../utils/pulseUtils';
 import { ForensicMetricGrid } from './ForensicMetricGrid'; 
-import { calculatePulseMetrics } from '../../utils/pulseUtils';
 import UndoIcon from '@mui/icons-material/Undo'; 
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital'; 
 import HomeIcon from '@mui/icons-material/Home'; 
@@ -135,11 +135,13 @@ export default function Queue() {
   const [touchedPatients, setTouchedPatients] = useState(new Set()); // PHASE 3: THE HARD-GATE
   const [auditReasons, setAuditReasons] = useState({}); // PHASE 4: FORENSIC JUSTIFICATIONS
   const [targetDates, setTargetDates] = useState({}); // PHASE 2/3: RESCHEDULING WINDOWS
+  const [targetTimes, setTargetTimes] = useState({}); // PHASE 5.5: TEMPORAL PRECISION
   const [isForcedCleanup, setIsForcedCleanup] = useState(false); // The Hostage Lock
   const [hasGhostPatients, setHasGhostPatients] = useState(false);
   const [openTriageShield, setOpenTriageShield] = useState(false); 
   const [triageMode, setTriageMode] = useState(null); // 'hospitalize' or 'rebook'
   const [triageDate, setTriageDate] = useState("");
+  const [triageTime, setTriageTime] = useState("08:00");
   const [triageReason, setTriageReason] = useState("");
 
   const [openEdit, setOpenEdit] = useState(false);
@@ -257,7 +259,7 @@ export default function Queue() {
   // LOGIC & HANDLERS
   // ======================================================================
   
-const confirmResetDay = async (isSilent = false, targetDateMap = {}) => { 
+const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeMap = {}, targetReasonMap = {}, targetTimeMap = {}) => { 
     try { 
       const todayStr = new Date().toISOString().split('T')[0];
 
@@ -327,19 +329,23 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
 
           // LOGIC: If a Friday ghost is processed on Sunday, "Defer" targets Sunday (Today).
           // If a Friday record is processed on Friday night, "Defer" targets Saturday (Tomorrow).
+          // PHASE 5.6.20: DYNAMIC MANUAL TIME ATTACHMENT
+          const precisionTime = targetTimeMap[patient.id] || (clinicSettings.openingTime || "08:00");
+          const [pH, pM] = precisionTime.split(':').map(Number);
+
           const calculatedDefault = new Date();
           if (isFromPast && !isAfterHours) {
-            // Recovery Mode (During Shift): Pull to Today at Opening Time
-            calculatedDefault.setHours(openH, openM, 0, 0);
+            // Recovery Mode (During Shift): Pull to Today at specific time
+            calculatedDefault.setHours(pH, pM, 0, 0);
           } else {
-            // Maintenance Mode OR Recovery Mode (After-Hours): Push to Tomorrow at Opening Time
+            // Maintenance Mode OR Recovery Mode (After-Hours): Push to Tomorrow at specific time
             calculatedDefault.setDate(calculatedDefault.getDate() + 1); 
-            calculatedDefault.setHours(openH, openM, 0, 0);
+            calculatedDefault.setHours(pH, pM, 0, 0);
           }
 
-          // PHASE 5.6.20: DYNAMIC MANUAL TIME ATTACHMENT
-          const openStr = `${String(openH).padStart(2, '0')}:${String(openM).padStart(2, '0')}:00`;
-          const manualDate = targetDateMap[patient.id] ? new Date(`${targetDateMap[patient.id]}T${openStr}`) : calculatedDefault;
+          const manualDate = targetDateMap[patient.id] 
+            ? new Date(`${targetDateMap[patient.id]}T${precisionTime}:00`) 
+            : calculatedDefault;
           const pulseType = (action === 'defer') ? 'TRIAGE_DEFER' : ((action === 'hospitalize') ? 'TRIAGE_CONFINE' : 'TRIAGE_REBOOK');
 
           // PHASE 5.6.20: THE FORENSIC ACTION TRANSLATOR
@@ -1013,7 +1019,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
             collection(db, "appointments"),
             where("petId", "==", patient.petId),
             orderBy("scheduledDate", "desc"),
-            limit(10) // Audit depth
+            limit(50) // Extended Audit Depth for Forensic Reconciliation
           );
 
           const snap = await getDocs(q);
@@ -1163,12 +1169,46 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
       default: filtered = rows; 
     }
 
-    // FIXED CLINICAL SORTING: Online tab always sorts by Intake Age (Oldest First)
+    // --- 🧬 FORENSIC SORTING ENGINE (PHASE 5.5) ---
     if (tabValue === 0) {
+      // 0: ONLINE - Strictly FCFS (Oldest Intake First)
       return [...filtered].sort((a, b) => {
         const da = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
         const db = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
-        return da - db; // Ascending = Oldest at the top
+        return da - db;
+      });
+    }
+
+    if (tabValue === 1) {
+      // 1: SCHEDULED - Strictly Chronological by Precision Slot (Ignoring Priority)
+      return [...filtered].sort((a, b) => {
+        const timeA = a.jsScheduled?.getTime?.() || a.jsScheduled?.seconds * 1000 || 0;
+        const timeB = b.jsScheduled?.getTime?.() || b.jsScheduled?.seconds * 1000 || 0;
+        return timeA - timeB;
+      });
+    }
+
+    if (tabValue === 2) {
+      // 2: ARRIVED - Priority First, then Arrival Time
+      return [...filtered].sort((a, b) => {
+        const pA = a.priority === 'high' ? 0 : 1;
+        const pB = b.priority === 'high' ? 0 : 1;
+        if (pA !== pB) return pA - pB;
+        const timeA = a.jsArrived?.getTime?.() || a.jsArrived?.seconds * 1000 || (a.createdAt?.toDate?.() || new Date()).getTime();
+        const timeB = b.jsArrived?.getTime?.() || b.jsArrived?.seconds * 1000 || (b.createdAt?.toDate?.() || new Date()).getTime();
+        return timeA - timeB;
+      });
+    }
+
+    if (tabValue === 3) {
+      // 3: ACTIVE (Confined/Consult) - Priority First, then Start/Inception Time
+      return [...filtered].sort((a, b) => {
+        const pA = a.priority === 'high' ? 0 : 1;
+        const pB = b.priority === 'high' ? 0 : 1;
+        if (pA !== pB) return pA - pB;
+        const timeA = a.jsStarted?.getTime?.() || a.jsStarted?.seconds * 1000 || (a.createdAt?.toDate?.() || new Date()).getTime();
+        const timeB = b.jsStarted?.getTime?.() || b.jsStarted?.seconds * 1000 || (b.createdAt?.toDate?.() || new Date()).getTime();
+        return timeA - timeB;
       });
     }
 
@@ -1404,48 +1444,65 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
         patientResolutions={patientResolutions} 
         auditReasons={auditReasons}
         targetDates={targetDates}
+        targetTimes={targetTimes}
         touchedPatients={touchedPatients}
-        onResolutionChange={React.useCallback((id, action, targetDate) => {
+        onResolutionChange={React.useCallback((id, action, targetDate, targetTime) => {
           setPatientResolutions(prev => ({ ...prev, [id]: action }));
           setTouchedPatients(prev => new Set([...prev, id]));
           if (targetDate) {
             setTargetDates(prev => ({ ...prev, [id]: targetDate }));
           }
+          if (targetTime) {
+            setTargetTimes(prev => ({ ...prev, [id]: targetTime }));
+          }
         }, [])}
         onAuditReasonChange={React.useCallback((id, reason) => {
           setAuditReasons(prev => ({ ...prev, [id]: reason }));
         }, [])}
-        onBulkResolution={React.useCallback((action, reason) => {
+        onBulkResolution={React.useCallback((action, reason, targetDate, targetTime) => {
            // PHASE 4.4.1: UNIVERSAL SILO-AWARE BATCH PROCESSING (Functional Update - NO DEPS)
            setPatientResolutions(prevRes => {
                 const newRes = { ...prevRes };
                 setAuditReasons(prevReasons => {
                     const newReasons = { ...prevReasons };
-                    setTouchedPatients(prevTouched => {
-                        const newTouched = new Set(prevTouched);
-                        
-                        leftoverPatients.forEach(p => {
-                            const rtStatus = (p.status || "").toLowerCase();
-                            const isOnline = rtStatus === 'pending';
-                            const isScheduled = ['confirmed', 'scheduled'].includes(rtStatus);
-                            const isActive = ['arrived', 'in-consult', 'dispensing', 'billing', 'payment', 'confined'].includes(rtStatus);
+                    setTargetDates(prevDates => {
+                      const newDates = { ...prevDates };
+                      setTargetTimes(prevTimes => {
+                        const newTimes = { ...prevTimes };
+                        setTouchedPatients(prevTouched => {
+                          const newTouched = new Set(prevTouched);
+                          
+                          leftoverPatients.forEach(p => {
+                              const rtStatus = (p.status || "").toLowerCase();
+                              const isOnline = rtStatus === 'pending';
+                              const isScheduled = ['confirmed', 'scheduled'].includes(rtStatus);
+                              const isActive = ['arrived', 'in-consult', 'dispensing', 'billing', 'payment', 'confined'].includes(rtStatus);
 
-                            if (((action === 'defer' || action === 'cancel' || action === 'rebook') && isOnline) ||
-                                ((action === 'no-show' || action === 'rebook' || action === 'cancel') && isScheduled) ||
-                                ((action === 'carry-over' || action === 'cancel') && isActive)) {
-                                newRes[p.id] = action;
-                                newReasons[p.id] = reason || "";
-                                newTouched.add(p.id);
-                            }
+                              if (((action === 'defer' || action === 'cancel' || action === 'rebook') && isOnline) ||
+                                  ((action === 'no-show' || action === 'rebook' || action === 'cancel') && isScheduled) ||
+                                  ((action === 'hospitalize' || action === 'rebook' || action === 'cancel') && isActive)) {
+                                  newRes[p.id] = action;
+                                  newReasons[p.id] = reason || "";
+                                  if (targetDate) newDates[p.id] = targetDate;
+                                  if (targetTime) newTimes[p.id] = targetTime;
+                                  newTouched.add(p.id);
+                              }
+                          });
+                          return newTouched;
                         });
-                        return newTouched;
+                        return newTimes;
+                      });
+                      return newDates;
                     });
                     return newReasons;
                 });
                 return newRes;
            });
         }, [leftoverPatients])}
-        onConfirmReset={(targetDates) => { confirmResetDay(false, targetDates); setIsForcedCleanup(false); }} 
+        onConfirmReset={(dates, times) => { 
+          confirmResetDay(false, dates, {}, {}, times); 
+          setIsForcedCleanup(false); 
+        }} 
         isForced={isForcedCleanup}
         departments={departments}
         ancestorData={ancestorData}
@@ -2302,34 +2359,51 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
           <Typography variant="overline" sx={{ fontWeight: '1000', color: '#E65100', letterSpacing: 1, mb: 1, display: 'block' }}>
             📅 TARGET CLINICAL WINDOW
           </Typography>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
-            {[
-              { label: 'TOMO', val: new Date(Date.now() + 86400000).toISOString().split('T')[0] },
-              { label: '+1D', val: new Date(Date.now() + 172800000).toISOString().split('T')[0] },
-              { label: '+1W', val: new Date(Date.now() + 604800000).toISOString().split('T')[0] },
-            ].map(btn => (
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1 }}>
+            {[0, 1, 2].map(idx => {
+                const { dateStr, label } = getSmartShiftDate(idx, clinicSettings?.openHour || 8);
+                return { label, val: dateStr };
+            }).map(btn => (
               <Button 
                 key={btn.label}
                 variant={triageDate === btn.val ? "contained" : "outlined"}
                 size="small"
-                onClick={() => setTriageDate(btn.val)}
+                onClick={() => {
+                   setTriageDate(btn.val);
+                   setTriageTime(clinicSettings.openingTime || "08:00");
+                }}
                 sx={{ 
                   fontWeight: '1000', 
                   borderRadius: 1,
                   bgcolor: triageDate === btn.val ? '#E65100' : 'transparent',
                   color: triageDate === btn.val ? '#FFF' : '#E65100',
-                  borderColor: '#E65100'
+                  borderColor: '#E65100',
+                  fontSize: '0.65rem'
                 }}
               >
                 {btn.label}
               </Button>
             ))}
+          </Box>
+          
+          <Box sx={{ display: 'flex', gap: 1, mb: 3 }}>
             <TextField 
               type="date" 
               size="small" 
+              label="TARGET DATE"
+              InputLabelProps={{ shrink: true, sx: { fontWeight: '1000', color: '#E65100', fontSize: '0.65rem' } }}
               value={triageDate} 
               onChange={(e) => setTriageDate(e.target.value)} 
-              sx={{ flexGrow: 1, '& .MuiInputBase-input': { fontWeight: '1000', fontSize: '0.75rem' } }}
+              sx={{ flex: 1, '& .MuiInputBase-input': { fontWeight: '1000', fontSize: '0.75rem' } }}
+            />
+            <TextField 
+              type="time" 
+              size="small" 
+              label="TARGET TIME"
+              InputLabelProps={{ shrink: true, sx: { fontWeight: '1000', color: '#E65100', fontSize: '0.65rem' } }}
+              value={triageTime} 
+              onChange={(e) => setTriageTime(e.target.value)} 
+              sx={{ flex: 1, '& .MuiInputBase-input': { fontWeight: '1000', fontSize: '0.75rem' } }}
             />
           </Box>
 
@@ -2362,9 +2436,10 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}) => {
           <Button 
             onClick={() => {
               // EXECUTION: Re-using the core rollover batch logic with a 1-patient array
-              confirmResetDay(false, { [selectedRow.id]: triageDate }, { [selectedRow.id]: triageMode }, { [selectedRow.id]: triageReason });
+              confirmResetDay(false, { [selectedRow.id]: triageDate }, { [selectedRow.id]: triageMode }, { [selectedRow.id]: triageReason }, { [selectedRow.id]: triageTime });
               setOpenTriageShield(false);
               setTriageReason("");
+              setTriageTime(clinicSettings.openingTime || "08:00");
             }} 
             variant="contained" 
             disabled={!triageReason.trim()}

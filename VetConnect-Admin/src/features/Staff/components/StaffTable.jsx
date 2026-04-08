@@ -15,8 +15,8 @@ export default function StaffTable({ data, getWorkload, onEdit, onDelete, depart
 
   const clinicalFlatStyle = {
     background: '#FFF', 
-    border: '2px solid #5D4037',
-    boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)', 
+    border: 'none',
+    boxShadow: 'none', 
     borderRadius: 0, 
   };
 
@@ -58,7 +58,7 @@ export default function StaffTable({ data, getWorkload, onEdit, onDelete, depart
       field: 'accessLevel', headerName: 'System Access', flex: 0.8, 
       renderCell: (p) => {
           const level = p.row.accessLevel || (p.row.role === 'admin' ? 'admin' : 'staff');
-          return <Chip icon={level === 'admin' ? <AdminPanelSettingsIcon/> : <BadgeIcon/>} label={level === 'admin' ? 'ADMIN' : 'STAFF'} color={level === 'admin' ? 'error' : 'default'} size="small" variant={level === 'admin' ? 'filled' : 'outlined'} sx={{fontWeight: '900', fontSize: '0.65rem'}}/>;
+          return <Chip icon={level === 'admin' ? <AdminPanelSettingsIcon/> : <BadgeIcon/>} label={level === 'admin' ? 'CLINIC ADMINISTRATOR' : 'CLINICAL STAFF'} color={level === 'admin' ? 'error' : 'default'} size="small" variant={level === 'admin' ? 'filled' : 'outlined'} sx={{fontWeight: '1000', fontSize: '0.65rem'}}/>;
       }
     },
     { 
@@ -93,12 +93,6 @@ export default function StaffTable({ data, getWorkload, onEdit, onDelete, depart
      );
    }
  },
-    { 
-      field: 'specialty', headerName: 'Job Title / Tag', flex: 1,
-      renderCell: (p) => (
-        p.value && p.value !== 'N/A' ? <Chip icon={<WorkIcon/>} label={p.value} size="small" sx={{color: '#5D4037', bgcolor: '#EFEBE9', fontWeight: 'bold'}} /> : <Typography variant="caption" color="textSecondary" fontStyle="italic">No tag</Typography>
-      )
-    },
     { 
       field: 'workload', headerName: 'Live Status', flex: 0.8, align: 'center', headerAlign: 'center',
       renderCell: (p) => {

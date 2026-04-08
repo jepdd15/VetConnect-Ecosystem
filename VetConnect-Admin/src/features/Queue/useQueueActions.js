@@ -232,6 +232,7 @@ export function useQueueActions() {
       transaction.set(newApptRef, {
         ownerId: "WALK_IN_USER",
         ownerName: "URGENT ER",
+        ownerPhone: "EMERGENCY CONTACT PENDING",
         petId: "UNKNOWN",
         petName: "EMERGENCY PATIENT",
         petSpecies: "Unknown",

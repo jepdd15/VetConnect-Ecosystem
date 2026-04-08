@@ -132,7 +132,7 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
             transaction.update(petRef, {
                 lastWeight: parseFloat(arrivalWeight) || null,
                 weight: parseFloat(arrivalWeight) || null, // Ensure both are synced
-                allergies: confirmedAllergies || 'None',
+                petAllergies: confirmedAllergies || 'None',
                 lastVisit: Timestamp.now()
             });
           }
@@ -157,7 +157,7 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
             await updateDoc(doc(db, "pets", patient.petId), {
                 lastWeight: parseFloat(arrivalWeight) || null,
                 weight: parseFloat(arrivalWeight) || null,
-                allergies: confirmedAllergies || 'None'
+                petAllergies: confirmedAllergies || 'None'
             });
         }
       }
@@ -405,55 +405,53 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
         onClose={handleCloseMenu}
         PaperProps={{ sx: { minWidth: 350, mt: 1, borderRadius: 2, boxShadow: 16 } }}
       >
-        <Box>
-          {/* --- 📈 DROPDOWN SORT HEADER: EXPANSIVE SPACING --- */}
-          <Box sx={{ px: 4, py: 2.5, bgcolor: '#F5F5F5', display: 'flex', alignItems: 'center' }}>
-            <Typography variant="overline" sx={{ fontWeight: '1000', color: activeSvcIdx === null ? '#2E7D32' : BRAND_BROWN, fontSize: '0.85rem', letterSpacing: 1.5, flexGrow: 1 }}>
-              {activeSvcIdx === null ? "BATCH ASSIGNMENT TOOL" : `Assignment: ${tempServices[activeSvcIdx].department}`}
-            </Typography>
+        {/* --- 📈 DROPDOWN SORT HEADER: EXPANSIVE SPACING --- */}
+        <Box sx={{ px: 4, py: 2.5, bgcolor: '#F5F5F5', display: 'flex', alignItems: 'center' }}>
+          <Typography variant="overline" sx={{ fontWeight: '1000', color: activeSvcIdx === null ? '#2E7D32' : BRAND_BROWN, fontSize: '0.85rem', letterSpacing: 1.5, flexGrow: 1 }}>
+            {activeSvcIdx === null ? "BATCH ASSIGNMENT TOOL" : `Assignment: ${tempServices[activeSvcIdx].department}`}
+          </Typography>
 
-            <Box sx={{ display: 'flex', gap: 1.5, ml: 4 }}>
-              <Button
-                variant={sortBy === 'alpha' ? "contained" : "text"}
-                onClick={() => setSortBy('alpha')}
-                sx={{ minWidth: 40, p: 1, py: 0.5, fontSize: '0.75rem', fontWeight: '1000', bgcolor: sortBy === 'alpha' ? BRAND_BROWN : 'transparent', color: sortBy === 'alpha' ? 'white' : BRAND_BROWN }}
-              >
-                A-Z
-              </Button>
-              <Button
-                variant={sortBy === 'load' ? "contained" : "text"}
-                onClick={() => setSortBy('load')}
-                sx={{ minWidth: 40, p: 1, py: 0.5, fontSize: '0.75rem', fontWeight: '1000', bgcolor: sortBy === 'load' ? BRAND_BROWN : 'transparent', color: sortBy === 'load' ? 'white' : BRAND_BROWN }}
-              >
-                LOAD
-              </Button>
-            </Box>
+          <Box sx={{ display: 'flex', gap: 1.5, ml: 4 }}>
+            <Button
+              variant={sortBy === 'alpha' ? "contained" : "text"}
+              onClick={() => setSortBy('alpha')}
+              sx={{ minWidth: 40, p: 1, py: 0.5, fontSize: '0.75rem', fontWeight: '1000', bgcolor: sortBy === 'alpha' ? BRAND_BROWN : 'transparent', color: sortBy === 'alpha' ? 'white' : BRAND_BROWN }}
+            >
+              A-Z
+            </Button>
+            <Button
+              variant={sortBy === 'load' ? "contained" : "text"}
+              onClick={() => setSortBy('load')}
+              sx={{ minWidth: 40, p: 1, py: 0.5, fontSize: '0.75rem', fontWeight: '1000', bgcolor: sortBy === 'load' ? BRAND_BROWN : 'transparent', color: sortBy === 'load' ? 'white' : BRAND_BROWN }}
+            >
+              LOAD
+            </Button>
           </Box>
-          <Divider />
-
-          {sortStaff(activeSvcIdx === null ? masterStaff : (vetsList || []).filter(v => v.departments?.includes(tempServices[activeSvcIdx].department)))
-            .map(v => {
-              const load = getVetWorkload(v.id);
-              return (
-                <MenuItem key={v.id} onClick={() => handleSelectStaff(v.id, v.fullName)} sx={{ py: 2.5, px: 4 }}>
-                  <Avatar sx={{ width: 40, height: 40, fontSize: 16, mr: 3, bgcolor: BRAND_BROWN }}>{v.fullName[0]}</Avatar>
-
-                  <Typography variant="body1" sx={{ fontWeight: '800', maxWidth: 220, noWrap: true, textOverflow: 'ellipsis', overflow: 'hidden', flexGrow: 1 }}>
-                    {v.fullName}
-                  </Typography>
-
-                  <Typography variant="caption" sx={{ ml: 4, color: load > 2 ? '#D32F2F' : '#2E7D32', fontWeight: '1000', fontSize: '0.9rem' }}>
-                    {load} Active
-                  </Typography>
-                </MenuItem>
-              );
-            })
-          }
-
-          {((activeSvcIdx === null ? masterStaff : (vetsList || []).filter(v => v.departments?.includes(tempServices[activeSvcIdx].department))).length === 0) && (
-            <MenuItem disabled><Typography variant="caption" sx={{ px: 4, py: 2 }}>No universally qualified personnel found</Typography></MenuItem>
-          )}
         </Box>
+        <Divider />
+
+        {sortStaff(activeSvcIdx === null ? masterStaff : (vetsList || []).filter(v => v.departments?.includes(tempServices[activeSvcIdx].department)))
+          .map(v => {
+            const load = getVetWorkload(v.id);
+            return (
+              <MenuItem key={v.id} onClick={() => handleSelectStaff(v.id, v.fullName)} sx={{ py: 2.5, px: 4 }}>
+                <Avatar sx={{ width: 40, height: 40, fontSize: 16, mr: 3, bgcolor: BRAND_BROWN }}>{v.fullName[0]}</Avatar>
+
+                <Typography variant="body1" sx={{ fontWeight: '800', maxWidth: 220, noWrap: true, textOverflow: 'ellipsis', overflow: 'hidden', flexGrow: 1 }}>
+                  {v.fullName}
+                </Typography>
+
+                <Typography variant="caption" sx={{ ml: 4, color: load > 2 ? '#D32F2F' : '#2E7D32', fontWeight: '1000', fontSize: '0.9rem' }}>
+                  {load} Active
+                </Typography>
+              </MenuItem>
+            );
+          })
+        }
+
+        {((activeSvcIdx === null ? masterStaff : (vetsList || []).filter(v => v.departments?.includes(tempServices[activeSvcIdx].department))).length === 0) && (
+          <MenuItem disabled><Typography variant="caption" sx={{ px: 4, py: 2 }}>No universally qualified personnel found</Typography></MenuItem>
+        )}
       </Menu>
     </Dialog>
   );

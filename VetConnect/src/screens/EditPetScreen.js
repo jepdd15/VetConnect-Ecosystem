@@ -65,8 +65,9 @@ const EditPetScreen = ({ route, navigation }) => {
   const [gender, setGender] = useState(pet.gender === "UNK" ? "Unknown" : (pet.gender || "Unknown"));
   const [isNeutered, setIsNeutered] = useState(pet.isNeutered || false);
   const [weight, setWeight] = useState(pet.weight ? String(pet.weight) : "");
-  const [showAllergyToggle, setShowAllergyToggle] = useState(pet.allergies && pet.allergies !== "None" && pet.allergies !== "");
-  const [allergyArray, setAllergyArray] = useState(pet.allergies && pet.allergies !== "None" && pet.allergies !== "" ? pet.allergies.split(", ") : []);
+  const initialAllergies = pet.petAllergies || pet.allergies || "";
+  const [showAllergyToggle, setShowAllergyToggle] = useState(initialAllergies && initialAllergies !== "None" && initialAllergies !== "");
+  const [allergyArray, setAllergyArray] = useState(initialAllergies && initialAllergies !== "None" && initialAllergies !== "" ? initialAllergies.split(", ") : []);
   const [currentAllergy, setCurrentAllergy] = useState("");
   const [microchip, setMicrochip] = useState(pet.microchip || "");
 
@@ -116,7 +117,7 @@ const EditPetScreen = ({ route, navigation }) => {
         weight: parseFloat(weight) || null,
         lastWeight: parseFloat(weight) || null,
         microchip: microchip.trim() || "N/A",
-        allergies: showAllergyToggle && allergyArray.length > 0 ? allergyArray.join(", ") : "None",
+        petAllergies: showAllergyToggle && allergyArray.length > 0 ? allergyArray.join(", ") : "None",
         dob: isAgeTotallyUnknown ? null : Timestamp.fromDate(dob),
         isAgeExact: !isAgeTotallyUnknown, // Forensic Parity!
         updatedAt: Timestamp.now(), // Track when it was edited

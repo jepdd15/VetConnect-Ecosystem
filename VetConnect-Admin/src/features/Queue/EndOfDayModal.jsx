@@ -616,7 +616,7 @@ const AuditPatientCard = React.memo(({
                         {/* 🏥 ACTIVE SILO BINARY TRIAGE */}
                         {tabMode === 2 && [
                             <ToggleButton key="hospitalize" value="hospitalize"><LocalHospitalIcon sx={{ mr: 0.5, fontSize: 16 }} /> CONFINE</ToggleButton>,
-                            <ToggleButton key="rebook" value="rebook"><EventRepeatIcon sx={{ mr: 0.5, fontSize: 16 }} /> Rebook</ToggleButton>
+                            <ToggleButton key="rebook" value="rebook"><EventRepeatIcon sx={{ mr: 0.5, fontSize: 16 }} /> Carry-Over</ToggleButton>
                         ]}
 
                         <ToggleButton value="cancel"><DoNotDisturbIcon sx={{ mr: 0.5, fontSize: 16 }} /> Cancel</ToggleButton>
@@ -677,7 +677,7 @@ const AuditPatientCard = React.memo(({
                                                     '&:hover': { bgcolor: isActive ? '#E65100' : 'rgba(255, 160, 0, 0.05)', borderColor: forensicColor }
                                                 }}
                                             >
-                                                {label}
+                                                {resolution === 'rebook' && tabMode === 2 ? "CARRY-OVER" : label}
                                             </Button>
                                         );
                                     })}
@@ -801,10 +801,11 @@ const EndOfDayModal = React.memo(({
     const resolvedCount = leftoverPatients.filter(p => !!patientResolutions[p.id] || ['completed', 'done', 'cancelled', 'no-show', 'carried-over'].includes((realTimeStatuses[p.id] || p.status || "").toLowerCase())).length;
     const pendingTriageCount = leftoverPatients.length - resolvedCount;
 
-    // PHASE 6: SILO-AWARE PRE-FLIGHT CENSUS
+    // PHASE 6: SILO-AWARE PRE-FLIGHT CENSUS (6-COLUMN RECONCILIATION)
     const census = {
         defer: 0,
-        rebook: 0,
+        reschedule: 0, // Online/Scheduled Shifting
+        carryOver: 0,   // Active Shift Transition
         hospitalize: 0,
         noShow: 0,
         cancel: 0
@@ -814,11 +815,17 @@ const EndOfDayModal = React.memo(({
         const res = patientResolutions[p.id];
         if (!res) return;
 
+        const rawStatus = (p.status || "").toLowerCase();
+        const isActive = ['arrived', 'in-consult', 'on-hold', 'dispensing', 'billing', 'admitted'].includes(rawStatus);
+
         if (res === 'defer') census.defer++;
         else if (res === 'no-show') census.noShow++;
         else if (res === 'cancel') census.cancel++;
         else if (res === 'hospitalize') census.hospitalize++;
-        else if (res === 'rebook') census.rebook++;
+        else if (res === 'rebook') {
+            if (isActive) census.carryOver++;
+            else census.reschedule++;
+        }
     });
 
     const [isConfirming, setIsConfirming] = useState(false);
@@ -965,10 +972,20 @@ const EndOfDayModal = React.memo(({
                             🛡️ FINAL CLINICAL TRIAGE SIGN-OFF
                         </Typography>
 
-                        <Stack direction="row" spacing={4} justifyContent="center" sx={{ bgcolor: 'rgba(0,0,0,0.3)', p: 3, borderRadius: 2, mb: 3 }}>
+                        <Stack direction="row" spacing={3} justifyContent="center" sx={{ bgcolor: 'rgba(0,0,0,0.3)', p: 3, borderRadius: 2, mb: 3 }}>
                             <Box sx={{ textAlign: 'center' }}>
                                 <Typography variant="h2" sx={{ fontWeight: 1000, color: '#81C784' }}>{census.defer}</Typography>
                                 <Typography variant="caption" sx={{ fontWeight: 900, opacity: 0.9, letterSpacing: 1.5 }}>DEFER</Typography>
+                            </Box>
+                            <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
+                            <Box sx={{ textAlign: 'center' }}>
+                                <Typography variant="h2" sx={{ fontWeight: 1000, color: '#FFB74D' }}>{census.reschedule}</Typography>
+                                <Typography variant="caption" sx={{ fontWeight: 900, opacity: 0.9, letterSpacing: 1.5 }}>RESCHEDULE</Typography>
+                            </Box>
+                            <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
+                            <Box sx={{ textAlign: 'center' }}>
+                                <Typography variant="h2" sx={{ fontWeight: 1000, color: '#64B5F6' }}>{census.carryOver}</Typography>
+                                <Typography variant="caption" sx={{ fontWeight: 900, opacity: 0.9, letterSpacing: 1.5 }}>CARRY-OVER</Typography>
                             </Box>
                             <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
                             <Box sx={{ textAlign: 'center' }}>
@@ -977,12 +994,7 @@ const EndOfDayModal = React.memo(({
                             </Box>
                             <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
                             <Box sx={{ textAlign: 'center' }}>
-                                <Typography variant="h2" sx={{ fontWeight: 1000, color: '#64B5F6' }}>{census.rebook}</Typography>
-                                <Typography variant="caption" sx={{ fontWeight: 900, opacity: 0.9, letterSpacing: 1.5 }}>REBOOK</Typography>
-                            </Box>
-                            <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
-                            <Box sx={{ textAlign: 'center' }}>
-                                <Typography variant="h2" sx={{ fontWeight: 1000, color: '#FFB74D' }}>{census.noShow}</Typography>
+                                <Typography variant="h2" sx={{ fontWeight: 1000, color: '#FFD180' }}>{census.noShow}</Typography>
                                 <Typography variant="caption" sx={{ fontWeight: 900, opacity: 0.9, letterSpacing: 1.5 }}>NO-SHOW</Typography>
                             </Box>
                             <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
@@ -1105,7 +1117,7 @@ const EndOfDayModal = React.memo(({
                                         sx={{ borderRadius: 0, px: 3, py: 0.6, color: '#8B4513', fontWeight: '1000', fontSize: '0.75rem', '&:hover': { bgcolor: '#FFF3E0' } }}
                                         onClick={() => setStagedBulkAction('rebook')}
                                     >
-                                        BATCH: REBOOK ALL
+                                        BATCH: CARRY-OVER ALL
                                     </Button>
                                 </>
                             )}
@@ -1126,7 +1138,7 @@ const EndOfDayModal = React.memo(({
                                 <Typography variant="caption" sx={{ fontWeight: 1000, color: '#5D4037', whiteSpace: 'nowrap' }}>
                                     ✍️ REASON FOR {currentSiloPatients.length} {
                                         stagedBulkAction === 'rebook' 
-                                            ? (activeTab === 2 ? 'REBOOKS' : 'RESCHEDULES') 
+                                            ? (activeTab === 2 ? 'CARRY-OVERS' : 'RESCHEDULES') 
                                             : stagedBulkAction.toUpperCase() + 'S'
                                     }:
                                 </Typography>

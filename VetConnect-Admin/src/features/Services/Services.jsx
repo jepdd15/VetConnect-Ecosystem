@@ -68,31 +68,43 @@ export default function Services() {
   };
 
   return (
-    <Box sx={{ height: 'calc(100vh - 24px)', display: 'flex', flexDirection: 'column', gap: 0, overflow: 'hidden', bgcolor: COLORS.surfaceAlt }}>
-      <Paper sx={{ ...headerFlatStyle, p: 2, mx: 2, mt: 2, mb: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, flexShrink: 0 }}>
+    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', gap: 0, overflow: 'hidden', bgcolor: COLORS.surfaceAlt }}>
+      <Paper sx={{ 
+        bgcolor: '#FFF8E1', 
+        border: '0px',
+        borderBottom: '2px solid #5D4037',
+        borderRadius: 0, 
+        p: 2, 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        flexWrap: 'wrap', 
+        gap: 2, 
+        flexShrink: 0 
+      }}>
         
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', flexGrow: 1 }}>
           <Typography variant="h4" sx={{ fontWeight: '1000', color: '#5D4037', textTransform: 'uppercase', letterSpacing: 0.5, mr: 1, fontSize: '1.5rem' }}>Services</Typography>
           
-          <Box sx={{ display: 'flex', alignItems: 'center', bgcolor: '#EFEBE9', borderRadius: '12px', border: '2px solid #5D4037', p: 0.5, boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', bgcolor: '#EFEBE9', borderRadius: 0, border: '2px solid #5D4037', p: 0.5 }}>
             <TextField 
               variant="standard" placeholder="SEARCH SERVICES..." value={searchText} onChange={(e) => setSearchText(e.target.value)} 
               InputProps={{ 
                   startAdornment: <InputAdornment position="start"><SearchIcon sx={{color: 'rgba(255,255,255,0.8)', ml: 1}}/></InputAdornment>,
                   disableUnderline: true, style: { color: 'white', fontWeight: 'bold', textTransform: 'uppercase' } 
               }} 
-              sx={{ width: 260, bgcolor: '#5D4037', borderRadius: '8px', px: 2, py: 0.5, '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.6)', opacity: 1 } }} 
+              sx={{ width: 260, bgcolor: '#5D4037', borderRadius: 0, px: 2, py: 0.5, '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.6)', opacity: 1 } }} 
             />
           </Box>
 
-          <FormControl size="small" sx={{ width: 180, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 1 }}>
+          <FormControl size="small" sx={{ width: 180, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 0 }}>
               <Select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} displayEmpty sx={{ '& fieldset': { border: 'none' }, fontWeight: 'bold' }}>
                   <MenuItem value="All">All Departments</MenuItem>
                   {departments.map(d => <MenuItem key={d.id} value={d.name}>{d.name}</MenuItem>)}
               </Select>
           </FormControl>
 
-          <FormControl size="small" sx={{ width: 160, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 1 }}>
+          <FormControl size="small" sx={{ width: 160, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 0 }}>
               <Select value={filterSpecies} onChange={(e) => setFilterSpecies(e.target.value)} displayEmpty sx={{ '& fieldset': { border: 'none' }, fontWeight: 'bold' }}>
                   <MenuItem value="All">All Species</MenuItem>
                   <MenuItem value="Universal">🐾 Universal</MenuItem>
@@ -117,7 +129,7 @@ export default function Services() {
         </Box>
       </Paper>
 
-      <Box sx={{ flexGrow: 1, overflow: 'hidden', px: 2, pt: 2, pb: 0, bgcolor: COLORS.surface, display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ flexGrow: 1, overflow: 'hidden', p: 0, bgcolor: COLORS.surface, display: 'flex', flexDirection: 'column' }}>
         <ServiceTable data={filteredServices} onEdit={(row) => { setSelectedItem(row); setOpen(true); }} onDelete={handleDelete} clinicalFlatStyle={clinicalFlatStyle} departments={departments} />
       </Box>
 

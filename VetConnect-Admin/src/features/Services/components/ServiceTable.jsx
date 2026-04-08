@@ -78,7 +78,18 @@ export default function ServiceTable({ data, onEdit, onDelete, clinicalFlatStyle
   };
 
   return (
-    <Paper sx={{ ...clinicalFlatStyle, flex: 1, minHeight: 0, width: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+    <Paper sx={{ 
+      flex: 1, 
+      minHeight: 0, 
+      width: '100%', 
+      overflow: 'hidden', 
+      display: 'flex', 
+      flexDirection: 'column',
+      bgcolor: 'transparent',
+      border: '0px',
+      boxShadow: 'none',
+      borderRadius: 0
+    }}>
       <TableContainer sx={{ 
         flex: 1, 
         overflow: 'auto',
@@ -92,7 +103,6 @@ export default function ServiceTable({ data, onEdit, onDelete, clinicalFlatStyle
           <TableHead>
             <TableRow>
               <TableCell sx={{ width: 40, bgcolor: '#FFF8E1', borderBottom: '2px solid #5D4037' }} />
-              <TableCell sx={{ width: 50, bgcolor: '#FFF8E1', borderBottom: '2px solid #5D4037' }} />
               <TableCell sx={{ fontWeight: '1000', color: '#5D4037', bgcolor: '#FFF8E1', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: 1, borderBottom: '2px solid #5D4037' }}>
                 <TableSortLabel active={orderBy === 'name'} direction={orderBy === 'name' ? order : 'asc'} onClick={() => handleRequestSort('name')}>Service Name</TableSortLabel>
               </TableCell>
@@ -131,9 +141,6 @@ export default function ServiceTable({ data, onEdit, onDelete, clinicalFlatStyle
                           {isExpanded ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
                         </IconButton>
                       )}
-                    </TableCell>
-                    <TableCell>
-                      <CircleIcon sx={{ color: badgeColor, fontSize: 18, boxShadow: `0 0 8px ${badgeColor}99`, borderRadius: '50%' }} /> 
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2" fontWeight="900" color="#3E2723" noWrap>
@@ -175,13 +182,13 @@ export default function ServiceTable({ data, onEdit, onDelete, clinicalFlatStyle
                   
                   {/* EXPANDABLE DESCRIPTION ROW */}
                   <TableRow>
-                    <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={8}>
+                    <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={7}>
                       <Collapse in={isExpanded} timeout="auto" unmountOnExit>
-                        <Box sx={{ margin: 1, my: 1, p: 2, bgcolor: '#F0F4F8', borderRadius: 2, borderLeft: '4px solid', borderColor: badgeColor }}>
-                          <Typography variant="caption" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: badgeColor }}>
-                            <DescriptionIcon fontSize="small" /> Standard Operating Procedure (SOP)
+                        <Box sx={{ margin: 1, my: 1, p: 2, bgcolor: '#FAF9F7', borderRadius: 0, border: '2px solid', borderColor: badgeColor, boxShadow: '4px 4px 0px rgba(0,0,0,0.05)' }}>
+                          <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 1, color: badgeColor, fontWeight: '1000', textTransform: 'uppercase', letterSpacing: 1 }}>
+                            <DescriptionIcon fontSize="small" sx={{ color: badgeColor }} /> STANDARD OPERATING PROCEDURE (SOP) | DESCRIPTION & CLINICAL INSTRUCTIONS
                           </Typography>
-                          <Typography variant="body2" sx={{ mt: 1, whiteSpace: 'pre-wrap' }}>
+                          <Typography variant="body2" sx={{ mt: 1, whiteSpace: 'pre-wrap', color: '#3E2723', fontWeight: 'bold' }}>
                             {row.description}
                           </Typography>
                         </Box>

@@ -3,7 +3,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, 
   TextField, Button, MenuItem, Typography, Box, Paper, 
   FormControl, InputLabel, Select, OutlinedInput, Checkbox, ListItemText,
-  Grid, Chip, Divider
+  Grid, Chip, Divider, FormHelperText
 } from '@mui/material';
 
 import { useNavigate } from 'react-router-dom';
@@ -16,6 +16,8 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import CircleIcon from '@mui/icons-material/Circle';
 import BadgeIcon from '@mui/icons-material/Badge';
 import ContactEmergencyIcon from '@mui/icons-material/ContactEmergency';
+import AddIcon from '@mui/icons-material/Add';
+import DeleteIcon from '@mui/icons-material/Delete';
 
 export default function StaffFormModal({ open, onClose, item, showToast, dynamicDepartments, onSave }) {
   
@@ -31,15 +33,16 @@ export default function StaffFormModal({ open, onClose, item, showToast, dynamic
     prcLicense:  item?.prcLicense || '',
     // Section 2: Access & Scheduling
     accessLevel: item?.accessLevel || (item?.role === 'admin' ? 'admin' : 'staff'),
-    specialty:   item?.specialty || '',
     departments: item?.departments || [],
-    employmentType: item?.employmentType || '',
     // Section 3: HR & Emergency (all optional)
-    hireDate:         item?.hireDate || '',
     address:          item?.address || '',
-    emergencyName:    item?.emergencyName || '',
-    emergencyPhone:   item?.emergencyPhone || '',
-    notes:            item?.notes || '',
+    emergencyContacts: item?.emergencyContacts || [
+      { 
+        name: item?.emergencyName || '', 
+        kinship: item?.emergencyKinship || '', 
+        phone: item?.emergencyPhone || '' 
+      }
+    ],
   });
 
   const [errors, setErrors] = useState({});
@@ -56,6 +59,27 @@ export default function StaffFormModal({ open, onClose, item, showToast, dynamic
     const { target: { value } } = event;
     setFormData({ ...formData, departments: typeof value === 'string' ? value.split(',') : value });
   };
+  
+  // Dynamic Contact Handlers
+  const handleAddContact = () => {
+    setFormData(prev => ({
+      ...prev,
+      emergencyContacts: [...prev.emergencyContacts, { name: '', kinship: '', phone: '' }]
+    }));
+  };
+
+  const handleRemoveContact = (index) => {
+    setFormData(prev => ({
+      ...prev,
+      emergencyContacts: prev.emergencyContacts.filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleContactChange = (index, field, value) => {
+    const updated = [...formData.emergencyContacts];
+    updated[index][field] = value;
+    setFormData(prev => ({ ...prev, emergencyContacts: updated }));
+  };
 
   const handleSave = () => {
     const newErrors = {};
@@ -70,7 +94,16 @@ export default function StaffFormModal({ open, onClose, item, showToast, dynamic
   };
 
   // ── Shared field styling ──
-  const sxField = { bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 1.5 } };
+  const sxField = { 
+    bgcolor: 'white', 
+    '& .MuiOutlinedInput-root': { 
+      borderRadius: 0, 
+      '& fieldset': { border: '2px solid #5D4037' },
+      '&:hover fieldset': { borderColor: '#3E2723' },
+      '&.Mui-focused fieldset': { borderColor: '#5D4037', borderSize: '3px' }
+    },
+    '& .MuiInputLabel-root': { color: '#5D4037', fontWeight: 'bold' }
+  };
 
   return (
     <Dialog 
@@ -108,11 +141,11 @@ export default function StaffFormModal({ open, onClose, item, showToast, dynamic
           {/* ═══════════════════════════════════════════════════════════════
               SECTION 1: PERSONAL & PROFESSIONAL IDENTITY
               ═══════════════════════════════════════════════════════════════ */}
-          <Box>
+          <Box sx={{ mb: 4 }}>
             <Typography variant="overline" fontWeight="900" display="block" mb={1} sx={{ color: '#5D4037', letterSpacing: 1 }}>
-              1. Personal &amp; Professional Identity
+              1. PERSONAL &amp; PROFESSIONAL IDENTITY
             </Typography>
-            <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2, border: '1px solid #E0E0E0' }}>
+            <Paper elevation={0} sx={{ p: 3, borderRadius: 0, border: '2px solid #5D4037', bgcolor: '#FFF' }}>
               <Grid container spacing={2}>
                 <Grid size={{ xs: 12, md: 7 }}>
                   <TextField
@@ -146,7 +179,7 @@ export default function StaffFormModal({ open, onClose, item, showToast, dynamic
                     onChange={setField('email')} 
                     disabled={isEditing}
                     error={!!errors.email}
-                    helperText={errors.email || (!isEditing ? 'Used for Mobile App Login' : '')}
+                    helperText={errors.email}
                     inputProps={noExtensionProps}
                     sx={sxField}
                   />
@@ -170,46 +203,29 @@ export default function StaffFormModal({ open, onClose, item, showToast, dynamic
           {/* ═══════════════════════════════════════════════════════════════
               SECTION 2: ACCESS LEVEL & SCHEDULING
               ═══════════════════════════════════════════════════════════════ */}
-          <Box>
+          <Box sx={{ mb: 4 }}>
             <Typography variant="overline" fontWeight="900" display="block" mb={1} sx={{ color: '#5D4037', letterSpacing: 1 }}>
-              2. Access Level &amp; Scheduling
+              2. ACCESS LEVEL &amp; SCHEDULING
             </Typography>
-            <Paper elevation={0} sx={{ p: 2.5, bgcolor: '#EFEBE9', border: '1px solid #D7CCC8', borderRadius: 2 }}>
+            <Paper elevation={0} sx={{ p: 3, bgcolor: '#EFEBE9', border: '2px solid #5D4037', borderRadius: 0 }}>
               <Grid container spacing={2}>
-                <Grid size={{ xs: 12, md: 4 }}>
+                <Grid size={{ xs: 12, md: 6 }}>
                   <FormControl fullWidth size="small" sx={sxField}>
                     <InputLabel>System Access *</InputLabel>
                     <Select value={formData.accessLevel} label="System Access *" onChange={setField('accessLevel')}>
-                      <MenuItem value="staff">Standard Staff</MenuItem>
-                      <MenuItem value="admin" sx={{ color: '#D32F2F', fontWeight: 'bold' }}>Administrator</MenuItem>
+                      <MenuItem value="staff">Clinical Staff</MenuItem>
+                      <MenuItem value="admin" sx={{ color: '#D32F2F', fontWeight: 'bold' }}>Clinic Administrator</MenuItem>
                     </Select>
-                  </FormControl>
-                </Grid>
-                <Grid size={{ xs: 12, md: 4 }}>
-                  <TextField
-                    label="Specialty Tag"
-                    fullWidth size="small"
-                    value={formData.specialty}
-                    onChange={setField('specialty')}
-                    placeholder="e.g. Senior Surgeon"
-                    sx={sxField}
-                    inputProps={noExtensionProps}
-                  />
-                </Grid>
-                <Grid size={{ xs: 12, md: 4 }}>
-                  <FormControl fullWidth size="small" sx={sxField}>
-                    <InputLabel>Employment Type</InputLabel>
-                    <Select value={formData.employmentType} label="Employment Type" onChange={setField('employmentType')}>
-                      <MenuItem value=""><em>Not set</em></MenuItem>
-                      <MenuItem value="Full-time">Full-time</MenuItem>
-                      <MenuItem value="Part-time">Part-time</MenuItem>
-                      <MenuItem value="Relief Vet">Relief / Locum Vet</MenuItem>
-                      <MenuItem value="Intern">Intern / Trainee</MenuItem>
-                    </Select>
+                    <FormHelperText sx={{ color: formData.accessLevel === 'admin' ? '#D32F2F' : '#5D4037', fontWeight: 'bold', fontStyle: 'italic', mt: 1, lineHeight: 1.4 }}>
+                      {formData.accessLevel === 'admin' 
+                        ? "HIGHEST AUTHORITY LEVEL. Grants absolute control over laboratory configuration, staff authorization, financial operational rules, and clinic-wide system settings. Intended for Practice Owners or Senior Management."
+                        : "OPERATIONAL-LEVEL ACCESS. Authorized for frontline clinical workflows, including patient management, real-time triage, and forensic medical documentation. Access to system configuration is restricted."
+                      }
+                    </FormHelperText>
                   </FormControl>
                 </Grid>
                 
-                <Grid size={{ xs: 12 }}>
+                <Grid size={{ xs: 12, md: 6 }}>
                   <FormControl fullWidth size="small" sx={sxField}>
                     <InputLabel>Assigned Departments *</InputLabel>
                     <Select
@@ -260,25 +276,14 @@ export default function StaffFormModal({ open, onClose, item, showToast, dynamic
               ═══════════════════════════════════════════════════════════════ */}
           <Box>
             <Typography variant="overline" fontWeight="900" display="block" mb={0.5} sx={{ color: '#5D4037', letterSpacing: 1 }}>
-              3. Employment &amp; Emergency Contact
+              3. EMPLOYMENT &amp; EMERGENCY CONTACT
             </Typography>
             <Typography variant="caption" color="textSecondary" display="block" mb={1} sx={{ fontStyle: 'italic' }}>
               All fields below are optional — fill in during HR onboarding.
             </Typography>
-            <Paper elevation={0} sx={{ p: 2.5, borderRadius: 2, border: '1px dashed #BDBDBD' }}>
+            <Paper elevation={0} sx={{ p: 3, borderRadius: 0, border: '2px solid #5D4037', bgcolor: '#FFF' }}>
               <Grid container spacing={2}>
-                <Grid size={{ xs: 12, md: 4 }}>
-                  <TextField
-                    label="Hire Date"
-                    type="date"
-                    fullWidth size="small"
-                    value={formData.hireDate}
-                    onChange={setField('hireDate')}
-                    InputLabelProps={{ shrink: true }}
-                    sx={sxField}
-                  />
-                </Grid>
-                <Grid size={{ xs: 12, md: 8 }}>
+                <Grid size={{ xs: 12 }}>
                   <TextField
                     label="Home Address"
                     fullWidth size="small"
@@ -296,50 +301,77 @@ export default function StaffFormModal({ open, onClose, item, showToast, dynamic
                   </Divider>
                 </Grid>
 
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField
-                    label="Emergency Contact Name"
-                    fullWidth size="small"
-                    value={formData.emergencyName}
-                    onChange={setField('emergencyName')}
-                    placeholder="e.g. Maria Capua"
-                    inputProps={noExtensionProps}
-                    sx={sxField}
-                  />
-                </Grid>
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField
-                    label="Emergency Contact Phone"
-                    fullWidth size="small"
-                    value={formData.emergencyPhone}
-                    onChange={setField('emergencyPhone')}
-                    placeholder="e.g. 09181234567"
-                    sx={sxField}
-                  />
-                </Grid>
+                {formData.emergencyContacts.map((contact, index) => (
+                  <React.Fragment key={index}>
+                    <Grid size={{ xs: 12, md: 4.5 }}>
+                      <TextField
+                        label="Emergency Contact Name"
+                        fullWidth size="small"
+                        value={contact.name}
+                        onChange={(e) => handleContactChange(index, 'name', e.target.value)}
+                        placeholder="e.g. Maria Capua"
+                        inputProps={noExtensionProps}
+                        sx={sxField}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, md: 3 }} >
+                      <TextField
+                        label="Kinship / Affiliation"
+                        fullWidth size="small"
+                        value={contact.kinship}
+                        onChange={(e) => handleContactChange(index, 'kinship', e.target.value)}
+                        placeholder="e.g. Spouse"
+                        inputProps={noExtensionProps}
+                        sx={sxField}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, md: 3.5 }} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                      <TextField
+                        label="Phone Number"
+                        fullWidth size="small"
+                        value={contact.phone}
+                        onChange={(e) => handleContactChange(index, 'phone', e.target.value)}
+                        placeholder="e.g. 09181234567"
+                        sx={sxField}
+                      />
+                      <Button 
+                        disabled={formData.emergencyContacts.length === 1}
+                        onClick={() => handleRemoveContact(index)}
+                        sx={{ minWidth: 40, color: '#D32F2F', p: 0 }}
+                      >
+                        <DeleteIcon />
+                      </Button>
+                    </Grid>
+                  </React.Fragment>
+                ))}
 
                 <Grid size={{ xs: 12 }}>
-                  <TextField
-                    label="Internal Notes"
-                    fullWidth size="small"
-                    multiline
-                    rows={2}
-                    value={formData.notes}
-                    onChange={setField('notes')}
-                    placeholder="e.g. Prefers afternoon shifts, on probation until June 2026"
-                    inputProps={noExtensionProps}
-                    sx={sxField}
-                  />
+                  <Button 
+                    startIcon={<AddIcon />}
+                    onClick={handleAddContact}
+                    variant="outlined"
+                    sx={{ 
+                      borderRadius: 0, border: '2px solid #5D4037', color: '#5D4037', 
+                      fontWeight: '1000', fontFamily: 'Inter', fontSize: '0.75rem',
+                      mt: 1,
+                      '&:hover': { border: '2px solid #3E2723', bgcolor: 'rgba(93, 64, 55, 0.05)' }
+                    }}
+                  >
+                    ADD EMERGENCY CONTACT
+                  </Button>
                 </Grid>
               </Grid>
             </Paper>
           </Box>
 
-          {/* ── INFO FOOTER ── */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 0.5 }}>
-            <InfoIcon sx={{ fontSize: 16, color: '#8B4513' }} />
-            <Typography variant="caption" color="textSecondary" fontStyle="italic">
-              Fields marked with * are required. All other fields can be filled in later.
+          {/* ── INFO FOOTER AREA ── */}
+          <Box sx={{ 
+            display: 'flex', alignItems: 'center', gap: 1.5, p: 1.5, 
+            bgcolor: '#FFF8E1', border: '2px solid #5D4037', mt: 1
+          }}>
+            <InfoIcon sx={{ fontSize: 18, color: '#5D4037' }} />
+            <Typography variant="caption" sx={{ fontFamily: 'Inter', fontWeight: '1000', color: '#5D4037', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              NOTICE: Fields marked with * are mandatory for clinical authorization.
             </Typography>
           </Box>
 
@@ -348,7 +380,17 @@ export default function StaffFormModal({ open, onClose, item, showToast, dynamic
       
       {/* ── ACTIONS — VetConnect deep orange ── */}
       <DialogActions sx={{ p: 2.5, bgcolor: '#FFF8E1', borderTop: '2px solid #5D4037' }}>
-        <Button onClick={onClose} sx={{ fontWeight: '1000', color: '#5D4037', px: 3, mr: 1, fontFamily: 'Inter, sans-serif' }}>CANCEL</Button>
+        <Button 
+          onClick={onClose} 
+          sx={{ 
+            fontWeight: '1000', color: '#5D4037', px: 3, mr: 1, 
+            fontFamily: 'Inter, sans-serif', borderRadius: 0, 
+            border: '2px solid #5D4037',
+            '&:hover': { bgcolor: 'rgba(93, 64, 55, 0.05)' }
+          }}
+        >
+          CANCEL
+        </Button>
         <Button 
           onClick={handleSave} 
           variant="contained" 

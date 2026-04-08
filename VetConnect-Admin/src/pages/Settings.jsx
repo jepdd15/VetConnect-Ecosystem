@@ -5,6 +5,7 @@ import {
   Divider, Stack, Chip, ListItemText, ToggleButton, ToggleButtonGroup 
 } from '@mui/material';
 import Grid from '@mui/material/Grid'; // MUI v6 Standard
+import { styled } from '@mui/material/styles';
 
 import { doc, setDoc, Timestamp, collection, onSnapshot, addDoc, deleteDoc, query } from 'firebase/firestore';
 import { db, auth } from '../firebaseConfig';
@@ -19,7 +20,12 @@ import DomainIcon from '@mui/icons-material/Domain';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import CircleIcon from '@mui/icons-material/Circle';
 import InventoryIcon from '@mui/icons-material/Inventory';
-import SortIcon from '@mui/icons-material/Sort'; // THE FIX: New Icon for Sorting
+import SortIcon from '@mui/icons-material/Sort'; 
+import MedicationIcon from '@mui/icons-material/Medication';
+import MedicationLiquidIcon from '@mui/icons-material/MedicationLiquid';
+
+// Design Tokens
+import { FONT, TYPE, COLORS } from '../theme/designTokens';
 
 // Expanded, Neutral Brand Colors for the Color Picker
 const COLOR_PALETTE =[
@@ -40,9 +46,65 @@ const COLOR_PALETTE =[
   { label: 'Espresso Brown', value: '#4E342E' },
 ];
 
+// 💊 THE BE-SPOKE MEDICINE PILL SWITCH
+const MedicinePillSwitch = styled(Switch)(({ theme }) => ({
+  width: 62, height: 34, padding: 7,
+  '& .MuiSwitch-switchBase': {
+    margin: 1, padding: 0,
+    transform: 'translateX(6px)',
+    '&.Mui-checked': {
+      color: '#fff',
+      transform: 'translateX(22px)',
+      '& .MuiSwitch-thumb:before': {
+        background: 'linear-gradient(180deg, #D32F2F 50%, #FFFFFF 50%)', // Red/White Pill
+      },
+      '& + .MuiSwitch-track': {
+        opacity: 1,
+        backgroundColor: '#D32F2F20',
+        border: '2px solid #D32F2F',
+      },
+    },
+  },
+  '& .MuiSwitch-thumb': {
+    backgroundColor: '#fff',
+    width: 32, height: 32,
+    '&:before': {
+      content: "''",
+      position: 'absolute',
+      width: '100%', height: '100%',
+      left: 0, top: 0,
+      background: 'linear-gradient(180deg, #9E9E9E 50%, #E0E0E0 50%)',
+      borderRadius: '50%',
+    },
+  },
+  '& .MuiSwitch-track': {
+    opacity: 1,
+    backgroundColor: '#00000010',
+    borderRadius: 20,
+    border: '2px solid #9E9E9E',
+  },
+}));
+
 export default function Settings() {
   const [loading, setLoading] = useState(false);
   const[toast, setToast] = useState({ open: false, message: '', severity: 'success' });
+
+  // --- STYLING MACROS ---
+  const forensicHeaderStyle = {
+    bgcolor: '#FFF8E1', 
+    border: `2px solid ${COLORS.accent}`,
+    borderRadius: 0,
+    boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
+  };
+
+  const clinicalFlatStyle = {
+    bgcolor: 'white',
+    border: `2px solid ${COLORS.accent}`,
+    borderRadius: 0,
+    boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
+  };
+
+  const dashboardCream = '#FAF8F5';
 
   // --- CONFIGURATION STATE ---
   const [settings, setSettings] = useState({
@@ -62,17 +124,13 @@ export default function Settings() {
 
   const [invCategories, setInvCategories] = useState([]);
   const [newInvCatName, setNewInvCatName] = useState('');
+  const [newInvCatIsMedicine, setNewInvCatIsMedicine] = useState(false); // 🧪 NEW: The Medicine Toggle
   const[invCatSearch, setInvCatSearch] = useState('');
   const [invCatSort, setInvCatSort] = useState('asc'); // THE FIX: Sort state for Inventory
 
   // --- DEPENDENCY STATES (For Usage Shield) ---
   const [allServices, setAllServices] = useState([]);
   const [allStaff, setAllStaff] = useState([]);
-
-  const glassStyle = {
-    background: 'rgba(255, 255, 255, 0.55)', backdropFilter: 'blur(16px)', 
-    border: '1px solid rgba(255, 255, 255, 0.8)', boxShadow: '0 8px 32px 0 rgba(139, 69, 19, 0.08)', borderRadius: 3, 
-  };
 
   useEffect(() => {
     // 1. Fetch Global Settings
@@ -196,8 +254,12 @@ export default function Settings() {
     const isDuplicate = invCategories.some(d => d.name.toLowerCase() === newInvCatName.trim().toLowerCase());
     if (isDuplicate) return setToast({ open: true, message: 'Category already exists!', severity: 'error' });
     try {
-        await addDoc(collection(db, "inventory_categories"), { name: newInvCatName.trim() });
+        await addDoc(collection(db, "inventory_categories"), { 
+            name: newInvCatName.trim(),
+            isMedicine: newInvCatIsMedicine // 💊 THE PILL FLAG
+        });
         setNewInvCatName('');
+        setNewInvCatIsMedicine(false);
         setToast({ open: true, message: 'Category Added.', severity: 'success' });
     } catch (e) { setToast({ open: true, message: e.message, severity: 'error' }); }
   };
@@ -219,16 +281,29 @@ export default function Settings() {
   const hoursArray = Array.from({ length: 24 }, (_, i) => i);
 
   return (
-    // THE FIX: Applying overflowX: 'hidden' at the topmost level of this specific page, clipping the Windows 100vw bug!
     <Box sx={{ p: { xs: 2, md: 4 }, minHeight: 'calc(100vh - 64px)', bgcolor: 'transparent', overflowX: 'hidden' }}>
       
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-        <Typography variant="h4" sx={{ fontWeight: '900', color: '#5D4037', display: 'flex', alignItems: 'center', gap: 1, textShadow: '0px 1px 2px rgba(255,255,255,0.8)' }}>
-          <SettingsSuggestIcon fontSize="large" sx={{ color: '#8B4513' }} /> Clinic Configuration
-        </Typography>
-        <Button variant="contained" color="success" size="large" startIcon={<SaveIcon />} onClick={handleSave} disabled={loading} sx={{ fontWeight: '900', px: 4, py: 1.5, boxShadow: '0 4px 12px rgba(46, 125, 50, 0.3)', borderRadius: 2 }}>
-          {loading ? "Saving..." : "Save Configuration"}
-        </Button>
+      {/* 1. BOXED FORENSIC HEADER */}
+      <Box sx={{ flexShrink: 0, mb: 4 }}>
+        <Paper sx={{ 
+          ...forensicHeaderStyle, p: 2.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+        }}>
+          <Typography variant="h4" sx={{ fontWeight: '1000', color: COLORS.accent, display: 'flex', alignItems: 'center', gap: 1.5, textTransform: 'uppercase', letterSpacing: 0.5, fontSize: '1.5rem' }}>
+            <SettingsSuggestIcon fontSize="large" /> Clinic Configuration
+          </Typography>
+          <Button 
+            variant="contained" color="success" size="large" startIcon={<SaveIcon />} 
+            onClick={handleSave} disabled={loading} 
+            sx={{ 
+                fontWeight: '1000', px: 4, py: 1.5, borderRadius: 0,
+                bgcolor: COLORS.success, border: `2px solid ${COLORS.brand}`,
+                boxShadow: '4px 4px 0px rgba(46, 125, 50, 0.1)',
+                '&:hover': { bgcolor: COLORS.brand }
+            }}
+          >
+            {loading ? "Saving..." : "Save Configuration"}
+          </Button>
+        </Paper>
       </Box>
 
       {/* THE FIX: Replaced old Grid syntax and removed the broken wrapper */}
@@ -236,23 +311,43 @@ export default function Settings() {
         
         {/* PILLAR 1: OPERATING HOURS */}
         <Grid size={{ xs: 12, lg: 4 }}>
-          <Paper elevation={0} sx={{ ...glassStyle, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <Box sx={{ bgcolor: 'rgba(21, 101, 192, 0.05)', px: 3, py: 2, borderBottom: '1px solid rgba(0,0,0,0.05)', borderLeft: '4px solid #1565C0' }}>
-              <Typography variant="subtitle1" color="#1565C0" fontWeight="900" sx={{ display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}><AccessTimeIcon /> Operating Hours</Typography>
+          <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <Box sx={{ bgcolor: '#FFF8E1', px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
+              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: "1000", display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
+                <AccessTimeIcon /> Operating Hours
+              </Typography>
             </Box>
-            <Box sx={{ p: 4, flexGrow: 1, bgcolor: 'rgba(255,255,255,0.6)' }}>
-              <Typography variant="body2" color="textSecondary" sx={{ mb: 4, fontWeight: '500' }}>Controls the mobile app's booking calendar boundaries.</Typography>
-              <Grid container spacing={3}>
+            <Box sx={{ p: 3, flexGrow: 1, bgcolor: '#FFF' }}>
+              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 3 }}>Controls the mobile app's booking calendar boundaries.</Typography>
+              <Grid container spacing={2.5}>
                 <Grid size={{ xs: 12 }}>
-                  <FormControl fullWidth size="medium" sx={{ bgcolor: 'white', borderRadius: 1 }}><InputLabel>Clinic Opens</InputLabel><Select value={settings.openHour} label="Clinic Opens" onChange={(e) => handleChange('openHour', e.target.value)}>{hoursArray.map(h => <MenuItem key={h} value={h}>{formatHour(h)}</MenuItem>)}</Select></FormControl>
+                  <FormControl fullWidth size="medium" sx={{ bgcolor: 'white' }}>
+                    <InputLabel sx={{ fontWeight: 1000, color: COLORS.accent }}>Clinic Opens</InputLabel>
+                    <Select 
+                      value={settings.openHour} label="Clinic Opens" 
+                      onChange={(e) => handleChange('openHour', e.target.value)}
+                      sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `2px solid ${COLORS.accent}33` }, fontWeight: 1000 }}
+                    >
+                      {hoursArray.map(h => <MenuItem key={h} value={h}>{formatHour(h)}</MenuItem>)}
+                    </Select>
+                  </FormControl>
                 </Grid>
                 <Grid size={{ xs: 12 }}>
-                  <FormControl fullWidth size="medium" sx={{ bgcolor: 'white', borderRadius: 1 }}><InputLabel>Clinic Closes</InputLabel><Select value={settings.closeHour} label="Clinic Closes" onChange={(e) => handleChange('closeHour', e.target.value)}>{hoursArray.map(h => <MenuItem key={h} value={h}>{formatHour(h)}</MenuItem>)}</Select></FormControl>
+                  <FormControl fullWidth size="medium" sx={{ bgcolor: 'white' }}>
+                    <InputLabel sx={{ fontWeight: 1000, color: COLORS.accent }}>Clinic Closes</InputLabel>
+                    <Select 
+                      value={settings.closeHour} label="Clinic Closes" 
+                      onChange={(e) => handleChange('closeHour', e.target.value)}
+                      sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `2px solid ${COLORS.accent}33` }, fontWeight: 1000 }}
+                    >
+                      {hoursArray.map(h => <MenuItem key={h} value={h}>{formatHour(h)}</MenuItem>)}
+                    </Select>
+                  </FormControl>
                 </Grid>
                 
-                {/* 🧬 CLINIC WORKING DAYS SELECTOR (Phase 6.1) */}
+                {/* 🧬 CLINIC WORKING DAYS SELECTOR (Phase 4 Polish) */}
                 <Grid size={{ xs: 12 }}>
-                    <Typography variant="overline" sx={{ fontWeight: '1000', color: '#1565C0', letterSpacing: 1, display: 'block', mb: 1 }}>
+                    <Typography variant="overline" sx={{ fontWeight: '1000', color: COLORS.accent, letterSpacing: 1, display: 'block', mb: 1 }}>
                         Clinic Working Days
                     </Typography>
                     <ToggleButtonGroup
@@ -263,18 +358,14 @@ export default function Settings() {
                         sx={{ 
                             gap: 0.5, 
                             '& .MuiToggleButton-root': {
-                                border: '1px solid rgba(0,0,0,0.1) !important',
-                                borderRadius: '50% !important',
-                                width: 32,
-                                height: 32,
-                                minWidth: 32,
-                                fontWeight: '900',
-                                fontSize: '0.65rem',
-                                color: '#1565C0',
+                                border: `2px solid ${COLORS.accent}33 !important`,
+                                borderRadius: '0 !important',
+                                width: 32, height: 32, minWidth: 32,
+                                fontWeight: '1000', fontSize: '0.65rem', color: COLORS.accent,
                                 '&.Mui-selected': {
-                                    bgcolor: '#1565C0 !important',
+                                    bgcolor: `${COLORS.accent} !important`,
                                     color: '#FFF !important',
-                                    boxShadow: '0 4px 8px rgba(21, 101, 192, 0.2)'
+                                    boxShadow: '2px 2px 0px rgba(93, 64, 55, 0.2)'
                                 }
                             }
                         }}
@@ -287,11 +378,11 @@ export default function Settings() {
                     </ToggleButtonGroup>
                 </Grid>
 
-                <Grid size={{ xs: 12 }}><Divider sx={{ my: 1 }} /><FormControlLabel control={<Switch checked={settings.lunchEnabled} onChange={(e) => handleChange('lunchEnabled', e.target.checked)} color="primary" />} label={<Typography fontWeight="bold" color="primary">Enforce Lunch Break</Typography>} /></Grid>
+                <Grid size={{ xs: 12 }}><Divider sx={{ my: 1 }} /><FormControlLabel control={<Switch checked={settings.lunchEnabled} onChange={(e) => handleChange('lunchEnabled', e.target.checked)} color="primary" />} label={<Typography sx={{ fontWeight: 1000, color: COLORS.accent }}>Enforce Lunch Break</Typography>} /></Grid>
                 {settings.lunchEnabled && (
                     <React.Fragment>
-                        <Grid size={{ xs: 6 }}><FormControl fullWidth size="small" sx={{ bgcolor: 'white', borderRadius: 1 }}><InputLabel>Start</InputLabel><Select value={settings.lunchStart} label="Start" onChange={(e) => handleChange('lunchStart', e.target.value)}>{hoursArray.map(h => <MenuItem key={h} value={h}>{formatHour(h)}</MenuItem>)}</Select></FormControl></Grid>
-                        <Grid size={{ xs: 6 }}><FormControl fullWidth size="small" sx={{ bgcolor: 'white', borderRadius: 1 }}><InputLabel>End</InputLabel><Select value={settings.lunchEnd} label="End" onChange={(e) => handleChange('lunchEnd', e.target.value)}>{hoursArray.map(h => <MenuItem key={h} value={h}>{formatHour(h)}</MenuItem>)}</Select></FormControl></Grid>
+                        <Grid size={{ xs: 6 }}><FormControl fullWidth size="small" sx={{ bgcolor: 'white' }}><InputLabel sx={{ fontWeight: 1000 }}>Start</InputLabel><Select value={settings.lunchStart} label="Start" onChange={(e) => handleChange('lunchStart', e.target.value)} sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}>{hoursArray.map(h => <MenuItem key={h} value={h}>{formatHour(h)}</MenuItem>)}</Select></FormControl></Grid>
+                        <Grid size={{ xs: 6 }}><FormControl fullWidth size="small" sx={{ bgcolor: 'white' }}><InputLabel sx={{ fontWeight: 1000 }}>End</InputLabel><Select value={settings.lunchEnd} label="End" onChange={(e) => handleChange('lunchEnd', e.target.value)} sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}>{hoursArray.map(h => <MenuItem key={h} value={h}>{formatHour(h)}</MenuItem>)}</Select></FormControl></Grid>
                     </React.Fragment>
                 )}
               </Grid>
@@ -301,17 +392,19 @@ export default function Settings() {
 
         {/* PILLAR 2: BOOKING ENGINE RULES */}
         <Grid size={{ xs: 12, lg: 4 }}>
-          <Paper elevation={0} sx={{ ...glassStyle, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <Box sx={{ bgcolor: 'rgba(230, 81, 0, 0.05)', px: 3, py: 2, borderBottom: '1px solid rgba(0,0,0,0.05)', borderLeft: '4px solid #E65100' }}>
-              <Typography variant="subtitle1" color="#E65100" fontWeight="900" sx={{ display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}><EventBusyIcon /> Client Limitations</Typography>
+          <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <Box sx={{ bgcolor: '#FFF8E1', px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
+              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: "1000", display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
+                <EventBusyIcon /> Client Limitations
+              </Typography>
             </Box>
-            <Box sx={{ p: 4, flexGrow: 1, bgcolor: 'rgba(255,255,255,0.6)' }}>
-              <Typography variant="body2" color="textSecondary" sx={{ mb: 4, fontWeight: '500' }}>Protects the clinic from schedule hoarding and last-minute bookings.</Typography>
-              <Grid container spacing={3}>
-                <Grid size={{ xs: 12 }}><FormControl fullWidth size="medium" sx={{ bgcolor: 'white', borderRadius: 1 }}><InputLabel>Base Slot Interval</InputLabel><Select value={settings.minSlotInterval} label="Base Slot Interval" onChange={(e) => handleChange('minSlotInterval', e.target.value)}><MenuItem value={15}>15 Minutes</MenuItem><MenuItem value={30}>30 Minutes</MenuItem><MenuItem value={45}>45 Minutes</MenuItem><MenuItem value={60}>60 Minutes</MenuItem></Select></FormControl></Grid>
-                <Grid size={{ xs: 12 }}><FormControl fullWidth size="medium" sx={{ bgcolor: 'white', borderRadius: 1 }}><InputLabel>Advance Notice Buffer</InputLabel><Select value={settings.advanceNoticeMins} label="Advance Notice Buffer" onChange={(e) => handleChange('advanceNoticeMins', e.target.value)}><MenuItem value={0}>0 Mins (Allow immediate walk-ins)</MenuItem><MenuItem value={30}>30 Minutes</MenuItem><MenuItem value={60}>1 Hour</MenuItem><MenuItem value={120}>2 Hours</MenuItem><MenuItem value={1440}>24 Hours (Next-day only)</MenuItem></Select></FormControl></Grid>
-                <Grid size={{ xs: 6 }}><TextField fullWidth label="Future Limit" type="number" value={settings.maxFutureBookingDays} onChange={(e) => handleChange('maxFutureBookingDays', e.target.value)} InputProps={{ endAdornment: <InputAdornment position="end">Days</InputAdornment> }} sx={{ bgcolor: 'white', borderRadius: 1 }} /></Grid>
-                <Grid size={{ xs: 6 }}><TextField fullWidth label="Max Pets" type="number" value={settings.maxPetsPerBooking} onChange={(e) => handleChange('maxPetsPerBooking', e.target.value)} InputProps={{ endAdornment: <InputAdornment position="end">Pets</InputAdornment> }} sx={{ bgcolor: 'white', borderRadius: 1 }} helperText="Per booking" /></Grid>
+            <Box sx={{ p: 3, flexGrow: 1, bgcolor: '#FFF' }}>
+              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 3 }}>Protects the clinic from schedule hoarding and last-minute bookings.</Typography>
+              <Grid container spacing={2.5}>
+                <Grid size={{ xs: 12 }}><FormControl fullWidth size="medium" sx={{ bgcolor: 'white' }}><InputLabel sx={{ fontWeight: 1000 }}>Base Slot Interval</InputLabel><Select value={settings.minSlotInterval} label="Base Slot Interval" onChange={(e) => handleChange('minSlotInterval', e.target.value)} sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `2px solid ${COLORS.accent}33` }, fontWeight: 1000 }}><MenuItem value={15}>15 Minutes</MenuItem><MenuItem value={30}>30 Minutes</MenuItem><MenuItem value={45}>45 Minutes</MenuItem><MenuItem value={60}>60 Minutes</MenuItem></Select></FormControl></Grid>
+                <Grid size={{ xs: 12 }}><FormControl fullWidth size="medium" sx={{ bgcolor: 'white' }}><InputLabel sx={{ fontWeight: 1000 }}>Advance Notice Buffer</InputLabel><Select value={settings.advanceNoticeMins} label="Advance Notice Buffer" onChange={(e) => handleChange('advanceNoticeMins', e.target.value)} sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `2px solid ${COLORS.accent}33` }, fontWeight: 1000 }}><MenuItem value={0}>0 Mins (Allow immediate walk-ins)</MenuItem><MenuItem value={30}>30 Minutes</MenuItem><MenuItem value={60}>1 Hour</MenuItem><MenuItem value={120}>2 Hours</MenuItem><MenuItem value={1440}>24 Hours (Next-day only)</MenuItem></Select></FormControl></Grid>
+                <Grid size={{ xs: 6 }}><TextField fullWidth label="Future Limit" type="number" value={settings.maxFutureBookingDays} onChange={(e) => handleChange('maxFutureBookingDays', e.target.value)} InputProps={{ endAdornment: <InputAdornment position="end">Days</InputAdornment> }} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 1000 } }} /></Grid>
+                <Grid size={{ xs: 6 }}><TextField fullWidth label="Max Pets" type="number" value={settings.maxPetsPerBooking} onChange={(e) => handleChange('maxPetsPerBooking', e.target.value)} InputProps={{ endAdornment: <InputAdornment position="end">Pets</InputAdornment> }} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 1000 } }} helperText="Per booking" /></Grid>
               </Grid>
             </Box>
           </Paper>
@@ -319,18 +412,20 @@ export default function Settings() {
 
         {/* PILLAR 3: CAPACITY & TRIAGE */}
         <Grid size={{ xs: 12, lg: 4 }}>
-          <Paper elevation={0} sx={{ ...glassStyle, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <Box sx={{ bgcolor: 'rgba(46, 125, 50, 0.05)', px: 3, py: 2, borderBottom: '1px solid rgba(0,0,0,0.05)', borderLeft: '4px solid #2E7D32' }}>
-              <Typography variant="subtitle1" color="#2E7D32" fontWeight="900" sx={{ display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}><LocalHospitalIcon /> Capacity & Triage</Typography>
+          <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <Box sx={{ bgcolor: '#FFF8E1', px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
+              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: "1000", display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
+                <LocalHospitalIcon /> Capacity & Triage
+              </Typography>
             </Box>
-            <Box sx={{ p: 4, flexGrow: 1, bgcolor: 'rgba(255,255,255,0.6)' }}>
-              <Typography variant="body2" color="textSecondary" sx={{ mb: 4, fontWeight: '500' }}>Controls physical clinic limits and algorithmic traffic warnings.</Typography>
-              <Grid container spacing={3}>
-                <Grid size={{ xs: 12 }}><TextField fullWidth label="Max Confinement Cages" type="number" value={settings.maxCages} onChange={(e) => handleChange('maxCages', e.target.value)} InputProps={{ endAdornment: <InputAdornment position="end">Cages</InputAdornment> }} sx={{ bgcolor: 'white', borderRadius: 1 }} helperText="Blocks admission" /></Grid>
+            <Box sx={{ p: 3, flexGrow: 1, bgcolor: '#FFF' }}>
+              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 3 }}>Controls physical clinic limits and algorithmic traffic warnings.</Typography>
+              <Grid container spacing={2.5}>
+                <Grid size={{ xs: 12 }}><TextField fullWidth label="Max Confinement Cages" type="number" value={settings.maxCages} onChange={(e) => handleChange('maxCages', e.target.value)} InputProps={{ endAdornment: <InputAdornment position="end" sx={{ fontWeight: 1000 }}>Cages</InputAdornment> }} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 1000 } }} helperText="Blocks admission" /></Grid>
                 <Grid size={{ xs: 12 }}><Divider sx={{ my: 1 }} /></Grid>
-                <Grid size={{ xs: 12 }}><TextField fullWidth label="Auto-No-Show Trigger" type="number" value={settings.autoNoShowMins} onChange={(e) => handleChange('autoNoShowMins', e.target.value)} InputProps={{ endAdornment: <InputAdornment position="end">Mins Late</InputAdornment> }} sx={{ bgcolor: 'white', borderRadius: 1 }} helperText="Mins late before Queue displays No-Show button." /></Grid>
-                <Grid size={{ xs: 6 }}><TextField fullWidth label="Moderate Traffic" type="number" value={settings.trafficModerate} onChange={(e) => handleChange('trafficModerate', e.target.value)} sx={{ bgcolor: 'white', borderRadius: 1 }} helperText="Patients" /></Grid>
-                <Grid size={{ xs: 6 }}><TextField fullWidth label="High Traffic" type="number" value={settings.trafficHigh} onChange={(e) => handleChange('trafficHigh', e.target.value)} sx={{ bgcolor: 'white', borderRadius: 1 }} helperText="Patients" /></Grid>
+                <Grid size={{ xs: 12 }}><TextField fullWidth label="Auto-No-Show Trigger" type="number" value={settings.autoNoShowMins} onChange={(e) => handleChange('autoNoShowMins', e.target.value)} InputProps={{ endAdornment: <InputAdornment position="end" sx={{ fontWeight: 1000 }}>Mins Late</InputAdornment> }} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 1000 } }} helperText="Mins late before Queue displays No-Show button." /></Grid>
+                <Grid size={{ xs: 6 }}><TextField fullWidth label="Moderate Traffic" type="number" value={settings.trafficModerate} onChange={(e) => handleChange('trafficModerate', e.target.value)} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 1000 } }} helperText="Patients" /></Grid>
+                <Grid size={{ xs: 6 }}><TextField fullWidth label="High Traffic" type="number" value={settings.trafficHigh} onChange={(e) => handleChange('trafficHigh', e.target.value)} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 1000 } }} helperText="Patients" /></Grid>
               </Grid>
             </Box>
           </Paper>
@@ -338,28 +433,34 @@ export default function Settings() {
 
         {/* PILLAR 4: DYNAMIC DEPARTMENTS */}
         <Grid size={{ xs: 12, lg: 6 }}>
-          <Paper elevation={0} sx={{ ...glassStyle, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <Box sx={{ bgcolor: 'rgba(93, 64, 55, 0.05)', px: 3, py: 2, borderBottom: '1px solid rgba(0,0,0,0.05)', borderLeft: '4px solid #5D4037' }}>
-              <Typography variant="subtitle1" color="#5D4037" fontWeight="900" sx={{ textTransform: 'uppercase', letterSpacing: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <Box sx={{ bgcolor: '#FFF8E1', px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
+              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: "1000", display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
                 <DomainIcon /> Clinic Departments / Categories
               </Typography>
             </Box>
-            <Box sx={{ p: 4, bgcolor: 'rgba(255,255,255,0.6)', flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+            <Box sx={{ p: 3, bgcolor: '#FFF', flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
               
               {/* THE FIX: Fixed minHeight on description creates perfect alignment with the Inventory Card */}
-              <Typography variant="body2" color="textSecondary" sx={{ mb: 3, fontWeight: '500', minHeight: 40 }}>
+              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 2.5, minHeight: 40 }}>
                 These departments drive the Skill-Based Routing Engine and the color-coding system.
               </Typography>
               
               <Stack direction="row" spacing={2} sx={{ mb: 4, alignItems: 'center' }}>
-                <TextField label="New Department Name" size="small" value={newDepartmentName} onChange={(e) => setNewDepartmentName(e.target.value)} sx={{ flexGrow: 1, bgcolor: 'white', borderRadius: 1 }} inputProps={{ spellCheck: 'false' }}/>
+                <TextField 
+                  label="New Department Name" size="small" value={newDepartmentName} 
+                  onChange={(e) => setNewDepartmentName(e.target.value)} 
+                  sx={{ flexGrow: 1, bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} 
+                  inputProps={{ spellCheck: 'false', style: { fontWeight: 1000 } }}
+                />
                 
                 <FormControl size="small" sx={{ minWidth: 200, bgcolor: 'white' }}>
-                    <InputLabel>Color Tag</InputLabel>
+                    <InputLabel sx={{ fontWeight: 1000 }}>Color Tag</InputLabel>
                     <Select 
                       value={newDepartmentColor} 
                       label="Color Tag" 
                       onChange={(e) => setNewDepartmentColor(e.target.value)}
+                      sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
                       renderValue={(value) => (
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                           <CircleIcon sx={{ color: value, fontSize: 18 }} />
@@ -375,7 +476,18 @@ export default function Settings() {
                     </Select>
                 </FormControl>
 
-                <Button variant="contained" onClick={handleAddDepartment} startIcon={<AddCircleOutlineIcon/>} sx={{ bgcolor: '#8B4513', fontWeight: 'bold', px: 4, py: 1 }}>Add</Button>
+                <Button 
+                  variant="contained" onClick={handleAddDepartment} 
+                  startIcon={<AddCircleOutlineIcon/>} 
+                  sx={{ 
+                      bgcolor: COLORS.accent, fontWeight: '1000', px: 4, py: 1, 
+                      borderRadius: 0, border: `2px solid ${COLORS.brand}`,
+                      boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
+                      '&:hover': { bgcolor: COLORS.brand }
+                  }}
+                >
+                  Add
+                </Button>
               </Stack>
 
               {/* THE FIX: Added Sort Dropdown next to Quick Find */}
@@ -383,17 +495,21 @@ export default function Settings() {
                 <TextField 
                   placeholder="🔍 Quick find department..." size="small" fullWidth
                   value={deptSearch} onChange={(e) => setDeptSearch(e.target.value)}
-                  sx={{ bgcolor: 'rgba(255,255,255,0.9)', borderRadius: 1, '& fieldset': { borderColor: '#E0E0E0' } }}
+                  sx={{ bgcolor: 'rgba(255,255,255,0.9)', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, borderColor: '#E0E0E0' } }}
+                  inputProps={{ style: { fontWeight: 1000 } }}
                 />
-                <FormControl size="small" sx={{ width: 140, bgcolor: 'rgba(255,255,255,0.9)', borderRadius: 1 }}>
-                  <Select value={deptSort} onChange={e => setDeptSort(e.target.value)} displayEmpty sx={{ '& fieldset': { border: 'none' }, fontWeight: 'bold', color: '#555' }}>
+                <FormControl size="small" sx={{ width: 140, bgcolor: 'rgba(255,255,255,0.9)' }}>
+                  <Select 
+                    value={deptSort} onChange={e => setDeptSort(e.target.value)} 
+                    displayEmpty sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: '1px solid #E0E0E0' }, fontWeight: '1000', color: '#555' }}
+                  >
                     <MenuItem value="asc">A - Z</MenuItem>
                     <MenuItem value="desc">Z - A</MenuItem>
                   </Select>
                 </FormControl>
               </Box>
 
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, p: 2.5, bgcolor: 'rgba(250,250,250,0.8)', borderRadius: 2, border: '1px inset rgba(0,0,0,0.1)', flexGrow: 1, height: 180, overflowY: 'auto', alignContent: 'flex-start' }}>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, p: 2.5, bgcolor: 'rgba(250,250,250,0.8)', borderRadius: 0, border: '1px inset rgba(0,0,0,0.1)', flexGrow: 1, height: 180, overflowY: 'auto', alignContent: 'flex-start' }}>
                 {/* THE FIX: Sorts the array dynamically before mapping! */}
                 {[...departments]
                   .sort((a, b) => deptSort === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name))
@@ -407,12 +523,13 @@ export default function Settings() {
                     return (
                         <Chip 
                           key={dept.id} 
-                          label={`${dept.name} (${totalU})`} // THE FIX: High-Visibility Usage HUD!
+                          label={`${dept.name} (${totalU})`} 
                           onDelete={() => handleDeleteDepartment(dept.id, dept.name)}
                           sx={{ 
-                              fontWeight: 'bold', color: 'white', bgcolor: dept.color || '#616161', 
-                              border: totalU > 0 ? '2px solid rgba(255,255,255,0.4)' : '2px solid rgba(0,0,0,0.1)', 
-                              fontSize: '0.9rem', py: 2.5, px: 1, 
+                              fontWeight: '1000', color: 'white', bgcolor: dept.color || '#616161', 
+                              borderRadius: 0,
+                              border: totalU > 0 ? '2px solid rgba(255,255,255,0.4)' : '1px solid rgba(0,0,0,0.1)', 
+                              fontSize: '0.75rem', py: 2.2, px: 1, 
                               '& .MuiChip-deleteIcon': { color: 'rgba(255,255,255,0.7)', '&:hover': { color: 'white' } } 
                           }}
                           title={`Assigned to ${staffU} staff and ${serviceU} services`}
@@ -427,16 +544,16 @@ export default function Settings() {
 
         {/* PILLAR 5: INVENTORY CATEGORIES */}
         <Grid size={{ xs: 12, lg: 6 }}>
-          <Paper elevation={0} sx={{ ...glassStyle, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <Box sx={{ bgcolor: 'rgba(139, 69, 19, 0.05)', px: 3, py: 2, borderBottom: '1px solid rgba(0,0,0,0.05)', borderLeft: '4px solid #8B4513' }}>
-              <Typography variant="subtitle1" color="#8B4513" fontWeight="900" sx={{ textTransform: 'uppercase', letterSpacing: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <Box sx={{ bgcolor: '#FFF8E1', px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
+              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: "1000", display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
                 <InventoryIcon /> Inventory Categories
               </Typography>
             </Box>
-            <Box sx={{ p: 4, bgcolor: 'rgba(255,255,255,0.6)', flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+            <Box sx={{ p: 3, bgcolor: '#FFF', flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
               
               {/* THE FIX: Fixed minHeight enforces bottom alignment! */}
-              <Typography variant="body2" color="textSecondary" sx={{ mb: 3, fontWeight: '500', minHeight: 40 }}>
+              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 2.5, minHeight: 40 }}>
                 Manage the taxonomy of your pharmacy and retail shop. These categories organize your search filters and financial reports.
               </Typography>
               
@@ -444,14 +561,31 @@ export default function Settings() {
                 <TextField 
                   label="New Category Name" size="small" value={newInvCatName} 
                   onChange={(e) => setNewInvCatName(e.target.value)} 
-                  sx={{ flexGrow: 1, bgcolor: 'white', borderRadius: 1 }}
-                  inputProps={{ spellCheck: 'false' }}
+                  sx={{ flexGrow: 1, bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
+                  inputProps={{ spellCheck: 'false', style: { fontWeight: 1000 } }}
                 />
+                
+                {/* 💊 THE PILL TOGGLE UI */}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 0.5, bgcolor: 'white', border: `1px solid ${COLORS.accent}33`, borderRadius: 0 }}>
+                    <Typography variant="caption" sx={{ fontWeight: 1000, color: newInvCatIsMedicine ? '#B71C1C' : '#757575', fontSize: '0.65rem' }}>
+                        {newInvCatIsMedicine ? "MEDICINE" : "RETAIL"}
+                    </Typography>
+                    <MedicinePillSwitch 
+                        checked={newInvCatIsMedicine}
+                        onChange={(e) => setNewInvCatIsMedicine(e.target.checked)}
+                    />
+                </Box>
+
                 <Button 
                   variant="contained" 
                   onClick={handleAddInvCategory} 
                   startIcon={<AddCircleOutlineIcon/>}
-                  sx={{ bgcolor: '#8B4513', fontWeight: 'bold', px: 4, py: 1 }}
+                  sx={{ 
+                      bgcolor: COLORS.accent, fontWeight: '1000', px: 4, py: 1, 
+                      borderRadius: 0, border: `2px solid ${COLORS.brand}`,
+                      boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
+                      '&:hover': { bgcolor: COLORS.brand }
+                  }}
                 >
                   Add
                 </Button>
@@ -462,26 +596,39 @@ export default function Settings() {
                 <TextField 
                   placeholder="🔍 Quick find category..." size="small" fullWidth
                   value={invCatSearch} onChange={(e) => setInvCatSearch(e.target.value)}
-                  sx={{ bgcolor: 'rgba(255,255,255,0.9)', borderRadius: 1, '& fieldset': { borderColor: '#E0E0E0' } }}
+                  sx={{ bgcolor: 'rgba(255,255,255,0.9)', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, borderColor: '#E0E0E0' } }}
+                  inputProps={{ style: { fontWeight: 1000 } }}
                 />
-                <FormControl size="small" sx={{ width: 140, bgcolor: 'rgba(255,255,255,0.9)', borderRadius: 1 }}>
-                  <Select value={invCatSort} onChange={e => setInvCatSort(e.target.value)} displayEmpty sx={{ '& fieldset': { border: 'none' }, fontWeight: 'bold', color: '#555' }}>
+                <FormControl size="small" sx={{ width: 140, bgcolor: 'rgba(255,255,255,0.9)' }}>
+                  <Select 
+                    value={invCatSort} onChange={e => setInvCatSort(e.target.value)} 
+                    displayEmpty sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: '1px solid #E0E0E0' }, fontWeight: '1000', color: '#555' }}
+                  >
                     <MenuItem value="asc">A - Z</MenuItem>
                     <MenuItem value="desc">Z - A</MenuItem>
                   </Select>
                 </FormControl>
               </Box>
 
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, p: 2.5, bgcolor: 'rgba(250,250,250,0.8)', borderRadius: 2, border: '1px inset rgba(0,0,0,0.1)', flexGrow: 1, height: 180, overflowY: 'auto', alignContent: 'flex-start' }}>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, p: 2.5, bgcolor: 'rgba(250,250,250,0.8)', borderRadius: 0, border: '1px inset rgba(0,0,0,0.1)', flexGrow: 1, height: 180, overflowY: 'auto', alignContent: 'flex-start' }}>
                 {/* THE FIX: Sorts the array dynamically before mapping! */}
                 {[...invCategories]
                   .sort((a, b) => invCatSort === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name))
                   .filter(c => c.name.toLowerCase().includes(invCatSearch.toLowerCase()))
                   .map(cat => (
                   <Chip 
-                    key={cat.id} label={cat.name} 
+                    key={cat.id} 
+                    label={cat.name} 
+                    icon={cat.isMedicine ? <MedicationIcon sx={{ fontSize: '1rem !important', color: '#D32F2F !important' }} /> : null}
                     onDelete={() => handleDeleteInvCategory(cat.id, cat.name)}
-                    sx={{ fontWeight: 'bold', bgcolor: 'white', border: '1px solid #ccc', fontSize: '0.85rem', py: 2 }}
+                    sx={{ 
+                      fontWeight: '1000', 
+                      bgcolor: 'white', 
+                      borderRadius: 0,
+                      border: cat.isMedicine ? '2px solid #D32F2F' : '1px solid #ccc', 
+                      fontSize: '0.75rem', py: 2.2,
+                      '& .MuiChip-label': { color: cat.isMedicine ? '#D32F2F' : 'inherit' }
+                    }}
                   />
                 ))}
                 {invCategories.filter(c => c.name.toLowerCase().includes(invCatSearch.toLowerCase())).length === 0 && (

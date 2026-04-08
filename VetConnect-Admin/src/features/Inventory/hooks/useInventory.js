@@ -147,15 +147,23 @@ export function useInventory() {
       const catMap = new Map(); // lowercase -> first seen ID
       let modifications = 0;
 
+      const medicalKeywords = ['medicine', 'vaccine', 'drug', 'pharmaceutical', 'medication'];
+      
       catsSnap.forEach(doc => {
-        const name = doc.data().name || '';
+        const data = doc.data();
+        const name = data.name || '';
         const lowerName = name.trim().toLowerCase();
-        
+        const isMedicine = medicalKeywords.includes(lowerName);
+
         if (!catMap.has(lowerName)) {
            catMap.set(lowerName, doc.id);
-           // If it wasn't lowercase, update it
-           if (name !== lowerName) {
-             batch.update(doc.ref, { name: lowerName });
+           
+           // Migration Logic: Fix name and/or add missing isMedicine flag
+           if (name !== lowerName || data.isMedicine === undefined) {
+             batch.update(doc.ref, { 
+               name: lowerName,
+               isMedicine: data.isMedicine ?? isMedicine // Default if missing
+             });
              modifications++;
            }
         } else {
@@ -184,5 +192,5 @@ export function useInventory() {
     }
   };
 
-  return { inventory, loading, createItem, updateItem, deleteItem, adjustStock, scrubDatabase };
+  return { inventory, loading, createItem, updateItem, deleteItem, adjustStock, scrubDatabase, reserveStock, releaseStock };
 }

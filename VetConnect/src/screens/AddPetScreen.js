@@ -160,7 +160,7 @@ export default function AddPetScreen({ navigation }) {
         weight: parseFloat(weight) || null,
         lastWeight: parseFloat(weight) || null,
         microchip: microchip.trim() || "N/A",
-        allergies: showAllergyToggle && allergyArray.length > 0 ? allergyArray.join(", ") : "None",
+        petAllergies: showAllergyToggle && allergyArray.length > 0 ? allergyArray.join(", ") : "None",
         dob: finalDob,
         isAgeExact,
         createdAt: Timestamp.now(),

@@ -14,8 +14,8 @@ export default function InventoryTable({ data, onEdit, onAdjust, onDelete, onLog
   
   const clinicalFlatStyle = {
     background: '#FFF', 
-    border: '2px solid #5D4037',
-    boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)', 
+    border: 0,
+    boxShadow: 'none', 
     borderRadius: 0, 
   };
   

@@ -117,13 +117,13 @@ export default function Staff() {
   };
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 24px)', overflow: 'hidden' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       
       {/* 1. BOXED FORENSIC HEADER */}
-      <Box sx={{ flexShrink: 0, mb: 3 }}>
+      <Box sx={{ flexShrink: 0 }}>
         <Paper sx={{ 
           p: 2, display: 'flex', flexWrap: 'nowrap', gap: 2, alignItems: 'center',
-          bgcolor: '#FFF8E1', border: '2px solid #5D4037', borderRadius: 0, boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)'
+          bgcolor: '#FFF8E1', border: 'none', borderBottom: '2px solid #5D4037', borderRadius: 0, boxShadow: 'none', width: '100%'
         }}>
           <Typography variant="h5" sx={{ fontFamily: FONT, fontWeight: 1000, color: '#5D4037', whiteSpace: 'nowrap', textTransform: 'uppercase', flexShrink: 0, mr: 1, letterSpacing: 0.5, fontSize: '1.25rem' }}>
             Staff Registry
@@ -154,6 +154,12 @@ export default function Staff() {
               <MenuItem value="All">All Statuses</MenuItem>
               <MenuItem value="Available">🟢 Available</MenuItem>
               <MenuItem value="Busy">🟠 Busy (Active)</MenuItem>
+            </TextField>
+
+            <TextField select size="small" value={filterAccess} onChange={(e) => setFilterAccess(e.target.value)} sx={{ minWidth: 170, bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#5D403733' } }}>
+              <MenuItem value="All">All Access Levels</MenuItem>
+              <MenuItem value="staff">Clinical Staff</MenuItem>
+              <MenuItem value="admin">Clinic Administrator</MenuItem>
             </TextField>
           </Box>
 

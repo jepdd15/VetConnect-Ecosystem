@@ -145,8 +145,8 @@ export const calculatePulseMetrics = (pulse = [], settings = {}, createdAt, targ
     const rawStatus = (currentEvent.toStatus || '').toLowerCase();
     const status = isMistake ? lastValidStatus : rawStatus;
 
-    // 🧬 GHOST GATING (Lobby Only)
-    const isGhostSegment = !nextEvent && status === 'arrived' && startTime.toDateString() !== now.toDateString();
+    // 🧬 GHOST GATING (Lobby & Active Consults)
+    const isGhostSegment = !nextEvent && (QUEUE_STATES.includes(status) || CONSULT_STATES.includes(status)) && startTime.toDateString() !== now.toDateString();
 
     // 🧬 DUAL-CLOCK ROUTING
     const clockMode = CONFINED_STATES.includes(status) ? 'absolute' : 'business';

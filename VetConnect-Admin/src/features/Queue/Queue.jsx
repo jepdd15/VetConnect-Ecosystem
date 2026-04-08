@@ -90,6 +90,7 @@ export default function Queue() {
   const [rows, setRows] = useState([]);
   const [vets, setVets] = useState([]); 
   const [inventoryList, setInventoryList] = useState([]); 
+  const [inventoryCategories, setInventoryCategories] = useState([]); // 💊 TAXONOMY SYNC
   const [servicesList, setServicesList] = useState([]); 
   const [departments, setDepartments] = useState([]);
   const [clinicSettings, setClinicSettings] = useState({ maxCages: 5, closeHour: 17 }); // Live Dynamic Configuration!
@@ -367,7 +368,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                   timestamp: Timestamp.now(),
                   staffId: user?.uid || 'system',
                   staffName: staffSignature,
-                  note: `Shift Cleanup: ${actionLabel} to ${manualDate.toDateString()}. Justification: ${forensicNote}`
+                  note: `Shift Cleanup: ${actionLabel} to ${manualDate.toDateString()}. Justification: ${targetReasonMap[patient.id] || "No clinical justification provided"}`
                }),
                isTriaged: true // THE FORENSIC SHIELD STAMP
             });
@@ -392,7 +393,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                    timestamp: Timestamp.now(),
                    staffId: user?.uid || 'system',
                    staffName: staffSignature,
-                   note: `Shift Cleanup: ${actionLabel} to ${manualDate.toDateString()}. Justification: ${forensicNote}`
+                   note: `Shift Cleanup: ${actionLabel} to ${manualDate.toDateString()}. Justification: ${targetReasonMap[patient.id] || "No clinical justification provided"}`
                 })
              }); 
              
@@ -442,7 +443,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                 timestamp: Timestamp.now(),
                 staffId: user?.uid || 'system',
                 staffName: staffSignature,
-                note: `Shift Triage: Deferred to ${triageKey}. Justification: ${forensicNote}`
+                note: `Shift Triage: Deferred to ${triageKey}. Justification: ${targetReasonMap[patient.id] || "No clinical justification provided"}`
              })
           });
         } else {
@@ -452,11 +453,11 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
 
           batch.update(oldRef, { 
              status: finalStatus, 
-             rejectReason: `[Triage Audit] ${forensicNote}`,
+             rejectReason: `[Triage Audit] ${targetReasonMap[patient.id] || "No clinical justification provided"}`,
              processedBy: staffSignature,
              processedAt: Timestamp.now(),
              isForensicAudit: isHighStakes,
-             auditReason: forensicNote || defaultReason,
+             auditReason: targetReasonMap[patient.id] || defaultReason,
              clinicalPulse: arrayUnion({
                 eventId: `pulse_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
                 type: action === 'no-show' ? 'TRIAGE_NO_SHOW' : 'TRIAGE_CANCELLED',
@@ -465,7 +466,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                 timestamp: Timestamp.now(),
                 staffId: user?.uid || 'system',
                 staffName: staffSignature,
-                note: `Shift Cleanup Sign-off: ${forensicNote || defaultReason}`
+                note: `Shift Cleanup Sign-off: ${targetReasonMap[patient.id] || defaultReason}`
              })
           }); 
         }
@@ -1066,13 +1067,26 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
   useEffect(() => {
     const unsubVets = onSnapshot(collection(db, "users"), (snapshot) => setVets(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(u => u.role === 'veterinarian' || u.role === 'groomer' || u.accessLevel)));
     const unsubInv = onSnapshot(collection(db, "inventory"), (snapshot) => setInventoryList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
+    const unsubCat = onSnapshot(collection(db, "inventory_categories"), (snapshot) => setInventoryCategories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
     const unsubServ = onSnapshot(collection(db, "services"), (snapshot) => setServicesList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
     const unsubDepts = onSnapshot(collection(db, "departments"), (snapshot) => setDepartments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
     const unsubSettings = onSnapshot(doc(db, "clinic_settings", "general"), (docSnap) => {
         if (docSnap.exists()) setClinicSettings(prev => ({ ...prev, ...docSnap.data() }));
     });
-    return () => { unsubVets(); unsubInv(); unsubServ(); unsubDepts(); unsubSettings(); };
+    return () => { unsubVets(); unsubInv(); unsubCat(); unsubServ(); unsubDepts(); unsubSettings(); };
   },[]);
+
+  // 🧬 THE FORENSIC INVENTORY JOIN
+  // Attaches the 'isMedicine' flag to each product based on its category taxonomy.
+  const joinedInventory = useMemo(() => {
+    return inventoryList.map(item => {
+      const catObj = inventoryCategories.find(c => c.name?.toLowerCase() === item.category?.toLowerCase());
+      return {
+        ...item,
+        isMedicine: catObj ? !!catObj.isMedicine : false
+      };
+    });
+  }, [inventoryList, inventoryCategories]);
 
   // --- 🧬 FORENSIC GHOST SCANNER (Detecting Stranded Patients) ---
   useEffect(() => {
@@ -1423,8 +1437,8 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       </Paper>
 
       {/* EXTERNAL MODULES */}
-      <ClinicalWorkspace open={openConsult} onClose={() => setOpenConsult(false)} patient={selectedRow} inventoryList={inventoryList} servicesList={servicesList} departments={departments}/>
-      <POSModal open={openPOS} onClose={() => setOpenPOS(false)} patient={selectedRow} inventoryList={inventoryList} servicesList={servicesList} />
+      <ClinicalWorkspace open={openConsult} onClose={() => setOpenConsult(false)} patient={selectedRow} inventoryList={joinedInventory} servicesList={servicesList} departments={departments}/>
+      <POSModal open={openPOS} onClose={() => setOpenPOS(false)} patient={selectedRow} inventoryList={joinedInventory} servicesList={servicesList} />
       <WalkInModal open={openWalkIn} onClose={() => setOpenWalkIn(false)} servicesList={servicesList} departments={departments}/>
       
       <AssignStaffModal 
@@ -1937,7 +1951,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                     <Box sx={{ flexShrink: 0 }}>
                         <ForensicMetricGrid 
                             pulse={hoverMetadata.data.clinicalPulse || []}
-                            settings={settings}
+                            settings={clinicSettings}
                             createdAt={hoverMetadata.data.createdAt}
                             sealedMetrics={hoverMetadata.data.forensicSeal}
                             targetDate={(() => {
@@ -2343,7 +2357,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           borderBottom: '1px solid #FFE0B2'
         }}>
           {triageMode === 'hospitalize' ? <LocalHospitalIcon /> : <HomeIcon />}
-          {triageMode === 'hospitalize' ? 'PATIENT CONFINEMENT' : 'PATIENT REBOOKING'}
+          {triageMode === 'hospitalize' ? 'PATIENT CONFINEMENT' : 'PATIENT CARRY-OVER'}
         </DialogTitle>
         <DialogContent sx={{ pt: 3 }}>
           <Box sx={{ p: 1.5, bgcolor: '#FFF', border: '1px dashed #FFE0B2', borderRadius: 2, mb: 3 }}>

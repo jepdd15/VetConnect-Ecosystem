@@ -40,7 +40,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
   const [guestName, setGuestName] = useState('');
   const [guestPhone, setGuestPhone] = useState('');
   const [guestEmail, setGuestEmail] = useState('');
-  const [guestPetData, setGuestPetData] = useState({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', microchip: '', allergies: '', weight: '' });
+  const [guestPetData, setGuestPetData] = useState({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', microchip: '', petAllergies: '', weight: '' });
   const [triageNotes, setTriageNotes] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [isNewPet, setIsNewPet] = useState(false); // For existing clients adding a new pet
@@ -95,7 +95,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
   const handleClose = () => {
     setErrorMsg(''); setWalkInType('existing'); setSelectedClient(null);
     setGuestName(''); setGuestPhone(''); setGuestEmail(''); setTriageNotes('');
-    setGuestPetData({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', microchip: '', allergies: '', weight: '' });
+    setGuestPetData({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', microchip: '', petAllergies: '', weight: '' });
     setPhoneCheckDone(false);
     setSelectedServices([]); 
     setConfirmDiscard(false);
@@ -143,7 +143,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
         const queueDoc = await transaction.get(queueRef);
         const newNumber = queueDoc.exists() ? (queueDoc.data().lastNumberIssued || 0) + 1 : 1;
 
-        let finalOwnerId, finalOwnerName, finalPetId, finalPetName, finalPetSpecies;
+        let finalOwnerId, finalOwnerName, finalOwnerPhone, finalPetId, finalPetName, finalPetSpecies;
 
         if (walkInType === 'guest') {
           const newUserRef = doc(collection(db, "users"));
@@ -158,6 +158,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
               createdAt: Timestamp.now() 
           });
           finalOwnerId = newUserRef.id; finalOwnerName = guestName || 'Guest Client';
+          finalOwnerPhone = guestPhone || 'No Contact';
           
           // --- 🗓️ TEMPORAL ALIGNMENT ENGINE (CHRONOS) ---
           let finalDOB = null;
@@ -202,6 +203,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
         } else { // Existing Client
           finalOwnerId = selectedClient.id; 
           finalOwnerName = selectedClient.fullName || selectedClient.displayName || 'Existing Client';
+          finalOwnerPhone = selectedClient.phone || 'No Contact';
           
           if (isNewPet) {
               // --- 🗓️ TEMPORAL ALIGNMENT ENGINE (CHRONOS) ---
@@ -352,7 +354,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
         transaction.set(newApptRef, appointmentPayload);
       });
       
-      showToast(`Patient successfully added to queue.`, "success");
+      alert(`Patient successfully added to queue.`);
       handleClose();
     } catch (error) { 
       setErrorMsg("Error: " + error.message); 
@@ -413,7 +415,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
             onChange={(e) => {
               setWalkInType(e.target.value);
               setGuestName(''); setGuestPhone(''); setGuestEmail(''); setPhoneCheckDone(false);
-              setGuestPetData({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', microchip: '', allergies: '', weight: '' });
+              setGuestPetData({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', microchip: '', petAllergies: '', weight: '' });
               setSelectedClient(null); setSelectedPet(null); setIsNewPet(false);
               setConfirmDiscard(false); setConfirmSubmit(false);
             }}
@@ -465,7 +467,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
                         </FormControl>
                         
                         <FormControlLabel 
-                          control={<Switch size="small" checked={isNewPet} onChange={(e) => {setIsNewPet(e.target.checked); setSelectedPet(null); setGuestPetData({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', microchip: '', allergies: '', weight: '' }); }} />} 
+                          control={<Switch size="small" checked={isNewPet} onChange={(e) => {setIsNewPet(e.target.checked); setSelectedPet(null); setGuestPetData({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', microchip: '', petAllergies: '', weight: '' }); }} />} 
                           label={<Typography sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' }}>REGISTER NEW PET</Typography>} 
                         />
                         
@@ -671,11 +673,12 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
                     />
                 )}
                 renderOption={(props, option) => {
+                    const { key, ...optionProps } = props;
                     const deptName = option.department || option.category || 'General';
                     const deptObj = (departments || []).find(d => d.name === deptName);
                     const badgeColor = deptObj ? deptObj.color : '#616161';
                     return (
-                        <li {...props} style={{ fontWeight: 800, fontSize: '0.85rem' }}>
+                        <li key={key} {...optionProps} style={{ fontWeight: 800, fontSize: '0.85rem' }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                                 <CircleIcon sx={{ color: badgeColor, fontSize: 14 }} />
                                 <Typography variant="caption" sx={{ fontWeight: 1000 }}>
@@ -688,15 +691,16 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
                 renderTags={(selected, getTagProps) => (
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                         {selected.map((option, index) => {
+                            const { key, ...tagProps } = getTagProps({ index });
                             const deptName = option.department || option.category || 'General';
                             const deptObj = (departments || []).find(d => d.name === deptName);
                             const badgeColor = deptObj ? deptObj.color : '#616161';
                             return (
                                 <Chip 
-                                    key={option.id}
+                                    key={key}
+                                    {...tagProps}
                                     label={option.name?.toUpperCase()} 
                                     size="small" 
-                                    {...getTagProps({ index })}
                                     sx={{ bgcolor: badgeColor, color: 'white', fontWeight: '1000', fontSize: '0.6rem', height: '20px', borderRadius: 0.5 }} 
                                 />
                             );

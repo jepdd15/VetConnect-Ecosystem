@@ -31,7 +31,7 @@ export default function Sales() {
 
   // --- UI STATES ---
   const [searchText, setSearchText] = useState('');
-  const [filterMethod, setFilterMethod] = useState('All');
+  const [filterMethod, setFilterMethod] = useState(['All']);
   const [filterStatus, setFilterStatus] = useState('All');
   
   // --- NATIVE SORTING STATES ---
@@ -61,7 +61,7 @@ export default function Sales() {
       const matchSearch = (s.petName || '').toLowerCase().includes(searchText.toLowerCase()) || 
                           (s.ownerName || '').toLowerCase().includes(searchText.toLowerCase()) ||
                           s.id.toLowerCase().includes(searchText.toLowerCase());
-      const matchMethod = filterMethod === 'All' || s.paymentMethod === filterMethod;
+      const matchMethod = filterMethod.includes('All') || filterMethod.includes(s.paymentMethod);
       const matchStatus = filterStatus === 'All' || (filterStatus === 'Paid' ? s.status !== 'refunded' : s.status === 'refunded');
       return matchSearch && matchMethod && matchStatus;
     });
@@ -270,28 +270,28 @@ export default function Sales() {
   ];
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 24px)', overflow: 'hidden' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', bgcolor: '#FFF8E1' }}>
       
-      {/* 1. BOXED FORENSIC HEADER */}
-      <Box sx={{ flexShrink: 0, mb: 2 }}>
-        <Paper sx={{ 
-          p: 2, display: 'flex', flexWrap: 'nowrap', gap: 2, alignItems: 'center',
-          bgcolor: '#FFF8E1', border: '2px solid #5D4037', borderRadius: 0, boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)'
+      {/* 1. FULL-BLEED COMMAND STRIP header */}
+      <Box sx={{ flexShrink: 0, mb: 0 }}>
+        <Paper elevation={0} sx={{ 
+          p: '16px 24px', display: 'flex', flexWrap: 'nowrap', gap: 2, alignItems: 'center',
+          bgcolor: '#FFF8E1', borderBottom: '2px solid #5D4037', borderTop: 'none', borderLeft: 'none', borderRight: 'none', borderRadius: 0
         }}>
-          <Typography variant="h5" sx={{ fontWeight: '1000', color: '#5D4037', textTransform: 'uppercase', letterSpacing: 0.5, flexShrink: 0, mr: 1, fontSize: '1.25rem' }}>
+          <Typography variant="h5" sx={{ fontWeight: '1000', color: '#5D4037', textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0, mr: 2, fontSize: '1.1rem' }}>
             Transaction Ledger
           </Typography>
 
           {/* Search */}
           <TextField 
-            variant="standard" size="small" placeholder="SEARCH..." 
+            variant="standard" size="small" placeholder="SEARCH LEDGER..." 
             value={searchText} onChange={(e) => setSearchText(e.target.value)} 
             InputProps={{ 
-              startAdornment: <InputAdornment position="start"><SearchIcon sx={{color: '#5D4037', opacity: 0.6}}/></InputAdornment>,
+              startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" sx={{color: '#5D4037', opacity: 0.6}}/></InputAdornment>,
               disableUnderline: true,
-              style: { color: '#3E2723', fontWeight: 'bold', fontSize: '0.9rem' }
+              style: { color: '#3E2723', fontWeight: '1000', fontSize: '0.85rem', fontFamily: 'Inter' }
             }} 
-            sx={{ width: 180, bgcolor: 'rgba(93, 64, 55, 0.05)', border: '1px solid #5D403733', borderRadius: 1, px: 1.5, py: 0.5, flexShrink: 0 }} 
+            sx={{ width: 220, bgcolor: 'rgba(93, 64, 55, 0.05)', border: '2px solid #5D403733', borderRadius: 0, px: 2, py: 0.5, flexShrink: 0 }} 
           />
 
           {/* Controls Grouped */}
@@ -300,14 +300,36 @@ export default function Sales() {
               type="date" size="small" 
               value={filterDate} 
               onChange={(e) => setFilterDate(e.target.value)} 
-              InputProps={{ startAdornment: <InputAdornment position="start"><CalendarMonthIcon fontSize="small" sx={{ color: '#5D4037' }}/></InputAdornment> }} 
-              sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#5D403733' }, minWidth: 160 }} 
+              InputProps={{ 
+                startAdornment: <InputAdornment position="start"><CalendarMonthIcon fontSize="small" sx={{ color: '#5D4037' }}/></InputAdornment>,
+                sx: { borderRadius: 0, fontWeight: '1000', fontFamily: 'Inter', fontSize: '0.85rem' }
+              }} 
+              sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#5D403733', borderRadius: 0 }, minWidth: 170 }} 
             />
-            <FormControl size="small" sx={{ minWidth: 140 }}>
-                <Select value={filterMethod} onChange={(e) => setFilterMethod(e.target.value)} displayEmpty sx={{ fontWeight: '1000', color: '#5D4037', bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#5D403733' } }}>
-                    <MenuItem value="All">All Methods</MenuItem>
+            <FormControl size="small" sx={{ minWidth: 160 }}>
+                <Select 
+                    multiple
+                    value={filterMethod} 
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      // Logic: If 'All' was just added, clear others. If other added, remove 'All'.
+                      const lastSelected = val[val.length - 1];
+                      if (lastSelected === 'All') setFilterMethod(['All']);
+                      else {
+                        const filtered = val.filter(v => v !== 'All');
+                        setFilterMethod(filtered.length === 0 ? ['All'] : filtered);
+                      }
+                    }} 
+                    renderValue={(selected) => {
+                      if (selected.includes('All')) return 'All Methods';
+                      return selected.join(', ');
+                    }}
+                    displayEmpty 
+                    sx={{ fontWeight: '1000', color: '#5D4037', bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#5D403733', borderRadius: 0 }, borderRadius: 0 }}
+                >
+                    <MenuItem value="All">All Methods (Reset)</MenuItem>
                     <MenuItem value="Cash">💵 Cash</MenuItem>
-                    <MenuItem value="GCash">📱 GCash</MenuItem>
+                    <MenuItem value="GCash">📱 GCash / Maya</MenuItem>
                     <MenuItem value="Card">💳 Card</MenuItem>
                 </Select>
             </FormControl>
@@ -330,15 +352,18 @@ export default function Sales() {
         </Paper>
       </Box>
 
-      {/* 2. BOXED EOD TOTALS */}
-      <Box sx={{ flexShrink: 0, mb: 2 }}>
-        <Paper sx={{ p: 1.5, bgcolor: '#F5F5F5', border: '2px solid #5D4037', borderRadius: 0, boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.05)' }}>
-          <EodSummary totals={eodTotals} />
-        </Paper>
+      {/* 2. FULL-BLEED ANALYTIC MOUNTING (KPIs) */}
+      <Box sx={{ flexShrink: 0, mb: 0 }}>
+        <Box sx={{ 
+          p: '16px 24px', bgcolor: 'white', borderBottom: '2px solid #5D4037', 
+          borderTop: 'none', borderLeft: 'none', borderRight: 'none', borderRadius: 0
+        }}>
+          <EodSummary totals={eodTotals} filterMethod={filterMethod} setFilterMethod={setFilterMethod} />
+        </Box>
       </Box>
 
-      {/* 3. BOXED TRANSACTION TABLE AREA (FLEX: 1) */}
-      <Paper sx={{ ...clinicalFlatStyle, flexGrow: 1, minHeight: 0, width: '100%', overflow: 'hidden' }}>
+      {/* 3. FULL-BLEED TRANSACTION LEDGER (FLEX: 1) */}
+      <Box sx={{ flexGrow: 1, minHeight: 0, width: '100%', overflow: 'hidden', bgcolor: 'white' }}>
         <DataGrid 
             loading={loading} rows={processedSales} 
             columns={columns.map(c => ({
@@ -376,7 +401,7 @@ export default function Sales() {
                 }
             }} 
         />
-      </Paper>
+      </Box>
 
       {/* REFUND MODAL */}
       <Dialog open={openRefund} onClose={() => setOpenRefund(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 0, border: '2px solid #D32F2F', boxShadow: '8px 8px 0px rgba(211, 47, 47, 0.1)' }}}>

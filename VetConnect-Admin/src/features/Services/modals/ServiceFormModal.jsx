@@ -33,7 +33,6 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
     isWalkIn: item ? item.isWalkIn : true,
     isInpatient: item?.isInpatient || false,
     isEmergency: item?.isEmergency || false,
-    workflowType: item?.workflowType || 'MEDICAL'
   });
 
   const handleSave = () => {
@@ -50,6 +49,16 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
   };
 
   const noExtensionProps = { spellCheck: 'false', 'data-gramm': 'false' };
+  const sxField = { 
+    bgcolor: 'white', 
+    '& .MuiOutlinedInput-root': { 
+      borderRadius: 0, 
+      '& fieldset': { border: '2px solid #5D4037' },
+      '&:hover fieldset': { borderColor: '#3E2723' },
+      '&.Mui-focused fieldset': { borderColor: '#5D4037', borderSize: '3px' }
+    },
+    '& .MuiInputLabel-root': { color: '#5D4037', fontWeight: 'bold' }
+  };
 
   return (
     <Dialog 
@@ -59,33 +68,45 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
       fullWidth
       PaperProps={{
         sx: {
-          borderRadius: 3,
-          backgroundColor: 'rgba(255, 255, 255, 0.95)',
-          backdropFilter: 'blur(20px)',
-          boxShadow: '0 12px 40px rgba(0,0,0,0.2)'
+          borderRadius: 0,
+          border: '2px solid #5D4037',
+          backgroundColor: '#FFF',
+          boxShadow: '8px 8px 0px rgba(93, 64, 55, 0.1)',
+          maxHeight: '90vh',
         }
       }}
     >
       <DialogTitle sx={{ 
-        background: 'linear-gradient(135deg, #8B4513 0%, #5D4037 100%)', 
-        color: 'white', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1, py: 2 
+        bgcolor: '#FFF8E1', 
+        color: '#3E2723', 
+        fontWeight: '1000', 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: 1.5, 
+        py: 2,
+        borderBottom: '2px solid #5D4037',
+        fontFamily: 'Inter, sans-serif',
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+        fontSize: '1.1rem'
       }}>
-        <MedicalServicesIcon /> {item ? "Edit Service Configuration" : "Create New Service"}
+        <MedicalServicesIcon sx={{ color: '#5D4037' }} /> 
+        {item ? "Edit Service Configuration" : "Create New Service"}
       </DialogTitle>
       
-      <DialogContent dividers sx={{ p: 0, bgcolor: 'rgba(250, 250, 250, 0.5)' }}>
-        <Box sx={{ p: 4 }}>
+      <DialogContent sx={{ p: 0, bgcolor: '#FAF9F7' }}>
+        <Box sx={{ p: 3 }}>
           
-          <Typography variant="overline" color="primary" fontWeight="bold" sx={{ mb: 1, display: 'block' }}>
+          <Typography variant="overline" sx={{ color: '#5D4037', fontWeight: '1000', mb: 1, display: 'block', letterSpacing: 1 }}>
             1. SERVICE IDENTITY & ROUTING
           </Typography>
-          <Paper elevation={0} sx={{ p: 3, mb: 4, borderRadius: 2, border: '1px solid rgba(0,0,0,0.08)' }}>
+          <Paper sx={{ p: 3, mb: 4, borderRadius: 0, border: '2px solid #5D4037', bgcolor: 'white', boxShadow: 'none' }}>
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, md: 8 }}>
-                  <TextField label="Service Name" fullWidth size="small" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} sx={{bgcolor: 'white'}} inputProps={noExtensionProps}/>
+                  <TextField label="Service Name" fullWidth size="small" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} sx={sxField} inputProps={noExtensionProps}/>
               </Grid>
               <Grid size={{ xs: 12, md: 4 }}>
-                  <FormControl fullWidth size="small" sx={{bgcolor: 'white'}}>
+                  <FormControl fullWidth size="small" sx={sxField}>
                     <InputLabel>Target Species</InputLabel>
                     <Select value={formData.targetSpecies || 'Universal'} label="Target Species" onChange={(e) => setFormData({...formData, targetSpecies: e.target.value})}>
                         <MenuItem value="Universal">🐾 Universal</MenuItem>
@@ -95,26 +116,8 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
                   </FormControl>
               </Grid>
 
-              {/* NEW: DYNAMIC WORKFLOW MAPPING */}
               <Grid size={{ xs: 12, md: 6 }}>
-                  <FormControl fullWidth size="small" sx={{bgcolor: '#FFF8E1'}}>
-                    <InputLabel sx={{ fontWeight: 'bold', color: '#B26500' }}>Clinical Workflow Template</InputLabel>
-                    <Select 
-                        value={formData.workflowType || 'MEDICAL'} 
-                        label="Clinical Workflow Template" 
-                        onChange={(e) => setFormData({...formData, workflowType: e.target.value})}
-                        sx={{ fontWeight: 'bold' }}
-                    >
-                        <MenuItem value="MEDICAL">🏥 Medical (Standard SOAP)</MenuItem>
-                        <MenuItem value="AESTHETIC">✂️ Aesthetic / Grooming / Lifestyle</MenuItem>
-                        <MenuItem value="SURGICAL">🔪 Surgical / Critical Care</MenuItem>
-                        <MenuItem value="REHAB">🐕 Rehabilitative / Mobility</MenuItem>
-                    </Select>
-                  </FormControl>
-              </Grid>
-
-              <Grid size={{ xs: 12, md: 6 }}>
-                  <FormControl fullWidth size="small" sx={{bgcolor: 'white'}}>
+                  <FormControl fullWidth size="small" sx={sxField}>
                     <InputLabel>Target Department</InputLabel>
                     <Select 
                       value={formData.department || ''} 
@@ -136,32 +139,32 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
             </Grid>
           </Paper>
 
-          <Typography variant="overline" color="primary" fontWeight="bold" sx={{ mb: 1, display: 'block' }}>
+          <Typography variant="overline" sx={{ color: '#5D4037', fontWeight: '1000', mb: 1, display: 'block', letterSpacing: 1 }}>
             2. LOGISTICS, TIME, & BILLING
           </Typography>
-          <Paper elevation={0} sx={{ p: 3, mb: 4, bgcolor: '#E3F2FD', border: '1px solid #BBDEFB', borderRadius: 2 }}>
+          <Paper sx={{ p: 3, mb: 4, bgcolor: 'white', border: '2px solid #5D4037', borderRadius: 0, boxShadow: 'none' }}>
             <Grid container spacing={2}>
                <Grid size={{ xs: 12, md: 4 }}>
-                <TextField label="Base Price" type="number" fullWidth size="small" value={formData.price} onChange={(e) => setFormData({...formData, price: e.target.value})} InputProps={{ startAdornment: <InputAdornment position="start">₱</InputAdornment> }} sx={{bgcolor: 'white'}} />
+                <TextField label="Base Price" type="number" fullWidth size="small" value={formData.price} onChange={(e) => setFormData({...formData, price: e.target.value})} InputProps={{ startAdornment: <InputAdornment position="start">₱</InputAdornment> }} sx={sxField} />
               </Grid>
               <Grid size={{ xs: 6, md: 4 }}>
-                <TextField label="Duration" type="number" fullWidth size="small" value={formData.duration} onChange={(e) => setFormData({...formData, duration: e.target.value})} InputProps={{ endAdornment: <InputAdornment position="end">Mins</InputAdornment> }} sx={{bgcolor: 'white'}} />
+                <TextField label="Duration" type="number" fullWidth size="small" value={formData.duration} onChange={(e) => setFormData({...formData, duration: e.target.value})} InputProps={{ endAdornment: <InputAdornment position="end">Mins</InputAdornment> }} sx={sxField} />
               </Grid>
               <Grid size={{ xs: 6, md: 4 }}>
-                <TextField label="Cleanup Buffer" type="number" fullWidth size="small" value={formData.bufferTime} onChange={(e) => setFormData({...formData, bufferTime: e.target.value})} InputProps={{ startAdornment: <InputAdornment position="start"><TimerIcon fontSize="small" sx={{color:'#aaa'}}/></InputAdornment>, endAdornment: <InputAdornment position="end">Mins</InputAdornment> }} sx={{bgcolor: 'white'}} />
+                <TextField label="Cleanup Buffer" type="number" fullWidth size="small" value={formData.bufferTime} onChange={(e) => setFormData({...formData, bufferTime: e.target.value})} InputProps={{ startAdornment: <InputAdornment position="start"><TimerIcon fontSize="small" sx={{color:'#5D4037'}}/></InputAdornment>, endAdornment: <InputAdornment position="end">Mins</InputAdornment> }} sx={sxField} />
               </Grid>
 
               <Grid size={{ xs: 12, md: 6 }}>
-                  <Paper variant="outlined" sx={{ p: 2, bgcolor: '#F9FBE7', borderRadius: 1, border: '1px dashed #A5D6A7', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                      <Typography variant="caption" fontWeight="bold" color="#2E7D32" sx={{display:'block', mb: 0.5}}>RESOURCE ROUTING</Typography>
-                      <Typography variant="body2" component="div" sx={{ lineHeight: 1.4, color: '#333' }}>
-                          Mobile bookings will automatically route to any staff assigned to the <Chip label={formData.department || 'General'} size="small" sx={{ height: 20, fontSize: '0.65rem', fontWeight: 'bold', bgcolor: '#E3F2FD', color: '#1565C0' }} /> department.
+                  <Paper sx={{ p: 2, bgcolor: '#F1F8E9', borderRadius: 0, border: '2px solid #5D4037', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', boxShadow: 'none' }}>
+                      <Typography variant="caption" sx={{ display:'block', mb: 0.5, fontWeight: '1000', color: '#5D4037', textTransform: 'uppercase', letterSpacing: 1 }}>RESOURCE ROUTING</Typography>
+                      <Typography variant="body2" component="div" sx={{ lineHeight: 1.4, color: '#3E2723', fontWeight: 'bold' }}>
+                          Mobile bookings will automatically route to any staff assigned to the <Chip label={formData.department || 'General'} size="small" sx={{ height: 20, fontSize: '0.65rem', fontWeight: '1000', borderRadius: 0, border: '1px solid #5D4037', bgcolor: '#E3F2FD', color: '#1565C0' }} /> department.
                       </Typography>
                   </Paper>
               </Grid>
               
               <Grid size={{ xs: 12, md: 6 }}>
-                <FormControl fullWidth size="small" sx={{bgcolor: 'white', height: '100%', '& .MuiInputBase-root': {height: '100%'} }}>
+                <FormControl fullWidth size="small" sx={{...sxField, height: '100%', '& .MuiInputBase-root': {height: '100%'} }}>
                     <InputLabel>Auto-Deduct Inventory (Bundle)</InputLabel>
                     <Select value={formData.linkedProduct || ''} label="Auto-Deduct Inventory (Bundle)" onChange={(e) => setFormData({...formData, linkedProduct: e.target.value})}>
                         <MenuItem value=""><em>None (Service Only)</em></MenuItem>
@@ -176,9 +179,9 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
                     fullWidth multiline rows={3} size="small" 
                     value={formData.description} 
                     onChange={(e) => setFormData({...formData, description: e.target.value})} 
-                    sx={{bgcolor: 'white', mt: 2}} 
+                    sx={{...sxField, mt: 1}} 
                     InputProps={{ 
-                        startAdornment: <InputAdornment position="start"><DescriptionIcon fontSize="small" sx={{color: '#aaa', mr: 1, mt: -4}}/></InputAdornment> 
+                        startAdornment: <InputAdornment position="start"><DescriptionIcon fontSize="small" sx={{color: '#5D4037', mr: 1, mt: -4}}/></InputAdornment> 
                     }}
                     inputProps={noExtensionProps} 
                   />
@@ -186,23 +189,23 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
             </Grid>
           </Paper>
           
-          <Typography variant="overline" color="textSecondary" fontWeight="bold" sx={{ display: 'block', mb: 1 }}>
+          <Typography variant="overline" sx={{ color: '#5D4037', fontWeight: '1000', display: 'block', mb: 1, letterSpacing: 1 }}>
             3. OPERATIONAL RULES
           </Typography>
-          <Paper elevation={0} sx={{ p: 2.5, bgcolor: 'white', borderRadius: 2, border: '1px solid rgba(0,0,0,0.08)' }}>
+          <Paper sx={{ p: 2.5, bgcolor: 'white', borderRadius: 0, border: '2px solid #5D4037', boxShadow: 'none' }}>
               <Stack direction="row" justifyContent="space-around" flexWrap="wrap" spacing={2}>
-                  <FormControlLabel control={<Switch checked={formData.isWalkIn} onChange={(e) => setFormData({...formData, isWalkIn: e.target.checked})} color="primary" />} label={<Typography variant="body2" fontWeight="bold">Allow Walk-In</Typography>} />
-                  <FormControlLabel control={<Switch checked={formData.isInpatient} onChange={(e) => setFormData({...formData, isInpatient: e.target.checked})} color="warning" />} label={<Typography variant="body2" fontWeight="bold">Req. Confinement</Typography>} />
-                  <FormControlLabel control={<Switch checked={formData.isEmergency} onChange={(e) => setFormData({...formData, isEmergency: e.target.checked})} color="error" />} label={<Typography variant="body2" fontWeight="bold" color="error">Is Emergency</Typography>} />
+                  <FormControlLabel control={<Switch checked={formData.isWalkIn} onChange={(e) => setFormData({...formData, isWalkIn: e.target.checked})} sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: '#5D4037' }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: '#5D4037' } }} />} label={<Typography variant="body2" sx={{fontWeight: '1000', color: '#5D4037'}}>ALLOW WALK-IN</Typography>} />
+                  <FormControlLabel control={<Switch checked={formData.isInpatient} onChange={(e) => setFormData({...formData, isInpatient: e.target.checked})} sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: '#5D4037' }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: '#5D4037' } }} />} label={<Typography variant="body2" sx={{fontWeight: '1000', color: '#5D4037'}}>REQ. CONFINEMENT</Typography>} />
+                  <FormControlLabel control={<Switch checked={formData.isEmergency} onChange={(e) => setFormData({...formData, isEmergency: e.target.checked})} sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: '#D32F2F' }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: '#D32F2F' } }} />} label={<Typography variant="body2" sx={{fontWeight: '1000', color: '#D32F2F'}}>IS EMERGENCY</Typography>} />
               </Stack>
           </Paper>
 
         </Box>
       </DialogContent>
       
-      <DialogActions sx={{ p: 2.5, bgcolor: 'white', borderTop: '1px solid #E0E0E0' }}>
-          <Button onClick={onClose} sx={{ fontWeight: 'bold', color: '#5D4037', px: 3, mr: 1 }}>CANCEL</Button>
-          <Button onClick={handleSave} variant="contained" sx={{ bgcolor: '#2E7D32', fontWeight: '900', px: 4, py: 1.2, borderRadius: 2, boxShadow: 3 }}>
+      <DialogActions sx={{ p: 2.5, bgcolor: '#FFF8E1', borderTop: '2px solid #5D4037', borderRadius: 0 }}>
+          <Button onClick={onClose} sx={{ fontWeight: '1000', color: '#5D4037', px: 3, border: '2px solid #5D4037', borderRadius: 0, '&:hover': { bgcolor: 'rgba(0,0,0,0.05)' } }}>CANCEL</Button>
+          <Button onClick={handleSave} variant="contained" sx={{ bgcolor: '#2E7D32', color: 'white', fontWeight: '1000', px: 4, py: 1, borderRadius: 0, border: '2px solid #5D4037', boxShadow: '4px 4px 0px rgba(0,0,0,0.1)', '&:hover': { bgcolor: '#1B5E20', transform: 'translate(-2px, -2px)', boxShadow: '6px 6px 0px rgba(0,0,0,0.1)' } }}>
              SAVE CONFIGURATION
           </Button>
       </DialogActions>

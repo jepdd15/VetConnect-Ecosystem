@@ -3,7 +3,8 @@ import {
   Dialog, Slide, AppBar, Toolbar, IconButton, Typography, Button, 
   Box, Paper, Avatar, Chip, TextField, FormControl, InputLabel, 
   Select, MenuItem, List, ListItemText, ListSubheader, Grid, // MUI v6 Grid
-  Stack, Divider, Collapse, Tooltip, InputBase, alpha, FormControlLabel, Switch
+  Stack, Divider, Collapse, Tooltip, InputBase, alpha, FormControlLabel, Switch,
+  Autocomplete, CircularProgress
 } from '@mui/material';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, 
@@ -38,18 +39,20 @@ const Transition = React.forwardRef(function Transition(props, ref) {
 
 // Helper for CRM-style age calculation
 const calculateAge = (dob) => {
-  if (!dob) return '—';
+  if (!dob) return 'AGE UNKNOWN';
   try {
     const birthDate = dob.toDate ? dob.toDate() : new Date(dob);
-    if (isNaN(birthDate.getTime())) return '—';
-    const today = new Date();
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const m = today.getMonth() - birthDate.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--;
-    if (age < 0) return '—';
-    if (age === 0) { const mo = Math.floor((today - birthDate) / (1000*60*60*24*30.44)); return mo > 0 ? `${mo}mo` : 'Newborn'; }
-    return `${age}y`;
-  } catch { return '—'; }
+    if (isNaN(birthDate.getTime())) return 'AGE UNKNOWN';
+    const now = new Date();
+    let years = now.getFullYear() - birthDate.getFullYear();
+    let months = now.getMonth() - birthDate.getMonth();
+    if (months < 0) {
+        years--;
+        months += 12;
+    }
+    if (years < 0) return 'AGE UNKNOWN';
+    return years > 0 ? `${years}y ${months}m` : `${months}m`;
+  } catch { return 'AGE UNKNOWN'; }
 };
 
 // ── Analytics Widget Shell (From CRM) ──
@@ -75,6 +78,13 @@ const KNOWLEDGE_BASE = [
   { keywords: ['peeing', 'straining', 'blood', 'urinary'], suggestion: "🧪 RECOMMEND: Urinalysis + Culture to rule out UTI vs. Crystals/Calculi (Uroliths). Check for bladder stones." }
 ];
 
+const ZEN_PLACEHOLDERS = {
+  subjective: "Record client's primary concern, history of present illness (HPI), appetite, energy levels, and behavioral reported changes...",
+  objectiveNotes: "Document systematic physical exam findings, clinical vitals, auscultation results, palpation abnormalities, and hydration markers...",
+  assessment: "Synthesize clinical findings into differential diagnoses (Dx), rule-outs, current patient status, and medical prognosis...",
+  plan: "Define treatment trajectory, diagnostic orders, pharmaceutical interventions, surgical steps, and post-consult recheck schedules..."
+};
+
 export default function ClinicalWorkspace({ open, onClose, patient, inventoryList, servicesList, departments }) {
   const [isDirty, setIsDirty] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -93,7 +103,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   const workflowType = patient?.services?.[0]?.workflowType || 'MEDICAL';
 
   const [soapData, setSoapData] = useState({
-    subjective: '', objWeight: '', objTemp: '', objHR: '', objRR: '', objCRT: '', objBCS: '', objPain: '', objectiveNotes: '',
+    subjective: '', objWeight: '', objTemp: '', objHR: '', objRR: '', objCRT: '', bcs: 5, painScale: 0, objectiveNotes: '',
     murmurGrade: 'None', murmurLocation: 'L Apex', murmurTiming: 'Systolic', respEffort: 'Normal',
     palpationFindings: { masses: false, pain: false, tense: false, normal: true },
     assessment: '', prognosis: 'Good', plan: '', recheckIn: '1 Week', patientStatus: 'Stable', nextVisit: ''
@@ -108,28 +118,42 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   const [groomingData, setGroomingData] = useState({
     coatCondition: 'Normal', parasites: 'None', temperament: 'Calm', shampoo: 'Oatmeal', notes: ''
   });
+  const [groomingSpecs, setGroomingSpecs] = useState({ bladeNumber: '10', coatTexture: 'Normal' });
+  const [groomingChecklist, setGroomingChecklist] = useState({ nails: '', ears: '', glands: '', teeth: '' });
+  
+  // THE FIX: Restored Clinical Metadata & Calculator States
+  const [safetyLevel, setSafetyLevel] = useState('Safe');
+  const [labQuickStats, setLabQuickStats] = useState({ pcv: '', tp: '', glucose: '' });
+  const [dentalGrade, setDentalGrade] = useState(0);
+  const [lamenessGrade, setLamenessGrade] = useState(0);
+  const [calcDose, setCalcDose] = useState('');
+  const [calcConc, setCalcConc] = useState('');
+  const [calcResult, setCalcResult] = useState(0);
+  const [fluidDehydration, setFluidDehydration] = useState('');
+  const [fluidLoss, setFluidLoss] = useState('');
+  const [fluidResult, setFluidResult] = useState(0);
+  const [nutritionFactor, setNutritionFactor] = useState(1.6);
   
   const [rxCart, setRxCart] = useState([]);
-  const[selectedRxItem, setSelectedRxItem] = useState('');
+  const [selectedRxItem, setSelectedRxItem] = useState('');
+  const [syncToCRM, setSyncToCRM] = useState(true);
 
-  // --- 🆕 PILLAR NAVIGATION REFS ---
+  // --- 🧘 ZEN FOCUS & IMMERSION ---
+  const [fullscreenField, setFullscreenField] = useState(null); // Field ID for zoom
+  const [isUnifiedZen, setIsUnifiedZen] = useState(false); // Global SOAP zoom
+
+  // --- 🆕 ZEN NAVIGATION & STATE ---
   const soapRef = useRef(null);
-  const groomingRef = useRef(null);
   const treatmentRef = useRef(null);
-  const diagnosticsRef = useRef(null);
   const dischargeRef = useRef(null);
-  const actionRef = useRef(null);
-  const billingRef = useRef(null);
-  const surgeryRef = useRef(null);
-  const rehabRef = useRef(null);
 
   const [activeHighlight, setActiveHighlight] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [focusedModule, setFocusedModule] = useState(null); // HUD Focus state
-  const [lockedServices, setLockedServices] = useState(new Set()); // IDs of finalized services
-  
-  // --- 🆕 EXPANSION & VISUAL RHYTHM ---
-  const [expandedModules, setExpandedModules] = useState(new Set(['soap', 'action', 'surgery', 'rehab', 'calc', 'internal', 'rx', 'diagnostics', 'discharge']));
+  const [focusedModule, setFocusedModule] = useState(null);
+  const [lockedServices, setLockedServices] = useState(new Set());
+  const [expandedModules, setExpandedModules] = useState(new Set(['soap', 'treatment', 'sync']));
+  const [allergyAnchorEl, setAllergyAnchorEl] = useState(null);
+
   const toggleModule = (id) => {
     setExpandedModules(prev => {
         const next = new Set(prev);
@@ -139,78 +163,33 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     });
   };
 
-  const handleCompleteService = async (svcId) => {
-    const service = patient.services.find(s => s.id === svcId);
-    if (!service) return;
+  const jumpToSection = (sectionId, ref) => {
+    setActiveHighlight(sectionId);
+    setExpandedModules(prev => new Set(prev).add(sectionId));
+    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => setActiveHighlight(null), 3000);
+  };
 
-    if (window.confirm(`Are you sure you want to finalize [${service.name}]? This will lock the inputs for this section.`)) {
+  const handleCompleteService = async (svcId) => {
+    const service = (patient.services || []).find(s => s.id === svcId || s.workflowType === svcId.toUpperCase());
+    if (!service && svcId !== 'medical') return;
+
+    if (window.confirm("Finalize clinical documentation for this section?")) {
         setLoading(true);
         try {
-            const newServices = patient.services.map(s => 
-                s.id === svcId ? { ...s, status: 'completed' } : s
+            const newServices = (patient.services || []).map(s => 
+                (s.id === svcId || s.workflowType === svcId.toUpperCase()) ? { ...s, status: 'completed' } : s
             );
-            
             await updateDoc(doc(db, "appointments", patient.id), { services: newServices });
             setLockedServices(prev => new Set([...prev, svcId]));
-            alert(`✅ ${service.name} finalized and status updated!`);
         } catch (e) { alert(e.message); }
         finally { setLoading(false); }
     }
   };
-
-  // --- 🆕 ADVANCED HUB STATE ---
-
-  const [mappingTab, setMappingTab] = useState('vax'); // vax | exam
-  const [examMarkers, setExamMarkers] = useState([]); // [{x, y, type, note}]
-  const [vaxLotInfo, setVaxLotInfo] = useState({ lot: '', route: 'SQ' });
-  const [groomingChecklist, setGroomingChecklist] = useState({ nails: false, ears: false, glands: false, teeth: false });
-  const [calcDose, setCalcDose] = useState(''); 
-  const [calcConc, setCalcConc] = useState(''); 
-  const [calcResult, setCalcResult] = useState(0); 
-
-  // --- 🆕 ADAPTIVE TOOLBELT STATE ---
-  const [fluidDehydration, setFluidDehydration] = useState(0); // %
-  const [fluidLoss, setFluidLoss] = useState(0); // mL
-  const [fluidResult, setFluidResult] = useState(0); // mL/day
-  const [surgicalChecklist, setSurgicalChecklist] = useState({ 
-    preOpExam: false, equipmentOk: false, spongeCount: false, postOpVitals: false,
-    inductionTime: '', recoveryTime: '', ebl: '0' 
-  });
-  const [groomingSpecs, setGroomingSpecs] = useState({ bladeNumber: '10', coatTexture: 'Normal', stylingNotes: '' });
-  const [selectedSite, setSelectedSite] = useState(null);
-  
-  // --- 🆕 NICHE COMMAND STATES ---
-  const [safetyLevel, setSafetyLevel] = useState('Safe'); // Safe | Bite-Risk | Aggressive
-  const [labQuickStats, setLabQuickStats] = useState({ pcv: '', tp: '', glucose: '' });
-  const [nutritionFactor, setNutritionFactor] = useState(1.6); // Default: Neutered Adult
-  const [fullscreenField, setFullscreenField] = useState(null); 
-  const [isUnifiedZen, setIsUnifiedZen] = useState(false);
-  const [syncToCRM, setSyncToCRM] = useState(false); // SHIFT 5.6: THE CLINICAL SOVEREIGNTY GATE
-  
-  // --- 🆕 REHAB & MOBILITY STATES ---
-  const [lamenessGrade, setLamenessGrade] = useState(0); // 0-5
-  const [jointROM, setJointROM] = useState({
-      stifle: { lFlex: '', lExt: '', rFlex: '', rExt: '' },
-      hip: { lFlex: '', lExt: '', rFlex: '', rExt: '' },
-      elbow: { lFlex: '', lExt: '', rFlex: '', rExt: '' },
-      shoulder: { lFlex: '', lExt: '', rFlex: '', rExt: '' }
-  });
-  const [neuromuscular, setNeuromuscular] = useState({ cpDeficit: false, ataxia: false, knuckling: false, proprioception: false });
-
-  const jumpToSection = (sectionId, ref) => {
-    setActiveHighlight(sectionId);
-    setExpandedModules(prev => new Set(prev).add(sectionId)); // Auto-expand on jump
-    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    setTimeout(() => setActiveHighlight(null), 3000); // Reset highlight after 3s
-  };
-
-  // --- 🆕 UNIFIED SIDEBAR (The Table of Contents) ---
   const navItems = [
     { label: 'Clinical Story', ref: soapRef, id: 'soap', icon: <HistoryEduIcon sx={{ fontSize: 18 }} /> },
-    { label: 'Aesthetic Hub', ref: groomingRef, id: 'grooming', icon: <VisibilityIcon sx={{ fontSize: 18 }} /> },
-    { label: 'Action Center', ref: actionRef, id: 'action', icon: <FlashOnIcon sx={{ fontSize: 18 }} /> },
-    { label: 'Logistics & RX', ref: treatmentRef, id: 'treatment', icon: <MedicalInformationIcon sx={{ fontSize: 18 }} /> },
-    { label: 'Departure Control', ref: dischargeRef, id: 'discharge', icon: <ExitToAppIcon sx={{ fontSize: 18 }} /> },
+    { label: 'Treatment Plan', ref: treatmentRef, id: 'treatment', icon: <MedicalInformationIcon sx={{ fontSize: 18 }} /> },
+    { label: 'Sovereignty Sync', ref: dischargeRef, id: 'sync', icon: <ShieldIcon sx={{ fontSize: 18 }} /> },
   ];
 
   const deptObj = (departments ||[]).find(d => d.name === (patient?.serviceCategory || 'General'));
@@ -231,18 +210,10 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         if (open && patient) {
           setIsDirty(false);
           setAssistiveText('');
-          setSelectedSite(null);
-          setExamMarkers([]);
           setSafetyLevel('Safe');
           setLabQuickStats({ pcv: '', tp: '', glucose: '' });
           setLamenessGrade(0);
-          setJointROM({
-             stifle: { lFlex: '', lExt: '', rFlex: '', rExt: '' },
-             hip: { lFlex: '', lExt: '', rFlex: '', rExt: '' },
-             elbow: { lFlex: '', lExt: '', rFlex: '', rExt: '' },
-             shoulder: { lFlex: '', lExt: '', rFlex: '', rExt: '' }
-          });
-          setNeuromuscular({ cpDeficit: false, ataxia: false, knuckling: false, proprioception: false });
+          setDentalGrade(0);
 
           // --- 🧬 MULTI-SERVICE SIGN-OFF SYNC ---
           const completedFromDb = new Set();
@@ -426,16 +397,6 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     return ROM[joint]?.[type] || '--';
   };
 
-  const addExamMarker = (e) => {
-    if (mappingTab !== 'exam') return;
-    const svg = e.currentTarget;
-    const pt = svg.createSVGPoint();
-    pt.x = e.clientX;
-    pt.y = e.clientY;
-    const local = pt.matrixTransform(svg.getScreenCTM().inverse());
-    setExamMarkers([...examMarkers, { x: local.x, y: local.y, type: 'Finding', note: '' }]);
-  };
-
   const handleCloseRequest = () => {
     if (isDirty) {
       if (window.confirm("⚠️ WARNING: You have unsaved clinical notes. Closing this will discard them. Are you sure?")) onClose();
@@ -497,35 +458,30 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     setAssistiveText(suggestions.length > 0 ? suggestions.join('\n\n') : 'No rule-based suggestions found. Please proceed with standard diagnostics.');
   };
 
-  // --- 3. TREATMENT PLAN LOGIC ---
-  const handleAddRx = () => {
-    if(!selectedRxItem) return;
-    const [type, id] = selectedRxItem.split('|');
-    let itemObj = null;
+  // --- 3. TREATMENT PLAN LOGIC (THE BRIDGE) ---
+  const handleAddRx = (item) => {
+    if (!item) return;
     
-    if (type === 'product') {
-      const p = inventoryList.find(i => i.id === id);
-      if (p) itemObj = { 
-        type: 'product', id: p.id, name: p.itemName, price: p.price, qty: 1, 
-        isDrug: p.category==='Medicine' || p.category==='Vaccine', 
-        isDispensed: false, // Default to Clinic Administration
-        sig: { dose: '1', frequency: 'SID', duration: '1', unit: p.unit || 'unit', route: 'SQ' },
-        instructions: '' 
-      };
-    } else {
-      const s = servicesList.find(i => i.id === id);
-      if (s) itemObj = { type: 'service', id: s.id, name: s.name, price: s.price, qty: 1, isDrug: false };
-    }
+    const isMedicine = !!item.isMedicine; // 🩺 THE FORENSIC FLAG
+
+    const itemObj = { 
+      type: item.stock !== undefined ? 'product' : 'service', 
+      id: item.id, 
+      name: item.itemName || item.name, 
+      price: item.price || 0, 
+      qty: 1, 
+      isDrug: isMedicine, 
+      isDispensed: false, // Default to Clinic Admin
+      sig: { dose: '1', frequency: 'SID', duration: '1', unit: item.unit || 'unit', route: 'SQ' },
+      instructions: '' 
+    };
     
-    if (itemObj) { 
-        setRxCart([...rxCart, itemObj]); 
-        setSelectedRxItem(''); 
-        setIsDirty(true); 
-        
-        // --- SOFT-RESERVE TRIGGER ---
-        if (itemObj.type === 'product') {
-            reserveStock(itemObj.id, 1);
-        }
+    setRxCart(prev => [...prev, itemObj]); 
+    setIsDirty(true); 
+    
+    // --- SOFT-RESERVE TRIGGER ---
+    if (itemObj.type === 'product' && reserveStock) {
+        reserveStock(itemObj.id, 1);
     }
   };
 
@@ -540,6 +496,33 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     // --- SOFT-RELEASE TRIGGER ---
     if (itemToRemove.type === 'product') {
         releaseStock(itemToRemove.id, itemToRemove.qty || 1);
+    }
+  };
+
+  const handleUpdateQty = (index, delta) => {
+    const newCart = [...rxCart];
+    const item = newCart[index];
+    const oldQty = item.qty || 1;
+    const newQty = Math.max(1, oldQty + delta);
+    
+    if (newQty === oldQty) return;
+    
+    // Check Stock Availability if increasing
+    if (delta > 0 && item.type === 'product') {
+      const invItem = inventoryList.find(i => i.id === item.id);
+      if (invItem && (invItem.stock - invItem.reserved) <= 0) {
+        return alert("⚠️ STOCK EXHAUSTED: Cannot increase quantity further.");
+      }
+    }
+
+    item.qty = newQty;
+    setRxCart(newCart);
+    setIsDirty(true);
+
+    // Sync Inventory Reservation
+    if (item.type === 'product') {
+        if (delta > 0) reserveStock(item.id, 1);
+        else releaseStock(item.id, 1);
     }
   };
   const handleUpdateRxSig = (index, text) => {
@@ -586,10 +569,10 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         vetName: vetName,
         signedBy: { uid: vetUid, name: vetName },
         date: Timestamp.now(), 
-        recordType: workflowType === 'AESTHETIC' ? 'grooming' : 'medical',
-        diagnosis: workflowType === 'AESTHETIC' ? 'Grooming Services' : soapData.assessment || "Clinical Visit", 
-        treatment: workflowType === 'AESTHETIC' ? groomingData.notes : soapData.plan, 
-        soap: workflowType === 'AESTHETIC' ? null : {
+        recordType: 'medical',
+        diagnosis: soapData.assessment || "Clinical Visit", 
+        treatment: soapData.plan, 
+        soap: {
             subjective: soapData.subjective,
             objective: soapData.objectiveNotes,
             assessment: soapData.assessment,
@@ -597,50 +580,21 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             plan: soapData.plan,
             recheckIn: soapData.recheckIn
         }, 
-        vitals: workflowType === 'AESTHETIC' ? null : { 
+        vitals: { 
             weight: soapData.objWeight, temp: soapData.objTemp, hr: soapData.objHR, 
-            rr: soapData.objRR, crt: soapData.objCRT, bcs: soapData.bcs, pain: soapData.painScale,
-            murmur: soapData.murmurGrade, murmurLocation: soapData.murmurLocation, murmurTiming: soapData.murmurTiming
+            rr: soapData.objRR, crt: soapData.objCRT, bcs: soapData.bcs, pain: soapData.painScale
         },
-        isolation: isIsolationMode ? { active: true, protocol: isolationProtocol } : null,
         legal: {
             ownerSignature: ownerSignature,
             isLocked: true,
             lockedAt: Timestamp.now()
         },
-        examMarkers: examMarkers,
-        nursingLog: vaxLotInfo,
-        groomingServices: workflowType === 'AESTHETIC' ? groomingChecklist : null,
-        injectionSite: selectedSite,
-        surgicalSafetyAudit: {
-            ...surgicalChecklist,
-            auditStatus: Object.values(surgicalChecklist).filter(v => typeof v === 'boolean').every(v => v) ? "CLEARED" : "INCOMPLETE"
-        },
-        fluidPlanTotal: fluidResult,
-        groomingTechnicalSpecs: workflowType === 'AESTHETIC' ? { ...groomingSpecs, ...groomingData } : null,
-        nicheData: {
-            safetyAlert: safetyLevel,
-            dentalHealthGrade: dentalGrade,
-            inHouseLabs: labQuickStats,
-            nutritionHub: {
-                factor: nutritionFactor,
-                kcalPerDay: soapData.objWeight ? Math.round(70 * Math.pow(parseFloat(soapData.objWeight), 0.75) * nutritionFactor) : 0
-            },
-            rehabHub: {
-                lamenessGrade: lamenessGrade,
-                jointROM: jointROM,
-                neuromuscular: neuromuscular
-            }
-        },
-        diagnostics: workflowType === 'AESTHETIC' ? null : "Clinical documentation via Bento Workspace", 
-        dischargeInstructions: workflowType === 'AESTHETIC' ? null : `Follow-up: ${soapData.nextVisit || 'PRN'}. Instructions based on Plan.`,
-        patientStatus: workflowType === 'AESTHETIC' ? 'Stable' : soapData.patientStatus, 
+        patientStatus: soapData.patientStatus, 
         nextVisit: soapData.nextVisit ? Timestamp.fromDate(new Date(soapData.nextVisit)) : null, 
       });
 
       setIsRecordLocked(true);
 
-      // 2. 🧬 PERMANENT INVENTORY RECONCILIATION
       for (const item of rxCart) {
           if (item.type === 'product') {
               try {
@@ -725,6 +679,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
               "lastVitals.temp": soapData.objTemp || null,
               "lastVitals.hr": soapData.objHR || null,
               "lastVitals.rr": soapData.objRR || null,
+              "lastVitals.bcs": soapData.bcs || null,
+              "lastVitals.painScale": soapData.painScale || null,
+              "lastVitals.crt": soapData.objCRT || null,
               "lastVitals.safetyStatus": safetyLevel,
               "lastVitals.dentalGrade": dentalGrade,
               "lastVitals.lamenessGrade": lamenessGrade,
@@ -802,1673 +759,513 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
         {/* ═══ STICKY PATIENT BANNER (CRM STYLE) ═══ */}
         <Box sx={{ 
-            bgcolor: isIsolationMode ? '#7B1FA2' : COLORS.banner, 
-            borderBottom: isIsolationMode ? '2px solid #FFEB3B' : `2px solid ${COLORS.bannerBorder}`, 
-            display: 'flex', alignItems: 'center', flexShrink: 0, boxShadow: '0 1px 4px rgba(62,39,35,0.08)', zIndex: 10 
+            bgcolor: isIsolationMode ? '#7B1FA2' : COLORS.brand, 
+            borderBottom: isIsolationMode ? '2px solid #FFEB3B' : 'none', 
+            display: 'flex', alignItems: 'center', flexShrink: 0, boxShadow: '0 2px 10px rgba(0,0,0,0.15)', zIndex: 1201 
         }} className={isIsolationMode ? 'header-isolation' : safetyLevel === 'Bite-Risk' ? 'header-bite-risk' : safetyLevel === 'Aggressive' ? 'header-aggressive' : ''}>
             <Box sx={{ display: 'flex', alignItems: 'center', py: 0.75, px: 2, gap: 2, flex: 1 }}>
-          <IconButton onClick={handleCloseRequest} size="small" sx={{ color: COLORS.textMuted, bgcolor: 'rgba(0,0,0,0.05)', '&:hover': { bgcolor: '#EFEBE9' } }}>
-            <CloseIcon fontSize="small" />
-          </IconButton>
+            <IconButton onClick={handleCloseRequest} size="small" sx={{ color: 'rgba(255,255,255,0.8)', bgcolor: 'rgba(255,255,255,0.1)', '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' } }}>
+              <CloseIcon fontSize="small" />
+            </IconButton>
           
-          <Avatar sx={{ width: 44, height: 44, fontFamily: FONT, bgcolor: getInitialColor(patient?.petName), fontWeight: 700, fontSize: '1.1rem', color: '#FFF', border: `2px solid ${headerColor}` }}>
-            {(patient?.petName || '?')[0].toUpperCase()}
-          </Avatar>
+            <Avatar sx={{ width: 44, height: 44, fontFamily: FONT, bgcolor: getInitialColor(patient?.petName), fontWeight: 700, fontSize: '1.1rem', color: '#FFF', border: `2.5px solid rgba(255,255,255,0.3)` }}>
+              {(patient?.petName || '?')[0].toUpperCase()}
+            </Avatar>
 
-          <Box sx={{ minWidth: 200, flexShrink: 0 }}>
-            <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1.5 }}>
-              <Typography sx={{ fontFamily: FONT, fontSize: '1.2rem', fontWeight: 900, color: COLORS.brand, textTransform: 'capitalize' }}>{patient?.petName}</Typography>
-              <Chip label={patient?.serviceType} size="small" sx={{ bgcolor: `${headerColor}15`, color: headerColor, fontWeight: 900, fontSize: '0.65rem', height: 20, border: `1px solid ${headerColor}40` }} />
-            </Box>
-            <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 700, color: COLORS.textSecondary, mt: 0.25 }}>
-               {petDetails?.gender === 'Female' ? 'FS' : 'MN'} • {calculateAge(petDetails?.dob)} • {patient?.petSpecies}{petDetails?.breed ? `, ${petDetails.breed}` : ''}
-            </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', gap: 3 }}>
+                {/* --- 🏷️ PRIMARY IDENTITY (FIXED LEFT) --- */}
+                <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 220 }}>
+                    <Typography sx={{ fontFamily: FONT, fontSize: '1.2rem', fontWeight: 1000, color: '#FFFFFF', letterSpacing: -0.2, lineHeight: 1.1, textTransform: 'capitalize' }}>
+                       {patient?.petName}
+                    </Typography>
+                    <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 800, color: 'rgba(255,255,255,0.7)', mt: 0.5, letterSpacing: 0.2 }}>
+                       {patient?.ownerName || 'GUEST'} • {patient?.ownerPhone || patient?.phone || 'No Contact'}
+                    </Typography>
+                </Box>
+
+                <Box sx={{ color: 'rgba(255,255,255,0.2)', fontSize: '1.4rem', fontWeight: 100 }}>|</Box>
+
+                {/* --- 🩺 CLINICAL RAIL (EXPANDING CENTER) --- */}
+                <Typography component="div" sx={{ flex: 1, textAlign: 'center', fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 1000, color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 0.8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {patient?.petSpecies} • {patient?.breed || patient?.petBreed || 'MIXED'} • {patient?.color || patient?.petColor || 'UNSPECIFIED COLOR'} • {patient?.petGender || '??'} • {calculateAge(patient?.petBirthdate || patient?.dob)} • {soapData.objWeight || patient.petWeight ? `${soapData.objWeight || patient.petWeight} KG` : '??'} • {patient?.petIsNeutered ? 'FIXED' : 'INTACT'}
+                </Typography>
+
+              {/* --- ⚠️ HAZARD ZONE (FIXED RIGHT) --- */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, ml: 'auto', minWidth: 'fit-content', justifyContent: 'flex-end' }}>
+                  {(() => {
+                      const allergiesVal = patient?.petAllergies || patient?.allergies || "None";
+                      const hasAllergies = allergiesVal.trim().length > 0 && allergiesVal.toUpperCase() !== 'NONE';
+
+                      if (hasAllergies) {
+                         return (
+                            <>
+                               <Chip 
+                                  label={`⚠️ ALLERGIES DETECTED`} 
+                                  onClick={(e) => setAllergyAnchorEl(e.currentTarget)}
+                                  size="small" 
+                                  sx={{ 
+                                     height: 22, fontSize: '0.65rem', fontWeight: 1000, bgcolor: '#D32F2F', color: 'white', borderRadius: 1.5, px: 1, cursor: 'pointer',
+                                     boxShadow: '0 0 15px rgba(211,47,47,0.5)', border: '1px solid rgba(255,255,255,0.3)',
+                                     '&:hover': { bgcolor: '#B71C1C' }
+                                  }} 
+                               />
+                               <Menu
+                                  anchorEl={allergyAnchorEl}
+                                  open={Boolean(allergyAnchorEl)}
+                                  onClose={() => setAllergyAnchorEl(null)}
+                                  PaperProps={{ sx: { bgcolor: '#3E2721', border: '1px solid #D32F2F', boxShadow: 24, minWidth: 200 } }}
+                               >
+                                  <Box sx={{ p: 1.5 }}>
+                                     <Typography variant="overline" sx={{ color: '#FF5252', fontWeight: 1000, display: 'block', mb: 1, letterSpacing: 1 }}>ALLERGY LEDGER:</Typography>
+                                     <Divider sx={{ bgcolor: 'rgba(255,255,255,0.1)', mb: 1 }} />
+                                     {allergiesVal.split(',').map((alg, i) => (
+                                        <Typography key={i} sx={{ color: 'white', fontWeight: 800, fontSize: '0.85rem', py: 0.5, textTransform: 'uppercase' }}>
+                                           • {alg.trim()}
+                                        </Typography>
+                                     ))}
+                                  </Box>
+                               </Menu>
+                            </>
+                         );
+                      } else {
+                         return <Chip label="● NO KNOWN ALLERGIES" size="small" sx={{ height: 20, fontSize: '0.55rem', fontWeight: 1000, bgcolor: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)', borderRadius: 1, px: 0.5, border: '1px solid rgba(255,255,255,0.05)' }} />;
+                      }
+                  })()}
+                  
+                  <Chip label={patient?.serviceType} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.1)', color: '#FFFFFF', fontWeight: 900, fontSize: '0.65rem', height: 20, border: '1px solid rgba(255,255,255,0.2)' }} />
+              </Box>
           </Box>
-
-          {/* ⚠️ SAFETY-FIRST TOGGLE */}
-          <Box sx={{ ml: 2, display: 'flex', alignItems: 'center', gap: 1, p: 0.5, bgcolor: 'rgba(0,0,0,0.03)', borderRadius: 2 }}>
-             {['Safe', 'Bite-Risk', 'Aggressive'].map(level => (
-               <Chip 
-                  key={level} label={level === 'Safe' ? '🟢 Safe' : level === 'Bite-Risk' ? '⚠️ RISK' : '🚫 BITE'} 
-                  onClick={() => { setSafetyLevel(level); setIsDirty(true); }}
-                  size="small"
-                  sx={{ 
-                    cursor: 'pointer', fontWeight: 900, fontSize: '0.6rem', height: 24,
-                    bgcolor: safetyLevel === level ? (level === 'Safe' ? '#4CAF50' : level === 'Bite-Risk' ? '#FFA000' : '#D32F2F') : 'transparent',
-                    color: (safetyLevel === level || isIsolationMode) ? 'white' : COLORS.textMuted,
-                    '&:hover': { bgcolor: safetyLevel === level ? null : 'rgba(0,0,0,0.05)' }
-                  }} 
-               />
-             ))}
-             <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-             <Chip 
-                label="☣️ ISOLATION" 
-                onClick={() => { setIsIsolationMode(!isIsolationMode); setIsDirty(true); }}
-                size="small"
-                sx={{ 
-                  cursor: 'pointer', fontWeight: 900, fontSize: '0.6rem', height: 24,
-                  bgcolor: isIsolationMode ? '#FFEB3B' : 'transparent',
-                  color: isIsolationMode ? '#7B1FA2' : (isIsolationMode ? 'white' : COLORS.textMuted),
-                  border: isIsolationMode ? 'none' : '1px dashed #7B1FA2',
-                  '&:hover': { bgcolor: isIsolationMode ? '#FDD835' : 'rgba(123, 31, 162, 0.05)' }
-                }} 
-             />
-          </Box>
-
-          {/* 🔍 OMNI-SEARCH NAV BAR */}
-          <Paper sx={{ 
-              display: 'flex', alignItems: 'center', px: 2, py: 0.5, mx: 4,
-              borderRadius: 50, bgcolor: 'rgba(0,0,0,0.03)', border: '1px solid rgba(0,0,0,0.08)',
-              flex: 1, maxWidth: 450, transition: 'all 0.3s',
-              '&:focus-within': { bgcolor: '#FFF', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', borderColor: badgeColor }
-          }}>
-            <SearchIcon sx={{ color: COLORS.textMuted, mr: 1, fontSize: 20 }} />
-            <InputBase 
-              placeholder="Search or Jump: SOAP, Labs, Rx..." 
-              fullWidth 
-              value={searchTerm}
-              onChange={(e) => {
-                const term = e.target.value.toLowerCase();
-                setSearchTerm(term);
-                const found = navItems.find(n => n.label.toLowerCase().includes(term));
-                if (found && term.length > 1) jumpToSection(found.id, found.ref);
-              }}
-              sx={{ fontWeight: 'bold', fontSize: '0.85rem', fontFamily: FONT }}
-            />
-            <Divider orientation="vertical" flexItem sx={{ mx: 1.5, my: 0.5 }} />
-            <Stack direction="row" spacing={0.5}>
-              {navItems.map(item => (
-                <Tooltip key={item.id} title={`Jump to ${item.label}`}>
-                  <IconButton 
-                    size="small" 
-                    onClick={() => jumpToSection(item.id, item.ref)} 
-                    sx={{ 
-                      color: activeHighlight === item.id ? badgeColor : COLORS.textMuted,
-                      bgcolor: activeHighlight === item.id ? `${badgeColor}15` : 'transparent',
-                      '&:hover': { bgcolor: `${badgeColor}10` }
-                    }}
-                  >
-                    {item.icon}
-                  </IconButton>
-                </Tooltip>
-              ))}
-            </Stack>
-          </Paper>
-
-          {/* 🧬 THE LIVE BUNDLE PROGRESS TRACKER */}
-          <Box sx={{ ml: 'auto', mr: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-             <Typography variant="caption" sx={{ fontWeight: 900, color: COLORS.textSecondary, letterSpacing: 1 }}>BUNDLE PROGRESS:</Typography>
-             <Chip 
-                label={`${lockedServices.size} / ${patient?.services?.length || 0} DONE`} 
-                size="small" 
-                sx={{ 
-                    fontWeight: 900, bgcolor: lockedServices.size === (patient?.services?.length || 0) ? '#4CAF50' : COLORS.brand, 
-                    color: 'white', px: 1, boxShadow: 2 
-                }} 
-             />
-          </Box>
+          <Box sx={{ flex: 1 }} />
         </Box>
+      </Box>
 
-        {/* ── 🆕 PILLAR 1: THE PERSISTENT VITALS STRIP (AWARENESS ZONE) ── */}
+        {/* ── 🆕 PILLAR 1: THE PERSISTENT VITALS STRIP (PANORAMIC INLAID HUD) ── */}
         <Box sx={{ 
-            bgcolor: 'white', borderBottom: `1px solid ${COLORS.borderLight}`, px: 2, py: 0.75, 
-            display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0, boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
-            position: 'sticky', top: 0, zIndex: 1100 // Explicitly Pin to Top 📌
+            bgcolor: '#3E2721', borderBottom: `1px solid rgba(255,193,7,0.15)`, px: 4, py: 1.25, 
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, boxShadow: '0 6px 16px rgba(0,0,0,0.3)',
+            position: 'sticky', top: 0, zIndex: 1100 
         }}>
             {[
                 { label: 'WT (kg)', value: soapData.objWeight, field: 'objWeight', icon: '⚖️', status: 'normal' },
                 { label: 'TEMP (°C)', value: soapData.objTemp, field: 'objTemp', icon: '🌡️', status: getTriageLevel('temp', soapData.objTemp) },
                 { label: 'HR (bpm)', value: soapData.objHR, field: 'objHR', icon: '❤️', status: getTriageLevel('hr', soapData.objHR) },
                 { label: 'RR (rpm)', value: soapData.objRR, field: 'objRR', icon: '🫁', status: 'normal' },
-                { label: 'CRT', value: soapData.objCRT, field: 'objCRT', icon: '⏱️', status: 'normal' },
+                { label: 'CRT (sec)', value: soapData.objCRT, field: 'objCRT', icon: '⏱️', status: 'normal' },
+                { label: 'BCS (1-9)', value: soapData.bcs, field: 'bcs', icon: '🐾', status: 'normal' },
+                { label: 'PAIN', value: soapData.painScale, field: 'painScale', icon: '🩹', status: 'normal' },
             ].map(v => (
-                <Box key={v.field} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography variant="caption" sx={{ fontWeight: 800, color: COLORS.textMuted, fontSize: '0.6rem' }}>{v.icon} {v.label}</Typography>
+                <Box key={v.field} sx={{ 
+                    display: 'flex', alignItems: 'center', gap: 1.5,
+                    bgcolor: '#2D1B16', px: 2, py: 0.5, borderRadius: 1.5,
+                    border: '1px solid rgba(255,193,7,0.1)',
+                    boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.5)',
+                    transition: 'all 0.3s ease'
+                }}>
+                    <Typography variant="caption" sx={{ fontWeight: 1000, color: 'rgba(255,255,255,0.7)', fontSize: '0.6rem', letterSpacing: 0.8, textTransform: 'uppercase' }}>
+                       {v.label}
+                    </Typography>
                     <InputBase 
                         size="small" value={v.value} 
                         onChange={(e) => updateSoap(v.field, e.target.value)}
                         className={v.status === 'critical' ? 'glow-critical' : v.status === 'warning' ? 'glow-warning' : ''}
                         sx={{ 
-                            width: 60, fontWeight: 900, color: v.status === 'critical' ? '#D32F2F' : COLORS.brand, 
-                            borderBottom: '1px dashed rgba(0,0,0,0.2)', fontSize: '0.85rem', px: 0.5 
+                            width: 55, fontWeight: 1000, 
+                            color: v.status === 'critical' ? '#FF5252' : '#FFD600', 
+                            fontSize: '0.9rem', px: 0.5,
+                            '& input': { textAlign: 'center', py: 0.2 },
+                            '&.Mui-focused': { color: '#FFF', borderBottom: '1px solid #FFD600' }
                         }} 
                     />
                     {renderHistoricalLabel(v.field)}
                 </Box>
             ))}
-            
-            <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
-            
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography variant="caption" sx={{ fontWeight: 800, color: COLORS.textMuted, fontSize: '0.6rem' }}>🩺 TRIAGE STATUS</Typography>
-                    <Select 
-                        variant="standard" size="small" value={soapData.patientStatus} 
-                        onChange={(e) => updateSoap('patientStatus', e.target.value)}
-                        sx={{ fontWeight: 900, fontSize: '0.8rem', color: soapData.patientStatus === 'Critical' ? '#D32F2F' : soapData.patientStatus === 'Guarded' ? '#F57C00' : '#2E7D32' }}
-                        disableUnderline
-                    >
-                        <MenuItem value="Stable">Stable</MenuItem>
-                        <MenuItem value="Guarded">Guarded</MenuItem>
-                        <MenuItem value="Critical">Critical</MenuItem>
-                    </Select>
-                </Box>
-            </Box>
-
-            {/* 🧬 GLOBAL VISIT PORTFOLIO HUD (LIFTED) */}
-            <Box sx={{ px: 2, py: 1, bgcolor: '#FFFFFF', borderBottom: '1px solid rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', gap: 2, overflowX: 'auto' }}>
-                <Typography variant="overline" sx={{ fontWeight: 900, color: COLORS.textMuted, flexShrink: 0, letterSpacing: 1.5, fontSize: '0.6rem' }}>VISIT PORTFOLIO:</Typography>
-                {(patient.services || []).map((s, idx) => (
-                    <Chip 
-                        key={idx} label={`${s.name} | ${s.staffName || 'Unassigned'}`} 
-                        color={s.status === 'completed' || lockedServices.has(s.id) ? 'success' : 'primary'} 
-                        size="small" variant={s.status === 'completed' || lockedServices.has(s.id) ? 'filled' : 'outlined'}
-                        icon={s.status === 'completed' || lockedServices.has(s.id) ? <CheckCircleIcon /> : <BoltIcon />}
-                        sx={{ fontWeight: 800, fontSize: '0.65rem' }}
-                    />
-                ))}
-            </Box>
         </Box>
 
-      <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden', pointerEvents: isRecordLocked ? 'none' : 'auto', opacity: isRecordLocked ? 0.9 : 1 }} className="hud-canvas">
+            {/* 🧬 GLOBAL SERVICES HUD (OBSIDIAN INLAID) */}
+            <Box sx={{ px: 3, py: 1, bgcolor: '#3E2721', borderBottom: '1px solid rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', gap: 2, overflowX: 'auto' }}>
+                <Typography variant="overline" sx={{ fontWeight: 1000, color: '#FFD600', flexShrink: 0, letterSpacing: 1.5, fontSize: '0.6rem', textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}>SERVICES:</Typography>
+                {(patient.services || []).map((s, idx) => {
+                    const isDone = s.status === 'completed' || lockedServices.has(s.id);
+                    return (
+                        <Chip 
+                            key={idx} label={`${s.name} | ${s.staffName || 'Unassigned'}`} 
+                            size="small" 
+                            icon={isDone ? <CheckCircleIcon sx={{ fontSize: '14px !important', color: 'white !important' }} /> : <BoltIcon sx={{ fontSize: '14px !important', color: '#FFD600 !important' }} />}
+                            sx={{ 
+                                fontWeight: 1000, fontSize: '0.6rem', height: 24,
+                                bgcolor: isDone ? '#1B5E20' : 'rgba(45, 27, 22, 0.8)',
+                                color: 'white',
+                                border: isDone ? '1px solid rgba(255,255,255,0.2)' : '1px solid rgba(255,193,7,0.15)',
+                                '&:hover': { bgcolor: isDone ? '#2E7D32' : 'rgba(255,255,255,0.05)' }
+                            }}
+                        />
+                    );
+                })}
+            </Box>
         
-        {/* ── 🏺 PANE 1: NARRATIVE (CLINICAL STORY) ── */}
+        <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden', pointerEvents: isRecordLocked ? 'none' : 'auto', opacity: isRecordLocked ? 0.9 : 1 }} className="hud-canvas">
+        
+        {/* 🏺 PILLAR 1: CLINICAL NARRATIVE (75% WIDTH) */}
         <Box sx={{ 
-            flex: 6, overflowY: 'auto', p: 2, borderRight: `2px solid ${COLORS.borderLight}`,
+            flex: 7.5, overflowY: 'auto', p: 3, borderRight: `2px solid ${COLORS.borderLight}`,
             backgroundColor: 'rgba(0,0,0,0.01)',
             '&::-webkit-scrollbar': { width: 4 }, '&::-webkit-scrollbar-thumb': { bgcolor: COLORS.timelineRail, borderRadius: 10 } 
         }}>
-            <Grid container spacing={3}>
-            
-            {/* ── PILLAR 1: THE CLINICAL STORY (S.A.O) ── */}
-            <Grid size={{ xs: 12, lg: 12 }}>
-                <Paper 
-                    ref={soapRef}
-                    className={`${activeHighlight === 'soap' ? 'highlight-module' : ''} elevate-module ${focusedModule && focusedModule !== 'soap' ? 'dim-overlay' : ''} ${lockedServices.has('medical') ? 'module-locked' : ''}`}
-                    sx={{ ...glassStyle, p: 3, borderLeft: `8px solid ${badgeColor}`, transition: 'all 0.4s ease', flex: 1, opacity: lockedServices.has('medical') ? 0.8 : 1, pointerEvents: lockedServices.has('medical') ? 'none' : 'auto' }}
-                >
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, mb: 3 }}>
-                        <Typography variant="h5" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.brand, display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <MedicalServicesIcon /> Clinical Documentation (S.O.A.P.)
+            <Paper 
+                ref={soapRef}
+                className={`${activeHighlight === 'soap' ? 'highlight-module' : ''} elevate-module ${focusedModule && focusedModule !== 'soap' ? 'dim-overlay' : ''} ${lockedServices.has('medical') ? 'module-locked' : ''}`}
+                sx={{ ...glassStyle, p: 4, borderLeft: `8px solid ${badgeColor}`, transition: 'all 0.4s ease' }}
+            >
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 4 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <HistoryEduIcon sx={{ fontSize: 32, color: COLORS.brand }} />
+                        <Typography variant="h5" sx={{ fontFamily: FONT, fontWeight: 1000, color: COLORS.brand }}>
+                            Clinical Documentation (S.O.A.P.)
                         </Typography>
-                        <Stack direction="row" spacing={1} sx={{ bgcolor: 'rgba(0,0,0,0.03)', p: 0.5, borderRadius: 2 }}>
-                            <Button size="small" variant="text" onClick={() => applyTemplate('vaccine')} sx={{ fontWeight: 800, textTransform: 'none', borderRadius: 1.5, px: 2, color: COLORS.brand }}>Vaccine Template</Button>
-                            <Button size="small" variant="text" onClick={() => applyTemplate('wnl')} sx={{ fontWeight: 800, textTransform: 'none', borderRadius: 1.5, px: 2, color: COLORS.brand }}>Auto-Fill WNL</Button>
-                            <Tooltip title="Unified Clinical Command Center (God-View)">
-                                <IconButton size="small" onClick={() => setIsUnifiedZen(true)} sx={{ color: COLORS.brand, bgcolor: 'rgba(0,0,0,0.05)', ml: 1 }}>
-                                    <FitScreenIcon fontSize="small" />
-                                </IconButton>
-                            </Tooltip>
-                        </Stack>
+                        <Tooltip title="Enter God-View (Unified Layout)">
+                            <IconButton size="small" onClick={() => setIsUnifiedZen(true)} sx={{ color: COLORS.brand, bgcolor: `${COLORS.brand}10`, '&:hover': { bgcolor: `${COLORS.brand}20` } }}>
+                                <FitScreenIcon fontSize="small" />
+                            </IconButton>
+                        </Tooltip>
                     </Box>
-
-                    {lockedServices.has('medical') && (
-                        <Alert severity="success" icon={<ShieldIcon/>} sx={{ mb: 2, fontWeight: 900, borderRadius: 2 }}>This clinical record is SIGNED and LOCKED. No further edits are possible.</Alert>
-                    )}
-
-                    <Grid container spacing={3}>
-                        <Grid size={{ xs: 12 }}>
-                             <Box sx={{ minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                                 <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, m: 0 }}>S - SUBJECTIVE (History & Client Report)</Typography>
-                                 <Tooltip title="Zen Mode: Focus on Subjective">
-                                     <IconButton size="small" onClick={() => setFullscreenField('subjective')} sx={{ color: COLORS.textMuted, '&:hover': { color: COLORS.brand } }}>
-                                         <OpenInFullIcon fontSize="small" />
-                                     </IconButton>
-                                 </Tooltip>
-                             </Box>
-                             <TextField 
-                               multiline minRows={4} maxRows={25} fullWidth 
-                               value={soapData.subjective} 
-                               onChange={(e) => updateSoap('subjective', e.target.value)} 
-                               onFocus={() => setFocusedModule('soap')}
-                               onBlur={() => setFocusedModule(null)}
-                               placeholder="Enter history, symptoms, and client concerns..." 
-                               sx={{ bgcolor: 'white', borderRadius: 2, transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)' }} 
-                             />
-                        </Grid>
-
-                        {/* ── A: ASSESSMENT ── */}
-                        <Grid size={{ xs: 12 }}>
-                             <Box sx={{ minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                                <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, m: 0 }}>A - ASSESSMENT (The Diagnosis/Conclusion)</Typography>
-                                <Tooltip title="Zen Mode: Focus on Assessment">
-                                     <IconButton size="small" onClick={() => setFullscreenField('assessment')} sx={{ color: COLORS.textMuted, '&:hover': { color: COLORS.brand } }}>
-                                         <OpenInFullIcon fontSize="small" />
-                                     </IconButton>
-                                 </Tooltip>
-                             </Box>
-                            <TextField 
-                               multiline minRows={4} maxRows={25} fullWidth 
-                               value={soapData.assessment} onChange={(e) => updateSoap('assessment', e.target.value)} 
-                               placeholder="What is your diagnosis or findings?" 
-                               sx={{ 
-                                 bgcolor: 'rgba(76, 175, 80, 0.05)', borderRadius: 2,
-                                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                                  '& .MuiOutlinedInput-root': { fontWeight: 900, color: '#2E7D32' } 
-                                 }} 
-                             />
-                        </Grid>
-
-                        {/* 🏺 THE CLINICAL PREDICTION HORIZON (UNIFIED BASELINE) */}
-                        <Grid size={{ xs: 12 }}>
-                            <Box sx={{ p: 2, bgcolor: 'rgba(0,0,0,0.02)', borderRadius: 3, border: '1px solid rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                    {/* RECHECK HUD */}
-                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                        <Typography variant="caption" sx={{ fontWeight: 900, color: '#2E7D32', fontSize: '0.65rem' }}>🗓️ RECHECK WINDOW:</Typography>
-                                        <Stack direction="row" spacing={0.5}>
-                                            {['Next Week', '2 Weeks', '1 Month', 'PRN', 'Finalized'].map(w => (
-                                                <Chip 
-                                                    key={w} label={w} size="small"
-                                                    onClick={() => updateSoap('recheckIn', w)}
-                                                    sx={{ 
-                                                        fontSize: '0.6rem', height: 20, fontWeight: 800, cursor: 'pointer',
-                                                        bgcolor: soapData.recheckIn === w ? '#2E7D32' : 'white',
-                                                        color: soapData.recheckIn === w ? 'white' : 'inherit',
-                                                        border: `1px solid ${soapData.recheckIn === w ? 'transparent' : 'rgba(0,0,0,0.1)'}`
-                                                    }} 
-                                                />
-                                            ))}
-                                        </Stack>
-                                    </Box>
-                                    <Button 
-                                        size="small" variant="outlined" startIcon={<PrintIcon />}
-                                        sx={{ fontWeight: 900, fontSize: '0.6rem', color: COLORS.brand, borderColor: 'rgba(0,0,0,0.1)', borderRadius: 2 }}
-                                    >
-                                        PRINT CLIENT INSTRUCTIONS
-                                    </Button>
-                                </Box>
-
-                                <Divider sx={{ opacity: 0.1 }} />
-
-                                {/* PROGNOSIS HUD */}
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                    <Typography variant="caption" sx={{ fontWeight: 900, color: COLORS.textMuted, fontSize: '0.65rem' }}>🎯 PROGNOSIS:</Typography>
-                                    <Stack direction="row" spacing={0.5}>
-                                        {['Excellent', 'Good', 'Guarded', 'Poor', 'Grave'].map(p => (
-                                            <Chip 
-                                                key={p} label={p} size="small"
-                                                onClick={() => updateSoap('prognosis', p)}
-                                                sx={{ 
-                                                    fontSize: '0.6rem', height: 20, fontWeight: 800, cursor: 'pointer',
-                                                    bgcolor: soapData.prognosis === p ? (p === 'Grave' || p === 'Poor' ? '#D32F2F' : COLORS.brand) : 'white',
-                                                    color: soapData.prognosis === p ? 'white' : 'inherit',
-                                                    border: `1px solid ${soapData.prognosis === p ? 'transparent' : 'rgba(0,0,0,0.1)'}`
-                                                }} 
-                                            />
-                                        ))}
-                                    </Stack>
-                                </Box>
-                            </Box>
-                        </Grid>
-
-                        {/* ── O: OBJECTIVE ── */}
-                        <Grid size={{ xs: 12 }}>
-                           <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                               <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, m: 0 }}>O - OBJECTIVE (Examination & Vitals)</Typography>
-                               <Tooltip title="Zen Mode: Focus on Objective">
-                                     <IconButton size="small" onClick={() => setFullscreenField('objectiveNotes')} sx={{ color: COLORS.textMuted, '&:hover': { color: COLORS.brand } }}>
-                                         <OpenInFullIcon fontSize="small" />
-                                     </IconButton>
-                                 </Tooltip>
-                           </Box>
-                           
-                           {/* DENSE EXAMINATION CLUSTER */}
-                           <Box sx={{ bgcolor: '#FAF8F5', p: 2, borderRadius: 2, border: `1px solid ${COLORS.borderLight}`, mb: 2 }}>
-                               <Grid container spacing={2}>
-                                   {/* 🧬 OBJECTIVE VITALS HUD (ORGANIZED) */}
-                                   <Grid size={{ xs: 12 }} sx={{ mb: 1 }}>
-                                       <Box sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.4)', borderRadius: 2, border: '1px dashed rgba(0,0,0,0.05)' }}>
-                                           <Grid container spacing={3}>
-                                               {[
-                                                   { label: 'WT (kg)', value: soapData.objWeight, field: 'objWeight', icon: '⚖️', status: 'normal' },
-                                                   { label: 'TEMP (°C)', value: soapData.objTemp, field: 'objTemp', icon: '🌡️', status: getTriageLevel('temp', soapData.objTemp) },
-                                                   { label: 'HR (bpm)', value: soapData.objHR, field: 'objHR', icon: '❤️', status: getTriageLevel('hr', soapData.objHR) },
-                                                   { label: 'RR (rpm)', value: soapData.objRR, field: 'objRR', icon: '🫁', status: 'normal' },
-                                                   { label: 'CRT', value: soapData.objCRT, field: 'objCRT', icon: '⏱️', status: 'normal' },
-                                               ].map(v => (
-                                                   <Grid key={v.field} size={{ xs: 12, md: 4, lg: 2.4 }}>
-                                                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                                           <Typography variant="caption" sx={{ fontWeight: 800, color: COLORS.textMuted, fontSize: '0.65rem' }}>{v.icon} {v.label}</Typography>
-                                                           <InputBase 
-                                                               size="small" value={v.value} 
-                                                               onChange={(e) => updateSoap(v.field, e.target.value)}
-                                                               className={v.status === 'critical' ? 'glow-critical' : v.status === 'warning' ? 'glow-warning' : ''}
-                                                               sx={{ 
-                                                                   flex: 1, fontWeight: 900, color: v.status === 'critical' ? '#D32F2F' : COLORS.brand, 
-                                                                   borderBottom: '1px dashed rgba(0,0,0,0.2)', fontSize: '0.9rem', px: 0.5, bgcolor: 'white', borderRadius: '4px 4px 0 0'
-                                                               }} 
-                                                           />
-                                                           {renderHistoricalLabel(v.field)}
-                                                       </Box>
-                                                   </Grid>
-                                               ))}
-                                           </Grid>
-                                       </Box>
-                                   </Grid>
-
-                                    <Grid size={{ xs: 12 }}>
-                                        <Typography variant="caption" sx={{ fontWeight: 800, color: COLORS.textSecondary, mb: 1, display: 'block' }}>BODY SCALES (Pain & Condition)</Typography>
-                                        <Grid container spacing={4}>
-                                             <Grid size={{ xs: 12, md: 6 }}>
-                                                 <Typography variant="caption" sx={{ fontWeight: 900, fontSize: '0.6rem', display: 'flex', justifyContent: 'space-between' }}>
-                                                     <span>BCS (1-9)</span>
-                                                     <span>SCORE: {soapData.bcs || 5}</span>
-                                                 </Typography>
-                                                 <Box sx={{ flex: 1, px: 0.5, mt: 1 }}><input type="range" min="1" max="9" step="1" value={soapData.bcs || 5} onChange={(e) => updateSoap('bcs', e.target.value)} style={{ width: '100%', accentColor: COLORS.brand }} /></Box>
-                                             </Grid>
-                                             <Grid size={{ xs: 12, md: 6 }}>
-                                                 <Typography variant="caption" sx={{ fontWeight: 900, fontSize: '0.6rem', display: 'flex', justifyContent: 'space-between' }}>
-                                                     <span>PAIN SCALE (0-10)</span>
-                                                     <span>SCORE: {soapData.painScale || 0}</span>
-                                                 </Typography>
-                                                 <Box sx={{ flex: 1, px: 0.5, mt: 1 }}><input type="range" min="0" max="10" step="1" value={soapData.painScale || 0} onChange={(e) => updateSoap('painScale', e.target.value)} style={{ width: '100%', accentColor: (soapData.painScale || 0) > 4 ? '#D32F2F' : COLORS.brand }} /></Box>
-                                             </Grid>
-                                        </Grid>
-                                    </Grid>
-                               </Grid>
-                           </Box>
-
-                           <TextField 
-                               multiline minRows={4} maxRows={25} fullWidth 
-                               value={soapData.objectiveNotes} 
-                               onChange={(e) => updateSoap('objectiveNotes', e.target.value)} 
-                               placeholder="Describe physical findings (Lungs, Heart, Eyes, Ears, Skin)..." 
-                               sx={{ bgcolor: 'white', borderRadius: 2, transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)' }} 
-                           />
-                        </Grid>
-
-                        {/* ── P: PLAN ── */}
-                        <Grid size={{ xs: 12 }}>
-                           <Box sx={{ mb: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                               <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, m: 0 }}>P - PLAN (Treatment Instructions)</Typography>
-                               <Tooltip title="Zen Mode: Focus on Plan">
-                                     <IconButton size="small" onClick={() => setFullscreenField('plan')} sx={{ color: COLORS.textMuted, '&:hover': { color: COLORS.brand } }}>
-                                         <OpenInFullIcon fontSize="small" />
-                                     </IconButton>
-                                 </Tooltip>
-                           </Box>
-                           <TextField 
-                             multiline minRows={4} maxRows={25} fullWidth 
-                             value={soapData.plan} 
-                             onChange={(e) => updateSoap('plan', e.target.value)} 
-                             onFocus={() => setFocusedModule('soap')}
-                             onBlur={() => setFocusedModule(null)}
-                             placeholder="Procedures performed, internal notes, and doctor instructions..." 
-                             sx={{ bgcolor: 'white', borderRadius: 2, transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)' }} 
-                           />
-                        </Grid>
-                    </Grid>
-
-                    {/* MEDICAL SECTION SIGN-OFF */}
-                    {!lockedServices.has('medical') && (
-                        <Box sx={{ mt: 4, pt: 3, borderTop: '1px dashed rgba(0,0,0,0.1)', textAlign: 'center' }}>
-                            <Button 
-                                variant="contained" color="success" size="large" 
-                                startIcon={<CheckCircleIcon />} sx={{ fontWeight: 900, px: 6, borderRadius: 50 }}
-                                onClick={() => handleCompleteService('medical')}
-                            >
-                                Sign & Finalize Medical Record
-                            </Button>
-                        </Box>
-                    )}
-                </Paper>
-                </Grid>
-                
-            {/* ── PILLAR 3: THE ACTION CENTER (PROCEDURALS) ── */}
-            <Grid size={{ xs: 12, lg: 12 }}>
-                <Paper 
-                    ref={groomingRef}
-                    className={`${activeHighlight === 'grooming' ? 'highlight-module' : ''} elevate-module ${focusedModule && focusedModule !== 'grooming' ? 'dim-overlay' : ''} ${lockedServices.has('aesthetic') ? 'module-locked' : ''}`}
-                    sx={{ ...glassStyle, p: 3, borderLeft: '8px solid #795548', transition: 'all 0.4s ease', flex: 1, display: 'flex', flexDirection: 'column', opacity: lockedServices.has('aesthetic') ? 0.8 : 1, pointerEvents: lockedServices.has('aesthetic') ? 'none' : 'auto' }}
-                >
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, justifyContent: 'space-between' }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <ContentCutIcon sx={{ color: '#795548' }} />
-                            <Typography variant="h6" fontWeight={900} color="#3E2723">Aesthetic & Hygiene Notes</Typography>
-                        </Box>
-
-                    {/* DYNAMIC SAFETY ALERTS */}
-                    <Stack direction="row" spacing={1}>
-                        {groomingData.parasites !== 'None' && (
-                            <Chip 
-                                icon={<ReportProblemIcon sx={{ color: 'white !important' }}/>} 
-                                label="☣️ BIO-HAZARD DETECTED" 
-                                color="error" 
-                                sx={{ fontWeight: 900, animation: 'pulse 1.5s infinite', boxShadow: '0 0 10px rgba(211,47,47,0.4)' }} 
-                            />
-                        )}
+                    <Stack direction="row" spacing={1} sx={{ bgcolor: 'rgba(0,0,0,0.03)', p: 0.5, borderRadius: 2 }}>
+                        <Button size="small" variant="text" onClick={() => applyTemplate('vaccine')} sx={{ fontWeight: 800, textTransform: 'none', borderRadius: 1.5, px: 2, color: COLORS.brand }}>Vaccine Template</Button>
+                        <Button size="small" variant="text" onClick={() => applyTemplate('wnl')} sx={{ fontWeight: 800, textTransform: 'none', borderRadius: 1.5, px: 2, color: COLORS.brand }}>Auto-Fill WNL</Button>
                     </Stack>
                 </Box>
-                
-                {lockedServices.has('aesthetic') && (
-                    <Alert severity="success" icon={<ShieldIcon/>} sx={{ mb: 2, fontWeight: 900, borderRadius: 2 }}>This Aesthetic record is COMPLETED and LOCKED.</Alert>
+
+                {lockedServices.has('medical') && (
+                    <Alert severity="success" icon={<ShieldIcon/>} sx={{ mb: 3, fontWeight: 900, borderRadius: 2 }}>This clinical record is SIGNED and LOCKED. No further edits are possible.</Alert>
                 )}
 
-                <Grid container spacing={2} sx={{ mb: 2 }}>
-                    <Grid size={{ xs: 2.4 }}><FormControl fullWidth size="small" sx={{ bgcolor: 'white' }}><InputLabel>Blade #</InputLabel><Select value={groomingSpecs.bladeNumber} label="Blade #" onChange={(e) => updateGroomingSpec('bladeNumber', e.target.value)}><MenuItem value="10">#10 (Std)</MenuItem><MenuItem value="40">#40 (Surgical)</MenuItem><MenuItem value="30">#30 (Sanitary)</MenuItem><MenuItem value="7">#7 (Short)</MenuItem><MenuItem value="4">#4 (Longer)</MenuItem><MenuItem value="5">#5 (Bulk)</MenuItem><MenuItem value="FC">FC (Finish)</MenuItem></Select></FormControl></Grid>
-                    <Grid size={{ xs: 2.4 }}><FormControl fullWidth size="small" sx={{ bgcolor: 'white' }}><InputLabel>Texture</InputLabel><Select value={groomingSpecs.coatTexture} label="Texture" onChange={(e) => updateGroomingSpec('coatTexture', e.target.value)}><MenuItem value="Normal">Normal</MenuItem><MenuItem value="Matted">Matted</MenuItem><MenuItem value="Greasy">Greasy/Seborrheic</MenuItem><MenuItem value="Dry">Dry/Brittle</MenuItem><MenuItem value="Sparse">Sparse/Alopecic</MenuItem><MenuItem value="Silky">Silky</MenuItem><MenuItem value="Wiry">Wiry</MenuItem></Select></FormControl></Grid>
-                    <Grid size={{ xs: 2.4 }}><FormControl fullWidth size="small" sx={{ bgcolor: 'white' }}><InputLabel>Shampoo</InputLabel><Select value={groomingData.shampoo} label="Shampoo" onChange={(e) => updateGrooming('shampoo', e.target.value)}><MenuItem value="Oatmeal">Oatmeal</MenuItem><MenuItem value="Chlorhexidine">Chlorhexidine</MenuItem><MenuItem value="Antifungal">Antifungal</MenuItem><MenuItem value="Degreasing">Degreasing</MenuItem><MenuItem value="Hypo">Hypoallergenic</MenuItem><MenuItem value="Whitening">Whitening</MenuItem></Select></FormControl></Grid>
-                    <Grid size={{ xs: 2.4 }}><FormControl fullWidth size="small" sx={{ bgcolor: 'white' }}><InputLabel>Parasites</InputLabel><Select value={groomingData.parasites} label="Parasites" onChange={(e) => updateGrooming('parasites', e.target.value)}><MenuItem value="None">None</MenuItem><MenuItem value="Fleas">Fleas (Live)</MenuItem><MenuItem value="Flea Dirt">Flea Dirt (Evidence)</MenuItem><MenuItem value="Ticks">Ticks</MenuItem><MenuItem value="Lice">Lice</MenuItem><MenuItem value="Mites">Mites</MenuItem></Select></FormControl></Grid>
-                    <Grid size={{ xs: 2.4 }}><FormControl fullWidth size="small" sx={{ bgcolor: 'white' }}><InputLabel>Temperament</InputLabel><Select value={groomingData.temperament} label="Temperament" onChange={(e) => updateGrooming('temperament', e.target.value)} onFocus={() => setFocusedModule('grooming')} onBlur={() => setFocusedModule(null)}><MenuItem value="Calm">Calm</MenuItem><MenuItem value="Anxious">Anxious</MenuItem><MenuItem value="Aggressive">Aggressive</MenuItem><MenuItem value="Muzzle Required">🚨 Muzzle Required</MenuItem></Select></FormControl></Grid>
-                </Grid>
-
-                <Stack direction="row" spacing={1} sx={{ mb: 2, p: 1.5, bgcolor: 'rgba(0,0,0,0.03)', borderRadius: 2 }}>
-                    {[
-                        { id: 'nails', label: 'Nails', icon: <ContentCutIcon fontSize="inherit"/> },
-                        { id: 'ears', label: 'Ears', icon: <InfoIcon fontSize="inherit"/> },
-                        { id: 'glands', label: 'Glands', icon: <LocalHospitalIcon fontSize="inherit"/> },
-                        { id: 'teeth', label: 'Teeth', icon: <ContentPasteIcon fontSize="inherit"/> }
-                    ].map(svc => {
-                        const status = groomingChecklist[svc.id] || '';
-                        const statusConfig = {
-                            '': { color: '#BBB', label: svc.label, icon: svc.icon, bgcolor: 'white' },
-                            'done': { color: '#2E7D32', label: `${svc.label} Done`, icon: <CheckCircleIcon fontSize="inherit"/>, bgcolor: '#E8F5E9' },
-                            'alert': { color: '#D32F2F', label: `${svc.label} Alert!`, icon: <ReportIcon fontSize="inherit"/>, bgcolor: '#FFEBEE' },
-                            'refused': { color: '#757575', label: `${svc.label} Refused`, icon: <BlockIcon fontSize="inherit"/>, bgcolor: '#F5F5F5' }
-                        }[status];
-
-                        return (
-                            <Chip 
-                                key={svc.id} 
-                                icon={statusConfig.icon}
-                                label={statusConfig.label} 
-                                size="small"
-                                onClick={() => {
-                                    const nextStatus = status === '' ? 'done' : status === 'done' ? 'alert' : status === 'alert' ? 'refused' : '';
-                                    setGroomingChecklist(p => ({ ...p, [svc.id]: nextStatus }));
-                                    setIsDirty(true);
-                                }}
-                                sx={{ 
-                                    flex: 1, fontWeight: 900, fontSize: '0.65rem', 
-                                    bgcolor: statusConfig.bgcolor, 
-                                    color: statusConfig.color,
-                                    border: `1px solid ${statusConfig.color}40`,
-                                    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                                    '&:hover': { transform: 'scale(1.02)' }
-                                }}
-                            />
-                        );
-                    })}
-                </Stack>
-                <TextField 
-                  multiline rows={5} fullWidth 
-                  value={groomingData.notes} 
-                  onChange={(e) => updateGrooming('notes', e.target.value)} 
-                  onFocus={() => setFocusedModule('grooming')}
-                  onBlur={() => setFocusedModule(null)}
-                  placeholder="Skin condition, styling requests..." 
-                  sx={{ bgcolor: 'white', borderRadius: 2, mb: 3 }} 
-                />
-
-                {/* AESTHETIC SECTION SIGN-OFF */}
-                {!lockedServices.has('aesthetic') && (
-                    <Box sx={{ mt: 'auto', pt: 3, borderTop: '1px dashed rgba(0,0,0,0.1)', textAlign: 'center' }}>
-                        <Button 
-                            variant="outlined" color="primary" size="small" 
-                            startIcon={<CheckCircleIcon />} 
-                            sx={{ 
-                                fontWeight: 900, px: 3, borderRadius: 2, 
-                                border: '1px solid rgba(0,0,0,0.1)', borderLeft: '4px solid #1976D2',
-                                bgcolor: 'rgba(0,0,0,0.02)', color: '#1976D2',
-                                '&:hover': { bgcolor: 'rgba(25, 118, 210, 0.05)' }
-                            }}
-                            onClick={() => handleCompleteService('aesthetic')}
-                        >
-                            FINALIZE AESTHETIC SPECS
-                        </Button>
-                    </Box>
-                )}
-            </Paper>
-            </Grid>
-
-            </Grid> {/* End Pane 1 Grid */}
-        </Box>
-
-        {/* ── 🏺 PANE 2: PROCEDURAL & LOGISTICS (ACTION CENTER) ── */}
-        <Box sx={{ 
-            flex: 4, overflowY: 'auto', p: 2, borderRight: `1px solid ${COLORS.borderLight}`,
-            backgroundColor: '#ffffff',
-            '&::-webkit-scrollbar': { width: 4 }, '&::-webkit-scrollbar-thumb': { bgcolor: COLORS.timelineRail, borderRadius: 10 } 
-        }}>
-            <Grid container spacing={3}>
-                <Grid size={{ xs: 12, lg: 12 }} sx={{ display: 'flex' }}>
-                <Paper 
-                    ref={actionRef}
-                    className={`elevate-module ${focusedModule && focusedModule !== 'site' ? 'dim-overlay' : ''}`}
-                    sx={{ ...glassStyle, p: 3, borderLeft: '8px solid #9C27B0', flex: 1, display: 'flex', flexDirection: 'column' }}
-                >
-                    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: expandedModules.has('action') ? 1 : 0 }}>
-                        <Typography variant="h6" fontWeight={900} color="#3E2723" sx={{ display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer' }} onClick={() => toggleModule('action')}>
-                            <RoomIcon sx={{ color: '#9C27B0' }} /> Diagnostic HUD
-                        </Typography>
-                        <Stack direction="row" spacing={1} alignItems="center">
-                            {expandedModules.has('action') && (
-                                <Stack direction="row" spacing={1} sx={{ bgcolor: 'rgba(0,0,0,0.05)', p: 0.5, borderRadius: 2 }}>
-                                    <Button size="small" onClick={() => setMappingTab('vax')} sx={{ fontSize: '0.6rem', fontWeight: 900, bgcolor: mappingTab === 'vax' ? 'white' : 'transparent', color: '#9C27B0', borderRadius: 1.5 }}>VAX</Button>
-                                    <Button size="small" onClick={() => setMappingTab('exam')} sx={{ fontSize: '0.6rem', fontWeight: 900, bgcolor: mappingTab === 'exam' ? 'white' : 'transparent', color: '#9C27B0', borderRadius: 1.5 }}>EXAM</Button>
-                                </Stack>
-                            )}
-                            <IconButton size="small" onClick={() => toggleModule('action')} sx={{ p: 1.5, color: '#9C27B0' }}>
-                                <KeyboardArrowUpIcon sx={{ transform: expandedModules.has('action') ? 'rotate(0deg)' : 'rotate(180deg)', transition: '0.3s' }} />
-                            </IconButton>
-                        </Stack>
-                    </Stack>
-
-                    <Collapse in={expandedModules.has('action')}>
-                        <Box sx={{ flex: 1, display: 'flex', position: 'relative', justifyContent: 'center', py: 2 }}>
-                            <svg width="220" height="120" viewBox="0 0 200 120" onClick={addExamMarker}>
-                                {/* PET SILHOUETTE (ADAPTIVE) */}
-                                {patient?.petSpecies === 'Feline' ? (
-                                    <path d="M50,80 Q40,60 60,40 Q90,30 130,40 Q160,50 160,80 Q150,100 130,90 Q90,100 50,80" fill="#EEEEEE" stroke="#BDBDBD" strokeWidth="1" />
-                                ) : (
-                                    <path d="M40,60 Q50,30 150,40 Q180,50 180,80 Q180,110 160,110 Q140,110 130,80 Q40,90 20,80 Q10,70 40,60" fill="#EEEEEE" stroke="#BDBDBD" strokeWidth="1" />
-                                )}
-                                
-                                {mappingTab === 'vax' && [
-                                    { id: 'RR', cx: 160, cy: 90 }, { id: 'LR', cx: 140, cy: 100 },
-                                    { id: 'RF', cx: 60, cy: 90 }, { id: 'LF', cx: 40, cy: 95 }, { id: 'SC', cx: 80, cy: 50 }
-                                ].map(site => (
-                                    <g key={site.id} cursor="pointer" onClick={() => setSelectedSite(site.id)}>
-                                        <circle cx={site.cx} cy={site.cy} r="10" fill={selectedSite === site.id ? '#9C27B0' : 'white'} stroke="#9C27B0" strokeWidth="2" />
-                                        <text x={site.cx} y={site.cy + 3} textAnchor="middle" fontSize="6" fontWeight="bold" fill={selectedSite === site.id ? 'white' : '#9C27B0'}>{site.id}</text>
-                                    </g>
-                                ))}
-
-                                {mappingTab === 'exam' && examMarkers.map((m, idx) => (
-                                    <g key={idx}>
-                                        <circle cx={m.x} cy={m.y} r="6" fill="#D32F2F" stroke="white" strokeWidth="2" className="glow-critical" />
-                                    </g>
-                                ))}
-                            </svg>
-                        </Box>
-                        
-                        <Box sx={{ maxWidth: 500, mx: 'auto', width: '100%', bgcolor: 'rgba(0,0,0,0.03)', p: 1.5, borderRadius: 3, border: '1px solid rgba(0,0,0,0.05)' }}>
-                            <Grid container spacing={1.5} alignItems="center">
-                                {mappingTab === 'vax' ? (
-                                    <>
-                                        <Grid size={{ xs: 6 }}>
-                                            <TextField 
-                                                label="LOT #" size="small" fullWidth value={vaxLotInfo.lot} 
-                                                onChange={(e) => setVaxLotInfo(p => ({ ...p, lot: e.target.value }))}
-                                                slotProps={{ input: { sx: { fontWeight: 900, fontSize: '0.75rem', letterSpacing: '0.02em', background: 'white' } }, inputLabel: { sx: { fontWeight: 900, fontSize: '0.65rem' } } }}
-                                            />
-                                            {renderHistoricalLabel('vaxLot')}
-                                        </Grid>
-                                        <Grid size={{ xs: 4 }}>
-                                            <TextField 
-                                                label="ROUTE" size="small" fullWidth value={vaxLotInfo.route} 
-                                                onChange={(e) => setVaxLotInfo(p => ({ ...p, route: e.target.value }))}
-                                                slotProps={{ input: { sx: { fontWeight: 900, fontSize: '0.75rem', letterSpacing: '0.02em', background: 'white' } }, inputLabel: { sx: { fontWeight: 900, fontSize: '0.65rem' } } }}
-                                            />
-                                        </Grid>
-                                        <Grid size={{ xs: 2 }}>
-                                            <Box sx={{ width: '100%', height: 40, bgcolor: selectedSite ? '#9C27B0' : '#E0E0E0', borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 900, fontSize: '0.8rem', transition: '0.3s' }}>
-                                                {selectedSite || '?'}
-                                            </Box>
-                                        </Grid>
-                                    </>
-                                ) : (
-                                    <Grid size={{ xs: 12 }}>
-                                        <Typography variant="overline" sx={{ fontWeight: 900, color: '#D32F2F', textAlign: 'center', display: 'block', letterSpacing: 2 }}>
-                                            {examMarkers.length} CLINICAL OBSERVATIONS MARKED
-                                        </Typography>
-                                    </Grid>
-                                )}
-                            </Grid>
-                        </Box>
-                    </Collapse>
-                </Paper>
-                </Grid>
-
-            {/* MODULE 9: SURGICAL SAFETY & PROTOCOLS */}
-            <Grid size={{ xs: 12 }} sx={{ display: 'flex' }}>
-                    <Paper 
-                        ref={surgeryRef}
-                        className={`elevate-module ${focusedModule && focusedModule !== 'surgery' ? 'dim-overlay' : ''}`}
-                        sx={{ ...glassStyle, p: 3, borderLeft: '8px solid #D32F2F', flex: 1, display: 'flex', flexDirection: 'column' }}
-                    >
-                        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: expandedModules.has('surgery') ? 2 : 0 }}>
-                            <Typography variant="h6" fontWeight={900} color="#3E2723" sx={{ display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer' }} onClick={() => toggleModule('surgery')}>
-                                <WarningIcon sx={{ color: '#D32F2F' }} /> Surgical Safety Audit
-                            </Typography>
-                            <IconButton size="small" onClick={() => toggleModule('surgery')} sx={{ p: 1.5, color: '#D32F2F' }}>
-                                <KeyboardArrowUpIcon sx={{ transform: expandedModules.has('surgery') ? 'rotate(0deg)' : 'rotate(180deg)', transition: '0.3s' }} />
-                            </IconButton>
-                        </Stack>
-
-                        <Collapse in={expandedModules.has('surgery')}>
-                            <Box sx={{ maxWidth: 800, mx: 'auto', width: '100%' }}>
-                                <Box sx={{ bgcolor: 'rgba(211, 47, 47, 0.05)', p: 1.5, borderRadius: 2, border: '1px solid rgba(211, 47, 47, 0.1)' }}>
-                                    <Grid container spacing={1}>
-                                        {[
-                                            { id: 'preOpExam', label: 'PRE-OP EXAM DONE' },
-                                            { id: 'equipmentOk', label: 'ANESTHESIA CALIBRATED' },
-                                            { id: 'spongeCount', label: 'SPONGE COUNT INITIALIZED' },
-                                            { id: 'postOpVitals', label: 'RECOVERY MONITOR ASSIGNED' }
-                                        ].map(task => (
-                                            <Grid key={task.id} size={{ xs: 12, md: 6 }}>
-                                                <Box 
-                                                    sx={{ display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer', p: 0.75, bgcolor: surgicalChecklist[task.id] ? 'white' : 'transparent', borderRadius: 1.5, border: '1px solid transparent', '&:hover': { bgcolor: 'white' } }} 
-                                                    onClick={() => updateSurgical(task.id)}
-                                                >
-                                                    <Box sx={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid #D32F2F', bgcolor: surgicalChecklist[task.id] ? '#D32F2F' : 'transparent', flexShrink: 0, transition: '0.2s' }} />
-                                                    <Typography variant="caption" sx={{ fontWeight: 900, fontSize: '0.65rem', color: surgicalChecklist[task.id] ? '#D32F2F' : '#757575', letterSpacing: '0.01em' }}>{task.label}</Typography>
-                                                </Box>
-                                            </Grid>
-                                        ))}
-                                    </Grid>
-                                </Box>
-
-                                <Grid container spacing={1.5} sx={{ mt: 1.5 }}>
-                                    <Grid size={{ xs: 4 }}><TextField label="INDUCTION" size="small" type="time" fullWidth value={surgicalChecklist.inductionTime} onChange={(e) => setSurgicalChecklist(p => ({...p, inductionTime: e.target.value}))} slotProps={{ inputLabel: { shrink: true }, input: { sx: { fontWeight: 900, fontSize: '0.75rem', background: 'white' } } }} /></Grid>
-                                    <Grid size={{ xs: 4 }}><TextField label="RECOVERY" size="small" type="time" fullWidth value={surgicalChecklist.recoveryTime} onChange={(e) => setSurgicalChecklist(p => ({...p, recoveryTime: e.target.value}))} slotProps={{ inputLabel: { shrink: true }, input: { sx: { fontWeight: 900, fontSize: '0.75rem', background: 'white' } } }} /></Grid>
-                                    <Grid size={{ xs: 4 }}><TextField label="EBL (ML)" size="small" type="number" fullWidth value={surgicalChecklist.ebl} onChange={(e) => setSurgicalChecklist(p => ({...p, ebl: e.target.value}))} slotProps={{ input: { sx: { fontWeight: 900, fontSize: '0.75rem', background: 'white' } } }} /></Grid>
-                                </Grid>
-
-                                <Box sx={{ mt: 2, textAlign: 'center' }}>
-                                    <Typography variant="caption" sx={{ color: '#D32F2F', fontWeight: 900, letterSpacing: 2, fontSize: '0.65rem' }}>
-                                        {Object.values(surgicalChecklist).filter(v => typeof v === 'boolean').every(v => v) ? "✅ AUDIT CLEARED" : "⚠️ PROTOCOLS PENDING"}
-                                    </Typography>
-                                </Box>
-                            </Box>
-                        </Collapse>
-                    </Paper>
-                </Grid>
-
-            {/* MODULE 10: REHAB & MOBILITY HUB */}
-            <Grid size={{ xs: 12 }} sx={{ display: 'flex' }}>
-                    <Paper 
-                        ref={rehabRef}
-                        className={`elevate-module ${focusedModule && focusedModule !== 'rehab' ? 'dim-overlay' : ''}`}
-                        sx={{ ...glassStyle, p: 3, borderLeft: '8px solid #455A64', flex: 1 }}
-                    >
-                        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: expandedModules.has('rehab') ? 2 : 0 }}>
-                            <Typography variant="h6" fontWeight={900} color="#3E2723" sx={{ display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer' }} onClick={() => toggleModule('rehab')}>
-                                <BoltIcon sx={{ color: '#455A64' }} /> Rehab & Mobility Hub
-                            </Typography>
-                            <IconButton size="small" onClick={() => toggleModule('rehab')} sx={{ p: 1.5, color: '#455A64' }}>
-                                <KeyboardArrowUpIcon sx={{ transform: expandedModules.has('rehab') ? 'rotate(0deg)' : 'rotate(180deg)', transition: '0.3s', fontSize: 24 }} />
-                            </IconButton>
-                        </Stack>
-
-                        <Collapse in={expandedModules.has('rehab')}>
-                            <Grid container spacing={3}>
-                                <Grid size={{ xs: 12, md: 4 }}>
-                                    <Typography variant="caption" sx={{ fontWeight: 900, color: '#455A64', mb: 1.5, display: 'block', letterSpacing: 1 }}>LAMENESS CLASSIFICATION</Typography>
-                                    <Box sx={{ px: 1, bgcolor: 'rgba(0,0,0,0.02)', p: 2, borderRadius: 3, border: '1px solid rgba(0,0,0,0.05)' }}>
-                                        <input 
-                                            type="range" min="0" max="5" step="1" 
-                                            value={lamenessGrade} onChange={(e) => { setLamenessGrade(parseInt(e.target.value)); setIsDirty(true); }}
-                                            style={{ width: '100%', accentColor: '#455A64' }} 
-                                        />
-                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
-                                            {['NORM', 'MILD', 'MOD', 'SEV', 'NWB'].map((label, i) => (
-                                                <Typography key={i} variant="caption" sx={{ fontSize: '0.6rem', fontWeight: 900, color: lamenessGrade === i ? '#455A64' : '#BBB' }}>{label}</Typography>
-                                            ))}
-                                        </Box>
-                                    </Box>
-                                    <Typography variant="caption" sx={{ fontWeight: 900, color: '#455A64', mt: 3, mb: 1, display: 'block', letterSpacing: 1 }}>NEUROLOGICAL STATUS</Typography>
-                                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                        {['cpDeficit', 'ataxia', 'knuckling', 'proprioception'].map(id => (
-                                            <Chip 
-                                                key={id} label={id.toUpperCase()} size="small"
-                                                onClick={() => { setNeuromuscular(prev => ({ ...prev, [id]: !prev[id] })); setIsDirty(true); }}
-                                                sx={{ 
-                                                    fontWeight: 900, fontSize: '0.55rem', height: 22,
-                                                    bgcolor: neuromuscular[id] ? '#455A64' : 'white',
-                                                    color: neuromuscular[id] ? 'white' : '#455A64',
-                                                    border: `1px solid ${neuromuscular[id] ? '#455A64' : '#E0E0E0'}`,
-                                                    '&:hover': { bgcolor: neuromuscular[id] ? '#37474F' : 'rgba(0,0,0,0.02)' }
-                                                }} 
-                                            />
-                                        ))}
-                                    </Box>
-                                </Grid>
-                                <Grid size={{ xs: 12, md: 8 }}>
-                                    <Typography variant="caption" sx={{ fontWeight: 900, color: '#455A64', mb: 1, display: 'block', letterSpacing: 1 }}>GONIOMETRIC RANGE OF MOTION (ROM)</Typography>
-                                    <Grid container spacing={1}>
-                                        {['stifle', 'hip', 'elbow', 'shoulder'].map(joint => (
-                                            <Grid key={joint} size={{ xs: 6 }}>
-                                                <Box sx={{ p: 1, bgcolor: 'rgba(0,0,0,0.02)', borderRadius: 2, border: '1px solid rgba(0,0,0,0.05)' }}>
-                                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', mb: 1 }}>
-                                                        <Typography variant="caption" sx={{ fontWeight: 900, textTransform: 'uppercase', color: '#455A64', fontSize: '0.6rem' }}>{joint}</Typography>
-                                                        {/* 🧬 SYMMETRY DELTA (NEW) */}
-                                                        {parseFloat(jointROM[joint].lFlex) && parseFloat(jointROM[joint].rFlex) ? (
-                                                            <Typography variant="caption" sx={{ fontSize: '0.55rem', fontWeight: 900, color: Math.abs(parseFloat(jointROM[joint].lFlex) - parseFloat(jointROM[joint].rFlex)) > 10 ? '#D32F2F' : '#2E7D32' }}>
-                                                                Î” {Math.abs(parseFloat(jointROM[joint].lFlex) - parseFloat(jointROM[joint].rFlex))}Â°
-                                                            </Typography>
-                                                        ) : null}
-                                                    </Box>
-                                                    <Grid container spacing={0.5}>
-                                                          {['L', 'R'].map(side => (
-                                                              <React.Fragment key={side}>
-                                                                   <Grid size={{ xs: 6 }}>
-                                                                       <TextField 
-                                                                           label={`${side} FLEX°`} size="small" placeholder={getNormalROM(joint, 'flexion').toString()}
-                                                                           value={jointROM[joint][`${side.toLowerCase()}Flex`] || ''} 
-                                                                           onChange={(e) => {
-                                                                               setJointROM(prev => ({ ...prev, [joint]: { ...prev[joint], [`${side.toLowerCase()}Flex`]: e.target.value } }));
-                                                                               setIsDirty(true);
-                                                                           }}
-                                                                           slotProps={{ input: { sx: { fontWeight: 900, fontSize: '0.65rem', background: 'white' } }, inputLabel: { sx: { fontWeight: 900, fontSize: '0.55rem' } } }}
-                                                                       />
-                                                                   </Grid>
-                                                                   <Grid size={{ xs: 6 }}>
-                                                                       <TextField 
-                                                                           label={`${side} EXT°`} size="small" placeholder={getNormalROM(joint, 'extension').toString()}
-                                                                           value={jointROM[joint][`${side.toLowerCase()}Ext`] || ''} 
-                                                                           onChange={(e) => {
-                                                                               setJointROM(prev => ({ ...prev, [joint]: { ...prev[joint], [`${side.toLowerCase()}Ext`]: e.target.value } }));
-                                                                               setIsDirty(true);
-                                                                           }}
-                                                                           slotProps={{ input: { sx: { fontWeight: 900, fontSize: '0.65rem', background: 'white' } }, inputLabel: { sx: { fontWeight: 900, fontSize: '0.55rem' } } }}
-                                                                       />
-                                                                   </Grid>
-                                                              </React.Fragment>
-                                                          ))}
-                                                    </Grid>
-                                                </Box>
-                                            </Grid>
-                                        ))}
-                                    </Grid>
-                                </Grid>
-                            </Grid>
-                        </Collapse>
-                    </Paper>
-                </Grid>
-
-            {/* ── PILLAR 4: UNIVERSAL LOGISTICS (PHARMACY & LABS) ── */}
-            {/* MODULE 6: STAFF PRIVATE NOTES */}
-            <Grid size={{ xs: 12, lg: 12 }} sx={{ display: 'flex' }}>
-            <Paper 
-                className={`elevate-module ${focusedModule && focusedModule !== 'internal' ? 'dim-overlay' : ''}`}
-                sx={{ ...glassStyle, p: 3, borderLeft: '8px solid #546E7A', transition: 'all 0.4s ease', flex: 1, display: 'flex', flexDirection: 'column' }}
-            >
-                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: expandedModules.has('internal') ? 1 : 0 }}>
-                    <Typography variant="h6" fontWeight={900} color="#3E2723" sx={{ display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer' }} onClick={() => toggleModule('internal')}>
-                        <InfoIcon sx={{ color: '#546E7A' }} /> Internal Context & Logs
-                    </Typography>
-                    <IconButton size="small" onClick={() => toggleModule('internal')} sx={{ p: 1.5, color: '#546E7A' }}>
-                        <KeyboardArrowUpIcon sx={{ transform: expandedModules.has('internal') ? 'rotate(0deg)' : 'rotate(180deg)', transition: '0.3s', fontSize: 24 }} />
-                    </IconButton>
-                </Stack>
-
-                <Collapse in={expandedModules.has('internal')}>
-                    <Typography variant="caption" color="textSecondary" sx={{ mb: 2, display: 'block', fontWeight: 900, letterSpacing: '0.02em', fontSize: '0.65rem' }}>STAFF-ONLY NOTES & BILLING CONTEXT</Typography>
-                    <Box sx={{ maxWidth: 800, mx: 'auto', width: '100%', flex: 1, display: 'flex' }}>
-                        <TextField 
-                            multiline rows={4} fullWidth 
-                            onFocus={() => setFocusedModule('internal')}
-                            onBlur={() => setFocusedModule(null)}
-                            placeholder="E.g. Client requested a detailed receipt; behavior was combative..." 
-                            slotProps={{ input: { sx: { fontWeight: 900, fontSize: '0.75rem', p: 2, background: 'white' } } }}
-                        />
-                    </Box>
-                </Collapse>
-            </Paper>
-            </Grid>
-
-            {/* MODULE 7: CLINICAL DOSE CALCULATOR */}
-            <Grid size={{ xs: 12, lg: 12 }} sx={{ display: 'flex' }}>
-            <Paper 
-                className={`elevate-module ${focusedModule && focusedModule !== 'calc' ? 'dim-overlay' : ''}`}
-                sx={{ ...glassStyle, p: 3, borderLeft: '8px solid #FF8F00', flex: 1, display: 'flex', flexDirection: 'column' }}
-            >
-                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: expandedModules.has('calc') ? 1 : 0 }}>
-                    <Typography variant="h6" fontWeight={900} color="#3E2723" sx={{ display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer' }} onClick={() => toggleModule('calc')}>
-                        <CalculateIcon sx={{ color: '#FF8F00' }} /> Precision Dose Math
-                    </Typography>
-                    <IconButton size="small" onClick={() => toggleModule('calc')} sx={{ color: '#FF8F00' }}>
-                        <KeyboardArrowUpIcon sx={{ transform: expandedModules.has('calc') ? 'rotate(0deg)' : 'rotate(180deg)', transition: '0.3s' }} />
-                    </IconButton>
-                </Stack>
-
-                <Collapse in={expandedModules.has('calc')}>
-                    <Box sx={{ maxWidth: 500, mx: 'auto', width: '100%', textAlign: 'center' }}>
-                        <Box sx={{ bgcolor: '#FFF8E1', p: 1, borderRadius: 2, mb: 1.5, border: '1px solid #FFE082', display: 'flex', justifyContent: 'center' }}>
-                            <Typography variant="h5" fontWeight={900} color="#FF8F00" sx={{ letterSpacing: -1 }}>
-                                {calcResult > 0 ? `${calcResult.toFixed(2)} mL` : '0.00 mL'}
-                            </Typography>
-                        </Box>
-
-                        <Grid container spacing={1}>
-                            <Grid size={{ xs: 6 }}>
-                                <TextField 
-                                    label="DOSE (mg/kg)" size="small" fullWidth type="number"
-                                    value={calcDose} onChange={(e) => setCalcDose(e.target.value)}
-                                    onFocus={() => setFocusedModule('calc')} onBlur={() => setFocusedModule(null)}
-                                    slotProps={{ input: { sx: { fontWeight: 900, fontSize: '0.75rem', background: 'white' } }, inputLabel: { sx: { fontWeight: 900, fontSize: '0.65rem' } } }}
-                                />
-                            </Grid>
-                            <Grid size={{ xs: 6 }}>
-                                <TextField 
-                                    label="CONC (mg/mL)" size="small" fullWidth type="number"
-                                    value={calcConc} onChange={(e) => setCalcConc(e.target.value)}
-                                    onFocus={() => setFocusedModule('calc')} onBlur={() => setFocusedModule(null)}
-                                    slotProps={{ input: { sx: { fontWeight: 900, fontSize: '0.75rem', background: 'white' } }, inputLabel: { sx: { fontWeight: 900, fontSize: '0.65rem' } } }}
-                                />
-                            </Grid>
-                        </Grid>
-
-                        <Button 
-                            variant="outlined" fullWidth 
-                            onClick={handlePushDoseToCart}
-                            sx={{ 
-                                mt: 2, fontWeight: 900, borderRadius: 2, py: 0.75, fontSize: '0.75rem',
-                                border: '1px solid rgba(0,0,0,0.1)', borderLeft: '4px solid #FF8F00',
-                                bgcolor: 'rgba(0,0,0,0.02)', color: '#FF8F00',
-                                '&:hover': { bgcolor: 'rgba(255, 143, 0, 0.05)' }
-                            }}
-                            startIcon={<BoltIcon />}
-                        >
-                            PUSH TO TREATMENT PLAN
-                        </Button>
-                    </Box>
-                </Collapse>
-            </Paper>
-            </Grid>
-
-            <Grid size={{ xs: 12, lg: 12 }} sx={{ display: 'flex' }}>
-            {/* MODULE 3: TREATMENT PLAN & RX */}
-            <Paper 
-                ref={treatmentRef}
-                className={`${activeHighlight === 'treatment' ? 'highlight-module' : ''} elevate-module ${focusedModule && focusedModule !== 'treatment' ? 'dim-overlay' : ''}`}
-                sx={{ ...glassStyle, p: 3, borderLeft: `8px solid ${COLORS.accent}`, transition: 'all 0.4s ease' }}
-            >
-                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: expandedModules.has('rx') ? 1 : 0 }}>
-                    <Typography variant="h6" fontWeight={900} color="#3E2723" sx={{ display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer' }} onClick={() => toggleModule('rx')}>
-                        <ReceiptLongIcon sx={{ color: COLORS.accent }} /> Treatment Plan & E-Prescribe
-                    </Typography>
-                    <IconButton size="small" onClick={() => toggleModule('rx')} sx={{ p: 1.5, color: COLORS.accent }}>
-                        <KeyboardArrowUpIcon sx={{ transform: expandedModules.has('rx') ? 'rotate(0deg)' : 'rotate(180deg)', transition: '0.3s', fontSize: 24 }} />
-                    </IconButton>
-                </Stack>
-
-                <Collapse in={expandedModules.has('rx')}>
-                    <Typography variant="caption" color="textSecondary" sx={{ mb: 2, display: 'block', fontWeight: 900, letterSpacing: '0.02em', fontSize: '0.65rem' }}>BILLING ITEMS & PHARMACEUTICAL LOGISTICS</Typography>
-                
-                <Box sx={{ display: 'flex', gap: 1, mb: 3 }}>
-                    <FormControl size="small" fullWidth sx={{ bgcolor: 'white', borderRadius: 2 }}>
-                        <InputLabel>Add Services or Meds</InputLabel>
-                        <Select value={selectedRxItem} label="Add Services or Meds" onChange={e=>setSelectedRxItem(e.target.value)}>
-                            <ListSubheader sx={{fontWeight: 900, bgcolor: '#F5F5F5', color: COLORS.brand}}>MEDICINES & VACCINES</ListSubheader>
-                            {inventoryList.filter(i => i.category === 'Medicine' || i.category === 'Vaccine').map(i => <MenuItem key={`product|${i.id}`} value={`product|${i.id}`}>{i.itemName} (Stock: {i.stock})</MenuItem>)}
-                            <ListSubheader sx={{fontWeight: 900, bgcolor: '#F5F5F5', color: COLORS.brand}}>CLINIC SERVICES (Add-ons)</ListSubheader>
-                            {servicesList.filter(s => s.name !== patient?.serviceType).map(s => <MenuItem key={`service|${s.id}`} value={`service|${s.id}`}>{s.name} (+₱{s.price})</MenuItem>)}
-                        </Select>
-                    </FormControl>
-                    <Button variant="contained" onClick={handleAddRx} sx={{ minWidth: 50, borderRadius: 2, bgcolor: COLORS.brand }}><AddCircleIcon/></Button>
-                </Box>
-
-                <Stack spacing={1.5}>
-                    {rxCart.map((rx, idx) => {
-                        const freqMultiplier = { 'SID': 1, 'BID': 2, 'TID': 3, 'QID': 4, 'EOD': 0.5, 'PRN': 1 };
-                        
-                        // --- 🧬 THE PREDICTIVE MATH ENGINE ---
-                        const updatePredictiveQty = (newSig) => {
-                            const d = parseFloat(newSig.dose) || 0;
-                            const f = freqMultiplier[newSig.frequency] || 1;
-                            const dur = parseFloat(newSig.duration) || 1;
-                            const calculatedQty = rx.isDispensed ? (d * f * dur) : (parseFloat(newSig.dose) || 1);
-                            
-                            const newCart = [...rxCart];
-                            newCart[idx].sig = newSig;
-                            newCart[idx].qty = calculatedQty;
-                            setRxCart(newCart);
-                        };
-
-                        return (
-                        <Box key={idx} sx={{ 
-                            display: 'flex', flexDirection: 'column', bgcolor: rx.isBase ? `${COLORS.accentLight}10` : 'white', 
-                            p: 2, borderRadius: 2, border: `1px solid ${rx.isBase ? COLORS.accentLight : COLORS.borderLight}`, 
-                            boxShadow: '0 2px 8px rgba(39,23,17,0.04)', position: 'relative', overflow: 'hidden'
-                        }}>
-                            {/* INTENT HEADER */}
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                    <Avatar sx={{ width: 32, height: 32, bgcolor: rx.isDrug ? `${COLORS.rxText}10` : `${COLORS.brand}10`, color: rx.isDrug ? COLORS.rxText : COLORS.brand }}>
-                                        {rx.isDrug ? <MedicationIcon fontSize="small"/> : <MedicalServicesIcon fontSize="small"/>}
-                                    </Avatar>
-                                    <Box>
-                                        <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', fontWeight: 900, color: COLORS.brand }}>{rx.name}</Typography>
-                                        <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, color: COLORS.textMuted }}>{rx.type?.toUpperCase()}</Typography>
-                                    </Box>
-                                </Box>
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                    {rx.isDrug && (
-                                        <Stack direction="row" spacing={0.5} sx={{ bgcolor: '#F5F5F5', p: 0.5, borderRadius: 2 }}>
-                                            <Button 
-                                                size="small" onClick={() => handleUpdateRxField(idx, 'isDispensed', false)}
-                                                sx={{ fontSize: '0.6rem', fontWeight: 900, minWidth: 50, height: 24, bgcolor: !rx.isDispensed ? 'white' : 'transparent', color: !rx.isDispensed ? COLORS.brand : COLORS.textMuted, boxShadow: !rx.isDispensed ? 1 : 0 }}
-                                            >🏥 CLINIC</Button>
-                                            <Button 
-                                                size="small" onClick={() => handleUpdateRxField(idx, 'isDispensed', true)}
-                                                sx={{ fontSize: '0.6rem', fontWeight: 900, minWidth: 50, height: 24, bgcolor: rx.isDispensed ? 'white' : 'transparent', color: rx.isDispensed ? COLORS.brand : COLORS.textMuted, boxShadow: rx.isDispensed ? 1 : 0 }}
-                                            >🏠 HOME</Button>
-                                        </Stack>
-                                    )}
-                                    {!rx.isBase && <IconButton size="small" color="error" onClick={()=>handleRemoveRx(idx)}><CloseIcon sx={{fontSize: 16}}/></IconButton>}
-                                </Box>
-                            </Box>
-
-                            {/* MEDICAL PARAMETERS (SIG BUILDER) */}
-                            {rx.isDrug && (
-                                <Box sx={{ bgcolor: '#FDFCFB', p: 1.5, borderRadius: 2, border: '1px dashed #E0E0E0', mb: 1.5 }}>
-                                    <Grid container spacing={1}>
-                                        <Grid size={{ xs: 3 }}>
-                                            <TextField 
-                                                label="Dose" variant="standard" size="small" type="number"
-                                                value={rx.sig?.dose} onChange={(e) => updatePredictiveQty({ ...rx.sig, dose: e.target.value })}
-                                                InputLabelProps={{ shrink: true, style: { fontSize: '0.65rem', fontWeight: 900 } }}
-                                                InputProps={{ style: { fontSize: '0.75rem', fontWeight: 900, color: COLORS.rxText } }}
-                                            />
-                                        </Grid>
-                                        <Grid size={{ xs: 3 }}>
-                                            <TextField 
-                                                label="Unit" variant="standard" size="small"
-                                                value={rx.sig?.unit} onChange={(e) => updatePredictiveQty({ ...rx.sig, unit: e.target.value })}
-                                                InputLabelProps={{ shrink: true, style: { fontSize: '0.65rem', fontWeight: 900 } }}
-                                                InputProps={{ style: { fontSize: '0.75rem', fontWeight: 700 } }}
-                                            />
-                                        </Grid>
-                                        <Grid size={{ xs: 3 }}>
-                                            <FormControl variant="standard" fullWidth size="small">
-                                                <InputLabel shrink style={{ fontSize: '0.65rem', fontWeight: 900 }}>Freq</InputLabel>
-                                                <Select value={rx.sig?.frequency} onChange={(e) => updatePredictiveQty({ ...rx.sig, frequency: e.target.value })} sx={{ fontSize: '0.75rem', fontWeight: 800 }}>
-                                                    <MenuItem value="SID">SID</MenuItem>
-                                                    <MenuItem value="BID">BID</MenuItem>
-                                                    <MenuItem value="TID">TID</MenuItem>
-                                                    <MenuItem value="QID">QID</MenuItem>
-                                                    <MenuItem value="EOD">EOD</MenuItem>
-                                                    <MenuItem value="PRN">PRN</MenuItem>
-                                                </Select>
-                                            </FormControl>
-                                        </Grid>
-                                        <Grid size={{ xs: 3 }}>
-                                            <TextField 
-                                                label="Days" variant="standard" size="small" type="number"
-                                                value={rx.sig?.duration} onChange={(e) => updatePredictiveQty({ ...rx.sig, duration: e.target.value })}
-                                                InputLabelProps={{ shrink: true, style: { fontSize: '0.65rem', fontWeight: 900 } }}
-                                                InputProps={{ style: { fontSize: '0.75rem', fontWeight: 900 } }}
-                                            />
-                                        </Grid>
-                                    </Grid>
-                                    
-                                    {/* STRUCTURED SIG PREVIEW */}
-                                    <Typography sx={{ mt: 1.5, fontSize: '0.7rem', fontWeight: 800, color: '#B45309', bgcolor: '#FFFBEB', px: 1, py: 0.5, borderRadius: 1, borderLeft: '3px solid #D97706' }}>
-                                        💬 SIG: Give {rx.sig?.dose} {rx.sig?.unit} {rx.route || 'SQ'} {rx.sig?.frequency} for {rx.sig?.duration} days.
-                                    </Typography>
-                                </Box>
-                            )}
-
-                            {/* LOGISTICS & BILLING PREVIEW */}
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 'auto' }}>
-                                <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
-                                    <Box>
-                                        <Typography sx={{ fontSize: '0.6rem', fontWeight: 800, color: COLORS.textMuted, textTransform: 'uppercase' }}>Dispense Qty</Typography>
-                                        <Typography sx={{ fontSize: '0.85rem', fontWeight: 900, color: COLORS.brand }}>
-                                            {rx.qty} <span style={{fontSize: '0.65rem'}}>{rx.sig?.unit || 'units'}</span>
-                                        </Typography>
-                                    </Box>
-                                    <Divider orientation="vertical" flexItem />
-                                    <Box>
-                                        <Typography sx={{ fontSize: '0.6rem', fontWeight: 800, color: COLORS.textMuted, textTransform: 'uppercase' }}>Subtotal</Typography>
-                                        <Typography sx={{ fontSize: '0.85rem', fontWeight: 900, color: COLORS.brand }}>₱{(rx.price * rx.qty).toLocaleString()}</Typography>
-                                    </Box>
-                                </Box>
-                                {rx.isDrug && (
-                                    <TextField 
-                                        label="Lot #" variant="outlined" size="small" 
-                                        sx={{ width: 80, '& .MuiInputBase-input': { fontSize: '0.65rem', fontWeight: 900, p: 1 } }}
-                                        value={rx.lotNumber || ''} onChange={(e) => handleUpdateRxField(idx, 'lotNumber', e.target.value)}
-                                    />
-                                )}
-                            </Box>
-                        </Box>
-                        );
-                    })}
-                </Stack>
-                </Collapse>
-            </Paper>
-            </Grid>
-
-            <Grid size={{ xs: 12, lg: 12 }} sx={{ display: 'flex' }}>
-            {/* MODULE 4: DIAGNOSTICS & LABS (NEW PILAR) */}
-            {/* MODULE 4: DIAGNOSTICS & LABS */}
-            <Paper 
-                ref={diagnosticsRef}
-                className={`${activeHighlight === 'diagnostics' ? 'highlight-module' : ''} elevate-module ${focusedModule && focusedModule !== 'diagnostics' ? 'dim-overlay' : ''}`}
-                sx={{ ...glassStyle, p: 3, borderLeft: '8px solid #1976D2', transition: 'all 0.4s ease', flex: 1, display: 'flex', flexDirection: 'column' }}
-            >
-                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: expandedModules.has('diagnostics') ? 1 : 0 }}>
-                    <Typography variant="h6" fontWeight={900} color="#3E2723" sx={{ display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer' }} onClick={() => toggleModule('diagnostics')}>
-                        <LocalHospitalIcon sx={{ color: '#1976D2' }} /> Diagnostics & Lab Findings
-                    </Typography>
-                    <IconButton size="small" onClick={() => toggleModule('diagnostics')} sx={{ color: '#1976D2' }}>
-                        <KeyboardArrowUpIcon sx={{ transform: expandedModules.has('diagnostics') ? 'rotate(0deg)' : 'rotate(180deg)', transition: '0.3s' }} />
-                    </IconButton>
-                </Stack>
-
-                <Collapse in={expandedModules.has('diagnostics')}>
-                    <Typography variant="caption" color="textSecondary" sx={{ mb: 2, display: 'block', fontWeight: 900, letterSpacing: '0.02em', fontSize: '0.65rem' }}>ENTER LAB SUMMARIES & IMAGING OBSERVATIONS</Typography>
-                    <Box sx={{ maxWidth: 800, mx: 'auto', width: '100%', flex: 1, display: 'flex' }}>
-                        <TextField 
-                          multiline rows={3} fullWidth 
-                          onFocus={() => setFocusedModule('diagnostics')}
-                          onBlur={() => setFocusedModule(null)}
-                          placeholder="Bloodwork findings..." 
-                          slotProps={{ input: { sx: { fontWeight: 900, fontSize: '0.75rem', p: 2, background: 'white' } } }}
-                        />
-                    </Box>
-                </Collapse>
-            </Paper>
-            </Grid>
-
-            <Grid size={{ xs: 12, lg: 12 }} sx={{ display: 'flex' }}>
-            <Paper 
-                ref={dischargeRef}
-                className={`${activeHighlight === 'discharge' ? 'highlight-module' : ''} elevate-module ${focusedModule && focusedModule !== 'discharge' ? 'dim-overlay' : ''}`}
-                sx={{ ...glassStyle, p: 3, borderLeft: '8px solid #2E7D32', transition: 'all 0.4s ease', flex: 1, display: 'flex', flexDirection: 'column' }}
-            >
-                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: expandedModules.has('discharge') ? 1 : 0 }}>
-                    <Typography variant="h6" fontWeight={900} color="#3E2723" sx={{ display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer' }} onClick={() => toggleModule('discharge')}>
-                        <ExitToAppIcon sx={{ color: '#2E7D32' }} /> Discharge & Follow-up
-                    </Typography>
-                    <IconButton size="small" onClick={() => toggleModule('discharge')} sx={{ color: '#2E7D32' }}>
-                        <KeyboardArrowUpIcon sx={{ transform: expandedModules.has('discharge') ? 'rotate(0deg)' : 'rotate(180deg)', transition: '0.3s' }} />
-                    </IconButton>
-                </Stack>
-
-                <Collapse in={expandedModules.has('discharge')}>
-                    <Typography variant="caption" color="textSecondary" sx={{ mb: 2, display: 'block', fontWeight: 900, letterSpacing: '0.02em', fontSize: '0.65rem' }}>TAKE HOME INSTRUCTIONS & FOLLOW-UP SCHEDULING</Typography>
-                    <Box sx={{ bgcolor: '#F1F8E9', p: 2, borderRadius: 2, mb: 1, border: '1px solid #C8E6C9' }}>
-                        <Typography variant="caption" fontWeight={900} color="#2E7D32">TAKE HOME PREVIEW:</Typography>
-                        <Typography variant="body2" sx={{ mt: 0.5, fontStyle: 'italic', color: '#1B5E20', fontSize: '0.75rem' }}>
-                            {soapData.plan || "Instructions will populate from the 'Plan' section."}
-                        </Typography>
-                    </Box>
-                    <TextField 
-                      select label="NEXT FOLLOW-UP" size="small" fullWidth 
-                      value={soapData.nextVisit} 
-                      onChange={(e)=>updateSoap('nextVisit', e.target.value)}
-                      onFocus={() => setFocusedModule('discharge')}
-                      onBlur={() => setFocusedModule(null)}
-                      slotProps={{ input: { sx: { fontWeight: 900, fontSize: '0.75rem', background: 'white' } }, inputLabel: { sx: { fontWeight: 900, fontSize: '0.65rem' } } }}
-                      sx={{ mt: 'auto' }}
-                    >
-                        <MenuItem value="1 week">In 1 week</MenuItem>
-                        <MenuItem value="2 weeks">In 2 weeks</MenuItem>
-                        <MenuItem value="1 month">In 1 month</MenuItem>
-                        <MenuItem value="none">PRN (As needed)</MenuItem>
-                    </TextField>
-                </Collapse>
-            </Paper>
-            </Grid>
-
-
-
-
-
-            <Grid size={{ xs: 12 }}>
-              <Box sx={{ py: 4, textAlign: 'center' }}>
-                  {/* 🧬 SHIFT 5.6: CLINICAL SOVEREIGNTY SYNC BOX */}
-                  {!isRecordLocked && (
-                      <Box sx={{ 
-                          maxWidth: 800, mx: 'auto', mb: 4, p: 3, 
-                          bgcolor: '#FFF8E1', border: '1px solid #FFD54F', borderLeft: '8px solid #FF8F00',
-                          textAlign: 'left', borderRadius: 2, boxShadow: '0 8px 32px rgba(255, 143, 0, 0.1)'
-                      }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 1.5 }}>
-                              <WarningIcon sx={{ color: '#FF8F00', fontSize: 28 }} />
-                              <Typography variant="h6" sx={{ fontWeight: 900, color: '#FF8F00', letterSpacing: 0.5 }}>⚠️ PERMANENT CRM DATA SYNCHRONIZATION</Typography>
-                          </Box>
-                          <Typography variant="body2" sx={{ fontWeight: 700, color: '#5D4037', lineHeight: 1.6, mb: 2 }}>
-                              By enabling this toggle, you are authorizing the system to overwrite the <b>Master CRM Record</b> (Owner Info & Pet Biometrics) with today's intake corrections. This action is <b>irreversible</b> and establishes a new baseline for all future clinical visits and historical audits.
-                          </Typography>
-                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, bgcolor: 'rgba(0,0,0,0.03)', borderRadius: 1 }}>
-                              <Typography sx={{ fontWeight: 900, fontSize: '0.8rem', color: '#3E2723' }}>PROPAGATE CHANGES TO MASTER DATABASE</Typography>
-                              <FormControlLabel
-                                  control={<Switch checked={syncToCRM} onChange={(e) => setSyncToCRM(e.target.checked)} color="warning" />}
-                                  label={syncToCRM ? "AUTHORIZED" : "LOCALIZED ONLY"}
-                                  labelPlacement="start"
-                                  sx={{ '& .MuiFormControlLabel-label': { fontWeight: 1000, fontSize: '0.7rem', mr: 2, color: syncToCRM ? '#2E7D32' : '#757575' } }}
-                              />
-                          </Box>
-                      </Box>
-                  )}
-
-                  {!isRecordLocked ? (
-                      <>
-                        <Typography variant="body2" color="textSecondary" sx={{ fontStyle: 'italic', mb: 2, fontSize: '0.7rem' }}>Authorized Clinician: <span style={{fontWeight: 900, color: COLORS.brand}}>{auth.currentUser?.displayName || 'Session User'}</span></Typography>
-                        <Stack direction="row" spacing={2} justifyContent="center">
-                            <Button 
-                                variant="outlined" size="large" 
-                                onClick={() => setOwnerSignature(`signed_${Date.now()}`)} 
-                                startIcon={<HistoryEduIcon />}
-                                sx={{ 
-                                    fontWeight: 900, borderRadius: 2, px: 4, 
-                                    border: '1px solid rgba(0,0,0,0.1)', borderLeft: '4px solid #5D4037',
-                                    bgcolor: 'rgba(0,0,0,0.02)', color: '#5D4037',
-                                    '&:hover': { bgcolor: 'rgba(93, 64, 55, 0.05)' }
-                                }}
-                            >
-                                {ownerSignature ? "CONSENT SIGNED ✅" : "SIGN DIGITAL CONSENT"}
-                            </Button>
-                            <Button 
-                                variant="outlined" size="large" onClick={handleSaveConsult} disabled={loading || !ownerSignature} 
-                                sx={{ 
-                                    fontWeight: 900, borderRadius: 2, px: 6, 
-                                    border: '1px solid rgba(0,0,0,0.1)', borderLeft: '4px solid #2E7D32',
-                                    bgcolor: 'rgba(0,0,0,0.02)', color: '#2E7D32',
-                                    '&:hover': { bgcolor: 'rgba(46, 125, 50, 0.05)' }
-                                }}
-                            >
-                                {loading ? "FINALIZING..." : "FINALIZE & SEAL RECORD"}
-                            </Button>
-                        </Stack>
-                      </>
-                  ) : (
-                      <Box sx={{ maxWidth: 500, mx: 'auto', p: 3, bgcolor: '#E8F5E9', borderRadius: 3, border: '2px dashed #2E7D32' }}>
-                          <Typography variant="h6" fontWeight={900} color="#2E7D32" sx={{ letterSpacing: 1 }}>🔒 RECORD SEALED & AUTHENTICATED</Typography>
-                          <Typography variant="caption" sx={{ fontWeight: 900, display: 'block', mt: 1 }}>DIGITAL FINGERPRINT: VC-{auth.currentUser?.uid?.slice(0,8).toUpperCase()}</Typography>
-                      </Box>
-                  )}
-              </Box>
-            </Grid>
-          </Grid>
-        </Box>
-
-         {/* ── RIGHT: CLINICAL HUB (30%) ── */}
-        <Box sx={{ width: '300px', flexShrink: 0, bgcolor: '#FAF8F5', borderLeft: `1px solid ${COLORS.borderLight}`, overflowY: 'auto', p: 2, '&::-webkit-scrollbar': { width: 4 } }}>
-           
-           {/* FLUID RATE HUB (NEW) */}
-           <Widget title="Fluid Rate Hub" icon={<LocalHospitalIcon sx={{ fontSize: 13, color: '#1976D2' }} />}>
-                <Box sx={{ p: 1.5 }}>
-                    <Box sx={{ bgcolor: '#E3F2FD', p: 2, borderRadius: 2, mb: 1.5, border: '1px solid #BBDEFB', textAlign: 'center' }}>
-                        <Typography variant="h5" fontWeight={900} color="#1565C0">
-                            {fluidResult ? `${Math.round(fluidResult)}` : '0'} <span style={{fontSize: '0.8rem'}}>mL/day</span>
-                        </Typography>
-                        <Typography variant="caption" color="#1565C0" sx={{ fontWeight: 800 }}>{Math.round(fluidResult/24)} mL/hr Rate</Typography>
-                    </Box>
-                    <Grid container spacing={1}>
-                        <Grid size={{ xs: 6 }}>
-                             <TextField label="Dehyd %" size="small" fullWidth type="number" value={fluidDehydration || ''} onChange={(e)=>setFluidDehydration(e.target.value)} />
-                        </Grid>
-                        <Grid size={{ xs: 6 }}>
-                             <TextField label="Loss (mL)" size="small" fullWidth type="number" value={fluidLoss || ''} onChange={(e)=>setFluidLoss(e.target.value)} />
-                        </Grid>
-                    </Grid>
-                </Box>
-           </Widget>
-
-           {/* ☣️ ISOLATION PPE PROTOCOL (NEW) */}
-           <Collapse in={isIsolationMode}>
-                <Widget title="Isolation PPE Protocol" icon={<WarningIcon sx={{ fontSize: 13, color: '#7B1FA2' }} />}>
-                    <Box sx={{ p: 1, bgcolor: '#F3E5F5', borderRadius: 2, border: '1px solid #CE93D8' }}>
-                         {[
-                             { id: 'gloves', label: 'Double Gloves' },
-                             { id: 'gown', label: 'Isolation Gown' },
-                             { id: 'shoeCovers', label: 'Fluid-Resist Covers' },
-                             { id: 'dedicatedGear', label: 'Dedicated Equipment' }
-                         ].map(item => (
-                             <Box key={item.id} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, cursor: 'pointer' }} onClick={() => setIsolationProtocol(p => ({ ...p, [item.id]: !p[item.id] }))}>
-                                 <Box sx={{ width: 14, height: 14, borderRadius: '20%', border: '2px solid #7B1FA2', bgcolor: isolationProtocol[item.id] ? '#7B1FA2' : 'white' }} />
-                                 <Typography variant="caption" sx={{ fontWeight: 800, color: '#4A148C' }}>{item.label}</Typography>
-                             </Box>
-                         ))}
-                    </Box>
-                </Widget>
-           </Collapse>
-
-
-           {/* 🧬 IN-HOUSE LAB HUB (PCV/TP/GLUCOSE) */}
-           <Widget title="Lab Quick-Stats" icon={<VisibilityIcon sx={{ fontSize: 13, color: COLORS.brand }} />}>
-                <Box sx={{ p: 1.5 }}>
-                    <Grid container spacing={1}>
-                        <Grid size={{ xs: 4 }}>
-                            <TextField 
-                                label="PCV (%)" size="small" fullWidth type="number" 
-                                value={labQuickStats.pcv} onChange={(e) => setLabQuickStats(p => ({ ...p, pcv: e.target.value }))} 
-                            />
-                        </Grid>
-                        <Grid size={{ xs: 4 }}>
-                            <TextField 
-                                label="TP (g/dL)" size="small" fullWidth type="number" 
-                                value={labQuickStats.tp} onChange={(e) => setLabQuickStats(p => ({ ...p, tp: e.target.value }))} 
-                            />
-                        </Grid>
-                        <Grid size={{ xs: 4 }}>
-                            <TextField 
-                                label="Glu (mg/dL)" size="small" fullWidth type="number" 
-                                className={getGlucoseLevel(labQuickStats.glucose) === 'critical' ? 'glow-critical' : getGlucoseLevel(labQuickStats.glucose) === 'warning' ? 'glow-warning' : ''}
-                                value={labQuickStats.glucose} onChange={(e) => setLabQuickStats(p => ({ ...p, glucose: e.target.value }))} 
-                            />
-                        </Grid>
-                    </Grid>
-                    {getGlucoseLevel(labQuickStats.glucose) === 'critical' && (
-                        <Typography variant="caption" sx={{ color: '#D32F2F', fontWeight: 900, mt: 1, display: 'block', textAlign: 'center' }}>
-                           🚨 CRITICAL HYPOGLYCEMIA
-                        </Typography>
-                    )}
-                </Box>
-           </Widget>
-
-           {/* 🍎 NUTRITION & CALORIC HUB (RER/DER) */}
-           <Widget title="Nutrition Hub" icon={<AutoFixHighIcon sx={{ fontSize: 13, color: '#4CAF50' }} />}>
-                <Box sx={{ p: 1.5 }}>
-                    <Box sx={{ bgcolor: '#E8F5E9', p: 2, borderRadius: 2, mb: 1.5, border: '1px solid #C8E6C9', textAlign: 'center' }}>
-                        <Typography variant="h5" fontWeight={900} color="#2E7D32">
-                           {soapData.objWeight ? Math.round(70 * Math.pow(parseFloat(soapData.objWeight), 0.75) * nutritionFactor) : '0'}
-                           <span style={{fontSize: '0.8rem'}}> kcal/day</span>
-                        </Typography>
-                        <Typography variant="caption" color="#2E7D32" sx={{ fontWeight: 800 }}>
-                            Prescribed DER (RER x {nutritionFactor})
-                        </Typography>
-                    </Box>
-                    <FormControl fullWidth size="small">
-                        <InputLabel>Life Stage / Goal</InputLabel>
-                        <Select 
-                            label="Life Stage / Goal" value={nutritionFactor} 
-                            onChange={(e) => setNutritionFactor(e.target.value)}
-                            sx={{ fontSize: '0.75rem' }}
-                        >
-                            <MenuItem value={1.0}>Weight Loss (1.0)</MenuItem>
-                            <MenuItem value={1.2}>Weight Gain (1.2)</MenuItem>
-                            <MenuItem value={1.6}>Neutered Adult (1.6)</MenuItem>
-                            <MenuItem value={1.8}>Intact Adult (1.8)</MenuItem>
-                            <MenuItem value={2.5}>Puppy/Kitten (2.5)</MenuItem>
-                            <MenuItem value={3.0}>Active/Work (3.0)</MenuItem>
-                        </Select>
-                    </FormControl>
-                </Box>
-           </Widget>
-
-           {/* 🖼️ DIAGNOSTIC MEDIA GALLERY (NEW) */}
-           <Widget title="Diagnostic Media Hub" icon={<MedicalInformationIcon sx={{ fontSize: 13, color: COLORS.brand }} />}>
-                <Grid container spacing={0.5} sx={{ p: 0.5 }}>
-                    {[1, 2, 3].map(i => (
-                        <Grid key={i} size={{ xs: 4 }}>
-                            <Box sx={{ 
-                                aspectRatio: '1/1', bgcolor: '#E0E0E0', borderRadius: 1, 
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                border: '1px solid rgba(0,0,0,0.05)', cursor: 'pointer',
-                                '&:hover': { bgcolor: '#D5D5D5' }
-                            }}>
-                                <VisibilityIcon sx={{ fontSize: 16, color: '#9E9E9E' }} />
-                            </Box>
-                        </Grid>
-                    ))}
-                    <Grid size={{ xs: 12 }} sx={{ mt: 0.5 }}>
-                        <Button fullWidth size="small" variant="text" sx={{ fontSize: '0.6rem', fontWeight: 900 }}>Upload Imaging / PACS</Button>
-                    </Grid>
-                </Grid>
-           </Widget>
-
-
-           {/* OWNER COMMUNICATIONS */}
-           <Widget title="Owner Status Link" icon={<InfoIcon sx={{ fontSize: 13, color: '#1976D2' }} />}>
-                <Box sx={{ p: 1.5 }}>
-                    <Typography variant="caption" sx={{ color: '#757575', fontWeight: 'bold', display: 'block', mb: 1 }}>Communication Channel:</Typography>
-                    <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
-                        <Button size="small" variant="outlined" sx={{ flex: 1, fontSize: '0.65rem', fontWeight: 900 }}>SMS</Button>
-                        <Button size="small" variant="outlined" sx={{ flex: 1, fontSize: '0.65rem', fontWeight: 900 }}>EMAIL</Button>
-                    </Stack>
-                    <Box sx={{ bgcolor: '#E3F2FD', p: 1, borderRadius: 1, border: '1px solid #BBDEFB' }}>
-                        <Typography variant="caption" sx={{ color: '#1565C0', fontWeight: 'bold' }}>Update Preview:</Typography>
-                        <Typography variant="caption" sx={{ display: 'block', color: '#1565C0', mt: 0.5 }}>
-                            "{patient?.petName} is currently in-consult. We are finalizing the treatment plan now."
-                        </Typography>
-                    </Box>
-                </Box>
-           </Widget>
-
-           {/* WEIGHT TREND */}
-           <Widget title="Weight Pattern" icon={<TrendingUpIcon sx={{ fontSize: 13, color: COLORS.accent }} />}>
-                {vitalsData.length > 1 ? (
-                        <Box sx={{ height: 140, mt: 1, minWidth: 0, display: 'block' }}>
-                            <ResponsiveContainer width="99%" height={140} debounce={100}>
-                                <LineChart data={vitalsData}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
-                                <XAxis dataKey="date" hide />
-                                <YAxis hide domain={['dataMin - 1', 'dataMax + 1']} />
-                                <RechartsTooltip />
-                                <Line type="monotone" dataKey="weight" stroke={COLORS.accent} strokeWidth={3} dot={{ r: 4, fill: COLORS.accent }} activeDot={{ r: 6 }} />
-                            </LineChart>
-                        </ResponsiveContainer>
-                    </Box>
-                ) : (
-                    <Box sx={{ textAlign: 'center', py: 3, opacity: 0.5 }}><Typography variant="caption" sx={{ fontStyle: 'italic' }}>Insufficient history for patterns</Typography></Box>
-                )}
-           </Widget>
-
-           {/* VITALS TRENDS */}
-           <Widget title="Temp & Heart Rate" icon={<FavoriteIcon sx={{ fontSize: 13, color: '#D32F2F' }} />}>
-                <Box sx={{ height: 80, mb: 2, minWidth: 0, display: 'block' }}>
-                    <ResponsiveContainer width="99%" height={80} debounce={100}>
-                        <LineChart data={tempData}>
-                            <Line type="stepAfter" dataKey="temp" stroke="#EF6C00" strokeWidth={2} dot={false} />
-                        </LineChart>
-                    </ResponsiveContainer>
-                    <Typography variant="caption" sx={{ textAlign: 'center', display: 'block', fontSize: '0.6rem', fontWeight: 900, color: '#EF6C00' }}>TEMP HISTORY (°C)</Typography>
-                </Box>
-                <Box sx={{ height: 80, minWidth: 0, display: 'block' }}>
-                    <ResponsiveContainer width="99%" height={80} debounce={100}>
-                        <LineChart data={hrData}>
-                            <Line type="monotone" dataKey="hr" stroke="#D32F2F" strokeWidth={2} dot={false} />
-                        </LineChart>
-                    </ResponsiveContainer>
-                    <Typography variant="caption" sx={{ textAlign: 'center', display: 'block', fontSize: '0.6rem', fontWeight: 900, color: '#D32F2F' }}>HR HISTORY (BPM)</Typography>
-                </Box>
-           </Widget>
-
-           {/* NEXT APPOINTMENT */}
-           <Widget title="Upcoming Follow-up" icon={<CalendarMonthIcon sx={{ fontSize: 13, color: COLORS.brand }} />}>
-                {nextAppointment ? (
-                    <Box sx={{ bgcolor: 'white', p: 1.5, borderRadius: 2, border: `1px solid ${COLORS.borderLight}` }}>
-                        <Typography variant="body2" fontWeight={900} color={COLORS.brand}>
-                            {nextAppointment.date?.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                        </Typography>
-                        <Typography variant="caption" color="textSecondary">{nextAppointment.serviceType}</Typography>
-                    </Box>
-                ) : (
-                    <Box sx={{ bgcolor: 'rgba(0,0,0,0.03)', p: 1.5, borderRadius: 2, border: '1px dashed #CCC', textAlign: 'center' }}>
-                         <Typography variant="caption" sx={{ fontStyle: 'italic', fontWeight: 800 }}>No future visits scheduled</Typography>
-                    </Box>
-                )}
-           </Widget>
-
-           {/* PAST VISITS TOC */}
-           <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 900, color: COLORS.textMuted, mt: 4, mb: 1, px: 1, letterSpacing: 1 }}>PAST RECORDS TIMELINE</Typography>
-           <Stack spacing={1} sx={{ px: 1 }}>
-                {history.slice(0, 5).map((rec, i) => (
-                    <Box key={i} sx={{ position: 'relative', pl: 3, pb: 1, borderLeft: '2px solid #E0E0E0' }}>
-                        <Box sx={{ position: 'absolute', left: -7, top: 0, width: 14, height: 14, borderRadius: '50%', transition: 'all 0.2s', '&:hover': { transform: 'scale(1.2)' }, bgcolor: COLORS.accentLight, border: '2px solid white', boxShadow: 1 }} />
-                        <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 900, color: COLORS.textPrimary }}>{new Date(rec.date?.seconds * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</Typography>
-                        <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, fontStyle: 'italic' }}>{rec.diagnosis || 'Clinical Visit'}</Typography>
-                    </Box>
-                ))}
-                {history.length > 5 && <Typography variant="caption" color="primary" sx={{ textAlign: 'center', cursor: 'pointer', fontWeight: 900 }}>See {history.length - 5} more in CRM Dashboard...</Typography>}
-           </Stack>
-
-        </Box>
-        {/* ── 🆕 PILLAR 5: DEPARTURE CONTROL (STICKY BOTTOM ZONE) ── */}
-        <Box sx={{ 
-            position: 'fixed', bottom: 0, left: 0, right: 0, 
-            bgcolor: 'white', borderTop: `2px solid ${COLORS.brand}40`, 
-            p: 2, px: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            boxShadow: '0 -4px 20px rgba(0,0,0,0.08)', zIndex: 1200,
-            backdropFilter: 'blur(10px)', background: 'rgba(255,255,255,0.9)'
-        }}>
-            <Box sx={{ display: 'flex', gap: 4 }}>
-                <Box>
-                    <Typography variant="caption" sx={{ fontWeight: 800, color: COLORS.textMuted, display: 'block', mb: 0.5 }}>CURRENT VISIT TOTAL</Typography>
-                    <Typography variant="h5" sx={{ fontWeight: 900, color: COLORS.brand }}>₱{rxCart.reduce((sum, item) => sum + (item.price * item.qty), 0).toLocaleString()}</Typography>
-                </Box>
-                <Divider orientation="vertical" flexItem />
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Stack spacing={4}>
                     <Box>
-                         <Typography variant="caption" sx={{ fontWeight: 800, color: COLORS.textMuted, display: 'block' }}>RECORDS STATUS</Typography>
-                         <Typography variant="caption" sx={{ fontWeight: 900, color: lockedServices.size === (patient?.services?.length || 0) ? '#2E7D32' : COLORS.textSecondary }}>
-                            {lockedServices.size === (patient?.services?.length || 0) ? '✅ ALL SERVICES FINALIZED' : '⚠️ PENDING SIGN-OFFS'}
-                         </Typography>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                            <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, fontWeight: 900 }}>S - SUBJECTIVE (Owner Complaint & History)</Typography>
+                            <IconButton size="small" onClick={() => setFullscreenField('subjective')} sx={{ color: COLORS.textMuted }}><OpenInFullIcon sx={{ fontSize: 16 }} /></IconButton>
+                        </Box>
+                        <TextField multiline minRows={4} maxRows={15} fullWidth value={soapData.subjective} onChange={(e) => updateSoap('subjective', e.target.value)} placeholder="Enter history and client concerns..." sx={{ bgcolor: 'white', borderRadius: 2 }} />
                     </Box>
-                    <Divider orientation="vertical" flexItem variant="middle" />
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography variant="caption" sx={{ fontWeight: 800, color: COLORS.textMuted }}>NEXT STATUS:</Typography>
-                        <Chip label={hasDrugsInCart ? "PHARMACY" : "CASHIER"} size="small" variant="outlined" sx={{ fontWeight: 900, borderColor: COLORS.brand, color: COLORS.brand }} />
-                    </Box>
-                </Box>
-            </Box>
 
-            <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
-                <Button 
-                    variant="outlined" onClick={handleCloseRequest}
-                    sx={{ 
-                        fontWeight: 900, borderRadius: 2, px: 3, 
-                        border: '1px solid rgba(0,0,0,0.1)', color: '#757575',
-                        bgcolor: 'rgba(0,0,0,0.02)',
-                        '&:hover': { bgcolor: 'rgba(0,0,0,0.05)' }
-                    }}
-                >
-                    CANCEL
-                </Button>
-                <Button 
-                    variant="outlined" onClick={handleSaveConsult} disabled={loading} 
-                    startIcon={<SaveIcon />} 
-                    sx={{ 
-                        fontWeight: 900, borderRadius: 2, px: 6, py: 1.5,
-                        border: '1px solid rgba(0,0,0,0.1)', borderLeft: '4px solid #5D4037',
-                        bgcolor: 'rgba(0,0,0,0.02)', color: '#5D4037',
-                        '&:hover': { bgcolor: 'rgba(93, 64, 55, 0.05)', transform: 'translateY(-2px)' },
-                        transition: '0.3s'
-                    }}
-                >
-                    {loading ? "PROCESSING..." : saveBtnText.toUpperCase()}
-                </Button>
+                    <Box>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                            <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, fontWeight: 900 }}>O - OBJECTIVE (Clinical Observation & Vitals)</Typography>
+                            <IconButton size="small" onClick={() => setFullscreenField('objectiveNotes')} sx={{ color: COLORS.textMuted }}><OpenInFullIcon sx={{ fontSize: 16 }} /></IconButton>
+                        </Box>
+                        <Box sx={{ bgcolor: '#FAF8F5', p: 3, borderRadius: 3, border: `1px solid ${COLORS.borderLight}`, mb: 2 }}>
+                            <Grid container spacing={3}>
+                                {[
+                                    { label: 'WEIGHT (kg)', value: soapData.objWeight, field: 'objWeight', icon: '⚖️' },
+                                    { label: 'TEMP (°C)', value: soapData.objTemp, field: 'objTemp', icon: '🌡️' },
+                                    { label: 'HR (bpm)', value: soapData.objHR, field: 'objHR', icon: '❤️' },
+                                    { label: 'RR (rpm)', value: soapData.objRR, field: 'objRR', icon: '🫁' },
+                                    { label: 'CRT (sec)', value: soapData.objCRT, field: 'objCRT', icon: '⏱️' },
+                                    { label: 'BCS (1-9)', value: soapData.bcs, field: 'bcs', icon: '🐾' },
+                                    { label: 'PAIN (0-10)', value: soapData.painScale, field: 'painScale', icon: '🩹' },
+                                ].map(v => (
+                                    <Grid key={v.field} size={{ xs: 6, md: 1.7 }}>
+                                        <Typography variant="caption" sx={{ fontWeight: 1000, color: COLORS.textSecondary, display: 'block', mb: 0.5, fontSize: '0.6rem' }}>{v.icon} {v.label}</Typography>
+                                        <InputBase size="small" value={v.value} onChange={(e) => updateSoap(v.field, e.target.value)} sx={{ width: '100%', fontWeight: 1000, color: COLORS.brand, borderBottom: '2px solid rgba(0,0,0,0.1)', fontSize: '1rem', px: 0.5, bgcolor: 'white' }} />
+                                    </Grid>
+                                ))}
+                            </Grid>
+                        </Box>
+                        <TextField multiline minRows={4} maxRows={15} fullWidth value={soapData.objectiveNotes} onChange={(e) => updateSoap('objectiveNotes', e.target.value)} placeholder="Describe physical examination findings..." sx={{ bgcolor: 'white', borderRadius: 2 }} />
+                    </Box>
+
+                    <Box>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                            <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, fontWeight: 900 }}>A - ASSESSMENT (The Diagnosis)</Typography>
+                            <IconButton size="small" onClick={() => setFullscreenField('assessment')} sx={{ color: COLORS.textMuted }}><OpenInFullIcon sx={{ fontSize: 16 }} /></IconButton>
+                        </Box>
+                        <TextField multiline minRows={3} maxRows={10} fullWidth value={soapData.assessment} onChange={(e) => updateSoap('assessment', e.target.value)} placeholder="Medical diagnosis..." sx={{ bgcolor: 'rgba(76, 175, 80, 0.05)', borderRadius: 2, '& .MuiOutlinedInput-root': { fontWeight: 900, color: '#2E7D32' } }} />
+                    </Box>
+
+                    <Box>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                            <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, fontWeight: 900 }}>P - PLAN (Instructions & Follow-up)</Typography>
+                            <IconButton size="small" onClick={() => setFullscreenField('plan')} sx={{ color: COLORS.textMuted }}><OpenInFullIcon sx={{ fontSize: 16 }} /></IconButton>
+                        </Box>
+                        <TextField multiline minRows={4} maxRows={15} fullWidth value={soapData.plan} onChange={(e) => updateSoap('plan', e.target.value)} placeholder="Procedures and follow-up instructions..." sx={{ bgcolor: 'white', borderRadius: 2 }} />
+                    </Box>
+                </Stack>
+
+                {!lockedServices.has('medical') && (
+                    <Box sx={{ mt: 5, pt: 4, borderTop: '2px dashed rgba(0,0,0,0.08)', textAlign: 'center' }}>
+                        <Button variant="contained" color="success" size="large" startIcon={<ShieldIcon />} sx={{ fontWeight: 1000, px: 8, py: 1.5, borderRadius: 50 }} onClick={() => handleCompleteService('medical')}>Sign & Finalize Medical Record</Button>
+                    </Box>
+                )}
+            </Paper>
+        </Box>
+
+        {/* 🏺 PILLAR 2: COMMAND HUB (25% WIDTH) */}
+        <Box sx={{ flex: 2.5, overflowY: 'auto', p: 3, bgcolor: '#FAF8F5' }}>
+            <Stack spacing={3}>
+                <Paper ref={treatmentRef} sx={{ ...glassStyle, p: 3, borderLeft: `8px solid ${COLORS.accent}` }}>
+                    <Typography variant="h6" sx={{ fontWeight: 1000, color: COLORS.brand, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <ReceiptLongIcon sx={{ color: COLORS.accent }} /> Treatment Plan
+                    </Typography>
+
+                    {/* 🧬 PHASE 3: STOCK GUARD & CLINICAL ALERTS */}
+                    {!isRecordLocked && (
+                        <Autocomplete
+                            id="inventory-search"
+                            options={[
+                                ...(inventoryList || []).map(i => {
+                                    const netAvailable = i.stock - (i.reserved || 0);
+                                    return { 
+                                        ...i, 
+                                        label: `${i.itemName} (${netAvailable} avail)`, 
+                                        category: 'Pharmacy/Products',
+                                        isLow: netAvailable <= 5,
+                                        isOut: netAvailable <= 0
+                                    };
+                                }),
+                                ...(servicesList || []).map(s => ({ ...s, label: s.name, category: 'Clinical Services', isLow: false, isOut: false }))
+                            ]}
+                            groupBy={(option) => option.category}
+                            getOptionLabel={(option) => option.label || ''}
+                            onChange={(event, newValue) => handleAddRx(newValue)}
+                            renderOption={(props, option) => (
+                                <Box component="li" {...props} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', py: 1 }}>
+                                    <Box>
+                                        <Typography sx={{ fontWeight: 900, fontSize: '0.85rem', color: option.isOut ? COLORS.textMuted : 'inherit', display: 'flex', alignItems: 'center' }}>
+                                            {option.itemName || option.name}
+                                            {option.isMedicine && <MedicationIcon sx={{ fontSize: 14, color: '#D32F2F', ml: 1 }} />}
+                                        </Typography>
+                                        {option.stock !== undefined && (
+                                            <Typography variant="caption" sx={{ color: option.isOut ? '#D32F2F' : (option.isLow ? '#EF6C00' : COLORS.textMuted), fontWeight: 800 }}>
+                                                {option.isOut ? 'EXHAUSTED' : (option.isLow ? `LOW STOCK: ${option.stock - (option.reserved || 0)} left` : `${option.stock - (option.reserved || 0)} available`)}
+                                            </Typography>
+                                        )}
+                                    </Box>
+                                    {option.isLow && !option.isOut && <Chip label="LOW" size="small" color="warning" sx={{ height: 16, fontSize: '0.6rem', fontWeight: 1000 }} />}
+                                    {option.isOut && <Chip label="OUT" size="small" color="error" sx={{ height: 16, fontSize: '0.6rem', fontWeight: 1000 }} />}
+                                </Box>
+                            )}
+                            renderInput={(params) => (
+                                <TextField 
+                                    {...params} 
+                                    variant="outlined" 
+                                    size="small" 
+                                    placeholder="Search Inventory / Services..." 
+                                    sx={{ 
+                                        mb: 2, 
+                                        '& .MuiOutlinedInput-root': { 
+                                            borderRadius: 2, 
+                                            bgcolor: 'white',
+                                            fontWeight: 900
+                                        } 
+                                    }} 
+                                />
+                            )}
+                            sx={{ width: '100%' }}
+                        />
+                    )}
+
+                    <Stack spacing={2} sx={{ mt: 1 }}>
+                        {rxCart.map((rx, idx) => (
+                            <Box key={idx} sx={{ bgcolor: 'white', p: 2, borderRadius: 2, border: `1px solid ${COLORS.borderLight}` }}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                                    <Typography sx={{ fontWeight: 1000, fontSize: '0.85rem', color: COLORS.brand }}>{rx.name}</Typography>
+                                    <IconButton size="small" onClick={()=>handleRemoveRx(idx)}><CloseIcon sx={{ fontSize: 14, color: '#D32F2F' }}/></IconButton>
+                                </Box>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#F5F5F5', borderRadius: 1.5, px: 0.5 }}>
+                                        <IconButton size="small" onClick={() => handleUpdateQty(idx, -1)} sx={{ p: 0.5 }}><ContentCutIcon sx={{ fontSize: 14, rotate: '90deg' }} /></IconButton>
+                                        <Typography sx={{ fontWeight: 1000, fontSize: '0.85rem' }}>{rx.qty}</Typography>
+                                        <IconButton size="small" onClick={() => handleUpdateQty(idx, 1)} sx={{ p: 0.5 }}><AddCircleIcon sx={{ fontSize: 14, color: COLORS.brand }} /></IconButton>
+                                    </Box>
+                                    <Typography sx={{ fontWeight: 1000, fontSize: '0.9rem', color: COLORS.brand }}>₱{(rx.price * rx.qty).toLocaleString()}</Typography>
+                                </Box>
+                            </Box>
+                        ))}
+                    </Stack>
+                    
+                    {/* 🧬 PHASE 2: DYNAMIC TOTAL CALCULATOR */}
+                    {rxCart.length > 0 && (
+                        <Box sx={{ mt: 3, pt: 2, borderTop: `2px solid ${COLORS.borderLight}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Typography sx={{ fontWeight: 1000, color: COLORS.textMuted, fontSize: '0.75rem', textTransform: 'uppercase' }}>Subtotal</Typography>
+                            <Typography sx={{ fontWeight: 1000, color: COLORS.brand, fontSize: '1.2rem' }}>
+                                ₱{rxCart.reduce((sum, item) => sum + (item.price * item.qty), 0).toLocaleString()}
+                            </Typography>
+                        </Box>
+                    )}
+                </Paper>
+
+                {!isRecordLocked && (
+                    <Paper sx={{ ...glassStyle, p: 3, borderLeft: '8px solid #FF8F00', bgcolor: '#FFF8E1' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1.5 }}>
+                            <WarningIcon sx={{ color: '#FF8F00' }} />
+                            <Typography sx={{ fontWeight: 1000, color: '#FF8F00', fontSize: '0.9rem' }}>CRM SOVEREIGNTY SYNC</Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1, bgcolor: 'rgba(0,0,0,0.05)', borderRadius: 2 }}>
+                            <Typography sx={{ fontWeight: 1000, fontSize: '0.65rem' }}>Propagate to Master DB</Typography>
+                            <Switch checked={syncToCRM} onChange={(e) => setSyncToCRM(e.target.checked)} color="warning" size="small" />
+                        </Box>
+                    </Paper>
+                )}
+
+                <Box sx={{ pt: 2 }}>
+                    {!isRecordLocked ? (
+                        <Stack spacing={2}>
+                            <Button variant="outlined" fullWidth size="large" onClick={() => setOwnerSignature(`signed_${Date.now()}`)} startIcon={<HistoryEduIcon />} sx={{ fontWeight: 1000, borderRadius: 3, py: 1.5 }}>{ownerSignature ? "CONSENT CAPTURED ✅" : "SIGN DIGITAL CONSENT"}</Button>
+                            <Button variant="contained" fullWidth size="large" onClick={handleSaveConsult} disabled={loading || !ownerSignature} sx={{ fontWeight: 1000, borderRadius: 3, py: 2, bgcolor: COLORS.brand }}>{loading ? "PROCESSING..." : (hasDrugsInCart ? "SIGN & DISPENSE" : "SIGN & PAY")}</Button>
+                        </Stack>
+                    ) : (
+                        <Box sx={{ p: 3, bgcolor: '#E8F5E9', borderRadius: 3, border: '2px dashed #2E7D32', textAlign: 'center' }}>
+                            <Typography variant="h6" fontWeight={1000} color="#2E7D32">RECORD SEALED</Typography>
+                        </Box>
+                    )}
+                </Box>
             </Stack>
-</Box>
-      </Box>
+        </Box>
+      </Box> {/* Closes hud-canvas (B3) */}
+    </Box> {/* Closes 100vh Master Shell (B1) */}
 
       {/* 🧘 THE ZEN MODE FOCUS OVERLAY (CLINICAL CONCENTRATION) ── */}
       <Dialog 
-        fullScreen open={!!fullscreenField} onClose={() => setFullscreenField(null)}
-        PaperProps={{ sx: { bgcolor: 'rgba(255,255,255,0.98)', backdropFilter: 'blur(10px)' } }}
+        fullScreen open={!!fullscreenField} onClose={() => setFullscreenField(null)} 
+        TransitionComponent={Transition} PaperProps={{ sx: { bgcolor: 'rgba(253, 252, 251, 0.98)', backdropFilter: 'blur(20px)' } }}
       >
-        <Box sx={{ p: 4, height: '100vh', display: 'flex', flexDirection: 'column', gap: 3 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <HistoryEduIcon sx={{ color: COLORS.brand, fontSize: 32 }} />
-                    <Box>
-                        <Typography variant="h4" sx={{ fontWeight: 900, color: COLORS.brand, letterSpacing: -1 }}>
-                            ZEN MODE: {fullscreenField?.toUpperCase()}
-                        </Typography>
-                        <Typography variant="caption" sx={{ fontWeight: 800, color: COLORS.textMuted }}>
-                            {patient?.petName} • Documentation Focus • ESC to Exit
-                        </Typography>
-                    </Box>
-                </Box>
-                <IconButton onClick={() => setFullscreenField(null)} sx={{ bgcolor: 'rgba(0,0,0,0.05)' }}><CloseIcon /></IconButton>
+        <AppBar elevation={0} sx={{ position: 'relative', bgcolor: COLORS.banner, borderBottom: `1px solid ${COLORS.bannerBorder}`, py: 1 }}>
+          <Toolbar>
+            <IconButton edge="start" color="inherit" onClick={() => setFullscreenField(null)} aria-label="close"><CloseIcon sx={{ color: COLORS.textMuted }} /></IconButton>
+            <Box sx={{ ml: 2, flex: 1 }}>
+                <Typography sx={{ fontFamily: FONT, fontSize: '1.2rem', fontWeight: 1000, color: COLORS.brand, textTransform: 'uppercase', letterSpacing: 1.5, lineHeight: 1 }}>
+                  {patient?.petName || 'UNKNOWN PATIENT'}
+                </Typography>
+                <Typography component="div" sx={{ fontFamily: FONT, fontSize: '0.68rem', fontWeight: 900, color: COLORS.brand, textTransform: 'uppercase', mt: 0.5, opacity: 0.8, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {patient?.petSpecies} • {patient?.petBreed || 'MIXED'} • {patient?.petGender || '??'} • {calculateAge(patient?.petBirthdate || petDetails?.dob)} • {soapData.objWeight || patient.petWeight ? `${soapData.objWeight || patient.petWeight} KG` : 'WEIGH REQUIRED'} • {patient?.petIsNeutered ? 'FIXED' : 'INTACT'}
+                    {patient?.petAllergies && patient.petAllergies.trim().length > 0 && patient.petAllergies.toUpperCase() !== 'NONE' ? (
+                        <Box component="span" sx={{ bgcolor: '#D32F2F', color: 'white', px: 0.8, py: 0.1, borderRadius: 0.5, fontSize: '0.55rem', fontWeight: 1000, ml: 1, display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                            ⚠️ {patient.petAllergies.toUpperCase()} ALERT
+                        </Box>
+                    ) : (
+                        <Box component="span" sx={{ opacity: 0.5, fontSize: '0.55rem', fontWeight: 1000, ml: 1 }}>
+                            ● NO ALLERGIES
+                        </Box>
+                    )}
+                </Typography>
             </Box>
-
-            <Divider />
-
-            <TextField 
-                multiline fullWidth autoFocus
-                value={soapData[fullscreenField] || ''}
-                onChange={(e) => updateSoap(fullscreenField, e.target.value)}
-                variant="standard"
-                placeholder="Proceed with deep clinical documentation..."
-                InputProps={{ 
-                    disableUnderline: true,
-                    sx: { 
-                        fontSize: '1.25rem', lineHeight: 1.6, fontWeight: 500, fontFamily: FONT,
-                        '& textarea': { minHeight: '60vh' }
-                    } 
-                }}
-            />
-
-            <Box sx={{ mt: 'auto', p: 3, bgcolor: 'rgba(0,0,0,0.02)', borderRadius: 4, display: 'flex', justifyContent: 'center' }}>
-                <Button 
-                    variant="contained" size="large" onClick={() => setFullscreenField(null)}
-                    sx={{ fontWeight: 900, px: 10, borderRadius: 50, bgcolor: COLORS.brand }}
-                >
-                    RETURN TO WORKSPACE
-                </Button>
-            </Box>
+            <Button 
+              autoFocus 
+              variant="outlined" 
+              onClick={() => setFullscreenField(null)} 
+              sx={{ fontWeight: 1000, color: COLORS.brand, borderColor: COLORS.brand, borderRadius: 2 }}
+            >
+              EXIT {fullscreenField?.includes('obj') ? 'OBJECTIVE' : fullscreenField?.toUpperCase()}
+            </Button>
+          </Toolbar>
+        </AppBar>
+        <Box sx={{ p: 10, maxWidth: 1200, mx: 'auto', width: '100%' }}>
+          <Typography variant="h3" sx={{ fontFamily: FONT, fontWeight: 1000, color: COLORS.brand, mb: 4, opacity: 0.5 }}>
+            {fullscreenField?.includes('obj') ? 'OBJECTIVE' : fullscreenField?.toUpperCase()}
+          </Typography>
+          <TextField 
+            autoFocus multiline fullWidth variant="standard"
+            placeholder={ZEN_PLACEHOLDERS[fullscreenField] || "Enter clinical notes..."}
+            value={soapData[fullscreenField] || ''}
+            onChange={(e) => updateSoap(fullscreenField, e.target.value)}
+            InputProps={{ 
+              disableUnderline: true, 
+              sx: { fontSize: '2.5rem', fontFamily: FONT, fontWeight: 500, lineHeight: 1.4, color: COLORS.brand } 
+            }}
+          />
         </Box>
       </Dialog>
 
       {/* 🏛️ THE 'GOD-VIEW' UNIFIED CLINICAL COMMAND CENTER ── */}
       <Dialog 
-        fullScreen open={isUnifiedZen} onClose={() => setIsUnifiedZen(false)}
-        PaperProps={{ sx: { bgcolor: '#FDFCFB', backgroundImage: 'radial-gradient(circle at 2px 2px, rgba(0,0,0,0.02) 1px, transparent 0)', backgroundSize: '24px 24px' } }}
+        fullScreen open={isUnifiedZen} onClose={() => setIsUnifiedZen(false)} 
+        TransitionComponent={Transition} PaperProps={{ sx: { bgcolor: '#FDFCFB' } }}
       >
-        <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-            {/* 🛰️ COMMAND HEADER */}
-            <Box sx={{ p: 2, px: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(0,0,0,0.05)', bgcolor: 'white' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <FitScreenIcon sx={{ color: COLORS.brand, fontSize: 32 }} />
-                    <Box>
-                        <Typography variant="h5" sx={{ fontWeight: 900, color: COLORS.brand, letterSpacing: -1 }}>UNIFIED CLINICAL COMMAND CENTER (GOD-VIEW)</Typography>
-                        <Typography variant="caption" sx={{ fontWeight: 800, color: COLORS.textMuted }}>Total Immersion Mode • {patient?.petName} • Documentation & Life-Logic Sync</Typography>
-                    </Box>
-                </Box>
-                <Button 
-                    variant="contained" onClick={() => setIsUnifiedZen(false)}
-                    sx={{ bgcolor: COLORS.brand, fontWeight: 900, borderRadius: 50, px: 4 }}
-                >
-                    EXIT GOD-VIEW
-                </Button>
+        {/* --- 🆕 LEGACY IMMERSION HEADER --- */}
+        <Box sx={{ p: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(0,0,0,0.05)', bgcolor: 'white' }}>
+            <Box>
+                <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 1000, color: COLORS.brand, letterSpacing: -1, lineHeight: 1, mb: 0.5 }}>
+                    {patient?.petName?.toUpperCase() || 'UNKNOWN PATIENT'}
+                </Typography>
+                <Typography variant="caption" sx={{ color: COLORS.brand, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1.5, opacity: 0.8, display: 'flex', alignItems: 'center', gap: 1, justifyContent: 'center' }}>
+                    {patient?.petSpecies} • {patient?.petBreed || 'MIXED BREED'} • {patient?.petGender || 'UNKNOWN'} • {calculateAge(patient?.petBirthdate || petDetails?.dob)} • {soapData.objWeight || patient.petWeight ? `${soapData.objWeight || patient.petWeight} KG` : 'WEIGH REQUIRED'} • {patient?.petIsNeutered ? 'FIXED' : 'INTACT'} • {patient?.color || patient?.petColor || petDetails?.color || 'N/A'}
+                    {patient?.petAllergies && patient.petAllergies.trim().length > 0 && patient.petAllergies.toUpperCase() !== 'NONE' ? (
+                        <Box component="span" sx={{ bgcolor: '#D32F2F', color: 'white', px: 1, py: 0.2, borderRadius: 1, fontSize: '0.6rem', fontWeight: 1000, ml: 1, display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                            ⚠️ ALLERGY ALERT: {patient.petAllergies.toUpperCase()}
+                        </Box>
+                    ) : (
+                        <Box component="span" sx={{ opacity: 0.5, fontSize: '0.6rem', fontWeight: 1000, ml: 1 }}>
+                            ● NO ALLERGIES DISCLOSED
+                        </Box>
+                    )}
+                </Typography>
             </Box>
+            <Button 
+                variant="contained" 
+                onClick={() => setIsUnifiedZen(false)}
+                sx={{ bgcolor: '#3E2723', color: 'white', borderRadius: 50, px: 4, py: 1, fontWeight: 1000, '&:hover': { bgcolor: '#2D1D1B' } }}
+            >
+                EXIT GOD-VIEW
+            </Button>
+        </Box>
 
-            {/* 🧩 THE 4-PANEL GRID */}
-            <Box sx={{ flex: 1, p: 2, overflow: 'hidden' }}>
-                <Grid container spacing={2} sx={{ height: '100%' }}>
-                    {/* TOP ROW: S & A */}
-                    <Grid size={{ xs: 6 }} sx={{ height: '50%', display: 'flex', flexDirection: 'column' }}>
-                        <Box sx={{ p: 2, flex: 1, bgcolor: 'white', borderRadius: 4, border: '1px solid rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', position: 'relative' }}>
-                            <Typography sx={{ ...TYPE.label, mb: 1, color: '#FFB300' }}>S - SUBJECTIVE (HISTORY & CLIENT REPORT)</Typography>
+        <Box sx={{ flex: 1, height: 'calc(100vh - 84px)', overflow: 'hidden', bgcolor: '#FFF' }}>
+            <Grid container spacing={0} sx={{ height: '100%' }}>
+                {[
+                    { id: 'subjective', label: 'S - SUBJECTIVE (HISTORY & CLIENT REPORT)' },
+                    { id: 'objectiveNotes', label: 'O - OBJECTIVE (EXAM & VITALS)' },
+                    { id: 'assessment', label: 'A - ASSESSMENT (DIAGNOSIS & PROGNOSIS)' },
+                    { id: 'plan', label: 'P - PLAN (TREATMENT & RECHECKS)' }
+                ].map((field, index) => (
+                    <Grid key={field.id} size={{ xs: 12, md: 6 }} sx={{ height: '50%' }}>
+                        <Box sx={{ 
+                            height: '100%', p: 4, 
+                            borderRight: index % 2 === 0 ? '1px solid #F0F0F0' : 'none',
+                            borderBottom: index < 2 ? '1px solid #F0F0F0' : 'none',
+                            display: 'flex', flexDirection: 'column', position: 'relative',
+                            transition: 'background 0.2s',
+                            '&:focus-within': { bgcolor: '#FDFCFB' },
+                            overflowY: 'auto',
+                            scrollbarWidth: 'thin',
+                            '&::-webkit-scrollbar': { width: '4px' },
+                            '&::-webkit-scrollbar-track': { background: 'transparent' },
+                            '&::-webkit-scrollbar-thumb': { background: '#E0E0E0', borderRadius: '10px' },
+                            '&::-webkit-scrollbar-thumb:hover': { background: COLORS.brand }
+                        }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                                <Typography sx={{ fontWeight: 1000, color: COLORS.brand, fontSize: '0.7rem', letterSpacing: 1.2, opacity: 1 }}>
+                                    {field.label}
+                                </Typography>
+                                <Tooltip title={`ZEN FOCUS: ${field.id.toUpperCase()}`}>
+                                    <IconButton 
+                                        size="small" 
+                                        onClick={() => setFullscreenField(field.id)}
+                                        sx={{ 
+                                            opacity: 0.3, 
+                                            '&:hover': { opacity: 1, bgcolor: '#F5F5F5' },
+                                            transition: 'all 0.2s'
+                                        }}
+                                    >
+                                        <OpenInFullIcon sx={{ fontSize: 16, color: '#3E2723' }} />
+                                    </IconButton>
+                                </Tooltip>
+                            </Box>
                             <TextField 
-                                multiline fullWidth 
-                                value={soapData.subjective} onChange={(e) => updateSoap('subjective', e.target.value)}
-                                placeholder="Narrative history..."
-                                InputProps={{ disableUnderline: true, sx: { fontFamily: FONT, fontSize: '0.95rem', flex: 1, alignItems: 'flex-start' } }}
-                                sx={{ flex: 1, '& .MuiInputBase-root': { height: '100%' } }}
+                                multiline fullWidth variant="standard"
+                                placeholder={ZEN_PLACEHOLDERS[field.id] || "Clinical documentation..."}
+                                value={soapData[field.id] || ''}
+                                onChange={(e) => updateSoap(field.id, e.target.value)}
+                                sx={{ flex: 1, '& .MuiInputBase-root': { height: '100%', alignItems: 'flex-start' } }}
+                                InputProps={{ 
+                                    disableUnderline: true,
+                                    sx: { fontFamily: FONT, fontSize: '1.25rem', color: COLORS.brand, lineHeight: 1.6 } 
+                                }}
                             />
-                            
-                            {/* 🧠 CLINICAL INSIGHT OVERLAY */}
-                            {(() => {
-                                const insight = KNOWLEDGE_BASE.find(k => k.keywords.some(kw => (soapData.subjective + " " + soapData.assessment).toLowerCase().includes(kw)));
-                                if (!insight) return null;
-                                return (
-                                    <Box sx={{ position: 'absolute', bottom: 12, right: 12, left: 12, p: 1.5, bgcolor: 'rgba(25, 118, 210, 0.08)', borderRadius: 2, border: '1px solid rgba(25, 118, 210, 0.2)', display: 'flex', alignItems: 'center', gap: 1, animation: 'fadeIn 0.5s ease-out' }}>
-                                        <AutoFixHighIcon sx={{ color: '#1976D2', fontSize: 16 }} />
-                                        <Typography sx={{ fontSize: '0.65rem', fontWeight: 800, color: '#1976D2' }}>{insight.suggestion}</Typography>
-                                    </Box>
-                                );
-                            })()}
                         </Box>
                     </Grid>
-
-                    <Grid size={{ xs: 6 }} sx={{ height: '50%', display: 'flex', flexDirection: 'column' }}>
-                        <Box sx={{ p: 2, flex: 1, bgcolor: 'white', borderRadius: 4, border: '1px solid rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            <Typography sx={{ ...TYPE.label, color: '#2E7D32' }}>A - ASSESSMENT (DIAGNOSIS & PROGNOSIS)</Typography>
-                            <TextField 
-                                multiline fullWidth 
-                                value={soapData.assessment} onChange={(e) => updateSoap('assessment', e.target.value)}
-                                placeholder="Clinical diagnosis..."
-                                InputProps={{ disableUnderline: true, sx: { fontFamily: FONT, fontSize: '0.95rem', flex: 1, alignItems: 'flex-start', color: '#2E7D32', fontWeight: 600 } }}
-                                sx={{ flex: 1, bgcolor: 'rgba(76, 175, 80, 0.02)', p: 1, borderRadius: 2 }}
-                            />
-                            {/* PROGNOSIS HUD INJECTED */}
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, bgcolor: 'rgba(0,0,0,0.02)', borderRadius: 2 }}>
-                                <Typography variant="caption" sx={{ fontWeight: 900, color: COLORS.textMuted }}>PROGNOSIS:</Typography>
-                                <Stack direction="row" spacing={0.5}>
-                                    {['Excellent', 'Good', 'Guarded', 'Poor', 'Grave'].map(p => (
-                                        <Chip 
-                                            key={p} label={p} size="small"
-                                            onClick={() => updateSoap('prognosis', p)}
-                                            sx={{ 
-                                                fontSize: '0.6rem', height: 20, fontWeight: 800, cursor: 'pointer',
-                                                bgcolor: soapData.prognosis === p ? (p === 'Grave' || p === 'Poor' ? '#D32F2F' : COLORS.brand) : 'white',
-                                                color: soapData.prognosis === p ? 'white' : 'inherit'
-                                            }} 
-                                        />
-                                    ))}
-                                </Stack>
-                            </Box>
-                        </Box>
-                    </Grid>
-
-                    {/* BOTTOM ROW: O & P */}
-                    <Grid size={{ xs: 6 }} sx={{ height: '50%', display: 'flex', flexDirection: 'column' }}>
-                        <Box sx={{ p: 2, flex: 1, bgcolor: 'white', borderRadius: 4, border: '1px solid rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                <Typography sx={{ ...TYPE.label, color: '#1976D2' }}>O - OBJECTIVE (EXAM & VITALS)</Typography>
-                                {/* 🚥 MINI VITALS HUD (COLOR-CODED) */}
-                                <Stack direction="row" spacing={2}>
-                                    {[
-                                        { label: 'Weight', val: soapData.objWeight, unit: 'kg' },
-                                        { label: 'Temp', val: soapData.objTemp, crit: soapData.objTemp > 39.5 || soapData.objTemp < 37.5 },
-                                        { label: 'HR', val: soapData.objHR, crit: soapData.objHR > 160 || soapData.objHR < 60 },
-                                        { label: 'RR', val: soapData.objRR, crit: soapData.objRR > 40 }
-                                    ].map(v => (
-                                        <Box key={v.label} sx={{ textAlign: 'center' }}>
-                                            <Typography variant="caption" sx={{ fontSize: '0.55rem', fontWeight: 900, color: COLORS.textMuted }}>{v.label.toUpperCase()}</Typography>
-                                            <Typography variant="body2" sx={{ fontWeight: 900, color: v.crit ? '#D32F2F' : COLORS.brand }}>
-                                                {v.val || '—'}
-                                            </Typography>
-                                        </Box>
-                                    ))}
-                                </Stack>
-                            </Box>
-                            
-                            <Box sx={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column' }}>
-                                <TextField 
-                                    multiline fullWidth 
-                                    value={soapData.objectiveNotes} onChange={(e) => updateSoap('objectiveNotes', e.target.value)}
-                                    placeholder="Physical findings..."
-                                    InputProps={{ disableUnderline: true, sx: { fontFamily: FONT, fontSize: '0.95rem', flex: 1, alignItems: 'flex-start' } }}
-                                    sx={{ flex: 1 }}
-                                />
-                                {/* ⚡ WNL GOD-MODE MACRO */}
-                                <Button 
-                                    size="small" variant="outlined"
-                                    onClick={() => updateSoap('objectiveNotes', 'PE: BAR. Hydration normal. Mucous membranes pink, CRT <2s. All peripheral lymph nodes palpate normal. Thoracic auscultation clear; no murmurs or arrhythmias. Lungs clear in all fields. Abdomen soft, non-painful. Plan: Routine care.')}
-                                    sx={{ position: 'absolute', top: 0, right: 0, fontWeight: 900, fontSize: '0.6rem', py: 0, px: 1, borderRadius: 1.5, color: '#1976D2', border: '1px solid rgba(25, 118, 210, 0.3)' }}
-                                >
-                                    AUTO-FILL WNL
-                                </Button>
-                            </Box>
-
-                            {/* BODY SCALES INJECTED */}
-                            <Grid container spacing={2} sx={{ p: 1, bgcolor: '#FAF8F5', borderRadius: 2 }}>
-                                <Grid size={{ xs: 6 }}>
-                                    <Typography variant="caption" sx={{ fontWeight: 900, fontSize: '0.6rem' }}>BCS: {soapData.bcs || 5}</Typography>
-                                    <input type="range" min="1" max="9" step="1" value={soapData.bcs || 5} onChange={(e) => updateSoap('bcs', e.target.value)} style={{ width: '100%', accentColor: COLORS.brand }} />
-                                </Grid>
-                                <Grid size={{ xs: 6 }}>
-                                    <Typography variant="caption" sx={{ fontWeight: 900, fontSize: '0.6rem' }}>PAIN: {soapData.painScale || 0}</Typography>
-                                    <input type="range" min="0" max="10" step="1" value={soapData.painScale || 0} onChange={(e) => updateSoap('painScale', e.target.value)} style={{ width: '100%', accentColor: COLORS.brand }} />
-                                </Grid>
-                            </Grid>
-                        </Box>
-                    </Grid>
-
-                    <Grid size={{ xs: 6 }} sx={{ height: '50%', display: 'flex', flexDirection: 'column' }}>
-                        <Box sx={{ p: 2, flex: 1, bgcolor: 'white', borderRadius: 4, border: '1px solid rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            <Typography sx={{ ...TYPE.label, color: '#7B1FA2' }}>P - PLAN (TREATMENT & RECHECKS)</Typography>
-                            <TextField 
-                                multiline fullWidth 
-                                value={soapData.plan} onChange={(e) => updateSoap('plan', e.target.value)}
-                                placeholder="Treatment plan..."
-                                InputProps={{ disableUnderline: true, sx: { fontFamily: FONT, fontSize: '0.95rem', flex: 1, alignItems: 'flex-start' } }}
-                                sx={{ flex: 1 }}
-                            />
-                            {/* RECHECK HUD INJECTED */}
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, bgcolor: 'rgba(0,0,0,0.02)', borderRadius: 2 }}>
-                                <Typography variant="caption" sx={{ fontWeight: 900, color: '#2E7D32' }}>RECHECK IN:</Typography>
-                                <Stack direction="row" spacing={0.5}>
-                                    {['Next Week', '2 Weeks', '1 Month', 'PRN', 'Finalized'].map(w => (
-                                        <Chip 
-                                            key={w} label={w} size="small"
-                                            onClick={() => updateSoap('recheckIn', w)}
-                                            sx={{ 
-                                                fontSize: '0.6rem', height: 20, fontWeight: 800, cursor: 'pointer',
-                                                bgcolor: soapData.recheckIn === w ? '#2E7D32' : 'white',
-                                                color: soapData.recheckIn === w ? 'white' : 'inherit'
-                                            }} 
-                                        />
-                                    ))}
-                                </Stack>
-                            </Box>
-                        </Box>
-                    </Grid>
-                </Grid>
-            </Box>
+                ))}
+            </Grid>
         </Box>
       </Dialog>
-    </Box>
-  </Dialog>
-);
+    </Dialog>
+  );
 }

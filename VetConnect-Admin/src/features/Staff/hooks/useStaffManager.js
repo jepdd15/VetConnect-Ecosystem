@@ -10,27 +10,40 @@ const STAFF_LABELS = {
   fullName:       'Full Name',
   email:          'Email',
   phone:          'Phone',
-  specialty:      'Specialty Tag',
   accessLevel:    'Access Level',
   prcLicense:     'PRC License',
-  employmentType: 'Employment Type',
-  hireDate:       'Hire Date',
   address:        'Address',
-  emergencyName:  'Emergency Contact',
-  emergencyPhone: 'Emergency Phone',
-  notes:          'Internal Notes',
+  emergencyContacts: 'Emergency Registry',
 };
+
 const diffStaffFields = (before, after) => {
   const changes = [];
+  
+  // 1. Scalar Fields
   for (const [key, label] of Object.entries(STAFF_LABELS)) {
+    if (key === 'emergencyContacts') continue; // Handle separately
     const oldVal = String(before[key] ?? '').trim();
     const newVal = String(after[key]  ?? '').trim();
     if (oldVal !== newVal) changes.push(`${label}: "${oldVal || '(empty)'}" → "${newVal || '(empty)'}"`);
   }
-  // Departments (array comparison)
+
+  // 2. Departments (array comparison)
   const oldDepts = (before.departments || []).sort().join(', ');
   const newDepts = (after.departments || []).sort().join(', ');
   if (oldDepts !== newDepts) changes.push(`Departments: [${oldDepts || 'none'}] → [${newDepts || 'none'}]`);
+
+  // 3. Emergency Contacts (Deep Diff)
+  const oldContacts = before.emergencyContacts || [];
+  const newContacts = (after.emergencyContacts || []).map(c => ({
+    name: (c.name || '').trim(),
+    kinship: (c.kinship || '').trim(),
+    phone: (c.phone || '').trim()
+  }));
+
+  if (JSON.stringify(oldContacts) !== JSON.stringify(newContacts)) {
+    changes.push(`Emergency Registry: Update detected in ${newContacts.length} record(s).`);
+  }
+
   return changes.length > 0 ? changes.join(' | ') : 'Minor profile update (no tracked field changed)';
 };
 // ─────────────────────────────────────────────────────────────────────────
@@ -95,12 +108,13 @@ export function useStaffManager() {
     const payload = {
       fullName: formData.fullName, 
       email: email, 
-      phone: formData.phone || '', // Also add fallbacks for other fields
-      specialty: formData.specialty || 'N/A', 
+      phone: formData.phone || '', 
       accessLevel: formData.accessLevel, 
       departments: formData.departments || [],
       role: formData.accessLevel,
       prcLicense: formData.prcLicense || '',
+      address: formData.address || '',
+      emergencyContacts: formData.emergencyContacts || [],
       updatedAt: new Date()
     };
 

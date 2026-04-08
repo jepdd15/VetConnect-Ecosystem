@@ -34,7 +34,7 @@ import GlobalActivityLog from './components/GlobalActivityLog';
 
 // Helper for Capitlizing Category strings
 export const formatCategory = (str) => {
-  if (!str) return '';
+  if (!str || typeof str !== 'string') return str?.name || 'Uncategorized';
   return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
 };
 
@@ -43,14 +43,15 @@ const KPICard = ({ title, value, icon, color, bgcolor, border, onClick, active }
     elevation={0}
     onClick={onClick}
     sx={{
-      p: 2.5, display: 'flex', alignItems: 'center', gap: 2,
+      p: 2, px: 2.5, display: 'flex', alignItems: 'center', gap: 2,
       borderRadius: 0, 
-      border: `2px solid ${active ? color : '#5D4037'}`,
-      bgcolor: active ? `${color}18` : '#FFF9F7', // Forensic Flat background
-      boxShadow: active ? `4px 4px 0px ${color}30` : '4px 4px 0px rgba(93, 64, 55, 0.1)',
+      border: 0,
+      bgcolor: active ? `${color}1A` : '#FFF9F7', 
+      boxShadow: 'none',
       cursor: onClick ? 'pointer' : 'default',
       transition: 'all 0.1s ease',
-      '&:hover': onClick ? { transform: 'translate(1px, 1px)', boxShadow: `2px 2px 0px ${color}25`, border: `2px solid ${color}` } : {},
+      height: '100%',
+      '&:hover': onClick ? { bgcolor: active ? `${color}25` : '#F0F0F0' } : {},
     }}
   >
     <Box sx={{ width: 44, height: 44, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: `${color}1A`, color: color, border: `1px solid ${color}33` }}>
@@ -92,18 +93,33 @@ export default function Inventory() {
       if (snap.empty) {
         try {
           const batch = writeBatch(db);
-          const defaultCategories = ['medicine', 'vaccine', 'food', 'supplies', 'accessories', 'lab'];
-          defaultCategories.forEach((catName) => {
+          const defaultCategories = [
+            { name: 'medicine', isMedicine: true },
+            { name: 'vaccine', isMedicine: true },
+            { name: 'drug', isMedicine: true },
+            { name: 'food', isMedicine: false },
+            { name: 'supplies', isMedicine: false },
+            { name: 'accessories', isMedicine: false },
+            { name: 'lab', isMedicine: false }
+          ];
+          defaultCategories.forEach((cat) => {
             const newDocRef = doc(collection(db, "inventory_categories"));
-            batch.set(newDocRef, { name: catName });
+            batch.set(newDocRef, cat);
           });
           await batch.commit();
         } catch (error) { console.error("Auto-seeding failed:", error); }
       } else {
         const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        // Ensure UI dropdown only shows unique formatted values
-        const uniqueCats = Array.from(new Set(list.map(c => c.name?.toLowerCase().trim()))).filter(Boolean);
-        uniqueCats.sort();
+        // Ensure UI dropdown only shows unique formatted values with their clinical status
+        const catMap = new Map();
+        list.forEach(c => {
+          const name = c.name?.toLowerCase().trim();
+          if (name && !catMap.has(name)) {
+            catMap.set(name, { name, isMedicine: !!c.isMedicine });
+          }
+        });
+        const uniqueCats = Array.from(catMap.values());
+        uniqueCats.sort((a,b) => a.name.localeCompare(b.name));
         setInvCategories(uniqueCats);
       }
     });
@@ -199,13 +215,13 @@ export default function Inventory() {
   const glassStyle = GLASS.panel;
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 24px)', overflow: 'hidden' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       
       {/* 1. BOXED FORENSIC HEADER */}
-      <Box sx={{ flexShrink: 0, mb: 2 }}>
+      <Box sx={{ flexShrink: 0, mb: 0 }}>
         <Paper sx={{ 
           p: 2, display: 'flex', flexWrap: 'nowrap', gap: 2, alignItems: 'center',
-          bgcolor: '#FFF8E1', border: '2px solid #5D4037', borderRadius: 0, boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)'
+          bgcolor: '#FFF8E1', borderBottom: '2px solid #5D4037', borderRadius: 0, boxShadow: 'none'
         }}>
           <Typography variant="h5" sx={{ fontFamily: FONT, fontWeight: 1000, color: '#5D4037', textTransform: 'uppercase', letterSpacing: 0.5, flexShrink: 0, mr: 1, fontSize: '1.25rem' }}>
             Inventory Command Center
@@ -229,7 +245,7 @@ export default function Inventory() {
           <FormControl size="small" sx={{ minWidth: 160, flexShrink: 0 }}>
             <Select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} displayEmpty sx={{ bgcolor: 'white', fontWeight: 'bold', fontSize: '0.85rem', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#5D403733' } }}>
               <MenuItem value="All">All Categories</MenuItem>
-              {invCategories.map(c => <MenuItem key={c} value={c}>{formatCategory(c)}</MenuItem>)}
+              {invCategories.map(c => <MenuItem key={c.name} value={c.name}>{formatCategory(c.name)}</MenuItem>)}
             </Select>
           </FormControl>
 
@@ -262,20 +278,20 @@ export default function Inventory() {
       </Box>
 
       {/* 2. BOXED KPI ROW */}
-      <Box sx={{ flexShrink: 0, mb: 2 }}>
-        <Paper sx={{ p: 1.5, bgcolor: '#F5F5F5', border: '2px solid #5D4037', borderRadius: 0, boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.05)' }}>
-          <Grid container spacing={2}>
-             <Grid item xs><KPICard title="Total Value" value={`₱${kpis.totalValue.toLocaleString(undefined, {minimumFractionDigits: 2})}`} icon={<AttachMoneyIcon />} color="#2E7D32" /></Grid>
-             <Grid item xs><KPICard title="Active SKUs" value={kpis.totalItems} icon={<InventoryIcon />} color="#1565C0" /></Grid>
-             <Grid item xs><KPICard title="Expiring Soon" value={kpis.expiringSoon} icon={<EventBusyIcon />} color="#6A1B9A" onClick={() => toggleStockFilter('expiring')} active={stockFilter === 'expiring'} /></Grid>
-             <Grid item xs><KPICard title="Low Stock" value={kpis.lowStock} icon={<WarningAmberIcon />} color="#E65100" onClick={() => toggleStockFilter('low')} active={stockFilter === 'low'} /></Grid>
-             <Grid item xs><KPICard title="Out of Stock" value={kpis.outOfStock} icon={<ErrorOutlineIcon />} color="#D32F2F" onClick={() => toggleStockFilter('out')} active={stockFilter === 'out'} /></Grid>
+      <Box sx={{ flexShrink: 0, mb: 0 }}>
+        <Paper sx={{ p: 0, bgcolor: '#F5F5F5', borderBottom: '2px solid #5D4037', borderRadius: 0, boxShadow: 'none' }}>
+          <Grid container spacing={0} sx={{ '& > div:not(:last-child)': { borderRight: '1px solid #5D40371A' } }}>
+             <Grid size={{ xs: true }}><KPICard title="Total Value" value={`₱${kpis.totalValue.toLocaleString(undefined, {minimumFractionDigits: 2})}`} icon={<AttachMoneyIcon />} color="#2E7D32" /></Grid>
+             <Grid size={{ xs: true }}><KPICard title="Active SKUs" value={kpis.totalItems} icon={<InventoryIcon />} color="#1565C0" /></Grid>
+             <Grid size={{ xs: true }}><KPICard title="Expiring Soon" value={kpis.expiringSoon} icon={<EventBusyIcon />} color="#6A1B9A" onClick={() => toggleStockFilter('expiring')} active={stockFilter === 'expiring'} /></Grid>
+             <Grid size={{ xs: true }}><KPICard title="Low Stock" value={kpis.lowStock} icon={<WarningAmberIcon />} color="#E65100" onClick={() => toggleStockFilter('low')} active={stockFilter === 'low'} /></Grid>
+             <Grid size={{ xs: true }}><KPICard title="Out of Stock" value={kpis.outOfStock} icon={<ErrorOutlineIcon />} color="#D32F2F" onClick={() => toggleStockFilter('out')} active={stockFilter === 'out'} /></Grid>
           </Grid>
         </Paper>
       </Box>
 
       {/* VIEW TABS */}
-      <Box sx={{ mb: 1, borderBottom: `1px solid ${COLORS.border}` }}>
+      <Box sx={{ mb: 0, bgcolor: '#FFFBF5', borderBottom: `1px solid ${COLORS.border}` }}>
         <Tabs
           value={activeTab}
           onChange={(_, v) => setActiveTab(v)}

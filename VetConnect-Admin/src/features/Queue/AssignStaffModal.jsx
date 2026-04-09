@@ -13,17 +13,17 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import PersonOffIcon from '@mui/icons-material/PersonOff';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 
-import { doc, runTransaction, updateDoc, Timestamp } from 'firebase/firestore';
+import { doc, runTransaction, updateDoc, Timestamp, arrayUnion } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
+import { useUser } from '../../context/UserContext';
 
 export default function AssignStaffModal({ open, onClose, patient, vetsList, activeAppointments, departments, mode = 'check-in' }) {
+  const { profile, user } = useUser();
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   // THE BUFFER: Stores local changes before they hit the cloud!
   const [tempServices, setTempServices] = useState([]);
-  const [arrivalWeight, setArrivalWeight] = useState('');
-  const [confirmedAllergies, setConfirmedAllergies] = useState('');
 
   // --- DROPDOWN STATE ---
   const [anchorEl, setAnchorEl] = useState(null);
@@ -34,8 +34,6 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
     if (open && patient) {
       const sortedServices = (patient.services || []).sort((a, b) => a.name.localeCompare(b.name));
       setTempServices(sortedServices);
-      setArrivalWeight(patient.petWeight ? String(patient.petWeight) : '');
-      setConfirmedAllergies(patient.petAllergies || '');
       setErrorMsg('');
     }
   }, [open, patient]);
@@ -111,6 +109,18 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
           // --- 🛡️ STATUS PRIMING: Ensuring all services start as 'pending' ---
           const primedServices = tempServices.map(s => ({ ...s, status: 'pending' }));
 
+          const staffSignature = profile?.fullName || user?.email || 'System/Admin';
+          const pulseEvent = {
+              eventId: `pulse_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+              type: 'STATUS_CHANGE',
+              fromStatus: 'confirmed',
+              toStatus: 'arrived',
+              timestamp: Timestamp.now(),
+              staffId: user?.uid || 'unknown',
+              staffName: staffSignature,
+              note: 'Patient physically arrived and checked-in.'
+          };
+
           transaction.set(queueRef, { lastNumberIssued: newNumber }, { merge: true });
           transaction.update(doc(db, "appointments", patient.id), {
             status: 'arrived',
@@ -118,21 +128,13 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
             ticketPrefix: patient.priority === 'high' ? 'E' : 'W',
             timeArrived: Timestamp.now(),
             services: primedServices,
-            assignedVet: primedServices[0]?.staffName || "Unassigned",
-            assignedVetId: primedServices[0]?.staffId || null, // THE RESPONSIBILITY STAMP
-            
-            // --- CLINICAL VITAL SYNC ---
-            petWeight: parseFloat(arrivalWeight) || null,
-            petAllergies: confirmedAllergies || 'None'
+            clinicalPulse: arrayUnion(pulseEvent)
           });
 
           // --- 🧬 DUAL-SYNC: Update the Master Pet Record ---
           if (patient.petId) {
             const petRef = doc(db, "pets", patient.petId);
             transaction.update(petRef, {
-                lastWeight: parseFloat(arrivalWeight) || null,
-                weight: parseFloat(arrivalWeight) || null, // Ensure both are synced
-                petAllergies: confirmedAllergies || 'None',
                 lastVisit: Timestamp.now()
             });
           }
@@ -145,21 +147,8 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
         }
 
         await updateDoc(doc(db, "appointments", patient.id), {
-          services: tempServices,
-          assignedVet: tempServices[0]?.staffName || "Unassigned",
-          assignedVetId: tempServices[0]?.staffId || null,
-          petWeight: parseFloat(arrivalWeight) || null,
-          petAllergies: confirmedAllergies || 'None'
+          services: tempServices
         });
-
-        // Sync to pet master record even if just updating assignments
-        if (patient.petId) {
-            await updateDoc(doc(db, "pets", patient.petId), {
-                lastWeight: parseFloat(arrivalWeight) || null,
-                weight: parseFloat(arrivalWeight) || null,
-                petAllergies: confirmedAllergies || 'None'
-            });
-        }
       }
       onClose();
     } catch (e) {
@@ -262,38 +251,6 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
             sx={{ bgcolor: headerChipColor, color: 'white', fontWeight: '1000', fontSize: '0.8rem', height: 28, px: 2, boxShadow: 2 }}
           />
         </Box>
-      </Box>
-
-      {/* --- 🏥 VITALS & TRIAGE (CRITICAL PATH) --- */}
-      <Box sx={{ px: 3, py: 2, bgcolor: '#FBE9E7', borderBottom: '1px solid #FFCCBC', display: 'flex', gap: 3, alignItems: 'center' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
-              <Typography variant="caption" sx={{ fontWeight: '1000', color: '#D84315', minWidth: 100 }}>ARRIVAL WEIGHT (KG)</Typography>
-              <input 
-                  type="number"
-                  step="0.1"
-                  value={arrivalWeight}
-                  onChange={(e) => setArrivalWeight(e.target.value)}
-                  placeholder="0.0"
-                  style={{
-                      width: '100px', padding: '8px 12px', borderRadius: '8px', border: '2px solid #FFAB91',
-                      fontSize: '1rem', fontWeight: '900', color: '#3E2723', outline: 'none'
-                  }}
-              />
-              {!arrivalWeight && <Typography variant="caption" sx={{ color: '#D84315', fontWeight: 'bold', fontStyle: 'italic' }}>⚠️ WEIGHING REQUIRED</Typography>}
-          </Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 2 }}>
-              <Typography variant="caption" sx={{ fontWeight: '1000', color: '#D84315', minWidth: 120 }}>CONFIRMED ALLERGIES</Typography>
-              <input 
-                  type="text"
-                  value={confirmedAllergies}
-                  onChange={(e) => setConfirmedAllergies(e.target.value)}
-                  placeholder="None reported"
-                  style={{
-                      flex: 1, padding: '8px 12px', borderRadius: '8px', border: '2px solid #FFAB91',
-                      fontSize: '0.9rem', fontWeight: '700', color: '#3E2723', outline: 'none'
-                  }}
-              />
-          </Box>
       </Box>
 
       {/* COMPACT PILL DISPATCH AREA (DYNAMIC VERTICAL FILL) */}

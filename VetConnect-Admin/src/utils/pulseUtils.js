@@ -197,7 +197,7 @@ export const calculatePulseMetrics = (pulse = [], settings = {}, createdAt, targ
 /**
  * Formats minutes into human-readable shorthand (e.g., 1D 2H 30M)
  */
-const formatDuration = (totalMins) => {
+export const formatDuration = (totalMins) => {
   if (totalMins <= 0) return "0M";
   const days = Math.floor(totalMins / 1440);
   const hours = Math.floor((totalMins % 1440) / 60);

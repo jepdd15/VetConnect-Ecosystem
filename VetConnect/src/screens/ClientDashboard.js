@@ -14,10 +14,12 @@ import {
 import { useEffect, useState } from "react";
 import {
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
   Animated,
 } from "react-native";
@@ -299,75 +301,82 @@ const ClientDashboard = ({ navigation }) => {
     }
 
     return (
-      <TouchableOpacity
-        key={appt.id}
-        style={[
-          styles.notifCard,
-          { backgroundColor: bgColor, borderColor: borderColor, borderLeftWidth: 6 },
-        ]}
-        onPress={() => navigation.navigate("ClientAppointments")}
-      >
-        <View style={styles.iconCircle}>
-          <Text style={styles.notifIcon}>{icon}</Text>
-        </View>
-        <View style={styles.notifContent}>
-           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-             <Text style={styles.notifTitle}>{title}</Text>
-             {appt.status === 'arrived' && (
-               <View style={styles.queueTag}>
-                 <Text style={styles.queueTagText}>#{appt.queueNumber}</Text>
-               </View>
-             )}
-           </View>
-          <Text style={styles.notifMsg}>{msg}</Text>
-          
-          {appt.status === 'arrived' && (
-            <View style={styles.queueProgressContainer}>
-              <View style={styles.queueProgressBar}>
-                <View style={[styles.queueProgressFill, { width: queueAhead === 0 ? '100%' : '60%' }]} />
-              </View>
-              <Text style={styles.queueAheadText}>
-                {queueAhead === 0 ? "You're next in line! 🎉" : `${queueAhead} pets ahead of you`}
-              </Text>
+      <View key={appt.id} style={styles.notifContainer}>
+        <View style={[styles.notifShadow, { backgroundColor: borderColor }]} />
+        <TouchableOpacity
+          style={[
+            styles.notifCard,
+            { backgroundColor: "white", borderColor: "#3E2723", borderLeftWidth: 8, borderLeftColor: borderColor },
+          ]}
+          onPress={() => navigation.navigate("ClientAppointments")}
+        >
+          <View style={styles.notifContent}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={styles.notifTitle}>{icon} {title}</Text>
+              {appt.status === 'arrived' && (
+                <View style={styles.queueTag}>
+                  <Text style={styles.queueTagText}>#{appt.queueNumber}</Text>
+                </View>
+              )}
             </View>
-          )}
-        </View>
-        <Text style={styles.arrow}>➔</Text>
-      </TouchableOpacity>
+            <Text style={styles.notifMsg}>{msg}</Text>
+            
+            {appt.status === 'arrived' && (
+              <View style={styles.queueProgressContainer}>
+                <View style={styles.queueProgressBar}>
+                  <View style={[styles.queueProgressFill, { width: queueAhead === 0 ? '100%' : '60%', backgroundColor: '#3ABEF9' }]} />
+                </View>
+                <Text style={[styles.queueAheadText, { color: '#3ABEF9' }]}>
+                  {queueAhead === 0 ? "YOU'RE NEXT IN LINE! 🎉" : `${queueAhead} PETS AHEAD OF YOU`}
+                </Text>
+              </View>
+            )}
+          </View>
+          <Text style={styles.arrow}>➔</Text>
+        </TouchableOpacity>
+      </View>
     );
   };
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      {/* BALANCE ALERT BANNER */}
+      {/* BALANCE ALERT BANNER (NEOBRUTALIST REDESIGN) */}
       {userProfile?.outstandingBalance > 0 && (
-        <Animated.View style={[styles.balanceBanner, { transform: [{ scale: pulseAnim }] }]}>
-          <LinearGradient colors={["#D32F2F", "#B71C1C"]} style={styles.balanceGradient}>
+        <Animated.View style={[styles.balanceContainer, { transform: [{ scale: pulseAnim }] }]}>
+          <View style={styles.balanceShadow} />
+          <View style={styles.balanceBox}>
             <Text style={styles.balanceIcon}>💸</Text>
             <View style={{ flex: 1 }}>
-              <Text style={styles.balanceTitle}>Outstanding Balance</Text>
-              <Text style={styles.balanceMsg}>₱{userProfile.outstandingBalance.toLocaleString()} — Please settle at the counter.</Text>
+              <Text style={styles.balanceTitle}>OUTSTANDING BALANCE</Text>
+              <Text style={styles.balanceMsg}>₱{userProfile.outstandingBalance.toLocaleString()} — SETTLE AT COUNTER</Text>
             </View>
-            <TouchableOpacity onPress={() => navigation.navigate("UserProfile")}>
-              <Text style={styles.balanceAction}>VIEW ➔</Text>
+            <TouchableOpacity onPress={() => navigation.navigate("UserProfile")} style={styles.balanceActionButton}>
+              <Text style={styles.balanceActionText}>VIEW ➔</Text>
             </TouchableOpacity>
-          </LinearGradient>
+          </View>
         </Animated.View>
       )}
 
-      {/* HEADER */}
-      <View style={styles.header}>
+      {/* NEW NEUBRUTALIST HEADER */}
+      <View style={styles.headerBox}>
+        <Text style={styles.dashboardTitle}>DASHBOARD</Text>
+      </View>
+
+      <View style={styles.greetingRow}>
         <View>
           <Text style={styles.welcome}>Hi, {userProfile?.fullName?.split(' ')[0] || 'Member'}! 👋</Text>
           <Text style={styles.subtitle}>
-            {activeAppointments.length > 0 ? "Your visit is in progress." : "Your pets are waiting for you!"}
+            {activeAppointments.length > 0 ? "COMMAND CENTER ACTIVE" : "YOUR PETS ARE WAITING"}
           </Text>
         </View>
         <TouchableOpacity
-          style={styles.profileIcon}
+          style={styles.profileSquare}
           onPress={() => navigation.navigate("UserProfile")}
         >
-          <Text style={{ fontSize: 22 }}>👤</Text>
+          <View style={styles.profileShadow} />
+          <View style={styles.profileInner}>
+            <Text style={{ fontSize: 24 }}>👤</Text>
+          </View>
         </TouchableOpacity>
       </View>
 
@@ -383,25 +392,18 @@ const ClientDashboard = ({ navigation }) => {
       {!loading && reminders.length > 0 && (
         <View style={styles.feedSection}>
           <Text style={styles.sectionHeader}>📅 Health Reminders</Text>
-          {/* Only show the single most urgent reminder to save space */}
           {reminders.slice(0, 1).map((rec) => (
-            <View
-              key={rec.id}
-              style={[
-                styles.notifCard,
-                { backgroundColor: "#E1F5FE", borderColor: "#81D4FA" },
-              ]}
-            >
-              <View style={[styles.iconCircle, { backgroundColor: "#B3E5FC" }]}>
-                <Text style={{ fontSize: 20 }}>💉</Text>
-              </View>
-              <View style={styles.notifContent}>
-                <Text style={[styles.notifTitle, { color: "#0277BD" }]}>
-                  Due: {rec.petName}
-                </Text>
-                <Text style={styles.notifMsg}>
-                  Scheduled for: {rec.nextVisit.toDate().toLocaleDateString()}
-                </Text>
+            <View key={rec.id} style={styles.notifContainer}>
+              <View style={[styles.notifShadow, { backgroundColor: "#3ABEF9" }]} />
+              <View style={[styles.notifCard, { backgroundColor: "white", borderColor: "#3E2723", borderLeftWidth: 8, borderLeftColor: "#3ABEF9" }]}>
+                <View style={styles.notifContent}>
+                  <Text style={[styles.notifTitle, { color: "#3E2723" }]}>
+                    💉 DUE: {rec.petName.toUpperCase()}
+                  </Text>
+                  <Text style={styles.notifMsg}>
+                    SCHEDULED FOR: {rec.nextVisit.toDate().toLocaleDateString()}
+                  </Text>
+                </View>
               </View>
             </View>
           ))}
@@ -412,95 +414,123 @@ const ClientDashboard = ({ navigation }) => {
       <Text style={styles.sectionHeader}>⚡ Quick Actions</Text>
 
       <View style={styles.grid}>
-        <TouchableOpacity
-          style={styles.cardWrapper}
-          onPress={() => navigation.navigate("MyPets")}
-        >
-          <View style={styles.card}>
+        <View style={styles.cardWrapper}>
+          <View style={styles.cardShadow} />
+          <Pressable
+            style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+            onPress={() => navigation.navigate("MyPets")}
+          >
             <Text style={styles.cardIcon}>🐾</Text>
-            <Text style={styles.cardText}>My Pets</Text>
-          </View>
-        </TouchableOpacity>
+            <Text style={styles.cardText}>MY PETS</Text>
+          </Pressable>
+        </View>
 
-        <TouchableOpacity
-          style={styles.cardWrapper}
-          onPress={() => navigation.navigate("BookAppointment")}
-        >
-          <View style={styles.card}>
+        <View style={styles.cardWrapper}>
+          <View style={styles.cardShadow} />
+          <Pressable
+            style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+            onPress={() => navigation.navigate("BookAppointment")}
+          >
             <Text style={styles.cardIcon}>📅</Text>
-            <Text style={styles.cardText}>Schedule Visit</Text>
-          </View>
-        </TouchableOpacity>
+            <Text style={styles.cardText}>SCHEDULE VISIT</Text>
+          </Pressable>
+        </View>
 
-        <TouchableOpacity
-          style={styles.cardWrapper}
-          onPress={() => navigation.navigate("ClientAppointments")}
-        >
-          <View style={styles.card}>
+        <View style={styles.cardWrapper}>
+          <View style={styles.cardShadow} />
+          <Pressable
+            style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+            onPress={() => navigation.navigate("ClientAppointments")}
+          >
             <Text style={styles.cardIcon}>🎫</Text>
-            <Text style={styles.cardText}>My Bookings</Text>
-          </View>
-        </TouchableOpacity>
+            <Text style={styles.cardText}>MY BOOKINGS</Text>
+          </Pressable>
+        </View>
 
-        <TouchableOpacity
-          style={styles.cardWrapper}
-          onPress={() => navigation.navigate("QueueScreen")}
-        >
-          <View style={styles.card}>
+        <View style={styles.cardWrapper}>
+          <View style={styles.cardShadow} />
+          <Pressable
+            style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+            onPress={() => navigation.navigate("QueueScreen")}
+          >
             <Text style={styles.cardIcon}>🔢</Text>
-            <Text style={styles.cardText}>Live Queue</Text>
-          </View>
-        </TouchableOpacity>
+            <Text style={styles.cardText}>LIVE QUEUE</Text>
+          </Pressable>
+        </View>
 
-        <TouchableOpacity
-          style={styles.cardWrapper}
-          onPress={() => navigation.navigate("Chatbot")}
-        >
-          <View style={[styles.card, { borderColor: "#1565C0" }]}>
+        <View style={styles.cardWrapper}>
+          <View style={[styles.cardShadow, { backgroundColor: '#3ABEF9' }]} />
+          <Pressable
+            style={({ pressed }) => [styles.card, pressed && styles.cardPressed, { borderColor: '#3E2723' }]}
+            onPress={() => navigation.navigate("Chatbot")}
+          >
             <Text style={styles.cardIcon}>🤖</Text>
-            <Text style={[styles.cardText, { color: "#1565C0" }]}>Help Center</Text>
-          </View>
-        </TouchableOpacity>
+            <Text style={[styles.cardText, { color: '#3ABEF9' }]}>HELP CENTER</Text>
+          </Pressable>
+        </View>
 
-        <TouchableOpacity
-          style={styles.cardWrapper}
-          onPress={handleLogout}
-        >
-          <View style={[styles.card, { backgroundColor: "#D32F2F", borderColor: "#3E2723" }]}>
+        <View style={styles.cardWrapper}>
+          <View style={[styles.cardShadow, { backgroundColor: '#D32F2F' }]} />
+          <Pressable
+            style={({ pressed }) => [styles.card, pressed && styles.cardPressed, { backgroundColor: '#D32F2F', borderColor: '#3E2723' }]}
+            onPress={handleLogout}
+          >
             <Text style={styles.cardIcon}>🚪</Text>
-            <Text style={[styles.cardText, { color: "#FFFFFF" }]}>Logout</Text>
-          </View>
-        </TouchableOpacity>
+            <Text style={[styles.cardText, { color: '#FFFFFF' }]}>LOGOUT</Text>
+          </Pressable>
+        </View>
       </View>
     </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flexGrow: 1, padding: 20, backgroundColor: "#F5F0EB" },
+  container: { flexGrow: 1, padding: 20, backgroundColor: "#FFF8E1", paddingTop: 60 },
 
-  header: {
+  headerBox: { marginBottom: 15 },
+  dashboardTitle: {
+    fontFamily: "Inter_900Black",
+    fontSize: 48,
+    color: "#3E2723",
+    textTransform: "uppercase",
+    letterSpacing: -1.5,
+    lineHeight: 48,
+  },
+
+  greetingRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 25,
-    marginTop: 10,
+    marginBottom: 30,
   },
-  welcome: { fontSize: 26, fontWeight: "800", color: "#3E2723" },
-  subtitle: { fontSize: 15, color: "#795548", marginTop: 2, fontWeight: "600" },
-  profileIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: "#D7CCC8",
+  welcome: { fontFamily: "Inter_900Black", fontSize: 24, color: "#3E2723" },
+  subtitle: { fontFamily: "Inter_700Bold", fontSize: 13, color: "#8D6E63", marginTop: 2, textTransform: 'uppercase', letterSpacing: 1 },
+  profileSquare: {
+    width: 60,
+    height: 60,
+    position: 'relative',
+  },
+  profileShadow: {
+    position: 'absolute',
+    width: 60,
+    height: 60,
+    backgroundColor: '#3E2723',
+    top: 4,
+    left: 4,
+  },
+  profileInner: {
+    width: 60,
+    height: 60,
+    backgroundColor: 'white',
+    borderWidth: 3,
+    borderColor: '#3E2723',
     alignItems: "center",
     justifyContent: "center",
-    elevation: 3,
   },
 
   sectionHeader: {
+    fontFamily: "Inter_900Black",
     fontSize: 13,
-    fontWeight: "900",
     color: "#8D6E63",
     marginBottom: 12,
     textTransform: "uppercase",
@@ -508,19 +538,28 @@ const styles = StyleSheet.create({
   },
 
   feedSection: { marginBottom: 20 },
+  notifContainer: { position: 'relative', marginBottom: 15 },
+  notifShadow: {
+    position: 'absolute',
+    top: 5,
+    left: 5,
+    right: -2,
+    bottom: -2,
+    backgroundColor: '#3E2723',
+  },
   notifCard: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 12,
-    borderRadius: 15,
-    marginBottom: 10,
-    borderWidth: 1,
-    elevation: 1,
+    padding: 16,
+    borderRadius: 0,
+    backgroundColor: 'white',
+    borderWidth: 3,
+    borderColor: '#3E2723',
   },
   iconCircle: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 0,
     backgroundColor: "rgba(255,255,255,0.6)",
     alignItems: "center",
     justifyContent: "center",
@@ -529,64 +568,97 @@ const styles = StyleSheet.create({
   notifIcon: { fontSize: 20 },
   notifContent: { flex: 1 },
   notifTitle: {
-    fontWeight: "bold",
-    fontSize: 15,
-    color: "#333",
-    marginBottom: 2,
+    fontFamily: "Inter_900Black",
+    fontSize: 16,
+    color: "#3E2723",
+    marginBottom: 4,
+    textTransform: 'uppercase',
   },
-  notifMsg: { fontSize: 13, color: "#555" },
-  arrow: { fontSize: 18, color: "#aaa", fontWeight: "bold" },
+  notifMsg: { fontFamily: "Inter_700Bold", fontSize: 13, color: "#5D4037" },
+  arrow: { fontSize: 18, color: "#3E2723", fontWeight: "900" },
 
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
+    paddingBottom: 20,
   },
   cardWrapper: {
     width: "48%",
-    marginBottom: 15,
+    height: 140,
+    marginBottom: 20,
+    position: 'relative',
+  },
+  cardShadow: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#3E2723',
   },
   card: {
+    height: 140,
     paddingVertical: 25,
-    borderRadius: 24, // Smoother corners for premium look
+    borderRadius: 0,
     alignItems: "center",
-    backgroundColor: "#FAF9F7", // admin formBg color (Cream)
-    borderWidth: 3, // Slightly thicker border for "Forensic" look
-    borderColor: "#3E2723", // admin brand color (Coffee Brown)
+    justifyContent: "center",
+    backgroundColor: "white",
+    borderWidth: 3,
+    borderColor: "#3E2723",
+  },
+  cardPressed: {
+    transform: [{ translateX: 4 }, { translateY: 4 }],
   },
   cardIcon: { fontSize: 36, marginBottom: 10 },
   cardText: { 
+    fontFamily: "Inter_900Black",
     color: "#3E2723", 
     fontSize: 13, 
-    fontWeight: "900", 
     letterSpacing: 0.8, 
-    textTransform: 'uppercase' // Uppercase like reference screenshot
+    textTransform: 'uppercase'
   },
 
-  // BALANCE BANNER
-  balanceBanner: {
-    marginBottom: 20,
-    borderRadius: 16,
-    overflow: "hidden",
-    elevation: 5,
+  // BALANCE BANNER REDESIGN
+  balanceContainer: {
+    marginBottom: 30,
+    position: 'relative',
   },
-  balanceGradient: {
+  balanceShadow: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    right: -4,
+    bottom: -4,
+    backgroundColor: '#3E2723',
+  },
+  balanceBox: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 15,
+    padding: 18,
+    backgroundColor: "#D32F2F",
+    borderWidth: 3,
+    borderColor: "#3E2723",
   },
-  balanceIcon: { fontSize: 28, marginRight: 15 },
-  balanceTitle: { color: "white", fontWeight: "900", fontSize: 16 },
-  balanceMsg: { color: "rgba(255,255,255,0.8)", fontSize: 12, fontWeight: "600" },
-  balanceAction: { color: "white", fontWeight: "900", fontSize: 12, marginLeft: 10 },
+  balanceIcon: { fontSize: 32, marginRight: 15 },
+  balanceTitle: { fontFamily: "Inter_900Black", color: "white", fontSize: 18, letterSpacing: 0.5 },
+  balanceMsg: { fontFamily: "Inter_700Bold", color: "rgba(255,255,255,0.9)", fontSize: 12 },
+  balanceActionButton: {
+    backgroundColor: "white",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 2,
+    borderColor: "#3E2723",
+  },
+  balanceActionText: { color: "#3E2723", fontWeight: "900", fontSize: 11 },
 
   // QUEUE PROGRESS
-  queueTag: { backgroundColor: 'rgba(0,0,0,0.1)', paddingHorizontal: 10, paddingVertical: 2, borderRadius: 10 },
-  queueTagText: { fontWeight: '900', fontSize: 12, color: '#333' },
-  queueProgressContainer: { marginTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)', paddingTop: 10 },
-  queueProgressBar: { height: 6, backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 3, overflow: 'hidden', marginBottom: 5 },
-  queueProgressFill: { height: '100%', backgroundColor: '#1976D2', borderRadius: 3 },
-  queueAheadText: { fontSize: 11, fontWeight: '700', color: '#1976D2' },
+  queueTag: { backgroundColor: '#3E2723', paddingHorizontal: 10, paddingVertical: 4 },
+  queueTagText: { fontWeight: '900', fontSize: 14, color: 'white' },
+  queueProgressContainer: { marginTop: 12, borderTopWidth: 2, borderTopColor: '#3E2723', paddingTop: 10 },
+  queueProgressBar: { height: 10, backgroundColor: 'rgba(0,0,0,0.1)', borderWidth: 2, borderColor: '#3E2723', overflow: 'hidden', marginBottom: 5 },
+  queueProgressFill: { height: '100%' },
+  queueAheadText: { fontSize: 12, fontWeight: '900' },
 });
 
 export default ClientDashboard;

@@ -85,7 +85,8 @@ const getLocalDateStr = (d = new Date()) => {
 // --- 📡 MEMOIZED AUDIT CARD: THE PERFORMANCE CURE ---
 const AuditPatientCard = React.memo(({
     patient, resolution, targetDate, targetTime, auditReason, realTimeStatus, tabMode, ancestorData, loadingHistory, departments, settings,
-    onResolutionChange, onAuditReasonChange, onFetchHistory, onClearHistory, onGenderOpen, CARD_HEIGHT
+    onResolutionChange, onAuditReasonChange, onFetchHistory, onClearHistory, onGenderOpen, CARD_HEIGHT,
+    ancestorChain // Phase 1: Full originApptId chain (array of ancestor records, oldest first)
 }) => {
     // PHASE 4.4.2.5: LOCAL-FIRST FOCUS SHIELD
     const [localReason, setLocalReason] = useState(auditReason || "");
@@ -102,19 +103,100 @@ const AuditPatientCard = React.memo(({
         setLocalReason(newVal);
         onAuditReasonChange(patient.id, newVal);
     };
-    // --- 🧬 CHRONOS DATE-INDEXING ENGINE (V2 UNIFICATION) ---
+    // --- 🧬 CHRONOS DATE-INDEXING ENGINE (V2 + ANCESTOR CHAIN MERGE) ---
+    const combinedPulse = useMemo(() => {
+        const ancestorPulses = (ancestorChain || []).flatMap(a => a.clinicalPulse || []);
+        return [...ancestorPulses, ...(patient.clinicalPulse || [])];
+    }, [patient.clinicalPulse, ancestorChain]);
+
     const uniqueDates = useMemo(() => {
-        const pulse = patient.clinicalPulse || [];
-        if (pulse.length === 0) return [new Date().toDateString()];
-        
-        const dates = [...new Set(pulse.map(p => {
+        if (combinedPulse.length === 0) return [new Date().toDateString()];
+        const dates = [...new Set(combinedPulse.map(p => {
             const d = p.timestamp?.toDate ? p.timestamp.toDate() : new Date(p.timestamp);
             return d.toDateString();
         }))].sort((a,b) => new Date(a) - new Date(b));
         return dates;
-    }, [patient.clinicalPulse]);
+    }, [combinedPulse]);
 
     const [activeCaseDay, setActiveCaseDay] = useState(uniqueDates.length - 1);
+
+    // Snap to latest day when ancestors resolve asynchronously
+    useEffect(() => {
+        setActiveCaseDay(uniqueDates.length - 1);
+    }, [uniqueDates.length]);
+
+    // --- 🧬 PULSE ROUTER: Select the correct record's data for the active day ---
+    // PRIORITY: Current record first, then ancestors for historical days only.
+    // This prevents a parent's terminal triage event (which lands on the child's day)
+    // from being incorrectly selected for the child's shift metrics.
+    const activeDaySource = useMemo(() => {
+        const targetDateStr = uniqueDates[activeCaseDay];
+
+        // 1. Check current record FIRST — if it has events on this day, use it.
+        const currentPulse = patient.clinicalPulse || [];
+        const currentHasEvents = currentPulse.some(p => {
+            const d = p.timestamp?.toDate ? p.timestamp.toDate() : new Date(p.timestamp);
+            return d.toDateString() === targetDateStr;
+        });
+        if (currentHasEvents) {
+            return { pulse: currentPulse, createdAt: patient.createdAt };
+        }
+
+        // 2. Fallback: Check ancestor records (oldest to newest) for historical days.
+        for (const ancestor of (ancestorChain || [])) {
+            const aPulse = ancestor.clinicalPulse || [];
+            const hasEventsOnDay = aPulse.some(p => {
+                const d = p.timestamp?.toDate ? p.timestamp.toDate() : new Date(p.timestamp);
+                return d.toDateString() === targetDateStr;
+            });
+            if (hasEventsOnDay) {
+                return { pulse: aPulse, createdAt: ancestor.createdAt };
+            }
+        }
+
+        // 3. Ultimate fallback: current record
+        return { pulse: currentPulse, createdAt: patient.createdAt };
+    }, [uniqueDates, activeCaseDay, ancestorChain, patient.clinicalPulse, patient.createdAt]);
+
+    // --- 🧬 CUMULATIVE TOTALS: Total = Sum of Shift values across all days ---
+    // Each record's shift metrics are computed independently with its primary date,
+    // then summed to produce the running case-lifetime Total.
+    const cumulativeTotals = useMemo(() => {
+        let totalQueue = 0;
+        let totalConsult = 0;
+        let totalConfined = 0;
+
+        // Helper: get the primary date for a record's pulse
+        const getPrimaryDate = (pulse) => {
+            if (!pulse || pulse.length === 0) return new Date();
+            const firstTs = pulse[0].timestamp;
+            const d = firstTs?.toDate ? firstTs.toDate() : new Date(firstTs);
+            return d;
+        };
+
+        // Sum shift metrics from each ancestor record
+        (ancestorChain || []).forEach(ancestor => {
+            const aPulse = ancestor.clinicalPulse || [];
+            if (aPulse.length === 0) return;
+            const primaryDate = getPrimaryDate(aPulse);
+            const m = calculatePulseMetrics(aPulse, settings, ancestor.createdAt, primaryDate);
+            totalQueue += m.raw.shiftQueue;
+            totalConsult += m.raw.shiftConsult;
+            totalConfined += m.raw.shiftConfined;
+        });
+
+        // Add current record's shift metrics
+        const currentPulse = patient.clinicalPulse || [];
+        if (currentPulse.length > 0) {
+            const primaryDate = getPrimaryDate(currentPulse);
+            const m = calculatePulseMetrics(currentPulse, settings, patient.createdAt, primaryDate);
+            totalQueue += m.raw.shiftQueue;
+            totalConsult += m.raw.shiftConsult;
+            totalConfined += m.raw.shiftConfined;
+        }
+
+        return { totalQueue, totalConsult, totalConfined };
+    }, [ancestorChain, patient.clinicalPulse, patient.createdAt, settings]);
 
     // --- ⚓ TEMPORAL ANCHOR (THE MIDNIGHT DETERRENT) ---
     const operationalEnd = useMemo(() => {
@@ -132,17 +214,15 @@ const AuditPatientCard = React.memo(({
     }, [uniqueDates, activeCaseDay]);
 
     const filteredPulse = useMemo(() => {
-        const pulse = patient.clinicalPulse || [];
         const targetDateStr = uniqueDates[activeCaseDay];
-        return pulse.filter(p => {
+        return combinedPulse.filter(p => {
             const d = p.timestamp?.toDate ? p.timestamp.toDate() : new Date(p.timestamp);
             return d.toDateString() === targetDateStr;
         });
-    }, [patient.clinicalPulse, uniqueDates, activeCaseDay]);
+    }, [combinedPulse, uniqueDates, activeCaseDay]);
 
     const milestones = useMemo(() => {
-        const pulse = patient.clinicalPulse || [];
-        const voidedIds = new Set(pulse.filter(p => p.correctedEventId).map(p => p.correctedEventId));
+        const voidedIds = new Set(combinedPulse.filter(p => p.correctedEventId).map(p => p.correctedEventId));
 
         if (filteredPulse.length === 0 && activeCaseDay === 0) {
             // FALLBACK: If Day 1 Pulse is missing, use basic static milestones
@@ -162,7 +242,7 @@ const AuditPatientCard = React.memo(({
             type: p.type,
             note: p.note
         }));
-    }, [filteredPulse, patient, activeCaseDay]);
+    }, [filteredPulse, combinedPulse, patient, activeCaseDay]);
 
     const totalEstMins = (patient.services || []).reduce((sum, s) => sum + (Number(s.duration || s.estMinutes) || 0), 0);
     const totalPrice = (patient.services || []).reduce((sum, s) => sum + (Number(s.price) || 0), 0);
@@ -456,19 +536,18 @@ const AuditPatientCard = React.memo(({
                         ? patient.forensicSeal 
                         : (ancestorData?.[patient.id]?.[targetDateStr]?.forensicSeal);
 
-                    const footerMetrics = apptSeal || calculatePulseMetrics(patient.clinicalPulse || [], settings, patient.createdAt, targetDate);
+                    const footerMetrics = apptSeal || calculatePulseMetrics(activeDaySource.pulse, settings, activeDaySource.createdAt, targetDate);
 
                     // 🧬 Multi-Shift Punctuality Decider
                     const getPunctualityLabel = () => {
-                        const pulse = patient.clinicalPulse || [];
-                        const currentDayArrival = pulse.find(p => {
+                        const currentDayArrival = activeDaySource.pulse.find(p => {
                            if (p.toStatus !== 'arrived') return false;
                            const d = p.timestamp?.toDate ? p.timestamp.toDate() : new Date(p.timestamp);
                            return d.toDateString() === targetDateStr;
                         });
 
                         // 🏥 Check for In-Residence (Confined) status during this shift
-                        const isConfinedNow = pulse.some(p => {
+                        const isConfinedNow = activeDaySource.pulse.some(p => {
                            const d = p.timestamp?.toDate ? p.timestamp.toDate() : new Date(p.timestamp);
                            return d.toDateString() === targetDateStr && p.toStatus === 'confined';
                         });
@@ -569,11 +648,12 @@ const AuditPatientCard = React.memo(({
                                 
                                 <Box sx={{ mt: 2 }}>
                                     <ForensicMetricGrid 
-                                        pulse={patient.clinicalPulse || []}
+                                        pulse={activeDaySource.pulse}
                                         settings={settings}
-                                        createdAt={patient.createdAt}
+                                        createdAt={activeDaySource.createdAt}
                                         sealedMetrics={activeCaseDay === 0 ? patient.forensicSeal : (ancestorData?.[patient.id]?.[uniqueDates[activeCaseDay]]?.forensicSeal)}
-                                        targetDate={uniqueDates[activeCaseDay] ? new Date(uniqueDates[activeCaseDay]) : new Date()} 
+                                        targetDate={uniqueDates[activeCaseDay] ? new Date(uniqueDates[activeCaseDay]) : new Date()}
+                                        cumulativeTotals={cumulativeTotals}
                                     />
                                 </Box>
                             </>
@@ -838,6 +918,51 @@ const EndOfDayModal = React.memo(({
     // SCHEDULING & ANCESTRY STATE
     const [ancestorData, setAncestorData] = useState({}); // { pid: { milestones: [], currentIdx: 0 } }
     const [loadingHistory, setLoadingHistory] = useState({});
+
+    // 🧬 PHASE 1: AUTOMATIC ANCESTOR CHAIN RESOLVER
+    // Resolves the full originApptId chain for every carry-over record on modal open.
+    const [ancestorChains, setAncestorChains] = useState({});
+
+    useEffect(() => {
+        if (!open || leftoverPatients.length === 0) return;
+
+        const resolveAllChains = async () => {
+            const chains = {};
+            const MAX_DEPTH = 10; // Safety limit for recursive chain traversal
+
+            await Promise.all(leftoverPatients.map(async (patient) => {
+                // Only resolve for carry-over children (records with an origin pointer or caseDay > 1)
+                if (!patient.originApptId && (patient.caseDay || 1) <= 1) return;
+
+                const chain = [];
+                let currentOriginId = patient.originApptId;
+                let depth = 0;
+
+                while (currentOriginId && depth < MAX_DEPTH) {
+                    try {
+                        const snap = await getDoc(doc(db, "appointments", currentOriginId));
+                        if (!snap.exists()) break;
+                        const ancestor = { id: snap.id, ...snap.data() };
+                        chain.unshift(ancestor); // Oldest ancestor first
+                        currentOriginId = ancestor.originApptId; // Follow the chain upward
+                    } catch (e) {
+                        console.error(`Ancestor chain resolution failed at depth ${depth}:`, e);
+                        break;
+                    }
+                    depth++;
+                }
+
+                if (chain.length > 0) {
+                    chains[patient.id] = chain;
+                }
+            }));
+
+            setAncestorChains(chains);
+            console.log(`[Ancestor Chain Resolver] Resolved ${Object.keys(chains).length} chain(s)`, chains);
+        };
+
+        resolveAllChains();
+    }, [open, leftoverPatients]);
 
     const handleProcessClick = React.useCallback(() => {
         if (!isConfirming) {
@@ -1207,6 +1332,7 @@ const EndOfDayModal = React.memo(({
                                 onClearHistory={handleClearHistory}
                                 onGenderOpen={handleGenderOpen}
                                 CARD_HEIGHT={CARD_HEIGHT}
+                                ancestorChain={ancestorChains[patient.id] || []}
                             />
                         ))}
                     </Stack>

@@ -275,10 +275,10 @@ export default function Sales() {
       {/* 1. FULL-BLEED COMMAND STRIP header */}
       <Box sx={{ flexShrink: 0, mb: 0 }}>
         <Paper elevation={0} sx={{ 
-          p: '16px 24px', display: 'flex', flexWrap: 'nowrap', gap: 2, alignItems: 'center',
+          p: 2.5, px: 4, display: 'flex', flexWrap: 'nowrap', gap: 2.5, alignItems: 'center',
           bgcolor: '#FFF8E1', borderBottom: '2px solid #5D4037', borderTop: 'none', borderLeft: 'none', borderRight: 'none', borderRadius: 0
         }}>
-          <Typography variant="h5" sx={{ fontWeight: '1000', color: '#5D4037', textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0, mr: 2, fontSize: '1.1rem' }}>
+          <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: '1000', color: '#5D4037', textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0, mr: 1, fontSize: '1.5rem', lineHeight: 1 }}>
             Transaction Ledger
           </Typography>
 
@@ -355,7 +355,7 @@ export default function Sales() {
       {/* 2. FULL-BLEED ANALYTIC MOUNTING (KPIs) */}
       <Box sx={{ flexShrink: 0, mb: 0 }}>
         <Box sx={{ 
-          p: '16px 24px', bgcolor: 'white', borderBottom: '2px solid #5D4037', 
+          p: 2, px: 4, bgcolor: 'white', borderBottom: '2px solid #5D4037', 
           borderTop: 'none', borderLeft: 'none', borderRight: 'none', borderRadius: 0
         }}>
           <EodSummary totals={eodTotals} filterMethod={filterMethod} setFilterMethod={setFilterMethod} />

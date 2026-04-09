@@ -11,6 +11,7 @@ import { useUser } from '../context/UserContext';
 // Icons
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import QueueIcon from '@mui/icons-material/PeopleAlt'; 
+import HistoryIcon from '@mui/icons-material/History';
 import MedicalServicesIcon from '@mui/icons-material/MedicalServices'; 
 import InventoryIcon from '@mui/icons-material/Store'; 
 import PetsIcon from '@mui/icons-material/Pets';
@@ -26,6 +27,7 @@ const drawerWidth = 260;
 const menuItems =[
   { name: 'Dashboard', icon: <DashboardIcon />, path: '/' },
   { name: 'Patient Queue', icon: <QueueIcon />, path: '/queue' },
+  { name: 'All Records', icon: <HistoryIcon />, path: '/records' },
   { name: 'Patients (CRM)', icon: <PetsIcon />, path: '/patients' },
   { name: 'Services', icon: <MedicalServicesIcon />, path: '/services' },
   { name: 'Inventory', icon: <InventoryIcon />, path: '/inventory' },

@@ -122,10 +122,10 @@ export default function Staff() {
       {/* 1. BOXED FORENSIC HEADER */}
       <Box sx={{ flexShrink: 0 }}>
         <Paper sx={{ 
-          p: 2, display: 'flex', flexWrap: 'nowrap', gap: 2, alignItems: 'center',
+          p: 2.5, px: 4, display: 'flex', flexWrap: 'nowrap', gap: 2.5, alignItems: 'center',
           bgcolor: '#FFF8E1', border: 'none', borderBottom: '2px solid #5D4037', borderRadius: 0, boxShadow: 'none', width: '100%'
         }}>
-          <Typography variant="h5" sx={{ fontFamily: FONT, fontWeight: 1000, color: '#5D4037', whiteSpace: 'nowrap', textTransform: 'uppercase', flexShrink: 0, mr: 1, letterSpacing: 0.5, fontSize: '1.25rem' }}>
+          <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 1000, color: '#5D4037', whiteSpace: 'nowrap', textTransform: 'uppercase', flexShrink: 0, mr: 1, letterSpacing: 1, fontSize: '1.5rem', lineHeight: 1 }}>
             Staff Registry
           </Typography>
 

@@ -13,6 +13,7 @@ import Sidebar from './components/Sidebar';
 import Login from './pages/Login'; 
 import Dashboard from './pages/Dashboard';
 import Queue from './features/Queue/Queue';
+import Records from './features/Records/Records';
 import Patients from './features/Patients/Patients'; 
 import PatientDashboard from './features/Patients/PatientDashboard';
 import Services from './features/Services/Services';
@@ -90,6 +91,7 @@ function AppShell() {
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/queue" element={<Queue />} />
+                <Route path="/records" element={<Records />} />
                 <Route path="/patients" element={<Patients />} />
                 <Route path="/patients/:id" element={<PatientDashboard />} />
                 <Route path="/services" element={<Services />} />

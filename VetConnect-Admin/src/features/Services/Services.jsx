@@ -14,7 +14,7 @@ import ServiceTable from './components/ServiceTable';
 import ServiceFormModal from './modals/ServiceFormModal';
 
 // Design Tokens
-import { COLORS } from '../../theme/designTokens';
+import { FONT, COLORS } from '../../theme/designTokens';
 
 export default function Services() {
   const { services, inventory, departments, saveService, removeService } = useServices();
@@ -74,17 +74,18 @@ export default function Services() {
         border: '0px',
         borderBottom: '2px solid #5D4037',
         borderRadius: 0, 
-        p: 2, 
+        p: 2.5, 
+        px: 4,
         display: 'flex', 
         justifyContent: 'space-between', 
         alignItems: 'center', 
         flexWrap: 'wrap', 
-        gap: 2, 
+        gap: 2.5, 
         flexShrink: 0 
       }}>
         
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', flexGrow: 1 }}>
-          <Typography variant="h4" sx={{ fontWeight: '1000', color: '#5D4037', textTransform: 'uppercase', letterSpacing: 0.5, mr: 1, fontSize: '1.5rem' }}>Services</Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5, flexWrap: 'wrap', flexGrow: 1 }}>
+          <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: '1000', color: '#5D4037', textTransform: 'uppercase', letterSpacing: 1, mr: 1, fontSize: '1.5rem', lineHeight: 1 }}>Services</Typography>
           
           <Box sx={{ display: 'flex', alignItems: 'center', bgcolor: '#EFEBE9', borderRadius: 0, border: '2px solid #5D4037', p: 0.5 }}>
             <TextField 

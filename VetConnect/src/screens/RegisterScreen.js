@@ -17,6 +17,7 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -160,23 +161,24 @@ const RegisterScreen = ({ navigation }) => {
         <ScrollView
           contentContainerStyle={{
             ...styles.scrollContent,
-            paddingBottom: insets.bottom > 0 ? insets.bottom + 10 : 20,
+            paddingBottom: insets.bottom > 0 ? insets.bottom + 60 : 70,
           }}
           showsVerticalScrollIndicator={false}
         >
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.backButton}
+          >
+            <MaterialIcons name="arrow-back" size={24} color="#3E2723" />
+          </TouchableOpacity>
+
           <View style={styles.headerBox}>
-            {/* THE FIX: Added Brand Identity Icon */}
-            <View style={styles.iconCircle}>
-              <MaterialIcons name="pets" size={40} color="#8B4513" />
-            </View>
-            <Text style={styles.header}>Create Account</Text>
-            <Text style={styles.subHeader}>
-              Join Starbarks Veterinary Clinic
-            </Text>
+            <Text style={styles.header}>CREATE ACCOUNT</Text>
           </View>
 
-          {/* THE FIX: Upgraded to Glassmorphism UI */}
-          <View style={styles.formBox}>
+          <View style={styles.formContainer}>
+            <View style={styles.formShadow} />
+            <View style={styles.formBox}>
             <Text style={styles.label}>Full Name</Text>
             <TextInput
               style={styles.input}
@@ -225,7 +227,7 @@ const RegisterScreen = ({ navigation }) => {
                 <MaterialIcons
                   name={showPassword ? "visibility" : "visibility-off"}
                   size={22}
-                  color="#8B4513"
+                  color="#3ABEF9"
                 />
               </TouchableOpacity>
             </View>
@@ -233,13 +235,22 @@ const RegisterScreen = ({ navigation }) => {
             {loading ? (
               <ActivityIndicator
                 size="large"
-                color="#8B4513"
+                color="#3ABEF9"
                 style={{ marginVertical: 20 }}
               />
             ) : (
-              <TouchableOpacity style={styles.button} onPress={handleRegister}>
-                <Text style={styles.buttonText}>Sign Up</Text>
-              </TouchableOpacity>
+              <View style={styles.buttonContainer}>
+                <View style={styles.buttonShadow} />
+                <Pressable
+                  onPress={handleRegister}
+                  style={({ pressed }) => [
+                    styles.button,
+                    pressed && styles.buttonPressed,
+                  ]}
+                >
+                  <Text style={styles.buttonText}>SIGN UP</Text>
+                </Pressable>
+              </View>
             )}
 
             <TouchableOpacity
@@ -247,10 +258,11 @@ const RegisterScreen = ({ navigation }) => {
               style={{ marginTop: 15, padding: 10 }}
             >
               <Text style={styles.linkText}>
-                Already have an account?{" "}
-                <Text style={styles.linkBold}>Login</Text>
+                ALREADY HAVE AN ACCOUNT?{" "}
+                <Text style={styles.linkBold}>LOGIN</Text>
               </Text>
             </TouchableOpacity>
+            </View>
           </View>
         </ScrollView>
       </TouchableWithoutFeedback>
@@ -262,51 +274,70 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFF8E1" },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: "center",
     paddingHorizontal: 20,
+    paddingTop: 80,
   },
 
-  headerBox: { alignItems: "center", marginBottom: 30 },
-  iconCircle: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
+  backButton: {
+    position: "absolute",
+    top: 20,
+    left: 20,
+    width: 45,
+    height: 45,
     backgroundColor: "white",
-    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#3E2723",
     justifyContent: "center",
-    marginBottom: 15,
-    elevation: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
+    alignItems: "center",
+    zIndex: 10,
   },
+
+  headerBox: { alignItems: "flex-start", marginBottom: 20 },
   header: {
-    fontSize: 32,
-    fontWeight: "900",
+    fontFamily: "Inter_900Black",
+    fontSize: 48,
     color: "#3E2723",
-    marginBottom: 5,
+    textTransform: "uppercase",
+    letterSpacing: -1,
+    lineHeight: 48,
   },
   subHeader: {
-    fontSize: 15,
-    color: "#8B4513",
-    fontWeight: "600",
-    letterSpacing: 0.5,
+    fontSize: 14,
+    color: "#5D4037",
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 1,
   },
 
-  // THE FIX: True Mobile Glassmorphism
+  label: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+    color: "#3E2723",
+    marginBottom: 8,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+
+  formContainer: { position: "relative", marginBottom: 20 },
+  formShadow: {
+    position: "absolute",
+    top: 8,
+    left: 8,
+    right: -8,
+    bottom: -8,
+    backgroundColor: "#5D4037",
+  },
   formBox: {
-    backgroundColor: "rgba(255, 255, 255, 0.65)", // Translucent White
+    backgroundColor: "white",
     padding: 25,
-    borderRadius: 24,
-    borderWidth: 2,
-    borderColor: "rgba(255, 255, 255, 0.9)", // Frosted border
-    elevation: 0,
+    borderRadius: 0,
+    borderWidth: 3,
+    borderColor: "#3E2723",
   },
 
   label: {
     fontWeight: "900",
-    color: "#5D4037",
+    color: "#3E2723",
     marginBottom: 8,
     marginLeft: 4,
     fontSize: 13,
@@ -315,55 +346,69 @@ const styles = StyleSheet.create({
   },
 
   input: {
-    backgroundColor: "rgba(255, 255, 255, 0.85)", // Highly opaque inputs over translucent card
-    borderRadius: 14,
+    fontFamily: "Inter_400Regular",
+    backgroundColor: "white",
+    borderRadius: 0,
     padding: 16,
     fontSize: 16,
-    marginBottom: 20,
+    marginBottom: 15,
     color: "#333",
-    borderWidth: 1,
-    borderColor: "rgba(139, 69, 19, 0.1)", // Subtle brown tint
+    borderWidth: 2,
+    borderColor: "#3E2723",
   },
 
   passwordContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.85)",
-    borderRadius: 14,
-    marginBottom: 25,
-    borderWidth: 1,
-    borderColor: "rgba(139, 69, 19, 0.1)",
+    backgroundColor: "white",
+    borderRadius: 0,
+    marginBottom: 15,
+    borderWidth: 2,
+    borderColor: "#3E2723",
   },
   passwordInput: { flex: 1, padding: 16, fontSize: 16, color: "#333" },
   eyeIcon: { padding: 15 },
 
+  buttonContainer: { position: "relative", marginBottom: 10, marginTop: 5 },
+  buttonShadow: {
+    position: "absolute",
+    top: 6,
+    left: 6,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "#3E2723",
+  },
   button: {
-    backgroundColor: "#8B4513",
+    backgroundColor: "#3ABEF9",
     padding: 18,
-    borderRadius: 14,
+    borderRadius: 0,
     alignItems: "center",
-    elevation: 3,
-    shadowColor: "#8B4513",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    marginBottom: 10,
-    marginTop: 5,
+    borderWidth: 3,
+    borderColor: "#3E2723",
+  },
+  buttonPressed: {
+    transform: [{ translateX: 4 }, { translateY: 4 }],
   },
   buttonText: {
-    color: "white",
+    color: "#3E2723",
     fontWeight: "900",
-    fontSize: 18,
-    letterSpacing: 1,
+    fontSize: 20,
+    letterSpacing: 2,
+    textTransform: "uppercase",
   },
 
   linkText: {
-    color: "#757575",
+    color: "#3E2723",
     textAlign: "center",
-    fontSize: 15,
-    fontWeight: "500",
+    fontSize: 14,
+    fontWeight: "700",
+    textTransform: "uppercase",
   },
-  linkBold: { color: "#D32F2F", fontWeight: "900" },
+  linkBold: {
+    fontFamily: "Inter_900Black",
+    color: "#3ABEF9",
+    textDecorationLine: "underline",
+  },
 });
 
 export default RegisterScreen;

@@ -192,6 +192,44 @@ export default function Queue() {
   const hoverTimer = useRef(null);
   const closeTimer = useRef(null);
 
+  // 🧬 ANCESTOR CHAIN CACHE FOR POPOVER (Session-cached, keyed by record ID)
+  const [popoverAncestorCache, setPopoverAncestorCache] = useState({});
+
+  // Auto-resolve ancestor chain when timing popover opens on a carry-over record
+  useEffect(() => {
+    if (!hoverAnchor || hoverMetadata.type !== 'timing' || !hoverMetadata.data) return;
+    const record = hoverMetadata.data;
+    const recordId = record.id;
+    if (!record.originApptId || popoverAncestorCache[recordId]) return;
+
+    const resolveChain = async () => {
+      const chain = [];
+      let currentOriginId = record.originApptId;
+      let depth = 0;
+      const MAX_DEPTH = 10;
+
+      while (currentOriginId && depth < MAX_DEPTH) {
+        try {
+          const snap = await getDoc(doc(db, 'appointments', currentOriginId));
+          if (!snap.exists()) break;
+          const ancestor = { id: snap.id, ...snap.data() };
+          chain.unshift(ancestor);
+          currentOriginId = ancestor.originApptId;
+        } catch (e) {
+          console.error(`[Popover] Ancestor chain fetch failed at depth ${depth}:`, e);
+          break;
+        }
+        depth++;
+      }
+
+      if (chain.length > 0) {
+        setPopoverAncestorCache(prev => ({ ...prev, [recordId]: chain }));
+      }
+    };
+
+    resolveChain();
+  }, [hoverAnchor, hoverMetadata]);
+
   const handleHoverStart = (event, type, data) => {
     if (!data) return;
     
@@ -825,9 +863,6 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           // SHIELD 2: THE DEFERRAL GATE
           if (appt.triageDate && appt.triageDate >= todayStr) return false;
 
-          // SHIELD 3: THE NOTES CHECK
-          if (appt.notes?.includes('[Clinical Triage:')) return false;
-
           // DETERMINATION: Is it actually a ghost?
           let checkDate;
           if (appt.scheduledDate?.toDate) checkDate = appt.scheduledDate.toDate();
@@ -1106,11 +1141,8 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         .filter(appt => {
           // SHIELD 1: THE FORENSIC STAMP - If it was triaged today, it's NOT a ghost.
           if (appt.isTriaged === true) return false;
-          
-          // SHIELD 2: THE TEMPORAL RESET - If it has triage notes, it's NOT a past ghost.
-          if (appt.notes?.includes('[Triage Reschedule]') || appt.notes?.includes('[Clinical Triage:')) return false;
 
-          // SHIELD 3: THE DEFERRAL GATE - If it has a future triageDate, it's safe.
+          // SHIELD 2: THE DEFERRAL GATE - If it has a future triageDate, it's safe.
           const apptTriageDate = appt.triageDate;
           if (apptTriageDate && apptTriageDate >= todayStr) return false;
 
@@ -1793,7 +1825,77 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
 
                 {hoverMetadata.type === 'identity' && hoverMetadata.data}
 
-                {hoverMetadata.type === 'timing' && hoverMetadata.data && (
+                {hoverMetadata.type === 'timing' && hoverMetadata.data && (() => {
+                  // 🧬 ANCESTOR-AWARE POPOVER CALCULATIONS
+                  const record = hoverMetadata.data;
+                  const ancestorChain = popoverAncestorCache[record.id] || [];
+                  const ancestorPulses = ancestorChain.flatMap(a => a.clinicalPulse || []);
+                  const combinedPulse = [...ancestorPulses, ...(record.clinicalPulse || [])];
+
+                  const allDates = combinedPulse.length > 0
+                    ? [...new Set(combinedPulse.map(p => {
+                        const d = p.timestamp?.toDate ? p.timestamp.toDate() : new Date(p.timestamp);
+                        return d.toDateString();
+                      }))].sort((a,b) => new Date(a) - new Date(b))
+                    : [new Date().toDateString()];
+
+                  const safeActiveDay = Math.min(activeCaseDay, allDates.length - 1);
+                  const targetDateStr = allDates[safeActiveDay] || allDates[allDates.length - 1];
+
+                  // PULSE ROUTER: current record first, ancestors second
+                  const currentPulse = record.clinicalPulse || [];
+                  const currentHasEvents = currentPulse.some(p => {
+                    const d = p.timestamp?.toDate ? p.timestamp.toDate() : new Date(p.timestamp);
+                    return d.toDateString() === targetDateStr;
+                  });
+                  let routedPulse = currentPulse;
+                  let routedCreatedAt = record.createdAt;
+                  if (!currentHasEvents) {
+                    for (const ancestor of ancestorChain) {
+                      const aPulse = ancestor.clinicalPulse || [];
+                      if (aPulse.some(p => {
+                        const d = p.timestamp?.toDate ? p.timestamp.toDate() : new Date(p.timestamp);
+                        return d.toDateString() === targetDateStr;
+                      })) {
+                        routedPulse = aPulse;
+                        routedCreatedAt = ancestor.createdAt;
+                        break;
+                      }
+                    }
+                  }
+
+                  // CUMULATIVE TOTALS: sum of shift values across all records
+                  const getPrimaryDate = (pulse) => {
+                    if (!pulse || pulse.length === 0) return new Date();
+                    const firstTs = pulse[0].timestamp;
+                    return firstTs?.toDate ? firstTs.toDate() : new Date(firstTs);
+                  };
+                  let cumTotalQueue = 0, cumTotalConsult = 0, cumTotalConfined = 0;
+                  ancestorChain.forEach(ancestor => {
+                    const aPulse = ancestor.clinicalPulse || [];
+                    if (aPulse.length === 0) return;
+                    const m = calculatePulseMetrics(aPulse, clinicSettings, ancestor.createdAt, getPrimaryDate(aPulse));
+                    cumTotalQueue += m.raw.shiftQueue;
+                    cumTotalConsult += m.raw.shiftConsult;
+                    cumTotalConfined += m.raw.shiftConfined;
+                  });
+                  if (currentPulse.length > 0) {
+                    const m = calculatePulseMetrics(currentPulse, clinicSettings, record.createdAt, getPrimaryDate(currentPulse));
+                    cumTotalQueue += m.raw.shiftQueue;
+                    cumTotalConsult += m.raw.shiftConsult;
+                    cumTotalConfined += m.raw.shiftConfined;
+                  }
+                  const cumulativeTotals = ancestorChain.length > 0
+                    ? { totalQueue: cumTotalQueue, totalConsult: cumTotalConsult, totalConfined: cumTotalConfined }
+                    : null;
+
+                  // FILTERED PULSE: from combinedPulse for the selected day
+                  const filteredPulse = combinedPulse.filter(p => {
+                    const d = p.timestamp?.toDate ? p.timestamp.toDate() : new Date(p.timestamp);
+                    return d.toDateString() === targetDateStr;
+                  });
+
+                  return (
                   <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', maxHeight: 540 }}>
                     {/* 🧬 STICKY HEADER: NAVIGATION */}
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexShrink: 0 }}>
@@ -1801,39 +1903,29 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                         ⌛ CLINICAL TEMPORAL AUDIT
                         </Typography>
                         
-                        {(() => {
-                            const pulse = hoverMetadata.data.clinicalPulse || [];
-                            const dates = [...new Set(pulse.map(p => {
-                                const d = p.timestamp?.toDate ? p.timestamp.toDate() : new Date(p.timestamp);
-                                return d.toDateString();
-                            }))].sort((a,b) => new Date(a) - new Date(b));
-                            
-                            if (dates.length <= 1) return null;
-
-                            return (
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, bgcolor: '#F5F5F5', px: 1, borderRadius: 1 }}>
-                                    <IconButton 
-                                        size="small" 
-                                        disabled={activeCaseDay === 0} 
-                                        onClick={() => setActiveCaseDay(prev => Math.max(0, prev - 1))}
-                                        sx={{ p: 0.2, color: '#5D4037' }}
-                                    >
-                                        <ArrowBackIosNewIcon sx={{ fontSize: 10 }} />
-                                    </IconButton>
-                                    <Typography sx={{ fontSize: '0.6rem', fontWeight: '1000', color: '#5D4037', minWidth: 50, textAlign: 'center' }}>
-                                        DAY {activeCaseDay + 1} OF {dates.length}
-                                    </Typography>
-                                    <IconButton 
-                                        size="small" 
-                                        disabled={activeCaseDay === dates.length - 1} 
-                                        onClick={() => setActiveCaseDay(prev => Math.min(dates.length - 1, prev + 1))}
-                                        sx={{ p: 0.2, color: '#5D4037' }}
-                                    >
-                                        <ArrowForwardIosIcon sx={{ fontSize: 10 }} />
-                                    </IconButton>
-                                </Box>
-                            );
-                        })()}
+                        {allDates.length > 1 && (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, bgcolor: '#F5F5F5', px: 1, borderRadius: 1 }}>
+                                <IconButton 
+                                    size="small" 
+                                    disabled={safeActiveDay === 0} 
+                                    onClick={() => setActiveCaseDay(prev => Math.max(0, prev - 1))}
+                                    sx={{ p: 0.2, color: '#5D4037' }}
+                                >
+                                    <ArrowBackIosNewIcon sx={{ fontSize: 10 }} />
+                                </IconButton>
+                                <Typography sx={{ fontSize: '0.6rem', fontWeight: '1000', color: '#5D4037', minWidth: 50, textAlign: 'center' }}>
+                                    DAY {safeActiveDay + 1} OF {allDates.length}
+                                </Typography>
+                                <IconButton 
+                                    size="small" 
+                                    disabled={safeActiveDay === allDates.length - 1} 
+                                    onClick={() => setActiveCaseDay(prev => Math.min(allDates.length - 1, prev + 1))}
+                                    sx={{ p: 0.2, color: '#5D4037' }}
+                                >
+                                    <ArrowForwardIosIcon sx={{ fontSize: 10 }} />
+                                </IconButton>
+                            </Box>
+                        )}
                     </Box>
 
                     {/* 🧬 SCROLLABLE CONTENT: TIMELINE */}
@@ -1842,22 +1934,10 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                             <Box sx={{ position: 'absolute', left: 8, top: 8, bottom: 8, width: '2px', borderLeft: '2px dashed #D7CCC8' }} />
                             
                             {(() => {
-                                const pulse = hoverMetadata.data.clinicalPulse || [];
-                                const dates = [...new Set(pulse.map(p => {
-                                    const d = p.timestamp?.toDate ? p.timestamp.toDate() : new Date(p.timestamp);
-                                    return d.toDateString();
-                                }))].sort((a,b) => new Date(a) - new Date(b));
-
-                                const targetDateStr = dates[activeCaseDay] || dates[dates.length - 1];
-                                const filteredPulse = pulse.filter(p => {
-                                    const d = p.timestamp?.toDate ? p.timestamp.toDate() : new Date(p.timestamp);
-                                    return d.toDateString() === targetDateStr;
-                                });
+                                const voidedIds = new Set(combinedPulse.filter(p => p.correctedEventId).map(p => p.correctedEventId));
 
                                 let events = [];
                                 if (filteredPulse.length > 0) {
-                                    const voidedIds = new Set(pulse.filter(p => p.correctedEventId).map(p => p.correctedEventId));
-
                                     events = filteredPulse.map(p => ({
                                         id: p.eventId,
                                         label: p.toStatus ? p.toStatus.toUpperCase() : 'EVENT',
@@ -1870,10 +1950,10 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                                     }));
                                 } else {
                                     events = [
-                                    { id: 'booked', label: hoverMetadata.data.ticketPrefix ? 'INTAKE CREATED' : 'BOOKED (ONLINE)', val: hoverMetadata.data.createdAt },
-                                    { id: 'scheduled', label: hoverMetadata.data.ticketPrefix ? 'QUEUE POSITION' : 'APPOINTMENT SLOT', val: hoverMetadata.data.jsScheduled },
-                                    { id: 'arrived', label: 'ARRIVED (CHECK-IN)', val: hoverMetadata.data.timeArrived, by: hoverMetadata.data.arrivedBy },
-                                    { id: 'started', label: 'CONSULT STARTED', val: hoverMetadata.data.timeStarted, by: hoverMetadata.data.startedBy }
+                                    { id: 'booked', label: record.ticketPrefix ? 'INTAKE CREATED' : 'BOOKED (ONLINE)', val: record.createdAt },
+                                    { id: 'scheduled', label: record.ticketPrefix ? 'QUEUE POSITION' : 'APPOINTMENT SLOT', val: record.jsScheduled },
+                                    { id: 'arrived', label: 'ARRIVED (CHECK-IN)', val: record.timeArrived, by: record.arrivedBy },
+                                    { id: 'started', label: 'CONSULT STARTED', val: record.timeStarted, by: record.startedBy }
                                     ].filter(i => i.val);
                                 }
 
@@ -1950,22 +2030,17 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
 
                     <Box sx={{ flexShrink: 0 }}>
                         <ForensicMetricGrid 
-                            pulse={hoverMetadata.data.clinicalPulse || []}
+                            pulse={routedPulse}
                             settings={clinicSettings}
-                            createdAt={hoverMetadata.data.createdAt}
-                            sealedMetrics={hoverMetadata.data.forensicSeal}
-                            targetDate={(() => {
-                                const pulse = hoverMetadata.data.clinicalPulse || [];
-                                const dates = [...new Set(pulse.map(p => {
-                                    const d = p.timestamp?.toDate ? p.timestamp.toDate() : new Date(p.timestamp);
-                                    return d.toDateString();
-                                }))].sort((a,b) => new Date(a) - new Date(b));
-                                return new Date(dates[activeCaseDay] || Date.now());
-                            })()}
+                            createdAt={routedCreatedAt}
+                            sealedMetrics={record.forensicSeal}
+                            targetDate={new Date(targetDateStr)}
+                            cumulativeTotals={cumulativeTotals}
                         />
                     </Box>
                   </Box>
-                )}
+                  );
+                })()}
             </Box>
         )}
       </Popover>

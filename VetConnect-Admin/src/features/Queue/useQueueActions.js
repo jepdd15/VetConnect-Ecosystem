@@ -303,5 +303,29 @@ export function useQueueActions() {
     });
   };
 
-  return { changeStatus, revertStatus, markNoShow, rejectAppointment, quickAdmitER, deferAppointment }; // Exported!
+  const rescheduleAppointment = async (row, newDate, reason) => {
+    if (!reason || reason.trim().length === 0) {
+        throw new Error("❌ AUDIT FAILURE: Rescheduling requires a mandatory forensic justification.");
+    }
+
+    const apptRef = doc(db, "appointments", row.id);
+    const pulseEvent = {
+        eventId: `pulse_resched_${Date.now()}`,
+        type: 'STATUS_CHANGE', // Rescheduling is essentially a temporal status shift
+        timestamp: Timestamp.now(),
+        staffId: profile?.id || 'unknown',
+        staffName: staffSignature,
+        note: `SCHEDULE SHIFT: ${reason} (Moved to ${new Date(newDate).toLocaleString()})`
+    };
+
+    await updateDoc(apptRef, {
+        jsScheduled: Timestamp.fromDate(new Date(newDate)),
+        clinicalPulse: arrayUnion(pulseEvent),
+        lastModifiedAt: Timestamp.now(),
+        modifiedBy: staffSignature,
+        auditReason: reason
+    });
+  };
+
+  return { changeStatus, revertStatus, markNoShow, rejectAppointment, quickAdmitER, deferAppointment, rescheduleAppointment }; // Exported!
 }

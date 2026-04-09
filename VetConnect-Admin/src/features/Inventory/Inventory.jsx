@@ -220,10 +220,10 @@ export default function Inventory() {
       {/* 1. BOXED FORENSIC HEADER */}
       <Box sx={{ flexShrink: 0, mb: 0 }}>
         <Paper sx={{ 
-          p: 2, display: 'flex', flexWrap: 'nowrap', gap: 2, alignItems: 'center',
+          p: 2.5, px: 4, display: 'flex', flexWrap: 'nowrap', gap: 2.5, alignItems: 'center',
           bgcolor: '#FFF8E1', borderBottom: '2px solid #5D4037', borderRadius: 0, boxShadow: 'none'
         }}>
-          <Typography variant="h5" sx={{ fontFamily: FONT, fontWeight: 1000, color: '#5D4037', textTransform: 'uppercase', letterSpacing: 0.5, flexShrink: 0, mr: 1, fontSize: '1.25rem' }}>
+          <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 1000, color: '#5D4037', textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0, mr: 1, fontSize: '1.5rem', lineHeight: 1 }}>
             Inventory Command Center
           </Typography>
 
@@ -279,7 +279,7 @@ export default function Inventory() {
 
       {/* 2. BOXED KPI ROW */}
       <Box sx={{ flexShrink: 0, mb: 0 }}>
-        <Paper sx={{ p: 0, bgcolor: '#F5F5F5', borderBottom: '2px solid #5D4037', borderRadius: 0, boxShadow: 'none' }}>
+        <Paper sx={{ p: 0, px: 4, bgcolor: '#F5F5F5', borderBottom: '2px solid #5D4037', borderRadius: 0, boxShadow: 'none' }}>
           <Grid container spacing={0} sx={{ '& > div:not(:last-child)': { borderRight: '1px solid #5D40371A' } }}>
              <Grid size={{ xs: true }}><KPICard title="Total Value" value={`₱${kpis.totalValue.toLocaleString(undefined, {minimumFractionDigits: 2})}`} icon={<AttachMoneyIcon />} color="#2E7D32" /></Grid>
              <Grid size={{ xs: true }}><KPICard title="Active SKUs" value={kpis.totalItems} icon={<InventoryIcon />} color="#1565C0" /></Grid>
@@ -291,7 +291,7 @@ export default function Inventory() {
       </Box>
 
       {/* VIEW TABS */}
-      <Box sx={{ mb: 0, bgcolor: '#FFFBF5', borderBottom: `1px solid ${COLORS.border}` }}>
+      <Box sx={{ mb: 0, px: 4, bgcolor: '#FFFBF5', borderBottom: `1px solid ${COLORS.border}` }}>
         <Tabs
           value={activeTab}
           onChange={(_, v) => setActiveTab(v)}

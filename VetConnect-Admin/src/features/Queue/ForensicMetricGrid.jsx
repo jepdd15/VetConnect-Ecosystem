@@ -1,13 +1,18 @@
 import React from 'react';
 import { Box, Typography, Grid, Divider } from '@mui/material';
-import { calculatePulseMetrics } from '../../utils/pulseUtils';
+import { calculatePulseMetrics, formatDuration } from '../../utils/pulseUtils';
 
 /**
  * 🧬 VETCONNECT SHARED FORENSIC GRID (PHASE 6.3)
  * Use for Audit Popovers & Command Wizards.
  */
-export const ForensicMetricGrid = ({ pulse = [], settings = {}, createdAt, targetDate = new Date(), variant = 'dark', sealedMetrics = null }) => {
+export const ForensicMetricGrid = ({ pulse = [], settings = {}, createdAt, targetDate = new Date(), variant = 'dark', sealedMetrics = null, cumulativeTotals = null }) => {
   const metrics = sealedMetrics || calculatePulseMetrics(pulse, settings, createdAt, targetDate);
+
+  // If cumulative totals are provided, override the per-record Total values
+  const displayTotalQueue = cumulativeTotals ? formatDuration(cumulativeTotals.totalQueue) : metrics.totalQueue;
+  const displayTotalConsult = cumulativeTotals ? formatDuration(cumulativeTotals.totalConsult) : metrics.totalConsult;
+  const displayTotalConfined = cumulativeTotals ? formatDuration(cumulativeTotals.totalConfined) : metrics.totalConfined;
   
   const labelStyle = { 
     fontSize: '0.6rem', 
@@ -72,10 +77,10 @@ export const ForensicMetricGrid = ({ pulse = [], settings = {}, createdAt, targe
             <MetricItem label="Op. Hours Age" value={metrics.opHoursAge} />
         </Grid>
         <Grid size={{ xs: 4 }} sx={{ borderRight: '1px solid rgba(0,0,0,0.05)' }}>
-            <MetricItem label="Total Queue" value={metrics.totalQueue} />
+            <MetricItem label="Total Queue" value={displayTotalQueue} />
         </Grid>
         <Grid size={{ xs: 4 }}>
-            <MetricItem label="Total Consult" value={metrics.totalConsult} />
+            <MetricItem label="Total Consult" value={displayTotalConsult} />
         </Grid>
 
         {/* ROW 3: THE ABSOLUTE CLINICAL BURDEN (Pivot 6.9.5) */}
@@ -88,7 +93,7 @@ export const ForensicMetricGrid = ({ pulse = [], settings = {}, createdAt, targe
         <Grid size={{ xs: 6 }} sx={{ bgcolor: 'rgba(211, 47, 47, 0.05)', py: 0.8, px: 1.5, borderTop: '1px solid rgba(211, 47, 47, 0.1)' }}>
             <Typography sx={{ ...labelStyle, color: '#D32F2F', opacity: 1, fontSize: '0.55rem' }}>TOTAL CONFINED TIME</Typography>
             <Typography sx={{ ...valueStyle, color: '#D32F2F', mt: 0 }}>
-               {metrics.totalConfined}
+               {displayTotalConfined}
             </Typography>
         </Grid>
       </Grid>

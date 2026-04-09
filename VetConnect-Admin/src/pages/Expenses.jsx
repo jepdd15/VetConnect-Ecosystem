@@ -146,7 +146,7 @@ export default function Expenses() {
       }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5 }}>
           <Box>
-            <Typography variant="h4" sx={{ fontWeight: '1000', color: '#3E2723', textTransform: 'uppercase', letterSpacing: 1, fontSize: '1.5rem', lineHeight: 1 }}>
+            <Typography variant="h4" sx={{ fontFamily: 'Inter, sans-serif', fontWeight: '1000', color: '#5D4037', textTransform: 'uppercase', letterSpacing: 1, fontSize: '1.5rem', lineHeight: 1, mr: 1 }}>
               Operational Expenses
             </Typography>
           </Box>
@@ -222,7 +222,7 @@ export default function Expenses() {
             sx={{ 
                 border: 'none', 
                 borderRadius: 0,
-                bgcolor: 'white',
+                bgcolor: 'transparent',
                 '& .MuiDataGrid-columnHeaders': { 
                   bgcolor: '#EFEBE9 !important', 
                   color: '#3E2723', 

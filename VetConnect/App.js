@@ -2,6 +2,17 @@
 
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
+import * as SplashScreen from "expo-splash-screen";
+import { useCallback, useEffect, useState } from "react";
+import {
+  useFonts,
+  Inter_400Regular,
+  Inter_700Bold,
+  Inter_900Black,
+} from "@expo-google-fonts/inter";
+
+// Keep the splash screen visible while we fetch resources
+SplashScreen.preventAutoHideAsync();
 
 // --- 1. AUTHENTICATION SCREENS ---
 import LoginScreen from "./src/screens/LoginScreen";
@@ -32,14 +43,30 @@ import ChatbotScreen from "./src/screens/ChatbotScreen";
 const Stack = createStackNavigator();
 
 export default function App() {
+  const [fontsLoaded] = useFonts({
+    Inter_400Regular,
+    Inter_700Bold,
+    Inter_900Black,
+  });
+
+  const onLayoutRootView = useCallback(async () => {
+    if (fontsLoaded) {
+      await SplashScreen.hideAsync();
+    }
+  }, [fontsLoaded]);
+
+  if (!fontsLoaded) {
+    return null;
+  }
+
   return (
-    <NavigationContainer>
+    <NavigationContainer onReady={onLayoutRootView}>
       <Stack.Navigator
         initialRouteName="Login"
         screenOptions={{
           headerStyle: { backgroundColor: "#3E2723", borderBottomWidth: 0, elevation: 0, shadowOpacity: 0 }, // Coffee Brown Header
           headerTintColor: "#FAF9F7", // Cream text
-          headerTitleStyle: { fontWeight: "900", letterSpacing: 0.5, textTransform: 'uppercase', fontSize: 16 },
+          headerTitleStyle: { fontFamily: 'Inter_900Black', letterSpacing: 0.5, textTransform: 'uppercase', fontSize: 16 },
         }}
       >
         {/* --- AUTHENTICATION GROUP --- */}
@@ -52,7 +79,7 @@ export default function App() {
         <Stack.Screen
           name="Register"
           component={RegisterScreen}
-          options={{ title: "Sign Up" }}
+          options={{ headerShown: false }}
         />
 
         {/* --- DASHBOARDS --- */}
@@ -60,8 +87,7 @@ export default function App() {
           name="ClientDashboard"
           component={ClientDashboard}
           options={{
-            title: "Dashboard",
-            headerLeft: null, // Prevents back button to login
+            headerShown: false,
           }}
         />
 

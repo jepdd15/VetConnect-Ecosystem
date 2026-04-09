@@ -1,0 +1,201 @@
+﻿=== ≡ƒöì FORENSIC INVESTIGATION: MARIANNE RECORD TRACE ===
+
+Γ£à FOUND 9 RECORD(S) MATCHING 'MARIANNE':
+
+--- RECORD 1 ---
+  Document ID:    3jJn2lSdKjcevicrbmBr
+  Pet Name:       marianne
+  Owner Name:     Bob Cohen
+  Status:         cancelled
+  Scheduled Date: Thu Mar 26 2026 20:40:58 GMT+0800 (Philippine Standard Time)
+  Created At:     Thu Mar 26 2026 20:40:58 GMT+0800 (Philippine Standard Time)
+  Processed At:   N/A
+  Processed By:   N/A
+  Is Triaged:     false
+  Origin Appt ID: N/A
+  Case Day:       1
+  Notes:          hello
+  Audit Reason:   N/A
+  Reject Reason:  Cancelled during Triage
+
+--- RECORD 2 ---
+  Document ID:    L3XZm8n838y2ieWc87G4
+  Pet Name:       marianne
+  Owner Name:     Bob Cohen
+  Status:         cancelled
+  Scheduled Date: Tue Apr 07 2026 16:35:27 GMT+0800 (Philippine Standard Time)
+  Created At:     Tue Apr 07 2026 16:35:27 GMT+0800 (Philippine Standard Time)
+  Processed At:   N/A
+  Processed By:   N/A
+  Is Triaged:     false
+  Origin Appt ID: N/A
+  Case Day:       1
+  Notes:          testing the start, dispense and payment tabs.
+  Audit Reason:   Forensic Triage Cleanup: duplicate walk-in record.
+  Reject Reason:  duplicate walk-in record.
+  Forensic Seal:  YES
+    - Record Age:    7M
+    - Total Consult: 0M
+    - Shift Consult: 0M
+  Clinical Pulse (2 events):
+    [0] INCEPTION ΓåÆ arrived at Tue Apr 07 2026 16:35:27 GMT+0800 (Philippine Standard Time) by Clinic Admin
+         Note: Physical Intake [WT: 10kg]: testing the start, dispense and payment tabs.
+    [1] STATUS_CHANGE ΓåÆ cancelled at Tue Apr 07 2026 16:42:29 GMT+0800 (Philippine Standard Time) by Clinic Admin
+         Note: Forensic Triage Cleanup: duplicate walk-in record.
+
+--- RECORD 3 ---
+  Document ID:    celnXBsUEFg3ZeQhn7YC
+  Pet Name:       marianne
+  Owner Name:     Bob Cohen
+  Status:         cancelled
+  Scheduled Date: Mon Mar 30 2026 13:23:21 GMT+0800 (Philippine Standard Time)
+  Created At:     Mon Mar 30 2026 13:23:21 GMT+0800 (Philippine Standard Time)
+  Processed At:   N/A
+  Processed By:   N/A
+  Is Triaged:     false
+  Origin Appt ID: N/A
+  Case Day:       1
+  Notes:          test
+  Audit Reason:   N/A
+  Reject Reason:  Cancelled during Triage
+
+--- RECORD 4 ---
+  Document ID:    e7dkfACU1kAJMQ2ZMHYz
+  Pet Name:       marianne
+  Owner Name:     Bob Cohen
+  Status:         carried-over
+  Scheduled Date: Fri Apr 03 2026 11:37:14 GMT+0800 (Philippine Standard Time)
+  Created At:     Fri Apr 03 2026 11:37:14 GMT+0800 (Philippine Standard Time)
+  Processed At:   Fri Apr 03 2026 22:20:19 GMT+0800 (Philippine Standard Time)
+  Processed By:   Clinic Admin
+  Is Triaged:     false
+  Origin Appt ID: N/A
+  Case Day:       1
+  Notes:          (Re-booked by Clinic Admin) testing the queue and audit system of vetconnect.
+  Audit Reason:   N/A
+  Reject Reason:  N/A
+  Clinical Pulse (1 events):
+    [0] TRIAGE_CARRY_OVER ΓåÆ carried-over at Fri Apr 03 2026 22:20:19 GMT+0800 (Philippine Standard Time) by Clinic Admin
+         Note: Shift Cleanup: Re-booked to Fri Apr 03 2026. Justification: test test test
+
+--- RECORD 5 ---
+  Document ID:    m4Nvhp2Gyb4X7j2X8Apq
+  Pet Name:       marianne
+  Owner Name:     Bob Cohen
+  Status:         carried-over
+  Scheduled Date: Fri Apr 03 2026 08:00:00 GMT+0800 (Philippine Standard Time)
+  Created At:     Fri Apr 03 2026 11:37:14 GMT+0800 (Philippine Standard Time)
+  Processed At:   Sat Apr 04 2026 00:51:41 GMT+0800 (Philippine Standard Time)
+  Processed By:   Clinic Admin
+  Is Triaged:     true
+  Origin Appt ID: e7dkfACU1kAJMQ2ZMHYz
+  Case Day:       2
+  Notes:          [Clinical Triage: Re-book] [Triage Re-book] testing the queue and audit system of vetconnect.
+  Audit Reason:   N/A
+  Reject Reason:  N/A
+  Clinical Pulse (2 events):
+    [0] INCEPTION ΓåÆ confirmed at Fri Apr 03 2026 22:20:19 GMT+0800 (Philippine Standard Time) by Clinic Admin
+         Note: Generated via Triage Re-booking from Appt e7dkfACU1kAJMQ2ZMHYz
+    [1] TRIAGE_REBOOK ΓåÆ carried-over at Sat Apr 04 2026 00:51:41 GMT+0800 (Philippine Standard Time) by Clinic Admin
+         Note: Shift Cleanup: Re-book to Sun Apr 05 2026. Justification: testing again.
+
+--- RECORD 6 ---
+  Document ID:    qXcydHq06Uw20Z6YPi5F
+  Pet Name:       marianne
+  Owner Name:     Bob Cohen
+  Status:         carried-over
+  Scheduled Date: Tue Apr 07 2026 16:38:17 GMT+0800 (Philippine Standard Time)
+  Created At:     Tue Apr 07 2026 16:38:17 GMT+0800 (Philippine Standard Time)
+  Processed At:   Wed Apr 08 2026 14:54:01 GMT+0800 (Philippine Standard Time)
+  Processed By:   Clinic Admin
+  Is Triaged:     true
+  Origin Appt ID: N/A
+  Case Day:       1
+  Notes:          [Clinical Triage: REBOOK] testing the start, dispense and payment tabs.
+  Audit Reason:   N/A
+  Reject Reason:  N/A
+  Forensic Seal:  YES
+    - Record Age:    22H 16M
+    - Total Consult: 7H 17M
+    - Shift Consult: 0M
+  Clinical Pulse (3 events):
+    [0] INCEPTION ΓåÆ arrived at Tue Apr 07 2026 16:38:17 GMT+0800 (Philippine Standard Time) by Clinic Admin
+         Note: Physical Intake [WT: 10kg]: testing the start, dispense and payment tabs.
+    [1] STATUS_CHANGE ΓåÆ in-consult at Tue Apr 07 2026 16:42:42 GMT+0800 (Philippine Standard Time) by Clinic Admin
+         Note: Status transition to in-consult
+    [2] TRIAGE_REBOOK ΓåÆ carried-over at Wed Apr 08 2026 14:54:01 GMT+0800 (Philippine Standard Time) by Clinic Admin
+         Note: Shift Cleanup: REBOOK to Wed Apr 08 2026. Justification: No clinical justification provided
+
+--- RECORD 7 ---
+  Document ID:    rScd82y98YbtCunRKogr
+  Pet Name:       marianne
+  Owner Name:     Bob Cohen
+  Status:         completed
+  Scheduled Date: Fri Mar 27 2026 15:04:31 GMT+0800 (Philippine Standard Time)
+  Created At:     Fri Mar 27 2026 15:04:31 GMT+0800 (Philippine Standard Time)
+  Processed At:   N/A
+  Processed By:   N/A
+  Is Triaged:     false
+  Origin Appt ID: N/A
+  Case Day:       1
+  Notes:          beauty
+  Audit Reason:   N/A
+  Reject Reason:  N/A
+
+--- RECORD 8 ---
+  Document ID:    vvUXG7EfX9mHb6GbpHt6
+  Pet Name:       marianne
+  Owner Name:     Bob Cohen
+  Status:         in-consult
+  Scheduled Date: Wed Apr 08 2026 08:00:00 GMT+0800 (Philippine Standard Time)
+  Created At:     Tue Apr 07 2026 16:38:17 GMT+0800 (Philippine Standard Time)
+  Processed At:   N/A
+  Processed By:   Clinic Admin
+  Is Triaged:     false
+  Origin Appt ID: qXcydHq06Uw20Z6YPi5F
+  Case Day:       2
+  Notes:          [Clinical Triage: REBOOK] testing the start, dispense and payment tabs.
+  Audit Reason:   N/A
+  Reject Reason:  N/A
+  Clinical Pulse (2 events):
+    [0] INCEPTION ΓåÆ confirmed at Wed Apr 08 2026 14:54:01 GMT+0800 (Philippine Standard Time) by Clinic Admin
+         Note: Generated via Triage REBOOK from Appt qXcydHq06Uw20Z6YPi5F
+    [1] STATUS_CHANGE ΓåÆ in-consult at Wed Apr 08 2026 14:55:23 GMT+0800 (Philippine Standard Time) by Clinic Admin
+         Note: Status transition to in-consult
+
+--- RECORD 9 ---
+  Document ID:    yVP2eYZSZ2KGFJ8Tcx6d
+  Pet Name:       marianne
+  Owner Name:     Bob Cohen
+  Status:         confirmed
+  Scheduled Date: Sun Apr 05 2026 08:00:00 GMT+0800 (Philippine Standard Time)
+  Created At:     Fri Apr 03 2026 11:37:14 GMT+0800 (Philippine Standard Time)
+  Processed At:   N/A
+  Processed By:   Clinic Admin
+  Is Triaged:     false
+  Origin Appt ID: m4Nvhp2Gyb4X7j2X8Apq
+  Case Day:       3
+  Notes:          [Clinical Triage: Re-book] [Triage Re-book] testing the queue and audit system of vetconnect.
+  Audit Reason:   N/A
+  Reject Reason:  N/A
+  Clinical Pulse (1 events):
+    [0] INCEPTION ΓåÆ confirmed at Sat Apr 04 2026 00:51:41 GMT+0800 (Philippine Standard Time) by Clinic Admin
+         Note: Generated via Triage Re-booking from Appt m4Nvhp2Gyb4X7j2X8Apq
+
+
+=== ≡ƒôï QUEUE STATE ===
+Last Reset Date:     2026-04-08
+Current Serving:     1
+Last Number Issued:  1
+Status:              active
+
+=== ≡ƒôè APPOINTMENT CENSUS ===
+  cancelled            21
+  carried-over         5
+  no-show              2
+  completed            1
+  in-consult           1
+  confirmed            1
+  TOTAL                31
+
+=== ≡ƒöì INVESTIGATION COMPLETE ===

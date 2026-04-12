@@ -10,7 +10,7 @@ import {
   where,
   writeBatch,
 } from "firebase/firestore";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -42,6 +42,9 @@ export default function BookAppointment({ navigation, route }) {
   const prefillTargetDate = route?.params?.prefillTargetDate || null;
   const fromFollowUp = route?.params?.fromFollowUp === true;
   const ghostAppointmentId = route?.params?.ghostAppointmentId || null;
+
+  // Ensures the prefillDate jump-to-step-3 effect fires at most once per mount.
+  const prefillApplied = useRef(false);
 
   // --- ENTERPRISE WIZARD STATE ---
   const [step, setStep] = useState(1);
@@ -108,11 +111,13 @@ export default function BookAppointment({ navigation, route }) {
   // once both pet and service have been pre-selected by the two effects above.
   // The dependency gate ensures we don't skip to step 3 with an empty service slot.
   useEffect(() => {
+    if (prefillApplied.current) return;
     if (prefillDate && !fetching && selectedPets.length > 0 && selectedServices.length > 0) {
       const parsed = new Date(prefillDate);
       if (!isNaN(parsed.getTime())) {
         setDate(parsed);
         setStep(3);
+        prefillApplied.current = true;
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -430,7 +435,7 @@ export default function BookAppointment({ navigation, route }) {
         try {
           await updateDoc(doc(db, 'appointments', ghostAppointmentId), {
             status: 'cancelled',
-            cancelReason: 'client-booked-followup',
+            auditReason: 'client-booked-followup',
             cancelledAt: Timestamp.now(),
           });
         } catch (e) {

@@ -325,7 +325,7 @@ const ClientAppointments = ({ navigation }) => {
             try {
               await updateDoc(doc(db, 'appointments', item.id), {
                 status: 'cancelled',
-                cancelReason: 'client-dismissed-followup',
+                auditReason: 'client-dismissed-followup',
                 cancelledAt: Timestamp.now(),
               });
             } catch (error) {

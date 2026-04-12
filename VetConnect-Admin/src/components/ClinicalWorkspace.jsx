@@ -439,7 +439,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             bcs: 5, painScale: 0,
             murmurGrade: 'None', murmurLocation: 'L Apex (Mitral)', murmurTiming: 'Systolic',
             palpationFindings: { masses: false, pain: false, tense: false, normal: true },
-            objectiveNotes: '', assessment: '', patientStatus: 'Stable', plan: '', nextVisit: '',
+            objectiveNotes: '', assessment: '', prognosis: 'Good', recheckIn: '1 Week', respEffort: 'Normal',
+            patientStatus: 'Stable', plan: '', nextVisit: '',
           };
 
           if (draft && Object.keys(draft).length > 0 && isDraftRecent && isEligibleStatus) {
@@ -1452,8 +1453,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
               </Button>
               <Button
                 onClick={async () => {
-                  setDiscardConfirmOpen(false);
                   await handleDiscardDraft();
+                  setDiscardConfirmOpen(false);
                 }}
                 sx={{
                   fontWeight: 900,

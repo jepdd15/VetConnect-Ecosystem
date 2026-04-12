@@ -174,6 +174,8 @@ export const sanitizeCancelReason = (raw) => {
   if (lower.startsWith('[triage audit]')) return 'Rescheduled by the clinic';
   if (/\[clinical triage:.*?\]/i.test(trimmed)) return 'Rescheduled by the clinic';
   if (lower.startsWith('shift cleanup:')) return 'Rescheduled by the clinic';
+  if (lower === 'client-dismissed-followup') return '';
+  if (lower === 'client-booked-followup') return '';
   if (lower.startsWith("forensic")) return 'Cancelled by the clinic';
   if (lower === 'cancelled by pet owner') return 'You cancelled this booking';
 

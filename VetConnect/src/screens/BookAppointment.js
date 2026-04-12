@@ -6,6 +6,7 @@ import {
   getDocs,
   query,
   Timestamp,
+  updateDoc,
   where,
   writeBatch,
 } from "firebase/firestore";
@@ -36,6 +37,11 @@ export default function BookAppointment({ navigation, route }) {
 
   const prefillPetId = route?.params?.prefillPetId || null;
   const prefillServiceType = route?.params?.prefillServiceType || null;
+  const prefillDate = route?.params?.prefillDate || null;
+  const prefillDateMatchType = route?.params?.prefillDateMatchType || null;
+  const prefillTargetDate = route?.params?.prefillTargetDate || null;
+  const fromFollowUp = route?.params?.fromFollowUp === true;
+  const ghostAppointmentId = route?.params?.ghostAppointmentId || null;
 
   // --- ENTERPRISE WIZARD STATE ---
   const [step, setStep] = useState(1);
@@ -97,6 +103,20 @@ export default function BookAppointment({ navigation, route }) {
       if (match) setSelectedServices([match]);
     }
   }, [prefillServiceType, services]);
+
+  // When arriving from a follow-up deep-link, jump directly to the slot picker (step 3)
+  // once both pet and service have been pre-selected by the two effects above.
+  // The dependency gate ensures we don't skip to step 3 with an empty service slot.
+  useEffect(() => {
+    if (prefillDate && !fetching && selectedPets.length > 0 && selectedServices.length > 0) {
+      const parsed = new Date(prefillDate);
+      if (!isNaN(parsed.getTime())) {
+        setDate(parsed);
+        setStep(3);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillDate, fetching, selectedPets.length, selectedServices.length]);
 
   // THE FIX: High performance department statistics & sorting!
   const departmentStats = useMemo(() => {
@@ -403,6 +423,21 @@ export default function BookAppointment({ navigation, route }) {
       });
 
       await batch.commit();
+
+      // If this booking originated from a follow-up deep-link, cancel the ghost appointment
+      // so it no longer appears in the Upcoming list. Non-fatal — the new booking already succeeded.
+      if (fromFollowUp && ghostAppointmentId) {
+        try {
+          await updateDoc(doc(db, 'appointments', ghostAppointmentId), {
+            status: 'cancelled',
+            cancelReason: 'client-booked-followup',
+            cancelledAt: Timestamp.now(),
+          });
+        } catch (e) {
+          console.warn('[BookAppointment] Failed to cancel ghost follow-up:', e.message);
+        }
+      }
+
       Alert.alert(
         "Success",
         `${selectedPets.length} appointment(s) successfully requested!`,
@@ -675,6 +710,16 @@ export default function BookAppointment({ navigation, route }) {
     return (
       <View style={styles.stepContainer}>
         <Text style={styles.stepHeader}>When should we expect you?</Text>
+
+        {/* FOLLOW-UP DATE HINT — only shown when the cascade shifted from the recommended date */}
+        {fromFollowUp && prefillDateMatchType && prefillDateMatchType !== 'exact' && (
+          <View style={styles.followUpHint}>
+            <Text style={styles.followUpHintText}>
+              Your vet recommended {new Date(prefillTargetDate).toLocaleDateString()} —
+              showing {new Date(prefillDate).toLocaleDateString()} (nearest available).
+            </Text>
+          </View>
+        )}
 
         {/* CLINICAL INSIGHT BOX (🩺) */}
         <View style={styles.insightBox}>
@@ -1620,5 +1665,20 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 22,
     textAlign: 'right',
+  },
+
+  // --- Follow-up date hint (B5) ---
+  followUpHint: {
+    backgroundColor: '#FFF3E0',
+    borderLeftWidth: 3,
+    borderLeftColor: '#E65100',
+    padding: 10,
+    marginBottom: 10,
+    borderRadius: 6,
+  },
+  followUpHintText: {
+    fontSize: 12,
+    color: '#8B4513',
+    fontStyle: 'italic',
   },
 });

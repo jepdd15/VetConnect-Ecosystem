@@ -291,72 +291,164 @@ export default function PetHistoryScreen({ route, navigation }) {
               </View>
             )}
 
-            {/* DISCHARGE SUMMARY */}
-            {item.dischargeSummary && (
-              <View style={{ marginTop: 12, padding: 12, backgroundColor: '#E8F5E9', borderRadius: 8 }}>
-                <Text style={{ fontWeight: '900', fontSize: 12, color: '#2E7D32', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>
-                  DISCHARGE SUMMARY
-                </Text>
-                <Text style={{ fontSize: 13, color: '#333', marginBottom: 4 }}>
-                  Diagnosis: {item.dischargeSummary.diagnosis}
-                </Text>
-                <Text style={{ fontSize: 13, color: '#333', marginBottom: 4 }}>
-                  Instructions: {item.dischargeSummary.instructions}
-                </Text>
-                {item.dischargeSummary.medications?.length > 0 && (
-                  <View style={{ marginTop: 4 }}>
-                    <Text style={{ fontWeight: '800', fontSize: 11, color: '#555', marginBottom: 2 }}>MEDICATIONS:</Text>
-                    {item.dischargeSummary.medications.map((med, i) => (
-                      <Text key={i} style={{ fontSize: 12, color: '#333', marginLeft: 8 }}>
-                        • {med.name} x{med.qty} — {med.instructions}
-                      </Text>
-                    ))}
+            {/* DISCHARGE SUMMARY — polished as "Going-Home Instructions" */}
+            {item.dischargeSummary && (() => {
+              const ds = item.dischargeSummary;
+              const doThisItems = (ds.instructions || '')
+                .split('\n')
+                .map(s => s.trim())
+                .filter(Boolean);
+              const nextVisitDate = ds.nextVisit
+                ? new Date(ds.nextVisit?.seconds ? ds.nextVisit.seconds * 1000 : ds.nextVisit)
+                : null;
+              const nextVisitStr = nextVisitDate
+                ? nextVisitDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+                : null;
+
+              return (
+                <View style={styles.dischargeCard}>
+                  <View style={styles.dischargeHeaderRow}>
+                    <Text style={styles.dischargeHeader}>GOING-HOME INSTRUCTIONS</Text>
+                    {ds.patientStatus && (
+                      <Text style={styles.dischargeStatusPill}>{ds.patientStatus}</Text>
+                    )}
                   </View>
-                )}
-                {item.dischargeSummary.nextVisit && (
-                  <Text style={{ fontSize: 12, color: '#E65100', fontWeight: '800', marginTop: 6 }}>
-                    Next Visit: {new Date(item.dischargeSummary.nextVisit?.seconds ? item.dischargeSummary.nextVisit.seconds * 1000 : item.dischargeSummary.nextVisit).toLocaleDateString()}
-                  </Text>
-                )}
-              </View>
-            )}
+
+                  {ds.diagnosis && (
+                    <View style={styles.dischargeTldrBlock}>
+                      <Text style={styles.dischargeTldrLabel}>TL;DR</Text>
+                      <Text style={styles.dischargeTldrText}>{ds.diagnosis}</Text>
+                    </View>
+                  )}
+
+                  {doThisItems.length > 0 && (
+                    <View style={styles.dischargeSection}>
+                      <Text style={styles.dischargeSectionLabel}>✓ Do this</Text>
+                      {doThisItems.map((line, i) => (
+                        <Text key={i} style={styles.dischargeBullet}>• {line}</Text>
+                      ))}
+                    </View>
+                  )}
+
+                  {ds.medications && ds.medications.length > 0 && (
+                    <View style={styles.dischargeSection}>
+                      <Text style={styles.dischargeSectionLabel}>💊 Medications</Text>
+                      {ds.medications.map((med, i) => (
+                        <View key={i} style={styles.dischargeMedRow}>
+                          <Text style={styles.dischargeMedName}>{med.name}</Text>
+                          <Text style={styles.dischargeMedMeta}>
+                            ×{med.qty || 1} — {med.instructions || 'Use as directed'}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {nextVisitStr && (
+                    <View style={styles.dischargeNextVisit}>
+                      <Text style={styles.dischargeNextVisitIcon}>📅</Text>
+                      <Text style={styles.dischargeNextVisitText}>
+                        Follow up <Text style={styles.dischargeNextVisitDate}>{nextVisitStr}</Text>
+                      </Text>
+                    </View>
+                  )}
+
+                  <TouchableOpacity
+                    style={styles.dischargeCallBtn}
+                    onPress={() => Linking.openURL('tel:+639000000000')}
+                    // TODO: replace hardcoded number with clinic_settings.phone when that field lands
+                  >
+                    <Text style={styles.dischargeCallBtnText}>📞 Call us</Text>
+                  </TouchableOpacity>
+
+                  {nextVisitDate && (
+                    <TouchableOpacity
+                      style={styles.dischargeFollowUpBtn}
+                      onPress={() => navigation.navigate('BookAppointment', {
+                        prefillPetId: petId,
+                        prefillServiceType: item.serviceType || null,
+                        prefillDate: nextVisitDate.toISOString(),
+                        prefillDateMatchType: 'exact',
+                        prefillTargetDate: nextVisitDate.toISOString(),
+                        fromFollowUp: true,
+                      })}
+                    >
+                      <Text style={styles.dischargeFollowUpBtnText}>Book Follow-Up</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {ds.vetName && (
+                    <Text style={styles.dischargeSignature}>Signed by {ds.vetName}</Text>
+                  )}
+                </View>
+              );
+            })()}
 
             {/* VACCINATION RECORD */}
             {item.vaccineData && (
-              <View style={{ marginTop: 12, padding: 12, backgroundColor: '#FFF3E0', borderRadius: 8 }}>
-                <Text style={{ fontWeight: '900', fontSize: 12, color: '#E65100', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>
-                  VACCINATION RECORD
-                </Text>
-                <Text style={{ fontSize: 13, color: '#333' }}>Vaccine: {item.vaccineData.vaccineName}</Text>
-                {item.vaccineData.manufacturer ? <Text style={{ fontSize: 12, color: '#666' }}>Manufacturer: {item.vaccineData.manufacturer}</Text> : null}
-                {item.vaccineData.lotNumber ? <Text style={{ fontSize: 12, color: '#666' }}>Lot #: {item.vaccineData.lotNumber}</Text> : null}
-                <Text style={{ fontSize: 12, color: '#666' }}>Route: {item.vaccineData.routeOfAdmin} | Site: {item.vaccineData.siteOfInjection}</Text>
+              <View style={styles.vaccineCard}>
+                <Text style={styles.vaccineHeader}>💉 VACCINATION RECORD</Text>
+                <Text style={styles.vaccineName}>{item.vaccineData.vaccineName}</Text>
+                <View style={styles.vaccineGrid}>
+                  {item.vaccineData.manufacturer && (
+                    <View style={styles.vaccineCell}>
+                      <Text style={styles.vaccineCellLabel}>MFR</Text>
+                      <Text style={styles.vaccineCellValue}>{item.vaccineData.manufacturer}</Text>
+                    </View>
+                  )}
+                  {item.vaccineData.lotNumber && (
+                    <View style={styles.vaccineCell}>
+                      <Text style={styles.vaccineCellLabel}>LOT</Text>
+                      <Text style={styles.vaccineCellValue}>{item.vaccineData.lotNumber}</Text>
+                    </View>
+                  )}
+                  {item.vaccineData.routeOfAdmin && (
+                    <View style={styles.vaccineCell}>
+                      <Text style={styles.vaccineCellLabel}>ROUTE</Text>
+                      <Text style={styles.vaccineCellValue}>{item.vaccineData.routeOfAdmin}</Text>
+                    </View>
+                  )}
+                  {item.vaccineData.siteOfInjection && (
+                    <View style={styles.vaccineCell}>
+                      <Text style={styles.vaccineCellLabel}>SITE</Text>
+                      <Text style={styles.vaccineCellValue}>{item.vaccineData.siteOfInjection}</Text>
+                    </View>
+                  )}
+                </View>
                 {item.vaccineData.dueDate && (
-                  <Text style={{ fontSize: 12, color: '#D32F2F', fontWeight: '800', marginTop: 4 }}>
-                    Next Due: {item.vaccineData.dueDate}
-                  </Text>
+                  <View style={styles.vaccineDueBanner}>
+                    <Text style={styles.vaccineDueText}>⏰ Next dose due {item.vaccineData.dueDate}</Text>
+                  </View>
                 )}
               </View>
             )}
 
             {/* LAB RESULTS */}
             {item.labResults?.length > 0 && (
-              <View style={{ marginTop: 12, padding: 12, backgroundColor: '#E3F2FD', borderRadius: 8 }}>
-                <Text style={{ fontWeight: '900', fontSize: 12, color: '#1565C0', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>
-                  LAB RESULTS
-                </Text>
-                {item.labResults.map((lab, i) => (
-                  <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <Text style={{ fontSize: 13, color: '#333', flex: 1 }}>{lab.testName}</Text>
-                    <Text style={{ fontSize: 13, color: '#333', flex: 1 }}>{lab.result}</Text>
-                    <Text style={{
-                      fontSize: 11, fontWeight: '900', textTransform: 'uppercase',
-                      color: lab.status === 'critical' ? '#D32F2F' : lab.status === 'abnormal' ? '#E65100' : '#2E7D32',
-                    }}>
-                      {lab.status}
-                    </Text>
-                  </View>
-                ))}
+              <View style={styles.labCard}>
+                <Text style={styles.labHeader}>🔬 LAB RESULTS</Text>
+                {item.labResults.map((lab, i) => {
+                  const statusKey = (lab.status || 'normal').toLowerCase();
+                  const statusColor =
+                    statusKey === 'critical' ? '#D32F2F' :
+                    statusKey === 'abnormal' ? '#E65100' :
+                    '#2E7D32';
+                  const statusBg =
+                    statusKey === 'critical' ? '#FFEBEE' :
+                    statusKey === 'abnormal' ? '#FFF3E0' :
+                    '#E8F5E9';
+                  return (
+                    <View key={i} style={styles.labRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.labTestName}>{lab.testName}</Text>
+                        <Text style={styles.labResult}>{lab.result}</Text>
+                      </View>
+                      <Text style={[styles.labStatusPill, { color: statusColor, backgroundColor: statusBg }]}>
+                        {statusKey.toUpperCase()}
+                      </Text>
+                    </View>
+                  );
+                })}
               </View>
             )}
           </View>
@@ -708,5 +800,267 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 10,
     lineHeight: 22,
+  },
+
+  // --- Discharge card (B4) ---
+  dischargeCard: {
+    marginTop: 14,
+    padding: 16,
+    backgroundColor: "#F1F8E9",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#C5E1A5",
+    shadowColor: "#2E7D32",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  dischargeHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  dischargeHeader: {
+    fontSize: 12,
+    fontWeight: "900",
+    color: "#2E7D32",
+    letterSpacing: 1.2,
+  },
+  dischargeStatusPill: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#1B5E20",
+    backgroundColor: "#DCEDC8",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    overflow: "hidden",
+  },
+  dischargeTldrBlock: {
+    marginBottom: 12,
+    paddingLeft: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: "#8B4513",
+  },
+  dischargeTldrLabel: {
+    fontSize: 10,
+    fontWeight: "900",
+    color: "#8B4513",
+    letterSpacing: 1,
+    marginBottom: 2,
+  },
+  dischargeTldrText: {
+    fontSize: 15,
+    color: "#3E2723",
+    fontWeight: "600",
+    lineHeight: 20,
+  },
+  dischargeSection: {
+    marginBottom: 12,
+  },
+  dischargeSectionLabel: {
+    fontSize: 12,
+    fontWeight: "900",
+    color: "#2E7D32",
+    marginBottom: 6,
+    letterSpacing: 0.5,
+  },
+  dischargeBullet: {
+    fontSize: 14,
+    color: "#3E2723",
+    lineHeight: 20,
+    marginLeft: 6,
+    marginBottom: 3,
+  },
+  dischargeMedRow: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+  },
+  dischargeMedName: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#3E2723",
+  },
+  dischargeMedMeta: {
+    fontSize: 12,
+    color: "#666",
+    fontStyle: "italic",
+    marginTop: 2,
+  },
+  dischargeNextVisit: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFF3E0",
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#FFCC80",
+  },
+  dischargeNextVisitIcon: {
+    fontSize: 18,
+    marginRight: 8,
+  },
+  dischargeNextVisitText: {
+    fontSize: 13,
+    color: "#8B4513",
+    flex: 1,
+  },
+  dischargeNextVisitDate: {
+    fontWeight: "900",
+    color: "#E65100",
+  },
+  dischargeCallBtn: {
+    backgroundColor: "#8B4513",
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  dischargeCallBtnText: {
+    color: "white",
+    fontWeight: "900",
+    fontSize: 14,
+    letterSpacing: 0.5,
+  },
+  dischargeFollowUpBtn: {
+    backgroundColor: "#FFF3E0",
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: "#FFCC80",
+  },
+  dischargeFollowUpBtnText: {
+    color: "#E65100",
+    fontWeight: "900",
+    fontSize: 14,
+    letterSpacing: 0.5,
+  },
+  dischargeSignature: {
+    fontSize: 11,
+    color: "#888",
+    fontStyle: "italic",
+    textAlign: "right",
+    marginTop: 4,
+  },
+
+  // --- Vaccine card (B4) ---
+  vaccineCard: {
+    marginTop: 12,
+    padding: 14,
+    backgroundColor: "#FFF8E1",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#FFE0B2",
+  },
+  vaccineHeader: {
+    fontSize: 11,
+    fontWeight: "900",
+    color: "#E65100",
+    letterSpacing: 1.2,
+    marginBottom: 6,
+  },
+  vaccineName: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: "#3E2723",
+    marginBottom: 10,
+  },
+  vaccineGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 10,
+  },
+  vaccineCell: {
+    backgroundColor: "white",
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: "#EEEEEE",
+    minWidth: 70,
+  },
+  vaccineCellLabel: {
+    fontSize: 9,
+    color: "#888",
+    fontWeight: "900",
+    letterSpacing: 0.5,
+    marginBottom: 1,
+  },
+  vaccineCellValue: {
+    fontSize: 12,
+    color: "#3E2723",
+    fontWeight: "700",
+  },
+  vaccineDueBanner: {
+    backgroundColor: "#FFEBEE",
+    padding: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#FFCDD2",
+  },
+  vaccineDueText: {
+    fontSize: 12,
+    color: "#D32F2F",
+    fontWeight: "800",
+    textAlign: "center",
+  },
+
+  // --- Lab results card (B4) ---
+  labCard: {
+    marginTop: 12,
+    padding: 14,
+    backgroundColor: "#E3F2FD",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#BBDEFB",
+  },
+  labHeader: {
+    fontSize: 11,
+    fontWeight: "900",
+    color: "#1565C0",
+    letterSpacing: 1.2,
+    marginBottom: 10,
+  },
+  labRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "white",
+    padding: 10,
+    borderRadius: 10,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+  },
+  labTestName: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#3E2723",
+  },
+  labResult: {
+    fontSize: 12,
+    color: "#666",
+    marginTop: 1,
+  },
+  labStatusPill: {
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    overflow: "hidden",
+    textTransform: "uppercase",
   },
 });

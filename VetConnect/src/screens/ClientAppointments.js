@@ -5,10 +5,13 @@
 import {
   collection,
   doc,
+  documentId,
+  getDoc,
   getDocs,
   onSnapshot,
   orderBy,
   query,
+  Timestamp,
   updateDoc,
   where,
 } from "firebase/firestore";
@@ -26,6 +29,7 @@ import {
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 import { auth, db } from "../../firebaseConfig";
+import { findFirstBookableDate } from "../hooks/useBookingEngine";
 import {
   getClientStatusColor,
   getClientStatusIcon,
@@ -75,6 +79,10 @@ const ClientAppointments = ({ navigation }) => {
   // Only populated for completed appointments. Used to show "Paid ₱X" on history cards.
   const [salesByAppt, setSalesByAppt] = useState({});
 
+  // Parent medical record cache — keyed by parentRecordId.
+  // Populated for follow-up ghost appointments so we can show the real diagnosis + vet name.
+  const [parentRecords, setParentRecords] = useState({});
+
   // 1. Fetch Data
   useEffect(() => {
     const q = query(
@@ -91,6 +99,7 @@ const ClientAppointments = ({ navigation }) => {
       setAppointments(list);
       setLoading(false);
       fetchSalesForCompleted(list);
+      fetchParentRecords(list);
     });
     return () => unsub();
   }, []);
@@ -128,6 +137,44 @@ const ClientAppointments = ({ navigation }) => {
       setSalesByAppt(results);
     } catch (error) {
       console.error('[ClientAppointments.fetchSalesForCompleted]:', error.message);
+    }
+  };
+
+  // Batch-fetch parent medical records for all pending follow-up appointments.
+  // Chunked at 10 IDs per query (Firestore 'in' operator limit) — same pattern as fetchSalesForCompleted.
+  // The parent record holds the real serviceType, vet name, and diagnosis for banner display.
+  const fetchParentRecords = async (appointmentList) => {
+    const recordIds = [...new Set(
+      appointmentList
+        .filter(a => a.isFollowUp && a.status === 'pending' && a.parentRecordId)
+        .map(a => a.parentRecordId)
+    )];
+
+    if (recordIds.length === 0) {
+      setParentRecords({});
+      return;
+    }
+
+    const chunks = [];
+    for (let i = 0; i < recordIds.length; i += 10) {
+      chunks.push(recordIds.slice(i, i + 10));
+    }
+
+    try {
+      const results = {};
+      for (const chunk of chunks) {
+        const q = query(
+          collection(db, 'medical_records'),
+          where(documentId(), 'in', chunk),
+        );
+        const snap = await getDocs(q);
+        snap.forEach(docSnap => {
+          results[docSnap.id] = docSnap.data();
+        });
+      }
+      setParentRecords(results);
+    } catch (error) {
+      console.error('[ClientAppointments.fetchParentRecords]:', error.message);
     }
   };
 
@@ -204,6 +251,92 @@ const ClientAppointments = ({ navigation }) => {
     );
   };
 
+  // Navigate to BookAppointment with prefill params derived from the follow-up ghost.
+  // Resolves the true parent serviceType via the already-fetched parentRecords join,
+  // since the ghost always has serviceType: 'Follow-Up Visit' (hardcoded by ClinicalWorkspace).
+  // Also runs the ±3 day closed-date cascade to land the wizard on the best available date.
+  const handleBookFollowUp = (item) => {
+    // Walk-in ghosts have no linked client account — cannot deep-link to booking.
+    if (!item.petId || item.petId === 'WALK_IN_PET') {
+      Alert.alert(
+        'Call the clinic',
+        'Please call to schedule this follow-up — your visit was a walk-in.',
+      );
+      return;
+    }
+
+    // Resolve the true parent service from the joined medical record.
+    // The ghost always has serviceType: 'Follow-Up Visit' (hardcoded by ClinicalWorkspace),
+    // so we prefer the parent record's real serviceType from the join.
+    const parent = parentRecords[item.parentRecordId];
+    const resolvedServiceType = parent?.serviceType || item.serviceType || 'Follow-Up Visit';
+
+    (async () => {
+      let clinicSettings = { closedDates: [] };
+      try {
+        const snap = await getDoc(doc(db, 'clinic_settings', 'general'));
+        if (snap.exists()) clinicSettings = snap.data();
+      } catch (e) {
+        console.warn('[ClientAppointments.handleBookFollowUp] clinic_settings fetch failed, using empty closedDates');
+      }
+
+      const target = item.scheduledDate?.toDate() || new Date();
+      const result = findFirstBookableDate(target, 3, clinicSettings);
+
+      if (result.matchType === 'none') {
+        Alert.alert(
+          "Couldn't find an open day",
+          `We couldn't find an open slot near ${target.toLocaleDateString()}. Please pick a date manually.`,
+          [{ text: 'Continue anyway', onPress: () => navigation.navigate('BookAppointment', {
+            prefillPetId: item.petId,
+            prefillServiceType: resolvedServiceType,
+            fromFollowUp: true,
+            ghostAppointmentId: item.id,
+          }) }],
+        );
+        return;
+      }
+
+      navigation.navigate('BookAppointment', {
+        prefillPetId: item.petId,
+        prefillServiceType: resolvedServiceType,
+        prefillDate: result.date.toISOString(),
+        prefillDateMatchType: result.matchType,
+        prefillTargetDate: target.toISOString(),
+        fromFollowUp: true,
+        ghostAppointmentId: item.id,
+      });
+    })();
+  };
+
+  // Confirm-gated dismissal of a follow-up ghost.
+  // Stamps status: 'cancelled' + cancelReason: 'client-dismissed-followup' so the row
+  // disappears from Upcoming and is filtered out of History. Does NOT touch medical_records.nextVisit.
+  const handleDismissFollowUp = (item) => {
+    Alert.alert(
+      'Dismiss follow-up?',
+      `Your vet recommended a visit on ${item.scheduledDate?.toDate().toLocaleDateString()}. You can still book manually from your pet's history later.`,
+      [
+        { text: 'Keep it', style: 'cancel' },
+        {
+          text: 'Yes, dismiss',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await updateDoc(doc(db, 'appointments', item.id), {
+                status: 'cancelled',
+                cancelReason: 'client-dismissed-followup',
+                cancelledAt: Timestamp.now(),
+              });
+            } catch (error) {
+              Alert.alert('Error', 'Could not dismiss. Please try again.');
+            }
+          },
+        },
+      ],
+    );
+  };
+
   // --- DYNAMIC FILTER DATA GENERATION ---
   const uniquePets = [
     "All Pets",
@@ -229,8 +362,10 @@ const ClientAppointments = ({ navigation }) => {
           "dispensing",
           "on-hold",
         ].includes(item.status)
-      : ["completed", "cancelled", "no-show", "carried-over"].includes(
-          item.status,
+      : (
+          ["completed", "cancelled", "no-show", "carried-over"].includes(item.status)
+          && item.cancelReason !== 'client-dismissed-followup'
+          && item.cancelReason !== 'client-booked-followup'
         );
 
     // 2. Pet Check
@@ -245,7 +380,58 @@ const ClientAppointments = ({ navigation }) => {
     return isValidStatus && isPetMatch && isServiceMatch;
   });
 
+  // Specialized render for follow-up ghost appointments (isFollowUp: true, status: 'pending').
+  // Uses the parentRecords join for vet name and diagnosis — the ghost's own fields are not reliable
+  // for those values since ClinicalWorkspace hardcodes serviceType: 'Follow-Up Visit'.
+  const renderFollowUpRow = (item) => {
+    const parent = parentRecords[item.parentRecordId];
+    const vetName = parent?.dischargeSummary?.vetName || 'Your veterinarian';
+    const diagnosis = parent?.dischargeSummary?.diagnosis || parent?.diagnosis || 'a recheck';
+    const recommendedDate = item.scheduledDate?.toDate();
+    const dateStr = recommendedDate?.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+    }) || 'soon';
+    const isWalkIn = !item.petId || item.petId === 'WALK_IN_PET';
+
+    return (
+      <View key={item.id} style={styles.followUpCard}>
+        <View style={styles.followUpAccent} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.followUpRibbon}>FOLLOW-UP RECOMMENDED</Text>
+          <Text style={styles.followUpTitle}>{item.petName}</Text>
+          <Text style={styles.followUpSubtitle}>
+            {vetName} recommends a recheck for {diagnosis}
+          </Text>
+          <Text style={styles.followUpDate}>Suggested: {dateStr}</Text>
+          <View style={styles.followUpActionRow}>
+            <TouchableOpacity
+              style={[styles.followUpBtn, styles.followUpBtnSecondary]}
+              onPress={() => handleDismissFollowUp(item)}
+            >
+              <Text style={styles.followUpBtnSecondaryText}>Not now</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.followUpBtn, styles.followUpBtnPrimary]}
+              onPress={() => handleBookFollowUp(item)}
+            >
+              <Text style={styles.followUpBtnPrimaryText}>
+                {isWalkIn ? 'Call clinic' : 'Book this visit'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
   const renderItem = ({ item }) => {
+    // Follow-up ghosts get a dedicated banner treatment — not the regular card layout.
+    if (item.isFollowUp === true && item.status === 'pending') {
+      return renderFollowUpRow(item);
+    }
+
     const icon = ICONS[item.serviceType] || ICONS["Default"];
     const isHistory = tab === "history";
 
@@ -453,7 +639,18 @@ const ClientAppointments = ({ navigation }) => {
         />
       ) : (
         <FlatList
-          data={activeAppointment ? filteredData.filter(a => a.id !== activeAppointment.id) : filteredData}
+          data={(() => {
+            const base = activeAppointment
+              ? filteredData.filter(a => a.id !== activeAppointment.id)
+              : filteredData;
+            // Follow-up ghosts float to the top of the Upcoming tab, sorted by scheduledDate ascending.
+            if (tab !== 'upcoming') return base;
+            const followUps = base
+              .filter(a => a.isFollowUp && a.status === 'pending')
+              .sort((a, b) => (a.scheduledDate?.toMillis() || 0) - (b.scheduledDate?.toMillis() || 0));
+            const rest = base.filter(a => !(a.isFollowUp && a.status === 'pending'));
+            return [...followUps, ...rest];
+          })()}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={{ paddingBottom: 20 }}
@@ -716,6 +913,82 @@ const styles = StyleSheet.create({
 
   closeBtn: { marginTop: 20, padding: 10, alignSelf: "center" },
   closeText: { color: "#D32F2F", fontWeight: "bold", fontSize: 16 },
+
+  // --- Follow-up ghost card (B5) ---
+  followUpCard: {
+    flexDirection: 'row',
+    backgroundColor: '#FFF3E0',
+    borderRadius: 16,
+    padding: 15,
+    marginBottom: 15,
+    elevation: 4,
+    shadowColor: '#E65100',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FFCC80',
+    overflow: 'hidden',
+  },
+  followUpAccent: {
+    width: 4,
+    backgroundColor: '#E65100',
+    marginRight: 12,
+    borderRadius: 2,
+  },
+  followUpRibbon: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1,
+    color: '#E65100',
+    marginBottom: 6,
+  },
+  followUpTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#3E2723',
+    marginBottom: 2,
+  },
+  followUpSubtitle: {
+    fontSize: 13,
+    color: '#5D4037',
+    lineHeight: 18,
+    marginBottom: 6,
+  },
+  followUpDate: {
+    fontSize: 13,
+    color: '#8B4513',
+    fontWeight: '700',
+    marginBottom: 10,
+  },
+  followUpActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+  followUpBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+  },
+  followUpBtnPrimary: {
+    backgroundColor: '#E65100',
+  },
+  followUpBtnPrimaryText: {
+    color: 'white',
+    fontWeight: '900',
+    fontSize: 13,
+  },
+  followUpBtnSecondary: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#8D6E63',
+  },
+  followUpBtnSecondaryText: {
+    color: '#5D4037',
+    fontWeight: '700',
+    fontSize: 13,
+  },
 });
 
 export default ClientAppointments;

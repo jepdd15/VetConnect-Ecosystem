@@ -12,8 +12,8 @@ import { useEffect, useState } from "react";
 import { auth, db } from "../../firebaseConfig";
 
 // Local-time YYYY-MM-DD formatter (Asia/Manila expected on device).
-// Kept inline — only one caller in this file. Extract to dateHelpers.js if a second appears.
-const getLocalDateStrMobile = (d) => {
+// Exported so BookAppointment can share the same normalizer without duplication.
+export const getLocalDateStrMobile = (d) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
@@ -318,3 +318,65 @@ export function useBookingEngine(date, selectedServices = [], selectedPets) {
     departmentCapacity,
   };
 }
+
+/**
+ * Walks candidate dates around a target and returns the first one that is
+ * NOT in clinicSettings.closedDates and NOT in the past.
+ *
+ * Cascade order:
+ *   1. Exact target date (if not closed and not past)
+ *   2. target ± 1, ± 2, ..., ± toleranceDays (before before after for each delta)
+ *   3. If nothing in tolerance window, linear scan forward from today, up to 14 days
+ *   4. If still nothing, return { date: null, matchType: 'none' }
+ *
+ * NOTE: Does NOT check department capacity — that is handled by generateSlots
+ * once the wizard lands on step 3. This helper only answers "is the clinic open on day X".
+ *
+ * @param {Date} targetDate   - The vet-recommended follow-up date
+ * @param {number} toleranceDays - How many days ± to search before falling through to scan
+ * @param {object} clinicSettings - Must contain closedDates: string[] (YYYY-MM-DD)
+ * @returns {{ date: Date|null, matchType: 'exact'|'tolerance'|'scan'|'none' }}
+ */
+export const findFirstBookableDate = (targetDate, toleranceDays, clinicSettings) => {
+  const closed = new Set(clinicSettings?.closedDates ?? []);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const isBookable = (d) => {
+    const normalized = new Date(d);
+    normalized.setHours(0, 0, 0, 0);
+    if (normalized < today) return false;
+    return !closed.has(getLocalDateStrMobile(normalized));
+  };
+
+  // 1. Exact target date
+  const exact = new Date(targetDate);
+  exact.setHours(8, 0, 0, 0);
+  if (isBookable(exact)) {
+    return { date: exact, matchType: 'exact' };
+  }
+
+  // 2. Tolerance window — symmetric expand (before, then after, for each delta)
+  for (let delta = 1; delta <= toleranceDays; delta++) {
+    for (const sign of [-1, 1]) {
+      const candidate = new Date(exact);
+      candidate.setDate(candidate.getDate() + (sign * delta));
+      if (isBookable(candidate)) {
+        return { date: candidate, matchType: 'tolerance' };
+      }
+    }
+  }
+
+  // 3. Linear scan from today forward, cap at 14 days
+  const scanStart = new Date(today);
+  for (let i = 0; i <= 14; i++) {
+    const candidate = new Date(scanStart);
+    candidate.setDate(candidate.getDate() + i);
+    candidate.setHours(8, 0, 0, 0);
+    if (isBookable(candidate)) {
+      return { date: candidate, matchType: 'scan' };
+    }
+  }
+
+  return { date: null, matchType: 'none' };
+};

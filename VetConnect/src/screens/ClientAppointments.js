@@ -26,7 +26,14 @@ import {
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 import { auth, db } from "../../firebaseConfig";
-import { getClientStatusColor, getClientStatusLabel } from "../utils/statusLabels";
+import {
+  getClientStatusColor,
+  getClientStatusIcon,
+  getClientStatusLabel,
+  isActiveStatus,
+  sanitizeCancelReason,
+} from "../utils/statusLabels";
+import SuperCard from "../components/SuperCard";
 
 const ICONS = {
   Consultation: "🩺",
@@ -36,6 +43,13 @@ const ICONS = {
   Laboratory: "🔬",
   Emergency: "🚨",
   Default: "🐾",
+};
+
+const formatApptTime = (tsDate) => {
+  if (!tsDate) return '';
+  const d = tsDate.toDate();
+  if (d.getHours() === 0 && d.getMinutes() === 0) return 'Walk-in';
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
 const ClientAppointments = ({ navigation }) => {
@@ -57,6 +71,10 @@ const ClientAppointments = ({ navigation }) => {
   const [receiptData, setReceiptData] = useState(null);
   const [loadingReceipt, setLoadingReceipt] = useState(false);
 
+  // Sales cache — keyed by appointmentId, populated after each appointments snapshot.
+  // Only populated for completed appointments. Used to show "Paid ₱X" on history cards.
+  const [salesByAppt, setSalesByAppt] = useState({});
+
   // 1. Fetch Data
   useEffect(() => {
     const q = query(
@@ -67,14 +85,51 @@ const ClientAppointments = ({ navigation }) => {
 
     const unsub = onSnapshot(q, (snapshot) => {
       const list = [];
-      snapshot.forEach((doc) => {
-        list.push({ id: doc.id, ...doc.data() });
+      snapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() });
       });
       setAppointments(list);
       setLoading(false);
+      fetchSalesForCompleted(list);
     });
     return () => unsub();
   }, []);
+
+  // Batch-fetch sales docs for all completed appointments.
+  // Chunked at 10 IDs per query (Firestore 'in' operator limit).
+  const fetchSalesForCompleted = async (appointmentList) => {
+    const completedIds = appointmentList
+      .filter(a => a.status === 'completed')
+      .map(a => a.id);
+
+    if (completedIds.length === 0) {
+      setSalesByAppt({});
+      return;
+    }
+
+    const chunks = [];
+    for (let i = 0; i < completedIds.length; i += 10) {
+      chunks.push(completedIds.slice(i, i + 10));
+    }
+
+    try {
+      const results = {};
+      for (const chunk of chunks) {
+        const salesQ = query(
+          collection(db, 'sales'),
+          where('appointmentId', 'in', chunk),
+        );
+        const snap = await getDocs(salesQ);
+        snap.forEach(docSnap => {
+          const d = docSnap.data();
+          if (d.appointmentId) results[d.appointmentId] = d;
+        });
+      }
+      setSalesByAppt(results);
+    } catch (error) {
+      console.error('[ClientAppointments.fetchSalesForCompleted]:', error.message);
+    }
+  };
 
   // --- HANDLERS ---
   const handleShowQR = (code) => {
@@ -111,7 +166,10 @@ const ClientAppointments = ({ navigation }) => {
   };
 
   const handleRebook = (item) => {
-    navigation.navigate("BookAppointment");
+    navigation.navigate("BookAppointment", {
+      prefillPetId: item.petId,
+      prefillServiceType: item.serviceType || item.primaryService,
+    });
   };
 
   // CLIENT-SIDE CANCELLATION ---
@@ -169,6 +227,7 @@ const ClientAppointments = ({ navigation }) => {
           "billing",
           "confined",
           "dispensing",
+          "on-hold",
         ].includes(item.status)
       : ["completed", "cancelled", "no-show", "carried-over"].includes(
           item.status,
@@ -196,16 +255,19 @@ const ClientAppointments = ({ navigation }) => {
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             <Text style={{ fontSize: 24, marginRight: 10 }}>{icon}</Text>
             <View>
-              <Text style={styles.service}>{item.serviceType}</Text>
+              <Text style={styles.service}>{item.serviceType || item.primaryService || ""}</Text>
               <Text style={styles.pet}>Patient: {item.petName}</Text>
             </View>
           </View>
           <View style={{ alignItems: "flex-end" }}>
             <Text style={[styles.status, getClientStatusColor(item.status)]}>
-              {getClientStatusLabel(item.status).toUpperCase()}
+              {getClientStatusIcon(item.status)} {getClientStatusLabel(item.status).toUpperCase()}
             </Text>
             {!isHistory && item.servicePrice > 0 && (
               <Text style={styles.price}>Est. ₱{item.servicePrice}</Text>
+            )}
+            {isHistory && item.status === "completed" && salesByAppt[item.id]?.total != null && (
+              <Text style={styles.price}>Paid ₱{salesByAppt[item.id].total}</Text>
             )}
           </View>
         </View>
@@ -217,10 +279,7 @@ const ClientAppointments = ({ navigation }) => {
             📅 {item.scheduledDate?.toDate().toDateString()}
           </Text>
           <Text style={styles.date}>
-            ⏰{" "}
-            {item.scheduledDate
-              ?.toDate()
-              .toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            ⏰ {formatApptTime(item.scheduledDate)}
           </Text>
         </View>
 
@@ -241,7 +300,7 @@ const ClientAppointments = ({ navigation }) => {
                     },
                   ]}
                   onPress={() =>
-                    handleCancelAppointment(item.id, item.serviceType)
+                    handleCancelAppointment(item.id, item.serviceType || item.primaryService)
                   }
                 >
                   <Text style={[styles.btnText, { color: "#D32F2F" }]}>
@@ -283,16 +342,26 @@ const ClientAppointments = ({ navigation }) => {
           )}
 
           {/* CANCELLATION REASON */}
-          {item.status === "cancelled" && item.rejectReason && (
-            <Text style={styles.reasonText}>Reason: "{item.rejectReason}"</Text>
-          )}
+          {item.status === "cancelled" && (() => {
+            const raw = item.auditReason || item.rejectReason;
+            const clean = sanitizeCancelReason(raw);
+            return clean ? <Text style={styles.reasonText}>{clean}</Text> : null;
+          })()}
         </View>
       </View>
     );
   };
 
+  // Derive the single active in-clinic appointment (if any) for the SuperCard.
+  // Only the first active appointment is surfaced — multi-pet concurrent visits
+  // are rare enough that a single-card view is acceptable for this pass.
+  const activeAppointment = appointments.find(a => isActiveStatus(a.status)) || null;
+
   return (
     <View style={styles.container}>
+      {/* SUPER-CARD — pinned above tabs so it stays visible while switching tabs */}
+      <SuperCard appointment={activeAppointment} />
+
       {/* TABS */}
       <View style={styles.tabContainer}>
         <TouchableOpacity

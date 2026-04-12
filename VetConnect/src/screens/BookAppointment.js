@@ -31,8 +31,12 @@ import { auth, db } from "../../firebaseConfig";
 import { useSafeAreaInsets } from "react-native-safe-area-context"; // <-- THE FIX: Hardware measurement hook
 import { useBookingEngine } from "../hooks/useBookingEngine";
 
-export default function BookAppointment({ navigation }) {
+export default function BookAppointment({ navigation, route }) {
   const insets = useSafeAreaInsets();
+
+  const prefillPetId = route?.params?.prefillPetId || null;
+  const prefillServiceType = route?.params?.prefillServiceType || null;
+
   // --- ENTERPRISE WIZARD STATE ---
   const [step, setStep] = useState(1);
 
@@ -73,6 +77,26 @@ export default function BookAppointment({ navigation }) {
     if (!petSearch) return pets;
     return pets.filter(p => p.name.toLowerCase().includes(petSearch.toLowerCase()));
   }, [pets, petSearch]);
+
+  // Pre-select the pet when navigating via Re-Book. Idempotent: only fires when
+  // the pet list has loaded and the user hasn't already made a selection.
+  useEffect(() => {
+    if (prefillPetId && pets.length > 0 && selectedPets.length === 0) {
+      const match = pets.find(p => p.id === prefillPetId);
+      if (match) setSelectedPets([match]);
+    }
+  }, [prefillPetId, pets]);
+
+  // Pre-select the service when navigating via Re-Book. Matches by serviceType
+  // string (stored on the appointment) or by service name as a fallback.
+  useEffect(() => {
+    if (prefillServiceType && services.length > 0 && selectedServices.length === 0) {
+      const match = services.find(
+        s => s.serviceType === prefillServiceType || s.name === prefillServiceType,
+      );
+      if (match) setSelectedServices([match]);
+    }
+  }, [prefillServiceType, services]);
 
   // THE FIX: High performance department statistics & sorting!
   const departmentStats = useMemo(() => {
@@ -362,6 +386,7 @@ export default function BookAppointment({ navigation }) {
           
           services: mappedServices,
           primaryService: mappedServices[0].name,
+          serviceType: mappedServices[0].name,
           serviceCategory: mappedServices[0].department,
           serviceDuration: bundleTotalMinutes, // Total visit duration
           servicePrice: bundleTotalPrice,

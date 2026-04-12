@@ -453,7 +453,7 @@ const ClientAppointments = ({ navigation }) => {
         />
       ) : (
         <FlatList
-          data={filteredData}
+          data={activeAppointment ? filteredData.filter(a => a.id !== activeAppointment.id) : filteredData}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={{ paddingBottom: 20 }}

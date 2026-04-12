@@ -6,7 +6,8 @@ import {
   Box, Paper, Avatar, Chip, TextField, MenuItem,
   Grid, // MUI v6 Grid
   Stack, Collapse, Tooltip, InputBase, Switch,
-  Autocomplete, Alert, Snackbar
+  Autocomplete, Alert, Snackbar,
+  DialogTitle, DialogContent, DialogContentText, DialogActions
 } from '@mui/material';
 
 // Icons (Unified)
@@ -17,7 +18,8 @@ import {
   HistoryEdu as HistoryEduIcon,
   Shield as ShieldIcon,
   OpenInFull as OpenInFullIcon, FitScreen as FitScreenIcon,
-  SaveAlt as SaveAltIcon
+  SaveAlt as SaveAltIcon,
+  WarningAmber as WarningAmberIcon
 } from '@mui/icons-material';
 import { doc, collection, Timestamp, updateDoc, getDoc, query, where, orderBy, getDocs, arrayUnion, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../firebaseConfig';
@@ -29,6 +31,28 @@ import { FONT, TYPE, COLORS } from '../theme/designTokens';
 const Transition = React.forwardRef(function Transition(props, ref) {
   return <Slide direction="up" ref={ref} {...props} />;
 });
+
+/**
+ * Returns a human-readable relative time string for a given Date.
+ * Keeps granularity appropriate for clinical context (min / h / d).
+ */
+const formatRelativeTime = (date) => {
+  if (!date) return 'recently';
+  const mins = Math.floor((Date.now() - date.getTime()) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+};
+
+/**
+ * Truncates a string to `max` characters, appending an ellipsis when clipped.
+ */
+const truncate = (text, max) => {
+  if (!text) return '';
+  return text.length > max ? text.slice(0, max) + '\u2026' : text;
+};
 
 // Helper for CRM-style age calculation
 const calculateAge = (dob) => {
@@ -255,9 +279,16 @@ const ZEN_PLACEHOLDERS = {
   plan: "Define treatment trajectory, diagnostic orders, pharmaceutical interventions, surgical steps, and post-consult recheck schedules..."
 };
 
-export default function ClinicalWorkspace({ open, onClose, patient, inventoryList, servicesList, departments }) {
+export default function ClinicalWorkspace({ open, onClose, patient, inventoryList, servicesList, departments, vetsList }) {
   const [isDirty, setIsDirty] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // A3 — Draft SOAP Recovery: holds draft metadata while the user decides RESUME or DISCARD.
+  // Null means no banner. Populated when a recent (< 24h) draft is detected on mount.
+  // Scoped to the current session — cleared on unmount via React's normal state lifecycle.
+  const [draftBannerState, setDraftBannerState] = useState(null);
+  // Controls the discard confirmation dialog visibility.
+  const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
   const { reserveStock, releaseStock } = useInventory();
   
   const [history, setHistory] = useState([]);
@@ -387,10 +418,49 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           });
           setLockedServices(completedFromDb);
 
-          // Restore from a previously saved SOAP draft if one exists; otherwise
-          // initialize with defaults so the vet starts fresh on first open.
+          // --- A3: DRAFT SOAP RECOVERY — gate recent drafts behind explicit user intent ---
+          // A draft that was saved in the last 24 hours while the appointment is in an
+          // active clinical status must NOT silently pre-fill the form. Instead, we hold
+          // the draft in banner state and show RESUME / DISCARD options. This prevents a
+          // vet from unknowingly signing off on stale data that looks like a fresh start.
+          //
+          // Drafts older than 24 hours, or on non-clinical statuses, fall through to the
+          // legacy silent-hydration path to preserve backward-compatible behaviour.
           const draft = patient.soapDraft;
-          if (draft && Object.keys(draft).length > 0) {
+          const savedAtTs = patient.draftSavedAt;
+          const savedAt = savedAtTs?.toDate ? savedAtTs.toDate() : null;
+          const DRAFT_FRESHNESS_MS = 24 * 60 * 60 * 1000; // 24 hours
+          const isDraftRecent = savedAt && (Date.now() - savedAt.getTime()) < DRAFT_FRESHNESS_MS;
+          const isEligibleStatus = ['arrived', 'in-consult'].includes(patient.status);
+
+          const freshDefaults = {
+            subjective: patient.notes && patient.notes !== 'Walk-in client' && !patient.notes.includes('QUICK ADMIT') ? `Client noted: "${patient.notes}"\n\n` : '',
+            objWeight: '', objTemp: '', objHR: '', objRR: '', objCRT: '2',
+            bcs: 5, painScale: 0,
+            murmurGrade: 'None', murmurLocation: 'L Apex (Mitral)', murmurTiming: 'Systolic',
+            palpationFindings: { masses: false, pain: false, tense: false, normal: true },
+            objectiveNotes: '', assessment: '', patientStatus: 'Stable', plan: '', nextVisit: '',
+          };
+
+          if (draft && Object.keys(draft).length > 0 && isDraftRecent && isEligibleStatus) {
+            // Recent draft on an active appointment: suppress silent hydration, show banner.
+            const savedByUser = (vetsList || []).find(v => v.id === patient.draftSavedBy);
+            const savedByName = savedByUser?.fullName || (patient.draftSavedBy ? patient.draftSavedBy.slice(0, 8) : 'Unknown vet');
+            setDraftBannerState({
+              draft,
+              savedAt,
+              savedByName,
+              savedByUid: patient.draftSavedBy || null,
+            });
+            // Initialize fresh defaults so the form is visibly empty — the vet sees
+            // blank fields and the banner explaining why, rather than pre-filled fields
+            // with no indication they came from a prior draft session.
+            setSoapData(freshDefaults);
+          } else if (draft && Object.keys(draft).length > 0) {
+            // Stale (> 24h) or status-ineligible draft: silently hydrate as before.
+            // This preserves legacy behaviour for forgotten drafts that are unlikely
+            // to cause clinical harm — suppressing them would just lose data.
+            setDraftBannerState(null);
             setSoapData({
               subjective: draft.subjective || '',
               objWeight: draft.objWeight || '',
@@ -414,14 +484,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
               nextVisit: draft.nextVisit || '',
             });
           } else {
-            setSoapData({
-              subjective: patient.notes && patient.notes !== 'Walk-in client' && !patient.notes.includes('QUICK ADMIT') ? `Client noted: "${patient.notes}"\n\n` : '',
-              objWeight: '', objTemp: '', objHR: '', objRR: '', objCRT: '2',
-              bcs: 5, painScale: 0,
-              murmurGrade: 'None', murmurLocation: 'L Apex (Mitral)', murmurTiming: 'Systolic',
-              palpationFindings: { masses: false, pain: false, tense: false, normal: true },
-              objectiveNotes: '', assessment: '', patientStatus: 'Stable', plan: '', nextVisit: '',
-            });
+            // No draft: initialize fresh defaults.
+            setDraftBannerState(null);
+            setSoapData(freshDefaults);
           }
 
         let initialCart = [];
@@ -1078,6 +1143,75 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     }
   };
 
+  /**
+   * A3 — Applies the captured draft to SOAP form state, signalling explicit resume intent.
+   * Clears the banner. Does NOT modify Firestore — the existing auto-save handles persistence.
+   * isDirty is set to false because the state exactly mirrors the saved draft.
+   */
+  const handleResumeDraft = () => {
+    const d = draftBannerState?.draft;
+    if (!d) {
+      setDraftBannerState(null);
+      return;
+    }
+    setSoapData({
+      subjective: d.subjective || '',
+      objWeight: d.objWeight || '',
+      objTemp: d.objTemp || '',
+      objHR: d.objHR || '',
+      objRR: d.objRR || '',
+      objCRT: d.objCRT || '2',
+      bcs: d.bcs ?? 5,
+      painScale: d.painScale ?? 0,
+      murmurGrade: d.murmurGrade || 'None',
+      murmurLocation: d.murmurLocation || 'L Apex (Mitral)',
+      murmurTiming: d.murmurTiming || 'Systolic',
+      respEffort: d.respEffort || 'Normal',
+      palpationFindings: d.palpationFindings || { masses: false, pain: false, tense: false, normal: true },
+      objectiveNotes: d.objectiveNotes || '',
+      assessment: d.assessment || '',
+      prognosis: d.prognosis || 'Good',
+      patientStatus: d.patientStatus || 'Stable',
+      plan: d.plan || '',
+      recheckIn: d.recheckIn || '1 Week',
+      nextVisit: d.nextVisit || '',
+    });
+    setIsDirty(false);
+    setDraftBannerState(null);
+    showToast("Draft restored. Continue editing.", "success");
+  };
+
+  /**
+   * A3 — Permanently removes the draft from Firestore and appends a DRAFT_DISCARDED
+   * clinical pulse event for audit purposes. Clears the banner on success.
+   */
+  const handleDiscardDraft = async () => {
+    try {
+      const apptRef = doc(db, "appointments", patient.id);
+      const pulseEvent = {
+        eventId: `pulse_draft_discard_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+        type: 'DRAFT_DISCARDED',
+        timestamp: Timestamp.now(),
+        staffId: auth.currentUser?.uid || 'unknown',
+        staffName: auth.currentUser?.displayName || 'Authorized Clinician',
+        note: `Draft discarded (was saved by ${draftBannerState?.savedByName || 'unknown'})`,
+        discardedDraftSavedAt: draftBannerState?.savedAt ? Timestamp.fromDate(draftBannerState.savedAt) : null,
+        discardedDraftSavedBy: draftBannerState?.savedByUid || null,
+      };
+      await updateDoc(apptRef, {
+        soapDraft: null,
+        draftSavedAt: null,
+        draftSavedBy: null,
+        clinicalPulse: arrayUnion(pulseEvent),
+      });
+      setDraftBannerState(null);
+      showToast("Draft discarded.", "success");
+    } catch (error) {
+      console.error('[ClinicalWorkspace.handleDiscardDraft]:', error.message);
+      showToast("Failed to discard draft: " + error.message, "error");
+    }
+  };
+
   const getWeightDelta = () => {
     if (!soapData.objWeight || !prevVitals?.weight) return null;
     const current = parseFloat(soapData.objWeight);
@@ -1197,6 +1331,143 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           </Box>
 
           {/* --- ALERTS --- */}
+
+          {/* A3 — Draft SOAP Recovery Banner
+              Shown when a recent (< 24h) draft exists on an active clinical appointment.
+              The vet must explicitly RESUME or DISCARD — the draft never silently hydrates. */}
+          {draftBannerState && (
+            <Box
+              sx={{
+                flexShrink: 0,
+                mx: 2,
+                mt: 1.5,
+                mb: 1,
+                p: 2,
+                bgcolor: COLORS.kpiOrangeBg,
+                border: `2px solid ${COLORS.warning}`,
+                borderLeft: `6px solid ${COLORS.warning}`,
+                // Neubrutalist solid offset shadow — no blur, espresso offset block
+                boxShadow: `4px 4px 0 ${COLORS.brand}`,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 1,
+              }}
+            >
+              {/* Header row: icon + title + metadata */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <WarningAmberIcon sx={{ color: COLORS.warning, fontSize: 22, flexShrink: 0 }} />
+                <Typography sx={{ ...TYPE.label, color: COLORS.brand, fontSize: '0.78rem' }}>
+                  UNSAVED DRAFT FOUND
+                </Typography>
+                <Typography sx={{ ...TYPE.meta, color: COLORS.textMuted, fontSize: '0.72rem', ml: 'auto', whiteSpace: 'nowrap' }}>
+                  saved {formatRelativeTime(draftBannerState.savedAt)} by {draftBannerState.savedByName}
+                </Typography>
+              </Box>
+
+              {/* Draft preview — Subjective snippet + one-line vitals summary */}
+              <Box sx={{ pl: 3.5, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+                {draftBannerState.draft?.subjective && (
+                  <Typography sx={{ ...TYPE.body, color: COLORS.textSecondary, fontStyle: 'italic', fontSize: '0.8rem' }}>
+                    Subjective: &ldquo;{truncate(draftBannerState.draft.subjective, 140)}&rdquo;
+                  </Typography>
+                )}
+                {(draftBannerState.draft?.objTemp || draftBannerState.draft?.objHR || draftBannerState.draft?.objRR) && (
+                  <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                    Vitals:&nbsp;
+                    {[
+                      draftBannerState.draft.objTemp && `T ${draftBannerState.draft.objTemp}\u00B0C`,
+                      draftBannerState.draft.objHR && `HR ${draftBannerState.draft.objHR}`,
+                      draftBannerState.draft.objRR && `RR ${draftBannerState.draft.objRR}`,
+                    ].filter(Boolean).join(' \u00B7 ')}
+                  </Typography>
+                )}
+              </Box>
+
+              {/* Action row */}
+              <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end', mt: 0.5 }}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => setDiscardConfirmOpen(true)}
+                  sx={{
+                    fontWeight: 900,
+                    fontSize: '0.7rem',
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.5,
+                    color: COLORS.danger,
+                    borderColor: COLORS.danger,
+                    borderRadius: 0,
+                    px: 2,
+                    '&:hover': { bgcolor: COLORS.kpiRedBg },
+                  }}
+                >
+                  DISCARD DRAFT
+                </Button>
+                <Button
+                  variant="contained"
+                  size="small"
+                  onClick={handleResumeDraft}
+                  sx={{
+                    fontWeight: 900,
+                    fontSize: '0.7rem',
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.5,
+                    bgcolor: COLORS.medical,
+                    color: '#FFF',
+                    borderRadius: 0,
+                    // Neubrutalist offset shadow on the primary action button
+                    boxShadow: `2px 2px 0 ${COLORS.brand}`,
+                    px: 2,
+                    '&:hover': { bgcolor: '#0D47A1', boxShadow: `2px 2px 0 ${COLORS.brand}` },
+                  }}
+                >
+                  RESUME EDITING
+                </Button>
+              </Box>
+            </Box>
+          )}
+
+          {/* A3 — Discard Draft Confirmation Dialog */}
+          <Dialog
+            open={discardConfirmOpen}
+            onClose={() => setDiscardConfirmOpen(false)}
+            PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.danger}` } }}
+          >
+            <DialogTitle sx={{ ...TYPE.heading, color: COLORS.danger, fontWeight: 900, textTransform: 'uppercase', pb: 0 }}>
+              Discard Draft?
+            </DialogTitle>
+            <DialogContent sx={{ pt: 1 }}>
+              <DialogContentText sx={{ ...TYPE.body, color: COLORS.textPrimary }}>
+                Discard unsaved notes from <strong>{draftBannerState?.savedByName}</strong> saved{' '}
+                {formatRelativeTime(draftBannerState?.savedAt)}? This cannot be undone and the draft
+                will be permanently removed from the appointment record.
+              </DialogContentText>
+            </DialogContent>
+            <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
+              <Button
+                onClick={() => setDiscardConfirmOpen(false)}
+                sx={{ fontWeight: 800, color: COLORS.textSecondary, borderRadius: 0 }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={async () => {
+                  setDiscardConfirmOpen(false);
+                  await handleDiscardDraft();
+                }}
+                sx={{
+                  fontWeight: 900,
+                  color: '#FFF',
+                  bgcolor: COLORS.danger,
+                  borderRadius: 0,
+                  '&:hover': { bgcolor: '#B71C1C' },
+                }}
+              >
+                Discard Permanently
+              </Button>
+            </DialogActions>
+          </Dialog>
+
           {lockedServices.has('medical') && (
             <Alert severity="success" icon={<ShieldIcon/>}
               sx={{ fontWeight: 900, py: 0.5, fontSize: '0.75rem', flexShrink: 0 }}>

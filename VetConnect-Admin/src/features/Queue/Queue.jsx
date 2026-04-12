@@ -1534,7 +1534,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       </Paper>
 
       {/* EXTERNAL MODULES */}
-      <ClinicalWorkspace open={openConsult} onClose={() => setOpenConsult(false)} patient={selectedRow} inventoryList={joinedInventory} servicesList={servicesList} departments={departments}/>
+      <ClinicalWorkspace open={openConsult} onClose={() => setOpenConsult(false)} patient={selectedRow} inventoryList={joinedInventory} servicesList={servicesList} departments={departments} vetsList={vets} />
       <POSModal open={openPOS} onClose={() => setOpenPOS(false)} patient={selectedRow} inventoryList={joinedInventory} servicesList={servicesList} />
       <DispensingVerificationDialog
         open={openDispenseVerify}

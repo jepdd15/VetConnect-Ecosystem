@@ -4,7 +4,7 @@ import {
   Box, Typography, Paper, Button, TextField, MenuItem, 
   Chip, IconButton, Table, TableBody, TableCell, 
   TableContainer, TableHead, TableRow, FormControl, InputLabel, Select,
-  FormControlLabel, Switch, Alert, Divider, ListSubheader, InputAdornment
+  FormControlLabel, Switch, Alert, Divider, ListSubheader, InputAdornment, Tooltip
 } from '@mui/material';
 
 // --- ALL REQUIRED ICONS ---
@@ -16,12 +16,13 @@ import MedicationIcon from '@mui/icons-material/Medication';
 import DescriptionIcon from '@mui/icons-material/Description'; 
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner'; 
 import MedicalServicesIcon from '@mui/icons-material/MedicalServices'; 
-import CloseIcon from '@mui/icons-material/Close';
 
-import { doc, getDoc, collection, runTransaction, Timestamp, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, runTransaction, Timestamp, updateDoc, increment } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
+import { useUser } from '../context/UserContext';
 
 export default function POSModal({ open, onClose, patient, inventoryList, servicesList }) {
+  const { profile } = useUser();
   const [cart, setCart] = useState([]);
   const[selectedItemVal, setSelectedItemVal] = useState(''); 
   const [paymentMethod, setPaymentMethod] = useState('Cash'); 
@@ -51,16 +52,20 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             const baseService = servicesList.find(s => s.name === patient.serviceType);
             initialCart.push({ type: 'service', id: 'svc_fee', name: patient.serviceType, price: patient.servicePrice || 0, qty: 1, isBase: true, isDiscountable: true });
             
-            if (baseService && baseService.linkedProduct) {
-                const linkedInv = inventoryList.find(i => i.id === baseService.linkedProduct);
-                if (linkedInv) {
-                    initialCart.push({ 
-                        type: 'product', id: linkedInv.id, name: linkedInv.itemName, 
-                        price: linkedInv.price, qty: 1, 
-                        isDiscountable: linkedInv.category === 'Medicine' || linkedInv.category === 'Vaccine', 
-                        isAutoBundled: true, isBase: false 
-                    });
-                }
+            if (baseService) {
+                const linkedIds = baseService.linkedProducts
+                    || (baseService.linkedProduct ? [baseService.linkedProduct] : []);
+                linkedIds.forEach(productId => {
+                    const linkedInv = inventoryList.find(i => i.id === productId);
+                    if (linkedInv) {
+                        initialCart.push({
+                            type: 'product', id: linkedInv.id, name: linkedInv.itemName,
+                            price: linkedInv.price, qty: 1,
+                            isDiscountable: !!linkedInv.isMedicine,
+                            isAutoBundled: true, isBase: false
+                        });
+                    }
+                });
             }
         }
         
@@ -86,13 +91,25 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
       if (p.isRxOnly) {
         setPendingRxItem(p); setOpenRxOverride(true); return; 
       }
-      pushToCartArray({ type: 'product', id: p.id, name: p.itemName, price: p.price, qty: 1, isDiscountable: p.category === 'Medicine' || p.category === 'Vaccine' });
+      pushToCartArray({ type: 'product', id: p.id, name: p.itemName, price: p.price, qty: 1, isDiscountable: !!p.isMedicine });
   };
 
   const pushToCartArray = (newItem) => {
     const existingIndex = cart.findIndex(c => c.id === newItem.id && !c.isExternalRx);
-    if (existingIndex >= 0) updateCartQty(existingIndex, 1);
-    else setCart(prev => [...prev, newItem]); 
+    if (existingIndex >= 0) {
+      updateCartQty(existingIndex, 1);
+      return;
+    }
+
+    // C2: POS Audit Trail — tag cashier-added (non-prescribed) items with provenance
+    const taggedItem = newItem.isPrescribed ? newItem : {
+      ...newItem,
+      addedBy: 'cashier',
+      addedByName: profile?.fullName || 'POS Cashier',
+      addedAt: new Date().toISOString(),
+    };
+
+    setCart(prev => [...prev, taggedItem]);
   };
 
   const handleDropdownAdd = () => { 
@@ -232,8 +249,35 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
 
   const handleSaveDraft = async () => {
     setLoading(true);
-    try { await updateDoc(doc(db, "appointments", patient.id), { prescribedItems: cart, depositPaid: parseFloat(depositAmount) || 0 }); alert("Invoice Draft Saved."); onClose(); } 
-    catch (e) { alert("Error: " + e.message); } finally { setLoading(false); }
+    try {
+      const apptRef = doc(db, "appointments", patient.id);
+      await runTransaction(db, async (transaction) => {
+        const snap = await transaction.get(apptRef);
+        if (!snap.exists()) throw new Error("Appointment not found.");
+        const data = snap.data();
+
+        // Optimistic lock: reject the write if another session has already committed
+        // a newer version of prescribedItems since this modal was opened.
+        const serverVersion = data.prescribedItemsVersion?.toMillis?.() || 0;
+        const localVersion = patient.prescribedItemsVersion?.toMillis?.() || 0;
+        if (serverVersion > 0 && localVersion > 0 && serverVersion !== localVersion) {
+          throw new Error("The Treatment Plan was modified by another user. Please reload and try again.");
+        }
+
+        transaction.update(apptRef, {
+          prescribedItems: cart,
+          depositPaid: parseFloat(depositAmount) || 0,
+          prescribedItemsVersion: Timestamp.now()
+        });
+      });
+      alert("Invoice Draft Saved.");
+      onClose();
+    } catch (e) {
+      console.error("[POSModal] Draft save error:", e);
+      alert("Error: " + e.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // --- 5. ATOMIC CHECKOUT TRANSACTION ---
@@ -246,43 +290,75 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
           if (item.type === 'product') { 
             const itemRef = doc(db, "inventory", item.id); const itemDoc = await transaction.get(itemRef); 
             if (!itemDoc.exists()) throw new Error(`Product ${item.name} not found`); 
-            const data = itemDoc.data(); let currentStock = data.stock || 0; let batches = data.batches ||[]; 
-            if (currentStock < item.qty) throw new Error(`Not enough stock for ${item.name}`); 
-            
-            batches.sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate)); 
-            const today = new Date(); today.setHours(0,0,0,0); batches = batches.filter(b => new Date(b.expiryDate) >= today); 
-            const sellableStock = batches.reduce((sum, b) => sum + b.qty, 0); 
-            if (sellableStock < item.qty) throw new Error(`Not enough UNEXPIRED stock for ${item.name}.`); 
-            
-            let remainingToDeduct = item.qty; let batchesUsed =[]; 
-            batches = batches.map(b => { if (remainingToDeduct <= 0) return b; let amountTaken = 0; if (b.qty >= remainingToDeduct) { amountTaken = remainingToDeduct; b.qty -= remainingToDeduct; remainingToDeduct = 0; } else { amountTaken = b.qty; remainingToDeduct -= b.qty; b.qty = 0; } if (amountTaken > 0) batchesUsed.push(`${b.batchNumber} (-${amountTaken})`); return b; }); 
-            batches = batches.filter(b => b.qty > 0); 
-            
-            transaction.update(itemRef, { 
-              stock: currentStock - item.qty, 
-              reserved: Math.max(0, (data.reserved || 0) - (item.isPrescribed ? item.qty : 0)) 
-            }); 
+            const data = itemDoc.data(); let currentStock = data.stock || 0;
+            if (currentStock < item.qty) throw new Error(`Not enough stock for ${item.name}`);
+
+            let batches = data.batches || [];
+            let batchesUsed = [];
+
+            if (batches.length > 0) {
+              // FIFO batch deduction
+              batches.sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+              const today = new Date(); today.setHours(0,0,0,0);
+              batches = batches.filter(b => new Date(b.expiryDate) >= today);
+              const sellableStock = batches.reduce((sum, b) => sum + b.qty, 0);
+              if (sellableStock < item.qty) throw new Error(`Not enough UNEXPIRED stock for ${item.name}.`);
+
+              let remainingToDeduct = item.qty;
+              batches = batches.map(b => { if (remainingToDeduct <= 0) return b; let amountTaken = 0; if (b.qty >= remainingToDeduct) { amountTaken = remainingToDeduct; b.qty -= remainingToDeduct; remainingToDeduct = 0; } else { amountTaken = b.qty; remainingToDeduct -= b.qty; b.qty = 0; } if (amountTaken > 0) batchesUsed.push(`${b.batchNumber} (-${amountTaken})`); return b; });
+              batches = batches.filter(b => b.qty > 0);
+            } else {
+              // Flat stock deduction — no batch tracking
+              if (currentStock < item.qty) throw new Error(`Not enough stock for ${item.name}.`);
+              if (data.expiryDate) {
+                const today = new Date(); today.setHours(0,0,0,0);
+                const expiry = new Date(data.expiryDate + 'T00:00:00');
+                if (expiry < today) throw new Error(`${item.name} is EXPIRED and cannot be sold.`);
+              }
+              batchesUsed.push(`flat-stock (-${item.qty})`);
+            }
+
+            const updatePayload = {
+              stock: currentStock - item.qty,
+              reserved: Math.max(0, (data.reserved || 0) - (item.isPrescribed ? item.qty : 0))
+            };
+            if (data.batches && data.batches.length > 0) updatePayload.batches = batches;
+            transaction.update(itemRef, updatePayload);
             const logRef = doc(collection(db, "inventory_logs")); const externalNote = item.isExternalRx ? `[Ext Rx: ${item.externalVet}]` : '';
-            transaction.set(logRef, { itemId: item.id, itemName: item.name, type: 'sale', quantity: item.qty, reason: `Sold to ${patient.petName} ${externalNote}`, oldStock: currentStock, newStock: currentStock - item.qty, batchInfo: `FIFO: ${batchesUsed.join(', ')}`, user: "POS System", timestamp: Timestamp.now() }); 
+            transaction.set(logRef, {
+              itemId: item.id,
+              itemName: item.name,
+              action: "SOLD",
+              amountChange: -(item.qty),
+              reason: `POS Sale to ${patient.petName}${externalNote ? ` ${externalNote}` : ''} | Old: ${currentStock} → New: ${currentStock - item.qty}${batchesUsed.length ? ` | FIFO: ${batchesUsed.join(', ')}` : ''}`,
+              userId: profile?.id || "pos_system",
+              userName: profile?.fullName || "POS System",
+              timestamp: Timestamp.now()
+            });
           } 
         } 
         
         const saleRef = doc(collection(db, "sales")); 
-        transaction.set(saleRef, { 
-            appointmentId: patient.id, 
-            petName: patient.petName, 
-            ownerName: patient.ownerName || 'Walk-In', 
-            items: cart, 
-            subtotal: parseFloat(financials.subtotal), 
-            discount: parseFloat(financials.discount), 
-            depositPaid: parseFloat(financials.deposit), 
-            total: parseFloat(financials.total), 
-            paymentMethod: paymentMethod, 
-            hasScPwdDiscount: applyScPwd, 
-            date: Timestamp.now(), 
-            cashier: "System",
-            status: 'paid' // <--- THE FIX: Explicitly stamp it as PAID!
-        }); 
+        transaction.set(saleRef, {
+            appointmentId: patient.id,
+            petName: patient.petName,
+            ownerName: patient.ownerName || 'Walk-In',
+            items: cart,
+            subtotal: parseFloat(financials.subtotal),
+            discount: parseFloat(financials.discount),
+            depositPaid: parseFloat(financials.deposit),
+            total: parseFloat(financials.total),
+            paymentMethod: paymentMethod,
+            hasScPwdDiscount: applyScPwd,
+            date: Timestamp.now(),
+            cashier: profile?.fullName || 'POS Cashier',
+            cashierId: profile?.id || null,
+            status: 'paid',
+            // C2: POS Audit Trail — summary flags for forensic reporting
+            prescribedItemCount: cart.filter(i => i.isPrescribed).length,
+            cashierAddedItemCount: cart.filter(i => i.addedBy === 'cashier').length,
+            hasUnprescribedAdditions: cart.some(i => i.addedBy === 'cashier'),
+        });
         
         const apptRef = doc(db, "appointments", patient.id); 
         transaction.update(apptRef, { 
@@ -388,7 +464,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
                         {item.isBase && <Typography variant="caption" color="primary" fontWeight="bold" display="block">Base Service</Typography>}
                         {item.isAutoBundled && <Typography variant="caption" color="textSecondary" fontWeight="bold" display="block">Auto-Bundled Supply</Typography>}
                         {item.isExternalRx && <Typography variant="caption" color="secondary" fontWeight="bold" display="block"><DescriptionIcon fontSize="inherit"/> Ext Rx: {item.externalVet}</Typography>}
-                        {!item.isDiscountable && <Typography variant="caption" color="error" fontWeight="bold" display="block">No SC/PWD Appled</Typography>}
+                        {!item.isDiscountable && <Typography variant="caption" color="error" fontWeight="bold" display="block">No SC/PWD Applied</Typography>}
                       </TableCell>
                       <TableCell align="center">
                         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

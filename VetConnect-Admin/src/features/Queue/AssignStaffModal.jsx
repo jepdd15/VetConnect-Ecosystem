@@ -13,9 +13,10 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import PersonOffIcon from '@mui/icons-material/PersonOff';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 
-import { doc, runTransaction, updateDoc, Timestamp, arrayUnion } from 'firebase/firestore';
+import { doc, runTransaction, Timestamp, arrayUnion } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 import { useUser } from '../../context/UserContext';
+import { STATUS, TERMINAL_STATUSES } from '../../utils/statusConstants';
 
 export default function AssignStaffModal({ open, onClose, patient, vetsList, activeAppointments, departments, mode = 'check-in' }) {
   const { profile, user } = useUser();
@@ -97,24 +98,42 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
     setErrorMsg('');
 
     try {
-      if (patient.status === 'confirmed' && mode === 'check-in') {
+      if (patient.status === STATUS.CONFIRMED && mode === 'check-in') {
         const allAssigned = tempServices.every(s => s.staffId);
         if (!allAssigned) throw new Error("SECURITY BLOCK: All clinical services must have assigned personnel before check-in.");
 
         await runTransaction(db, async (transaction) => {
+          const apptRef = doc(db, "appointments", patient.id);
           const queueRef = doc(db, "queue", "daily_queue");
-          const queueDoc = await transaction.get(queueRef);
+
+          // Optimistic lock: read fresh appointment state before issuing the ticket.
+          // If another staff member already processed this appointment, abort.
+          const [apptDoc, queueDoc] = await Promise.all([
+            transaction.get(apptRef),
+            transaction.get(queueRef),
+          ]);
+
+          if (!apptDoc.exists()) throw new Error("Appointment not found. It may have been deleted.");
+
+          const freshStatus = apptDoc.data().status;
+          if (freshStatus !== STATUS.CONFIRMED) {
+            throw new Error(
+              `CONCURRENT CONFLICT: This appointment's status is now '${freshStatus}'. ` +
+              `Another staff member may have already processed it.`
+            );
+          }
+
           const newNumber = queueDoc.exists() ? (queueDoc.data().lastNumberIssued || 0) + 1 : 1;
 
-          // --- 🛡️ STATUS PRIMING: Ensuring all services start as 'pending' ---
+          // --- STATUS PRIMING: Ensuring all services start as 'pending' ---
           const primedServices = tempServices.map(s => ({ ...s, status: 'pending' }));
 
           const staffSignature = profile?.fullName || user?.email || 'System/Admin';
           const pulseEvent = {
               eventId: `pulse_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
               type: 'STATUS_CHANGE',
-              fromStatus: 'confirmed',
-              toStatus: 'arrived',
+              fromStatus: STATUS.CONFIRMED,
+              toStatus: STATUS.ARRIVED,
               timestamp: Timestamp.now(),
               staffId: user?.uid || 'unknown',
               staffName: staffSignature,
@@ -122,8 +141,8 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
           };
 
           transaction.set(queueRef, { lastNumberIssued: newNumber }, { merge: true });
-          transaction.update(doc(db, "appointments", patient.id), {
-            status: 'arrived',
+          transaction.update(apptRef, {
+            status: STATUS.ARRIVED,
             queueNumber: newNumber,
             ticketPrefix: patient.priority === 'high' ? 'E' : 'W',
             timeArrived: Timestamp.now(),
@@ -131,7 +150,7 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
             clinicalPulse: arrayUnion(pulseEvent)
           });
 
-          // --- 🧬 DUAL-SYNC: Update the Master Pet Record ---
+          // --- DUAL-SYNC: Update the Master Pet Record ---
           if (patient.petId) {
             const petRef = doc(db, "pets", patient.petId);
             transaction.update(petRef, {
@@ -140,14 +159,30 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
           }
         });
       } else {
-        // PREP ONLY OR EXISTING PATIENT: Enforce assignment if they already arrived
-        if (patient.status !== 'confirmed' && patient.status !== 'pending') {
+        // PREP ONLY OR EXISTING PATIENT: Enforce assignment if they already arrived.
+        // Wrapped in a transaction to guard against writes to terminal appointments.
+        await runTransaction(db, async (transaction) => {
+          const apptRef = doc(db, "appointments", patient.id);
+          const apptDoc = await transaction.get(apptRef);
+
+          if (!apptDoc.exists()) throw new Error("Appointment not found. It may have been deleted.");
+
+          const freshStatus = apptDoc.data().status;
+
+          // Block writes to cases that have already been fully resolved.
+          if (TERMINAL_STATUSES.has(freshStatus)) {
+            throw new Error(
+              `CONCURRENT CONFLICT: This appointment is already '${freshStatus}' and can no longer be modified.`
+            );
+          }
+
+          // Enforce full assignment on active (post-arrival) patients.
+          if (freshStatus !== STATUS.CONFIRMED && freshStatus !== STATUS.PENDING) {
             const allAssigned = tempServices.every(s => s.staffId);
             if (!allAssigned) throw new Error("CLINICAL SAFETY: Cannot unassign personnel from an active patient.");
-        }
+          }
 
-        await updateDoc(doc(db, "appointments", patient.id), {
-          services: tempServices
+          transaction.update(apptRef, { services: tempServices });
         });
       }
       onClose();
@@ -255,6 +290,20 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
 
       {/* COMPACT PILL DISPATCH AREA (DYNAMIC VERTICAL FILL) */}
       <DialogContent sx={{ p: 0, bgcolor: '#F5F5F5', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column' }}>
+        {errorMsg && (
+          <Alert
+            severity="error"
+            sx={{
+              mx: 4, mt: 2, fontWeight: '900',
+              border: '2px solid #D32F2F',
+              borderRadius: 0,
+              fontSize: '0.85rem'
+            }}
+            onClose={() => setErrorMsg('')}
+          >
+            {errorMsg}
+          </Alert>
+        )}
         <Box sx={{ p: 4 }}>
 
           {/* --- CRYSTALLINE TOOLBAR: Hardened against text-wrapping --- */}

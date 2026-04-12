@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { resolveTieredPrice } from '../../utils/resolveTieredPrice';
 import { 
   Dialog, DialogTitle, DialogContent, DialogActions, 
   Button, TextField, MenuItem, Box, Typography, 
@@ -16,7 +17,7 @@ import DirectionsWalkIcon from '@mui/icons-material/DirectionsWalk';
 import AccessTimeIcon from '@mui/icons-material/AccessTime'; 
 import CakeIcon from '@mui/icons-material/Cake';
 
-import { collection, doc, runTransaction, Timestamp, query, where, getDocs, writeBatch, setDoc } from 'firebase/firestore';
+import { collection, doc, runTransaction, Timestamp, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 import { useUser } from '../../context/UserContext';
 
@@ -45,7 +46,6 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
   const [errorMsg, setErrorMsg] = useState('');
   const [isNewPet, setIsNewPet] = useState(false); // For existing clients adding a new pet
   const [selectedServices, setSelectedServices] = useState([]); // THE FIX: Changed to Array for Multi-Service support
-  const [phoneCheckDone, setPhoneCheckDone] = useState(false);
   const [dobMode, setDobMode] = useState('exact'); // 'exact', 'approximate', 'unknown'
   const [estYears, setEstYears] = useState('');
   const [estMonths, setEstMonths] = useState('');
@@ -96,8 +96,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
     setErrorMsg(''); setWalkInType('existing'); setSelectedClient(null);
     setGuestName(''); setGuestPhone(''); setGuestEmail(''); setTriageNotes('');
     setGuestPetData({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', microchip: '', petAllergies: '', weight: '' });
-    setPhoneCheckDone(false);
-    setSelectedServices([]); 
+    setSelectedServices([]);
     setConfirmDiscard(false);
     setConfirmSubmit(false);
     onClose();
@@ -110,8 +109,6 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
     if (walkInType === 'existing' && !selectedClient) return setErrorMsg("Please select an existing client.");
     if (walkInType === 'existing' && !selectedPet && !isNewPet) return setErrorMsg("Please select a pet or choose 'Register New Pet'.");
     
-    // Alphabetical Synthesis Sorting
-    const sortedServices = [...(servicesList || [])].sort((a,b) => (a.name || '').localeCompare(b.name || ''));
     if (walkInType === 'existing' && isNewPet && (!guestPetData.name || !guestPetData.breed || !guestPetData.gender || !guestPetData.species)) return setErrorMsg("New pet name, species, breed, and gender are required.");
     if (walkInType === 'guest' && (!guestName || !guestPhone || !guestPetData.name || !guestPetData.breed || !guestPetData.gender || !guestPetData.species)) return setErrorMsg("Owner Full Name, Phone, and all Pet Biometrics (Name, Species, Breed, Gender) are required.");
     if (!triageNotes) return setErrorMsg("Triage Notes are required.");
@@ -120,19 +117,6 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
     // Phone validation for new guests
     if (walkInType === 'guest' && !isValidPHPhone(guestPhone)) {
       return setErrorMsg("Contact Phone must be a valid Philippine number starting with 09 (e.g., 09123456789).");
-    }
-
-    // DUPLICATE PHONE DETECTION (Hard Block)
-    if (walkInType === 'guest' && !phoneCheckDone) {
-      try {
-        const phoneQ = query(collection(db, 'users'), where('phone', '==', guestPhone.trim()));
-        const phoneSnap = await getDocs(phoneQ);
-        if (!phoneSnap.empty) {
-          const existing = phoneSnap.docs[0].data();
-          return setErrorMsg(`A client with this phone number already exists: "${existing.fullName || existing.displayName || 'Unknown'}". Please switch to Existing Client mode and search for them instead.`);
-        }
-        setPhoneCheckDone(true);
-      } catch (e) { console.warn('Phone check skipped:', e); }
     }
 
     setLoading(true);
@@ -146,16 +130,31 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
         let finalOwnerId, finalOwnerName, finalOwnerPhone, finalPetId, finalPetName, finalPetSpecies;
 
         if (walkInType === 'guest') {
-          const newUserRef = doc(collection(db, "users"));
-          transaction.set(newUserRef, { 
-              fullName: guestName || 'Guest Client', 
-              displayName: guestName || 'Guest Client', 
+          // Deterministic document ID keyed on phone number.
+          // This allows the transaction to perform an atomic read-then-write,
+          // eliminating the TOCTOU race between the pre-check and the write.
+          const phoneKey = `GUEST_PH_${guestPhone.trim()}`;
+          const newUserRef = doc(db, "users", phoneKey);
+
+          const existingUserDoc = await transaction.get(newUserRef);
+          if (existingUserDoc.exists()) {
+            const existingData = existingUserDoc.data();
+            const existingName = existingData.fullName || existingData.displayName || 'Unknown';
+            throw new Error(
+              `A client with phone ${guestPhone.trim()} already exists: '${existingName}'. ` +
+              `Use Existing Client mode.`
+            );
+          }
+
+          transaction.set(newUserRef, {
+              fullName: guestName || 'Guest Client',
+              displayName: guestName || 'Guest Client',
               name: guestName || 'Guest Client',
-              phone: guestPhone, 
+              phone: guestPhone,
               email: guestEmail || null,
-              role: 'pet_owner', 
-              accountStatus: 'unclaimed_guest', 
-              createdAt: Timestamp.now() 
+              role: 'pet_owner',
+              accountStatus: 'unclaimed_guest',
+              createdAt: Timestamp.now()
           });
           finalOwnerId = newUserRef.id; finalOwnerName = guestName || 'Guest Client';
           finalOwnerPhone = guestPhone || 'No Contact';
@@ -259,13 +258,14 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
         transaction.set(queueRef, { lastNumberIssued: newNumber }, { merge: true });
 
         // --- 🧬 MULTI-SERVICE MAPPING ENGINE ---
+        const petWeight = parseFloat(guestPetData.weight) || (selectedPet?.lastWeight ? parseFloat(selectedPet.lastWeight) : null);
         const mappedServices = selectedServices.map(svcName => {
            const s = servicesList.find(item => item.name === svcName);
            const dept = s?.department || s?.category || 'General';
            return {
               id: s?.id || Math.random().toString(36).substr(2, 9),
               name: svcName,
-              price: s?.price || 0,
+              price: resolveTieredPrice(s, petWeight),
               department: dept,
               status: 'pending', // Independent Status!
               workflowType: (dept === 'Grooming' || dept === 'Aesthetic') ? 'AESTHETIC' : 'MEDICAL',
@@ -274,7 +274,8 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
            };
         });
 
-        const isEmergency = selectedServices.includes('Emergency');
+        // isEmergency is data-driven: any selected service with isEmergency flag triggers high priority
+        const isEmergency = selectedServices.some(svcName => servicesList.find(s => s.name === svcName)?.isEmergency);
         const primaryDept = mappedServices[0]?.department || 'General';
         
         const rawBreed = (walkInType === 'guest' || isNewPet) ? guestPetData.breed : (guestPetData.breed || selectedPet?.breed || '');
@@ -414,7 +415,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
             value={walkInType} 
             onChange={(e) => {
               setWalkInType(e.target.value);
-              setGuestName(''); setGuestPhone(''); setGuestEmail(''); setPhoneCheckDone(false);
+              setGuestName(''); setGuestPhone(''); setGuestEmail('');
               setGuestPetData({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', microchip: '', petAllergies: '', weight: '' });
               setSelectedClient(null); setSelectedPet(null); setIsNewPet(false);
               setConfirmDiscard(false); setConfirmSubmit(false);
@@ -516,7 +517,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
                     {walkInType === 'guest' && (
                         <>
                            <Grid size={{ xs: 12, md: 5 }}><TextField size="small" label="OWNER FULL NAME" variant="outlined" fullWidth value={guestName} onChange={e => setGuestName(e.target.value)} InputLabelProps={{ sx: { fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' } }} inputProps={{ style: { fontWeight: '1000', fontSize: '0.85rem' } }} /></Grid> 
-                           <Grid size={{ xs: 12, md: 4 }}><TextField size="small" label="CONTACT PHONE" variant="outlined" fullWidth value={guestPhone} onChange={e => { setGuestPhone(e.target.value); setPhoneCheckDone(false); }} helperText="MUST START WITH 09" FormHelperTextProps={{sx:{fontWeight:1000, fontSize:'0.7rem'}}} InputLabelProps={{ sx: { fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' } }} inputProps={{ style: { fontWeight: '1000', fontSize: '0.85rem' } }} /></Grid> 
+                           <Grid size={{ xs: 12, md: 4 }}><TextField size="small" label="CONTACT PHONE" variant="outlined" fullWidth value={guestPhone} onChange={e => setGuestPhone(e.target.value)} helperText="MUST START WITH 09" FormHelperTextProps={{sx:{fontWeight:1000, fontSize:'0.7rem'}}} InputLabelProps={{ sx: { fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' } }} inputProps={{ style: { fontWeight: '1000', fontSize: '0.85rem' } }} /></Grid> 
                            <Grid size={{ xs: 12, md: 3 }}><TextField size="small" label="EMAIL (OPTIONAL)" variant="outlined" fullWidth value={guestEmail} onChange={e => setGuestEmail(e.target.value)} InputLabelProps={{ sx: { fontWeight: '1000', color: '#5D4037', fontSize: '0.8rem' } }} inputProps={{ style: { fontWeight: '1000', fontSize: '0.85rem' } }} /></Grid>
                            <Grid size={{ xs: 12 }}><Divider sx={{ my: 0.5, borderStyle: 'dashed' }} /></Grid>
                         </>
@@ -656,7 +657,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
             
             <Autocomplete
                 multiple
-                options={[...(servicesList || [])].sort((a,b) => (a.name || '').localeCompare(b.name || ''))}
+                options={[...(servicesList || [])].filter(s => s.isWalkIn !== false).sort((a,b) => (a.name || '').localeCompare(b.name || ''))}
                 getOptionLabel={(option) => option.name?.toUpperCase() || ''}
                 value={servicesList?.filter(s => selectedServices.includes(s.name)) || []}
                 onChange={(e, newValue) => {

@@ -24,6 +24,7 @@ import POSModal from '../../components/POSModal';
 import WalkInModal from './WalkInModal';
 import AssignStaffModal from './AssignStaffModal';
 import EndOfDayModal from './EndOfDayModal';
+import DispensingVerificationDialog from './DispensingVerificationDialog';
 
 // --- ICONS ---
 import PersonAddIcon from '@mui/icons-material/PersonAdd'; 
@@ -35,7 +36,10 @@ import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos'; 
 
 // 🧬 PHASE 6 COMPONENTS
-import { calculatePulseMetrics, getSmartShiftDate } from '../../utils/pulseUtils';
+import { calculatePulseMetrics, formatDuration, getSmartShiftDate } from '../../utils/pulseUtils';
+import { HIGH_STAKES_STATUSES, ACTIVE_STATUSES, normalizeStatus } from '../../utils/statusConstants';
+import { getLocalDateStr } from '../../utils/dateUtils';
+import { useClinicSettings } from '../../hooks/useClinicSettings';
 import { ForensicMetricGrid } from './ForensicMetricGrid'; 
 import UndoIcon from '@mui/icons-material/Undo'; 
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital'; 
@@ -60,32 +64,6 @@ const BREED_DATA = {
   ],
 };
 
-const formatDuration = (totalMinutes) => {
-  const mins = Math.abs(Math.round(totalMinutes));
-  
-  if (mins >= 525600) {
-      const years = Math.floor(mins / 525600);
-      const remainingMonths = Math.floor((mins % 525600) / 43200);
-      return remainingMonths > 0 ? `${years}y ${remainingMonths}mo` : `${years}y`;
-  }
-  if (mins >= 43200) return `${Math.floor(mins / 43200)}mo`;
-  if (mins >= 10080) return `${Math.floor(mins / 10080)}w`;
-  if (mins >= 1440) return `${Math.floor(mins / 1440)}d`;
-  
-  if (mins < 60) return `${mins}m`;
-  const hours = Math.floor(mins / 60);
-  const remainingMins = mins % 60;
-  return remainingMins > 0 ? `${hours}h ${remainingMins}m` : `${hours}h`;
-};
-
-// --- ðŸ“¡ FORENSIC TEMPORAL ENGINE (Local Timezone Guard) ---
-const getLocalDateStr = (d = new Date()) => {
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
 export default function Queue() {
   const [rows, setRows] = useState([]);
   const [vets, setVets] = useState([]); 
@@ -93,7 +71,7 @@ export default function Queue() {
   const [inventoryCategories, setInventoryCategories] = useState([]); // 💊 TAXONOMY SYNC
   const [servicesList, setServicesList] = useState([]); 
   const [departments, setDepartments] = useState([]);
-  const [clinicSettings, setClinicSettings] = useState({ maxCages: 5, closeHour: 17 }); // Live Dynamic Configuration!
+  const clinicSettings = useClinicSettings(); // Shared singleton — no local listener needed
   const [tabValue, setTabValue] = useState(0); 
   const[filterDate, setFilterDate] = useState(getLocalDateStr());
   const[isTomorrowView, setIsTomorrowView] = useState(false);
@@ -171,17 +149,12 @@ export default function Queue() {
   const [revertReason, setRevertReason] = useState("");
 
   const [openConsult, setOpenConsult] = useState(false);
-  const[openPOS, setOpenPOS] = useState(false); 
+  const[openPOS, setOpenPOS] = useState(false);
+  const [openDispenseVerify, setOpenDispenseVerify] = useState(false);
+  const [dispenseRow, setDispenseRow] = useState(null);
   const [openWalkIn, setOpenWalkIn] = useState(false);
   const [openAssign, setOpenAssign] = useState(false);
   const [assignMode, setAssignMode] = useState('check-in'); // 'check-in' or 'assign'
-  const [lastCheckDate, setLastCheckDate] = useState(new Date().toDateString());
-  
-  // --- 🧬 FORENSIC RECONCILIATION STATES (Phase 4.4) ---
-  const [ancestorData, setAncestorData] = useState({});
-  const [loadingHistory, setLoadingHistory] = useState(false);
-
-
 
   // --- ðŸ›°ï¸ UNIVERSAL CLINICAL HOVER ENGINE ---
   const [hoverAnchor, setHoverAnchor] = useState(null);
@@ -267,8 +240,6 @@ export default function Queue() {
         }
     }, 150);
   };
-  const hasCheckedAutoReset = useRef(false);
-
   const clinicalFlatStyle = {
     background: '#FFF', 
     border: '2px solid #5D4037',
@@ -284,15 +255,7 @@ export default function Queue() {
   };
 
   // --- ðŸ›°ï¸ SYNC CLINIC CONFIGURATION (CLOSING HOURS & CAPACITY) ---
-  useEffect(() => {
-    const unsubSettings = onSnapshot(doc(db, "clinic_settings", "general"), (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setClinicSettings(prev => ({ ...prev, ...data }));
-      }
-    });
-    return () => unsubSettings();
-  }, []);
+  // clinic_settings is now served by useClinicSettings() above — no separate listener needed.
 
   // ======================================================================
   // LOGIC & HANDLERS
@@ -300,7 +263,19 @@ export default function Queue() {
   
 const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeMap = {}, targetReasonMap = {}, targetTimeMap = {}) => { 
     try { 
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = getLocalDateStr();
+
+      // STEP 5.1: Guard against empty array — Firestore throws on "in" queries with zero elements.
+      if (leftoverPatients.length === 0) {
+        const queueRef = doc(db, "queue", "daily_queue");
+        const queueSnap = await getDoc(queueRef);
+        if (queueSnap.exists()) {
+          await updateDoc(queueRef, { currentServing: 0, currentPrefix: '', lastNumberIssued: 0, status: 'active', lastResetDate: getLocalDateStr() });
+        }
+        setOpenEndDay(false);
+        if (!isSilent) alert("Cleanup Complete (no patients to process).");
+        return;
+      }
 
       // TIER 2: THE FINAL PULSE CHECK (ZOMBIE PREVENTION - IDs verified in real-time)
       const freshSnap = await getDocs(query(collection(db, "appointments"), where("__name__", "in", leftoverPatients.map(p => p.id))));
@@ -338,12 +313,12 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         const currentStatus = (freshStatuses[patient.id] || patient.status || 'unknown').toLowerCase();
         
         // Skip records already resolved remotely while wizard was open
-        if (['completed', 'done', 'cancelled', 'no-show', 'carried-over'].includes(currentStatus)) return;
+        if (['completed', 'cancelled', 'no-show', 'carried-over'].includes(currentStatus)) return;
 
         const rawStatus = (patient.status || 'unknown').toLowerCase();
         const action = (patientResolutions[patient.id] || (patient.status === 'pending' ? 'defer' : 'cancel'));
         const staffSignature = profile?.fullName || user?.email || "System Triage";
-        const isHighStakes = ['arrived', 'in-consult', 'dispensing', 'billing', 'confirmed', 'scheduled', 'payment', 'on-hold'].includes(rawStatus);
+        const isHighStakes = HIGH_STAKES_STATUSES.has(rawStatus);
 
         // --- 🧬 SUB-PHASE 4.1: THE FORENSIC CALCULATION HOOK ---
         // We mathematically seal the record's performance at the exact moment of sign-off.
@@ -363,7 +338,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           else if (patient.scheduledDate) recordDateObj = new Date(patient.scheduledDate);
           else recordDateObj = patient.createdAt?.toDate ? patient.createdAt.toDate() : new Date();
 
-          const recordDayStr = recordDateObj.toISOString().split('T')[0];
+          const recordDayStr = getLocalDateStr(recordDateObj);
           const isFromPast = recordDayStr < todayStr;
 
           // LOGIC: If a Friday ghost is processed on Sunday, "Defer" targets Sunday (Today).
@@ -392,12 +367,13 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           const triagePrefix = `[Clinical Triage: ${actionLabel}]`;
 
           if (patient.status === 'carried-over') {
-            batch.update(oldRef, { 
+            batch.update(oldRef, {
                scheduledDate: Timestamp.fromDate(manualDate),
                caseDay: (patient.caseDay || 1) + 1,
                processedBy: staffSignature,
                processedAt: Timestamp.now(),
                forensicSeal, // THE 8-METRIC AUDIT SEAL
+               auditReason: targetReasonMap[patient.id],
                clinicalPulse: arrayUnion({
                   eventId: `pulse_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
                   type: pulseType,
@@ -406,23 +382,24 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                   timestamp: Timestamp.now(),
                   staffId: user?.uid || 'system',
                   staffName: staffSignature,
-                  note: `Shift Cleanup: ${actionLabel} to ${manualDate.toDateString()}. Justification: ${targetReasonMap[patient.id] || "No clinical justification provided"}`
+                  note: `Shift Cleanup: ${actionLabel} to ${manualDate.toDateString()}. Justification: ${targetReasonMap[patient.id]}`
                }),
                isTriaged: true // THE FORENSIC SHIELD STAMP
             });
           } else {
             // Avoid stacking duplicate prefixes
-            const cleanNotes = patient.notes?.startsWith('[Clinical Triage:') 
-              ? patient.notes 
+            const cleanNotes = patient.notes?.startsWith('[Clinical Triage:')
+              ? patient.notes
               : `${triagePrefix} ${patient.notes || ""}`;
- 
-             batch.update(oldRef, { 
-                status: 'carried-over', 
+
+             batch.update(oldRef, {
+                status: 'carried-over',
                 isTriaged: true, // THE FORENSIC SHIELD STAMP
                 notes: cleanNotes,
                 processedBy: staffSignature,
                 processedAt: Timestamp.now(),
                 forensicSeal, // THE 8-METRIC AUDIT SEAL
+                auditReason: targetReasonMap[patient.id],
                 clinicalPulse: arrayUnion({
                    eventId: `pulse_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
                    type: pulseType,
@@ -431,7 +408,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                    timestamp: Timestamp.now(),
                    staffId: user?.uid || 'system',
                    staffName: staffSignature,
-                   note: `Shift Cleanup: ${actionLabel} to ${manualDate.toDateString()}. Justification: ${targetReasonMap[patient.id] || "No clinical justification provided"}`
+                   note: `Shift Cleanup: ${actionLabel} to ${manualDate.toDateString()}. Justification: ${targetReasonMap[patient.id]}`
                 })
              }); 
              
@@ -463,39 +440,17 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                 ]
              }); 
            }
-        } else if (action === 'defer') {
-          // PHASE 4.4.3: Support dynamic deferral windows instead of hardcoded tomorrow
-          const triageKey = targetDateMap[patient.id] || new Date(Date.now() + 86400000).toISOString().split('T')[0];
-          
-          batch.update(oldRef, {
-             triageDate: triageKey,
-             notes: `(Deferred to ${triageKey} by ${staffSignature}) ${patient.notes || ""}`,
-             processedBy: staffSignature,
-             processedAt: Timestamp.now(),
-             lastTriagedAt: Timestamp.now(),
-             clinicalPulse: arrayUnion({
-                eventId: `pulse_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                type: 'TRIAGE_DEFERRED',
-                fromStatus: rawStatus,
-                toStatus: rawStatus,
-                timestamp: Timestamp.now(),
-                staffId: user?.uid || 'system',
-                staffName: staffSignature,
-                note: `Shift Triage: Deferred to ${triageKey}. Justification: ${targetReasonMap[patient.id] || "No clinical justification provided"}`
-             })
-          });
         } else {
           // TERMINAL AUDIT (Cancel or No-Show)
           const finalStatus = action === 'no-show' ? 'no-show' : 'cancelled';
-          const defaultReason = action === 'no-show' ? "Client failed to arrive" : "Appointment cancelled during triage";
 
-          batch.update(oldRef, { 
-             status: finalStatus, 
-             rejectReason: `[Triage Audit] ${targetReasonMap[patient.id] || "No clinical justification provided"}`,
+          batch.update(oldRef, {
+             status: finalStatus,
              processedBy: staffSignature,
              processedAt: Timestamp.now(),
              isForensicAudit: isHighStakes,
-             auditReason: targetReasonMap[patient.id] || defaultReason,
+             auditReason: targetReasonMap[patient.id],
+             forensicSeal,
              clinicalPulse: arrayUnion({
                 eventId: `pulse_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
                 type: action === 'no-show' ? 'TRIAGE_NO_SHOW' : 'TRIAGE_CANCELLED',
@@ -504,9 +459,9 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                 timestamp: Timestamp.now(),
                 staffId: user?.uid || 'system',
                 staffName: staffSignature,
-                note: `Shift Cleanup Sign-off: ${targetReasonMap[patient.id] || defaultReason}`
+                note: `Shift Cleanup Sign-off: ${targetReasonMap[patient.id]}`
              })
-          }); 
+          });
         }
       }); 
 
@@ -514,15 +469,26 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       batch.update(queueRef, { currentServing: 0, currentPrefix: '', lastNumberIssued: 0, status: 'active', lastResetDate: todayStr }); 
       await batch.commit(); 
       
-      setOpenEndDay(false); 
+      setOpenEndDay(false);
       setIsForcedCleanup(false);
-      setHasGhostPatients(false); 
-      if (!isSilent) alert("Cleanup Complete."); 
+      setHasGhostPatients(false);
+      setLeftoverPatients([]);
+      setPatientResolutions({});
+      setTouchedPatients(new Set());
+      setAuditReasons({});
+      setTargetDates({});
+      setTargetTimes({});
+      if (!isSilent) alert("Cleanup Complete.");
     } catch (error) { alert("Error: " + error.message); } 
   };
 
-  const initiateResetDay = async (isAuto = false) => { 
-    try { 
+  const initiateResetDay = async (isAuto = false) => {
+    try {
+      // Guard: Don't override forced ghost cleanup with a manual reset
+      if (isForcedCleanup) {
+        alert("A mandatory ghost cleanup is in progress. Please resolve all unresolved past-day cases first.");
+        return;
+      }
       const startOfDay = new Date(filterDate); startOfDay.setHours(0,0,0,0); 
       const endOfDay = new Date(filterDate); endOfDay.setHours(23,59,59,999);
 
@@ -573,16 +539,18 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         const initialTouched = new Set();
         enrichedPatients.forEach(p => {
           const rawStatus = (p.status || 'unknown').toLowerCase();
-          // THE FORENSIC GUARD: Arrived, In-Consult, Dispensing, Billing, Payment, AND Scheduled/Confirmed are High-Stakes
-          const isHighStakes = ['arrived', 'in-consult', 'dispensing', 'billing', 'confirmed', 'scheduled', 'payment'].includes(rawStatus);
+          // THE FORENSIC GUARD: Arrived, In-Consult, Dispensing, Billing, AND Confirmed are High-Stakes
+          const isHighStakes = HIGH_STAKES_STATUSES.has(rawStatus);
 
           if (rawStatus === 'confined') initialRes[p.id] = 'confined';
-          else if (rawStatus === 'pending') { 
-            initialRes[p.id] = 'defer'; 
+          else if (rawStatus === 'pending') {
+            initialRes[p.id] = 'defer';
             initialTouched.add(p.id); // AUTO-PASS FOR ONLINE
           }
           else if (isHighStakes) {
-            initialRes[p.id] = null; // FORCE MANUAL CHOICE (CLEAN SLATE)
+            // Auto-suggest CONFINE if the patient's primary service requires inpatient stay
+            const primarySvc = servicesList.find(s => s.name === p.primaryService);
+            initialRes[p.id] = primarySvc?.isInpatient ? 'hospitalize' : null; // null = FORCE MANUAL CHOICE
           }
           else initialRes[p.id] = 'cancel'; // Low-Stakes fallback
         });
@@ -598,19 +566,6 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
     } catch (error) { console.log(error); } 
   };
 
-  const handleBulkResolution = (action) => {
-    setPatientResolutions(prev => {
-      const updated = { ...prev };
-      leftoverPatients.forEach(p => {
-        // THE VETERINARIAN'S RULE: Never bulk-override confined patients!
-        if (p.status !== 'confined') {
-          updated[p.id] = action;
-        }
-      });
-      return updated;
-    });
-  };
-
   const handleQuickAdmit = async () => {
     try { await quickAdmitER(); } 
     catch (error) { alert("Error admitting ER patient: " + error.message); }
@@ -624,8 +579,34 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
     setOpenAssign(true); 
     handleCloseMenu(); 
   };
-  const handleOpenConsult = (row) => { setSelectedRow(row); setOpenConsult(true); };
+  const handleOpenConsult = (row) => {
+    const allowed = ['in-consult', 'confined', 'on-hold'];
+    if (!allowed.includes(row?.status)) {
+      console.warn(`[Queue] Blocked workspace open for status="${row?.status}". Allowed: ${allowed.join(', ')}`);
+      return;
+    }
+    setSelectedRow(row);
+    setOpenConsult(true);
+  };
   const handleOpenPOS = (row) => { setSelectedRow(row); setOpenPOS(true); };
+
+  const handleOpenDispenseVerify = (row) => {
+    setDispenseRow(row);
+    setOpenDispenseVerify(true);
+  };
+
+  const handleDispenseVerified = async (dispensingData) => {
+    try {
+      await updateDoc(doc(db, "appointments", dispenseRow.id), {
+        ...dispensingData,
+      });
+      await changeStatus(dispenseRow, 'billing');
+      setOpenDispenseVerify(false);
+      setDispenseRow(null);
+    } catch (e) {
+      alert("Dispensing Error: " + e.message);
+    }
+  };
   const handleStatusChange = async (row, newStatus) => { 
     try { 
       // --- ðŸ›¡ï¸ CLINICAL REALITY PRE-CHECK ---
@@ -752,8 +733,9 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
     } catch (e) { alert(e.message); }
   };
 
-  const saveReschedule = async () => { 
-    if(!newDate || !auditReason.trim()) return; 
+  const saveReschedule = async () => {
+    if(!newDate || !auditReason.trim()) return;
+    const staffSignature = profile?.fullName || user?.email || 'System Triage';
 
     try {
         const currentSchDate = selectedRow.scheduledDate ? selectedRow.scheduledDate.toDate() : (selectedRow.createdAt?.toDate() || new Date());
@@ -779,7 +761,8 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         const pulseEvent = {
             eventId: `pulse_shift_${Date.now()}`,
             type: 'STATUS_CHANGE',
-            toStatus: isCarryOver ? 'carried-over (shifted)' : 'confirmed (shifted)',
+            toStatus: isCarryOver ? 'carried-over' : 'confirmed',
+            shiftNote: 'shifted',
             timestamp: Timestamp.now(),
             staffId: profile?.id || 'unknown',
             staffName: staffSignature,
@@ -812,7 +795,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
   const saveDefer = async () => {
     if (!auditReason.trim()) return;
     try {
-        await deferAppointment(selectedRow.id, auditReason);
+        await deferAppointment(selectedRow.id, auditReason, undefined, clinicSettings);
         setOpenDefer(false);
         setAuditReason("");
     } catch (e) { alert(e.message); }
@@ -831,7 +814,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
     if (!selectedRow) return; 
     try { 
       const rawStatus = (selectedRow.status || 'unknown').toLowerCase();
-      const isHighStakes = ['arrived', 'in-consult', 'dispensing', 'billing', 'confirmed', 'scheduled', 'payment'].includes(rawStatus);
+      const isHighStakes = HIGH_STAKES_STATUSES.has(rawStatus);
       
       await rejectAppointment(selectedRow.id, rejectReason, selectedRow.services, isHighStakes, clinicSettings, selectedRow); 
       setOpenReject(false); 
@@ -843,35 +826,40 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
   // DATA FETCHING & EFFECTS
   // ======================================================================
   
-  // THE MORNING GATEKEEPER (Forces modal if ghosts exist - REAL-TIME SYNC!)
+  // ======================================================================
+  // UNIFIED GHOST DETECTOR (Consolidated from 3 former hooks)
+  // Detects past-day unresolved appointments and triggers the Triage Wizard.
+  // Ghost-Only Mode: Does NOT merge with today's active rows.
+  // Hybrid Banner: Auto-opens modal only when isToday; sets hasGhostPatients
+  //   for the tomorrow-view warning banner.
+  // ======================================================================
   useEffect(() => {
-    const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
     const todayStr = getLocalDateStr();
 
     const qGhosts = query(
       collection(db, "appointments"),
-      where("status", "in",["pending", "confirmed", "arrived", "in-consult", "confined", "on-hold", "dispensing", "billing", "scheduled"])
+      where("status", "in", [
+        "pending", "confirmed", "arrived", "in-consult",
+        "confined", "on-hold", "dispensing", "billing"
+      ])
     );
 
     const unsubGhosts = onSnapshot(qGhosts, async (snapshot) => {
-      // 🧬 FORENSIC FILTER: Only flag records that AREN'T triaged and ARE from the past.
-      const rawGhosts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const rawGhosts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       const ghosts = rawGhosts.filter(appt => {
-          // SHIELD 1: THE FORENSIC STAMP
-          if (appt.isTriaged === true) return false;
-          
-          // SHIELD 2: THE DEFERRAL GATE
-          if (appt.triageDate && appt.triageDate >= todayStr) return false;
+        if (appt.isTriaged === true) return false;
+        if (appt.triageDate && appt.triageDate >= todayStr) return false;
 
-          // DETERMINATION: Is it actually a ghost?
-          let checkDate;
-          if (appt.scheduledDate?.toDate) checkDate = appt.scheduledDate.toDate();
-          else if (appt.scheduledDate) checkDate = new Date(appt.scheduledDate);
-          else checkDate = appt.createdAt?.toDate ? appt.createdAt.toDate() : new Date();
-          
-          const finalCheck = new Date(checkDate);
-          finalCheck.setHours(0,0,0,0);
-          return finalCheck < todayStart;
+        let checkDate;
+        if (appt.scheduledDate?.toDate) checkDate = appt.scheduledDate.toDate();
+        else if (appt.scheduledDate) checkDate = new Date(appt.scheduledDate);
+        else checkDate = appt.createdAt?.toDate ? appt.createdAt.toDate() : new Date();
+
+        const finalCheck = new Date(checkDate);
+        finalCheck.setHours(0, 0, 0, 0);
+        return finalCheck < todayStart;
       });
 
       if (ghosts.length === 0) {
@@ -879,128 +867,164 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         setOpenEndDay(false);
         setIsForcedCleanup(false);
         setLeftoverPatients([]);
-      } else {
-        setHasGhostPatients(true);
-        if (isToday) {
-            // THE FIX: "Live Identity Healing" inside the sync loop!
-            const enrichedGhosts = await Promise.all(ghosts.map(async (p) => {
-              try {
-                if (p.petId && (!p.petGender || p.petGender === 'Unknown' || p.petGender === '???')) {
-                  const petSnap = await getDoc(doc(db, 'pets', p.petId));
-                  if (petSnap.exists()) {
-                    const petData = petSnap.data();
-                    return {
-                      ...p,
-                      petGender: petData.gender || petData.sex || p.petGender,
-                      petBreed: petData.breed || p.petBreed,
-                      petIsNeutered: petData.isNeutered ?? p.petIsNeutered
-                    };
-                  }
-                }
-              } catch (e) { console.error('Ghost Identity Restoration failed:', p.id, e); }
-              return p;
-            }));
-
-            // --- 🧬 MASTER REGISTRY CONSOLIDATION ---
-            // Combine Today's Unfinished Rows + Historical Ghosts
-            const unfinishedRows = rows.filter(r => ['pending', 'confirmed', 'arrived', 'in-consult', 'dispensing', 'billing', 'scheduled', 'on-hold', 'confined'].includes(r.status));
-            
-            // Forensic Unique Merge (Deduplication by ID)
-            const masterMap = new Map();
-            enrichedGhosts.forEach(p => masterMap.set(p.id, p));
-            unfinishedRows.forEach(p => {
-               if (!masterMap.has(p.id)) masterMap.set(p.id, p);
-            });
-
-            const unifiedList = Array.from(masterMap.values());
-            setLeftoverPatients(unifiedList);
-            
-            setPatientResolutions(prev => {
-              const updated = { ...prev };
-              unifiedList.forEach(p => {
-                if (!updated[p.id]) {
-                  const rawStatus = (p.status || 'unknown').toLowerCase();
-                  const isHighStakes = ['arrived', 'in-consult', 'dispensing', 'billing', 'confirmed', 'scheduled', 'payment', 'on-hold', 'confined'].includes(rawStatus);
-
-                  if (rawStatus === 'pending') updated[p.id] = 'defer';
-                  else if (isHighStakes) updated[p.id] = null; // FORCE MANUAL CHOICE
-                  else updated[p.id] = 'cancel';
-                }
-              });
-              return updated;
-            });
-
-            setTouchedPatients(prev => {
-              const updated = new Set(prev);
-              unifiedList.forEach(p => {
-                const rawStatus = (p.status || 'unknown').toLowerCase();
-                if (rawStatus === 'pending') updated.add(p.id);
-              });
-              return updated;
-            });
-            
-            setIsForcedCleanup(true);
-            setOpenEndDay(true);
-        }
+        setPatientResolutions({});
+        setTouchedPatients(new Set());
+        setAuditReasons({});
+        setTargetDates({});
+        setTargetTimes({});
+        return;
       }
+
+      // Always flag for the tomorrow-view banner
+      setHasGhostPatients(true);
+
+      // Only open the modal when viewing today's shift
+      if (!isToday) return;
+
+      // Identity healing: enrich ghost records with pet metadata
+      const enrichedGhosts = await Promise.all(ghosts.map(async (p) => {
+        try {
+          if (p.petId && (!p.petGender || p.petGender === 'Unknown' || p.petGender === '???')) {
+            const petSnap = await getDoc(doc(db, 'pets', p.petId));
+            if (petSnap.exists()) {
+              const petData = petSnap.data();
+              return {
+                ...p,
+                petGender: petData.gender || petData.sex || p.petGender,
+                petBreed: petData.breed || p.petBreed,
+                petIsNeutered: petData.isNeutered ?? p.petIsNeutered
+              };
+            }
+          }
+        } catch (e) {
+          console.error('Ghost Identity Restoration failed:', p.id, e);
+        }
+        return p;
+      }));
+
+      // Ghost-Only: no merge with today's rows
+      setLeftoverPatients(enrichedGhosts);
+
+      // Initialize default resolutions
+      setPatientResolutions(prev => {
+        const updated = { ...prev };
+        enrichedGhosts.forEach(p => {
+          if (!updated[p.id]) {
+            const rawStatus = (p.status || 'unknown').toLowerCase();
+            const isHighStakes = HIGH_STAKES_STATUSES.has(rawStatus);
+
+            if (rawStatus === 'pending') updated[p.id] = 'defer';
+            else if (isHighStakes) updated[p.id] = null;
+            else updated[p.id] = 'cancel';
+          }
+        });
+        return updated;
+      });
+
+      setTouchedPatients(prev => {
+        const updated = new Set(prev);
+        enrichedGhosts.forEach(p => {
+          if ((p.status || '').toLowerCase() === 'pending') updated.add(p.id);
+        });
+        return updated;
+      });
+
+      setAuditReasons({});
+      setTargetDates({});
+      setTargetTimes({});
+
+      setIsForcedCleanup(true);
+      setOpenEndDay(true);
     }, (error) => {
-      console.error("Ghost Listener Error:", error);
+      console.error("Unified Ghost Listener Error:", error);
     });
 
     return () => unsubGhosts();
-  }, [filterDate, isToday]);
+  }, [isToday]);
 
   // THE MAIN BOARD QUERY
+  // Two scoped Firestore queries replace the former unbounded collection scan:
+  //   1. scheduledQuery — date-window query for all appointments on filterDate
+  //   2. pendingQuery   — pending-only query; client-filtered by triageDate so
+  //      online inbox requests appear in the right shift silo.
+  // Both listeners write into a shared Map keyed by appointment ID so there
+  // are no duplicates when an appointment appears in both result sets.
   useEffect(() => {
-    // THE NEW TRIAGE INBOX QUERY:
-    // Online requests (pending) are visible based on triageDate, ignoring scheduledDate filter.
-    // Scheduled/Arrived/etc. remain date-locked.
-    const q = query(collection(db, "appointments"));
+    const startOfDay = new Date(filterDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(filterDate);
+    endOfDay.setHours(23, 59, 59, 999);
+    const filterDateStr = filterDate; // e.g. "2026-04-02"
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      let allAppts = snapshot.docs.map(doc => ({
-        id: doc.id, ...doc.data(),
-        jsScheduled: doc.data().scheduledDate?.toDate(), 
-        jsArrived: doc.data().timeArrived?.toDate(),
-        jsStarted: doc.data().timeStarted?.toDate(), 
-        jsCompleted: doc.data().timeCompleted?.toDate(),
-      }));
+    // Shared accumulator — lets both listeners commit their slice and
+    // trigger a single merged render each time either one fires.
+    const apptMap = new Map();
 
-      // Filter for the current shift date context
-      const start = new Date(filterDate); start.setHours(0, 0, 0, 0);
-      const end = new Date(filterDate); end.setHours(23, 59, 59, 999);
-      const filterDateStr = filterDate; // e.g. "2026-04-02"
+    /**
+     * Normalizes a raw Firestore document into the shape the board expects.
+     * Preserves ALL enrichment logic from the former single-listener approach.
+     */
+    const enrichDoc = (docSnapshot) => {
+      const data = docSnapshot.data();
+      return {
+        id: docSnapshot.id,
+        ...data,
+        // Normalize legacy status aliases (e.g. 'dispense' -> 'dispensing') for
+        // backward compatibility with old Firestore documents.
+        status: normalizeStatus(data.status),
+        jsScheduled: data.scheduledDate?.toDate(),
+        jsArrived: data.timeArrived?.toDate(),
+        jsStarted: data.timeStarted?.toDate(),
+        jsCompleted: data.timeCompleted?.toDate(),
+      };
+    };
 
-      const list = allAppts.filter(appt => {
-        const isPending = appt.status === 'pending';
-        
-        if (isPending) {
-           const triageDate = appt.triageDate || appt.createdAt?.toDate()?.toISOString().split('T')[0] || filterDateStr;
-           return triageDate === filterDateStr;
-        }
+    /**
+     * Client-side filter applied after both queries deliver their data.
+     * Identical logic to the former single-listener filter.
+     */
+    const passesFilter = (appt) => {
+      const start = startOfDay;
+      const end = endOfDay;
 
-        // For all non-pending statuses, keep the strict scheduledDate pulse
-        // PHASE 4.4.4: THE TEMPORAL HEALER - Hide rescheduled records from 'Today' if they were accidentally created for the past
-        // PHASE 4.4.10: DEEP CLEAN - Also hide legacy triage notes to clear 'Old Ghosts'
-        const isTriagedRecord = 
-          appt.isTriaged === true || 
-          appt.notes?.includes('[Triage Reschedule]') || 
-          appt.notes?.includes('[Clinical Triage:');
-        
-        if (isTriagedRecord) {
-          // 🛡️ THE IDENTITY RESURRECTION:
-          // If the record is scheduled for the dashboard's current shift or the future, 
-          // we MUST show it even if it has triage stamps from its history.
-          const apptDate = appt.jsScheduled || (appt.createdAt?.toDate ? appt.createdAt.toDate() : new Date());
-          const today = new Date(); today.setHours(0,0,0,0);
-          
-          if (apptDate < today) return false; 
-        }
+      // Pending appointments: route by triageDate (not scheduledDate) so
+      // online inbox requests always land in the correct shift silo.
+      if (appt.status === 'pending') {
+        const triageDate = appt.triageDate || appt.createdAt?.toDate()?.toISOString().split('T')[0] || filterDateStr;
+        return triageDate === filterDateStr;
+      }
 
-        return appt.jsScheduled >= start && appt.jsScheduled <= end;
-      });
+      // For all non-pending statuses, keep the strict scheduledDate pulse.
+      // PHASE 4.4.4: THE TEMPORAL HEALER - Hide rescheduled records from 'Today'
+      // if they were accidentally created for the past.
+      // PHASE 4.4.10: DEEP CLEAN - Also hide legacy triage notes to clear 'Old Ghosts'.
+      const isTriagedRecord =
+        appt.isTriaged === true ||
+        appt.notes?.includes('[Triage Reschedule]') ||
+        appt.notes?.includes('[Clinical Triage:');
 
-      // --- ðŸ¦´ PRIMARY SORT (Priority -> Time -> Owner) ---
+      if (isTriagedRecord) {
+        // THE IDENTITY RESURRECTION: If the record is scheduled for the
+        // dashboard's current shift or the future, show it even if it has
+        // triage stamps from its history.
+        const apptDate = appt.jsScheduled || (appt.createdAt?.toDate ? appt.createdAt.toDate() : new Date());
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (apptDate < today) return false;
+      }
+
+      return appt.jsScheduled >= start && appt.jsScheduled <= end;
+    };
+
+    /**
+     * Builds the sorted, grouped row list from the current Map contents
+     * and commits it to state. Called by both listener callbacks so the
+     * board re-renders whenever either query delivers new data.
+     */
+    const flushToRows = () => {
+      const list = Array.from(apptMap.values()).filter(passesFilter);
+
+      // PRIMARY SORT (Priority -> Time -> Owner)
       list.sort((a, b) => {
         const priorityA = a.priority === 'high' ? 0 : 1;
         const priorityB = b.priority === 'high' ? 0 : 1;
@@ -1013,11 +1037,11 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         return (a.ownerId || '').localeCompare(b.ownerId || '');
       });
 
-      // --- ðŸ¾ THE BOOKING BRIDGE (Grouping Detection) ---
+      // THE BOOKING BRIDGE (Grouping Detection)
       const processedList = list.map((item, idx) => {
         const prev = list[idx - 1];
         const next = list[idx + 1];
-        
+
         const isWithPrev = prev && prev.ownerId === item.ownerId && Math.abs((prev.jsScheduled || prev.createdAt?.toDate()) - (item.jsScheduled || item.createdAt?.toDate())) < 120000;
         const isWithNext = next && next.ownerId === item.ownerId && Math.abs((next.jsScheduled || next.createdAt?.toDate()) - (item.jsScheduled || item.createdAt?.toDate())) < 120000;
 
@@ -1026,155 +1050,94 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           isGroupHeader: isWithNext && !isWithPrev,
           isGroupMid: isWithNext && isWithPrev,
           isGroupTail: !isWithNext && isWithPrev,
-          isStandalone: !isWithNext && !isWithPrev
+          isStandalone: !isWithNext && !isWithPrev,
         };
       });
 
       setRows(processedList);
-    });
-
-    return () => unsubscribe();
-  }, [filterDate]);
-  
-  // --- 🧬 PHASE 4.4: FORENSIC RECONCILIATION EFFECT ---
-  // When the Triage Wizard opens, fetch historical shift documents for all active cases
-  // to ensure their previous "Seals" are visible in the pager.
-  useEffect(() => {
-    if (!openEndDay || leftoverPatients.length === 0) return;
-
-    const fetchAllAncestors = async () => {
-      setLoadingHistory(true);
-      const masterRegistry = {};
-
-      try {
-        await Promise.all(leftoverPatients.map(async (patient) => {
-          if (!patient.petId) return;
-
-          // Query for past documents associated with this medical case/pet
-          const q = query(
-            collection(db, "appointments"),
-            where("petId", "==", patient.petId),
-            orderBy("scheduledDate", "desc"),
-            limit(50) // Extended Audit Depth for Forensic Reconciliation
-          );
-
-          const snap = await getDocs(q);
-          const patientHistory = {};
-          
-          snap.docs.forEach(d => {
-            const data = d.data();
-            const dateStr = data.scheduledDate?.toDate 
-                ? data.scheduledDate.toDate().toDateString() 
-                : (data.scheduledDate ? new Date(data.scheduledDate).toDateString() : null);
-            
-            if (dateStr && d.id !== patient.id) {
-               patientHistory[dateStr] = { ...data, id: d.id };
-            }
-          });
-
-          masterRegistry[patient.id] = patientHistory;
-        }));
-
-        setAncestorData(masterRegistry);
-      } catch (e) {
-        console.error("Forensic Reconciliation Failure:", e);
-      } finally {
-        setLoadingHistory(false);
-      }
     };
 
-    fetchAllAncestors();
-  }, [openEndDay, leftoverPatients.length]);
+    // --- LISTENER 1: Date-scoped query for scheduled/active appointments ---
+    // Covers every status that carries a meaningful scheduledDate (confirmed,
+    // arrived, in-consult, dispensing, billing, completed, carried-over, etc.)
+    const scheduledQuery = query(
+      collection(db, 'appointments'),
+      where('scheduledDate', '>=', Timestamp.fromDate(startOfDay)),
+      where('scheduledDate', '<=', Timestamp.fromDate(endOfDay))
+    );
 
-  // --- THE MIDNIGHT HEARTBEAT ---
-  useEffect(() => {
-    const heartbeat = setInterval(() => {
-      const today = new Date().toDateString();
-      if (today !== lastCheckDate) {
-        setLastCheckDate(today);
-        setOpenEndDay(true); // Force cleanup modal on day change
-        console.log("Day change detected! Triggering triage board cleanup.");
+    const unsubScheduled = onSnapshot(scheduledQuery, (snapshot) => {
+      snapshot.docs.forEach((docSnapshot) => {
+        apptMap.set(docSnapshot.id, enrichDoc(docSnapshot));
+      });
+      // Remove any IDs that are no longer in this query result
+      // (e.g. appointment was rescheduled out of today's window).
+      const currentIds = new Set(snapshot.docs.map((d) => d.id));
+      for (const id of apptMap.keys()) {
+        const entry = apptMap.get(id);
+        if (entry.status !== 'pending' && !currentIds.has(id)) {
+          apptMap.delete(id);
+        }
       }
-    }, 15 * 60 * 1000); // 15 Minutes
-    return () => clearInterval(heartbeat);
-  }, [lastCheckDate]);
+      flushToRows();
+    });
+
+    // --- LISTENER 2: Pending-only query scoped to the triage inbox ---
+    // Online appointment requests do not always have a scheduledDate matching
+    // today; they are routed by triageDate instead. The passesFilter() function
+    // handles the final date-match check client-side.
+    const pendingQuery = query(
+      collection(db, 'appointments'),
+      where('status', '==', 'pending')
+    );
+
+    const unsubPending = onSnapshot(pendingQuery, (snapshot) => {
+      // Track which IDs this query owns so we can evict stale entries.
+      const pendingIds = new Set(snapshot.docs.map((d) => d.id));
+
+      snapshot.docs.forEach((docSnapshot) => {
+        apptMap.set(docSnapshot.id, enrichDoc(docSnapshot));
+      });
+
+      // Evict pending entries that have since transitioned to another status
+      // (they will now appear via the scheduledQuery instead).
+      for (const id of apptMap.keys()) {
+        const entry = apptMap.get(id);
+        if (entry.status === 'pending' && !pendingIds.has(id)) {
+          apptMap.delete(id);
+        }
+      }
+
+      flushToRows();
+    });
+
+    return () => {
+      unsubScheduled();
+      unsubPending();
+    };
+  }, [filterDate]);
+  
+
 
   useEffect(() => {
     const unsubVets = onSnapshot(collection(db, "users"), (snapshot) => setVets(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(u => u.role === 'veterinarian' || u.role === 'groomer' || u.accessLevel)));
     const unsubInv = onSnapshot(collection(db, "inventory"), (snapshot) => setInventoryList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
     const unsubCat = onSnapshot(collection(db, "inventory_categories"), (snapshot) => setInventoryCategories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
-    const unsubServ = onSnapshot(collection(db, "services"), (snapshot) => setServicesList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
+    const unsubServ = onSnapshot(collection(db, "services"), (snapshot) => setServicesList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(s => !s.isArchived)));
     const unsubDepts = onSnapshot(collection(db, "departments"), (snapshot) => setDepartments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
-    const unsubSettings = onSnapshot(doc(db, "clinic_settings", "general"), (docSnap) => {
-        if (docSnap.exists()) setClinicSettings(prev => ({ ...prev, ...docSnap.data() }));
-    });
-    return () => { unsubVets(); unsubInv(); unsubCat(); unsubServ(); unsubDepts(); unsubSettings(); };
+    return () => { unsubVets(); unsubInv(); unsubCat(); unsubServ(); unsubDepts(); };
   },[]);
 
   // 🧬 THE FORENSIC INVENTORY JOIN
   // Attaches the 'isMedicine' flag to each product based on its category taxonomy.
   const joinedInventory = useMemo(() => {
-    return inventoryList.map(item => {
-      const catObj = inventoryCategories.find(c => c.name?.toLowerCase() === item.category?.toLowerCase());
-      return {
-        ...item,
-        isMedicine: catObj ? !!catObj.isMedicine : false
-      };
-    });
+    return inventoryList
+      .filter(item => !item.isArchived)
+      .map(item => {
+        const catObj = inventoryCategories.find(c => c.name?.toLowerCase() === item.category?.toLowerCase());
+        return { ...item, isMedicine: catObj ? !!catObj.isMedicine : false };
+      });
   }, [inventoryList, inventoryCategories]);
-
-  // --- 🧬 FORENSIC GHOST SCANNER (Detecting Stranded Patients) ---
-  useEffect(() => {
-    const today = new Date();
-    today.setHours(0,0,0,0);
-    const todayStr = getLocalDateStr();
-
-    // Query for any unresolved record
-    const qGhost = query(
-      collection(db, "appointments"),
-      where("status", "in", ['pending', 'confirmed', 'arrived', 'in-consult', 'dispensing', 'billing', 'scheduled'])
-    );
-
-    const unsubscribeGhosts = onSnapshot(qGhost, (snapshot) => {
-      const ghosts = snapshot.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(appt => {
-          // SHIELD 1: THE FORENSIC STAMP - If it was triaged today, it's NOT a ghost.
-          if (appt.isTriaged === true) return false;
-
-          // SHIELD 2: THE DEFERRAL GATE - If it has a future triageDate, it's safe.
-          const apptTriageDate = appt.triageDate;
-          if (apptTriageDate && apptTriageDate >= todayStr) return false;
-
-          // DETERMINATION: Check scheduling context
-          let checkDate;
-          if (appt.scheduledDate?.toDate) {
-            checkDate = appt.scheduledDate.toDate();
-          } else if (appt.scheduledDate) {
-            checkDate = new Date(appt.scheduledDate);
-          } else {
-            checkDate = appt.createdAt?.toDate ? appt.createdAt.toDate() : new Date();
-          }
-          
-          const finalCheck = new Date(checkDate);
-          finalCheck.setHours(0,0,0,0);
-
-          return finalCheck < today;
-        });
-
-      if (ghosts.length > 0) {
-        setLeftoverPatients(ghosts);
-        setHasGhostPatients(true);
-        // FORCE-OPEN the cleanup wizard if we have historical debris
-        setOpenEndDay(true); 
-        setIsForcedCleanup(true);
-      } else {
-        setHasGhostPatients(false);
-      }
-    });
-
-    return () => unsubscribeGhosts();
-  }, []);
 
   useEffect(() => {
     const interval = setInterval(() => { 
@@ -1273,10 +1236,85 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
     handleHoverEnd,
     handleQuickNoShow: (row) => handleNoShowOpen(row),
     handleRescheduleOpen: (row) => { setSelectedRow(row); handleRescheduleOpen(); },
-    handleDefer: (row) => handleDeferOpen(row)
+    handleDefer: (row) => handleDeferOpen(row),
+    handleOpenDispenseVerify,
   }, isToday, departments, isTomorrowView);
 
   const showClosingWarning = isClosingTime && isToday && unfinishedCount > 0;
+
+  // ======================================================================
+  // END-OF-DAY MODAL CALLBACKS (hoisted — hooks must not be inlined in JSX)
+  // ======================================================================
+  const handleResolutionChange = React.useCallback((id, action, targetDate, targetTime) => {
+    setPatientResolutions(prev => ({ ...prev, [id]: action }));
+    setTouchedPatients(prev => new Set([...prev, id]));
+    if (targetDate) {
+      setTargetDates(prev => ({ ...prev, [id]: targetDate }));
+    }
+    if (targetTime) {
+      setTargetTimes(prev => ({ ...prev, [id]: targetTime }));
+    }
+  }, []);
+
+  const handleAuditReasonChange = React.useCallback((id, reason) => {
+    setAuditReasons(prev => ({ ...prev, [id]: reason }));
+  }, []);
+
+  const handleBulkResolutionEOD = React.useCallback((action, reason, targetDate, targetTime, siloPatientIds) => {
+    // PHASE 4.4.1: UNIVERSAL SILO-AWARE BATCH PROCESSING (Functional Update - NO DEPS)
+    setPatientResolutions(prevRes => {
+      const newRes = { ...prevRes };
+      setAuditReasons(prevReasons => {
+        const newReasons = { ...prevReasons };
+        setTargetDates(prevDates => {
+          const newDates = { ...prevDates };
+          setTargetTimes(prevTimes => {
+            const newTimes = { ...prevTimes };
+            setTouchedPatients(prevTouched => {
+              const newTouched = new Set(prevTouched);
+              const siloIdSet = siloPatientIds ? new Set(siloPatientIds) : null;
+
+              leftoverPatients.forEach(p => {
+                // Scope batch action strictly to the silo it was triggered from
+                if (siloIdSet && !siloIdSet.has(p.id)) return;
+
+                const rtStatus = (p.status || "").toLowerCase();
+                const isOnline = rtStatus === 'pending';
+                const isScheduled = rtStatus === 'confirmed';
+                const isActive = ACTIVE_STATUSES.has(rtStatus);
+
+                if (((action === 'defer' || action === 'cancel' || action === 'rebook') && isOnline) ||
+                    ((action === 'no-show' || action === 'rebook' || action === 'cancel') && isScheduled) ||
+                    ((action === 'hospitalize' || action === 'rebook' || action === 'cancel') && isActive)) {
+                    newRes[p.id] = action;
+                    newReasons[p.id] = reason || "";
+                    if (targetDate) newDates[p.id] = targetDate;
+                    if (targetTime) newTimes[p.id] = targetTime;
+                    newTouched.add(p.id);
+                }
+              });
+              return newTouched;
+            });
+            return newTimes;
+          });
+          return newDates;
+        });
+        return newReasons;
+      });
+      return newRes;
+    });
+  }, [leftoverPatients]);
+
+  const handleEndOfDayClose = React.useCallback(() => {
+    setOpenEndDay(false);
+    setIsForcedCleanup(false);
+    setLeftoverPatients([]);
+    setPatientResolutions({});
+    setTouchedPatients(new Set());
+    setAuditReasons({});
+    setTargetDates({});
+    setTargetTimes({});
+  }, []);
 
   return (
     <Box sx={{ 
@@ -1302,6 +1340,33 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           }}
         >
            AFTER-HOURS MODE: You have {unfinishedCount} unresolved clinical record(s) remaining for today's final audit. 🧴✨
+        </Alert>
+      )}
+
+      {isTomorrowView && hasGhostPatients && (
+        <Alert
+          icon={<WarningIcon sx={{ color: '#FFF' }} />}
+          severity="warning"
+          variant="filled"
+          sx={{
+            mb: 2,
+            fontWeight: 'bold',
+            boxShadow: 2,
+            bgcolor: '#E65100',
+            '& .MuiAlert-icon': { color: '#FFF' }
+          }}
+          action={
+            <Button
+              color="inherit"
+              size="small"
+              onClick={() => setIsTomorrowView(false)}
+              sx={{ fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.5 }}
+            >
+              SWITCH TO TODAY
+            </Button>
+          }
+        >
+          UNRESOLVED CASES DETECTED: There are patients from previous shifts that require clinical triage before starting a new shift.
         </Alert>
       )}
 
@@ -1471,6 +1536,13 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       {/* EXTERNAL MODULES */}
       <ClinicalWorkspace open={openConsult} onClose={() => setOpenConsult(false)} patient={selectedRow} inventoryList={joinedInventory} servicesList={servicesList} departments={departments}/>
       <POSModal open={openPOS} onClose={() => setOpenPOS(false)} patient={selectedRow} inventoryList={joinedInventory} servicesList={servicesList} />
+      <DispensingVerificationDialog
+        open={openDispenseVerify}
+        onClose={() => { setOpenDispenseVerify(false); setDispenseRow(null); }}
+        patient={dispenseRow}
+        onVerified={handleDispenseVerified}
+        staffProfile={profile}
+      />
       <WalkInModal open={openWalkIn} onClose={() => setOpenWalkIn(false)} servicesList={servicesList} departments={departments}/>
       
       <AssignStaffModal 
@@ -1492,68 +1564,21 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         targetDates={targetDates}
         targetTimes={targetTimes}
         touchedPatients={touchedPatients}
-        onResolutionChange={React.useCallback((id, action, targetDate, targetTime) => {
-          setPatientResolutions(prev => ({ ...prev, [id]: action }));
-          setTouchedPatients(prev => new Set([...prev, id]));
-          if (targetDate) {
-            setTargetDates(prev => ({ ...prev, [id]: targetDate }));
-          }
-          if (targetTime) {
-            setTargetTimes(prev => ({ ...prev, [id]: targetTime }));
-          }
-        }, [])}
-        onAuditReasonChange={React.useCallback((id, reason) => {
-          setAuditReasons(prev => ({ ...prev, [id]: reason }));
-        }, [])}
-        onBulkResolution={React.useCallback((action, reason, targetDate, targetTime) => {
-           // PHASE 4.4.1: UNIVERSAL SILO-AWARE BATCH PROCESSING (Functional Update - NO DEPS)
-           setPatientResolutions(prevRes => {
-                const newRes = { ...prevRes };
-                setAuditReasons(prevReasons => {
-                    const newReasons = { ...prevReasons };
-                    setTargetDates(prevDates => {
-                      const newDates = { ...prevDates };
-                      setTargetTimes(prevTimes => {
-                        const newTimes = { ...prevTimes };
-                        setTouchedPatients(prevTouched => {
-                          const newTouched = new Set(prevTouched);
-                          
-                          leftoverPatients.forEach(p => {
-                              const rtStatus = (p.status || "").toLowerCase();
-                              const isOnline = rtStatus === 'pending';
-                              const isScheduled = ['confirmed', 'scheduled'].includes(rtStatus);
-                              const isActive = ['arrived', 'in-consult', 'dispensing', 'billing', 'payment', 'confined'].includes(rtStatus);
-
-                              if (((action === 'defer' || action === 'cancel' || action === 'rebook') && isOnline) ||
-                                  ((action === 'no-show' || action === 'rebook' || action === 'cancel') && isScheduled) ||
-                                  ((action === 'hospitalize' || action === 'rebook' || action === 'cancel') && isActive)) {
-                                  newRes[p.id] = action;
-                                  newReasons[p.id] = reason || "";
-                                  if (targetDate) newDates[p.id] = targetDate;
-                                  if (targetTime) newTimes[p.id] = targetTime;
-                                  newTouched.add(p.id);
-                              }
-                          });
-                          return newTouched;
-                        });
-                        return newTimes;
-                      });
-                      return newDates;
-                    });
-                    return newReasons;
-                });
-                return newRes;
-           });
-        }, [leftoverPatients])}
-        onConfirmReset={(dates, times) => { 
-          confirmResetDay(false, dates, {}, {}, times); 
-          setIsForcedCleanup(false); 
-        }} 
+        onResolutionChange={handleResolutionChange}
+        onAuditReasonChange={handleAuditReasonChange}
+        onBulkResolution={handleBulkResolutionEOD}
+        onConfirmReset={(dates, times) => {
+          confirmResetDay(false, dates, patientResolutions, auditReasons, times);
+          setIsForcedCleanup(false);
+        }}
         isForced={isForcedCleanup}
         departments={departments}
-        ancestorData={ancestorData}
-        loadingHistory={loadingHistory}
-        onClose={React.useCallback(() => { setOpenEndDay(false); setIsForcedCleanup(false); }, [])} 
+        onPatientUpdate={(patientId, updates) => {
+          setLeftoverPatients(prev => prev.map(p =>
+            p.id === patientId ? { ...p, ...updates } : p
+          ));
+        }}
+        onClose={handleEndOfDayClose}
       />
       
       {/* INTERNAL MODALS */}
@@ -1865,10 +1890,17 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                   }
 
                   // CUMULATIVE TOTALS: sum of shift values across all records
+                  // SORT FIRST — arrayUnion preserves insertion order, not chronological.
                   const getPrimaryDate = (pulse) => {
                     if (!pulse || pulse.length === 0) return new Date();
-                    const firstTs = pulse[0].timestamp;
-                    return firstTs?.toDate ? firstTs.toDate() : new Date(firstTs);
+                    const sorted = [...pulse].sort((a, b) => {
+                      const da = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp ?? Infinity);
+                      const db = b.timestamp?.toDate ? b.timestamp.toDate() : new Date(b.timestamp ?? Infinity);
+                      return da - db;
+                    });
+                    const firstTs = sorted[0].timestamp;
+                    const d = firstTs?.toDate ? firstTs.toDate() : new Date(firstTs);
+                    return isNaN(d.getTime()) ? new Date() : d;
                   };
                   let cumTotalQueue = 0, cumTotalConsult = 0, cumTotalConfined = 0;
                   ancestorChain.forEach(ancestor => {
@@ -2029,14 +2061,23 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                     </Box>
 
                     <Box sx={{ flexShrink: 0 }}>
-                        <ForensicMetricGrid 
-                            pulse={routedPulse}
-                            settings={clinicSettings}
-                            createdAt={routedCreatedAt}
-                            sealedMetrics={record.forensicSeal}
-                            targetDate={new Date(targetDateStr)}
-                            cumulativeTotals={cumulativeTotals}
-                        />
+                        {(() => {
+                          const todayStr = new Date().toDateString();
+                          const popoverAuditEnd = targetDateStr === todayStr
+                            ? new Date()
+                            : (() => { const d = new Date(targetDateStr); d.setHours(23, 59, 59, 999); return d; })();
+                          return (
+                            <ForensicMetricGrid
+                                pulse={routedPulse}
+                                settings={clinicSettings}
+                                createdAt={routedCreatedAt}
+                                sealedMetrics={record.forensicSeal}
+                                targetDate={new Date(targetDateStr)}
+                                cumulativeTotals={cumulativeTotals}
+                                auditEnd={popoverAuditEnd}
+                            />
+                          );
+                        })()}
                     </Box>
                   </Box>
                   );

@@ -1,7 +1,9 @@
 import { doc, updateDoc, Timestamp, writeBatch, arrayUnion, runTransaction, collection } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
-import { useUser } from '../../context/UserContext'; 
+import { useUser } from '../../context/UserContext';
 import { calculatePulseMetrics } from '../../utils/pulseUtils';
+import { STATUS, validateTransition } from '../../utils/statusConstants';
+import { getLocalDateStr } from '../../utils/dateUtils';
 
 export function useQueueActions() {
   const { profile } = useUser();
@@ -9,7 +11,12 @@ export function useQueueActions() {
   
   // 1. FORWARD STATUS CHANGE (NOW ATOMIC TRANSACTIONS!)
   const changeStatus = async (row, newStatus, currentConfinedCount, maxCages = 5) => {
-    if (newStatus === 'confined' && currentConfinedCount >= maxCages) {
+    const transition = validateTransition(row.status, newStatus);
+    if (!transition.valid) {
+      throw new Error(`❌ INVALID TRANSITION\n${transition.reason}`);
+    }
+
+    if (newStatus === STATUS.CONFINED && currentConfinedCount >= maxCages) {
       throw new Error(`❌ ADMISSION BLOCKED\nAll ${maxCages} cages are currently occupied.`);
     }
 
@@ -27,7 +34,7 @@ export function useQueueActions() {
             timestamp: Timestamp.now(),
             staffId: profile?.id || 'unknown',
             staffName: staffSignature,
-            note: (newStatus === 'on-hold') ? "Patient placed on-hold (Pause Engine Triggered)" : `Status transition to ${newStatus}`
+            note: (newStatus === STATUS.ON_HOLD) ? "Patient placed on-hold (Pause Engine Triggered)" : `Status transition to ${newStatus}`
         };
 
         let updateData = { 
@@ -36,33 +43,33 @@ export function useQueueActions() {
             clinicalPulse: arrayUnion(pulseEvent)
         };
 
-        if (newStatus === 'confirmed' && row.status === 'pending') {
+        if (newStatus === STATUS.CONFIRMED && row.status === STATUS.PENDING) {
             updateData.timeAccepted = Timestamp.now();
             updateData.acceptedBy = staffSignature;
         }
-        if (newStatus === 'arrived') {
+        if (newStatus === STATUS.ARRIVED) {
             updateData.arrivedBy = staffSignature;
             updateData.timeArrived = Timestamp.now();
         }
-        if (newStatus === 'in-consult' && row.status !== 'on-hold') {
+        if (newStatus === STATUS.IN_CONSULT && row.status !== STATUS.ON_HOLD) {
             updateData.timeStarted = Timestamp.now();
             updateData.startedBy = staffSignature;
         }
-        if (newStatus === 'completed') {
+        if (newStatus === STATUS.COMPLETED) {
             updateData.timeCompleted = Timestamp.now();
             updateData.completedBy = staffSignature;
         }
-        if (newStatus === 'dispense') {
+        if (newStatus === STATUS.DISPENSING) {
             updateData.timeDispenseStarted = Timestamp.now();
         }
-        if (newStatus === 'payment') {
+        if (newStatus === STATUS.BILLING) {
             updateData.timePaymentStarted = Timestamp.now();
         }
 
         // SMART PAUSE ENGINE
-        if (newStatus === 'on-hold') updateData.lastPausedAt = Timestamp.now();
-        
-        if (row.status === 'on-hold' && newStatus === 'in-consult') {
+        if (newStatus === STATUS.ON_HOLD) updateData.lastPausedAt = Timestamp.now();
+
+        if (row.status === STATUS.ON_HOLD && newStatus === STATUS.IN_CONSULT) {
             if (row.lastPausedAt) {
                 const pausedAt = row.lastPausedAt.toDate();
                 const pauseDurationMins = Math.floor((now - pausedAt) / 60000);
@@ -74,7 +81,7 @@ export function useQueueActions() {
 
         transaction.update(apptRef, updateData);
         
-        if (newStatus === 'in-consult' && row.queueNumber) {
+        if (newStatus === STATUS.IN_CONSULT && row.queueNumber) {
             const queueRef = doc(db, "queue", "daily_queue");
             transaction.update(queueRef, { 
                 currentServing: row.queueNumber, 
@@ -86,47 +93,57 @@ export function useQueueActions() {
 
   // 2. THE SMART UNDO
   const revertStatus = async (row) => {
-    const history = row.statusHistory ||[];
-    if (history.length === 0) throw new Error("Cannot revert. No previous status recorded.");
-    const prevStatus = history[history.length - 1];
-    const newHistory = history.slice(0, -1);
+    await runTransaction(db, async (transaction) => {
+      const apptRef = doc(db, "appointments", row.id);
+      const apptDoc = await transaction.get(apptRef);
+      if (!apptDoc.exists()) throw new Error("Appointment not found. It may have been deleted.");
 
-    // PHASE 4.3: THE FORENSIC LINKER
-    // We identify the EXACT event ID of the mistake we are about to invalidate.
-    const pulseArray = row.clinicalPulse || [];
-    const lastChange = [...pulseArray].reverse().find(p => p.type === 'STATUS_CHANGE');
-    const correctedId = lastChange?.eventId || null;
+      // Read FRESH data from Firestore — not from potentially-stale client-side props.
+      const freshData = apptDoc.data();
+      const history = freshData.statusHistory || [];
+      if (history.length === 0) throw new Error("Cannot revert. No previous status recorded.");
 
-    const pulseEvent = {
-        eventId: `pulse_rev_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-        type: 'CORRECTION',
-        correctedEventId: correctedId, // THE DNA LINK
-        fromStatus: row.status,
-        toStatus: prevStatus,
-        timestamp: Timestamp.now(),
-        staffId: profile?.id || 'unknown',
-        staffName: staffSignature,
-        note: `REVERSION: ${row.revertReason || "Manual Status Reversion"}`,
-        isCorrection: true
-    };
+      const prevStatus = history[history.length - 1];
+      const newHistory = history.slice(0, -1);
 
-    const updateData = { 
-        status: prevStatus,
-        statusHistory: newHistory,
-        clinicalPulse: arrayUnion(pulseEvent),
-        revertedBy: staffSignature,
-        revertReason: row.revertReason || "Manual Status Reversion",
-        revertedAt: Timestamp.now()
-    };
+      // PHASE 4.3: THE FORENSIC LINKER
+      // Identify the EXACT event ID of the mistake we are about to invalidate,
+      // sourced from the fresh document to prevent stale-read corruption.
+      const pulseArray = freshData.clinicalPulse || [];
+      const lastChange = [...pulseArray].reverse().find(p => p.type === 'STATUS_CHANGE');
+      const correctedId = lastChange?.eventId || null;
 
-    // GAP A FIX: If we are reverting to Scheduled, wipe the arrival artifacts!
-    if (prevStatus === 'confirmed') {
-        updateData.queueNumber = null;
-        updateData.ticketPrefix = null;
-        updateData.timeArrived = null;
-    }
+      const pulseEvent = {
+          eventId: `pulse_rev_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+          type: 'CORRECTION',
+          correctedEventId: correctedId, // THE DNA LINK
+          fromStatus: freshData.status,
+          toStatus: prevStatus,
+          timestamp: Timestamp.now(),
+          staffId: profile?.id || 'unknown',
+          staffName: staffSignature,
+          note: `REVERSION: ${row.revertReason || "Manual Status Reversion"}`,
+          isCorrection: true
+      };
 
-    await updateDoc(doc(db, "appointments", row.id), updateData);
+      const updateData = {
+          status: prevStatus,
+          statusHistory: newHistory,
+          clinicalPulse: arrayUnion(pulseEvent),
+          revertedBy: staffSignature,
+          revertReason: row.revertReason || "Manual Status Reversion",
+          revertedAt: Timestamp.now()
+      };
+
+      // GAP A FIX: If we are reverting to Scheduled, wipe the arrival artifacts!
+      if (prevStatus === STATUS.CONFIRMED) {
+          updateData.queueNumber = null;
+          updateData.ticketPrefix = null;
+          updateData.timeArrived = null;
+      }
+
+      transaction.update(apptRef, updateData);
+    });
   };
 
   const markNoShow = async (row, reason, settings) => {
@@ -161,31 +178,39 @@ export function useQueueActions() {
       note: `Individually flagged as No-Show: ${reason}`
     };
     
-    await updateDoc(doc(db, "appointments", row.id), { 
-      status: 'no-show', 
-      rejectReason: reason,
-      assignedVet: "Unassigned",
-      assignedVetId: null,
-      services: clearedServices,
-      cancelledBy: staffSignature,
-      clinicalPulse: arrayUnion(pulseEvent),
-      isForensicAudit: true, // THE FORENSIC SEAL
-      auditReason: reason,
-      forensicSeal // THE 8-METRIC STAMP
+    await runTransaction(db, async (transaction) => {
+      const apptRef = doc(db, "appointments", row.id);
+      const apptDoc = await transaction.get(apptRef);
+      if (!apptDoc.exists()) throw new Error("Appointment not found!");
+
+      const freshStatus = apptDoc.data().status;
+      if (['completed', 'cancelled', 'no-show', 'carried-over'].includes(freshStatus)) {
+        throw new Error(`Record already resolved (status: ${freshStatus}). Cannot mark as No-Show.`);
+      }
+
+      transaction.update(apptRef, {
+        status: 'no-show',
+        assignedVet: "Unassigned",
+        assignedVetId: null,
+        services: clearedServices,
+        cancelledBy: staffSignature,
+        clinicalPulse: arrayUnion(pulseEvent),
+        isForensicAudit: true,
+        auditReason: reason,
+        forensicSeal // THE 8-METRIC STAMP
+      });
     });
   };
 
   const rejectAppointment = async (id, reason, currentServices = [], isForensic = false, settings, rowData) => {
+    if (!rowData) throw new Error("❌ SEAL FAILURE: rowData is required to compute forensicSeal.");
     // --- 🧬 SUB-PHASE 4.2: THE INDIVIDUAL FORENSIC SEAL ---
-    let forensicSeal = null;
-    if (rowData) {
-        forensicSeal = calculatePulseMetrics(
-          rowData.clinicalPulse || [], 
-          settings, 
-          rowData.createdAt, 
-          new Date()
-        );
-    }
+    const forensicSeal = calculatePulseMetrics(
+      rowData.clinicalPulse || [],
+      settings,
+      rowData.createdAt,
+      new Date()
+    );
 
     const clearedServices = (currentServices || []).map(s => ({ ...s, staffId: null, staffName: 'Unassigned' }));
     const pulseEvent = {
@@ -198,18 +223,28 @@ export function useQueueActions() {
         note: isForensic ? `Forensic Triage Cleanup: ${reason}` : (reason || 'Individually cancelled')
     };
 
-    await updateDoc(doc(db, "appointments", id), { 
-      status: 'cancelled', 
-      rejectReason: reason || "No reason provided by staff.",
-      assignedVet: "Unassigned",
-      assignedVetId: null,
-      services: clearedServices,
-      timeRejected: Timestamp.now(),
-      cancelledBy: staffSignature,
-      clinicalPulse: arrayUnion(pulseEvent),
-      isForensicAudit: isForensic, // STAMPING THE AUDIT
-      auditReason: isForensic ? `Forensic Triage Cleanup: ${reason}` : (reason || 'Individually cancelled'),
-      forensicSeal // THE 8-METRIC STAMP
+    await runTransaction(db, async (transaction) => {
+      const apptRef = doc(db, "appointments", id);
+      const apptDoc = await transaction.get(apptRef);
+      if (!apptDoc.exists()) throw new Error("Appointment not found!");
+
+      const freshStatus = apptDoc.data().status;
+      if (['completed', 'cancelled', 'no-show', 'carried-over'].includes(freshStatus)) {
+        throw new Error(`Record already resolved (status: ${freshStatus}). Cannot cancel.`);
+      }
+
+      transaction.update(apptRef, {
+        status: 'cancelled',
+        assignedVet: "Unassigned",
+        assignedVetId: null,
+        services: clearedServices,
+        timeRejected: Timestamp.now(),
+        cancelledBy: staffSignature,
+        clinicalPulse: arrayUnion(pulseEvent),
+        isForensicAudit: isForensic,
+        auditReason: reason || 'Individually cancelled',
+        forensicSeal // THE 8-METRIC STAMP
+      });
     });
   };
 
@@ -224,7 +259,7 @@ export function useQueueActions() {
         nextNum = (queueDoc.data().lastNumberIssued || 0) + 1;
         transaction.update(queueRef, { lastNumberIssued: nextNum });
       } else {
-        transaction.set(queueRef, { lastNumberIssued: 1, currentServing: 0, currentPrefix: '', status: 'active', lastResetDate: new Date().toISOString().split('T')[0] });
+        transaction.set(queueRef, { lastNumberIssued: 1, currentServing: 0, currentPrefix: '', status: 'active', lastResetDate: getLocalDateStr() });
       }
 
       // Generate the Ghost Patient payload
@@ -237,8 +272,7 @@ export function useQueueActions() {
         petName: "EMERGENCY PATIENT",
         petSpecies: "Unknown",
         serviceType: "Trauma / ER",
-        serviceCategory: "General", // THE FIX: Use the universal fallback department
-        requiredRole: "veterinarian",
+        serviceCategory: "General", // Universal fallback department — routing is department-driven
         priority: "high", // THE FLAG THAT FORCES IT TO THE TOP OF THE LIST
         status: "arrived",
         caseDay: 1,
@@ -264,7 +298,7 @@ export function useQueueActions() {
   };
 
   // 4. THE INBOX ENGINE (NEW: Real-Time Triage)
-  const deferAppointment = async (id, reason, staffName) => {
+  const deferAppointment = async (id, reason, staffName, settings) => {
     if (!reason || reason.trim().length === 0) {
         throw new Error("❌ AUDIT FAILURE: Deferring clinical triage requires a mandatory justification.");
     }
@@ -273,14 +307,23 @@ export function useQueueActions() {
         const apptRef = doc(db, "appointments", id);
         const apptDoc = await transaction.get(apptRef);
         if (!apptDoc.exists()) throw new Error("Appointment not found!");
-        
+
+        const data = apptDoc.data();
+
         // CALCULATION: Shift the administrative triage focus to tomorrow
         const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
-        const triageKey = tomorrow.toISOString().split('T')[0];
-        
-        const currentNotes = apptDoc.data().notes || "";
+        const triageKey = getLocalDateStr(tomorrow);
+
+        const currentNotes = data.notes || "";
         const signature = staffName || staffSignature;
+
+        const forensicSeal = calculatePulseMetrics(
+            data.clinicalPulse || [],
+            settings,
+            data.createdAt,
+            new Date()
+        );
 
         const pulseEvent = {
             eventId: `pulse_defer_${Date.now()}`,
@@ -298,20 +341,28 @@ export function useQueueActions() {
             lastTriagedAt: Timestamp.now(),
             triagedBy: signature,
             clinicalPulse: arrayUnion(pulseEvent),
-            auditReason: reason // THE FORENSIC SEAL
+            auditReason: reason,
+            forensicSeal
         });
     });
   };
 
-  const rescheduleAppointment = async (row, newDate, reason) => {
+  const rescheduleAppointment = async (row, newDate, reason, settings) => {
     if (!reason || reason.trim().length === 0) {
         throw new Error("❌ AUDIT FAILURE: Rescheduling requires a mandatory forensic justification.");
     }
 
+    const forensicSeal = calculatePulseMetrics(
+        row.clinicalPulse || [],
+        settings,
+        row.createdAt,
+        new Date()
+    );
+
     const apptRef = doc(db, "appointments", row.id);
     const pulseEvent = {
         eventId: `pulse_resched_${Date.now()}`,
-        type: 'STATUS_CHANGE', // Rescheduling is essentially a temporal status shift
+        type: 'STATUS_CHANGE',
         timestamp: Timestamp.now(),
         staffId: profile?.id || 'unknown',
         staffName: staffSignature,
@@ -319,11 +370,12 @@ export function useQueueActions() {
     };
 
     await updateDoc(apptRef, {
-        jsScheduled: Timestamp.fromDate(new Date(newDate)),
+        scheduledDate: Timestamp.fromDate(new Date(newDate)),
         clinicalPulse: arrayUnion(pulseEvent),
         lastModifiedAt: Timestamp.now(),
         modifiedBy: staffSignature,
-        auditReason: reason
+        auditReason: reason,
+        forensicSeal
     });
   };
 

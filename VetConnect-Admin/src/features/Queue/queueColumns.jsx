@@ -1,5 +1,7 @@
 import React from 'react';
 import { Box, Typography, Chip, Tooltip, IconButton, Button, Stack, Paper } from '@mui/material';
+import { STATUS } from '../../utils/statusConstants';
+import { formatDuration } from '../../utils/pulseUtils';
 
 // Icons
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'; 
@@ -24,24 +26,6 @@ import HowToRegIcon from '@mui/icons-material/HowToReg';
 import EventNoteIcon from '@mui/icons-material/EventNote';
 import UndoIcon from '@mui/icons-material/Undo';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
-
-const formatDuration = (totalMinutes) => {
-  const mins = Math.abs(Math.round(totalMinutes));
-  
-  if (mins >= 525600) {
-      const years = Math.floor(mins / 525600);
-      const remainingMonths = Math.floor((mins % 525600) / 43200);
-      return remainingMonths > 0 ? `${years}y ${remainingMonths}mo` : `${years}y`;
-  }
-  if (mins >= 43200) return `${Math.floor(mins / 43200)}mo`;
-  if (mins >= 10080) return `${Math.floor(mins / 10080)}w`;
-  if (mins >= 1440) return `${Math.floor(mins / 1440)}d`;
-  
-  if (mins < 60) return `${mins}m`;
-  const hours = Math.floor(mins / 60);
-  const remainingMins = mins % 60;
-  return remainingMins > 0 ? `${hours}h ${remainingMins}m` : `${hours}h`;
-};
 
 const calculateAgeString = (dob, isAgeExact) => {
     if (!dob) return "AGE UNKNOWN";
@@ -214,20 +198,76 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
     }
   }] : []),
   {
-    field: 'notes', headerName: 'Medical Intake / Notes', flex: 1.2, minWidth: 200, sortable: false,
+    field: 'notes',
+    headerName: tabValue === 4 ? 'Prescription Preview' : tabValue === 5 ? 'Billing Preview' : 'Medical Intake / Notes',
+    flex: 1.2, minWidth: 200, sortable: false,
     renderCell: (p) => {
+      // DISPENSE tab — Prescription Preview
+      if (tabValue === 4) {
+        const items = p.row.prescribedItems || [];
+        const drugs = items.filter(i => i.isDrug || i.type === 'product');
+        if (drugs.length === 0) {
+          return <Typography variant="caption" sx={{ color: 'text.disabled', fontStyle: 'italic' }}>No prescribed items</Typography>;
+        }
+        return (
+          <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%', py: 1, gap: 0.5 }}>
+            <Typography variant="overline" sx={{ fontWeight: '1000', fontSize: '0.6rem', color: '#C62828', lineHeight: 1, letterSpacing: 1, mb: 0.5 }}>
+              PHARMACY CHECKLIST ({drugs.length})
+            </Typography>
+            {drugs.slice(0, 4).map((item, idx) => (
+              <Box key={idx} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Typography sx={{ fontSize: '0.78rem', fontWeight: '900', color: '#3E2723', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                  {item.name}
+                </Typography>
+                <Chip label={`x${item.qty}`} size="small" sx={{ height: 18, fontSize: '0.65rem', fontWeight: '1000', ml: 1 }} />
+              </Box>
+            ))}
+            {drugs.length > 4 && (
+              <Typography variant="caption" sx={{ fontWeight: '800', color: '#795548', opacity: 0.6 }}>
+                +{drugs.length - 4} more items
+              </Typography>
+            )}
+          </Box>
+        );
+      }
+
+      // PAYMENT tab — Billing Preview
+      if (tabValue === 5) {
+        const items = p.row.prescribedItems || [];
+        const total = p.row.finalTotal || items.reduce((sum, i) => sum + ((i.price || 0) * (i.qty || 1)), 0);
+        return (
+          <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%', py: 1, justifyContent: 'center', height: '100%' }}>
+            <Typography variant="overline" sx={{ fontWeight: '1000', fontSize: '0.6rem', color: '#FF8F00', lineHeight: 1, letterSpacing: 1, mb: 1 }}>
+              BILLING SUMMARY
+            </Typography>
+            <Typography sx={{ fontSize: '1.4rem', fontWeight: '1000', color: '#2E7D32', lineHeight: 1 }}>
+              P{total.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+            </Typography>
+            <Typography variant="caption" sx={{ fontWeight: '800', color: '#795548', mt: 0.5 }}>
+              {items.filter(i => i.type === 'service').length} services, {items.filter(i => i.type === 'product').length} products
+            </Typography>
+            {p.row.depositPaid > 0 && (
+              <Typography variant="caption" sx={{ fontWeight: '800', color: '#E65100', mt: 0.5 }}>
+                Deposit: P{p.row.depositPaid.toLocaleString()}
+              </Typography>
+            )}
+          </Box>
+        );
+      }
+
+      // Default: Medical Intake / Notes (tabs 0-3, 6, 7)
       const notes = p.row.notes || "";
       const carryMatch = notes.match(/^\[Carried Over from (.*?)\]\s*(.*)/i);
-      
+
       return (
-        <Box 
+        <Box
           onMouseEnter={(e) => actions.handleHoverStart(e, 'notes', p.row.notes)}
           onMouseLeave={actions.handleHoverEnd}
-          sx={{ 
+          sx={{
             display: 'flex',
             flexDirection: 'column',
-            width: '100%', 
-            pt: 1.5, 
+            width: '100%',
+            pt: 1.5,
             cursor: 'zoom-in',
             '&:hover': { bgcolor: 'rgba(139, 69, 19, 0.04)' },
             transition: 'background-color 0.2s'
@@ -236,11 +276,11 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
           {carryMatch ? (
              <>
                <Typography variant="overline" sx={{ fontWeight: '1000', fontSize: '0.6rem', color: '#8D6E63', lineHeight: 1, mb: 0.5, letterSpacing: 1 }}>
-                  ⏳ CARRIED OVER FROM {carryMatch[1]}
+                  CARRIED OVER FROM {carryMatch[1]}
                </Typography>
-               <Typography 
-                 variant="body2" 
-                 sx={{ 
+               <Typography
+                 variant="body2"
+                 sx={{
                    display: '-webkit-box',
                    WebkitLineClamp: 3,
                    WebkitBoxOrient: 'vertical',
@@ -257,9 +297,9 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                </Typography>
              </>
           ) : notes ? (
-            <Typography 
-              variant="body2" 
-              sx={{ 
+            <Typography
+              variant="body2"
+              sx={{
                 display: '-webkit-box',
                 WebkitLineClamp: 4,
                 WebkitBoxOrient: 'vertical',
@@ -393,7 +433,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
           }).toUpperCase();
           const timeStr = scheduled.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           
-          if (p.row.status === 'completed' || p.row.status === 'done') {
+          if (p.row.status === STATUS.COMPLETED) {
              const end = completed || currentTime;
              const start = arrived || scheduled;
              const totalMins = Math.round((end - start) / 60000);
@@ -444,22 +484,21 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                 triageColor = "#2E7D32"; 
                 break;
 
-            case 'dispense':
+            case STATUS.DISPENSING:
                 const dispenseMins = resolveDate(p.row.timeDispenseStarted) ? Math.round((currentTime - resolveDate(p.row.timeDispenseStarted)) / 60000) : 0;
                 const dispenseTotal = (arrived || scheduled) ? Math.round((currentTime - (arrived || scheduled)) / 60000) : 0;
                 primaryLabel = `DISPENSING: ${formatDuration(dispenseMins)}`;
                 secondaryLabel = `TOTAL VISIT: ${formatDuration(dispenseTotal)}`;
                 break;
 
-            case 'payment':
+            case STATUS.BILLING:
                 const paymentMins = resolveDate(p.row.timePaymentStarted) ? Math.round((currentTime - resolveDate(p.row.timePaymentStarted)) / 60000) : 0;
                 const paymentTotal = (arrived || scheduled) ? Math.round((currentTime - (arrived || scheduled)) / 60000) : 0;
                 primaryLabel = `PAYING: ${formatDuration(paymentMins)}`;
                 secondaryLabel = `TOTAL VISIT: ${formatDuration(paymentTotal)}`;
                 break;
 
-            case 'done':
-            case 'completed':
+            case STATUS.COMPLETED:
                 const end = completed || currentTime;
                 const start = arrived || scheduled || booked;
                 const totalMins = start ? Math.round((end - start) / 60000) : 0;
@@ -681,24 +720,24 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
         );
       }
 
-      if (params.row.status === 'dispense') {
+      if (params.row.status === STATUS.DISPENSING) {
         return (
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.8, width: '100%', height: '100%' }}>
-            <Button 
-                variant="contained" 
-                size="small" 
+            <Button
+                variant="contained"
+                size="small"
                 startIcon={<LocalHospitalIcon sx={{ fontSize: '14px !important' }} />}
-                sx={{...btnStyle, bgcolor: '#C62828', '&:hover': { bgcolor: '#B71C1C' }, minWidth: 140}} 
-                onClick={() => actions.handleStatusChange(params.row, 'payment')}
+                sx={{...btnStyle, bgcolor: '#C62828', '&:hover': { bgcolor: '#B71C1C' }, minWidth: 160}}
+                onClick={() => actions.handleOpenDispenseVerify(params.row)}
             >
-                DISPENSE
+                VERIFY ITEMS
             </Button>
             <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)} sx={{ color: '#5D4037' }}><MoreVertIcon fontSize="small" /></IconButton>
           </Box>
         );
       }
 
-      if (params.row.status === 'payment') {
+      if (params.row.status === STATUS.BILLING) {
         return (
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.8, width: '100%', height: '100%' }}>
             <Button 
@@ -708,7 +747,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                 sx={{...btnStyle, bgcolor: '#FF8F00', '&:hover': { bgcolor: '#FF6F00' }, minWidth: 140}} 
                 onClick={() => actions.handleOpenPOS?.(params.row)}
             >
-                BILLING
+                OPEN CHECKOUT
             </Button>
             <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)} sx={{ color: '#5D4037' }}><MoreVertIcon fontSize="small" /></IconButton>
           </Box>

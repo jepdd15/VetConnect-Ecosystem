@@ -11,6 +11,7 @@ const DEFAULT_SETTINGS = {
   closeHour: 17,
   openHour: 8,
   workingDays: [0, 1, 2, 3, 4, 5, 6],
+  closedDates: [], // ISO YYYY-MM-DD strings, sorted asc
 };
 
 // --- Module-level singleton store ---

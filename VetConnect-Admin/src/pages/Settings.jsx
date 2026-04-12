@@ -23,6 +23,7 @@ import InventoryIcon from '@mui/icons-material/Inventory';
 import SortIcon from '@mui/icons-material/Sort'; 
 import MedicationIcon from '@mui/icons-material/Medication';
 import MedicationLiquidIcon from '@mui/icons-material/MedicationLiquid';
+import BlockIcon from '@mui/icons-material/Block';
 
 // Design Tokens
 import { FONT, TYPE, COLORS } from '../theme/designTokens';
@@ -128,6 +129,9 @@ export default function Settings() {
   const[invCatSearch, setInvCatSearch] = useState('');
   const [invCatSort, setInvCatSort] = useState('asc'); // THE FIX: Sort state for Inventory
 
+  // --- CLOSED DATES STATE ---
+  const [newClosedDate, setNewClosedDate] = useState('');
+
   // --- DEPENDENCY STATES (For Usage Shield) ---
   const [allServices, setAllServices] = useState([]);
   const [allStaff, setAllStaff] = useState([]);
@@ -200,10 +204,14 @@ export default function Settings() {
         trafficHigh: parseInt(settings.trafficHigh) || 13
       };
       
+      if ((settings.closedDates || []).length > 365) {
+        setToast({ open: true, message: `Warning: ${settings.closedDates.length} closure dates configured. Consider auditing.`, severity: 'warning' });
+      }
+
       const adminIdentity = auth.currentUser?.displayName || auth.currentUser?.email || "Unknown Admin";
-      await setDoc(doc(db, "clinic_settings", "general"), { 
-          ...sanitizedSettings, 
-          updatedAt: Timestamp.now(), 
+      await setDoc(doc(db, "clinic_settings", "general"), {
+          ...sanitizedSettings,
+          updatedAt: Timestamp.now(),
           updatedBy: adminIdentity // THE FIX: Atomic Accountability!
       }, { merge: true });
       setToast({ open: true, message: 'Global Clinic Settings Updated Successfully!', severity: 'success' });
@@ -246,6 +254,23 @@ export default function Settings() {
           setToast({ open: true, message: 'Department Deleted.', severity: 'success' });
       } catch (e) { setToast({ open: true, message: e.message, severity: 'error' }); }
     }
+  };
+
+  // --- CLOSED DATES HANDLERS ---
+  const handleAddClosedDate = () => {
+    if (!newClosedDate) return;
+    const existing = settings.closedDates || [];
+    if (existing.includes(newClosedDate)) {
+      return setToast({ open: true, message: 'Date already in closures list.', severity: 'warning' });
+    }
+    const next = [...existing, newClosedDate].sort();
+    handleChange('closedDates', next);
+    setNewClosedDate('');
+  };
+
+  const handleRemoveClosedDate = (dateStr) => {
+    const next = (settings.closedDates || []).filter(d => d !== dateStr);
+    handleChange('closedDates', next);
   };
 
   // --- INVENTORY CATEGORY CRUD ---
@@ -376,6 +401,64 @@ export default function Settings() {
                             </ToggleButton>
                         ))}
                     </ToggleButtonGroup>
+                </Grid>
+
+                {/* CLOSED DATES */}
+                <Grid size={{ xs: 12 }}>
+                  <Divider sx={{ my: 1 }} />
+                  <Typography variant="overline" sx={{ fontWeight: '1000', color: COLORS.accent, letterSpacing: 1, display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                    <BlockIcon sx={{ fontSize: 16 }} /> Clinic Closures (Holidays, Maintenance)
+                  </Typography>
+                  <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 1.5 }}>
+                    Specific dates the clinic is closed. Blocks mobile booking and skips queue carry-over targets.
+                  </Typography>
+                  <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+                    <TextField
+                      type="date"
+                      size="small"
+                      value={newClosedDate}
+                      onChange={(e) => setNewClosedDate(e.target.value)}
+                      sx={{ flex: 1, bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `2px solid ${COLORS.accent}33` } }}
+                      inputProps={{ style: { fontWeight: 1000 } }}
+                    />
+                    <Button
+                      variant="contained"
+                      onClick={handleAddClosedDate}
+                      disabled={!newClosedDate}
+                      sx={{
+                        borderRadius: 0, fontWeight: 1000, px: 3,
+                        bgcolor: COLORS.accent, border: `2px solid ${COLORS.accent}`,
+                        boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
+                        '&:hover': { bgcolor: COLORS.brand }
+                      }}
+                    >
+                      Add
+                    </Button>
+                  </Stack>
+                  {(settings.closedDates || []).length === 0 ? (
+                    <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, fontStyle: 'italic' }}>
+                      No closures scheduled.
+                    </Typography>
+                  ) : (
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                      {(settings.closedDates || []).map(dateStr => (
+                        <Chip
+                          key={dateStr}
+                          label={new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })}
+                          onDelete={() => handleRemoveClosedDate(dateStr)}
+                          sx={{
+                            borderRadius: 0,
+                            border: `2px solid ${COLORS.accent}`,
+                            bgcolor: '#FFF8E1',
+                            fontWeight: 1000,
+                            color: COLORS.accent,
+                            boxShadow: '2px 2px 0px rgba(93, 64, 55, 0.15)',
+                            '& .MuiChip-deleteIcon': { color: COLORS.accent }
+                          }}
+                        />
+                      ))}
+                    </Box>
+                  )}
                 </Grid>
 
                 <Grid size={{ xs: 12 }}><Divider sx={{ my: 1 }} /><FormControlLabel control={<Switch checked={settings.lunchEnabled} onChange={(e) => handleChange('lunchEnabled', e.target.checked)} color="primary" />} label={<Typography sx={{ fontWeight: 1000, color: COLORS.accent }}>Enforce Lunch Break</Typography>} /></Grid>

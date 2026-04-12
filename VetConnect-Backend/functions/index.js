@@ -47,6 +47,68 @@ exports.midnightQueueSweep = functions.pubsub
   });
 
 
+exports.reservationCleanup = functions.pubsub
+  .schedule('0 6 * * *')
+  .timeZone('Asia/Manila')
+  .onRun(async (context) => {
+    const invSnap = await db.collection('inventory').where('reserved', '>', 0).get();
+    if (invSnap.empty) return null;
+
+    const activeAppts = await db.collection('appointments')
+      .where('status', 'in', ['in-consult', 'dispensing'])
+      .get();
+
+    const legitimatelyReserved = new Map();
+    activeAppts.forEach(doc => {
+      const data = doc.data();
+      (data.prescribedItems || []).forEach(item => {
+        if (item.type === 'product') {
+          const current = legitimatelyReserved.get(item.id) || 0;
+          legitimatelyReserved.set(item.id, current + (item.qty || 1));
+        }
+      });
+    });
+
+    const batch = db.batch();
+    let fixes = 0;
+    invSnap.forEach(doc => {
+      const legitimate = legitimatelyReserved.get(doc.id) || 0;
+      const current = doc.data().reserved || 0;
+      if (current > legitimate) {
+        batch.update(doc.ref, { reserved: legitimate });
+        fixes++;
+      }
+    });
+
+    if (fixes > 0) {
+      await batch.commit();
+      console.log(`Reservation cleanup: fixed ${fixes} stranded reservation(s).`);
+
+      // Write audit trail entries for each correction
+      const logBatch = db.batch();
+      invSnap.forEach(doc => {
+        const legitimate = legitimatelyReserved.get(doc.id) || 0;
+        const current = doc.data().reserved || 0;
+        if (current > legitimate) {
+          const logRef = db.collection('inventory_logs').doc();
+          logBatch.set(logRef, {
+            itemId: doc.id,
+            itemName: doc.data().itemName || 'Unknown',
+            action: 'ADJUSTED',
+            amountChange: 0,
+            reason: `Reservation cleanup: stranded reserved ${current} → corrected to ${legitimate}`,
+            userId: 'SYSTEM',
+            userName: 'Reservation Cleanup Cron',
+            timestamp: admin.firestore.FieldValue.serverTimestamp()
+          });
+        }
+      });
+      await logBatch.commit();
+    }
+    return null;
+  });
+
+
 // ============================================================================
 // 🛡️ 2. SECURE BOOKING ENGINE (THE BOUNCER)
 // Prevents Time-Travel Hacks and Schedule Hoarding.
@@ -67,12 +129,58 @@ exports.secureBookAppointment = functions.https.onCall(async (data, context) => 
   
   if (requestedDate < bufferTime) {
     throw new functions.https.HttpsError(
-      'failed-precondition', 
+      'failed-precondition',
       'Appointments must be booked at least 2 hours in advance. Your system clock may be out of sync.'
     );
   }
 
-  
+  // ============================================================================
+  // ASPIRATIONAL — THIS FUNCTION IS NOT CURRENTLY CALLED BY THE MOBILE APP.
+  // ============================================================================
+  // Bookings are currently written directly from the mobile client via
+  // `writeBatch(db)` in VetConnect/src/screens/BookAppointment.js — there is no
+  // httpsCallable invocation of secureBookAppointment anywhere in the app.
+  //
+  // This function is preserved as a reference implementation for the correct
+  // server-side validation shape. It will activate ONLY if:
+  //   (1) the Firebase project upgrades from Spark to Blaze (required to deploy
+  //       any Cloud Function under Google's current policy), AND
+  //   (2) the mobile BookAppointment.js submit handler is refactored to use
+  //       httpsCallable('secureBookAppointment') instead of the direct batch write.
+  //
+  // Until then, closed-date enforcement lives in two layers:
+  //   - Client guard: VetConnect/src/hooks/useBookingEngine.js blocks slot
+  //     generation for closed dates in the booking wizard UI.
+  //   - Firestore rule: VetConnect-Backend/firestore.rules rejects writes to
+  //     `appointments` with a `scheduledDateStr` matching a closed date.
+  //
+  // Do NOT delete this block — the architecture intent is documented here and
+  // the Blaze upgrade path is trivial: redeploy the function, wire the callable
+  // in BookAppointment.js, and the server-side check activates automatically.
+  // ============================================================================
+
+  // CLOSED-DATE VALIDATION — block bookings on days the clinic is explicitly closed.
+  // Cloud Functions run in UTC, so we must convert to Asia/Manila before comparing
+  // against the YYYY-MM-DD strings stored in closedDates.
+  const settingsSnap = await admin.firestore().collection('clinic_settings').doc('general').get();
+  const closedDates = settingsSnap.exists ? (settingsSnap.data().closedDates ?? []) : [];
+
+  // 'en-CA' locale produces YYYY-MM-DD natively — matches the stored format exactly.
+  const manilaDateStr = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(requestedDate);
+
+  if (closedDates.includes(manilaDateStr)) {
+    throw new functions.https.HttpsError(
+      'failed-precondition',
+      'The clinic is closed on the selected date. Please choose another day.'
+    );
+  }
+
+
   const activeApptsQuery = await db.collection("appointments")
     .where("ownerId", "==", uid)
     .where("status", "in", ["pending", "confirmed"])
@@ -105,9 +213,8 @@ exports.secureBookAppointment = functions.https.onCall(async (data, context) => 
       petSpecies: pet.species,
       serviceType: service.name,
       servicePrice: service.price || 0,
-      serviceCategory: service.category || 'Consultation', 
-      requiredRole: service.requiredRole || 'veterinarian',
-      serviceDuration: baseDuration, 
+      serviceCategory: service.department || service.category || 'Consultation',
+      serviceDuration: baseDuration,
       serviceBuffer: serviceBuffer, 
       notes: pets.length > 1 ? `[Group Booking ${index + 1}/${pets.length}] ${notes}` : notes, 
       status: "pending",           

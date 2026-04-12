@@ -11,6 +11,12 @@ import {
 import { useEffect, useState } from "react";
 import { auth, db } from "../../firebaseConfig";
 
+// Local-time YYYY-MM-DD formatter (Asia/Manila expected on device).
+// Kept inline — only one caller in this file. Extract to dateHelpers.js if a second appears.
+const getLocalDateStrMobile = (d) => {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 export function useBookingEngine(date, selectedServices = [], selectedPets) {
   const [pets, setPets] = useState([]);
   const [services, setServices] = useState([]);
@@ -29,6 +35,7 @@ export function useBookingEngine(date, selectedServices = [], selectedPets) {
     trafficModerate: 6,
     trafficHigh: 13,
     maxPetsPerBooking: 3,
+    closedDates: [], // ISO YYYY-MM-DD strings; populated from clinic_settings/general
   });
 
   const [availableSlots, setAvailableSlots] = useState([]);
@@ -151,6 +158,15 @@ export function useBookingEngine(date, selectedServices = [], selectedPets) {
   // 3. THE ENTERPRISE TETRIS ALGORITHM (Now with Multi-Service Prowess!)
   useEffect(() => {
     const generateSlots = async () => {
+      // Closed-date guard — return empty slots immediately if the clinic is
+      // explicitly closed on this date. No Firestore reads needed.
+      const dateStr = getLocalDateStrMobile(date);
+      if ((clinicSettings.closedDates ?? []).includes(dateStr)) {
+        setAvailableSlots([]);
+        setLoadingSlots(false);
+        return;
+      }
+
       if (!selectedServices || selectedServices.length === 0 || selectedPets.length === 0) {
         setAvailableSlots([]);
         return;

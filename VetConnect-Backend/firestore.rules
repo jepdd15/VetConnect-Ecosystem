@@ -1,0 +1,56 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    // Closed-date enforcement — rejects appointment writes landing on a date
+    // the clinic has marked closed in clinic_settings/general.closedDates[].
+    // Only enforced when the write includes a `scheduledDateStr` field (ISO
+    // YYYY-MM-DD). Writes without the field (e.g. admin walk-in paths that
+    // predate the denormalization) are exempt so we don't break existing flows.
+    function isScheduledDateClosed() {
+      return 'scheduledDateStr' in request.resource.data
+        && exists(/databases/$(database)/documents/clinic_settings/general)
+        && request.resource.data.scheduledDateStr in
+           get(/databases/$(database)/documents/clinic_settings/general).data.get('closedDates', []);
+    }
+
+    match /appointments/{apptId} {
+      allow read: if isAuth();
+      allow create: if isAuth() && !isScheduledDateClosed();
+      allow update: if isAuth()
+        // isTriaged can only go false/null → true, never revert
+        && (
+          !('isTriaged' in request.resource.data)
+          || resource.data.isTriaged != true
+          || request.resource.data.isTriaged == true
+        )
+        // Terminal status transitions require a non-empty auditReason
+        && (
+          !(request.resource.data.status in ['cancelled', 'no-show'])
+          || (
+            'auditReason' in request.resource.data
+            && request.resource.data.auditReason is string
+            && request.resource.data.auditReason.size() > 0
+          )
+        )
+        // forensicSeal must be present when isTriaged is set to true
+        && (
+          !('isTriaged' in request.resource.data)
+          || request.resource.data.isTriaged != true
+          || (
+            'forensicSeal' in request.resource.data
+            && request.resource.data.forensicSeal != null
+          )
+        );
+    }
+
+    // All other collections: authenticated access only
+    match /{document=**} {
+      allow read, write: if isAuth();
+    }
+  }
+}

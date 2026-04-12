@@ -394,6 +394,7 @@ export default function BookAppointment({ navigation, route }) {
           status: "pending",
           caseDay: 1, // INITIAL PULSE
           scheduledDate: Timestamp.fromDate(petDateTime),
+          scheduledDateStr: `${petDateTime.getFullYear()}-${String(petDateTime.getMonth() + 1).padStart(2, '0')}-${String(petDateTime.getDate()).padStart(2, '0')}`,
           triageDate: new Date().toISOString().split('T')[0], // THE REAL-TIME INBOX ANCHOR
           createdAt: Timestamp.now(),
           qrCode: qrData,

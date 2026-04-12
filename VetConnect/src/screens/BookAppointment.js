@@ -255,11 +255,23 @@ export default function BookAppointment({ navigation }) {
       // --- 🧬 CALCULATE BUNDLE PARAMETERS ---
       let bundleTotalMinutes = 0;
       let bundleTotalPrice = 0;
+      // Resolve pet weight for tiered pricing (use first selected pet)
+      const primaryPetWeight = selectedPets[0]?.lastWeight ? parseFloat(selectedPets[0].lastWeight) : null;
+      const resolveTieredPrice = (svc, weight) => {
+          if (!svc?.hasTieredPricing || !svc?.pricingTiers?.length || weight == null) return parseFloat(svc?.price) || 0;
+          for (const tier of svc.pricingTiers) {
+              const min = Number(tier.minWeight) || 0;
+              const max = Number(tier.maxWeight) || 0;
+              if (weight >= min && (max === 0 || weight <= max)) return Number(tier.price) || parseFloat(svc.price) || 0;
+          }
+          return parseFloat(svc.price) || 0;
+      };
+
       const mappedServices = selectedServices.map(s => {
           const dur = parseInt(String(s.duration).replace(/[^0-9]/g, "")) || 30;
           const buff = parseInt(String(s.bufferTime).replace(/[^0-9]/g, "")) || 0;
-          const price = parseFloat(s.price) || 0;
-          
+          const price = resolveTieredPrice(s, primaryPetWeight);
+
           bundleTotalMinutes += (dur + buff);
           bundleTotalPrice += price;
 

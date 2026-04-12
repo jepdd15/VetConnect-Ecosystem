@@ -70,7 +70,7 @@ export function useBookingEngine(date, selectedServices = [], selectedPets) {
           getDocs(qStaff), // THE FIX: Only fetch documents where accessLevel is 'admin' or 'staff'!
         ]);
 
-        setServices(servSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setServices(servSnap.docs.map((d) => ({ id: d.id, ...d.data() })).filter(s => !s.isArchived));
 
         // C. THE FIX: Skill-Based Capacity Counter!
         let deptCounts = {};

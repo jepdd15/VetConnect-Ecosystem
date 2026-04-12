@@ -290,6 +290,75 @@ export default function PetHistoryScreen({ route, navigation }) {
                 </View>
               </View>
             )}
+
+            {/* DISCHARGE SUMMARY */}
+            {item.dischargeSummary && (
+              <View style={{ marginTop: 12, padding: 12, backgroundColor: '#E8F5E9', borderRadius: 8 }}>
+                <Text style={{ fontWeight: '900', fontSize: 12, color: '#2E7D32', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>
+                  DISCHARGE SUMMARY
+                </Text>
+                <Text style={{ fontSize: 13, color: '#333', marginBottom: 4 }}>
+                  Diagnosis: {item.dischargeSummary.diagnosis}
+                </Text>
+                <Text style={{ fontSize: 13, color: '#333', marginBottom: 4 }}>
+                  Instructions: {item.dischargeSummary.instructions}
+                </Text>
+                {item.dischargeSummary.medications?.length > 0 && (
+                  <View style={{ marginTop: 4 }}>
+                    <Text style={{ fontWeight: '800', fontSize: 11, color: '#555', marginBottom: 2 }}>MEDICATIONS:</Text>
+                    {item.dischargeSummary.medications.map((med, i) => (
+                      <Text key={i} style={{ fontSize: 12, color: '#333', marginLeft: 8 }}>
+                        • {med.name} x{med.qty} — {med.instructions}
+                      </Text>
+                    ))}
+                  </View>
+                )}
+                {item.dischargeSummary.nextVisit && (
+                  <Text style={{ fontSize: 12, color: '#E65100', fontWeight: '800', marginTop: 6 }}>
+                    Next Visit: {new Date(item.dischargeSummary.nextVisit?.seconds ? item.dischargeSummary.nextVisit.seconds * 1000 : item.dischargeSummary.nextVisit).toLocaleDateString()}
+                  </Text>
+                )}
+              </View>
+            )}
+
+            {/* VACCINATION RECORD */}
+            {item.vaccineData && (
+              <View style={{ marginTop: 12, padding: 12, backgroundColor: '#FFF3E0', borderRadius: 8 }}>
+                <Text style={{ fontWeight: '900', fontSize: 12, color: '#E65100', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>
+                  VACCINATION RECORD
+                </Text>
+                <Text style={{ fontSize: 13, color: '#333' }}>Vaccine: {item.vaccineData.vaccineName}</Text>
+                {item.vaccineData.manufacturer ? <Text style={{ fontSize: 12, color: '#666' }}>Manufacturer: {item.vaccineData.manufacturer}</Text> : null}
+                {item.vaccineData.lotNumber ? <Text style={{ fontSize: 12, color: '#666' }}>Lot #: {item.vaccineData.lotNumber}</Text> : null}
+                <Text style={{ fontSize: 12, color: '#666' }}>Route: {item.vaccineData.routeOfAdmin} | Site: {item.vaccineData.siteOfInjection}</Text>
+                {item.vaccineData.dueDate && (
+                  <Text style={{ fontSize: 12, color: '#D32F2F', fontWeight: '800', marginTop: 4 }}>
+                    Next Due: {item.vaccineData.dueDate}
+                  </Text>
+                )}
+              </View>
+            )}
+
+            {/* LAB RESULTS */}
+            {item.labResults?.length > 0 && (
+              <View style={{ marginTop: 12, padding: 12, backgroundColor: '#E3F2FD', borderRadius: 8 }}>
+                <Text style={{ fontWeight: '900', fontSize: 12, color: '#1565C0', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>
+                  LAB RESULTS
+                </Text>
+                {item.labResults.map((lab, i) => (
+                  <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <Text style={{ fontSize: 13, color: '#333', flex: 1 }}>{lab.testName}</Text>
+                    <Text style={{ fontSize: 13, color: '#333', flex: 1 }}>{lab.result}</Text>
+                    <Text style={{
+                      fontSize: 11, fontWeight: '900', textTransform: 'uppercase',
+                      color: lab.status === 'critical' ? '#D32F2F' : lab.status === 'abnormal' ? '#E65100' : '#2E7D32',
+                    }}>
+                      {lab.status}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
           </View>
 
           {item.nextVisit && (

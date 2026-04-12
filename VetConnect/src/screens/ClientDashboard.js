@@ -25,6 +25,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { auth, db } from "../../firebaseConfig";
+import { getClientStatusLabel } from "../utils/statusLabels";
 
 // --- PUSH NOTIFICATION IMPORTS ---
 import Constants from "expo-constants";
@@ -297,7 +298,12 @@ const ClientDashboard = ({ navigation }) => {
         icon = "💰";
         break;
       default:
-        return null;
+        bgColor = "#FAFAFA";
+        borderColor = "#ccc";
+        icon = "ℹ️";
+        title = getClientStatusLabel(appt.status);
+        msg = `Your appointment status has been updated.`;
+        break;
     }
 
     return (

@@ -26,6 +26,7 @@ import {
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 import { auth, db } from "../../firebaseConfig";
+import { getClientStatusColor, getClientStatusLabel } from "../utils/statusLabels";
 
 const ICONS = {
   Consultation: "🩺",
@@ -200,8 +201,8 @@ const ClientAppointments = ({ navigation }) => {
             </View>
           </View>
           <View style={{ alignItems: "flex-end" }}>
-            <Text style={[styles.status, getStatusColor(item.status)]}>
-              {item.status.toUpperCase()}
+            <Text style={[styles.status, getClientStatusColor(item.status)]}>
+              {getClientStatusLabel(item.status).toUpperCase()}
             </Text>
             {!isHistory && item.servicePrice > 0 && (
               <Text style={styles.price}>Est. ₱{item.servicePrice}</Text>
@@ -485,20 +486,6 @@ const ClientAppointments = ({ navigation }) => {
   );
 };
 
-const getStatusColor = (status) => {
-  switch (status) {
-    case "confirmed":
-      return { color: "green", backgroundColor: "#E8F5E9" };
-    case "cancelled":
-      return { color: "#D32F2F", backgroundColor: "#FFEBEE" };
-    case "completed":
-      return { color: "#1976D2", backgroundColor: "#E3F2FD" };
-    case "pending":
-      return { color: "#ED6C02", backgroundColor: "#FFF3E0" };
-    default:
-      return { color: "#555", backgroundColor: "#eee" };
-  }
-};
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20, backgroundColor: "#FFF8E1" },

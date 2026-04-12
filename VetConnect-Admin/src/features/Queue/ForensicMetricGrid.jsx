@@ -6,8 +6,8 @@ import { calculatePulseMetrics, formatDuration } from '../../utils/pulseUtils';
  * 🧬 VETCONNECT SHARED FORENSIC GRID (PHASE 6.3)
  * Use for Audit Popovers & Command Wizards.
  */
-export const ForensicMetricGrid = ({ pulse = [], settings = {}, createdAt, targetDate = new Date(), variant = 'dark', sealedMetrics = null, cumulativeTotals = null }) => {
-  const metrics = sealedMetrics || calculatePulseMetrics(pulse, settings, createdAt, targetDate);
+export const ForensicMetricGrid = ({ pulse = [], settings = {}, createdAt, targetDate = new Date(), variant = 'dark', sealedMetrics = null, cumulativeTotals = null, auditEnd = null }) => {
+  const metrics = sealedMetrics || calculatePulseMetrics(pulse, settings, createdAt, targetDate, auditEnd);
 
   // If cumulative totals are provided, override the per-record Total values
   const displayTotalQueue = cumulativeTotals ? formatDuration(cumulativeTotals.totalQueue) : metrics.totalQueue;

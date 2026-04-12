@@ -2,6 +2,13 @@
  * 🧬 VETCONNECT CLINICAL FORENSIC ENGINE (PHASE 6.2)
  * Hardened Pulse-Aware Temporal Math
  */
+import {
+  TERMINAL_STATUSES,
+  CONSULT_STATES as CONSULT_SET,
+  QUEUE_STATES as QUEUE_SET,
+  CONFINED_STATES as CONFINED_SET,
+} from './statusConstants';
+import { getLocalDateStr } from './dateUtils';
 
 /**
  * Calculates 6 clinical metrics by scanning the forensic pulse history.
@@ -75,7 +82,7 @@ const getOperationalMinutes = (start, end, settings, shouldGate = false, segment
 /**
  * Calculates 8 clinical metrics by scanning the forensic pulse history.
  */
-export const calculatePulseMetrics = (pulse = [], settings = {}, createdAt, targetDate = new Date()) => {
+export const calculatePulseMetrics = (pulse = [], settings = {}, createdAt, targetDate = new Date(), auditEnd = null) => {
   // 🧬 SYNCED FORENSIC HISTORY (PHASE 6.9.5)
   const history = [...pulse].sort((a, b) => {
     const da = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp || 0);
@@ -85,14 +92,13 @@ export const calculatePulseMetrics = (pulse = [], settings = {}, createdAt, targ
 
   // 🧬 DISCHARGE ANCHOR (GHOST-AGING DEFENSE)
   // If the last status is terminal, stop the clock at that exact timestamp.
-  const terminalStatuses = ['completed', 'done', 'cancelled', 'no-show', 'carried-over'];
   const lastEvent = history[history.length - 1];
   const lastStatus = (lastEvent?.toStatus || '').toLowerCase();
-  const isResolved = terminalStatuses.includes(lastStatus);
+  const isResolved = TERMINAL_STATUSES.has(lastStatus);
   
-  const now = isResolved 
+  const now = isResolved
     ? (lastEvent.timestamp?.toDate ? lastEvent.timestamp.toDate() : new Date(lastEvent.timestamp))
-    : new Date();
+    : (auditEnd instanceof Date && !isNaN(auditEnd.getTime()) ? auditEnd : new Date());
 
 
   const clinicStart = settings.openHour || 8;
@@ -103,22 +109,14 @@ export const calculatePulseMetrics = (pulse = [], settings = {}, createdAt, targ
   const inception = createdAt?.toDate ? createdAt.toDate() : new Date(createdAt || now);
   const recordAgeMins = Math.max(0, Math.round((now - inception) / 60000));
 
-  // 2. OPERATING HOURS AGE (Net)
-  let opHoursMins = 0;
-  let tempPointer = new Date(inception);
-  while (tempPointer < now) {
-    const day = tempPointer.getDay();
-    const hour = tempPointer.getHours();
-    if (workingDays.includes(day) && hour >= clinicStart && hour < clinicEnd) {
-      opHoursMins++;
-    }
-    tempPointer.setMinutes(tempPointer.getMinutes() + 1);
-  }
+  // 2. OPERATING HOURS AGE (Net) — uses the efficient day-segment algorithm
+  const opHoursMins = getOperationalMinutes(inception, now, settings, false, inception, 'business');
 
   // 3. PULSE MATH (Queue, Consult & Confined)
-  const QUEUE_STATES = ['arrived'];
-  const CONSULT_STATES = ['in-consult', 'dispensing', 'payment', 'on-hold'];
-  const CONFINED_STATES = ['confined']; // 🧬 SEPARATE BUCKET (Pivot 6.9.1)
+  // Uses canonical Sets from statusConstants — 'payment' alias is excluded.
+  const QUEUE_STATES = QUEUE_SET;
+  const CONSULT_STATES = CONSULT_SET;
+  const CONFINED_STATES = CONFINED_SET;
 
   let totalQueue = 0;
   let shiftQueue = 0;
@@ -146,10 +144,10 @@ export const calculatePulseMetrics = (pulse = [], settings = {}, createdAt, targ
     const status = isMistake ? lastValidStatus : rawStatus;
 
     // 🧬 GHOST GATING (Lobby & Active Consults)
-    const isGhostSegment = !nextEvent && (QUEUE_STATES.includes(status) || CONSULT_STATES.includes(status)) && startTime.toDateString() !== now.toDateString();
+    const isGhostSegment = !nextEvent && (QUEUE_STATES.has(status) || CONSULT_STATES.has(status)) && startTime.toDateString() !== now.toDateString();
 
     // 🧬 DUAL-CLOCK ROUTING
-    const clockMode = CONFINED_STATES.includes(status) ? 'absolute' : 'business';
+    const clockMode = CONFINED_STATES.has(status) ? 'absolute' : 'business';
     const operationalMins = getOperationalMinutes(startTime, endTime, settings, isGhostSegment, startTime, clockMode);
     
     if (!isMistake && rawStatus) lastValidStatus = rawStatus;
@@ -168,13 +166,13 @@ export const calculatePulseMetrics = (pulse = [], settings = {}, createdAt, targ
       shiftMins = getOperationalMinutes(shiftOverlapStart, shiftOverlapEnd, settings, isGhostSegment, startTime, clockMode);
     }
 
-    if (QUEUE_STATES.includes(status)) {
+    if (QUEUE_STATES.has(status)) {
       totalQueue += operationalMins;
       shiftQueue += shiftMins;
-    } else if (CONSULT_STATES.includes(status)) {
+    } else if (CONSULT_STATES.has(status)) {
       totalConsult += operationalMins;
       shiftConsult += shiftMins;
-    } else if (CONFINED_STATES.includes(status)) {
+    } else if (CONFINED_STATES.has(status)) {
       totalConfined += operationalMins;
       shiftConfined += shiftMins;
     }
@@ -195,20 +193,38 @@ export const calculatePulseMetrics = (pulse = [], settings = {}, createdAt, targ
 
 
 /**
- * Formats minutes into human-readable shorthand (e.g., 1D 2H 30M)
+ * Formats minutes into human-readable shorthand (e.g., 1D 2H 30M).
+ * Handles the full range: years, months, weeks, days, hours, minutes.
+ * Units are uppercase: Y, MO, W, D, H, M.
  */
 export const formatDuration = (totalMins) => {
-  if (totalMins <= 0) return "0M";
-  const days = Math.floor(totalMins / 1440);
-  const hours = Math.floor((totalMins % 1440) / 60);
-  const mins = totalMins % 60;
+  if (totalMins == null || isNaN(totalMins)) return "\u2014";
 
-  const parts = [];
-  if (days > 0) parts.push(`${days}D`);
-  if (hours > 0) parts.push(`${hours}H`);
-  if (mins > 0 || parts.length === 0) parts.push(`${mins}M`);
+  const rounded = Math.round(totalMins);
+  if (rounded < 0) {
+    console.warn('[pulseUtils] formatDuration received negative value:', totalMins, '— returning placeholder');
+    return "\u2014";
+  }
 
-  return parts.join(' ');
+  const mins = rounded;
+
+  if (mins >= 525600) {
+    const years = Math.floor(mins / 525600);
+    const remainingMonths = Math.floor((mins % 525600) / 43200);
+    return remainingMonths > 0 ? `${years}Y ${remainingMonths}MO` : `${years}Y`;
+  }
+  if (mins >= 43200) return `${Math.floor(mins / 43200)}MO`;
+  if (mins >= 10080) return `${Math.floor(mins / 10080)}W`;
+  if (mins >= 1440) {
+    const d = Math.floor(mins / 1440);
+    const h = Math.floor((mins % 1440) / 60);
+    return h > 0 ? `${d}D ${h}H` : `${d}D`;
+  }
+  if (mins === 0) return "0M";
+  if (mins < 60) return `${mins}M`;
+  const hours = Math.floor(mins / 60);
+  const remainingMins = mins % 60;
+  return remainingMins > 0 ? `${hours}H ${remainingMins}M` : `${hours}H`;
 };
 
 /**
@@ -235,13 +251,13 @@ export const getSmartShiftDate = (offsetIndex, openHour = 8) => {
   const target = new Date(anchor);
   target.setDate(target.getDate() + offsets[offsetIndex]);
   
-  const dateStr = target.toISOString().split('T')[0];
+  const dateStr = getLocalDateStr(target);
   
   // Dynamic Labeling logic
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalDateStr();
   const tomorrow = new Date(); 
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowStr = tomorrow.toISOString().split('T')[0];
+  const tomorrowStr = getLocalDateStr(tomorrow);
 
   let label = "";
   if (offsetIndex === 0) {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, memo } from 'react';
+import React, { useState, useEffect, useMemo, memo, useRef } from 'react';
 import {
     Box, Typography, Button, Stack, Paper,
     ToggleButtonGroup, ToggleButton, List, ListItem, Divider,
@@ -23,37 +23,16 @@ import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 import { getDoc, doc, query, collection, where, orderBy, limit, getDocs, onSnapshot, updateDoc } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
-import { calculatePulseMetrics, getSmartShiftDate } from '../../utils/pulseUtils';
+import { useClinicSettings } from '../../hooks/useClinicSettings';
+import { calculatePulseMetrics, formatDuration, getSmartShiftDate } from '../../utils/pulseUtils';
+import { STATUS, HIGH_STAKES_STATUSES } from '../../utils/statusConstants';
+import { getLocalDateStr } from '../../utils/dateUtils';
 import { ForensicMetricGrid } from './ForensicMetricGrid';
 import TwitterIcon from '@mui/icons-material/Twitter';
 
 // 🧬 PHASE 6 COMPONENTS
 const sidebarWidth = 260; // Absolute mapping from Sidebar.jsx
 const CARD_HEIGHT = 400;  // FULL BREATHING ROOM for V2 Clinical Re-booking UI
-
-// HELPER: To keep consistency with main grid
-const formatDuration = (mins) => {
-    const m = Math.abs(mins);
-    if (m < 60) return `${m}M`;
-    const h = Math.floor(m / 60);
-    const rem = m % 60;
-    return rem > 0 ? `${h}H ${rem}M` : `${h}H`;
-};
-
-// HELPER: Absolute Tenure Formatter (Days/Hours/Minutes)
-const formatTenure = (mins) => {
-    const m = Math.abs(mins);
-    const d = Math.floor(m / 1440);
-    const h = Math.floor((m % 1440) / 60);
-    const rem = m % 60;
-    
-    let parts = [];
-    if (d > 0) parts.push(`${d}D`);
-    if (h > 0) parts.push(`${h}H`);
-    if (rem > 0 || (rem === 0 && parts.length === 0)) parts.push(`${rem}M`);
-    
-    return parts.join(' ');
-};
 
 // HELPER: Species Icon Logic (Hardened for Feline/Canine Distinctions)
 const getSpeciesIcon = (species) => {
@@ -74,17 +53,10 @@ const getSpeciesIcon = (species) => {
     return <PetsIcon sx={{ fontSize: 32, opacity: 0.4, color: '#9E9E9E' }} />;
 };
 
-// --- 🛰️ FORENSIC TEMPORAL ENGINE (Aligned with Queue.jsx) ---
-const getLocalDateStr = (d = new Date()) => {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-};
 
 // --- 📡 MEMOIZED AUDIT CARD: THE PERFORMANCE CURE ---
 const AuditPatientCard = React.memo(({
-    patient, resolution, targetDate, targetTime, auditReason, realTimeStatus, tabMode, ancestorData, loadingHistory, departments, settings,
+    patient, resolution, targetDate, targetTime, auditReason, realTimeStatus, tabMode, ancestorData, loadingHistory, historyMessage, departments, settings,
     onResolutionChange, onAuditReasonChange, onFetchHistory, onClearHistory, onGenderOpen, CARD_HEIGHT,
     ancestorChain // Phase 1: Full originApptId chain (array of ancestor records, oldest first)
 }) => {
@@ -139,7 +111,7 @@ const AuditPatientCard = React.memo(({
             return d.toDateString() === targetDateStr;
         });
         if (currentHasEvents) {
-            return { pulse: currentPulse, createdAt: patient.createdAt };
+            return { pulse: currentPulse, createdAt: patient.createdAt, forensicSeal: patient.forensicSeal };
         }
 
         // 2. Fallback: Check ancestor records (oldest to newest) for historical days.
@@ -150,13 +122,13 @@ const AuditPatientCard = React.memo(({
                 return d.toDateString() === targetDateStr;
             });
             if (hasEventsOnDay) {
-                return { pulse: aPulse, createdAt: ancestor.createdAt };
+                return { pulse: aPulse, createdAt: ancestor.createdAt, forensicSeal: ancestor.forensicSeal };
             }
         }
 
         // 3. Ultimate fallback: current record
-        return { pulse: currentPulse, createdAt: patient.createdAt };
-    }, [uniqueDates, activeCaseDay, ancestorChain, patient.clinicalPulse, patient.createdAt]);
+        return { pulse: currentPulse, createdAt: patient.createdAt, forensicSeal: patient.forensicSeal };
+    }, [uniqueDates, activeCaseDay, ancestorChain, patient.clinicalPulse, patient.createdAt, patient.forensicSeal]);
 
     // --- 🧬 CUMULATIVE TOTALS: Total = Sum of Shift values across all days ---
     // Each record's shift metrics are computed independently with its primary date,
@@ -167,11 +139,18 @@ const AuditPatientCard = React.memo(({
         let totalConfined = 0;
 
         // Helper: get the primary date for a record's pulse
+        // SORT FIRST — arrayUnion preserves insertion order, not chronological.
+        // Use ?? Infinity for null timestamps so broken events sort to the back.
         const getPrimaryDate = (pulse) => {
             if (!pulse || pulse.length === 0) return new Date();
-            const firstTs = pulse[0].timestamp;
+            const sorted = [...pulse].sort((a, b) => {
+                const da = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp ?? Infinity);
+                const db = b.timestamp?.toDate ? b.timestamp.toDate() : new Date(b.timestamp ?? Infinity);
+                return da - db;
+            });
+            const firstTs = sorted[0].timestamp;
             const d = firstTs?.toDate ? firstTs.toDate() : new Date(firstTs);
-            return d;
+            return isNaN(d.getTime()) ? new Date() : d;
         };
 
         // Sum shift metrics from each ancestor record
@@ -263,14 +242,14 @@ const AuditPatientCard = React.memo(({
 
     // PHASE 1: FORENSIC TIERS
     const rawStatus = (patient.status || 'unknown').toLowerCase();
-    const isHighStakes = ['arrived', 'in-consult', 'dispensing', 'billing', 'confirmed', 'payment'].includes(rawStatus);
-    const isPhysical = ['arrived', 'in-consult', 'dispensing', 'billing', 'payment'].includes(rawStatus);
+    const isHighStakes = HIGH_STAKES_STATUSES.has(rawStatus);
+    const isPhysical = ['arrived', 'in-consult', 'dispensing', 'billing'].includes(rawStatus);
     const forensicColor = tabMode === 1 ? '#E65100' : (tabMode === 2 ? '#D32F2F' : '#5D4037');
     const clinicalBorder = '#000000'; // SOLID BLACK FORENSIC ARCHITECTURE
     const forensicBg = '#FFF'; // SOLID WHITE BASELINE
 
     // PHASE 5: REAL-TIME HUD
-    const isResolvedRemotely = ['completed', 'done', 'cancelled', 'no-show', 'carried-over'].includes((realTimeStatus || "").toLowerCase());
+    const isResolvedRemotely = ['completed', 'cancelled', 'no-show', 'carried-over'].includes((realTimeStatus || "").toLowerCase());
 
     return (
         <Paper elevation={0} sx={{
@@ -367,7 +346,7 @@ const AuditPatientCard = React.memo(({
                                 'in-consult': 'CONSULT',
                                 'dispensing': 'PHARMACY',
                                 'billing': 'PAYMENT',
-                                'done': 'COMPLETED',
+                                'completed': 'COMPLETED',
                                 'cancelled': 'CANCELLED',
                                 'carried-over': 'CARRIED OVER'
                             };
@@ -525,6 +504,12 @@ const AuditPatientCard = React.memo(({
                         );
                     })}
                 </Stack>
+                    {/* Inline feedback for handleFetchHistory (replaces alert) */}
+                {historyMessage && (
+                    <Typography variant="caption" sx={{ display: 'block', color: '#D32F2F', fontWeight: '1000', fontSize: '0.58rem', px: 1, pt: 0.5 }}>
+                        {historyMessage}
+                    </Typography>
+                )}
                     {/* PHASE 3: THE MULTI-SHIFT FORENSIC FOOTER (Pivot 6.9.5) */}
                 {(() => {
                     // 🧬 Footer Calculus (Pager-Synced)
@@ -532,9 +517,7 @@ const AuditPatientCard = React.memo(({
                     const targetDate = new Date(targetDateStr);
                     
                     // 🛡️ THE AUDIT PRIORITY LOCK: Check for a database seal for this specific shift
-                    const apptSeal = (activeCaseDay === 0) 
-                        ? patient.forensicSeal 
-                        : (ancestorData?.[patient.id]?.[targetDateStr]?.forensicSeal);
+                    const apptSeal = activeDaySource.forensicSeal;
 
                     const footerMetrics = apptSeal || calculatePulseMetrics(activeDaySource.pulse, settings, activeDaySource.createdAt, targetDate);
 
@@ -615,7 +598,7 @@ const AuditPatientCard = React.memo(({
                         const scenarioMap = {
                             'in-consult': "Patient is mid-consult and requires record closing.",
                             'dispensing': "Pharmacy items are unbilled and require a final inventory audit.",
-                            'payment': "Invoice is currently unpaid and requires reconciliation.",
+                            'billing': "Invoice is currently unpaid and requires reconciliation.",
                             'arrived': "Patient arrived but was never seen by a clinician.",
                             'pending': "Pending online clinical request awaiting triage.",
                             'confirmed': "Patient was scheduled but never arrived at the clinic."
@@ -647,13 +630,14 @@ const AuditPatientCard = React.memo(({
                                 )}
                                 
                                 <Box sx={{ mt: 2 }}>
-                                    <ForensicMetricGrid 
+                                    <ForensicMetricGrid
                                         pulse={activeDaySource.pulse}
                                         settings={settings}
                                         createdAt={activeDaySource.createdAt}
-                                        sealedMetrics={activeCaseDay === 0 ? patient.forensicSeal : (ancestorData?.[patient.id]?.[uniqueDates[activeCaseDay]]?.forensicSeal)}
+                                        sealedMetrics={activeDaySource.forensicSeal}
                                         targetDate={uniqueDates[activeCaseDay] ? new Date(uniqueDates[activeCaseDay]) : new Date()}
                                         cumulativeTotals={cumulativeTotals}
+                                        auditEnd={operationalEnd}
                                     />
                                 </Box>
                             </>
@@ -757,7 +741,7 @@ const AuditPatientCard = React.memo(({
                                                     '&:hover': { bgcolor: isActive ? '#E65100' : 'rgba(255, 160, 0, 0.05)', borderColor: forensicColor }
                                                 }}
                                             >
-                                                {resolution === 'rebook' && tabMode === 2 ? "CARRY-OVER" : label}
+                                                {label}
                                             </Button>
                                         );
                                     })}
@@ -794,7 +778,7 @@ const AuditPatientCard = React.memo(({
 
 const EndOfDayModal = React.memo(({
     open, leftoverPatients, patientResolutions, touchedPatients, auditReasons, targetDates, targetTimes,
-    onResolutionChange, onAuditReasonChange, onBulkResolution, onConfirmReset, isForced, departments, onClose
+    onResolutionChange, onAuditReasonChange, onBulkResolution, onConfirmReset, isForced, departments, onPatientUpdate, onClose
 }) => {
     const [activeTab, setActiveTab] = useState(0);
 
@@ -802,8 +786,9 @@ const EndOfDayModal = React.memo(({
     const [realTimeStatuses, setRealTimeStatuses] = useState({});
     const [loadingRealTime, setLoadingRealTime] = useState(false);
 
-    // 🧬 CLINIC SETTINGS (For Pulse Math)
-    const [settings, setSettings] = useState({ openHour: 8, closeHour: 17, workingDays: [0,1,2,3,4,5,6] });
+    // CLINIC SETTINGS (For Pulse Math) — shared singleton, no local listener
+    const settings = useClinicSettings();
+    const batchTimeSynced = useRef(false);
 
     // PHASE 6: BATCH FORENSIC LITERACY
     const [bulkReason, setBulkReason] = useState("");
@@ -811,18 +796,18 @@ const EndOfDayModal = React.memo(({
     const [batchDate, setBatchDate] = useState(getLocalDateStr());
     const [batchTime, setBatchTime] = useState(settings?.openingTime || "08:00");
 
+    // Sync batchTime once when clinic openingTime first arrives from Firestore
     useEffect(() => {
-        // Fetch Settings for pulse math consistency
-        const unsub = onSnapshot(doc(db, "clinic_settings", "general"), (docSnap) => {
-            if (docSnap.exists()) setSettings(prev => ({ ...prev, ...docSnap.data() }));
-        });
-        return () => unsub();
-    }, []);
+        if (!batchTimeSynced.current && settings?.openingTime) {
+            setBatchTime(settings.openingTime);
+            batchTimeSynced.current = true;
+        }
+    }, [settings?.openingTime]);
 
     // SILO FILTERING LOGIC
     const siloOnline = leftoverPatients.filter(p => (p.status || "").toLowerCase() === 'pending');
-    const siloScheduled = leftoverPatients.filter(p => ['confirmed', 'scheduled'].includes((p.status || "").toLowerCase()));
-    const siloActive = leftoverPatients.filter(p => ['arrived', 'in-consult', 'dispensing', 'billing', 'payment', 'confined', 'on-hold'].includes((p.status || "").toLowerCase()));
+    const siloScheduled = leftoverPatients.filter(p => (p.status || "").toLowerCase() === STATUS.CONFIRMED);
+    const siloActive = leftoverPatients.filter(p => ['arrived', 'in-consult', 'dispensing', 'billing', 'confined', 'on-hold'].includes((p.status || "").toLowerCase()));
 
     const currentSiloPatients = activeTab === 0 ? siloOnline : activeTab === 1 ? siloScheduled : siloActive;
 
@@ -862,7 +847,7 @@ const EndOfDayModal = React.memo(({
         const rtStatus = (realTimeStatuses[p.id] || rawStatus).toLowerCase();
 
         // THE PHYSICAL INTEGRITY CHECK: If they are RESOLVED remotely, they are UNLOCKED for triage
-        const isResolvedRemotely = ['completed', 'done', 'cancelled', 'no-show', 'carried-over'].includes(rtStatus);
+        const isResolvedRemotely = ['completed', 'cancelled', 'no-show', 'carried-over'].includes(rtStatus);
         if (isResolvedRemotely) return false;
 
         // We check if the record has a valid resolution
@@ -878,7 +863,7 @@ const EndOfDayModal = React.memo(({
         return false;
     });
 
-    const resolvedCount = leftoverPatients.filter(p => !!patientResolutions[p.id] || ['completed', 'done', 'cancelled', 'no-show', 'carried-over'].includes((realTimeStatuses[p.id] || p.status || "").toLowerCase())).length;
+    const resolvedCount = leftoverPatients.filter(p => !!patientResolutions[p.id] || ['completed', 'cancelled', 'no-show', 'carried-over'].includes((realTimeStatuses[p.id] || p.status || "").toLowerCase())).length;
     const pendingTriageCount = leftoverPatients.length - resolvedCount;
 
     // PHASE 6: SILO-AWARE PRE-FLIGHT CENSUS (6-COLUMN RECONCILIATION)
@@ -896,7 +881,7 @@ const EndOfDayModal = React.memo(({
         if (!res) return;
 
         const rawStatus = (p.status || "").toLowerCase();
-        const isActive = ['arrived', 'in-consult', 'on-hold', 'dispensing', 'billing', 'admitted'].includes(rawStatus);
+        const isActive = ['arrived', 'in-consult', 'on-hold', 'dispensing', 'billing', 'confined'].includes(rawStatus);
 
         if (res === 'defer') census.defer++;
         else if (res === 'no-show') census.noShow++;
@@ -918,6 +903,7 @@ const EndOfDayModal = React.memo(({
     // SCHEDULING & ANCESTRY STATE
     const [ancestorData, setAncestorData] = useState({}); // { pid: { milestones: [], currentIdx: 0 } }
     const [loadingHistory, setLoadingHistory] = useState({});
+    const [historyMessage, setHistoryMessage] = useState({}); // { pid: string } — inline feedback replacing alert()
 
     // 🧬 PHASE 1: AUTOMATIC ANCESTOR CHAIN RESOLVER
     // Resolves the full originApptId chain for every carry-over record on modal open.
@@ -1010,11 +996,13 @@ const EndOfDayModal = React.memo(({
                     [patient.id]: {
                         milestones: prevMilestones,
                         caseDay: Math.max(1, (patient.caseDay || 1) - 1),
-                        dateLabel: data.createdAt?.toDate ? data.createdAt.toDate().toLocaleDateString() : 'Previous'
+                        dateLabel: data.createdAt?.toDate ? data.createdAt.toDate().toLocaleDateString() : 'Previous',
+                        forensicSeal: data.forensicSeal || null
                     }
                 }));
             } else {
-                alert("No further ancestry found for this clinical case.");
+                setHistoryMessage(prev => ({ ...prev, [patient.id]: "No further ancestry found." }));
+                setTimeout(() => setHistoryMessage(prev => { const n = { ...prev }; delete n[patient.id]; return n; }), 3000);
             }
         } catch (err) { console.error("History fetch failed:", err); }
         setLoadingHistory(prev => ({ ...prev, [patient.id]: false }));
@@ -1038,8 +1026,10 @@ const EndOfDayModal = React.memo(({
         // Here we simulate healing the local record for the session
         const p = leftoverPatients.find(item => item.id === targetedPid);
         if (p) {
-            p.petGender = gender;
-            p.gender = gender; // Ensure all keys are healed locally
+            // Immutable update via parent callback
+            if (onPatientUpdate) {
+                onPatientUpdate(targetedPid, { petGender: gender, gender: gender });
+            }
 
             // --- 🧬 ATOMIC HEALING: Preserve clinical data immediately! ---
             if (p.petId) {
@@ -1294,7 +1284,7 @@ const EndOfDayModal = React.memo(({
 
                                 <Stack direction="row" spacing={0.5}>
                                     <IconButton size="small" onClick={() => {
-                                        onBulkResolution(stagedBulkAction, bulkReason, batchDate, batchTime);
+                                        onBulkResolution(stagedBulkAction, bulkReason, batchDate, batchTime, currentSiloPatients.map(p => p.id));
                                         setStagedBulkAction(null);
                                         setBulkReason("");
                                     }} sx={{ color: '#2E7D32', border: '1px solid #2E7D32' }}>
@@ -1324,6 +1314,7 @@ const EndOfDayModal = React.memo(({
                                 realTimeStatus={realTimeStatuses[patient.id]}
                                 ancestorData={ancestorData[patient.id]}
                                 loadingHistory={loadingHistory[patient.id]}
+                                historyMessage={historyMessage[patient.id]}
                                 departments={departments}
                                 settings={settings}
                                 onResolutionChange={onResolutionChange}

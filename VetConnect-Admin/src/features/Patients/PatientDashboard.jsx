@@ -114,12 +114,17 @@ export default function PatientDashboard() {
 
         const historyData = await Promise.all(snapshot.docs.map(async (docSnap) => {
           const rec = { id: docSnap.id, ...docSnap.data() };
-          if (rec.appointmentId) {
-            const apptDoc = await getDoc(doc(db, "appointments", rec.appointmentId));
-            if (apptDoc.exists()) {
-              const apptData = apptDoc.data();
-              rec.serviceType = apptData.serviceType;
-              rec.prescriptions = apptData.prescribedItems || [];
+          // D5: Prefer native prescriptions; fall back to appointment join for legacy records
+          if (!rec.prescriptions && rec.appointmentId) {
+            try {
+              const apptDoc = await getDoc(doc(db, "appointments", rec.appointmentId));
+              if (apptDoc.exists()) {
+                const apptData = apptDoc.data();
+                rec.serviceType = rec.serviceType || apptData.serviceType;
+                rec.prescriptions = apptData.prescribedItems || [];
+              }
+            } catch (e) {
+              console.warn(`[PatientDashboard] Legacy join failed for ${rec.appointmentId}:`, e);
             }
           }
           return rec;
@@ -248,7 +253,9 @@ export default function PatientDashboard() {
     return Array.from(rxMap.values());
   }, [history]);
 
-  // Vaccination tracker — derive from medical record keywords
+  // Vaccination tracker — prefers structured vaccineData (Phase 4) from the medical
+  // record when available; falls back to keyword-matching against SOAP text for
+  // legacy records that pre-date the structured form.
   const vaccinationStatus = useMemo(() => {
     const VACCINES = [
       { name: 'Rabies', keywords: ['rabies'], intervalDays: 365 },
@@ -256,16 +263,55 @@ export default function PatientDashboard() {
       { name: 'Bordetella', keywords: ['bordetella', 'kennel cough', 'kennel'], intervalDays: 180 },
       { name: 'Leptospirosis', keywords: ['lepto', 'leptospirosis'], intervalDays: 365 },
     ];
+
+    const records = history || [];
+
     return VACCINES.map(vax => {
-      const matches = (history || []).filter(r => {
+      // --- Structured path: check records with a vaccineData object first ---
+      const structuredMatch = records.find(r => {
+        const vaxName = (r.vaccineData?.vaccineName || '').toLowerCase();
+        return vax.keywords.some(kw => vaxName.includes(kw));
+      });
+
+      if (structuredMatch) {
+        const sd = structuredMatch.vaccineData;
+        const lastDate = structuredMatch.date?.toDate
+          ? structuredMatch.date.toDate()
+          : (structuredMatch.date?.seconds ? new Date(structuredMatch.date.seconds * 1000) : null);
+        if (!lastDate) return { ...vax, status: 'unknown', lastDate: null, daysUntilDue: null, lotNumber: sd.lotNumber || null };
+
+        // If the record carries an explicit due date, use it directly
+        const explicitDue = sd.dueDate ? new Date(sd.dueDate) : null;
+        const intervalDays = sd.intervalDays || vax.intervalDays;
+        const daysUntilDue = explicitDue
+          ? Math.floor((explicitDue.getTime() - Date.now()) / 86400000)
+          : intervalDays - Math.floor((Date.now() - lastDate.getTime()) / 86400000);
+
+        const status = daysUntilDue < 0 ? 'overdue' : daysUntilDue <= 30 ? 'due_soon' : 'current';
+        return {
+          ...vax,
+          status, lastDate, daysUntilDue,
+          lotNumber: sd.lotNumber || null,
+          manufacturer: sd.manufacturer || null,
+          routeOfAdmin: sd.routeOfAdmin || null,
+        };
+      }
+
+      // --- Legacy fallback: keyword-match against SOAP / diagnosis text ---
+      const keywordMatches = records.filter(r => {
         const text = [r.diagnosis, r.treatment, r.soap?.subjective, r.soap?.objectiveNotes]
           .filter(Boolean).join(' ').toLowerCase();
         return vax.keywords.some(kw => text.includes(kw));
       });
-      if (matches.length === 0) return { ...vax, status: 'unknown', lastDate: null, daysUntilDue: null };
-      const latest = matches[0];
-      const lastDate = latest.date?.toDate ? latest.date.toDate() : (latest.date?.seconds ? new Date(latest.date.seconds * 1000) : null);
+
+      if (keywordMatches.length === 0) return { ...vax, status: 'unknown', lastDate: null, daysUntilDue: null };
+
+      const latest = keywordMatches[0];
+      const lastDate = latest.date?.toDate
+        ? latest.date.toDate()
+        : (latest.date?.seconds ? new Date(latest.date.seconds * 1000) : null);
       if (!lastDate) return { ...vax, status: 'unknown', lastDate: null, daysUntilDue: null };
+
       const daysSince = Math.floor((Date.now() - lastDate.getTime()) / 86400000);
       const daysUntilDue = vax.intervalDays - daysSince;
       const status = daysUntilDue < 0 ? 'overdue' : daysUntilDue <= 30 ? 'due_soon' : 'current';

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { collection, query, orderBy, limit, onSnapshot, where, Timestamp } from 'firebase/firestore';
 import { db } from '../../../firebaseConfig';
+import { normalizeStatus } from '../../../utils/statusConstants';
 
 /**
  * 🛰️ GLOBAL RECORDS ENGINE (V3: UNIFIED HYBRID)
@@ -16,13 +17,13 @@ export function useGlobalRecords(dateRange = { start: null, end: null }, searchQ
     let q;
     const appointmentsRef = collection(db, "appointments");
 
-    // 🧬 SILO DEFINITIONS
+    // 🧬 SILO DEFINITIONS — canonical status strings only
     const SILOS = {
-      'TRIAGE': ['pending', 'confirmed'],
-      'CLINICAL': ['arrived', 'in-consult', 'on-hold', 'dispensing', 'pharmacy', 'billing', 'payment', 'dispense'],
-      'IN-PATIENT': ['hospitalized', 'admitted', 'confined'],
-      'ARCHIVE': ['completed', 'done', 'carried-over'],
-      'VOIDED': ['cancelled', 'no-show']
+      'TRIAGE':     ['pending', 'confirmed'],
+      'CLINICAL':   ['arrived', 'in-consult', 'on-hold', 'dispensing', 'billing'],
+      'IN-PATIENT': ['confined'],
+      'ARCHIVE':    ['completed', 'carried-over'],
+      'VOIDED':     ['cancelled', 'no-show']
     };
 
     const statusFilter = SILOS[silo] || null;
@@ -76,6 +77,7 @@ export function useGlobalRecords(dateRange = { start: null, end: null }, searchQ
       let fetchedRecords = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
+        status: normalizeStatus(doc.data().status),
         // Normalizing typical date fields for the grid
         jsCreatedAt: doc.data().createdAt?.toDate() || null,
         jsScheduled: doc.data().jsScheduled?.toDate?.() || (doc.data().jsScheduled ? new Date(doc.data().jsScheduled) : null),

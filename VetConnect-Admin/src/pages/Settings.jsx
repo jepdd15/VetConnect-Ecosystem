@@ -230,7 +230,7 @@ export default function Settings() {
         (Array.isArray(u.departments) ? u.departments.includes(name) : u.department === name)
     ).length;
     
-    const serviceCount = allServices.filter(s => (s.department || s.category) === name).length;
+    const serviceCount = allServices.filter(s => !s.isArchived && (s.department || s.category) === name).length;
 
     if (staffCount > 0 || serviceCount > 0) {
         return setToast({ 
@@ -517,7 +517,7 @@ export default function Settings() {
                   .map(dept => {
                     // Calculate real-time usage for the UI Chip
                     const staffU = allStaff.filter(u => u.role === 'staff' && (Array.isArray(u.departments) ? u.departments.includes(dept.name) : u.department === dept.name)).length;
-                    const serviceU = allServices.filter(s => (s.department || s.category) === dept.name).length;
+                    const serviceU = allServices.filter(s => !s.isArchived && (s.department || s.category) === dept.name).length;
                     const totalU = staffU + serviceU;
 
                     return (

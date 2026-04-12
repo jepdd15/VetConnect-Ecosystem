@@ -1,42 +1,48 @@
 import React, { useState, useMemo } from 'react';
-import { 
-  Box, Typography, Button, Paper, TextField, InputAdornment, 
-  FormControl, Select, MenuItem, Snackbar, Alert 
+import {
+  Box, Typography, Button, Paper, TextField, InputAdornment,
+  FormControl, Select, MenuItem, Snackbar, Alert, Tabs, Tab, Switch, FormControlLabel
 } from '@mui/material';
 
-// Icons
 import AddIcon from '@mui/icons-material/Add';
 import SearchIcon from '@mui/icons-material/Search';
+import ArchiveIcon from '@mui/icons-material/Archive';
 
-// Logic & Components
 import { useServices } from './hooks/useServices';
 import ServiceTable from './components/ServiceTable';
+import ServiceActivityLog from './components/ServiceActivityLog';
 import ServiceFormModal from './modals/ServiceFormModal';
+import ServiceLogModal from './modals/ServiceLogModal';
 
-// Design Tokens
 import { FONT, COLORS } from '../../theme/designTokens';
 
 export default function Services() {
-  const { services, inventory, departments, saveService, removeService } = useServices();
+  const { services, inventory, departments, saveService, archiveService, restoreService, removeService } = useServices();
 
-  // --- UI & MODAL STATES ---
+  const [tab, setTab] = useState(0);
+  const [showArchived, setShowArchived] = useState(false);
+
   const [searchText, setSearchText] = useState('');
   const [filterCategory, setFilterCategory] = useState('All');
   const [filterSpecies, setFilterSpecies] = useState('All');
+
   const [open, setOpen] = useState(false);
-  const[selectedItem, setSelectedItem] = useState(null);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [logItem, setLogItem] = useState(null);
+
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' });
   const showToast = (message, severity = 'success') => setToast({ open: true, message, severity });
 
-  // Memoized Filter Engine (Sorting is now handled inside the table)
   const filteredServices = useMemo(() => {
     return services.filter(s => {
-      const matchSearch = (s.name || '').toLowerCase().includes(searchText.toLowerCase());
+      if (!showArchived && s.isArchived) return false;
+      if (showArchived && !s.isArchived) return false;
+      const matchSearch   = (s.name || '').toLowerCase().includes(searchText.toLowerCase());
       const matchCategory = filterCategory === 'All' || (s.department || s.category) === filterCategory;
-      const matchSpecies = filterSpecies === 'All' || s.targetSpecies === filterSpecies || s.targetSpecies === 'Universal';
+      const matchSpecies  = filterSpecies === 'All' || s.targetSpecies === filterSpecies || s.targetSpecies === 'Universal';
       return matchSearch && matchCategory && matchSpecies;
     });
-  }, [services, searchText, filterCategory, filterSpecies]);
+  }, [services, searchText, filterCategory, filterSpecies, showArchived]);
 
   const handleSave = async (formData) => {
     try {
@@ -46,108 +52,171 @@ export default function Services() {
     } catch (e) { showToast(e.message, "error"); }
   };
 
-  const handleDelete = async (id, name) => {
-    if (window.confirm(`Are you sure you want to delete the "${name}" service?`)) {
-      try { await removeService(id); showToast("Service deleted.", "success"); } 
+  const handleArchive = async (id, name) => {
+    if (window.confirm(`Archive "${name}"? It will be hidden from walk-in and booking, but can be restored.`)) {
+      try { await archiveService(id); showToast("Service archived.", "success"); }
       catch (e) { showToast(e.message, "error"); }
     }
   };
 
-  const headerFlatStyle = {
-    background: '#FFF8E1', 
-    border: '2px solid #5D4037',
-    boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)', 
-    borderRadius: 0, 
+  const handleRestore = async (id) => {
+    try { await restoreService(id); showToast("Service restored.", "success"); }
+    catch (e) { showToast(e.message, "error"); }
+  };
+
+  const handleDelete = async (id, name) => {
+    if (window.confirm(`Permanently delete "${name}"? This cannot be undone.`)) {
+      try { await removeService(id); showToast("Service permanently deleted.", "success"); }
+      catch (e) { showToast(e.message, "error"); }
+    }
   };
 
   const clinicalFlatStyle = {
-    background: '#FFF', 
+    background: '#FFF',
     border: '2px solid #5D4037',
-    boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)', 
-    borderRadius: 0, 
+    boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
+    borderRadius: 0,
   };
 
   return (
-    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', gap: 0, overflow: 'hidden', bgcolor: COLORS.surfaceAlt }}>
-      <Paper sx={{ 
-        bgcolor: '#FFF8E1', 
-        border: '0px',
-        borderBottom: '2px solid #5D4037',
-        borderRadius: 0, 
-        p: 2.5, 
-        px: 4,
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        flexWrap: 'wrap', 
-        gap: 2.5, 
-        flexShrink: 0 
-      }}>
-        
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5, flexWrap: 'wrap', flexGrow: 1 }}>
-          <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: '1000', color: '#5D4037', textTransform: 'uppercase', letterSpacing: 1, mr: 1, fontSize: '1.5rem', lineHeight: 1 }}>Services</Typography>
-          
-          <Box sx={{ display: 'flex', alignItems: 'center', bgcolor: '#EFEBE9', borderRadius: 0, border: '2px solid #5D4037', p: 0.5 }}>
-            <TextField 
-              variant="standard" placeholder="SEARCH SERVICES..." value={searchText} onChange={(e) => setSearchText(e.target.value)} 
-              InputProps={{ 
-                  startAdornment: <InputAdornment position="start"><SearchIcon sx={{color: 'rgba(255,255,255,0.8)', ml: 1}}/></InputAdornment>,
-                  disableUnderline: true, style: { color: 'white', fontWeight: 'bold', textTransform: 'uppercase' } 
-              }} 
-              sx={{ width: 260, bgcolor: '#5D4037', borderRadius: 0, px: 2, py: 0.5, '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.6)', opacity: 1 } }} 
-            />
-          </Box>
+    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', bgcolor: COLORS.surfaceAlt }}>
 
-          <FormControl size="small" sx={{ width: 180, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 0 }}>
-              <Select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} displayEmpty sx={{ '& fieldset': { border: 'none' }, fontWeight: 'bold' }}>
+      {/* ── Header / Toolbar ── */}
+      <Paper sx={{
+        bgcolor: '#FFF8E1', border: '0px', borderBottom: '2px solid #5D4037', borderRadius: 0,
+        p: 2.5, px: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        flexWrap: 'wrap', gap: 2.5, flexShrink: 0,
+      }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5, flexWrap: 'wrap', flexGrow: 1 }}>
+          <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: '1000', color: '#5D4037', textTransform: 'uppercase', letterSpacing: 1, mr: 1, fontSize: '1.5rem', lineHeight: 1 }}>
+            Services
+          </Typography>
+
+          {tab === 0 && (
+            <>
+              <Box sx={{ display: 'flex', alignItems: 'center', bgcolor: '#EFEBE9', borderRadius: 0, border: '2px solid #5D4037', p: 0.5 }}>
+                <TextField
+                  variant="standard" placeholder="SEARCH SERVICES..." value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                  InputProps={{
+                    startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: 'rgba(255,255,255,0.8)', ml: 1 }} /></InputAdornment>,
+                    disableUnderline: true, style: { color: 'white', fontWeight: 'bold', textTransform: 'uppercase' },
+                  }}
+                  sx={{ width: 260, bgcolor: '#5D4037', borderRadius: 0, px: 2, py: 0.5, '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.6)', opacity: 1 } }}
+                />
+              </Box>
+
+              <FormControl size="small" sx={{ width: 180, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 0 }}>
+                <Select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} displayEmpty sx={{ '& fieldset': { border: 'none' }, fontWeight: 'bold' }}>
                   <MenuItem value="All">All Departments</MenuItem>
                   {departments.map(d => <MenuItem key={d.id} value={d.name}>{d.name}</MenuItem>)}
-              </Select>
-          </FormControl>
+                </Select>
+              </FormControl>
 
-          <FormControl size="small" sx={{ width: 160, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 0 }}>
-              <Select value={filterSpecies} onChange={(e) => setFilterSpecies(e.target.value)} displayEmpty sx={{ '& fieldset': { border: 'none' }, fontWeight: 'bold' }}>
+              <FormControl size="small" sx={{ width: 160, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 0 }}>
+                <Select value={filterSpecies} onChange={(e) => setFilterSpecies(e.target.value)} displayEmpty sx={{ '& fieldset': { border: 'none' }, fontWeight: 'bold' }}>
                   <MenuItem value="All">All Species</MenuItem>
                   <MenuItem value="Universal">🐾 Universal</MenuItem>
                   <MenuItem value="Canine">🐶 Canine</MenuItem>
                   <MenuItem value="Feline">🐱 Feline</MenuItem>
-              </Select>
-          </FormControl>
-          
-          <Typography variant="body2" sx={{ color: '#5D4037', fontStyle: 'italic', fontWeight: '900', letterSpacing: 0.5, ml: 1 }}>
-            {filteredServices.length} {filteredServices.length === 1 ? 'Record' : 'Records'}
-          </Typography>
+                </Select>
+              </FormControl>
+
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={showArchived}
+                    onChange={(e) => setShowArchived(e.target.checked)}
+                    size="small"
+                    sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: '#E65100' }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: '#E65100' } }}
+                  />
+                }
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <ArchiveIcon sx={{ fontSize: 14, color: showArchived ? '#E65100' : '#9E9E9E' }} />
+                    <Typography variant="caption" sx={{ fontWeight: '900', color: showArchived ? '#E65100' : '#9E9E9E', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      Archived
+                    </Typography>
+                  </Box>
+                }
+              />
+
+              <Typography variant="body2" sx={{ color: '#5D4037', fontStyle: 'italic', fontWeight: '900', letterSpacing: 0.5, ml: 1 }}>
+                {filteredServices.length} {filteredServices.length === 1 ? 'Record' : 'Records'}
+              </Typography>
+            </>
+          )}
         </Box>
 
-        <Box>
-          <Button 
-              variant="contained" startIcon={<AddIcon />} 
-              sx={{ bgcolor: '#FF9800', fontWeight: '1000', boxShadow: '0 4px 15px rgba(255, 152, 0, 0.4)', textTransform: 'uppercase', letterSpacing: 0.5, px: 3, whiteSpace: 'nowrap' }} 
-              onClick={() => { setSelectedItem(null); setOpen(true); }}
+        {tab === 0 && !showArchived && (
+          <Button
+            variant="contained" startIcon={<AddIcon />}
+            sx={{ bgcolor: '#FF9800', fontWeight: '1000', boxShadow: '0 4px 15px rgba(255, 152, 0, 0.4)', textTransform: 'uppercase', letterSpacing: 0.5, px: 3, whiteSpace: 'nowrap' }}
+            onClick={() => { setSelectedItem(null); setOpen(true); }}
           >
             New Service
           </Button>
-        </Box>
+        )}
       </Paper>
 
-      <Box sx={{ flexGrow: 1, overflow: 'hidden', p: 0, bgcolor: COLORS.surface, display: 'flex', flexDirection: 'column' }}>
-        <ServiceTable data={filteredServices} onEdit={(row) => { setSelectedItem(row); setOpen(true); }} onDelete={handleDelete} clinicalFlatStyle={clinicalFlatStyle} departments={departments} />
+      {/* ── Tabs ── */}
+      <Box sx={{ borderBottom: '2px solid #5D4037', bgcolor: '#FFF8E1', flexShrink: 0 }}>
+        <Tabs
+          value={tab}
+          onChange={(_, v) => setTab(v)}
+          sx={{
+            minHeight: 40,
+            '& .MuiTab-root': { fontWeight: '1000', textTransform: 'uppercase', letterSpacing: 1, color: '#9E9E9E', minHeight: 40, fontSize: '0.75rem' },
+            '& .Mui-selected': { color: '#5D4037 !important' },
+            '& .MuiTabs-indicator': { bgcolor: '#5D4037', height: 3 },
+          }}
+        >
+          <Tab label="Service Table" />
+          <Tab label="Activity Log" />
+        </Tabs>
       </Box>
 
+      {/* ── Content ── */}
+      <Box sx={{ flexGrow: 1, overflow: 'hidden', p: tab === 1 ? 2 : 0, bgcolor: COLORS.surface, display: 'flex', flexDirection: 'column' }}>
+        {tab === 0 && (
+          <ServiceTable
+            data={filteredServices}
+            showArchived={showArchived}
+            departments={departments}
+            clinicalFlatStyle={clinicalFlatStyle}
+            onEdit={(row) => { setSelectedItem(row); setOpen(true); }}
+            onArchive={handleArchive}
+            onRestore={handleRestore}
+            onDelete={handleDelete}
+            onLog={(row) => setLogItem(row)}
+          />
+        )}
+        {tab === 1 && <ServiceActivityLog />}
+      </Box>
+
+      {/* ── Modals ── */}
       {open && (
-        <ServiceFormModal 
+        <ServiceFormModal
           key={selectedItem?.id || 'new-service'}
-          open={open} 
-          onClose={() => setOpen(false)} 
-          item={selectedItem} 
-          inventory={inventory} 
-          departments={departments} 
-          onSave={handleSave} 
-          showToast={showToast} 
+          open={open}
+          onClose={() => setOpen(false)}
+          item={selectedItem}
+          inventory={inventory}
+          departments={departments}
+          onSave={handleSave}
+          showToast={showToast}
         />
       )}
 
-      <Snackbar open={toast.open} autoHideDuration={4000} onClose={() => setToast({...toast, open: false})} anchorOrigin={{vertical: 'bottom', horizontal: 'center'}}>
+      {logItem && (
+        <ServiceLogModal
+          open={Boolean(logItem)}
+          onClose={() => setLogItem(null)}
+          item={logItem}
+        />
+      )}
+
+      <Snackbar open={toast.open} autoHideDuration={4000} onClose={() => setToast({ ...toast, open: false })} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert severity={toast.severity} sx={{ width: '100%', fontWeight: 'bold', boxShadow: 3 }}>{toast.message}</Alert>
       </Snackbar>
     </Box>

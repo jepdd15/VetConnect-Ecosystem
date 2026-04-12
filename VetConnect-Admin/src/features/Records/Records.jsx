@@ -34,8 +34,9 @@ import { useQueueActions } from '../Queue/useQueueActions';
 import { ForensicMetricGrid } from '../Queue/ForensicMetricGrid';
 import { useAncestorChain } from './hooks/useAncestorChain';
 import { calculatePulseMetrics } from '../../utils/pulseUtils';
-import { doc, onSnapshot, query, collection, where } from 'firebase/firestore';
+import { query, collection, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
+import { useClinicSettings } from '../../hooks/useClinicSettings';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 
 export default function Records() {
@@ -59,7 +60,6 @@ export default function Records() {
   });
 
   const [vets, setVets] = useState([]);
-  const [departments, setDepartments] = useState([]);
 
   // UI State for Audit Popover
   const [anchorEl, setAnchorEl] = useState(null);
@@ -76,24 +76,18 @@ export default function Records() {
   // --- 🧬 ANCESTOR CHAIN ENGINE ---
   const { ancestors, combinedPulse, combinedServices, loading: loadingAncestors } = useAncestorChain(activeAuditRow);
   
-  // Fetch Clinic Settings for metric math
-  const [settings, setSettings] = React.useState({ openHour: 8, closeHour: 17 });
-  React.useEffect(() => {
-    const unsub = onSnapshot(doc(db, "clinic_settings", "general"), (s) => {
-      if (s.exists()) {
-        const data = s.data();
-        setSettings(data);
-        if (data.departments) setDepartments(data.departments);
-      }
-    });
+  // Clinic settings — shared singleton via useClinicSettings hook
+  const settings = useClinicSettings();
+  // Derive departments list from settings (populated by clinic_settings/general doc)
+  const departments = settings.departments || [];
 
-    // Fetch Vets
+  // Fetch Vets
+  React.useEffect(() => {
     const vetsQuery = query(collection(db, "staff"), where("role", "==", "veterinarian"));
     const unsubVets = onSnapshot(vetsQuery, (s) => {
        setVets(s.docs.map(d => ({ id: d.id, ...d.data() })));
     });
-
-    return () => { unsub(); unsubVets(); };
+    return () => unsubVets();
   }, []);
 
   // Compute Cumulative Metrics
@@ -135,7 +129,7 @@ export default function Records() {
 
   const handleReschedule = async () => {
     try {
-      await rescheduleAppointment(activeAuditRow, rescheduleData.newDate, rescheduleData.reason);
+      await rescheduleAppointment(activeAuditRow, rescheduleData.newDate, rescheduleData.reason, settings);
       setOpenReschedule(false);
       setRescheduleData({ newDate: '', reason: '' });
       handleCloseAudit();
@@ -214,12 +208,12 @@ export default function Records() {
        field: 'status', headerName: 'State Vector', width: 150, align: 'center', headerAlign: 'center',
        renderCell: (p) => {
          const s = String(p.value).toUpperCase();
-         const isTerminal = ['COMPLETED', 'DONE', 'CANCELLED', 'NO-SHOW', 'CARRIED-OVER'].includes(s);
+         const isTerminal = ['COMPLETED', 'CANCELLED', 'NO-SHOW', 'CARRIED-OVER'].includes(s);
          
          let color = '#757575';
-         if (['COMPLETED', 'DONE', 'CARRIED-OVER'].includes(s)) color = COLORS.success;
+         if (['COMPLETED', 'CARRIED-OVER'].includes(s)) color = COLORS.success;
          if (['CANCELLED', 'NO-SHOW'].includes(s)) color = COLORS.danger;
-         if (['IN-CONSULT', 'ARRIVED', 'PHARMACY', 'BILLING'].includes(s)) color = COLORS.medical;
+         if (['IN-CONSULT', 'ARRIVED', 'DISPENSING', 'BILLING', 'ON-HOLD', 'CONFINED'].includes(s)) color = COLORS.medical;
 
          return (
            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -260,7 +254,7 @@ export default function Records() {
   );
 
   const isHistorical = activeAuditRow && (
-    ['completed', 'done', 'cancelled', 'no-show', 'carried-over'].includes(activeAuditRow.status?.toLowerCase()) ||
+    ['completed', 'cancelled', 'no-show', 'carried-over'].includes(activeAuditRow.status?.toLowerCase()) ||
     (activeAuditRow.jsCreatedAt && activeAuditRow.jsCreatedAt < new Date(new Date().setHours(0,0,0,0)))
   );
 

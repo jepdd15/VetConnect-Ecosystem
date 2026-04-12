@@ -3,8 +3,9 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, Typography, Box
 } from '@mui/material';
+import { FONT, COLORS } from '../../../theme/designTokens';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
-import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
+import ArchiveOutlinedIcon from '@mui/icons-material/ArchiveOutlined';
 
 export default function ConfirmDeleteModal({ open, onClose, onConfirm, item }) {
   if (!item) return null;
@@ -15,13 +16,15 @@ export default function ConfirmDeleteModal({ open, onClose, onConfirm, item }) {
       onClose={onClose}
       maxWidth="xs"
       fullWidth
-      PaperProps={{ sx: { borderRadius: 3 } }}
+      PaperProps={{ sx: { borderRadius: 0, border: '2px solid #5D4037', boxShadow: '8px 8px 0px rgba(93,64,55,0.1)' } }}
     >
       <DialogTitle sx={{
-        bgcolor: '#B71C1C', color: 'white', fontWeight: '900',
-        display: 'flex', alignItems: 'center', gap: 1
+        bgcolor: '#FFF8E1', color: '#3E2723', fontWeight: '900',
+        display: 'flex', alignItems: 'center', gap: 1,
+        fontFamily: FONT, textTransform: 'uppercase', letterSpacing: 1,
+        borderBottom: '2px solid #5D4037'
       }}>
-        <DeleteForeverIcon /> Confirm Permanent Deletion
+        <ArchiveOutlinedIcon /> ARCHIVE PRODUCT
       </DialogTitle>
 
       <DialogContent sx={{ p: 4, bgcolor: '#FAFAF9' }}>
@@ -31,7 +34,7 @@ export default function ConfirmDeleteModal({ open, onClose, onConfirm, item }) {
         }}>
           {/* Warning icon */}
           <Box sx={{
-            width: 60, height: 60, borderRadius: '50%',
+            width: 60, height: 60, borderRadius: 0,
             bgcolor: '#FFEBEE', display: 'flex', alignItems: 'center', justifyContent: 'center'
           }}>
             <WarningAmberIcon sx={{ color: '#D32F2F', fontSize: 34 }} />
@@ -40,15 +43,15 @@ export default function ConfirmDeleteModal({ open, onClose, onConfirm, item }) {
           {/* Product name display */}
           <Box>
             <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
-              You are about to permanently delete:
+              You are about to archive:
             </Typography>
             <Typography
               variant="h6"
               fontWeight="900"
               color="#3E2723"
               sx={{
-                bgcolor: '#EFEBE9', px: 3, py: 1.5, borderRadius: 2,
-                border: '1px solid #D7CCC8', display: 'inline-block'
+                bgcolor: '#EFEBE9', px: 3, py: 1.5, borderRadius: 0,
+                border: '2px solid #5D4037', display: 'inline-block'
               }}
             >
               {item.itemName}
@@ -62,16 +65,16 @@ export default function ConfirmDeleteModal({ open, onClose, onConfirm, item }) {
             fontWeight="bold"
             sx={{ maxWidth: 280, lineHeight: 1.6 }}
           >
-            ⚠ This action cannot be undone. The product and its entire audit history will be permanently erased from the database.
+            This product will be hidden from clinical use but retained in the audit trail. You can restore it later from the Archived view.
           </Typography>
         </Box>
       </DialogContent>
 
-      <DialogActions sx={{ p: 2.5, bgcolor: '#FFFFFF', gap: 1 }}>
+      <DialogActions sx={{ p: 2.5, bgcolor: '#FFF8E1', borderTop: '2px solid #5D4037', gap: 1 }}>
         <Button
           onClick={onClose}
           variant="outlined"
-          sx={{ fontWeight: 'bold', borderRadius: 2, flex: 1, borderColor: '#BDBDBD', color: '#424242' }}
+          sx={{ fontWeight: 1000, borderRadius: 0, flex: 1, border: '2px solid #5D4037', color: '#5D4037', fontFamily: FONT }}
         >
           Cancel
         </Button>
@@ -79,9 +82,9 @@ export default function ConfirmDeleteModal({ open, onClose, onConfirm, item }) {
           onClick={() => { onConfirm(item.id, item.itemName); onClose(); }}
           variant="contained"
           color="error"
-          sx={{ fontWeight: '900', borderRadius: 2, flex: 1, boxShadow: '0 4px 14px rgba(211,47,47,0.35)' }}
+          sx={{ fontWeight: 1000, borderRadius: 0, flex: 1, boxShadow: '4px 4px 0px rgba(211,47,47,0.2)', border: '2px solid #B71C1C', fontFamily: FONT }}
         >
-          Delete Permanently
+          ARCHIVE PRODUCT
         </Button>
       </DialogActions>
     </Dialog>

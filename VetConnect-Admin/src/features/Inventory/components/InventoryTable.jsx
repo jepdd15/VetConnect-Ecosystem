@@ -1,16 +1,18 @@
-import React, { useState, useMemo } from 'react';
-import { 
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, 
-  Paper, IconButton, Typography, Chip, Box, Tooltip, TableSortLabel 
+import React, { useState, useMemo, useEffect } from 'react';
+import {
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  Paper, IconButton, Typography, Chip, Box, Tooltip, TableSortLabel, TablePagination
 } from '@mui/material';
 
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
-import ExposureIcon from '@mui/icons-material/Exposure'; 
+import ExposureIcon from '@mui/icons-material/Exposure';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import HistoryIcon from '@mui/icons-material/History';
+import UnarchiveIcon from '@mui/icons-material/Unarchive';
+import { FONT } from '../../../theme/designTokens';
 
-export default function InventoryTable({ data, onEdit, onAdjust, onDelete, onLog }) {
+export default function InventoryTable({ data, onEdit, onAdjust, onDelete, onLog, showArchived, onRestore }) {
   
   const clinicalFlatStyle = {
     background: '#FFF', 
@@ -36,12 +38,18 @@ const getExpiryStatus = (expiryDate) => {
   // Sorting State
   const [order, setOrder] = useState('asc');
   const [orderBy, setOrderBy] = useState('itemName');
-  
+
   const handleRequestSort = (property) => {
     const isAsc = orderBy === property && order === 'asc';
     setOrder(isAsc ? 'desc' : 'asc');
     setOrderBy(property);
   };
+
+  // Pagination State
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
+
+  useEffect(() => { setPage(0); }, [data]);
 
   const calculateMargin = (cost, retail) => {
     if (!cost || !retail || cost >= retail) return 0;
@@ -74,6 +82,8 @@ const getExpiryStatus = (expiryDate) => {
     });
     return sortable;
   }, [data, order, orderBy]);
+
+  const paginatedData = sortedData.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
   const headerSx = { 
     fontWeight: '1000', color: '#5D4037', bgcolor: '#FFF8E1', 
@@ -122,7 +132,7 @@ const getExpiryStatus = (expiryDate) => {
         </TableHead>
         
         <TableBody>
-          {sortedData.map((row) => {
+          {paginatedData.map((row) => {
             const currentStock = Number(row.stock) || 0;
             const minStock = Number(row.minStock) || 10;
             const cost = Number(row.costPrice) || 0;
@@ -239,24 +249,36 @@ const getExpiryStatus = (expiryDate) => {
                         <HistoryIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
-                    
-                    <Tooltip title="Adjust Stock Level" arrow>
-                      <IconButton size="small" onClick={() => onAdjust(row)} sx={{ color: '#1976D2', bgcolor: 'rgba(25, 118, 210, 0.08)', '&:hover': { bgcolor: 'rgba(25, 118, 210, 0.2)' } }}>
-                        <ExposureIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    
-                    <Tooltip title="Edit Product Details" arrow>
-                      <IconButton size="small" onClick={() => onEdit(row)} sx={{ color: '#F57C00', bgcolor: 'rgba(245, 124, 0, 0.08)', '&:hover': { bgcolor: 'rgba(245, 124, 0, 0.2)' } }}>
-                        <EditIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    
-                    <Tooltip title="Delete Item" arrow>
-                      <IconButton size="small" onClick={() => onDelete(row.id, row.itemName)} sx={{ color: '#D32F2F', bgcolor: 'rgba(211, 47, 47, 0.08)', '&:hover': { bgcolor: 'rgba(211, 47, 47, 0.2)' } }}>
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
+
+                    {!showArchived && (
+                      <Tooltip title="Adjust Stock Level" arrow>
+                        <IconButton size="small" onClick={() => onAdjust(row)} sx={{ color: '#1976D2', bgcolor: 'rgba(25, 118, 210, 0.08)', '&:hover': { bgcolor: 'rgba(25, 118, 210, 0.2)' } }}>
+                          <ExposureIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+
+                    {!showArchived && (
+                      <Tooltip title="Edit Product Details" arrow>
+                        <IconButton size="small" onClick={() => onEdit(row)} sx={{ color: '#F57C00', bgcolor: 'rgba(245, 124, 0, 0.08)', '&:hover': { bgcolor: 'rgba(245, 124, 0, 0.2)' } }}>
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+
+                    {showArchived ? (
+                      <Tooltip title="Restore Product" arrow>
+                        <IconButton size="small" onClick={() => onRestore(row.id, row.itemName)} sx={{ color: '#2E7D32', bgcolor: 'rgba(46, 125, 50, 0.08)', '&:hover': { bgcolor: 'rgba(46, 125, 50, 0.2)' } }}>
+                          <UnarchiveIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    ) : (
+                      <Tooltip title="Delete Item" arrow>
+                        <IconButton size="small" onClick={() => onDelete(row.id, row.itemName)} sx={{ color: '#D32F2F', bgcolor: 'rgba(211, 47, 47, 0.08)', '&:hover': { bgcolor: 'rgba(211, 47, 47, 0.2)' } }}>
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
                   </Box>
                 </TableCell>
               </TableRow>
@@ -264,10 +286,27 @@ const getExpiryStatus = (expiryDate) => {
           })}
           
           {(!sortedData || sortedData.length === 0) && (
-            <TableRow><TableCell colSpan={8} align="center" sx={{ py: 10, color: '#888', fontStyle: 'italic', border: 'none' }}>No items found. Adjust filters or click "Add Item" to start.</TableCell></TableRow>
+            <TableRow><TableCell colSpan={9} align="center" sx={{ py: 10, color: '#888', fontStyle: 'italic', border: 'none' }}>No items found. Adjust filters or click "Add Item" to start.</TableCell></TableRow>
           )}
         </TableBody>
       </Table>
+      <TablePagination
+        component="div"
+        count={sortedData.length}
+        page={page}
+        onPageChange={(_, newPage) => setPage(newPage)}
+        rowsPerPage={rowsPerPage}
+        onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
+        rowsPerPageOptions={[10, 25, 50, 100]}
+        sx={{
+          borderTop: '2px solid #5D4037',
+          bgcolor: '#FFF8E1',
+          '& .MuiTablePagination-toolbar': { fontFamily: FONT, fontWeight: 900 },
+          '& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows': {
+            fontFamily: FONT, fontWeight: 900, fontSize: '0.75rem', textTransform: 'uppercase'
+          }
+        }}
+      />
     </TableContainer>
   );
 }

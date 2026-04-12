@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { 
-  Box, Typography, Button, Paper, TextField, InputAdornment, 
-  FormControl, Select, MenuItem, Switch, FormControlLabel, 
-  Snackbar, Alert, IconButton, Tabs, Tab
+import {
+  Box, Typography, Button, Paper, TextField, InputAdornment,
+  FormControl, Select, MenuItem, Switch, FormControlLabel,
+  Snackbar, Alert, IconButton, Tabs, Tab,
+  Dialog, DialogTitle, DialogContent, DialogActions
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
 
@@ -65,11 +66,13 @@ const KPICard = ({ title, value, icon, color, bgcolor, border, onClick, active }
 );
 
 export default function Inventory() {
-  const { inventory, createItem, updateItem, deleteItem, adjustStock, scrubDatabase } = useInventory();
+  const { inventory, createItem, updateItem, deleteItem, restoreItem, adjustStock, scrubDatabase } = useInventory();
   
-  const [searchText, setSearchText] = useState(''); 
+  const [searchText, setSearchText] = useState('');
   const [filterCategory, setFilterCategory] = useState('All');
   const [stockFilter, setStockFilter] = useState(null); // null | 'low' | 'out'
+  const [showArchived, setShowArchived] = useState(false);
+  const [openScrubConfirm, setOpenScrubConfirm] = useState(false);
   
   const [invCategories, setInvCategories] = useState([]);
 
@@ -129,10 +132,11 @@ export default function Inventory() {
 
   // --- KPI ANALYTICS ENGINE ---
   const kpis = useMemo(() => {
+    const activeInventory = inventory.filter(item => !item.isArchived);
     let totalValue = 0, outOfStock = 0, lowStock = 0, expiringSoon = 0;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    inventory.forEach(item => {
+    activeInventory.forEach(item => {
       const stock = Number(item.stock) || 0;
       const min = Number(item.minStock) || 10;
       const cost = Number(item.costPrice) || 0;
@@ -145,7 +149,7 @@ export default function Inventory() {
         if (daysUntil >= 0 && daysUntil <= 30) expiringSoon++;
       }
     });
-    return { totalItems: inventory.length, totalValue, outOfStock, lowStock, expiringSoon };
+    return { totalItems: activeInventory.length, totalValue, outOfStock, lowStock, expiringSoon };
   }, [inventory]);
 
   // --- MEMOIZED FILTER ENGINE ---
@@ -169,9 +173,10 @@ export default function Inventory() {
           matchStock = daysUntil >= 0 && daysUntil <= 30;
         }
       }
-      return matchSearch && matchCat && matchStock;
+      const matchArchive = showArchived ? !!item.isArchived : !item.isArchived;
+      return matchSearch && matchCat && matchStock && matchArchive;
     });
-  }, [inventory, searchText, filterCategory, stockFilter]);
+  }, [inventory, searchText, filterCategory, stockFilter, showArchived]);
 
   // --- HANDLERS ---
   const handleSaveForm = async (data) => {
@@ -199,16 +204,28 @@ export default function Inventory() {
   const handleConfirmDelete = async (id, name) => {
     try {
       await deleteItem(id, name);
-      showToast(`"${name}" permanently deleted.`, 'success');
+      showToast(`"${name}" archived.`, 'success');
+    } catch (e) { showToast(e.message, 'error'); }
+  };
+
+  const handleRestore = async (id, name) => {
+    try {
+      await restoreItem(id, name);
+      showToast(`"${name}" restored to active inventory.`, 'success');
     } catch (e) { showToast(e.message, 'error'); }
   };
 
   const handleScrubDB = async () => {
     try {
-      await scrubDatabase();
-      showToast("Database cleaned & normalized!", "success");
+      const count = await scrubDatabase();
+      setOpenScrubConfirm(false);
+      const msg = count > 0
+        ? `Database cleaned: ${count} record(s) normalized.`
+        : 'Database is already clean. No changes needed.';
+      showToast(msg, "success");
     } catch (e) {
-      showToast("Scrub failed.", "error");
+      setOpenScrubConfirm(false);
+      showToast("Scrub failed: " + e.message, "error");
     }
   };
 
@@ -256,6 +273,13 @@ export default function Inventory() {
             sx={{ ml: 1, flexShrink: 0 }}
           />
 
+          {/* Archived toggle */}
+          <FormControlLabel
+            control={<Switch checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} color="warning" size="small" />}
+            label={<Typography variant="body2" sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.65rem', textTransform: 'uppercase' }} color={showArchived ? '#E65100' : '#5D4037'}>Archived</Typography>}
+            sx={{ ml: 1, flexShrink: 0 }}
+          />
+
           <Typography variant="body2" sx={{ fontFamily: FONT, color: '#5D4037', fontWeight: 900, whiteSpace: 'nowrap', flexShrink: 0, fontStyle: 'italic', ml: 1 }}>
             {filteredItems.length} Records
           </Typography>
@@ -271,7 +295,7 @@ export default function Inventory() {
             Add Item
           </Button>
 
-          <IconButton size="small" onClick={handleScrubDB} sx={{ color: '#5D4037', bgcolor: 'transparent', border: '1px solid #5D403733', ml: 1 }}>
+          <IconButton size="small" onClick={() => setOpenScrubConfirm(true)} sx={{ color: '#5D4037', bgcolor: 'transparent', border: '1px solid #5D403733', ml: 1 }}>
             <AutoFixHighIcon fontSize="small" />
           </IconButton>
         </Paper>
@@ -312,12 +336,14 @@ export default function Inventory() {
 
       {/* THE TABLE */}
       {activeTab === 0 && (
-        <InventoryTable 
-          data={filteredItems} 
+        <InventoryTable
+          data={filteredItems}
           onEdit={(item) => { setSelectedItem(item); setOpenForm(true); }}
           onAdjust={(item) => { setSelectedItem(item); setOpenAdjust(true); }}
           onLog={(item) => { setSelectedItem(item); setOpenLog(true); }}
           onDelete={handleDelete}
+          showArchived={showArchived}
+          onRestore={handleRestore}
         />
       )}
 
@@ -363,6 +389,22 @@ export default function Inventory() {
         item={selectedItem}
         onConfirm={handleConfirmDelete}
       />
+
+      <Dialog open={openScrubConfirm} onClose={() => setOpenScrubConfirm(false)} maxWidth="xs" fullWidth
+        PaperProps={{ sx: { borderRadius: 0, border: '2px solid #5D4037', boxShadow: '8px 8px 0px rgba(93,64,55,0.1)' } }}>
+        <DialogTitle sx={{ bgcolor: '#FFF8E1', color: '#3E2723', fontWeight: 1000, borderBottom: '2px solid #5D4037', fontFamily: FONT, textTransform: 'uppercase', letterSpacing: 1, fontSize: '1rem' }}>
+          CONFIRM DATABASE SCRUB
+        </DialogTitle>
+        <DialogContent sx={{ p: 3, bgcolor: '#FAF9F7' }}>
+          <Typography variant="body2" sx={{ fontFamily: FONT, color: '#5D4037' }}>
+            This will normalize all category names to lowercase, remove duplicate categories, and update all inventory items to use normalized category names.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, bgcolor: '#FFF8E1', borderTop: '2px solid #5D4037' }}>
+          <Button onClick={() => setOpenScrubConfirm(false)} sx={{ fontWeight: 1000, color: '#5D4037', borderRadius: 0, border: '2px solid #5D4037', fontFamily: FONT }}>CANCEL</Button>
+          <Button onClick={handleScrubDB} variant="contained" sx={{ bgcolor: '#D84315', fontWeight: 1000, borderRadius: 0, border: '2px solid #BF360C', boxShadow: '4px 4px 0px rgba(216,67,21,0.2)', fontFamily: FONT, '&:hover': { bgcolor: '#BF360C' } }}>RUN SCRUB</Button>
+        </DialogActions>
+      </Dialog>
 
       <Snackbar open={toast.open} autoHideDuration={4000} onClose={()=>setToast({...toast, open: false})} anchorOrigin={{vertical: 'bottom', horizontal: 'center'}}>
         <Alert severity={toast.severity} sx={{ width: '100%', fontFamily: FONT, fontWeight: 'bold', boxShadow: 3 }}>{toast.message}</Alert>

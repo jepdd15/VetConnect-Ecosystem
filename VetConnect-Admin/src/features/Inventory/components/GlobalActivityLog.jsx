@@ -13,6 +13,9 @@ import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import TuneIcon from '@mui/icons-material/Tune';
+import PaidIcon from '@mui/icons-material/Paid';
+import ArchiveOutlinedIcon from '@mui/icons-material/ArchiveOutlined';
+import UnarchiveOutlinedIcon from '@mui/icons-material/UnarchiveOutlined';
 
 // --- Color token map for each action type ---
 const ACTION_CONFIG = {
@@ -20,6 +23,9 @@ const ACTION_CONFIG = {
   UPDATED:  { label: 'Updated',   color: '#7B1FA2', bg: '#F3E8FF',  Icon: EditOutlinedIcon },
   ADJUSTED: { label: 'Adjusted',  color: '#2E7D32', bg: '#F0FDF4',  Icon: TuneIcon },
   DELETED:  { label: 'Deleted',   color: '#C62828', bg: '#FEF2F2',  Icon: DeleteOutlineIcon },
+  SOLD:     { label: 'Sold',      color: '#2E7D32', bg: '#F0FDF4',  Icon: PaidIcon },
+  ARCHIVED: { label: 'Archived',  color: '#E65100', bg: '#FFF3E0',  Icon: ArchiveOutlinedIcon },
+  RESTORED: { label: 'Restored',  color: '#2E7D32', bg: '#F0FDF4',  Icon: UnarchiveOutlinedIcon },
 };
 
 const headerSx = {

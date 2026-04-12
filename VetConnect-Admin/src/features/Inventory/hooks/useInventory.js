@@ -86,6 +86,13 @@ export function useInventory() {
     const { openingStock, ...itemData } = data;
     const initialStock = Number(openingStock) || 0;
     const cleanData = { ...itemData, category: (itemData.category || '').trim().toLowerCase() };
+    if (cleanData.lotNumber && cleanData.expiryDate && initialStock > 0) {
+      cleanData.batches = [{
+        batchNumber: cleanData.lotNumber,
+        expiryDate: cleanData.expiryDate,
+        qty: initialStock
+      }];
+    }
     const docRef = await addDoc(collection(db, "inventory"), { ...cleanData, stock: initialStock, reserved: 0 });
     await logEvent(docRef.id, itemData.itemName, "CREATED", 0, "Initial Product Entry");
     if (initialStock > 0) {
@@ -108,6 +115,24 @@ export function useInventory() {
   const deleteItem = async (id, itemName) => {
     await deleteDoc(doc(db, "inventory", id));
     await logEvent(id, itemName || "Unknown", "DELETED", 0, "Permanently Removed from Database");
+  };
+
+  // ARCHIVE (SOFT-DELETE)
+  const archiveItem = async (id, itemName) => {
+    await updateDoc(doc(db, "inventory", id), {
+      isArchived: true,
+      archivedAt: serverTimestamp(),
+    });
+    await logEvent(id, itemName || "Unknown", "ARCHIVED", 0, "Product archived (soft-deleted)");
+  };
+
+  // RESTORE
+  const restoreItem = async (id, itemName) => {
+    await updateDoc(doc(db, "inventory", id), {
+      isArchived: false,
+      restoredAt: serverTimestamp(),
+    });
+    await logEvent(id, itemName || "Unknown", "RESTORED", 0, "Product restored from archive");
   };
 
   // ADJUST STOCK (+ or -)
@@ -185,12 +210,15 @@ export function useInventory() {
 
       if (modifications > 0) {
         await batch.commit();
+        await logEvent("SYSTEM", "Database Scrub", "ADJUSTED", 0, `Scrub normalized ${modifications} record(s): duplicates removed, category casing fixed`);
         console.log(`Scrubbed ${modifications} duplicate/uppercase records!`);
       }
+      return modifications;
     } catch(e) {
       console.error("Scrub error", e);
+      throw e;
     }
   };
 
-  return { inventory, loading, createItem, updateItem, deleteItem, adjustStock, scrubDatabase, reserveStock, releaseStock };
+  return { inventory, loading, createItem, updateItem, deleteItem: archiveItem, permanentlyDeleteItem: deleteItem, restoreItem, adjustStock, scrubDatabase, reserveStock, releaseStock };
 }

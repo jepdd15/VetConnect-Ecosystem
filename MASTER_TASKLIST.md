@@ -98,9 +98,9 @@
 | T2.153 | Pass `loading` from useInventory to InventoryTable. Add loading skeleton. | 10 min | — | DONE | |
 | T2.154 | Add `isAdmin` guard on scrubDatabase button in Inventory.jsx | 5 min | — | DONE | |
 | T2.155 | ProductFormModal: add category required validation. Add costPrice `< 0` validation. | 10 min | — | DONE | |
-| T2.177 | Settings.jsx: add `useUser()` + `isAdmin` guard. Redirect non-admin. | 10 min | — | TODO | Any user can modify clinic-wide settings via URL |
-| T2.178 | Closed dates: auto-persist on add/remove via `setDoc` immediately. Add navigation guard for unsaved fields. | 30 min | — | TODO | Closed dates lost on navigation |
-| T2.179 | Category delete: add usage shield — count inventory items before allowing delete. | 20 min | — | TODO | Deleting "medicine" breaks isMedicine lookup |
+| T2.177 | Settings.jsx: add `useUser()` + `isAdmin` guard. Redirect non-admin. | 10 min | — | DONE | Route guard from T2.262 + in-component useUser for attribution |
+| T2.178 | Closed dates: auto-persist on add/remove via `setDoc` immediately. Add navigation guard for unsaved fields. | 30 min | — | DONE | beforeunload handler + Save button unsaved indicator |
+| T2.179 | Category delete: add usage shield — count inventory items before allowing delete. | 20 min | — | DONE | One-shot getDocs count, case-insensitive match |
 | T2.191 | Service archive/delete: add active-appointment guard. Block if services referenced by non-terminal appointments. | 30 min | — | DONE | **Review fix:** limit(500) + Array.isArray guard on appointments query |
 | T2.192 | Service delete: add `isAdmin` guard. Only show delete button for admin users. | 10 min | — | DONE | |
 | T2.193 | ServiceFormModal: negative validation for price (`< 0`), duration (`<= 0`), bufferTime (`< 0`). Add `min` on inputs. | 10 min | — | DONE | **Review fix:** isNaN() checks added for non-numeric strings |
@@ -179,14 +179,14 @@
 | T2.170 | GlobalActivityLog: full filtering — action type, date range, product search, user filter, paginated queries. | 3 hrs | T2.150 | DONE | **Review fix:** composite index requirement documented; needs inventory_logs(action ASC, timestamp DESC) |
 | T2.175 | Allergen safety system: `allergyTags[]` on ALL products + cart-add check in ClinicalWorkspace + Option C dispensing routing + DispensingVerificationDialog cross-check | 1.5 hrs | T2.119 | TODO | Decision locked: Option C + Approach 2 |
 | T2.176 | Client-facing dispensing label: per-medication printable label | 1.5 hrs | — | TODO | Benefits from T2.147 for lot/expiry |
-| T2.180 | Department + category CRUD audit trail: write to `settings_logs` collection | 30 min | — | TODO | Closes audit gap #4 |
-| T2.181 | Settings save field-level diff: write changed fields to `settings_logs` | 30 min | — | TODO | Closes audit gap #5 |
-| T2.182 | Wire `autoNoShowMins`: No-Show button disabled until threshold. Tooltip: "No-Show window opens at [time] per clinic policy" (Option B). | 30 min | — | TODO | Decision locked: wire + Option B |
-| T2.183 | Wire `maxFutureBookingDays`: date picker constraint in BookAppointment | 15 min | — | TODO | Decision locked: wire |
-| T2.184 | Settings bounds validation: minSlotInterval > 0, maxPetsPerBooking 1-10, trafficModerate < trafficHigh, etc. | 20 min | — | TODO | |
+| T2.180 | Department + category CRUD audit trail: write to `settings_logs` collection | 30 min | — | DONE | logSettingsEvent helper, wired to dept/cat CRUD |
+| T2.181 | Settings save field-level diff: write changed fields to `settings_logs` | 30 min | — | DONE | **Review fix:** sanitized baseline prevents spurious diffs on first save |
+| T2.182 | Wire `autoNoShowMins`: No-Show button disabled until threshold. Tooltip: "No-Show window opens at [time] per clinic policy" (Option B). | 30 min | — | DONE | **Review fix:** `??` instead of `\|\|` so explicit 0 is respected |
+| T2.183 | Wire `maxFutureBookingDays`: date picker constraint in BookAppointment | 15 min | — | DONE | maximumDate on DateTimePicker |
+| T2.184 | Settings bounds validation: minSlotInterval > 0, maxPetsPerBooking 1-10, trafficModerate < trafficHigh, etc. | 20 min | — | DONE | **Review fix:** workingDays deselect guard in onChange |
 | T2.188 | Services non-checkable in dispensing checklist: auto-verified, shown for context. Button: "VERIFY ALL X PRODUCTS". | 20 min | — | TODO | User's design |
 | T2.189 | Dosage/concentration display in dispensing checklist: propagate `dosage` from inventory item to cart item | 15 min | — | TODO | Pharmacy safety |
-| T2.190 | No-show rebook detection: auto-detect on pet selection, `rebookedFromId` + `noShowCount`, banners in BookAppointment (client) + WalkInModal (staff) + ClinicalWorkspace (vet chip). Option A matching, 30-day window, most-recent + count. | 2 hrs | — | TODO | Full no-show return lifecycle |
+| T2.190 | No-show rebook detection: auto-detect on pet selection, `rebookedFromId` + `noShowCount`, banners in BookAppointment (client) + WalkInModal (staff) + ClinicalWorkspace (vet chip). Option A matching, 30-day window, most-recent + count. | 2 hrs | — | DONE | **Review fixes:** conditional spread (no pollution when count=0), Manila timezone cutoff, clinicPhone Alert instead of fake fallback |
 | T2.194 | Audit diff: track individual pricing tier changes (minWeight, maxWeight, price per tier). | 30 min | — | DONE | Per-tier add/remove/change with exact values |
 | T2.195 | Tier validation: overlap, gap, inversion checks before save. | 30 min | — | DONE | **Review fix:** overlap uses strict < (touching boundaries allowed) |
 | T2.196 | Add `createdAt`/`updatedAt` with `serverTimestamp()` to service documents. | 5 min | — | DONE | |
@@ -203,7 +203,7 @@
 
 | ID | Name | Effort | Depends On | Status | Notes |
 |---|---|---|---|---|---|
-| T2.7 | Move hardcoded clinic phone to settings | 30 min | — | TODO | |
+| T2.7 | Move hardcoded clinic phone to settings | 30 min | — | DONE | clinicPhone in useClinicSettings defaults; SuperCard, ChatbotScreen, ClientAppointments updated |
 | T2.10 | Delete orphaned Firestore collections | 5 min | — | TODO | |
 | T2.11 | Wire mobile to secureBookAppointment (Blaze) | 1-2 hrs | T2.9 | TODO | |
 | T2.17 | Rename Treatment Plan sidebar → Services & Items | 5 min | — | TODO | |
@@ -277,9 +277,9 @@
 | T2.174b | Quick-add category: auto-detect isMedicine from medical keywords (antibiotic, vaccine, etc.) | 15 min | T2.162 | TODO | Review finding — "antibiotic" category defaults to isMedicine:false |
 | T2.174c | `normalizeInventoryLog` sign ambiguity: old sale logs with positive `quantity` show up-arrow for "Sold" | 15 min | T2.150 | TODO | Review finding — backward compat edge case, need sign convention for SOLD action |
 | T2.174d | `adjustStock` hook: trim `batchInfo.batchNumber` at hook level for self-protecting contract | 5 min | T2.152 | TODO | Review finding — modal trims, but direct callers don't |
-| T2.185 | Settings: replace services + users listeners with one-shot getDocs | 15 min | — | TODO | 5 listeners excessive |
-| T2.186 | Settings: replace 2 window.confirm() with MUI Dialog | 10 min | — | TODO | |
-| T2.187 | Settings: delete dead variable `dashboardCream` | 1 min | — | TODO | |
+| T2.185 | Settings: replace services + users listeners with one-shot getDocs | 15 min | — | DONE | refreshUsageCounts helper for post-mutation refresh |
+| T2.186 | Settings: replace 2 window.confirm() with MUI Dialog | 10 min | — | DONE | **Review fix:** Dialog Cancel borderRadius: 0 |
+| T2.187 | Settings: delete dead variable `dashboardCream` | 1 min | — | DONE | |
 | T2.200 | Services: delete dead code (clinicalFlatStyle prop, useNavigate, CircleIcon). Keep isAdmin import for T2.192. | 5 min | — | DONE | |
 | T2.201 | Services: `restoreService` clear `archivedAt` on restore | 5 min | — | DONE | Uses deleteField() |
 | T2.202 | Services: extract shared ACTION_CONFIG to `src/utils/serviceLogConfig.js` | 10 min | — | DONE | |

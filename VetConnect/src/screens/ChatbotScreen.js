@@ -22,10 +22,9 @@ export default function ChatbotScreen({ navigation }) {
   const [clinicSettings, setClinicSettings] = useState({
     openHour: 8,
     closeHour: 17,
+    clinicPhone: '',
   });
   const [isTyping, setIsTyping] = useState(false);
-
-  const CLINIC_PHONE = "09123456789";
   const CLINIC_MAPS_URL =
     "https://maps.google.com/?q=Starbarks+Veterinary+Clinic+Malanay+Santa+Barbara+Pangasinan";
 
@@ -75,7 +74,9 @@ export default function ChatbotScreen({ navigation }) {
   }, [navigation]);
 
   const handleCallClinic = () => {
-    Linking.openURL(`tel:${CLINIC_PHONE}`);
+    const phone = clinicSettings.clinicPhone;
+    if (!phone) { Alert.alert('Clinic Phone', 'Clinic phone number has not been configured yet.'); return; }
+    Linking.openURL(`tel:${phone}`);
   };
   const handleOpenMaps = () => {
     Linking.openURL(CLINIC_MAPS_URL);

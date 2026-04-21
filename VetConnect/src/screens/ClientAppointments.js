@@ -83,6 +83,23 @@ const ClientAppointments = ({ navigation }) => {
   // Populated for follow-up ghost appointments so we can show the real diagnosis + vet name.
   const [parentRecords, setParentRecords] = useState({});
 
+  // Clinic phone — fetched once from clinic_settings/general.
+  // Passed down to SuperCard for the "Call Clinic" button.
+  const [clinicPhone, setClinicPhone] = useState('');
+
+  useEffect(() => {
+    const fetchClinicPhone = async () => {
+      try {
+        const snap = await getDoc(doc(db, 'clinic_settings', 'general'));
+        if (snap.exists()) setClinicPhone(snap.data().clinicPhone || '');
+      } catch (e) {
+        // Non-critical — SuperCard degrades gracefully without a phone number
+        console.warn('[ClientAppointments] clinic_settings fetch failed:', e.message);
+      }
+    };
+    fetchClinicPhone();
+  }, []);
+
   // 1. Fetch Data
   useEffect(() => {
     const q = query(
@@ -546,7 +563,7 @@ const ClientAppointments = ({ navigation }) => {
   return (
     <View style={styles.container}>
       {/* SUPER-CARD — pinned above tabs so it stays visible while switching tabs */}
-      <SuperCard appointment={activeAppointment} />
+      <SuperCard appointment={activeAppointment} clinicPhone={clinicPhone} />
 
       {/* TABS */}
       <View style={styles.tabContainer}>

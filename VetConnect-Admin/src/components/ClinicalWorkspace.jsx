@@ -1317,6 +1317,25 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
               }}
             />
 
+            {/* No-show lineage chip — display-only, reads written field from appointment doc */}
+            {patient?.noShowCount > 0 && (
+              <Tooltip
+                title={patient.rebookedFromId
+                  ? `Rebooked after ${patient.noShowCount} no-show${patient.noShowCount > 1 ? 's' : ''} in the last 30 days`
+                  : `${patient.noShowCount} no-show${patient.noShowCount > 1 ? 's' : ''} recorded in the last 30 days`
+                }
+              >
+                <Chip
+                  label={`${patient.noShowCount} NO-SHOW${patient.noShowCount > 1 ? 'S' : ''} (30D)`}
+                  size="small"
+                  sx={{
+                    height: 20, fontSize: '0.56rem', fontWeight: 1000,
+                    bgcolor: '#F57C00', color: 'white', cursor: 'help',
+                  }}
+                />
+              </Tooltip>
+            )}
+
             {/* WNL Button */}
             <Button size="small" variant="text" onClick={() => applyTemplate('wnl')}
               sx={{ fontSize: '0.65rem', fontWeight: 800, color: COLORS.brand, minWidth: 'auto', px: 1 }}>

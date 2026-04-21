@@ -20,6 +20,7 @@ import CakeIcon from '@mui/icons-material/Cake';
 import { collection, doc, runTransaction, Timestamp, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 import { useUser } from '../../context/UserContext';
+import { detectNoShows } from '../../utils/noShowDetection';
 
 export default function WalkInModal({ open, onClose, servicesList, departments }) {
   const { profile } = useUser();
@@ -52,6 +53,9 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
   const [showAllergyInput, setShowAllergyInput] = useState(false);
   const [allergyArray, setAllergyArray] = useState([]);
   const [currentAllergyInput, setCurrentAllergyInput] = useState('');
+
+  // No-show detection — populated after a pet is selected for existing clients
+  const [noShowInfo, setNoShowInfo] = useState(null);
   
   // --- PH PHONE VALIDATION ENGINE ---
   const isValidPHPhone = (number) => {
@@ -92,11 +96,27 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
     }
   }, [selectedClient]);
 
+  // Check for recent no-shows whenever an existing pet is selected
+  useEffect(() => {
+    if (!selectedPet?.id) {
+      setNoShowInfo(null);
+      return;
+    }
+    let cancelled = false;
+    detectNoShows([selectedPet.id]).then((result) => {
+      if (!cancelled) setNoShowInfo(result.count > 0 ? result : null);
+    }).catch(() => {
+      if (!cancelled) setNoShowInfo(null);
+    });
+    return () => { cancelled = true; };
+  }, [selectedPet?.id]);
+
   const handleClose = () => {
     setErrorMsg(''); setWalkInType('existing'); setSelectedClient(null);
     setGuestName(''); setGuestPhone(''); setGuestEmail(''); setTriageNotes('');
     setGuestPetData({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', microchip: '', petAllergies: '', weight: '' });
     setSelectedServices([]);
+    setNoShowInfo(null);
     setConfirmDiscard(false);
     setConfirmSubmit(false);
     onClose();
@@ -334,9 +354,13 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
           
           status: 'arrived', // Overall context
           caseDay: 1, // THE INITIAL PULSE
-          queueNumber: newNumber, ticketPrefix: isEmergency ? 'E' : 'W', priority: isEmergency ? 'high' : 'normal', 
-          scheduledDate: Timestamp.now(), createdAt: Timestamp.now(), timeArrived: Timestamp.now(), 
-          notes: isEmergency ? `🚨 EMERGENCY: ${triageNotes}` : triageNotes, 
+          queueNumber: newNumber, ticketPrefix: isEmergency ? 'E' : 'W', priority: isEmergency ? 'high' : 'normal',
+          scheduledDate: Timestamp.now(), createdAt: Timestamp.now(), timeArrived: Timestamp.now(),
+          notes: isEmergency ? `🚨 EMERGENCY: ${triageNotes}` : triageNotes,
+          ...(noShowInfo?.count > 0 ? {
+            rebookedFromId: noShowInfo.mostRecent?.id || null,
+            noShowCount: noShowInfo.count,
+          } : {}),
           assignedVetId: null, assignedVet: 'Unassigned',
           clinicalPulse: [
             {
@@ -506,6 +530,35 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
                 )}
             </Paper>
         ) : null}
+
+        {/* No-show warning banner — shown when selected pet has recent no-shows */}
+        {noShowInfo && noShowInfo.count > 0 && (
+          <Alert
+            severity="warning"
+            icon={<WarningIcon fontSize="small" />}
+            sx={{
+              mb: 2,
+              fontWeight: '1000',
+              borderRadius: 1,
+              border: '2px solid #F57C00',
+              py: 0.5,
+              fontSize: '0.8rem',
+            }}
+          >
+            <Typography sx={{ fontWeight: '1000', fontSize: '0.8rem' }}>
+              NO-SHOW HISTORY: {noShowInfo.count} no-show{noShowInfo.count > 1 ? 's' : ''} in the last 30 days.
+            </Typography>
+            {noShowInfo.mostRecent?.scheduledDate && (
+              <Typography sx={{ fontWeight: '800', fontSize: '0.72rem', opacity: 0.85 }}>
+                Most recent:{' '}
+                {(noShowInfo.mostRecent.scheduledDate.toDate
+                  ? noShowInfo.mostRecent.scheduledDate.toDate()
+                  : new Date(noShowInfo.mostRecent.scheduledDate)
+                ).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}
+              </Typography>
+            )}
+          </Alert>
+        )}
 
         {(walkInType === 'guest' || isNewPet) && (
             <Paper elevation={0} sx={{ p: 2, mb: 2, borderRadius: 1, border: '1px solid #D7CCC8', bgcolor: '#FFF' }}>

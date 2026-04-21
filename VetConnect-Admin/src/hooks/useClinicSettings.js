@@ -14,6 +14,7 @@ const DEFAULT_SETTINGS = {
   closedDates: [], // ISO YYYY-MM-DD strings, sorted asc
   clinicName: 'Starbarks Veterinary Clinic',
   clinicAddress: 'Santa Barbara, Pangasinan',
+  clinicPhone: '', // Configurable via Settings > General — displayed to clients
 };
 
 // --- Module-level singleton store ---

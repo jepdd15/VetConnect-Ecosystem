@@ -41,7 +41,7 @@ const calculateAgeString = (dob, isAgeExact) => {
     return isAgeExact === false ? `${ageBase} (EST)` : ageBase;
 };
 
-export const getQueueColumns = (tabValue, currentTime, actions, isToday, departments, isTomorrow) => [
+export const getQueueColumns = (tabValue, currentTime, actions, isToday, departments, isTomorrow, clinicSettings) => [
   { 
     field: 'identity', headerName: 'Patient Identity', flex: 1, minWidth: 220, 
     resizable: false, sortable: false, disableColumnMenu: true,
@@ -559,7 +559,10 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
         }
       const btnStyle = { textTransform: 'uppercase', fontWeight: '900', px: 2, borderRadius: 2, letterSpacing: 0.5, height: 32, fontSize: '0.75rem' };
       const scheduled = params.row.jsScheduled;
-      const isVeryLate = scheduled && (currentTime - scheduled) / 60000 >= 30;
+      const autoNoShowMins = clinicSettings?.autoNoShowMins ?? 30;
+      const minsLate = scheduled ? (currentTime - scheduled) / 60000 : 0;
+      const noShowWindowOpen = scheduled != null && minsLate >= autoNoShowMins;
+      const noShowOpenTime = scheduled ? new Date(scheduled.getTime() + autoNoShowMins * 60000) : null;
 
       if (params.row.status === 'pending') {
         return (
@@ -648,16 +651,26 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                 >
                     Time
                 </Button>
-                <Button 
-                    variant="outlined" 
-                    size="small" 
-                    color="error"
-                    sx={{ ...btnStyle, fontSize: '0.6rem', px: 0, borderColor: 'rgba(211, 47, 47, 0.3)', minWidth: 0, height: 26 }} 
-                    startIcon={<PersonOffIcon sx={{ fontSize: '10px !important' }} />} 
-                    onClick={() => actions.handleQuickNoShow(params.row)}
+                <Tooltip
+                    title={noShowWindowOpen
+                        ? "Flag this patient as No-Show"
+                        : `No-Show window opens at ${noShowOpenTime?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || '??:??'} per clinic policy`
+                    }
                 >
-                    No-Show
-                </Button>
+                  <span>
+                    <Button
+                        variant="outlined"
+                        size="small"
+                        color="error"
+                        disabled={!noShowWindowOpen}
+                        sx={{ ...btnStyle, fontSize: '0.6rem', px: 0, borderColor: noShowWindowOpen ? 'rgba(211, 47, 47, 0.3)' : 'rgba(0,0,0,0.08)', minWidth: 0, height: 26 }}
+                        startIcon={<PersonOffIcon sx={{ fontSize: '10px !important' }} />}
+                        onClick={() => actions.handleQuickNoShow(params.row)}
+                    >
+                        No-Show
+                    </Button>
+                  </span>
+                </Tooltip>
                 <Button 
                     variant="outlined" 
                     size="small" 

@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { 
+import {
   Box, Typography, Paper, Button, FormControl, InputLabel, Select, MenuItem,
-  Snackbar, Alert, InputAdornment, TextField, Switch, FormControlLabel, 
-  Divider, Stack, Chip, ListItemText, ToggleButton, ToggleButtonGroup 
+  Snackbar, Alert, InputAdornment, TextField, Switch, FormControlLabel,
+  Divider, Stack, Chip, ListItemText, ToggleButton, ToggleButtonGroup,
+  Dialog, DialogTitle, DialogContent, DialogActions
 } from '@mui/material';
 import Grid from '@mui/material/Grid'; // MUI v6 Standard
 import { styled } from '@mui/material/styles';
 
-import { doc, setDoc, Timestamp, collection, onSnapshot, addDoc, deleteDoc, query } from 'firebase/firestore';
-import { db, auth } from '../firebaseConfig';
+import { doc, setDoc, Timestamp, collection, onSnapshot, addDoc, deleteDoc, getDocs } from 'firebase/firestore';
+import { db } from '../firebaseConfig';
 
 // Icons
 import SettingsSuggestIcon from '@mui/icons-material/SettingsSuggest';
@@ -27,6 +28,7 @@ import BlockIcon from '@mui/icons-material/Block';
 
 // Design Tokens
 import { FONT, TYPE, COLORS } from '../theme/designTokens';
+import { useUser } from '../context/UserContext';
 
 // Expanded, Neutral Brand Colors for the Color Picker
 const COLOR_PALETTE =[
@@ -87,6 +89,7 @@ const MedicinePillSwitch = styled(Switch)(({ theme }) => ({
 }));
 
 export default function Settings() {
+  const { profile, isAdmin } = useUser();
   const [loading, setLoading] = useState(false);
   const[toast, setToast] = useState({ open: false, message: '', severity: 'success' });
 
@@ -104,8 +107,6 @@ export default function Settings() {
     borderRadius: 0,
     boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
   };
-
-  const dashboardCream = '#FAF8F5';
 
   // --- CONFIGURATION STATE ---
   const [settings, setSettings] = useState({
@@ -132,6 +133,12 @@ export default function Settings() {
   // --- CLOSED DATES STATE ---
   const [newClosedDate, setNewClosedDate] = useState('');
 
+  // --- DIRTY TRACKING: Baseline for unsaved-changes detection ---
+  const [lastSavedSettings, setLastSavedSettings] = useState(null);
+
+  // --- CONFIRM DIALOG STATE ---
+  const [confirmDelete, setConfirmDelete] = useState({ open: false, type: '', id: '', name: '' });
+
   // --- DEPENDENCY STATES (For Usage Shield) ---
   const [allServices, setAllServices] = useState([]);
   const [allStaff, setAllStaff] = useState([]);
@@ -139,7 +146,22 @@ export default function Settings() {
   useEffect(() => {
     // 1. Fetch Global Settings
     const unsubSettings = onSnapshot(doc(db, "clinic_settings", "general"), (docSnap) => {
-      if (docSnap.exists()) setSettings(prev => ({ ...prev, ...docSnap.data() }));
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setSettings(prev => ({ ...prev, ...data }));
+        // Seed the baseline only on first load — subsequent saves update it explicitly
+        setLastSavedSettings(prev => prev === null ? {
+          ...data,
+          minSlotInterval: parseInt(data.minSlotInterval) || 30,
+          maxPetsPerBooking: parseInt(data.maxPetsPerBooking) || 3,
+          trafficModerate: parseInt(data.trafficModerate) || 5,
+          trafficHigh: parseInt(data.trafficHigh) || 10,
+          maxCages: parseInt(data.maxCages) || 5,
+          advanceNoticeHours: parseInt(data.advanceNoticeHours) || 2,
+          maxFutureBookingDays: parseInt(data.maxFutureBookingDays) || 30,
+          autoNoShowMins: parseInt(data.autoNoShowMins) || 30,
+        } : prev);
+      }
     });
 
     // 2. Fetch Dynamic Departments
@@ -154,33 +176,116 @@ export default function Settings() {
       setInvCategories(cats);
     });
 
-    // 4. THE FIX: Fetch Services for Usage Mapping
-    const unsubAllServices = onSnapshot(collection(db, "services"), (snapshot) => {
-        setAllServices(snapshot.docs.map(d => d.data()));
-    });
+    // 4. One-shot fetch for department usage counts (services + staff) —
+    //    real-time updates are unnecessary here; refreshUsageCounts() re-fetches after mutations
+    const fetchUsageCounts = async () => {
+      const [servicesSnap, staffSnap] = await Promise.all([
+        getDocs(collection(db, "services")),
+        getDocs(collection(db, "users"))
+      ]);
+      setAllServices(servicesSnap.docs.map(d => d.data()));
+      setAllStaff(staffSnap.docs.map(d => d.data()));
+    };
+    fetchUsageCounts();
 
-    // 5. THE FIX: Fetch Users (Staff) for Usage Mapping
-    const unsubAllStaff = onSnapshot(collection(db, "users"), (snapshot) => {
-        setAllStaff(snapshot.docs.map(d => d.data()));
-    });
-
-    return () => { unsubSettings(); unsubDepts(); unsubInvCats(); unsubAllServices(); unsubAllStaff(); };
+    return () => { unsubSettings(); unsubDepts(); unsubInvCats(); };
   },[]);
+
+  // --- NAVIGATION GUARD: Warn on unsaved changes to form fields ---
+  const hasUnsavedChanges = React.useMemo(() => {
+    if (!lastSavedSettings) return false;
+    const tracked = ['openHour', 'closeHour', 'lunchEnabled', 'lunchStart', 'lunchEnd',
+      'minSlotInterval', 'advanceNoticeMins', 'maxFutureBookingDays', 'maxPetsPerBooking',
+      'maxCages', 'autoNoShowMins', 'trafficModerate', 'trafficHigh', 'workingDays'];
+    return tracked.some(key => JSON.stringify(settings[key]) !== JSON.stringify(lastSavedSettings[key]));
+  }, [settings, lastSavedSettings]);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (hasUnsavedChanges) { e.preventDefault(); e.returnValue = ''; }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [hasUnsavedChanges]);
+
+  // --- ONE-SHOT USAGE COUNT REFRESH (called after dept add/delete) ---
+  const refreshUsageCounts = async () => {
+    try {
+      const [servicesSnap, staffSnap] = await Promise.all([
+        getDocs(collection(db, "services")),
+        getDocs(collection(db, "users"))
+      ]);
+      setAllServices(servicesSnap.docs.map(d => d.data()));
+      setAllStaff(staffSnap.docs.map(d => d.data()));
+    } catch (e) {
+      console.error('[Settings.refreshUsageCounts]:', e.message);
+    }
+  };
 
   const handleChange = (field, value) => { setSettings(prev => ({ ...prev, [field]: value })); };
 
-  // --- 🛡️ THE BOUNDARY SHIELD (Validation Engine) ---
+  // --- SETTINGS AUDIT LOGGER ---
+  const logSettingsEvent = async (action, entityType, entityName, details = {}) => {
+    try {
+      const who = profile?.fullName || profile?.email || 'Unknown Admin';
+      await addDoc(collection(db, "settings_logs"), {
+        action,       // 'CREATE' | 'DELETE' | 'UPDATE'
+        entityType,   // 'department' | 'inventory_category' | 'clinic_settings'
+        entityName,   // e.g. "Veterinary Medicine", "Oral Care"
+        performedBy: who,
+        performedAt: Timestamp.now(),
+        ...details
+      });
+    } catch (e) {
+      console.error('[Settings.logSettingsEvent]:', e.message);
+    }
+  };
+
+  // --- VALIDATION ENGINE ---
   const validateSettings = () => {
     if (settings.openHour >= settings.closeHour) {
-        return "Clinic Opening time must be earlier than the Closing time.";
+      return "Clinic Opening time must be earlier than the Closing time.";
     }
     if (settings.lunchEnabled) {
-        if (settings.lunchStart >= settings.lunchEnd) {
-            return "Lunch Start must be earlier than the Lunch End.";
-        }
-        if (settings.lunchStart < settings.openHour || settings.lunchEnd > settings.closeHour) {
-            return "Lunch break must fall within clinic operating hours.";
-        }
+      if (settings.lunchStart >= settings.lunchEnd) {
+        return "Lunch Start must be earlier than the Lunch End.";
+      }
+      if (settings.lunchStart < settings.openHour || settings.lunchEnd > settings.closeHour) {
+        return "Lunch break must fall within clinic operating hours.";
+      }
+    }
+    // Numeric bounds validation
+    const slot = parseInt(settings.minSlotInterval);
+    if (!slot || slot <= 0) {
+      return "Base Slot Interval must be greater than 0.";
+    }
+    const maxPets = parseInt(settings.maxPetsPerBooking);
+    if (!maxPets || maxPets < 1 || maxPets > 10) {
+      return "Max Pets per Booking must be between 1 and 10.";
+    }
+    const modThresh = parseInt(settings.trafficModerate);
+    const highThresh = parseInt(settings.trafficHigh);
+    if (isNaN(modThresh) || isNaN(highThresh) || modThresh >= highThresh) {
+      return "Moderate Traffic threshold must be less than High Traffic threshold.";
+    }
+    const cages = parseInt(settings.maxCages);
+    if (isNaN(cages) || cages < 0) {
+      return "Max Confinement Cages cannot be negative.";
+    }
+    const notice = parseInt(settings.advanceNoticeMins);
+    if (isNaN(notice) || notice < 0) {
+      return "Advance Notice Buffer cannot be negative.";
+    }
+    const futureDays = parseInt(settings.maxFutureBookingDays);
+    if (!futureDays || futureDays < 1) {
+      return "Future Booking Limit must be at least 1 day.";
+    }
+    const noShow = parseInt(settings.autoNoShowMins);
+    if (!noShow || noShow < 1) {
+      return "Auto No-Show Trigger must be at least 1 minute.";
+    }
+    if ((settings.workingDays || []).length === 0) {
+      return "At least one working day must be selected.";
     }
     return null; // All systems go!
   };
@@ -208,12 +313,30 @@ export default function Settings() {
         setToast({ open: true, message: `Warning: ${settings.closedDates.length} closure dates configured. Consider auditing.`, severity: 'warning' });
       }
 
-      const adminIdentity = auth.currentUser?.displayName || auth.currentUser?.email || "Unknown Admin";
+      const adminIdentity = profile?.fullName || profile?.email || "Unknown Admin";
       await setDoc(doc(db, "clinic_settings", "general"), {
           ...sanitizedSettings,
           updatedAt: Timestamp.now(),
-          updatedBy: adminIdentity // THE FIX: Atomic Accountability!
+          updatedBy: adminIdentity
       }, { merge: true });
+
+      // Field-level diff for audit trail
+      if (lastSavedSettings) {
+        const tracked = ['openHour', 'closeHour', 'lunchEnabled', 'lunchStart', 'lunchEnd',
+          'minSlotInterval', 'advanceNoticeMins', 'maxFutureBookingDays', 'maxPetsPerBooking',
+          'maxCages', 'autoNoShowMins', 'trafficModerate', 'trafficHigh', 'workingDays'];
+        const changedFields = {};
+        tracked.forEach(key => {
+          if (JSON.stringify(sanitizedSettings[key]) !== JSON.stringify(lastSavedSettings[key])) {
+            changedFields[key] = { from: lastSavedSettings[key], to: sanitizedSettings[key] };
+          }
+        });
+        if (Object.keys(changedFields).length > 0) {
+          await logSettingsEvent('UPDATE', 'clinic_settings', 'general', { changedFields });
+        }
+      }
+
+      setLastSavedSettings({ ...sanitizedSettings });
       setToast({ open: true, message: 'Global Clinic Settings Updated Successfully!', severity: 'success' });
     } catch (error) { setToast({ open: true, message: error.message, severity: 'error' }); } 
     finally { setLoading(false); }
@@ -226,6 +349,8 @@ export default function Settings() {
     if (isDuplicate) return setToast({ open: true, message: 'Department already exists!', severity: 'error' });
     try {
         await addDoc(collection(db, "departments"), { name: newDepartmentName.trim(), color: newDepartmentColor });
+        await logSettingsEvent('CREATE', 'department', newDepartmentName.trim(), { color: newDepartmentColor });
+        await refreshUsageCounts();
         setNewDepartmentName('');
         setToast({ open: true, message: 'Department Added.', severity: 'success' });
     } catch (e) { setToast({ open: true, message: e.message, severity: 'error' }); }
@@ -248,29 +373,35 @@ export default function Settings() {
         });
     }
 
-    if (window.confirm(`Delete the "${name}" department?`)) {
-      try {
-          await deleteDoc(doc(db, "departments", id));
-          setToast({ open: true, message: 'Department Deleted.', severity: 'success' });
-      } catch (e) { setToast({ open: true, message: e.message, severity: 'error' }); }
-    }
+    setConfirmDelete({ open: true, type: 'department', id, name });
   };
 
   // --- CLOSED DATES HANDLERS ---
-  const handleAddClosedDate = () => {
+  // Auto-persist on every add/remove — no Save button needed for closure dates
+  const handleAddClosedDate = async () => {
     if (!newClosedDate) return;
     const existing = settings.closedDates || [];
     if (existing.includes(newClosedDate)) {
       return setToast({ open: true, message: 'Date already in closures list.', severity: 'warning' });
     }
     const next = [...existing, newClosedDate].sort();
-    handleChange('closedDates', next);
-    setNewClosedDate('');
+    try {
+      await setDoc(doc(db, "clinic_settings", "general"), { closedDates: next }, { merge: true });
+      setNewClosedDate('');
+      setToast({ open: true, message: 'Closure date added.', severity: 'success' });
+    } catch (e) {
+      setToast({ open: true, message: e.message, severity: 'error' });
+    }
   };
 
-  const handleRemoveClosedDate = (dateStr) => {
+  const handleRemoveClosedDate = async (dateStr) => {
     const next = (settings.closedDates || []).filter(d => d !== dateStr);
-    handleChange('closedDates', next);
+    try {
+      await setDoc(doc(db, "clinic_settings", "general"), { closedDates: next }, { merge: true });
+      setToast({ open: true, message: 'Closure date removed.', severity: 'success' });
+    } catch (e) {
+      setToast({ open: true, message: e.message, severity: 'error' });
+    }
   };
 
   // --- INVENTORY CATEGORY CRUD ---
@@ -279,10 +410,11 @@ export default function Settings() {
     const isDuplicate = invCategories.some(d => d.name.toLowerCase() === newInvCatName.trim().toLowerCase());
     if (isDuplicate) return setToast({ open: true, message: 'Category already exists!', severity: 'error' });
     try {
-        await addDoc(collection(db, "inventory_categories"), { 
+        await addDoc(collection(db, "inventory_categories"), {
             name: newInvCatName.trim(),
-            isMedicine: newInvCatIsMedicine // 💊 THE PILL FLAG
+            isMedicine: newInvCatIsMedicine
         });
+        await logSettingsEvent('CREATE', 'inventory_category', newInvCatName.trim(), { isMedicine: newInvCatIsMedicine });
         setNewInvCatName('');
         setNewInvCatIsMedicine(false);
         setToast({ open: true, message: 'Category Added.', severity: 'success' });
@@ -290,11 +422,45 @@ export default function Settings() {
   };
 
   const handleDeleteInvCategory = async (id, name) => {
-    if (window.confirm(`Delete the "${name}" category?`)) {
-      try {
-          await deleteDoc(doc(db, "inventory_categories", id));
-          setToast({ open: true, message: 'Category Deleted.', severity: 'success' });
-      } catch (e) { setToast({ open: true, message: e.message, severity: 'error' }); }
+    // Usage shield: block delete if active inventory items reference this category
+    try {
+      const invSnap = await getDocs(collection(db, "inventory"));
+      const itemCount = invSnap.docs.filter(d => {
+        const data = d.data();
+        return !data.isArchived && data.category?.toLowerCase() === name.toLowerCase();
+      }).length;
+
+      if (itemCount > 0) {
+        return setToast({
+          open: true,
+          message: `Category In Use: ${itemCount} inventory item${itemCount > 1 ? 's' : ''} assigned to "${name}". Re-assign or archive them first.`,
+          severity: 'error'
+        });
+      }
+
+      setConfirmDelete({ open: true, type: 'category', id, name });
+    } catch (e) {
+      setToast({ open: true, message: e.message, severity: 'error' });
+    }
+  };
+
+  // --- CONFIRM DELETE HANDLER (used by MUI dialog for dept + category deletes) ---
+  const handleConfirmDelete = async () => {
+    const { type, id, name } = confirmDelete;
+    setConfirmDelete({ open: false, type: '', id: '', name: '' });
+    try {
+      if (type === 'department') {
+        await deleteDoc(doc(db, "departments", id));
+        await logSettingsEvent('DELETE', 'department', name);
+        await refreshUsageCounts();
+        setToast({ open: true, message: 'Department Deleted.', severity: 'success' });
+      } else if (type === 'category') {
+        await deleteDoc(doc(db, "inventory_categories", id));
+        await logSettingsEvent('DELETE', 'inventory_category', name);
+        setToast({ open: true, message: 'Category Deleted.', severity: 'success' });
+      }
+    } catch (e) {
+      setToast({ open: true, message: e.message, severity: 'error' });
     }
   };
 
@@ -326,7 +492,7 @@ export default function Settings() {
                 '&:hover': { bgcolor: COLORS.brand }
             }}
           >
-            {loading ? "Saving..." : "Save Configuration"}
+            {loading ? "Saving..." : hasUnsavedChanges ? "Save Configuration *" : "Save Configuration"}
           </Button>
         </Paper>
       </Box>
@@ -377,7 +543,7 @@ export default function Settings() {
                     </Typography>
                     <ToggleButtonGroup
                         value={settings.workingDays || []}
-                        onChange={(e, val) => handleChange('workingDays', val)}
+                        onChange={(e, val) => { if (val.length === 0) return; handleChange('workingDays', val); }}
                         fullWidth
                         size="small"
                         sx={{ 
@@ -724,6 +890,40 @@ export default function Settings() {
         </Grid>
 
       </Grid>
+
+      {/* DELETE CONFIRMATION DIALOG */}
+      <Dialog
+        open={confirmDelete.open}
+        onClose={() => setConfirmDelete({ open: false, type: '', id: '', name: '' })}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontWeight: '1000', color: COLORS.danger, pb: 1 }}>
+          Confirm Delete
+        </DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete the{' '}
+            {confirmDelete.type === 'department' ? 'department' : 'category'}{' '}
+            <strong>"{confirmDelete.name}"</strong>?
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, pt: 0 }}>
+          <Button
+            onClick={() => setConfirmDelete({ open: false, type: '', id: '', name: '' })}
+            sx={{ fontWeight: 'bold', color: '#757575', borderRadius: 0 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleConfirmDelete}
+            variant="contained"
+            sx={{ bgcolor: COLORS.danger, fontWeight: 'bold', borderRadius: 0, '&:hover': { bgcolor: COLORS.danger } }}
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Snackbar open={toast.open} autoHideDuration={5000} onClose={() => setToast({...toast, open: false})} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert onClose={() => setToast({...toast, open: false})} severity={toast.severity} sx={{ width: '100%', fontWeight: 'bold', boxShadow: 3, fontSize: '1rem' }}>{toast.message}</Alert>

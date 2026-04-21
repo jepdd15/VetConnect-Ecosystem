@@ -1225,12 +1225,12 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
   };
 
   const tableColumns = getQueueColumns(tabValue, currentTime, {
-    handleStatusChange, 
-    handleOpenAssign, 
-    setSelectedId, 
-    setOpenReject, 
-    handleOpenConsult, 
-    handleOpenPOS, 
+    handleStatusChange,
+    handleOpenAssign,
+    setSelectedId,
+    setOpenReject,
+    handleOpenConsult,
+    handleOpenPOS,
     handleMenuClick,
     handleHoverStart,
     handleHoverEnd,
@@ -1238,7 +1238,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
     handleRescheduleOpen: (row) => { setSelectedRow(row); handleRescheduleOpen(); },
     handleDefer: (row) => handleDeferOpen(row),
     handleOpenDispenseVerify,
-  }, isToday, departments, isTomorrowView);
+  }, isToday, departments, isTomorrowView, clinicSettings);
 
   const showClosingWarning = isClosingTime && isToday && unfinishedCount > 0;
 

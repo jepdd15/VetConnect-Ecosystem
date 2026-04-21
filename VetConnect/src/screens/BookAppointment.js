@@ -69,6 +69,10 @@ export default function BookAppointment({ navigation, route }) {
   const [deptModalSearch, setDeptModalSearch] = useState("");
   const [deptSortOrder, setDeptSortOrder] = useState("name"); // "name" (A-Z) or "count" (high to low)
 
+  // --- NO-SHOW DETECTION ---
+  // Populated after pet selection. Shown as an informational warning banner.
+  const [noShowInfo, setNoShowInfo] = useState(null);
+
   // THE FIX: Destructuring clinicSettings from the hook!
   const {
     pets,
@@ -122,6 +126,72 @@ export default function BookAppointment({ navigation, route }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefillDate, fetching, selectedPets.length, selectedServices.length]);
+
+  // Detect recent no-shows whenever the selected pets change.
+  // Runs an inline query because the mobile app cannot import from VetConnect-Admin.
+  useEffect(() => {
+    const petIds = selectedPets.map((p) => p.id).filter(Boolean);
+    if (petIds.length === 0) {
+      setNoShowInfo(null);
+      return;
+    }
+
+    let cancelled = false;
+    const runDetection = async () => {
+      try {
+        const manilaToday = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+        manilaToday.setHours(0, 0, 0, 0);
+        const cutoff = new Date(manilaToday);
+        cutoff.setDate(cutoff.getDate() - 30);
+
+        // Batch in groups of 30 (Firestore `in` limit)
+        const batches = [];
+        for (let i = 0; i < petIds.length; i += 30) {
+          batches.push(petIds.slice(i, i + 30));
+        }
+
+        const allNoShows = [];
+        for (const batch of batches) {
+          const q = query(
+            collection(db, 'appointments'),
+            where('petId', 'in', batch),
+            where('status', '==', 'no-show'),
+          );
+          const snap = await getDocs(q);
+          snap.docs.forEach((d) => {
+            const data = { id: d.id, ...d.data() };
+            const raw = data.scheduledDate;
+            const apptDate = raw?.toDate ? raw.toDate() : new Date(raw);
+            if (!isNaN(apptDate.getTime()) && apptDate >= cutoff) {
+              allNoShows.push(data);
+            }
+          });
+        }
+
+        if (cancelled) return;
+
+        if (allNoShows.length === 0) {
+          setNoShowInfo(null);
+          return;
+        }
+
+        allNoShows.sort((a, b) => {
+          const toMs = (d) => {
+            const raw = d.scheduledDate;
+            return (raw?.toDate ? raw.toDate() : new Date(raw)).getTime();
+          };
+          return toMs(b) - toMs(a);
+        });
+
+        setNoShowInfo({ count: allNoShows.length, mostRecent: allNoShows[0] });
+      } catch (e) {
+        if (!cancelled) setNoShowInfo(null);
+      }
+    };
+
+    runDetection();
+    return () => { cancelled = true; };
+  }, [selectedPets]);
 
   // THE FIX: High performance department statistics & sorting!
   const departmentStats = useMemo(() => {
@@ -424,6 +494,10 @@ export default function BookAppointment({ navigation, route }) {
           createdAt: Timestamp.now(),
           qrCode: qrData,
           notes: selectedPets.length > 1 ? `[Group Booking ${index + 1}/${selectedPets.length}] ${notes}` : notes,
+          ...(noShowInfo?.count > 0 ? {
+            rebookedFromId: noShowInfo.mostRecent?.id || null,
+            noShowCount: noShowInfo.count,
+          } : {}),
         });
       });
 
@@ -712,6 +786,10 @@ export default function BookAppointment({ navigation, route }) {
       minDateAllowed.setDate(minDateAllowed.getDate() + 1);
     }
 
+    const maxFutureBookingDays = clinicSettings?.maxFutureBookingDays || 30;
+    const maxDateAllowed = new Date();
+    maxDateAllowed.setDate(maxDateAllowed.getDate() + maxFutureBookingDays);
+
     return (
       <View style={styles.stepContainer}>
         <Text style={styles.stepHeader}>When should we expect you?</Text>
@@ -765,6 +843,7 @@ export default function BookAppointment({ navigation, route }) {
             display="default"
             onChange={handleDateChange}
             minimumDate={minDateAllowed}
+            maximumDate={maxDateAllowed}
           />
         )}
 
@@ -1080,6 +1159,25 @@ export default function BookAppointment({ navigation, route }) {
         {step === 3 && renderStep3()}
         {step === 4 && renderStep4()}
       </View>
+
+      {/* NO-SHOW WARNING BANNER — shown when selected pets have recent no-shows */}
+      {noShowInfo && noShowInfo.count > 0 && step > 1 && (
+        <View style={styles.noShowBanner}>
+          <Text style={styles.noShowBannerTitle}>
+            No-Show History Detected
+          </Text>
+          <Text style={styles.noShowBannerText}>
+            {noShowInfo.count} no-show{noShowInfo.count > 1 ? 's' : ''} in the last 30 days.
+            {noShowInfo.mostRecent?.scheduledDate
+              ? ` Most recent: ${(
+                  noShowInfo.mostRecent.scheduledDate.toDate
+                    ? noShowInfo.mostRecent.scheduledDate.toDate()
+                    : new Date(noShowInfo.mostRecent.scheduledDate)
+                ).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}.`
+              : ''}
+          </Text>
+        </View>
+      )}
 
       {/* SAFE AREA STICKY FOOTER */}
       <View
@@ -1685,5 +1783,27 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#8B4513',
     fontStyle: 'italic',
+  },
+  noShowBanner: {
+    marginHorizontal: 16,
+    marginBottom: 6,
+    padding: 10,
+    backgroundColor: '#FFF3E0',
+    borderLeftWidth: 4,
+    borderLeftColor: '#F57C00',
+    borderRadius: 4,
+  },
+  noShowBannerTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#E65100',
+    marginBottom: 2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  noShowBannerText: {
+    fontSize: 11,
+    color: '#BF360C',
+    fontWeight: '700',
   },
 });

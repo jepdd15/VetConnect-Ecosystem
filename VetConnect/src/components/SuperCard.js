@@ -12,9 +12,6 @@ import { useEffect, useRef } from "react";
 import { Animated, Linking, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { getClientStatusColor, getClientStatusIcon, getClientStatusLabel } from "../utils/statusLabels";
 
-// TODO: read clinicPhone and clinicAddress from clinic_settings/general once those
-// fields are added to Firestore (see plan §2.5). For now they are hardcoded here.
-const CLINIC_PHONE = '+639171234567';
 const CLINIC_ADDRESS = 'Starbarks Vet Clinic, Metro Manila, Philippines';
 
 const SPECIES_EMOJI = {
@@ -35,14 +32,6 @@ const formatTimestamp = (ts) => {
   }
 };
 
-const handleCallClinic = async () => {
-  try {
-    await Linking.openURL(`tel:${CLINIC_PHONE}`);
-  } catch (error) {
-    console.error('[SuperCard.handleCallClinic]:', error.message);
-  }
-};
-
 const handleDirections = async () => {
   const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(CLINIC_ADDRESS)}`;
   try {
@@ -52,7 +41,13 @@ const handleDirections = async () => {
   }
 };
 
-export default function SuperCard({ appointment }) {
+/**
+ * @param {{ appointment: object, clinicPhone: string }} props
+ * - `clinicPhone` — read from `clinic_settings/general.clinicPhone` by the parent.
+ *   Falls back to a generic empty string; the Call button is only useful when
+ *   the clinic has configured a real number.
+ */
+export default function SuperCard({ appointment, clinicPhone = '' }) {
   const pulseAnim = useRef(new Animated.Value(0.4)).current;
 
   useEffect(() => {
@@ -140,7 +135,18 @@ export default function SuperCard({ appointment }) {
 
       {/* Row 7 — CTAs */}
       <View style={styles.ctaRow}>
-        <TouchableOpacity style={styles.ctaBtn} onPress={handleCallClinic}>
+        <TouchableOpacity
+          style={[styles.ctaBtn, !clinicPhone && styles.ctaBtnDisabled]}
+          onPress={async () => {
+            if (!clinicPhone) return;
+            try {
+              await Linking.openURL(`tel:${clinicPhone}`);
+            } catch (error) {
+              console.error('[SuperCard.handleCallClinic]:', error.message);
+            }
+          }}
+          disabled={!clinicPhone}
+        >
           <Text style={styles.ctaBtnText}>📞 Call Clinic</Text>
         </TouchableOpacity>
         <TouchableOpacity style={[styles.ctaBtn, styles.ctaBtnSecondary]} onPress={handleDirections}>
@@ -237,5 +243,8 @@ const styles = StyleSheet.create({
   },
   ctaBtnSecondaryText: {
     color: '#5D4037',
+  },
+  ctaBtnDisabled: {
+    backgroundColor: '#BDBDBD',
   },
 });

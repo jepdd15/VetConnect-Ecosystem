@@ -590,15 +590,15 @@
 
 | ID | Name | Priority | Effort | Status | Notes |
 |---|---|---|---|---|---|
-| T2.259 | Add `disabled` flag check | CRITICAL | 5 min | DONE | Revoked staff can log in |
-| T2.260 | Sign out in catch block when Auth succeeded | CRITICAL | 5 min | DONE | Bypass: Auth + Firestore fail = unguarded |
+| T2.259 | Add `disabled` flag check | CRITICAL | 5 min | DONE | Revoked staff can log in. **Review fix:** added missing `return` after role-denial `setError` to prevent fall-through |
+| T2.260 | Sign out in catch block when Auth succeeded | CRITICAL | 5 min | DONE | Bypass: Auth + Firestore fail = unguarded. **Review fix:** wrapped catch-block `signOut()` in try/catch to prevent swallowing original error |
 | T2.261 | Trim email input | HIGH | 2 min | DONE | |
-| T2.262 | Route-level role protection in App.jsx (Option B locked) | HIGH | 30 min | DONE | Fixes 3 bugs in 1 |
+| T2.262 | Route-level role protection in App.jsx (Option B locked) | HIGH | 30 min | DONE | Fixes 3 bugs in 1. **Review note:** infinite spinner possible for profile-less auth users — needs UserContext refactor (deferred) |
 | T2.263 | Differentiate network vs auth errors | MEDIUM | 10 min | DONE | |
-| T2.264 | Neubrutalism design alignment | P2 | 30 min | DONE | |
+| T2.264 | Neubrutalism design alignment | P2 | 30 min | DONE | **Review fix:** removed unused `TYPE`, `FONT` imports (dead after design pass) |
 | T2.265 | Remove dead LockOutlinedIcon import | LOW | 1 min | DONE | |
 | T2.266 | Mobile LoginScreen: add disabled check | P2 | 5 min | DONE | Cross-project |
-| T2.277 | Login: "Forgot Password" link | P1 | 20 min | DONE | Bumped from P2 — absorbs T4.70 |
+| T2.277 | Login: "Forgot Password" link | P1 | 20 min | DONE | Bumped from P2 — absorbs T4.70. **Review fix:** added `@` guard to prevent misleading success message on clearly invalid input |
 | T2.278 | Login: default password detection warning | P3 | 15 min | TODO | Depends on T2.208 |
 
 ### Mobile Client Screens (T2.343-T2.433)

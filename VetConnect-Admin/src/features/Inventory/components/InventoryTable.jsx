@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Paper, IconButton, Typography, Chip, Box, Tooltip, TableSortLabel, TablePagination
+  Paper, IconButton, Typography, Chip, Box, Tooltip, TableSortLabel, TablePagination,
+  CircularProgress
 } from '@mui/material';
 
 import EditIcon from '@mui/icons-material/Edit';
@@ -12,7 +13,7 @@ import HistoryIcon from '@mui/icons-material/History';
 import UnarchiveIcon from '@mui/icons-material/Unarchive';
 import { FONT } from '../../../theme/designTokens';
 
-export default function InventoryTable({ data, onEdit, onAdjust, onDelete, onLog, showArchived, onRestore }) {
+export default function InventoryTable({ data, loading, onEdit, onAdjust, onDelete, onLog, showArchived, onRestore }) {
   
   const clinicalFlatStyle = {
     background: '#FFF', 
@@ -51,8 +52,9 @@ const getExpiryStatus = (expiryDate) => {
 
   useEffect(() => { setPage(0); }, [data]);
 
+  // T2.172: Return null when data is missing so we can distinguish "N/A" from 0%
   const calculateMargin = (cost, retail) => {
-    if (!cost || !retail || cost >= retail) return 0;
+    if (!cost || !retail) return null;
     return (((retail - cost) / retail) * 100);
   };
 
@@ -62,11 +64,11 @@ const getExpiryStatus = (expiryDate) => {
       let aVal = a[orderBy] !== undefined ? a[orderBy] : '';
       let bVal = b[orderBy] !== undefined ? b[orderBy] : '';
 
-      // Margin is a derived custom value
+      // Margin is a derived custom value — treat null (missing cost/price) as -Infinity for sorting
       if (orderBy === 'margin') {
-        aVal = calculateMargin(Number(a.costPrice) || 0, Number(a.price) || 0);
-        bVal = calculateMargin(Number(b.costPrice) || 0, Number(b.price) || 0);
-      } 
+        aVal = calculateMargin(Number(a.costPrice) || 0, Number(a.price) || 0) ?? -Infinity;
+        bVal = calculateMargin(Number(b.costPrice) || 0, Number(b.price) || 0) ?? -Infinity;
+      }
       else if (orderBy === 'stock' || orderBy === 'costPrice' || orderBy === 'price') {
         aVal = Number(aVal) || 0;
         bVal = Number(bVal) || 0;
@@ -138,7 +140,7 @@ const getExpiryStatus = (expiryDate) => {
             const cost = Number(row.costPrice) || 0;
             const retail = Number(row.price) || 0;
             const marginValue = calculateMargin(cost, retail);
-            const margin = marginValue.toFixed(0);
+            const margin = marginValue !== null ? marginValue.toFixed(0) : null;
             
             let statusColor = 'success';
             let statusLabel = 'Healthy';
@@ -210,14 +212,38 @@ const getExpiryStatus = (expiryDate) => {
                    />
                 </TableCell>
                 
+                {/* T2.165: Batch tooltip shows FIFO breakdown when batches exist */}
                 <TableCell align="center">
-                   <Typography variant="body2" sx={{ fontWeight: '900', color: currentStock <= minStock ? '#D32F2F' : '#212121' }}>
-                       {currentStock}
-                       {row.unit && <Typography component="span" variant="caption" color="textSecondary" sx={{ ml: 0.5 }}>{row.unit}</Typography>}
-                   </Typography>
-                   <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold', fontSize: '0.65rem' }}>
-                      Sellable: {currentStock - (row.reserved || 0)}
-                   </Typography>
+                  <Tooltip
+                    arrow
+                    title={
+                      row.batches?.length > 0 ? (
+                        <Box sx={{ p: 0.5 }}>
+                          <Typography variant="caption" fontWeight="900" sx={{ display: 'block', mb: 0.5 }}>
+                            BATCH BREAKDOWN
+                          </Typography>
+                          {row.batches.map((b, i) => (
+                            <Typography key={i} variant="caption" sx={{ display: 'block', lineHeight: 1.6 }}>
+                              {b.batchNumber || `Batch ${i + 1}`}: {b.qty} {row.unit || 'units'}
+                              {b.expiryDate ? ` (Exp: ${typeof b.expiryDate === 'string' ? b.expiryDate : b.expiryDate?.toDate?.()?.toISOString().slice(0, 10) || 'N/A'})` : ''}
+                            </Typography>
+                          ))}
+                        </Box>
+                      ) : 'No batch data'
+                    }
+                    placement="right"
+                  >
+                    <Box>
+                      <Typography variant="body2" sx={{ fontWeight: '900', color: currentStock <= minStock ? '#D32F2F' : '#212121', cursor: row.batches?.length ? 'help' : 'default' }}>
+                          {currentStock}
+                          {row.unit && <Typography component="span" variant="caption" color="textSecondary" sx={{ ml: 0.5 }}>{row.unit}</Typography>}
+                      </Typography>
+                      <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold', fontSize: '0.65rem' }}>
+                        Sellable: {currentStock - (row.reserved || 0)}
+                        {row.batches?.length > 0 && ` | ${row.batches.length} batch${row.batches.length > 1 ? 'es' : ''}`}
+                      </Typography>
+                    </Box>
+                  </Tooltip>
                 </TableCell>
 
                 <TableCell align="center">
@@ -234,10 +260,11 @@ const getExpiryStatus = (expiryDate) => {
                    <Typography variant="body2" fontWeight="bold" color="#2E7D32">₱{retail.toFixed(2)}</Typography>
                 </TableCell>
                 
+                {/* T2.172: Show negative margins in red; null means cost or price is missing */}
                 <TableCell align="right">
-                   <Box sx={{ display: 'inline-flex', alignItems: 'center', bgcolor: marginValue >= 40 ? '#E8F5E9' : '#F5F5F5', px: 1, py: 0.5, borderRadius: 1 }}>
-                     <Typography variant="caption" sx={{ fontWeight: 'bold', color: marginValue >= 40 ? '#2E7D32' : '#757575' }}>
-                       {marginValue > 0 ? `${margin}%` : 'N/A'}
+                   <Box sx={{ display: 'inline-flex', alignItems: 'center', bgcolor: marginValue === null ? '#F5F5F5' : marginValue >= 40 ? '#E8F5E9' : marginValue < 0 ? '#FFEBEE' : '#FFF3E0', px: 1, py: 0.5, borderRadius: 0 }}>
+                     <Typography variant="caption" sx={{ fontWeight: 'bold', color: marginValue === null ? '#757575' : marginValue >= 40 ? '#2E7D32' : marginValue < 0 ? '#D32F2F' : '#E65100' }}>
+                       {marginValue === null ? 'N/A' : `${margin}%`}
                      </Typography>
                    </Box>
                 </TableCell>
@@ -285,7 +312,13 @@ const getExpiryStatus = (expiryDate) => {
             );
           })}
           
-          {(!sortedData || sortedData.length === 0) && (
+          {loading && (
+            <TableRow><TableCell colSpan={9} align="center" sx={{ py: 10, border: 'none' }}>
+              <CircularProgress size={32} sx={{ color: '#5D4037' }} />
+              <Typography variant="body2" color="textSecondary" fontWeight="bold" sx={{ mt: 1.5 }}>Loading inventory...</Typography>
+            </TableCell></TableRow>
+          )}
+          {!loading && (!sortedData || sortedData.length === 0) && (
             <TableRow><TableCell colSpan={9} align="center" sx={{ py: 10, color: '#888', fontStyle: 'italic', border: 'none' }}>No items found. Adjust filters or click "Add Item" to start.</TableCell></TableRow>
           )}
         </TableBody>

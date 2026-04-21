@@ -1,47 +1,47 @@
 import React, { useEffect, useState } from 'react';
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box, CircularProgress, Chip, Divider } from '@mui/material';
-import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, limit } from 'firebase/firestore';
 import { db } from '../../../firebaseConfig';
-import { FONT, COLORS } from '../../../theme/designTokens';
+import { FONT } from '../../../theme/designTokens';
 
 import HistoryIcon from '@mui/icons-material/History';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 
-const normalizeLog = (log) => ({
-  ...log,
-  action: log.action || (log.type === 'sale' ? 'SOLD' : log.type?.toUpperCase() || 'UNKNOWN'),
-  amountChange: log.amountChange ?? (log.quantity ? -log.quantity : 0),
-  userName: log.userName || log.user || 'System',
-});
+import { normalizeInventoryLog } from '../../../utils/normalizeInventoryLog';
 
 export default function InventoryLogModal({ open, onClose, item }) {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
+  // T2.163: Re-fetch when the modal opens (not just when item changes) + cap at 500 entries
   useEffect(() => {
-    if (!item?.id) return;
+    if (!item?.id || !open) return;
 
     const fetchLogs = async () => {
       setLoading(true);
+      setError(null);
       try {
         const q = query(
           collection(db, "inventory_logs"),
           where("itemId", "==", item.id),
-          orderBy("timestamp", "desc")
+          orderBy("timestamp", "desc"),
+          limit(500)
         );
         const querySnapshot = await getDocs(q);
-        const fetchedLogs = querySnapshot.docs.map(doc => normalizeLog({ id: doc.id, ...doc.data() }));
+        const fetchedLogs = querySnapshot.docs.map(doc => normalizeInventoryLog({ id: doc.id, ...doc.data() }));
         setLogs(fetchedLogs);
       } catch (err) {
         console.error("Failed to fetch logs:", err);
+        setError(err.message);
       } finally {
         setLoading(false);
       }
     };
 
     fetchLogs();
-  }, [item?.id]);
+  }, [item?.id, open]);
 
   const getActivityColor = (action, amount) => {
      if (action === "CREATED") return '#1565C0';
@@ -69,6 +69,11 @@ export default function InventoryLogModal({ open, onClose, item }) {
              <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}>
                 <CircularProgress color="inherit" />
              </Box>
+         ) : error ? (
+             <Box sx={{ textAlign: 'center', py: 5, color: '#C62828' }}>
+                <Typography variant="body1" fontWeight="bold">Failed to load audit trail</Typography>
+                <Typography variant="caption" color="textSecondary">{error}</Typography>
+             </Box>
          ) : logs.length === 0 ? (
              <Box sx={{ textAlign: 'center', py: 5, color: '#9E9E9E' }}>
                 <Typography variant="body1" fontWeight="bold">No history recorded.</Typography>
@@ -87,7 +92,7 @@ export default function InventoryLogModal({ open, onClose, item }) {
                                       {log.action} {log.amountChange !== 0 && `(${log.amountChange > 0 ? '+' : ''}${log.amountChange})`}
                                    </Typography>
                                    <Typography variant="caption" color="textSecondary" fontWeight="bold">
-                                      {log.timestamp?.toDate ? log.timestamp.toDate().toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'Just now'}
+                                      {log.timestamp?.toDate ? log.timestamp.toDate().toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'Unknown'}
                                    </Typography>
                                 </Box>
 

@@ -1,26 +1,41 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Button, Box, Typography, MenuItem
 } from '@mui/material';
-import { FONT, COLORS } from '../../../theme/designTokens';
+import { FONT } from '../../../theme/designTokens';
 
 export default function StockAdjustModal({ open, onClose, item, onAdjust }) {
   const [action, setAction] = useState('add');
   const [qty, setQty] = useState('');
   const [reason, setReason] = useState('Restocked from Supplier');
   const [errors, setErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
+  const [batchNumber, setBatchNumber] = useState('');
+  const [expiryDate, setExpiryDate] = useState('');
+
+  // T2.158: Reset all form state when modal opens or switches to a different item
+  useEffect(() => {
+    if (open) {
+      setAction('add');
+      setQty('');
+      setReason('Restocked from Supplier');
+      setBatchNumber('');
+      setExpiryDate('');
+      setErrors({});
+    }
+  }, [open, item?.id]);
 
   const clearError = (field) => setErrors(prev => ({ ...prev, [field]: undefined }));
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const amount = parseInt(qty);
     const newErrors = {};
 
     if (isNaN(amount) || amount <= 0) {
       newErrors.qty = 'Please enter a valid positive quantity.';
-    } else if (action === 'remove' && (item?.stock || 0) - amount < 0) {
-      newErrors.qty = `Cannot remove ${amount}. Only ${item?.stock || 0} unit(s) currently in stock.`;
+    } else if (action === 'remove' && (item?.stock || 0) - (item?.reserved || 0) - amount < 0) {
+      newErrors.qty = `Cannot remove ${amount}. Only ${(item?.stock || 0) - (item?.reserved || 0)} unit(s) available (${item?.reserved || 0} reserved).`;
     }
 
     if (!reason.trim()) {
@@ -33,8 +48,15 @@ export default function StockAdjustModal({ open, onClose, item, onAdjust }) {
     }
 
     const finalAmount = action === 'add' ? amount : -amount;
-    onAdjust(finalAmount, reason.trim());
-    onClose();
+    const batchInfo = (action === 'add' && batchNumber.trim())
+      ? { batchNumber: batchNumber.trim(), expiryDate: expiryDate || null }
+      : null;
+    setSubmitting(true);
+    try {
+      await onAdjust(finalAmount, reason.trim(), batchInfo);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const fieldSx = {
@@ -55,12 +77,17 @@ export default function StockAdjustModal({ open, onClose, item, onAdjust }) {
       </DialogTitle>
 
       <DialogContent dividers sx={{ p: 3, bgcolor: '#FAF9F7' }}>
-        <Typography variant="body1" sx={{ mb: 3, color: '#555' }}>
+        <Typography variant="body1" sx={{ mb: 1, color: '#555' }}>
           Current Stock Level:{' '}
           <Box component="span" sx={{ fontWeight: '900', fontSize: '1.3rem', color: '#1565C0', ml: 1 }}>
             {item?.stock || 0}
           </Box>
         </Typography>
+        {(item?.reserved || 0) > 0 && (
+          <Typography variant="body2" sx={{ mb: 2, color: '#E65100', fontWeight: 'bold' }}>
+            Available: {(item?.stock || 0) - (item?.reserved || 0)} ({item?.reserved} reserved by active consults)
+          </Typography>
+        )}
 
         <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
           <TextField
@@ -103,16 +130,39 @@ export default function StockAdjustModal({ open, onClose, item, onAdjust }) {
           error={!!errors.reason}
           helperText={errors.reason}
         />
+
+        {action === 'add' && (
+          <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
+            <TextField
+              label="Batch / Lot Number"
+              placeholder="e.g. LOT-2025-0912"
+              value={batchNumber}
+              onChange={e => setBatchNumber(e.target.value)}
+              sx={{ ...fieldSx, flex: 1 }}
+              helperText="Optional. Found on packaging."
+            />
+            <TextField
+              label="Expiry Date"
+              type="date"
+              value={expiryDate}
+              onChange={e => setExpiryDate(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              sx={{ ...fieldSx, width: 180 }}
+              helperText="Optional."
+            />
+          </Box>
+        )}
       </DialogContent>
 
       <DialogActions sx={{ p: 2.5, bgcolor: '#FFF8E1', borderTop: '2px solid #5D4037' }}>
         <Button onClick={onClose} sx={{ borderRadius: 0, border: '2px solid #5D4037', fontFamily: FONT, fontWeight: 1000, color: '#5D4037' }}>Cancel</Button>
         <Button
           onClick={handleSubmit}
+          disabled={submitting}
           variant="contained"
           sx={{ bgcolor: '#D84315', borderRadius: 0, border: '2px solid #BF360C', boxShadow: '4px 4px 0px rgba(216,67,21,0.2)', fontFamily: FONT, fontWeight: 1000, '&:hover': { bgcolor: '#BF360C' } }}
         >
-          Confirm Update
+          {submitting ? 'Updating...' : 'Confirm Update'}
         </Button>
       </DialogActions>
     </Dialog>

@@ -68,8 +68,8 @@
 | T2.58 | Records.jsx terminology cleanup | 30 min | — | TODO | |
 | T2.79 | Fix tiered pricing per-pet weight | 30 min | — | TODO | Wrong prices on multi-pet bookings |
 | T2.119 | Normalize allergy field: read `petAllergies \|\| allergies` everywhere, write `petAllergies`, propagate to active appointments on edit | 45 min | — | TODO | **PATIENT SAFETY** — allergy warnings suppressed for mobile pets |
-| T2.149 | `adjustStock`: wrap in `runTransaction` with stock floor check (`newStock >= 0`) and reserved check (`newStock >= reserved`) | 30 min | — | TODO | Stock can go negative |
-| T2.150 | Normalize refund log schema: use `action: 'RESTOCK'`, `amountChange`, `userName`/`userId`. Add `RESTOCK` to GlobalActivityLog ACTION_CONFIG. Extract shared `normalizeLog` utility. | 45 min | — | TODO | 3 columns render `undefined` for refund logs |
+| T2.149 | `adjustStock`: wrap in `runTransaction` with stock floor check (`newStock >= 0`) and reserved check (`newStock >= reserved`) | 30 min | — | DONE | **Review fix:** spread-copy batches array before push to prevent transaction retry double-append |
+| T2.150 | Normalize refund log schema: use `action: 'RESTOCK'`, `amountChange`, `userName`/`userId`. Add `RESTOCK` to GlobalActivityLog ACTION_CONFIG. Extract shared `normalizeLog` utility. | 45 min | — | DONE | Shared normalizeInventoryLog.js created |
 | T2.208 | Remove hardcoded password. Generate random 12-char temp password, display to admin in toast. | 30 min | — | DONE | **Review fixes:** crypto.getRandomValues replaces Math.random; clipboard fallback for non-HTTPS; sets mustChangePassword flag (unblocks T2.278); token-compliant dialog |
 | T2.209 | Add PH phone validation (`/^09\d{9}$/`) to StaffFormModal. Extract `isValidPHPhone` to shared util. | 5 min | — | DONE | Shared util at src/utils/phoneValidation.js |
 
@@ -93,11 +93,11 @@
 | T2.137 | EOD dual display: primary "COLLECTED TODAY" + secondary "total billed" annotation. Expand eodTotals. Payment method tiles use collected amounts. | 45 min | — | TODO | Decision locked: dual display |
 | T2.138 | Refund: update appointment status to `billing` + reset `balanceRemaining` + write `TRANSACTION_REFUNDED` clinicalPulse event | 30 min | — | TODO | Appointment lifecycle integrity |
 | T2.139 | Refund: pass current user to `useSalesData` hook via `useUser()`. Replace hardcoded `"Admin"` with actual staff identity. | 20 min | — | TODO | Decision locked: any Sales-page user |
-| T2.151 | `reserveStock`/`releaseStock`: wrap in `runTransaction`. reserveStock validates `reserved + qty <= stock`. releaseStock validates `reserved - qty >= 0`. | 30 min | — | TODO | Over-reserve and negative-reserve bugs |
-| T2.152 | `adjustStock`: batch-aware positive adjustments (optional batch fields). Flat negative. | 1.5 hrs | — | TODO | Decision locked: batch-aware add, flat remove |
-| T2.153 | Pass `loading` from useInventory to InventoryTable. Add loading skeleton. | 10 min | — | TODO | Empty state shown during initial fetch |
-| T2.154 | Add `isAdmin` guard on scrubDatabase button in Inventory.jsx | 5 min | — | TODO | Any user can trigger database-wide writes |
-| T2.155 | ProductFormModal: add category required validation. Add costPrice `< 0` validation. | 10 min | — | TODO | Empty category, negative cost allowed |
+| T2.151 | `reserveStock`/`releaseStock`: wrap in `runTransaction`. reserveStock validates `reserved + qty <= stock`. releaseStock validates `reserved - qty >= 0`. | 30 min | — | DONE | **Review fix:** isNaN(qty) guard on both functions; releaseStock clamps to zero |
+| T2.152 | `adjustStock`: batch-aware positive adjustments (optional batch fields). Flat negative. | 1.5 hrs | — | DONE | **Review fix:** submitting state + disabled button on StockAdjustModal |
+| T2.153 | Pass `loading` from useInventory to InventoryTable. Add loading skeleton. | 10 min | — | DONE | |
+| T2.154 | Add `isAdmin` guard on scrubDatabase button in Inventory.jsx | 5 min | — | DONE | |
+| T2.155 | ProductFormModal: add category required validation. Add costPrice `< 0` validation. | 10 min | — | DONE | |
 | T2.177 | Settings.jsx: add `useUser()` + `isAdmin` guard. Redirect non-admin. | 10 min | — | TODO | Any user can modify clinic-wide settings via URL |
 | T2.178 | Closed dates: auto-persist on add/remove via `setDoc` immediately. Add navigation guard for unsaved fields. | 30 min | — | TODO | Closed dates lost on navigation |
 | T2.179 | Category delete: add usage shield — count inventory items before allowing delete. | 20 min | — | TODO | Deleting "medicine" breaks isMedicine lookup |
@@ -164,19 +164,19 @@
 | T2.141 | Add "Bank Transfer" to payment method filter dropdown. Fix Card tile click to include Bank Transfer. | 10 min | — | TODO | |
 | T2.142 | Wire Print Report button: generate EOD summary HTML | 1 hr | — | TODO | Dead UI element |
 | T2.143 | Add DataGrid pagination: remove `hideFooter={true}` | 5 min | — | TODO | |
-| T2.156 | StockAdjustModal: validate against `stock - reserved`. Show "Available: X (Y reserved)". | 15 min | — | TODO | |
-| T2.157 | StockAdjustModal + ConfirmDeleteModal: `await` async callback before `onClose()` | 10 min | — | TODO | Optimistic close race |
-| T2.158 | StockAdjustModal: reset form state on reopen | 5 min | — | TODO | Stale data |
-| T2.159 | `archiveItem`: release reserved stock before archiving | 10 min | — | TODO | Orphaned reservations |
-| T2.160 | `deleteItem`: log before delete (or transaction) | 10 min | — | TODO | Unaudited permanent deletions |
-| T2.161 | ConfirmDeleteModal: pre-archive impact check (appointments, reserved stock) | 30 min | — | TODO | Blind archive |
-| T2.162 | ProductFormModal quick-add category: dedup + isMedicine default + route through hook | 20 min | — | TODO | |
-| T2.163 | InventoryLogModal: add limit, error UI, re-fetch on reopen | 15 min | — | TODO | |
-| T2.164 | Inventory.jsx: hide filter controls on Activity Log tab | 10 min | — | TODO | UX confusion |
-| T2.165 | InventoryTable: batch detail visibility (expandable/tooltip) | 1.5 hrs | — | TODO | FIFO invisible to staff |
-| T2.166 | KPI expiry: check `batches[].expiryDate` in addition to top-level | 15 min | — | TODO | Expired batches missed |
-| T2.167 | Write `isMedicine` to inventory items on create/update (derived + optional override toggle). Label: "Requires pharmacy dispensing verification". | 20 min | — | TODO | Decision locked: derived with override |
-| T2.170 | GlobalActivityLog: full filtering — action type, date range, product search, user filter, paginated queries. | 3 hrs | T2.150 | TODO | Decision locked: full scope |
+| T2.156 | StockAdjustModal: validate against `stock - reserved`. Show "Available: X (Y reserved)". | 15 min | — | DONE | |
+| T2.157 | StockAdjustModal + ConfirmDeleteModal: `await` async callback before `onClose()` | 10 min | — | DONE | **Review fix:** parent handleConfirmDelete uses finally for close; modal no longer calls onClose |
+| T2.158 | StockAdjustModal: reset form state on reopen | 5 min | — | DONE | useEffect on [open, item?.id] |
+| T2.159 | `archiveItem`: release reserved stock before archiving | 10 min | — | DONE | |
+| T2.160 | `deleteItem`: log before delete (or transaction) | 10 min | — | DONE | |
+| T2.161 | ConfirmDeleteModal: pre-archive impact check (appointments, reserved stock) | 30 min | — | DONE | |
+| T2.162 | ProductFormModal quick-add category: dedup + isMedicine default + route through hook | 20 min | — | DONE | |
+| T2.163 | InventoryLogModal: add limit, error UI, re-fetch on reopen | 15 min | — | DONE | limit(500), error state, open dependency |
+| T2.164 | Inventory.jsx: hide filter controls on Activity Log tab | 10 min | — | DONE | |
+| T2.165 | InventoryTable: batch detail visibility (expandable/tooltip) | 1.5 hrs | — | DONE | **Review fix:** expiryDate Timestamp/string normalizer in tooltip |
+| T2.166 | KPI expiry: check `batches[].expiryDate` in addition to top-level | 15 min | — | DONE | **Review fix:** toDateStr normalizer handles Firestore Timestamps |
+| T2.167 | Write `isMedicine` to inventory items on create/update (derived + optional override toggle). Label: "Requires pharmacy dispensing verification". | 20 min | — | DONE | |
+| T2.170 | GlobalActivityLog: full filtering — action type, date range, product search, user filter, paginated queries. | 3 hrs | T2.150 | DONE | **Review fix:** composite index requirement documented; needs inventory_logs(action ASC, timestamp DESC) |
 | T2.175 | Allergen safety system: `allergyTags[]` on ALL products + cart-add check in ClinicalWorkspace + Option C dispensing routing + DispensingVerificationDialog cross-check | 1.5 hrs | T2.119 | TODO | Decision locked: Option C + Approach 2 |
 | T2.176 | Client-facing dispensing label: per-medication printable label | 1.5 hrs | — | TODO | Benefits from T2.147 for lot/expiry |
 | T2.180 | Department + category CRUD audit trail: write to `settings_logs` collection | 30 min | — | TODO | Closes audit gap #4 |
@@ -264,12 +264,16 @@
 | T2.146 | Design token compliance: Sales.jsx + EodSummary.jsx (60+ hardcoded colors) | 30 min | — | TODO | |
 | T2.147 | Refund restock: store batch info at sale time (Option A) + no-expiry guard | 30 min | — | TODO | Decision locked: Option A |
 | T2.148 | Receipt clinic name from settings (Sales.jsx + POSModal) | 15 min | — | TODO | |
-| T2.168 | Delete dead code: glassStyle/GLASS, selectedCatObj, dead COLORS imports (Inventory) | 5 min | — | TODO | |
-| T2.169 | Design token compliance: Inventory module (100+ hardcoded colors, 7 files) | 1.5 hrs | — | TODO | |
-| T2.171 | `restoreItem`: clear `archivedAt` on restore | 5 min | — | TODO | Both timestamps coexist |
-| T2.172 | InventoryTable: negative margins as red percentage | 10 min | — | TODO | |
-| T2.173 | Category seed idempotency: deterministic IDs | 15 min | — | TODO | Concurrent tabs create duplicates |
+| T2.168 | Delete dead code: glassStyle/GLASS, selectedCatObj, dead COLORS imports (Inventory) | 5 min | — | DONE | |
+| T2.169 | Design token compliance: Inventory module (100+ hardcoded colors, 7 files) | 1.5 hrs | — | TODO | Deferred to Design Sweep (Module 19) |
+| T2.171 | `restoreItem`: clear `archivedAt` on restore | 5 min | — | DONE | Uses deleteField() |
+| T2.172 | InventoryTable: negative margins as red percentage | 10 min | — | DONE | Three-tier color: green/orange/red + null for N/A |
+| T2.173 | Category seed idempotency: deterministic IDs | 15 min | — | DONE | default_medicine, default_vaccine, etc. |
 | T2.174 | Batch-aware negative stock adjustments: batch picker for removals | 2 hrs | T2.152 | TODO | Deferred — positive ships first |
+| T2.174a | GlobalActivityLog: show "Load More" when client-side filter empties page but hasMore is true | 15 min | T2.170 | TODO | Review finding — user can't paginate past non-matching results |
+| T2.174b | Quick-add category: auto-detect isMedicine from medical keywords (antibiotic, vaccine, etc.) | 15 min | T2.162 | TODO | Review finding — "antibiotic" category defaults to isMedicine:false |
+| T2.174c | `normalizeInventoryLog` sign ambiguity: old sale logs with positive `quantity` show up-arrow for "Sold" | 15 min | T2.150 | TODO | Review finding — backward compat edge case, need sign convention for SOLD action |
+| T2.174d | `adjustStock` hook: trim `batchInfo.batchNumber` at hook level for self-protecting contract | 5 min | T2.152 | TODO | Review finding — modal trims, but direct callers don't |
 | T2.185 | Settings: replace services + users listeners with one-shot getDocs | 15 min | — | TODO | 5 listeners excessive |
 | T2.186 | Settings: replace 2 window.confirm() with MUI Dialog | 10 min | — | TODO | |
 | T2.187 | Settings: delete dead variable `dashboardCream` | 1 min | — | TODO | |
@@ -288,6 +292,7 @@
 | T2.225 | Staff: add null guard on `departments` prop in StaffTable | 2 min | — | DONE | |
 | T2.226 | Staff: design token compliance across 3 child components (50+ hardcoded colors) | 45 min | — | DONE | **Review fix:** also tokenized Staff.jsx header + temp password dialog; added dangerHover, dangerSurface, warningSurface tokens to designTokens.js |
 | T2.227 | Staff: fix borderRadius violations (search field, warning box, scrollbar) | 5 min | — | DONE | |
+| T2.227a | StaffFormModal: initialize emergencyContacts to `[]` for new staff instead of one empty `{name:'',kinship:'',phone:''}` | P3 | 5 min | — | TODO | Review finding — empty contacts written to Firestore, diffEngine reports phantom "1 record(s)" |
 
 ---
 
@@ -600,7 +605,10 @@
 | T2.266 | Mobile LoginScreen: add disabled check | P2 | 5 min | DONE | Cross-project |
 | T2.277 | Login: "Forgot Password" link | P1 | 20 min | DONE | Bumped from P2 — absorbs T4.70. **Review fix:** added `@` guard to prevent misleading success message on clearly invalid input |
 | T2.278 | Login: default password detection warning | P3 | 15 min | TODO | Depends on T2.208 |
-| T2.524 | UserContext: distinguish "not yet loaded" from "profile doesn't exist" — profile-less auth users see infinite spinner on AdminRoute | P2 | 30 min | TODO | Found by reviewer during Login module. Needs UserContext.jsx refactor — outside Login scope |
+| T2.278a | App.jsx: infinite spinner for profile-less auth users — distinguish null (loading) from false (missing) in UserContext | P2 | 30 min | — | TODO | Review finding from T2.262 — needs UserContext refactor |
+| T2.278b | App.jsx: replace hardcoded `bgcolor: '#212121'` with `COLORS.monitorBg` on Monitor layout | P3 | 1 min | — | TODO | Review finding — token exists but not used |
+| T2.278c | Mobile LoginScreen.js: remove duplicate `label` style in StyleSheet (first definition silently overwritten) | P3 | 2 min | — | TODO | Review finding — pre-existing dead style block |
+| ~~T2.524~~ | ~~UserContext infinite spinner~~ | — | — | ABSORBED | Duplicate of T2.278a (sub-ID grouped with Login module) |
 
 ### Mobile Client Screens (T2.343-T2.433)
 

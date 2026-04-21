@@ -77,7 +77,19 @@ export function useSalesData(filterDate) {
               transaction.update(itemRef, { stock: newStock, batches: batches });
 
               const logRef = doc(collection(db, "inventory_logs"));
-              transaction.set(logRef, { itemId: item.id, itemName: item.name, type: 'restock', quantity: item.qty, reason: `Customer Refund (Receipt #${selectedSale.id.slice(0,5)})`, oldStock: data.stock, newStock: newStock, batchInfo: 'Returned Item', user: "Admin", timestamp: Timestamp.now() });
+              transaction.set(logRef, {
+                itemId: item.id,
+                itemName: item.name,
+                action: 'RESTOCK',
+                amountChange: item.qty,
+                reason: `Customer Refund (Receipt #${selectedSale.id.slice(0,5)})`,
+                oldStock: data.stock,
+                newStock: newStock,
+                batchInfo: 'Returned Item',
+                userName: 'Admin',
+                userId: null,
+                timestamp: Timestamp.now()
+              });
             }
           }
         }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, doc, addDoc, updateDoc, deleteDoc, increment, getDocs, writeBatch, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, doc, addDoc, updateDoc, deleteDoc, increment, getDocs, writeBatch, serverTimestamp, runTransaction, deleteField } from 'firebase/firestore';
 import { db } from '../../../firebaseConfig';
 import { useUser } from '../../../context/UserContext';
 
@@ -111,54 +111,103 @@ export function useInventory() {
     await logEvent(id, cleanData.itemName || originalItem?.itemName || 'Unknown Product', "UPDATED", 0, logMessage);
   };
 
-  // DELETE
+  // DELETE — log first so the audit trail survives even if the document write is interrupted
   const deleteItem = async (id, itemName) => {
-    await deleteDoc(doc(db, "inventory", id));
     await logEvent(id, itemName || "Unknown", "DELETED", 0, "Permanently Removed from Database");
+    await deleteDoc(doc(db, "inventory", id));
   };
 
-  // ARCHIVE (SOFT-DELETE)
+  // ARCHIVE (SOFT-DELETE) — zeros reserved so active consults aren't blocked on an archived item
   const archiveItem = async (id, itemName) => {
     await updateDoc(doc(db, "inventory", id), {
       isArchived: true,
       archivedAt: serverTimestamp(),
+      reserved: 0,
     });
-    await logEvent(id, itemName || "Unknown", "ARCHIVED", 0, "Product archived (soft-deleted)");
+    await logEvent(id, itemName || "Unknown", "ARCHIVED", 0, "Product archived (soft-deleted). Reserved stock released.");
   };
 
-  // RESTORE
+  // RESTORE — clears archivedAt so queries filtering on that field don't match restored items
   const restoreItem = async (id, itemName) => {
     await updateDoc(doc(db, "inventory", id), {
       isArchived: false,
+      archivedAt: deleteField(),
       restoredAt: serverTimestamp(),
     });
     await logEvent(id, itemName || "Unknown", "RESTORED", 0, "Product restored from archive");
   };
 
   // ADJUST STOCK (+ or -)
-  const adjustStock = async (id, itemName, amount, reason) => {
-    if(!amount) throw new Error("Amount must be non-zero");
-    if(!reason) throw new Error("A Medical Reason must be provided to adjust stock.");
-    
-    await updateDoc(doc(db, "inventory", id), {
-      stock: increment(amount)
+  const adjustStock = async (id, itemName, amount, reason, batchInfo = null) => {
+    if (!amount) throw new Error("Amount must be non-zero");
+    if (!reason) throw new Error("A reason must be provided to adjust stock.");
+
+    await runTransaction(db, async (transaction) => {
+      const ref = doc(db, "inventory", id);
+      const snap = await transaction.get(ref);
+      if (!snap.exists()) throw new Error("Item not found");
+
+      const data = snap.data();
+      const currentStock = data.stock || 0;
+      const reserved = data.reserved || 0;
+      const newStock = currentStock + amount;
+
+      if (newStock < 0)
+        throw new Error(`Cannot reduce below zero. Current stock: ${currentStock}`);
+      if (newStock < reserved)
+        throw new Error(`Cannot reduce below reserved (${reserved}). Available: ${currentStock - reserved}`);
+
+      const updatePayload = { stock: increment(amount) };
+
+      // Batch-aware positive adjustment: append new batch entry if batch info provided
+      if (amount > 0 && batchInfo && batchInfo.batchNumber) {
+        const batches = [...(data.batches || [])];
+        batches.push({
+          batchNumber: batchInfo.batchNumber,
+          expiryDate: batchInfo.expiryDate || null,
+          qty: amount,
+          dateAdded: new Date().toISOString(),
+        });
+        updatePayload.batches = batches;
+      }
+
+      transaction.update(ref, updatePayload);
     });
-    
-    await logEvent(id, itemName, "ADJUSTED", amount, reason);
+
+    const batchNote = batchInfo?.batchNumber
+      ? ` | Batch: ${batchInfo.batchNumber}${batchInfo.expiryDate ? `, Exp: ${batchInfo.expiryDate}` : ''}`
+      : '';
+    await logEvent(id, itemName, "ADJUSTED", amount, reason + batchNote);
   };
 
   // --- THE SOFT-RESERVE ENGINE ---
   const reserveStock = async (id, qty) => {
-    if (!qty || qty <= 0) return;
-    await updateDoc(doc(db, "inventory", id), {
-      reserved: increment(qty)
+    if (!qty || qty <= 0 || isNaN(qty)) return;
+    await runTransaction(db, async (transaction) => {
+      const ref = doc(db, "inventory", id);
+      const snap = await transaction.get(ref);
+      if (!snap.exists()) return;
+      const data = snap.data();
+      const currentReserved = data.reserved || 0;
+      const currentStock = data.stock || 0;
+      if (currentReserved + qty > currentStock) {
+        throw new Error(`Cannot reserve ${qty}. Only ${currentStock - currentReserved} available for reservation.`);
+      }
+      transaction.update(ref, { reserved: increment(qty) });
     });
   };
 
   const releaseStock = async (id, qty) => {
-    if (!qty || qty <= 0) return;
-    await updateDoc(doc(db, "inventory", id), {
-      reserved: increment(-qty)
+    if (!qty || qty <= 0 || isNaN(qty)) return;
+    await runTransaction(db, async (transaction) => {
+      const ref = doc(db, "inventory", id);
+      const snap = await transaction.get(ref);
+      if (!snap.exists()) return;
+      const data = snap.data();
+      const currentReserved = data.reserved || 0;
+      // Clamp to zero if double-release occurs (POSModal + ClinicalWorkspace unmount)
+      const newReserved = Math.max(0, currentReserved - qty);
+      transaction.update(ref, { reserved: newReserved });
     });
   };
 

@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, Button, MenuItem, Box, InputAdornment, Divider, Typography, Grid, Paper
+  TextField, Button, MenuItem, Box, InputAdornment, Divider, Typography, Grid, Paper,
+  FormControlLabel, Switch
 } from '@mui/material';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import InsightsIcon from '@mui/icons-material/Insights';
@@ -12,9 +13,6 @@ import { formatCategory } from '../Inventory';
 
 export default function ProductFormModal({ open, onClose, item, onSave, categories, showToast }) {
   const isEditing = Boolean(item);
-  
-  // Find currently selected category object for UI hints
-  const selectedCatObj = categories.find(c => c.name === item?.category);
 
   const [formData, setFormData] = useState({
     itemName:     item?.itemName     || '',
@@ -35,6 +33,10 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [newCatName, setNewCatName]     = useState('');
   const [errors, setErrors]             = useState({});
+  // T2.167b: Per-item isMedicine override — null means "derive from category"
+  const [isMedicineOverride, setIsMedicineOverride] = useState(
+    item?.isMedicine !== undefined ? item.isMedicine : null
+  );
 
   // Helper: update one field and clear its error
   const set = (key) => (e) => {
@@ -59,8 +61,12 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
     const newErrors = {};
     if (!formData.itemName.trim())
       newErrors.itemName = 'Product name is required.';
+    if (!formData.category)
+      newErrors.category = 'Category is required.';
     if (formData.price === '' || isNaN(Number(formData.price)) || Number(formData.price) < 0)
       newErrors.price = 'A valid retail price is required.';
+    if (formData.costPrice !== '' && (isNaN(Number(formData.costPrice)) || Number(formData.costPrice) < 0))
+      newErrors.costPrice = 'Cost price cannot be negative.';
     if (!formData.unit.trim())
       newErrors.unit = 'Unit of measure is required (e.g. Box, Vial, Bottle).';
 
@@ -85,6 +91,8 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
       expiryDate: formData.expiryDate || null,
       // Only include opening stock for new products
       ...(!isEditing && { openingStock: Number(formData.openingStock) || 0 }),
+      // Pass override so Inventory.jsx can resolve final isMedicine value
+      ...(isMedicineOverride !== null && { isMedicineOverride }),
     });
   };
 
@@ -93,7 +101,15 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
     if (!newCatName.trim()) return;
     try {
       const lowerName = newCatName.trim().toLowerCase();
-      await addDoc(collection(db, 'inventory_categories'), { name: lowerName });
+      // T2.162: Dedup guard — select existing instead of creating a duplicate
+      if (categories.some(c => c.name === lowerName)) {
+        setFormData(prev => ({ ...prev, category: lowerName }));
+        setShowQuickAdd(false);
+        setNewCatName('');
+        showToast(`Category "${formatCategory(lowerName)}" already exists. Selected.`, 'info');
+        return;
+      }
+      await addDoc(collection(db, 'inventory_categories'), { name: lowerName, isMedicine: false });
       setFormData(prev => ({ ...prev, category: lowerName }));
       setShowQuickAdd(false);
       setNewCatName('');
@@ -170,12 +186,17 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
                     value={formData.category}
                     onChange={e => {
                       if (e.target.value === 'ADD_NEW') setShowQuickAdd(true);
-                      else setFormData(prev => ({ ...prev, category: e.target.value }));
+                      else {
+                        setFormData(prev => ({ ...prev, category: e.target.value }));
+                        setIsMedicineOverride(null); // Reset override so it re-derives from new category
+                      }
                     }}
+                    error={!!errors.category}
                     helperText={
-                      (categories.find(c => c.name === formData.category)?.isMedicine) 
-                      ? "💊 Medicine: Triggers pharmacy alerts." 
-                      : "Retail: Standard checkout."
+                      errors.category
+                      || ((categories.find(c => c.name === formData.category)?.isMedicine)
+                        ? "Medicine: Triggers pharmacy alerts."
+                        : "Retail: Standard checkout.")
                     }
                     sx={sxField}
                   >
@@ -210,6 +231,29 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
                   <TextField
                     label="Dosage / Strength" placeholder="e.g. 50mg, 10ml" fullWidth
                     value={formData.dosage} onChange={set('dosage')} sx={sxField}
+                  />
+                </Grid>
+
+                {/* T2.167b: isMedicine override toggle — defaults to category flag, allows per-item override */}
+                <Grid size={{ xs: 12 }}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={
+                          isMedicineOverride !== null
+                            ? isMedicineOverride
+                            : (categories.find(c => c.name === formData.category)?.isMedicine || false)
+                        }
+                        onChange={(e) => setIsMedicineOverride(e.target.checked)}
+                        color="error"
+                        size="small"
+                      />
+                    }
+                    label={
+                      <Typography variant="body2" sx={{ fontWeight: 'bold', fontSize: '0.8rem', color: '#5D4037' }}>
+                        Requires pharmacy dispensing verification
+                      </Typography>
+                    }
                   />
                 </Grid>
               </Grid>
@@ -265,6 +309,7 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
                   <TextField
                     label="Cost Price" type="number" fullWidth
                     value={formData.costPrice} onChange={set('costPrice')}
+                    error={!!errors.costPrice} helperText={errors.costPrice}
                     InputProps={{ startAdornment: <InputAdornment position="start">₱</InputAdornment> }}
                     sx={{ ...sxField, height: '100%' }}
                   />

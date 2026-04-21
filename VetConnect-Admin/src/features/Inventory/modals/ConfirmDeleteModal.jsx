@@ -3,7 +3,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, Typography, Box
 } from '@mui/material';
-import { FONT, COLORS } from '../../../theme/designTokens';
+import { FONT } from '../../../theme/designTokens';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import ArchiveOutlinedIcon from '@mui/icons-material/ArchiveOutlined';
 
@@ -58,6 +58,21 @@ export default function ConfirmDeleteModal({ open, onClose, onConfirm, item }) {
             </Typography>
           </Box>
 
+          {/* T2.161: Impact summary — warns about active reservations and remaining stock */}
+          {(item.reserved > 0 || item.stock > 0) && (
+            <Box sx={{ bgcolor: '#FFF3E0', border: '1px solid #E65100', p: 1.5, mb: 1, width: '100%' }}>
+              {item.reserved > 0 && (
+                <Typography variant="body2" fontWeight="bold" color="#E65100" sx={{ fontSize: '0.8rem' }}>
+                  {item.reserved} unit(s) are currently reserved by active consults. Reservations will be released.
+                </Typography>
+              )}
+              {item.stock > 0 && (
+                <Typography variant="body2" fontWeight="bold" color="#5D4037" sx={{ fontSize: '0.8rem', mt: item.reserved > 0 ? 0.5 : 0 }}>
+                  {item.stock} unit(s) still in stock.
+                </Typography>
+              )}
+            </Box>
+          )}
           {/* Warning text */}
           <Typography
             variant="body2"
@@ -79,7 +94,7 @@ export default function ConfirmDeleteModal({ open, onClose, onConfirm, item }) {
           Cancel
         </Button>
         <Button
-          onClick={() => { onConfirm(item.id, item.itemName); onClose(); }}
+          onClick={() => onConfirm(item.id, item.itemName)}
           variant="contained"
           color="error"
           sx={{ fontWeight: 1000, borderRadius: 0, flex: 1, boxShadow: '4px 4px 0px rgba(211,47,47,0.2)', border: '2px solid #B71C1C', fontFamily: FONT }}

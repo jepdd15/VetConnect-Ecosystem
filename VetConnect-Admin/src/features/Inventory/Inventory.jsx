@@ -26,6 +26,7 @@ import { db } from '../../firebaseConfig';
 
 // Logic & Components
 import { useInventory } from './hooks/useInventory';
+import { useUser } from '../../context/UserContext';
 import InventoryTable from './components/InventoryTable'; 
 import ProductFormModal from './modals/ProductFormModal';
 import StockAdjustModal from './modals/StockAdjustModal';
@@ -66,8 +67,9 @@ const KPICard = ({ title, value, icon, color, bgcolor, border, onClick, active }
 );
 
 export default function Inventory() {
-  const { inventory, createItem, updateItem, deleteItem, restoreItem, adjustStock, scrubDatabase } = useInventory();
-  
+  const { inventory, loading, createItem, updateItem, deleteItem, restoreItem, adjustStock, scrubDatabase } = useInventory();
+  const { isAdmin } = useUser();
+
   const [searchText, setSearchText] = useState('');
   const [filterCategory, setFilterCategory] = useState('All');
   const [stockFilter, setStockFilter] = useState(null); // null | 'low' | 'out'
@@ -106,8 +108,9 @@ export default function Inventory() {
             { name: 'lab', isMedicine: false }
           ];
           defaultCategories.forEach((cat) => {
-            const newDocRef = doc(collection(db, "inventory_categories"));
-            batch.set(newDocRef, cat);
+            // T2.173: Deterministic IDs prevent duplicate seeding from concurrent tabs
+            const catRef = doc(db, "inventory_categories", `default_${cat.name}`);
+            batch.set(catRef, cat, { merge: true });
           });
           await batch.commit();
         } catch (error) { console.error("Auto-seeding failed:", error); }
@@ -130,6 +133,13 @@ export default function Inventory() {
     return () => unsub();
   },[]);  
 
+  const toDateStr = (val) => {
+    if (!val) return null;
+    if (typeof val === 'string') return val;
+    if (val?.toDate) return val.toDate().toISOString().slice(0, 10);
+    return null;
+  };
+
   // --- KPI ANALYTICS ENGINE ---
   const kpis = useMemo(() => {
     const activeInventory = inventory.filter(item => !item.isArchived);
@@ -143,11 +153,25 @@ export default function Inventory() {
       totalValue += (stock * cost);
       if (stock <= 0) outOfStock++;
       else if (stock <= min) lowStock++;
-      if (item.expiryDate) {
-        const expiry = new Date(item.expiryDate + 'T00:00:00');
+      // T2.166: Check both top-level expiryDate and per-batch expiry dates
+      let isExpiring = false;
+      const topExpiry = toDateStr(item.expiryDate);
+      if (topExpiry) {
+        const expiry = new Date(topExpiry + 'T00:00:00');
         const daysUntil = Math.floor((expiry - today) / (1000 * 60 * 60 * 24));
-        if (daysUntil >= 0 && daysUntil <= 30) expiringSoon++;
+        if (daysUntil >= 0 && daysUntil <= 30) isExpiring = true;
       }
+      if (!isExpiring && item.batches?.length > 0) {
+        for (const batch of item.batches) {
+          const batchExpiry = toDateStr(batch.expiryDate);
+          if (batchExpiry && batch.qty > 0) {
+            const expiry = new Date(batchExpiry + 'T00:00:00');
+            const daysUntil = Math.floor((expiry - today) / (1000 * 60 * 60 * 24));
+            if (daysUntil >= 0 && daysUntil <= 30) { isExpiring = true; break; }
+          }
+        }
+      }
+      if (isExpiring) expiringSoon++;
     });
     return { totalItems: activeInventory.length, totalValue, outOfStock, lowStock, expiringSoon };
   }, [inventory]);
@@ -181,23 +205,34 @@ export default function Inventory() {
   // --- HANDLERS ---
   const handleSaveForm = async (data) => {
     try {
-      if (selectedItem) await updateItem(selectedItem.id, data, selectedItem);
-      else await createItem(data);
+      // T2.167a: Derive isMedicine from category, allowing per-item override from the form toggle
+      const catObj = invCategories.find(c => c.name === (data.category || '').toLowerCase().trim());
+      const derivedIsMedicine = catObj?.isMedicine || false;
+      const enrichedData = {
+        ...data,
+        isMedicine: data.isMedicineOverride !== undefined ? data.isMedicineOverride : derivedIsMedicine,
+      };
+      delete enrichedData.isMedicineOverride;
+
+      if (selectedItem) await updateItem(selectedItem.id, enrichedData, selectedItem);
+      else await createItem(enrichedData);
       setOpenForm(false);
       showToast(selectedItem ? "Item updated." : "New item created.");
     } catch (e) { showToast(e.message, "error"); }
   };
 
-  const handleAdjustStock = async (amount, reason) => {
-    try { 
-      await adjustStock(selectedItem.id, selectedItem.itemName, amount, reason); 
+  const handleAdjustStock = async (amount, reason, batchInfo = null) => {
+    try {
+      await adjustStock(selectedItem.id, selectedItem.itemName, amount, reason, batchInfo);
       setOpenAdjust(false);
       showToast(`Stock adjusted for ${selectedItem.itemName}.`);
     } catch (e) { showToast(e.message, "error"); }
   };
 
   const handleDelete = (id, name) => {
-    setSelectedItem({ id, itemName: name });
+    // T2.161a: Pass full item so ConfirmDeleteModal can show stock/reserved impact summary
+    const fullItem = inventory.find(i => i.id === id);
+    setSelectedItem(fullItem || { id, itemName: name });
     setOpenDelete(true);
   };
 
@@ -206,6 +241,7 @@ export default function Inventory() {
       await deleteItem(id, name);
       showToast(`"${name}" archived.`, 'success');
     } catch (e) { showToast(e.message, 'error'); }
+    finally { setOpenDelete(false); }
   };
 
   const handleRestore = async (id, name) => {
@@ -242,6 +278,8 @@ export default function Inventory() {
             Inventory Command Center
           </Typography>
 
+          {/* T2.164: Filter controls only apply to the Inventory Table tab — hide them on Activity Log */}
+          {activeTab === 0 && (<>
           {/* Search */}
           <TextField
             variant="standard"
@@ -281,6 +319,7 @@ export default function Inventory() {
           <Typography variant="body2" sx={{ fontFamily: FONT, color: '#5D4037', fontWeight: 900, whiteSpace: 'nowrap', flexShrink: 0, fontStyle: 'italic', ml: 1 }}>
             {filteredItems.length} Records
           </Typography>
+          </>)}
 
           <Box sx={{ flexGrow: 1 }} />
 
@@ -293,9 +332,11 @@ export default function Inventory() {
             Add Item
           </Button>
 
+          {isAdmin && (
           <IconButton size="small" onClick={() => setOpenScrubConfirm(true)} sx={{ color: '#5D4037', bgcolor: 'transparent', border: '1px solid #5D403733', ml: 1 }}>
             <AutoFixHighIcon fontSize="small" />
           </IconButton>
+          )}
         </Paper>
       </Box>
 
@@ -336,6 +377,7 @@ export default function Inventory() {
       {activeTab === 0 && (
         <InventoryTable
           data={filteredItems}
+          loading={loading}
           onEdit={(item) => { setSelectedItem(item); setOpenForm(true); }}
           onAdjust={(item) => { setSelectedItem(item); setOpenAdjust(true); }}
           onLog={(item) => { setSelectedItem(item); setOpenLog(true); }}

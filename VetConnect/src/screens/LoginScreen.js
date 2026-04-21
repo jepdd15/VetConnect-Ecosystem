@@ -47,8 +47,16 @@ const LoginScreen = ({ navigation }) => {
 
       if (userDoc.exists()) {
         const userData = userDoc.data();
+
+        // Revocation check — disabled flag is the authoritative marker
+        if (userData.disabled === true) {
+          await auth.signOut();
+          Alert.alert("Account Deactivated", "This account has been deactivated. Contact your administrator.");
+          return;
+        }
+
         const staffRoles = ["admin", "staff", "veterinarian", "groomer"];
-        if (staffRoles.includes(userData.role) || userData.accessLevel) {
+        if (staffRoles.includes(userData.role) || staffRoles.includes(userData.accessLevel)) {
           navigation.replace("StaffDashboard");
         } else {
           navigation.replace("ClientDashboard");

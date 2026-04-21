@@ -59,9 +59,18 @@ const MainLayout = ({ children, onLogout }) => {
   );
 };
 
+// Allowed staff roles — must match Login.jsx allowedRoles
+const STAFF_ROLES = ['admin', 'staff', 'veterinarian', 'groomer'];
+
+/** Route guard: wraps admin-only routes, redirects non-admins to "/" */
+const AdminRoute = ({ children }) => {
+  const { isAdmin } = useUser();
+  return isAdmin ? children : <Navigate to="/" replace />;
+};
+
 // --- THE SECURE APP SHELL ---
 function AppShell() {
-  const { user, loading } = useUser();
+  const { user, profile, isAdmin, loading } = useUser();
 
   const handleLogout = () => {
     signOut(auth).catch((error) => {
@@ -75,18 +84,25 @@ function AppShell() {
     </Box>
   );
 
-  // THE FIX: Using the <Navigate> component to handle secure routing paths correctly for Firebase Hosting.
+  // --- ROUTE-LEVEL ROLE PROTECTION (Option B: belt-and-suspenders) ---
+  // Even if Firebase Auth state says "logged in", we verify the Firestore
+  // profile has a valid staff role and is not disabled.
+  const isValidStaff = user
+    && profile
+    && !profile.disabled
+    && (STAFF_ROLES.includes(profile.role) || STAFF_ROLES.includes(profile.accessLevel));
+
   return (
     <Routes>
-      <Route 
-        path="/login" 
-        element={!user ? <Login /> : <Navigate to="/" replace />} 
+      <Route
+        path="/login"
+        element={!user ? <Login /> : <Navigate to="/" replace />}
       />
-      
-      <Route 
-        path="/*" 
+
+      <Route
+        path="/*"
         element={
-          user ? (
+          isValidStaff ? (
             <MainLayout onLogout={handleLogout}>
               <Routes>
                 <Route path="/" element={<Dashboard />} />
@@ -96,19 +112,25 @@ function AppShell() {
                 <Route path="/patients/:id" element={<PatientDashboard />} />
                 <Route path="/services" element={<Services />} />
                 <Route path="/inventory" element={<Inventory />} />
-                <Route path="/staff" element={<Staff />} />
-                <Route path="/sales" element={<Sales />} />
-                <Route path="/expenses" element={<Expenses />} />
+                <Route path="/staff" element={<AdminRoute><Staff /></AdminRoute>} />
+                <Route path="/sales" element={<AdminRoute><Sales /></AdminRoute>} />
+                <Route path="/expenses" element={<AdminRoute><Expenses /></AdminRoute>} />
                 <Route path="/monitor" element={<Monitor />} />
-                <Route path="/settings" element={<Settings />} />
+                <Route path="/settings" element={<AdminRoute><Settings /></AdminRoute>} />
                 {/* Fallback for unknown internal routes */}
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </MainLayout>
+          ) : user && !profile ? (
+            // Auth succeeded but profile not yet loaded — show loading spinner.
+            // This prevents the "flash of dashboard" during the auth-state race window.
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', bgcolor: COLORS.surface }}>
+              <CircularProgress color="primary" />
+            </Box>
           ) : (
             <Navigate to="/login" replace />
           )
-        } 
+        }
       />
     </Routes>
   );

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Paper, Typography } from '@mui/material';
 import Grid from '@mui/material/Grid'; // THE FIX: Standard MUI Grid, NO Grid2!
+import { COLORS } from '../../../theme/designTokens';
 
 export default function EodSummary({ totals, filterMethod, setFilterMethod }) {
   const handleToggle = (method) => {
@@ -24,21 +25,21 @@ export default function EodSummary({ totals, filterMethod, setFilterMethod }) {
   const forensicTile = (method) => {
     const isActive = filterMethod.includes(method);
     return {
-      p: 2, 
-      borderRadius: 0, 
-      border: '2px solid #3E2723',
-      bgcolor: isActive ? '#3E2723' : '#FFF9F7',
-      boxShadow: isActive ? '1px 1px 0px rgba(93, 64, 55, 0.2)' : '4px 4px 0px rgba(93, 64, 55, 0.1)',
+      p: 2,
+      borderRadius: 0,
+      border: `2px solid ${COLORS.brand}`,
+      bgcolor: isActive ? COLORS.brand : COLORS.formBg,
+      boxShadow: isActive ? `1px 1px 0px ${COLORS.accent}33` : `4px 4px 0px ${COLORS.accent}1A`,
       display: 'flex',
       flexDirection: 'column',
       justifyContent: 'center',
       height: '100%',
       cursor: 'pointer',
       transition: 'all 0.15s ease-in-out',
-      '&:hover': { 
-        transform: isActive ? 'none' : 'translate(1px, 1px)', 
-        boxShadow: isActive ? '1px 1px 0px rgba(93, 64, 55, 0.2)' : '2px 2px 0px rgba(93, 64, 55, 0.1)',
-        bgcolor: isActive ? '#3E2723' : '#FFF3E0'
+      '&:hover': {
+        transform: isActive ? 'none' : 'translate(1px, 1px)',
+        boxShadow: isActive ? `1px 1px 0px ${COLORS.accent}33` : `2px 2px 0px ${COLORS.accent}1A`,
+        bgcolor: isActive ? COLORS.brand : COLORS.peach
       }
     };
   };
@@ -46,32 +47,40 @@ export default function EodSummary({ totals, filterMethod, setFilterMethod }) {
   return (
     <Grid container spacing={2}>
         <Grid size={{ xs: 6, md: 3 }} onClick={() => handleToggle('Cash')}>
-            <Paper sx={{ ...forensicTile('Cash'), borderLeft: filterMethod.includes('Cash') ? '12px solid #2E7D32' : '6px solid #2E7D32' }}>
-                <Typography variant="caption" sx={{ fontWeight: '1000', color: filterMethod.includes('Cash') ? '#FFF8E1' : '#757575', fontSize: '0.65rem', letterSpacing: 0.5 }}>CASH IN DRAWER</Typography>
-                <Typography variant="h5" sx={{ fontWeight: '1000', color: filterMethod.includes('Cash') ? '#FFF8E1' : '#2E7D32' }}>₱{totals.cash.toFixed(2)}</Typography>
+            <Paper sx={{ ...forensicTile('Cash'), borderLeft: filterMethod.includes('Cash') ? `12px solid ${COLORS.success}` : `6px solid ${COLORS.success}` }}>
+                <Typography variant="caption" sx={{ fontWeight: 800, color: filterMethod.includes('Cash') ? COLORS.cream : COLORS.textMuted, fontSize: '0.65rem', letterSpacing: 0.5 }}>CASH IN DRAWER</Typography>
+                <Typography variant="h5" sx={{ fontWeight: 800, color: filterMethod.includes('Cash') ? COLORS.cream : COLORS.success }}>₱{totals.cash.toFixed(2)}</Typography>
             </Paper>
         </Grid>
         <Grid size={{ xs: 6, md: 3 }} onClick={() => handleToggle('GCash')}>
-            <Paper sx={{ ...forensicTile('GCash'), borderLeft: filterMethod.includes('GCash') ? '12px solid #1565C0' : '6px solid #1565C0' }}>
-                <Typography variant="caption" sx={{ fontWeight: '1000', color: filterMethod.includes('GCash') ? '#FFF8E1' : '#757575', fontSize: '0.65rem', letterSpacing: 0.5 }}>GCASH / MAYA</Typography>
-                <Typography variant="h5" sx={{ fontWeight: '1000', color: filterMethod.includes('GCash') ? '#FFF8E1' : '#1565C0' }}>₱{totals.gcash.toFixed(2)}</Typography>
+            <Paper sx={{ ...forensicTile('GCash'), borderLeft: filterMethod.includes('GCash') ? `12px solid ${COLORS.medical}` : `6px solid ${COLORS.medical}` }}>
+                <Typography variant="caption" sx={{ fontWeight: 800, color: filterMethod.includes('GCash') ? COLORS.cream : COLORS.textMuted, fontSize: '0.65rem', letterSpacing: 0.5 }}>GCASH / MAYA</Typography>
+                <Typography variant="h5" sx={{ fontWeight: 800, color: filterMethod.includes('GCash') ? COLORS.cream : COLORS.medical }}>₱{totals.gcash.toFixed(2)}</Typography>
             </Paper>
         </Grid>
         <Grid size={{ xs: 6, md: 3 }} onClick={() => handleToggle('Card')}>
-            <Paper sx={{ ...forensicTile('Card'), borderLeft: filterMethod.includes('Card') ? '12px solid #F57C00' : '6px solid #F57C00' }}>
-                <Typography variant="caption" sx={{ fontWeight: '1000', color: filterMethod.includes('Card') ? '#FFF8E1' : '#757575', fontSize: '0.65rem', letterSpacing: 0.5 }}>CARD & BANK</Typography>
-                <Typography variant="h5" sx={{ fontWeight: '1000', color: filterMethod.includes('Card') ? '#FFF8E1' : '#F57C00' }}>₱{(totals.card + totals.bank).toFixed(2)}</Typography>
+            <Paper sx={{ ...forensicTile('Card'), borderLeft: filterMethod.includes('Card') ? `12px solid ${COLORS.amber}` : `6px solid ${COLORS.amber}` }}>
+                <Typography variant="caption" sx={{ fontWeight: 800, color: filterMethod.includes('Card') ? COLORS.cream : COLORS.textMuted, fontSize: '0.65rem', letterSpacing: 0.5 }}>CARD & BANK</Typography>
+                <Typography variant="h5" sx={{ fontWeight: 800, color: filterMethod.includes('Card') ? COLORS.cream : COLORS.amber }}>₱{(totals.card + totals.bank).toFixed(2)}</Typography>
             </Paper>
         </Grid>
         <Grid size={{ xs: 6, md: 3 }} onClick={() => handleToggle('All')}>
-            <Paper sx={{ 
-              ...forensicTile('All'), 
-              borderLeft: filterMethod.includes('All') ? '12px solid #3E2723' : '6px solid #3E2723',
-              bgcolor: filterMethod.includes('All') ? '#3E2723' : '#FFF8E1' 
+            <Paper sx={{
+              ...forensicTile('All'),
+              borderLeft: filterMethod.includes('All') ? `12px solid ${COLORS.brand}` : `6px solid ${COLORS.brand}`,
+              bgcolor: filterMethod.includes('All') ? COLORS.brand : COLORS.cream
             }}>
-                <Typography variant="caption" sx={{ fontWeight: '1000', color: filterMethod.includes('All') ? '#FFF8E1' : '#5D4037', fontSize: '0.65rem', letterSpacing: 0.8 }}>TOTAL REVENUE</Typography>
-                <Typography variant="h4" sx={{ fontWeight: '1000', color: filterMethod.includes('All') ? '#FFF8E1' : '#3E2723', fontSize: '1.6rem' }}>₱{totals.total.toFixed(2)}</Typography>
-                {totals.refunds > 0 && <Typography variant="caption" color={filterMethod.includes('All') ? "white" : "error"} sx={{ fontWeight: '1000' }}>- ₱{totals.refunds.toFixed(2)} [REFUNDS]</Typography>}
+                <Typography variant="caption" sx={{ fontWeight: 800, color: filterMethod.includes('All') ? COLORS.cream : COLORS.accent, fontSize: '0.65rem', letterSpacing: 0.8 }}>COLLECTED TODAY</Typography>
+                <Typography variant="h4" sx={{ fontWeight: 800, color: filterMethod.includes('All') ? COLORS.cream : COLORS.brand, fontSize: '1.6rem' }}>₱{totals.totalCollected.toFixed(2)}</Typography>
+                <Typography variant="caption" sx={{ fontWeight: 800, color: filterMethod.includes('All') ? `${COLORS.cream}99` : COLORS.accentLight, fontSize: '0.6rem' }}>
+                    ₱{totals.totalBilled.toFixed(2)} total billed
+                </Typography>
+                {totals.totalDeposits > 0 && (
+                    <Typography variant="caption" sx={{ fontWeight: 800, color: filterMethod.includes('All') ? `${COLORS.cream}80` : COLORS.textMuted, fontSize: '0.55rem' }}>
+                        (₱{totals.totalDeposits.toFixed(2)} via prior deposits)
+                    </Typography>
+                )}
+                {totals.refunds > 0 && <Typography variant="caption" color={filterMethod.includes('All') ? "white" : "error"} sx={{ fontWeight: 800 }}>REFUNDS TODAY: ₱{totals.refunds.toFixed(2)}</Typography>}
             </Paper>
         </Grid>
     </Grid>

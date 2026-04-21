@@ -20,9 +20,11 @@ import MedicalServicesIcon from '@mui/icons-material/MedicalServices';
 import { doc, getDoc, collection, runTransaction, Timestamp, updateDoc, increment } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { useUser } from '../context/UserContext';
+import { useClinicSettings } from '../hooks/useClinicSettings';
 
 export default function POSModal({ open, onClose, patient, inventoryList, servicesList }) {
   const { profile } = useUser();
+  const clinicSettings = useClinicSettings();
   const [cart, setCart] = useState([]);
   const[selectedItemVal, setSelectedItemVal] = useState(''); 
   const [paymentMethod, setPaymentMethod] = useState('Cash'); 
@@ -211,8 +213,8 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         </head>
         <body>
           <div class="header">
-            <p class="clinic-name">🐾 Starbarks Veterinary Clinic</p>
-            <p style="margin: 0; font-size: 12px; color: #666;">Santa Barbara, Pangasinan | Official Receipt</p>
+            <p class="clinic-name">${clinicSettings.clinicName}</p>
+            <p style="margin: 0; font-size: 12px; color: #666;">${clinicSettings.clinicAddress} | Official Receipt</p>
           </div>
           
           <div class="details">
@@ -239,7 +241,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
           </div>
 
           <div class="footer">
-            <p>Thank you for trusting Starbarks Veterinary Clinic with your pet's health!</p>
+            <p>Thank you for trusting ${clinicSettings.clinicName} with your pet's health!</p>
             <p>This document is a system-generated receipt.</p>
           </div>
         </body>
@@ -285,8 +287,9 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
     setLoading(true);
     try { 
       // THE FIX: We 'catch' the transactionId returned by the database!
-      const transactionId = await runTransaction(db, async (transaction) => { 
-        for (const item of cart) { 
+      const transactionId = await runTransaction(db, async (transaction) => {
+        const batchSourceMap = {};
+        for (const item of cart) {
           if (item.type === 'product') { 
             const itemRef = doc(db, "inventory", item.id); const itemDoc = await transaction.get(itemRef); 
             if (!itemDoc.exists()) throw new Error(`Product ${item.name} not found`); 
@@ -295,6 +298,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
 
             let batches = data.batches || [];
             let batchesUsed = [];
+            let batchSource = [];
 
             if (batches.length > 0) {
               // FIFO batch deduction
@@ -305,8 +309,9 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
               if (sellableStock < item.qty) throw new Error(`Not enough UNEXPIRED stock for ${item.name}.`);
 
               let remainingToDeduct = item.qty;
-              batches = batches.map(b => { if (remainingToDeduct <= 0) return b; let amountTaken = 0; if (b.qty >= remainingToDeduct) { amountTaken = remainingToDeduct; b.qty -= remainingToDeduct; remainingToDeduct = 0; } else { amountTaken = b.qty; remainingToDeduct -= b.qty; b.qty = 0; } if (amountTaken > 0) batchesUsed.push(`${b.batchNumber} (-${amountTaken})`); return b; });
+              batches = batches.map(b => { if (remainingToDeduct <= 0) return b; let amountTaken = 0; if (b.qty >= remainingToDeduct) { amountTaken = remainingToDeduct; b.qty -= remainingToDeduct; remainingToDeduct = 0; } else { amountTaken = b.qty; remainingToDeduct -= b.qty; b.qty = 0; } if (amountTaken > 0) { batchesUsed.push(`${b.batchNumber} (-${amountTaken})`); batchSource.push({ batchNumber: b.batchNumber, expiryDate: b.expiryDate, qtyFromBatch: amountTaken }); } return b; });
               batches = batches.filter(b => b.qty > 0);
+              batchSourceMap[item.id] = batchSource;
             } else {
               // Flat stock deduction — no batch tracking
               if (currentStock < item.qty) throw new Error(`Not enough stock for ${item.name}.`);
@@ -343,7 +348,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             appointmentId: patient.id,
             petName: patient.petName,
             ownerName: patient.ownerName || 'Walk-In',
-            items: cart,
+            items: cart.map(ci => ci.type === 'product' && batchSourceMap[ci.id] ? { ...ci, batchSource: batchSourceMap[ci.id] } : ci),
             subtotal: parseFloat(financials.subtotal),
             discount: parseFloat(financials.discount),
             depositPaid: parseFloat(financials.deposit),

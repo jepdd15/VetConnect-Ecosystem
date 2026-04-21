@@ -1,12 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { DataGrid } from '@mui/x-data-grid';
-import { 
-  Box, Typography, Paper, Chip, IconButton, Tooltip, 
+import {
+  Box, Typography, Paper, Chip, IconButton, Tooltip, Snackbar,
   Dialog, DialogTitle, DialogContent, DialogActions, Button, Checkbox, FormControlLabel,
-  InputAdornment, TextField, Divider, Alert, Switch, TableSortLabel, FormControl, Select, MenuItem
+  InputAdornment, TextField, Alert, Switch, TableSortLabel, FormControl, Select, MenuItem
 } from '@mui/material';
-import Grid from '@mui/material/Grid'; 
-
 import { useSalesData } from './hooks/useSalesData';
 import EodSummary from './components/EodSummary';
 
@@ -21,13 +19,17 @@ import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 
 // Design Tokens
-import { FONT } from '../../theme/designTokens';
+import { FONT, COLORS } from '../../theme/designTokens';
+import { useUser } from '../../context/UserContext';
+import { useClinicSettings } from '../../hooks/useClinicSettings';
 
 export default function Sales() {
+  const { profile } = useUser();
+  const clinicSettings = useClinicSettings();
   const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
-  
+
   // THE BRAIN: Hook handles all database fetching and refund transactions
-  const { sales, loading, eodTotals, processRefundTransaction } = useSalesData(filterDate);
+  const { sales, loading, eodTotals, processRefundTransaction } = useSalesData(filterDate, profile);
 
   // --- UI STATES ---
   const [searchText, setSearchText] = useState('');
@@ -41,13 +43,7 @@ export default function Sales() {
   const [openRefund, setOpenRefund] = useState(false);
   const [selectedSale, setSelectedSale] = useState(null);
   const [restock, setRestock] = useState(true);
-
-  const clinicalFlatStyle = {
-    bgcolor: 'white',
-    border: '2px solid #5D4037',
-    borderRadius: 0,
-    boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
-  };
+  const [toast, setToast] = useState({ open: false, message: '', severity: 'success' });
 
   // --- SORTING & FILTERING ENGINE ---
   const handleRequestSort = (property) => {
@@ -61,8 +57,9 @@ export default function Sales() {
       const matchSearch = (s.petName || '').toLowerCase().includes(searchText.toLowerCase()) || 
                           (s.ownerName || '').toLowerCase().includes(searchText.toLowerCase()) ||
                           s.id.toLowerCase().includes(searchText.toLowerCase());
-      const matchMethod = filterMethod.includes('All') || filterMethod.includes(s.paymentMethod);
-      const matchStatus = filterStatus === 'All' || (filterStatus === 'Paid' ? s.status !== 'refunded' : s.status === 'refunded');
+      const matchMethod = filterMethod.includes('All') || filterMethod.includes(s.paymentMethod) ||
+                          (filterMethod.includes('Card') && s.paymentMethod === 'Bank Transfer');
+      const matchStatus = filterStatus === 'All' || (filterStatus === 'Paid' ? s.status !== 'refunded' : filterStatus === 'refunded' ? s.status === 'refunded' : true);
       return matchSearch && matchMethod && matchStatus;
     });
 
@@ -96,10 +93,11 @@ export default function Sales() {
   const executeRefund = async () => {
     try {
       await processRefundTransaction(selectedSale, restock);
-      setOpenRefund(false); 
-      alert("Refund Processed Successfully!");
-    } catch (error) { 
-      alert("Refund failed: " + error.message); 
+      setOpenRefund(false);
+      setToast({ open: true, message: 'Refund processed successfully.', severity: 'success' });
+    } catch (error) {
+      console.error('[Sales.executeRefund]:', error);
+      setToast({ open: true, message: 'Refund failed. Please try again.', severity: 'error' });
     }
   };
 
@@ -134,8 +132,8 @@ export default function Sales() {
         <body>
           <div class="reprint-badge">*** DUPLICATE RECEIPT (REPRINT) ***</div>
           <div class="header">
-            <p class="clinic-name">🐾 Starbarks Veterinary Clinic</p>
-            <p style="margin: 0; font-size: 12px; color: #666;">Santa Barbara, Pangasinan | Official Receipt</p>
+            <p class="clinic-name">${clinicSettings.clinicName}</p>
+            <p style="margin: 0; font-size: 12px; color: #666;">${clinicSettings.clinicAddress} | Official Receipt</p>
           </div>
           <div class="details">
             <p><strong>Receipt #:</strong> ${sale.id.slice(0, 8).toUpperCase()}</p>
@@ -155,7 +153,7 @@ export default function Sales() {
             <div class="total-row" style="margin-top:5px; font-size:12px; color:#555;"><span>Payment Method:</span><span>${sale.paymentMethod || 'Cash'}</span></div>
           </div>
           <div class="footer">
-            <p>Thank you for trusting Starbarks Veterinary Clinic with your pet's health!</p>
+            <p>Thank you for trusting ${clinicSettings.clinicName} with your pet's health!</p>
             <p>This document is a system-generated duplicate receipt.</p>
           </div>
         </body>
@@ -168,38 +166,113 @@ export default function Sales() {
         printWindow.focus();
         setTimeout(() => { printWindow.print(); printWindow.close(); }, 250);
     } else {
-        alert("⚠️ Pop-up blocked! Please allow pop-ups to print receipts.");
+        setToast({ open: true, message: 'Pop-up blocked. Please allow pop-ups to print receipts.', severity: 'warning' });
+    }
+  };
+
+  const handlePrintReport = () => {
+    const reportDate = new Date(filterDate).toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const paidCount = sales.filter(s => s.status !== 'refunded').length;
+    const refundedCount = sales.filter(s => s.status === 'refunded').length;
+
+    const reportContent = `
+      <html>
+        <head>
+          <style>
+            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #333; max-width: 700px; margin: 0 auto; padding: 30px; }
+            h1 { color: #5D4037; font-size: 20px; border-bottom: 2px solid #5D4037; padding-bottom: 10px; margin-bottom: 5px; }
+            h2 { color: #5D4037; font-size: 14px; margin-top: 25px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #D7CCC8; padding-bottom: 5px; }
+            .date { color: #8D6E63; font-size: 13px; margin-bottom: 20px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+            th, td { padding: 8px 12px; text-align: left; font-size: 13px; }
+            th { background: #F5F0EB; font-weight: 700; border-bottom: 2px solid #5D4037; }
+            td { border-bottom: 1px solid #E0D6CC; }
+            .amount { text-align: right; font-weight: 700; }
+            .total-row td { font-weight: 800; font-size: 15px; border-top: 2px solid #5D4037; }
+            .refund { color: #D32F2F; }
+            .footer { text-align: center; margin-top: 30px; font-size: 11px; color: #A1887F; border-top: 1px solid #E0D6CC; padding-top: 10px; }
+          </style>
+        </head>
+        <body>
+          <h1>End-of-Day Sales Report</h1>
+          <p class="date">${reportDate}</p>
+
+          <h2>Payment Breakdown</h2>
+          <table>
+            <thead><tr><th>Method</th><th class="amount">Collected</th></tr></thead>
+            <tbody>
+              <tr><td>Cash</td><td class="amount">P${eodTotals.cash.toFixed(2)}</td></tr>
+              <tr><td>GCash / Maya</td><td class="amount">P${eodTotals.gcash.toFixed(2)}</td></tr>
+              <tr><td>Card</td><td class="amount">P${eodTotals.card.toFixed(2)}</td></tr>
+              <tr><td>Bank Transfer</td><td class="amount">P${eodTotals.bank.toFixed(2)}</td></tr>
+              <tr class="total-row"><td>Total Collected</td><td class="amount">P${eodTotals.totalCollected.toFixed(2)}</td></tr>
+            </tbody>
+          </table>
+
+          <h2>Summary</h2>
+          <table>
+            <tbody>
+              <tr><td>Total Billed</td><td class="amount">P${eodTotals.totalBilled.toFixed(2)}</td></tr>
+              <tr><td>Prior Deposits Applied</td><td class="amount">P${eodTotals.totalDeposits.toFixed(2)}</td></tr>
+              <tr><td>SC/PWD Discounts Given</td><td class="amount">P${eodTotals.totalDiscounts.toFixed(2)}</td></tr>
+              ${eodTotals.refunds > 0 ? `<tr class="refund"><td>Refunds</td><td class="amount">- P${eodTotals.refunds.toFixed(2)}</td></tr>` : ''}
+              <tr class="total-row"><td>Net Collected Today</td><td class="amount">P${(eodTotals.totalCollected - eodTotals.refunds).toFixed(2)}</td></tr>
+            </tbody>
+          </table>
+
+          <h2>Transaction Count</h2>
+          <table>
+            <tbody>
+              <tr><td>Paid Transactions</td><td class="amount">${paidCount}</td></tr>
+              ${refundedCount > 0 ? `<tr class="refund"><td>Refunded Transactions</td><td class="amount">${refundedCount}</td></tr>` : ''}
+              <tr class="total-row"><td>Total Transactions</td><td class="amount">${sales.length}</td></tr>
+            </tbody>
+          </table>
+
+          <div class="footer">
+            <p>Generated on ${new Date().toLocaleString('en-PH')} | ${clinicSettings.clinicName}</p>
+            <p>This is a system-generated end-of-day report.</p>
+          </div>
+        </body>
+      </html>
+    `;
+    const printWindow = window.open('', '_blank', 'width=800,height=600');
+    if (printWindow) {
+      printWindow.document.write(reportContent);
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => { printWindow.print(); printWindow.close(); }, 250);
     }
   };
 
   const columns = [
     { 
       field: 'jsDate', flex: 1.2, minWidth: 160, sortable: false, disableColumnMenu: true,
-      renderHeader: () => (<TableSortLabel active={orderBy === 'jsDate'} direction={orderBy === 'jsDate' ? order : 'asc'} onClick={() => handleRequestSort('jsDate')} sx={{fontWeight: '1000', color: '#5D4037', fontSize: '0.75rem'}}>DATE & TIME</TableSortLabel>),
+      renderHeader: () => (<TableSortLabel active={orderBy === 'jsDate'} direction={orderBy === 'jsDate' ? order : 'asc'} onClick={() => handleRequestSort('jsDate')} sx={{ fontWeight: 800, color: COLORS.accent, fontSize: '0.75rem' }}>DATE & TIME</TableSortLabel>),
       renderCell: (p) => (
         <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', py: 1 }}>
-            <Typography variant="body2" sx={{ fontWeight: '1000', color: '#3E2723', lineHeight: 1.2 }}>{p.value ? p.value.toLocaleDateString() : 'N/A'}</Typography>
-            <Typography variant="caption" sx={{ color: 'textSecondary', fontWeight: '900', fontSize: '0.65rem', mt: 0.2 }}>{p.value ? p.value.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}</Typography>
+            <Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.brand, lineHeight: 1.2 }}>{p.value ? p.value.toLocaleDateString() : 'N/A'}</Typography>
+            <Typography variant="caption" sx={{ color: 'textSecondary', fontWeight: 700, fontSize: '0.65rem', mt: 0.2 }}>{p.value ? p.value.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</Typography>
         </Box>
-      ) 
+      )
     },
     { 
       field: 'id', headerName: 'Receipt #', width: 130, sortable: false, disableColumnMenu: true,
       renderCell: (p) => (
         <Box sx={{ display: 'flex', alignItems: 'center', height: '100%' }}>
-            <Typography variant="caption" sx={{ fontFamily: 'monospace', fontWeight: '1000', color: '#1565C0', bgcolor: '#E3F2FD', px: 1.2, py: 0.5, borderRadius: 0, border: '1px solid #1565C0', letterSpacing: 0.5 }}>{p.value.slice(0,8).toUpperCase()}</Typography>
+            <Typography variant="caption" sx={{ fontFamily: 'monospace', fontWeight: 800, color: COLORS.medical, bgcolor: COLORS.chipBlueBg, px: 1.2, py: 0.5, borderRadius: 0, border: `1px solid ${COLORS.medical}`, letterSpacing: 0.5 }}>{p.value.slice(0, 8).toUpperCase()}</Typography>
         </Box>
-      ) 
+      )
     },
     { 
       field: 'petName', flex: 1.5, minWidth: 200, sortable: false, disableColumnMenu: true,
-      renderHeader: () => (<TableSortLabel active={orderBy === 'petName'} direction={orderBy === 'petName' ? order : 'asc'} onClick={() => handleRequestSort('petName')} sx={{fontWeight: '1000', color: '#5D4037', fontSize: '0.75rem'}}>PATIENT & OWNER</TableSortLabel>),
+      renderHeader: () => (<TableSortLabel active={orderBy === 'petName'} direction={orderBy === 'petName' ? order : 'asc'} onClick={() => handleRequestSort('petName')} sx={{ fontWeight: 800, color: COLORS.accent, fontSize: '0.75rem' }}>PATIENT & OWNER</TableSortLabel>),
       renderCell: (p) => (
         <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', py: 1 }}>
-            <Typography variant="body1" sx={{ fontWeight: '1000', color: '#3E2723', lineHeight: 1.1 }}>{p.value}</Typography>
-            <Typography variant="caption" sx={{ color: 'textSecondary', fontWeight: '900', fontSize: '0.65rem', mt: 0.5 }}>{p.row.ownerName}</Typography>
+            <Typography variant="body1" sx={{ fontWeight: 800, color: COLORS.brand, lineHeight: 1.1 }}>{p.value}</Typography>
+            <Typography variant="caption" sx={{ color: 'textSecondary', fontWeight: 700, fontSize: '0.65rem', mt: 0.5 }}>{p.row.ownerName}</Typography>
         </Box>
-      ) 
+      )
     },
     { 
       field: 'items', headerName: 'Items Purchased', flex: 1.5, minWidth: 250, sortable: false, disableColumnMenu: true,
@@ -215,10 +288,10 @@ export default function Sales() {
       field: 'paymentMethod', headerName: 'Method', width: 130, sortable: false, disableColumnMenu: true,
       renderCell: (p) => {
         let icon; let color;
-        if(p.value === 'Cash') { icon = <AccountBalanceWalletIcon fontSize="small"/>; color = '#2E7D32'; }
-        else if(p.value?.includes('GCash')) { icon = <PhoneIphoneIcon fontSize="small"/>; color = '#1565C0'; }
-        else if(p.value === 'Card') { icon = <CreditCardIcon fontSize="small"/>; color = '#F57C00'; }
-        else { icon = <AccountBalanceIcon fontSize="small"/>; color = '#6A1B9A'; }
+        if (p.value === 'Cash') { icon = <AccountBalanceWalletIcon fontSize="small" />; color = COLORS.success; }
+        else if (p.value?.includes('GCash')) { icon = <PhoneIphoneIcon fontSize="small" />; color = COLORS.medical; }
+        else if (p.value === 'Card') { icon = <CreditCardIcon fontSize="small" />; color = COLORS.amber; }
+        else { icon = <AccountBalanceIcon fontSize="small" />; color = COLORS.grooming; }
         return (
             <Box sx={{ display: 'flex', alignItems: 'center', height: '100%' }}>
                 <Chip icon={icon} label={p.value} size="small" sx={{ borderRadius: 0, bgcolor: 'white', color: color, border: `2px solid ${color}`, fontWeight: '1000', '& .MuiChip-icon': { color: color } }} />
@@ -228,38 +301,43 @@ export default function Sales() {
     },
     { 
       field: 'total', width: 130, sortable: false, disableColumnMenu: true,
-      renderHeader: () => (<TableSortLabel active={orderBy === 'total'} direction={orderBy === 'total' ? order : 'asc'} onClick={() => handleRequestSort('total')} sx={{fontWeight: '1000', color: '#5D4037', fontSize: '0.75rem'}}>TOTAL PAID</TableSortLabel>),
+      renderHeader: () => (<TableSortLabel active={orderBy === 'total'} direction={orderBy === 'total' ? order : 'asc'} onClick={() => handleRequestSort('total')} sx={{ fontWeight: 800, color: COLORS.accent, fontSize: '0.75rem' }}>TOTAL PAID</TableSortLabel>),
       renderCell: (p) => (
         <Box sx={{ display: 'flex', alignItems: 'center', height: '100%' }}>
-            <Typography variant="body1" sx={{ fontWeight: '1000', color: p.row.status === 'refunded' ? 'textSecondary' : '#2E7D32', textDecoration: p.row.status === 'refunded' ? 'line-through' : 'none' }}>
-                ₱{parseFloat(p.value||0).toFixed(2)}
+            <Typography variant="body1" sx={{ fontWeight: 800, color: p.row.status === 'refunded' ? 'textSecondary' : COLORS.success, textDecoration: p.row.status === 'refunded' ? 'line-through' : 'none' }}>
+                ₱{parseFloat(p.value || 0).toFixed(2)}
             </Typography>
         </Box>
-      ) 
+      )
     },
     { 
       field: 'status', headerName: 'Status', width: 120, align: 'center', headerAlign: 'center', sortable: false, disableColumnMenu: true,
-      renderCell: (p) => { 
-          const isRefunded = p.value === 'refunded'; 
+      renderCell: (p) => {
+          const isRefunded = p.value === 'refunded';
           return (
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 0.3 }}>
                 <Chip label={isRefunded ? "REFUNDED" : "PAID"} color={isRefunded ? "error" : "success"} size="small" variant={isRefunded ? "outlined" : "filled"} sx={{ borderRadius: 0, fontWeight: '1000', border: isRefunded ? '2px solid' : 'none' }} />
+                {p.row._crossDayRefund && (
+                    <Typography variant="caption" sx={{ fontSize: '0.55rem', fontWeight: 800, color: COLORS.accentLight, lineHeight: 1 }}>
+                        sold {p.row.jsDate?.toLocaleDateString()}
+                    </Typography>
+                )}
             </Box>
-          ); 
-      } 
+          );
+      }
     },
     {
       field: 'actions', headerName: 'Actions', width: 100, align: 'center', headerAlign: 'center', sortable: false, disableColumnMenu: true,
       renderCell: (p) => (
         <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', alignItems: 'center', height: '100%' }}>
             <Tooltip title="Reprint Receipt">
-                <IconButton color="primary" size="small" onClick={() => handleReprint(p.row)} sx={{ border: '1px solid rgba(21, 101, 192, 0.3)', borderRadius: 1 }}>
+                <IconButton color="primary" size="small" onClick={() => handleReprint(p.row)} sx={{ border: `1px solid ${COLORS.medical}4D`, borderRadius: 0 }}>
                     <PrintIcon fontSize="small" />
                 </IconButton>
             </Tooltip>
             {p.row.status !== 'refunded' && (
                 <Tooltip title="Process Refund">
-                    <IconButton color="error" size="small" onClick={() => handleOpenRefund(p.row)} sx={{ border: '1px solid rgba(211, 47, 47, 0.3)', borderRadius: 1 }}>
+                    <IconButton color="error" size="small" onClick={() => handleOpenRefund(p.row)} sx={{ border: `1px solid ${COLORS.danger}4D`, borderRadius: 0 }}>
                         <SettingsBackupRestoreIcon fontSize="small" />
                     </IconButton>
                 </Tooltip>
@@ -270,46 +348,46 @@ export default function Sales() {
   ];
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', bgcolor: '#FFF8E1' }}>
-      
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', bgcolor: COLORS.cream }}>
+
       {/* 1. FULL-BLEED COMMAND STRIP header */}
       <Box sx={{ flexShrink: 0, mb: 0 }}>
-        <Paper elevation={0} sx={{ 
+        <Paper elevation={0} sx={{
           p: 2.5, px: 4, display: 'flex', flexWrap: 'nowrap', gap: 2.5, alignItems: 'center',
-          bgcolor: '#FFF8E1', borderBottom: '2px solid #5D4037', borderTop: 'none', borderLeft: 'none', borderRight: 'none', borderRadius: 0
+          bgcolor: COLORS.cream, borderBottom: `2px solid ${COLORS.accent}`, borderTop: 'none', borderLeft: 'none', borderRight: 'none', borderRadius: 0
         }}>
-          <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: '1000', color: '#5D4037', textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0, mr: 1, fontSize: '1.5rem', lineHeight: 1 }}>
+          <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 800, color: COLORS.accent, textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0, mr: 1, fontSize: '1.5rem', lineHeight: 1 }}>
             Transaction Ledger
           </Typography>
 
           {/* Search */}
-          <TextField 
-            variant="standard" size="small" placeholder="SEARCH LEDGER..." 
-            value={searchText} onChange={(e) => setSearchText(e.target.value)} 
-            InputProps={{ 
-              startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" sx={{color: '#5D4037', opacity: 0.6}}/></InputAdornment>,
+          <TextField
+            variant="standard" size="small" placeholder="SEARCH LEDGER..."
+            value={searchText} onChange={(e) => setSearchText(e.target.value)}
+            InputProps={{
+              startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" sx={{ color: COLORS.accent, opacity: 0.6 }} /></InputAdornment>,
               disableUnderline: true,
-              style: { color: '#3E2723', fontWeight: '1000', fontSize: '0.85rem', fontFamily: 'Inter' }
-            }} 
-            sx={{ width: 220, bgcolor: 'rgba(93, 64, 55, 0.05)', border: '2px solid #5D403733', borderRadius: 0, px: 2, py: 0.5, flexShrink: 0 }} 
+              style: { color: COLORS.brand, fontWeight: 800, fontSize: '0.85rem', fontFamily: 'Inter' }
+            }}
+            sx={{ width: 220, bgcolor: `${COLORS.accent}0D`, border: `2px solid ${COLORS.accent}33`, borderRadius: 0, px: 2, py: 0.5, flexShrink: 0 }}
           />
 
           {/* Controls Grouped */}
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-            <TextField 
-              type="date" size="small" 
-              value={filterDate} 
-              onChange={(e) => setFilterDate(e.target.value)} 
-              InputProps={{ 
-                startAdornment: <InputAdornment position="start"><CalendarMonthIcon fontSize="small" sx={{ color: '#5D4037' }}/></InputAdornment>,
-                sx: { borderRadius: 0, fontWeight: '1000', fontFamily: 'Inter', fontSize: '0.85rem' }
-              }} 
-              sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#5D403733', borderRadius: 0 }, minWidth: 170 }} 
+            <TextField
+              type="date" size="small"
+              value={filterDate}
+              onChange={(e) => setFilterDate(e.target.value)}
+              InputProps={{
+                startAdornment: <InputAdornment position="start"><CalendarMonthIcon fontSize="small" sx={{ color: COLORS.accent }} /></InputAdornment>,
+                sx: { borderRadius: 0, fontWeight: 800, fontFamily: 'Inter', fontSize: '0.85rem' }
+              }}
+              sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33`, borderRadius: 0 }, minWidth: 170 }}
             />
             <FormControl size="small" sx={{ minWidth: 160 }}>
-                <Select 
+                <Select
                     multiple
-                    value={filterMethod} 
+                    value={filterMethod}
                     onChange={(e) => {
                       const val = e.target.value;
                       // Logic: If 'All' was just added, clear others. If other added, remove 'All'.
@@ -319,33 +397,34 @@ export default function Sales() {
                         const filtered = val.filter(v => v !== 'All');
                         setFilterMethod(filtered.length === 0 ? ['All'] : filtered);
                       }
-                    }} 
+                    }}
                     renderValue={(selected) => {
                       if (selected.includes('All')) return 'All Methods';
                       return selected.join(', ');
                     }}
-                    displayEmpty 
-                    sx={{ fontWeight: '1000', color: '#5D4037', bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#5D403733', borderRadius: 0 }, borderRadius: 0 }}
+                    displayEmpty
+                    sx={{ fontWeight: 800, color: COLORS.accent, bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33`, borderRadius: 0 }, borderRadius: 0 }}
                 >
                     <MenuItem value="All">All Methods (Reset)</MenuItem>
-                    <MenuItem value="Cash">💵 Cash</MenuItem>
-                    <MenuItem value="GCash">📱 GCash / Maya</MenuItem>
-                    <MenuItem value="Card">💳 Card</MenuItem>
+                    <MenuItem value="Cash">Cash</MenuItem>
+                    <MenuItem value="GCash">GCash / Maya</MenuItem>
+                    <MenuItem value="Card">Card</MenuItem>
+                    <MenuItem value="Bank Transfer">Bank Transfer</MenuItem>
                 </Select>
             </FormControl>
             <FormControl size="small" sx={{ minWidth: 130 }}>
-                <Select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} displayEmpty sx={{ fontWeight: '1000', color: '#5D4037', bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#5D403733' } }}>
+                <Select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} displayEmpty sx={{ fontWeight: 800, color: COLORS.accent, bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33` } }}>
                     <MenuItem value="All">All Statuses</MenuItem>
-                    <MenuItem value="Paid">✅ Paid</MenuItem>
-                    <MenuItem value="Refunded">🚫 Refunded</MenuItem>
+                    <MenuItem value="Paid">Paid</MenuItem>
+                    <MenuItem value="refunded">Refunded</MenuItem>
                 </Select>
             </FormControl>
           </Box>
 
           <Box sx={{ flexGrow: 1 }} />
-          
+
           <Tooltip title="Print Detailed Report">
-            <IconButton sx={{ bgcolor: 'white', border: '1px solid #5D403733', color: '#5D4037' }}>
+            <IconButton onClick={handlePrintReport} disabled={loading} sx={{ bgcolor: 'white', border: `1px solid ${COLORS.accent}33`, color: COLORS.accent }}>
               <PrintIcon fontSize="small" />
             </IconButton>
           </Tooltip>
@@ -354,8 +433,8 @@ export default function Sales() {
 
       {/* 2. FULL-BLEED ANALYTIC MOUNTING (KPIs) */}
       <Box sx={{ flexShrink: 0, mb: 0 }}>
-        <Box sx={{ 
-          p: 2, px: 4, bgcolor: 'white', borderBottom: '2px solid #5D4037', 
+        <Box sx={{
+          p: 2, px: 4, bgcolor: 'white', borderBottom: `2px solid ${COLORS.accent}`,
           borderTop: 'none', borderLeft: 'none', borderRight: 'none', borderRadius: 0
         }}>
           <EodSummary totals={eodTotals} filterMethod={filterMethod} setFilterMethod={setFilterMethod} />
@@ -372,62 +451,63 @@ export default function Sales() {
               headerName: (c.headerName || '').toUpperCase()
             }))} 
             disableRowSelectionOnClick rowHeight={80}
-            hideFooter={true}
-            sx={{ 
-                border: 'none', 
+            pageSizeOptions={[25, 50, 100]}
+            initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
+            sx={{
+                border: 'none',
                 bgcolor: 'white',
                 '& .forensic-header': {
-                  bgcolor: '#FFF8E1 !important',
-                  color: '#5D4037',
-                  fontWeight: '1000 !important',
+                  bgcolor: `${COLORS.cream} !important`,
+                  color: COLORS.accent,
+                  fontWeight: '800 !important',
                   fontSize: '0.75rem',
                   letterSpacing: 1,
                   textTransform: 'uppercase',
-                  borderBottom: '2px solid #5D4037 !important',
+                  borderBottom: `2px solid ${COLORS.accent} !important`,
                 },
                 '& .MuiDataGrid-columnSeparator': { display: 'none' },
-                '& .MuiDataGrid-cell': { 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  borderBottom: '1px solid rgba(93, 64, 55, 0.08)',
+                '& .MuiDataGrid-cell': {
+                  display: 'flex',
+                  alignItems: 'center',
+                  borderBottom: `1px solid ${COLORS.accent}14`,
                   fontFamily: 'Inter, sans-serif'
                 },
-                '& .MuiDataGrid-row:hover': { bgcolor: 'rgba(93, 64, 55, 0.04)' },
+                '& .MuiDataGrid-row:hover': { bgcolor: `${COLORS.accent}0A` },
                 '& .MuiDataGrid-virtualScroller': {
                   '&::-webkit-scrollbar': { width: '8px', height: '8px' },
-                  '&::-webkit-scrollbar-track': { background: '#FFF8E1' },
-                  '&::-webkit-scrollbar-thumb': { background: '#5D4037', borderRadius: '4px' },
-                  '&::-webkit-scrollbar-thumb:hover': { background: '#3E2723' }
+                  '&::-webkit-scrollbar-track': { background: COLORS.cream },
+                  '&::-webkit-scrollbar-thumb': { background: COLORS.accent, borderRadius: 0 },
+                  '&::-webkit-scrollbar-thumb:hover': { background: COLORS.brand }
                 }
-            }} 
+            }}
         />
       </Box>
 
       {/* REFUND MODAL */}
-      <Dialog open={openRefund} onClose={() => setOpenRefund(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 0, border: '2px solid #D32F2F', boxShadow: '8px 8px 0px rgba(211, 47, 47, 0.1)' }}}>
-        <DialogTitle sx={{ bgcolor: '#FFEBEE', color: '#D32F2F', fontWeight: '1000', display: 'flex', alignItems: 'center', gap: 1.5, py: 2, borderBottom: '2px solid #D32F2F', textTransform: 'uppercase', letterSpacing: 1, fontSize: '1rem' }}>
+      <Dialog open={openRefund} onClose={() => setOpenRefund(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.danger}`, boxShadow: `8px 8px 0px ${COLORS.danger}1A` } }}>
+        <DialogTitle sx={{ bgcolor: COLORS.dangerSurface, color: COLORS.danger, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1.5, py: 2, borderBottom: `2px solid ${COLORS.danger}`, textTransform: 'uppercase', letterSpacing: 1, fontSize: '1rem' }}>
             <SettingsBackupRestoreIcon /> Authorize Transaction Reversal
         </DialogTitle>
-        <DialogContent sx={{ p: 4, bgcolor: '#FFF' }}>
-          <Alert severity="warning" sx={{ mb: 3, fontWeight: '1000', border: '2px solid #F57C00', borderRadius: 0, bgcolor: '#FFF3E0' }}>
+        <DialogContent sx={{ p: 4, bgcolor: 'white' }}>
+          <Alert severity="warning" sx={{ mb: 3, fontWeight: 800, border: `2px solid ${COLORS.warning}`, borderRadius: 0, bgcolor: COLORS.warningSurface }}>
             You are about to permanently refund ₱{selectedSale?.total?.toFixed(2)} to {selectedSale?.ownerName}.
           </Alert>
-          <Paper variant="outlined" sx={{ p: 2.5, bgcolor: '#FFF9F7', mb: 3, borderRadius: 0, border: '2px dashed #D7CCC8' }}>
-            <Typography variant="caption" sx={{ fontWeight: '1000', color: '#5D4037', display: 'block', mb: 1.5, borderBottom: '1px solid #D7CCC8', pb: 1, textTransform: 'uppercase', letterSpacing: 0.5 }}>Items to Reverse:</Typography>
-            {selectedSale?.items?.map((item, i) => <Typography key={i} variant="body2" sx={{ mt: 0.5, color: '#333', fontWeight: '900' }}>• {item.qty}x {item.name} (₱{(item.price * item.qty).toFixed(2)})</Typography>)}
+          <Paper variant="outlined" sx={{ p: 2.5, bgcolor: COLORS.formBg, mb: 3, borderRadius: 0, border: `2px dashed ${COLORS.border}` }}>
+            <Typography variant="caption" sx={{ fontWeight: 800, color: COLORS.accent, display: 'block', mb: 1.5, borderBottom: `1px solid ${COLORS.border}`, pb: 1, textTransform: 'uppercase', letterSpacing: 0.5 }}>Items to Reverse:</Typography>
+            {selectedSale?.items?.map((item, i) => <Typography key={i} variant="body2" sx={{ mt: 0.5, color: COLORS.textPrimary, fontWeight: 700 }}>• {item.qty}x {item.name} (₱{(item.price * item.qty).toFixed(2)})</Typography>)}
           </Paper>
-          <FormControlLabel control={<Switch checked={restock} onChange={(e) => setRestock(e.target.checked)} color="success" />} label={<Box><Typography variant="body2" sx={{ fontWeight: '1000', color: '#2E7D32' }}>Restock physical products?</Typography><Typography variant="caption" color="textSecondary">Uncheck this if the items were opened/damaged and cannot be resold.</Typography></Box>} />
+          <FormControlLabel control={<Switch checked={restock} onChange={(e) => setRestock(e.target.checked)} color="success" />} label={<Box><Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.success }}>Restock physical products?</Typography><Typography variant="caption" color="textSecondary">Uncheck this if the items were opened/damaged and cannot be resold.</Typography></Box>} />
         </DialogContent>
-        <DialogActions sx={{ p: 3, borderTop: '2px solid #D32F2F', bgcolor: '#FFEBEE', justifyContent: 'space-between' }}>
-          <Button onClick={() => setOpenRefund(false)} sx={{ fontWeight: '1000', color: '#555', px: 3, fontFamily: 'Inter, sans-serif' }}>CANCEL</Button>
-          <Button 
-            onClick={executeRefund} variant="contained" color="error" 
-            startIcon={<SettingsBackupRestoreIcon />} 
-            sx={{ 
-                fontWeight: '1000', px: 4, py: 1.5, borderRadius: 0, 
-                bgcolor: '#D32F2F', border: '2px solid #B71C1C',
-                boxShadow: '4px 4px 0px rgba(211, 47, 47, 0.2)',
-                '&:hover': { bgcolor: '#B71C1C', boxShadow: '2px 2px 0px rgba(211, 47, 47, 0.2)' },
+        <DialogActions sx={{ p: 3, borderTop: `2px solid ${COLORS.danger}`, bgcolor: COLORS.dangerSurface, justifyContent: 'space-between' }}>
+          <Button onClick={() => setOpenRefund(false)} sx={{ fontWeight: 800, color: COLORS.textSecondary, px: 3, fontFamily: 'Inter, sans-serif' }}>CANCEL</Button>
+          <Button
+            onClick={executeRefund} variant="contained" color="error"
+            startIcon={<SettingsBackupRestoreIcon />}
+            sx={{
+                fontWeight: 800, px: 4, py: 1.5, borderRadius: 0,
+                bgcolor: COLORS.danger, border: `2px solid ${COLORS.dangerHover}`,
+                boxShadow: `4px 4px 0px ${COLORS.danger}33`,
+                '&:hover': { bgcolor: COLORS.dangerHover, boxShadow: `2px 2px 0px ${COLORS.danger}33` },
                 fontFamily: 'Inter, sans-serif'
             }}
           >
@@ -435,6 +515,13 @@ export default function Sales() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* TOAST NOTIFICATIONS */}
+      <Snackbar open={toast.open} autoHideDuration={4000} onClose={() => setToast(t => ({ ...t, open: false }))} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+        <Alert onClose={() => setToast(t => ({ ...t, open: false }))} severity={toast.severity} variant="filled" sx={{ borderRadius: 0, fontWeight: '800' }}>
+          {toast.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

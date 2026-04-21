@@ -90,9 +90,9 @@
 | T2.112 | Sales ownerId: add to sales docs + update query | 30 min | — | TODO | Name collisions + name changes break billing |
 | T2.120 | Species filter normalization ('Dog'→'canine') | 5 min | — | TODO | Dogs disappear when filtering |
 | T2.121 | Date type guards across PetList + BillingLedger | 15 min | — | TODO | Crash on non-Timestamp dates |
-| T2.137 | EOD dual display: primary "COLLECTED TODAY" + secondary "total billed" annotation. Expand eodTotals. Payment method tiles use collected amounts. | 45 min | — | TODO | Decision locked: dual display |
-| T2.138 | Refund: update appointment status to `billing` + reset `balanceRemaining` + write `TRANSACTION_REFUNDED` clinicalPulse event | 30 min | — | TODO | Appointment lifecycle integrity |
-| T2.139 | Refund: pass current user to `useSalesData` hook via `useUser()`. Replace hardcoded `"Admin"` with actual staff identity. | 20 min | — | TODO | Decision locked: any Sales-page user |
+| T2.137 | EOD dual display: primary "COLLECTED TODAY" + secondary "total billed" annotation. Expand eodTotals. Payment method tiles use collected amounts. | 45 min | — | DONE | **Review fix:** refunds annotation changed from "- ₱X" to "REFUNDS TODAY: ₱X" to avoid implying deduction |
+| T2.138 | Refund: update appointment status to `billing` + reset `balanceRemaining` + write `TRANSACTION_REFUNDED` clinicalPulse event | 30 min | — | DONE | **Review fix:** balanceRemaining parseFloat guard for legacy data |
+| T2.139 | Refund: pass current user to `useSalesData` hook via `useUser()`. Replace hardcoded `"Admin"` with actual staff identity. | 20 min | — | DONE | |
 | T2.151 | `reserveStock`/`releaseStock`: wrap in `runTransaction`. reserveStock validates `reserved + qty <= stock`. releaseStock validates `reserved - qty >= 0`. | 30 min | — | DONE | **Review fix:** isNaN(qty) guard on both functions; releaseStock clamps to zero |
 | T2.152 | `adjustStock`: batch-aware positive adjustments (optional batch fields). Flat negative. | 1.5 hrs | — | DONE | **Review fix:** submitting state + disabled button on StockAdjustModal |
 | T2.153 | Pass `loading` from useInventory to InventoryTable. Add loading skeleton. | 10 min | — | DONE | |
@@ -160,10 +160,10 @@
 | T2.125 | Staff notes: delete confirmation + arrayUnion for atomic adds | 30 min | — | TODO | |
 | T2.126 | PatientDashboard: fix double-fetch (remove pet from useEffect deps) | 15 min | — | TODO | 50 wasted reads |
 | T2.132 | Duplicate client phone check with override dialog | 20 min | — | TODO | Decision locked: Option A |
-| T2.140 | Refund date: Option C — show on both days. Dual query + dedup + cross-day badge. EOD refund total uses refund date. | 1.5 hrs | — | TODO | Decision locked: Option C |
-| T2.141 | Add "Bank Transfer" to payment method filter dropdown. Fix Card tile click to include Bank Transfer. | 10 min | — | TODO | |
-| T2.142 | Wire Print Report button: generate EOD summary HTML | 1 hr | — | TODO | Dead UI element |
-| T2.143 | Add DataGrid pagination: remove `hideFooter={true}` | 5 min | — | TODO | |
+| T2.140 | Refund date: Option C — show on both days. Dual query + dedup + cross-day badge. EOD refund total uses refund date. | 1.5 hrs | — | DONE | **Review fix:** filterStatus case mismatch fixed; needs composite index sales(status ASC, refundedAt ASC) |
+| T2.141 | Add "Bank Transfer" to payment method filter dropdown. Fix Card tile click to include Bank Transfer. | 10 min | — | DONE | |
+| T2.142 | Wire Print Report button: generate EOD summary HTML | 1 hr | — | DONE | **Review fix:** printWindow.close() added; disabled during loading |
+| T2.143 | Add DataGrid pagination: remove `hideFooter={true}` | 5 min | — | DONE | pageSizeOptions 25/50/100 |
 | T2.156 | StockAdjustModal: validate against `stock - reserved`. Show "Available: X (Y reserved)". | 15 min | — | DONE | |
 | T2.157 | StockAdjustModal + ConfirmDeleteModal: `await` async callback before `onClose()` | 10 min | — | DONE | **Review fix:** parent handleConfirmDelete uses finally for close; modal no longer calls onClose |
 | T2.158 | StockAdjustModal: reset form state on reopen | 5 min | — | DONE | useEffect on [open, item?.id] |
@@ -259,11 +259,14 @@
 | T2.134 | Client-level engagement KPIs in ClientHeader | 45 min | — | TODO | |
 | T2.135 | Deceased pet status + dateOfDeath + memorial indicator | 15 min | — | TODO | |
 | T2.136 | Referral detail: "Referred by" text field | 15 min | — | TODO | |
-| T2.144 | Replace 3 alert() calls with MUI Snackbar (Sales) | 15 min | — | TODO | |
-| T2.145 | Delete dead code: clinicalFlatStyle, Divider/Grid imports (Sales) | 2 min | — | TODO | |
-| T2.146 | Design token compliance: Sales.jsx + EodSummary.jsx (60+ hardcoded colors) | 30 min | — | TODO | |
-| T2.147 | Refund restock: store batch info at sale time (Option A) + no-expiry guard | 30 min | — | TODO | Decision locked: Option A |
-| T2.148 | Receipt clinic name from settings (Sales.jsx + POSModal) | 15 min | — | TODO | |
+| T2.144 | Replace 3 alert() calls with MUI Snackbar (Sales) | 15 min | — | DONE | |
+| T2.145 | Delete dead code: clinicalFlatStyle, Divider/Grid imports (Sales) | 2 min | — | DONE | |
+| T2.146 | Design token compliance: Sales.jsx + EodSummary.jsx (60+ hardcoded colors) | 30 min | — | DONE | Sales-scoped only; POSModal deferred to T2.148a |
+| T2.147 | Refund restock: store batch info at sale time (Option A) + no-expiry guard | 30 min | — | DONE | **Review fix:** spread-copy batches before push |
+| T2.148 | Receipt clinic name from settings (Sales.jsx + POSModal) | 15 min | — | DONE | clinicName + clinicAddress added to useClinicSettings defaults |
+| T2.148a | POSModal MUI JSX: design token + borderRadius compliance (50+ hardcoded hex, borderRadius:2 violations) | 45 min | — | TODO | Review finding — out of scope for Sales T2.146 sweep |
+| T2.147a | Flat-stock refund guard: skip batch creation for non-batch-tracked items to prevent phantom batch conversion | 15 min | T2.147 | TODO | Review finding — legacy fallback converts flat-stock to batch-managed |
+| T2.140a | useSalesData: expose error state when dual-query partially fails, show dismissible Alert in Sales.jsx | 15 min | T2.140 | TODO | Review finding — silent partial data on query error |
 | T2.168 | Delete dead code: glassStyle/GLASS, selectedCatObj, dead COLORS imports (Inventory) | 5 min | — | DONE | |
 | T2.169 | Design token compliance: Inventory module (100+ hardcoded colors, 7 files) | 1.5 hrs | — | TODO | Deferred to Design Sweep (Module 19) |
 | T2.171 | `restoreItem`: clear `archivedAt` on restore | 5 min | — | DONE | Uses deleteField() |

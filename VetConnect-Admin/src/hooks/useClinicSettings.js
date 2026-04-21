@@ -12,6 +12,8 @@ const DEFAULT_SETTINGS = {
   openHour: 8,
   workingDays: [0, 1, 2, 3, 4, 5, 6],
   closedDates: [], // ISO YYYY-MM-DD strings, sorted asc
+  clinicName: 'Starbarks Veterinary Clinic',
+  clinicAddress: 'Santa Barbara, Pangasinan',
 };
 
 // --- Module-level singleton store ---

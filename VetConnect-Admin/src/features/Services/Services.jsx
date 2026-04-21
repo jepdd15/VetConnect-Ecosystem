@@ -15,9 +15,11 @@ import ServiceFormModal from './modals/ServiceFormModal';
 import ServiceLogModal from './modals/ServiceLogModal';
 
 import { FONT, COLORS } from '../../theme/designTokens';
+import { useUser } from '../../context/UserContext';
 
 export default function Services() {
-  const { services, inventory, departments, saveService, archiveService, restoreService, removeService } = useServices();
+  const { services, inventory, departments, loading, saveService, archiveService, restoreService, removeService } = useServices();
+  const { isAdmin } = useUser();
 
   const [tab, setTab] = useState(0);
   const [showArchived, setShowArchived] = useState(false);
@@ -69,13 +71,6 @@ export default function Services() {
       try { await removeService(id); showToast("Service permanently deleted.", "success"); }
       catch (e) { showToast(e.message, "error"); }
     }
-  };
-
-  const clinicalFlatStyle = {
-    background: '#FFF',
-    border: '2px solid #5D4037',
-    boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
-    borderRadius: 0,
   };
 
   return (
@@ -183,7 +178,8 @@ export default function Services() {
             data={filteredServices}
             showArchived={showArchived}
             departments={departments}
-            clinicalFlatStyle={clinicalFlatStyle}
+            isAdmin={isAdmin}
+            loading={loading}
             onEdit={(row) => { setSelectedItem(row); setOpen(true); }}
             onArchive={handleArchive}
             onRestore={handleRestore}

@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Box, Typography, Chip, IconButton, Tooltip, Paper, Table, TableBody,
-  TableCell, TableContainer, TableHead, TableRow, Collapse, TableSortLabel
+  TableCell, TableContainer, TableHead, TableRow, Collapse, TableSortLabel,
+  CircularProgress, TablePagination
 } from '@mui/material';
 
 import EditIcon from '@mui/icons-material/Edit';
@@ -9,7 +10,6 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import ArchiveIcon from '@mui/icons-material/Archive';
 import UnarchiveIcon from '@mui/icons-material/Unarchive';
 import HistoryIcon from '@mui/icons-material/History';
-import CircleIcon from '@mui/icons-material/Circle';
 import MedicalServicesIcon from '@mui/icons-material/MedicalServices';
 import ContentCutIcon from '@mui/icons-material/ContentCut';
 import ScienceIcon from '@mui/icons-material/Science';
@@ -19,11 +19,18 @@ import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import DescriptionIcon from '@mui/icons-material/Description';
 
-export default function ServiceTable({ data, onEdit, onArchive, onRestore, onDelete, onLog, clinicalFlatStyle, departments, showArchived }) {
+import { COLORS, FONT } from '../../../theme/designTokens';
+
+export default function ServiceTable({ data, onEdit, onArchive, onRestore, onDelete, onLog, departments, showArchived, isAdmin, loading }) {
 
   const [expandedRows, setExpandedRows] = useState({});
   const [order, setOrder] = useState('asc');
   const [orderBy, setOrderBy] = useState('name');
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
+
+  // Reset to first page whenever the data set changes
+  useEffect(() => { setPage(0); }, [data]);
 
   const toggleRow = (id) => setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }));
 
@@ -58,6 +65,8 @@ export default function ServiceTable({ data, onEdit, onArchive, onRestore, onDel
     return [...data].sort(comparator);
   }, [data, order, orderBy]);
 
+  const paginatedData = sortedData.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+
   const getCategoryIcon = (cat) => {
     switch (cat) {
       case 'Grooming':    return <ContentCutIcon fontSize="inherit" />;
@@ -84,9 +93,14 @@ export default function ServiceTable({ data, onEdit, onArchive, onRestore, onDel
   };
 
   const headerSx = {
-    fontWeight: '1000', color: '#5D4037', bgcolor: '#FFF8E1',
-    fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: 1,
-    borderBottom: '2px solid #5D4037',
+    fontFamily: FONT,
+    fontWeight: '1000',
+    color: COLORS.accent,
+    bgcolor: COLORS.cream,
+    fontSize: '0.85rem',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    borderBottom: `2px solid ${COLORS.accent}`,
   };
 
   return (
@@ -94,9 +108,9 @@ export default function ServiceTable({ data, onEdit, onArchive, onRestore, onDel
       <TableContainer sx={{
         flex: 1, overflow: 'auto',
         '&::-webkit-scrollbar': { width: '8px', height: '8px' },
-        '&::-webkit-scrollbar-track': { background: '#FFF8E1' },
-        '&::-webkit-scrollbar-thumb': { background: '#5D4037', borderRadius: '4px' },
-        '&::-webkit-scrollbar-thumb:hover': { background: '#3E2723' },
+        '&::-webkit-scrollbar-track': { background: COLORS.cream },
+        '&::-webkit-scrollbar-thumb': { background: COLORS.accent, borderRadius: '4px' },
+        '&::-webkit-scrollbar-thumb:hover': { background: COLORS.brand },
       }}>
         <Table stickyHeader size="small">
           <TableHead>
@@ -120,7 +134,18 @@ export default function ServiceTable({ data, onEdit, onArchive, onRestore, onDel
           </TableHead>
 
           <TableBody>
-            {sortedData.map((row) => {
+            {loading && (
+              <TableRow>
+                <TableCell colSpan={7} align="center" sx={{ py: 10, border: 'none' }}>
+                  <CircularProgress sx={{ color: COLORS.accent }} />
+                  <Typography variant="body2" color="textSecondary" fontWeight="bold" sx={{ mt: 2 }}>
+                    Loading services...
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            )}
+
+            {!loading && paginatedData.map((row) => {
               const isExpanded = expandedRows[row.id];
               const deptName   = row.department || row.category || 'General';
               const deptObj    = (departments || []).find(d => d.name === deptName);
@@ -149,11 +174,18 @@ export default function ServiceTable({ data, onEdit, onArchive, onRestore, onDel
 
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography variant="body2" fontWeight="900" color="#3E2723" noWrap>
+                        <Typography variant="body2" fontWeight="900" color={COLORS.brand} noWrap>
                           {getSpeciesEmoji(row.targetSpecies)} {row.name}
                         </Typography>
                         {row.isArchived && (
-                          <Chip label="Archived" size="small" sx={{ bgcolor: '#FFF3E0', color: '#E65100', fontSize: '0.6rem', height: 18, fontWeight: 'bold' }} />
+                          <Chip label="Archived" size="small" sx={{ bgcolor: COLORS.warningSurface, color: COLORS.warning, fontSize: '0.6rem', height: 18, fontWeight: 'bold', borderRadius: 0 }} />
+                        )}
+                        {(row.linkedProducts?.length > 0) && (
+                          <Chip
+                            label={`${row.linkedProducts.length} bundled`}
+                            size="small"
+                            sx={{ bgcolor: COLORS.chipBlueBg, color: COLORS.medical, fontSize: '0.6rem', height: 18, fontWeight: 'bold', borderRadius: 0 }}
+                          />
                         )}
                       </Box>
                     </TableCell>
@@ -163,12 +195,12 @@ export default function ServiceTable({ data, onEdit, onArchive, onRestore, onDel
                         icon={getCategoryIcon(deptName)}
                         label={deptName}
                         size="small"
-                        sx={{ color: 'white', bgcolor: badgeColor, fontWeight: 'bold', boxShadow: `0 1px 3px ${badgeColor}99` }}
+                        sx={{ color: 'white', bgcolor: badgeColor, fontWeight: 'bold', boxShadow: `0 1px 3px ${badgeColor}99`, borderRadius: 0 }}
                       />
                     </TableCell>
 
                     <TableCell>
-                      <Typography variant="body2" fontWeight="bold" color="#1565C0">
+                      <Typography variant="body2" fontWeight="bold" color={COLORS.medical}>
                         {row.duration || 30}m{' '}
                         <Typography component="span" variant="caption" color="textSecondary" fontWeight="bold">
                           + {row.bufferTime || 0}m buff
@@ -177,7 +209,7 @@ export default function ServiceTable({ data, onEdit, onArchive, onRestore, onDel
                     </TableCell>
 
                     <TableCell>
-                      <Typography fontWeight="bold" color="#2E7D32">
+                      <Typography fontWeight="bold" color={COLORS.success}>
                         {getPriceDisplay(row)}
                       </Typography>
                       {row.hasTieredPricing && (
@@ -189,9 +221,9 @@ export default function ServiceTable({ data, onEdit, onArchive, onRestore, onDel
 
                     <TableCell>
                       <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                        {row.isWalkIn !== false && <Chip label="Walk-In" size="small" sx={{ bgcolor: '#E3F2FD', color: '#1565C0', fontSize: 10, height: 20, fontWeight: 'bold' }} />}
-                        {row.isInpatient && <Chip label="Confinement" size="small" sx={{ bgcolor: '#FFF3E0', color: '#E65100', fontSize: 10, height: 20, fontWeight: 'bold' }} />}
-                        {row.isEmergency && <Chip label="Emergency" size="small" sx={{ bgcolor: '#FFEBEE', color: '#D32F2F', fontSize: 10, height: 20, fontWeight: 'bold' }} />}
+                        {row.isWalkIn !== false && <Chip label="Walk-In" size="small" sx={{ bgcolor: COLORS.chipBlueBg, color: COLORS.medical, fontSize: 10, height: 20, fontWeight: 'bold', borderRadius: 0 }} />}
+                        {row.isInpatient && <Chip label="Confinement" size="small" sx={{ bgcolor: COLORS.warningSurface, color: COLORS.warning, fontSize: 10, height: 20, fontWeight: 'bold', borderRadius: 0 }} />}
+                        {row.isEmergency && <Chip label="Emergency" size="small" sx={{ bgcolor: COLORS.dangerSurface, color: COLORS.danger, fontSize: 10, height: 20, fontWeight: 'bold', borderRadius: 0 }} />}
                       </Box>
                     </TableCell>
 
@@ -205,7 +237,7 @@ export default function ServiceTable({ data, onEdit, onArchive, onRestore, onDel
 
                         {row.isArchived ? (
                           <Tooltip title="Restore Service" arrow>
-                            <IconButton size="small" onClick={() => onRestore(row.id)} sx={{ color: '#2E7D32', bgcolor: 'rgba(46,125,50,0.08)', '&:hover': { bgcolor: 'rgba(46,125,50,0.2)' } }}>
+                            <IconButton size="small" onClick={() => onRestore(row.id)} sx={{ color: COLORS.success, bgcolor: 'rgba(46,125,50,0.08)', '&:hover': { bgcolor: 'rgba(46,125,50,0.2)' } }}>
                               <UnarchiveIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>
@@ -217,18 +249,20 @@ export default function ServiceTable({ data, onEdit, onArchive, onRestore, onDel
                               </IconButton>
                             </Tooltip>
                             <Tooltip title="Archive Service" arrow>
-                              <IconButton size="small" onClick={() => onArchive(row.id, row.name)} sx={{ color: '#E65100', bgcolor: 'rgba(230,81,0,0.08)', '&:hover': { bgcolor: 'rgba(230,81,0,0.2)' } }}>
+                              <IconButton size="small" onClick={() => onArchive(row.id, row.name)} sx={{ color: COLORS.warning, bgcolor: 'rgba(230,81,0,0.08)', '&:hover': { bgcolor: 'rgba(230,81,0,0.2)' } }}>
                                 <ArchiveIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
                           </>
                         )}
 
-                        <Tooltip title="Permanently Delete" arrow>
-                          <IconButton size="small" onClick={() => onDelete(row.id, row.name)} sx={{ color: '#D32F2F', bgcolor: 'rgba(211,47,47,0.08)', '&:hover': { bgcolor: 'rgba(211,47,47,0.2)' } }}>
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
+                        {isAdmin && (
+                          <Tooltip title="Permanently Delete" arrow>
+                            <IconButton size="small" onClick={() => onDelete(row.id, row.name)} sx={{ color: COLORS.danger, bgcolor: 'rgba(211,47,47,0.08)', '&:hover': { bgcolor: 'rgba(211,47,47,0.2)' } }}>
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
                       </Box>
                     </TableCell>
                   </TableRow>
@@ -237,12 +271,12 @@ export default function ServiceTable({ data, onEdit, onArchive, onRestore, onDel
                   <TableRow>
                     <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={7}>
                       <Collapse in={isExpanded} timeout="auto" unmountOnExit>
-                        <Box sx={{ margin: 1, my: 1, p: 2, bgcolor: '#FAF9F7', borderRadius: 0, border: '2px solid', borderColor: badgeColor, boxShadow: '4px 4px 0px rgba(0,0,0,0.05)' }}>
+                        <Box sx={{ margin: 1, my: 1, p: 2, bgcolor: COLORS.formBg, borderRadius: 0, border: '2px solid', borderColor: badgeColor, boxShadow: '4px 4px 0px rgba(0,0,0,0.05)' }}>
                           <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 1, color: badgeColor, fontWeight: '1000', textTransform: 'uppercase', letterSpacing: 1 }}>
                             <DescriptionIcon fontSize="small" sx={{ color: badgeColor }} />
                             STANDARD OPERATING PROCEDURE (SOP) | DESCRIPTION & CLINICAL INSTRUCTIONS
                           </Typography>
-                          <Typography variant="body2" sx={{ mt: 1, whiteSpace: 'pre-wrap', color: '#3E2723', fontWeight: 'bold' }}>
+                          <Typography variant="body2" sx={{ mt: 1, whiteSpace: 'pre-wrap', color: COLORS.brand, fontWeight: 'bold' }}>
                             {row.description}
                           </Typography>
                         </Box>
@@ -253,9 +287,9 @@ export default function ServiceTable({ data, onEdit, onArchive, onRestore, onDel
               );
             })}
 
-            {sortedData.length === 0 && (
+            {!loading && sortedData.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} align="center" sx={{ py: 10, color: '#888', fontStyle: 'italic', border: 'none' }}>
+                <TableCell colSpan={7} align="center" sx={{ py: 10, color: COLORS.textMuted, fontStyle: 'italic', border: 'none' }}>
                   {showArchived ? 'No archived services.' : 'No services found. Adjust filters or click "New Service".'}
                 </TableCell>
               </TableRow>
@@ -263,6 +297,27 @@ export default function ServiceTable({ data, onEdit, onArchive, onRestore, onDel
           </TableBody>
         </Table>
       </TableContainer>
+
+      <TablePagination
+        component="div"
+        count={sortedData.length}
+        page={page}
+        onPageChange={(_, newPage) => setPage(newPage)}
+        rowsPerPage={rowsPerPage}
+        onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
+        rowsPerPageOptions={[25, 50, 100]}
+        sx={{
+          borderTop: `2px solid ${COLORS.accent}`,
+          bgcolor: COLORS.cream,
+          '& .MuiTablePagination-toolbar': { minHeight: 40 },
+          '& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows': {
+            fontFamily: FONT,
+            fontWeight: 'bold',
+            fontSize: '0.75rem',
+            color: COLORS.accent,
+          },
+        }}
+      />
     </Paper>
   );
 }

@@ -101,9 +101,9 @@
 | T2.177 | Settings.jsx: add `useUser()` + `isAdmin` guard. Redirect non-admin. | 10 min | — | TODO | Any user can modify clinic-wide settings via URL |
 | T2.178 | Closed dates: auto-persist on add/remove via `setDoc` immediately. Add navigation guard for unsaved fields. | 30 min | — | TODO | Closed dates lost on navigation |
 | T2.179 | Category delete: add usage shield — count inventory items before allowing delete. | 20 min | — | TODO | Deleting "medicine" breaks isMedicine lookup |
-| T2.191 | Service archive/delete: add active-appointment guard. Block if services referenced by non-terminal appointments. | 30 min | — | TODO | Archiving breaks ClinicalWorkspace cart |
-| T2.192 | Service delete: add `isAdmin` guard. Only show delete button for admin users. | 10 min | — | TODO | Any user can permanently delete services |
-| T2.193 | ServiceFormModal: negative validation for price (`< 0`), duration (`<= 0`), bufferTime (`< 0`). Add `min` on inputs. | 10 min | — | TODO | Negative values corrupt billing + scheduling |
+| T2.191 | Service archive/delete: add active-appointment guard. Block if services referenced by non-terminal appointments. | 30 min | — | DONE | **Review fix:** limit(500) + Array.isArray guard on appointments query |
+| T2.192 | Service delete: add `isAdmin` guard. Only show delete button for admin users. | 10 min | — | DONE | |
+| T2.193 | ServiceFormModal: negative validation for price (`< 0`), duration (`<= 0`), bufferTime (`< 0`). Add `min` on inputs. | 10 min | — | DONE | **Review fix:** isNaN() checks added for non-numeric strings |
 | T2.210 | Fix Firebase App memory leak: import `deleteApp`, call in `finally` after `signOut`. | 5 min | — | DONE | Leaks app instance per staff creation |
 | T2.211 | Add active-appointment guard on staff revocation. Block if `assignedVetId` matches non-terminal appointments. | 20 min | — | DONE | Revoking vet mid-consult orphans patients |
 | T2.212 | Fix ConfirmRevokeModal text: "Staff profile will be deactivated. Login access requires separate Auth management." | 5 min | — | DONE | UI claims Auth disabled — only Firestore flag set |
@@ -187,12 +187,12 @@
 | T2.188 | Services non-checkable in dispensing checklist: auto-verified, shown for context. Button: "VERIFY ALL X PRODUCTS". | 20 min | — | TODO | User's design |
 | T2.189 | Dosage/concentration display in dispensing checklist: propagate `dosage` from inventory item to cart item | 15 min | — | TODO | Pharmacy safety |
 | T2.190 | No-show rebook detection: auto-detect on pet selection, `rebookedFromId` + `noShowCount`, banners in BookAppointment (client) + WalkInModal (staff) + ClinicalWorkspace (vet chip). Option A matching, 30-day window, most-recent + count. | 2 hrs | — | TODO | Full no-show return lifecycle |
-| T2.194 | Audit diff: track individual pricing tier changes (minWeight, maxWeight, price per tier). | 30 min | — | TODO | Pricing changes invisible in audit trail |
-| T2.195 | Tier validation: overlap, gap, inversion checks before save. | 30 min | — | TODO | Silent shadowing + fall-through to zero base price |
-| T2.196 | Add `createdAt`/`updatedAt` with `serverTimestamp()` to service documents. | 5 min | — | TODO | No temporal metadata on service docs |
-| T2.197 | Pass `loading` from useServices to ServiceTable. Add loading skeleton. | 10 min | — | TODO | Empty state flash during initial fetch |
-| T2.198 | ServiceTable: add `linkedProducts` badge/chip per row. | 15 min | — | TODO | Auto-bundled services indistinguishable |
-| T2.199 | ServiceLogModal: display `log.reason` alongside `log.changes`. | 5 min | — | TODO | ARCHIVED/RESTORED show no context |
+| T2.194 | Audit diff: track individual pricing tier changes (minWeight, maxWeight, price per tier). | 30 min | — | DONE | Per-tier add/remove/change with exact values |
+| T2.195 | Tier validation: overlap, gap, inversion checks before save. | 30 min | — | DONE | **Review fix:** overlap uses strict < (touching boundaries allowed) |
+| T2.196 | Add `createdAt`/`updatedAt` with `serverTimestamp()` to service documents. | 5 min | — | DONE | |
+| T2.197 | Pass `loading` from useServices to ServiceTable. Add loading skeleton. | 10 min | — | DONE | |
+| T2.198 | ServiceTable: add `linkedProducts` badge/chip per row. | 15 min | — | DONE | |
+| T2.199 | ServiceLogModal: display `log.reason` alongside `log.changes`. | 5 min | — | DONE | |
 | T2.216 | Staff departments: hard block if `departments.length === 0`. | 5 min | — | DONE | Decision locked: hard block |
 | T2.217 | Staff timestamps: replace `new Date()` with `serverTimestamp()` for `createdAt`, `updatedAt`, `disabledAt`. | 5 min | — | DONE | Client-side timestamps inconsistent |
 | T2.218 | Staff listener: server-side `where("role", "in", [...])` filter. | 15 min | — | DONE | Decision locked: P2 for correctness |
@@ -280,14 +280,15 @@
 | T2.185 | Settings: replace services + users listeners with one-shot getDocs | 15 min | — | TODO | 5 listeners excessive |
 | T2.186 | Settings: replace 2 window.confirm() with MUI Dialog | 10 min | — | TODO | |
 | T2.187 | Settings: delete dead variable `dashboardCream` | 1 min | — | TODO | |
-| T2.200 | Services: delete dead code (clinicalFlatStyle prop, useNavigate, CircleIcon). Keep isAdmin import for T2.192. | 5 min | — | TODO | |
-| T2.201 | Services: `restoreService` clear `archivedAt` on restore | 5 min | — | TODO | Same as Inventory T2.171 |
-| T2.202 | Services: extract shared ACTION_CONFIG to `src/utils/serviceLogConfig.js` | 10 min | — | TODO | Duplicated in ActivityLog + LogModal |
-| T2.203 | ServiceActivityLog: add filtering (action type, date range, service name) + pagination | 2 hrs | — | TODO | Same scope as Inventory T2.170 |
-| T2.204 | ServiceLogModal: add `limit(500)` to query | 2 min | — | TODO | Unbounded fetch |
-| T2.205 | Services: design token compliance across 4 child components (60+ hardcoded colors) | 1 hr | — | TODO | |
-| T2.206 | ServiceTable: add pagination | 15 min | — | TODO | |
-| T2.207 | CLAUDE.md: fix `tieredPricing` → `pricingTiers` + `hasTieredPricing` in field docs | 2 min | — | TODO | Documentation inaccuracy |
+| T2.200 | Services: delete dead code (clinicalFlatStyle prop, useNavigate, CircleIcon). Keep isAdmin import for T2.192. | 5 min | — | DONE | |
+| T2.201 | Services: `restoreService` clear `archivedAt` on restore | 5 min | — | DONE | Uses deleteField() |
+| T2.202 | Services: extract shared ACTION_CONFIG to `src/utils/serviceLogConfig.js` | 10 min | — | DONE | |
+| T2.203 | ServiceActivityLog: add filtering (action type, date range, service name) + pagination | 2 hrs | — | DONE | Cursor pagination + filters; needs composite index service_logs(action ASC, timestamp DESC) |
+| T2.204 | ServiceLogModal: add `limit(500)` to query | 2 min | — | DONE | |
+| T2.205 | Services: design token compliance across 4 child components (60+ hardcoded colors) | 1 hr | — | DONE | Child components done; parent deferred to T2.205a |
+| T2.206 | ServiceTable: add pagination | 15 min | — | DONE | **Review fix:** pagination reset depends on data reference, not data.length |
+| T2.207 | CLAUDE.md: fix `tieredPricing` → `pricingTiers` + `hasTieredPricing` in field docs | 2 min | — | DONE | |
+| T2.205a | Services.jsx parent page: design token sweep (12+ hardcoded hex in header toolbar) | 20 min | T2.205 | TODO | Review finding — T2.205 swept child components only, parent missed |
 | T2.221 | Staff: delete dead code (KPICard + kpis + 4 icons, WorkIcon, headerSx, deleteDoc, showToast prop) | 5 min | — | DONE | |
 | T2.222 | Staff: pass `loading` to StaffTable, add skeleton | 10 min | — | DONE | |
 | T2.223 | Staff: add loading/disabled state on REVOKE button | 5 min | — | DONE | **Review fix:** setRevoking in finally block to prevent stuck button on error |

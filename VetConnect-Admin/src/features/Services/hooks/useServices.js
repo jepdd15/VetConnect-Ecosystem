@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, Timestamp, getDocs, query, where, deleteField, limit } from 'firebase/firestore';
 import { db } from '../../../firebaseConfig';
 import { useUser } from '../../../context/UserContext';
 
@@ -38,9 +38,30 @@ const diffFields = (before, after) => {
   if (oldProducts !== newProducts) {
     changes.push(`Linked Products: [${oldProducts || 'none'}] → [${newProducts || 'none'}]`);
   }
-  // Pricing tiers diff
+  // Pricing tiers diff — toggle
   if (Boolean(before.hasTieredPricing) !== Boolean(after.hasTieredPricing)) {
     changes.push(`Tiered Pricing: "${before.hasTieredPricing ? 'ON' : 'OFF'}" → "${after.hasTieredPricing ? 'ON' : 'OFF'}"`);
+  }
+  // Pricing tiers diff — individual tier content
+  if (after.hasTieredPricing || before.hasTieredPricing) {
+    const oldTiers = before.pricingTiers || [];
+    const newTiers = after.pricingTiers  || [];
+    const maxLen = Math.max(oldTiers.length, newTiers.length);
+    for (let i = 0; i < maxLen; i++) {
+      const ot = oldTiers[i];
+      const nt = newTiers[i];
+      if (!ot && nt) {
+        changes.push(`Tier ${i + 1} added: ${nt.minWeight}-${nt.maxWeight || '∞'}kg @ ₱${Number(nt.price || 0).toFixed(2)}`);
+      } else if (ot && !nt) {
+        changes.push(`Tier ${i + 1} removed: ${ot.minWeight}-${ot.maxWeight || '∞'}kg @ ₱${Number(ot.price || 0).toFixed(2)}`);
+      } else if (ot && nt) {
+        const diffs = [];
+        if (Number(ot.minWeight) !== Number(nt.minWeight)) diffs.push(`Min: ${ot.minWeight}→${nt.minWeight}kg`);
+        if (Number(ot.maxWeight) !== Number(nt.maxWeight)) diffs.push(`Max: ${ot.maxWeight}→${nt.maxWeight}kg`);
+        if (Number(ot.price) !== Number(nt.price)) diffs.push(`₱${Number(ot.price || 0).toFixed(2)}→₱${Number(nt.price || 0).toFixed(2)}`);
+        if (diffs.length > 0) changes.push(`Tier ${i + 1}: ${diffs.join(', ')}`);
+      }
+    }
   }
   return changes.length > 0 ? changes.join(' | ') : 'Minor details updated (no tracked field changed)';
 };
@@ -114,22 +135,48 @@ export function useServices() {
     if (editId) {
       // Grab snapshot before update for diff
       const before = services.find(s => s.id === editId) || {};
-      await updateDoc(doc(db, "services", editId), payload);
+      await updateDoc(doc(db, "services", editId), { ...payload, updatedAt: serverTimestamp() });
       const changesSummary = diffFields(before, payload);
       await logServiceEvent(editId, payload.name, "UPDATED", "Service configuration updated", changesSummary);
     } else {
-      const docRef = await addDoc(collection(db, "services"), payload);
+      const docRef = await addDoc(collection(db, "services"), { ...payload, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
       await logServiceEvent(docRef.id, payload.name, "CREATED", "New service created", "");
     }
   };
 
+  // ── Active-Appointment Guard ──────────────────────────────────
+  const NON_TERMINAL_STATUSES = ['pending', 'confirmed', 'arrived', 'in-consult', 'dispensing', 'billing'];
+
+  const checkActiveAppointments = async (serviceName) => {
+    const q = query(
+      collection(db, "appointments"),
+      where("status", "in", NON_TERMINAL_STATUSES),
+      limit(500)
+    );
+    const snap = await getDocs(q);
+    const matches = snap.docs.filter(d => {
+      const data = d.data();
+      const svcList = Array.isArray(data.services) ? data.services : [];
+      return svcList.some(s => s?.name === serviceName)
+        || data.primaryService === serviceName
+        || data.serviceType === serviceName;
+    });
+    return matches.length;
+  };
+  // ──────────────────────────────────────────────────────────────
+
   const archiveService = async (id) => {
     const svc = services.find(s => s.id === id);
+    const name = svc?.name || id;
+    const activeCount = await checkActiveAppointments(name);
+    if (activeCount > 0) {
+      throw new Error(`Cannot archive "${name}" — ${activeCount} active appointment(s) reference this service. Complete or cancel them first.`);
+    }
     await updateDoc(doc(db, "services", id), {
       isArchived:  true,
       archivedAt:  Timestamp.now(),
     });
-    await logServiceEvent(id, svc?.name || id, "ARCHIVED", "Service archived by admin", "");
+    await logServiceEvent(id, name, "ARCHIVED", "Service archived by admin", "");
   };
 
   const restoreService = async (id) => {
@@ -137,6 +184,7 @@ export function useServices() {
     await updateDoc(doc(db, "services", id), {
       isArchived:  false,
       restoredAt:  Timestamp.now(),
+      archivedAt:  deleteField(),
     });
     await logServiceEvent(id, svc?.name || id, "RESTORED", "Service restored by admin", "");
   };
@@ -144,8 +192,13 @@ export function useServices() {
   // Hard-delete kept for admin emergency use (bypasses soft-delete)
   const removeService = async (id) => {
     const svc = services.find(s => s.id === id);
-    await logServiceEvent(id, svc?.name || id, "DELETED", "Service permanently deleted", "");
+    const name = svc?.name || id;
+    const activeCount = await checkActiveAppointments(name);
+    if (activeCount > 0) {
+      throw new Error(`Cannot delete "${name}" — ${activeCount} active appointment(s) reference this service. Complete or cancel them first.`);
+    }
     await deleteDoc(doc(db, "services", id));
+    await logServiceEvent(id, name, "DELETED", "Service permanently deleted", "");
   };
 
   return {

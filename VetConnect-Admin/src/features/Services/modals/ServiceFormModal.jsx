@@ -5,21 +5,21 @@ import {
   Switch, FormControl, InputLabel, Select, Stack, Grid, IconButton, Divider
 } from '@mui/material';
 
-import { useNavigate } from 'react-router-dom';
 import { useUser } from '../../../context/UserContext';
 
 import TimerIcon from '@mui/icons-material/Timer';
 import DescriptionIcon from '@mui/icons-material/Description';
 import MedicalServicesIcon from '@mui/icons-material/MedicalServices';
-import CircleIcon from '@mui/icons-material/Circle';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import ScaleIcon from '@mui/icons-material/Scale';
+import CircleIcon from '@mui/icons-material/Circle';
+
+import { COLORS, FONT } from '../../../theme/designTokens';
 
 export default function ServiceFormModal({ open, onClose, item, inventory, onSave, showToast, departments }) {
 
   const { isAdmin } = useUser();
-  const navigate = useNavigate();
 
   // Build initial linkedProducts — migrate old singular field
   const initLinkedProducts = item?.linkedProducts
@@ -85,14 +85,71 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
     if (!formData.name || formData.price === '') {
       return showToast("Service Name and Base Price are required.", "error");
     }
+
+    const parsedPrice    = parseFloat(formData.price);
+    const parsedDuration = parseInt(formData.duration, 10);
+    const parsedBuffer   = parseInt(formData.bufferTime, 10);
+
+    if (isNaN(parsedPrice) || parsedPrice < 0) {
+      return showToast("Base Price must be a valid non-negative number.", "error");
+    }
+    if (isNaN(parsedDuration) || parsedDuration <= 0) {
+      return showToast("Duration must be a positive number.", "error");
+    }
+    if (isNaN(parsedBuffer) || parsedBuffer < 0) {
+      return showToast("Buffer Time must be a valid non-negative number.", "error");
+    }
+
     if (formData.hasTieredPricing && formData.pricingTiers.length === 0) {
       return showToast("Add at least one pricing tier or disable tiered pricing.", "error");
     }
+
+    // Tier validation: negative values, inversion, and overlap checks
+    if (formData.hasTieredPricing && formData.pricingTiers.length > 0) {
+      for (let i = 0; i < formData.pricingTiers.length; i++) {
+        const t = formData.pricingTiers[i];
+        const min       = Number(t.minWeight) || 0;
+        const max       = Number(t.maxWeight) || 0;
+        const tierPrice = Number(t.price)     || 0;
+
+        if (min < 0 || max < 0) {
+          return showToast(`Tier ${i + 1}: Weight values cannot be negative.`, "error");
+        }
+        if (tierPrice < 0) {
+          return showToast(`Tier ${i + 1}: Price cannot be negative.`, "error");
+        }
+        if (max !== 0 && min > max) {
+          return showToast(`Tier ${i + 1}: Min weight (${min}kg) exceeds Max weight (${max}kg).`, "error");
+        }
+      }
+
+      // Overlap check: sort by minWeight and verify no tier's range bleeds into the next
+      const sorted = formData.pricingTiers
+        .map((t, i) => ({ ...t, idx: i }))
+        .sort((a, b) => (Number(a.minWeight) || 0) - (Number(b.minWeight) || 0));
+
+      for (let i = 1; i < sorted.length; i++) {
+        const prev    = sorted[i - 1];
+        const curr    = sorted[i];
+        const prevMax = Number(prev.maxWeight) || 0;
+        const currMin = Number(curr.minWeight) || 0;
+
+        // A tier with max=0 has no upper bound — no subsequent tier can exist
+        if (prevMax === 0) {
+          return showToast(`Tier ${prev.idx + 1} has no upper limit (Max=0) but Tier ${curr.idx + 1} also exists. Only the last tier should have Max=0.`, "error");
+        }
+        // Overlap: current min falls inside the previous tier's range
+        if (currMin < prevMax) {
+          return showToast(`Tiers ${prev.idx + 1} and ${curr.idx + 1} overlap at ${currMin}kg.`, "error");
+        }
+      }
+    }
+
     const finalData = {
       ...formData,
-      price:      parseFloat(formData.price)   || 0,
-      duration:   parseInt(formData.duration)  || 30,
-      bufferTime: parseInt(formData.bufferTime) || 0,
+      price:      parsedPrice,
+      duration:   parsedDuration,
+      bufferTime: parsedBuffer,
     };
     onSave(finalData);
   };
@@ -102,11 +159,11 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
     bgcolor: 'white',
     '& .MuiOutlinedInput-root': {
       borderRadius: 0,
-      '& fieldset': { border: '2px solid #5D4037' },
-      '&:hover fieldset': { borderColor: '#3E2723' },
-      '&.Mui-focused fieldset': { borderColor: '#5D4037', borderWidth: '3px' },
+      '& fieldset': { border: `2px solid ${COLORS.accent}` },
+      '&:hover fieldset': { borderColor: COLORS.brand },
+      '&.Mui-focused fieldset': { borderColor: COLORS.accent, borderWidth: '3px' },
     },
-    '& .MuiInputLabel-root': { color: '#5D4037', fontWeight: 'bold' },
+    '& .MuiInputLabel-root': { color: COLORS.accent, fontWeight: 'bold' },
   };
 
   // Products not yet linked
@@ -121,31 +178,31 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
       PaperProps={{
         sx: {
           borderRadius: 0,
-          border: '2px solid #5D4037',
-          backgroundColor: '#FFF',
+          border: `2px solid ${COLORS.accent}`,
+          backgroundColor: COLORS.cardBg,
           boxShadow: '8px 8px 0px rgba(93, 64, 55, 0.1)',
           maxHeight: '92vh',
         },
       }}
     >
       <DialogTitle sx={{
-        bgcolor: '#FFF8E1', color: '#3E2723', fontWeight: '1000',
+        bgcolor: COLORS.cream, color: COLORS.brand, fontWeight: '1000',
         display: 'flex', alignItems: 'center', gap: 1.5, py: 2,
-        borderBottom: '2px solid #5D4037', fontFamily: 'Inter, sans-serif',
+        borderBottom: `2px solid ${COLORS.accent}`, fontFamily: FONT,
         textTransform: 'uppercase', letterSpacing: 1, fontSize: '1.1rem',
       }}>
-        <MedicalServicesIcon sx={{ color: '#5D4037' }} />
+        <MedicalServicesIcon sx={{ color: COLORS.accent }} />
         {item ? "Edit Service Configuration" : "Create New Service"}
       </DialogTitle>
 
-      <DialogContent sx={{ p: 0, bgcolor: '#FAF9F7', overflowY: 'auto' }}>
+      <DialogContent sx={{ p: 0, bgcolor: COLORS.formBg, overflowY: 'auto' }}>
         <Box sx={{ p: 3 }}>
 
           {/* ── Section 1: Identity & Routing ── */}
-          <Typography variant="overline" sx={{ color: '#5D4037', fontWeight: '1000', mb: 1, display: 'block', letterSpacing: 1 }}>
+          <Typography variant="overline" sx={{ color: COLORS.accent, fontWeight: '1000', mb: 1, display: 'block', letterSpacing: 1 }}>
             1. SERVICE IDENTITY & ROUTING
           </Typography>
-          <Paper sx={{ p: 3, mb: 4, borderRadius: 0, border: '2px solid #5D4037', bgcolor: 'white', boxShadow: 'none' }}>
+          <Paper sx={{ p: 3, mb: 4, borderRadius: 0, border: `2px solid ${COLORS.accent}`, bgcolor: COLORS.cardBg, boxShadow: 'none' }}>
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, md: 8 }}>
                 <TextField label="Service Name" fullWidth size="small" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} sx={sxField} inputProps={noExtensionProps} />
@@ -181,10 +238,10 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
                 </FormControl>
               </Grid>
               <Grid size={{ xs: 12, md: 6 }}>
-                <Paper sx={{ p: 2, bgcolor: '#F1F8E9', borderRadius: 0, border: '2px solid #5D4037', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', boxShadow: 'none' }}>
-                  <Typography variant="caption" sx={{ display: 'block', mb: 0.5, fontWeight: '1000', color: '#5D4037', textTransform: 'uppercase', letterSpacing: 1 }}>RESOURCE ROUTING</Typography>
-                  <Typography variant="body2" component="div" sx={{ lineHeight: 1.4, color: '#3E2723', fontWeight: 'bold' }}>
-                    Mobile bookings route to staff in the <Chip label={formData.department || 'General'} size="small" sx={{ height: 20, fontSize: '0.65rem', fontWeight: '1000', borderRadius: 0, border: '1px solid #5D4037', bgcolor: '#E3F2FD', color: '#1565C0' }} /> department.
+                <Paper sx={{ p: 2, bgcolor: '#F1F8E9', borderRadius: 0, border: `2px solid ${COLORS.accent}`, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', boxShadow: 'none' }}>
+                  <Typography variant="caption" sx={{ display: 'block', mb: 0.5, fontWeight: '1000', color: COLORS.accent, textTransform: 'uppercase', letterSpacing: 1 }}>RESOURCE ROUTING</Typography>
+                  <Typography variant="body2" component="div" sx={{ lineHeight: 1.4, color: COLORS.brand, fontWeight: 'bold' }}>
+                    Mobile bookings route to staff in the <Chip label={formData.department || 'General'} size="small" sx={{ height: 20, fontSize: '0.65rem', fontWeight: '1000', borderRadius: 0, border: `1px solid ${COLORS.accent}`, bgcolor: COLORS.chipBlueBg, color: COLORS.medical }} /> department.
                   </Typography>
                 </Paper>
               </Grid>
@@ -192,10 +249,10 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
           </Paper>
 
           {/* ── Section 2: Logistics, Time & Billing ── */}
-          <Typography variant="overline" sx={{ color: '#5D4037', fontWeight: '1000', mb: 1, display: 'block', letterSpacing: 1 }}>
+          <Typography variant="overline" sx={{ color: COLORS.accent, fontWeight: '1000', mb: 1, display: 'block', letterSpacing: 1 }}>
             2. LOGISTICS, TIME & BILLING
           </Typography>
-          <Paper sx={{ p: 3, mb: 4, bgcolor: 'white', border: '2px solid #5D4037', borderRadius: 0, boxShadow: 'none' }}>
+          <Paper sx={{ p: 3, mb: 4, bgcolor: COLORS.cardBg, border: `2px solid ${COLORS.accent}`, borderRadius: 0, boxShadow: 'none' }}>
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
@@ -203,31 +260,49 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
                   value={formData.price}
                   onChange={(e) => setFormData({ ...formData, price: e.target.value })}
                   InputProps={{ startAdornment: <InputAdornment position="start">₱</InputAdornment> }}
+                  inputProps={{ min: 0 }}
                   sx={sxField}
                   disabled={formData.hasTieredPricing}
                   helperText={formData.hasTieredPricing ? "Override by weight tiers below" : ""}
                 />
               </Grid>
               <Grid size={{ xs: 6, md: 4 }}>
-                <TextField label="Duration" type="number" fullWidth size="small" value={formData.duration} onChange={(e) => setFormData({ ...formData, duration: e.target.value })} InputProps={{ endAdornment: <InputAdornment position="end">Mins</InputAdornment> }} sx={sxField} />
+                <TextField
+                  label="Duration" type="number" fullWidth size="small"
+                  value={formData.duration}
+                  onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
+                  InputProps={{ endAdornment: <InputAdornment position="end">Mins</InputAdornment> }}
+                  inputProps={{ min: 1 }}
+                  sx={sxField}
+                />
               </Grid>
               <Grid size={{ xs: 6, md: 4 }}>
-                <TextField label="Cleanup Buffer" type="number" fullWidth size="small" value={formData.bufferTime} onChange={(e) => setFormData({ ...formData, bufferTime: e.target.value })} InputProps={{ startAdornment: <InputAdornment position="start"><TimerIcon fontSize="small" sx={{ color: '#5D4037' }} /></InputAdornment>, endAdornment: <InputAdornment position="end">Mins</InputAdornment> }} sx={sxField} />
+                <TextField
+                  label="Cleanup Buffer" type="number" fullWidth size="small"
+                  value={formData.bufferTime}
+                  onChange={(e) => setFormData({ ...formData, bufferTime: e.target.value })}
+                  InputProps={{
+                    startAdornment: <InputAdornment position="start"><TimerIcon fontSize="small" sx={{ color: COLORS.accent }} /></InputAdornment>,
+                    endAdornment: <InputAdornment position="end">Mins</InputAdornment>,
+                  }}
+                  inputProps={{ min: 0 }}
+                  sx={sxField}
+                />
               </Grid>
 
               {/* ── Weight-Based Pricing Tiers ── */}
               <Grid size={{ xs: 12 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: formData.hasTieredPricing ? 1.5 : 0 }}>
-                  <ScaleIcon sx={{ color: '#5D4037', fontSize: 18 }} />
+                  <ScaleIcon sx={{ color: COLORS.accent, fontSize: 18 }} />
                   <FormControlLabel
                     control={
                       <Switch
                         checked={formData.hasTieredPricing}
                         onChange={(e) => setFormData({ ...formData, hasTieredPricing: e.target.checked })}
-                        sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: '#5D4037' }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: '#5D4037' } }}
+                        sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.accent }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: COLORS.accent } }}
                       />
                     }
-                    label={<Typography variant="body2" sx={{ fontWeight: '1000', color: '#5D4037' }}>ENABLE WEIGHT-BASED PRICING</Typography>}
+                    label={<Typography variant="body2" sx={{ fontWeight: '1000', color: COLORS.accent }}>ENABLE WEIGHT-BASED PRICING</Typography>}
                   />
                 </Box>
 
@@ -235,20 +310,20 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
                   <Box>
                     <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 1, mb: 1 }}>
                       {['Min (kg)', 'Max (kg)', 'Price (₱)', ''].map((h, i) => (
-                        <Typography key={i} variant="caption" sx={{ fontWeight: '1000', color: '#5D4037', textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</Typography>
+                        <Typography key={i} variant="caption" sx={{ fontWeight: '1000', color: COLORS.accent, textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</Typography>
                       ))}
                     </Box>
                     {formData.pricingTiers.map((tier, idx) => (
                       <Box key={idx} sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 1, mb: 1, alignItems: 'center' }}>
-                        <TextField size="small" type="number" value={tier.minWeight} onChange={(e) => updateTier(idx, 'minWeight', e.target.value)} sx={{ ...sxField, '& .MuiOutlinedInput-root': { ...sxField['& .MuiOutlinedInput-root'] } }} inputProps={{ min: 0 }} />
+                        <TextField size="small" type="number" value={tier.minWeight} onChange={(e) => updateTier(idx, 'minWeight', e.target.value)} sx={sxField} inputProps={{ min: 0 }} />
                         <TextField size="small" type="number" value={tier.maxWeight} onChange={(e) => updateTier(idx, 'maxWeight', e.target.value)} sx={sxField} inputProps={{ min: 0 }} placeholder="0 = no limit" />
                         <TextField size="small" type="number" value={tier.price} onChange={(e) => updateTier(idx, 'price', e.target.value)} sx={sxField} InputProps={{ startAdornment: <InputAdornment position="start">₱</InputAdornment> }} inputProps={{ min: 0 }} />
-                        <IconButton size="small" onClick={() => removeTier(idx)} disabled={formData.pricingTiers.length <= 1} sx={{ color: '#D32F2F' }}>
+                        <IconButton size="small" onClick={() => removeTier(idx)} disabled={formData.pricingTiers.length <= 1} sx={{ color: COLORS.danger }}>
                           <DeleteOutlineIcon fontSize="small" />
                         </IconButton>
                       </Box>
                     ))}
-                    <Button size="small" startIcon={<AddIcon />} onClick={addTier} sx={{ mt: 0.5, fontWeight: 'bold', color: '#5D4037', border: '1px dashed #5D4037', borderRadius: 0, px: 2 }}>
+                    <Button size="small" startIcon={<AddIcon />} onClick={addTier} sx={{ mt: 0.5, fontWeight: 'bold', color: COLORS.accent, border: `1px dashed ${COLORS.accent}`, borderRadius: 0, px: 2 }}>
                       Add Tier
                     </Button>
                     <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mt: 1 }}>
@@ -261,7 +336,7 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
               {/* ── Auto-Deduct Inventory (Multi-Bundle) ── */}
               <Grid size={{ xs: 12 }}>
                 <Divider sx={{ my: 1, borderColor: '#E0E0E0' }} />
-                <Typography variant="caption" sx={{ fontWeight: '1000', color: '#5D4037', textTransform: 'uppercase', letterSpacing: 1, display: 'block', mb: 1 }}>
+                <Typography variant="caption" sx={{ fontWeight: '1000', color: COLORS.accent, textTransform: 'uppercase', letterSpacing: 1, display: 'block', mb: 1 }}>
                   Auto-Deduct Inventory Bundle
                 </Typography>
                 <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 1 }}>
@@ -294,7 +369,7 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
                         label={inv?.itemName || productId}
                         size="small"
                         onDelete={() => removeLinkedProduct(productId)}
-                        sx={{ bgcolor: '#E3F2FD', color: '#1565C0', fontWeight: 'bold', borderRadius: 1, border: '1px solid #BBDEFB' }}
+                        sx={{ bgcolor: COLORS.chipBlueBg, color: COLORS.medical, fontWeight: 'bold', borderRadius: 0, border: '1px solid #BBDEFB' }}
                       />
                     );
                   })}
@@ -311,7 +386,7 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   sx={{ ...sxField, mt: 1 }}
-                  InputProps={{ startAdornment: <InputAdornment position="start"><DescriptionIcon fontSize="small" sx={{ color: '#5D4037', mr: 1, mt: -4 }} /></InputAdornment> }}
+                  InputProps={{ startAdornment: <InputAdornment position="start"><DescriptionIcon fontSize="small" sx={{ color: COLORS.accent, mr: 1, mt: -4 }} /></InputAdornment> }}
                   inputProps={noExtensionProps}
                 />
               </Grid>
@@ -319,22 +394,22 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
           </Paper>
 
           {/* ── Section 3: Operational Rules ── */}
-          <Typography variant="overline" sx={{ color: '#5D4037', fontWeight: '1000', display: 'block', mb: 1, letterSpacing: 1 }}>
+          <Typography variant="overline" sx={{ color: COLORS.accent, fontWeight: '1000', display: 'block', mb: 1, letterSpacing: 1 }}>
             3. OPERATIONAL RULES
           </Typography>
-          <Paper sx={{ p: 2.5, bgcolor: 'white', borderRadius: 0, border: '2px solid #5D4037', boxShadow: 'none' }}>
+          <Paper sx={{ p: 2.5, bgcolor: COLORS.cardBg, borderRadius: 0, border: `2px solid ${COLORS.accent}`, boxShadow: 'none' }}>
             <Stack direction="row" justifyContent="space-around" flexWrap="wrap" spacing={2}>
               <FormControlLabel
-                control={<Switch checked={formData.isWalkIn} onChange={(e) => setFormData({ ...formData, isWalkIn: e.target.checked })} sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: '#5D4037' }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: '#5D4037' } }} />}
-                label={<Typography variant="body2" sx={{ fontWeight: '1000', color: '#5D4037' }}>ALLOW WALK-IN</Typography>}
+                control={<Switch checked={formData.isWalkIn} onChange={(e) => setFormData({ ...formData, isWalkIn: e.target.checked })} sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.accent }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: COLORS.accent } }} />}
+                label={<Typography variant="body2" sx={{ fontWeight: '1000', color: COLORS.accent }}>ALLOW WALK-IN</Typography>}
               />
               <FormControlLabel
-                control={<Switch checked={formData.isInpatient} onChange={(e) => setFormData({ ...formData, isInpatient: e.target.checked })} sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: '#5D4037' }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: '#5D4037' } }} />}
-                label={<Typography variant="body2" sx={{ fontWeight: '1000', color: '#5D4037' }}>REQ. CONFINEMENT</Typography>}
+                control={<Switch checked={formData.isInpatient} onChange={(e) => setFormData({ ...formData, isInpatient: e.target.checked })} sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.accent }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: COLORS.accent } }} />}
+                label={<Typography variant="body2" sx={{ fontWeight: '1000', color: COLORS.accent }}>REQ. CONFINEMENT</Typography>}
               />
               <FormControlLabel
-                control={<Switch checked={formData.isEmergency} onChange={(e) => setFormData({ ...formData, isEmergency: e.target.checked })} sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: '#D32F2F' }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: '#D32F2F' } }} />}
-                label={<Typography variant="body2" sx={{ fontWeight: '1000', color: '#D32F2F' }}>IS EMERGENCY</Typography>}
+                control={<Switch checked={formData.isEmergency} onChange={(e) => setFormData({ ...formData, isEmergency: e.target.checked })} sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.danger }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: COLORS.danger } }} />}
+                label={<Typography variant="body2" sx={{ fontWeight: '1000', color: COLORS.danger }}>IS EMERGENCY</Typography>}
               />
             </Stack>
           </Paper>
@@ -342,14 +417,14 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
         </Box>
       </DialogContent>
 
-      <DialogActions sx={{ p: 2.5, bgcolor: '#FFF8E1', borderTop: '2px solid #5D4037', borderRadius: 0 }}>
-        <Button onClick={onClose} sx={{ fontWeight: '1000', color: '#5D4037', px: 3, border: '2px solid #5D4037', borderRadius: 0, '&:hover': { bgcolor: 'rgba(0,0,0,0.05)' } }}>
+      <DialogActions sx={{ p: 2.5, bgcolor: COLORS.cream, borderTop: `2px solid ${COLORS.accent}`, borderRadius: 0 }}>
+        <Button onClick={onClose} sx={{ fontWeight: '1000', color: COLORS.accent, px: 3, border: `2px solid ${COLORS.accent}`, borderRadius: 0, '&:hover': { bgcolor: 'rgba(0,0,0,0.05)' } }}>
           CANCEL
         </Button>
         <Button
           onClick={handleSave}
           variant="contained"
-          sx={{ bgcolor: '#2E7D32', color: 'white', fontWeight: '1000', px: 4, py: 1, borderRadius: 0, border: '2px solid #5D4037', boxShadow: '4px 4px 0px rgba(0,0,0,0.1)', '&:hover': { bgcolor: '#1B5E20', transform: 'translate(-2px, -2px)', boxShadow: '6px 6px 0px rgba(0,0,0,0.1)' } }}
+          sx={{ bgcolor: COLORS.success, color: 'white', fontWeight: '1000', px: 4, py: 1, borderRadius: 0, border: `2px solid ${COLORS.accent}`, boxShadow: '4px 4px 0px rgba(0,0,0,0.1)', '&:hover': { bgcolor: '#1B5E20', transform: 'translate(-2px, -2px)', boxShadow: '6px 6px 0px rgba(0,0,0,0.1)' } }}
         >
           SAVE CONFIGURATION
         </Button>

@@ -8,7 +8,7 @@ import {
 import Grid from '@mui/material/Grid';
 
 // Design Tokens
-import { FONT, TYPE, COLORS, GLASS } from '../../theme/designTokens';
+import { FONT, TYPE, COLORS } from '../../theme/designTokens';
 
 // Icons
 import AddIcon from '@mui/icons-material/Add';
@@ -228,8 +228,6 @@ export default function Inventory() {
       showToast("Scrub failed: " + e.message, "error");
     }
   };
-
-  const glassStyle = GLASS.panel;
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>

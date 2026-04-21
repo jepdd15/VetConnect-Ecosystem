@@ -1,0 +1,1235 @@
+# VetConnect Master Task List
+
+**Last updated:** 2026-04-20 · **Branch:** `main` · **Commit:** `9d1f662`
+**Total tasks:** ~560 · **Cancelled/Absorbed:** 16 · **Active:** ~544
+**Critical path to defense:** ~50-70 hours (all P0 + P1)
+**Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~154 hours (Phase 4 S-Tier)
+
+**Companion files:**
+- [handoff.json](handoff.json) — architectural context, decisions, bugs, terminology
+- [ECOSYSTEM_ARCHITECTURE_REPORT.md](ECOSYSTEM_ARCHITECTURE_REPORT.md) — monorepo map, thesis coverage, divergences
+- [CLINICAL_WORKSPACE_DEEPDIVE.md](CLINICAL_WORKSPACE_DEEPDIVE.md) — 13-question ClinicalWorkspace audit
+- [MOBILE_BOOKING_DEEPDIVE.md](MOBILE_BOOKING_DEEPDIVE.md) — booking flow + useBookingEngine audit
+- [PATIENTS_CRM_DEEPDIVE.md](PATIENTS_CRM_DEEPDIVE.md) — 11-agent Patients module audit (865 lines)
+- [SALES_DEEPDIVE.md](SALES_DEEPDIVE.md) — Sales module audit (3 files, 12 tasks, 4 decisions)
+- [INVENTORY_DEEPDIVE.md](INVENTORY_DEEPDIVE.md) — Inventory module audit (8 files, 38 bugs, 25+ tasks)
+- [SETTINGS_DEEPDIVE.md](SETTINGS_DEEPDIVE.md) — Settings.jsx audit + no-show rebook + dispensing hardening
+- [DASHBOARD_DEEPDIVE.md](DASHBOARD_DEEPDIVE.md) — Dashboard.jsx audit (7-line stub, S-tier analytics scoped)
+- [MONITOR_DEEPDIVE.md](MONITOR_DEEPDIVE.md) — Monitor.jsx audit (125 lines, 13 bugs)
+- [EXPENSES_DEEPDIVE.md](EXPENSES_DEEPDIVE.md) — Expenses.jsx audit (382 lines, 19 bugs)
+- [LOGIN_DEEPDIVE.md](LOGIN_DEEPDIVE.md) — Login.jsx audit (169 lines, 2 CRITICAL security bugs)
+- [MOBILE_CLIENT_DEEPDIVE.md](MOBILE_CLIENT_DEEPDIVE.md) — 10 mobile client screens (5,496 LOC, 91 tasks)
+- [SERVICES_DEEPDIVE.md](SERVICES_DEEPDIVE.md) — Services module audit (6 files, 17 tasks)
+- [STAFF_DEEPDIVE.md](STAFF_DEEPDIVE.md) — Staff module audit (5 files, 2 CRITICAL bugs)
+
+**Status legend:** `TODO` · `IN PROGRESS` · `DONE` · `CANCELLED` · `ABSORBED`
+
+---
+
+## Phase 1 — Thesis & Documentation
+
+> 10 tasks · ~15-25 hours · Critical path: ~13 hours (P0 items)
+
+### P0 — Defense Blocking
+
+| ID | Name | Effort | Status | Notes |
+|---|---|---|---|---|
+| T1.1 | Rewrite thesis Batch 3 scope/limits | 3-4 hrs | TODO | Batch 3 says "web-based only" — contradicts the actual dual-surface architecture |
+| T1.2 | Rewrite thesis Batch 9 stack/backend | 4-6 hrs | TODO | Claims Cloud Functions are deployed; they are not (Spark plan) |
+| T1.4 | Defense reconciliation addendum | 4-6 hrs | TODO | 1-page addendum covering all 7 divergences (D1-D7) as conscious scope decisions |
+| T1.5 | Chapter IV temporal data model paragraph (visit/case/medical record) | 1-2 hrs | TODO | Uses locked terminology from handoff |
+| T1.6 | Chapter IV clinical audit system paragraphs (strengths + limitations) | 1-2 hrs | TODO | Cover pulse engine, dual-clock, seal lifecycle, client-side timestamp limitation |
+| T1.9 | Chapter IV EndOfDayModal UI integrity paragraph | 30 min | TODO | 3-silo model, mandatory audit reasons, pre-flight census |
+
+### P1 — High Priority
+
+| ID | Name | Effort | Status | Notes |
+|---|---|---|---|---|
+| T1.3 | Regenerate FDD features list Batch 2 | 2-3 hrs | TODO | Add 11 architectural investments from ecosystem report Section 9 |
+| T1.7 | Chapter I glossary entries + admin UI helper text | 1 hr | TODO | visit/case/medical_record/appointment definitions |
+| T1.8 | Audit thesis prose for overloaded 'record' | 30 min | TODO | Replace ambiguous 'record' with visit/case/medical_record per context |
+| T1.10 | Chapter IV per-visit forensic record design paragraph | 30 min | TODO | |
+
+---
+
+## Phase 2 — Code Tasks
+
+> 189 active tasks · ~185-215 hours
+
+### P0 — Defense Blocking
+
+| ID | Name | Effort | Depends On | Status | Notes |
+|---|---|---|---|---|---|
+| T2.28-expanded | Wire nextVisit UI + fix 5 follow-up creation bugs | 2-3 hrs | T2.32 | TODO | B5 follow-up shipped but NON-FUNCTIONAL |
+| T2.37 | Firestore rule: clinicalPulse append-only enforcement | 1-2 hrs | — | TODO | Nothing prevents erasing audit trail |
+| T2.42 | Revert terminal drift fix: clear forensicSeal + TERMINAL_REVERSAL event | 30 min | — | TODO | |
+| T2.44 | Write forensicSeal on normal sign-off + completed path | 30 min | — | TODO | Happy path has no seal |
+| T2.57 | Records.jsx bug fixes (4 bugs) | 45 min | — | TODO | Filters always empty |
+| T2.58 | Records.jsx terminology cleanup | 30 min | — | TODO | |
+| T2.79 | Fix tiered pricing per-pet weight | 30 min | — | TODO | Wrong prices on multi-pet bookings |
+| T2.119 | Normalize allergy field: read `petAllergies \|\| allergies` everywhere, write `petAllergies`, propagate to active appointments on edit | 45 min | — | TODO | **PATIENT SAFETY** — allergy warnings suppressed for mobile pets |
+| T2.149 | `adjustStock`: wrap in `runTransaction` with stock floor check (`newStock >= 0`) and reserved check (`newStock >= reserved`) | 30 min | — | TODO | Stock can go negative |
+| T2.150 | Normalize refund log schema: use `action: 'RESTOCK'`, `amountChange`, `userName`/`userId`. Add `RESTOCK` to GlobalActivityLog ACTION_CONFIG. Extract shared `normalizeLog` utility. | 45 min | — | TODO | 3 columns render `undefined` for refund logs |
+| T2.208 | Remove hardcoded password. Generate random 12-char temp password, display to admin in toast. | 30 min | — | TODO | **CRITICAL** — source code exposes every staff credential |
+| T2.209 | Add PH phone validation (`/^09\d{9}$/`) to StaffFormModal. Extract `isValidPHPhone` to shared util. | 5 min | — | TODO | **CRITICAL** — any string accepted as phone |
+
+### P1 — High Priority
+
+| ID | Name | Effort | Depends On | Status | Notes |
+|---|---|---|---|---|---|
+| T2.1 | Firestore RBAC rules (isStaff + isAdmin helpers) | 2 hrs | — | TODO | Biggest RA 10173 gap |
+| T2.2 | Printable visit summary | 2-3 hrs | — | TODO | |
+| T2.3 | Printable vaccination record | 1-2 hrs | — | TODO | |
+| T2.4 | Printable referral report | 1-2 hrs | — | TODO | |
+| T2.30 | Multi-staff clinical attribution | 2 hrs | — | TODO | |
+| T2.31 | Protect default inventory categories | 1-2 hrs | — | TODO | |
+| T2.32 | Extract SoapGrid component (blocks T2.28) | 2-3 hrs | — | TODO | |
+| T2.33 | dischargePolicy per service (required/optional) | 1.5 hrs | — | TODO | |
+| T2.41 | Remove caseDay increment from reschedule path | 10 min | — | TODO | |
+| T2.105 | SC/PWD discount eligibility per service (`isScPwdEligible` toggle) | 30 min | — | TODO | **Legal compliance (RA 9994)** |
+| T2.112 | Sales ownerId: add to sales docs + update query | 30 min | — | TODO | Name collisions + name changes break billing |
+| T2.120 | Species filter normalization ('Dog'→'canine') | 5 min | — | TODO | Dogs disappear when filtering |
+| T2.121 | Date type guards across PetList + BillingLedger | 15 min | — | TODO | Crash on non-Timestamp dates |
+| T2.137 | EOD dual display: primary "COLLECTED TODAY" + secondary "total billed" annotation. Expand eodTotals. Payment method tiles use collected amounts. | 45 min | — | TODO | Decision locked: dual display |
+| T2.138 | Refund: update appointment status to `billing` + reset `balanceRemaining` + write `TRANSACTION_REFUNDED` clinicalPulse event | 30 min | — | TODO | Appointment lifecycle integrity |
+| T2.139 | Refund: pass current user to `useSalesData` hook via `useUser()`. Replace hardcoded `"Admin"` with actual staff identity. | 20 min | — | TODO | Decision locked: any Sales-page user |
+| T2.151 | `reserveStock`/`releaseStock`: wrap in `runTransaction`. reserveStock validates `reserved + qty <= stock`. releaseStock validates `reserved - qty >= 0`. | 30 min | — | TODO | Over-reserve and negative-reserve bugs |
+| T2.152 | `adjustStock`: batch-aware positive adjustments (optional batch fields). Flat negative. | 1.5 hrs | — | TODO | Decision locked: batch-aware add, flat remove |
+| T2.153 | Pass `loading` from useInventory to InventoryTable. Add loading skeleton. | 10 min | — | TODO | Empty state shown during initial fetch |
+| T2.154 | Add `isAdmin` guard on scrubDatabase button in Inventory.jsx | 5 min | — | TODO | Any user can trigger database-wide writes |
+| T2.155 | ProductFormModal: add category required validation. Add costPrice `< 0` validation. | 10 min | — | TODO | Empty category, negative cost allowed |
+| T2.177 | Settings.jsx: add `useUser()` + `isAdmin` guard. Redirect non-admin. | 10 min | — | TODO | Any user can modify clinic-wide settings via URL |
+| T2.178 | Closed dates: auto-persist on add/remove via `setDoc` immediately. Add navigation guard for unsaved fields. | 30 min | — | TODO | Closed dates lost on navigation |
+| T2.179 | Category delete: add usage shield — count inventory items before allowing delete. | 20 min | — | TODO | Deleting "medicine" breaks isMedicine lookup |
+| T2.191 | Service archive/delete: add active-appointment guard. Block if services referenced by non-terminal appointments. | 30 min | — | TODO | Archiving breaks ClinicalWorkspace cart |
+| T2.192 | Service delete: add `isAdmin` guard. Only show delete button for admin users. | 10 min | — | TODO | Any user can permanently delete services |
+| T2.193 | ServiceFormModal: negative validation for price (`< 0`), duration (`<= 0`), bufferTime (`< 0`). Add `min` on inputs. | 10 min | — | TODO | Negative values corrupt billing + scheduling |
+| T2.210 | Fix Firebase App memory leak: import `deleteApp`, call in `finally` after `signOut`. | 5 min | — | TODO | Leaks app instance per staff creation |
+| T2.211 | Add active-appointment guard on staff revocation. Block if `assignedVetId` matches non-terminal appointments. | 20 min | — | TODO | Revoking vet mid-consult orphans patients |
+| T2.212 | Fix ConfirmRevokeModal text: "Staff profile will be deactivated. Login access requires separate Auth management." | 5 min | — | TODO | UI claims Auth disabled — only Firestore flag set |
+| T2.213 | Preserve existing `role` on edit — don't overwrite. Only set `role: formData.accessLevel` on create. 3-line fix. | 5 min | — | TODO | Editing vet overwrites role, removes from Queue |
+| T2.214 | Fix workload query: add `on-hold`, `dispensing`, `billing` to status filter. | 5 min | — | TODO | Staff with dispensing patients show "Available" |
+| T2.215 | Fix Queue.jsx vet filter: exclude `'disabled'` accessLevel. Use allowlist instead of truthy check. | 5 min | — | TODO | Revoked staff appear in vet dropdown |
+| T3.10a | View in Records quick link on queue row | 30 min | — | TODO | |
+
+### P2 — Medium Priority
+
+| ID | Name | Effort | Depends On | Status | Notes |
+|---|---|---|---|---|---|
+| T2.5 | useBookingEngine onSnapshot for clinic_settings | 30 min | — | TODO | |
+| T2.6 | Reminder banner timestamp crash fix | 5 min | — | TODO | |
+| T2.8 | Path A clientReport split | 1 hr | — | TODO | |
+| T2.9 | Cloud Functions fate decision | 15 min-4 hrs | — | TODO | |
+| T2.12 | Rename Sign Digital Consent → Lock Clinical Record | 15 min | — | TODO | |
+| T2.13 | Refactor CRM Sovereignty (delete sync, keep vitals cache) | 1 hr | — | TODO | Frees sidebar slot for T2.95 |
+| T2.14 | Fix auto-bundling (all services + stock guard) | 30 min | — | TODO | |
+| T2.15 | Expand KNOWLEDGE_BASE to 30+ rules | 3-4 hrs | — | TODO | |
+| T2.16 | POSModal reserved decrement leak fix | 30-60 min | — | TODO | |
+| T2.22 | Vaccine-aware inventory + auto-fill | 2-3 hrs | — | TODO | |
+| T2.23 | useBookingEngine reads lastVitals.weight | 30 min | — | TODO | |
+| T2.24-27 | Promote lab results | 2-3 hrs | — | TODO | |
+| T2.29 | Ditch primaryService field | 2 hrs | — | TODO | |
+| T2.43 | Resolve carried-over → arrived ambiguity | 30 min | — | TODO | |
+| T2.45 | Eliminate statusHistory duplication | 45 min | — | TODO | |
+| T2.50 | Typed confirmation for Active-silo batch cancel | 30 min | — | TODO | |
+| T2.51 | IDENTITY_EDIT pulse event | 15 min | — | TODO | |
+| T2.52 | Atomic handleDispenseVerified | 20 min | — | TODO | |
+| T2.59 | Records.jsx UX polish | 1.5 hrs | — | TODO | |
+| T2.61 | Records.jsx case-grouping view toggle | 2 hrs | — | TODO | |
+| T2.65 | Amend audit log for terminal records | 1 hr | — | TODO | |
+| T2.70 | Quick-range date filter buttons in Records | 30 min | — | TODO | |
+| T2.71 | Saved filter presets for Records | 2.5 hrs | — | TODO | |
+| T2.75 | Clinical amendment path for locked records | 3 hrs | — | TODO | Most important P2 |
+| T2.80 | POSModal services[] rewrite for multi-service billing | 1-2 hrs | — | TODO | |
+| T2.87 | BookAppointment TOCTOU race fix (runTransaction) | 45 min | — | TODO | |
+| T2.93 | Delete `workflowType` legacy field | 5 min | — | TODO | |
+| T2.94 | Delete phantom per-service code in ClinicalWorkspace | 15 min | — | TODO | |
+| T2.95 | Per-service progress card in ClinicalWorkspace sidebar | 45 min | T2.94, T2.13 | TODO | Absorbs T2.103 |
+| T2.96 | Decouple sign-off from status advancement | 1-2 hrs | T2.95 | TODO | |
+| T2.100 | POSModal: clinicalPulse event on checkout | 10 min | — | TODO | |
+| T2.101 | Outstanding balance: remove counter, compute from sales. "Record Payment" in BillingLedger. | 2-3 hrs | — | TODO | Decision locked: computed only |
+| T2.104 | Transaction void with inventory reversal | 3-4 hrs | — | TODO | |
+| T2.108 | Document client-side timestamp limitation | 5 min | — | TODO | |
+| T2.110 | Pulse events for per-service state changes | 10 min | T2.95 | TODO | |
+| T2.113 | Outstanding balance: remove Firestore counter | 45 min | — | TODO | Decision locked: Option A |
+| T2.115 | QuickBookModal → WalkInModal direct integration with prefill | 1.5-2 hrs | — | TODO | Decision locked: Option B |
+| T2.116 | Archive pet: confirmation dialog + archivedBy + restore | 30 min | — | TODO | |
+| T2.122 | Weight type fix: parseFloat, write both weight + lastWeight | 10 min | — | TODO | |
+| T2.123 | Admin pet modal field parity (updatedAt, isAgeExact, max DOB, petAllergies) | 20 min | — | TODO | |
+| T2.124 | NewClientModal: add `accountStatus: 'admin_registered'` flag | 10 min | — | TODO | Decision locked: Option A |
+| T2.125 | Staff notes: delete confirmation + arrayUnion for atomic adds | 30 min | — | TODO | |
+| T2.126 | PatientDashboard: fix double-fetch (remove pet from useEffect deps) | 15 min | — | TODO | 50 wasted reads |
+| T2.132 | Duplicate client phone check with override dialog | 20 min | — | TODO | Decision locked: Option A |
+| T2.140 | Refund date: Option C — show on both days. Dual query + dedup + cross-day badge. EOD refund total uses refund date. | 1.5 hrs | — | TODO | Decision locked: Option C |
+| T2.141 | Add "Bank Transfer" to payment method filter dropdown. Fix Card tile click to include Bank Transfer. | 10 min | — | TODO | |
+| T2.142 | Wire Print Report button: generate EOD summary HTML | 1 hr | — | TODO | Dead UI element |
+| T2.143 | Add DataGrid pagination: remove `hideFooter={true}` | 5 min | — | TODO | |
+| T2.156 | StockAdjustModal: validate against `stock - reserved`. Show "Available: X (Y reserved)". | 15 min | — | TODO | |
+| T2.157 | StockAdjustModal + ConfirmDeleteModal: `await` async callback before `onClose()` | 10 min | — | TODO | Optimistic close race |
+| T2.158 | StockAdjustModal: reset form state on reopen | 5 min | — | TODO | Stale data |
+| T2.159 | `archiveItem`: release reserved stock before archiving | 10 min | — | TODO | Orphaned reservations |
+| T2.160 | `deleteItem`: log before delete (or transaction) | 10 min | — | TODO | Unaudited permanent deletions |
+| T2.161 | ConfirmDeleteModal: pre-archive impact check (appointments, reserved stock) | 30 min | — | TODO | Blind archive |
+| T2.162 | ProductFormModal quick-add category: dedup + isMedicine default + route through hook | 20 min | — | TODO | |
+| T2.163 | InventoryLogModal: add limit, error UI, re-fetch on reopen | 15 min | — | TODO | |
+| T2.164 | Inventory.jsx: hide filter controls on Activity Log tab | 10 min | — | TODO | UX confusion |
+| T2.165 | InventoryTable: batch detail visibility (expandable/tooltip) | 1.5 hrs | — | TODO | FIFO invisible to staff |
+| T2.166 | KPI expiry: check `batches[].expiryDate` in addition to top-level | 15 min | — | TODO | Expired batches missed |
+| T2.167 | Write `isMedicine` to inventory items on create/update (derived + optional override toggle). Label: "Requires pharmacy dispensing verification". | 20 min | — | TODO | Decision locked: derived with override |
+| T2.170 | GlobalActivityLog: full filtering — action type, date range, product search, user filter, paginated queries. | 3 hrs | T2.150 | TODO | Decision locked: full scope |
+| T2.175 | Allergen safety system: `allergyTags[]` on ALL products + cart-add check in ClinicalWorkspace + Option C dispensing routing + DispensingVerificationDialog cross-check | 1.5 hrs | T2.119 | TODO | Decision locked: Option C + Approach 2 |
+| T2.176 | Client-facing dispensing label: per-medication printable label | 1.5 hrs | — | TODO | Benefits from T2.147 for lot/expiry |
+| T2.180 | Department + category CRUD audit trail: write to `settings_logs` collection | 30 min | — | TODO | Closes audit gap #4 |
+| T2.181 | Settings save field-level diff: write changed fields to `settings_logs` | 30 min | — | TODO | Closes audit gap #5 |
+| T2.182 | Wire `autoNoShowMins`: No-Show button disabled until threshold. Tooltip: "No-Show window opens at [time] per clinic policy" (Option B). | 30 min | — | TODO | Decision locked: wire + Option B |
+| T2.183 | Wire `maxFutureBookingDays`: date picker constraint in BookAppointment | 15 min | — | TODO | Decision locked: wire |
+| T2.184 | Settings bounds validation: minSlotInterval > 0, maxPetsPerBooking 1-10, trafficModerate < trafficHigh, etc. | 20 min | — | TODO | |
+| T2.188 | Services non-checkable in dispensing checklist: auto-verified, shown for context. Button: "VERIFY ALL X PRODUCTS". | 20 min | — | TODO | User's design |
+| T2.189 | Dosage/concentration display in dispensing checklist: propagate `dosage` from inventory item to cart item | 15 min | — | TODO | Pharmacy safety |
+| T2.190 | No-show rebook detection: auto-detect on pet selection, `rebookedFromId` + `noShowCount`, banners in BookAppointment (client) + WalkInModal (staff) + ClinicalWorkspace (vet chip). Option A matching, 30-day window, most-recent + count. | 2 hrs | — | TODO | Full no-show return lifecycle |
+| T2.194 | Audit diff: track individual pricing tier changes (minWeight, maxWeight, price per tier). | 30 min | — | TODO | Pricing changes invisible in audit trail |
+| T2.195 | Tier validation: overlap, gap, inversion checks before save. | 30 min | — | TODO | Silent shadowing + fall-through to zero base price |
+| T2.196 | Add `createdAt`/`updatedAt` with `serverTimestamp()` to service documents. | 5 min | — | TODO | No temporal metadata on service docs |
+| T2.197 | Pass `loading` from useServices to ServiceTable. Add loading skeleton. | 10 min | — | TODO | Empty state flash during initial fetch |
+| T2.198 | ServiceTable: add `linkedProducts` badge/chip per row. | 15 min | — | TODO | Auto-bundled services indistinguishable |
+| T2.199 | ServiceLogModal: display `log.reason` alongside `log.changes`. | 5 min | — | TODO | ARCHIVED/RESTORED show no context |
+| T2.216 | Staff departments: hard block if `departments.length === 0`. | 5 min | — | TODO | Decision locked: hard block |
+| T2.217 | Staff timestamps: replace `new Date()` with `serverTimestamp()` for `createdAt`, `updatedAt`, `disabledAt`. | 5 min | — | TODO | Client-side timestamps inconsistent |
+| T2.218 | Staff listener: server-side `where("role", "in", [...])` filter. | 15 min | — | TODO | Decision locked: P2 for correctness |
+| T2.219 | Staff emergency contact mutation: deep-copy objects before modifying. | 5 min | — | TODO | React state mutation anti-pattern |
+| T2.220 | Staff activeAppointments: add `.id` to mapping. | 2 min | — | TODO | Inconsistent with staffList |
+
+### P3 — Polish & Deferred
+
+| ID | Name | Effort | Depends On | Status | Notes |
+|---|---|---|---|---|---|
+| T2.7 | Move hardcoded clinic phone to settings | 30 min | — | TODO | |
+| T2.10 | Delete orphaned Firestore collections | 5 min | — | TODO | |
+| T2.11 | Wire mobile to secureBookAppointment (Blaze) | 1-2 hrs | T2.9 | TODO | |
+| T2.17 | Rename Treatment Plan sidebar → Services & Items | 5 min | — | TODO | |
+| T2.18 | ClinicalWorkspace dead code cleanup (~300 lines) | 1-2 days | — | TODO | |
+| T2.19 | handleSaveDraft optimistic lock | 15 min | — | TODO | |
+| T2.20 | Empty-cart sign-off confirm dialog | 15 min | — | TODO | |
+| T2.34 | Normalize lineage field terminology | 2 hrs | — | TODO | |
+| T2.35 | useCaseChain bidirectional walker | 2-3 hrs | — | TODO | |
+| T2.38 | Unified pulse eventId format (10 call sites) | 35 min | — | TODO | |
+| T2.39 | Code comments at Timestamp.now() pulse sites | 15 min | — | TODO | |
+| T2.46 | EndOfDayModal polish (scenarioMap + confined default) | 15 min | — | TODO | |
+| T2.46.1 | Rename rebook → reschedule/carryover | 45 min | — | TODO | |
+| T2.49 | Unify ancestor chain walkers | 1.25 hrs | — | TODO | |
+| T2.53 | rescheduleAppointment runTransaction conversion | 15 min | — | TODO | |
+| T2.54 | IDENTITY_HEALING pulse event | 10 min | — | TODO | |
+| T2.56 | CONFINE date picker color cues | 1 hr | — | TODO | |
+| T2.62 | Case lineage indicator column | 30 min | — | TODO | |
+| T2.63 | Follow-up linkage in audit popover | 1 hr | — | TODO | |
+| T2.66 | Defer triage action in Records | 20 min | — | TODO | |
+| T2.67 | Edit identity fields in Records | 45 min | — | TODO | |
+| T2.68 | Copy ID + print record actions | 30 min | — | TODO | |
+| T2.69 | Phone normalization | 1.5 hrs | — | TODO | |
+| T2.72 | Structured reschedule pulse + undo | 45 min | — | TODO | |
+| T2.73 | Bulk reschedule in Records | 2 hrs | — | TODO | |
+| T2.74 | Bulk staff reassignment in Records | 1.5 hrs | — | TODO | |
+| T2.76 | Client self-check-in via clinic QR | 5-6 hrs | — | TODO | |
+| T2.77 | 4-tier ticket prefix scheme (A/W/E/R) | 30 min | — | TODO | |
+| T2.78 | visitGroupId at multi-pet booking time | 30 min | — | TODO | |
+| T2.81 | Fix advanceNoticeBuffer phantom field | 5 min | — | TODO | |
+| T2.82 | Mixed-species filter warning banner | 15 min | — | TODO | |
+| T2.83 | Debounce slot generation | 30 min | — | TODO | |
+| T2.84 | Write serviceBuffer to appointment root | 10 min | — | TODO | |
+| T2.85 | Zero-capacity department explanation | 20 min | — | TODO | |
+| T2.86 | findFirstBookableDate capacity check | 1 hr | — | TODO | |
+| T2.88 | Profile up-to-date nudge | 20 min | — | TODO | |
+| T2.89 | Past-date submit guard | 10 min | — | TODO | |
+| T2.97 | ServiceProgressCard shared component | 1 hr | T2.95 | TODO | |
+| ~~T2.98~~ | ~~POSModal receipt: clinic name from settings~~ | — | — | ABSORBED | Absorbed into T2.148 (superset scope: Sales.jsx + POSModal) |
+| T2.99 | POSModal receipt: cashier name fix | 5 min | — | TODO | |
+| T2.102 | Deposit collection modal for carry-over | 2-3 hrs | — | TODO | |
+| T2.107 | Per-service time tracking (Option A: explicit start/complete) | 25 min | T2.95 | TODO | |
+| T2.109 | Centralized pulse event factory | 45 min | T2.38 | TODO | |
+| T2.111 | Extract shared ClinicalTimeline component | 1.5 hrs | — | TODO | Non-essential refactor |
+| T2.114 | Owner name: fullName fix in PatientDashboard | 2 min | — | TODO | |
+| T2.117 | Deduplicate calculateAge into shared util | 10 min | — | TODO | |
+| T2.118 | PatientDashboard dead buttons (3) | 15 min | — | TODO | |
+| T2.127 | PatientDirectory: empty state + null guard + React.memo | 15 min | — | TODO | |
+| T2.128 | Stale-data flash on client switch | 15 min | — | TODO | |
+| T2.129 | Replace 3 alert() calls with MUI Snackbar (Patients) | 15 min | — | TODO | |
+| T2.130 | Expand search to include prescriptions, assessment, plan | 10 min | — | TODO | |
+| T2.131 | Remove dead code (4 items in Patients module) | 5 min | — | TODO | |
+| T2.133 | Contact freshness prompt at check-in (>90 days) | 30 min | — | TODO | |
+| T2.134 | Client-level engagement KPIs in ClientHeader | 45 min | — | TODO | |
+| T2.135 | Deceased pet status + dateOfDeath + memorial indicator | 15 min | — | TODO | |
+| T2.136 | Referral detail: "Referred by" text field | 15 min | — | TODO | |
+| T2.144 | Replace 3 alert() calls with MUI Snackbar (Sales) | 15 min | — | TODO | |
+| T2.145 | Delete dead code: clinicalFlatStyle, Divider/Grid imports (Sales) | 2 min | — | TODO | |
+| T2.146 | Design token compliance: Sales.jsx + EodSummary.jsx (60+ hardcoded colors) | 30 min | — | TODO | |
+| T2.147 | Refund restock: store batch info at sale time (Option A) + no-expiry guard | 30 min | — | TODO | Decision locked: Option A |
+| T2.148 | Receipt clinic name from settings (Sales.jsx + POSModal) | 15 min | — | TODO | |
+| T2.168 | Delete dead code: glassStyle/GLASS, selectedCatObj, dead COLORS imports (Inventory) | 5 min | — | TODO | |
+| T2.169 | Design token compliance: Inventory module (100+ hardcoded colors, 7 files) | 1.5 hrs | — | TODO | |
+| T2.171 | `restoreItem`: clear `archivedAt` on restore | 5 min | — | TODO | Both timestamps coexist |
+| T2.172 | InventoryTable: negative margins as red percentage | 10 min | — | TODO | |
+| T2.173 | Category seed idempotency: deterministic IDs | 15 min | — | TODO | Concurrent tabs create duplicates |
+| T2.174 | Batch-aware negative stock adjustments: batch picker for removals | 2 hrs | T2.152 | TODO | Deferred — positive ships first |
+| T2.185 | Settings: replace services + users listeners with one-shot getDocs | 15 min | — | TODO | 5 listeners excessive |
+| T2.186 | Settings: replace 2 window.confirm() with MUI Dialog | 10 min | — | TODO | |
+| T2.187 | Settings: delete dead variable `dashboardCream` | 1 min | — | TODO | |
+| T2.200 | Services: delete dead code (clinicalFlatStyle prop, useNavigate, CircleIcon). Keep isAdmin import for T2.192. | 5 min | — | TODO | |
+| T2.201 | Services: `restoreService` clear `archivedAt` on restore | 5 min | — | TODO | Same as Inventory T2.171 |
+| T2.202 | Services: extract shared ACTION_CONFIG to `src/utils/serviceLogConfig.js` | 10 min | — | TODO | Duplicated in ActivityLog + LogModal |
+| T2.203 | ServiceActivityLog: add filtering (action type, date range, service name) + pagination | 2 hrs | — | TODO | Same scope as Inventory T2.170 |
+| T2.204 | ServiceLogModal: add `limit(500)` to query | 2 min | — | TODO | Unbounded fetch |
+| T2.205 | Services: design token compliance across 4 child components (60+ hardcoded colors) | 1 hr | — | TODO | |
+| T2.206 | ServiceTable: add pagination | 15 min | — | TODO | |
+| T2.207 | CLAUDE.md: fix `tieredPricing` → `pricingTiers` + `hasTieredPricing` in field docs | 2 min | — | TODO | Documentation inaccuracy |
+| T2.221 | Staff: delete dead code (KPICard + kpis + 4 icons, WorkIcon, headerSx, deleteDoc, showToast prop) | 5 min | — | TODO | |
+| T2.222 | Staff: pass `loading` to StaffTable, add skeleton | 10 min | — | TODO | |
+| T2.223 | Staff: add loading/disabled state on REVOKE button | 5 min | — | TODO | Double-click duplicates |
+| T2.224 | Staff: fix cleanName crash `cleanName[0]?.toUpperCase() \|\| '?'` | 2 min | — | TODO | |
+| T2.225 | Staff: add null guard on `departments` prop in StaffTable | 2 min | — | TODO | |
+| T2.226 | Staff: design token compliance across 3 child components (50+ hardcoded colors) | 45 min | — | TODO | |
+| T2.227 | Staff: fix borderRadius violations (search field, warning box, scrollbar) | 5 min | — | TODO | |
+
+---
+
+## Phase 3 — Future & Long-Form
+
+> 42 tasks · Multi-day efforts
+
+| ID | Name | Priority | Effort | Depends On | Status | Notes |
+|---|---|---|---|---|---|---|
+| T3.1 | EMRDrawer slide-over | P2 | 1 day | — | TODO | |
+| T3.2 | Multi-vaccine per visit + manual form toggle | P2 | 1 day | — | TODO | |
+| T3.3 | Printable vaccination passport | P2 | 0.5 day | — | TODO | |
+| T3.4 | Grooming-specific consult form | P3 | 1-2 days | — | TODO | |
+| T3.5 | Real RA 10173 informed consent system | P2 | 8-12 days | — | TODO | |
+| T3.6 | Cloud Function LLM gateway | P3 | 2-3 days | Blaze | TODO | |
+| T3.8 | Clinic-wide forensic reporting dashboard | P1 | 3-4 days | — | TODO | |
+| T3.9 | Admin-only revert from terminal states | P2 | 1 hr | — | TODO | |
+| T3.10b | Recently Resolved panel with undo | P2 | 2-3 hrs | — | TODO | |
+| T3.10c | Show resolved today toggle | P3 | 1 hr | — | TODO | |
+| T3.10d | Global patient search in Queue | P2 | 1-2 hrs | — | TODO | |
+| T3.11 | RA 10173 right-to-erasure anonymization | P2 | 4 hrs | — | TODO | |
+| T3.12 | Multi-Pet Visit Support (full UI) | P2 | 15-20 hrs | T2.78 | TODO | 11 sub-tasks |
+| T3.13 | Partial refund with line-item selection | P3 | 6-8 hrs | T2.104 | TODO | |
+| T3.14 | Unit test suite for pulseUtils.js | P3 | 3-4 hrs | — | TODO | |
+| T3.15 | Firebase Auth for admin-created clients | P3 | 2-3 hrs | Blaze | TODO | |
+| T3.16 | Household/family modeling | P3 | 3-4 days | — | TODO | Late optional |
+| T3.17 | Communication history tab + routing | P3 | 3-5 days | Blaze | TODO | Late optional |
+| T3.18 | Referral Level 2 (ID links + count badge + incentives) | P3 | 2-3 hrs | T2.136 | TODO | |
+| T3.19 | Client profile photo (RA 10173 compliant) | P3 | 2-3 hrs | — | TODO | Build only if advisors request |
+| T3.20 | Client behavior profile analytics card | P3 | 2-3 hrs | — | TODO | No-show rate, late payments, visit regularity |
+| T3.21 | Reorder point alerts: low-stock notification badge + printable reorder list | P3 | 2-3 hrs | — | TODO | In-app only (Spark) |
+| T3.22 | Barcode/QR scanning for stock intake | P3 | 3-5 days | — | TODO | Hardware-dependent |
+| T3.23 | Inventory valuation report: value by category, COGS, margin analysis | P3 | 1-2 days | — | TODO | Overlaps T3.8 |
+| T3.24 | Expiry disposal workflow: "Dispose Expired" batch action | P3 | 1.5 hrs | — | TODO | Idempotent |
+| T3.25 | Supplier directory: `suppliers` collection, dropdown in ProductFormModal | P3 | 3-4 hrs | — | TODO | Free-text works for small clinics |
+| T3.26 | Structured adjustment types for shrinkage analytics | P3 | 1 hr | — | TODO | |
+| T3.27 | Inventory export (CSV/PDF) | P3 | 1 hr | — | TODO | |
+| T3.28 | Internal ward/hospitalization medication labels | P3 | 1 hr | — | TODO | Only for overnight clinics |
+| T3.29 | Structured allergy entries with coded drug classes (Tier 2) | P3 | 6-8 hrs | — | TODO | Supersedes T2.175 keyword matching |
+| T3.30 | Barcode scan before product administration | P3 | 3-5 hrs | T2.175, T3.22 | TODO | Hospital-grade safety |
+| T3.31 | Configurable no-show link window: `noShowLinkWindowDays` in clinic_settings | P3 | 10 min | T2.190 | TODO | Currently hardcoded 30 days |
+| T3.32 | Client-side appointment confirmation flow: `confirmedByClient` + Queue badge | P3 | 1.5 hrs | — | TODO | Spark-compatible |
+| T3.33 | No-show rate display at booking/check-in | P3 | 30 min | — | TODO | Spark-compatible |
+| T3.34 | Pre-appointment push reminder | P3 | 2-3 hrs | Blaze | TODO | Deploy sendAppointmentUpdateNotification |
+| T3.35 | Waitlist and slot recovery automation | P3 | 3-5 hrs | Blaze | TODO | |
+| T3.36 | Hold for vet review in dispensing: `dispensingHold` flag + pulse events | P3 | 1.5 hrs | T2.52 | TODO | |
+| T3.37 | Stock verification at dispensing time: advisory warnings per item | P3 | 30 min | — | TODO | POSModal remains hard gate |
+| T3.38 | Batch/lot selection at dispensing: batch picker per product | P3 | 1.5 hrs | T2.165 | TODO | Drug recall traceability |
+| T3.39 | Partial dispensing support: qty input per item, backorder tracking | P3 | 1 hr | — | TODO | |
+| T3.40 | Firebase Auth disable on staff revocation: Cloud Function with Admin SDK | P3 | 2 hrs | Blaze | TODO | Currently only Firestore flag set |
+| T3.41 | Staff re-enable flow: UI to restore revoked staff + RESTORED audit event | P3 | 1 hr | — | TODO | No re-enable path despite modal text claiming it |
+| T3.42 | Staff password management: Cloud Function for secure creation (Option C) + password reset flow | P3 | 3-4 hrs | Blaze | TODO | Production deployment path |
+
+---
+
+## Cancelled & Absorbed Tasks
+
+| ID | Reason |
+|---|---|
+| T2.21 | Duplicate of T2.17 |
+| T2.36 | Superseded by T2.63 |
+| T2.55 | Redundant with T2.46 |
+| T2.60 | Merged into T2.61 |
+| T2.103 | ABSORBED into T2.95 |
+| T2.106 | CANCELLED — no separate grooming UI |
+
+---
+
+## Recommended Ship Sequence
+
+### Week 1 — Defense-Ready Core
+
+**Day 1 AM (~8 hrs):** Structural unblocks + patient safety + inventory integrity
+- T2.119 (allergy normalization) + T2.37 (pulse append-only) + T2.42 (seal drift) + T2.44 (seal on sign-off) + T2.57 (Records bugs) + T2.58 (Records terminology) + T2.41 (caseDay fix) + T2.149 (adjustStock transaction) + T2.150 (refund log schema)
+
+**Day 1 PM (~4-6 hrs):** Defense writing
+- T1.4 (defense addendum)
+
+**Day 2 AM (~5 hrs):** Activate B5 follow-up
+- T2.32 (SoapGrid extraction) + T2.28-expanded (nextVisit UI + follow-up bugs)
+
+**Day 2 PM (~8 hrs):** Thesis rewrites
+- T1.1 (Batch 3) + T1.2 (Batch 9)
+
+**Day 3 (~6 hrs):** Printables
+- T2.2 (visit summary) + T2.3 (vaccination record) + T2.4 (referral report)
+
+**Day 4 (~7 hrs):** Security + thesis + billing integrity
+- T1.5 + T1.6 + T1.9 + T1.10 + T2.1 (RBAC) + T2.112 (sales ownerId) + T2.120 (species filter) + T2.121 (date guards) + T2.137 (EOD dual display) + T2.138 (refund appointment reversal) + T2.139 (refund staff attribution)
+
+### Week 2 — High-Value Features
+
+**Day 5 (~5 hrs):** Audit story
+- T2.33 (dischargePolicy) + T2.75 (clinical amendments) + T2.65 (amend audit log)
+
+**Day 6 (~4 hrs):** Records demo story
+- T2.61 (case-grouping) + T2.62 (lineage badge) + T2.63 (follow-up linkage)
+
+**Day 7 (~6 hrs):** Service completion + billing
+- T2.93 + T2.94 (cleanup) + T2.95 (service toggles) + T2.96 (sign-off decoupling) + T2.105 (SC/PWD) + T2.80 (POSModal services[])
+
+**Day 8 (~5 hrs):** Inventory hardening + settings
+- T2.151 (reserve/release guards) + T2.152 (batch-aware adjust) + T2.153 (loading) + T2.154 (scrub gate) + T2.155 (form validation) + T2.177 (settings role check) + T2.178 (closed dates persist) + T2.179 (category usage shield)
+
+### Week 3 — Polish + New Features
+
+**Day 9 (~5 hrs):**
+- T2.13 (CRM Sovereignty) + T2.14 (auto-bundling) + T2.50 + T2.70 + T2.71 + T3.10a
+
+**Day 10 (~5 hrs):**
+- T2.104 (void) + T2.101 (balance + payments) + T2.100 (checkout pulse) + T2.113 (remove counter)
+
+**Day 11 (~4 hrs):** Patients CRM fixes
+- T2.115 (WalkInModal integration) + T2.116 (archive confirm) + T2.122 (weight type) + T2.123 (field parity) + T2.124 (admin_registered flag) + T2.125 (notes atomic) + T2.126 (double-fetch)
+
+**Day 12 (~5 hrs):** Allergen safety + dispensing + no-show
+- T2.175 (allergen system) + T2.176 (dispensing labels) + T2.188 (services non-checkable) + T2.189 (dosage display) + T2.182 (autoNoShowMins) + T2.190 (no-show rebook detection)
+
+**Day 13 (~3 hrs):** Staff critical + high fixes
+- T2.208 (hardcoded password) + T2.209 (phone validation) + T2.210 (App leak) + T2.211 (revoke guard) + T2.212 (modal text) + T2.213 (role preserve) + T2.214 (workload statuses) + T2.215 (Queue filter)
+
+**Day 14 (~2 hrs):** Services + Staff P2 fixes
+- T2.191 (service archive guard) + T2.192 (service delete gate) + T2.193 (negative validation) + T2.194 (tier diff) + T2.195 (tier validation) + T2.216 (dept required) + T2.217 (timestamps) + T2.218 (staff listener) + T2.219 (contact mutation) + T2.220 (appt .id)
+
+**Day 15+:** Remaining P2/P3, Phase 3 as time permits
+
+---
+
+## Batch Groupings for Implementation Planning
+
+| Batch Name | Tasks | Total Effort | Plan File |
+|---|---|---|---|
+| Records Renovation | T2.57, T2.58, T2.59, T2.61, T2.62, T2.63, T2.65, T2.70, T2.71 | ~12 hrs | RECORDS_RENOVATION_PLAN.md |
+| Firestore Rules Hardening | T2.1, T2.37, T2.31 | ~5 hrs | FIRESTORE_HARDENING_PLAN.md |
+| ClinicalWorkspace Sign-Off | T2.32, T2.28-expanded, T2.33, T2.44, T2.42 | ~8 hrs | CLINICAL_SIGNOFF_PLAN.md |
+| Pulse Engine Cleanup | T2.38, T2.45, T2.18, T2.39, T2.109 | ~4 hrs | PULSE_CLEANUP_PLAN.md |
+| Queue Audit Polish | T2.46, T2.50, T2.51, T2.52, T2.53, T2.54 | ~2 hrs | QUEUE_AUDIT_POLISH_PLAN.md |
+| Printables | T2.2, T2.3, T2.4 | ~5 hrs | PRINTABLES_PLAN.md |
+| Clinical Amendment | T2.75 | ~3 hrs | CLINICAL_AMENDMENT_PLAN.md |
+| Service Completion & Billing | T2.93, T2.94, T2.95, T2.96, T2.97, T2.80, T2.105, T2.100, T2.107, T2.110 | ~7 hrs | SERVICE_COMPLETION_PLAN.md |
+| Financial Operations | T2.101, T2.102, T2.104, T2.113, T2.137, T2.138, T2.139, T2.140, T2.141, T2.142, T2.143 | ~12 hrs | FINANCIAL_OPS_PLAN.md |
+| Patients CRM Fixes | T2.119, T2.112, T2.115, T2.116, T2.120, T2.121, T2.122, T2.123, T2.124, T2.125, T2.126, T2.132 | ~7 hrs | PATIENTS_CRM_PLAN.md |
+| Inventory Hardening | T2.149, T2.150, T2.151, T2.152, T2.153, T2.154, T2.155, T2.156, T2.157, T2.158, T2.159, T2.160, T2.161, T2.162, T2.163, T2.164, T2.165, T2.166, T2.167, T2.170 | ~12 hrs | INVENTORY_HARDENING_PLAN.md |
+| Settings & Configuration | T2.177, T2.178, T2.179, T2.180, T2.181, T2.182, T2.183, T2.184 | ~3 hrs | SETTINGS_PLAN.md |
+| Allergen Safety & Dispensing | T2.175, T2.176, T2.188, T2.189 | ~3.5 hrs | ALLERGEN_DISPENSING_PLAN.md |
+| No-Show Lifecycle | T2.182, T2.190 | ~2.5 hrs | NOSHOW_LIFECYCLE_PLAN.md |
+| Services Hardening | T2.191, T2.192, T2.193, T2.194, T2.195, T2.196, T2.197, T2.198, T2.199 | ~2.5 hrs | SERVICES_HARDENING_PLAN.md |
+| Staff Security & Integrity | T2.208, T2.209, T2.210, T2.211, T2.212, T2.213, T2.214, T2.215, T2.216, T2.217, T2.218, T2.219, T2.220 | ~2 hrs | STAFF_SECURITY_PLAN.md |
+
+---
+
+## Session 2026-04-20 — Standalone Pages + Mobile Client + JSX Audits + Design + Vaccination
+
+> ~230 new tasks · ~200+ hours additional effort
+> Deep-dive files: DASHBOARD_DEEPDIVE.md, MONITOR_DEEPDIVE.md, EXPENSES_DEEPDIVE.md, LOGIN_DEEPDIVE.md, MOBILE_CLIENT_DEEPDIVE.md
+
+### Admin Standalone Pages
+
+#### Dashboard — S-Tier Analytics (T2.228-T2.341)
+
+**Infrastructure:**
+
+| ID | Name | Priority | Effort | Status | Notes |
+|---|---|---|---|---|---|
+| T2.228 | Install recharts + Dashboard base: 4-tab layout (Growth/Ops/Clinical/Financial), design tokens, useUser for tab gating | P0 | 1 hr | TODO | Growth tab first (thesis narrative). Prereq T2.342 DONE |
+| T2.315 | Create `useDashboardData` hook with period-parameterized queries | P0 | 1.5 hrs | TODO | All tabs' data. Period: Today/Week/Month/Quarter/Year |
+| T2.316 | Create shared `<KPICard>` component | P1 | 20 min | TODO | Reusable across all tabs |
+| T2.317 | Create shared `<HorizontalBar>` component (CSS-only) | P1 | 20 min | TODO | No recharts dependency |
+| T2.318 | Create shared `<PeriodSelector>` component | P1 | 15 min | TODO | Chip row. Ops tab always "Today" |
+| T2.272 | Quick-nav tiles + role gating | P2 | 15 min | TODO | |
+| T2.342 | Delete dead pages/Staff.jsx + move Dashboard to features/Dashboard/ | P1 | 10 min | DONE | Prerequisite for Dashboard build |
+
+**Tab 1 — Growth (default: This Month):**
+
+| ID | Name | Priority | Effort | Status |
+|---|---|---|---|---|
+| T2.282 | New clients + total active | P1 | 15 min | TODO |
+| T2.307 | Client registration trend (recharts bar) | P1 | 30 min | TODO |
+| T2.308 | Total active pets + species distribution | P1 | 15 min | TODO |
+| T2.309 | Top breeds | P2 | 15 min | TODO |
+| T2.285 | Appointment volume trend (recharts bar) | P1 | 30 min | TODO |
+| T2.280 | Walk-in vs scheduled ratio | P1 | 15 min | TODO |
+| T2.310 | Peak hours analysis (recharts bar) | P2 | 25 min | TODO |
+| T2.311 | Service popularity ranking | P1 | 15 min | TODO |
+| T2.312 | Booking lead time average | P2 | 10 min | TODO |
+| T2.313 | Client retention rate | P2 | 20 min | TODO |
+| T2.314 | Clinic utilization rate | P2 | 20 min | TODO |
+
+**Tab 2 — Operations (always Today):**
+
+| ID | Name | Priority | Effort | Status |
+|---|---|---|---|---|
+| T2.228b | Appointment status breakdown | P0 | 30 min | TODO |
+| T2.229 | Queue status + clinic open/closed | P1 | 20 min | TODO |
+| T2.281 | Avg wait time + longest current wait | P1 | 30 min | TODO |
+| T2.271 | Average consult duration | P1 | 15 min | TODO |
+| T2.286 | Department load distribution | P1 | 15 min | TODO |
+| T2.287 | Staff workload (per vet) | P1 | 20 min | TODO |
+| T2.279 | No-show + cancellation count | P1 | 10 min | TODO |
+| T2.288 | Emergency count | P2 | 5 min | TODO |
+
+**Tab 3 — Clinical (default: This Month):**
+
+| ID | Name | Priority | Effort | Status |
+|---|---|---|---|---|
+| T2.289 | Records signed this period | P1 | 20 min | TODO |
+| T2.290 | Top 5 diagnoses | P1 | 30 min | TODO |
+| T2.291 | Vaccine administration by type | P1 | 20 min | TODO |
+| T2.292 | Top prescribed items | P1 | 25 min | TODO |
+| T2.293 | Follow-up compliance rate | P2 | 20 min | TODO |
+| T2.294 | Species distribution of visits | P2 | 10 min | TODO |
+| T2.295 | Confinement + carry-over rate | P2 | 10 min | TODO |
+| T2.296 | Records per vet | P2 | 15 min | TODO |
+| T2.297 | Average vitals by species | P2 | 20 min | TODO |
+
+**Tab 4 — Financial (admin-only, default: This Month):**
+
+| ID | Name | Priority | Effort | Status |
+|---|---|---|---|---|
+| T2.230 | Revenue (collected + billed) | P0 | 20 min | TODO |
+| T2.283 | Net margin | P1 | 10 min | TODO |
+| T2.298 | Payment method distribution | P1 | 15 min | TODO |
+| T2.299 | SC/PWD discount total + usage rate | P1 | 10 min | TODO |
+| T2.300 | Average transaction value | P1 | 5 min | TODO |
+| T2.301 | Revenue trend (recharts) | P1 | 45 min | TODO |
+| T2.302 | Expense category breakdown | P1 | 15 min | TODO |
+| T2.303 | Revenue vs expense trend overlay (recharts) | P2 | 30 min | TODO |
+| T2.304 | Refund rate + total refunded | P2 | 10 min | TODO |
+| T2.305 | Outstanding balances total | P2 | 10 min | TODO |
+| T2.306 | Revenue by service/department | P2 | 20 min | TODO |
+| T2.270 | Monthly expense burn rate | P1 | 10 min | TODO |
+
+**S-Tier Features:**
+
+| ID | Name | Priority | Effort | Status |
+|---|---|---|---|---|
+| T2.319 | Create `generateInsight()` rule engine | P1 | 1.5 hrs | TODO |
+| T2.320 | Extend useDashboardData for period-over-period deltas | P1 | 1 hr | TODO |
+| T2.321 | Extend KPICard with delta display + insight slot | P1 | 20 min | TODO |
+| T2.322 | Insight rules: Operations tab (10 rules) | P1 | 1 hr | TODO |
+| T2.323 | Insight rules: Clinical tab (8 rules) | P2 | 45 min | TODO |
+| T2.324 | Insight rules: Financial tab (7 rules) | P2 | 45 min | TODO |
+| T2.325 | Insight rules: Growth tab (5 rules) | P2 | 30 min | TODO |
+| T2.326 | Drill-down: Operations → Queue/Records | P1 | 45 min | TODO |
+| T2.327 | Drill-down: Clinical → Records/Patients | P2 | 30 min | TODO |
+| T2.328 | Drill-down: Financial → Sales/Expenses | P2 | 30 min | TODO |
+| T2.329 | Drill-down: Growth → Patients/Queue | P2 | 15 min | TODO |
+| T2.330 | Drill-down: target page filter acceptance | P1 | 45 min | TODO |
+| T2.331 | Settings: Dashboard Alerts threshold configuration | P2 | 45 min | TODO |
+| T2.332 | Dashboard: alert strip + threshold check | P2 | 30 min | TODO |
+| T2.333 | Create `generateReportHTML()` utility | P1 | 1 hr | TODO |
+| T2.334 | "Export Report" button per tab | P1 | 1 hr | TODO |
+| T2.335 | PDF-specific print styling | P2 | 30 min | TODO |
+| T2.336 | Settings: monthly goals configuration | P2 | 30 min | TODO |
+| T2.337 | Dashboard: goal progress bars per tab | P2 | 45 min | TODO |
+| T2.338 | Extend useDashboardData with historical min/max/avg | P2 | 1 hr | TODO |
+| T2.339 | KPICard comparative context tooltip | P2 | 30 min | TODO |
+| T2.340 | Create `annotateChartData()` utility | P2 | 1 hr | TODO |
+| T2.341 | recharts custom annotation labels | P2 | 45 min | TODO |
+
+#### Monitor (T2.231-T2.242, T2.273-T2.275)
+
+| ID | Name | Priority | Effort | Status | Notes |
+|---|---|---|---|---|---|
+| T2.231 | Fix race condition in fetchTicketDetails | P0 | 30 min | TODO | |
+| T2.232 | Display ticket prefix (`W-005`) | P0 | 15 min | TODO | |
+| T2.233 | Fix isPriority — 2-tier (emergency=red, else=neutral) | P1 | 10 min | TODO | Decision locked |
+| T2.234 | Fix service display for walk-ins | P1 | 10 min | TODO | |
+| T2.235 | Queue status handling (paused/closed/idle) | P1 | 20 min | TODO | |
+| T2.236 | Date filter on appointment query + null guard | P2 | 15 min | TODO | |
+| T2.237 | Error handling on Firestore calls | P2 | 10 min | TODO | |
+| T2.238 | Sidebar link + clinic name from settings | P2 | 15 min | TODO | |
+| T2.239 | Remove unused Grid import | P3 | 1 min | TODO | |
+| T2.242 | AssignStaffModal: fix ticket prefix for pre-booked (A not W) | P1 | 10 min | TODO | Cross-ref |
+| T2.273 | Upcoming queue preview (next 2-3 tickets) | P2 | 45 min | TODO | A-tier |
+| T2.274 | Transition animation on number change | P3 | 20 min | TODO | |
+| T2.275 | Design tokens + TV readability pass | P2 | 30 min | TODO | |
+
+#### Expenses (T2.243-T2.258)
+
+| ID | Name | Priority | Effort | Status | Notes |
+|---|---|---|---|---|---|
+| T2.243 | Wire useUser() + actual user attribution | P0 | 10 min | TODO | |
+| T2.244 | Admin route guard | P0 | 10 min | TODO | |
+| T2.245 | Firestore security rules for expenses | P0 | 10 min | TODO | |
+| T2.246 | Validate amount > 0 and isFinite | P0 | 5 min | TODO | |
+| T2.247 | Replace alert/confirm with MUI Snackbar + Dialog | P1 | 20 min | TODO | |
+| T2.248 | Design tokens + fontWeight + solid shadows | P1 | 30 min | TODO | |
+| T2.249 | onSnapshot error callback | P1 | 5 min | TODO | |
+| T2.250 | Date-range filtering | P1 | 30 min | TODO | |
+| T2.251 | Fix misleading Dashboard profit Alert | P1 | 5 min | TODO | |
+| T2.252 | Remove dead code (Paper, Switch, FormControlLabel, style objects) | P2 | 2 min | TODO | |
+| T2.253 | Enable DataGrid pagination | P2 | 5 min | TODO | |
+| T2.254 | Expense edit capability | P2 | 45 min | TODO | |
+| T2.255 | Soft-delete instead of hard delete | P2 | 20 min | TODO | |
+| T2.256 | Expense date picker (allow backdating) | P2 | 15 min | TODO | |
+| T2.258 | displayDate locale fix | P3 | 5 min | TODO | |
+
+#### Login (T2.259-T2.266, T2.277-T2.278)
+
+| ID | Name | Priority | Effort | Status | Notes |
+|---|---|---|---|---|---|
+| T2.259 | Add `disabled` flag check | CRITICAL | 5 min | TODO | Revoked staff can log in |
+| T2.260 | Sign out in catch block when Auth succeeded | CRITICAL | 5 min | TODO | Bypass: Auth + Firestore fail = unguarded |
+| T2.261 | Trim email input | HIGH | 2 min | TODO | |
+| T2.262 | Route-level role protection in App.jsx (Option B locked) | HIGH | 30 min | TODO | Fixes 3 bugs in 1 |
+| T2.263 | Differentiate network vs auth errors | MEDIUM | 10 min | TODO | |
+| T2.264 | Neubrutalism design alignment | P2 | 30 min | TODO | |
+| T2.265 | Remove dead LockOutlinedIcon import | LOW | 1 min | TODO | |
+| T2.266 | Mobile LoginScreen: add disabled check | P2 | 5 min | TODO | Cross-project |
+| T2.277 | Login: "Forgot Password" link | P1 | 20 min | TODO | Bumped from P2 — absorbs T4.70 |
+| T2.278 | Login: default password detection warning | P3 | 15 min | TODO | Depends on T2.208 |
+
+### Mobile Client Screens (T2.343-T2.433)
+
+> See MOBILE_CLIENT_DEEPDIVE.md for full code quotes and data flow diagrams
+
+#### QueueScreen (T2.343-T2.354)
+
+| ID | Name | Priority | Effort | Status |
+|---|---|---|---|---|
+| T2.343 | Guard auth.currentUser null | P0 | 15 min | TODO |
+| T2.344 | Guard queueData.status null | P0 | 5 min | TODO |
+| T2.345 | Scope lobby query — strip to {queueNumber, serviceDuration, priority} (Option C locked) | P1 | 45 min | TODO |
+| T2.346 | Expand my-ticket status filter to full active lifecycle | P1 | 15 min | TODO |
+| T2.347 | Expand lobby status filter | P1 | 10 min | TODO |
+| T2.348 | Standardize ticket format {prefix}-{padStart(3,'0')} | P2 | 15 min | TODO |
+| T2.349 | Replace hardcoded 60-min emergency penalty | P2 | 15 min | TODO |
+| T2.350 | parseInt radix + NaN guard | P2 | 5 min | TODO |
+| T2.351 | Design tokens (after mobileTokens.js) | P2 | 30 min | TODO |
+| T2.352 | Memoize patientsAhead/estWaitTimeMins | P3 | 10 min | TODO |
+| T2.353 | Remove/deregister ManageQueueScreen.js | P1 | 10 min | TODO |
+| T2.354 | Import statusLabels.js for human-friendly text | P3 | 15 min | TODO |
+
+#### ChatbotScreen (T2.355-T2.362)
+
+| ID | Name | Priority | Effort | Status |
+|---|---|---|---|---|
+| T2.355 | Respect workingDays/closedDates | P1 | 30 min | TODO |
+| T2.356 | Merge settings with defaults | P3 | 5 min | TODO |
+| T2.357 | Full services catalog by department, fix tiered ₱0 | P1 | 30 min | TODO |
+| T2.358 | Filter archived services | P3 | 5 min | TODO |
+| T2.359 | Remove/restyle fake input bar | P3 | 10 min | TODO |
+| T2.360 | Error state feedback | P3 | 10 min | TODO |
+| T2.361 | Sub-intents by department | P3 | 30 min | TODO |
+| T2.362 | Clinic contact from Firestore | P3 | 10 min | TODO |
+
+#### UserProfileScreen (T2.363-T2.372)
+
+| ID | Name | Priority | Effort | Status |
+|---|---|---|---|---|
+| T2.363 | Write emergencyName flat field + modernize BookAppointment reader (BOTH locked) | CRITICAL | 10 min | TODO |
+| T2.364 | Skip phone validation on empty optional contacts | P1 | 10 min | TODO |
+| T2.365 | Null guard on getHighlightStyle | P1 | 5 min | TODO |
+| T2.366 | Implement handleDeleteAccount or remove button | P2 | 30 min | TODO |
+| T2.367 | Add email field to mobile profile | P2 | 15 min | TODO |
+| T2.368 | Add missing admin-parity fields | P3 | 30 min | TODO |
+| T2.369 | Auth null guard | P3 | 5 min | TODO |
+| T2.370 | Remove empty contacts before save | P3 | 5 min | TODO |
+| T2.371 | DOB null write on save | P3 | 5 min | TODO |
+| T2.372 | Gender null vs "Decline" fix | P3 | 5 min | TODO |
+
+#### MyPetsScreen (T2.373-T2.383)
+
+| ID | Name | Priority | Effort | Status |
+|---|---|---|---|---|
+| T2.373 | Fix allergy field read (petAllergies \|\| allergies) | P0 | 5 min | TODO |
+| T2.374 | Optimize medical_records query (orderBy + limit 1) | P1 | 15 min | TODO |
+| T2.375 | Parallelize N+1 queries (Promise.all) | P1 | 15 min | TODO |
+| T2.376 | Replace hard delete with soft archive | P1 | 15 min | TODO |
+| T2.377 | Auth null guard | P1 | 5 min | TODO |
+| T2.378 | Guard lastVisit.toDate() | P2 | 10 min | TODO |
+| T2.379 | Add weight display | P2 | 10 min | TODO |
+| T2.380 | Add microchip badge | P3 | 10 min | TODO |
+| T2.381 | Memoize processedPets | P2 | 10 min | TODO |
+| T2.382 | Firestore rule: prevent client pet hard-deletion | P2 | 10 min | TODO |
+| T2.383 | Design tokens | P3 | 30 min | TODO |
+
+#### ClientDashboard (T2.384-T2.393)
+
+| ID | Name | Priority | Effort | Status |
+|---|---|---|---|---|
+| T2.384 | Fix queue-ahead: arrivedAppt.date → scheduledDateStr | CRITICAL | 15 min | TODO |
+| T2.385 | Guard rec.petName.toUpperCase() | P1 | 5 min | TODO |
+| T2.386 | Fix incomplete optional chaining on scheduledDate | P1 | 5 min | TODO |
+| T2.387 | Add on-hold to status query | P1 | 10 min | TODO |
+| T2.388 | Restructure reminders useEffect try/catch | P2 | 10 min | TODO |
+| T2.389 | Remove dead imports | P3 | 2 min | TODO |
+| T2.390 | Auth guard on all useEffects | P3 | 10 min | TODO |
+| T2.391 | Dynamic queue progress bar width | P3 | 10 min | TODO |
+| T2.392 | Consider showing pending appointments | P3 | 15 min | TODO |
+| T2.393 | First-time user empty state | P3 | 15 min | TODO |
+
+#### ClientAppointments (T2.394-T2.401)
+
+| ID | Name | Priority | Effort | Status |
+|---|---|---|---|---|
+| T2.394 | Fix history-tab ghost filter: cancelReason → auditReason | CRITICAL | 5 min | TODO |
+| T2.395 | Fix client cancel: include auditReason | CRITICAL | 5 min | TODO |
+| T2.396 | Show reason for no-show/carried-over | P2 | 10 min | TODO |
+| T2.397 | Fix invalid `my` CSS → marginVertical | P2 | 2 min | TODO |
+| T2.398 | Add re-book for no-show/carried-over | P2 | 15 min | TODO |
+| T2.399 | Refund indicator in receipt modal | P3 | 15 min | TODO |
+| T2.400 | Debounce sales/parentRecords re-fetch | P3 | 20 min | TODO |
+| T2.401 | Audit borderRadius | P3 | 15 min | TODO |
+
+#### PetHistoryScreen (T2.402-T2.409)
+
+| ID | Name | Priority | Effort | Status |
+|---|---|---|---|---|
+| T2.402 | Remove soap.subjective per Q11 | HIGH | 10 min | TODO |
+| T2.403 | Replace treatment with dischargeSummary.instructions (Option A locked: hide for legacy) | HIGH | 15 min | TODO |
+| T2.404 | Rewrite generatePDF() client-safe only | HIGH | 30 min | TODO |
+| T2.405 | Guard nextVisit non-Timestamp (T2.6 fix) | P1 | 10 min | TODO |
+| T2.406 | Strip price from prescriptions | P3 | 20 min | TODO |
+| T2.407 | Defensive vitals coercion | P3 | 5 min | TODO |
+| T2.408 | Replace hardcoded phone | P3 | 10 min | TODO |
+| T2.409 | Design tokens | P3 | 30 min | TODO |
+
+#### SuperCard (T2.410-T2.416)
+
+| ID | Name | Priority | Effort | Status |
+|---|---|---|---|---|
+| T2.410 | Replace hardcoded CLINIC_PHONE | P2 | 10 min | TODO |
+| T2.411 | Replace hardcoded CLINIC_ADDRESS (wrong city!) | P2 | 10 min | TODO |
+| T2.412 | Add service type display | P2 | 10 min | TODO |
+| T2.413 | petName null guard | P3 | 5 min | TODO |
+| T2.414 | Implement queue-ahead count | P3 | 30 min | TODO |
+| T2.415 | Reset pulseAnim on appointment change | P3 | 5 min | TODO |
+| T2.416 | Create unified useClinicContact() hook | P2 | 20 min | TODO |
+
+#### RegisterScreen (T2.417-T2.426)
+
+| ID | Name | Priority | Effort | Status | Notes |
+|---|---|---|---|---|---|
+| T2.417 | ~~Fix BookAppointment profile check~~ | — | — | — | ABSORBED into T2.363 |
+| T2.418 | Auth rollback on Firestore write failure | P1 | 20 min | TODO | |
+| T2.419 | Merge: migrate medical_records | P1 | 15 min | TODO | |
+| T2.420 | Merge: preserve guest createdAt | P2 | 10 min | TODO | |
+| T2.421 | Merge: carry forward guest fields | P2 | 15 min | TODO | |
+| T2.422 | Standard path: add accountStatus | P3 | 5 min | TODO | |
+| T2.423 | Friendly error messages | P3 | 10 min | TODO | |
+| T2.424 | Document/remove dormant mergeGuestAccount CF | P3 | 15 min | TODO | |
+| T2.425 | Remove duplicate label style | P3 | 5 min | TODO | |
+| T2.426 | Add profileComplete: false to registration | P3 | 5 min | TODO | |
+
+#### helpers.js Extraction (T2.427-T2.433)
+
+| ID | Name | Priority | Effort | Status |
+|---|---|---|---|---|
+| T2.427 | Extract isValidPHPhone, eliminate duplicates | P1 | 10 min | TODO |
+| T2.428 | Extract resolveTieredPrice, port admin NaN guard | P1 | 15 min | TODO |
+| T2.429 | Extract calculateAge with future-DOB guard | P2 | 10 min | TODO |
+| T2.430 | Extract unified formatFirestoreTime | P2 | 15 min | TODO |
+| T2.431 | Move getLocalDateStrMobile to helpers | P2 | 10 min | TODO |
+| T2.432 | Extract formatHour | P3 | 5 min | TODO |
+| T2.433 | Create formatDisplayDate/Time wrappers | P3 | 20 min | TODO |
+
+### Design Unification (T2.434-T2.452)
+
+> Design sweep is TERMINAL — do LAST after all bug fixes and feature work
+> Skip: Queue/ directory (8 files) + ClinicalWorkspace.jsx (except fontWeight fix)
+
+#### Mobile Design Tokens
+
+| ID | Name | Priority | Effort | Status |
+|---|---|---|---|---|
+| T2.434 | Create VetConnect/src/theme/mobileTokens.js | P1 | 30 min | DONE |
+| T2.435 | Convert MyPetsScreen | P2 | 45 min | TODO |
+| T2.436 | Convert UserProfileScreen | P2 | 45 min | TODO |
+| T2.437 | Convert ChatbotScreen | P2 | 30 min | TODO |
+| T2.438 | Convert QueueScreen | P2 | 30 min | TODO |
+| T2.439 | Convert ClientAppointments | P2 | 45 min | TODO |
+| T2.440 | Convert PetHistoryScreen | P2 | 45 min | TODO |
+| T2.441 | Convert SuperCard | P2 | 20 min | TODO |
+
+#### Admin Design Sweep
+
+| ID | Name | Priority | Effort | Status | Notes |
+|---|---|---|---|---|---|
+| T2.442 | Fix designTokens.js: remove GLASS preset, add missing tokens | P1 | 30 min | DONE | Do BEFORE Dashboard build |
+| T2.443 | Sweep: Patients module (13 files) | P2 | 2 hrs | TODO | |
+| T2.444 | Sweep: Services module (6 files) | P2 | 1 hr | TODO | |
+| T2.445 | Sweep: Inventory module (8 files) | P2 | 1.5 hrs | TODO | |
+| T2.446 | Sweep: Sales module (3 files) | P2 | 30 min | TODO | |
+| T2.447 | Sweep: Staff module (5 files) | P2 | 45 min | TODO | |
+| T2.448 | Sweep: standalone pages (Settings, Monitor, Expenses, Login) | P2 | 1.5 hrs | TODO | |
+| T2.449 | Sweep: shared components (Sidebar, POSModal) | P2 | 30 min | TODO | |
+| T2.450 | Replace fontWeight:'1000' across ENTIRE admin (including Queue + CW) | P2 | 1 hr | TODO | Value swap only — zero layout risk |
+| T2.451 | Replace all alert()/confirm() with MUI Dialog/Snackbar (sweep scope) | P2 | 2 hrs | TODO | Excludes Queue + CW |
+| T2.452 | ~~Admin sweep: Queue modals~~ | — | — | — | CANCELLED — Queue/ directory skipped entirely |
+
+### PatientDashboard A/A+ Tier (T2.453-T2.470)
+
+| ID | Name | Priority | Effort | Status | Notes |
+|---|---|---|---|---|---|
+| T2.453 | Clinical amendment system (= T2.75) | P1 | 3 hrs | TODO | Append-only clinicalAmendments[] |
+| T2.454 | Print Visit Summary button per record | P1 | 1.5 hrs | TODO | Q11-compliant template |
+| T2.457 | Case-day linkage badges | P2 | 45 min | TODO | "Day 2 of 3" on related records |
+| T2.458 | Quick Book button per record | P2 | 20 min | TODO | Depends on T2.115 (WalkInModal prefill) |
+| T2.459 | Lab results aggregation in right sidebar (absorbs T2.24-27 admin portion) | P2 | 1.5 hrs | TODO | |
+| T2.460 | Weight trend chart improvements (1-point display, delta annotation) | P2 | 30 min | TODO | |
+| T2.461 | Vitals trend improvements (species-normal reference lines) | P2 | 30 min | TODO | |
+| T2.462 | Expand search: labResults + vaccineData | P2 | 15 min | TODO | |
+| T2.463 | Print-friendly stylesheet (@media print) | P3 | 1 hr | TODO | |
+| T2.464 | Prescription frequency analysis | P3 | 45 min | TODO | |
+| T2.465 | Vaccination schedule completeness percentage | P3 | 30 min | TODO | |
+| T2.466 | Add RR, CRT, BCS, Pain to per-record vitals box | P1 | 20 min | TODO | 4 vitals recorded but not displayed |
+| T2.467 | Add RR trend chart to sidebar | P2 | 15 min | TODO | |
+| T2.468 | Add BCS trend chart to sidebar | P2 | 15 min | TODO | |
+| T2.469 | Add Pain Scale trend chart to sidebar | P2 | 15 min | TODO | |
+| T2.470 | Extract RR/CRT/BCS/Pain from medical_records in data processing | P1 | 10 min | TODO | |
+
+### Vaccination System Redesign (T2.472-T2.479)
+
+> Supersedes: ~~T2.455~~, ~~T2.456~~, ~~T2.471~~, ~~T2.473~~, ~~T2.475~~
+
+| ID | Name | Priority | Effort | Status | Notes |
+|---|---|---|---|---|---|
+| T2.472 | Promote vaccineData to vaccineAdministrations[] array | P1 | 1.5 hrs | TODO | Multi-vaccine per visit. Backward-compat wrapper |
+| T2.474 | Auto-populate vaccine form from linked inventory batch | P2 | 30 min | TODO | Reads FIFO batches[0] |
+| T2.476 | Create VACCINE_CATALOG shared constant (6 vaccines, IDs, species, intervals) | P1 | 15 min | TODO | utils/vaccineConstants.js |
+| T2.477 | Replace vaccine TextField with species-filtered Autocomplete dropdown + "Other" | P1 | 30 min | TODO | Dropdown IS the manual toggle |
+| T2.478 | Update PatientDashboard tracker: vaccineId match + keyword fallback for legacy | P1 | 30 min | TODO | |
+| T2.479 | Update mobile PetHistoryScreen for vaccineAdministrations[] | P1 | 20 min | TODO | |
+
+### MyPetsScreen A- Tier (T2.480-T2.483)
+
+| ID | Name | Priority | Effort | Status |
+|---|---|---|---|---|
+| T2.480 | Add sex + medical status filter chips | P2 | 20 min | TODO |
+| T2.481 | Add sort options (age, last visit) | P2 | 15 min | TODO |
+| T2.482 | "Book Visit" button per pet card | P2 | 20 min | TODO |
+| T2.483 | Vaccination completeness mini-badge per pet | P2 | 30 min | TODO |
+
+### QueueScreen A Tier (T2.484-T2.490)
+
+| ID | Name | Priority | Effort | Status |
+|---|---|---|---|---|
+| T2.484 | Visual position indicator with progress bar | P1 | 30 min | TODO |
+| T2.485 | Live countdown timer | P2 | 30 min | TODO |
+| T2.487 | In-app alert when number called (vibration + banner) | P1 | 20 min | TODO |
+| T2.488 | Historical average wait display | P2 | 30 min | TODO |
+| T2.489 | Multi-pet awareness (show all checked-in pets) | P2 | 20 min | TODO |
+| T2.490 | "Running Late" notification to clinic | P3 | 30 min | TODO |
+
+### UserProfileScreen Parity (T2.497-T2.504)
+
+| ID | Name | Priority | Effort | Status |
+|---|---|---|---|---|
+| T2.497 | Add email field (editable) | P1 | 15 min | TODO |
+| T2.498 | Add secondaryPhone | P2 | 10 min | TODO |
+| T2.499 | Add govIdType + govIdNumber | P2 | 20 min | TODO |
+| T2.500 | Add referralSource | P3 | 10 min | TODO |
+| T2.501 | Add preferredComm | P3 | 10 min | TODO |
+| T2.502 | Add whatsappOptIn toggle | P3 | 5 min | TODO |
+| T2.503 | Add waiverSigned toggle with consent text | P3 | 15 min | TODO |
+| T2.504 | Organize fields into collapsible sections | P2 | 20 min | TODO |
+
+### JSX Audit Fixes (need formal IDs — grouped by file)
+
+> From Queue.jsx, queueColumns.jsx, WalkInModal.jsx, ClinicalWorkspace.jsx JSX audits.
+> These complement existing tasks. fontWeight fix covered by T2.450.
+
+**Queue.jsx + queueColumns.jsx:**
+
+| ID | Name | Priority | Effort | Status |
+|---|---|---|---|---|
+| T2.505 | Replace deprecated disableSelectionOnClick → disableRowSelectionOnClick | P1 | 2 min | TODO |
+| T2.506 | Fix Grid v1 API: `<Grid item xs={12}>` → `<Grid size={{ xs: 12 }}>` | P1 | 5 min | TODO |
+| T2.507 | Guard .name.localeCompare() (Queue L1823 + queueColumns L327) | P1 | 10 min | TODO |
+| T2.508 | Guard history dialog date crash (h.date?.toDate()) | P1 | 5 min | TODO |
+| T2.509 | Add loading/disabled state to all 8 dialog submit buttons | P2 | 30 min | TODO |
+| T2.510 | Fix No-Show fieldset color ternary (both branches identical) | P3 | 2 min | TODO |
+| T2.511 | Remove dead isAgeExact state + duplicate sortable + dead isVeryLate + 10 unused imports | P3 | 10 min | TODO |
+| T2.512 | Add on-hold + confined cases to timing column switch | P2 | 20 min | TODO |
+| T2.513 | Filter pharmacy checklist to drugs only (isDrug, not all products) | P2 | 5 min | TODO |
+
+**WalkInModal.jsx:**
+
+| ID | Name | Priority | Effort | Status |
+|---|---|---|---|---|
+| T2.514 | Fix: inject allergyArray into pet document write (currently always empty '') | P0 | 5 min | TODO |
+| T2.515 | Clear errorMsg on radio toggle | P1 | 2 min | TODO |
+| T2.516 | Replace onKeyPress with onKeyDown (deprecated React API) | P3 | 2 min | TODO |
+| T2.517 | Remove unused imports (Accordion, AccordionSummary, AccordionDetails, PersonAddIcon, AccessTimeIcon) | P3 | 2 min | TODO |
+
+**ClinicalWorkspace.jsx:**
+
+| ID | Name | Priority | Effort | Status |
+|---|---|---|---|---|
+| T2.518 | Unify allergy field source across Identity Strip / God-View / Zen-mode | P0 | 10 min | TODO |
+| T2.519 | Add Vaccine + Lab Results + Save Draft to God-View Plan quadrant | P1 | 45 min | TODO |
+| T2.520 | Fix Assessment text color inconsistency (green vs espresso) | P2 | 5 min | TODO |
+| T2.521 | Remove dentalGrade/lamenessGrade Firestore writes (no input UI, always 0) | P2 | 5 min | TODO |
+| T2.522 | Propagate live weight to main Identity Strip | P2 | 5 min | TODO |
+| T2.523 | Remove dead code: Widget, getGlucoseLevel, selectedRxItem, dischargeRef | P3 | 10 min | TODO |
+
+---
+
+## Phase 3 — Future & Late Tasks (Session 2026-04-20 additions)
+
+### Dashboard A+ (Late)
+
+| ID | Name | Priority | Effort | Status |
+|---|---|---|---|---|
+| T3.43 | Revenue trend extended (3mo/6mo/1yr) | P3 | 1.5 hrs | TODO |
+| T3.44 | Stock turnover rate per product | P3 | 2 hrs | TODO |
+| T3.45 | Shrinkage estimate | P3 | 1 hr | TODO |
+| T3.46 | Predictive demand forecasting | P3 | 3-5 hrs | TODO |
+| T3.47 | Stock reorder prediction | P3 | 2-3 hrs | TODO |
+| T3.48 | Multi-pet booking percentage (depends T2.78) | P3 | 15 min | TODO |
+| T3.49 | Patient journey funnel | P3 | 3 hrs | TODO |
+
+### File Structure
+
+| ID | Name | Priority | Effort | Status |
+|---|---|---|---|---|
+| T3.50 | Full admin file restructure (post-defense) | P3 | 1 hr | TODO |
+
+### Vaccination System A/A+
+
+| ID | Name | Priority | Effort | Status |
+|---|---|---|---|---|
+| T3.51 | Move VACCINE_CATALOG to Firestore with Settings UI | P2 | 2 hrs | TODO |
+| T3.52 | Printable vaccination passport/certificate | P2 | 4 hrs | TODO |
+| T3.53 | Overdue vaccine alert on ClientDashboard + check-in banner | P2 | 1.5 hrs | TODO |
+| T3.54 | Vaccine protocol engine (puppy/kitten multi-dose series) | P3 | 3 days | TODO |
+| T3.55 | Vaccine reminder push notifications (Blaze-dependent) | P3 | 2 hrs | TODO |
+| T3.56 | Batch recall query tool | P3 | 1.5 hrs | TODO |
+| T3.57 | QR-scannable vaccination certificate | P3 | 2 hrs | TODO |
+| T3.58 | Philippine BAI vaccine reporting integration | P3 | **Scope unknown — research first** | TODO |
+
+### QueueScreen + ChatbotScreen Late
+
+| ID | Name | Priority | Effort | Status |
+|---|---|---|---|---|
+| T3.59 | QueueScreen: service-specific estimated times | P3 | 30 min | TODO |
+| T3.60 | QueueScreen: pet care tips while waiting | P3 | 1 hr | TODO |
+| T3.61 | QueueScreen: self-check-in via GPS geofencing (was T2.486) | P3 | 1.5 hrs | TODO |
+| T3.62 | ChatbotScreen: enable real text input | P3 | 15 min | TODO |
+| T3.63 | ChatbotScreen: Cloud Function chatbotGateway (Blaze, LLM) | P3 | 2 hrs | TODO |
+| T3.64 | ChatbotScreen: integrate gateway send/receive | P3 | 30 min | TODO |
+| T3.65 | ChatbotScreen: hybrid UI (buttons + free text) | P3 | 20 min | TODO |
+| T3.66 | ChatbotScreen: system prompt in Firestore | P3 | 15 min | TODO |
+| T3.67 | ChatbotScreen: session management + rate limiting | P3 | 20 min | TODO |
+
+---
+
+## New Batch Groupings (Session 2026-04-20)
+
+| Batch Name | Tasks | Total Effort | Notes |
+|---|---|---|---|
+| Dashboard S-Tier Build | T2.228-T2.341 (infrastructure + 4 tabs + S-tier features) | ~32 hrs | 6-day sprint. Prerequisite: T2.342 + T2.442 |
+| Admin Standalone Pages | T2.231-T2.278 (Monitor + Expenses + Login fixes) | ~7 hrs | |
+| Mobile Critical Fixes | T2.343, T2.344, T2.363, T2.373, T2.384, T2.394, T2.395, T2.514, T2.518 | ~1.5 hrs | All CRITICAL/P0 — ship first |
+| Mobile Client Hardening | T2.345-T2.416 (remaining mobile fixes) | ~10 hrs | |
+| Mobile Helpers Extraction | T2.427-T2.433 | ~1.5 hrs | |
+| Design Unification | T2.434-T2.451 (mobile tokens + admin sweep) | ~16 hrs | Do LAST |
+| PatientDashboard A+ | T2.453-T2.470 | ~11 hrs | |
+| Vaccination Redesign | T2.472-T2.479 | ~3.25 hrs | |
+| Mobile A- Push | T2.480-T2.504 (MyPets + Queue + Profile parity) | ~6 hrs | |
+| JSX Audit Fixes | T2.505-T2.523 | ~3 hrs | |
+
+---
+
+## Phase 3 Batch Groupings (Session 2026-04-21)
+
+> 67 tasks classified into 13 essential, 16 high-value, 38 truly optional
+> Batches ordered by priority: Essential first, then High-Value, then Optional
+
+### Phase 3 Essential Batches
+
+| Batch Name | Tasks | Effort | Notes |
+|---|---|---|---|
+| Staff Auth Production Path | T3.40, T3.41, T3.42 | ~6 hrs | Blaze required. Gates T4.44. Ship together — revoke/re-enable/password are one story |
+| Forensic Reporting | T3.8 | 3-4 days | P1. Thesis narrative. Proves audit system works at scale |
+| Legal Compliance (RA 10173) | T3.11 | 4 hrs | Right-to-erasure. Philippine data privacy law |
+| Vaccination A-Tier | T3.51, T3.52, T3.53 | 7.5 hrs | Firestore catalog + printable passport + overdue alerts. Prerequisite: T2.476-T2.479 |
+| Queue Workflow Gaps | T3.9, T3.10a, T3.10b, T3.10d | 4.5-6.5 hrs | Terminal revert + Records quick link + recently resolved + global search |
+| Inventory Safety | T3.24, T3.31 | ~2 hrs | Expiry disposal + configurable no-show window. Quick wins |
+
+### Phase 3 High-Value Batches
+
+| Batch Name | Tasks | Effort | Notes |
+|---|---|---|---|
+| EMR + Multi-Vaccine UI | T3.1, T3.2, T3.3 | 2.5 days | EMRDrawer + multi-vaccine + passport. T3.3 overlaps T3.52 — do T3.52 first, T3.3 becomes mobile-specific |
+| RA 10173 Informed Consent | T3.5 | 8-12 days | Largest single task. Post-defense. Legal compliance |
+| Multi-Pet Visit | T3.12 | 15-20 hrs | 11 sub-tasks. Depends on T2.78. Major real-world feature |
+| Dispensing Hardening | T3.36, T3.37, T3.38, T3.39 | 4.5 hrs | Hold for review + stock verify + batch picker + partial dispensing |
+| Inventory Operations | T3.21, T3.26, T3.27 | 4 hrs | Reorder alerts + adjustment types + CSV/PDF export |
+| Appointment Lifecycle | T3.32, T3.34 | 4 hrs | Client confirmation + push reminders. Blaze for T3.34 |
+| Testing Foundation | T3.14 | 3-4 hrs | First and only test suite in the project |
+| Dashboard A+ Analytics | T3.43, T3.50 | 2.5 hrs | Extended revenue trend + file restructure |
+
+### Phase 3 Optional Batches (skip without consequence)
+
+| Batch Name | Tasks | Effort | Notes |
+|---|---|---|---|
+| LLM Chatbot | T3.62-T3.67 | ~4 hrs | All 6 tasks. Blaze + LLM. Chatbot is functional without this |
+| Advanced Inventory | T3.22, T3.23, T3.25 | 5-10 days | Barcode scanning + valuation report + supplier directory. Hardware-dependent |
+| Hospital-Grade Safety | T3.29, T3.30 | 10-13 hrs | Structured allergies + barcode scan before admin. Overkill for small clinic |
+| Vaccination Deep | T3.54, T3.55, T3.56, T3.57, T3.58 | ~4 days+ | Protocol engine + push + recall + QR cert + BAI integration |
+| QueueScreen Polish | T3.10c, T3.59, T3.60, T3.61 | ~4 hrs | Resolved toggle + service times + pet tips + GPS geofencing |
+| Patient Extras | T3.15, T3.16, T3.17, T3.18, T3.19, T3.20 | 2-3 weeks | Auth for clients + household + comms + referrals + photos + analytics |
+| Niche Features | T3.4, T3.6, T3.13, T3.28, T3.33, T3.35 | ~2 weeks | Grooming form + LLM gateway + partial refund + ward labels + no-show rate + waitlist |
+| Dashboard Predictive | T3.44-T3.49 | ~12 hrs | Stock turnover + shrinkage + demand forecast + reorder prediction + multi-pet % + journey funnel |
+
+---
+
+## Phase 4 Batch Groupings (Session 2026-04-21)
+
+> 80 tasks (3 absorbed → 77 active) · ~154 hrs
+> Batches ordered by module affinity. All require Phase 2 + relevant Phase 3 complete.
+
+### Phase 4 Batches
+
+| Batch Name | Tasks | Effort | Key Dependencies | Notes |
+|---|---|---|---|---|
+| Dashboard S-Push | T4.1-T4.4 | 7.5 hrs | T2.315, T2.320, T2.333 | Auto-refresh + custom layout + benchmarking + sharing |
+| Queue S-Push | T4.5-T4.10 | 13 hrs | T2.214, T2.281, T2.331, T2.442 | Drag-drop + forecasting + recommendations + multi-dept + alerts + design sweep |
+| ClinicalWorkspace S-Push | T4.11-T4.17 | 17 hrs | T2.32, T2.442, T2.461 | Templates + attachments + problem list + voice + decision support + design sweep + unification |
+| POSModal S-Push | T4.18-T4.23 | 12 hrs | T2.101, T2.102, T2.105, Blaze | Partial pay + receipt email + GCash + VAT + multi-currency + deposits |
+| Records S-Push | T4.24-T4.28 | 10 hrs | T2.57, T2.71, T2.75, T2.130 | Full-text search + bulk export + audit viz + comparison + saved queries |
+| Patients/EMR S-Push | T4.29-T4.34 | 11 hrs | T2.134, T2.135, T2.460, Blaze | Engagement scoring + birthdays + growth charts + health risk + comms + deceased |
+| Services S-Push | T4.35-T4.38 | 7 hrs | T2.301 | Packages + promo pricing + analytics + dependency chains |
+| Inventory S-Push | T4.39-T4.43 | 10-12 hrs | T3.21-T3.25 | Auto-reorder + barcode + disposal + valuation + heatmap |
+| Staff S-Push | T4.44-T4.48 | 11-12 hrs | Blaze, T3.40, T3.42 | Auth CF + scheduling + performance + KPIs + credentials |
+| Sales S-Push | T4.49-T4.53 | 9.5 hrs | T2.137, T2.141, T4.21 | Date range + trend + P&L + VAT/BIR + reconciliation |
+| Settings S-Push | T4.54-T4.58 | 10 hrs | T2.180, T2.181 | History viewer + preview + multi-location + import/export + feature flags |
+| Monitor S-Push | T4.59-T4.63 | 6.5 hrs | T2.273-T2.275, T4.6 | A- rollup + multi-room + wait estimate + carousel + weather |
+| Expenses S-Push | T4.64-T4.68 | 10.5 hrs | Blaze | Receipt scan + recurring + budgets + approval + year-end report |
+| Login S-Push | T4.69-T4.73 (excl T4.70) | 5 hrs 10 min | T2.277, Blaze | MFA + biometric + session timeout + audit log |
+| Mobile S-Push | T4.74-T4.80 (excl T4.77) | 13.5 hrs | T2.434, Blaze | Offline + push + dark mode + reschedule + pet photos + haptics |
+
+---
+
+## Cancelled / Absorbed Tasks (Session 2026-04-20)
+
+| ID | Reason |
+|---|---|
+| T2.417 | Absorbed into T2.363 (emergencyName both-sides fix) |
+| T2.452 | Cancelled — Queue/ directory skipped from design sweep |
+| T2.455 | Absorbed into T2.476 (VACCINE_CATALOG includes feline) |
+| T2.456 | Absorbed into T2.478 (vaccineId matching eliminates keyword issues) |
+| T2.471 | Absorbed into T2.477 (dropdown IS the manual toggle) |
+| T2.473 | Superseded by T2.477 (dropdown always available, no isVaccineService needed) |
+| T2.475 | Absorbed into T2.476 (VACCINE_CATALOG is the shared constant) |
+| T2.486 | Moved to T3.61 (self-check-in deferred to Phase 3) |
+| T2.491-T2.496 | Moved to T3.62-T3.67 (LLM chatbot deferred to Phase 3) |
+
+### Absorbed in Session 2026-04-21 (S-Tier Scoping)
+
+| ID | Reason |
+|---|---|
+| T2.98 | Absorbed into T2.148 (superset scope: Sales.jsx + POSModal clinic name) |
+| T4.70 | Absorbed into T2.277 (identical scope — Forgot Password link. T2.277 bumped P2→P1) |
+| T4.77 | Absorbed into T4.71 (biometric login covers both admin + mobile) |
+
+---
+
+## Phase 4 — S-Tier Roadmap
+
+> ~80 tasks · ~156 hours · Post-defense aspirational tier
+> Source: IMPLEMENTATION_GUIDE.md S-Tier Roadmap section
+> Prerequisites: ALL Phase 2 tasks + relevant Phase 3 tasks must be complete
+> These features push each module from A/A- to S grade
+
+### Dashboard S (T4.1-T4.4) — +7.5 hrs
+
+| ID | Name | Priority | Effort | Depends On | Status | Notes |
+|---|---|---|---|---|---|---|
+| T4.1 | Real-time auto-refresh: 30s interval on useDashboardData | P2 | 1 hr | T2.315 | TODO | |
+| T4.2 | Customizable widget layout: react-grid-layout, per-user prefs in Firestore | P3 | 3-4 hrs | T2.228 | TODO | |
+| T4.3 | Comparative benchmarking: this month vs same month last year | P2 | 2 hrs | T2.320 | TODO | Needs historical data |
+| T4.4 | Dashboard sharing: snapshot URL or full multi-tab PDF export | P3 | 1.5 hrs | T2.333, T2.334 | TODO | |
+
+### Queue S (T4.5-T4.10) — +13 hrs
+
+| ID | Name | Priority | Effort | Depends On | Status | Notes |
+|---|---|---|---|---|---|---|
+| T4.5 | Drag-and-drop queue reordering: @dnd-kit, queuePosition field, pulse event | P2 | 3 hrs | — | TODO | |
+| T4.6 | Real-time capacity forecasting: "queue clears by 4:30 PM" | P2 | 1.5 hrs | T2.281 | TODO | Uses avg consult duration |
+| T4.7 | Staff assignment recommendations: sort by lowest workload | P2 | 1 hr | T2.214 | TODO | Needs correct workload query |
+| T4.8 | Split-screen multi-department view: side-by-side filtered DataGrids | P3 | 4 hrs | — | TODO | |
+| T4.9 | Audio/visual alert for staff when wait >X minutes | P2 | 30 min | T2.331 | TODO | Uses threshold config |
+| T4.10 | Full Queue design sweep: 8 files, tokens + borderRadius + shadows | P2 | 3-4 hrs | T2.442 | TODO | Currently skipped from sweep |
+
+### ClinicalWorkspace S (T4.11-T4.17) — +17 hrs
+
+| ID | Name | Priority | Effort | Depends On | Status | Notes |
+|---|---|---|---|---|---|---|
+| T4.11 | SOAP template library: soap_templates collection, dropdown per quadrant | P2 | 2 hrs | — | TODO | |
+| T4.12 | Image/file attachments in SOAP: Firebase Storage, thumbnail preview | P3 | 3-4 hrs | — | TODO | Blaze recommended |
+| T4.13 | Structured problem list: problems sub-collection, active/resolved tracking | P2 | 3-4 hrs | — | TODO | |
+| T4.14 | Voice-to-text for SOAP fields: Web Speech API, per-quadrant mic button | P3 | 2-3 hrs | — | TODO | Browser support varies |
+| T4.15 | Clinical decision support: species-adjusted vital range alerts | P2 | 1 hr | T2.461 | TODO | Uses species-normal ref lines |
+| T4.16 | Full ClinicalWorkspace design sweep: 1,989 lines, glassmorphism removal | P2 | 2-3 hrs | T2.442 | TODO | Currently skipped from sweep |
+| T4.17 | God-View + main grid unification via SoapGrid extraction | P1 | 2-3 hrs | T2.32 | TODO | Completes T2.32 scope |
+
+### POSModal S (T4.18-T4.23) — +12 hrs
+
+| ID | Name | Priority | Effort | Depends On | Status | Notes |
+|---|---|---|---|---|---|---|
+| T4.18 | Partial payments / installment tracking: payments sub-collection | P2 | 3 hrs | T2.101 | TODO | Needs computed balance |
+| T4.19 | Receipt email/SMS to client: Blaze CF, SendGrid/Twilio | P3 | 1.5 hrs | Blaze | TODO | |
+| T4.20 | Integrated payment terminal: GCash QR generation, merchant API | P3 | 2-3 hrs | Blaze | TODO | External API |
+| T4.21 | Tax computation: VAT, SC/PWD tax-exempt breakdown per RA 9994 | P1 | 1.5 hrs | T2.105 | TODO | Legal compliance |
+| T4.22 | Multi-currency support: USD for expat clients, exchange rate config | P3 | 1 hr | — | TODO | |
+| T4.23 | Deposit collection at booking time: mobile + deposits collection + POS reads | P2 | 2 hrs | T2.102 | TODO | |
+
+### Records S (T4.24-T4.28) — +10 hrs
+
+| ID | Name | Priority | Effort | Depends On | Status | Notes |
+|---|---|---|---|---|---|---|
+| T4.24 | Full-text search across all SOAP fields, prescriptions, diagnoses | P2 | 2 hrs | T2.130 | TODO | Extends search scope |
+| T4.25 | Bulk export to CSV/PDF: filtered records → downloadable file | P2 | 1.5 hrs | T2.57 | TODO | Needs working filters |
+| T4.26 | Audit trail visualization: pulse timeline per record, expandable row | P2 | 2 hrs | T2.75 | TODO | Needs amendment path |
+| T4.27 | Record comparison: two records side-by-side, vitals delta, SOAP diff | P3 | 2 hrs | — | TODO | |
+| T4.28 | Saved search queries: per-user Firestore subcollection | P3 | 2.5 hrs | T2.71 | TODO | Extends saved filters |
+
+### Patients CRM + PatientDashboard EMR S (T4.29-T4.34) — +11 hrs
+
+| ID | Name | Priority | Effort | Depends On | Status | Notes |
+|---|---|---|---|---|---|---|
+| T4.29 | Client engagement scoring: 0-100 composite (visit frequency + no-show + balance + completeness) | P2 | 2 hrs | T2.134 | TODO | Extends engagement KPIs |
+| T4.30 | Automated birthday/pet anniversary messages: Blaze cron, push/in-app | P3 | 1.5 hrs | Blaze | TODO | |
+| T4.31 | Pet growth charts: breed-specific weight-for-age curves with percentile | P3 | 3 hrs | T2.460 | TODO | Extends weight trend |
+| T4.32 | Breed-specific health risk profile: static dataset, "Health Watch" sidebar | P2 | 2 hrs | — | TODO | |
+| T4.33 | Client communication log: communications sub-collection, CRM tab | P3 | 2 hrs | T3.17 | TODO | |
+| T4.34 | Deceased pet memorial handling: Mark as Deceased + dateOfDeath + memorial indicator | P2 | 30 min | T2.135 | TODO | Extends deceased status |
+
+### Services S (T4.35-T4.38) — +7 hrs
+
+| ID | Name | Priority | Effort | Depends On | Status | Notes |
+|---|---|---|---|---|---|---|
+| T4.35 | Package deals: service_packages collection, bundle pricing, BookAppointment integration | P2 | 3 hrs | — | TODO | |
+| T4.36 | Seasonal/promotional pricing: promotions collection, date-range discounts, POS applies | P3 | 1.5 hrs | — | TODO | |
+| T4.37 | Service analytics: revenue per service, actual vs scheduled duration, demand patterns | P2 | 1.5 hrs | T2.301 | TODO | Uses revenue trend data |
+| T4.38 | Service dependency chains: prerequisites[], BookAppointment pre-check | P3 | 1 hr | — | TODO | |
+
+### Inventory S (T4.39-T4.43) — +10-12 hrs
+
+| ID | Name | Priority | Effort | Depends On | Status | Notes |
+|---|---|---|---|---|---|---|
+| T4.39 | Auto-reorder alerts with supplier integration: reorderPoint field, purchase order PDF | P2 | 3 hrs | T3.21, T3.25 | TODO | Needs reorder alerts + supplier dir |
+| T4.40 | Barcode/QR scanning for stock intake: camera scanner, SKU lookup | P3 | 3-5 days | T3.22 | TODO | Multi-day. Hardware-dependent |
+| T4.41 | Expiry disposal workflow: batch-find expired, batch-adjust, audit log | P2 | 1.5 hrs | T3.24 | TODO | Extends disposal batch action |
+| T4.42 | Inventory valuation report: COGS, margin by category, turnover rate, CSV/PDF export | P2 | 2 hrs | T3.23 | TODO | Extends valuation report |
+| T4.43 | Stock movement heatmap: fastest-moving items by day-of-week | P3 | 1 hr | — | TODO | |
+
+### Staff S (T4.44-T4.48) — +11-12 hrs
+
+| ID | Name | Priority | Effort | Depends On | Status | Notes |
+|---|---|---|---|---|---|---|
+| T4.44 | Cloud Function for Firebase Auth management: disable, custom claims, password reset | P1 | 3-4 hrs | Blaze, T3.40, T3.42 | TODO | Production-critical |
+| T4.45 | Staff scheduling/availability: per-staff workingDays[], useBookingEngine integration | P2 | 3 hrs | — | TODO | |
+| T4.46 | Performance metrics dashboard: patients seen, avg consult, revenue per vet | P2 | 2 hrs | — | TODO | |
+| T4.47 | Staff KPI cards: wire dead KPICard component with real data | P2 | 1 hr | T2.221 | TODO | After dead code cleaned |
+| T4.48 | Credential management: PRC license expiry tracking, CE credits, renewal alerts | P3 | 2 hrs | — | TODO | PH regulatory |
+
+### Sales S (T4.49-T4.53) — +9.5 hrs
+
+| ID | Name | Priority | Effort | Depends On | Status | Notes |
+|---|---|---|---|---|---|---|
+| T4.49 | Multi-day date range view: week/month sales, range picker, pagination | P2 | 2 hrs | — | TODO | |
+| T4.50 | Revenue trend visualization: daily line chart for selected period | P2 | 1 hr | T2.301 | TODO | Mirrors Dashboard chart |
+| T4.51 | Profit/loss statement: revenue - expenses - COGS for a period, PDF export | P1 | 2 hrs | T2.137 | TODO | Needs EOD dual display |
+| T4.52 | Tax computation and reporting: monthly VAT summary for BIR filing | P1 | 1.5 hrs | T4.21 | TODO | PH regulatory (BIR) |
+| T4.53 | Payment reconciliation: match GCash/bank deposits vs recorded sales, show discrepancies | P2 | 3 hrs | T2.141 | TODO | Needs Bank Transfer method |
+
+### Settings S (T4.54-T4.58) — +10 hrs
+
+| ID | Name | Priority | Effort | Depends On | Status | Notes |
+|---|---|---|---|---|---|---|
+| T4.54 | Change history viewer: settings_logs entries, who changed what when | P2 | 1.5 hrs | T2.180, T2.181 | TODO | Needs settings audit trail |
+| T4.55 | Configuration preview: "3 appointments affected by this change" | P2 | 2 hrs | — | TODO | |
+| T4.56 | Multi-location support: locations collection, per-location config, location selector | P3 | 4-5 hrs | — | TODO | Multi-tenant precursor |
+| T4.57 | Configuration import/export: backup/restore as JSON | P3 | 1 hr | — | TODO | |
+| T4.58 | Feature flags management: featureFlags object, Settings toggles, component checks | P2 | 1.5 hrs | — | TODO | |
+
+### Monitor S (T4.59-T4.63) — +6.5 hrs
+
+| ID | Name | Priority | Effort | Depends On | Status | Notes |
+|---|---|---|---|---|---|---|
+| T4.59 | A- tier tasks: upcoming preview, animation, TV readability | P2 | 1.5 hrs | T2.273-T2.275 | TODO | Rollup of T2.273 + T2.274 + T2.275 — no additional work beyond those tasks. Mark done when all three ship. |
+| T4.60 | Multi-room display mode: /monitor?room=consult1, department-filtered | P3 | 2 hrs | — | TODO | |
+| T4.61 | Estimated individual wait per patient in upcoming list | P2 | 1 hr | T4.6 | TODO | Uses forecasting engine |
+| T4.62 | Clinic information carousel: idle-mode content from clinic_settings | P3 | 1.5 hrs | — | TODO | |
+| T4.63 | Weather + clock display: ambient info, OpenWeatherMap API | P3 | 30 min | — | TODO | Low priority polish |
+
+### Expenses S (T4.64-T4.68) — +10.5 hrs
+
+| ID | Name | Priority | Effort | Depends On | Status | Notes |
+|---|---|---|---|---|---|---|
+| T4.64 | Receipt/attachment scanning: Firebase Storage, camera capture, thumbnail | P2 | 2 hrs | — | TODO | Blaze recommended |
+| T4.65 | Recurring expenses: recurring_expenses collection, auto-create on due date | P2 | 2 hrs | Blaze | TODO | CF for auto-create |
+| T4.66 | Budget tracking: per-category monthly budgets, actual vs budget bars | P2 | 2 hrs | — | TODO | |
+| T4.67 | Expense approval workflow: pending → approved → paid, admin-only approve | P3 | 3 hrs | — | TODO | Multi-user workflow |
+| T4.68 | Year-end expense report: 12 months × N categories, totals, CSV/PDF export | P2 | 1.5 hrs | — | TODO | BIR filing support |
+
+### Login S (T4.69-T4.73) — +5 hrs 10 min
+
+| ID | Name | Priority | Effort | Depends On | Status | Notes |
+|---|---|---|---|---|---|---|
+| T4.69 | Multi-factor authentication: Firebase MFA, phone-based second factor | P2 | 1.5 hrs | Blaze | TODO | |
+| ~~T4.70~~ | ~~Forgot Password flow~~ | — | — | — | — | ABSORBED into T2.277 (identical scope, T2.277 bumped to P1) |
+| T4.71 | Biometric login: expo-local-authentication for mobile + admin, secure token storage | P2 | 1.5 hrs | — | TODO | Covers both admin and mobile (absorbs T4.77) |
+| T4.72 | Session timeout: configurable idle detection, warning modal, auto-signout | P1 | 1 hr | — | TODO | Security requirement |
+| T4.73 | Login audit log: login_logs collection, IP/userAgent, success/failure tracking | P2 | 1 hr | — | TODO | |
+
+### Mobile App S (T4.74-T4.80) — +13.5 hrs
+
+| ID | Name | Priority | Effort | Depends On | Status | Notes |
+|---|---|---|---|---|---|---|
+| T4.74 | Offline support: Firestore persistence, offline indicator, queued writes | P1 | 4-5 hrs | — | TODO | Major UX improvement |
+| T4.75 | Push notifications for all appointment lifecycle events: deploy existing CF | P1 | 2 hrs | Blaze | TODO | CF already written |
+| T4.76 | Dark mode: DARK_COLORS in mobileTokens, useColorScheme detection | P2 | 3-4 hrs | T2.434 | TODO | Needs mobileTokens.js |
+| ~~T4.77~~ | ~~Biometric login~~ | — | — | — | — | ABSORBED into T4.71 |
+| T4.78 | In-app appointment rescheduling: date/slot picker, rescheduleReason | P2 | 2 hrs | — | TODO | |
+| T4.79 | Pet photo upload and display: Firebase Storage, camera/gallery picker | P3 | 1.5 hrs | — | TODO | |
+| T4.80 | Haptic feedback on key interactions: expo-haptics | P3 | 30 min | — | TODO | Polish |
+
+---
+
+## Phase 4 Summary
+
+| Module | Tasks | Effort | Key Dependencies |
+|---|---|---|---|
+| Dashboard | T4.1-T4.4 | 7.5 hrs | T2.315, T2.320, T2.333 |
+| Queue | T4.5-T4.10 | 13 hrs | T2.214, T2.281, T2.331, T2.442 |
+| ClinicalWorkspace | T4.11-T4.17 | 17 hrs | T2.32, T2.442, T2.461 |
+| POSModal | T4.18-T4.23 | 12 hrs | T2.101, T2.102, T2.105, Blaze |
+| Records | T4.24-T4.28 | 10 hrs | T2.57, T2.71, T2.75, T2.130 |
+| Patients/EMR | T4.29-T4.34 | 11 hrs | T2.134, T2.135, T2.460, Blaze |
+| Services | T4.35-T4.38 | 7 hrs | T2.301 |
+| Inventory | T4.39-T4.43 | 10-12 hrs | T3.21-T3.25 |
+| Staff | T4.44-T4.48 | 11-12 hrs | Blaze, T3.40, T3.42 |
+| Sales | T4.49-T4.53 | 9.5 hrs | T2.137, T2.141, T2.301, T4.21 |
+| Settings | T4.54-T4.58 | 10 hrs | T2.180, T2.181 |
+| Monitor | T4.59-T4.63 | 6.5 hrs | T2.273-T2.275, T4.6 |
+| Expenses | T4.64-T4.68 | 10.5 hrs | Blaze |
+| Login | T4.69-T4.73 | 5 hrs 10 min | T2.277, Blaze |
+| Mobile | T4.74-T4.80 | 13.5 hrs | T2.434, Blaze |
+| **Total** | **T4.1-T4.80 (3 absorbed)** | **~154 hrs** | |

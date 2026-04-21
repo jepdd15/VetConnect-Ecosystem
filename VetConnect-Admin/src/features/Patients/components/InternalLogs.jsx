@@ -5,7 +5,7 @@ import MenuItem from '@mui/material/MenuItem';
 import EventNoteIcon from '@mui/icons-material/EventNote';
 
 // Design Tokens
-import { FONT, TYPE, COLORS, GLASS } from '../../../theme/designTokens';
+import { FONT, TYPE, COLORS, PANEL } from '../../../theme/designTokens';
 
 // Map log categories to semantic token colors
 const getCatColor = (cat) => {
@@ -23,7 +23,7 @@ export default function InternalLogs({ notes, newNote, setNewNote, category, set
       </Typography>
       
       {/* Input Area */}
-      <Paper elevation={0} sx={{ p: 2, mb: 4, ...GLASS.panel }}>
+      <Paper elevation={0} sx={{ p: 2, mb: 4, ...PANEL.elevated }}>
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
           <TextField select size="small" label="Category" value={category} onChange={(e) => setCategory(e.target.value)} sx={{ minWidth: 150, fontFamily: FONT, bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }}>
             <MenuItem value="General">General</MenuItem>

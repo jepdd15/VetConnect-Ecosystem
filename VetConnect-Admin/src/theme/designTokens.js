@@ -84,24 +84,35 @@ export const COLORS = {
 
   // Timeline
   timelineRail: '#D7CCC8',
+
+  // Warm surfaces (cream family)
+  cream:        '#FFF8E1',  // Warm cream — dialog headers, section bgs, Settings panels
+  peach:        '#FFE0B2',  // Light peach — gradient endpoints, warm borders
+  amber:        '#FF9800',  // Amber accent — walk-in buttons, dividers
+
+  // Neutral surfaces
+  monitorBg:    '#212121',  // Dark bg — Monitor/TV fullscreen mode
+  surfaceHover: '#FAFAFA',  // Near-white — hover states, form field bgs
+  tableHeaderBg:'#F5F5F5',  // Neutral gray — DataGrid column headers
+
+  // Chip / badge backgrounds
+  chipBlueBg:   '#E3F2FD',  // Light blue — department chips, info badges
 };
 
-// ── GLASSMORPHISM PRESETS ───────────────────────────────────────
-// For tables and elevated panels that sit on the warm gradient.
-export const GLASS = {
+// ── NEUBRUTALISM PANEL PRESETS ─────────────────────────────────
+// Replaces the old GLASS presets. Zero radius, solid shadows, no blur.
+export const PANEL = {
   card: {
     background: COLORS.cardBg,
-    border: `1px solid ${COLORS.borderLight}`,
-    boxShadow: '0 4px 20px rgba(0,0,0,0.03)',
-    borderRadius: 3,       // MUI theme units (3 × 8 = 24px)
+    border: `2px solid ${COLORS.brand}`,
+    boxShadow: `4px 4px 0px ${COLORS.brand}`,
+    borderRadius: 0,
   },
-  panel: {
-    background: 'rgba(255, 255, 255, 0.75)',
-    backdropFilter: 'blur(16px)',
-    WebkitBackdropFilter: 'blur(16px)',
-    border: `1px solid ${COLORS.borderLight}`,
-    boxShadow: '0 8px 32px rgba(139, 69, 19, 0.06)',
-    borderRadius: 3,       // MUI theme units (3 × 8 = 24px)
+  elevated: {
+    background: COLORS.cardBg,
+    border: `1px solid ${COLORS.border}`,
+    boxShadow: `3px 3px 0px ${COLORS.border}`,
+    borderRadius: 0,
   },
 };
 

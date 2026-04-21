@@ -4,7 +4,7 @@ import { DataGrid } from '@mui/x-data-grid';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 
 // Design Tokens
-import { FONT, TYPE, COLORS, GLASS } from '../../../theme/designTokens';
+import { FONT, TYPE, COLORS, PANEL } from '../../../theme/designTokens';
 
 export default function BillingLedger({ transactions }) {
   
@@ -45,7 +45,7 @@ export default function BillingLedger({ transactions }) {
           <Typography sx={{ fontFamily: FONT, fontStyle: 'italic', color: COLORS.textMuted }}>No financial transactions found.</Typography>
         </Box>
       ) : (
-        <Paper elevation={0} sx={{ height: 'calc(100vh - 280px)', minHeight: 400, width: '100%', borderRadius: 2, border: `1px solid ${COLORS.borderLight}`, ...GLASS.panel, overflow: 'hidden' }}>
+        <Paper elevation={0} sx={{ height: 'calc(100vh - 280px)', minHeight: 400, width: '100%', border: `1px solid ${COLORS.borderLight}`, ...PANEL.elevated, overflow: 'hidden' }}>
           <DataGrid 
             rows={transactions} 
             columns={columns}

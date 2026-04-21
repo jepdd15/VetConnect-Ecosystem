@@ -9,7 +9,7 @@ import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 
 // Design Tokens
-import { FONT, TYPE, COLORS, GLASS } from '../../theme/designTokens';
+import { FONT, TYPE, COLORS } from '../../theme/designTokens';
 
 // Logic & Components
 import { useStaffManager } from './hooks/useStaffManager';

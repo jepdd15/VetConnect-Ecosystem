@@ -8,7 +8,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 
 // Design Tokens
-import { FONT, TYPE, COLORS, GLASS } from '../../../theme/designTokens';
+import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
 
 import PetsIcon from '@mui/icons-material/Pets';
 import AssignmentIcon from '@mui/icons-material/Assignment';

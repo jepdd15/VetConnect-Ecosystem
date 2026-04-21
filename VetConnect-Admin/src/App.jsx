@@ -11,7 +11,7 @@ import Sidebar from './components/Sidebar';
 
 // --- PAGES ---
 import Login from './pages/Login'; 
-import Dashboard from './pages/Dashboard';
+import Dashboard from './features/Dashboard/Dashboard';
 import Queue from './features/Queue/Queue';
 import Records from './features/Records/Records';
 import Patients from './features/Patients/Patients'; 

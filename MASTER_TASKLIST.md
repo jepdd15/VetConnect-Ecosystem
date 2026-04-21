@@ -578,21 +578,21 @@
 
 | ID | Name | Priority | Effort | Status | Notes |
 |---|---|---|---|---|---|
-| T2.243 | Wire useUser() + actual user attribution | P0 | 10 min | TODO | |
-| T2.244 | Admin route guard | P0 | 10 min | TODO | |
-| T2.245 | Firestore security rules for expenses | P0 | 10 min | TODO | |
-| T2.246 | Validate amount > 0 and isFinite | P0 | 5 min | TODO | |
-| T2.247 | Replace alert/confirm with MUI Snackbar + Dialog | P1 | 20 min | TODO | |
-| T2.248 | Design tokens + fontWeight + solid shadows | P1 | 30 min | TODO | |
-| T2.249 | onSnapshot error callback | P1 | 5 min | TODO | |
-| T2.250 | Date-range filtering | P1 | 30 min | TODO | |
-| T2.251 | Fix misleading Dashboard profit Alert | P1 | 5 min | TODO | |
-| T2.252 | Remove dead code (Paper, Switch, FormControlLabel, style objects) | P2 | 2 min | TODO | |
-| T2.253 | Enable DataGrid pagination | P2 | 5 min | TODO | |
-| T2.254 | Expense edit capability | P2 | 45 min | TODO | |
-| T2.255 | Soft-delete instead of hard delete | P2 | 20 min | TODO | |
-| T2.256 | Expense date picker (allow backdating) | P2 | 15 min | TODO | |
-| T2.258 | displayDate locale fix | P3 | 5 min | TODO | |
+| T2.243 | Wire useUser() + actual user attribution | P0 | 10 min | DONE | |
+| T2.244 | Admin route guard | P0 | 10 min | DONE | Already wrapped in AdminRoute from T2.262 |
+| T2.245 | Firestore security rules for expenses | P0 | 10 min | DONE | create requires loggedByUid==auth.uid; TODO: tighten to isAdmin after T2.1 |
+| T2.246 | Validate amount > 0 and isFinite | P0 | 5 min | DONE | **Review fix:** added user?.uid guard to prevent null UID writes |
+| T2.247 | Replace alert/confirm with MUI Snackbar + Dialog | P1 | 20 min | DONE | Absorbs T2.257 |
+| T2.248 | Design tokens + fontWeight + solid shadows | P1 | 30 min | DONE | 62+ hex replaced, fontWeight normalized to 800 |
+| T2.249 | onSnapshot error callback | P1 | 5 min | DONE | |
+| T2.250 | Date-range filtering | P1 | 30 min | DONE | **Review fix:** Manila timezone (+08:00) on date bounds; daily KPIs (Option A) |
+| T2.251 | Fix misleading Dashboard profit Alert | P1 | 5 min | DONE | |
+| T2.252 | Remove dead code (Paper, Switch, FormControlLabel, style objects) | P2 | 2 min | DONE | |
+| T2.253 | Enable DataGrid pagination | P2 | 5 min | DONE | pageSizeOptions 25/50/100 |
+| T2.254 | Expense edit capability | P2 | 45 min | DONE | **Review fix:** guard against editing deleted expenses |
+| T2.255 | Soft-delete instead of hard delete | P2 | 20 min | DONE | **Review fix:** updatedByUid added to satisfy Firestore rule |
+| T2.256 | Expense date picker (allow backdating) | P2 | 15 min | DONE | **Review fix:** T04:00:00Z for Manila noon; expenseDate excluded from Firestore spread |
+| T2.258 | displayDate locale fix | P3 | 5 min | DONE | en-PH, Asia/Manila timezone |
 
 #### Login (T2.259-T2.266, T2.277-T2.278)
 

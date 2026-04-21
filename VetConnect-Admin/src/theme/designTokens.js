@@ -97,6 +97,13 @@ export const COLORS = {
 
   // Chip / badge backgrounds
   chipBlueBg:   '#E3F2FD',  // Light blue — department chips, info badges
+
+  // Danger family
+  dangerHover:  '#B71C1C',  // Dark red — danger button hover, revoke border
+  dangerSurface:'#FFEBEE',  // Light red surface — revoke dialog header/footer
+
+  // Warning family
+  warningSurface:'#FFF3E0', // Light orange surface — info/warning boxes
 };
 
 // ── NEUBRUTALISM PANEL PRESETS ─────────────────────────────────

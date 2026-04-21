@@ -2,8 +2,9 @@ import React from 'react';
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box } from '@mui/material';
 import GppBadIcon from '@mui/icons-material/GppBad';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import { COLORS, FONT } from '../../../theme/designTokens';
 
-export default function ConfirmRevokeModal({ open, onClose, staffName, onConfirm }) {
+export default function ConfirmRevokeModal({ open, onClose, staffName, onConfirm, loading }) {
   return (
     <Dialog
       open={open}
@@ -13,26 +14,27 @@ export default function ConfirmRevokeModal({ open, onClose, staffName, onConfirm
       PaperProps={{
         sx: {
           borderRadius: 0,
-          border: '2px solid #D32F2F',
+          border: `2px solid ${COLORS.danger}`,
           boxShadow: '8px 8px 0px rgba(211, 47, 47, 0.1)',
         }
       }}
     >
       <DialogTitle sx={{
-        bgcolor: '#FFEBEE',
-        color: '#B71C1C', fontWeight: '1000', display: 'flex', alignItems: 'center', gap: 1.5, py: 2,
-        borderBottom: '2px solid #D32F2F',
+        bgcolor: COLORS.dangerSurface,
+        color: COLORS.dangerHover, fontWeight: '1000', display: 'flex', alignItems: 'center', gap: 1.5, py: 2,
+        borderBottom: `2px solid ${COLORS.danger}`,
         textTransform: 'uppercase',
         letterSpacing: 1,
-        fontSize: '1rem'
+        fontSize: '1rem',
+        fontFamily: FONT,
       }}>
         <GppBadIcon /> Revoke System Access
       </DialogTitle>
 
       <DialogContent sx={{ pt: 3, pb: 2, px: 3 }}>
         <Box sx={{ textAlign: 'center', py: 2 }}>
-          <WarningAmberIcon sx={{ fontSize: 56, color: '#D32F2F', mb: 1.5 }} />
-          <Typography variant="h6" fontWeight="900" color="#3E2723" gutterBottom>
+          <WarningAmberIcon sx={{ fontSize: 56, color: COLORS.danger, mb: 1.5 }} />
+          <Typography variant="h6" fontWeight="900" color={COLORS.brand} gutterBottom>
             {staffName || 'this user'}
           </Typography>
           <Typography variant="body2" color="textSecondary" sx={{ lineHeight: 1.7 }}>
@@ -41,34 +43,35 @@ export default function ConfirmRevokeModal({ open, onClose, staffName, onConfirm
             scheduling, or workload tracking.
           </Typography>
           <Box sx={{
-            mt: 2, p: 1.5, bgcolor: '#FFF3E0', borderRadius: 2,
-            border: '1px solid #FFE0B2',
+            mt: 2, p: 1.5, bgcolor: COLORS.warningSurface, borderRadius: 0,
+            border: `2px solid ${COLORS.peach}`,
           }}>
-            <Typography variant="caption" color="#E65100" fontWeight="bold">
-              ⚠ Note: Their Firebase Auth account will be disabled, not deleted.
-              A system administrator can re-enable it if needed.
+            <Typography variant="caption" color={COLORS.warning} fontWeight="bold">
+              This will deactivate the staff profile and block dashboard access.
+              Login credentials require separate management via Firebase Console.
             </Typography>
           </Box>
         </Box>
       </DialogContent>
 
-      <DialogActions sx={{ p: 2.5, bgcolor: '#FFEBEE', borderTop: '2px solid #D32F2F', justifyContent: 'space-between' }}>
-        <Button onClick={onClose} sx={{ fontWeight: '1000', color: '#B71C1C', px: 3, fontFamily: 'Inter, sans-serif' }}>
+      <DialogActions sx={{ p: 2.5, bgcolor: COLORS.dangerSurface, borderTop: `2px solid ${COLORS.danger}`, justifyContent: 'space-between' }}>
+        <Button onClick={onClose} sx={{ fontWeight: '1000', color: COLORS.dangerHover, px: 3, fontFamily: FONT }}>
           CANCEL
         </Button>
         <Button
           variant="contained"
           onClick={onConfirm}
+          disabled={loading}
           sx={{
-            bgcolor: '#D32F2F', fontWeight: '1000', px: 4, py: 1.2,
-            borderRadius: 0, 
-            border: '2px solid #B71C1C',
+            bgcolor: COLORS.danger, fontWeight: '1000', px: 4, py: 1.2,
+            borderRadius: 0,
+            border: `2px solid ${COLORS.dangerHover}`,
             boxShadow: '4px 4px 0px rgba(211,47,47,0.2)',
-            '&:hover': { bgcolor: '#B71C1C', boxShadow: '2px 2px 0px rgba(211,47,47,0.2)' },
-            fontFamily: 'Inter, sans-serif'
+            '&:hover': { bgcolor: COLORS.dangerHover, boxShadow: '2px 2px 0px rgba(211,47,47,0.2)' },
+            fontFamily: FONT
           }}
         >
-          REVOKE ACCESS
+          {loading ? 'REVOKING...' : 'REVOKE ACCESS'}
         </Button>
       </DialogActions>
     </Dialog>

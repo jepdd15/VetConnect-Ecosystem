@@ -1120,7 +1120,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
 
 
   useEffect(() => {
-    const unsubVets = onSnapshot(collection(db, "users"), (snapshot) => setVets(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(u => u.role === 'veterinarian' || u.role === 'groomer' || u.accessLevel)));
+    const unsubVets = onSnapshot(collection(db, "users"), (snapshot) => setVets(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(u => !u.disabled && ['admin', 'staff', 'veterinarian', 'groomer'].includes(u.accessLevel))));
     const unsubInv = onSnapshot(collection(db, "inventory"), (snapshot) => setInventoryList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
     const unsubCat = onSnapshot(collection(db, "inventory_categories"), (snapshot) => setInventoryCategories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
     const unsubServ = onSnapshot(collection(db, "services"), (snapshot) => setServicesList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(s => !s.isArchived)));

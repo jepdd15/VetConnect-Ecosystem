@@ -1,8 +1,8 @@
 // src/features/Staff/hooks/useStaffManager.js
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, doc, updateDoc, deleteDoc, query, where, setDoc, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, query, where, setDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, firebaseConfig } from '../../../firebaseConfig';
-import { initializeApp } from 'firebase/app';
+import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 
 // ── Staff Field Diff Engine ──────────────────────────────────────────────
@@ -18,7 +18,7 @@ const STAFF_LABELS = {
 
 const diffStaffFields = (before, after) => {
   const changes = [];
-  
+
   // 1. Scalar Fields
   for (const [key, label] of Object.entries(STAFF_LABELS)) {
     if (key === 'emergencyContacts') continue; // Handle separately
@@ -48,6 +48,39 @@ const diffStaffFields = (before, after) => {
 };
 // ─────────────────────────────────────────────────────────────────────────
 
+// ── Temporary Password Generator ────────────────────────────────────────
+const secureRandom = (max) => {
+  const arr = new Uint32Array(1);
+  crypto.getRandomValues(arr);
+  return arr[0] % max;
+};
+
+const generateTempPassword = () => {
+  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lower = 'abcdefghjkmnpqrstuvwxyz';
+  const digits = '23456789';
+  const special = '!@#$%&*';
+  const all = upper + lower + digits + special;
+
+  let pwd = [
+    upper[secureRandom(upper.length)],
+    lower[secureRandom(lower.length)],
+    digits[secureRandom(digits.length)],
+    special[secureRandom(special.length)],
+  ];
+
+  for (let i = 0; i < 8; i++) {
+    pwd.push(all[secureRandom(all.length)]);
+  }
+
+  // Shuffle (Fisher-Yates)
+  for (let i = pwd.length - 1; i > 0; i--) {
+    const j = secureRandom(i + 1);
+    [pwd[i], pwd[j]] = [pwd[j], pwd[i]];
+  }
+  return pwd.join('');
+};
+
 export function useStaffManager() {
   const [staffList, setStaffList] = useState([]);
   const [activeAppointments, setActiveAppointments] = useState([]);
@@ -55,24 +88,30 @@ export function useStaffManager() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 1. Fetch Staff
-    const unsubStaff = onSnapshot(collection(db, "users"), (snapshot) => {
-      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const filteredStaff = list.filter(u => !u.disabled && (['veterinarian', 'staff', 'admin', 'groomer'].includes(u.role) || u.accessLevel));
-      filteredStaff.sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
-      setStaffList(filteredStaff);
+    // 1. Fetch Staff — server-side filter to avoid reading pet-owner documents (T2.218)
+    const staffQuery = query(
+      collection(db, "users"),
+      where("role", "in", ["veterinarian", "staff", "admin", "groomer"])
+    );
+    const unsubStaff = onSnapshot(staffQuery, (snapshot) => {
+      const list = snapshot.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(u => !u.disabled);
+      list.sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
+      setStaffList(list);
       setLoading(false);
     });
 
-    // 2. Fetch Active Appointments (For Workload)
-    const qAppts = query(collection(db, "appointments"), where("status", "in",["arrived", "in-consult", "confined"]));
+    // 2. Fetch Active Appointments (For Workload) — include all active statuses (T2.214)
+    const qAppts = query(collection(db, "appointments"), where("status", "in", ["arrived", "in-consult", "on-hold", "dispensing", "billing", "confined"]));
     const unsubAppts = onSnapshot(qAppts, (snapshot) => {
-      setActiveAppointments(snapshot.docs.map(d => d.data()));
+      // Include doc ID for consistent shape with other collections (T2.220)
+      setActiveAppointments(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
-    // 3. THE FIX: Fetch Dynamic Departments as a clean string array
+    // 3. Fetch Dynamic Departments as a clean string array
     const unsubDepts = onSnapshot(collection(db, "departments"), (snapshot) => {
-      const depts = snapshot.docs.map(d => ({ id: d.id, ...d.data() })); // <--- Keep the full object!
+      const depts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       depts.sort((a,b) => (a.name || '').localeCompare(b.name || ''));
       setDepartments(depts);
     });
@@ -98,63 +137,77 @@ export function useStaffManager() {
   };
 
   const saveStaff = async (editId, formData) => {
-    // THE FIX: Check for the existence of the email before trying to trim it!
+    // Check for the existence of the email before trying to trim it
     const email = formData.email ? formData.email.trim().toLowerCase() : '';
-    
+
     if (!formData.fullName || !email) {
         throw new Error("Full Name and Email are required.");
     }
-    
+
+    // role is intentionally excluded — it is set only on create (T2.213)
     const payload = {
-      fullName: formData.fullName, 
-      email: email, 
-      phone: formData.phone || '', 
-      accessLevel: formData.accessLevel, 
+      fullName: formData.fullName,
+      email: email,
+      phone: formData.phone || '',
+      accessLevel: formData.accessLevel,
       departments: formData.departments || [],
-      role: formData.accessLevel,
       prcLicense: formData.prcLicense || '',
       address: formData.address || '',
       emergencyContacts: formData.emergencyContacts || [],
-      updatedAt: new Date()
+      updatedAt: serverTimestamp(),
     };
 
     if (editId) {
-      // Find the current state for diffing
+      // Preserve existing role on edit — never overwrite veterinarian/groomer (T2.213)
       const originalStaff = staffList.find(s => s.id === editId);
       await updateDoc(doc(db, "users", editId), payload);
       const diffMessage = originalStaff ? diffStaffFields(originalStaff, payload) : 'Profile updated';
       await logStaffEvent(editId, payload.fullName, 'UPDATED', diffMessage);
     } else {
-      payload.createdAt = new Date();
-      
-      // SPANNING SECONDARY FIREBASE APP SO ADMIN DOESN'T GET LOGGED OUT!
+      payload.createdAt = serverTimestamp();
+
+      // Secondary Firebase App so the admin doesn't get logged out
       const tempAppName = 'SecondaryApp' + Date.now();
       const secondaryApp = initializeApp(firebaseConfig, tempAppName);
       const secondaryAuth = getAuth(secondaryApp);
-      
+
       try {
-        // Create user with default password
-        const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, "vetconnect123!"); 
+        const tempPassword = generateTempPassword();
+        const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, tempPassword);
         const newUid = userCredential.user.uid;
-        
-        // Sync the UID with Firestore
-        await setDoc(doc(db, "users", newUid), payload);
+
+        // Set role only on create + mustChangePassword flag for T2.278
+        await setDoc(doc(db, "users", newUid), { ...payload, role: formData.accessLevel, mustChangePassword: true });
         await logStaffEvent(newUid, payload.fullName, 'CREATED', `New ${payload.accessLevel} account authorized (${email})`);
+
+        // Return the temp password so the caller can display it (T2.208)
+        return { tempPassword, email };
       } catch (error) {
          throw new Error("Auth Failed: " + error.message);
       } finally {
-        // Always destroy the secondary session to prevent memory leaks/bugs
-        secondaryAuth.signOut();
+        // Destroy the secondary session and app instance to prevent memory leaks (T2.210)
+        await secondaryAuth.signOut();
+        await deleteApp(secondaryApp);
       }
     }
   };
 
   const removeStaff = async (id) => {
-    // Instead of deleting, we flag the account as disabled to prevent Auth orphans
     const staff = staffList.find(s => s.id === id);
+
+    // Guard: check for active appointments assigned to this staff member (T2.211)
+    const activeForStaff = activeAppointments.filter(a => a.assignedVetId === id);
+    if (activeForStaff.length > 0) {
+      throw new Error(
+        `Cannot revoke: ${staff?.fullName || 'This staff member'} has ${activeForStaff.length} active patient(s). ` +
+        `Reassign or complete their appointments first.`
+      );
+    }
+
+    // Instead of deleting, flag the account as disabled to prevent Auth orphans
     await updateDoc(doc(db, "users", id), {
       disabled: true,
-      disabledAt: new Date(),
+      disabledAt: serverTimestamp(),
       role: 'disabled',
       accessLevel: 'disabled',
     });

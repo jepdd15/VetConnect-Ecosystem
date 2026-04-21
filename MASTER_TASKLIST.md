@@ -70,8 +70,8 @@
 | T2.119 | Normalize allergy field: read `petAllergies \|\| allergies` everywhere, write `petAllergies`, propagate to active appointments on edit | 45 min | — | TODO | **PATIENT SAFETY** — allergy warnings suppressed for mobile pets |
 | T2.149 | `adjustStock`: wrap in `runTransaction` with stock floor check (`newStock >= 0`) and reserved check (`newStock >= reserved`) | 30 min | — | TODO | Stock can go negative |
 | T2.150 | Normalize refund log schema: use `action: 'RESTOCK'`, `amountChange`, `userName`/`userId`. Add `RESTOCK` to GlobalActivityLog ACTION_CONFIG. Extract shared `normalizeLog` utility. | 45 min | — | TODO | 3 columns render `undefined` for refund logs |
-| T2.208 | Remove hardcoded password. Generate random 12-char temp password, display to admin in toast. | 30 min | — | TODO | **CRITICAL** — source code exposes every staff credential |
-| T2.209 | Add PH phone validation (`/^09\d{9}$/`) to StaffFormModal. Extract `isValidPHPhone` to shared util. | 5 min | — | TODO | **CRITICAL** — any string accepted as phone |
+| T2.208 | Remove hardcoded password. Generate random 12-char temp password, display to admin in toast. | 30 min | — | DONE | **Review fixes:** crypto.getRandomValues replaces Math.random; clipboard fallback for non-HTTPS; sets mustChangePassword flag (unblocks T2.278); token-compliant dialog |
+| T2.209 | Add PH phone validation (`/^09\d{9}$/`) to StaffFormModal. Extract `isValidPHPhone` to shared util. | 5 min | — | DONE | Shared util at src/utils/phoneValidation.js |
 
 ### P1 — High Priority
 
@@ -104,12 +104,12 @@
 | T2.191 | Service archive/delete: add active-appointment guard. Block if services referenced by non-terminal appointments. | 30 min | — | TODO | Archiving breaks ClinicalWorkspace cart |
 | T2.192 | Service delete: add `isAdmin` guard. Only show delete button for admin users. | 10 min | — | TODO | Any user can permanently delete services |
 | T2.193 | ServiceFormModal: negative validation for price (`< 0`), duration (`<= 0`), bufferTime (`< 0`). Add `min` on inputs. | 10 min | — | TODO | Negative values corrupt billing + scheduling |
-| T2.210 | Fix Firebase App memory leak: import `deleteApp`, call in `finally` after `signOut`. | 5 min | — | TODO | Leaks app instance per staff creation |
-| T2.211 | Add active-appointment guard on staff revocation. Block if `assignedVetId` matches non-terminal appointments. | 20 min | — | TODO | Revoking vet mid-consult orphans patients |
-| T2.212 | Fix ConfirmRevokeModal text: "Staff profile will be deactivated. Login access requires separate Auth management." | 5 min | — | TODO | UI claims Auth disabled — only Firestore flag set |
-| T2.213 | Preserve existing `role` on edit — don't overwrite. Only set `role: formData.accessLevel` on create. 3-line fix. | 5 min | — | TODO | Editing vet overwrites role, removes from Queue |
-| T2.214 | Fix workload query: add `on-hold`, `dispensing`, `billing` to status filter. | 5 min | — | TODO | Staff with dispensing patients show "Available" |
-| T2.215 | Fix Queue.jsx vet filter: exclude `'disabled'` accessLevel. Use allowlist instead of truthy check. | 5 min | — | TODO | Revoked staff appear in vet dropdown |
+| T2.210 | Fix Firebase App memory leak: import `deleteApp`, call in `finally` after `signOut`. | 5 min | — | DONE | Leaks app instance per staff creation |
+| T2.211 | Add active-appointment guard on staff revocation. Block if `assignedVetId` matches non-terminal appointments. | 20 min | — | DONE | Revoking vet mid-consult orphans patients |
+| T2.212 | Fix ConfirmRevokeModal text: "Staff profile will be deactivated. Login access requires separate Auth management." | 5 min | — | DONE | UI claims Auth disabled — only Firestore flag set |
+| T2.213 | Preserve existing `role` on edit — don't overwrite. Only set `role: formData.accessLevel` on create. 3-line fix. | 5 min | — | DONE | Editing vet overwrites role, removes from Queue |
+| T2.214 | Fix workload query: add `on-hold`, `dispensing`, `billing` to status filter. | 5 min | — | DONE | Staff with dispensing patients show "Available" |
+| T2.215 | Fix Queue.jsx vet filter: exclude `'disabled'` accessLevel. Use allowlist instead of truthy check. | 5 min | — | DONE | **Review fix:** simplified to accessLevel allowlist only, removed redundant role checks |
 | T3.10a | View in Records quick link on queue row | 30 min | — | TODO | |
 
 ### P2 — Medium Priority
@@ -193,11 +193,11 @@
 | T2.197 | Pass `loading` from useServices to ServiceTable. Add loading skeleton. | 10 min | — | TODO | Empty state flash during initial fetch |
 | T2.198 | ServiceTable: add `linkedProducts` badge/chip per row. | 15 min | — | TODO | Auto-bundled services indistinguishable |
 | T2.199 | ServiceLogModal: display `log.reason` alongside `log.changes`. | 5 min | — | TODO | ARCHIVED/RESTORED show no context |
-| T2.216 | Staff departments: hard block if `departments.length === 0`. | 5 min | — | TODO | Decision locked: hard block |
-| T2.217 | Staff timestamps: replace `new Date()` with `serverTimestamp()` for `createdAt`, `updatedAt`, `disabledAt`. | 5 min | — | TODO | Client-side timestamps inconsistent |
-| T2.218 | Staff listener: server-side `where("role", "in", [...])` filter. | 15 min | — | TODO | Decision locked: P2 for correctness |
-| T2.219 | Staff emergency contact mutation: deep-copy objects before modifying. | 5 min | — | TODO | React state mutation anti-pattern |
-| T2.220 | Staff activeAppointments: add `.id` to mapping. | 2 min | — | TODO | Inconsistent with staffList |
+| T2.216 | Staff departments: hard block if `departments.length === 0`. | 5 min | — | DONE | Decision locked: hard block |
+| T2.217 | Staff timestamps: replace `new Date()` with `serverTimestamp()` for `createdAt`, `updatedAt`, `disabledAt`. | 5 min | — | DONE | Client-side timestamps inconsistent |
+| T2.218 | Staff listener: server-side `where("role", "in", [...])` filter. | 15 min | — | DONE | Decision locked: P2 for correctness |
+| T2.219 | Staff emergency contact mutation: deep-copy objects before modifying. | 5 min | — | DONE | React state mutation anti-pattern |
+| T2.220 | Staff activeAppointments: add `.id` to mapping. | 2 min | — | DONE | Inconsistent with staffList |
 
 ### P3 — Polish & Deferred
 
@@ -281,13 +281,13 @@
 | T2.205 | Services: design token compliance across 4 child components (60+ hardcoded colors) | 1 hr | — | TODO | |
 | T2.206 | ServiceTable: add pagination | 15 min | — | TODO | |
 | T2.207 | CLAUDE.md: fix `tieredPricing` → `pricingTiers` + `hasTieredPricing` in field docs | 2 min | — | TODO | Documentation inaccuracy |
-| T2.221 | Staff: delete dead code (KPICard + kpis + 4 icons, WorkIcon, headerSx, deleteDoc, showToast prop) | 5 min | — | TODO | |
-| T2.222 | Staff: pass `loading` to StaffTable, add skeleton | 10 min | — | TODO | |
-| T2.223 | Staff: add loading/disabled state on REVOKE button | 5 min | — | TODO | Double-click duplicates |
-| T2.224 | Staff: fix cleanName crash `cleanName[0]?.toUpperCase() \|\| '?'` | 2 min | — | TODO | |
-| T2.225 | Staff: add null guard on `departments` prop in StaffTable | 2 min | — | TODO | |
-| T2.226 | Staff: design token compliance across 3 child components (50+ hardcoded colors) | 45 min | — | TODO | |
-| T2.227 | Staff: fix borderRadius violations (search field, warning box, scrollbar) | 5 min | — | TODO | |
+| T2.221 | Staff: delete dead code (KPICard + kpis + 4 icons, WorkIcon, headerSx, deleteDoc, showToast prop) | 5 min | — | DONE | |
+| T2.222 | Staff: pass `loading` to StaffTable, add skeleton | 10 min | — | DONE | |
+| T2.223 | Staff: add loading/disabled state on REVOKE button | 5 min | — | DONE | **Review fix:** setRevoking in finally block to prevent stuck button on error |
+| T2.224 | Staff: fix cleanName crash `cleanName[0]?.toUpperCase() \|\| '?'` | 2 min | — | DONE | |
+| T2.225 | Staff: add null guard on `departments` prop in StaffTable | 2 min | — | DONE | |
+| T2.226 | Staff: design token compliance across 3 child components (50+ hardcoded colors) | 45 min | — | DONE | **Review fix:** also tokenized Staff.jsx header + temp password dialog; added dangerHover, dangerSurface, warningSurface tokens to designTokens.js |
+| T2.227 | Staff: fix borderRadius violations (search field, warning box, scrollbar) | 5 min | — | DONE | |
 
 ---
 
@@ -600,6 +600,7 @@
 | T2.266 | Mobile LoginScreen: add disabled check | P2 | 5 min | DONE | Cross-project |
 | T2.277 | Login: "Forgot Password" link | P1 | 20 min | DONE | Bumped from P2 — absorbs T4.70. **Review fix:** added `@` guard to prevent misleading success message on clearly invalid input |
 | T2.278 | Login: default password detection warning | P3 | 15 min | TODO | Depends on T2.208 |
+| T2.524 | UserContext: distinguish "not yet loaded" from "profile doesn't exist" — profile-less auth users see infinite spinner on AdminRoute | P2 | 30 min | TODO | Found by reviewer during Login module. Needs UserContext.jsx refactor — outside Login scope |
 
 ### Mobile Client Screens (T2.343-T2.433)
 

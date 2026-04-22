@@ -228,11 +228,13 @@
 | T2.54 | IDENTITY_HEALING pulse event | 10 min | — | TODO | |
 | T2.56 | CONFINE date picker color cues | 1 hr | — | TODO | |
 | T2.62 | Case lineage indicator column | 30 min | — | DONE | Day N chip for multi-day cases |
-| T2.63 | Follow-up linkage in audit popover | 1 hr | — | DONE | Previous/Next Visit buttons for originApptId/followUpId links |
+| T2.63 | Follow-up linkage in audit popover | 1 hr | — | DONE | Previous/Next Visit buttons for originApptId/followUpId links. **PARTIAL:** buttons are stubs — close popover + toast instead of navigating to linked visit |
+| T2.63a | Linked Visits navigation: clicking Previous/Next Visit should load the linked row's audit data in the popover, not show a toast with raw ID | P2 | 30 min | — | TODO | Review finding — stub implementation, find linked row in groupedRecords and setActiveAuditRow |
 | T2.66 | Defer triage action in Records | 20 min | — | DONE | isDeferred flag + DEFERRED pulse event. **Review fix:** null user guard |
 | T2.67 | Edit identity fields in Records | 45 min | — | DONE | Inline petName/ownerName/ownerPhone edit + IDENTITY_EDIT pulse. **Review fixes:** empty string validation, null user guard, trim on save |
 | T2.68 | Copy ID + print record actions | 30 min | — | DONE | Copy to clipboard with toast, formatted print via shared printUtils. **Review fixes:** full XSS escaping, null fallbacks, en-PH locale |
-| T2.69 | Phone normalization | 1.5 hrs | — | DONE | normalizePhone in phoneValidation.js, wired in useGlobalRecords phone search |
+| T2.69 | Phone normalization | 1.5 hrs | — | DONE | normalizePhone in phoneValidation.js, wired in useGlobalRecords phone search. **Partial — search-side only, write-side normalization deferred** (booking/walk-in already write 09xx; legacy +63 data not covered) |
+| T2.69a | Write-side phone normalization: call normalizePhone(ownerPhone) before writing to Firestore in WalkInModal.jsx and useBookingEngine.js, so all new appointments store canonical 09xx format | P3 | 15 min | T2.69 | TODO | Ensures phone search works for all future data, not just legacy 09xx |
 | T2.72 | Structured reschedule pulse + undo | 45 min | — | DONE | 10s undo Snackbar, RESCHEDULE_UNDO pulse. **Review fix:** Timestamp.fromDate for undo write |
 | T2.73 | Bulk reschedule in Records | 2 hrs | — | DONE | Checkbox selection (pending/confirmed only), floating bar, bulk dialog. **Review fix:** per-item failure tracking, DataGrid v8 selection model compat |
 | T2.73a | Records: only show checkboxSelection on TRIAGE tab — disabled checkboxes on other tabs confuse users into thinking the feature is broken | P2 | 15 min | — | TODO | Review finding — checkbox column always visible but never selectable outside TRIAGE |

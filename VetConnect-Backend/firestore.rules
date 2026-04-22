@@ -6,11 +6,32 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // RBAC helpers — read the user's Firestore profile to check role.
+    // Uses get() which costs one document read per rule evaluation.
+    // On Spark plan this has no billing impact; on Blaze, budget accordingly.
+    function getUserRole() {
+      let userRef = /databases/$(database)/documents/users/$(request.auth.uid);
+      return exists(userRef) ? get(userRef).data : {};
+    }
+
+    // role is the canonical field. accessLevel is NOT checked — a disabled user
+    // with role:'disabled' must not pass even if accessLevel is stale.
+    function isStaff() {
+      return isAuth()
+        && getUserRole().role in ['admin', 'staff', 'veterinarian', 'groomer'];
+    }
+
+    function isAdmin() {
+      return isAuth()
+        && getUserRole().role == 'admin';
+    }
+
+    function isOwner(userId) {
+      return isAuth() && request.auth.uid == userId;
+    }
+
     // Closed-date enforcement — rejects appointment writes landing on a date
     // the clinic has marked closed in clinic_settings/general.closedDates[].
-    // Only enforced when the write includes a `scheduledDateStr` field (ISO
-    // YYYY-MM-DD). Writes without the field (e.g. admin walk-in paths that
-    // predate the denormalization) are exempt so we don't break existing flows.
     function isScheduledDateClosed() {
       return 'scheduledDateStr' in request.resource.data
         && exists(/databases/$(database)/documents/clinic_settings/general)
@@ -18,6 +39,7 @@ service cloud.firestore {
            get(/databases/$(database)/documents/clinic_settings/general).data.get('closedDates', []);
     }
 
+    // ─── APPOINTMENTS ─────────────────────────────────────────────
     match /appointments/{apptId} {
       allow read: if isAuth();
       allow create: if isAuth() && !isScheduledDateClosed();
@@ -45,23 +67,148 @@ service cloud.firestore {
             'forensicSeal' in request.resource.data
             && request.resource.data.forensicSeal != null
           )
+        )
+        // T2.37: clinicalPulse is append-only — can only grow, never shrink or be erased
+        && (
+          !('clinicalPulse' in resource.data)
+          || !resource.data.clinicalPulse is list
+          || (
+            'clinicalPulse' in request.resource.data
+            && request.resource.data.clinicalPulse is list
+            && request.resource.data.clinicalPulse.size() >= resource.data.clinicalPulse.size()
+          )
         );
     }
 
-    // Expenses: any authenticated user can read; write requires identity match.
-    // TODO: tighten delete/update to isAdmin() after T2.1 (shared RBAC helpers) ships.
+    // ─── EXPENSES ─────────────────────────────────────────────────
+    // Staff can read/create; update requires identity match; delete is admin-only.
     match /expenses/{expenseId} {
-      allow read: if isAuth();
-      allow create: if isAuth()
+      allow read: if isStaff();
+      allow create: if isStaff()
         && request.resource.data.loggedByUid == request.auth.uid;
-      allow update: if isAuth()
+      allow update: if isStaff()
         && request.resource.data.updatedByUid == request.auth.uid;
-      allow delete: if isAuth();
+      allow delete: if isAdmin();
     }
 
-    // All other collections: authenticated access only
+    // ─── USERS ────────────────────────────────────────────────────
+    // Mobile clients can read/update their own profile.
+    // Staff can read all users (needed for Queue, Patients CRM).
+    // Only admin can create staff accounts or modify other users.
+    match /users/{userId} {
+      allow read: if isAuth();
+      allow create: if isAuth();  // Registration creates own doc; admin creates staff
+      allow update: if isOwner(userId) || isStaff();
+      allow delete: if isOwner(userId) || isAdmin();  // Owner can delete own guest doc during merge
+    }
+
+    // ─── PETS ─────────────────────────────────────────────────────
+    // Owners can CRUD their own pets. Staff can read all + create (walk-ins).
+    match /pets/{petId} {
+      allow read: if isAuth();
+      allow create: if isAuth();  // Owner adds pet; staff adds walk-in pet
+      allow update: if isAuth();  // Staff updates clinical fields; owner updates profile
+      allow delete: if isAdmin();
+    }
+
+    // ─── MEDICAL RECORDS ──────────────────────────────────────────
+    // Staff create records during consultation. Clients read their own pets' records.
+    // No delete — medical records are permanent.
+    match /medical_records/{recordId} {
+      allow read: if isAuth();
+      allow create: if isStaff();
+      allow update: if isStaff();
+      allow delete: if false;  // Medical records are immutable once created
+    }
+
+    // ─── SERVICES ─────────────────────────────────────────────────
+    // Everyone reads (mobile booking needs service list). Only staff can write.
+    match /services/{serviceId} {
+      allow read: if isAuth();
+      allow create, update: if isStaff();
+      allow delete: if isAdmin();
+    }
+
+    // ─── INVENTORY ────────────────────────────────────────────────
+    // Staff-only for all operations. Mobile clients never touch inventory.
+    match /inventory/{itemId} {
+      allow read: if isStaff();
+      allow create, update: if isStaff();
+      allow delete: if isAdmin();
+    }
+
+    // ─── INVENTORY CATEGORIES ─────────────────────────────────────
+    // Staff can read + create (ProductFormModal quick-add). Admin for update/delete.
+    // T2.31: Default categories (ID prefix "default_") cannot be deleted.
+    match /inventory_categories/{catId} {
+      allow read: if isStaff();
+      allow create: if isStaff();
+      allow update: if isAdmin();
+      allow delete: if isAdmin()
+        && !catId.matches('^default_.*');
+    }
+
+    // ─── DEPARTMENTS ──────────────────────────────────────────────
+    match /departments/{deptId} {
+      allow read: if isAuth();  // Mobile booking reads departments
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ─── SALES ────────────────────────────────────────────────────
+    // Created by POSModal during checkout. Read by staff for reports.
+    // Clients can read their own sales (ClientAppointments.js queries by ownerName).
+    match /sales/{saleId} {
+      allow read: if isAuth();
+      allow create, update: if isStaff();  // update handles refunds
+      allow delete: if false;  // Sales records are permanent (audit trail)
+    }
+
+    // ─── QUEUE ────────────────────────────────────────────────────
+    match /queue/{queueDoc} {
+      allow read: if isAuth();  // Mobile clients see queue position
+      allow write: if isStaff();
+    }
+
+    // ─── CLINIC SETTINGS ──────────────────────────────────────────
+    // Everyone reads (booking engine needs operating hours, closed dates).
+    // Only admin can modify.
+    match /clinic_settings/{settingId} {
+      allow read: if isAuth();
+      allow write: if isAdmin();
+    }
+
+    // ─── AUDIT LOG COLLECTIONS (append-only) ──────────────────────
+    // Staff can create log entries. Nobody can update or delete them.
+    match /inventory_logs/{logId} {
+      allow read: if isStaff();
+      allow create: if isStaff();
+      allow update, delete: if false;
+    }
+
+    match /service_logs/{logId} {
+      allow read: if isStaff();
+      allow create: if isStaff();
+      allow update, delete: if false;
+    }
+
+    match /staff_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isStaff();
+      allow update, delete: if false;
+    }
+
+    match /settings_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isStaff();
+      allow update, delete: if false;
+    }
+
+    // ─── DENY-ALL FALLBACK ────────────────────────────────────────
+    // Any collection not explicitly matched above is denied.
+    // This prevents accidental exposure if new collections are added
+    // without corresponding rules.
     match /{document=**} {
-      allow read, write: if isAuth();
+      allow read, write: if false;
     }
   }
 }

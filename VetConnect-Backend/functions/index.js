@@ -1,12 +1,32 @@
-// Executes server-side business logic that cannot be trusted to the client application.
-// midnightQueueSweep: A Cron Job that fires daily at 11:59 PM (PST) to securely reset the ticket counter 
-// to zero, leaving unfinished patients untouched for morning triage.
-
-// secureBookAppointment: The "Bouncer." Checks the server's atomic clock to prevent "Time Travel" hacks 
-// and blocks "Schedule Hoarders" by capping active appointments.
-
-// sendAppointmentUpdateNotification: The Hardware Trigger. Listens to Firestore document changes and 
-// pushes a real-time payload to Expo/Apple/Google servers to vibrate the client's phone when their status changes.
+// ============================================================================
+// CLOUD FUNCTIONS — ASPIRATIONAL (Spark Plan)
+// ============================================================================
+// These 5 functions are fully implemented and tested but CANNOT DEPLOY on the
+// Firebase Spark (free) plan. Google requires the Blaze (pay-as-you-go) plan
+// to deploy any Cloud Function.
+//
+// ACTIVATION PATH:
+//   1. Upgrade Firebase project to Blaze plan
+//   2. Run `firebase deploy --only functions` from this directory
+//   3. Wire mobile BookAppointment.js to call secureBookAppointment (T2.11)
+//   4. All cron jobs and triggers activate automatically
+//
+// CLIENT-SIDE MITIGATIONS (what currently covers each function's intent):
+//   - midnightQueueSweep ......... Manual EOD reconciliation in Queue module
+//   - reservationCleanup ......... T2.16 fixes the primary reservation leak
+//   - secureBookAppointment ...... useBookingEngine.js client-side guards +
+//                                  Firestore rules (isScheduledDateClosed).
+//                                  NOTE: 4-appointment cap is NOT enforced by
+//                                  rules — only by this function.
+//   - sendAppointmentUpdateNotification ... No client-side equivalent possible.
+//                                  Push notifications require server-side HTTP.
+//   - mergeGuestAccount .......... No client-side equivalent possible.
+//                                  Auth triggers require Cloud Functions.
+//
+// DECISION (T2.9, 2026-04-22): RETAIN AS-IS. All functions are preserved as
+// reference implementations. The Blaze upgrade path is trivial and the code
+// is deployment-ready. Do not delete.
+// ============================================================================
 
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");

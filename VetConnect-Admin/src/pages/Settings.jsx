@@ -423,6 +423,10 @@ export default function Settings() {
   };
 
   const handleDeleteInvCategory = async (id, name) => {
+    // T2.31: Default categories cannot be deleted — protected both here and in Firestore rules
+    if (id.startsWith('default_')) {
+      return setToast({ open: true, message: `"${name}" is a system default category and cannot be deleted.`, severity: 'warning' });
+    }
     // Usage shield: block delete if active inventory items reference this category
     try {
       const invSnap = await getDocs(collection(db, "inventory"));
@@ -883,7 +887,7 @@ export default function Settings() {
                     key={cat.id} 
                     label={cat.name} 
                     icon={cat.isMedicine ? <MedicationIcon sx={{ fontSize: '1rem !important', color: '#D32F2F !important' }} /> : null}
-                    onDelete={() => handleDeleteInvCategory(cat.id, cat.name)}
+                    onDelete={cat.id.startsWith('default_') ? undefined : () => handleDeleteInvCategory(cat.id, cat.name)}
                     sx={{ 
                       fontWeight: '1000', 
                       bgcolor: 'white', 

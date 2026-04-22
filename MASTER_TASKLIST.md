@@ -61,10 +61,11 @@
 | ID | Name | Effort | Depends On | Status | Notes |
 |---|---|---|---|---|---|
 | T2.28-expanded | Wire nextVisit UI + fix 5 follow-up creation bugs | 2-3 hrs | T2.32 | TODO | B5 follow-up shipped but NON-FUNCTIONAL |
-| T2.37 | Firestore rule: clinicalPulse append-only enforcement | 1-2 hrs | — | TODO | Nothing prevents erasing audit trail |
+| T2.37 | Firestore rule: clinicalPulse append-only enforcement | 1-2 hrs | — | DONE | Append-only size check + `is list` type guard. **Review fix:** exists() null-safety on getUserRole |
+| T2.37a | Firestore rule: no-show status transition requires isStaff() — mobile pet owners should not be able to set status to no-show | 15 min | T2.1 | TODO | Review finding — appointments update allows any auth user to set no-show |
 | T2.42 | Revert terminal drift fix: clear forensicSeal + TERMINAL_REVERSAL event | 30 min | — | TODO | |
 | T2.44 | Write forensicSeal on normal sign-off + completed path | 30 min | — | TODO | Happy path has no seal |
-| T2.57 | Records.jsx bug fixes (4 bugs) | 45 min | — | TODO | Filters always empty |
+| T2.57 | Records.jsx bug fixes (4 bugs) | 45 min | — | TODO | Filters always empty. **Review finding:** L86 queries `collection(db, "staff")` which doesn't exist — should be `users` with role filter |
 | T2.58 | Records.jsx terminology cleanup | 30 min | — | TODO | |
 | T2.79 | Fix tiered pricing per-pet weight | 30 min | — | DONE | Per-pet resolveTieredPrice inside forEach loop. **Review fix:** step 4 shows "Est. Total" with weight-adjustment note |
 | T2.119 | Normalize allergy field: read `petAllergies \|\| allergies` everywhere, write `petAllergies`, propagate to active appointments on edit | 45 min | — | TODO | **PATIENT SAFETY** — allergy warnings suppressed for mobile pets |
@@ -77,12 +78,12 @@
 
 | ID | Name | Effort | Depends On | Status | Notes |
 |---|---|---|---|---|---|
-| T2.1 | Firestore RBAC rules (isStaff + isAdmin helpers) | 2 hrs | — | TODO | Biggest RA 10173 gap |
+| T2.1 | Firestore RBAC rules (isStaff + isAdmin helpers) | 2 hrs | — | DONE | 16 explicit collection rules, deny-all fallback. **Review fixes:** inventory_categories create→isStaff, users delete→isOwner\|\|isAdmin, exists() null-safety |
 | T2.2 | Printable visit summary | 2-3 hrs | — | TODO | |
 | T2.3 | Printable vaccination record | 1-2 hrs | — | TODO | |
 | T2.4 | Printable referral report | 1-2 hrs | — | TODO | |
 | T2.30 | Multi-staff clinical attribution | 2 hrs | — | TODO | |
-| T2.31 | Protect default inventory categories | 1-2 hrs | — | TODO | |
+| T2.31 | Protect default inventory categories | 1-2 hrs | — | DONE | Firestore rule !catId.matches default_ + Settings.jsx client guard + hide delete icon |
 | T2.32 | Extract SoapGrid component (blocks T2.28) | 2-3 hrs | — | TODO | |
 | T2.33 | dischargePolicy per service (required/optional) | 1.5 hrs | — | TODO | |
 | T2.41 | Remove caseDay increment from reschedule path | 10 min | — | TODO | |
@@ -119,7 +120,7 @@
 | T2.5 | useBookingEngine onSnapshot for clinic_settings | 30 min | — | DONE | **Review fix:** removed clinicSettings from initializeUser useEffect deps to prevent re-fire |
 | T2.6 | Reminder banner timestamp crash fix | 5 min | — | DONE | Safe chain with isNaN guard |
 | T2.8 | Path A clientReport split | 1 hr | — | TODO | |
-| T2.9 | Cloud Functions fate decision | 15 min-4 hrs | — | TODO | |
+| T2.9 | Cloud Functions fate decision | 15 min-4 hrs | — | DONE | Documented as aspirational with activation path + client-side mitigations |
 | T2.12 | Rename Sign Digital Consent → Lock Clinical Record | 15 min | — | TODO | |
 | T2.13 | Refactor CRM Sovereignty (delete sync, keep vitals cache) | 1 hr | — | TODO | Frees sidebar slot for T2.95 |
 | T2.14 | Fix auto-bundling (all services + stock guard) | 30 min | — | TODO | |
@@ -204,7 +205,7 @@
 | ID | Name | Effort | Depends On | Status | Notes |
 |---|---|---|---|---|---|
 | T2.7 | Move hardcoded clinic phone to settings | 30 min | — | DONE | clinicPhone in useClinicSettings defaults; SuperCard, ChatbotScreen, ClientAppointments updated |
-| T2.10 | Delete orphaned Firestore collections | 5 min | — | TODO | |
+| T2.10 | Delete orphaned Firestore collections | 5 min | — | TODO | Manual Console operation — do during deployment prep. Deny-all fallback already blocks access. |
 | T2.11 | Wire mobile to secureBookAppointment (Blaze) | 1-2 hrs | T2.9 | TODO | |
 | T2.17 | Rename Treatment Plan sidebar → Services & Items | 5 min | — | TODO | |
 | T2.18 | ClinicalWorkspace dead code cleanup (~300 lines) | 1-2 days | — | TODO | |

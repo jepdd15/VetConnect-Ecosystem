@@ -205,7 +205,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
       // DISPENSE tab — Prescription Preview
       if (tabValue === 4) {
         const items = p.row.prescribedItems || [];
-        const drugs = items.filter(i => i.isDrug || i.type === 'product');
+        const drugs = items.filter(i => i.isDrug || i.isMedicine || (i.type === 'product' && i.isMedicine !== false));
         if (drugs.length === 0) {
           return <Typography variant="caption" sx={{ color: 'text.disabled', fontStyle: 'italic' }}>No prescribed items</Typography>;
         }
@@ -321,10 +321,10 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
     }
   },
   { 
-    field: 'services', headerName: 'Services and Staff', flex: 1, minWidth: 220, sortable: false,
+    field: 'services', headerName: 'Services and Staff', flex: 1, minWidth: 220,
     resizable: false, sortable: false, disableColumnMenu: true,
     renderCell: (p) => {
-      const services = [...(p.row.services || [])].sort((a,b) => a.name.localeCompare(b.name));
+      const services = [...(p.row.services || [])].sort((a,b) => (a.name || '').localeCompare(b.name || ''));
       if (services.length === 0) return <Chip label={p.row.status.toUpperCase()} color="primary" size="small" sx={{fontWeight:'900', height: 24}}/>;
 
       return (
@@ -423,7 +423,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
       let primaryLabel = "";
       let secondaryLabel = "";
       let triageColor = "#5D4037"; // Forensic Coffee Default
-      const apptLabel = (p.row.ticketPrefix === 'W' || p.row.ticketPrefix === 'E') ? 'QUEUED' : 'APPT';
+      const apptLabel = (p.row.ticketPrefix === 'W' || p.row.ticketPrefix === 'E') ? 'QUEUED' : (p.row.ticketPrefix === 'R' ? 'RETURN' : 'APPT');
 
       if (isHistorical && scheduled) {
           primaryLabel = scheduled.toLocaleDateString([], { 
@@ -483,6 +483,24 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                 
                 triageColor = "#2E7D32"; 
                 break;
+
+            case 'on-hold': {
+                const holdMins = resolveDate(p.row.lastPausedAt) ? Math.round((currentTime - resolveDate(p.row.lastPausedAt)) / 60000) : 0;
+                const holdTotal = (arrived || scheduled) ? Math.round((currentTime - (arrived || scheduled)) / 60000) : 0;
+                primaryLabel = `ON HOLD: ${formatDuration(holdMins)}`;
+                secondaryLabel = `TOTAL VISIT: ${formatDuration(holdTotal)}`;
+                triageColor = "#E65100";
+                break;
+            }
+
+            case 'confined': {
+                const confinedSince = resolveDate(p.row.timeStarted) || resolveDate(p.row.timeArrived) || resolveDate(p.row.createdAt);
+                const confinedMins = confinedSince ? Math.round((currentTime - confinedSince) / 60000) : 0;
+                primaryLabel = `CONFINED: DAY ${p.row.caseDay || 1}`;
+                secondaryLabel = `TOTAL: ${formatDuration(confinedMins)}`;
+                triageColor = "#6A1B9A";
+                break;
+            }
 
             case STATUS.DISPENSING:
                 const dispenseMins = resolveDate(p.row.timeDispenseStarted) ? Math.round((currentTime - resolveDate(p.row.timeDispenseStarted)) / 60000) : 0;

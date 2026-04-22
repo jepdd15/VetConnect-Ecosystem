@@ -33,7 +33,7 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
 
   useEffect(() => {
     if (open && patient) {
-      const sortedServices = (patient.services || []).sort((a, b) => a.name.localeCompare(b.name));
+      const sortedServices = (patient.services || []).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
       setTempServices(sortedServices);
       setErrorMsg('');
     }
@@ -146,9 +146,11 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
             queueNumber: newNumber,
             ticketPrefix: patient.priority === 'high'
               ? 'E'
-              : (patient.ownerId === 'WALK_IN_USER' || String(patient.ownerId || '').includes('GUEST_'))
-                ? 'W'
-                : 'A',
+              : (patient.caseDay > 1)
+                ? 'R'
+                : (patient.ownerId === 'WALK_IN_USER' || String(patient.ownerId || '').includes('GUEST_'))
+                  ? 'W'
+                  : 'A',
             timeArrived: Timestamp.now(),
             services: primedServices,
             clinicalPulse: arrayUnion(pulseEvent)

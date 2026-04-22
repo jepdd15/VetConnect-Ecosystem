@@ -230,7 +230,7 @@
 | T2.73 | Bulk reschedule in Records | 2 hrs | — | TODO | |
 | T2.74 | Bulk staff reassignment in Records | 1.5 hrs | — | TODO | |
 | T2.76 | Client self-check-in via clinic QR | 5-6 hrs | — | TODO | |
-| T2.77 | 4-tier ticket prefix scheme (A/W/E/R) | 30 min | — | TODO | |
+| T2.77 | 4-tier ticket prefix scheme (A/W/E/R) | 30 min | — | DONE | R prefix for caseDay > 1; apptLabel shows RETURN |
 | T2.78 | visitGroupId at multi-pet booking time | 30 min | — | TODO | |
 | T2.81 | Fix advanceNoticeBuffer phantom field | 5 min | — | TODO | |
 | T2.82 | Mixed-species filter warning banner | 15 min | — | TODO | |
@@ -869,24 +869,24 @@
 
 | ID | Name | Priority | Effort | Status |
 |---|---|---|---|---|
-| T2.505 | Replace deprecated disableSelectionOnClick → disableRowSelectionOnClick | P1 | 2 min | TODO |
-| T2.506 | Fix Grid v1 API: `<Grid item xs={12}>` → `<Grid size={{ xs: 12 }}>` | P1 | 5 min | TODO |
-| T2.507 | Guard .name.localeCompare() (Queue L1823 + queueColumns L327) | P1 | 10 min | TODO |
-| T2.508 | Guard history dialog date crash (h.date?.toDate()) | P1 | 5 min | TODO |
-| T2.509 | Add loading/disabled state to all 8 dialog submit buttons | P2 | 30 min | TODO |
-| T2.510 | Fix No-Show fieldset color ternary (both branches identical) | P3 | 2 min | TODO |
-| T2.511 | Remove dead isAgeExact state + duplicate sortable + dead isVeryLate + 10 unused imports | P3 | 10 min | TODO |
-| T2.512 | Add on-hold + confined cases to timing column switch | P2 | 20 min | TODO |
-| T2.513 | Filter pharmacy checklist to drugs only (isDrug, not all products) | P2 | 5 min | TODO |
+| T2.505 | Replace deprecated disableSelectionOnClick → disableRowSelectionOnClick | P1 | 2 min | DONE |
+| T2.506 | Fix Grid v1 API: `<Grid item xs={12}>` → `<Grid size={{ xs: 12 }}>` | P1 | 5 min | DONE |
+| T2.507 | Guard .name.localeCompare() (Queue L1823 + queueColumns L327) | P1 | 10 min | DONE | **Review fix:** also guarded in AssignStaffModal L36 |
+| T2.508 | Guard history dialog date crash (h.date?.toDate()) | P1 | 5 min | DONE |
+| T2.509 | Add loading/disabled state to all 8 dialog submit buttons | P2 | 30 min | DONE | **Review fix:** triage shield handler made async with await + try/finally |
+| T2.510 | Fix No-Show fieldset color ternary (both branches identical) | P3 | 2 min | DONE |
+| T2.511 | Remove dead isAgeExact state + duplicate sortable + dead isVeryLate + 10 unused imports | P3 | 10 min | DONE | Fixes pre-existing build warning |
+| T2.512 | Add on-hold + confined cases to timing column switch | P2 | 20 min | DONE |
+| T2.513 | Filter pharmacy checklist to drugs only (isDrug, not all products) | P2 | 5 min | DONE | **Review fix:** 3-clause fallback for pre-T2.167 items |
 
 **WalkInModal.jsx:**
 
 | ID | Name | Priority | Effort | Status |
 |---|---|---|---|---|
-| T2.514 | Fix: inject allergyArray into pet document write (currently always empty '') | P0 | 5 min | TODO |
-| T2.515 | Clear errorMsg on radio toggle | P1 | 2 min | TODO |
-| T2.516 | Replace onKeyPress with onKeyDown (deprecated React API) | P3 | 2 min | TODO |
-| T2.517 | Remove unused imports (Accordion, AccordionSummary, AccordionDetails, PersonAddIcon, AccessTimeIcon) | P3 | 2 min | TODO |
+| T2.514 | Fix: inject allergyArray into pet document write (currently always empty '') | P0 | 5 min | DONE | Patient safety — both guest + existing-client pet paths fixed |
+| T2.515 | Clear errorMsg on radio toggle | P1 | 2 min | DONE |
+| T2.516 | Replace onKeyPress with onKeyDown (deprecated React API) | P3 | 2 min | DONE |
+| T2.517 | Remove unused imports (Accordion, AccordionSummary, AccordionDetails, PersonAddIcon, AccessTimeIcon) | P3 | 2 min | DONE | **Review fix:** handleClose resets allergyArray + 5 other states to prevent leak |
 
 **ClinicalWorkspace.jsx:**
 

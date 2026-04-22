@@ -8,7 +8,7 @@ import {
   ToggleButton, ToggleButtonGroup, FormControlLabel, Autocomplete
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, Timestamp, where, getDocs, writeBatch, getDoc, arrayUnion, limit } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, Timestamp, where, getDocs, writeBatch, getDoc, arrayUnion } from 'firebase/firestore';
 
 // 1. BACKEND & BRAIN
 import { db } from '../../firebaseConfig'; 
@@ -48,9 +48,6 @@ import WarningIcon from '@mui/icons-material/Warning';
 import NightlightRoundIcon from '@mui/icons-material/NightlightRound';
 import CloseIcon from '@mui/icons-material/Close';
 import CakeIcon from '@mui/icons-material/Cake';
-import MaleIcon from '@mui/icons-material/Male';
-import FemaleIcon from '@mui/icons-material/Female';
-import PetsIcon from '@mui/icons-material/Pets';
 
 const BREED_DATA = {
   Canine: [
@@ -136,7 +133,6 @@ export default function Queue() {
   const [editEstYears, setEditEstYears] = useState('');
   const [editEstMonths, setEditEstMonths] = useState('');
   const [editColor, setEditColor] = useState('');
-  const [isAgeExact, setIsAgeExact] = useState(true);
 
   const [openReschedule, setOpenReschedule] = useState(false);
   const [openDefer, setOpenDefer] = useState(false);
@@ -147,6 +143,7 @@ export default function Queue() {
   const [historyList, setHistoryList] = useState([]);
   const [openRevert, setOpenRevert] = useState(false);
   const [revertReason, setRevertReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const [openConsult, setOpenConsult] = useState(false);
   const[openPOS, setOpenPOS] = useState(false);
@@ -654,7 +651,6 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       }
       
       setEditDobMode(selectedRow.isAgeExact === false ? 'approximate' : (rawDob ? 'exact' : 'unknown'));
-      setIsAgeExact(selectedRow.isAgeExact !== false);
       setEditEstYears('');
       setEditEstMonths('');
       
@@ -664,6 +660,8 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
   };
 
   const saveEdit = async () => {
+    if (submitting) return;
+    setSubmitting(true);
     try {
       let finalDob = null;
       let finalIsAgeExact = true;
@@ -700,6 +698,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       });
       setOpenEdit(false);
     } catch (e) { console.error(e); }
+    finally { setSubmitting(false); }
   };
   const handleRescheduleOpen = () => { 
     setAuditReason(""); // RESET FOR NEW ACTION
@@ -725,16 +724,19 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
   };
 
   const confirmRevert = async () => {
-    if (!revertReason.trim()) return;
+    if (!revertReason.trim() || submitting) return;
+    setSubmitting(true);
     try {
       await revertStatus({ ...selectedRow, revertReason: revertReason });
       setOpenRevert(false);
       handleCloseMenu();
     } catch (e) { alert(e.message); }
+    finally { setSubmitting(false); }
   };
 
   const saveReschedule = async () => {
-    if(!newDate || !auditReason.trim()) return;
+    if(!newDate || !auditReason.trim() || submitting) return;
+    setSubmitting(true);
     const staffSignature = profile?.fullName || user?.email || 'System Triage';
 
     try {
@@ -785,41 +787,47 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         }
 
         await updateDoc(doc(db, "appointments", selectedRow.id), updateData);
-        setOpenReschedule(false); 
+        setOpenReschedule(false);
         setAuditReason("");
     } catch (e) {
         alert("Reschedule failed: " + e.message);
-    }
+    } finally { setSubmitting(false); }
   };
 
   const saveDefer = async () => {
-    if (!auditReason.trim()) return;
+    if (!auditReason.trim() || submitting) return;
+    setSubmitting(true);
     try {
         await deferAppointment(selectedRow.id, auditReason, undefined, clinicSettings);
         setOpenDefer(false);
         setAuditReason("");
     } catch (e) { alert(e.message); }
+    finally { setSubmitting(false); }
   };
 
   const saveNoShow = async () => {
-    if (!auditReason.trim()) return;
+    if (!auditReason.trim() || submitting) return;
+    setSubmitting(true);
     try {
         await markNoShow(selectedRow, auditReason, clinicSettings);
         setOpenNoShow(false);
         setAuditReason("");
     } catch (e) { alert(e.message); }
+    finally { setSubmitting(false); }
   };
   const fetchHistory = async () => { if (!selectedRow.petId) return alert("Walk-In Account Required"); const q = query(collection(db, "medical_records"), where("petId", "==", selectedRow.petId), orderBy("date", "desc")); const s = await getDocs(q); setHistoryList(s.docs.map(d => d.data())); setOpenHistory(true); handleCloseMenu(); };
-  const confirmReject = async () => { 
-    if (!selectedRow) return; 
-    try { 
+  const confirmReject = async () => {
+    if (!selectedRow || submitting) return;
+    setSubmitting(true);
+    try {
       const rawStatus = (selectedRow.status || 'unknown').toLowerCase();
       const isHighStakes = HIGH_STAKES_STATUSES.has(rawStatus);
-      
-      await rejectAppointment(selectedRow.id, rejectReason, selectedRow.services, isHighStakes, clinicSettings, selectedRow); 
-      setOpenReject(false); 
-      setRejectReason(''); 
-    } catch (err) { alert(err.message); } 
+
+      await rejectAppointment(selectedRow.id, rejectReason, selectedRow.services, isHighStakes, clinicSettings, selectedRow);
+      setOpenReject(false);
+      setRejectReason('');
+    } catch (err) { alert(err.message); }
+    finally { setSubmitting(false); }
   };
 
   // ======================================================================
@@ -1503,7 +1511,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           rows={getFilteredRows()} 
           columns={tableColumns} 
           hideFooter
-          disableSelectionOnClick 
+          disableRowSelectionOnClick
           disableColumnResize
           disableColumnReorder
           disableColumnMenu
@@ -1633,10 +1641,10 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         </DialogContent>
         <DialogActions sx={{ p: 2, pt: 1, borderTop: '1px solid #FFCDD2' }}>
           <Button onClick={() => setOpenReject(false)} sx={{ fontWeight: 'bold', color: '#757575' }}>Cancel</Button>
-          <Button 
-            onClick={confirmReject} 
-            variant="contained" 
-            disabled={!rejectReason.trim()}
+          <Button
+            onClick={confirmReject}
+            variant="contained"
+            disabled={!rejectReason.trim() || submitting}
             sx={{ 
                 bgcolor: '#D32F2F', 
                 fontWeight: '1000', 
@@ -1820,7 +1828,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                         </Typography>
                     </Box>
                     <List sx={{ p: 0 }}>
-                      {([...(hoverMetadata.data || [])].sort((a,b) => a.name.localeCompare(b.name))).map((svc, i) => {
+                      {([...(hoverMetadata.data || [])].sort((a,b) => (a.name || '').localeCompare(b.name || ''))).map((svc, i) => {
                         const deptObj = (departments || []).find(d => d.name === svc.department);
                         const bColor = deptObj ? deptObj.color : '#616161';
                         return (
@@ -2110,7 +2118,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
               <TextField label="OWNER PHONE" fullWidth variant="outlined" size="small" placeholder="09xxxxxxxxx" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} InputLabelProps={{ sx: { fontWeight: '1000', fontSize: '0.75rem' } }} inputProps={{ style: { fontWeight: '1000' } }} />
             </Grid>
 
-            <Grid item xs={12}><Divider sx={{ my: 1 }} /></Grid>
+            <Grid size={{ xs: 12 }}><Divider sx={{ my: 1 }} /></Grid>
 
             <Grid size={{ xs: 12 }}>
               <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1 }}>PATIENT BIOMETRICS</Typography>
@@ -2215,7 +2223,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         </DialogContent>
         <DialogActions sx={{ p: 2, bgcolor: '#FFF' }}>
           <Button onClick={() => setOpenEdit(false)} sx={{ fontWeight: '1000', color: '#757575' }}>DISCARD CHANGES</Button>
-          <Button onClick={saveEdit} variant="contained" sx={{ bgcolor: '#5D4037', fontWeight: '1000', px: 4 }}>SAVE CLINICAL IDENTITY</Button>
+          <Button onClick={saveEdit} variant="contained" disabled={submitting} sx={{ bgcolor: '#5D4037', fontWeight: '1000', px: 4 }}>SAVE CLINICAL IDENTITY</Button>
         </DialogActions>
       </Dialog>
 
@@ -2267,10 +2275,10 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         </DialogContent>
         <DialogActions sx={{ p: 2, pt: 0 }}>
           <Button onClick={() => setOpenReschedule(false)} sx={{ fontWeight: 'bold', color: '#757575' }}>Cancel</Button>
-          <Button 
-            onClick={saveReschedule} 
-            variant="contained" 
-            disabled={!newDate || !auditReason.trim()}
+          <Button
+            onClick={saveReschedule}
+            variant="contained"
+            disabled={!newDate || !auditReason.trim() || submitting}
             sx={{ bgcolor: '#1976D2', fontWeight: 'bold', '&.Mui-disabled': { bgcolor: '#e0e0e0' } }}
           >
             Update Schedule
@@ -2285,7 +2293,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
             {historyList.length === 0 ? <Typography sx={{ fontStyle: 'italic', color: '#9E9E9E', p: 3, textAlign: 'center' }}>No historical records found for this patient.</Typography> : 
               historyList.map((h, i) => (
                 <Paper key={i} sx={{ p: 2, mb: 2, bgcolor: '#F5F5F5', borderLeft: '5px solid #5D4037' }}>
-                   <Typography variant="caption" sx={{ fontWeight: 'bold', color: '#757575' }}>{h.date?.toDate().toLocaleDateString()} ● {h.type || 'Clinical Record'}</Typography>
+                   <Typography variant="caption" sx={{ fontWeight: 'bold', color: '#757575' }}>{h.date ? (h.date.toDate ? h.date.toDate() : new Date(h.date)).toLocaleDateString() : 'Date Unknown'} ● {h.type || 'Clinical Record'}</Typography>
                    <Typography variant="body2" sx={{ mt: 1, whiteSpace: 'pre-wrap' }}>{h.notes}</Typography>
                 </Paper>
               ))
@@ -2349,13 +2357,13 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         </DialogContent>
         <DialogActions sx={{ p: 2, pt: 1, borderTop: '1px solid #FFE0B2' }}>
           <Button onClick={() => setOpenRevert(false)} sx={{ fontWeight: 'bold', color: '#757575' }}>Cancel</Button>
-          <Button 
-            onClick={confirmRevert} 
-            variant="contained" 
-            disabled={!revertReason.trim()}
-            sx={{ 
-                bgcolor: '#E65100', 
-                fontWeight: '1000', 
+          <Button
+            onClick={confirmRevert}
+            variant="contained"
+            disabled={!revertReason.trim() || submitting}
+            sx={{
+                bgcolor: '#E65100',
+                fontWeight: '1000',
                 px: 3,
                 '&.Mui-disabled': { bgcolor: '#e0e0e0' },
                 '&:hover': { bgcolor: '#BF360C' }
@@ -2399,10 +2407,10 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         </DialogContent>
         <DialogActions sx={{ p: 2, pt: 0 }}>
           <Button onClick={() => setOpenDefer(false)} sx={{ fontWeight: 'bold', color: '#757575' }}>Cancel</Button>
-          <Button 
-            onClick={saveDefer} 
-            variant="contained" 
-            disabled={!auditReason.trim()}
+          <Button
+            onClick={saveDefer}
+            variant="contained"
+            disabled={!auditReason.trim() || submitting}
             sx={{ bgcolor: '#E65100', fontWeight: 'bold', '&.Mui-disabled': { bgcolor: '#e0e0e0' } }}
           >
             Confirm Deferral
@@ -2432,7 +2440,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
               sx={{
                   '& .MuiOutlinedInput-root': {
                       fontWeight: '900', fontSize: '0.75rem', bgcolor: '#FAFAFA',
-                      '& fieldset': { borderColor: !auditReason.trim() ? '#D32F2F' : '#D32F2F' }
+                      '& fieldset': { borderColor: !auditReason.trim() ? '#D32F2F' : '#5D4037' }
                   }
               }}
           />
@@ -2444,10 +2452,10 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         </DialogContent>
         <DialogActions sx={{ p: 2, pt: 0 }}>
           <Button onClick={() => setOpenNoShow(false)} sx={{ fontWeight: 'bold', color: '#757575' }}>Cancel</Button>
-          <Button 
-            onClick={saveNoShow} 
-            variant="contained" 
-            disabled={!auditReason.trim()}
+          <Button
+            onClick={saveNoShow}
+            variant="contained"
+            disabled={!auditReason.trim() || submitting}
             sx={{ bgcolor: '#D32F2F', fontWeight: 'bold', '&.Mui-disabled': { bgcolor: '#e0e0e0' } }}
           >
             Confirm No-Show
@@ -2563,16 +2571,21 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         </DialogContent>
         <DialogActions sx={{ p: 2, pt: 1, borderTop: '1px solid #FFE0B2' }}>
           <Button onClick={() => setOpenTriageShield(false)} sx={{ fontWeight: 'bold', color: '#757575' }}>Cancel</Button>
-          <Button 
-            onClick={() => {
-              // EXECUTION: Re-using the core rollover batch logic with a 1-patient array
-              confirmResetDay(false, { [selectedRow.id]: triageDate }, { [selectedRow.id]: triageMode }, { [selectedRow.id]: triageReason }, { [selectedRow.id]: triageTime });
-              setOpenTriageShield(false);
-              setTriageReason("");
-              setTriageTime(clinicSettings.openingTime || "08:00");
-            }} 
-            variant="contained" 
-            disabled={!triageReason.trim()}
+          <Button
+            onClick={async () => {
+              if (submitting) return;
+              setSubmitting(true);
+              try {
+                await confirmResetDay(false, { [selectedRow.id]: triageDate }, { [selectedRow.id]: triageMode }, { [selectedRow.id]: triageReason }, { [selectedRow.id]: triageTime });
+              } finally {
+                setOpenTriageShield(false);
+                setTriageReason("");
+                setTriageTime(clinicSettings.openingTime || "08:00");
+                setSubmitting(false);
+              }
+            }}
+            variant="contained"
+            disabled={!triageReason.trim() || submitting}
             sx={{ 
                 bgcolor: '#E65100', 
                 fontWeight: '1000', 

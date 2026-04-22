@@ -4,17 +4,15 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, 
   Button, TextField, MenuItem, Box, Typography, 
   FormControl, InputLabel, Select, RadioGroup, FormControlLabel, Radio, 
-  Autocomplete, Alert, CircularProgress, Paper, Divider, Switch, Accordion, AccordionSummary, AccordionDetails, Chip, Stack,
+  Autocomplete, Alert, CircularProgress, Paper, Divider, Switch, Chip, Stack,
   ToggleButton, ToggleButtonGroup
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
 
 // Icons
-import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import WarningIcon from '@mui/icons-material/Warning';
 import CircleIcon from '@mui/icons-material/Circle';
 import DirectionsWalkIcon from '@mui/icons-material/DirectionsWalk';
-import AccessTimeIcon from '@mui/icons-material/AccessTime'; 
 import CakeIcon from '@mui/icons-material/Cake';
 
 import { collection, doc, runTransaction, Timestamp, query, where, getDocs } from 'firebase/firestore';
@@ -117,6 +115,12 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
     setGuestPetData({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', microchip: '', petAllergies: '', weight: '' });
     setSelectedServices([]);
     setNoShowInfo(null);
+    setAllergyArray([]);
+    setShowAllergyInput(false);
+    setCurrentAllergyInput('');
+    setDobMode('exact');
+    setEstYears('');
+    setEstMonths('');
     setConfirmDiscard(false);
     setConfirmSubmit(false);
     onClose();
@@ -201,17 +205,19 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
               finalIsAgeExact = false;
           }
 
-          const petPayload = { 
+          const resolvedPetAllergies = showAllergyInput && allergyArray.length > 0 ? allergyArray.join(', ') : 'None';
+          const petPayload = {
               ...guestPetData,
+              petAllergies: resolvedPetAllergies,
               breed: guestPetData.breed === 'Mixed' ? 'Mixed Breed' : guestPetData.breed,
               microchip: guestPetData.microchip ? guestPetData.microchip.trim() : 'N/A'
           };
           const weightVal = parseFloat(petPayload.weight);
           delete petPayload.weight;
-          
+
           const newPetRef = doc(collection(db, "pets"));
-          transaction.set(newPetRef, { 
-              ownerId: finalOwnerId, ...petPayload, 
+          transaction.set(newPetRef, {
+              ownerId: finalOwnerId, ...petPayload,
               weight: weightVal > 0 ? weightVal : null,
               lastWeight: weightVal > 0 ? weightVal : null,
               dob: finalDOB,
@@ -247,16 +253,18 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
                   mFinalIsAgeExact = false;
               }
 
-              const petPayload = { 
+              const resolvedPetAllergies2 = showAllergyInput && allergyArray.length > 0 ? allergyArray.join(', ') : 'None';
+              const petPayload = {
                   ...guestPetData,
+                  petAllergies: resolvedPetAllergies2,
                   breed: guestPetData.breed === 'Mixed' ? 'Mixed Breed' : guestPetData.breed,
                   microchip: guestPetData.microchip ? guestPetData.microchip.trim() : 'N/A'
               };
               const weightVal = parseFloat(petPayload.weight);
               delete petPayload.weight;
-              
+
               const newPetRef = doc(collection(db, "pets"));
-              transaction.set(newPetRef, { 
+              transaction.set(newPetRef, {
                   ownerId: finalOwnerId, ...petPayload,
                   weight: weightVal > 0 ? weightVal : null,
                   lastWeight: weightVal > 0 ? weightVal : null,
@@ -439,6 +447,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
             value={walkInType} 
             onChange={(e) => {
               setWalkInType(e.target.value);
+              setErrorMsg('');
               setGuestName(''); setGuestPhone(''); setGuestEmail('');
               setGuestPetData({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', microchip: '', petAllergies: '', weight: '' });
               setSelectedClient(null); setSelectedPet(null); setIsNewPet(false);
@@ -672,7 +681,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
                                             placeholder="Type allergy (e.g. Peanuts, Chicken)" 
                                             value={currentAllergyInput}
                                             onChange={(e) => setCurrentAllergyInput(e.target.value)}
-                                            onKeyPress={(e) => {
+                                            onKeyDown={(e) => {
                                                 if (e.key === 'Enter' && currentAllergyInput.trim()) {
                                                     e.preventDefault();
                                                     setAllergyArray(prev => [...prev, currentAllergyInput.trim()]);

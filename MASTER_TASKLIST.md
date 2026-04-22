@@ -92,6 +92,7 @@
 | T2.30a | Staff attribution dropdown: add "— Unassigned —" placeholder MenuItem when vetsList is empty or no prior assignment | P3 | 5 min | T2.30 | TODO | Review finding — blank dropdown with no visible option to leave unassigned |
 | T2.31 | Protect default inventory categories | 1-2 hrs | — | DONE | Firestore rule !catId.matches default_ + Settings.jsx client guard + hide delete icon |
 | T2.32 | Extract SoapGrid component (blocks T2.28) | 2-3 hrs | — | DONE | |
+| T2.32a | Move ZEN_PLACEHOLDERS to shared constants file — duplicated in SoapGrid.jsx + ClinicalWorkspace.jsx, divergence risk | P3 | 10 min | T2.32 | TODO | Review finding — both files define identical placeholder strings |
 | T2.33 | dischargePolicy per service (required/optional) | 1.5 hrs | — | DONE | |
 | T2.41 | Remove caseDay increment from reschedule path | 10 min | — | DONE | |
 | T2.105 | SC/PWD discount eligibility per service (`isScPwdEligible` toggle) | 30 min | — | DONE | **Legal compliance (RA 9994)** |
@@ -157,6 +158,7 @@
 | T2.95 | Per-service progress card in ClinicalWorkspace sidebar | 45 min | T2.94, T2.13 | DONE | Absorbs T2.103 |
 | T2.96 | Decouple sign-off from status advancement | 1-2 hrs | T2.95 | DONE | |
 | T2.100 | POSModal: clinicalPulse event on checkout | 10 min | — | DONE | |
+| T2.100a | POSModal handleCheckout: appointment update writes `status: 'completed'` without statusHistory push — billing→completed transition missing from revert index | P3 | 10 min | T2.100 | TODO | Review finding — pre-existing gap, POSModal bypasses changeStatus entirely |
 | T2.101 | Outstanding balance: remove counter, compute from sales. "Record Payment" in BillingLedger. | 2-3 hrs | — | DONE | Decision locked: computed only |
 | T2.104 | Transaction void with inventory reversal | 3-4 hrs | — | DONE | |
 | T2.108 | Document client-side timestamp limitation | 5 min | — | DONE | |
@@ -228,6 +230,7 @@
 | T2.46.1 | Rename rebook → reschedule/carryover | 45 min | — | DONE | |
 | T2.49 | Unify ancestor chain walkers | 1.25 hrs | — | DONE | |
 | T2.53 | rescheduleAppointment runTransaction conversion | 15 min | — | DONE | |
+| T2.53a | rejectAppointment cancel pulse: add missing `fromStatus` field for audit trail completeness | P3 | 2 min | — | TODO | Review finding — pre-existing gap, all other STATUS_CHANGE events include fromStatus |
 | T2.54 | IDENTITY_HEALING pulse event | 10 min | — | DONE | |
 | T2.56 | CONFINE date picker color cues | 1 hr | — | DONE | |
 | T2.62 | Case lineage indicator column | 30 min | — | DONE | Day N chip for multi-day cases |
@@ -262,6 +265,7 @@
 | T2.102c | Deposit modal: borderRadius 1.2/4px → 0 for neubrutalism compliance | P3 | 2 min | T2.102 | TODO | Review finding — Design Sweep scope |
 | T2.107 | Per-service time tracking (Option A: explicit start/complete) | 25 min | T2.95 | DONE | |
 | T2.109 | Centralized pulse event factory | 45 min | T2.38 | DONE | |
+| T2.109a | Adopt createPulseEvent factory: refactor 3+ inline pulse-event objects in useQueueActions.js to use the factory | P3 | 30 min | T2.109 | TODO | Review finding — factory exported but zero consumers, consistency benefit deferred |
 | T2.111 | Extract shared ClinicalTimeline component | 1.5 hrs | — | DONE | Non-essential refactor |
 | T2.114 | Owner name: fullName fix in PatientDashboard | 2 min | — | TODO | |
 | T2.117 | Deduplicate calculateAge into shared util | 10 min | — | TODO | |
@@ -919,6 +923,10 @@
 | T2.521 | Remove dentalGrade/lamenessGrade Firestore writes (no input UI, always 0) | P2 | 5 min | DONE |
 | T2.522 | Propagate live weight to main Identity Strip | P2 | 5 min | DONE |
 | T2.523 | Remove dead code: Widget, getGlucoseLevel, selectedRxItem, dischargeRef | P3 | 10 min | DONE |
+| T2.518a | ClinicalWorkspace allergy case inconsistency: Identity Strip checks `!== 'None'` (exact case), God-View checks `.toUpperCase() !== 'NONE'` — normalize to case-insensitive | P3 | 2 min | T2.518 | TODO | Review finding — 'none' (lowercase from legacy data) would show as allergy in Identity Strip |
+| T2.518b | ClinicalWorkspace: remove residual `soapRef` state — attached to Box but never consumed (no scrollTo/focus caller) | P3 | 1 min | — | TODO | Review finding — dead state from T2.18 cleanup |
+| T2.95a | ServiceProgressCard: replace hardcoded `#2E7D32`/`#E8F5E9` with `COLORS.success`/`COLORS.kpiGreenBg` tokens | P3 | 5 min | T2.95 | TODO | Review finding — Design Sweep scope |
+| T2.105a | ServiceFormModal: isScPwdEligible Switch uses `color="secondary"` instead of `COLORS.accent` token override | P3 | 5 min | T2.105 | TODO | Review finding — Design Sweep scope |
 
 ---
 

@@ -61,6 +61,9 @@ import { openPrintWindow } from '../../utils/printUtils';
 import { generateVisitSummaryHTML } from '../../utils/printVisitSummary';
 import { generateVaccinationRecordHTML } from '../../utils/printVaccinationRecord';
 
+// ── Vaccine Catalog & Helpers ────────────────────────────────────
+import { VACCINE_CATALOG, getVaccineAdministrations, resolveVaccineFromName } from '../../utils/vaccineConstants';
+
 // ── Modals ──────────────────────────────────────────────────────
 import ReferralModal from './components/ReferralModal';
 
@@ -271,43 +274,48 @@ export default function PatientDashboard() {
     return Array.from(rxMap.values());
   }, [history]);
 
-  // Vaccination tracker — prefers structured vaccineData (Phase 4) from the medical
-  // record when available; falls back to keyword-matching against SOAP text for
-  // legacy records that pre-date the structured form.
+  // Vaccination tracker — uses VACCINE_CATALOG for canonical vaccine list.
+  // Primary: match vaccineAdministrations[].vaccineName via resolveVaccineFromName (id-based match).
+  // Fallback: keyword-match against SOAP text for legacy records pre-dating the structured form.
   const vaccinationStatus = useMemo(() => {
-    const VACCINES = [
-      { name: 'Rabies', keywords: ['rabies'], intervalDays: 365 },
-      { name: 'DHPP', keywords: ['dhpp', 'da2pp', 'distemper', 'parvo', 'parvovirus', '5-in-1', '5 in 1'], intervalDays: 365 },
-      { name: 'Bordetella', keywords: ['bordetella', 'kennel cough', 'kennel'], intervalDays: 180 },
-      { name: 'Leptospirosis', keywords: ['lepto', 'leptospirosis'], intervalDays: 365 },
-    ];
-
     const records = history || [];
 
-    return VACCINES.map(vax => {
-      // --- Structured path: check records with a vaccineData object first ---
-      const structuredMatch = records.find(r => {
-        const vaxName = (r.vaccineData?.vaccineName || '').toLowerCase();
-        return vax.keywords.some(kw => vaxName.includes(kw));
-      });
+    return VACCINE_CATALOG.map(catalogVax => {
+      // --- Structured path: find the MOST RECENT vaccineAdministration matching this catalog entry ---
+      let structuredMatch = null;
+      let matchedAdmin = null;
+      let bestTime = 0;
+      for (const r of records) {
+        const admins = getVaccineAdministrations(r);
+        const admin = admins.find(a => {
+          const resolved = resolveVaccineFromName(a.vaccineName);
+          return resolved?.id === catalogVax.id;
+        });
+        if (admin) {
+          const rTime = r.date?.toDate ? r.date.toDate().getTime() : (r.date?.seconds ? r.date.seconds * 1000 : 0);
+          if (rTime >= bestTime) { structuredMatch = r; matchedAdmin = admin; bestTime = rTime; }
+        }
+      }
 
-      if (structuredMatch) {
-        const sd = structuredMatch.vaccineData;
+      if (structuredMatch && matchedAdmin) {
+        const sd = matchedAdmin;
         const lastDate = structuredMatch.date?.toDate
           ? structuredMatch.date.toDate()
           : (structuredMatch.date?.seconds ? new Date(structuredMatch.date.seconds * 1000) : null);
-        if (!lastDate) return { ...vax, status: 'unknown', lastDate: null, daysUntilDue: null, lotNumber: sd.lotNumber || null };
+        if (!lastDate) return {
+          name: catalogVax.name, id: catalogVax.id, intervalDays: catalogVax.intervalDays,
+          status: 'unknown', lastDate: null, daysUntilDue: null, lotNumber: sd.lotNumber || null,
+        };
 
-        // If the record carries an explicit due date, use it directly
         const explicitDue = sd.dueDate ? new Date(sd.dueDate) : null;
-        const intervalDays = sd.intervalDays || vax.intervalDays;
+        const intervalDays = sd.intervalDays || catalogVax.intervalDays;
         const daysUntilDue = explicitDue
           ? Math.floor((explicitDue.getTime() - Date.now()) / 86400000)
           : intervalDays - Math.floor((Date.now() - lastDate.getTime()) / 86400000);
 
         const status = daysUntilDue < 0 ? 'overdue' : daysUntilDue <= 30 ? 'due_soon' : 'current';
         return {
-          ...vax,
+          name: catalogVax.name, id: catalogVax.id, intervalDays: catalogVax.intervalDays,
           status, lastDate, daysUntilDue,
           lotNumber: sd.lotNumber || null,
           manufacturer: sd.manufacturer || null,
@@ -319,29 +327,40 @@ export default function PatientDashboard() {
       const keywordMatches = records.filter(r => {
         const text = [r.diagnosis, r.treatment, r.soap?.subjective, r.soap?.objectiveNotes]
           .filter(Boolean).join(' ').toLowerCase();
-        return vax.keywords.some(kw => text.includes(kw));
+        return catalogVax.keywords.some(kw => text.includes(kw));
       });
 
-      if (keywordMatches.length === 0) return { ...vax, status: 'unknown', lastDate: null, daysUntilDue: null };
+      if (keywordMatches.length === 0) return {
+        name: catalogVax.name, id: catalogVax.id, intervalDays: catalogVax.intervalDays,
+        status: 'unknown', lastDate: null, daysUntilDue: null,
+      };
 
-      const latest = keywordMatches[0];
+      const latest = keywordMatches.reduce((a, b) => {
+        const aTime = a.date?.toDate ? a.date.toDate().getTime() : (a.date?.seconds ? a.date.seconds * 1000 : 0);
+        const bTime = b.date?.toDate ? b.date.toDate().getTime() : (b.date?.seconds ? b.date.seconds * 1000 : 0);
+        return aTime >= bTime ? a : b;
+      });
       const lastDate = latest.date?.toDate
         ? latest.date.toDate()
         : (latest.date?.seconds ? new Date(latest.date.seconds * 1000) : null);
-      if (!lastDate) return { ...vax, status: 'unknown', lastDate: null, daysUntilDue: null };
+      if (!lastDate) return {
+        name: catalogVax.name, id: catalogVax.id, intervalDays: catalogVax.intervalDays,
+        status: 'unknown', lastDate: null, daysUntilDue: null,
+      };
 
       const daysSince = Math.floor((Date.now() - lastDate.getTime()) / 86400000);
-      const daysUntilDue = vax.intervalDays - daysSince;
+      const daysUntilDue = catalogVax.intervalDays - daysSince;
       const status = daysUntilDue < 0 ? 'overdue' : daysUntilDue <= 30 ? 'due_soon' : 'current';
-      return { ...vax, status, lastDate, daysUntilDue };
+      return { name: catalogVax.name, id: catalogVax.id, intervalDays: catalogVax.intervalDays, status, lastDate, daysUntilDue };
     });
   }, [history]);
 
   // Records that contain structured vaccine data — used by the vaccination
   // record printable. Sorted ascending so the document reads oldest-to-newest.
+  // Uses getVaccineAdministrations() to handle both new and legacy formats.
   const vaccineRecords = useMemo(() =>
     (history || [])
-      .filter(r => r.vaccineData?.vaccineName)
+      .filter(r => getVaccineAdministrations(r).length > 0)
       .sort((a, b) => (a.date?.seconds || 0) - (b.date?.seconds || 0)),
     [history]
   );

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import './ClinicalWorkspace.css';
 import { resolveTieredPrice } from '../utils/resolveTieredPrice';
+import { VACCINE_CATALOG, VACCINE_KEYWORDS } from '../utils/vaccineConstants';
 import {
   Dialog, Slide, AppBar, Toolbar, IconButton, Typography, Button,
   Box, Paper, Avatar, Chip, TextField, MenuItem,
@@ -31,6 +32,17 @@ import { FONT, TYPE, COLORS } from '../theme/designTokens';
 const Transition = React.forwardRef(function Transition(props, ref) {
   return <Slide direction="up" ref={ref} {...props} />;
 });
+
+/**
+ * Default/empty vaccine administration row. Defined at module scope so that
+ * spreading it inside the component never re-creates the object reference
+ * on each render (avoids subtle re-initialization bugs).
+ */
+const EMPTY_VAX = {
+  vaccineName: '', manufacturer: '', lotNumber: '',
+  routeOfAdmin: 'SQ', siteOfInjection: 'Right Scruff',
+  dueDate: '', intervalDays: 365,
+};
 
 /**
  * Returns a human-readable relative time string for a given Date.
@@ -312,12 +324,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   const [dentalGrade, setDentalGrade] = useState(0);
   const [lamenessGrade, setLamenessGrade] = useState(0);
 
-  // C1: Structured vaccine administration record
-  const [vaccineData, setVaccineData] = useState({
-    vaccineName: '', manufacturer: '', lotNumber: '',
-    routeOfAdmin: 'SQ', siteOfInjection: 'Right Scruff',
-    dueDate: '', intervalDays: 365,
-  });
+  // C1: Structured vaccine administration records — array for multi-vaccine-per-visit
+  const [vaccineAdministrations, setVaccineAdministrations] = useState([{ ...EMPTY_VAX }]);
 
   // C3: Lab results — array of { testName, result, status, notes }
   const [labResults, setLabResults] = useState([]);
@@ -520,6 +528,33 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                     });
                 }
             });
+
+            // T2.474: Pre-fill vaccine form from the first linked inventory product's FIFO batch.
+            // Use an inline keyword check (not the isVaccinationVisit memo) because this useEffect
+            // runs after render and we need the check to be synchronous within this closure.
+            const isVax = VACCINE_KEYWORDS.some(kw =>
+                (patient?.primaryService || '').toLowerCase().includes(kw)
+                || (patient?.services || []).some(s => (s.name || '').toLowerCase().includes(kw))
+            );
+            if (isVax) {
+                const firstLinkedVaccine = linkedIds
+                    .map(id => inventoryList.find(i => i.id === id))
+                    .find(item => item?.batches?.length > 0);
+                if (firstLinkedVaccine) {
+                    const batch = firstLinkedVaccine.batches[0]; // FIFO — oldest batch first
+                    setVaccineAdministrations(prev => {
+                        const updated = [...prev];
+                        if (updated[0]) {
+                            updated[0] = {
+                                ...updated[0],
+                                manufacturer: updated[0].manufacturer || firstLinkedVaccine.manufacturer || '',
+                                lotNumber: updated[0].lotNumber || batch.batchNumber || batch.lotNumber || '',
+                            };
+                        }
+                        return updated;
+                    });
+                }
+            }
         }
 
         if (cancelled) return;
@@ -831,11 +866,19 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
    * structured Vaccine Details form in the Plan quadrant.
    */
   const isVaccinationVisit = useMemo(() => {
-    const keywords = ['vaccine', 'vaccination', 'rabies', 'dhpp', 'da2pp', 'bordetella', 'lepto', '5-in-1'];
     const serviceNames = (patient?.services || []).map(s => (s.name || '').toLowerCase()).join(' ');
     const primary = (patient?.primaryService || '').toLowerCase();
-    return keywords.some(kw => serviceNames.includes(kw) || primary.includes(kw));
+    return VACCINE_KEYWORDS.some(kw => serviceNames.includes(kw) || primary.includes(kw));
   }, [patient]);
+
+  /** Species-filtered vaccine dropdown options, plus a free-text "Other" entry */
+  const vaccineOptions = useMemo(() => {
+    const species = (petDetails?.species || '').toLowerCase();
+    const filtered = species
+      ? VACCINE_CATALOG.filter(v => v.species.includes(species))
+      : VACCINE_CATALOG;
+    return [...filtered.map(v => v.name), 'Other'];
+  }, [petDetails]);
 
   const hasDrugsInCart = rxCart.some(item => item.isDrug);
   const nextRouteStatus = hasDrugsInCart ? "dispensing" : "billing";
@@ -929,19 +972,34 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             vetName: vetName,
             patientStatus: soapData.patientStatus || 'Stable',
         },
-        // C1: Structured vaccine record — only written when visit is vaccine-related
-        // and the vet has entered a vaccine name (avoids polluting non-vax records).
-        ...(isVaccinationVisit && vaccineData.vaccineName ? {
-            vaccineData: {
-                vaccineName: vaccineData.vaccineName,
-                manufacturer: vaccineData.manufacturer,
-                lotNumber: vaccineData.lotNumber,
-                routeOfAdmin: vaccineData.routeOfAdmin,
-                siteOfInjection: vaccineData.siteOfInjection,
-                dueDate: vaccineData.dueDate || null,
-                intervalDays: vaccineData.intervalDays || 365,
-            }
-        } : {}),
+        // C1: Structured vaccine records — array, supports multi-vaccine per visit.
+        // Also writes legacy vaccineData (first entry) for backward compat with
+        // mobile PetHistoryScreen and printVaccinationRecord until they are updated.
+        ...(isVaccinationVisit && vaccineAdministrations.some(v => v.vaccineName) ? (() => {
+            const filled = vaccineAdministrations.filter(v => v.vaccineName);
+            const first = filled[0];
+            return {
+                vaccineAdministrations: filled.map(v => ({
+                    vaccineName: v.vaccineName,
+                    manufacturer: v.manufacturer,
+                    lotNumber: v.lotNumber,
+                    routeOfAdmin: v.routeOfAdmin,
+                    siteOfInjection: v.siteOfInjection,
+                    dueDate: v.dueDate || null,
+                    intervalDays: v.intervalDays || 365,
+                })),
+                // Legacy shim — first vaccine duplicated as vaccineData for old readers
+                vaccineData: {
+                    vaccineName: first.vaccineName,
+                    manufacturer: first.manufacturer,
+                    lotNumber: first.lotNumber,
+                    routeOfAdmin: first.routeOfAdmin,
+                    siteOfInjection: first.siteOfInjection,
+                    dueDate: first.dueDate || null,
+                    intervalDays: first.intervalDays || 365,
+                },
+            };
+        })() : {}),
         // C3: Lab results — only written when at least one row has been added.
         // Empty testName rows are filtered to avoid noise.
         ...(labResults.length > 0 ? {
@@ -1547,53 +1605,89 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             <Grid size={{ xs: 12, md: 6 }} sx={{ height: { xs: 'auto', md: '50%' } }}>
               <SoapQuadrant id="plan" label="P - PLAN (TREATMENT & RECHECKS)" onZoomField={setFullscreenField}>
 
-                {/* C1: Vaccine Details — only rendered for vaccination visits */}
+                {/* C1: Vaccine Details — renders one form row per administration */}
                 {isVaccinationVisit && (
                   <Box sx={{ mb: 2, p: 2, bgcolor: '#E8F5E9', border: '1px solid #A5D6A7', flexShrink: 0 }}>
-                    <Typography sx={{ fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: 1, color: '#2E7D32', mb: 1.5 }}>
-                      VACCINE DETAILS
-                    </Typography>
-                    <Grid container spacing={1.5}>
-                      <Grid size={{ xs: 6 }}>
-                        <TextField size="small" fullWidth label="Vaccine Name" value={vaccineData.vaccineName}
-                          onChange={(e) => setVaccineData(prev => ({ ...prev, vaccineName: e.target.value }))}
-                          sx={{ bgcolor: 'white' }} />
-                      </Grid>
-                      <Grid size={{ xs: 6 }}>
-                        <TextField size="small" fullWidth label="Manufacturer" value={vaccineData.manufacturer}
-                          onChange={(e) => setVaccineData(prev => ({ ...prev, manufacturer: e.target.value }))}
-                          sx={{ bgcolor: 'white' }} />
-                      </Grid>
-                      <Grid size={{ xs: 4 }}>
-                        <TextField size="small" fullWidth label="Lot Number" value={vaccineData.lotNumber}
-                          onChange={(e) => setVaccineData(prev => ({ ...prev, lotNumber: e.target.value }))}
-                          sx={{ bgcolor: 'white' }} />
-                      </Grid>
-                      <Grid size={{ xs: 4 }}>
-                        <TextField size="small" fullWidth label="Route" select value={vaccineData.routeOfAdmin}
-                          onChange={(e) => setVaccineData(prev => ({ ...prev, routeOfAdmin: e.target.value }))}
-                          sx={{ bgcolor: 'white' }}>
-                          {['SQ', 'IM', 'ID', 'IN', 'PO'].map(r => (
-                            <MenuItem key={r} value={r}>{r}</MenuItem>
-                          ))}
-                        </TextField>
-                      </Grid>
-                      <Grid size={{ xs: 4 }}>
-                        <TextField size="small" fullWidth label="Site" value={vaccineData.siteOfInjection}
-                          onChange={(e) => setVaccineData(prev => ({ ...prev, siteOfInjection: e.target.value }))}
-                          sx={{ bgcolor: 'white' }} />
-                      </Grid>
-                      <Grid size={{ xs: 6 }}>
-                        <TextField size="small" fullWidth label="Next Due Date" type="date" value={vaccineData.dueDate}
-                          onChange={(e) => setVaccineData(prev => ({ ...prev, dueDate: e.target.value }))}
-                          InputLabelProps={{ shrink: true }} sx={{ bgcolor: 'white' }} />
-                      </Grid>
-                      <Grid size={{ xs: 6 }}>
-                        <TextField size="small" fullWidth label="Interval (days)" type="number" value={vaccineData.intervalDays}
-                          onChange={(e) => setVaccineData(prev => ({ ...prev, intervalDays: parseInt(e.target.value) || 365 }))}
-                          sx={{ bgcolor: 'white' }} />
-                      </Grid>
-                    </Grid>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                      <Typography sx={{ fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: 1, color: '#2E7D32' }}>
+                        VACCINE DETAILS ({vaccineAdministrations.length})
+                      </Typography>
+                      <Button size="small"
+                        onClick={() => setVaccineAdministrations(prev => [...prev, { ...EMPTY_VAX }])}
+                        sx={{ fontWeight: 900, fontSize: '0.6rem', textTransform: 'uppercase', color: '#2E7D32', minWidth: 0 }}>
+                        + Add Vaccine
+                      </Button>
+                    </Box>
+
+                    {vaccineAdministrations.map((vax, idx) => {
+                      const update = (field, value) => setVaccineAdministrations(prev =>
+                        prev.map((v, i) => i === idx ? { ...v, [field]: value } : v)
+                      );
+                      const remove = () => setVaccineAdministrations(prev =>
+                        prev.length <= 1 ? [{ ...EMPTY_VAX }] : prev.filter((_, i) => i !== idx)
+                      );
+
+                      return (
+                        <Box key={idx} sx={{
+                          mb: idx < vaccineAdministrations.length - 1 ? 2 : 0,
+                          pb: idx < vaccineAdministrations.length - 1 ? 2 : 0,
+                          borderBottom: idx < vaccineAdministrations.length - 1 ? '1px dashed #A5D6A7' : 'none',
+                        }}>
+                          {vaccineAdministrations.length > 1 && (
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                              <Typography sx={{ fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase', color: '#558B2F' }}>
+                                Vaccine #{idx + 1}
+                              </Typography>
+                              <Button size="small" onClick={remove}
+                                sx={{ fontWeight: 700, fontSize: '0.55rem', color: '#C62828', minWidth: 0, p: 0.5 }}>
+                                Remove
+                              </Button>
+                            </Box>
+                          )}
+                          <Grid container spacing={1.5}>
+                            <Grid size={{ xs: 6 }}>
+                              <Autocomplete size="small" freeSolo options={vaccineOptions}
+                                value={vax.vaccineName || ''}
+                                inputValue={vax.vaccineName || ''}
+                                onInputChange={(_, val) => update('vaccineName', val)}
+                                renderInput={(params) => (
+                                  <TextField {...params} label="Vaccine Name" sx={{ bgcolor: 'white' }} />
+                                )} />
+                            </Grid>
+                            <Grid size={{ xs: 6 }}>
+                              <TextField size="small" fullWidth label="Manufacturer" value={vax.manufacturer}
+                                onChange={(e) => update('manufacturer', e.target.value)} sx={{ bgcolor: 'white' }} />
+                            </Grid>
+                            <Grid size={{ xs: 4 }}>
+                              <TextField size="small" fullWidth label="Lot Number" value={vax.lotNumber}
+                                onChange={(e) => update('lotNumber', e.target.value)} sx={{ bgcolor: 'white' }} />
+                            </Grid>
+                            <Grid size={{ xs: 4 }}>
+                              <TextField size="small" fullWidth label="Route" select value={vax.routeOfAdmin}
+                                onChange={(e) => update('routeOfAdmin', e.target.value)} sx={{ bgcolor: 'white' }}>
+                                {['SQ', 'IM', 'ID', 'IN', 'PO'].map(r => (
+                                  <MenuItem key={r} value={r}>{r}</MenuItem>
+                                ))}
+                              </TextField>
+                            </Grid>
+                            <Grid size={{ xs: 4 }}>
+                              <TextField size="small" fullWidth label="Site" value={vax.siteOfInjection}
+                                onChange={(e) => update('siteOfInjection', e.target.value)} sx={{ bgcolor: 'white' }} />
+                            </Grid>
+                            <Grid size={{ xs: 6 }}>
+                              <TextField size="small" fullWidth label="Next Due Date" type="date" value={vax.dueDate}
+                                onChange={(e) => update('dueDate', e.target.value)}
+                                InputLabelProps={{ shrink: true }} sx={{ bgcolor: 'white' }} />
+                            </Grid>
+                            <Grid size={{ xs: 6 }}>
+                              <TextField size="small" fullWidth label="Interval (days)" type="number" value={vax.intervalDays}
+                                onChange={(e) => update('intervalDays', parseInt(e.target.value) || 365)}
+                                sx={{ bgcolor: 'white' }} />
+                            </Grid>
+                          </Grid>
+                        </Box>
+                      );
+                    })}
                   </Box>
                 )}
 

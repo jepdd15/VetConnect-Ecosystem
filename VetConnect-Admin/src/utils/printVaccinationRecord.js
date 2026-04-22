@@ -1,19 +1,20 @@
-// NOTE: Currently reads vaccineData (singular) from each medical record.
-// When Module 16 (Vaccination Redesign, T2.472) ships, this will need
-// updating to read from vaccineAdministrations[] (array per record).
+// Reads vaccineAdministrations[] (array per record) with backward compat
+// for legacy vaccineData (singular) via getVaccineAdministrations().
 
 import { PRINT_STYLES, formatPrintDate, esc } from './printUtils';
+import { getVaccineAdministrations } from './vaccineConstants';
 
 /**
  * Derives a vaccination status label (Current / Due Soon / Overdue / Unknown)
- * and the days-until-due figure from a vaccine record's due date.
+ * and the days-until-due figure from a single vaccine administration object.
  *
- * @param {object} vaxRecord  A medical_records document that has vaccineData
+ * @param {object} vaxAdmin    A single vaccine administration entry (from vaccineAdministrations[] or vaccineData)
+ * @param {object} recordDate  The Firestore `date` field of the parent medical record
  * @returns {{ status: string, daysUntilDue: number|null }}
  */
-function deriveVaxStatus(vaxRecord) {
-  const { vaccineData, date } = vaxRecord;
-  const intervalDays = vaccineData?.intervalDays || 365;
+function deriveVaxStatus(vaxAdmin, recordDate) {
+  const intervalDays = vaxAdmin?.intervalDays || 365;
+  const date = recordDate;
 
   const lastDate = date?.toDate
     ? date.toDate()
@@ -23,12 +24,12 @@ function deriveVaxStatus(vaxRecord) {
 
   if (!lastDate) return { status: 'Unknown', daysUntilDue: null };
 
-  const explicitDue = vaccineData?.dueDate
-    ? (vaccineData.dueDate.toDate
-        ? vaccineData.dueDate.toDate()
-        : vaccineData.dueDate.seconds
-          ? new Date(vaccineData.dueDate.seconds * 1000)
-          : new Date(vaccineData.dueDate))
+  const explicitDue = vaxAdmin?.dueDate
+    ? (vaxAdmin.dueDate.toDate
+        ? vaxAdmin.dueDate.toDate()
+        : vaxAdmin.dueDate.seconds
+          ? new Date(vaxAdmin.dueDate.seconds * 1000)
+          : new Date(vaxAdmin.dueDate))
     : null;
   const daysUntilDue = explicitDue
     ? Math.floor((explicitDue.getTime() - Date.now()) / 86400000)
@@ -83,9 +84,10 @@ export function generateVaccinationRecordHTML({ pet, owner, vaccineRecords, clin
   const now = new Date().toLocaleString('en-PH', { dateStyle: 'long', timeStyle: 'short' });
 
   // ── Vaccination History table rows ────────────────────────────
-  const historyRows = vaccineRecords.map(r => {
-    const vd = r.vaccineData || {};
-    return `
+  // flatMap so that multi-vaccine visits produce one row per administration.
+  const historyRows = vaccineRecords.flatMap(r => {
+    const admins = getVaccineAdministrations(r);
+    return admins.map(vd => `
       <tr>
         <td>${formatPrintDate(r.date)}</td>
         <td><strong>${esc(vd.vaccineName || '—')}</strong></td>
@@ -96,23 +98,25 @@ export function generateVaccinationRecordHTML({ pet, owner, vaccineRecords, clin
         <td>${esc(r.vetName || '—')}</td>
         <td>${vd.dueDate ? formatPrintDate(vd.dueDate) : '—'}</td>
       </tr>
-    `;
+    `);
   }).join('');
 
   // ── Vaccination Status Summary table rows ────────────────────
-  // Deduplicate by vaccine name — pick the most recent record per vaccine.
+  // Deduplicate by vaccine name — pick the most recent administration per vaccine.
   const latestByVaccine = new Map();
   vaccineRecords.forEach(r => {
-    const name = r.vaccineData?.vaccineName;
-    if (!name) return;
-    const existing = latestByVaccine.get(name);
+    const admins = getVaccineAdministrations(r);
     const rTime = r.date?.toDate ? r.date.toDate().getTime() : (r.date?.seconds ? r.date.seconds * 1000 : 0);
-    const eTime = existing?.date?.toDate ? existing.date.toDate().getTime() : (existing?.date?.seconds ? existing.date.seconds * 1000 : 0);
-    if (!existing || rTime > eTime) latestByVaccine.set(name, r);
+    admins.forEach(admin => {
+      const name = admin.vaccineName;
+      if (!name) return;
+      const existing = latestByVaccine.get(name);
+      if (!existing || rTime > existing.rTime) latestByVaccine.set(name, { admin, record: r, rTime });
+    });
   });
 
-  const statusRows = Array.from(latestByVaccine.values()).map(r => {
-    const { status, daysUntilDue } = deriveVaxStatus(r);
+  const statusRows = Array.from(latestByVaccine.values()).map(({ admin, record }) => {
+    const { status, daysUntilDue } = deriveVaxStatus(admin, record.date);
     const statusColor = status === 'Current' ? '#2E7D32'
       : status === 'Due Soon' ? '#F57F17'
       : status === 'Overdue' ? '#C62828'
@@ -122,8 +126,8 @@ export function generateVaccinationRecordHTML({ pet, owner, vaccineRecords, clin
       : `${daysUntilDue}d`;
     return `
       <tr>
-        <td><strong>${esc(r.vaccineData.vaccineName)}</strong></td>
-        <td>${formatPrintDate(r.date)}</td>
+        <td><strong>${esc(admin.vaccineName)}</strong></td>
+        <td>${formatPrintDate(record.date)}</td>
         <td style="color:${statusColor}; font-weight:700">${status}</td>
         <td>${dueLabel}</td>
       </tr>

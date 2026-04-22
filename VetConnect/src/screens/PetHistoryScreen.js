@@ -384,42 +384,46 @@ export default function PetHistoryScreen({ route, navigation }) {
               );
             })()}
 
-            {/* VACCINATION RECORD */}
-            {item.vaccineData && (
+            {/* VACCINATION RECORD — supports multi-vaccine via vaccineAdministrations[] with legacy fallback */}
+            {(item.vaccineAdministrations?.length > 0 || item.vaccineData) && (
               <View style={styles.vaccineCard}>
                 <Text style={styles.vaccineHeader}>💉 VACCINATION RECORD</Text>
-                <Text style={styles.vaccineName}>{item.vaccineData.vaccineName}</Text>
-                <View style={styles.vaccineGrid}>
-                  {item.vaccineData.manufacturer && (
-                    <View style={styles.vaccineCell}>
-                      <Text style={styles.vaccineCellLabel}>MFR</Text>
-                      <Text style={styles.vaccineCellValue}>{item.vaccineData.manufacturer}</Text>
+                {(item.vaccineAdministrations || (item.vaccineData ? [item.vaccineData] : [])).map((vax, vIdx) => (
+                  <View key={vIdx} style={vIdx > 0 ? { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#C8E6C9' } : undefined}>
+                    <Text style={styles.vaccineName}>{vax.vaccineName}</Text>
+                    <View style={styles.vaccineGrid}>
+                      {vax.manufacturer && (
+                        <View style={styles.vaccineCell}>
+                          <Text style={styles.vaccineCellLabel}>MFR</Text>
+                          <Text style={styles.vaccineCellValue}>{vax.manufacturer}</Text>
+                        </View>
+                      )}
+                      {vax.lotNumber && (
+                        <View style={styles.vaccineCell}>
+                          <Text style={styles.vaccineCellLabel}>LOT</Text>
+                          <Text style={styles.vaccineCellValue}>{vax.lotNumber}</Text>
+                        </View>
+                      )}
+                      {vax.routeOfAdmin && (
+                        <View style={styles.vaccineCell}>
+                          <Text style={styles.vaccineCellLabel}>ROUTE</Text>
+                          <Text style={styles.vaccineCellValue}>{vax.routeOfAdmin}</Text>
+                        </View>
+                      )}
+                      {vax.siteOfInjection && (
+                        <View style={styles.vaccineCell}>
+                          <Text style={styles.vaccineCellLabel}>SITE</Text>
+                          <Text style={styles.vaccineCellValue}>{vax.siteOfInjection}</Text>
+                        </View>
+                      )}
                     </View>
-                  )}
-                  {item.vaccineData.lotNumber && (
-                    <View style={styles.vaccineCell}>
-                      <Text style={styles.vaccineCellLabel}>LOT</Text>
-                      <Text style={styles.vaccineCellValue}>{item.vaccineData.lotNumber}</Text>
-                    </View>
-                  )}
-                  {item.vaccineData.routeOfAdmin && (
-                    <View style={styles.vaccineCell}>
-                      <Text style={styles.vaccineCellLabel}>ROUTE</Text>
-                      <Text style={styles.vaccineCellValue}>{item.vaccineData.routeOfAdmin}</Text>
-                    </View>
-                  )}
-                  {item.vaccineData.siteOfInjection && (
-                    <View style={styles.vaccineCell}>
-                      <Text style={styles.vaccineCellLabel}>SITE</Text>
-                      <Text style={styles.vaccineCellValue}>{item.vaccineData.siteOfInjection}</Text>
-                    </View>
-                  )}
-                </View>
-                {item.vaccineData.dueDate && (
-                  <View style={styles.vaccineDueBanner}>
-                    <Text style={styles.vaccineDueText}>⏰ Next dose due {item.vaccineData.dueDate}</Text>
+                    {vax.dueDate && (
+                      <View style={styles.vaccineDueBanner}>
+                        <Text style={styles.vaccineDueText}>⏰ Next dose due {vax.dueDate}</Text>
+                      </View>
+                    )}
                   </View>
-                )}
+                ))}
               </View>
             )}
 

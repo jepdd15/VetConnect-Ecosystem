@@ -829,12 +829,13 @@
 
 | ID | Name | Priority | Effort | Status | Notes |
 |---|---|---|---|---|---|
-| T2.472 | Promote vaccineData to vaccineAdministrations[] array | P1 | 1.5 hrs | TODO | Multi-vaccine per visit. Backward-compat wrapper |
-| T2.474 | Auto-populate vaccine form from linked inventory batch | P2 | 30 min | TODO | Reads FIFO batches[0] |
-| T2.476 | Create VACCINE_CATALOG shared constant (6 vaccines, IDs, species, intervals) | P1 | 15 min | TODO | utils/vaccineConstants.js |
-| T2.477 | Replace vaccine TextField with species-filtered Autocomplete dropdown + "Other" | P1 | 30 min | TODO | Dropdown IS the manual toggle |
-| T2.478 | Update PatientDashboard tracker: vaccineId match + keyword fallback for legacy | P1 | 30 min | TODO | |
-| T2.479 | Update mobile PetHistoryScreen for vaccineAdministrations[] | P1 | 20 min | TODO | |
+| T2.472 | Promote vaccineData to vaccineAdministrations[] array | P1 | 1.5 hrs | DONE | Multi-vaccine form, dual write (new array + legacy shim), printVaccinationRecord updated. **Review fix:** esc() XSS prevention |
+| T2.474 | Auto-populate vaccine form from linked inventory batch | P2 | 30 min | DONE | **Review fix:** pre-fill only overwrites empty fields (preserves user edits) |
+| T2.476 | Create VACCINE_CATALOG shared constant (6 vaccines, IDs, species, intervals) | P1 | 15 min | DONE | vaccineConstants.js with VACCINE_CATALOG, VACCINE_KEYWORDS, resolveVaccineFromName, getVaccineAdministrations |
+| T2.477 | Replace vaccine TextField with species-filtered Autocomplete dropdown + "Other" | P1 | 30 min | DONE | freeSolo Autocomplete. **Review fix:** inputValue prop for proper controlled behavior |
+| T2.478 | Update PatientDashboard tracker: vaccineId match + keyword fallback for legacy | P1 | 30 min | DONE | **Review fix:** both paths now pick most-recent match (not first) |
+| T2.479 | Update mobile PetHistoryScreen for vaccineAdministrations[] | P1 | 20 min | DONE | Inline fallback to vaccineData, multiple cards with separator |
+| T2.472a | ClinicalWorkspace: verify vaccineAdministrations state resets on patient change (or confirm component unmounts between patients) | P2 | 15 min | TODO | Review finding — stale vaccine data may persist if CW stays mounted |
 
 ### MyPetsScreen A- Tier (T2.480-T2.483)
 

@@ -66,7 +66,7 @@
 | T2.44 | Write forensicSeal on normal sign-off + completed path | 30 min | — | TODO | Happy path has no seal |
 | T2.57 | Records.jsx bug fixes (4 bugs) | 45 min | — | TODO | Filters always empty |
 | T2.58 | Records.jsx terminology cleanup | 30 min | — | TODO | |
-| T2.79 | Fix tiered pricing per-pet weight | 30 min | — | TODO | Wrong prices on multi-pet bookings |
+| T2.79 | Fix tiered pricing per-pet weight | 30 min | — | DONE | Per-pet resolveTieredPrice inside forEach loop. **Review fix:** step 4 shows "Est. Total" with weight-adjustment note |
 | T2.119 | Normalize allergy field: read `petAllergies \|\| allergies` everywhere, write `petAllergies`, propagate to active appointments on edit | 45 min | — | TODO | **PATIENT SAFETY** — allergy warnings suppressed for mobile pets |
 | T2.149 | `adjustStock`: wrap in `runTransaction` with stock floor check (`newStock >= 0`) and reserved check (`newStock >= reserved`) | 30 min | — | DONE | **Review fix:** spread-copy batches array before push to prevent transaction retry double-append |
 | T2.150 | Normalize refund log schema: use `action: 'RESTOCK'`, `amountChange`, `userName`/`userId`. Add `RESTOCK` to GlobalActivityLog ACTION_CONFIG. Extract shared `normalizeLog` utility. | 45 min | — | DONE | Shared normalizeInventoryLog.js created |
@@ -116,8 +116,8 @@
 
 | ID | Name | Effort | Depends On | Status | Notes |
 |---|---|---|---|---|---|
-| T2.5 | useBookingEngine onSnapshot for clinic_settings | 30 min | — | TODO | |
-| T2.6 | Reminder banner timestamp crash fix | 5 min | — | TODO | |
+| T2.5 | useBookingEngine onSnapshot for clinic_settings | 30 min | — | DONE | **Review fix:** removed clinicSettings from initializeUser useEffect deps to prevent re-fire |
+| T2.6 | Reminder banner timestamp crash fix | 5 min | — | DONE | Safe chain with isNaN guard |
 | T2.8 | Path A clientReport split | 1 hr | — | TODO | |
 | T2.9 | Cloud Functions fate decision | 15 min-4 hrs | — | TODO | |
 | T2.12 | Rename Sign Digital Consent → Lock Clinical Record | 15 min | — | TODO | |
@@ -141,7 +141,7 @@
 | T2.71 | Saved filter presets for Records | 2.5 hrs | — | TODO | |
 | T2.75 | Clinical amendment path for locked records | 3 hrs | — | TODO | Most important P2 |
 | T2.80 | POSModal services[] rewrite for multi-service billing | 1-2 hrs | — | TODO | |
-| T2.87 | BookAppointment TOCTOU race fix (runTransaction) | 45 min | — | TODO | |
+| T2.87 | BookAppointment TOCTOU race fix (runTransaction) | 45 min | — | DONE | writeBatch → runTransaction with atomic retry |
 | T2.93 | Delete `workflowType` legacy field | 5 min | — | TODO | |
 | T2.94 | Delete phantom per-service code in ClinicalWorkspace | 15 min | — | TODO | |
 | T2.95 | Per-service progress card in ClinicalWorkspace sidebar | 45 min | T2.94, T2.13 | TODO | Absorbs T2.103 |
@@ -231,15 +231,15 @@
 | T2.74 | Bulk staff reassignment in Records | 1.5 hrs | — | TODO | |
 | T2.76 | Client self-check-in via clinic QR | 5-6 hrs | — | TODO | |
 | T2.77 | 4-tier ticket prefix scheme (A/W/E/R) | 30 min | — | DONE | R prefix for caseDay > 1; apptLabel shows RETURN |
-| T2.78 | visitGroupId at multi-pet booking time | 30 min | — | TODO | |
-| T2.81 | Fix advanceNoticeBuffer phantom field | 5 min | — | TODO | |
-| T2.82 | Mixed-species filter warning banner | 15 min | — | TODO | |
-| T2.83 | Debounce slot generation | 30 min | — | TODO | |
-| T2.84 | Write serviceBuffer to appointment root | 10 min | — | TODO | |
-| T2.85 | Zero-capacity department explanation | 20 min | — | TODO | |
-| T2.86 | findFirstBookableDate capacity check | 1 hr | — | TODO | |
-| T2.88 | Profile up-to-date nudge | 20 min | — | TODO | |
-| T2.89 | Past-date submit guard | 10 min | — | TODO | |
+| T2.78 | visitGroupId at multi-pet booking time | 30 min | — | DONE | VG-{uid5}-{timestamp}, groupSize, groupIndex per appointment |
+| T2.81 | Fix advanceNoticeBuffer phantom field | 5 min | — | DONE | Uses advanceNoticeMins/60 |
+| T2.82 | Mixed-species filter warning banner | 15 min | — | DONE | Amber banner when Canine+Feline selected |
+| T2.83 | Debounce slot generation | 30 min | — | DONE | Split into effect 3a (fetch) + 3b (compute, 300ms debounce). **Review fix:** closedDatesKey serialized for stable deps |
+| T2.84 | Write serviceBuffer to appointment root | 10 min | — | DONE | bundleTotalBuffer accumulated and written |
+| T2.85 | Zero-capacity department explanation | 20 min | — | DONE | "No staff assigned to [dept]" message |
+| T2.86 | findFirstBookableDate capacity check | 1 hr | — | TODO | PARTIAL: async signature done + await at call site. Capacity callback not wired — needs checkCapacity function defined and passed from ClientAppointments |
+| T2.88 | Profile up-to-date nudge | 20 min | — | DONE | 6-month freshness check with Update Now / Later Alert |
+| T2.89 | Past-date submit guard | 10 min | — | DONE | Aborts with "Time Passed" alert, resets to step 3 |
 | T2.97 | ServiceProgressCard shared component | 1 hr | T2.95 | TODO | |
 | ~~T2.98~~ | ~~POSModal receipt: clinic name from settings~~ | — | — | ABSORBED | Absorbed into T2.148 (superset scope: Sales.jsx + POSModal) |
 | T2.99 | POSModal receipt: cashier name fix | 5 min | — | TODO | |

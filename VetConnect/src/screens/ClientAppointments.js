@@ -298,7 +298,7 @@ const ClientAppointments = ({ navigation }) => {
       }
 
       const target = item.scheduledDate?.toDate() || new Date();
-      const result = findFirstBookableDate(target, 3, clinicSettings);
+      const result = await findFirstBookableDate(target, 3, clinicSettings);
 
       if (result.matchType === 'none') {
         Alert.alert(

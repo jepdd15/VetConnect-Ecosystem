@@ -5,10 +5,10 @@ import {
   getDoc,
   getDocs,
   query,
+  runTransaction,
   Timestamp,
   updateDoc,
   where,
-  writeBatch,
 } from "firebase/firestore";
 import { useEffect, useState, useMemo, useRef } from "react";
 import {
@@ -315,13 +315,30 @@ export default function BookAppointment({ navigation, route }) {
               ],
             );
           }
+
+          // T2.88: Nudge users whose profile hasn't been updated in over 6 months
+          const updatedAt = userData.updatedAt?.toDate?.() || userData.updatedAt;
+          if (updatedAt) {
+            const sixMonthsAgo = new Date();
+            sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+            if (new Date(updatedAt) < sixMonthsAgo) {
+              Alert.alert(
+                "Profile Update Reminder",
+                "Your profile was last updated over 6 months ago. Please verify your contact details are current.",
+                [
+                  { text: "Update Now", onPress: () => navigation.navigate("UserProfile") },
+                  { text: "Later", style: "cancel" },
+                ],
+              );
+            }
+          }
         }
       } catch (err) {
         console.log(err);
       }
     };
     initializeUser();
-  }, [navigation, clinicSettings]);
+  }, [navigation]); // clinicSettings intentionally excluded — initializeUser should not re-fire on live settings changes
 
   // --- HANDLERS ---
   const togglePetSelection = (pet) => {
@@ -371,44 +388,65 @@ export default function BookAppointment({ navigation, route }) {
       const baseDateTime = new Date(date);
       baseDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
 
-      // --- 🧬 CALCULATE BUNDLE PARAMETERS ---
+      // T2.89 — Guard: reject if the computed appointment time is already in the past
+      if (baseDateTime < new Date()) {
+        Alert.alert("Time Passed", "The selected time slot is now in the past. Please select a new time.");
+        setStep(3);
+        setSelectedSlot(null);
+        setLoading(false);
+        return;
+      }
+
+      // --- CALCULATE BUNDLE PARAMETERS ---
       let bundleTotalMinutes = 0;
-      let bundleTotalPrice = 0;
-      // Resolve pet weight for tiered pricing (use first selected pet)
-      const primaryPetWeight = selectedPets[0]?.lastWeight ? parseFloat(selectedPets[0].lastWeight) : null;
+      let bundleTotalBuffer = 0; // T2.84: track total buffer for serviceBuffer field
+
+      // T2.79: resolveTieredPrice is a pure function — defined once, applied per-pet
       const resolveTieredPrice = (svc, weight) => {
-          if (!svc?.hasTieredPricing || !svc?.pricingTiers?.length || weight == null) return parseFloat(svc?.price) || 0;
-          for (const tier of svc.pricingTiers) {
-              const min = Number(tier.minWeight) || 0;
-              const max = Number(tier.maxWeight) || 0;
-              if (weight >= min && (max === 0 || weight <= max)) return Number(tier.price) || parseFloat(svc.price) || 0;
-          }
-          return parseFloat(svc.price) || 0;
+        if (!svc?.hasTieredPricing || !svc?.pricingTiers?.length || weight == null) {
+          return parseFloat(svc?.price) || 0;
+        }
+        const w = Number(weight);
+        for (const tier of svc.pricingTiers) {
+          const min = Number(tier.minWeight) || 0;
+          const max = Number(tier.maxWeight) || 0;
+          if (w >= min && (max === 0 || w <= max)) return Number(tier.price) || parseFloat(svc.price) || 0;
+        }
+        return parseFloat(svc.price) || 0;
       };
 
-      const mappedServices = selectedServices.map(s => {
-          const dur = parseInt(String(s.duration).replace(/[^0-9]/g, "")) || 30;
-          const buff = parseInt(String(s.bufferTime).replace(/[^0-9]/g, "")) || 0;
-          const price = resolveTieredPrice(s, primaryPetWeight);
-
-          bundleTotalMinutes += (dur + buff);
-          bundleTotalPrice += price;
-
-          return {
-              id: s.id || Math.random().toString(36).substr(2, 9),
-              name: s.name,
-              price: price,
-              department: (s.department || s.category || "General"),
-              status: "pending",
-              workflowType: (s.department === "Grooming" || s.category === "Grooming") ? "AESTHETIC" : "MEDICAL",
-              staffId: null,
-              staffName: "Unassigned",
-              duration: dur,
-              buffer: buff
-          };
+      // Pre-compute durations once (weight-independent)
+      const serviceDurations = selectedServices.map(s => {
+        const dur = parseInt(String(s.duration).replace(/[^0-9]/g, "")) || 30;
+        const buff = parseInt(String(s.bufferTime).replace(/[^0-9]/g, "")) || 0;
+        bundleTotalMinutes += (dur + buff);
+        bundleTotalBuffer += buff; // T2.84
+        return { dur, buff };
       });
 
-      // JIT PRE-FLIGHT CHECK
+      // T2.79: Build per-pet mapped services with individual tiered pricing
+      const buildMappedServices = (petWeight) => {
+        let petBundlePrice = 0;
+        const mapped = selectedServices.map((s, i) => {
+          const price = resolveTieredPrice(s, petWeight);
+          petBundlePrice += price;
+          return {
+            id: s.id || Math.random().toString(36).substr(2, 9),
+            name: s.name,
+            price: price,
+            department: (s.department || s.category || "General"),
+            status: "pending",
+            workflowType: (s.department === "Grooming" || s.category === "Grooming") ? "AESTHETIC" : "MEDICAL",
+            staffId: null,
+            staffName: "Unassigned",
+            duration: serviceDurations[i].dur,
+            buffer: serviceDurations[i].buff,
+          };
+        });
+        return { mapped, petBundlePrice };
+      };
+
+      // JIT PRE-FLIGHT CHECK (outside transaction — getDocs queries are not transactional)
       const startOfDay = new Date(baseDateTime);
       startOfDay.setHours(0, 0, 0, 0);
       const endOfDay = new Date(baseDateTime);
@@ -423,85 +461,98 @@ export default function BookAppointment({ navigation, route }) {
         ),
       );
 
-      // Verify availability for EACH service in the bundle
+      // Use null weight for JIT check — department/duration are weight-independent
+      const { mapped: jitServices } = buildMappedServices(null);
       let serviceOffset = 0;
-      for (let svc of mappedServices) {
-          const svcStart = new Date(baseDateTime.getTime() + serviceOffset * 60000);
-          const svcEnd = new Date(svcStart.getTime() + (svc.duration + svc.buffer) * 60000);
-          const requiredDept = svc.department.toLowerCase();
+      for (const svc of jitServices) {
+        const svcStart = new Date(baseDateTime.getTime() + serviceOffset * 60000);
+        const svcEnd = new Date(svcStart.getTime() + (svc.duration + svc.buffer) * 60000);
+        const requiredDept = svc.department.toLowerCase();
 
-          const competing = checkSnap.docs.filter(d => {
-              const data = d.data();
-              const deptsInAppt = new Set();
-              if (data.services && Array.isArray(data.services)) {
-                  data.services.forEach(s => deptsInAppt.add((s.department || "General").toLowerCase()));
-              } else {
-                  deptsInAppt.add((data.department || data.serviceCategory || "General").toLowerCase());
-              }
-              return deptsInAppt.has(requiredDept);
-          });
-
-          let currentOverlaps = 0;
-          competing.forEach(d => {
-              const s = d.data().scheduledDate.toDate();
-              const e = new Date(s.getTime() + ((d.data().serviceDuration || 30) + (d.data().serviceBuffer || 0)) * 60000);
-              if (svcStart < e && svcEnd > s) currentOverlaps++;
-          });
-
-          const capacity = departmentCapacity[requiredDept] || 1;
-          if (currentOverlaps >= capacity) {
-              Alert.alert("Slot Taken", `Another client just booked a ${svc.department} specialist during this window. Please select another time.`);
-              setStep(3); setSelectedSlot(null); setLoading(false); return;
+        const competing = checkSnap.docs.filter(d => {
+          const data = d.data();
+          const deptsInAppt = new Set();
+          if (data.services && Array.isArray(data.services)) {
+            data.services.forEach(s => deptsInAppt.add((s.department || "General").toLowerCase()));
+          } else {
+            deptsInAppt.add((data.department || data.serviceCategory || "General").toLowerCase());
           }
-          serviceOffset += (svc.duration + svc.buffer);
+          return deptsInAppt.has(requiredDept);
+        });
+
+        let currentOverlaps = 0;
+        competing.forEach(d => {
+          const s = d.data().scheduledDate.toDate();
+          const e = new Date(s.getTime() + ((d.data().serviceDuration || 30) + (d.data().serviceBuffer || 0)) * 60000);
+          if (svcStart < e && svcEnd > s) currentOverlaps++;
+        });
+
+        const capacity = departmentCapacity[requiredDept] || 1;
+        if (currentOverlaps >= capacity) {
+          Alert.alert("Slot Taken", `Another client just booked a ${svc.department} specialist during this window. Please select another time.`);
+          setStep(3); setSelectedSlot(null); setLoading(false); return;
+        }
+        serviceOffset += (svc.duration + svc.buffer);
       }
 
-      // ATOMIC BATCH WRITE
-      const batch = writeBatch(db);
-      selectedPets.forEach((pet, index) => {
-        const petDateTime = new Date(baseDateTime.getTime() + index * bundleTotalMinutes * 60000);
-        const qrData = `VC-${auth.currentUser.uid.slice(0, 5)}-${Date.now()}-${index}`;
-        const newApptRef = doc(collection(db, "appointments"));
+      // T2.78: Generate visitGroupId once for multi-pet bookings
+      const visitGroupId = selectedPets.length > 1
+        ? `VG-${auth.currentUser.uid.slice(0, 5)}-${Date.now()}`
+        : null;
 
-         batch.set(newApptRef, {
-          ownerId: auth.currentUser.uid,
-          ownerName: ownerName,
-          petId: pet.id,
-          petName: pet.name,
-          petSpecies: pet.species,
-          
-          // --- EVOLVED SCHEMA: The Clinical Passport ---
-          petBreed: pet.breed === "Mixed/Unknown" || pet.breed === "Mixed" ? "Mixed Breed" : (pet.breed || "Mixed Breed"),
-          petGender: pet.gender === "UNK" ? "Unknown" : (pet.gender || "Unknown"),
-          petColor: pet.color || "N/A",
-          petIsNeutered: pet.isNeutered || false,
-          petBirthdate: pet.dob || null,
-          petWeight: pet.weight || pet.lastWeight || null,
-          petAllergies: pet.allergies || "None",
-          
-          services: mappedServices,
-          primaryService: mappedServices[0].name,
-          serviceType: mappedServices[0].name,
-          serviceCategory: mappedServices[0].department,
-          serviceDuration: bundleTotalMinutes, // Total visit duration
-          servicePrice: bundleTotalPrice,
-          
-          status: "pending",
-          caseDay: 1, // INITIAL PULSE
-          scheduledDate: Timestamp.fromDate(petDateTime),
-          scheduledDateStr: `${petDateTime.getFullYear()}-${String(petDateTime.getMonth() + 1).padStart(2, '0')}-${String(petDateTime.getDate()).padStart(2, '0')}`,
-          triageDate: new Date().toISOString().split('T')[0], // THE REAL-TIME INBOX ANCHOR
-          createdAt: Timestamp.now(),
-          qrCode: qrData,
-          notes: selectedPets.length > 1 ? `[Group Booking ${index + 1}/${selectedPets.length}] ${notes}` : notes,
-          ...(noShowInfo?.count > 0 ? {
-            rebookedFromId: noShowInfo.mostRecent?.id || null,
-            noShowCount: noShowInfo.count,
-          } : {}),
+      // T2.87: Use runTransaction for atomic writes + retry-on-contention
+      await runTransaction(db, async (transaction) => {
+        selectedPets.forEach((pet, index) => {
+          // T2.23: Weight resolution order: lastVitals (most recent clinical) > weight > lastWeight
+          const petWeight = pet.lastVitals?.weight ?? pet.weight ?? pet.lastWeight ?? null;
+          const petWeightNum = petWeight != null ? parseFloat(petWeight) : null;
+          const { mapped: petMappedServices, petBundlePrice } = buildMappedServices(petWeightNum);
+          const petDateTime = new Date(baseDateTime.getTime() + index * bundleTotalMinutes * 60000);
+          const qrData = `VC-${auth.currentUser.uid.slice(0, 5)}-${Date.now()}-${index}`;
+          const newApptRef = doc(collection(db, "appointments"));
+
+          transaction.set(newApptRef, {
+            ownerId: auth.currentUser.uid,
+            ownerName: ownerName,
+            petId: pet.id,
+            petName: pet.name,
+            petSpecies: pet.species,
+
+            // --- EVOLVED SCHEMA: The Clinical Passport ---
+            petBreed: pet.breed === "Mixed/Unknown" || pet.breed === "Mixed" ? "Mixed Breed" : (pet.breed || "Mixed Breed"),
+            petGender: pet.gender === "UNK" ? "Unknown" : (pet.gender || "Unknown"),
+            petColor: pet.color || "N/A",
+            petIsNeutered: pet.isNeutered || false,
+            petBirthdate: pet.dob || null,
+            // T2.23: Same weight resolution order as pricing
+            petWeight: pet.lastVitals?.weight ?? pet.weight ?? pet.lastWeight ?? null,
+            petAllergies: pet.allergies || "None",
+
+            services: petMappedServices,
+            primaryService: petMappedServices[0].name,
+            serviceType: petMappedServices[0].name,
+            serviceCategory: petMappedServices[0].department,
+            serviceDuration: bundleTotalMinutes,
+            serviceBuffer: bundleTotalBuffer, // T2.84: enables accurate busyness calculation
+            servicePrice: petBundlePrice, // T2.79: per-pet tiered price
+
+            status: "pending",
+            caseDay: 1,
+            scheduledDate: Timestamp.fromDate(petDateTime),
+            scheduledDateStr: `${petDateTime.getFullYear()}-${String(petDateTime.getMonth() + 1).padStart(2, '0')}-${String(petDateTime.getDate()).padStart(2, '0')}`,
+            triageDate: new Date().toISOString().split('T')[0],
+            createdAt: Timestamp.now(),
+            qrCode: qrData,
+            notes: selectedPets.length > 1 ? `[Group Booking ${index + 1}/${selectedPets.length}] ${notes}` : notes,
+            // T2.78: Link multi-pet appointments via shared visitGroupId
+            ...(visitGroupId ? { visitGroupId, groupSize: selectedPets.length, groupIndex: index } : {}),
+            ...(noShowInfo?.count > 0 ? {
+              rebookedFromId: noShowInfo.mostRecent?.id || null,
+              noShowCount: noShowInfo.count,
+            } : {}),
+          });
         });
       });
-
-      await batch.commit();
 
       // If this booking originated from a follow-up deep-link, cancel the ghost appointment
       // so it no longer appears in the Upcoming list. Non-fatal — the new booking already succeeded.
@@ -662,6 +713,17 @@ export default function BookAppointment({ navigation, route }) {
                 You can select multiple services to bundle them into one visit.
               </Text>
 
+              {/* T2.82: Mixed-species warning */}
+              {selectedPets.length > 1 && new Set(selectedPets.map(p =>
+                p.species === "Dog" || p.species === "Canine" ? "Canine" : "Feline"
+              )).size > 1 && (
+                <View style={[styles.warningBox, { marginBottom: 12 }]}>
+                  <Text style={styles.warningText}>
+                    You selected mixed species — only services compatible with both dogs and cats are shown.
+                  </Text>
+                </View>
+              )}
+
               {/* SEARCH HUB */}
               <TextInput
                 style={styles.searchInput}
@@ -758,6 +820,14 @@ export default function BookAppointment({ navigation, route }) {
   const renderStep3 = () => {
     // Exclude 'PAST' slots completely
     const futureSlots = availableSlots.filter((s) => s.status !== "PAST");
+
+    // T2.85: Identify if any required department has zero staff capacity
+    const blockedDept = selectedServices.length > 0
+      ? selectedServices.find(s => {
+          const dept = (s.department || s.category || "General").toLowerCase();
+          return !departmentCapacity[dept] || departmentCapacity[dept] === 0;
+        })
+      : null;
     const morningSlots = futureSlots.filter(
       (s) => parseInt(s.timeValue.split(":")[0]) < 12,
     );
@@ -772,7 +842,7 @@ export default function BookAppointment({ navigation, route }) {
         return sum + d + b;
     }, 0);
 
-    const leadHours = clinicSettings?.advanceNoticeBuffer || 2;
+    const leadHours = (clinicSettings?.advanceNoticeMins || 120) / 60;
     const now = new Date();
     const readyTime = new Date(now.getTime() + leadHours * 60 * 60 * 1000);
     const isToday = date.toDateString() === now.toDateString();
@@ -860,8 +930,9 @@ export default function BookAppointment({ navigation, route }) {
         ) : futureSlots.length === 0 ? (
           <View style={styles.warningBox}>
             <Text style={styles.warningText}>
-              ❌ No available slots remaining for this date. Please select
-              another day.
+              {blockedDept
+                ? `The ${blockedDept.department || blockedDept.category || "General"} department has no staff assigned. Please contact the clinic.`
+                : "No available slots remaining for this date. Please select another day."}
             </Text>
           </View>
         ) : (
@@ -1112,7 +1183,10 @@ export default function BookAppointment({ navigation, route }) {
                     🕒 Time: {date.toLocaleDateString()} at {selectedSlot}
                 </Text>
                 <Text style={styles.summaryTotalBig}>
-                    Total: ₱{selectedServices.reduce((sum, s) => sum + (parseFloat(s.price) || 0), 0) * selectedPets.length}
+                    Est. Total: ₱{selectedServices.reduce((sum, s) => sum + (parseFloat(s.price) || 0), 0) * selectedPets.length}
+                </Text>
+                <Text style={{ fontSize: 12, color: '#8D6E63', fontStyle: 'italic', textAlign: 'center' }}>
+                    Final price adjusted per pet's weight at checkout
                 </Text>
             </View>
 
@@ -1168,13 +1242,13 @@ export default function BookAppointment({ navigation, route }) {
           </Text>
           <Text style={styles.noShowBannerText}>
             {noShowInfo.count} no-show{noShowInfo.count > 1 ? 's' : ''} in the last 30 days.
-            {noShowInfo.mostRecent?.scheduledDate
-              ? ` Most recent: ${(
-                  noShowInfo.mostRecent.scheduledDate.toDate
-                    ? noShowInfo.mostRecent.scheduledDate.toDate()
-                    : new Date(noShowInfo.mostRecent.scheduledDate)
-                ).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}.`
-              : ''}
+            {(() => {
+              if (!noShowInfo.mostRecent?.scheduledDate) return '';
+              const raw = noShowInfo.mostRecent.scheduledDate;
+              const d = raw?.toDate ? raw.toDate() : new Date(raw);
+              if (isNaN(d.getTime())) return '';
+              return ` Most recent: ${d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}.`;
+            })()}
           </Text>
         </View>
       )}

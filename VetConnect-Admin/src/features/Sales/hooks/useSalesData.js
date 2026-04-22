@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { collection, query, orderBy, onSnapshot, where, Timestamp, doc, runTransaction, arrayUnion } from 'firebase/firestore';
+import { makePulseEventId } from '../../../utils/pulseUtils';
 import { db } from '../../../firebaseConfig';
 
 export function useSalesData(filterDate, currentUser) {
@@ -123,11 +124,11 @@ export function useSalesData(filterDate, currentUser) {
             status: 'billing',
             balanceRemaining: parseFloat(selectedSale.total) || 0,
             clinicalPulse: arrayUnion({
-              eventId: `pulse_refund_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+              eventId: makePulseEventId('refund'),
               type: 'TRANSACTION_REFUNDED',
               fromStatus: 'completed',
               toStatus: 'billing',
-              timestamp: Timestamp.now(),
+              timestamp: Timestamp.now(), // CLIENT-SIDE CLOCK — see W1 in pulseUtils.js
               staffId: currentUser?.id || 'system',
               staffName: currentUser?.fullName || 'System',
               note: `Full refund processed. Receipt #${selectedSale.id.slice(0, 5)}. Restock: ${restock ? 'yes' : 'no'}.`,
@@ -186,5 +187,63 @@ export function useSalesData(filterDate, currentUser) {
     });
   };
 
-  return { sales, loading, eodTotals, processRefundTransaction };
+  // T2.104: Void a completed sale — reverses inventory, reverts appointment to billing,
+  // and writes a TRANSACTION_VOIDED pulse event. Distinct from refund: void implies
+  // the transaction never should have been finalized (e.g., wrong patient, wrong items).
+  const voidTransaction = async (sale) => {
+    if (!sale) throw new Error("No sale provided.");
+    await runTransaction(db, async (transaction) => {
+      // 1. Restock each sold product
+      for (const item of (sale.items || []).filter(i => i.type === 'product')) {
+        const itemRef = doc(db, "inventory", item.id);
+        const itemDoc = await transaction.get(itemRef);
+        if (!itemDoc.exists()) continue;
+        const data = itemDoc.data();
+        const newStock = (data.stock || 0) + item.qty;
+        transaction.update(itemRef, { stock: newStock });
+        const logRef = doc(collection(db, "inventory_logs"));
+        transaction.set(logRef, {
+          itemId: item.id,
+          itemName: item.name,
+          action: 'RESTOCK',
+          amountChange: item.qty,
+          reason: `Void reversal from sale ${sale.id}`,
+          oldStock: data.stock,
+          newStock,
+          userName: currentUser?.fullName || 'Unknown Staff',
+          userId: currentUser?.id || null,
+          timestamp: Timestamp.now(),
+        });
+      }
+      // 2. Mark sale as voided
+      transaction.update(doc(db, "sales", sale.id), {
+        status: 'voided',
+        voidedAt: Timestamp.now(),
+        voidedBy: currentUser?.fullName || 'System',
+      });
+      // 3. Revert appointment to billing (undo the completed status)
+      if (sale.appointmentId) {
+        const apptRef = doc(db, "appointments", sale.appointmentId);
+        const apptDoc = await transaction.get(apptRef);
+        if (apptDoc.exists()) {
+          transaction.update(apptRef, {
+            status: 'billing',
+            timeCompleted: null,
+            clinicalPulse: arrayUnion({
+              eventId: makePulseEventId('void'),
+              type: 'TRANSACTION_VOIDED',
+              fromStatus: 'completed',
+              toStatus: 'billing',
+              timestamp: Timestamp.now(),
+              staffId: currentUser?.id || 'system',
+              staffName: currentUser?.fullName || 'System',
+              note: `Transaction voided. Receipt #${sale.id.slice(0, 8).toUpperCase()}. Items returned to stock.`,
+            }),
+          });
+        }
+      }
+    });
+  };
+
+  return { sales, loading, eodTotals, processRefundTransaction, voidTransaction };
 }

@@ -8,7 +8,7 @@ import {
   ToggleButton, ToggleButtonGroup, FormControlLabel, Autocomplete
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, Timestamp, where, getDocs, writeBatch, getDoc, arrayUnion } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, Timestamp, where, getDocs, writeBatch, getDoc, arrayUnion, runTransaction } from 'firebase/firestore';
 
 // 1. BACKEND & BRAIN
 import { db } from '../../firebaseConfig'; 
@@ -36,7 +36,7 @@ import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos'; 
 
 // 🧬 PHASE 6 COMPONENTS
-import { calculatePulseMetrics, formatDuration, getSmartShiftDate } from '../../utils/pulseUtils';
+import { calculatePulseMetrics, formatDuration, getSmartShiftDate, makePulseEventId } from '../../utils/pulseUtils';
 import { HIGH_STAKES_STATUSES, ACTIVE_STATUSES, normalizeStatus } from '../../utils/statusConstants';
 import { getLocalDateStr } from '../../utils/dateUtils';
 import { useClinicSettings } from '../../hooks/useClinicSettings';
@@ -115,7 +115,7 @@ export default function Queue() {
   const [isForcedCleanup, setIsForcedCleanup] = useState(false); // The Hostage Lock
   const [hasGhostPatients, setHasGhostPatients] = useState(false);
   const [openTriageShield, setOpenTriageShield] = useState(false); 
-  const [triageMode, setTriageMode] = useState(null); // 'hospitalize' or 'rebook'
+  const [triageMode, setTriageMode] = useState(null); // 'hospitalize' | 'reschedule' | 'carryover'
   const [triageDate, setTriageDate] = useState("");
   const [triageTime, setTriageTime] = useState("08:00");
   const [triageReason, setTriageReason] = useState("");
@@ -258,7 +258,9 @@ export default function Queue() {
   // LOGIC & HANDLERS
   // ======================================================================
   
-const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeMap = {}, targetReasonMap = {}, targetTimeMap = {}) => { 
+// T2.102: depositDataMap is { [patientId]: { amount: number, method: string } }
+// Written to new carry-over appointments so POSModal can deduct it as "Less Deposit".
+const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeMap = {}, targetReasonMap = {}, targetTimeMap = {}, depositDataMap = {}) => {
     try { 
       const todayStr = getLocalDateStr();
 
@@ -327,7 +329,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         );
 
         // --- 🧬 FORENSIC COMMIT ENGINE: TRIAGE DYNAMICS ---
-        if (action === 'rebook' || action === 'confined' || action === 'carry-over' || action === 'defer') { 
+        if (action === 'reschedule' || action === 'carryover' || action === 'confined' || action === 'carry-over' || action === 'defer') {
           // --- 🧬 SMART-SHIFT CALCULATION ---
           // Determine if we are CLOSING today's shift or RECOVERING yesterday's ghosts
           let recordDateObj;
@@ -357,10 +359,13 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           const manualDate = targetDateMap[patient.id] 
             ? new Date(`${targetDateMap[patient.id]}T${precisionTime}:00`) 
             : calculatedDefault;
-          const pulseType = (action === 'defer') ? 'TRIAGE_DEFER' : ((action === 'hospitalize') ? 'TRIAGE_CONFINE' : 'TRIAGE_REBOOK');
+          const pulseType = action === 'defer' ? 'TRIAGE_DEFER'
+            : action === 'hospitalize' ? 'TRIAGE_CONFINE'
+            : action === 'carryover' ? 'TRIAGE_CARRYOVER'
+            : 'TRIAGE_RESCHEDULE';
 
           // PHASE 5.6.20: THE FORENSIC ACTION TRANSLATOR
-          const actionLabel = action === 'hospitalize' ? 'CONFINE' : (action === 'rebook' ? 'REBOOK' : (action === 'defer' ? 'DEFER' : 'CARRY-OVER'));
+          const actionLabel = action === 'hospitalize' ? 'CONFINE' : (action === 'reschedule' ? 'RESCHEDULE' : (action === 'carryover' ? 'CARRY-OVER' : (action === 'defer' ? 'DEFER' : 'CARRY-OVER')));
           const triagePrefix = `[Clinical Triage: ${actionLabel}]`;
 
           if (patient.status === 'carried-over') {
@@ -372,11 +377,11 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                forensicSeal, // THE 8-METRIC AUDIT SEAL
                auditReason: targetReasonMap[patient.id],
                clinicalPulse: arrayUnion({
-                  eventId: `pulse_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                  eventId: makePulseEventId('carryover'),
                   type: pulseType,
                   fromStatus: rawStatus,
                   toStatus: 'carried-over',
-                  timestamp: Timestamp.now(),
+                  timestamp: Timestamp.now(), // CLIENT-SIDE CLOCK — see W1 in pulseUtils.js
                   staffId: user?.uid || 'system',
                   staffName: staffSignature,
                   note: `Shift Cleanup: ${actionLabel} to ${manualDate.toDateString()}. Justification: ${targetReasonMap[patient.id]}`
@@ -398,11 +403,11 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                 forensicSeal, // THE 8-METRIC AUDIT SEAL
                 auditReason: targetReasonMap[patient.id],
                 clinicalPulse: arrayUnion({
-                   eventId: `pulse_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                   eventId: makePulseEventId('carryover'),
                    type: pulseType,
                    fromStatus: rawStatus,
                    toStatus: 'carried-over',
-                   timestamp: Timestamp.now(),
+                   timestamp: Timestamp.now(), // CLIENT-SIDE CLOCK — see W1 in pulseUtils.js
                    staffId: user?.uid || 'system',
                    staffName: staffSignature,
                    note: `Shift Cleanup: ${actionLabel} to ${manualDate.toDateString()}. Justification: ${targetReasonMap[patient.id]}`
@@ -412,30 +417,39 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
              const newDocRef = doc(collection(db, "appointments")); 
              const { id, jsScheduled, jsArrived, jsStarted, jsCompleted, queueNumber, ticketPrefix, timeArrived, timeStarted, timeCompleted, isTriaged: oldIsTriaged, ...preservedData } = patient;
              
-             batch.set(newDocRef, { 
+             // T2.102: Attach deposit if one was collected during EOD wizard.
+             const depositEntry = depositDataMap[patient.id];
+
+             batch.set(newDocRef, {
                 ...preservedData,
-                status: action === 'hospitalize' ? 'confined' : 'confirmed', 
-                queueNumber: null, 
-                ticketPrefix: null, 
-                scheduledDate: Timestamp.fromDate(manualDate), 
+                status: action === 'hospitalize' ? 'confined' : 'confirmed',
+                queueNumber: null,
+                ticketPrefix: null,
+                scheduledDate: Timestamp.fromDate(manualDate),
                 createdAt: patient.createdAt || Timestamp.now(),
                 originApptId: patient.id,
                 caseDay: (patient.caseDay || 1) + 1,
-                notes: cleanNotes, 
+                notes: cleanNotes,
                 processedBy: staffSignature,
                 assignedVet: action === 'hospitalize' ? (patient.assignedVet || "Unassigned") : "Unassigned",
+                ...(depositEntry ? {
+                    depositPaid: depositEntry.amount,
+                    depositMethod: depositEntry.method,
+                    depositCollectedAt: Timestamp.now(),
+                    depositCollectedBy: staffSignature,
+                } : {}),
                 clinicalPulse: [
                    {
-                     eventId: `pulse_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                     eventId: makePulseEventId('inception'),
                      type: 'INCEPTION',
                      toStatus: action === 'hospitalize' ? 'confined' : 'confirmed',
-                     timestamp: Timestamp.now(),
+                     timestamp: Timestamp.now(), // CLIENT-SIDE CLOCK — see W1 in pulseUtils.js
                      staffId: user?.uid || 'system',
                      staffName: staffSignature,
-                     note: `Generated via Triage ${actionLabel} from Appt ${patient.id}`
+                     note: `Generated via Triage ${actionLabel} from Appt ${patient.id}${depositEntry ? ` — Deposit: ₱${depositEntry.amount} (${depositEntry.method})` : ''}`
                    }
                 ]
-             }); 
+             });
            }
         } else {
           // TERMINAL AUDIT (Cancel or No-Show)
@@ -449,11 +463,11 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
              auditReason: targetReasonMap[patient.id],
              forensicSeal,
              clinicalPulse: arrayUnion({
-                eventId: `pulse_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                eventId: makePulseEventId('triage'),
                 type: action === 'no-show' ? 'TRIAGE_NO_SHOW' : 'TRIAGE_CANCELLED',
                 fromStatus: rawStatus,
                 toStatus: finalStatus,
-                timestamp: Timestamp.now(),
+                timestamp: Timestamp.now(), // CLIENT-SIDE CLOCK — see W1 in pulseUtils.js
                 staffId: user?.uid || 'system',
                 staffName: staffSignature,
                 note: `Shift Cleanup Sign-off: ${targetReasonMap[patient.id]}`
@@ -592,12 +606,31 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
     setOpenDispenseVerify(true);
   };
 
+  // T2.52: Atomic dispense verification — both the dispensing data write and the
+  // status advance to billing happen in a single Firestore transaction.
   const handleDispenseVerified = async (dispensingData) => {
     try {
-      await updateDoc(doc(db, "appointments", dispenseRow.id), {
-        ...dispensingData,
+      await runTransaction(db, async (transaction) => {
+        const apptRef = doc(db, "appointments", dispenseRow.id);
+        const apptDoc = await transaction.get(apptRef);
+        if (!apptDoc.exists()) throw new Error("Appointment not found.");
+        transaction.update(apptRef, {
+          ...dispensingData,
+          status: 'billing',
+          timePaymentStarted: Timestamp.now(),
+          statusHistory: arrayUnion(dispenseRow.status || 'dispensing'),
+          clinicalPulse: arrayUnion({
+            eventId: makePulseEventId('status'),
+            type: 'STATUS_CHANGE',
+            fromStatus: 'dispensing',
+            toStatus: 'billing',
+            timestamp: Timestamp.now(),
+            staffId: profile?.id || 'unknown',
+            staffName: profile?.fullName || 'System',
+            note: 'Dispensing verified, moved to billing.',
+          }),
+        });
       });
-      await changeStatus(dispenseRow, 'billing');
       setOpenDispenseVerify(false);
       setDispenseRow(null);
     } catch (e) {
@@ -626,7 +659,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       }
 
       const confinedCount = rows.filter(r => r.status === 'confined').length; 
-      await changeStatus(row, newStatus, confinedCount, clinicSettings.maxCages || 5); 
+      await changeStatus(row, newStatus, confinedCount, clinicSettings.maxCages || 5, clinicSettings);
     } catch (e) { 
       alert(e.message); 
     } 
@@ -684,6 +717,17 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         finalIsAgeExact = false;
       }
 
+      // T2.51: Build changedFields by comparing current vs new values for the pulse note.
+      const changedFields = [];
+      if (editName !== selectedRow.ownerName) changedFields.push('ownerName');
+      if (editPet !== selectedRow.petName) changedFields.push('petName');
+      if (editSpecies !== selectedRow.petSpecies) changedFields.push('petSpecies');
+      if (editBreed !== selectedRow.petBreed) changedFields.push('petBreed');
+      if (editGender !== selectedRow.petGender) changedFields.push('petGender');
+      if (editIsNeutered !== selectedRow.petIsNeutered) changedFields.push('petIsNeutered');
+      if (editPhone !== selectedRow.ownerPhone) changedFields.push('ownerPhone');
+      if (editColor !== (selectedRow.color || selectedRow.petColor || '')) changedFields.push('color');
+
       await updateDoc(doc(db, "appointments", selectedRow.id), {
         ownerName: editName,
         petName: editPet,
@@ -694,7 +738,19 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         ownerPhone: editPhone,
         color: editColor,
         petBirthdate: finalDob,
-        isAgeExact: finalIsAgeExact
+        isAgeExact: finalIsAgeExact,
+        clinicalPulse: arrayUnion({
+          // T2.54: IDENTITY_HEALING distinguishes quick-admit ER corrections (placeholder
+          // name → real patient) from routine edits, for audit trail clarity.
+          eventId: makePulseEventId(selectedRow.notes?.includes('QUICK ADMIT') ? 'identity-healing' : 'identity-edit'),
+          type: selectedRow.notes?.includes('QUICK ADMIT') ? 'IDENTITY_HEALING' : 'IDENTITY_EDIT',
+          timestamp: Timestamp.now(),
+          staffId: profile?.id || 'unknown',
+          staffName: profile?.fullName || 'System',
+          note: changedFields.length > 0
+            ? `Identity fields edited: ${changedFields.join(', ')}`
+            : 'Identity record accessed (no changes detected)',
+        }),
       });
       setOpenEdit(false);
     } catch (e) { console.error(e); }
@@ -761,11 +817,11 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         }
 
         const pulseEvent = {
-            eventId: `pulse_shift_${Date.now()}`,
+            eventId: makePulseEventId('shift'),
             type: 'STATUS_CHANGE',
             toStatus: isCarryOver ? 'carried-over' : 'confirmed',
             shiftNote: 'shifted',
-            timestamp: Timestamp.now(),
+            timestamp: Timestamp.now(), // CLIENT-SIDE CLOCK — see W1 in pulseUtils.js
             staffId: profile?.id || 'unknown',
             staffName: staffSignature,
             note: isCarryOver 
@@ -781,10 +837,6 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
             auditReason: auditReason,
             accumulatedWaitMins: (selectedRow.accumulatedWaitMins || 0) + additionalWaitMins
         };
-
-        if (currentDayStr !== updatedDayStr) {
-            updateData.caseDay = (selectedRow.caseDay || 1) + 1;
-        }
 
         await updateDoc(doc(db, "appointments", selectedRow.id), updateData);
         setOpenReschedule(false);
@@ -1291,9 +1343,9 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                 const isScheduled = rtStatus === 'confirmed';
                 const isActive = ACTIVE_STATUSES.has(rtStatus);
 
-                if (((action === 'defer' || action === 'cancel' || action === 'rebook') && isOnline) ||
-                    ((action === 'no-show' || action === 'rebook' || action === 'cancel') && isScheduled) ||
-                    ((action === 'hospitalize' || action === 'rebook' || action === 'cancel') && isActive)) {
+                if (((action === 'defer' || action === 'cancel' || action === 'reschedule') && isOnline) ||
+                    ((action === 'no-show' || action === 'reschedule' || action === 'cancel') && isScheduled) ||
+                    ((action === 'hospitalize' || action === 'carryover' || action === 'cancel') && isActive)) {
                     newRes[p.id] = action;
                     newReasons[p.id] = reason || "";
                     if (targetDate) newDates[p.id] = targetDate;
@@ -1575,8 +1627,9 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         onResolutionChange={handleResolutionChange}
         onAuditReasonChange={handleAuditReasonChange}
         onBulkResolution={handleBulkResolutionEOD}
-        onConfirmReset={(dates, times) => {
-          confirmResetDay(false, dates, patientResolutions, auditReasons, times);
+        onConfirmReset={(dates, times, depositData) => {
+          // T2.102: depositData = { [patientId]: { amount, method } } — written to carry-over appointments
+          confirmResetDay(false, dates, patientResolutions, auditReasons, times, depositData);
           setIsForcedCleanup(false);
         }}
         isForced={isForcedCleanup}
@@ -1688,7 +1741,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                 <ListItemText primary="🏥 Confine Patient" sx={{ color: '#E65100' }} />
               </MenuItem>
               <MenuItem onClick={() => { 
-                setTriageMode('rebook');
+                setTriageMode('carryover');
                 setTriageDate(new Date(Date.now() + 86400000).toISOString().split('T')[0]);
                 setOpenTriageShield(true); 
                 handleCloseMenu(); 
@@ -2083,6 +2136,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                                 targetDate={new Date(targetDateStr)}
                                 cumulativeTotals={cumulativeTotals}
                                 auditEnd={popoverAuditEnd}
+                                liveAge={!record.forensicSeal && targetDateStr === new Date().toDateString()}
                             />
                           );
                         })()}

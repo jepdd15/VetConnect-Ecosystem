@@ -17,6 +17,7 @@ import { doc, runTransaction, Timestamp, arrayUnion } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 import { useUser } from '../../context/UserContext';
 import { STATUS, TERMINAL_STATUSES } from '../../utils/statusConstants';
+import { makePulseEventId } from '../../utils/pulseUtils';
 
 export default function AssignStaffModal({ open, onClose, patient, vetsList, activeAppointments, departments, mode = 'check-in' }) {
   const { profile, user } = useUser();
@@ -130,11 +131,11 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
 
           const staffSignature = profile?.fullName || user?.email || 'System/Admin';
           const pulseEvent = {
-              eventId: `pulse_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+              eventId: makePulseEventId('assign'),
               type: 'STATUS_CHANGE',
               fromStatus: STATUS.CONFIRMED,
               toStatus: STATUS.ARRIVED,
-              timestamp: Timestamp.now(),
+              timestamp: Timestamp.now(), // CLIENT-SIDE CLOCK — see W1 in pulseUtils.js
               staffId: user?.uid || 'unknown',
               staffName: staffSignature,
               note: 'Patient physically arrived and checked-in.'

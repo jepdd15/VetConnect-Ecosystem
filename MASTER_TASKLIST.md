@@ -60,14 +60,14 @@
 
 | ID | Name | Effort | Depends On | Status | Notes |
 |---|---|---|---|---|---|
-| T2.28-expanded | Wire nextVisit UI + fix 5 follow-up creation bugs | 2-3 hrs | T2.32 | TODO | B5 follow-up shipped but NON-FUNCTIONAL |
+| T2.28-expanded | Wire nextVisit UI + fix 5 follow-up creation bugs | 2-3 hrs | T2.32 | DONE | B5 follow-up shipped but NON-FUNCTIONAL |
 | T2.37 | Firestore rule: clinicalPulse append-only enforcement | 1-2 hrs | — | DONE | Append-only size check + `is list` type guard. **Review fix:** exists() null-safety on getUserRole |
-| T2.37a | Firestore rule: no-show status transition requires isStaff() — mobile pet owners should not be able to set status to no-show | 15 min | T2.1 | TODO | Review finding — appointments update allows any auth user to set no-show |
-| T2.42 | Revert terminal drift fix: clear forensicSeal + TERMINAL_REVERSAL event | 30 min | — | TODO | |
-| T2.44 | Write forensicSeal on normal sign-off + completed path | 30 min | — | TODO | Happy path has no seal |
-| T2.44a | ForensicMetricGrid: decouple age metrics (Record Age + Op Hours Age) from shift/queue/consult metrics for active records. Add `liveAge` prop — when true, override age metrics with `new Date()` instead of day-capped `auditEnd`. Apply to all 3 consumers: Queue.jsx (latest day only), EndOfDayModal.jsx (latest active day), Records.jsx (unsealed+non-terminal). Also fix Records.jsx missing props: add `settings`, `sealedMetrics`, `liveAge` for consistency with Queue.jsx. Export `getOperationalMinutes` from pulseUtils.js. ~10 lines across 3 files. | P2 | 30 min | T2.44 | TODO | Review finding — active records show stale age (2D instead of 9D) because `auditEnd` caps at pulse event day, not current time |
+| T2.37a | Firestore rule: no-show status transition requires isStaff() — mobile pet owners should not be able to set status to no-show | 15 min | T2.1 | DONE | Review finding — appointments update allows any auth user to set no-show |
+| T2.42 | Revert terminal drift fix: clear forensicSeal + TERMINAL_REVERSAL event | 30 min | — | DONE | |
+| T2.44 | Write forensicSeal on normal sign-off + completed path | 30 min | — | DONE | Happy path has no seal |
+| T2.44a | ForensicMetricGrid: decouple age metrics (Record Age + Op Hours Age) from shift/queue/consult metrics for active records. Add `liveAge` prop — when true, override age metrics with `new Date()` instead of day-capped `auditEnd`. Apply to all 3 consumers: Queue.jsx (latest day only), EndOfDayModal.jsx (latest active day), Records.jsx (unsealed+non-terminal). Also fix Records.jsx missing props: add `settings`, `sealedMetrics`, `liveAge` for consistency with Queue.jsx. Export `getOperationalMinutes` from pulseUtils.js. ~10 lines across 3 files. | P2 | 30 min | T2.44 | DONE | Review finding — active records show stale age (2D instead of 9D) because `auditEnd` caps at pulse event day, not current time |
 | T2.57 | Records.jsx bug fixes (4 bugs) | 45 min | — | DONE | Vets→users collection, departments→departments collection, jsScheduled→scheduledDate, window.location→useNavigate. **Review fixes:** error callbacks on both listeners |
-| T2.57a | Records.jsx: undo Snackbar and toast Snackbar overlap — use different `anchorOrigin` values or suppress toast when undo is active | P3 | 5 min | T2.72 | TODO | Review finding — both render at same position simultaneously |
+| T2.57a | Records.jsx: undo Snackbar and toast Snackbar overlap — use different `anchorOrigin` values or suppress toast when undo is active | P3 | 5 min | T2.72 | DONE | Review finding — both render at same position simultaneously |
 | T2.58 | Records.jsx terminology cleanup | 30 min | — | DONE | All forensic/teleport/state-vector terms replaced with plain clinical language |
 | T2.79 | Fix tiered pricing per-pet weight | 30 min | — | DONE | Per-pet resolveTieredPrice inside forEach loop. **Review fix:** step 4 shows "Est. Total" with weight-adjustment note |
 | T2.119 | Normalize allergy field: read `petAllergies \|\| allergies` everywhere, write `petAllergies`, propagate to active appointments on edit | 45 min | — | TODO | **PATIENT SAFETY** — allergy warnings suppressed for mobile pets |
@@ -88,13 +88,13 @@
 | T2.4b | printReferralReport: add vitals.pain to guard condition (omitted from the 7-vital check) | P3 | 1 min | TODO | Review finding |
 | T2.4c | PatientDashboard: remove stale `pet` from useEffect dependency array (pre-existing, causes re-fetch loop risk) | P3 | 1 min | TODO | Review finding — pre-existing tech debt |
 | T2.4d | PatientDashboard banner buttons: borderRadius 1.5 → 0 (neubrutalism compliance, affects Add Record + Book Visit + Referral) | P3 | 5 min | TODO | Review finding — Design Sweep scope |
-| T2.30 | Multi-staff clinical attribution | 2 hrs | — | TODO | |
+| T2.30 | Multi-staff clinical attribution | 2 hrs | — | DONE | |
 | T2.30a | Staff attribution dropdown: add "— Unassigned —" placeholder MenuItem when vetsList is empty or no prior assignment | P3 | 5 min | T2.30 | TODO | Review finding — blank dropdown with no visible option to leave unassigned |
 | T2.31 | Protect default inventory categories | 1-2 hrs | — | DONE | Firestore rule !catId.matches default_ + Settings.jsx client guard + hide delete icon |
-| T2.32 | Extract SoapGrid component (blocks T2.28) | 2-3 hrs | — | TODO | |
-| T2.33 | dischargePolicy per service (required/optional) | 1.5 hrs | — | TODO | |
-| T2.41 | Remove caseDay increment from reschedule path | 10 min | — | TODO | |
-| T2.105 | SC/PWD discount eligibility per service (`isScPwdEligible` toggle) | 30 min | — | TODO | **Legal compliance (RA 9994)** |
+| T2.32 | Extract SoapGrid component (blocks T2.28) | 2-3 hrs | — | DONE | |
+| T2.33 | dischargePolicy per service (required/optional) | 1.5 hrs | — | DONE | |
+| T2.41 | Remove caseDay increment from reschedule path | 10 min | — | DONE | |
+| T2.105 | SC/PWD discount eligibility per service (`isScPwdEligible` toggle) | 30 min | — | DONE | **Legal compliance (RA 9994)** |
 | T2.112 | Sales ownerId: add to sales docs + update query | 30 min | — | TODO | Name collisions + name changes break billing |
 | T2.120 | Species filter normalization ('Dog'→'canine') | 5 min | — | TODO | Dogs disappear when filtering |
 | T2.121 | Date type guards across PetList + BillingLedger | 15 min | — | TODO | Crash on non-Timestamp dates |
@@ -126,41 +126,41 @@
 |---|---|---|---|---|---|
 | T2.5 | useBookingEngine onSnapshot for clinic_settings | 30 min | — | DONE | **Review fix:** removed clinicSettings from initializeUser useEffect deps to prevent re-fire |
 | T2.6 | Reminder banner timestamp crash fix | 5 min | — | DONE | Safe chain with isNaN guard |
-| T2.8 | Path A clientReport split | 1 hr | — | TODO | |
+| T2.8 | Path A clientReport split | 1 hr | — | DONE | |
 | T2.9 | Cloud Functions fate decision | 15 min-4 hrs | — | DONE | Documented as aspirational with activation path + client-side mitigations |
-| T2.12 | Rename Sign Digital Consent → Lock Clinical Record | 15 min | — | TODO | |
-| T2.13 | Refactor CRM Sovereignty (delete sync, keep vitals cache) | 1 hr | — | TODO | Frees sidebar slot for T2.95 |
-| T2.14 | Fix auto-bundling (all services + stock guard) | 30 min | — | TODO | |
-| T2.15 | Expand KNOWLEDGE_BASE to 30+ rules | 3-4 hrs | — | TODO | |
-| T2.16 | POSModal reserved decrement leak fix | 30-60 min | — | TODO | |
-| T2.22 | Vaccine-aware inventory + auto-fill | 2-3 hrs | — | TODO | |
+| T2.12 | Rename Sign Digital Consent → Lock Clinical Record | 15 min | — | DONE | |
+| T2.13 | Refactor CRM Sovereignty (delete sync, keep vitals cache) | 1 hr | — | DONE | Frees sidebar slot for T2.95 |
+| T2.14 | Fix auto-bundling (all services + stock guard) | 30 min | — | DONE | |
+| T2.15 | Expand KNOWLEDGE_BASE to 30+ rules | 3-4 hrs | — | DONE | |
+| T2.16 | POSModal reserved decrement leak fix | 30-60 min | — | DONE | |
+| T2.22 | Vaccine-aware inventory + auto-fill | 2-3 hrs | — | DONE | |
 | T2.23 | useBookingEngine reads lastVitals.weight | 30 min | — | TODO | |
-| T2.24-27 | Promote lab results | 2-3 hrs | — | TODO | |
-| T2.29 | Ditch primaryService field | 2 hrs | — | TODO | |
-| T2.43 | Resolve carried-over → arrived ambiguity | 30 min | — | TODO | |
-| T2.45 | Eliminate statusHistory duplication | 45 min | — | TODO | |
-| T2.50 | Typed confirmation for Active-silo batch cancel | 30 min | — | TODO | |
-| T2.51 | IDENTITY_EDIT pulse event | 15 min | — | TODO | |
-| T2.52 | Atomic handleDispenseVerified | 20 min | — | TODO | |
+| T2.24-27 | Promote lab results | 2-3 hrs | — | DONE | Mobile PetHistoryScreen lab card + PatientDashboard aggregatedLabResults widget |
+| T2.29 | Ditch primaryService field | 2 hrs | — | DONE | |
+| T2.43 | Resolve carried-over → arrived ambiguity | 30 min | — | DONE | |
+| T2.45 | Eliminate statusHistory duplication | 45 min | — | DONE | |
+| T2.50 | Typed confirmation for Active-silo batch cancel | 30 min | — | DONE | |
+| T2.51 | IDENTITY_EDIT pulse event | 15 min | — | DONE | |
+| T2.52 | Atomic handleDispenseVerified | 20 min | — | DONE | |
 | T2.59 | Records.jsx UX polish | 1.5 hrs | — | DONE | MUI void dialog, Snackbar errors, search clear button, DataGrid pagination 25/50/100 |
 | T2.61 | Records.jsx case-grouping view toggle | 2 hrs | — | DONE | Visits/Cases toggle, originApptId chain grouping, case-continuation CSS class |
 | T2.61a | Case View visual distinction: add case header row with pet name + service + case span, thicker separator between groups, indent continuation rows, collapse/expand per case | P2 | 45 min | — | TODO | Review finding — current Cases mode visually identical to Visits mode. Grouping logic works but needs stronger visual communication |
 | T2.65 | Amend audit log for terminal records | 1 hr | — | DONE | AUDIT_ADDENDUM pulse event, inline addendum input on sealed records. **Review fix:** null user guard |
 | T2.70 | Quick-range date filter buttons in Records | 30 min | — | DONE | Today/7d/30d/This Month chips + Clear chip |
 | T2.71 | Saved filter presets for Records | 2.5 hrs | — | DONE | useSavedFilters hook, users/{uid}/recordFilterPresets subcollection. **Review fix:** Firestore rule added for subcollection |
-| T2.75 | Clinical amendment path for locked records | 3 hrs | — | TODO | Most important P2 |
-| T2.80 | POSModal services[] rewrite for multi-service billing | 1-2 hrs | — | TODO | |
+| T2.75 | Clinical amendment path for locked records | 3 hrs | — | DONE | Most important P2 |
+| T2.80 | POSModal services[] rewrite for multi-service billing | 1-2 hrs | — | DONE | |
 | T2.80a | POSModal handleDropdownAdd: read `isScPwdEligible` from service definition instead of hardcoding `isDiscountable: true` | P3 | 5 min | T2.80 | TODO | Review finding — manually-added services always marked discountable regardless of service config |
 | T2.87 | BookAppointment TOCTOU race fix (runTransaction) | 45 min | — | DONE | writeBatch → runTransaction with atomic retry |
-| T2.93 | Delete `workflowType` legacy field | 5 min | — | TODO | |
-| T2.94 | Delete phantom per-service code in ClinicalWorkspace | 15 min | — | TODO | |
-| T2.95 | Per-service progress card in ClinicalWorkspace sidebar | 45 min | T2.94, T2.13 | TODO | Absorbs T2.103 |
-| T2.96 | Decouple sign-off from status advancement | 1-2 hrs | T2.95 | TODO | |
-| T2.100 | POSModal: clinicalPulse event on checkout | 10 min | — | TODO | |
-| T2.101 | Outstanding balance: remove counter, compute from sales. "Record Payment" in BillingLedger. | 2-3 hrs | — | TODO | Decision locked: computed only |
-| T2.104 | Transaction void with inventory reversal | 3-4 hrs | — | TODO | |
-| T2.108 | Document client-side timestamp limitation | 5 min | — | TODO | |
-| T2.110 | Pulse events for per-service state changes | 10 min | T2.95 | TODO | |
+| T2.93 | Delete `workflowType` legacy field | 5 min | — | DONE | |
+| T2.94 | Delete phantom per-service code in ClinicalWorkspace | 15 min | — | DONE | |
+| T2.95 | Per-service progress card in ClinicalWorkspace sidebar | 45 min | T2.94, T2.13 | DONE | Absorbs T2.103 |
+| T2.96 | Decouple sign-off from status advancement | 1-2 hrs | T2.95 | DONE | |
+| T2.100 | POSModal: clinicalPulse event on checkout | 10 min | — | DONE | |
+| T2.101 | Outstanding balance: remove counter, compute from sales. "Record Payment" in BillingLedger. | 2-3 hrs | — | DONE | Decision locked: computed only |
+| T2.104 | Transaction void with inventory reversal | 3-4 hrs | — | DONE | |
+| T2.108 | Document client-side timestamp limitation | 5 min | — | DONE | |
+| T2.110 | Pulse events for per-service state changes | 10 min | T2.95 | DONE | |
 | T2.113 | Outstanding balance: remove Firestore counter | 45 min | — | TODO | Decision locked: Option A |
 | T2.115 | QuickBookModal → WalkInModal direct integration with prefill | 1.5-2 hrs | — | TODO | Decision locked: Option B |
 | T2.116 | Archive pet: confirmation dialog + archivedBy + restore | 30 min | — | TODO | |
@@ -216,20 +216,20 @@
 | T2.7 | Move hardcoded clinic phone to settings | 30 min | — | DONE | clinicPhone in useClinicSettings defaults; SuperCard, ChatbotScreen, ClientAppointments updated |
 | T2.10 | Delete orphaned Firestore collections | 5 min | — | TODO | Manual Console operation — do during deployment prep. Deny-all fallback already blocks access. |
 | T2.11 | Wire mobile to secureBookAppointment (Blaze) | 1-2 hrs | T2.9 | TODO | |
-| T2.17 | Rename Treatment Plan sidebar → Services & Items | 5 min | — | TODO | |
-| T2.18 | ClinicalWorkspace dead code cleanup (~300 lines) | 1-2 days | — | TODO | |
-| T2.19 | handleSaveDraft optimistic lock | 15 min | — | TODO | |
-| T2.20 | Empty-cart sign-off confirm dialog | 15 min | — | TODO | |
-| T2.34 | Normalize lineage field terminology | 2 hrs | — | TODO | |
-| T2.35 | useCaseChain bidirectional walker | 2-3 hrs | — | TODO | |
-| T2.38 | Unified pulse eventId format (10 call sites) | 35 min | — | TODO | |
-| T2.39 | Code comments at Timestamp.now() pulse sites | 15 min | — | TODO | |
-| T2.46 | EndOfDayModal polish (scenarioMap + confined default) | 15 min | — | TODO | |
-| T2.46.1 | Rename rebook → reschedule/carryover | 45 min | — | TODO | |
-| T2.49 | Unify ancestor chain walkers | 1.25 hrs | — | TODO | |
-| T2.53 | rescheduleAppointment runTransaction conversion | 15 min | — | TODO | |
-| T2.54 | IDENTITY_HEALING pulse event | 10 min | — | TODO | |
-| T2.56 | CONFINE date picker color cues | 1 hr | — | TODO | |
+| T2.17 | Rename Treatment Plan sidebar → Services & Items | 5 min | — | DONE | |
+| T2.18 | ClinicalWorkspace dead code cleanup (~300 lines) | 1-2 days | — | DONE | |
+| T2.19 | handleSaveDraft optimistic lock | 15 min | — | DONE | |
+| T2.20 | Empty-cart sign-off confirm dialog | 15 min | — | DONE | |
+| T2.34 | Normalize lineage field terminology | 2 hrs | — | DONE | |
+| T2.35 | useCaseChain bidirectional walker | 2-3 hrs | — | DONE | |
+| T2.38 | Unified pulse eventId format (10 call sites) | 35 min | — | DONE | |
+| T2.39 | Code comments at Timestamp.now() pulse sites | 15 min | — | DONE | |
+| T2.46 | EndOfDayModal polish (scenarioMap + confined default) | 15 min | — | DONE | |
+| T2.46.1 | Rename rebook → reschedule/carryover | 45 min | — | DONE | |
+| T2.49 | Unify ancestor chain walkers | 1.25 hrs | — | DONE | |
+| T2.53 | rescheduleAppointment runTransaction conversion | 15 min | — | DONE | |
+| T2.54 | IDENTITY_HEALING pulse event | 10 min | — | DONE | |
+| T2.56 | CONFINE date picker color cues | 1 hr | — | DONE | |
 | T2.62 | Case lineage indicator column | 30 min | — | DONE | Day N chip for multi-day cases |
 | T2.63 | Follow-up linkage in audit popover | 1 hr | — | DONE | Previous/Next Visit buttons for originApptId/followUpId links. **PARTIAL:** buttons are stubs — close popover + toast instead of navigating to linked visit |
 | T2.63a | Linked Visits navigation: clicking Previous/Next Visit should load the linked row's audit data in the popover, not show a toast with raw ID | P2 | 30 min | — | TODO | Review finding — stub implementation, find linked row in groupedRecords and setActiveAuditRow |
@@ -253,16 +253,16 @@
 | T2.86 | findFirstBookableDate capacity check | 1 hr | — | TODO | PARTIAL: async signature done + await at call site. Capacity callback not wired — needs checkCapacity function defined and passed from ClientAppointments |
 | T2.88 | Profile up-to-date nudge | 20 min | — | DONE | 6-month freshness check with Update Now / Later Alert |
 | T2.89 | Past-date submit guard | 10 min | — | DONE | Aborts with "Time Passed" alert, resets to step 3 |
-| T2.97 | ServiceProgressCard shared component | 1 hr | T2.95 | TODO | |
+| T2.97 | ServiceProgressCard shared component | 1 hr | T2.95 | DONE | |
 | ~~T2.98~~ | ~~POSModal receipt: clinic name from settings~~ | — | — | ABSORBED | Absorbed into T2.148 (superset scope: Sales.jsx + POSModal) |
-| T2.99 | POSModal receipt: cashier name fix | 5 min | — | TODO | |
-| T2.102 | Deposit collection modal for carry-over | 2-3 hrs | — | TODO | |
+| T2.99 | POSModal receipt: cashier name fix | 5 min | — | DONE | |
+| T2.102 | Deposit collection modal for carry-over | 2-3 hrs | — | DONE | |
 | T2.102a | Deposit modal: validate negative amounts with error hint instead of silent discard | P3 | 5 min | T2.102 | TODO | Review finding — `<input min="0">` is advisory only, negative values silently ignored |
 | T2.102b | POSModal: clamp `balanceDue` to `Math.max(0, total - deposit)` to prevent negative balance display | P3 | 5 min | T2.102 | TODO | Review finding — deposit exceeding visit cost shows negative balance |
 | T2.102c | Deposit modal: borderRadius 1.2/4px → 0 for neubrutalism compliance | P3 | 2 min | T2.102 | TODO | Review finding — Design Sweep scope |
-| T2.107 | Per-service time tracking (Option A: explicit start/complete) | 25 min | T2.95 | TODO | |
-| T2.109 | Centralized pulse event factory | 45 min | T2.38 | TODO | |
-| T2.111 | Extract shared ClinicalTimeline component | 1.5 hrs | — | TODO | Non-essential refactor |
+| T2.107 | Per-service time tracking (Option A: explicit start/complete) | 25 min | T2.95 | DONE | |
+| T2.109 | Centralized pulse event factory | 45 min | T2.38 | DONE | |
+| T2.111 | Extract shared ClinicalTimeline component | 1.5 hrs | — | DONE | Non-essential refactor |
 | T2.114 | Owner name: fullName fix in PatientDashboard | 2 min | — | TODO | |
 | T2.117 | Deduplicate calculateAge into shared util | 10 min | — | TODO | |
 | T2.118 | PatientDashboard dead buttons (3) | 15 min | — | TODO | |
@@ -759,21 +759,21 @@
 | T2.417 | ~~Fix BookAppointment profile check~~ | — | — | — | ABSORBED into T2.363 |
 | T2.418 | Auth rollback on Firestore write failure | P1 | 20 min | TODO | |
 | T2.419 | Merge: migrate medical_records | P1 | 15 min | TODO | |
-| T2.420 | Merge: preserve guest createdAt | P2 | 10 min | TODO | |
-| T2.421 | Merge: carry forward guest fields | P2 | 15 min | TODO | |
-| T2.422 | Standard path: add accountStatus | P3 | 5 min | TODO | |
-| T2.423 | Friendly error messages | P3 | 10 min | TODO | |
-| T2.424 | Document/remove dormant mergeGuestAccount CF | P3 | 15 min | TODO | |
-| T2.425 | Remove duplicate label style | P3 | 5 min | TODO | |
-| T2.426 | Add profileComplete: false to registration | P3 | 5 min | TODO | |
+| T2.420 | Merge: preserve guest createdAt | P2 | 10 min | DONE | |
+| T2.421 | Merge: carry forward guest fields | P2 | 15 min | DONE | |
+| T2.422 | Standard path: add accountStatus | P3 | 5 min | DONE | |
+| T2.423 | Friendly error messages | P3 | 10 min | DONE | |
+| T2.424 | Document/remove dormant mergeGuestAccount CF | P3 | 15 min | DONE | |
+| T2.425 | Remove duplicate label style | P3 | 5 min | DONE | |
+| T2.426 | Add profileComplete: false to registration | P3 | 5 min | DONE | |
 
 #### helpers.js Extraction (T2.427-T2.433)
 
 | ID | Name | Priority | Effort | Status |
 |---|---|---|---|---|
-| T2.427 | Extract isValidPHPhone, eliminate duplicates | P1 | 10 min | TODO |
-| T2.428 | Extract resolveTieredPrice, port admin NaN guard | P1 | 15 min | TODO |
-| T2.429 | Extract calculateAge with future-DOB guard | P2 | 10 min | TODO |
+| T2.427 | Extract isValidPHPhone, eliminate duplicates | P1 | 10 min | DONE |
+| T2.428 | Extract resolveTieredPrice, port admin NaN guard | P1 | 15 min | DONE |
+| T2.429 | Extract calculateAge with future-DOB guard | P2 | 10 min | DONE |
 | T2.430 | Extract unified formatFirestoreTime | P2 | 15 min | TODO |
 | T2.431 | Move getLocalDateStrMobile to helpers | P2 | 10 min | TODO |
 | T2.432 | Extract formatHour | P3 | 5 min | TODO |
@@ -913,12 +913,12 @@
 
 | ID | Name | Priority | Effort | Status |
 |---|---|---|---|---|
-| T2.518 | Unify allergy field source across Identity Strip / God-View / Zen-mode | P0 | 10 min | TODO |
-| T2.519 | Add Vaccine + Lab Results + Save Draft to God-View Plan quadrant | P1 | 45 min | TODO |
-| T2.520 | Fix Assessment text color inconsistency (green vs espresso) | P2 | 5 min | TODO |
-| T2.521 | Remove dentalGrade/lamenessGrade Firestore writes (no input UI, always 0) | P2 | 5 min | TODO |
-| T2.522 | Propagate live weight to main Identity Strip | P2 | 5 min | TODO |
-| T2.523 | Remove dead code: Widget, getGlucoseLevel, selectedRxItem, dischargeRef | P3 | 10 min | TODO |
+| T2.518 | Unify allergy field source across Identity Strip / God-View / Zen-mode | P0 | 10 min | DONE |
+| T2.519 | Add Vaccine + Lab Results + Save Draft to God-View Plan quadrant | P1 | 45 min | DONE |
+| T2.520 | Fix Assessment text color inconsistency (green vs espresso) | P2 | 5 min | DONE |
+| T2.521 | Remove dentalGrade/lamenessGrade Firestore writes (no input UI, always 0) | P2 | 5 min | DONE |
+| T2.522 | Propagate live weight to main Identity Strip | P2 | 5 min | DONE |
+| T2.523 | Remove dead code: Widget, getGlucoseLevel, selectedRxItem, dischargeRef | P3 | 10 min | DONE |
 
 ---
 

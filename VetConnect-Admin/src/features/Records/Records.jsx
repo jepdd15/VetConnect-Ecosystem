@@ -35,7 +35,8 @@ import { useGlobalRecords } from './hooks/useGlobalRecords';
 import { useQueueActions } from '../Queue/useQueueActions';
 import { ForensicMetricGrid } from '../Queue/ForensicMetricGrid';
 import { useAncestorChain } from './hooks/useAncestorChain';
-import { calculatePulseMetrics } from '../../utils/pulseUtils';
+import { calculatePulseMetrics, makePulseEventId } from '../../utils/pulseUtils';
+import { TERMINAL_STATUSES } from '../../utils/statusConstants';
 import { query, collection, where, onSnapshot, arrayUnion, doc, updateDoc, Timestamp, writeBatch } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 import { useClinicSettings } from '../../hooks/useClinicSettings';
@@ -267,8 +268,8 @@ export default function Records() {
           note: 'Reschedule reverted from Records ledger',
           staffName: user?.fullName || 'Unknown',
           staffId: user?.uid || '',
-          timestamp: Timestamp.now(),
-          eventId: `resched_undo_${Date.now()}`
+          timestamp: Timestamp.now(), // CLIENT-SIDE CLOCK — see W1 in pulseUtils.js
+          eventId: makePulseEventId('resched-undo')
         })
       });
       setLastReschedule(null);
@@ -304,8 +305,8 @@ export default function Records() {
           note: addendumText.trim(),
           staffName: user?.fullName || user?.email || 'Unknown',
           staffId: user?.uid || '',
-          timestamp: Timestamp.now(),
-          eventId: `addendum_${Date.now()}`
+          timestamp: Timestamp.now(), // CLIENT-SIDE CLOCK — see W1 in pulseUtils.js
+          eventId: makePulseEventId('addendum')
         })
       });
       setAddendumText('');
@@ -403,8 +404,8 @@ export default function Records() {
             note: `Bulk reassigned to ${vet?.fullName || 'Unknown'} from Records`,
             staffName: user?.fullName || 'Unknown',
             staffId: user?.uid || '',
-            timestamp: Timestamp.now(),
-            eventId: `reassign_${Date.now()}_${id.slice(0, 6)}`
+            timestamp: Timestamp.now(), // CLIENT-SIDE CLOCK — see W1 in pulseUtils.js
+            eventId: makePulseEventId('reassign')
           })
         });
       }
@@ -494,7 +495,7 @@ export default function Records() {
        field: 'status', headerName: 'Status', width: 150, align: 'center', headerAlign: 'center',
        renderCell: (p) => {
          const s = String(p.value).toUpperCase();
-         const isTerminal = ['COMPLETED', 'CANCELLED', 'NO-SHOW', 'CARRIED-OVER'].includes(s);
+         const isTerminal = TERMINAL_STATUSES.has(s.toLowerCase());
          
          let color = '#757575';
          if (['COMPLETED', 'CARRIED-OVER'].includes(s)) color = COLORS.success;
@@ -844,8 +845,8 @@ export default function Records() {
                                 note: 'Identity updated from Records ledger',
                                 staffName: user?.fullName || 'Unknown',
                                 staffId: user?.uid || '',
-                                timestamp: Timestamp.now(),
-                                eventId: `idedit_${Date.now()}`
+                                timestamp: Timestamp.now(), // CLIENT-SIDE CLOCK — see W1 in pulseUtils.js
+                                eventId: makePulseEventId('id-edit')
                               })
                             });
                             setEditIdentity(null);
@@ -946,11 +947,12 @@ export default function Records() {
             </Box>
 
             <Box sx={{ p: 1.5, borderTop: '1px solid #D7CCC8' }}>
-               <ForensicMetricGrid 
-                 pulse={activeAuditRow.clinicalPulse || []} 
-                 createdAt={activeAuditRow.createdAt} 
+               <ForensicMetricGrid
+                 pulse={activeAuditRow.clinicalPulse || []}
+                 createdAt={activeAuditRow.createdAt}
                  targetDate={activeAuditRow.jsScheduled}
                  cumulativeTotals={cumulativeTotals}
+                 liveAge={!activeAuditRow.forensicSeal && !TERMINAL_STATUSES.has(activeAuditRow.status?.toLowerCase())}
                />
             </Box>
 
@@ -981,8 +983,8 @@ export default function Records() {
                             type: 'DEFERRED',
                             staffName: user?.fullName || 'Unknown',
                             staffId: user?.uid || '',
-                            timestamp: Timestamp.now(),
-                            eventId: `defer_${Date.now()}`
+                            timestamp: Timestamp.now(), // CLIENT-SIDE CLOCK — see W1 in pulseUtils.js
+                            eventId: makePulseEventId('defer')
                           })
                         });
                         setToast({ open: true, message: 'Visit deferred', severity: 'info' });
@@ -1214,16 +1216,26 @@ export default function Records() {
         </Box>
       )}
 
-      {/* TOAST SNACKBAR (T2.59) */}
-      <Snackbar open={toast.open} autoHideDuration={4000} onClose={() => setToast(p => ({ ...p, open: false }))}>
+      {/* TOAST SNACKBAR (T2.59) — center-bottom to avoid overlap with undo snackbar */}
+      <Snackbar
+        open={toast.open}
+        autoHideDuration={4000}
+        onClose={() => setToast(p => ({ ...p, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
         <Alert severity={toast.severity} onClose={() => setToast(p => ({ ...p, open: false }))} sx={{ borderRadius: 0 }}>
           {toast.message}
         </Alert>
       </Snackbar>
 
-      {/* UNDO RESCHEDULE SNACKBAR (T2.72) */}
+      {/* UNDO RESCHEDULE SNACKBAR (T2.72) — left-bottom (T2.57a: separated from toast) */}
       {lastReschedule && (
-        <Snackbar open={true} autoHideDuration={10000} onClose={() => setLastReschedule(null)}>
+        <Snackbar
+          open={true}
+          autoHideDuration={10000}
+          onClose={() => setLastReschedule(null)}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        >
           <Alert severity="info" action={
             <Button color="inherit" size="small" onClick={handleUndoReschedule} sx={{ fontWeight: '1000' }}>
               UNDO

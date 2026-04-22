@@ -52,12 +52,16 @@ export const HIGH_STAKES_STATUSES = new Set([
 
 /**
  * Statuses that represent a fully resolved case. The clinical clock stops here.
+ *
+ * NOTE: CARRIED_OVER is intentionally excluded. A carried-over patient returns
+ * the next shift and transitions to ARRIVED, so the record must not be treated
+ * as fully resolved — the pulse engine must keep the clock running until the
+ * follow-up appointment is sealed.
  */
 export const TERMINAL_STATUSES = new Set([
   STATUS.COMPLETED,
   STATUS.CANCELLED,
   STATUS.NO_SHOW,
-  STATUS.CARRIED_OVER,
 ]);
 
 /**

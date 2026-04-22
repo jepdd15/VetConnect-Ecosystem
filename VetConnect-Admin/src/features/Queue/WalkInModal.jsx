@@ -16,6 +16,7 @@ import DirectionsWalkIcon from '@mui/icons-material/DirectionsWalk';
 import CakeIcon from '@mui/icons-material/Cake';
 
 import { collection, doc, runTransaction, Timestamp, query, where, getDocs } from 'firebase/firestore';
+import { makePulseEventId } from '../../utils/pulseUtils';
 import { db } from '../../firebaseConfig';
 import { useUser } from '../../context/UserContext';
 import { detectNoShows } from '../../utils/noShowDetection';
@@ -295,8 +296,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
               name: svcName,
               price: resolveTieredPrice(s, petWeight),
               department: dept,
-              status: 'pending', // Independent Status!
-              workflowType: (dept === 'Grooming' || dept === 'Aesthetic') ? 'AESTHETIC' : 'MEDICAL',
+              status: 'pending',
               staffId: null,
               staffName: 'Unassigned'
            };
@@ -372,10 +372,10 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
           assignedVetId: null, assignedVet: 'Unassigned',
           clinicalPulse: [
             {
-              eventId: `pulse_walkin_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+              eventId: makePulseEventId('walkin'),
               type: 'INCEPTION',
               toStatus: 'arrived',
-              timestamp: Timestamp.now(),
+              timestamp: Timestamp.now(), // CLIENT-SIDE CLOCK — see W1 in pulseUtils.js
               staffId: profile?.id || 'system_walkin', 
               staffName: staffSignature,
               note: `Physical Intake [WT: ${resolvedWeight || 'N/A'}kg]: ${isEmergency ? '🚨 URGENT ER ' : ''}${triageNotes}`

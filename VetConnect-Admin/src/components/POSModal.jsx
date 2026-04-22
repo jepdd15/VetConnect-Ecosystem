@@ -17,10 +17,12 @@ import DescriptionIcon from '@mui/icons-material/Description';
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner'; 
 import MedicalServicesIcon from '@mui/icons-material/MedicalServices'; 
 
-import { doc, getDoc, collection, runTransaction, Timestamp, updateDoc, increment } from 'firebase/firestore';
+import { doc, getDoc, collection, runTransaction, Timestamp, updateDoc, increment, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { useUser } from '../context/UserContext';
 import { useClinicSettings } from '../hooks/useClinicSettings';
+import { resolveTieredPrice } from '../utils/resolveTieredPrice';
+import { makePulseEventId } from '../utils/pulseUtils';
 
 export default function POSModal({ open, onClose, patient, inventoryList, servicesList }) {
   const { profile } = useUser();
@@ -49,26 +51,50 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         if (patient.prescribedItems && patient.prescribedItems.length > 0) {
             initialCart = patient.prescribedItems.map(item => ({ ...item, isPrescribed: item.isBase ? false : true }));
         } 
-        // Scenario B: Fast-Tracked (e.g. Grooming) -> Auto-Bundle Injection!
+        // Scenario B: Fast-Tracked (e.g. Grooming, walk-in) — no ClinicalWorkspace prescriptions.
+        // Iterate the appointment's services[] array for itemized billing.
         else {
-            const baseService = servicesList.find(s => s.name === patient.serviceType);
-            initialCart.push({ type: 'service', id: 'svc_fee', name: patient.serviceType, price: patient.servicePrice || 0, qty: 1, isBase: true, isDiscountable: true });
-            
-            if (baseService) {
-                const linkedIds = baseService.linkedProducts
-                    || (baseService.linkedProduct ? [baseService.linkedProduct] : []);
-                linkedIds.forEach(productId => {
-                    const linkedInv = inventoryList.find(i => i.id === productId);
-                    if (linkedInv) {
-                        initialCart.push({
-                            type: 'product', id: linkedInv.id, name: linkedInv.itemName,
-                            price: linkedInv.price, qty: 1,
-                            isDiscountable: !!linkedInv.isMedicine,
-                            isAutoBundled: true, isBase: false
-                        });
-                    }
+            const bookedServices = patient.services && patient.services.length > 0
+                ? patient.services
+                : [{ id: 'svc_fee', name: patient.serviceType || 'Service', price: patient.servicePrice || 0 }];
+
+            bookedServices.forEach(svc => {
+                const svcDef = servicesList.find(s => s.id === svc.id);
+                const petWeight = patient.petWeight ? parseFloat(patient.petWeight) : null;
+                const price = svcDef
+                    ? (resolveTieredPrice(svcDef, petWeight) || svcDef.price || svc.price || 0)
+                    : (svc.price ?? 0);
+                initialCart.push({
+                    type: 'service',
+                    id: svc.id || `svc_${svc.name}`,
+                    name: svc.name,
+                    price: price,
+                    qty: 1,
+                    isBase: true,
+                    isDiscountable: svcDef?.isScPwdEligible !== false,
                 });
-            }
+
+                // Auto-bundle linked products for each service
+                if (svcDef) {
+                    const linkedIds = svcDef.linkedProducts
+                        || (svcDef.linkedProduct ? [svcDef.linkedProduct] : []);
+                    linkedIds.forEach(productId => {
+                        const linkedInv = inventoryList.find(i => i.id === productId);
+                        if (linkedInv) {
+                            initialCart.push({
+                                type: 'product',
+                                id: linkedInv.id,
+                                name: linkedInv.itemName,
+                                price: linkedInv.price,
+                                qty: 1,
+                                isDiscountable: !!linkedInv.isMedicine,
+                                isAutoBundled: true,
+                                isBase: false,
+                            });
+                        }
+                    });
+                }
+            });
         }
         
         setCart(initialCart); setSelectedItemVal(''); setPaymentMethod('Cash'); setBarcodeInput('');
@@ -221,7 +247,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             <p><strong>Receipt #:</strong> ${transactionId.slice(0, 8).toUpperCase()}</p>
             <p><strong>Date:</strong> ${today}</p>
             <p><strong>Patient:</strong> ${patient.petName} (${patient.ownerName || 'Walk-In'})</p>
-            <p><strong>Cashier:</strong> System</p>
+            <p><strong>Cashier:</strong> ${profile?.fullName || 'POS Cashier'}</p>
           </div>
 
           <table>
@@ -325,7 +351,10 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
 
             const updatePayload = {
               stock: currentStock - item.qty,
-              reserved: Math.max(0, (data.reserved || 0) - (item.isPrescribed ? item.qty : 0))
+              // T2.16: Unconditionally decrement reserved for all product sales.
+              // The isPrescribed gate was removed — any product leaving stock should
+              // also clear its reservation regardless of how it entered the cart.
+              reserved: Math.max(0, (data.reserved || 0) - item.qty),
             };
             if (data.batches && data.batches.length > 0) updatePayload.batches = batches;
             transaction.update(itemRef, updatePayload);
@@ -365,18 +394,24 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             hasUnprescribedAdditions: cart.some(i => i.addedBy === 'cashier'),
         });
         
-        const apptRef = doc(db, "appointments", patient.id); 
-        transaction.update(apptRef, { 
-            status: 'completed', 
+        const apptRef = doc(db, "appointments", patient.id);
+        transaction.update(apptRef, {
+            status: 'completed',
             timeCompleted: Timestamp.now(),
-            balanceRemaining: parseFloat(financials.balanceDue)
-        }); 
+            balanceRemaining: parseFloat(financials.balanceDue),
+            // T2.100: Forensic checkout event — completes the clinical pulse timeline.
+            clinicalPulse: arrayUnion({
+                eventId: makePulseEventId('checkout'),
+                type: 'CHECKOUT_COMPLETED',
+                timestamp: Timestamp.now(),
+                staffId: profile?.id || 'pos_system',
+                staffName: profile?.fullName || 'POS Cashier',
+                note: `Checkout: ₱${financials.total} via ${paymentMethod}`,
+            }),
+        });
 
-        // --- THE CRM DEBT TAGGING ---
-        if (parseFloat(financials.balanceDue) > 0 && patient.ownerId && patient.ownerId !== 'WALK_IN_USER') {
-            const ownerRef = doc(db, "users", patient.ownerId);
-            transaction.update(ownerRef, { outstandingBalance: increment(parseFloat(financials.balanceDue)) });
-        }
+        // T2.101: outstandingBalance is now computed from sales (sum of balanceRemaining),
+        // not a Firestore counter. This block intentionally removed.
         
         return saleRef.id; 
       }); 

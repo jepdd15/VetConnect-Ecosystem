@@ -1,13 +1,32 @@
 import React from 'react';
 import { Box, Typography, Grid, Divider } from '@mui/material';
-import { calculatePulseMetrics, formatDuration } from '../../utils/pulseUtils';
+import { calculatePulseMetrics, formatDuration, getOperationalMinutes } from '../../utils/pulseUtils';
 
 /**
  * 🧬 VETCONNECT SHARED FORENSIC GRID (PHASE 6.3)
  * Use for Audit Popovers & Command Wizards.
+ *
+ * liveAge prop: when true, overrides recordAge and opHoursAge with a live clock
+ * anchored to new Date() instead of the day-capped auditEnd. Use this for active
+ * (non-sealed) records to prevent age metrics from freezing at the last-event day.
  */
-export const ForensicMetricGrid = ({ pulse = [], settings = {}, createdAt, targetDate = new Date(), variant = 'dark', sealedMetrics = null, cumulativeTotals = null, auditEnd = null }) => {
+export const ForensicMetricGrid = ({ pulse = [], settings = {}, createdAt, targetDate = new Date(), variant = 'dark', sealedMetrics = null, cumulativeTotals = null, auditEnd = null, liveAge = false }) => {
   const metrics = sealedMetrics || calculatePulseMetrics(pulse, settings, createdAt, targetDate, auditEnd);
+
+  // When liveAge is true, recompute Record Age and Op Hours Age using the current wall clock
+  // rather than the day-capped auditEnd that calculatePulseMetrics uses internally.
+  let displayedMetrics = metrics;
+  if (liveAge) {
+    const inception = createdAt?.toDate ? createdAt.toDate() : new Date(createdAt || Date.now());
+    const now = new Date();
+    const liveRecordAgeMins = Math.max(0, Math.round((now - inception) / 60000));
+    const liveOpAgeMins = getOperationalMinutes(inception, now, settings, false, inception, 'business');
+    displayedMetrics = {
+      ...metrics,
+      recordAge: formatDuration(liveRecordAgeMins),
+      opHoursAge: formatDuration(liveOpAgeMins),
+    };
+  }
 
   // If cumulative totals are provided, override the per-record Total values
   const displayTotalQueue = cumulativeTotals ? formatDuration(cumulativeTotals.totalQueue) : metrics.totalQueue;
@@ -63,18 +82,18 @@ export const ForensicMetricGrid = ({ pulse = [], settings = {}, createdAt, targe
       <Grid container>
         {/* ROW 1: THE CURRENT SHIFT FOCUS */}
         <Grid size={{ xs: 4 }} sx={{ borderRight: '1px solid rgba(0,0,0,0.05)', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
-            <MetricItem label="Record Age" value={metrics.recordAge} />
+            <MetricItem label="Record Age" value={displayedMetrics.recordAge} />
         </Grid>
         <Grid size={{ xs: 4 }} sx={{ borderRight: '1px solid rgba(0,0,0,0.05)', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
-            <MetricItem label="Shift Queue" value={metrics.shiftQueue} />
+            <MetricItem label="Shift Queue" value={displayedMetrics.shiftQueue} />
         </Grid>
         <Grid size={{ xs: 4 }} sx={{ borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
-            <MetricItem label="Shift Consult" value={metrics.shiftConsult} />
+            <MetricItem label="Shift Consult" value={displayedMetrics.shiftConsult} />
         </Grid>
 
         {/* ROW 2: THE CUMULATIVE CASE FOCUS */}
         <Grid size={{ xs: 4 }} sx={{ borderRight: '1px solid rgba(0,0,0,0.05)' }}>
-            <MetricItem label="Op. Hours Age" value={metrics.opHoursAge} />
+            <MetricItem label="Op. Hours Age" value={displayedMetrics.opHoursAge} />
         </Grid>
         <Grid size={{ xs: 4 }} sx={{ borderRight: '1px solid rgba(0,0,0,0.05)' }}>
             <MetricItem label="Total Queue" value={displayTotalQueue} />
@@ -87,7 +106,7 @@ export const ForensicMetricGrid = ({ pulse = [], settings = {}, createdAt, targe
         <Grid size={{ xs: 6 }} sx={{ bgcolor: 'rgba(211, 47, 47, 0.05)', py: 0.8, px: 1.5, borderTop: '1px solid rgba(211, 47, 47, 0.1)', borderRight: '1px solid rgba(211, 47, 47, 0.1)' }}>
             <Typography sx={{ ...labelStyle, color: '#D32F2F', opacity: 1, fontSize: '0.55rem' }}>SHIFT CONFINED TIME</Typography>
             <Typography sx={{ ...valueStyle, color: '#D32F2F', mt: 0 }}>
-               {metrics.shiftConfined}
+               {displayedMetrics.shiftConfined}
             </Typography>
         </Grid>
         <Grid size={{ xs: 6 }} sx={{ bgcolor: 'rgba(211, 47, 47, 0.05)', py: 0.8, px: 1.5, borderTop: '1px solid rgba(211, 47, 47, 0.1)' }}>

@@ -59,6 +59,12 @@ service cloud.firestore {
             && request.resource.data.auditReason.size() > 0
           )
         )
+        // T2.37a: no-show can only be set by staff — pet owners must not flag no-shows
+        && (
+          request.resource.data.status != 'no-show'
+          || resource.data.status == 'no-show'
+          || isStaff()
+        )
         // forensicSeal must be present when isTriaged is set to true
         && (
           !('isTriaged' in request.resource.data)

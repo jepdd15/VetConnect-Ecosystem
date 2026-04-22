@@ -46,6 +46,10 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
     // Tiered pricing
     hasTieredPricing: item?.hasTieredPricing || false,
     pricingTiers:     initTiers,
+    // Discharge policy — controls whether Plan field is required at sign-off
+    dischargePolicy: item?.dischargePolicy || 'optional',
+    // SC/PWD eligibility — default true for backward compat (all existing services remain discountable)
+    isScPwdEligible: item?.isScPwdEligible !== false,
   });
 
   // ── Tiered pricing helpers ───────────────────────────────────────────
@@ -379,7 +383,7 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
                 </Typography>
               </Grid>
 
-              <Grid size={{ xs: 12 }}>
+              <Grid size={{ xs: 12, md: 8 }}>
                 <TextField
                   label="SOP / Description / Clinic Instructions"
                   fullWidth multiline rows={3} size="small"
@@ -389,6 +393,41 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
                   InputProps={{ startAdornment: <InputAdornment position="start"><DescriptionIcon fontSize="small" sx={{ color: COLORS.accent, mr: 1, mt: -4 }} /></InputAdornment> }}
                   inputProps={noExtensionProps}
                 />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <FormControl fullWidth size="small" sx={{ ...sxField, mt: 1 }}>
+                  <InputLabel>Discharge Policy</InputLabel>
+                  <Select
+                    value={formData.dischargePolicy || 'optional'}
+                    label="Discharge Policy"
+                    onChange={(e) => setFormData({ ...formData, dischargePolicy: e.target.value })}
+                  >
+                    <MenuItem value="optional">Optional</MenuItem>
+                    <MenuItem value="required">Required</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={formData.isScPwdEligible !== false}
+                      onChange={(e) => setFormData({ ...formData, isScPwdEligible: e.target.checked })}
+                      color="secondary"
+                      size="small"
+                    />
+                  }
+                  label={
+                    <Typography variant="body2" fontWeight="bold" fontSize="0.8rem">
+                      SC/PWD Discount Eligible (RA 9994)
+                    </Typography>
+                  }
+                  sx={{ mt: 1 }}
+                />
+                <Typography variant="caption" color="textSecondary" sx={{ ml: 4, mt: -0.5, display: 'block' }}>
+                  When OFF, this service will NOT receive the 20% Senior Citizen / PWD discount at checkout.
+                  Turn off for non-medical services (grooming, boarding).
+                </Typography>
               </Grid>
             </Grid>
           </Paper>

@@ -1,7 +1,19 @@
 /**
+ * W1 — CLIENT-SIDE TIMESTAMP LIMITATION
+ * All pulse event timestamps are generated client-side via Timestamp.now().
+ * Firestore's FieldValue.serverTimestamp() cannot be used inside arrayUnion()
+ * payloads. If the user's system clock is wrong, all computed durations
+ * (queue time, consult time, etc.) will be skewed proportionally.
+ * This is an accepted scope trade-off documented in CLAUDE.md and the thesis.
+ * Mitigation: non-pulse timestamps (signedOffAt, timeCompleted) use Timestamp.now()
+ * which is still client-side but consistent within the same operation.
+ */
+
+/**
  * 🧬 VETCONNECT CLINICAL FORENSIC ENGINE (PHASE 6.2)
  * Hardened Pulse-Aware Temporal Math
  */
+import { Timestamp } from 'firebase/firestore';
 import {
   TERMINAL_STATUSES,
   CONSULT_STATES as CONSULT_SET,
@@ -24,7 +36,7 @@ import { getLocalDateStr } from './dateUtils';
  * @param {string} mode - 'business' (Salami-Slicer active) or 'absolute' (24/7).
  * @param {boolean} shouldGate - If true, caps duration at midnight (Ghost-Protection).
  */
-const getOperationalMinutes = (start, end, settings, shouldGate = false, segmentStart, mode = 'business') => {
+export const getOperationalMinutes = (start, end, settings, shouldGate = false, segmentStart, mode = 'business') => {
   const openHour = settings.openHour || 8;
   const workingDays = settings.workingDays || [0, 1, 2, 3, 4, 5, 6];
   
@@ -226,6 +238,40 @@ export const formatDuration = (totalMins) => {
   const remainingMins = mins % 60;
   return remainingMins > 0 ? `${hours}H ${remainingMins}M` : `${hours}H`;
 };
+
+/**
+ * Generates a unique pulse event ID with a consistent format.
+ * Format: pulse_{type}_{timestamp}_{random}
+ *
+ * @param {string} type — short kebab-case descriptor (e.g., 'status', 'correction', 'inception')
+ * @returns {string} A unique event identifier
+ */
+export const makePulseEventId = (type = 'event') =>
+    `pulse_${type}_${Date.now()}_${Math.random().toString(36).substr(2, 7)}`;
+
+/**
+ * T2.109 — Centralized pulse event factory.
+ * Constructs a standardized pulse event object so all call sites emit
+ * a consistent field set. Spread `...extra` allows caller-specific fields
+ * (serviceId, note, etc.) without breaking the standard contract.
+ *
+ * @param {string} type  - Event type constant (e.g. 'STATUS_CHANGE', 'SERVICE_STARTED').
+ *                         Will be uppercased for consistency.
+ * @param {Object} opts  - Optional fields: fromStatus, toStatus, staffId, staffName,
+ *                         note, and any extra fields passed through.
+ * @returns {Object} A pulse event ready for arrayUnion().
+ */
+export const createPulseEvent = (type, { fromStatus, toStatus, staffId, staffName, note, ...extra } = {}) => ({
+  eventId: makePulseEventId(type),
+  type: String(type).toUpperCase(),
+  ...(fromStatus !== undefined ? { fromStatus } : {}),
+  ...(toStatus !== undefined ? { toStatus } : {}),
+  timestamp: Timestamp.now(),
+  staffId: staffId || 'unknown',
+  staffName: staffName || 'System',
+  note: note || '',
+  ...extra,
+});
 
 /**
  * 🧬 SMART SHIFT ANCHOR (Phase 5.1)

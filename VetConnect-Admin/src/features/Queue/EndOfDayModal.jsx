@@ -22,6 +22,8 @@ import HelpCenterIcon from '@mui/icons-material/HelpCenter';
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 import { getDoc, doc, query, collection, where, orderBy, limit, getDocs, onSnapshot, updateDoc } from 'firebase/firestore';
+import { useAncestorChain } from '../Records/hooks/useAncestorChain';
+import { ClinicalTimeline } from '../../components/ClinicalTimeline';
 import { db } from '../../firebaseConfig';
 import { useClinicSettings } from '../../hooks/useClinicSettings';
 import { calculatePulseMetrics, formatDuration, getSmartShiftDate } from '../../utils/pulseUtils';
@@ -58,8 +60,11 @@ const getSpeciesIcon = (species) => {
 const AuditPatientCard = React.memo(({
     patient, resolution, targetDate, targetTime, auditReason, realTimeStatus, tabMode, ancestorData, loadingHistory, historyMessage, departments, settings,
     onResolutionChange, onAuditReasonChange, onFetchHistory, onClearHistory, onGenderOpen, CARD_HEIGHT,
-    ancestorChain // Phase 1: Full originApptId chain (array of ancestor records, oldest first)
+    depositAmount, depositMethod, onDepositChange, // T2.102: deposit collection for active-silo carry-overs
 }) => {
+    // T2.49: Use the shared hook instead of inline chain walking. The parent's
+    // resolveAllChains effect has been removed — this hook resolves on demand.
+    const { ancestors: ancestorChain } = useAncestorChain(patient);
     // PHASE 4.4.2.5: LOCAL-FIRST FOCUS SHIELD
     const [localReason, setLocalReason] = useState(auditReason || "");
 
@@ -241,6 +246,25 @@ const AuditPatientCard = React.memo(({
     const intakeAgeLabel = intakeAgeDays === 0 ? "INTAKE AGE: <1 DAY" : `INTAKE AGE: ${intakeAgeDays} ${intakeAgeDays === 1 ? 'DAY' : 'DAYS'}`;
 
     // PHASE 1: FORENSIC TIERS
+    // T2.56: Date picker color helpers — closed days → red, today → amber.
+    const todayDateStr = new Date().toISOString().split('T')[0];
+    const isClosedDay = (dateStr) => {
+        if (!dateStr || !settings) return false;
+        const closedDates = settings.closedDates || [];
+        if (closedDates.includes(dateStr)) return true;
+        // Check working days (0=Sun…6=Sat). Closed if the day is not in workingDays.
+        const workingDays = settings.workingDays || [0, 1, 2, 3, 4, 5, 6];
+        const dayOfWeek = new Date(dateStr + 'T00:00:00').getDay();
+        return !workingDays.includes(dayOfWeek);
+    };
+    const getDatePickerStyle = (dateStr) => {
+        const base = { border: 'none', background: 'transparent', fontSize: '0.6rem', fontWeight: '1000', outline: 'none', width: '100%', cursor: 'pointer' };
+        if (!dateStr) return { ...base, color: '#5D4037' };
+        if (isClosedDay(dateStr)) return { ...base, color: '#D32F2F', backgroundColor: '#FFCDD2' };
+        if (dateStr === todayDateStr) return { ...base, color: '#E65100', backgroundColor: '#FFF9C4' };
+        return { ...base, color: '#5D4037' };
+    };
+
     const rawStatus = (patient.status || 'unknown').toLowerCase();
     const isHighStakes = HIGH_STAKES_STATUSES.has(rawStatus);
     const isPhysical = ['arrived', 'in-consult', 'dispensing', 'billing'].includes(rawStatus);
@@ -504,6 +528,16 @@ const AuditPatientCard = React.memo(({
                         );
                     })}
                 </Stack>
+                {/* T2.111: Raw pulse event timeline for current shift day */}
+                {filteredPulse.length > 0 && (
+                    <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px dashed #D7CCC8' }}>
+                        <Typography variant="caption" sx={{ fontWeight: 1000, color: '#9E9E9E', fontSize: '0.52rem', letterSpacing: 0.5, display: 'block', mb: 0.75 }}>
+                            PULSE EVENTS
+                        </Typography>
+                        <ClinicalTimeline pulse={filteredPulse} compact maxItems={8} />
+                    </Box>
+                )}
+
                     {/* Inline feedback for handleFetchHistory (replaces alert) */}
                 {historyMessage && (
                     <Typography variant="caption" sx={{ display: 'block', color: '#D32F2F', fontWeight: '1000', fontSize: '0.58rem', px: 1, pt: 0.5 }}>
@@ -593,7 +627,7 @@ const AuditPatientCard = React.memo(({
 
             {/* 4. RECOMMENDATION & VERDICT (FLEX - EXPANDS ON TRIAGE) */}
             <Box sx={{ flex: 1, p: 2, display: 'flex', flexDirection: 'column', pb: resolution ? 4 : 2 }}>
-                <Box sx={{ p: 1.5, bgcolor: !resolution ? '#F5F5F5' : (isHighStakes ? '#FFF9C4' : (resolution === 'rebook' ? '#FFF9C4' : resolution === 'no-show' ? '#FFEBEE' : '#F5F5F5')), border: `2px solid ${forensicColor}`, borderRadius: 1.2, mb: 1.5, transition: 'all 0.2s ease-out' }}>
+                <Box sx={{ p: 1.5, bgcolor: !resolution ? '#F5F5F5' : (isHighStakes ? '#FFF9C4' : (resolution === 'reschedule' || resolution === 'carryover' ? '#FFF9C4' : resolution === 'no-show' ? '#FFEBEE' : '#F5F5F5')), border: `2px solid ${forensicColor}`, borderRadius: 1.2, mb: 1.5, transition: 'all 0.2s ease-out' }}>
                     {(() => {
                         const scenarioMap = {
                             'in-consult': "Patient is mid-consult and requires record closing.",
@@ -601,10 +635,16 @@ const AuditPatientCard = React.memo(({
                             'billing': "Invoice is currently unpaid and requires reconciliation.",
                             'arrived': "Patient arrived but was never seen by a clinician.",
                             'pending': "Pending online clinical request awaiting triage.",
-                            'confirmed': "Patient was scheduled but never arrived at the clinic."
+                            'confirmed': "Patient was scheduled but never arrived at the clinic.",
+                            // T2.46: Added missing status scenarios
+                            'on-hold': "Patient was placed on clinical hold. Resume or resolve.",
+                            'confined': "Patient is currently hospitalized/confined.",
                         };
                         const advisoryMap = {
-                            'rebook': "Patient returns home. Status reverts to SCHEDULED for next arrival.",
+                            // T2.46.1: 'rebook' split into 'reschedule' (online/scheduled silos)
+                            // and 'carryover' (active silo) for semantic clarity.
+                            'reschedule': "Patient returns home. Status reverts to SCHEDULED for next arrival.",
+                            'carryover': "Patient returns next shift. Clinical continuity maintained.",
                             'defer': "Carry this request forward for triage in the next shift.",
                             'hospitalize': "Patient stays overnight (Confined). Status remains ACTIVE for resumption.",
                             'no-show': "Mark the patient as absent for today's appointment.",
@@ -638,6 +678,7 @@ const AuditPatientCard = React.memo(({
                                         targetDate={uniqueDates[activeCaseDay] ? new Date(uniqueDates[activeCaseDay]) : new Date()}
                                         cumulativeTotals={cumulativeTotals}
                                         auditEnd={operationalEnd}
+                                        liveAge={!activeDaySource.forensicSeal}
                                     />
                                 </Box>
                             </>
@@ -668,19 +709,19 @@ const AuditPatientCard = React.memo(({
                         {/* 📡 ONLINE SILO ACTIONS */}
                         {tabMode === 0 && [
                             <ToggleButton key="defer" value="defer"><AutoFixHighIcon sx={{ mr: 0.5, fontSize: 16 }} /> Defer</ToggleButton>,
-                            <ToggleButton key="rebook" value="rebook"><EventRepeatIcon sx={{ mr: 0.5, fontSize: 16 }} /> Reschedule</ToggleButton>
+                            <ToggleButton key="reschedule" value="reschedule"><EventRepeatIcon sx={{ mr: 0.5, fontSize: 16 }} /> Reschedule</ToggleButton>
                         ]}
-                        
+
                         {/* 📅 SCHEDULED ACTIONS */}
                         {tabMode === 1 && [
-                            <ToggleButton key="rebook" value="rebook"><EventRepeatIcon sx={{ mr: 0.5, fontSize: 16 }} /> Reschedule</ToggleButton>,
+                            <ToggleButton key="reschedule" value="reschedule"><EventRepeatIcon sx={{ mr: 0.5, fontSize: 16 }} /> Reschedule</ToggleButton>,
                             <ToggleButton key="no-show" value="no-show"><HelpOutlineIcon sx={{ mr: 0.5, fontSize: 16 }} /> No-Show</ToggleButton>
                         ]}
 
                         {/* 🏥 ACTIVE SILO BINARY TRIAGE */}
                         {tabMode === 2 && [
                             <ToggleButton key="hospitalize" value="hospitalize"><LocalHospitalIcon sx={{ mr: 0.5, fontSize: 16 }} /> CONFINE</ToggleButton>,
-                            <ToggleButton key="rebook" value="rebook"><EventRepeatIcon sx={{ mr: 0.5, fontSize: 16 }} /> Carry-Over</ToggleButton>
+                            <ToggleButton key="carryover" value="carryover"><EventRepeatIcon sx={{ mr: 0.5, fontSize: 16 }} /> Carry-Over</ToggleButton>
                         ]}
 
                         <ToggleButton value="cancel"><DoNotDisturbIcon sx={{ mr: 0.5, fontSize: 16 }} /> Cancel</ToggleButton>
@@ -715,7 +756,7 @@ const AuditPatientCard = React.memo(({
                     )}
 
                     {/* 🗓️ SMART-SHIFT CALENDAR (Prescriptive Scheduling) */}
-                    {(resolution === 'rebook' || resolution === 'defer' || resolution === 'hospitalize') && (
+                    {(resolution === 'reschedule' || resolution === 'carryover' || resolution === 'defer' || resolution === 'hospitalize') && (
                         <Box sx={{ mt: 1.2, p: 1, border: `2px solid ${forensicColor}`, borderRadius: 1.2, bgcolor: '#FFF6E0', animation: 'slideIn 0.2s ease-out' }}>
                             <style>{`@keyframes slideIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }`}</style>
                             <Typography variant="caption" sx={{ fontWeight: '1000', color: '#5D4037', display: 'block', mb: 0.8, fontSize: '0.6rem', letterSpacing: 0.5 }}>
@@ -750,10 +791,8 @@ const AuditPatientCard = React.memo(({
                                             type="date"
                                             value={targetDate || getSmartShiftDate(0, settings?.openHour || 8).dateStr}
                                             onChange={(e) => onResolutionChange(patient.id, resolution, e.target.value, targetTime || settings?.openingTime || "08:00")}
-                                            style={{
-                                                border: 'none', background: 'transparent', fontSize: '0.6rem', fontWeight: '1000',
-                                                color: '#5D4037', outline: 'none', width: '100%', cursor: 'pointer'
-                                            }}
+                                            style={getDatePickerStyle(targetDate || getSmartShiftDate(0, settings?.openHour || 8).dateStr)}
+                                            title={isClosedDay(targetDate) ? 'Warning: This is a closed/non-working day' : undefined}
                                         />
                                         <Box sx={{ width: '1px', height: '14px', bgcolor: forensicColor, opacity: 0.3, mx: 0.2 }} />
                                         <input
@@ -768,6 +807,53 @@ const AuditPatientCard = React.memo(({
                                     </Box>
                                 </Stack>
                             </Stack>
+                        </Box>
+                    )}
+
+                    {/* T2.102: Deposit collection — Active-silo carry-overs only.
+                        Amount written to the new appointment as depositPaid so POSModal
+                        can deduct it as "Less Deposit" on the next visit. */}
+                    {resolution === 'carryover' && tabMode === 2 && (
+                        <Box sx={{ mt: 1.2, p: 1, border: '2px solid #1976D2', borderRadius: 1.2, bgcolor: '#E3F2FD', animation: 'slideIn 0.2s ease-out' }}>
+                            <Typography variant="caption" sx={{ fontWeight: '1000', color: '#1565C0', display: 'block', mb: 0.8, fontSize: '0.6rem', letterSpacing: 0.5 }}>
+                                COLLECT DEPOSIT (OPTIONAL)
+                            </Typography>
+                            <Stack direction="row" spacing={0.5} alignItems="center">
+                                <Box sx={{ display: 'flex', alignItems: 'center', border: '1px solid #1976D2', borderRadius: '4px', px: 0.5, bgcolor: 'white', flex: 1 }}>
+                                    <Typography sx={{ fontSize: '0.65rem', fontWeight: 900, color: '#1565C0', mr: 0.3 }}>₱</Typography>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        placeholder="0.00"
+                                        value={depositAmount || ''}
+                                        onChange={(e) => onDepositChange(patient.id, 'amount', e.target.value)}
+                                        style={{
+                                            border: 'none', background: 'transparent', fontSize: '0.65rem',
+                                            fontWeight: '1000', color: '#1565C0', outline: 'none', width: '100%'
+                                        }}
+                                    />
+                                </Box>
+                                <select
+                                    value={depositMethod || 'cash'}
+                                    onChange={(e) => onDepositChange(patient.id, 'method', e.target.value)}
+                                    style={{
+                                        border: '1px solid #1976D2', background: 'white', fontSize: '0.6rem',
+                                        fontWeight: '900', color: '#1565C0', outline: 'none', padding: '2px 4px',
+                                        cursor: 'pointer', borderRadius: '4px'
+                                    }}
+                                >
+                                    <option value="cash">CASH</option>
+                                    <option value="gcash">GCASH</option>
+                                    <option value="card">CARD</option>
+                                    <option value="bank">BANK TRANSFER</option>
+                                </select>
+                            </Stack>
+                            {(parseFloat(depositAmount) > 0) && (
+                                <Typography variant="caption" sx={{ color: '#2E7D32', fontWeight: 900, fontSize: '0.55rem', mt: 0.5, display: 'block' }}>
+                                    ₱{parseFloat(depositAmount).toFixed(2)} deposit will be recorded on the carry-over appointment.
+                                </Typography>
+                            )}
                         </Box>
                     )}
                 </Box>
@@ -795,6 +881,22 @@ const EndOfDayModal = React.memo(({
     const [stagedBulkAction, setStagedBulkAction] = useState(null); // PHASE 5.6.19: STAGED BATCHING
     const [batchDate, setBatchDate] = useState(getLocalDateStr());
     const [batchTime, setBatchTime] = useState(settings?.openingTime || "08:00");
+    // T2.50: Typed confirmation guard for Active-silo batch cancel
+    const [cancelConfirmText, setCancelConfirmText] = useState("");
+
+    // T2.102: Per-patient deposit state for active-silo carry-overs.
+    // depositAmounts: { [patientId]: string (raw input) }
+    // depositMethods: { [patientId]: 'cash' | 'gcash' | 'card' | 'bank' }
+    const [depositAmounts, setDepositAmounts] = useState({});
+    const [depositMethods, setDepositMethods] = useState({});
+
+    const handleDepositChange = React.useCallback((patientId, field, value) => {
+        if (field === 'amount') {
+            setDepositAmounts(prev => ({ ...prev, [patientId]: value }));
+        } else {
+            setDepositMethods(prev => ({ ...prev, [patientId]: value }));
+        }
+    }, []);
 
     // Sync batchTime once when clinic openingTime first arrives from Firestore
     useEffect(() => {
@@ -837,7 +939,10 @@ const EndOfDayModal = React.memo(({
     // RESET STAGED ACTION ON TAB CHANGE
     useEffect(() => {
         setStagedBulkAction(null);
-        setBulkReason(""); // Clear the reason too to keep the logic clean
+        setBulkReason("");
+        setCancelConfirmText("");
+        setDepositAmounts({});
+        setDepositMethods({});
     }, [activeTab]);
 
     // PHASE 4: THE FORENSIC GATE LOCK (MULTI-SILO AWARE)
@@ -887,10 +992,8 @@ const EndOfDayModal = React.memo(({
         else if (res === 'no-show') census.noShow++;
         else if (res === 'cancel') census.cancel++;
         else if (res === 'hospitalize') census.hospitalize++;
-        else if (res === 'rebook') {
-            if (isActive) census.carryOver++;
-            else census.reschedule++;
-        }
+        else if (res === 'reschedule') census.reschedule++;
+        else if (res === 'carryover') census.carryOver++;
     });
 
     const [isConfirming, setIsConfirming] = useState(false);
@@ -905,59 +1008,26 @@ const EndOfDayModal = React.memo(({
     const [loadingHistory, setLoadingHistory] = useState({});
     const [historyMessage, setHistoryMessage] = useState({}); // { pid: string } — inline feedback replacing alert()
 
-    // 🧬 PHASE 1: AUTOMATIC ANCESTOR CHAIN RESOLVER
-    // Resolves the full originApptId chain for every carry-over record on modal open.
-    const [ancestorChains, setAncestorChains] = useState({});
-
-    useEffect(() => {
-        if (!open || leftoverPatients.length === 0) return;
-
-        const resolveAllChains = async () => {
-            const chains = {};
-            const MAX_DEPTH = 10; // Safety limit for recursive chain traversal
-
-            await Promise.all(leftoverPatients.map(async (patient) => {
-                // Only resolve for carry-over children (records with an origin pointer or caseDay > 1)
-                if (!patient.originApptId && (patient.caseDay || 1) <= 1) return;
-
-                const chain = [];
-                let currentOriginId = patient.originApptId;
-                let depth = 0;
-
-                while (currentOriginId && depth < MAX_DEPTH) {
-                    try {
-                        const snap = await getDoc(doc(db, "appointments", currentOriginId));
-                        if (!snap.exists()) break;
-                        const ancestor = { id: snap.id, ...snap.data() };
-                        chain.unshift(ancestor); // Oldest ancestor first
-                        currentOriginId = ancestor.originApptId; // Follow the chain upward
-                    } catch (e) {
-                        console.error(`Ancestor chain resolution failed at depth ${depth}:`, e);
-                        break;
-                    }
-                    depth++;
-                }
-
-                if (chain.length > 0) {
-                    chains[patient.id] = chain;
-                }
-            }));
-
-            setAncestorChains(chains);
-            console.log(`[Ancestor Chain Resolver] Resolved ${Object.keys(chains).length} chain(s)`, chains);
-        };
-
-        resolveAllChains();
-    }, [open, leftoverPatients]);
+    // T2.49: Ancestor chain is now resolved per-card via useAncestorChain inside AuditPatientCard.
+    // The previous bulk resolveAllChains effect has been replaced — chains load on demand.
 
     const handleProcessClick = React.useCallback(() => {
         if (!isConfirming) {
             setIsConfirming(true);
         } else {
-            onConfirmReset(targetDates, targetTimes);
+            // T2.102: Build a deposit data map for carry-over patients that have a deposit amount.
+            // Structure: { [patientId]: { amount: number, method: string } }
+            const depositData = {};
+            Object.entries(depositAmounts).forEach(([pid, rawAmt]) => {
+                const amount = parseFloat(rawAmt);
+                if (amount > 0) {
+                    depositData[pid] = { amount, method: depositMethods[pid] || 'cash' };
+                }
+            });
+            onConfirmReset(targetDates, targetTimes, depositData);
             setIsConfirming(false);
         }
-    }, [isConfirming, onConfirmReset, targetDates, targetTimes]);
+    }, [isConfirming, onConfirmReset, targetDates, targetTimes, depositAmounts, depositMethods]);
 
     const handleFetchHistory = React.useCallback(async (patient) => {
         let originId = patient.originApptId;
@@ -1194,7 +1264,7 @@ const EndOfDayModal = React.memo(({
                                     <Button
                                         size="small"
                                         sx={{ borderRadius: 0, px: 3, py: 0.6, color: '#8B4513', fontWeight: '1000', fontSize: '0.75rem', '&:hover': { bgcolor: '#FFF3E0' } }}
-                                        onClick={() => setStagedBulkAction('rebook')}
+                                        onClick={() => setStagedBulkAction('reschedule')}
                                     >
                                         BATCH: RESCHEDULE ALL
                                     </Button>
@@ -1212,7 +1282,7 @@ const EndOfDayModal = React.memo(({
                                     <Button
                                         size="small"
                                         sx={{ borderRadius: 0, px: 3, py: 0.6, color: '#8B4513', fontWeight: '1000', fontSize: '0.75rem', '&:hover': { bgcolor: '#FFF3E0' } }}
-                                        onClick={() => setStagedBulkAction('rebook')}
+                                        onClick={() => setStagedBulkAction('reschedule')}
                                     >
                                         BATCH: RESCHEDULE ALL
                                     </Button>
@@ -1230,7 +1300,7 @@ const EndOfDayModal = React.memo(({
                                     <Button
                                         size="small"
                                         sx={{ borderRadius: 0, px: 3, py: 0.6, color: '#8B4513', fontWeight: '1000', fontSize: '0.75rem', '&:hover': { bgcolor: '#FFF3E0' } }}
-                                        onClick={() => setStagedBulkAction('rebook')}
+                                        onClick={() => setStagedBulkAction('carryover')}
                                     >
                                         BATCH: CARRY-OVER ALL
                                     </Button>
@@ -1252,9 +1322,9 @@ const EndOfDayModal = React.memo(({
                                 <Divider orientation="vertical" flexItem sx={{ height: 24, borderRightWidth: 2, borderColor: '#D7CCC8' }} />
                                 <Typography variant="caption" sx={{ fontWeight: 1000, color: '#5D4037', whiteSpace: 'nowrap' }}>
                                     ✍️ REASON FOR {currentSiloPatients.length} {
-                                        stagedBulkAction === 'rebook' 
-                                            ? (activeTab === 2 ? 'CARRY-OVERS' : 'RESCHEDULES') 
-                                            : stagedBulkAction.toUpperCase() + 'S'
+                                        stagedBulkAction === 'carryover' ? 'CARRY-OVERS'
+                                        : stagedBulkAction === 'reschedule' ? 'RESCHEDULES'
+                                        : stagedBulkAction.toUpperCase() + 'S'
                                     }:
                                 </Typography>
                                 <TextField
@@ -1268,11 +1338,11 @@ const EndOfDayModal = React.memo(({
                                     autoFocus
                                 />
                                 
-                                {(stagedBulkAction === 'defer' || stagedBulkAction === 'rebook' || stagedBulkAction === 'hospitalize') && (
-                                    <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', bgcolor: '#FFF', border: '1px solid #5D4037', borderRadius: '4px', px: 1, py: 0.2 }}>
-                                        <input 
-                                            type="date" value={batchDate} onChange={(e) => setBatchDate(e.target.value)} 
-                                            style={{ border: 'none', background: 'transparent', fontSize: '0.65rem', fontWeight: '1000', outline: 'none', cursor: 'pointer' }}
+                                {(stagedBulkAction === 'defer' || stagedBulkAction === 'reschedule' || stagedBulkAction === 'carryover' || stagedBulkAction === 'hospitalize') && (
+                                    <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', bgcolor: '#FFF', border: '1px solid #5D4037', borderRadius: 0, px: 1, py: 0.2 }}>
+                                        <input
+                                            type="date" value={batchDate} onChange={(e) => setBatchDate(e.target.value)}
+                                            style={{ ...getDatePickerStyle(batchDate), border: 'none', fontSize: '0.65rem', fontWeight: '1000', outline: 'none', cursor: 'pointer' }}
                                         />
                                         <Box sx={{ width: '1px', height: '14px', bgcolor: '#5D4037', opacity: 0.3, mx: 0.2 }} />
                                         <input 
@@ -1282,15 +1352,32 @@ const EndOfDayModal = React.memo(({
                                     </Box>
                                 )}
 
+                                {/* T2.50: Typed confirmation guard for Active-silo batch cancel */}
+                                {stagedBulkAction === 'cancel' && activeTab === 2 && (
+                                    <TextField
+                                        size="small"
+                                        placeholder='Type "CANCEL" to confirm'
+                                        value={cancelConfirmText}
+                                        onChange={(e) => setCancelConfirmText(e.target.value)}
+                                        sx={{ width: 180, bgcolor: '#FFF', '& .MuiOutlinedInput-root': { fontSize: '0.72rem', fontWeight: 900, borderRadius: 0 } }}
+                                    />
+                                )}
+
                                 <Stack direction="row" spacing={0.5}>
-                                    <IconButton size="small" onClick={() => {
-                                        onBulkResolution(stagedBulkAction, bulkReason, batchDate, batchTime, currentSiloPatients.map(p => p.id));
-                                        setStagedBulkAction(null);
-                                        setBulkReason("");
-                                    }} sx={{ color: '#2E7D32', border: '1px solid #2E7D32' }}>
+                                    <IconButton
+                                        size="small"
+                                        disabled={stagedBulkAction === 'cancel' && activeTab === 2 && cancelConfirmText !== 'CANCEL'}
+                                        onClick={() => {
+                                            onBulkResolution(stagedBulkAction, bulkReason, batchDate, batchTime, currentSiloPatients.map(p => p.id));
+                                            setStagedBulkAction(null);
+                                            setBulkReason("");
+                                            setCancelConfirmText("");
+                                        }}
+                                        sx={{ color: '#2E7D32', border: '1px solid #2E7D32', '&.Mui-disabled': { opacity: 0.3 } }}
+                                    >
                                         <AutoFixHighIcon sx={{ fontSize: 16 }} />
                                     </IconButton>
-                                    <IconButton size="small" onClick={() => setStagedBulkAction(null)} sx={{ color: '#D32F2F', border: '1px solid #D32F2F' }}>
+                                    <IconButton size="small" onClick={() => { setStagedBulkAction(null); setCancelConfirmText(""); }} sx={{ color: '#D32F2F', border: '1px solid #D32F2F' }}>
                                         <DoNotDisturbIcon sx={{ fontSize: 16 }} />
                                     </IconButton>
                                 </Stack>
@@ -1307,7 +1394,17 @@ const EndOfDayModal = React.memo(({
                                 key={patient.id}
                                 patient={patient}
                                 tabMode={activeTab} // 0: Online, 1: Scheduled, 2: Active
-                                resolution={patient.status === 'confined' ? 'confined' : patientResolutions[patient.id]}
+                                resolution={
+                                    // T2.46: Confined patients use a display-only 'confined' value.
+                                    // Active-silo patients (in-consult, on-hold) default to 'hospitalize'
+                                    // if staff hasn't made an explicit selection yet.
+                                    patient.status === 'confined'
+                                        ? 'confined'
+                                        : patientResolutions[patient.id]
+                                        ?? (activeTab === 2 && ['in-consult', 'on-hold'].includes((patient.status || '').toLowerCase())
+                                            ? 'hospitalize'
+                                            : undefined)
+                                }
                                 targetDate={targetDates[patient.id]}
                                 targetTime={targetTimes[patient.id]}
                                 auditReason={auditReasons[patient.id]}
@@ -1323,7 +1420,9 @@ const EndOfDayModal = React.memo(({
                                 onClearHistory={handleClearHistory}
                                 onGenderOpen={handleGenderOpen}
                                 CARD_HEIGHT={CARD_HEIGHT}
-                                ancestorChain={ancestorChains[patient.id] || []}
+                                depositAmount={depositAmounts[patient.id]}
+                                depositMethod={depositMethods[patient.id]}
+                                onDepositChange={handleDepositChange}
                             />
                         ))}
                     </Stack>

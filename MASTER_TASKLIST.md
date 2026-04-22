@@ -65,8 +65,8 @@
 | T2.37a | Firestore rule: no-show status transition requires isStaff() — mobile pet owners should not be able to set status to no-show | 15 min | T2.1 | TODO | Review finding — appointments update allows any auth user to set no-show |
 | T2.42 | Revert terminal drift fix: clear forensicSeal + TERMINAL_REVERSAL event | 30 min | — | TODO | |
 | T2.44 | Write forensicSeal on normal sign-off + completed path | 30 min | — | TODO | Happy path has no seal |
-| T2.57 | Records.jsx bug fixes (4 bugs) | 45 min | — | TODO | Filters always empty. **Review finding:** L86 queries `collection(db, "staff")` which doesn't exist — should be `users` with role filter |
-| T2.58 | Records.jsx terminology cleanup | 30 min | — | TODO | |
+| T2.57 | Records.jsx bug fixes (4 bugs) | 45 min | — | DONE | Vets→users collection, departments→departments collection, jsScheduled→scheduledDate, window.location→useNavigate. **Review fixes:** error callbacks on both listeners |
+| T2.58 | Records.jsx terminology cleanup | 30 min | — | DONE | All forensic/teleport/state-vector terms replaced with plain clinical language |
 | T2.79 | Fix tiered pricing per-pet weight | 30 min | — | DONE | Per-pet resolveTieredPrice inside forEach loop. **Review fix:** step 4 shows "Est. Total" with weight-adjustment note |
 | T2.119 | Normalize allergy field: read `petAllergies \|\| allergies` everywhere, write `petAllergies`, propagate to active appointments on edit | 45 min | — | TODO | **PATIENT SAFETY** — allergy warnings suppressed for mobile pets |
 | T2.149 | `adjustStock`: wrap in `runTransaction` with stock floor check (`newStock >= 0`) and reserved check (`newStock >= reserved`) | 30 min | — | DONE | **Review fix:** spread-copy batches array before push to prevent transaction retry double-append |
@@ -139,11 +139,12 @@
 | T2.50 | Typed confirmation for Active-silo batch cancel | 30 min | — | TODO | |
 | T2.51 | IDENTITY_EDIT pulse event | 15 min | — | TODO | |
 | T2.52 | Atomic handleDispenseVerified | 20 min | — | TODO | |
-| T2.59 | Records.jsx UX polish | 1.5 hrs | — | TODO | |
-| T2.61 | Records.jsx case-grouping view toggle | 2 hrs | — | TODO | |
-| T2.65 | Amend audit log for terminal records | 1 hr | — | TODO | |
-| T2.70 | Quick-range date filter buttons in Records | 30 min | — | TODO | |
-| T2.71 | Saved filter presets for Records | 2.5 hrs | — | TODO | |
+| T2.59 | Records.jsx UX polish | 1.5 hrs | — | DONE | MUI void dialog, Snackbar errors, search clear button, DataGrid pagination 25/50/100 |
+| T2.61 | Records.jsx case-grouping view toggle | 2 hrs | — | DONE | Visits/Cases toggle, originApptId chain grouping, case-continuation CSS class |
+| T2.61a | Case View visual distinction: add case header row with pet name + service + case span, thicker separator between groups, indent continuation rows, collapse/expand per case | P2 | 45 min | — | TODO | Review finding — current Cases mode visually identical to Visits mode. Grouping logic works but needs stronger visual communication |
+| T2.65 | Amend audit log for terminal records | 1 hr | — | DONE | AUDIT_ADDENDUM pulse event, inline addendum input on sealed records. **Review fix:** null user guard |
+| T2.70 | Quick-range date filter buttons in Records | 30 min | — | DONE | Today/7d/30d/This Month chips + Clear chip |
+| T2.71 | Saved filter presets for Records | 2.5 hrs | — | DONE | useSavedFilters hook, users/{uid}/recordFilterPresets subcollection. **Review fix:** Firestore rule added for subcollection |
 | T2.75 | Clinical amendment path for locked records | 3 hrs | — | TODO | Most important P2 |
 | T2.80 | POSModal services[] rewrite for multi-service billing | 1-2 hrs | — | TODO | |
 | T2.87 | BookAppointment TOCTOU race fix (runTransaction) | 45 min | — | DONE | writeBatch → runTransaction with atomic retry |
@@ -225,15 +226,16 @@
 | T2.53 | rescheduleAppointment runTransaction conversion | 15 min | — | TODO | |
 | T2.54 | IDENTITY_HEALING pulse event | 10 min | — | TODO | |
 | T2.56 | CONFINE date picker color cues | 1 hr | — | TODO | |
-| T2.62 | Case lineage indicator column | 30 min | — | TODO | |
-| T2.63 | Follow-up linkage in audit popover | 1 hr | — | TODO | |
-| T2.66 | Defer triage action in Records | 20 min | — | TODO | |
-| T2.67 | Edit identity fields in Records | 45 min | — | TODO | |
-| T2.68 | Copy ID + print record actions | 30 min | — | TODO | |
-| T2.69 | Phone normalization | 1.5 hrs | — | TODO | |
-| T2.72 | Structured reschedule pulse + undo | 45 min | — | TODO | |
-| T2.73 | Bulk reschedule in Records | 2 hrs | — | TODO | |
-| T2.74 | Bulk staff reassignment in Records | 1.5 hrs | — | TODO | |
+| T2.62 | Case lineage indicator column | 30 min | — | DONE | Day N chip for multi-day cases |
+| T2.63 | Follow-up linkage in audit popover | 1 hr | — | DONE | Previous/Next Visit buttons for originApptId/followUpId links |
+| T2.66 | Defer triage action in Records | 20 min | — | DONE | isDeferred flag + DEFERRED pulse event. **Review fix:** null user guard |
+| T2.67 | Edit identity fields in Records | 45 min | — | DONE | Inline petName/ownerName/ownerPhone edit + IDENTITY_EDIT pulse. **Review fixes:** empty string validation, null user guard, trim on save |
+| T2.68 | Copy ID + print record actions | 30 min | — | DONE | Copy to clipboard with toast, formatted print via shared printUtils. **Review fixes:** full XSS escaping, null fallbacks, en-PH locale |
+| T2.69 | Phone normalization | 1.5 hrs | — | DONE | normalizePhone in phoneValidation.js, wired in useGlobalRecords phone search |
+| T2.72 | Structured reschedule pulse + undo | 45 min | — | DONE | 10s undo Snackbar, RESCHEDULE_UNDO pulse. **Review fix:** Timestamp.fromDate for undo write |
+| T2.73 | Bulk reschedule in Records | 2 hrs | — | DONE | Checkbox selection (pending/confirmed only), floating bar, bulk dialog. **Review fix:** per-item failure tracking, DataGrid v8 selection model compat |
+| T2.73a | Records: only show checkboxSelection on TRIAGE tab — disabled checkboxes on other tabs confuse users into thinking the feature is broken | P2 | 15 min | — | TODO | Review finding — checkbox column always visible but never selectable outside TRIAGE |
+| T2.74 | Bulk staff reassignment in Records | 1.5 hrs | — | DONE | writeBatch atomic update, STAFF_REASSIGN pulse, vet dropdown from users collection |
 | T2.76 | Client self-check-in via clinic QR | 5-6 hrs | — | TODO | |
 | T2.77 | 4-tier ticket prefix scheme (A/W/E/R) | 30 min | — | DONE | R prefix for caseDay > 1; apptLabel shows RETURN |
 | T2.78 | visitGroupId at multi-pet booking time | 30 min | — | DONE | VG-{uid5}-{timestamp}, groupSize, groupIndex per appointment |

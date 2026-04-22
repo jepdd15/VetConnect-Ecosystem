@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { collection, query, orderBy, limit, onSnapshot, where, Timestamp } from 'firebase/firestore';
 import { db } from '../../../firebaseConfig';
 import { normalizeStatus } from '../../../utils/statusConstants';
+import { normalizePhone } from '../../../utils/phoneValidation';
 
 /**
  * 🛰️ GLOBAL RECORDS ENGINE (V3: UNIFIED HYBRID)
@@ -44,9 +45,13 @@ export function useGlobalRecords(dateRange = { start: null, end: null }, searchQ
 
     // 🧪 SEARCH PIVOT
     if (searchQuery && searchQuery.trim().length >= 2) {
-      const qText = searchQuery.trim();
+      let qText = searchQuery.trim();
       const fieldMap = { 'petName': 'petName', 'ownerName': 'ownerName', 'phone': 'ownerPhone' };
       const targetField = fieldMap[searchMode] || 'petName';
+
+      if (searchMode === 'phone') {
+        qText = normalizePhone(qText) || qText;
+      }
 
       // Global Search ignores date/limits to find match across history
       q = query(
@@ -80,7 +85,7 @@ export function useGlobalRecords(dateRange = { start: null, end: null }, searchQ
         status: normalizeStatus(doc.data().status),
         // Normalizing typical date fields for the grid
         jsCreatedAt: doc.data().createdAt?.toDate() || null,
-        jsScheduled: doc.data().jsScheduled?.toDate?.() || (doc.data().jsScheduled ? new Date(doc.data().jsScheduled) : null),
+        jsScheduled: doc.data().scheduledDate?.toDate?.() || (doc.data().scheduledDate ? new Date(doc.data().scheduledDate) : null),
         jsArrived: doc.data().timeArrived?.toDate?.() || null,
         jsCompleted: doc.data().timeCompleted?.toDate?.() || null,
       }));

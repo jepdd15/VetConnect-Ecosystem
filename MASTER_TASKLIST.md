@@ -79,9 +79,13 @@
 | ID | Name | Effort | Depends On | Status | Notes |
 |---|---|---|---|---|---|
 | T2.1 | Firestore RBAC rules (isStaff + isAdmin helpers) | 2 hrs | — | DONE | 16 explicit collection rules, deny-all fallback. **Review fixes:** inventory_categories create→isStaff, users delete→isOwner\|\|isAdmin, exists() null-safety |
-| T2.2 | Printable visit summary | 2-3 hrs | — | TODO | |
-| T2.3 | Printable vaccination record | 1-2 hrs | — | TODO | |
-| T2.4 | Printable referral report | 1-2 hrs | — | TODO | |
+| T2.2 | Printable visit summary | 2-3 hrs | — | DONE | SOAP, vitals, Rx, vaccine, lab, discharge sections. Shared printUtils.js. **Review fix:** esc() XSS prevention on all dynamic values |
+| T2.3 | Printable vaccination record | 1-2 hrs | — | DONE | Per-pet history + status summary. **Review fixes:** Timestamp-safe dueDate parsing, dedup comparison via toDate().getTime(). NOTE: reads vaccineData singular — needs update after T2.472 |
+| T2.4 | Printable referral report | 1-2 hrs | — | DONE | ReferralModal (ephemeral, no Firestore write) + printReferralReport. **Review fix:** form state reset on reopen via useEffect([open]) |
+| T2.4a | Extract calculatePetAge to printUtils.js shared helper (duplicated in printVisitSummary + printReferralReport + PatientDashboard) | P3 | 10 min | TODO | Review finding — 3 slightly different implementations |
+| T2.4b | printReferralReport: add vitals.pain to guard condition (omitted from the 7-vital check) | P3 | 1 min | TODO | Review finding |
+| T2.4c | PatientDashboard: remove stale `pet` from useEffect dependency array (pre-existing, causes re-fetch loop risk) | P3 | 1 min | TODO | Review finding — pre-existing tech debt |
+| T2.4d | PatientDashboard banner buttons: borderRadius 1.5 → 0 (neubrutalism compliance, affects Add Record + Book Visit + Referral) | P3 | 5 min | TODO | Review finding — Design Sweep scope |
 | T2.30 | Multi-staff clinical attribution | 2 hrs | — | TODO | |
 | T2.31 | Protect default inventory categories | 1-2 hrs | — | DONE | Firestore rule !catId.matches default_ + Settings.jsx client guard + hide delete icon |
 | T2.32 | Extract SoapGrid component (blocks T2.28) | 2-3 hrs | — | TODO | |
@@ -290,6 +294,10 @@
 | T2.206 | ServiceTable: add pagination | 15 min | — | DONE | **Review fix:** pagination reset depends on data reference, not data.length |
 | T2.207 | CLAUDE.md: fix `tieredPricing` → `pricingTiers` + `hasTieredPricing` in field docs | 2 min | — | DONE | |
 | T2.205a | Services.jsx parent page: design token sweep (12+ hardcoded hex in header toolbar) | 20 min | T2.205 | TODO | Review finding — T2.205 swept child components only, parent missed |
+| T2.205b | serviceLogConfig.js: replace raw hex with COLORS token imports | P3 | 10 min | T2.202 | TODO | Review finding — shared config duplicates token values as hardcoded hex |
+| T2.205c | Services child components: remaining #757575/#616161 fallback colors not tokenized | P3 | 10 min | T2.205 | TODO | Review finding — unknown-action and history-icon fallbacks |
+| T2.203a | ServiceActivityLog: friendly error message for failed-precondition (missing Firestore index) | P3 | 5 min | T2.203 | TODO | Review finding — raw Firestore error URL shown to user |
+| T2.5a | useBookingEngine: checkClinicLoad captures stale clinicSettings closure (pre-existing, worsened by T2.5 real-time listener) | P3 | 15 min | T2.5 | TODO | Review finding — add clinicSettings.trafficModerate/High to effect deps or parameterize |
 | T2.221 | Staff: delete dead code (KPICard + kpis + 4 icons, WorkIcon, headerSx, deleteDoc, showToast prop) | 5 min | — | DONE | |
 | T2.222 | Staff: pass `loading` to StaffTable, add skeleton | 10 min | — | DONE | |
 | T2.223 | Staff: add loading/disabled state on REVOKE button | 5 min | — | DONE | **Review fix:** setRevoking in finally block to prevent stuck button on error |

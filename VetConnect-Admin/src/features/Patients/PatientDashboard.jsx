@@ -4,7 +4,8 @@ import {
   Box, Typography, Chip, Paper,
   Stack, Button, CircularProgress, Divider,
   IconButton, Avatar, TextField, InputAdornment,
-  FormControl, Select, MenuItem, Popover, Collapse, Tooltip
+  FormControl, Select, MenuItem, Popover, Collapse, Tooltip,
+  Snackbar, Alert,
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
 
@@ -43,12 +44,25 @@ import EventNoteIcon from '@mui/icons-material/EventNote';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
+import PrintIcon from '@mui/icons-material/Print';
+import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 
 // Charting
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 
 // ── Design Tokens (shared across all VetConnect pages) ─────────
 import { FONT, TYPE, COLORS, getRecordColor, getInitialColor } from '../../theme/designTokens';
+
+// ── Clinic Settings ─────────────────────────────────────────────
+import { useClinicSettings } from '../../hooks/useClinicSettings';
+
+// ── Printable Document Generators ──────────────────────────────
+import { openPrintWindow } from '../../utils/printUtils';
+import { generateVisitSummaryHTML } from '../../utils/printVisitSummary';
+import { generateVaccinationRecordHTML } from '../../utils/printVaccinationRecord';
+
+// ── Modals ──────────────────────────────────────────────────────
+import ReferralModal from './components/ReferralModal';
 
 // ── Analytics Widget Shell ──
 const Widget = ({ title, icon, children }) => (
@@ -85,6 +99,10 @@ export default function PatientDashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeRecordIndex, setActiveRecordIndex] = useState(0);
   const [collapsedYears, setCollapsedYears] = useState(new Set());
+  const [referralOpen, setReferralOpen] = useState(false);
+  const [printBlockedToast, setPrintBlockedToast] = useState(false);
+
+  const clinicSettings = useClinicSettings();
 
   const recordRefs = useRef({});
   const timelineScrollRef = useRef(null);
@@ -319,6 +337,15 @@ export default function PatientDashboard() {
     });
   }, [history]);
 
+  // Records that contain structured vaccine data — used by the vaccination
+  // record printable. Sorted ascending so the document reads oldest-to-newest.
+  const vaccineRecords = useMemo(() =>
+    (history || [])
+      .filter(r => r.vaccineData?.vaccineName)
+      .sort((a, b) => (a.date?.seconds || 0) - (b.date?.seconds || 0)),
+    [history]
+  );
+
   useEffect(() => { setExpandedRecords(new Set([0])); }, [timelineSearch, timelineFilter, timelineSort]);
 
   const toggleRecord = (i) => setExpandedRecords(p => { const n = new Set(p); n.has(i) ? n.delete(i) : n.add(i); return n; });
@@ -466,6 +493,19 @@ export default function PatientDashboard() {
           <Button variant="contained" size="small" startIcon={<EventAvailableIcon sx={{ fontSize: '15px !important' }} />} onClick={() => navigate('/queue')}
             sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.78rem', textTransform: 'none', bgcolor: '#2E7D32', borderRadius: 1.5, px: 2, height: 36, boxShadow: 'none', '&:hover': { bgcolor: '#1B5E20' } }}>
             Book Visit
+          </Button>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<LocalHospitalIcon sx={{ fontSize: '15px !important' }} />}
+            onClick={() => setReferralOpen(true)}
+            sx={{
+              fontFamily: FONT, fontWeight: 700, fontSize: '0.78rem', textTransform: 'none',
+              color: COLORS.accent, borderColor: COLORS.border, borderRadius: 1.5,
+              px: 2, height: 36, '&:hover': { borderColor: COLORS.accentLight, bgcolor: '#EFEBE9' },
+            }}
+          >
+            Referral
           </Button>
         </Box>
       </Box>
@@ -694,6 +734,31 @@ export default function PatientDashboard() {
                           </Stack>
                         </Grid>
                       </Grid>
+
+                      {/* Print Visit Summary — stopPropagation prevents toggling the Collapse */}
+                      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1.5, pt: 1, borderTop: `1px solid ${COLORS.borderLight}` }}>
+                        <Button
+                          size="small"
+                          startIcon={<PrintIcon sx={{ fontSize: '14px !important' }} />}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const html = generateVisitSummaryHTML({
+                              record: rec,
+                              pet,
+                              owner,
+                              clinicName: clinicSettings.clinicName,
+                              clinicAddress: clinicSettings.clinicAddress,
+                            });
+                            openPrintWindow(html, () => setPrintBlockedToast(true));
+                          }}
+                          sx={{
+                            fontFamily: FONT, fontWeight: 700, fontSize: '0.75rem',
+                            textTransform: 'none', color: COLORS.accent,
+                          }}
+                        >
+                          Print Visit Summary
+                        </Button>
+                      </Box>
                     </Box>
                   </Collapse>
                   {!isExpanded && <Divider sx={{ mx: 2, borderColor: COLORS.borderLight }} />}
@@ -825,6 +890,31 @@ export default function PatientDashboard() {
                 );
               })}
             </Stack>
+
+            {vaccineRecords.length > 0 && (
+              <Button
+                size="small"
+                fullWidth
+                startIcon={<PrintIcon sx={{ fontSize: '14px !important' }} />}
+                onClick={() => {
+                  const html = generateVaccinationRecordHTML({
+                    pet,
+                    owner,
+                    vaccineRecords,
+                    clinicName: clinicSettings.clinicName,
+                    clinicAddress: clinicSettings.clinicAddress,
+                  });
+                  openPrintWindow(html, () => setPrintBlockedToast(true));
+                }}
+                sx={{
+                  fontFamily: FONT, fontWeight: 700, fontSize: '0.72rem',
+                  textTransform: 'none', color: '#2E7D32', mt: 1,
+                  borderTop: `1px solid ${COLORS.borderLight}`, borderRadius: 0, pt: 1,
+                }}
+              >
+                Print Vaccination Record
+              </Button>
+            )}
           </Widget>
 
           {/* Upcoming Appointment */}
@@ -920,6 +1010,34 @@ export default function PatientDashboard() {
           )}
         </Box>
       </Box>
+
+      {/* ── Referral Report Modal ── */}
+      <ReferralModal
+        open={referralOpen}
+        onClose={() => setReferralOpen(false)}
+        pet={pet}
+        owner={owner}
+        history={history}
+        clinicName={clinicSettings.clinicName}
+        clinicAddress={clinicSettings.clinicAddress}
+      />
+
+      {/* ── Popup-blocked warning ── */}
+      <Snackbar
+        open={printBlockedToast}
+        autoHideDuration={5000}
+        onClose={() => setPrintBlockedToast(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setPrintBlockedToast(false)}
+          severity="warning"
+          variant="filled"
+          sx={{ fontFamily: FONT, width: '100%' }}
+        >
+          Print window was blocked. Please allow pop-ups for this site and try again.
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

@@ -561,19 +561,19 @@
 
 | ID | Name | Priority | Effort | Status | Notes |
 |---|---|---|---|---|---|
-| T2.231 | Fix race condition in fetchTicketDetails | P0 | 30 min | TODO | |
-| T2.232 | Display ticket prefix (`W-005`) | P0 | 15 min | TODO | |
-| T2.233 | Fix isPriority — 2-tier (emergency=red, else=neutral) | P1 | 10 min | TODO | Decision locked |
-| T2.234 | Fix service display for walk-ins | P1 | 10 min | TODO | |
-| T2.235 | Queue status handling (paused/closed/idle) | P1 | 20 min | TODO | |
-| T2.236 | Date filter on appointment query + null guard | P2 | 15 min | TODO | |
-| T2.237 | Error handling on Firestore calls | P2 | 10 min | TODO | |
-| T2.238 | Sidebar link + clinic name from settings | P2 | 15 min | TODO | |
-| T2.239 | Remove unused Grid import | P3 | 1 min | TODO | |
-| T2.242 | AssignStaffModal: fix ticket prefix for pre-booked (A not W) | P1 | 10 min | TODO | Cross-ref |
-| T2.273 | Upcoming queue preview (next 2-3 tickets) | P2 | 45 min | TODO | A-tier |
-| T2.274 | Transition animation on number change | P3 | 20 min | TODO | |
-| T2.275 | Design tokens + TV readability pass | P2 | 30 min | TODO | |
+| T2.231 | Fix race condition in fetchTicketDetails | P0 | 30 min | DONE | useRef sequence counter prevents stale data; folds T2.236+T2.237 |
+| T2.232 | Display ticket prefix (`W-005`) | P0 | 15 min | DONE | currentPrefix + padStart(3,'0') format |
+| T2.233 | Fix isPriority — 2-tier (emergency=red, else=neutral) | P1 | 10 min | DONE | isEmergency replaces isPriority |
+| T2.234 | Fix service display for walk-ins | P1 | 10 min | DONE | primaryService \|\| serviceType \|\| 'General Visit' |
+| T2.235 | Queue status handling (paused/closed/idle) | P1 | 20 min | DONE | Tri-state: serving/paused/idle |
+| T2.236 | Date filter on appointment query + null guard | P2 | 15 min | DONE | Folded into T2.231. **Review fix:** also applied to fetchUpcoming |
+| T2.237 | Error handling on Firestore calls | P2 | 10 min | DONE | Folded into T2.231. **Review fix:** listenerError state with visible error screen |
+| T2.238 | Sidebar link + clinic name from settings | P2 | 15 min | DONE | Lobby Monitor button in Sidebar + useClinicSettings in Monitor footer |
+| T2.239 | Remove unused Grid import | P3 | 1 min | DONE | Folded into T2.275 |
+| T2.242 | AssignStaffModal: fix ticket prefix for pre-booked (A not W) | P1 | 10 min | DONE | 3-way: E/W/A. Cascade analysis confirmed safe |
+| T2.273 | Upcoming queue preview (next 2-3 tickets) | P2 | 45 min | DONE | **Review fix:** today date filter on upcoming query. Needs composite index appointments(status ASC, queueNumber ASC) |
+| T2.274 | Transition animation on number change | P3 | 20 min | DONE | MUI Fade on mount (no exit animation — key remount) |
+| T2.275 | Design tokens + TV readability pass | P2 | 30 min | DONE | All hex replaced with COLORS tokens, solid shadows, borderRadius:0 |
 
 #### Expenses (T2.243-T2.258)
 

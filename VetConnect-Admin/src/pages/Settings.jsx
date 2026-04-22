@@ -114,6 +114,7 @@ export default function Settings() {
     lunchEnabled: true, lunchStart: 12, lunchEnd: 13,
     minSlotInterval: 30, advanceNoticeMins: 120, maxFutureBookingDays: 30, maxPetsPerBooking: 3,
     maxCages: 5, autoNoShowMins: 30, trafficModerate: 6, trafficHigh: 13,
+    clinicPhone: '',
     workingDays: [1, 2, 3, 4, 5, 6, 0] // [0:Sun, 1:Mon... 6:Sat]
   });
 
@@ -196,7 +197,7 @@ export default function Settings() {
     if (!lastSavedSettings) return false;
     const tracked = ['openHour', 'closeHour', 'lunchEnabled', 'lunchStart', 'lunchEnd',
       'minSlotInterval', 'advanceNoticeMins', 'maxFutureBookingDays', 'maxPetsPerBooking',
-      'maxCages', 'autoNoShowMins', 'trafficModerate', 'trafficHigh', 'workingDays'];
+      'maxCages', 'autoNoShowMins', 'trafficModerate', 'trafficHigh', 'workingDays', 'clinicPhone'];
     return tracked.some(key => JSON.stringify(settings[key]) !== JSON.stringify(lastSavedSettings[key]));
   }, [settings, lastSavedSettings]);
 
@@ -324,7 +325,7 @@ export default function Settings() {
       if (lastSavedSettings) {
         const tracked = ['openHour', 'closeHour', 'lunchEnabled', 'lunchStart', 'lunchEnd',
           'minSlotInterval', 'advanceNoticeMins', 'maxFutureBookingDays', 'maxPetsPerBooking',
-          'maxCages', 'autoNoShowMins', 'trafficModerate', 'trafficHigh', 'workingDays'];
+          'maxCages', 'autoNoShowMins', 'trafficModerate', 'trafficHigh', 'workingDays', 'clinicPhone'];
         const changedFields = {};
         tracked.forEach(key => {
           if (JSON.stringify(sanitizedSettings[key]) !== JSON.stringify(lastSavedSettings[key])) {
@@ -536,6 +537,19 @@ export default function Settings() {
                   </FormControl>
                 </Grid>
                 
+                {/* Clinic Phone — configurable, displayed to clients via useClinicSettings */}
+                <Grid size={{ xs: 12 }}>
+                  <TextField
+                    fullWidth size="medium"
+                    label="Clinic Phone Number"
+                    placeholder="e.g. 09171234567"
+                    value={settings.clinicPhone || ''}
+                    onChange={(e) => handleChange('clinicPhone', e.target.value)}
+                    sx={{ bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 0, '& fieldset': { border: `2px solid ${COLORS.accent}33` } } }}
+                    helperText="Shown to clients in the mobile app. Leave empty to hide the Call Clinic button."
+                  />
+                </Grid>
+
                 {/* 🧬 CLINIC WORKING DAYS SELECTOR (Phase 4 Polish) */}
                 <Grid size={{ xs: 12 }}>
                     <Typography variant="overline" sx={{ fontWeight: '1000', color: COLORS.accent, letterSpacing: 1, display: 'block', mb: 1 }}>

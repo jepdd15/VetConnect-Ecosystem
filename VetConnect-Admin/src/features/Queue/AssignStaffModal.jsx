@@ -144,7 +144,11 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
           transaction.update(apptRef, {
             status: STATUS.ARRIVED,
             queueNumber: newNumber,
-            ticketPrefix: patient.priority === 'high' ? 'E' : 'W',
+            ticketPrefix: patient.priority === 'high'
+              ? 'E'
+              : (patient.ownerId === 'WALK_IN_USER' || String(patient.ownerId || '').includes('GUEST_'))
+                ? 'W'
+                : 'A',
             timeArrived: Timestamp.now(),
             services: primedServices,
             clinicalPulse: arrayUnion(pulseEvent)

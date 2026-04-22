@@ -19,7 +19,8 @@ import StaffIcon from '@mui/icons-material/AssignmentInd';
 import TransactionIcon from '@mui/icons-material/ReceiptLong';
 import ExpenseIcon from '@mui/icons-material/MoneyOff';
 import SettingsIcon from '@mui/icons-material/Settings';
-import LogoutIcon from '@mui/icons-material/Logout'; 
+import LogoutIcon from '@mui/icons-material/Logout';
+import TvIcon from '@mui/icons-material/Tv';
 
 const drawerWidth = 260;
 
@@ -91,6 +92,19 @@ export default function Sidebar({ onLogout }) {
       </List>
 
       <Divider sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
+
+      {/* LOBBY MONITOR — opens fullscreen in new tab */}
+      <Box sx={{ px: 3, pt: 2 }}>
+        <Button
+          fullWidth
+          variant="outlined"
+          startIcon={<TvIcon />}
+          onClick={() => window.open('/monitor', '_blank')}
+          sx={{ fontWeight: 'bold', py: 1, borderRadius: 0, color: COLORS.amber, borderColor: COLORS.amber, '&:hover': { bgcolor: 'rgba(255,152,0,0.1)', borderColor: COLORS.amber } }}
+        >
+          Lobby Monitor
+        </Button>
+      </Box>
 
       {/* THE LOGOUT BUTTON */}
       <Box sx={{ p: 3 }}>

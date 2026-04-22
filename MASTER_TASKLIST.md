@@ -65,6 +65,7 @@
 | T2.37a | Firestore rule: no-show status transition requires isStaff() — mobile pet owners should not be able to set status to no-show | 15 min | T2.1 | TODO | Review finding — appointments update allows any auth user to set no-show |
 | T2.42 | Revert terminal drift fix: clear forensicSeal + TERMINAL_REVERSAL event | 30 min | — | TODO | |
 | T2.44 | Write forensicSeal on normal sign-off + completed path | 30 min | — | TODO | Happy path has no seal |
+| T2.44a | ForensicMetricGrid: decouple age metrics (Record Age + Op Hours Age) from shift/queue/consult metrics for active records. Add `liveAge` prop — when true, override age metrics with `new Date()` instead of day-capped `auditEnd`. Apply to all 3 consumers: Queue.jsx (latest day only), EndOfDayModal.jsx (latest active day), Records.jsx (unsealed+non-terminal). Also fix Records.jsx missing props: add `settings`, `sealedMetrics`, `liveAge` for consistency with Queue.jsx. Export `getOperationalMinutes` from pulseUtils.js. ~10 lines across 3 files. | P2 | 30 min | T2.44 | TODO | Review finding — active records show stale age (2D instead of 9D) because `auditEnd` caps at pulse event day, not current time |
 | T2.57 | Records.jsx bug fixes (4 bugs) | 45 min | — | DONE | Vets→users collection, departments→departments collection, jsScheduled→scheduledDate, window.location→useNavigate. **Review fixes:** error callbacks on both listeners |
 | T2.57a | Records.jsx: undo Snackbar and toast Snackbar overlap — use different `anchorOrigin` values or suppress toast when undo is active | P3 | 5 min | T2.72 | TODO | Review finding — both render at same position simultaneously |
 | T2.58 | Records.jsx terminology cleanup | 30 min | — | DONE | All forensic/teleport/state-vector terms replaced with plain clinical language |
@@ -88,6 +89,7 @@
 | T2.4c | PatientDashboard: remove stale `pet` from useEffect dependency array (pre-existing, causes re-fetch loop risk) | P3 | 1 min | TODO | Review finding — pre-existing tech debt |
 | T2.4d | PatientDashboard banner buttons: borderRadius 1.5 → 0 (neubrutalism compliance, affects Add Record + Book Visit + Referral) | P3 | 5 min | TODO | Review finding — Design Sweep scope |
 | T2.30 | Multi-staff clinical attribution | 2 hrs | — | TODO | |
+| T2.30a | Staff attribution dropdown: add "— Unassigned —" placeholder MenuItem when vetsList is empty or no prior assignment | P3 | 5 min | T2.30 | TODO | Review finding — blank dropdown with no visible option to leave unassigned |
 | T2.31 | Protect default inventory categories | 1-2 hrs | — | DONE | Firestore rule !catId.matches default_ + Settings.jsx client guard + hide delete icon |
 | T2.32 | Extract SoapGrid component (blocks T2.28) | 2-3 hrs | — | TODO | |
 | T2.33 | dischargePolicy per service (required/optional) | 1.5 hrs | — | TODO | |
@@ -148,6 +150,7 @@
 | T2.71 | Saved filter presets for Records | 2.5 hrs | — | DONE | useSavedFilters hook, users/{uid}/recordFilterPresets subcollection. **Review fix:** Firestore rule added for subcollection |
 | T2.75 | Clinical amendment path for locked records | 3 hrs | — | TODO | Most important P2 |
 | T2.80 | POSModal services[] rewrite for multi-service billing | 1-2 hrs | — | TODO | |
+| T2.80a | POSModal handleDropdownAdd: read `isScPwdEligible` from service definition instead of hardcoding `isDiscountable: true` | P3 | 5 min | T2.80 | TODO | Review finding — manually-added services always marked discountable regardless of service config |
 | T2.87 | BookAppointment TOCTOU race fix (runTransaction) | 45 min | — | DONE | writeBatch → runTransaction with atomic retry |
 | T2.93 | Delete `workflowType` legacy field | 5 min | — | TODO | |
 | T2.94 | Delete phantom per-service code in ClinicalWorkspace | 15 min | — | TODO | |
@@ -254,6 +257,9 @@
 | ~~T2.98~~ | ~~POSModal receipt: clinic name from settings~~ | — | — | ABSORBED | Absorbed into T2.148 (superset scope: Sales.jsx + POSModal) |
 | T2.99 | POSModal receipt: cashier name fix | 5 min | — | TODO | |
 | T2.102 | Deposit collection modal for carry-over | 2-3 hrs | — | TODO | |
+| T2.102a | Deposit modal: validate negative amounts with error hint instead of silent discard | P3 | 5 min | T2.102 | TODO | Review finding — `<input min="0">` is advisory only, negative values silently ignored |
+| T2.102b | POSModal: clamp `balanceDue` to `Math.max(0, total - deposit)` to prevent negative balance display | P3 | 5 min | T2.102 | TODO | Review finding — deposit exceeding visit cost shows negative balance |
+| T2.102c | Deposit modal: borderRadius 1.2/4px → 0 for neubrutalism compliance | P3 | 2 min | T2.102 | TODO | Review finding — Design Sweep scope |
 | T2.107 | Per-service time tracking (Option A: explicit start/complete) | 25 min | T2.95 | TODO | |
 | T2.109 | Centralized pulse event factory | 45 min | T2.38 | TODO | |
 | T2.111 | Extract shared ClinicalTimeline component | 1.5 hrs | — | TODO | Non-essential refactor |

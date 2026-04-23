@@ -30,6 +30,7 @@ import QuickNavTiles from './components/QuickNavTiles';
 import OperationsTab from './components/OperationsTab';
 import GrowthTab from './components/GrowthTab';
 import FinancialTab from './components/FinancialTab';
+import ClinicalTab from './components/ClinicalTab';
 
 // ── Tab registry ─────────────────────────────────────────────────
 // defaultPeriod is the period the hook uses when that tab is active.
@@ -221,9 +222,7 @@ export default function Dashboard() {
               <OperationsTab data={data} clinicSettings={clinicSettings} isOpen={isOpen} />
             )}
             {currentTab.key === 'clinical' && (
-              <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.textMuted }}>
-                Clinical tab — coming in Day 3.
-              </Typography>
+              <ClinicalTab data={data} />
             )}
             {currentTab.key === 'financial' && (
               <FinancialTab data={data} />

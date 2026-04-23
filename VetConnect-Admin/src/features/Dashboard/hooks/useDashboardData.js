@@ -13,7 +13,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   collection, doc, onSnapshot, query, where,
-  Timestamp,
+  Timestamp, getDocs,
 } from 'firebase/firestore';
 import { db } from '../../../firebaseConfig';
 
@@ -66,6 +66,48 @@ function buildDateRange(period) {
 
     default:
       return { startDate: startOfDay(now), endDate: endOfDay(now) };
+  }
+}
+
+/**
+ * Computes the previous period's date range for delta comparisons.
+ * 'today' -> yesterday, 'week' -> prior 7 days, 'month' -> prior month,
+ * 'quarter' -> prior quarter, 'year' -> prior year.
+ */
+function buildPrevDateRange(period) {
+  const now = new Date();
+
+  switch (period) {
+    case 'today': {
+      const yesterday = new Date(now);
+      yesterday.setDate(now.getDate() - 1);
+      return { startDate: startOfDay(yesterday), endDate: endOfDay(yesterday) };
+    }
+    case 'week': {
+      const prevWeekEnd = new Date(now);
+      prevWeekEnd.setDate(now.getDate() - 7);
+      const prevWeekStart = new Date(prevWeekEnd);
+      prevWeekStart.setDate(prevWeekEnd.getDate() - 6);
+      return { startDate: startOfDay(prevWeekStart), endDate: endOfDay(prevWeekEnd) };
+    }
+    case 'month': {
+      const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const prevMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0); // last day of prev month
+      return { startDate: startOfDay(prevMonth), endDate: endOfDay(prevMonthEnd) };
+    }
+    case 'quarter': {
+      const qStart = Math.floor(now.getMonth() / 3) * 3;
+      const prevQStart = new Date(now.getFullYear(), qStart - 3, 1);
+      const prevQEnd = new Date(now.getFullYear(), qStart, 0);
+      return { startDate: startOfDay(prevQStart), endDate: endOfDay(prevQEnd) };
+    }
+    case 'year': {
+      const prevYear = new Date(now.getFullYear() - 1, 0, 1);
+      const prevYearEnd = new Date(now.getFullYear() - 1, 11, 31);
+      return { startDate: startOfDay(prevYear), endDate: endOfDay(prevYearEnd) };
+    }
+    default:
+      return buildDateRange(period);
   }
 }
 
@@ -189,6 +231,17 @@ export function useDashboardData(period = 'today') {
   // Day 2: Financial tab data
   const [sales, setSales] = useState([]);
   const [expenses, setExpenses] = useState([]);
+
+  // Day 3: Clinical tab data
+  const [medicalRecords, setMedicalRecords] = useState([]);
+
+  // Day 3: Previous period data (one-shot, for delta computation)
+  const [prevData, setPrevData] = useState({
+    appointments: [],
+    sales: [],
+    expenses: [],
+    medicalRecords: [],
+  });
 
   // True until the first appointments snapshot resolves.
   const [appointmentsLoading, setAppointmentsLoading] = useState(true);
@@ -353,6 +406,74 @@ export function useDashboardData(period = 'today') {
 
     return unsub;
   }, [dateRange]);
+
+  // ── Listener 8: Medical records in period (Clinical tab) ────────
+  useEffect(() => {
+    const startTs = Timestamp.fromDate(dateRange.startDate);
+    const endTs = Timestamp.fromDate(dateRange.endDate);
+
+    const q = query(
+      collection(db, 'medical_records'),
+      where('date', '>=', startTs),
+      where('date', '<=', endTs),
+    );
+
+    const unsub = onSnapshot(
+      q,
+      (snap) => setMedicalRecords(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      (err) => console.error('[useDashboardData] medicalRecords listener:', err.message),
+    );
+
+    return unsub;
+  }, [dateRange]);
+
+  // ── Previous period data (one-shot, for delta computation) ──────
+  useEffect(() => {
+    const prevRange = buildPrevDateRange(period);
+    const prevStartTs = Timestamp.fromDate(prevRange.startDate);
+    const prevEndTs = Timestamp.fromDate(prevRange.endDate);
+
+    const fetchPrev = async () => {
+      try {
+        const [apptSnap, salesSnap, expSnap, recSnap] = await Promise.all([
+          getDocs(query(
+            collection(db, 'appointments'),
+            where('scheduledDate', '>=', prevStartTs),
+            where('scheduledDate', '<=', prevEndTs),
+          )),
+          getDocs(query(
+            collection(db, 'sales'),
+            where('date', '>=', prevStartTs),
+            where('date', '<=', prevEndTs),
+          )),
+          getDocs(query(
+            collection(db, 'expenses'),
+            where('date', '>=', prevStartTs),
+            where('date', '<=', prevEndTs),
+          )),
+          getDocs(query(
+            collection(db, 'medical_records'),
+            where('date', '>=', prevStartTs),
+            where('date', '<=', prevEndTs),
+          )),
+        ]);
+
+        setPrevData({
+          appointments: apptSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+          sales: salesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+            .filter(s => s.status !== 'refunded' && s.status !== 'voided'),
+          expenses: expSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+            .filter(e => !e.deletedAt),
+          medicalRecords: recSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+        });
+      } catch (err) {
+        console.error('[useDashboardData] prevPeriod fetch:', err.message);
+        // Non-fatal: deltas will show as null if previous data fails
+      }
+    };
+
+    fetchPrev();
+  }, [period]); // Re-fetch when period changes (not dateRange, since buildPrevDateRange uses period string)
 
   // ── Derived metrics: Operations tab (today only) ──────────────
   const ops = useMemo(() => {
@@ -664,12 +785,239 @@ export function useDashboardData(period = 'today') {
     };
   }, [sales, expenses, appointments, period, dateRange]);
 
+  // ── Derived metrics: Clinical tab ─────────────────────────────────
+  const clinical = useMemo(() => {
+    // T2.289: Records signed this period — simple count
+    const recordsSigned = medicalRecords.length;
+
+    // T2.290: Top 5 diagnoses — group by diagnosis field, take top 5
+    const diagnosisMap = {};
+    medicalRecords.forEach(r => {
+      const diag = (r.diagnosis || 'Unspecified').trim();
+      if (diag && diag !== 'Clinical Visit') {
+        diagnosisMap[diag] = (diagnosisMap[diag] || 0) + 1;
+      }
+    });
+    const topDiagnoses = Object.entries(diagnosisMap)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5)
+      .map(([diagnosis, count]) => ({ diagnosis, count }));
+
+    // T2.291: Vaccine administration by type
+    // Structured data in `vaccineAdministrations` array (preferred),
+    // fallback to legacy `vaccineData` object (single vaccine per record)
+    const vaccineMap = {};
+    medicalRecords.forEach(r => {
+      if (r.vaccineAdministrations && r.vaccineAdministrations.length > 0) {
+        r.vaccineAdministrations.forEach(v => {
+          const name = (v.vaccineName || 'Unknown').trim();
+          if (name) vaccineMap[name] = (vaccineMap[name] || 0) + 1;
+        });
+      } else if (r.vaccineData && r.vaccineData.vaccineName) {
+        const name = r.vaccineData.vaccineName.trim();
+        if (name) vaccineMap[name] = (vaccineMap[name] || 0) + 1;
+      }
+    });
+    const vaccinesByType = Object.entries(vaccineMap)
+      .sort(([, a], [, b]) => b - a)
+      .map(([name, count]) => ({ name, count }));
+    const totalVaccinations = vaccinesByType.reduce((s, v) => s + v.count, 0);
+
+    // T2.292: Top prescribed items — flatten prescriptions arrays, group by name
+    const rxMap = {};
+    medicalRecords.forEach(r => {
+      if (r.prescriptions && r.prescriptions.length > 0) {
+        r.prescriptions.forEach(rx => {
+          const name = (rx.name || 'Unknown').trim();
+          if (name) rxMap[name] = (rxMap[name] || 0) + (rx.qty || 1);
+        });
+      }
+    });
+    const topPrescribed = Object.entries(rxMap)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 10)
+      .map(([name, qty]) => ({ name, qty }));
+
+    // T2.293: Follow-up compliance rate
+    // Numerator: appointments with `isFollowUp: true` that are in a completed or
+    // attended status (arrived, in-consult, dispensing, billing, completed)
+    // Denominator: medical_records with `nextVisit` set (i.e., a follow-up was requested)
+    const recordsWithFollowUp = medicalRecords.filter(r => r.nextVisit).length;
+    const followUpAppointments = appointments.filter(a =>
+      a.isFollowUp === true &&
+      ['arrived', 'in-consult', 'dispensing', 'billing', 'completed'].includes(a.status)
+    ).length;
+    const followUpComplianceRate = recordsWithFollowUp > 0
+      ? Math.min(100, Math.round((followUpAppointments / recordsWithFollowUp) * 100))
+      : 0;
+
+    // T2.294: Species distribution of visits — group appointments by petSpecies
+    const speciesVisitMap = {};
+    appointments.forEach(a => {
+      const sp = (a.petSpecies || 'Unknown').trim();
+      speciesVisitMap[sp] = (speciesVisitMap[sp] || 0) + 1;
+    });
+
+    // T2.295: Confinement + carry-over rate
+    const confinedCount = appointments.filter(a => a.status === 'confined').length;
+    const carriedOverCount = appointments.filter(a => a.status === 'carried-over').length;
+    const totalAppts = appointments.length;
+    const confinementRate = totalAppts > 0
+      ? Math.round(((confinedCount + carriedOverCount) / totalAppts) * 100)
+      : 0;
+
+    // T2.296: Records per vet — group medical_records by vetName
+    const vetRecordMap = {};
+    medicalRecords.forEach(r => {
+      const vet = r.vetName || 'Unknown';
+      vetRecordMap[vet] = (vetRecordMap[vet] || 0) + 1;
+    });
+    const recordsPerVet = Object.entries(vetRecordMap)
+      .sort(([, a], [, b]) => b - a)
+      .map(([vet, count]) => ({ vet, count }));
+
+    // T2.297: Average vitals by species
+    // Group medical_records by pet species (need to cross-reference with appointments
+    // via appointmentId to get petSpecies, since medical_records don't store species directly)
+    const apptSpeciesLookup = {};
+    appointments.forEach(a => {
+      if (a.id && a.petSpecies) apptSpeciesLookup[a.id] = a.petSpecies;
+    });
+
+    const vitalsBySpecies = {};
+    medicalRecords.forEach(r => {
+      if (!r.vitals) return;
+      const species = apptSpeciesLookup[r.appointmentId] || 'Unknown';
+      if (!vitalsBySpecies[species]) {
+        vitalsBySpecies[species] = { weights: [], temps: [], hrs: [], rrs: [], count: 0 };
+      }
+      const v = r.vitals;
+      const group = vitalsBySpecies[species];
+      if (v.weight && parseFloat(v.weight) > 0) group.weights.push(parseFloat(v.weight));
+      if (v.temp && parseFloat(v.temp) > 0) group.temps.push(parseFloat(v.temp));
+      if (v.hr && parseFloat(v.hr) > 0) group.hrs.push(parseFloat(v.hr));
+      if (v.rr && parseFloat(v.rr) > 0) group.rrs.push(parseFloat(v.rr));
+      group.count++;
+    });
+
+    const avg = arr => arr.length > 0
+      ? parseFloat((arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1))
+      : 0;
+
+    const avgVitalsBySpecies = Object.entries(vitalsBySpecies)
+      .filter(([sp]) => sp !== 'Unknown')
+      .map(([species, data]) => ({
+        species,
+        avgWeight: avg(data.weights),
+        avgTemp: avg(data.temps),
+        avgHR: avg(data.hrs),
+        avgRR: avg(data.rrs),
+        sampleSize: data.count,
+      }))
+      .sort((a, b) => b.sampleSize - a.sampleSize);
+
+    return {
+      recordsSigned,
+      topDiagnoses,
+      vaccinesByType,
+      totalVaccinations,
+      topPrescribed,
+      followUpComplianceRate,
+      recordsWithFollowUp,
+      followUpAttended: followUpAppointments,
+      speciesVisitDistribution: speciesVisitMap,
+      confinedCount,
+      carriedOverCount,
+      confinementRate,
+      recordsPerVet,
+      avgVitalsBySpecies,
+    };
+  }, [medicalRecords, appointments]);
+
+  // ── Derived metrics: Period-over-period deltas (T2.320) ──────────
+  const deltas = useMemo(() => {
+    /**
+     * Computes a percentage change: ((current - prev) / prev) * 100.
+     * Returns null if the previous value is zero (avoids division by zero
+     * and misleading "infinity" deltas for metrics that had no prior data).
+     */
+    const pctChange = (current, prev) => {
+      if (prev === 0 || prev == null) return null;
+      return Math.round(((current - prev) / prev) * 100);
+    };
+
+    // Current period metrics
+    const currAppointments = appointments.length;
+    const currRevenue = sales.filter(s => s.status !== 'refunded' && s.status !== 'voided')
+      .reduce((sum, s) => sum + (parseFloat(s.total) || 0), 0);
+    const currExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+    const currRecordsSigned = medicalRecords.length;
+
+    // Wait / consult times (today only -- deltas compare today vs yesterday)
+    const computeAvgWait = (appts) => {
+      const waits = appts
+        .filter(a => a.timeArrived && a.timeStarted)
+        .map(a => {
+          const arrived = a.timeArrived.toDate ? a.timeArrived.toDate() : new Date(a.timeArrived);
+          const started = a.timeStarted.toDate ? a.timeStarted.toDate() : new Date(a.timeStarted);
+          return Math.max(0, (started - arrived) / 60000);
+        });
+      return waits.length > 0
+        ? Math.round(waits.reduce((a, b) => a + b, 0) / waits.length)
+        : 0;
+    };
+
+    const computeAvgConsult = (appts) => {
+      const durations = appts
+        .filter(a => a.status === 'completed' && a.timeStarted && a.timeCompleted)
+        .map(a => {
+          const started = a.timeStarted.toDate ? a.timeStarted.toDate() : new Date(a.timeStarted);
+          const completed = a.timeCompleted.toDate ? a.timeCompleted.toDate() : new Date(a.timeCompleted);
+          return Math.max(0, (completed - started) / 60000);
+        });
+      return durations.length > 0
+        ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
+        : 0;
+    };
+
+    // Previous period metrics
+    const prevAppointments = prevData.appointments.length;
+    const prevRevenue = prevData.sales.reduce((sum, s) => sum + (parseFloat(s.total) || 0), 0);
+    const prevExpenses = prevData.expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+    const prevRecordsSigned = prevData.medicalRecords.length;
+
+    // Unique clients: count unique ownerIds that are NOT walk-ins
+    const uniqueOwners = (appts) => new Set(
+      appts
+        .map(a => a.ownerId)
+        .filter(id => id && id !== 'WALK_IN_USER' && !String(id).includes('GUEST_'))
+    ).size;
+
+    return {
+      appointments: pctChange(currAppointments, prevAppointments),
+      revenue: pctChange(currRevenue, prevRevenue),
+      expenses: pctChange(currExpenses, prevExpenses),
+      netMargin: pctChange(currRevenue - currExpenses, prevRevenue - prevExpenses),
+      recordsSigned: pctChange(currRecordsSigned, prevRecordsSigned),
+      uniqueClients: pctChange(uniqueOwners(appointments), uniqueOwners(prevData.appointments)),
+      avgWait: pctChange(computeAvgWait(appointments), computeAvgWait(prevData.appointments)),
+      avgConsult: pctChange(computeAvgConsult(appointments), computeAvgConsult(prevData.appointments)),
+      prevPeriodLabel: period === 'today' ? 'yesterday'
+        : period === 'week' ? 'prior week'
+        : period === 'month' ? 'last month'
+        : period === 'quarter' ? 'prior quarter'
+        : 'last year',
+    };
+  }, [appointments, sales, expenses, medicalRecords, prevData, period]);
+
   return {
     loading: appointmentsLoading,
     error,
     ops,
     growth,
     financial,
+    clinical,    // Day 3: Clinical tab metrics
+    deltas,      // Day 3: Period-over-period deltas
     queueData,
     appointments,
     staffList,

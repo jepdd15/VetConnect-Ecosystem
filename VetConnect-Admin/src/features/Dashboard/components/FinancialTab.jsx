@@ -32,19 +32,7 @@ import LocalFireDepartmentIcon from '@mui/icons-material/LocalFireDepartment';
 import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
 import KPICard from './KPICard';
 import HorizontalBar from './HorizontalBar';
-
-// ── Chart constants ───────────────────────────────────────────────
-
-const CHART_TOOLTIP_STYLE = {
-  fontFamily: FONT,
-  fontSize: 11,
-  borderRadius: 0,
-  border: `2px solid ${COLORS.accent}`,
-  boxShadow: `3px 3px 0px ${COLORS.accent}`,
-};
-
-const CHART_TICK_STYLE = { fontSize: 10, fontFamily: FONT, fill: COLORS.textSecondary };
-const CHART_GRID_STYLE = { strokeDasharray: '3 3', vertical: false, stroke: COLORS.borderLight };
+import { CHART_TOOLTIP_STYLE, CHART_TICK_STYLE, CHART_GRID_PROPS } from './chartConfig';
 
 // Payment method colors — each channel has a distinct, meaningful color
 const METHOD_COLORS = {
@@ -113,6 +101,7 @@ export default function FinancialTab({ data }) {
             icon={<AttachMoneyIcon />}
             variant="green"
             subtitle={`${financial.transactionCount} transactions`}
+            delta={data.deltas?.revenue}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -139,6 +128,7 @@ export default function FinancialTab({ data }) {
             icon={isProfit ? <TrendingUpIcon /> : <TrendingDownIcon />}
             variant={isProfit ? 'green' : 'red'}
             subtitle={isProfit ? 'profit' : 'loss'}
+            delta={data.deltas?.netMargin}
           />
         </Grid>
       </Grid>
@@ -152,7 +142,7 @@ export default function FinancialTab({ data }) {
           <Box sx={{ width: '100%', height: 220 }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={financial.revenueTrend} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
-                <CartesianGrid {...CHART_GRID_STYLE} />
+                <CartesianGrid {...CHART_GRID_PROPS} />
                 <XAxis dataKey="label" tick={CHART_TICK_STYLE} />
                 <YAxis
                   tick={CHART_TICK_STYLE}
@@ -182,7 +172,7 @@ export default function FinancialTab({ data }) {
           <Box sx={{ width: '100%', height: 220 }}>
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={overlayData} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
-                <CartesianGrid {...CHART_GRID_STYLE} />
+                <CartesianGrid {...CHART_GRID_PROPS} />
                 <XAxis dataKey="label" tick={CHART_TICK_STYLE} />
                 <YAxis
                   tick={CHART_TICK_STYLE}
@@ -275,7 +265,7 @@ export default function FinancialTab({ data }) {
                 }
                 margin={{ top: 5, right: 10, left: 10, bottom: 0 }}
               >
-                <CartesianGrid {...CHART_GRID_STYLE} />
+                <CartesianGrid {...CHART_GRID_PROPS} />
                 <XAxis dataKey="category" tick={CHART_TICK_STYLE} />
                 <YAxis
                   tick={CHART_TICK_STYLE}

@@ -30,35 +30,7 @@ import SpeedIcon from '@mui/icons-material/Speed';
 import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
 import KPICard from './KPICard';
 import HorizontalBar from './HorizontalBar';
-
-// ── Chart constants ───────────────────────────────────────────────
-
-// 10-color palette for data-viz series (breed ranking, service popularity)
-const CHART_COLORS = [
-  '#1565C0', '#2E7D32', '#7B1FA2', '#E65100',
-  '#C62828', '#00695C', '#4527A0', '#AD1457',
-  '#EF6C00', '#1B5E20',
-];
-
-const CHART_TOOLTIP_STYLE = {
-  fontFamily: FONT,
-  fontSize: 11,
-  borderRadius: 0,
-  border: `2px solid ${COLORS.accent}`,
-  boxShadow: `3px 3px 0px ${COLORS.accent}`,
-};
-
-const CHART_TICK_STYLE = {
-  fontSize: 10,
-  fontFamily: FONT,
-  fill: COLORS.textSecondary,
-};
-
-const CHART_GRID_PROPS = {
-  strokeDasharray: '3 3',
-  vertical: false,
-  stroke: COLORS.borderLight,
-};
+import { CHART_COLORS, CHART_TOOLTIP_STYLE, CHART_TICK_STYLE, CHART_GRID_PROPS } from './chartConfig';
 
 // ── Component ────────────────────────────────────────────────────
 
@@ -112,6 +84,7 @@ export default function GrowthTab({ data, clinicSettings }) {
             icon={<PersonAddIcon />}
             variant="blue"
             subtitle="registered this period"
+            delta={data.deltas?.uniqueClients}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -137,6 +110,7 @@ export default function GrowthTab({ data, clinicSettings }) {
             icon={<EventIcon />}
             variant="orange"
             subtitle={`${growth.walkInCount} walk-in / ${growth.scheduledCount} scheduled`}
+            delta={data.deltas?.appointments}
           />
         </Grid>
       </Grid>

@@ -1,8 +1,8 @@
 # VetConnect Master Task List
 
 **Last updated:** 2026-04-23 · **Branch:** `main`
-**Total tasks:** ~712 · **Cancelled/Absorbed:** ~16 · **Active:** ~696
-**DONE:** 384 · **TODO:** 307 · **Deferred sub-tasks:** 54
+**Total tasks:** ~714 · **Cancelled/Absorbed:** ~16 · **Active:** ~698
+**DONE:** 396 · **TODO:** 297 · **Deferred sub-tasks:** 56
 **Critical path to defense:** Dashboard Build (~32 hrs) + thesis
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~154 hours (Phase 4 S-Tier)
 
@@ -531,15 +531,15 @@
 
 | ID | Name | Priority | Effort | Status |
 |---|---|---|---|---|
-| T2.289 | Records signed this period | P1 | 20 min | TODO |
-| T2.290 | Top 5 diagnoses | P1 | 30 min | TODO |
-| T2.291 | Vaccine administration by type | P1 | 20 min | TODO |
-| T2.292 | Top prescribed items | P1 | 25 min | TODO |
-| T2.293 | Follow-up compliance rate | P2 | 20 min | TODO |
-| T2.294 | Species distribution of visits | P2 | 10 min | TODO |
-| T2.295 | Confinement + carry-over rate | P2 | 10 min | TODO |
-| T2.296 | Records per vet | P2 | 15 min | TODO |
-| T2.297 | Average vitals by species | P2 | 20 min | TODO |
+| T2.289 | Records signed this period | P1 | 20 min | DONE |
+| T2.290 | Top 5 diagnoses | P1 | 30 min | DONE |
+| T2.291 | Vaccine administration by type | P1 | 20 min | DONE |
+| T2.292 | Top prescribed items | P1 | 25 min | DONE |
+| T2.293 | Follow-up compliance rate | P2 | 20 min | DONE |
+| T2.294 | Species distribution of visits | P2 | 10 min | DONE |
+| T2.295 | Confinement + carry-over rate | P2 | 10 min | DONE |
+| T2.296 | Records per vet | P2 | 15 min | DONE |
+| T2.297 | Average vitals by species | P2 | 20 min | DONE |
 
 **Tab 4 — Financial (admin-only, default: This Month):**
 
@@ -559,15 +559,17 @@
 | T2.270 | Monthly expense burn rate | P1 | 10 min | DONE |
 | T2.313a | useDashboardData: retention rate denominator inflation — strip walk-in IDs from periodOwnerIds | P3 | 5 min | DONE | Review finding — fix applied inline |
 | T2.303a | FinancialTab: sort overlayData after merging revenue + expense buckets (chronological sort) | P3 | 10 min | TODO | Review finding — relies on merge order which may not be chronological |
-| T2.316b | Extract CHART_TOOLTIP_STYLE, CHART_TICK_STYLE, CHART_GRID_STYLE to shared chartConfig.js | P3 | 10 min | TODO | Review finding — before Day 3 Clinical tab adds a third copy |
+| T2.316b | Extract CHART_TOOLTIP_STYLE, CHART_TICK_STYLE, CHART_GRID_STYLE to shared chartConfig.js | P3 | 10 min | DONE | Review finding — extracted to chartConfig.js, all tabs import from it |
+| T2.316c | GrowthTab + FinancialTab: replace local panelSx with imported PANEL_SX from chartConfig.js | P3 | 5 min | TODO | Review finding — ClinicalTab already uses shared export, cosmetic duplication |
+| T2.320a | useDashboardData: rolling-window delta bias — normalize by days elapsed for in-progress periods | P3 | 30 min | TODO | Review finding — week/quarter/year deltas compare incomplete current vs complete previous period |
 
 **S-Tier Features:**
 
 | ID | Name | Priority | Effort | Status |
 |---|---|---|---|---|
 | T2.319 | Create `generateInsight()` rule engine | P1 | 1.5 hrs | TODO |
-| T2.320 | Extend useDashboardData for period-over-period deltas | P1 | 1 hr | TODO |
-| T2.321 | Extend KPICard with delta display + insight slot | P1 | 20 min | TODO |
+| T2.320 | Extend useDashboardData for period-over-period deltas | P1 | 1 hr | DONE |
+| T2.321 | Extend KPICard with delta display + insight slot | P1 | 20 min | DONE |
 | T2.322 | Insight rules: Operations tab (10 rules) | P1 | 1 hr | TODO |
 | T2.323 | Insight rules: Clinical tab (8 rules) | P2 | 45 min | TODO |
 | T2.324 | Insight rules: Financial tab (7 rules) | P2 | 45 min | TODO |

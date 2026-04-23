@@ -16,6 +16,8 @@ import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
  * @param {string}              subtitle - Optional secondary line
  * @param {function}            onClick  - Optional click handler (makes card interactive)
  * @param {boolean}             compact  - Smaller padding for dense grid layouts
+ * @param {number|null}         delta    - Period-over-period % change (null = no indicator)
+ * @param {React.ReactNode}     insight  - Contextual insight text (Day 4 engine)
  */
 export default function KPICard({
   title,
@@ -25,6 +27,8 @@ export default function KPICard({
   subtitle,
   onClick,
   compact = false,
+  delta,
+  insight,
 }) {
   const colorMap = {
     blue:    { bg: COLORS.kpiBlueBg,   border: COLORS.kpiBlueBorder,   text: COLORS.info },
@@ -86,15 +90,37 @@ export default function KPICard({
           {title}
         </Typography>
 
-        <Typography sx={{
-          fontFamily: FONT,
-          fontWeight: 1000,
-          color: c.text,
-          fontSize: compact ? '1.2rem' : '1.5rem',
-          lineHeight: 1.2,
-        }}>
-          {value}
-        </Typography>
+        {/* Value + inline delta indicator */}
+        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
+          <Typography sx={{
+            fontFamily: FONT,
+            fontWeight: 1000,
+            color: c.text,
+            fontSize: compact ? '1.2rem' : '1.5rem',
+            lineHeight: 1.2,
+          }}>
+            {value}
+          </Typography>
+
+          {delta != null && (
+            <Typography
+              component="span"
+              sx={{
+                fontFamily: FONT,
+                fontWeight: 900,
+                fontSize: '0.65rem',
+                lineHeight: 1,
+                color: delta > 0 ? COLORS.success
+                  : delta < 0 ? COLORS.danger
+                  : COLORS.textMuted,
+              }}
+            >
+              {delta > 0 ? '▲' : delta < 0 ? '▼' : '—'}
+              {' '}
+              {delta > 0 ? `+${delta}%` : delta < 0 ? `${delta}%` : '0%'}
+            </Typography>
+          )}
+        </Box>
 
         {subtitle && (
           <Typography sx={{
@@ -105,6 +131,28 @@ export default function KPICard({
           }}>
             {subtitle}
           </Typography>
+        )}
+
+        {/* Insight slot — Day 4 will pass contextual text here */}
+        {insight && (
+          <Box sx={{
+            mt: 0.5,
+            px: 1,
+            py: 0.25,
+            bgcolor: `${COLORS.info}10`,
+            border: `1px solid ${COLORS.info}30`,
+            borderRadius: 0,
+          }}>
+            <Typography sx={{
+              fontFamily: FONT,
+              fontSize: '0.58rem',
+              fontWeight: 700,
+              color: COLORS.info,
+              lineHeight: 1.3,
+            }}>
+              {insight}
+            </Typography>
+          </Box>
         )}
       </Box>
     </Box>

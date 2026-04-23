@@ -19,13 +19,12 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
   Animated,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { auth, db } from "../../firebaseConfig";
 import { getClientStatusLabel } from "../utils/statusLabels";
+import { safeDate } from "../utils/helpers";
 
 // --- PUSH NOTIFICATION IMPORTS ---
 import Constants from "expo-constants";
@@ -40,6 +39,7 @@ Notifications.setNotificationHandler({
     shouldSetBadge: false,
   }),
 });
+
 
 const ClientDashboard = ({ navigation }) => {
   const [activeAppointments, setActiveAppointments] = useState([]);
@@ -63,6 +63,7 @@ const ClientDashboard = ({ navigation }) => {
   // 1. PUSH NOTIFICATION SETUP
   // ======================================================================
   useEffect(() => {
+    if (!auth.currentUser) return;
     registerForPushNotificationsAsync().then((token) => {
       if (token) {
         // Securely save the hardware token to the User's Database Profile
@@ -118,6 +119,7 @@ const ClientDashboard = ({ navigation }) => {
   // 1.5 FETCH USER PROFILE (For Balance & Name)
   // ======================================================================
   useEffect(() => {
+    if (!auth.currentUser) return;
     const unsubProfile = onSnapshot(doc(db, "users", auth.currentUser.uid), (doc) => {
       if (doc.exists()) setUserProfile(doc.data());
     });
@@ -128,16 +130,19 @@ const ClientDashboard = ({ navigation }) => {
   // 2. FETCH ACTIVE APPOINTMENTS (The Live Feed)
   // ======================================================================
   useEffect(() => {
+    if (!auth.currentUser) return;
     const q = query(
       collection(db, "appointments"),
       where("ownerId", "==", auth.currentUser.uid),
       where("status", "in", [
+        "pending",
         "confirmed",
         "arrived",
         "in-consult",
         "confined",
         "billing",
         "dispensing",
+        "on-hold",
       ]),
       orderBy("createdAt", "desc"),
     );
@@ -158,6 +163,7 @@ const ClientDashboard = ({ navigation }) => {
             "confined",
             "billing",
             "dispensing",
+            "on-hold",
           ];
           const aActive = inClinicStatuses.includes(a.status);
           const bActive = inClinicStatuses.includes(b.status);
@@ -189,17 +195,21 @@ const ClientDashboard = ({ navigation }) => {
       return;
     }
 
-    // Query for all other arrived patients with a lower queue number for the same day
+    // Query for all arrived patients on the same day as this appointment
+    const now = new Date();
+    const todayStr = arrivedAppt.scheduledDateStr
+      || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const q = query(
       collection(db, "appointments"),
       where("status", "==", "arrived"),
-      where("date", "==", arrivedAppt.date) // Assumes date is a string YYYY-MM-DD for equality
+      where("scheduledDateStr", "==", todayStr)
     );
 
     const unsubQueue = onSnapshot(q, (snap) => {
       let ahead = 0;
-      snap.forEach(doc => {
-        if (doc.data().queueNumber < arrivedAppt.queueNumber) ahead++;
+      snap.forEach(d => {
+        const data = d.data();
+        if (data.queueNumber < arrivedAppt.queueNumber && d.id !== arrivedAppt.id) ahead++;
       });
       setQueueAhead(ahead);
     });
@@ -211,38 +221,37 @@ const ClientDashboard = ({ navigation }) => {
   // 3. FETCH HEALTH REMINDERS
   // ======================================================================
   useEffect(() => {
-    try {
-      const qReminders = query(
-        collection(db, "medical_records"),
-        where("ownerId", "==", auth.currentUser.uid),
-        orderBy("nextVisit", "asc"),
-      );
+    if (!auth.currentUser) return;
 
-      const unsubReminders = onSnapshot(
-        qReminders,
-        (snapshot) => {
-          const now = new Date();
-          const list = [];
+    const qReminders = query(
+      collection(db, "medical_records"),
+      where("ownerId", "==", auth.currentUser.uid),
+      orderBy("nextVisit", "asc"),
+    );
 
-          snapshot.forEach((doc) => {
-            const data = doc.data();
-            if (data.nextVisit && typeof data.nextVisit.toDate === "function") {
-              const visitDate = data.nextVisit.toDate();
-              // Only show reminders that are in the future
-              if (visitDate >= now) {
-                list.push({ id: doc.id, ...data });
-              }
+    const unsubReminders = onSnapshot(
+      qReminders,
+      (snapshot) => {
+        const now = new Date();
+        const list = [];
+
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          if (data.nextVisit && typeof data.nextVisit.toDate === "function") {
+            const visitDate = data.nextVisit.toDate();
+            if (visitDate >= now) {
+              list.push({ id: docSnap.id, ...data });
             }
-          });
-          setReminders(list);
-        },
-        (error) => console.log("Reminders Error:", error),
-      );
+          }
+        });
+        setReminders(list);
+      },
+      (error) => {
+        console.warn("[ClientDashboard] Reminders listener error (index may be missing):", error.message);
+      },
+    );
 
-      return () => unsubReminders();
-    } catch (e) {
-      console.log("Index missing for reminders");
-    }
+    return () => unsubReminders();
   }, []);
 
   const handleLogout = () => {
@@ -255,11 +264,18 @@ const ClientDashboard = ({ navigation }) => {
     let bgColor, title, msg, icon, borderColor;
 
     switch (appt.status) {
+      case "pending":
+        bgColor = "#FFF3E0";
+        borderColor = "#FFCC80";
+        title = "Awaiting Confirmation";
+        msg = `${appt.petName}'s booking is being reviewed by the clinic.`;
+        icon = "⏳";
+        break;
       case "confirmed":
         bgColor = "#F0FDF4"; // planBg
         borderColor = "#86EFAC"; // planBorder
         title = "Booking Confirmed";
-        msg = `${appt.petName} is scheduled for ${appt.scheduledDate?.toDate().toLocaleDateString()}.`;
+        msg = `${appt.petName} is scheduled for ${safeDate(appt.scheduledDate)}.`;
         icon = "📅";
         break;
       case "arrived":
@@ -297,6 +313,13 @@ const ClientDashboard = ({ navigation }) => {
         msg = `Services complete. Please proceed to the front desk.`;
         icon = "💰";
         break;
+      case "on-hold":
+        bgColor = "#ECEFF1";
+        borderColor = "#90A4AE";
+        title = "On Hold";
+        msg = `${appt.petName} is on hold — your vet will resume shortly.`;
+        icon = "⏸️";
+        break;
       default:
         bgColor = "#FAFAFA";
         borderColor = "#ccc";
@@ -330,7 +353,12 @@ const ClientDashboard = ({ navigation }) => {
             {appt.status === 'arrived' && (
               <View style={styles.queueProgressContainer}>
                 <View style={styles.queueProgressBar}>
-                  <View style={[styles.queueProgressFill, { width: queueAhead === 0 ? '100%' : '60%', backgroundColor: '#3ABEF9' }]} />
+                  <View style={[styles.queueProgressFill, {
+                    width: queueAhead === 0
+                      ? '100%'
+                      : `${Math.max(10, Math.round(100 / (queueAhead + 1)))}%`,
+                    backgroundColor: '#3ABEF9'
+                  }]} />
                 </View>
                 <Text style={[styles.queueAheadText, { color: '#3ABEF9' }]}>
                   {queueAhead === 0 ? "YOU'RE NEXT IN LINE! 🎉" : `${queueAhead} PETS AHEAD OF YOU`}
@@ -404,15 +432,29 @@ const ClientDashboard = ({ navigation }) => {
               <View style={[styles.notifCard, { backgroundColor: "white", borderColor: "#3E2723", borderLeftWidth: 8, borderLeftColor: "#3ABEF9" }]}>
                 <View style={styles.notifContent}>
                   <Text style={[styles.notifTitle, { color: "#3E2723" }]}>
-                    💉 DUE: {rec.petName.toUpperCase()}
+                    💉 DUE: {(rec.petName || 'YOUR PET').toUpperCase()}
                   </Text>
                   <Text style={styles.notifMsg}>
-                    SCHEDULED FOR: {rec.nextVisit.toDate().toLocaleDateString()}
+                    SCHEDULED FOR: {safeDate(rec.nextVisit)}
                   </Text>
                 </View>
               </View>
             </View>
           ))}
+        </View>
+      )}
+
+      {/* --- FIRST-TIME USER GUIDANCE --- */}
+      {!loading && activeAppointments.length === 0 && reminders.length === 0 && (
+        <View style={styles.emptyStateContainer}>
+          <View style={styles.emptyStateShadow} />
+          <View style={styles.emptyStateBox}>
+            <Text style={{ fontSize: 48, textAlign: 'center', marginBottom: 10 }}>🐾</Text>
+            <Text style={styles.emptyStateTitle}>WELCOME TO STARBARKS</Text>
+            <Text style={styles.emptyStateMsg}>
+              Start by adding your pet, then book your first visit.
+            </Text>
+          </View>
         </View>
       )}
 
@@ -657,6 +699,41 @@ const styles = StyleSheet.create({
     borderColor: "#3E2723",
   },
   balanceActionText: { color: "#3E2723", fontWeight: "900", fontSize: 11 },
+
+  // FIRST-TIME EMPTY STATE
+  emptyStateContainer: {
+    marginBottom: 25,
+    position: 'relative',
+  },
+  emptyStateShadow: {
+    position: 'absolute',
+    top: 5,
+    left: 5,
+    right: -2,
+    bottom: -2,
+    backgroundColor: '#3ABEF9',
+  },
+  emptyStateBox: {
+    padding: 25,
+    backgroundColor: 'white',
+    borderWidth: 3,
+    borderColor: '#3E2723',
+    alignItems: 'center',
+  },
+  emptyStateTitle: {
+    fontFamily: 'Inter_900Black',
+    fontSize: 16,
+    color: '#3E2723',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  emptyStateMsg: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 13,
+    color: '#5D4037',
+    textAlign: 'center',
+  },
 
   // QUEUE PROGRESS
   queueTag: { backgroundColor: '#3E2723', paddingHorizontal: 10, paddingVertical: 4 },

@@ -11,8 +11,7 @@
 import { useEffect, useRef } from "react";
 import { Animated, Linking, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { getClientStatusColor, getClientStatusIcon, getClientStatusLabel } from "../utils/statusLabels";
-
-const CLINIC_ADDRESS = 'Starbarks Vet Clinic, Metro Manila, Philippines';
+import { formatFirestoreTime } from '../utils/helpers';
 
 const SPECIES_EMOJI = {
   Dog: '🐶',
@@ -23,17 +22,9 @@ const SPECIES_EMOJI = {
 
 const getSpeciesEmoji = (species) => SPECIES_EMOJI[species] || '🐾';
 
-const formatTimestamp = (ts) => {
-  if (!ts) return null;
-  try {
-    return ts.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  } catch {
-    return null;
-  }
-};
-
-const handleDirections = async () => {
-  const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(CLINIC_ADDRESS)}`;
+const handleDirections = async (address) => {
+  const target = address || 'Starbarks Veterinary Clinic, Santa Barbara, Pangasinan';
+  const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(target)}`;
   try {
     await Linking.openURL(url);
   } catch (error) {
@@ -42,16 +33,21 @@ const handleDirections = async () => {
 };
 
 /**
- * @param {{ appointment: object, clinicPhone: string }} props
+ * @param {{ appointment: object, clinicPhone: string, clinicAddress: string, queueAhead: number|null }} props
  * - `clinicPhone` — read from `clinic_settings/general.clinicPhone` by the parent.
  *   Falls back to a generic empty string; the Call button is only useful when
  *   the clinic has configured a real number.
+ * - `clinicAddress` — read from `clinic_settings/general.clinicAddress` by the parent.
+ *   Falls back to the correct Pangasinan address inside handleDirections.
+ * - `queueAhead` — count of arrived appointments ahead of this one; null hides the row.
  */
-export default function SuperCard({ appointment, clinicPhone = '' }) {
+export default function SuperCard({ appointment, clinicPhone = '', clinicAddress = '', queueAhead = null }) {
   const pulseAnim = useRef(new Animated.Value(0.4)).current;
 
   useEffect(() => {
     if (!appointment) return;
+
+    pulseAnim.setValue(0.4); // Reset to initial opacity on appointment change
 
     const loop = Animated.loop(
       Animated.sequence([
@@ -89,8 +85,8 @@ export default function SuperCard({ appointment, clinicPhone = '' }) {
     appointment.assignedVet !== 'Unassigned';
 
   const startedTime =
-    formatTimestamp(appointment.timeStarted) ||
-    formatTimestamp(appointment.timeArrived);
+    formatFirestoreTime(appointment.timeStarted) ||
+    formatFirestoreTime(appointment.timeArrived);
 
   return (
     <View style={[styles.wrapper, { borderLeftColor: statusColors.color }]}>
@@ -100,9 +96,14 @@ export default function SuperCard({ appointment, clinicPhone = '' }) {
           <Text style={styles.avatarEmoji}>{speciesEmoji}</Text>
         </View>
         <View style={styles.petInfo}>
-          <Text style={styles.petName}>{appointment.petName}</Text>
+          <Text style={styles.petName}>{appointment.petName || 'Your Pet'}</Text>
           {appointment.petSpecies ? (
             <Text style={styles.petBreed}>{appointment.petSpecies}</Text>
+          ) : null}
+          {(appointment.serviceType || appointment.primaryService) ? (
+            <Text style={styles.serviceType}>
+              {appointment.serviceType || appointment.primaryService}
+            </Text>
           ) : null}
         </View>
       </View>
@@ -130,8 +131,12 @@ export default function SuperCard({ appointment, clinicPhone = '' }) {
         <Text style={styles.infoLine}>🕐 Started at {startedTime}</Text>
       ) : null}
 
-      {/* Row 6 — Queue-ahead is hidden this pass (client-scope listener underestimates).
-          TODO: queue-ahead needs clinic-wide feed before this row is meaningful. */}
+      {/* Row 6 — Queue-ahead (only shown when patient has arrived status) */}
+      {queueAhead != null && (
+        <Text style={styles.infoLine}>
+          {queueAhead === 0 ? "You're next in line!" : `${queueAhead} pet${queueAhead !== 1 ? 's' : ''} ahead of you`}
+        </Text>
+      )}
 
       {/* Row 7 — CTAs */}
       <View style={styles.ctaRow}>
@@ -149,7 +154,7 @@ export default function SuperCard({ appointment, clinicPhone = '' }) {
         >
           <Text style={styles.ctaBtnText}>📞 Call Clinic</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.ctaBtn, styles.ctaBtnSecondary]} onPress={handleDirections}>
+        <TouchableOpacity style={[styles.ctaBtn, styles.ctaBtnSecondary]} onPress={() => handleDirections(clinicAddress)}>
           <Text style={[styles.ctaBtnText, styles.ctaBtnSecondaryText]}>🗺️ Directions</Text>
         </TouchableOpacity>
       </View>
@@ -190,6 +195,14 @@ const styles = StyleSheet.create({
   petInfo: { flex: 1 },
   petName: { fontSize: 16, fontWeight: 'bold', color: '#5D4037' },
   petBreed: { fontSize: 13, color: '#888', marginTop: 2 },
+  serviceType: {
+    fontSize: 12,
+    color: '#8D6E63',
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: 2,
+  },
 
   statusRow: {
     flexDirection: 'row',

@@ -15,7 +15,7 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -38,6 +38,8 @@ import {
   sanitizeCancelReason,
 } from "../utils/statusLabels";
 import SuperCard from "../components/SuperCard";
+import { useClinicContact } from "../hooks/useClinicContact";
+import { formatFirestoreTime, formatDisplayDate } from '../utils/helpers';
 
 const ICONS = {
   Consultation: "🩺",
@@ -49,12 +51,6 @@ const ICONS = {
   Default: "🐾",
 };
 
-const formatApptTime = (tsDate) => {
-  if (!tsDate) return '';
-  const d = tsDate.toDate();
-  if (d.getHours() === 0 && d.getMinutes() === 0) return 'Walk-in';
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-};
 
 const ClientAppointments = ({ navigation }) => {
   const [appointments, setAppointments] = useState([]);
@@ -83,25 +79,16 @@ const ClientAppointments = ({ navigation }) => {
   // Populated for follow-up ghost appointments so we can show the real diagnosis + vet name.
   const [parentRecords, setParentRecords] = useState({});
 
-  // Clinic phone — fetched once from clinic_settings/general.
-  // Passed down to SuperCard for the "Call Clinic" button.
-  const [clinicPhone, setClinicPhone] = useState('');
+  const { clinicPhone, clinicAddress } = useClinicContact();
 
-  useEffect(() => {
-    const fetchClinicPhone = async () => {
-      try {
-        const snap = await getDoc(doc(db, 'clinic_settings', 'general'));
-        if (snap.exists()) setClinicPhone(snap.data().clinicPhone || '');
-      } catch (e) {
-        // Non-critical — SuperCard degrades gracefully without a phone number
-        console.warn('[ClientAppointments] clinic_settings fetch failed:', e.message);
-      }
-    };
-    fetchClinicPhone();
-  }, []);
+  const [queueAhead, setQueueAhead] = useState(null);
+
+  const prevCompletedIdsRef = useRef('');
+  const prevParentIdsRef = useRef('');
 
   // 1. Fetch Data
   useEffect(() => {
+    if (!auth.currentUser) return;
     const q = query(
       collection(db, "appointments"),
       where("ownerId", "==", auth.currentUser.uid),
@@ -115,11 +102,57 @@ const ClientAppointments = ({ navigation }) => {
       });
       setAppointments(list);
       setLoading(false);
-      fetchSalesForCompleted(list);
-      fetchParentRecords(list);
+
+      // Only re-fetch sales/parent records when the relevant ID sets change
+      const completedKey = list.filter(a => a.status === 'completed').map(a => a.id).sort().join(',');
+      const parentKey = list
+        .filter(a => a.isFollowUp && a.status === 'pending' && a.parentRecordId)
+        .map(a => a.parentRecordId).sort().join(',');
+
+      if (completedKey !== prevCompletedIdsRef.current) {
+        prevCompletedIdsRef.current = completedKey;
+        fetchSalesForCompleted(list);
+      }
+      if (parentKey !== prevParentIdsRef.current) {
+        prevParentIdsRef.current = parentKey;
+        fetchParentRecords(list);
+      }
     });
     return () => unsub();
   }, []);
+
+  // Real-time queue-ahead count for the active arrived appointment.
+  const activeArrived = appointments.find(a => a.status === 'arrived');
+  const activeArrivedId = activeArrived?.id ?? null;
+  const activeArrivedQueueNum = activeArrived?.queueNumber ?? null;
+
+  useEffect(() => {
+    if (!activeArrivedId) {
+      setQueueAhead(null);
+      return;
+    }
+
+    const now = new Date();
+    const todayStr = activeArrived?.scheduledDateStr
+      || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    const q = query(
+      collection(db, "appointments"),
+      where("status", "==", "arrived"),
+      where("scheduledDateStr", "==", todayStr)
+    );
+
+    const unsubQueue = onSnapshot(q, (snap) => {
+      let ahead = 0;
+      snap.forEach(d => {
+        const data = d.data();
+        if (data.queueNumber < activeArrivedQueueNum && d.id !== activeArrivedId) ahead++;
+      });
+      setQueueAhead(ahead);
+    });
+
+    return () => unsubQueue();
+  }, [activeArrivedId, activeArrivedQueueNum]);
 
   // Batch-fetch sales docs for all completed appointments.
   // Chunked at 10 IDs per query (Firestore 'in' operator limit).
@@ -250,7 +283,8 @@ const ClientAppointments = ({ navigation }) => {
             try {
               await updateDoc(doc(db, "appointments", id), {
                 status: "cancelled",
-                rejectReason: "Cancelled by Pet Owner",
+                auditReason: "Cancelled by Pet Owner",
+                cancelledAt: Timestamp.now(),
               });
               Alert.alert(
                 "Cancelled",
@@ -303,7 +337,7 @@ const ClientAppointments = ({ navigation }) => {
       if (result.matchType === 'none') {
         Alert.alert(
           "Couldn't find an open day",
-          `We couldn't find an open slot near ${target.toLocaleDateString()}. Please pick a date manually.`,
+          `We couldn't find an open slot near ${formatDisplayDate(target)}. Please pick a date manually.`,
           [{ text: 'Continue anyway', onPress: () => navigation.navigate('BookAppointment', {
             prefillPetId: item.petId,
             prefillServiceType: resolvedServiceType,
@@ -332,7 +366,7 @@ const ClientAppointments = ({ navigation }) => {
   const handleDismissFollowUp = (item) => {
     Alert.alert(
       'Dismiss follow-up?',
-      `Your vet recommended a visit on ${item.scheduledDate?.toDate().toLocaleDateString()}. You can still book manually from your pet's history later.`,
+      `Your vet recommended a visit on ${formatDisplayDate(item.scheduledDate)}. You can still book manually from your pet's history later.`,
       [
         { text: 'Keep it', style: 'cancel' },
         {
@@ -381,8 +415,8 @@ const ClientAppointments = ({ navigation }) => {
         ].includes(item.status)
       : (
           ["completed", "cancelled", "no-show", "carried-over"].includes(item.status)
-          && item.cancelReason !== 'client-dismissed-followup'
-          && item.cancelReason !== 'client-booked-followup'
+          && item.auditReason !== 'client-dismissed-followup'
+          && item.auditReason !== 'client-booked-followup'
         );
 
     // 2. Pet Check
@@ -405,11 +439,9 @@ const ClientAppointments = ({ navigation }) => {
     const vetName = parent?.dischargeSummary?.vetName || 'Your veterinarian';
     const diagnosis = parent?.dischargeSummary?.diagnosis || parent?.diagnosis || 'a recheck';
     const recommendedDate = item.scheduledDate?.toDate();
-    const dateStr = recommendedDate?.toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-    }) || 'soon';
+    const dateStr = recommendedDate
+      ? formatDisplayDate(item.scheduledDate, { weekday: 'short', month: 'short', day: 'numeric' })
+      : 'soon';
     const isWalkIn = !item.petId || item.petId === 'WALK_IN_PET';
 
     return (
@@ -479,10 +511,10 @@ const ClientAppointments = ({ navigation }) => {
 
         <View style={styles.row}>
           <Text style={styles.date}>
-            📅 {item.scheduledDate?.toDate().toDateString()}
+            📅 {formatDisplayDate(item.scheduledDate, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
           </Text>
           <Text style={styles.date}>
-            ⏰ {formatApptTime(item.scheduledDate)}
+            ⏰ {formatFirestoreTime(item.scheduledDate)}
           </Text>
         </View>
 
@@ -544,13 +576,26 @@ const ClientAppointments = ({ navigation }) => {
             </>
           )}
 
-          {/* CANCELLATION REASON */}
-          {item.status === "cancelled" && (() => {
-            const raw = item.auditReason || item.rejectReason;
-            const clean = sanitizeCancelReason(raw);
-            return clean ? <Text style={styles.reasonText}>{clean}</Text> : null;
-          })()}
+          {/* RE-BOOK for no-show and carried-over */}
+          {isHistory && (item.status === "no-show" || item.status === "carried-over") && (
+            <TouchableOpacity
+              style={[styles.btn, styles.rebookBtn]}
+              onPress={() => handleRebook(item)}
+            >
+              <Text style={[styles.btnText, { color: "#5D4037" }]}>
+                🔄 Re-Book
+              </Text>
+            </TouchableOpacity>
+          )}
+
         </View>
+
+        {/* CANCELLATION / VOID REASON — outside actionRow to avoid flex conflict */}
+        {["cancelled", "no-show", "carried-over"].includes(item.status) && (() => {
+          const raw = item.auditReason || item.rejectReason;
+          const clean = sanitizeCancelReason(raw);
+          return clean ? <Text style={styles.reasonText}>{clean}</Text> : null;
+        })()}
       </View>
     );
   };
@@ -563,7 +608,7 @@ const ClientAppointments = ({ navigation }) => {
   return (
     <View style={styles.container}>
       {/* SUPER-CARD — pinned above tabs so it stays visible while switching tabs */}
-      <SuperCard appointment={activeAppointment} clinicPhone={clinicPhone} />
+      <SuperCard appointment={activeAppointment} clinicPhone={clinicPhone} clinicAddress={clinicAddress} queueAhead={queueAhead} />
 
       {/* TABS */}
       <View style={styles.tabContainer}>
@@ -718,7 +763,7 @@ const ClientAppointments = ({ navigation }) => {
             <View style={styles.divider} />
 
             {loadingReceipt ? (
-              <ActivityIndicator color="#8B4513" style={{ my: 20 }} />
+              <ActivityIndicator color="#8B4513" style={{ marginVertical: 20 }} />
             ) : (
               <ScrollView style={{ width: "100%", maxHeight: 300 }}>
                 {receiptData?.items?.map((item, i) => (
@@ -750,10 +795,18 @@ const ClientAppointments = ({ navigation }) => {
               </ScrollView>
             )}
             <View style={styles.divider} />
+            {receiptData?.refundAmount > 0 && (
+              <View style={styles.receiptRefundRow}>
+                <Text style={styles.receiptRefundLabel}>REFUND</Text>
+                <Text style={styles.receiptRefundValue}>
+                  -₱{receiptData.refundAmount}
+                </Text>
+              </View>
+            )}
             <View style={styles.receiptTotalRow}>
               <Text style={styles.receiptTotalLabel}>GRAND TOTAL</Text>
               <Text style={styles.receiptTotalValue}>
-                ₱{receiptData?.total || 0}
+                ₱{(receiptData?.total || 0) - (receiptData?.refundAmount || 0)}
               </Text>
             </View>
             <TouchableOpacity
@@ -879,7 +932,7 @@ const styles = StyleSheet.create({
   modalContent: {
     backgroundColor: "white",
     padding: 30,
-    borderRadius: 20,
+    borderRadius: 12,
     alignItems: "center",
     width: "85%",
   },
@@ -920,6 +973,26 @@ const styles = StyleSheet.create({
   receiptItemName: { fontSize: 14, fontWeight: "bold", color: "#333" },
   receiptItemQty: { fontSize: 12, color: "#777" },
   receiptItemTotal: { fontSize: 14, fontWeight: "bold", color: "#333" },
+  receiptRefundRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 5,
+    paddingVertical: 5,
+    borderTopWidth: 1,
+    borderTopColor: '#FFCDD2',
+    backgroundColor: '#FFEBEE',
+    paddingHorizontal: 5,
+  },
+  receiptRefundLabel: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#D32F2F',
+  },
+  receiptRefundValue: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#D32F2F',
+  },
   receiptTotalRow: {
     flexDirection: "row",
     justifyContent: "space-between",

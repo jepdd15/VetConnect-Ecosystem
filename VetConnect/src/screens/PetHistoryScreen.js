@@ -21,11 +21,14 @@ import {
   View
 } from "react-native";
 import { db } from "../../firebaseConfig";
+import { useClinicContact } from "../hooks/useClinicContact";
+import { safeDate, formatDisplayDate } from "../utils/helpers";
 
 export default function PetHistoryScreen({ route, navigation }) {
   const { petId, petName } = route.params;
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { clinicPhone } = useClinicContact();
 
   useEffect(() => {
     const q = query(
@@ -43,7 +46,11 @@ export default function PetHistoryScreen({ route, navigation }) {
         records.push({
           id: docSnap.id,
           ...data,
-          prescriptions: data.prescriptions || [],
+          prescriptions: (data.prescriptions || []).map(({ price, cost, unitPrice, ...rx }) => rx),
+          dischargeSummary: data.dischargeSummary ? {
+            ...data.dischargeSummary,
+            medications: (data.dischargeSummary.medications || []).map(({ price, cost, unitPrice, ...m }) => m),
+          } : undefined,
           serviceType:
             data.serviceType ||
             (data.recordType === "grooming" ? "Grooming" : "Clinical Visit"),
@@ -56,15 +63,34 @@ export default function PetHistoryScreen({ route, navigation }) {
     return () => unsubscribe();
   }, [petId]);
 
-  // --- PDF GENERATOR (Preserved exactly as you built it) ---
+  // --- PDF GENERATOR ---
   const generatePDF = async (record) => {
-    const dateStr = record.date?.toDate
-      ? record.date.toDate().toLocaleDateString()
-      : "Unknown Date";
-    let rxHtml = "";
-    if (record.prescriptions && record.prescriptions.length > 0) {
-      rxHtml = `<h3>E-Prescriptions</h3><ul>${record.prescriptions.map((rx) => `<li><b>${rx.name}</b>: ${rx.instructions || "Use as directed"}</li>`).join("")}</ul>`;
+    const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+    const dateStr = formatDisplayDate(record.date);
+
+    const hasDischarge = !!record.dischargeSummary;
+    const dsInstructions = record.dischargeSummary?.instructions || '';
+    const dsDiagnosis = record.dischargeSummary?.diagnosis || record.diagnosis || '';
+    const dsMeds = record.dischargeSummary?.medications || [];
+
+    const rxHtmlFromDischarge = dsMeds.length > 0
+      ? `<h3>Medications</h3><ul>${dsMeds.map((med) =>
+          `<li><b>${esc(med.name)}</b> x${esc(med.qty || 1)}: ${esc(med.instructions || 'Use as directed')}</li>`
+        ).join('')}</ul>`
+      : '';
+
+    let rxHtml = '';
+    if (record.prescriptions && record.prescriptions.length > 0 && !dsMeds.length) {
+      rxHtml = `<h3>Prescribed Medications</h3><ul>${record.prescriptions.map((rx) =>
+        `<li><b>${esc(rx.name)}</b>: ${esc(rx.instructions || "Use as directed")}</li>`
+      ).join("")}</ul>`;
     }
+
+    const nextVisitRaw = record.dischargeSummary?.nextVisit || record.nextVisit;
+    const nextVisitStr = nextVisitRaw
+      ? formatDisplayDate(nextVisitRaw, { month: 'long', day: 'numeric', year: 'numeric' }, null)
+      : null;
 
     const htmlContent = `
       <html>
@@ -72,23 +98,18 @@ export default function PetHistoryScreen({ route, navigation }) {
           <h1 style="color: #8B4513; text-align: center; border-bottom: 2px solid #8B4513; padding-bottom: 10px;">Starbarks Veterinary Clinic</h1>
           <h2 style="text-align: center; margin-top: 0;">Visit Summary</h2>
           <table style="width: 100%; margin-bottom: 30px;">
-            <tr><td><b>Patient:</b> ${petName}</td><td style="text-align: right;"><b>Date:</b> ${dateStr}</td></tr>
-            <tr><td><b>Service:</b> ${record.serviceType}</td><td style="text-align: right;"><b>Attending Vet:</b> ${record.vetName || "Staff"}</td></tr>
+            <tr><td><b>Patient:</b> ${esc(petName)}</td><td style="text-align: right;"><b>Date:</b> ${esc(dateStr)}</td></tr>
+            <tr><td><b>Service:</b> ${esc(record.serviceType)}</td><td style="text-align: right;"><b>Attending Vet:</b> ${esc(record.vetName || "Staff")}</td></tr>
           </table>
-          <h3>Clinical Notes</h3>
-          <p><b>Owner Reported:</b> ${record.soap?.subjective || "None recorded."}</p>
-          <p><b>Physical Exam:</b> ${record.soap?.objectiveNotes || "None recorded."}</p>
-          <h3>Vitals</h3>
-          <p><b>Weight:</b> ${record.vitals?.weight || "-"} kg &nbsp;&nbsp; | &nbsp;&nbsp; <b>Temp:</b> ${record.vitals?.temp || "-"} °C &nbsp;&nbsp; | &nbsp;&nbsp; <b>Heart Rate:</b> ${record.vitals?.hr || "-"} bpm</p>
-          <h3>Diagnosis & Assessment</h3>
-          <p><b>Status:</b> ${record.patientStatus || "Stable"}</p>
-          <p>${record.diagnosis || "None recorded."}</p>
-          <h3>Treatment Plan & Instructions</h3>
-          <p>${record.treatment || "None recorded."}</p>
-          ${rxHtml}
-          ${record.nextVisit ? `<h3 style="color: #D32F2F;">Next Follow-Up Due: ${new Date(record.nextVisit.seconds * 1000).toLocaleDateString()}</h3>` : ""}
+          ${record.vitals ? `<h3>Vitals</h3>
+          <p><b>Weight:</b> ${esc(record.vitals?.weight || "-")} kg &nbsp;&nbsp; | &nbsp;&nbsp; <b>Temp:</b> ${esc(record.vitals?.temp || "-")} &deg;C &nbsp;&nbsp; | &nbsp;&nbsp; <b>Heart Rate:</b> ${esc(record.vitals?.hr || "-")} bpm</p>` : ''}
+          ${dsDiagnosis ? `<h3>Diagnosis</h3><p>${esc(dsDiagnosis)}</p>` : ''}
+          ${record.patientStatus ? `<p><b>Status:</b> ${esc(record.patientStatus)}</p>` : ''}
+          ${hasDischarge && dsInstructions ? `<h3>Going-Home Instructions</h3><p>${esc(dsInstructions).replace(/\n/g, '<br/>')}</p>` : ''}
+          ${rxHtmlFromDischarge || rxHtml}
+          ${nextVisitStr ? `<h3 style="color: #D32F2F;">Next Follow-Up Due: ${esc(nextVisitStr)}</h3>` : ""}
           <hr style="margin-top: 50px;" />
-          <p style="text-align: center; font-size: 12px; color: #888;">This is an electronically generated medical record and does not require a physical signature.</p>
+          <p style="text-align: center; font-size: 12px; color: #888;">This is an electronically generated visit summary and does not require a physical signature.</p>
         </body>
       </html>
     `;
@@ -121,15 +142,7 @@ export default function PetHistoryScreen({ route, navigation }) {
   };
 
   const renderRecord = ({ item }) => {
-    const visitDate = item.date?.toDate
-      ? item.date
-          .toDate()
-          .toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-          })
-      : "Unknown Date";
+    const visitDate = formatDisplayDate(item.date);
     const isGrooming =
       item.recordType === "grooming" ||
       item.serviceType?.toLowerCase().includes("grooming");
@@ -138,11 +151,17 @@ export default function PetHistoryScreen({ route, navigation }) {
     const themeColor = isGrooming ? "#9C27B0" : "#1565C0";
     const themeBg = isGrooming ? "#F3E5F5" : "#E3F2FD";
 
-    const hasWeight =
-      item.vitals?.weight && item.vitals.weight.toString().trim() !== "";
-    const hasTemp =
-      item.vitals?.temp && item.vitals.temp.toString().trim() !== "";
-    const hasHR = item.vitals?.hr && item.vitals.hr.toString().trim() !== "";
+    const coerceVital = (v) => {
+      if (v == null) return '';
+      const s = typeof v === 'number' || typeof v === 'string' ? String(v).trim() : '';
+      return s;
+    };
+    const weightStr = coerceVital(item.vitals?.weight);
+    const tempStr = coerceVital(item.vitals?.temp);
+    const hrStr = coerceVital(item.vitals?.hr);
+    const hasWeight = weightStr !== '';
+    const hasTemp = tempStr !== '';
+    const hasHR = hrStr !== '';
     const hasVitals = hasWeight || hasTemp || hasHR;
 
     const statusColors = getStatusColors(item.patientStatus);
@@ -171,20 +190,8 @@ export default function PetHistoryScreen({ route, navigation }) {
           </View>
 
           <View style={styles.cardBody}>
-            {item.soap?.subjective && item.soap.subjective.trim() !== "" && (
-              <View style={styles.subjectiveBox}>
-                <Text style={styles.subjectiveLabel}>
-                  REPORTED SYMPTOMS / HISTORY:
-                </Text>
-                <Text style={styles.subjectiveText}>
-                  "
-                  {item.soap.subjective
-                    .replace('Client noted: "', "")
-                    .replace('"\n\n', "")}
-                  "
-                </Text>
-              </View>
-            )}
+            {/* T2.8 Path B: raw SOAP subjective/objective/plan hidden from client view.
+                Diagnosis is shown from the top-level field; instructions from dischargeSummary. */}
 
             <View style={styles.diagnosisContainer}>
               {item.patientStatus && !isGrooming && (
@@ -220,41 +227,42 @@ export default function PetHistoryScreen({ route, navigation }) {
                 {hasWeight && (
                   <View style={styles.vitalItem}>
                     <Text style={styles.vitalLabel}>WEIGHT</Text>
-                    <Text style={styles.vitalValue}>
-                      {item.vitals.weight} kg
-                    </Text>
+                    <Text style={styles.vitalValue}>{weightStr} kg</Text>
                   </View>
                 )}
                 {hasTemp && (
                   <View style={styles.vitalItem}>
                     <Text style={styles.vitalLabel}>TEMP</Text>
-                    <Text style={styles.vitalValue}>{item.vitals.temp} °C</Text>
+                    <Text style={styles.vitalValue}>{tempStr} °C</Text>
                   </View>
                 )}
                 {hasHR && (
                   <View style={styles.vitalItem}>
                     <Text style={styles.vitalLabel}>HR</Text>
-                    <Text style={styles.vitalValue}>{item.vitals.hr} bpm</Text>
+                    <Text style={styles.vitalValue}>{hrStr} bpm</Text>
                   </View>
                 )}
               </View>
             )}
 
-            <View
-              style={[
-                styles.planBox,
-                { borderLeftColor: themeColor, backgroundColor: themeBg },
-              ]}
-            >
-              <Text style={[styles.planLabel, { color: themeColor }]}>
-                {isGrooming
-                  ? "GROOMING NOTES:"
-                  : "TREATMENT PLAN & INSTRUCTIONS:"}
-              </Text>
-              <Text style={styles.planText}>
-                {item.treatment || "No specific instructions."}
-              </Text>
-            </View>
+            {/* T2.8: Show discharge instructions (client-safe) instead of raw SOAP plan */}
+            {!item.dischargeSummary && (
+              <View
+                style={[
+                  styles.planBox,
+                  { borderLeftColor: themeColor, backgroundColor: themeBg },
+                ]}
+              >
+                <Text style={[styles.planLabel, { color: themeColor }]}>
+                  {isGrooming ? "GROOMING NOTES:" : "INSTRUCTIONS:"}
+                </Text>
+                <Text style={styles.planText}>
+                  {isGrooming
+                    ? (item.treatment || "No grooming notes recorded.")
+                    : "Visit summary not yet available for this record."}
+                </Text>
+              </View>
+            )}
 
             {item.prescriptions && item.prescriptions.length > 0 && (
               <View style={styles.rxBox}>
@@ -298,11 +306,14 @@ export default function PetHistoryScreen({ route, navigation }) {
                 .split('\n')
                 .map(s => s.trim())
                 .filter(Boolean);
-              const nextVisitDate = ds.nextVisit
-                ? new Date(ds.nextVisit?.seconds ? ds.nextVisit.seconds * 1000 : ds.nextVisit)
+              const nextVisitStr = ds.nextVisit
+                ? formatDisplayDate(ds.nextVisit, { weekday: 'long', month: 'long', day: 'numeric' }, null)
                 : null;
-              const nextVisitStr = nextVisitDate
-                ? nextVisitDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+              const nextVisitDate = ds.nextVisit
+                ? (typeof ds.nextVisit?.toDate === 'function' ? ds.nextVisit.toDate()
+                   : ds.nextVisit?.seconds != null ? new Date(ds.nextVisit.seconds * 1000)
+                   : ds.nextVisit instanceof Date ? ds.nextVisit
+                   : new Date(ds.nextVisit))
                 : null;
 
               return (
@@ -354,9 +365,12 @@ export default function PetHistoryScreen({ route, navigation }) {
                   )}
 
                   <TouchableOpacity
-                    style={styles.dischargeCallBtn}
-                    onPress={() => Linking.openURL('tel:+639000000000')}
-                    // TODO: replace hardcoded number with clinic_settings.phone when that field lands
+                    style={[styles.dischargeCallBtn, !clinicPhone && { backgroundColor: '#BDBDBD' }]}
+                    onPress={() => {
+                      if (!clinicPhone) return;
+                      Linking.openURL(`tel:${clinicPhone}`);
+                    }}
+                    disabled={!clinicPhone}
                   >
                     <Text style={styles.dischargeCallBtnText}>📞 Call us</Text>
                   </TouchableOpacity>
@@ -462,10 +476,7 @@ export default function PetHistoryScreen({ route, navigation }) {
               <MaterialIcons name="event" size={16} color="#D32F2F" />
               <Text style={styles.reminderText}>
                 NEXT VISIT DUE:{" "}
-                {new Date(item.nextVisit.seconds * 1000).toLocaleDateString(
-                  "en-US",
-                  { month: "long", day: "numeric", year: "numeric" },
-                )}
+                {safeDate(item.nextVisit, { month: "long", day: "numeric", year: "numeric" }, "an upcoming date")}
               </Text>
             </View>
           )}
@@ -634,25 +645,6 @@ const styles = StyleSheet.create({
   },
 
   cardBody: { padding: 15 },
-  subjectiveBox: {
-    marginBottom: 15,
-    borderLeftWidth: 3,
-    borderLeftColor: "#FFB74D",
-    paddingLeft: 10,
-  },
-  subjectiveLabel: {
-    fontSize: 10,
-    color: "#F57C00",
-    fontWeight: "900",
-    marginBottom: 2,
-    letterSpacing: 0.5,
-  },
-  subjectiveText: {
-    fontSize: 14,
-    color: "#555",
-    fontStyle: "italic",
-    lineHeight: 20,
-  },
 
   diagnosisContainer: {
     flexDirection: "column",

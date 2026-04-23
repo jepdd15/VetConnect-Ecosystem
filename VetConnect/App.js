@@ -34,7 +34,6 @@ import UserProfileScreen from "./src/screens/UserProfileScreen";
 
 // --- 4. STAFF FEATURES ---
 import ConsultationScreen from "./src/screens/ConsultationScreen";
-import ManageQueueScreen from "./src/screens/ManageQueueScreen";
 import ScannerScreen from "./src/screens/ScannerScreen";
 import StaffAppointments from "./src/screens/StaffAppointments";
 
@@ -158,16 +157,6 @@ export default function App() {
           component={StaffAppointments}
           options={{
             title: "Incoming Requests",
-            headerStyle: { backgroundColor: "#3E2723" },
-            headerTintColor: "#FAF9F7",
-          }}
-        />
-
-        <Stack.Screen
-          name="ManageQueue"
-          component={ManageQueueScreen}
-          options={{
-            title: "Queue Controller",
             headerStyle: { backgroundColor: "#3E2723" },
             headerTintColor: "#FAF9F7",
           }}

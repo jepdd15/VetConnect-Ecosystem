@@ -1,8 +1,9 @@
 # VetConnect Master Task List
 
-**Last updated:** 2026-04-20 · **Branch:** `main` · **Commit:** `9d1f662`
-**Total tasks:** ~560 · **Cancelled/Absorbed:** 16 · **Active:** ~544
-**Critical path to defense:** ~50-70 hours (all P0 + P1)
+**Last updated:** 2026-04-23 · **Branch:** `main`
+**Total tasks:** ~705 · **Cancelled/Absorbed:** ~16 · **Active:** ~689
+**DONE:** 346 · **TODO:** 338 · **Deferred sub-tasks:** 47
+**Critical path to defense:** Dashboard Build (~32 hrs) + thesis
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~154 hours (Phase 4 S-Tier)
 
 **Companion files:**
@@ -646,129 +647,132 @@
 
 | ID | Name | Priority | Effort | Status |
 |---|---|---|---|---|
-| T2.343 | Guard auth.currentUser null | P0 | 15 min | TODO |
-| T2.344 | Guard queueData.status null | P0 | 5 min | TODO |
-| T2.345 | Scope lobby query — strip to {queueNumber, serviceDuration, priority} (Option C locked) | P1 | 45 min | TODO |
-| T2.346 | Expand my-ticket status filter to full active lifecycle | P1 | 15 min | TODO |
-| T2.347 | Expand lobby status filter | P1 | 10 min | TODO |
-| T2.348 | Standardize ticket format {prefix}-{padStart(3,'0')} | P2 | 15 min | TODO |
-| T2.349 | Replace hardcoded 60-min emergency penalty | P2 | 15 min | TODO |
-| T2.350 | parseInt radix + NaN guard | P2 | 5 min | TODO |
-| T2.351 | Design tokens (after mobileTokens.js) | P2 | 30 min | TODO |
-| T2.352 | Memoize patientsAhead/estWaitTimeMins | P3 | 10 min | TODO |
-| T2.353 | Remove/deregister ManageQueueScreen.js | P1 | 10 min | TODO |
-| T2.354 | Import statusLabels.js for human-friendly text | P3 | 15 min | TODO |
+| T2.343 | Guard auth.currentUser null | P0 | 15 min | DONE |
+| T2.344 | Guard queueData.status null | P0 | 5 min | DONE |
+| T2.345 | Scope lobby query — strip to {queueNumber, serviceDuration, priority} (Option C locked) | P1 | 45 min | DONE |
+| T2.346 | Expand my-ticket status filter to full active lifecycle | P1 | 15 min | DONE |
+| T2.347 | Expand lobby status filter | P1 | 10 min | DONE |
+| T2.348 | Standardize ticket format {prefix}-{padStart(3,'0')} | P2 | 15 min | DONE |
+| T2.349 | Replace hardcoded 60-min emergency penalty | P2 | 15 min | DONE |
+| T2.350 | parseInt radix + NaN guard | P2 | 5 min | DONE |
+| T2.351 | Design tokens (after mobileTokens.js) | P2 | 30 min | DONE |
+| T2.352 | Memoize patientsAhead/estWaitTimeMins | P3 | 10 min | DONE |
+| T2.353 | Remove/deregister ManageQueueScreen.js | P1 | 10 min | DONE |
+| T2.354 | Import statusLabels.js for human-friendly text | P3 | 15 min | DONE |
 
 #### ChatbotScreen (T2.355-T2.362)
 
 | ID | Name | Priority | Effort | Status |
 |---|---|---|---|---|
-| T2.355 | Respect workingDays/closedDates | P1 | 30 min | TODO |
-| T2.356 | Merge settings with defaults | P3 | 5 min | TODO |
-| T2.357 | Full services catalog by department, fix tiered ₱0 | P1 | 30 min | TODO |
-| T2.358 | Filter archived services | P3 | 5 min | TODO |
-| T2.359 | Remove/restyle fake input bar | P3 | 10 min | TODO |
-| T2.360 | Error state feedback | P3 | 10 min | TODO |
-| T2.361 | Sub-intents by department | P3 | 30 min | TODO |
-| T2.362 | Clinic contact from Firestore | P3 | 10 min | TODO |
+| T2.355 | Respect workingDays/closedDates | P1 | 30 min | DONE |
+| T2.356 | Merge settings with defaults | P3 | 5 min | DONE |
+| T2.357 | Full services catalog by department, fix tiered ₱0 | P1 | 30 min | DONE |
+| T2.358 | Filter archived services | P3 | 5 min | DONE |
+| T2.359 | Remove/restyle fake input bar | P3 | 10 min | DONE |
+| T2.360 | Error state feedback | P3 | 10 min | DONE |
+| T2.361 | Sub-intents by department | P3 | 30 min | DONE |
+| T2.362 | Clinic contact from Firestore | P3 | 10 min | DONE |
 
 #### UserProfileScreen (T2.363-T2.372)
 
 | ID | Name | Priority | Effort | Status |
 |---|---|---|---|---|
-| T2.363 | Write emergencyName flat field + modernize BookAppointment reader (BOTH locked) | CRITICAL | 10 min | TODO |
-| T2.364 | Skip phone validation on empty optional contacts | P1 | 10 min | TODO |
-| T2.365 | Null guard on getHighlightStyle | P1 | 5 min | TODO |
-| T2.366 | Implement handleDeleteAccount or remove button | P2 | 30 min | TODO |
-| T2.367 | Add email field to mobile profile | P2 | 15 min | TODO |
-| T2.368 | Add missing admin-parity fields | P3 | 30 min | TODO |
-| T2.369 | Auth null guard | P3 | 5 min | TODO |
-| T2.370 | Remove empty contacts before save | P3 | 5 min | TODO |
-| T2.371 | DOB null write on save | P3 | 5 min | TODO |
-| T2.372 | Gender null vs "Decline" fix | P3 | 5 min | TODO |
+| T2.363 | Write emergencyName flat field + modernize BookAppointment reader (BOTH locked) | CRITICAL | 10 min | DONE |
+| T2.364 | Skip phone validation on empty optional contacts | P1 | 10 min | DONE |
+| T2.365 | Null guard on getHighlightStyle | P1 | 5 min | DONE |
+| T2.366 | Implement handleDeleteAccount or remove button | P2 | 30 min | DONE |
+| T2.367 | Add email field to mobile profile | P2 | 15 min | ABSORBED |
+| T2.368 | Add missing admin-parity fields | P3 | 30 min | ABSORBED |
+| T2.369 | Auth null guard | P3 | 5 min | DONE |
+| T2.370 | Remove empty contacts before save | P3 | 5 min | DONE |
+| T2.371 | DOB null write on save | P3 | 5 min | DONE |
+| T2.372 | Gender null vs "Decline" fix | P3 | 5 min | DONE |
 
 #### MyPetsScreen (T2.373-T2.383)
 
 | ID | Name | Priority | Effort | Status |
 |---|---|---|---|---|
-| T2.373 | Fix allergy field read (petAllergies \|\| allergies) | P0 | 5 min | TODO |
-| T2.374 | Optimize medical_records query (orderBy + limit 1) | P1 | 15 min | TODO |
-| T2.375 | Parallelize N+1 queries (Promise.all) | P1 | 15 min | TODO |
-| T2.376 | Replace hard delete with soft archive | P1 | 15 min | TODO |
-| T2.377 | Auth null guard | P1 | 5 min | TODO |
-| T2.378 | Guard lastVisit.toDate() | P2 | 10 min | TODO |
-| T2.379 | Add weight display | P2 | 10 min | TODO |
-| T2.380 | Add microchip badge | P3 | 10 min | TODO |
-| T2.381 | Memoize processedPets | P2 | 10 min | TODO |
-| T2.382 | Firestore rule: prevent client pet hard-deletion | P2 | 10 min | TODO |
-| T2.383 | Design tokens | P3 | 30 min | TODO |
+| T2.373 | Fix allergy field read (petAllergies \|\| allergies) | P0 | 5 min | DONE |
+| T2.374 | Optimize medical_records query (orderBy + limit 1) | P1 | 15 min | DONE |
+| T2.375 | Parallelize N+1 queries (Promise.all) | P1 | 15 min | DONE |
+| T2.376 | Replace hard delete with soft archive | P1 | 15 min | DONE |
+| T2.377 | Auth null guard | P1 | 5 min | DONE |
+| T2.378 | Guard lastVisit.toDate() | P2 | 10 min | DONE |
+| T2.379 | Add weight display | P2 | 10 min | DONE |
+| T2.379a | MyPetsScreen 4-column demoGrid: reduce fontSize or flex ratios to prevent text clipping on 320px screens (weight "12.5 kg" truncates) | P3 | 10 min | TODO | Review finding — MOB-8 audit, QA validation needed |
+| T2.380 | Add microchip badge | P3 | 10 min | DONE |
+| T2.381 | Memoize processedPets | P2 | 10 min | DONE |
+| T2.382 | Firestore rule: prevent client pet hard-deletion | P2 | 10 min | DONE |
+| T2.383 | Design tokens | P3 | 30 min | ABSORBED | → T2.440 (Mobile Design Sweep: Convert MyPetsScreen) |
 
 #### ClientDashboard (T2.384-T2.393)
 
 | ID | Name | Priority | Effort | Status |
 |---|---|---|---|---|
-| T2.384 | Fix queue-ahead: arrivedAppt.date → scheduledDateStr | CRITICAL | 15 min | TODO |
-| T2.385 | Guard rec.petName.toUpperCase() | P1 | 5 min | TODO |
-| T2.386 | Fix incomplete optional chaining on scheduledDate | P1 | 5 min | TODO |
-| T2.387 | Add on-hold to status query | P1 | 10 min | TODO |
-| T2.388 | Restructure reminders useEffect try/catch | P2 | 10 min | TODO |
-| T2.389 | Remove dead imports | P3 | 2 min | TODO |
-| T2.390 | Auth guard on all useEffects | P3 | 10 min | TODO |
-| T2.391 | Dynamic queue progress bar width | P3 | 10 min | TODO |
-| T2.392 | Consider showing pending appointments | P3 | 15 min | TODO |
-| T2.393 | First-time user empty state | P3 | 15 min | TODO |
+| T2.384 | Fix queue-ahead: arrivedAppt.date → scheduledDateStr | CRITICAL | 15 min | DONE |
+| T2.385 | Guard rec.petName.toUpperCase() | P1 | 5 min | DONE |
+| T2.386 | Fix incomplete optional chaining on scheduledDate | P1 | 5 min | DONE |
+| T2.387 | Add on-hold to status query | P1 | 10 min | DONE |
+| T2.388 | Restructure reminders useEffect try/catch | P2 | 10 min | DONE |
+| T2.389 | Remove dead imports | P3 | 2 min | DONE |
+| T2.390 | Auth guard on all useEffects | P3 | 10 min | DONE |
+| T2.391 | Dynamic queue progress bar width | P3 | 10 min | DONE |
+| T2.392 | Consider showing pending appointments | P3 | 15 min | DONE |
+| T2.393 | First-time user empty state | P3 | 15 min | DONE |
 
 #### ClientAppointments (T2.394-T2.401)
 
 | ID | Name | Priority | Effort | Status |
 |---|---|---|---|---|
-| T2.394 | Fix history-tab ghost filter: cancelReason → auditReason | CRITICAL | 5 min | TODO |
-| T2.395 | Fix client cancel: include auditReason | CRITICAL | 5 min | TODO |
-| T2.396 | Show reason for no-show/carried-over | P2 | 10 min | TODO |
-| T2.397 | Fix invalid `my` CSS → marginVertical | P2 | 2 min | TODO |
-| T2.398 | Add re-book for no-show/carried-over | P2 | 15 min | TODO |
-| T2.399 | Refund indicator in receipt modal | P3 | 15 min | TODO |
-| T2.400 | Debounce sales/parentRecords re-fetch | P3 | 20 min | TODO |
-| T2.401 | Audit borderRadius | P3 | 15 min | TODO |
+| T2.394 | Fix history-tab ghost filter: cancelReason → auditReason | CRITICAL | 5 min | DONE |
+| T2.394a | ClientAppointments handleDismissFollowUp: incomplete optional chaining on `item.scheduledDate?.toDate().toLocaleDateString()` — crashes when toDate() returns undefined | P3 | 2 min | TODO | Review finding — MOB-2 audit |
+| T2.395 | Fix client cancel: include auditReason | CRITICAL | 5 min | DONE |
+| T2.396 | Show reason for no-show/carried-over | P2 | 10 min | DONE |
+| T2.397 | Fix invalid `my` CSS → marginVertical | P2 | 2 min | DONE |
+| T2.398 | Add re-book for no-show/carried-over | P2 | 15 min | DONE |
+| T2.399 | Refund indicator in receipt modal | P3 | 15 min | DONE |
+| T2.400 | Debounce sales/parentRecords re-fetch | P3 | 20 min | DONE |
+| T2.401 | Audit borderRadius | P3 | 15 min | DONE |
 
 #### PetHistoryScreen (T2.402-T2.409)
 
 | ID | Name | Priority | Effort | Status |
 |---|---|---|---|---|
-| T2.402 | Remove soap.subjective per Q11 | HIGH | 10 min | TODO |
-| T2.403 | Replace treatment with dischargeSummary.instructions (Option A locked: hide for legacy) | HIGH | 15 min | TODO |
-| T2.404 | Rewrite generatePDF() client-safe only | HIGH | 30 min | TODO |
-| T2.405 | Guard nextVisit non-Timestamp (T2.6 fix) | P1 | 10 min | TODO |
-| T2.406 | Strip price from prescriptions | P3 | 20 min | TODO |
-| T2.407 | Defensive vitals coercion | P3 | 5 min | TODO |
-| T2.408 | Replace hardcoded phone | P3 | 10 min | TODO |
-| T2.409 | Design tokens | P3 | 30 min | TODO |
+| T2.402 | Remove soap.subjective per Q11 | HIGH | 10 min | DONE |
+| T2.403 | Replace treatment with dischargeSummary.instructions (Option A locked: hide for legacy) | HIGH | 15 min | DONE |
+| T2.404 | Rewrite generatePDF() client-safe only | HIGH | 30 min | DONE |
+| T2.404a | BookAppointment.js: duplicate `toTitleCase` declarations in renderStep4 — two identical const definitions back-to-back | P3 | 1 min | TODO | Review finding — MOB-7 audit, pre-existing dead code |
+| T2.405 | Guard nextVisit non-Timestamp (T2.6 fix) | P1 | 10 min | DONE |
+| T2.406 | Strip price from prescriptions | P3 | 20 min | DONE |
+| T2.407 | Defensive vitals coercion | P3 | 5 min | DONE |
+| T2.408 | Replace hardcoded phone | P3 | 10 min | DONE |
+| T2.409 | Design tokens | P3 | 30 min | ABSORBED (→ T2.440: Mobile Design Sweep: Convert PetHistoryScreen) |
 
 #### SuperCard (T2.410-T2.416)
 
 | ID | Name | Priority | Effort | Status |
 |---|---|---|---|---|
-| T2.410 | Replace hardcoded CLINIC_PHONE | P2 | 10 min | TODO |
-| T2.411 | Replace hardcoded CLINIC_ADDRESS (wrong city!) | P2 | 10 min | TODO |
-| T2.412 | Add service type display | P2 | 10 min | TODO |
-| T2.413 | petName null guard | P3 | 5 min | TODO |
-| T2.414 | Implement queue-ahead count | P3 | 30 min | TODO |
-| T2.415 | Reset pulseAnim on appointment change | P3 | 5 min | TODO |
-| T2.416 | Create unified useClinicContact() hook | P2 | 20 min | TODO |
+| T2.410 | Replace hardcoded CLINIC_PHONE | P2 | 10 min | DONE |
+| T2.411 | Replace hardcoded CLINIC_ADDRESS (wrong city!) | P2 | 10 min | DONE |
+| T2.412 | Add service type display | P2 | 10 min | DONE |
+| T2.413 | petName null guard | P3 | 5 min | DONE |
+| T2.414 | Implement queue-ahead count | P3 | 30 min | DONE |
+| T2.415 | Reset pulseAnim on appointment change | P3 | 5 min | DONE |
+| T2.416 | Create unified useClinicContact() hook | P2 | 20 min | DONE |
 
 #### RegisterScreen (T2.417-T2.426)
 
 | ID | Name | Priority | Effort | Status | Notes |
 |---|---|---|---|---|---|
 | T2.417 | ~~Fix BookAppointment profile check~~ | — | — | — | ABSORBED into T2.363 |
-| T2.418 | Auth rollback on Firestore write failure | P1 | 20 min | TODO | |
-| T2.419 | Merge: migrate medical_records | P1 | 15 min | TODO | |
+| T2.418 | Auth rollback on Firestore write failure | P1 | 20 min | DONE | |
+| T2.419 | Merge: migrate medical_records | P1 | 15 min | DONE | |
 | T2.420 | Merge: preserve guest createdAt | P2 | 10 min | DONE | |
 | T2.421 | Merge: carry forward guest fields | P2 | 15 min | DONE | |
 | T2.422 | Standard path: add accountStatus | P3 | 5 min | DONE | |
 | T2.423 | Friendly error messages | P3 | 10 min | DONE | |
 | T2.424 | Document/remove dormant mergeGuestAccount CF | P3 | 15 min | DONE | |
-| T2.425 | Remove duplicate label style | P3 | 5 min | DONE | |
+| T2.425 | Remove duplicate label style | P3 | 5 min | TODO | |
 | T2.426 | Add profileComplete: false to registration | P3 | 5 min | DONE | |
 
 #### helpers.js Extraction (T2.427-T2.433)
@@ -778,10 +782,11 @@
 | T2.427 | Extract isValidPHPhone, eliminate duplicates | P1 | 10 min | DONE |
 | T2.428 | Extract resolveTieredPrice, port admin NaN guard | P1 | 15 min | DONE |
 | T2.429 | Extract calculateAge with future-DOB guard | P2 | 10 min | DONE |
-| T2.430 | Extract unified formatFirestoreTime | P2 | 15 min | TODO |
-| T2.431 | Move getLocalDateStrMobile to helpers | P2 | 10 min | TODO |
-| T2.432 | Extract formatHour | P3 | 5 min | TODO |
-| T2.433 | Create formatDisplayDate/Time wrappers | P3 | 20 min | TODO |
+| T2.430 | Extract unified formatFirestoreTime | P2 | 15 min | DONE |
+| T2.431 | Move getLocalDateStrMobile to helpers | P2 | 10 min | DONE |
+| T2.431a | Replace inline todayStr YYYY-MM-DD computation in ClientAppointments.js + ClientDashboard.js with `getLocalDateStr()` from helpers.js | P3 | 5 min | TODO | Review finding — MOB-7 audit |
+| T2.432 | Extract formatHour | P3 | 5 min | DONE |
+| T2.433 | Create formatDisplayDate/Time wrappers | P3 | 20 min | DONE |
 
 ### Design Unification (T2.434-T2.452)
 
@@ -856,34 +861,34 @@
 
 | ID | Name | Priority | Effort | Status |
 |---|---|---|---|---|
-| T2.480 | Add sex + medical status filter chips | P2 | 20 min | TODO |
-| T2.481 | Add sort options (age, last visit) | P2 | 15 min | TODO |
-| T2.482 | "Book Visit" button per pet card | P2 | 20 min | TODO |
-| T2.483 | Vaccination completeness mini-badge per pet | P2 | 30 min | TODO |
+| T2.480 | Add sex + medical status filter chips | P2 | 20 min | DONE |
+| T2.481 | Add sort options (age, last visit) | P2 | 15 min | DONE |
+| T2.482 | "Book Visit" button per pet card | P2 | 20 min | DONE |
+| T2.483 | Vaccination completeness mini-badge per pet | P2 | 30 min | DONE |
 
 ### QueueScreen A Tier (T2.484-T2.490)
 
 | ID | Name | Priority | Effort | Status |
 |---|---|---|---|---|
-| T2.484 | Visual position indicator with progress bar | P1 | 30 min | TODO |
-| T2.485 | Live countdown timer | P2 | 30 min | TODO |
-| T2.487 | In-app alert when number called (vibration + banner) | P1 | 20 min | TODO |
-| T2.488 | Historical average wait display | P2 | 30 min | TODO |
-| T2.489 | Multi-pet awareness (show all checked-in pets) | P2 | 20 min | TODO |
-| T2.490 | "Running Late" notification to clinic | P3 | 30 min | TODO |
+| T2.484 | Visual position indicator with progress bar | P1 | 30 min | DONE |
+| T2.485 | Live countdown timer | P2 | 30 min | DONE |
+| T2.487 | In-app alert when number called (vibration + banner) | P1 | 20 min | DONE |
+| T2.488 | Historical average wait display | P2 | 30 min | DONE |
+| T2.489 | Multi-pet awareness (show all checked-in pets) | P2 | 20 min | DONE |
+| T2.490 | "Running Late" notification to clinic | P3 | 30 min | DONE |
 
 ### UserProfileScreen Parity (T2.497-T2.504)
 
 | ID | Name | Priority | Effort | Status |
 |---|---|---|---|---|
-| T2.497 | Add email field (editable) | P1 | 15 min | TODO |
-| T2.498 | Add secondaryPhone | P2 | 10 min | TODO |
-| T2.499 | Add govIdType + govIdNumber | P2 | 20 min | TODO |
-| T2.500 | Add referralSource | P3 | 10 min | TODO |
-| T2.501 | Add preferredComm | P3 | 10 min | TODO |
-| T2.502 | Add whatsappOptIn toggle | P3 | 5 min | TODO |
-| T2.503 | Add waiverSigned toggle with consent text | P3 | 15 min | TODO |
-| T2.504 | Organize fields into collapsible sections | P2 | 20 min | TODO |
+| T2.497 | Add email field (editable) | P1 | 15 min | DONE |
+| T2.498 | Add secondaryPhone | P2 | 10 min | DONE |
+| T2.499 | Add govIdType + govIdNumber | P2 | 20 min | DONE |
+| T2.500 | Add referralSource | P3 | 10 min | DONE |
+| T2.501 | Add preferredComm | P3 | 10 min | DONE |
+| T2.502 | Add whatsappOptIn toggle | P3 | 5 min | DONE |
+| T2.503 | Add waiverSigned toggle with consent text | P3 | 15 min | DONE |
+| T2.504 | Organize fields into collapsible sections | P2 | 20 min | DONE |
 
 ### JSX Audit Fixes (need formal IDs — grouped by file)
 

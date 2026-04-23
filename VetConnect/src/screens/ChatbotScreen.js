@@ -14,19 +14,29 @@ import {
   View,
 } from "react-native";
 import { db } from "../../firebaseConfig";
+import { useClinicContact } from '../hooks/useClinicContact';
+import { getLocalDateStr, formatHour } from '../utils/helpers';
 
 export default function ChatbotScreen({ navigation }) {
   const scrollViewRef = useRef();
   const [messages, setMessages] = useState([]);
   const [servicesList, setServicesList] = useState([]);
+  // T2.356: defaults survive a partial/missing Firestore doc
+  // T2.355: workingDays and closedDates added with safe defaults
   const [clinicSettings, setClinicSettings] = useState({
     openHour: 8,
     closeHour: 17,
-    clinicPhone: '',
+    workingDays: [1, 2, 3, 4, 5, 6], // Mon-Sat default
+    closedDates: [],
   });
   const [isTyping, setIsTyping] = useState(false);
-  const CLINIC_MAPS_URL =
-    "https://maps.google.com/?q=Starbarks+Veterinary+Clinic+Malanay+Santa+Barbara+Pangasinan";
+  // T2.360: error state for failed Firestore fetch
+  const [fetchError, setFetchError] = useState(false);
+
+  // T2.362: clinic contact from shared singleton hook — no hardcoded phone/address
+  const { clinicPhone, clinicAddress } = useClinicContact();
+
+  // T2.362: dynamic maps URL from Firestore-sourced address (constructed inside handler to avoid stale closure)
 
   const INITIAL_OPTIONS = [
     { label: "🕒 Operating Hours", id: "hours" },
@@ -41,16 +51,24 @@ export default function ChatbotScreen({ navigation }) {
 
     const fetchEcosystem = async () => {
       try {
+        // T2.358: filter archived services
         const snap = await getDocs(collection(db, "services"));
-        setServicesList(snap.docs.map((d) => d.data()));
+        setServicesList(
+          snap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .filter((s) => !s.isArchived)
+        );
 
         const settingsRef = doc(db, "clinic_settings", "general");
         const settingsSnap = await getDoc(settingsRef);
         if (settingsSnap.exists()) {
-          setClinicSettings(settingsSnap.data());
+          // T2.356: merge with spread so missing fields keep their defaults
+          setClinicSettings((prev) => ({ ...prev, ...settingsSnap.data() }));
         }
       } catch (e) {
-        console.log(e);
+        // T2.360: surface fetch failure to the user
+        console.warn('ChatbotScreen: Failed to fetch clinic data', e);
+        setFetchError(true);
       }
     };
     fetchEcosystem();
@@ -73,19 +91,42 @@ export default function ChatbotScreen({ navigation }) {
     }, 600);
   }, [navigation]);
 
+  // T2.362: uses hook-sourced clinicPhone; Alert was never imported (latent crash), removed entirely
   const handleCallClinic = () => {
-    const phone = clinicSettings.clinicPhone;
-    if (!phone) { Alert.alert('Clinic Phone', 'Clinic phone number has not been configured yet.'); return; }
-    Linking.openURL(`tel:${phone}`);
-  };
-  const handleOpenMaps = () => {
-    Linking.openURL(CLINIC_MAPS_URL);
+    if (!clinicPhone) return;
+    Linking.openURL(`tel:${clinicPhone}`);
   };
 
-  const formatHour = (hour24) => {
-    if (hour24 === 0) return "12:00 AM";
-    if (hour24 === 12) return "12:00 PM";
-    return hour24 < 12 ? `${hour24}:00 AM` : `${hour24 - 12}:00 PM`;
+  const handleOpenMaps = () => {
+    Linking.openURL(`https://maps.google.com/?q=${encodeURIComponent(clinicAddress)}`);
+  };
+
+
+  // T2.355: day-name helpers
+  const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+  const formatWorkingDays = (days) => {
+    if (!days || days.length === 0) return 'by appointment only';
+    if (days.length === 7) return 'every day';
+    const sorted = [...days].sort((a, b) => a - b);
+    const isConsecutive = sorted.every((d, i) => i === 0 || d === sorted[i - 1] + 1);
+    if (isConsecutive && sorted.length >= 3) {
+      return `${DAY_NAMES[sorted[0]]} to ${DAY_NAMES[sorted[sorted.length - 1]]}`;
+    }
+    return sorted.map((d) => DAY_NAMES[d]).join(', ');
+  };
+
+
+  // T2.357: display price helper — tiered services show lowest tier price
+  const getDisplayPrice = (service) => {
+    if (service.hasTieredPricing && service.pricingTiers?.length) {
+      const prices = service.pricingTiers.map((t) => Number(t.price) || 0).filter((p) => p > 0);
+      if (prices.length > 0) {
+        return `starts at ₱${Math.min(...prices)}`;
+      }
+    }
+    const base = Number(service.price) || 0;
+    return base > 0 ? `₱${base}` : 'Price on consultation';
   };
 
   const handleSelectOption = (option) => {
@@ -97,21 +138,41 @@ export default function ChatbotScreen({ navigation }) {
       let botResponse = "";
       let actionButton = null;
       let followUpOptions = INITIAL_OPTIONS;
+      // T2.357/T2.361: department drill-down options populated in services/dept_ cases
+      let followUpDeptOptions = null;
 
       switch (option.id) {
-        case "hours":
-          const nowHour = new Date().getHours();
-          const isOpen =
-            nowHour >= clinicSettings.openHour &&
-            nowHour < clinicSettings.closeHour;
+        // T2.355: full working-day and closed-date awareness
+        case "hours": {
+          const now = new Date();
+          const nowHour = now.getHours();
+          const todayDay = now.getDay();
+          const todayStr = getLocalDateStr();
+          const { openHour, closeHour, workingDays = [], closedDates = [] } = clinicSettings;
+
+          const isWorkingDay = workingDays.includes(todayDay);
+          const isClosedDate = closedDates.includes(todayStr);
+          const isWithinHours = nowHour >= openHour && nowHour < closeHour;
+          const isOpen = isWorkingDay && !isClosedDate && isWithinHours;
+
           const statusText = isOpen
             ? "🟢 We are currently OPEN."
             : "🔴 We are currently CLOSED.";
-          botResponse = `${statusText}\n\nOur regular operating hours are Monday to Saturday, from ${formatHour(clinicSettings.openHour)} to ${formatHour(clinicSettings.closeHour)}.\nWe are closed on Sundays.`;
+
+          let reason = '';
+          if (!isOpen) {
+            if (isClosedDate) reason = '\n(Today is a scheduled closed date.)';
+            else if (!isWorkingDay) reason = `\n(We are closed on ${DAY_NAMES[todayDay]}s.)`;
+          }
+
+          const daysText = formatWorkingDays(workingDays);
+          botResponse = `${statusText}${reason}\n\nOur regular operating hours are ${daysText}, from ${formatHour(openHour)} to ${formatHour(closeHour)}.`;
           break;
+        }
         case "location":
+          // T2.362: address from hook, not hardcoded
           botResponse =
-            "We are located in Malanay, Santa Barbara, Pangasinan. Look for the brown and beige sign!";
+            `We are located at ${clinicAddress}. Look for the brown and beige sign!`;
           actionButton = {
             label: "🗺️ Open in Google Maps",
             action: handleOpenMaps,
@@ -133,31 +194,81 @@ export default function ChatbotScreen({ navigation }) {
         case "emergency":
           botResponse =
             "⚠️ DO NOT WAIT FOR AN APP BOOKING.\n\nIf your pet is experiencing heavy bleeding, difficulty breathing, or seizures, proceed directly to the clinic immediately. Emergencies are given absolute priority.";
-          actionButton = {
-            label: `📞 Call Clinic Now`,
-            action: handleCallClinic,
-            color: "#D32F2F",
-          };
+          // T2.360: hide call button when no phone is configured
+          actionButton = clinicPhone
+            ? { label: '📞 Call Clinic Now', action: handleCallClinic, color: '#D32F2F' }
+            : null;
           break;
-        case "services":
+        // T2.357: full services catalog grouped by department, tiered pricing fixed
+        case "services": {
           if (servicesList.length > 0) {
-            botResponse =
-              "Here are some of our base starting prices:\n\n" +
-              servicesList
-                .slice(0, 5)
-                .map((s) => `• ${s.name}: ₱${s.price}`)
-                .join("\n") +
-              "\n\nPrices may vary based on your pet's specific needs or weight.";
+            const grouped = {};
+            servicesList.forEach((s) => {
+              const dept = s.department || s.category || 'General';
+              if (!grouped[dept]) grouped[dept] = [];
+              grouped[dept].push(s);
+            });
+
+            const sections = Object.entries(grouped)
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([dept, svcs]) => {
+                const lines = svcs
+                  .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                  .map((s) => `  • ${s.name}: ${getDisplayPrice(s)}`)
+                  .join('\n');
+                return `${dept}:\n${lines}`;
+              })
+              .join('\n\n');
+
+            botResponse = `Here are our services and prices:\n\n${sections}\n\nPrices may vary based on your pet's weight and specific needs.`;
+
+            // T2.361: department drill-down buttons when multiple departments exist
+            const deptNames = Object.keys(grouped).sort();
+            if (deptNames.length > 1) {
+              followUpDeptOptions = [
+                ...deptNames.map((d) => ({ label: `📂 ${d}`, id: `dept_${d}` })),
+                { label: '⬅️ Back to main menu', id: 'reset' },
+              ];
+            }
           } else {
             botResponse =
-              "We offer Consultations, Vaccinations, Surgery, and Grooming. Please check the booking screen for exact prices.";
+              'Our service catalog is currently unavailable. Please check the booking screen or call the clinic for prices.';
           }
           break;
+        }
         case "reset":
           botResponse = "What else can I help you with?";
           break;
-        default:
+        default: {
+          // T2.361: department sub-intent drill-down
+          if (option.id.startsWith('dept_')) {
+            const deptName = option.id.replace('dept_', '');
+            const deptServices = servicesList.filter(
+              (s) => (s.department || s.category || 'General') === deptName
+            );
+
+            if (deptServices.length > 0) {
+              const lines = deptServices
+                .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                .map((s) => {
+                  let detail = getDisplayPrice(s);
+                  if (s.duration) detail += ` · ${s.duration} min`;
+                  if (s.targetSpecies?.length) detail += ` · ${s.targetSpecies.join(', ')}`;
+                  return `• ${s.name}: ${detail}`;
+                })
+                .join('\n');
+              botResponse = `${deptName} Services:\n\n${lines}\n\nPrices may vary based on your pet's weight.`;
+            } else {
+              botResponse = `No services found under ${deptName}.`;
+            }
+            followUpOptions = [
+              { label: '💰 All Services', id: 'services' },
+              { label: '⬅️ Back to main menu', id: 'reset' },
+            ];
+            break;
+          }
           botResponse = "I'm sorry, I didn't understand that.";
+        }
       }
 
       setMessages((prev) => [
@@ -167,7 +278,7 @@ export default function ChatbotScreen({ navigation }) {
           type: "bot",
           text: botResponse,
           actionButton: actionButton,
-          options: followUpOptions,
+          options: followUpDeptOptions ?? followUpOptions,
         },
       ]);
       setIsTyping(false);
@@ -209,6 +320,15 @@ export default function ChatbotScreen({ navigation }) {
             minute: "2-digit",
           })}
         </Text>
+
+        {/* T2.360: error banner when Firestore fetch failed */}
+        {fetchError && (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorBannerText}>
+              ⚠️ Some information may be unavailable. Answers are based on default settings.
+            </Text>
+          </View>
+        )}
 
         {messages.map((msg) => (
           <View
@@ -309,18 +429,11 @@ export default function ChatbotScreen({ navigation }) {
         )}
       </ScrollView>
 
-      <View style={styles.chatInputContainer}>
-        <TouchableOpacity style={styles.attachBtn}>
-          <Text style={{ fontSize: 22, color: "#888" }}>+</Text>
-        </TouchableOpacity>
-        <View style={styles.fakeInput}>
-          <Text style={styles.fakeInputText}>
-            Tap an option above to reply...
-          </Text>
-        </View>
-        <View style={styles.sendBtn}>
-          <Text style={{ fontSize: 16, color: "#888" }}>➤</Text>
-        </View>
+      {/* T2.359: replaced fake input bar with honest footer hint */}
+      <View style={styles.chatFooter}>
+        <Text style={styles.chatFooterText}>
+          Tap a button above to continue the conversation
+        </Text>
       </View>
     </View>
   );
@@ -355,6 +468,21 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginBottom: 20,
     fontWeight: "bold",
+  },
+  // T2.360: error banner styles
+  errorBanner: {
+    backgroundColor: '#FFF3E0',
+    borderWidth: 1,
+    borderColor: '#FFB74D',
+    padding: 10,
+    marginBottom: 15,
+    borderRadius: 0,
+  },
+  errorBannerText: {
+    color: '#E65100',
+    fontSize: 12,
+    textAlign: 'center',
+    fontWeight: '600',
   },
   messageWrapper: {
     marginBottom: 20,
@@ -409,38 +537,19 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   optionText: { color: "#5D4037", fontWeight: "bold", fontSize: 13 },
-  chatInputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 10,
+  // T2.359: footer hint replaces fake chat input
+  chatFooter: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
     paddingBottom: 25,
-    backgroundColor: "white",
+    backgroundColor: 'white',
     borderTopWidth: 1,
-    borderTopColor: "#E0E0E0",
+    borderTopColor: '#E0E0E0',
+    alignItems: 'center',
   },
-  attachBtn: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  fakeInput: {
-    flex: 1,
-    backgroundColor: "#F5F5F5",
-    borderRadius: 20,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: "#EEEEEE",
-    marginHorizontal: 10,
-  },
-  fakeInputText: { color: "#BDBDBD", fontStyle: "italic", fontSize: 14 },
-  sendBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#EFEBE9",
-    alignItems: "center",
-    justifyContent: "center",
+  chatFooterText: {
+    color: '#9E9E9E',
+    fontSize: 13,
+    fontWeight: '600',
   },
 });

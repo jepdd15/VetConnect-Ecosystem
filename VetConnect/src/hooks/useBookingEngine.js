@@ -9,12 +9,7 @@ import {
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { auth, db } from "../../firebaseConfig";
-
-// Local-time YYYY-MM-DD formatter (Asia/Manila expected on device).
-// Exported so BookAppointment can share the same normalizer without duplication.
-export const getLocalDateStrMobile = (d) => {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
+import { getLocalDateStr } from '../utils/helpers';
 
 export function useBookingEngine(date, selectedServices = [], selectedPets) {
   const [pets, setPets] = useState([]);
@@ -167,7 +162,7 @@ export function useBookingEngine(date, selectedServices = [], selectedPets) {
   // This decouples the Firestore read from service/pet toggling.
   const closedDatesKey = (clinicSettings.closedDates ?? []).join(',');
   useEffect(() => {
-    const dateStr = getLocalDateStrMobile(date);
+    const dateStr = getLocalDateStr(date);
     if (closedDatesKey.split(',').includes(dateStr)) {
       setDayAppointments([]);
       return;
@@ -198,7 +193,7 @@ export function useBookingEngine(date, selectedServices = [], selectedPets) {
   // Debounced 300ms so rapid service toggling fires only one computation pass.
   // Depends on dayAppointments (from effect 3a) + services/pets/settings.
   useEffect(() => {
-    const dateStr = getLocalDateStrMobile(date);
+    const dateStr = getLocalDateStr(date);
     if ((clinicSettings.closedDates ?? []).includes(dateStr)) {
       setAvailableSlots([]);
       setLoadingSlots(false);
@@ -374,7 +369,7 @@ export const findFirstBookableDate = async (targetDate, toleranceDays, clinicSet
     const normalized = new Date(d);
     normalized.setHours(0, 0, 0, 0);
     if (normalized < today) return false;
-    if (closed.has(getLocalDateStrMobile(normalized))) return false;
+    if (closed.has(getLocalDateStr(normalized))) return false;
     if (checkCapacity) return await checkCapacity(normalized);
     return true;
   };

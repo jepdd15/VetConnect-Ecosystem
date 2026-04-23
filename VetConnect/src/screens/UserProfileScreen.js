@@ -34,11 +34,15 @@ export default function UserProfileScreen({ navigation, route }) {
   // --- FORM STATES ---
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [secondaryPhone, setSecondaryPhone] = useState("");
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
   const [dob, setDob] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [seniorId, setSeniorId] = useState("");
+  const [govIdType, setGovIdType] = useState("");
+  const [govIdNumber, setGovIdNumber] = useState("");
 
   // THE FIX: Emergency Contacts is now an Array!
   const [emergencyContacts, setEmergencyContacts] = useState([
@@ -47,10 +51,19 @@ export default function UserProfileScreen({ navigation, route }) {
 
   const [dpaConsent, setDpaConsent] = useState(false);
   const [allowPromos, setAllowPromos] = useState(false);
-  const [gender, setGender] = useState(null);
+  const [gender, setGender] = useState("Decline");
+  const [referralSource, setReferralSource] = useState("");
+  const [preferredComm, setPreferredComm] = useState("SMS");
+  const [whatsappOptIn, setWhatsappOptIn] = useState(false);
+  const [waiverSigned, setWaiverSigned] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState({});
 
   useEffect(() => {
     const fetchProfile = async () => {
+      if (!auth.currentUser) {
+        setLoading(false);
+        return;
+      }
       try {
         const userRef = doc(db, "users", auth.currentUser.uid);
         const snap = await getDoc(userRef);
@@ -59,12 +72,20 @@ export default function UserProfileScreen({ navigation, route }) {
           const data = snap.data();
           setFullName(data.fullName || "");
           setPhone(data.phone || "");
+          setEmail(data.email || auth.currentUser?.email || "");
+          setSecondaryPhone(data.secondaryPhone || "");
           setAddress(data.address || "");
           setCity(data.city || "");
-          setGender(data.gender === undefined ? null : data.gender);
+          setGender(data.gender || "Decline");
           setSeniorId(data.seniorId || "");
+          setGovIdType(data.govIdType || "");
+          setGovIdNumber(data.govIdNumber || "");
           setAllowPromos(data.allowPromos || false);
           setDpaConsent(data.dpaConsent || false);
+          setReferralSource(data.referralSource || "");
+          setPreferredComm(data.preferredComm || "SMS");
+          setWhatsappOptIn(data.whatsappOptIn || false);
+          setWaiverSigned(data.waiverSigned || false);
 
           // Load dynamic contacts or fallback to old structure
           if (data.emergencyContacts && data.emergencyContacts.length > 0) {
@@ -122,9 +143,27 @@ export default function UserProfileScreen({ navigation, route }) {
       return;
     }
 
+    // T2.498: Validate secondary phone only if non-empty
+    if (secondaryPhone.trim() && !isValidPHPhone(secondaryPhone)) {
+      Alert.alert(
+        "Invalid Number",
+        "Your secondary phone must be a valid Philippine number starting with 09 (e.g., 09123456789).",
+      );
+      return;
+    }
+
     // Validate all emergency contact phones too
     for (let i = 0; i < emergencyContacts.length; i++) {
-      if (!isValidPHPhone(emergencyContacts[i].phone)) {
+      const contactPhone = emergencyContacts[i].phone?.trim() || "";
+      // T2.364: Only validate phone for required primary (index 0) or non-empty optional contacts
+      if (i === 0 && !isValidPHPhone(contactPhone)) {
+        Alert.alert(
+          "Invalid Number",
+          `Emergency Contact #${i + 1} has an invalid phone number. It must start with 09 and be 11 digits long.`,
+        );
+        return;
+      }
+      if (i > 0 && contactPhone !== "" && !isValidPHPhone(contactPhone)) {
         Alert.alert(
           "Invalid Number",
           `Emergency Contact #${i + 1} has an invalid phone number. It must start with 09 and be 11 digits long.`,
@@ -145,22 +184,36 @@ export default function UserProfileScreen({ navigation, route }) {
     setSaving(true);
     Keyboard.dismiss();
 
+    const cleanedContacts = emergencyContacts.filter(
+      (c, i) => i === 0 || (c.name?.trim() || c.phone?.trim()),
+    );
+
     try {
       const userRef = doc(db, "users", auth.currentUser.uid);
       const payload = {
         fullName: fullName.trim(),
         phone: phone.trim(),
+        secondaryPhone: secondaryPhone.trim() || null,
+        email: email.trim().toLowerCase(),
         address: address.trim(),
         city: city.trim(),
         gender,
         seniorId: seniorId.trim(),
-        emergencyContacts, // Saving the whole array!
+        govIdType: govIdType || null,
+        govIdNumber: govIdNumber.trim() || null,
+        emergencyContacts: cleanedContacts,
+        emergencyName: cleanedContacts[0]?.name?.trim() || "",
+        emergencyPhone: cleanedContacts[0]?.phone?.trim() || "",
         dpaConsent,
         allowPromos,
+        referralSource: allowPromos ? (referralSource || null) : null,
+        preferredComm: allowPromos ? preferredComm : "SMS",
+        whatsappOptIn: allowPromos ? whatsappOptIn : false,
+        waiverSigned,
         profileComplete: true,
       };
 
-      if (dob) payload.dob = Timestamp.fromDate(dob);
+      payload.dob = dob ? Timestamp.fromDate(dob) : null;
 
       await updateDoc(userRef, payload);
 
@@ -199,13 +252,44 @@ export default function UserProfileScreen({ navigation, route }) {
     setEmergencyContacts(newContacts);
   };
 
+  const toggleSection = (key) => {
+    Keyboard.dismiss();
+    setCollapsedSections((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
   // --- THE UX FIX: Dynamic Highlighting Style ---
   const getHighlightStyle = (val) => {
-    return isBookingRedirect && !val.trim() ? styles.missingFieldHighlight : {};
+    return isBookingRedirect && !(val || "").trim() ? styles.missingFieldHighlight : {};
   };
 
   const handleDeleteAccount = () => {
-    /* ... existing delete logic ... */
+    Alert.alert(
+      "Request Account Deletion",
+      "This will submit a deletion request to the clinic. Your account will be deactivated and scheduled for removal within 30 days per the Data Privacy Act (RA 10173).\n\nAll associated pet profiles and medical records will be preserved for clinical audit purposes.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Submit Request",
+          style: "destructive",
+          onPress: async () => {
+            if (!auth.currentUser) return;
+            try {
+              const userRef = doc(db, "users", auth.currentUser.uid);
+              await updateDoc(userRef, {
+                deletionRequested: true,
+                deletionRequestedAt: new Date().toISOString(),
+              });
+              Alert.alert(
+                "Request Submitted",
+                "Your deletion request has been logged. The clinic will process it within 30 days.",
+              );
+            } catch (error) {
+              Alert.alert("Error", error.message);
+            }
+          },
+        },
+      ],
+    );
   };
 
   if (loading)
@@ -233,7 +317,7 @@ export default function UserProfileScreen({ navigation, route }) {
                 {fullName ? fullName[0].toUpperCase() : "?"}
               </Text>
             </View>
-            <Text style={styles.emailText}>{auth.currentUser.email}</Text>
+            <Text style={styles.emailText}>{auth.currentUser?.email || ""}</Text>
             <View style={styles.roleBadge}>
               <Text style={styles.roleText}>Pet Owner</Text>
             </View>
@@ -249,72 +333,124 @@ export default function UserProfileScreen({ navigation, route }) {
             </View>
           )}
 
-          <Text style={styles.sectionHeader}>👤 Personal Information</Text>
-          <View style={styles.card}>
-            <Text style={styles.label}>Full Name *</Text>
-            <TextInput
-              style={[styles.input, getHighlightStyle(fullName)]}
-              value={fullName}
-              onChangeText={setFullName}
-            />
-
-            <Text style={styles.label}>Mobile Number *</Text>
-            <TextInput
-              style={[styles.input, getHighlightStyle(phone)]}
-              value={phone}
-              onChangeText={setPhone}
-              keyboardType="phone-pad"
-              maxLength={11}
-              placeholder="09xxxxxxxxx"
-            />
-
-            <Text style={styles.label}>
-              Date of Birth (For SC/PWD Verification)
-            </Text>
-            <TouchableOpacity
-              style={styles.dateBtn}
-              onPress={() => setShowDatePicker(true)}
-            >
-              <Text style={[styles.dateBtnText, !dob && { color: "#aaa" }]}>
-                {dob ? dob.toLocaleDateString() : "Tap to select date"}
-              </Text>
-            </TouchableOpacity>
-            {showDatePicker && (
-              <DateTimePicker
-                value={dob || new Date(1990, 0, 1)}
-                mode="date"
-                display="default"
-                maximumDate={new Date()}
-                onChange={(e, d) => {
-                  setShowDatePicker(Platform.OS === "ios");
-                  if (d) setDob(d);
-                }}
+          <TouchableOpacity onPress={() => toggleSection("personal")}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionHeader}>👤 Personal Information</Text>
+              <MaterialIcons
+                name={collapsedSections.personal ? "expand-more" : "expand-less"}
+                size={24}
+                color="#8D6E63"
               />
-            )}
-          </View>
+            </View>
+          </TouchableOpacity>
+          {!collapsedSections.personal && (
+            <View style={styles.card}>
+              <Text style={styles.label}>Full Name *</Text>
+              <TextInput
+                style={[styles.input, getHighlightStyle(fullName)]}
+                value={fullName}
+                onChangeText={setFullName}
+              />
 
-          <Text style={styles.sectionHeader}>🏡 Address</Text>
-          <View style={styles.card}>
-            <Text style={styles.label}>Street / Subdivision / Barangay *</Text>
-            <TextInput
-              style={[styles.input, getHighlightStyle(address)]}
-              value={address}
-              onChangeText={setAddress}
-              placeholder="e.g. 123 Main St, Brgy. Poblacion"
-            />
-            <Text style={styles.label}>City / Municipality *</Text>
-            <TextInput
-              style={[styles.input, getHighlightStyle(city)]}
-              value={city}
-              onChangeText={setCity}
-              placeholder="e.g. Dagupan City"
-            />
-          </View>
+              <Text style={styles.label}>Mobile Number *</Text>
+              <TextInput
+                style={[styles.input, getHighlightStyle(phone)]}
+                value={phone}
+                onChangeText={setPhone}
+                keyboardType="phone-pad"
+                maxLength={11}
+                placeholder="09xxxxxxxxx"
+              />
 
-          <Text style={styles.sectionHeader}>
-            🚨 Emergency & Identifications
-          </Text>
-          <View style={styles.card}>
+              <Text style={styles.label}>Email Address</Text>
+              <TextInput
+                style={styles.input}
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                placeholder="name@example.com"
+              />
+
+              <Text style={styles.label}>Secondary Phone</Text>
+              <TextInput
+                style={styles.input}
+                value={secondaryPhone}
+                onChangeText={setSecondaryPhone}
+                keyboardType="phone-pad"
+                maxLength={11}
+                placeholder="09xxxxxxxxx (Optional)"
+              />
+
+              <Text style={styles.label}>
+                Date of Birth (For SC/PWD Verification)
+              </Text>
+              <TouchableOpacity
+                style={styles.dateBtn}
+                onPress={() => setShowDatePicker(true)}
+              >
+                <Text style={[styles.dateBtnText, !dob && { color: "#aaa" }]}>
+                  {dob ? dob.toLocaleDateString() : "Tap to select date"}
+                </Text>
+              </TouchableOpacity>
+              {showDatePicker && (
+                <DateTimePicker
+                  value={dob || new Date(1990, 0, 1)}
+                  mode="date"
+                  display="default"
+                  maximumDate={new Date()}
+                  onChange={(e, d) => {
+                    setShowDatePicker(Platform.OS === "ios");
+                    if (d) setDob(d);
+                  }}
+                />
+              )}
+            </View>
+          )}
+
+          <TouchableOpacity onPress={() => toggleSection("address")}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionHeader}>🏡 Address</Text>
+              <MaterialIcons
+                name={collapsedSections.address ? "expand-more" : "expand-less"}
+                size={24}
+                color="#8D6E63"
+              />
+            </View>
+          </TouchableOpacity>
+          {!collapsedSections.address && (
+            <View style={styles.card}>
+              <Text style={styles.label}>Street / Subdivision / Barangay *</Text>
+              <TextInput
+                style={[styles.input, getHighlightStyle(address)]}
+                value={address}
+                onChangeText={setAddress}
+                placeholder="e.g. 123 Main St, Brgy. Poblacion"
+              />
+              <Text style={styles.label}>City / Municipality *</Text>
+              <TextInput
+                style={[styles.input, getHighlightStyle(city)]}
+                value={city}
+                onChangeText={setCity}
+                placeholder="e.g. Dagupan City"
+              />
+            </View>
+          )}
+
+          <TouchableOpacity onPress={() => toggleSection("emergency")}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionHeader}>
+                🚨 Emergency & Identifications
+              </Text>
+              <MaterialIcons
+                name={collapsedSections.emergency ? "expand-more" : "expand-less"}
+                size={24}
+                color="#8D6E63"
+              />
+            </View>
+          </TouchableOpacity>
+          {!collapsedSections.emergency && (
+            <View style={styles.card}>
             {/* DYNAMIC EMERGENCY CONTACTS ARRAY */}
             {emergencyContacts.map((contact, index) => (
               <View
@@ -407,10 +543,63 @@ export default function UserProfileScreen({ navigation, route }) {
             <Text style={styles.helperText}>
               Used to automatically apply legal discounts on eligible services.
             </Text>
-          </View>
 
-          <Text style={styles.sectionHeader}>⚖️ Legal & Privacy</Text>
-          <View style={styles.card}>
+            <View style={styles.divider} />
+
+            <Text style={styles.label}>Government ID Type</Text>
+            <View style={styles.toggleGroup}>
+              {["Driver's License", "Passport", "PhilID", "Other"].map((idType) => (
+                <TouchableOpacity
+                  key={idType}
+                  style={[
+                    styles.toggleBtn,
+                    govIdType === idType && styles.activeToggle,
+                  ]}
+                  onPress={() => {
+                    const next = govIdType === idType ? "" : idType;
+                    setGovIdType(next);
+                    if (next === "") setGovIdNumber("");
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.toggleText,
+                      govIdType === idType && styles.activeText,
+                      { fontSize: 11 },
+                    ]}
+                  >
+                    {idType}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {govIdType !== "" && (
+              <>
+                <Text style={[styles.label, { marginTop: 10 }]}>ID Number</Text>
+                <TextInput
+                  style={styles.input}
+                  value={govIdNumber}
+                  onChangeText={setGovIdNumber}
+                  placeholder={`Enter ${govIdType} number`}
+                />
+              </>
+            )}
+          </View>
+          )}
+
+          <TouchableOpacity onPress={() => toggleSection("legal")}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionHeader}>⚖️ Legal & Privacy</Text>
+              <MaterialIcons
+                name={collapsedSections.legal ? "expand-more" : "expand-less"}
+                size={24}
+                color="#8D6E63"
+              />
+            </View>
+          </TouchableOpacity>
+          {!collapsedSections.legal && (
+            <View style={styles.card}>
             <TouchableOpacity
               style={styles.checkboxRow}
               onPress={() => setDpaConsent(!dpaConsent)}
@@ -432,6 +621,27 @@ export default function UserProfileScreen({ navigation, route }) {
                 <Text style={styles.checkboxDesc}>
                   I agree to the collection and processing of my data in
                   accordance with the Data Privacy Act (RA 10173).
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            <View style={styles.divider} />
+
+            <TouchableOpacity
+              style={styles.checkboxRow}
+              onPress={() => setWaiverSigned(!waiverSigned)}
+            >
+              <MaterialIcons
+                name={waiverSigned ? "check-box" : "check-box-outline-blank"}
+                size={24}
+                color={waiverSigned ? "#2E7D32" : "#757575"}
+              />
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={styles.checkboxTitle}>Liability Waiver</Text>
+                <Text style={styles.checkboxDesc}>
+                  I acknowledge the inherent risks of veterinary procedures and agree to
+                  hold Starbarks Vet Clinic harmless for complications arising from
+                  standard treatment protocols. Physical signature on file at clinic.
                 </Text>
               </View>
             </TouchableOpacity>
@@ -465,7 +675,72 @@ export default function UserProfileScreen({ navigation, route }) {
                   borderTopColor: "#eee",
                 }}
               >
-                <Text style={styles.label}>Gender (For targeted promos)</Text>
+                <Text style={styles.label}>How did you hear about us?</Text>
+                <View style={styles.toggleGroup}>
+                  {["Walk-in", "Google", "Social Media", "Referral"].map((src) => (
+                    <TouchableOpacity
+                      key={src}
+                      style={[
+                        styles.toggleBtn,
+                        referralSource === src && styles.activeToggle,
+                      ]}
+                      onPress={() => setReferralSource(referralSource === src ? "" : src)}
+                    >
+                      <Text
+                        style={[
+                          styles.toggleText,
+                          referralSource === src && styles.activeText,
+                          { fontSize: 10 },
+                        ]}
+                      >
+                        {src}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={[styles.label, { marginTop: 10 }]}>Preferred Contact Method</Text>
+                <View style={styles.toggleGroup}>
+                  {["SMS", "Email", "Voice Call"].map((method) => (
+                    <TouchableOpacity
+                      key={method}
+                      style={[
+                        styles.toggleBtn,
+                        preferredComm === method && styles.activeToggle,
+                      ]}
+                      onPress={() => setPreferredComm(method)}
+                    >
+                      <Text
+                        style={[
+                          styles.toggleText,
+                          preferredComm === method && styles.activeText,
+                          { fontSize: 11 },
+                        ]}
+                      >
+                        {method}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.checkboxRow, { marginTop: 10 }]}
+                  onPress={() => setWhatsappOptIn(!whatsappOptIn)}
+                >
+                  <MaterialIcons
+                    name={whatsappOptIn ? "check-box" : "check-box-outline-blank"}
+                    size={24}
+                    color={whatsappOptIn ? "#2E7D32" : "#757575"}
+                  />
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.checkboxTitle}>WhatsApp Notifications</Text>
+                    <Text style={styles.checkboxDesc}>
+                      I agree to receive appointment updates and reminders via WhatsApp.
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+
+                <Text style={[styles.label, { marginTop: 10 }]}>Gender (For targeted promos)</Text>
                 <View style={styles.toggleGroup}>
                   <TouchableOpacity
                     style={[
@@ -502,14 +777,14 @@ export default function UserProfileScreen({ navigation, route }) {
                   <TouchableOpacity
                     style={[
                       styles.toggleBtn,
-                      gender === null && styles.activeToggle,
+                      gender === "Decline" && styles.activeToggle,
                     ]}
-                    onPress={() => setGender(null)}
+                    onPress={() => setGender("Decline")}
                   >
                     <Text
                       style={[
                         styles.toggleText,
-                        gender === null && styles.activeText,
+                        gender === "Decline" && styles.activeText,
                       ]}
                     >
                       Decline
@@ -519,6 +794,7 @@ export default function UserProfileScreen({ navigation, route }) {
               </View>
             )}
           </View>
+          )}
 
           <TouchableOpacity
             style={[
@@ -612,6 +888,14 @@ const styles = StyleSheet.create({
     marginLeft: 5,
     marginTop: 10,
     textTransform: "uppercase",
+  },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 10,
+    marginBottom: 8,
+    marginHorizontal: 5,
   },
   card: {
     backgroundColor: "white",

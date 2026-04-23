@@ -1,14 +1,17 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import {
   collection,
-  deleteDoc,
   doc,
   getDocs,
+  limit,
   onSnapshot,
+  orderBy,
   query,
+  Timestamp,
+  updateDoc,
   where,
 } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -29,39 +32,64 @@ export default function MyPetsScreen({ navigation }) {
 
   const [searchText, setSearchText] = useState("");
   const [speciesFilter, setSpeciesFilter] = useState("All");
+  const [genderFilter, setGenderFilter] = useState("All");
+  const [healthFilter, setHealthFilter] = useState("All");
   const [sortOrder, setSortOrder] = useState("az");
 
   useEffect(() => {
+    // T2.377: Guard against auth null during navigation transitions
+    if (!auth.currentUser) {
+      setLoading(false);
+      return;
+    }
     const q = query(
       collection(db, "pets"),
       where("ownerId", "==", auth.currentUser.uid),
     );
     const unsubscribe = onSnapshot(q, async (snapshot) => {
-      const petList = [];
-      for (const petDoc of snapshot.docs) {
-        const petData = { id: petDoc.id, ...petDoc.data() };
-        try {
-          const medQ = query(
-            collection(db, "medical_records"),
-            where("petId", "==", petData.id),
-            where("recordType", "==", "medical"),
-          );
-          const medSnap = await getDocs(medQ);
-          if (!medSnap.empty) {
-            const records = medSnap.docs.map((d) => d.data());
-            records.sort((a, b) => b.date.seconds - a.date.seconds);
-            petData.lastVisit = records[0].date;
+      // T2.375: Parallelize medical record lookups
+      const petList = await Promise.all(
+        snapshot.docs.map(async (petDoc) => {
+          const petData = { id: petDoc.id, ...petDoc.data() };
+          try {
+            const medQ = query(
+              collection(db, "medical_records"),
+              where("petId", "==", petData.id),
+              orderBy("date", "desc"),
+              limit(20),
+            );
+            const medSnap = await getDocs(medQ);
+
+            const medicalRecord = medSnap.docs.find(
+              (d) => d.data().recordType === "medical"
+            );
+            if (medicalRecord) {
+              petData.lastVisit = medicalRecord.data().date;
+            }
+
+            const dueDates = [];
+            medSnap.docs.forEach((vDoc) => {
+              const vData = vDoc.data();
+              if (vData.vaccineAdministrations?.length > 0) {
+                vData.vaccineAdministrations.forEach((vax) => {
+                  if (vax.dueDate) dueDates.push(vax.dueDate);
+                });
+              } else if (vData.vaccineData?.dueDate) {
+                dueDates.push(vData.vaccineData.dueDate);
+              }
+            });
+            petData.vaccineDueDates = dueDates;
+          } catch (e) {
+            console.log(e);
           }
-        } catch (e) {
-          console.log(e);
-        }
-        petList.push(petData);
-      }
+          return petData;
+        })
+      );
       setPets(petList);
       setLoading(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [auth.currentUser?.uid]);
 
   const calculateAge = (dob) => {
     if (!dob) return "Age Not Set";
@@ -91,28 +119,21 @@ export default function MyPetsScreen({ navigation }) {
 
   const handleDelete = async (petId, petName) => {
     Alert.alert(
-      "Remove Pet?",
-      `Are you sure you want to remove ${petName}? This action cannot be undone.`,
+      "Archive Pet?",
+      `Are you sure you want to archive ${petName}? This will hide them from your pet list. Contact the clinic to restore.`,
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Remove",
+          text: "Archive",
           style: "destructive",
           onPress: async () => {
             try {
-              const recordsQuery = query(
-                collection(db, "medical_records"),
-                where("petId", "==", petId),
-              );
-              const recordsSnap = await getDocs(recordsQuery);
-              if (!recordsSnap.empty) {
-                Alert.alert(
-                  "Action Blocked",
-                  "This pet has existing medical records and cannot be deleted to preserve clinical history. Please contact the clinic to archive this pet's profile.",
-                );
-                return;
-              }
-              await deleteDoc(doc(db, "pets", petId));
+              // T2.376: Soft archive instead of hard delete
+              await updateDoc(doc(db, "pets", petId), {
+                status: "archived",
+                archivedAt: Timestamp.now(),
+                archivedBy: auth.currentUser?.uid || "unknown",
+              });
             } catch (error) {
               Alert.alert("Error", error.message);
             }
@@ -122,49 +143,107 @@ export default function MyPetsScreen({ navigation }) {
     );
   };
 
-  let processedPets = [...pets].filter((p) => p.status !== "archived");
-  if (searchText) {
-    const lowerSearch = searchText.toLowerCase();
-    processedPets = processedPets.filter(
-      (p) =>
-        (p.name && p.name.toLowerCase().includes(lowerSearch)) ||
-        (p.breed && p.breed.toLowerCase().includes(lowerSearch)),
-    );
-  }
-  if (speciesFilter !== "All") {
-    processedPets = processedPets.filter((p) => {
-      if (speciesFilter === "Canine")
-        return p.species === "Dog" || p.species === "Canine";
-      if (speciesFilter === "Feline")
-        return p.species === "Cat" || p.species === "Feline";
-      return true;
+  const getHealthStatus = (item) => {
+    if (!item.lastVisit) return "Needs Checkup";
+    const lastVisitDate = item.lastVisit?.toDate
+      ? item.lastVisit.toDate()
+      : new Date(item.lastVisit?.seconds ? item.lastVisit.seconds * 1000 : item.lastVisit);
+    const daysSinceVisit = (new Date() - lastVisitDate) / (1000 * 60 * 60 * 24);
+    if (isNaN(daysSinceVisit)) return "Needs Checkup";
+    if (daysSinceVisit > 365) return "Overdue";
+    return "Up to Date";
+  };
+
+  const getVaccineStatus = (item) => {
+    const dueDates = item.vaccineDueDates;
+    if (!dueDates || dueDates.length === 0) return null;
+
+    const now = new Date();
+    const thirtyDaysFromNow = new Date(now);
+    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+
+    let hasOverdue = false;
+    let hasDueSoon = false;
+
+    dueDates.forEach((d) => {
+      const dueDate = typeof d === "string" ? new Date(d) : d?.toDate ? d.toDate() : d?.seconds ? new Date(d.seconds * 1000) : new Date(d);
+      if (isNaN(dueDate.getTime())) return;
+      if (dueDate < now) hasOverdue = true;
+      else if (dueDate < thirtyDaysFromNow) hasDueSoon = true;
     });
-  }
-  if (sortOrder === "az") {
-    processedPets.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-  } else {
-    processedPets.sort((a, b) => {
-      const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
-      const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
-      return timeB - timeA;
-    });
-  }
+
+    if (hasOverdue) return "Overdue";
+    if (hasDueSoon) return "Due Soon";
+    return "Current";
+  };
+
+  const processedPets = useMemo(() => {
+    let result = [...pets].filter((p) => p.status !== "archived");
+    if (searchText) {
+      const lowerSearch = searchText.toLowerCase();
+      result = result.filter(
+        (p) =>
+          (p.name && p.name.toLowerCase().includes(lowerSearch)) ||
+          (p.breed && p.breed.toLowerCase().includes(lowerSearch)),
+      );
+    }
+    if (speciesFilter !== "All") {
+      result = result.filter((p) => {
+        if (speciesFilter === "Canine")
+          return p.species === "Dog" || p.species === "Canine";
+        if (speciesFilter === "Feline")
+          return p.species === "Cat" || p.species === "Feline";
+        return true;
+      });
+    }
+    if (genderFilter !== "All") {
+      result = result.filter((p) => {
+        const g = (p.gender || "").toLowerCase();
+        if (genderFilter === "Male") return g === "male";
+        if (genderFilter === "Female") return g === "female";
+        return true;
+      });
+    }
+    if (healthFilter !== "All") {
+      result = result.filter((p) => {
+        const status = getHealthStatus(p);
+        return status === healthFilter;
+      });
+    }
+    if (sortOrder === "az") {
+      result.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    } else if (sortOrder === "newest") {
+      result.sort((a, b) => {
+        const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+        const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+        return timeB - timeA;
+      });
+    } else if (sortOrder === "age") {
+      result.sort((a, b) => {
+        const dobA = a.dob?.toMillis ? a.dob.toMillis() : a.dob ? new Date(a.dob).getTime() : 0;
+        const dobB = b.dob?.toMillis ? b.dob.toMillis() : b.dob ? new Date(b.dob).getTime() : 0;
+        return dobB - dobA;
+      });
+    } else if (sortOrder === "lastVisit") {
+      result.sort((a, b) => {
+        const visitA = a.lastVisit?.toMillis ? a.lastVisit.toMillis() :
+          a.lastVisit?.seconds ? a.lastVisit.seconds * 1000 : 0;
+        const visitB = b.lastVisit?.toMillis ? b.lastVisit.toMillis() :
+          b.lastVisit?.seconds ? b.lastVisit.seconds * 1000 : 0;
+        return visitB - visitA;
+      });
+    }
+    return result;
+  }, [pets, searchText, speciesFilter, genderFilter, healthFilter, sortOrder]);
 
   const renderPetCard = ({ item }) => {
-    let healthStatus = "Up to Date";
-    let healthColor = "#2E7D32"; // Green
-
-    if (!item.lastVisit) {
-      healthStatus = "Needs Initial Checkup";
-      healthColor = "#F57C00"; // Orange
-    } else {
-      const daysSinceVisit =
-        (new Date() - item.lastVisit.toDate()) / (1000 * 60 * 60 * 24);
-      if (daysSinceVisit > 365) {
-        healthStatus = "Overdue for Annual Exam";
-        healthColor = "#D32F2F"; // Red
-      }
-    }
+    const healthStatusKey = getHealthStatus(item);
+    const healthColor =
+      healthStatusKey === "Overdue" ? "#D32F2F" :
+      healthStatusKey === "Needs Checkup" ? "#F57C00" : "#2E7D32";
+    const healthStatus =
+      healthStatusKey === "Overdue" ? "Overdue for Annual Exam" :
+      healthStatusKey === "Needs Checkup" ? "Needs Initial Checkup" : "Up to Date";
 
     return (
       <View style={styles.card}>
@@ -211,7 +290,7 @@ export default function MyPetsScreen({ navigation }) {
           ]}
         >
           <MaterialIcons
-            name={healthColor === "#D32F2F" ? "warning-amber" : "verified"}
+            name={healthStatusKey === "Up to Date" ? "verified" : "warning-amber"}
             size={16}
             color={healthColor}
           />
@@ -223,11 +302,20 @@ export default function MyPetsScreen({ navigation }) {
         <View style={styles.demoGrid}>
           <View style={styles.demoItem}>
             <Text style={styles.demoLabel}>GENDER</Text>
-            <Text style={styles.demoValue}>{item.gender}</Text>
+            <Text style={styles.demoValue}>{item.gender || "N/A"}</Text>
           </View>
           <View style={styles.demoItem}>
             <Text style={styles.demoLabel}>AGE</Text>
             <Text style={styles.demoValue}>{calculateAge(item.dob)}</Text>
+          </View>
+          <View style={styles.demoItem}>
+            <Text style={styles.demoLabel}>WEIGHT</Text>
+            <Text style={styles.demoValue}>
+              {(() => {
+                const w = item.lastVitals?.weight ?? item.weight ?? item.lastWeight;
+                return w != null ? `${w} kg` : "N/A";
+              })()}
+            </Text>
           </View>
           <View style={styles.demoItem}>
             <Text style={styles.demoLabel}>STATUS</Text>
@@ -247,20 +335,57 @@ export default function MyPetsScreen({ navigation }) {
           <Text
             style={[
               styles.alertValue,
-              item.allergies &&
-              item.allergies !== "None" &&
-              item.allergies.trim() !== ""
+              (item.petAllergies || item.allergies) &&
+              (item.petAllergies || item.allergies) !== "None" &&
+              (item.petAllergies || item.allergies).trim() !== ""
                 ? styles.alertRed
                 : null,
             ]}
           >
-            {item.allergies && item.allergies.trim() !== ""
-              ? item.allergies
-              : "None reported"}
+            {(() => {
+              const val = item.petAllergies || item.allergies;
+              return val && val.trim() !== "" ? val : "None reported";
+            })()}
           </Text>
         </View>
 
+        {item.microchipId && (
+          <View style={styles.microchipBadge}>
+            <MaterialIcons name="nfc" size={14} color="#1565C0" />
+            <Text style={styles.microchipText}>CHIP: {item.microchipId}</Text>
+          </View>
+        )}
+
+        {(() => {
+          const vaxStatus = getVaccineStatus(item);
+          if (!vaxStatus) return null;
+          const vaxColor =
+            vaxStatus === "Overdue" ? "#D32F2F" :
+            vaxStatus === "Due Soon" ? "#F57C00" : "#2E7D32";
+          const vaxIcon =
+            vaxStatus === "Overdue" ? "warning-amber" :
+            vaxStatus === "Due Soon" ? "schedule" : "verified";
+          return (
+            <View style={[styles.vaccineBadge, { backgroundColor: `${vaxColor}1A`, borderLeftColor: vaxColor }]}>
+              <MaterialIcons name={vaxIcon} size={14} color={vaxColor} />
+              <Text style={[styles.vaccineBadgeText, { color: vaxColor }]}>
+                {vaxStatus === "Overdue" ? "VACCINES OVERDUE" :
+                 vaxStatus === "Due Soon" ? "VACCINES DUE SOON" : "VACCINES CURRENT"}
+              </Text>
+            </View>
+          );
+        })()}
+
         <View style={styles.footerActions}>
+          <TouchableOpacity
+            style={[styles.mainBtn, styles.bookBtn]}
+            onPress={() =>
+              navigation.navigate("BookAppointment", { prefillPetId: item.id })
+            }
+          >
+            <MaterialIcons name="calendar-today" size={20} color="#FFF" />
+            <Text style={styles.bookBtnText}>Book Visit</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.mainBtn, styles.chartBtn]}
             onPress={() =>
@@ -271,7 +396,7 @@ export default function MyPetsScreen({ navigation }) {
             }
           >
             <MaterialIcons name="assessment" size={20} color="#1565C0" />
-            <Text style={styles.chartBtnText}>View Medical Chart</Text>
+            <Text style={styles.chartBtnText}>View Chart</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -352,20 +477,58 @@ export default function MyPetsScreen({ navigation }) {
               </Text>
             </TouchableOpacity>
           </ScrollView>
+        </View>
 
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.chipScroll, { marginTop: 8 }]}>
+          {["All", "Male", "Female"].map((g) => (
+            <TouchableOpacity
+              key={g}
+              style={[styles.chip, genderFilter === g && styles.chipActive]}
+              onPress={() => setGenderFilter(g)}
+            >
+              <Text style={[styles.chipText, genderFilter === g && styles.chipTextActive]}>
+                {g === "All" ? "Any Sex" : g}
+              </Text>
+            </TouchableOpacity>
+          ))}
+          <View style={styles.chipDivider} />
+          {["All", "Up to Date", "Overdue", "Needs Checkup"].map((h) => (
+            <TouchableOpacity
+              key={h}
+              style={[styles.chip, healthFilter === h && styles.chipActive]}
+              onPress={() => setHealthFilter(h)}
+            >
+              <Text style={[styles.chipText, healthFilter === h && styles.chipTextActive]}>
+                {h === "All" ? "Any Status" : h}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <View style={styles.filterRow}>
+          <View style={{ flex: 1 }} />
           <TouchableOpacity
             style={styles.sortBtn}
             onPress={() =>
-              setSortOrder((prev) => (prev === "az" ? "newest" : "az"))
+              setSortOrder((prev) => {
+                const cycle = ["az", "newest", "age", "lastVisit"];
+                return cycle[(cycle.indexOf(prev) + 1) % cycle.length];
+              })
             }
           >
             <MaterialIcons
-              name={sortOrder === "az" ? "sort-by-alpha" : "update"}
+              name={
+                sortOrder === "az" ? "sort-by-alpha" :
+                sortOrder === "newest" ? "update" :
+                sortOrder === "age" ? "cake" : "event"
+              }
               size={18}
               color="#5D4037"
             />
             <Text style={styles.sortBtnText}>
-              {sortOrder === "az" ? " A-Z" : " New"}
+              {sortOrder === "az" ? " A-Z" :
+               sortOrder === "newest" ? " New" :
+               sortOrder === "age" ? " Age" : " Visit"}
             </Text>
           </TouchableOpacity>
         </View>
@@ -387,11 +550,11 @@ export default function MyPetsScreen({ navigation }) {
             <View style={styles.emptyContainer}>
               <Text style={{ fontSize: 60, marginBottom: 10 }}>🐾</Text>
               <Text style={styles.emptyText}>
-                {searchText || speciesFilter !== "All"
-                  ? "No pets match your search."
+                {searchText || speciesFilter !== "All" || genderFilter !== "All" || healthFilter !== "All"
+                  ? "No pets match your filters."
                   : "No pets added yet."}
               </Text>
-              {!searchText && speciesFilter === "All" && (
+              {!searchText && speciesFilter === "All" && genderFilter === "All" && healthFilter === "All" && (
                 <Text style={styles.emptySub}>
                   Register your pet to start tracking their health.
                 </Text>
@@ -466,6 +629,13 @@ const styles = StyleSheet.create({
   },
   chipText: { color: "#757575", fontWeight: "900", fontSize: 13 },
   chipTextActive: { color: "white" },
+  chipDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: "#D7CCC8",
+    marginHorizontal: 8,
+    alignSelf: "center",
+  },
   sortBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -572,6 +742,35 @@ const styles = StyleSheet.create({
   alertValue: { fontSize: 12, color: "#333", fontWeight: "800" },
   alertRed: { color: "#D32F2F" },
 
+  microchipBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 18,
+    paddingBottom: 12,
+    gap: 6,
+  },
+  microchipText: {
+    fontSize: 11,
+    color: "#1565C0",
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+
+  vaccineBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderLeftWidth: 5,
+    gap: 6,
+  },
+  vaccineBadgeText: {
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+
   footerActions: { flexDirection: "row", padding: 18, paddingTop: 0, gap: 10 },
   mainBtn: {
     flex: 1,
@@ -583,6 +782,12 @@ const styles = StyleSheet.create({
     elevation: 2,
     gap: 8,
   },
+  bookBtn: {
+    backgroundColor: "#3ABEF9",
+    borderWidth: 1,
+    borderColor: "#0288D1",
+  },
+  bookBtnText: { color: "#FFF", fontWeight: "900", fontSize: 15 },
   chartBtn: {
     backgroundColor: "#E3F2FD",
     borderWidth: 1,

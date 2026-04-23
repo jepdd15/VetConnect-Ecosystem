@@ -31,6 +31,7 @@ import { auth, db } from "../../firebaseConfig";
 // THE BRAIN
 import { useSafeAreaInsets } from "react-native-safe-area-context"; // <-- THE FIX: Hardware measurement hook
 import { useBookingEngine } from "../hooks/useBookingEngine";
+import { formatDisplayDate, formatDisplayTime } from '../utils/helpers';
 
 export default function BookAppointment({ navigation, route }) {
   const insets = useSafeAreaInsets();
@@ -295,7 +296,8 @@ export default function BookAppointment({ navigation, route }) {
           const userData = userSnap.data();
           setOwnerName(userData.fullName || auth.currentUser.email);
 
-          if (!userData.address || !userData.emergencyName) {
+          const hasEmergency = userData.emergencyContacts?.[0]?.name || userData.emergencyName;
+          if (!userData.address || !hasEmergency) {
             Alert.alert(
               "Profile Incomplete",
               "Please complete your Address and Emergency Contact details before booking.",
@@ -847,7 +849,7 @@ export default function BookAppointment({ navigation, route }) {
     const readyTime = new Date(now.getTime() + leadHours * 60 * 60 * 1000);
     const isToday = date.toDateString() === now.toDateString();
     
-    const readyTimeString = readyTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const readyTimeString = formatDisplayTime(readyTime);
 
     // Dynamic cutoff time based on Web Admin settings
     const minDateAllowed = new Date();
@@ -868,8 +870,8 @@ export default function BookAppointment({ navigation, route }) {
         {fromFollowUp && prefillDateMatchType && prefillDateMatchType !== 'exact' && (
           <View style={styles.followUpHint}>
             <Text style={styles.followUpHintText}>
-              Your vet recommended {new Date(prefillTargetDate).toLocaleDateString()} —
-              showing {new Date(prefillDate).toLocaleDateString()} (nearest available).
+              Your vet recommended {formatDisplayDate(prefillTargetDate)} —
+              showing {formatDisplayDate(prefillDate)} (nearest available).
             </Text>
           </View>
         )}
@@ -896,12 +898,7 @@ export default function BookAppointment({ navigation, route }) {
         >
           <Text style={styles.modernDateText}>
             📅{" "}
-            {date.toLocaleDateString("en-US", {
-              weekday: "long",
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            })}
+            {formatDisplayDate(date, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}
           </Text>
           <Text style={styles.modernDateArrow}>▼</Text>
         </TouchableOpacity>
@@ -1180,7 +1177,7 @@ export default function BookAppointment({ navigation, route }) {
                 </View>
 
                 <Text style={styles.summaryText}>
-                    🕒 Time: {date.toLocaleDateString()} at {selectedSlot}
+                    🕒 Time: {formatDisplayDate(date)} at {selectedSlot}
                 </Text>
                 <Text style={styles.summaryTotalBig}>
                     Est. Total: ₱{selectedServices.reduce((sum, s) => sum + (parseFloat(s.price) || 0), 0) * selectedPets.length}
@@ -1245,9 +1242,8 @@ export default function BookAppointment({ navigation, route }) {
             {(() => {
               if (!noShowInfo.mostRecent?.scheduledDate) return '';
               const raw = noShowInfo.mostRecent.scheduledDate;
-              const d = raw?.toDate ? raw.toDate() : new Date(raw);
-              if (isNaN(d.getTime())) return '';
-              return ` Most recent: ${d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}.`;
+              const str = formatDisplayDate(raw, { month: 'short', day: 'numeric', year: 'numeric' }, '');
+              return str ? ` Most recent: ${str}.` : '';
             })()}
           </Text>
         </View>

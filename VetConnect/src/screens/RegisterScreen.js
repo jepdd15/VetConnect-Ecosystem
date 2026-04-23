@@ -1,5 +1,5 @@
 import { MaterialIcons } from "@expo/vector-icons";
-import { createUserWithEmailAndPassword } from "firebase/auth";
+import { createUserWithEmailAndPassword, deleteUser } from "firebase/auth";
 import {
   collection,
   doc,
@@ -81,61 +81,87 @@ const RegisterScreen = ({ navigation }) => {
       // ====================================================================
       // 🤖 THE THICK-CLIENT RECONCILIATION ENGINE
       // ====================================================================
-      const guestQuery = query(
-        collection(db, "users"),
-        where("phone", "==", phone.trim()),
-        where("accountStatus", "==", "unclaimed_guest"),
-      );
-      const guestSnap = await getDocs(guestQuery);
-
-      if (!guestSnap.empty) {
-        const guestDoc = guestSnap.docs[0];
-        const guestId = guestDoc.id;
-        const batch = writeBatch(db);
-
-        const newUserRef = doc(db, "users", uid);
-        batch.set(newUserRef, {
-          uid: uid,
-          fullName: fullName.trim(),
-          email: email.trim().toLowerCase(),
-          phone: phone.trim(),
-          role: "pet_owner",
-          accountStatus: "claimed",
-          mergedFromGuest: true,
-          createdAt: Timestamp.now(),
-        });
-
-        batch.delete(doc(db, "users", guestId));
-
-        const petsSnap = await getDocs(
-          query(collection(db, "pets"), where("ownerId", "==", guestId)),
+      try {
+        const guestQuery = query(
+          collection(db, "users"),
+          where("phone", "==", phone.trim()),
+          where("accountStatus", "==", "unclaimed_guest"),
         );
-        petsSnap.forEach((p) => {
-          batch.update(doc(db, "pets", p.id), { ownerId: uid });
-        });
+        const guestSnap = await getDocs(guestQuery);
 
-        const apptSnap = await getDocs(
-          query(
-            collection(db, "appointments"),
-            where("ownerId", "==", guestId),
-          ),
-        );
-        apptSnap.forEach((a) => {
-          batch.update(doc(db, "appointments", a.id), { ownerId: uid });
-        });
+        if (!guestSnap.empty) {
+          const guestDoc = guestSnap.docs[0];
+          const guestId = guestDoc.id;
+          const batch = writeBatch(db);
 
-        await batch.commit();
-        console.log("Account successfully merged from walk-in guest!");
-      } else {
-        // STANDARD REGISTRATION
-        await setDoc(doc(db, "users", uid), {
-          uid: uid,
-          fullName: fullName.trim(),
-          email: email.trim().toLowerCase(),
-          phone: phone.trim(),
-          role: "pet_owner",
-          createdAt: Timestamp.now(),
-        });
+          const newUserRef = doc(db, "users", uid);
+          batch.set(newUserRef, {
+            uid: uid,
+            fullName: fullName.trim(),
+            email: email.trim().toLowerCase(),
+            phone: phone.trim(),
+            role: "pet_owner",
+            accountStatus: "claimed",
+            mergedFromGuest: true,
+            createdAt: Timestamp.now(),
+          });
+
+          batch.delete(doc(db, "users", guestId));
+
+          const petsSnap = await getDocs(
+            query(collection(db, "pets"), where("ownerId", "==", guestId)),
+          );
+          petsSnap.forEach((p) => {
+            batch.update(doc(db, "pets", p.id), { ownerId: uid });
+          });
+
+          // T2.419: Migrate medical_records so ownerId-based queries
+          // (e.g. ClientDashboard health reminders) work after merge.
+          const medRecSnap = await getDocs(
+            query(
+              collection(db, "medical_records"),
+              where("ownerId", "==", guestId),
+            ),
+          );
+          medRecSnap.forEach((r) => {
+            batch.update(doc(db, "medical_records", r.id), { ownerId: uid });
+          });
+
+          const apptSnap = await getDocs(
+            query(
+              collection(db, "appointments"),
+              where("ownerId", "==", guestId),
+            ),
+          );
+          apptSnap.forEach((a) => {
+            batch.update(doc(db, "appointments", a.id), { ownerId: uid });
+          });
+
+          await batch.commit();
+          console.log("Account successfully merged from walk-in guest!");
+        } else {
+          // STANDARD REGISTRATION
+          await setDoc(doc(db, "users", uid), {
+            uid: uid,
+            fullName: fullName.trim(),
+            email: email.trim().toLowerCase(),
+            phone: phone.trim(),
+            role: "pet_owner",
+            createdAt: Timestamp.now(),
+          });
+        }
+      } catch (firestoreError) {
+        // Auth account exists but Firestore profile failed — roll back Auth
+        // to prevent the user from being permanently stuck.
+        console.error("Firestore write failed, rolling back Auth account:", firestoreError);
+        try {
+          await deleteUser(userCredential.user);
+        } catch (deleteError) {
+          // If rollback also fails, log it. The user will see the registration
+          // failure alert and can contact support. This is a rare double-fault.
+          console.error("Auth rollback also failed:", deleteError);
+        }
+        throw firestoreError;
       }
 
       Alert.alert("Welcome!", "Your account has been created successfully.");

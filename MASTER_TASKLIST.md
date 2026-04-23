@@ -1,8 +1,8 @@
 # VetConnect Master Task List
 
 **Last updated:** 2026-04-23 · **Branch:** `main`
-**Total tasks:** ~709 · **Cancelled/Absorbed:** ~16 · **Active:** ~693
-**DONE:** 360 · **TODO:** 328 · **Deferred sub-tasks:** 51
+**Total tasks:** ~712 · **Cancelled/Absorbed:** ~16 · **Active:** ~696
+**DONE:** 384 · **TODO:** 307 · **Deferred sub-tasks:** 54
 **Critical path to defense:** Dashboard Build (~32 hrs) + thesis
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~154 hours (Phase 4 S-Tier)
 
@@ -502,17 +502,17 @@
 
 | ID | Name | Priority | Effort | Status |
 |---|---|---|---|---|
-| T2.282 | New clients + total active | P1 | 15 min | TODO |
-| T2.307 | Client registration trend (recharts bar) | P1 | 30 min | TODO |
-| T2.308 | Total active pets + species distribution | P1 | 15 min | TODO |
-| T2.309 | Top breeds | P2 | 15 min | TODO |
-| T2.285 | Appointment volume trend (recharts bar) | P1 | 30 min | TODO |
-| T2.280 | Walk-in vs scheduled ratio | P1 | 15 min | TODO |
-| T2.310 | Peak hours analysis (recharts bar) | P2 | 25 min | TODO |
-| T2.311 | Service popularity ranking | P1 | 15 min | TODO |
-| T2.312 | Booking lead time average | P2 | 10 min | TODO |
-| T2.313 | Client retention rate | P2 | 20 min | TODO |
-| T2.314 | Clinic utilization rate | P2 | 20 min | TODO |
+| T2.282 | New clients + total active | P1 | 15 min | DONE |
+| T2.307 | Client registration trend (recharts bar) | P1 | 30 min | DONE |
+| T2.308 | Total active pets + species distribution | P1 | 15 min | DONE |
+| T2.309 | Top breeds | P2 | 15 min | DONE |
+| T2.285 | Appointment volume trend (recharts bar) | P1 | 30 min | DONE |
+| T2.280 | Walk-in vs scheduled ratio | P1 | 15 min | DONE |
+| T2.310 | Peak hours analysis (recharts bar) | P2 | 25 min | DONE |
+| T2.311 | Service popularity ranking | P1 | 15 min | DONE |
+| T2.312 | Booking lead time average | P2 | 10 min | DONE |
+| T2.313 | Client retention rate | P2 | 20 min | DONE |
+| T2.314 | Clinic utilization rate | P2 | 20 min | DONE |
 
 **Tab 2 — Operations (always Today):**
 
@@ -545,18 +545,21 @@
 
 | ID | Name | Priority | Effort | Status |
 |---|---|---|---|---|
-| T2.230 | Revenue (collected + billed) | P0 | 20 min | TODO |
-| T2.283 | Net margin | P1 | 10 min | TODO |
-| T2.298 | Payment method distribution | P1 | 15 min | TODO |
-| T2.299 | SC/PWD discount total + usage rate | P1 | 10 min | TODO |
-| T2.300 | Average transaction value | P1 | 5 min | TODO |
-| T2.301 | Revenue trend (recharts) | P1 | 45 min | TODO |
-| T2.302 | Expense category breakdown | P1 | 15 min | TODO |
-| T2.303 | Revenue vs expense trend overlay (recharts) | P2 | 30 min | TODO |
-| T2.304 | Refund rate + total refunded | P2 | 10 min | TODO |
-| T2.305 | Outstanding balances total | P2 | 10 min | TODO |
-| T2.306 | Revenue by service/department | P2 | 20 min | TODO |
-| T2.270 | Monthly expense burn rate | P1 | 10 min | TODO |
+| T2.230 | Revenue (collected + billed) | P0 | 20 min | DONE |
+| T2.283 | Net margin | P1 | 10 min | DONE |
+| T2.298 | Payment method distribution | P1 | 15 min | DONE |
+| T2.299 | SC/PWD discount total + usage rate | P1 | 10 min | DONE |
+| T2.300 | Average transaction value | P1 | 5 min | DONE |
+| T2.301 | Revenue trend (recharts) | P1 | 45 min | DONE |
+| T2.302 | Expense category breakdown | P1 | 15 min | DONE |
+| T2.303 | Revenue vs expense trend overlay (recharts) | P2 | 30 min | DONE |
+| T2.304 | Refund rate + total refunded | P2 | 10 min | DONE |
+| T2.305 | Outstanding balances total | P2 | 10 min | DONE |
+| T2.306 | Revenue by service/department | P2 | 20 min | DONE |
+| T2.270 | Monthly expense burn rate | P1 | 10 min | DONE |
+| T2.313a | useDashboardData: retention rate denominator inflation — strip walk-in IDs from periodOwnerIds | P3 | 5 min | DONE | Review finding — fix applied inline |
+| T2.303a | FinancialTab: sort overlayData after merging revenue + expense buckets (chronological sort) | P3 | 10 min | TODO | Review finding — relies on merge order which may not be chronological |
+| T2.316b | Extract CHART_TOOLTIP_STYLE, CHART_TICK_STYLE, CHART_GRID_STYLE to shared chartConfig.js | P3 | 10 min | TODO | Review finding — before Day 3 Clinical tab adds a third copy |
 
 **S-Tier Features:**
 

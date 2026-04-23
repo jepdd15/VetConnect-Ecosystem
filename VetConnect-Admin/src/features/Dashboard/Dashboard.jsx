@@ -28,6 +28,8 @@ import { useDashboardData } from './hooks/useDashboardData';
 import PeriodSelector from './components/PeriodSelector';
 import QuickNavTiles from './components/QuickNavTiles';
 import OperationsTab from './components/OperationsTab';
+import GrowthTab from './components/GrowthTab';
+import FinancialTab from './components/FinancialTab';
 
 // ── Tab registry ─────────────────────────────────────────────────
 // defaultPeriod is the period the hook uses when that tab is active.
@@ -213,9 +215,7 @@ export default function Dashboard() {
         ) : (
           <>
             {currentTab.key === 'growth' && (
-              <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.textMuted }}>
-                Growth tab — coming in Day 2.
-              </Typography>
+              <GrowthTab data={data} clinicSettings={clinicSettings} />
             )}
             {currentTab.key === 'ops' && (
               <OperationsTab data={data} clinicSettings={clinicSettings} isOpen={isOpen} />
@@ -226,9 +226,7 @@ export default function Dashboard() {
               </Typography>
             )}
             {currentTab.key === 'financial' && (
-              <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.textMuted }}>
-                Financial tab — coming in Day 4.
-              </Typography>
+              <FinancialTab data={data} />
             )}
           </>
         )}

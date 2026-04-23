@@ -1,8 +1,8 @@
 # VetConnect Master Task List
 
 **Last updated:** 2026-04-23 · **Branch:** `main`
-**Total tasks:** ~705 · **Cancelled/Absorbed:** ~16 · **Active:** ~689
-**DONE:** 346 · **TODO:** 338 · **Deferred sub-tasks:** 47
+**Total tasks:** ~709 · **Cancelled/Absorbed:** ~16 · **Active:** ~693
+**DONE:** 360 · **TODO:** 328 · **Deferred sub-tasks:** 51
 **Critical path to defense:** Dashboard Build (~32 hrs) + thesis
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~154 hours (Phase 4 S-Tier)
 
@@ -486,13 +486,17 @@
 
 | ID | Name | Priority | Effort | Status | Notes |
 |---|---|---|---|---|---|
-| T2.228 | Install recharts + Dashboard base: 4-tab layout (Growth/Ops/Clinical/Financial), design tokens, useUser for tab gating | P0 | 1 hr | TODO | Growth tab first (thesis narrative). Prereq T2.342 DONE |
-| T2.315 | Create `useDashboardData` hook with period-parameterized queries | P0 | 1.5 hrs | TODO | All tabs' data. Period: Today/Week/Month/Quarter/Year |
-| T2.316 | Create shared `<KPICard>` component | P1 | 20 min | TODO | Reusable across all tabs |
-| T2.317 | Create shared `<HorizontalBar>` component (CSS-only) | P1 | 20 min | TODO | No recharts dependency |
-| T2.318 | Create shared `<PeriodSelector>` component | P1 | 15 min | TODO | Chip row. Ops tab always "Today" |
-| T2.272 | Quick-nav tiles + role gating | P2 | 15 min | TODO | |
+| T2.228 | Install recharts + Dashboard base: 4-tab layout (Growth/Ops/Clinical/Financial), design tokens, useUser for tab gating | P0 | 1 hr | DONE | Growth tab first (thesis narrative). Prereq T2.342 DONE |
+| T2.315 | Create `useDashboardData` hook with period-parameterized queries | P0 | 1.5 hrs | DONE | All tabs' data. Period: Today/Week/Month/Quarter/Year |
+| T2.316 | Create shared `<KPICard>` component | P1 | 20 min | DONE | Reusable across all tabs |
+| T2.317 | Create shared `<HorizontalBar>` component (CSS-only) | P1 | 20 min | DONE | No recharts dependency |
+| T2.318 | Create shared `<PeriodSelector>` component | P1 | 15 min | DONE | Chip row. Ops tab always "Today" |
+| T2.272 | Quick-nav tiles + role gating | P2 | 15 min | DONE | |
 | T2.342 | Delete dead pages/Staff.jsx + move Dashboard to features/Dashboard/ | P1 | 10 min | DONE | Prerequisite for Dashboard build |
+| T2.228a | Dashboard: activeTab index desync if isAdmin flips after mount. Mitigated by currentTab fallback | P3 | 10 min | TODO | Review finding — edge case, no fix needed unless role changes mid-session |
+| T2.315a | useDashboardData: add duck-type guard when reading scheduledDate off individual docs (needed for Days 2-6) | P3 | 10 min | TODO | Review finding — not read in Day 1, needed when Growth/Clinical/Financial tabs read date fields |
+| T2.316a | KPICard: purple variant text uses hardcoded #6A1B9A (no token). Add COLORS.kpiPurpleText to designTokens.js | P3 | 5 min | TODO | Review finding — no current consumer uses variant="purple" |
+| T2.229a | Dashboard: clinic open/closed uses integer hour comparison (same as Queue.jsx). Track for closeMinute support | P3 | 5 min | TODO | Review finding — fine unless Settings adds closeMinute field |
 
 **Tab 1 — Growth (default: This Month):**
 
@@ -514,14 +518,14 @@
 
 | ID | Name | Priority | Effort | Status |
 |---|---|---|---|---|
-| T2.228b | Appointment status breakdown | P0 | 30 min | TODO |
-| T2.229 | Queue status + clinic open/closed | P1 | 20 min | TODO |
-| T2.281 | Avg wait time + longest current wait | P1 | 30 min | TODO |
-| T2.271 | Average consult duration | P1 | 15 min | TODO |
-| T2.286 | Department load distribution | P1 | 15 min | TODO |
-| T2.287 | Staff workload (per vet) | P1 | 20 min | TODO |
-| T2.279 | No-show + cancellation count | P1 | 10 min | TODO |
-| T2.288 | Emergency count | P2 | 5 min | TODO |
+| T2.228b | Appointment status breakdown | P0 | 30 min | DONE |
+| T2.229 | Queue status + clinic open/closed | P1 | 20 min | DONE |
+| T2.281 | Avg wait time + longest current wait | P1 | 30 min | DONE |
+| T2.271 | Average consult duration | P1 | 15 min | DONE |
+| T2.286 | Department load distribution | P1 | 15 min | DONE |
+| T2.287 | Staff workload (per vet) | P1 | 20 min | DONE |
+| T2.279 | No-show + cancellation count | P1 | 10 min | DONE |
+| T2.288 | Emergency count | P2 | 5 min | DONE |
 
 **Tab 3 — Clinical (default: This Month):**
 

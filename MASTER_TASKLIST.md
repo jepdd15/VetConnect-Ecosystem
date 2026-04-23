@@ -1,8 +1,8 @@
 # VetConnect Master Task List
 
 **Last updated:** 2026-04-23 · **Branch:** `main`
-**Total tasks:** ~714 · **Cancelled/Absorbed:** ~16 · **Active:** ~698
-**DONE:** 396 · **TODO:** 297 · **Deferred sub-tasks:** 56
+**Total tasks:** ~717 · **Cancelled/Absorbed:** ~16 · **Active:** ~701
+**DONE:** 401 · **TODO:** 295 · **Deferred sub-tasks:** 59
 **Critical path to defense:** Dashboard Build (~32 hrs) + thesis
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~154 hours (Phase 4 S-Tier)
 
@@ -567,13 +567,16 @@
 
 | ID | Name | Priority | Effort | Status |
 |---|---|---|---|---|
-| T2.319 | Create `generateInsight()` rule engine | P1 | 1.5 hrs | TODO |
+| T2.319 | Create `generateInsight()` rule engine | P1 | 1.5 hrs | DONE |
 | T2.320 | Extend useDashboardData for period-over-period deltas | P1 | 1 hr | DONE |
 | T2.321 | Extend KPICard with delta display + insight slot | P1 | 20 min | DONE |
-| T2.322 | Insight rules: Operations tab (10 rules) | P1 | 1 hr | TODO |
-| T2.323 | Insight rules: Clinical tab (8 rules) | P2 | 45 min | TODO |
-| T2.324 | Insight rules: Financial tab (7 rules) | P2 | 45 min | TODO |
-| T2.325 | Insight rules: Growth tab (5 rules) | P2 | 30 min | TODO |
+| T2.322 | Insight rules: Operations tab (10 rules) | P1 | 1 hr | DONE |
+| T2.323 | Insight rules: Clinical tab (8 rules) | P2 | 45 min | DONE |
+| T2.324 | Insight rules: Financial tab (7 rules) | P2 | 45 min | DONE |
+| T2.325 | Insight rules: Growth tab (5 rules) | P2 | 30 min | DONE |
+| T2.319a | generateInsight: cross-tab target collision on "TOTAL APPOINTMENTS" — namespace or separate maps | P3 | 15 min | TODO | Review finding — harmless now (one tab at a time) but fragile |
+| T2.319b | generateInsight Rule 8: Math.max on empty deptLoad returns -Infinity — add empty guard | P3 | 5 min | TODO | Review finding — condition evaluates false, no crash |
+| T2.319c | generateInsight Rule 19: fires when deltas.revenue === 0 producing noisy "0% above" — add !== 0 guard | P3 | 2 min | TODO | Review finding — technically correct but low signal |
 | T2.326 | Drill-down: Operations → Queue/Records | P1 | 45 min | TODO |
 | T2.327 | Drill-down: Clinical → Records/Patients | P2 | 30 min | TODO |
 | T2.328 | Drill-down: Financial → Sales/Expenses | P2 | 30 min | TODO |

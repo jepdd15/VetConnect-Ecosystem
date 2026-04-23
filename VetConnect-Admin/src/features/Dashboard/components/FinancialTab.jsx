@@ -58,7 +58,7 @@ const fmt = (n) => `₱${(n || 0).toLocaleString(undefined, { minimumFractionDig
 
 // ── Component ────────────────────────────────────────────────────
 
-export default function FinancialTab({ data }) {
+export default function FinancialTab({ data, insights = {} }) {
   const { financial } = data;
   if (!financial) return null;
 
@@ -102,6 +102,7 @@ export default function FinancialTab({ data }) {
             variant="green"
             subtitle={`${financial.transactionCount} transactions`}
             delta={data.deltas?.revenue}
+            insight={insights['REVENUE COLLECTED']}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -111,6 +112,7 @@ export default function FinancialTab({ data }) {
             icon={<ReceiptIcon />}
             variant="blue"
             subtitle="before deposits"
+            insight={insights['TOTAL BILLED']}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -119,6 +121,7 @@ export default function FinancialTab({ data }) {
             value={fmt(financial.totalExpenses)}
             icon={<TrendingDownIcon />}
             variant="red"
+            insight={insights['TOTAL EXPENSES']}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -129,6 +132,7 @@ export default function FinancialTab({ data }) {
             variant={isProfit ? 'green' : 'red'}
             subtitle={isProfit ? 'profit' : 'loss'}
             delta={data.deltas?.netMargin}
+            insight={insights['NET MARGIN']}
           />
         </Grid>
       </Grid>
@@ -303,6 +307,7 @@ export default function FinancialTab({ data }) {
             variant="purple"
             subtitle={`${financial.scPwdCount} transactions (${financial.scPwdUsageRate}% usage)`}
             compact
+            insight={insights['SC/PWD DISCOUNTS']}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 4 }}>
@@ -313,6 +318,7 @@ export default function FinancialTab({ data }) {
             variant="blue"
             subtitle={`${financial.transactionCount} total transactions`}
             compact
+            insight={insights['AVG TRANSACTION']}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 4 }}>
@@ -323,6 +329,7 @@ export default function FinancialTab({ data }) {
             variant={financial.monthlyBurnRate > financial.totalCollected ? 'red' : 'orange'}
             subtitle={`₱${financial.dailyExpenseRate.toLocaleString()}/day avg`}
             compact
+            insight={insights['MONTHLY BURN RATE']}
           />
         </Grid>
       </Grid>
@@ -336,6 +343,7 @@ export default function FinancialTab({ data }) {
             icon={<MoneyOffIcon />}
             variant={financial.refundRate > 5 ? 'red' : financial.refundRate > 0 ? 'orange' : 'green'}
             subtitle={`${financial.refundCount} refunds (${fmt(financial.totalRefunded)})`}
+            insight={insights['REFUND RATE']}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6 }}>
@@ -345,6 +353,7 @@ export default function FinancialTab({ data }) {
             icon={<WarningIcon />}
             variant={financial.outstandingBalances > 0 ? 'orange' : 'green'}
             subtitle={financial.outstandingBalances > 0 ? 'in billing/dispensing' : 'all clear'}
+            insight={insights['OUTSTANDING BALANCES']}
           />
         </Grid>
       </Grid>

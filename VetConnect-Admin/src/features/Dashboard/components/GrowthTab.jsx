@@ -34,7 +34,7 @@ import { CHART_COLORS, CHART_TOOLTIP_STYLE, CHART_TICK_STYLE, CHART_GRID_PROPS }
 
 // ── Component ────────────────────────────────────────────────────
 
-export default function GrowthTab({ data, clinicSettings }) {
+export default function GrowthTab({ data, clinicSettings, insights = {} }) {
   const { growth, dateRange } = data;
   if (!growth) return null;
 
@@ -85,6 +85,7 @@ export default function GrowthTab({ data, clinicSettings }) {
             variant="blue"
             subtitle="registered this period"
             delta={data.deltas?.uniqueClients}
+            insight={insights['NEW CLIENTS']}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -93,6 +94,7 @@ export default function GrowthTab({ data, clinicSettings }) {
             value={growth.totalActiveClients}
             icon={<PeopleIcon />}
             variant="green"
+            insight={insights['TOTAL ACTIVE CLIENTS']}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -101,6 +103,7 @@ export default function GrowthTab({ data, clinicSettings }) {
             value={growth.totalActivePets}
             icon={<PetsIcon />}
             variant="purple"
+            insight={insights['TOTAL ACTIVE PETS']}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -111,6 +114,7 @@ export default function GrowthTab({ data, clinicSettings }) {
             variant="orange"
             subtitle={`${growth.walkInCount} walk-in / ${growth.scheduledCount} scheduled`}
             delta={data.deltas?.appointments}
+            insight={insights['TOTAL APPOINTMENTS']}
           />
         </Grid>
       </Grid>
@@ -372,6 +376,7 @@ export default function GrowthTab({ data, clinicSettings }) {
                 : 'no pre-booked appointments'
             }
             compact
+            insight={insights['BOOKING LEAD TIME']}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 4 }}>
@@ -386,6 +391,7 @@ export default function GrowthTab({ data, clinicSettings }) {
             }
             subtitle={`${growth.returningClientCount} returning / ${growth.uniqueClientCount} total`}
             compact
+            insight={insights['CLIENT RETENTION']}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 4 }}>
@@ -400,6 +406,7 @@ export default function GrowthTab({ data, clinicSettings }) {
             }
             subtitle={`${growth.totalAppointments} of ~${maxCapacity} slots`}
             compact
+            insight={insights['CLINIC UTILIZATION']}
           />
         </Grid>
       </Grid>

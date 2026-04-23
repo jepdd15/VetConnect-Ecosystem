@@ -36,7 +36,7 @@ import {
 
 // ── Component ────────────────────────────────────────────────────
 
-export default function ClinicalTab({ data }) {
+export default function ClinicalTab({ data, insights = {} }) {
   const { clinical, deltas } = data;
   if (!clinical) return null;
 
@@ -53,6 +53,7 @@ export default function ClinicalTab({ data }) {
             variant="blue"
             subtitle="this period"
             delta={deltas?.recordsSigned}
+            insight={insights['RECORDS SIGNED']}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -62,6 +63,7 @@ export default function ClinicalTab({ data }) {
             icon={<VaccinesIcon />}
             variant="green"
             subtitle={`${clinical.vaccinesByType.length} vaccine types`}
+            insight={insights['VACCINATIONS']}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -75,6 +77,7 @@ export default function ClinicalTab({ data }) {
               : 'red'
             }
             subtitle={`${clinical.followUpAttended} attended / ${clinical.recordsWithFollowUp} requested`}
+            insight={insights['FOLLOW-UP COMPLIANCE']}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -84,6 +87,7 @@ export default function ClinicalTab({ data }) {
             icon={<HotelIcon />}
             variant={clinical.confinementRate > 10 ? 'orange' : 'neutral'}
             subtitle={`${clinical.confinedCount} confined / ${clinical.carriedOverCount} carried over`}
+            insight={insights['CONFINEMENT RATE']}
           />
         </Grid>
       </Grid>

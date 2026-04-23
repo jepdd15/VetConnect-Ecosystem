@@ -13,7 +13,7 @@
  * and Inventory.jsx.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Box, Typography, Tabs, Tab, Skeleton } from '@mui/material';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
@@ -31,6 +31,7 @@ import OperationsTab from './components/OperationsTab';
 import GrowthTab from './components/GrowthTab';
 import FinancialTab from './components/FinancialTab';
 import ClinicalTab from './components/ClinicalTab';
+import { generateInsight } from './utils/generateInsight';
 
 // ── Tab registry ─────────────────────────────────────────────────
 // defaultPeriod is the period the hook uses when that tab is active.
@@ -91,6 +92,12 @@ export default function Dashboard() {
 
   const data = useDashboardData(effectivePeriod);
   const isOpen = computeClinicOpenStatus(clinicSettings);
+
+  // Day 4: Insight engine — compute once per data/settings change
+  const insights = useMemo(
+    () => data.loading ? {} : generateInsight(data, clinicSettings, isOpen),
+    [data, clinicSettings, isOpen],
+  );
 
   return (
     <Box sx={{
@@ -216,16 +223,16 @@ export default function Dashboard() {
         ) : (
           <>
             {currentTab.key === 'growth' && (
-              <GrowthTab data={data} clinicSettings={clinicSettings} />
+              <GrowthTab data={data} clinicSettings={clinicSettings} insights={insights} />
             )}
             {currentTab.key === 'ops' && (
-              <OperationsTab data={data} clinicSettings={clinicSettings} isOpen={isOpen} />
+              <OperationsTab data={data} clinicSettings={clinicSettings} isOpen={isOpen} insights={insights} />
             )}
             {currentTab.key === 'clinical' && (
-              <ClinicalTab data={data} />
+              <ClinicalTab data={data} insights={insights} />
             )}
             {currentTab.key === 'financial' && (
-              <FinancialTab data={data} />
+              <FinancialTab data={data} insights={insights} />
             )}
           </>
         )}

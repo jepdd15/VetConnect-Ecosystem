@@ -63,7 +63,7 @@ const DEPT_COLORS = [
  * @param {object} clinicSettings  - From useClinicSettings()
  * @param {boolean} isOpen         - Whether the clinic is currently open
  */
-export default function OperationsTab({ data, clinicSettings, isOpen }) {
+export default function OperationsTab({ data, clinicSettings, isOpen, insights = {} }) {
   const { ops, queueData } = data;
 
   // Guard: ops is null when period !== 'today'. Dashboard.jsx ensures
@@ -154,6 +154,7 @@ export default function OperationsTab({ data, clinicSettings, isOpen }) {
             value={totalAppointments}
             icon={<EventIcon />}
             variant="blue"
+            insight={insights['TOTAL APPOINTMENTS']}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -163,6 +164,7 @@ export default function OperationsTab({ data, clinicSettings, isOpen }) {
             icon={<CheckCircleIcon />}
             variant="green"
             subtitle={throughputPct}
+            insight={insights['COMPLETED']}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -171,6 +173,7 @@ export default function OperationsTab({ data, clinicSettings, isOpen }) {
             value={activeCount}
             icon={<GroupsIcon />}
             variant="orange"
+            insight={insights['ACTIVE IN FACILITY']}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -180,6 +183,7 @@ export default function OperationsTab({ data, clinicSettings, isOpen }) {
             icon={<PeopleAltIcon />}
             variant="neutral"
             subtitle={queueSubtitle}
+            insight={insights['QUEUE SERVING']}
           />
         </Grid>
       </Grid>
@@ -201,6 +205,7 @@ export default function OperationsTab({ data, clinicSettings, isOpen }) {
             icon={<HourglassTopIcon />}
             variant={avgWaitVariant}
             subtitle={`${currentWaitingCount} currently waiting`}
+            insight={insights['AVG WAIT TIME']}
           />
         </Grid>
         <Grid size={{ xs: 12, md: 4 }}>
@@ -209,6 +214,7 @@ export default function OperationsTab({ data, clinicSettings, isOpen }) {
             value={longestCurrentWait > 0 ? `${longestCurrentWait} min` : '--'}
             icon={<AccessTimeIcon />}
             variant={longestWaitVariant}
+            insight={insights['LONGEST CURRENT WAIT']}
           />
         </Grid>
         <Grid size={{ xs: 12, md: 4 }}>
@@ -218,6 +224,7 @@ export default function OperationsTab({ data, clinicSettings, isOpen }) {
             icon={<AccessTimeIcon />}
             variant="blue"
             subtitle={consultCount > 0 ? `from ${consultCount} completed` : 'no completed consults yet'}
+            insight={insights['AVG CONSULT DURATION']}
           />
         </Grid>
       </Grid>
@@ -300,6 +307,7 @@ export default function OperationsTab({ data, clinicSettings, isOpen }) {
             icon={<PersonOffIcon />}
             variant={noShowCount > 0 ? 'orange' : 'green'}
             compact
+            insight={insights['NO-SHOWS']}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 4 }}>
@@ -309,6 +317,7 @@ export default function OperationsTab({ data, clinicSettings, isOpen }) {
             icon={<BlockIcon />}
             variant={cancelledCount > 0 ? 'red' : 'green'}
             compact
+            insight={insights['CANCELLATIONS']}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 4 }}>
@@ -318,6 +327,7 @@ export default function OperationsTab({ data, clinicSettings, isOpen }) {
             icon={<LocalHospitalIcon />}
             variant={emergencyCount > 0 ? 'red' : 'neutral'}
             compact
+            insight={insights['EMERGENCIES']}
           />
         </Grid>
       </Grid>

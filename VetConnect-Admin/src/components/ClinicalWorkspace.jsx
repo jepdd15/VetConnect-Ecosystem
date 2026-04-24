@@ -2182,9 +2182,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 </Typography>
                 <Typography component="div" sx={{ fontFamily: FONT, fontSize: '0.68rem', fontWeight: 900, color: COLORS.brand, textTransform: 'uppercase', mt: 0.5, opacity: 0.8, display: 'flex', alignItems: 'center', gap: 1 }}>
                     {patient?.petSpecies} • {patient?.petBreed || 'MIXED'} • {patient?.petGender || '??'} • {calculateAge(patient?.petBirthdate || petDetails?.dob)} • {soapData.objWeight || patient.petWeight ? `${soapData.objWeight || patient.petWeight} KG` : 'WEIGH REQUIRED'} • {patient?.petIsNeutered ? 'FIXED' : 'INTACT'}
-                    {patient?.petAllergies && patient.petAllergies.trim().length > 0 && patient.petAllergies.toUpperCase() !== 'NONE' ? (
+                    {(() => { const a = patient?.petAllergies || patient?.allergies || ''; return a.trim().length > 0 && a.toUpperCase() !== 'NONE'; })() ? (
                         <Box component="span" sx={{ bgcolor: '#D32F2F', color: 'white', px: 0.8, py: 0.1, borderRadius: 0.5, fontSize: '0.55rem', fontWeight: 1000, ml: 1, display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
-                            ⚠️ {patient.petAllergies.toUpperCase()} ALERT
+                            ⚠️ {(patient?.petAllergies || patient?.allergies || '').toUpperCase()} ALERT
                         </Box>
                     ) : (
                         <Box component="span" sx={{ opacity: 0.5, fontSize: '0.55rem', fontWeight: 1000, ml: 1 }}>

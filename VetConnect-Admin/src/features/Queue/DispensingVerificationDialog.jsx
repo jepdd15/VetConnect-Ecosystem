@@ -49,11 +49,11 @@ export default function DispensingVerificationDialog({ open, onClose, patient, o
   );
 
   const allChecked = useMemo(() => {
-    if (prescribedItems.length === 0) return false;
+    if (prescribedItems.length === 0) return true;
     return prescribedItems.every((_, idx) => checklist[idx]);
   }, [checklist, prescribedItems]);
 
-  const petAllergies = patient?.petAllergies || '';
+  const petAllergies = patient?.petAllergies || patient?.allergies || '';
   const hasAllergies = petAllergies.trim().length > 0
       && petAllergies.toUpperCase() !== 'NONE';
 

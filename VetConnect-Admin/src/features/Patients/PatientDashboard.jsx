@@ -11,7 +11,7 @@ import {
 import Grid from '@mui/material/Grid';
 
 import { db } from '../../firebaseConfig';
-import { doc, getDoc, collection, query, where, orderBy, getDocs, Timestamp, updateDoc, writeBatch } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, orderBy, getDocs, Timestamp, updateDoc } from 'firebase/firestore';
 
 // Icons
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -91,6 +91,10 @@ export default function PatientDashboard() {
   const [vitalsData, setVitalsData] = useState([]);
   const [tempData, setTempData] = useState([]);
   const [hrData, setHrData] = useState([]);
+  const [rrData, setRrData] = useState([]);
+  const [crtData, setCrtData] = useState([]);
+  const [bcsData, setBcsData] = useState([]);
+  const [painData, setPainData] = useState([]);
   const [owner, setOwner] = useState(null);
   const [siblings, setSiblings] = useState([]);
   const [nextAppointment, setNextAppointment] = useState(null);
@@ -159,17 +163,25 @@ export default function PatientDashboard() {
         setHistory(historyData);
 
         // Process vitals
-        const wt = [], tp = [], hr = [];
+        const wt = [], tp = [], hr = [], rr = [], crt = [], bcs = [], pain = [];
         historyData.forEach(rec => {
           if (!rec.date) return;
           const label = new Date(rec.date.seconds * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
           if (rec.vitals?.weight) wt.push({ date: label, weight: parseFloat(rec.vitals.weight) });
           if (rec.vitals?.temp) tp.push({ date: label, temp: parseFloat(rec.vitals.temp) });
           if (rec.vitals?.hr) hr.push({ date: label, hr: parseInt(rec.vitals.hr) });
+          if (rec.vitals?.rr != null && rec.vitals.rr !== '') rr.push({ date: label, rr: parseFloat(rec.vitals.rr) });
+          if (rec.vitals?.crt != null && rec.vitals.crt !== '') crt.push({ date: label, crt: parseFloat(rec.vitals.crt) });
+          if (rec.vitals?.bcs != null && rec.vitals.bcs !== '') bcs.push({ date: label, bcs: parseFloat(rec.vitals.bcs) });
+          if (rec.vitals?.pain != null && rec.vitals.pain !== '') pain.push({ date: label, pain: parseFloat(rec.vitals.pain) });
         });
         setVitalsData(wt.reverse());
         setTempData(tp.reverse());
         setHrData(hr.reverse());
+        setRrData(rr.reverse());
+        setCrtData(crt.reverse());
+        setBcsData(bcs.reverse());
+        setPainData(pain.reverse());
 
         // T2.101: Fetch owner's sales for computed outstanding balance
         if (currentPet?.ownerId && currentPet.ownerId !== 'WALK_IN_USER') {
@@ -722,7 +734,7 @@ export default function PatientDashboard() {
               const rc = getRecordColor(rec.recordType);
               const dateStr = rec.date?.toDate ? rec.date.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
               const hasS = rec.soap?.subjective, hasO = rec.soap?.objectiveNotes, hasT = rec.treatment;
-              const hasV = rec.vitals && (rec.vitals.weight || rec.vitals.temp || rec.vitals.hr);
+              const hasV = rec.vitals && (rec.vitals.weight || rec.vitals.temp || rec.vitals.hr || rec.vitals.rr != null || rec.vitals.crt != null || rec.vitals.bcs != null || rec.vitals.pain != null);
               const hasRx = rec.prescriptions?.length > 0;
 
               // Determine if we need a sticky year header before this record
@@ -795,6 +807,10 @@ export default function PatientDashboard() {
                                   {rec.vitals.weight && <Box><Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, textTransform: 'uppercase', fontWeight: 600 }}>Wt</Typography><Typography sx={{ fontFamily: FONT, ...TYPE.emphasis, color: COLORS.textPrimary }}>{rec.vitals.weight} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: COLORS.textMuted }}>kg</span></Typography></Box>}
                                   {rec.vitals.temp && <Box><Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, textTransform: 'uppercase', fontWeight: 600 }}>Temp</Typography><Typography sx={{ fontFamily: FONT, ...TYPE.emphasis, color: COLORS.textPrimary }}>{rec.vitals.temp} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: COLORS.textMuted }}>°C</span></Typography></Box>}
                                   {rec.vitals.hr && <Box><Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, textTransform: 'uppercase', fontWeight: 600 }}>HR</Typography><Typography sx={{ fontFamily: FONT, ...TYPE.emphasis, color: COLORS.textPrimary }}>{rec.vitals.hr} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: COLORS.textMuted }}>bpm</span></Typography></Box>}
+                                  {rec.vitals.rr != null && rec.vitals.rr !== '' && <Box><Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, textTransform: 'uppercase', fontWeight: 600 }}>RR</Typography><Typography sx={{ fontFamily: FONT, ...TYPE.emphasis, color: COLORS.textPrimary }}>{rec.vitals.rr} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: COLORS.textMuted }}>br/min</span></Typography></Box>}
+                                  {rec.vitals.crt != null && rec.vitals.crt !== '' && <Box><Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, textTransform: 'uppercase', fontWeight: 600 }}>CRT</Typography><Typography sx={{ fontFamily: FONT, ...TYPE.emphasis, color: COLORS.textPrimary }}>{rec.vitals.crt} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: COLORS.textMuted }}>sec</span></Typography></Box>}
+                                  {rec.vitals.bcs != null && rec.vitals.bcs !== '' && <Box><Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, textTransform: 'uppercase', fontWeight: 600 }}>BCS</Typography><Typography sx={{ fontFamily: FONT, ...TYPE.emphasis, color: COLORS.textPrimary }}>{rec.vitals.bcs} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: COLORS.textMuted }}>/9</span></Typography></Box>}
+                                  {rec.vitals.pain != null && rec.vitals.pain !== '' && <Box><Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, textTransform: 'uppercase', fontWeight: 600 }}>Pain</Typography><Typography sx={{ fontFamily: FONT, ...TYPE.emphasis, color: COLORS.textPrimary }}>{rec.vitals.pain} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: COLORS.textMuted }}>/10</span></Typography></Box>}
                                 </Box>
                               </Box>
                             )}
@@ -908,6 +924,82 @@ export default function PatientDashboard() {
               </Box>
             ) : (
               <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', color: COLORS.textMuted, fontStyle: 'italic', textAlign: 'center', py: 2 }}>No heart rate data yet</Typography>
+            )}
+          </Widget>
+
+          {/* Respiratory Rate Trend — T2.467 */}
+          <Widget title="Resp. Rate" icon={<AccessTimeIcon sx={{ fontSize: 14, color: '#0288D1' }} />}>
+            {rrData.length > 1 ? (
+              <Box sx={{ width: '100%', height: 110, minWidth: 50 }}>
+                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+                  <LineChart data={rrData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
+                    <XAxis dataKey="date" tick={{ fontSize: 10, fontFamily: FONT }} />
+                    <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={[10, 40]} />
+                    <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 6 }} />
+                    <Line type="monotone" dataKey="rr" stroke="#0288D1" strokeWidth={2} dot={{ r: 3, fill: '#0288D1' }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </Box>
+            ) : (
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', color: COLORS.textMuted, fontStyle: 'italic', textAlign: 'center', py: 2 }}>No respiratory rate data yet</Typography>
+            )}
+          </Widget>
+
+          {/* CRT Trend */}
+          <Widget title="Cap. Refill Time" icon={<AccessTimeIcon sx={{ fontSize: 14, color: '#00838F' }} />}>
+            {crtData.length > 1 ? (
+              <Box sx={{ width: '100%', height: 110, minWidth: 50 }}>
+                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+                  <LineChart data={crtData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
+                    <XAxis dataKey="date" tick={{ fontSize: 10, fontFamily: FONT }} />
+                    <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={[0, 5]} />
+                    <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 6 }} />
+                    <Line type="monotone" dataKey="crt" stroke="#00838F" strokeWidth={2} dot={{ r: 3, fill: '#00838F' }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </Box>
+            ) : (
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', color: COLORS.textMuted, fontStyle: 'italic', textAlign: 'center', py: 2 }}>No CRT data yet</Typography>
+            )}
+          </Widget>
+
+          {/* BCS Trend — T2.468 */}
+          <Widget title="Body Condition Score" icon={<ScaleIcon sx={{ fontSize: 14, color: '#7B1FA2' }} />}>
+            {bcsData.length > 1 ? (
+              <Box sx={{ width: '100%', height: 110, minWidth: 50 }}>
+                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+                  <LineChart data={bcsData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
+                    <XAxis dataKey="date" tick={{ fontSize: 10, fontFamily: FONT }} />
+                    <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={[1, 9]} ticks={[1, 3, 5, 7, 9]} />
+                    <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 6 }} />
+                    <Line type="monotone" dataKey="bcs" stroke="#7B1FA2" strokeWidth={2} dot={{ r: 3, fill: '#7B1FA2' }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </Box>
+            ) : (
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', color: COLORS.textMuted, fontStyle: 'italic', textAlign: 'center', py: 2 }}>No BCS data yet</Typography>
+            )}
+          </Widget>
+
+          {/* Pain Scale Trend — T2.469 */}
+          <Widget title="Pain Scale" icon={<WarningAmberIcon sx={{ fontSize: 14, color: '#D84315' }} />}>
+            {painData.length > 1 ? (
+              <Box sx={{ width: '100%', height: 110, minWidth: 50 }}>
+                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+                  <LineChart data={painData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
+                    <XAxis dataKey="date" tick={{ fontSize: 10, fontFamily: FONT }} />
+                    <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={[0, 10]} ticks={[0, 2, 4, 6, 8, 10]} />
+                    <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 6 }} />
+                    <Line type="monotone" dataKey="pain" stroke="#D84315" strokeWidth={2} dot={{ r: 3, fill: '#D84315' }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </Box>
+            ) : (
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', color: COLORS.textMuted, fontStyle: 'italic', textAlign: 'center', py: 2 }}>No pain scale data yet</Typography>
             )}
           </Widget>
 

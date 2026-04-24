@@ -1,0 +1,14 @@
+- [CW-2 Plan Produced](project_cw2_plan.md) — 5-task ClinicalWorkspace plan: SoapGrid, follow-up UI, staff attribution, dischargePolicy, caseDay fix
+- [CW-3 Plan Produced](project_cw3_plan.md) — 6-task Service Completion Chain: phantom cleanup, CRM refactor, service toggles, sign-off decoupling, POSModal fix, SC/PWD
+- [CW-4 Plan Produced](project_cw4_plan.md) — 31-task remaining P2/P3: amendments, auto-bundle, KNOWLEDGE_BASE, dead code, POSModal, EOD polish
+- [MOB-3 Plan Produced](project_mob3_plan.md) — 26-task UserProfileScreen + MyPetsScreen: emergencyName fix, allergy field, query opt, soft archive, parity fields
+- [MOB-4 Plan Produced](project_mob4_plan.md) — 14-task PetHistoryScreen + SuperCard: Q11 privacy fixes, useClinicContact hook, queue-ahead, T2.409 deferred
+- [MOB-5 Plan Produced](project_mob5_plan.md) — 8-task ChatbotScreen: workingDays/closedDates, tiered pricing, dept grouping, useClinicContact, fake input, error state
+- [MOB-6 Plan Produced](project_mob6_plan.md) — 2-task RegisterScreen: Auth rollback on Firestore failure, medical_records migration in guest merge
+- [MOB-7 Plan Produced](project_mob7_plan.md) — 4-task helpers.js extraction: formatFirestoreTime, getLocalDateStr, formatHour, formatDisplayDate/Time
+- [MOB-8 Plan Produced](project_mob8_plan.md) — 4-task MyPetsScreen A- push; all 6 QueueScreen tasks confirmed DONE in MOB-1
+- [DASH-1 Plan Produced](project_dash1_plan.md) — 14-task Dashboard Day 1: useDashboardData hook, KPICard, HorizontalBar, PeriodSelector, Operations tab
+- [DASH-2 Plan Produced](project_dash2_plan.md) — 23-task Dashboard Day 2: GrowthTab (11 metrics), FinancialTab (12 metrics), 4 new listeners, recharts charts
+- [DASH-4 Plan Produced](project_dash4_plan.md) — 5-task generateInsight engine + 30 rules: 10 Ops, 8 Clinical, 7 Financial, 5 Growth
+- [DASH-5 Plan Produced](project_dash5_plan.md) — 8-task drill-down nav + filter acceptance + generateReportHTML + Export Report button
+- [DASH-6 Plan Produced](project_dash6_plan.md) — 8-task final day: alert thresholds, goals, AlertStrip, progress bars, historical tooltip, annotateChartData

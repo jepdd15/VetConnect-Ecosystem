@@ -1,0 +1,2941 @@
+{
+  "handoff_meta": {
+    "generated_at": "2026-04-14",
+    "generated_during": "Deep architectural planning + queue/audit/records investigation session",
+    "supersedes_prior_handoff_dated": "2026-04-13",
+    "source_commit": "9d1f662",
+    "source_branch": "main",
+    "purpose": "Comprehensive fresh-session onboarding. This file captures everything learned and decided across the previous long-form planning session so a new session can pick up without re-scanning code or re-deriving architectural conclusions. Read this file FIRST, then consult the companion files listed in read_order as needed.",
+    "read_order_for_fresh_session": [
+      "1. handoff.json (this file) — architectural context, terminology, decisions, bugs, task list summary",
+      "2. MASTER_TASKLIST.md — full accumulated 82-task list with priorities, dependencies, effort estimates",
+      "3. ECOSYSTEM_ARCHITECTURE_REPORT.md — monorepo structure, thesis coverage matrix, divergence analysis, architectural strengths",
+      "4. CLINICAL_WORKSPACE_DEEPDIVE.md — 13-question audit of ClinicalWorkspace.jsx (Treatment Plan cart, CRM sovereignty, vaccine fields, etc.)",
+      "5. thesis_notes.md — digitized thesis document (the academic contract the code is meant to fulfill)",
+      "6. CLAUDE.md — project conventions and design system rules"
+    ],
+    "what_was_accomplished_this_session": [
+      "Comprehensive ecosystem scan producing ECOSYSTEM_ARCHITECTURE_REPORT.md",
+      "ClinicalWorkspace.jsx 13-question deep-dive producing CLINICAL_WORKSPACE_DEEPDIVE.md",
+      "Full scan of VetConnect-Admin/src/features/Queue/ (all 8 files, key paths fully traced)",
+      "Full scan of VetConnect-Admin/src/features/Records/ (Records.jsx 673 lines + useGlobalRecords hook)",
+      "Audit of pulseUtils.js (calculatePulseMetrics + 9 weaknesses W1-W9 enumerated)",
+      "Audit of statusConstants.js (state machine, terminal statuses, valid transitions)",
+      "Locked visit/case/medical-record terminology with explicit continuation-vs-follow-up distinction",
+      "Locked dischargePolicy design (required/optional, strictest-wins)",
+      "Locked LLM abstraction pattern with feature flag for post-Blaze activation",
+      "Deep scan of mobile booking flow (BookAppointment.js + useBookingEngine.js + AddPetScreen.js + EditPetScreen.js) producing MOBILE_BOOKING_DEEPDIVE.md",
+      "Designed client self-check-in via clinic QR (T2.76) with GPS geofencing + shared queue numbers + 4-tier ticket prefix scheme",
+      "Identified multi-pet visit architectural gap, added visitGroupId data-model task (T2.78) + full T3.12 feature plan",
+      "Found 2 HIGH-severity booking bugs (tiered pricing T2.79, POSModal services[] contract T2.80) + TOCTOU race (T2.87)",
+      "Enumerated 95-task master task list across Phase 1 (thesis), Phase 2 (code), Phase 3 (future)",
+      "Identified 4 canceled tasks (willContinueTomorrow, duplicate rename, etc.) and 3 merged tasks"
+    ],
+    "solo_developer": true,
+    "repository": "github.com/jepdd15/VetConnect-Ecosystem"
+  },
+  "companion_files": {
+    "MASTER_TASKLIST.md": {
+      "path": "./MASTER_TASKLIST.md",
+      "purpose": "Full 82-task accumulated list from this session, organized by phase and priority, with dependencies, effort estimates, and ship-order sequencing",
+      "status_at_handoff": "Needs to be written in next session using the task inventory in this handoff's master_task_inventory section as the source of truth",
+      "when_to_read": "Start of every implementation session — decide what to ship next"
+    },
+    "ECOSYSTEM_ARCHITECTURE_REPORT.md": {
+      "path": "./ECOSYSTEM_ARCHITECTURE_REPORT.md",
+      "purpose": "Complete monorepo architecture map, thesis coverage matrix (13/16 features shipped, 3 missing), divergence analysis (7 thesis/reality gaps D1-D7), architectural strengths catalog, ASCII block diagram of the ecosystem",
+      "status": "EXISTS on disk",
+      "when_to_read": "Thesis defense prep, architectural overview, understanding the full system topology"
+    },
+    "CLINICAL_WORKSPACE_DEEPDIVE.md": {
+      "path": "./CLINICAL_WORKSPACE_DEEPDIVE.md",
+      "purpose": "13-question audit of ClinicalWorkspace.jsx covering Treatment Plan cart, CRM Sovereignty, vaccine fields, auto-bundling, discharge summary, sign-off flow, Analyze feature, vitals storage, lab results, subjective auto-fill, mobile visibility matrix, consent mechanism, and dead code",
+      "status": "EXISTS on disk",
+      "when_to_read": "Any ClinicalWorkspace-related task or when verifying assumptions about the consult flow"
+    },
+    "MOBILE_BOOKING_DEEPDIVE.md": {
+      "path": "./MOBILE_BOOKING_DEEPDIVE.md",
+      "purpose": "8-question deep-dive audit of BookAppointment.js + useBookingEngine.js covering service-to-pet granularity, wizard flow, Enterprise Tetris algorithm, writeBatch structure, B5 follow-up handling, multi-pet gaps, admin data contract mismatches, and additional bugs",
+      "status": "EXISTS on disk",
+      "when_to_read": "Any mobile booking task, BookAppointment changes, useBookingEngine changes, POSModal multi-service billing fix (T2.80), or multi-pet visit planning",
+      "produced_by": "codebase-architecture-researcher sub-agent"
+    },
+    "handoff_prior_session": {
+      "path": "Not preserved — this handoff.json file REPLACES the 2026-04-13 version",
+      "purpose": "Prior handoff captured the tactical foundation shipped (My Bookings, closedDates, B4/B5, A3)",
+      "what_survived_to_this_file": "All shipped_features, firebase state, key conventions, commit conventions are preserved"
+    }
+  },
+  "project": {
+    "name": "VetConnect",
+    "one_line": "Monorepo veterinary clinic management system for small Philippine vet practices — mobile client app, web admin dashboard, and cloud functions backend — sharing a single Firebase project",
+    "target_user": {
+      "description": "Small Philippine veterinary practices with 1-2 vets. The same human often acts as clinician, cashier, pharmacist, and admin across a single shift.",
+      "design_implication": "Features that assume role separation (e.g., dedicated cashier vs. dedicated clinician) must be opt-in and default off for solo-vet clinics. The codebase does NOT enforce persona boundaries — a user logged in as 'veterinarian' has access to POS, Inventory, Settings, etc. This is intentional."
+    },
+    "structure": {
+      "VetConnect/": "Mobile client + staff app — Expo 54, React Native 0.81, React 19, mostly JavaScript. Entry: App.js (single Stack Navigator).",
+      "VetConnect-Admin/": "Web admin dashboard — React 19, Vite 7, MUI 7, mostly JavaScript. Entry: src/main.jsx → src/App.jsx. Feature-module architecture in src/features/.",
+      "VetConnect-Backend/": "Cloud Functions backend — Node 20, Firebase Functions v7. Source exists in functions/index.js but is NOT deployed (Spark plan)."
+    }
+  },
+  "firebase": {
+    "project_id": "starbarks-vetconnect-f6443",
+    "billing_plan": "Spark (free tier)",
+    "plan_constraints": {
+      "cloud_functions": "Google policy requires Blaze plan to deploy any Cloud Function. The five functions defined in VetConnect-Backend/functions/index.js (midnightQueueSweep, reservationCleanup, secureBookAppointment, sendAppointmentUpdateNotification, mergeGuestAccount) exist in source but are NOT deployable until Blaze upgrade.",
+      "server_side_triggers": "Cannot be used. Any feature requiring server-triggered work must be implemented client-side or via Firestore security rules.",
+      "push_notifications": "Cannot be server-triggered. Foreground-promoted Firestore listeners with local expo-notifications are the only Spark-compatible pattern."
+    },
+    "deployed_state": {
+      "firestore_rules": {
+        "status": "DEPLOYED and LIVE",
+        "file": "VetConnect-Backend/firestore.rules",
+        "enforcements": [
+          "All reads and writes require auth (no RBAC yet — see T2.1)",
+          "Appointment updates: isTriaged is one-way (never revert from true to false)",
+          "Appointment updates transitioning to 'cancelled' or 'no-show' require a non-empty auditReason string",
+          "Appointment updates setting isTriaged to true require a forensicSeal field to be present and non-null",
+          "Appointment creates require a scheduledDateStr field that is NOT in clinic_settings/general.closedDates array"
+        ]
+      },
+      "cloud_functions": "NOT DEPLOYED (Spark plan constraint)"
+    },
+    "orphaned_collections_that_exist_but_have_no_code_consumers": [
+      "protocols (~12 docs)",
+      "estimates (varies)",
+      "nps_responses (varies)",
+      "cashier_shifts (varies)"
+    ]
+  },
+  "shipped_features_inherited_from_prior_handoff": [
+    {
+      "id": "my_bookings_remediation",
+      "commits": [
+        "6bd085b",
+        "4853e84"
+      ],
+      "summary": "Complete redesign of client-side appointment list. Live super-card, 12-status badge system, cancellation sanitizer, batch-joined sales, walk-in time fallback."
+    },
+    {
+      "id": "closed_dates",
+      "commits": [
+        "74f06d2",
+        "5a053dd"
+      ],
+      "summary": "Full closed-date enforcement: admin Settings UI + mobile useBookingEngine guard + Firestore rule (deployed) + aspirational Cloud Function. Defense-in-depth example."
+    },
+    {
+      "id": "b4_discharge_polish",
+      "commits": [
+        "454cd20"
+      ],
+      "summary": "Redesigned discharge/vaccine/lab sections on mobile PetHistoryScreen with soft aesthetic. Surfaces dischargeSummary.vetName, patientStatus."
+    },
+    {
+      "id": "b5_follow_up_booking",
+      "commits": [
+        "454cd20",
+        "8f99deb"
+      ],
+      "summary": "One-tap follow-up booking loop (ClinicalWorkspace creates ghost → mobile banner → deep-link booking → ghost cancelled). IMPORTANT: ship is SHIPPED BUT NON-FUNCTIONAL because nextVisit UI was never wired. T2.28-expanded activates it."
+    },
+    {
+      "id": "a3_draft_soap_recovery",
+      "commits": [
+        "4598394",
+        "9d1f662"
+      ],
+      "summary": "Draft SOAP recovery banner with 3-branch detection (fresh/stale/none), Resume/Discard CTAs. Prevents silent hydration of stale drafts."
+    }
+  ],
+  "terminology_locked_this_session": {
+    "importance": "CRITICAL — this vocabulary must be used consistently in code comments, thesis prose, admin UI helper text, and all future documentation. The prior handoff did NOT lock these terms; they were debated and resolved in this session.",
+    "visit": {
+      "definition": "One entry in the queue management dashboard, represented by one appointments document in Firestore. Each day of clinical activity for a patient produces one visit.",
+      "technical_anchor": "One appointments doc, one caseDay, one clinicalPulse array, one forensicSeal",
+      "used_in": "admin dashboard contexts (Queue, Records, ClinicalWorkspace)"
+    },
+    "case": {
+      "definition": "The complete clinical encounter a patient experiences, consisting of one or more visits linked via originApptId pointers and tracked via caseDay counter. A same-day case is one case with one visit. A multi-day case (hospitalization) is one case with multiple visits, one per day of active care.",
+      "technical_anchor": "Chain of appointments docs walked backward via useAncestorChain resolver",
+      "field_name_in_code": "caseDay (already uses 'case' vocabulary internally)"
+    },
+    "medical_record": {
+      "definition": "A signed SOAP document in the medical_records Firestore collection, created when a clinician signs off on their clinical notes during a visit. Immutable once signed. Each visit may produce zero, one, or more medical records depending on how many discrete consultations occur.",
+      "technical_anchor": "Docs in medical_records collection with legal.isLocked: true",
+      "note": "The Firestore collection name stays 'medical_records' — no rename needed, matches this term exactly"
+    },
+    "appointment": {
+      "definition": "Pet-owner-facing terminology for a visit. The mobile app says 'appointment'; the admin dashboard says 'visit'. Deliberate audience-specific naming.",
+      "used_in": "mobile client app (VetConnect/), pet owner communications"
+    },
+    "continuation_via_confine": {
+      "definition": "A form of case continuation where the patient physically stays in the clinic overnight. Old visit reaches terminal carried-over status; new visit is created for next day with originApptId backward pointer, caseDay incremented, and starting status 'confined'.",
+      "trigger": "EndOfDayModal Active silo CONFINE button (action value: 'hospitalize')",
+      "clinical_meaning": "Pet is hospitalized, clinic retains overnight care responsibility"
+    },
+    "continuation_via_carry_over_rebook": {
+      "definition": "A form of case continuation where the patient goes home overnight. Old visit reaches terminal carried-over status; new visit is created for next day with originApptId backward pointer, caseDay incremented, and starting status 'confirmed' (pre-arrival scheduled state).",
+      "trigger": "EndOfDayModal Active silo Carry-Over button (action value: 'rebook')",
+      "clinical_meaning": "Pet went home for the night because visit was unfinished but not clinically requiring overnight stay. Re-arrives next day as a scheduled visit.",
+      "naming_note": "THE BUTTON LABELED 'Carry-Over' CORRESPONDS TO ACTION VALUE 'rebook'. This is the user's explicit correction of a prior framing mistake — CONFINE and Carry-Over are siblings, not CONFINE vs carry-over."
+    },
+    "follow_up": {
+      "definition": "A separate operation triggered at sign-off when the clinician schedules a future recheck visit. Unlike continuation, a follow-up begins a NEW case (caseDay resets to 1) and uses DIFFERENT linkage fields (parentAppointmentId + parentRecordId) to soft-reference the prior case for clinical context.",
+      "trigger": "ClinicalWorkspace.handleSaveConsult when soapData.nextVisit is set (currently non-functional because nextVisit UI missing — see T2.28-expanded)",
+      "clinical_meaning": "Prior visit is clinically complete; this is a recheck or continuation encounter happening later after pet has been home",
+      "why_different_from_continuation": "See architecture_insights.dual_linkage_rationale — forcing follow-ups through originApptId would corrupt forensic metrics, ghost gating, caseDay counter, and EndOfDayModal day navigation"
+    }
+  },
+  "architecture_insights_from_deep_scans": {
+    "dual_linkage_rationale": {
+      "summary": "VetConnect has TWO linkage mechanisms for cross-visit relationships: originApptId (for continuation = same case across days) and parentAppointmentId+parentRecordId (for follow-up = new case referencing prior). They are NOT interchangeable.",
+      "why_not_unified": [
+        "useAncestorChain walks via originApptId and treats the chain as ONE continuous temporal thread for forensic math. Follow-ups with 7-day gaps would corrupt recordAge, opHoursAge, and total metrics.",
+        "calculatePulseMetrics aggregates duration across the chain — correct for hospitalization (one continuous case) but meaningless for follow-ups (unrelated encounters separated by home time).",
+        "EndOfDayModal day navigation uses uniqueDates from combined pulse — follow-ups would create 7-day gaps between 'Day 1' and 'Day 2' arrows.",
+        "caseDay counter implicitly maps to calendar days for continuous care — follow-ups would report 'Day 8 of case started 7 days ago' which is semantically false.",
+        "Ghost gating midnight-caps abandoned segments — designed for single-day gaps, not multi-day follow-up windows."
+      ],
+      "implication": "Trying to force follow-ups through originApptId would require 5+ special-case workarounds in downstream consumers. Two linkage fields is cheaper AND more honest about the semantic difference."
+    },
+    "audit_system_mechanics": {
+      "pulse_event_structure": "Each appointment doc has a clinicalPulse: [] array appended via arrayUnion. Each event: {eventId, type, fromStatus, toStatus, timestamp, staffId, staffName, note, [correctedEventId]}",
+      "correction_dna_link_pattern": "Reverts create a CORRECTION event with correctedEventId pointing at the invalidated event. Calculator builds voidedIds Set to skip voided segments from math while preserving them in display. Sophisticated structured soft-delete.",
+      "dual_clock_routing": "Business-hour clock for queue/consult states (respects openHour/closeHour/workingDays); absolute wall-clock for confined states (hospitalization is 24/7). Routed via CONFINED_STATES.has(status) ? 'absolute' : 'business' at pulseUtils.js:150.",
+      "midnight_gating": "isGhostSegment at pulseUtils.js:147 caps abandoned queue/consult segments at day-end to prevent stale records from accumulating fake duration. Does NOT apply to confined (correctly).",
+      "forensic_seal_semantics": "forensicSeal is a SNAPSHOT, not a LOCK. Written by markNoShow, rejectAppointment, deferAppointment, rescheduleAppointment, triage wizard paths. NOT currently written on normal sign-off completion (T2.44 closes this gap). NOT cleared on revertStatus (T2.42 fixes this drift).",
+      "discharge_anchor": "pulseUtils.js:93-101 — if the LAST event in combined history is terminal, freeze the clock at that moment. Otherwise use current time."
+    },
+    "status_machine_structure": {
+      "canonical_statuses": [
+        "pending",
+        "confirmed",
+        "arrived",
+        "in-consult",
+        "on-hold",
+        "dispensing",
+        "billing",
+        "completed",
+        "cancelled",
+        "no-show",
+        "confined",
+        "carried-over"
+      ],
+      "terminal_statuses": [
+        "completed",
+        "cancelled",
+        "no-show",
+        "carried-over"
+      ],
+      "active_statuses_in_clinic": [
+        "arrived",
+        "in-consult",
+        "on-hold",
+        "dispensing",
+        "billing",
+        "confined"
+      ],
+      "high_stakes_statuses": "ACTIVE_STATUSES + confirmed (requires forensic justification for any queue action)",
+      "queue_states_for_metrics": [
+        "arrived"
+      ],
+      "consult_states_for_metrics": [
+        "in-consult",
+        "dispensing",
+        "billing",
+        "on-hold"
+      ],
+      "confined_states_for_metrics": [
+        "confined"
+      ],
+      "valid_forward_transitions_note": "See VetConnect-Admin/src/utils/statusConstants.js VALID_TRANSITIONS table. All terminal statuses have empty arrays (no forward transitions). carried-over has [arrived] which is POSSIBLY DEAD CODE — see T2.43.",
+      "reverse_transitions": "Handled by revertStatus which pops statusHistory and writes back (bypasses VALID_TRANSITIONS check). This is how cancel-undo and no-show-undo work."
+    },
+    "end_of_day_modal_silo_structure": {
+      "file": "VetConnect-Admin/src/features/Queue/EndOfDayModal.jsx (1410 lines, fully read this session)",
+      "silo_tab_0_online": {
+        "filter": "status === 'pending'",
+        "buttons": [
+          "Defer",
+          "Reschedule (rebook)",
+          "Cancel"
+        ],
+        "scenario_text": "Pending online clinical request awaiting triage"
+      },
+      "silo_tab_1_scheduled": {
+        "filter": "status === 'confirmed'",
+        "buttons": [
+          "Reschedule (rebook)",
+          "No-Show",
+          "Cancel"
+        ],
+        "scenario_text": "Patient was scheduled but never arrived at the clinic"
+      },
+      "silo_tab_2_active": {
+        "filter": "status in [arrived, in-consult, dispensing, billing, confined, on-hold]",
+        "buttons": [
+          "CONFINE (hospitalize)",
+          "Carry-Over (rebook)",
+          "Cancel"
+        ],
+        "scenario_texts_by_status": {
+          "arrived": "Patient arrived but was never seen by a clinician",
+          "in-consult": "Patient is mid-consult and requires record closing",
+          "dispensing": "Pharmacy items are unbilled and require a final inventory audit",
+          "billing": "Invoice is currently unpaid and requires reconciliation",
+          "confined": "MISSING — falls through to 'Unfinished record detected' fallback (T2.46 fixes)",
+          "on-hold": "MISSING — same fallback (T2.46 fixes)"
+        }
+      },
+      "advisory_text_per_action": {
+        "rebook": "Patient returns home. Status reverts to SCHEDULED for next arrival.",
+        "defer": "Carry this request forward for triage in the next shift.",
+        "hospitalize": "Patient stays overnight (Confined). Status remains ACTIVE for resumption.",
+        "no-show": "Mark the patient as absent for today's appointment.",
+        "cancel": "Archive this record as a cancellation and clear it from the queue."
+      },
+      "notable_features": [
+        "Ancestor chain resolver inline at lines 912-951 (duplicates useAncestorChain.js — see T2.49)",
+        "Pre-flight census shield with 6-column count confirmation",
+        "Real-time sync detection via onSnapshot on the selected doc IDs",
+        "Atomic gender healing for broken identity data",
+        "Smart-shift calendar with Today/Tomorrow/+1W quick buttons via getSmartShiftDate",
+        "Mandatory per-record audit reason at UI layer (belt-and-suspenders with Firestore rule)",
+        "Day-by-day navigation for multi-day cases with per-day forensic metric grid"
+      ],
+      "known_hack": "Line 1310: 'resolution = patient.status === \"confined\" ? \"confined\" : patientResolutions[patient.id]' — uses an invalid resolution value to force no pre-selection for confined records. T2.46 replaces with a sane default (hospitalize)."
+    },
+    "seal_lifecycle_after_fixes": {
+      "current_state": "Coverage holes and drift bugs. markNoShow/rejectAppointment/deferAppointment/rescheduleAppointment/triage wizard all write seals. Normal sign-off does NOT. Revert does NOT clear seal. Inconsistent.",
+      "after_t2_42_and_t2_44_ship": [
+        "Seal is WRITTEN at every terminal transition (completed, cancelled, no-show, carried-over) including normal sign-off — T2.44",
+        "Seal is CLEARED on revert from terminal state — T2.42",
+        "Seal is OVERWRITTEN when future pre-clinical records are rescheduled or voided (existing behavior)",
+        "Seal is PRESERVED through amendments via T2.65 (addendums append to pulse, don't touch seal)",
+        "Seal is PRESERVED through identity edits (don't affect pulse metrics)"
+      ],
+      "seal_semantics_are_snapshot_not_lock": "Seals represent 'here's what the metrics said at closure time' — they can be overwritten or cleared, not 'unlocked'. The word 'seal' is shorthand for 'frozen audit snapshot'. Current naming is slightly misleading; Chapter IV should clarify (T1.6)."
+    },
+    "record_vs_visit_vs_case_terminology_decision": {
+      "user_input_that_locked_this": "Session explicitly rejected my initial framing of 'record = one doc, case = chain' and chose 'visit = one doc, case = chain, medical_record = SOAP doc' which matches the existing caseDay field name and the Firestore collection name.",
+      "implications_for_future_work": [
+        "All admin UI labels should say 'visit' not 'record' (T2.58 handles Records.jsx)",
+        "Thesis Chapter I glossary needs visit/case/medical_record/appointment entries (T1.7)",
+        "Thesis Chapter IV paragraph explains the three-level temporal model (T1.5)",
+        "Mobile client app retains 'appointment' terminology — deliberate audience split"
+      ]
+    }
+  },
+  "file_audit_status": {
+    "fully_read_and_understood_this_session": [
+      {
+        "file": "VetConnect-Admin/src/features/Queue/EndOfDayModal.jsx",
+        "lines": 1410,
+        "key_findings": "3-silo action model, silo-aware button filtering, pre-flight census shield, ancestor chain resolver duplicated (T2.49), real-time sync, gender healing, mandatory audit reasons. Very sophisticated component — T2.46 is the only polish needed."
+      },
+      {
+        "file": "VetConnect-Admin/src/features/Queue/useQueueActions.js",
+        "lines": 382,
+        "key_findings": "7 action methods: changeStatus, revertStatus, markNoShow, rejectAppointment, quickAdmitER, deferAppointment, rescheduleAppointment. All use runTransaction EXCEPT rescheduleAppointment (T2.53 fixes inconsistency). forensicSeal written by 4 of them. changeStatus does NOT write seal on 'completed' transition (T2.44 fix)."
+      },
+      {
+        "file": "VetConnect-Admin/src/features/Queue/ForensicMetricGrid.jsx",
+        "lines": 102,
+        "key_findings": "Pure rendering component. Accepts sealedMetrics prop to display frozen values OR recomputes from pulse. Dead function calculatePunctuality at line 51 (T2.18 cleanup)."
+      },
+      {
+        "file": "VetConnect-Admin/src/features/Queue/DispensingVerificationDialog.jsx",
+        "lines": 161,
+        "key_findings": "Per-item verification checklist with allergy alert. Parent Queue.jsx handles the write via handleDispenseVerified which is NOT atomic (updateDoc + changeStatus sequential — T2.52 fix)."
+      },
+      {
+        "file": "VetConnect-Admin/src/utils/pulseUtils.js",
+        "lines": 276,
+        "key_findings": "200-line calculator with dual-clock routing, midnight gating, DNA-link correction voiding, shift-vs-total metric separation. W1-W9 weakness analysis produced; 4 drift points captured in tasks (T2.37, T2.38, T2.42, T2.44). Client-side timestamps are a known limitation (W1) documented as scope trade-off."
+      },
+      {
+        "file": "VetConnect-Admin/src/utils/statusConstants.js",
+        "lines": 165,
+        "key_findings": "Canonical state machine with 12 statuses, 3 status sets (QUEUE/CONSULT/CONFINED), VALID_TRANSITIONS table, validateTransition helper, normalizeStatus legacy alias handler. carried-over has [arrived] transition that may be dead code (T2.43)."
+      },
+      {
+        "file": "VetConnect-Admin/src/features/Records/Records.jsx",
+        "lines": 673,
+        "key_findings": "CRITICAL: has 4 real bugs. (1) jsScheduled field read is wrong — field doesn't exist on docs, always null, Planned Encounter column always shows ASAP. (2) Vets query uses non-existent 'staff' collection instead of 'users' — vets filter always empty. (3) Departments read from settings.departments which doesn't exist — departments filter always empty. (4) window.location.href for navigation causes full page reload. Plus pretentious terminology (STATE VECTOR, AUDIT & TELEPORT, SEALED ARCHIVE). T2.57 fixes bugs, T2.58 fixes terminology, T2.59 polishes UX, T2.61 adds case-grouping."
+      },
+      {
+        "file": "VetConnect-Admin/src/features/Records/hooks/useGlobalRecords.js",
+        "lines": 104,
+        "key_findings": "Hybrid silo + facet + search engine. Silos map: TRIAGE=[pending,confirmed], CLINICAL=active states, IN-PATIENT=[confined], ARCHIVE=[completed,carried-over], VOIDED=[cancelled,no-show]. Limit 500. Phone search uses prefix match — format variations not handled (T2.69)."
+      },
+      {
+        "file": "VetConnect-Admin/src/features/Records/hooks/useAncestorChain.js",
+        "lines": 68,
+        "key_findings": "Walks originApptId backward with MAX_DEPTH=10. Exports combinedPulse, combinedServices. Mirror of inline resolver in EndOfDayModal (T2.49 dedupes)."
+      },
+      {
+        "file": "VetConnect-Admin/src/features/Queue/AssignStaffModal.jsx",
+        "lines": 463,
+        "key_findings": "Handles check-in (confirmed → arrived) with staff assignment and queue ticket issuance. Uses runTransaction with optimistic lock. Blocks terminal-status writes. Per-service staff attribution supported in data model (T2.30 activates it at sign-off)."
+      }
+    ],
+    "partially_read_this_session": [
+      {
+        "file": "VetConnect-Admin/src/features/Queue/Queue.jsx",
+        "lines": 2597,
+        "data_paths_coverage": "100% — every write path grep-confirmed and read (5 write paths: writeBatch triage 292-469, updateDoc dispensing 600, updateDoc saveEdit 689, updateDoc saveReschedule 787, plus changeStatus calls). All state declarations, effects, and handlers traced. Ghost detector useEffect 836-934 fully understood. Data listeners 1069-1127 cataloged.",
+        "rendering_jsx_coverage": "~60% — DataGrid setup, toolbar JSX, popover rendering for hover cards, some dialog JSX for edit/reschedule/noshow/revert modals NOT fully read. These are presentation-layer only; they consume state but don't create or manage it.",
+        "do_not_rescan_for": "Write paths, state management, effects, handlers, data listeners, triage wizard flow, ghost detector logic — all fully traced.",
+        "optional_rescan_for": "UI terminology, dead rendering code, accessibility, style-token compliance, missing error-state displays in the unread JSX portions.",
+        "key_findings": "5 write paths to appointments. saveEdit has no pulse event (T2.51). handleDispenseVerified not atomic (T2.52). Ghost detector fully understood. Triage wizard carry-over/confine/cancel flow fully traced including both Branch A (in-place update) and Branch B (new doc creation)."
+      },
+      {
+        "file": "VetConnect-Admin/src/features/Queue/WalkInModal.jsx",
+        "lines": 763,
+        "data_paths_coverage": "100% — handleSubmit + appointmentPayload construction fully traced. The only write path in the file is the runTransaction creating a new appointment doc.",
+        "rendering_jsx_coverage": "~30% — Form UI for client selection, pet selection, guest registration, DOB mode selector, allergy input, service picker rendering NOT read. These are input-gathering forms, not logic.",
+        "do_not_rescan_for": "Write path, appointment payload shape, pulse event seeding, queue ticket assignment, emergency flag routing.",
+        "optional_rescan_for": "Form validation UX, input field labels, accessibility of the registration flow.",
+        "key_findings": "Uses pulse_walkin_${ts}_${rand} format (T2.38 fragmentation). Emergency → 'E' prefix, normal → 'W' prefix. Creates with status='arrived', caseDay:1, INCEPTION pulse, no originApptId."
+      },
+      {
+        "file": "VetConnect-Admin/src/features/Queue/queueColumns.jsx",
+        "lines": 763,
+        "data_paths_coverage": "100% — every status-specific action button handler traced. All actions route to useQueueActions methods or Queue.jsx handlers. No direct Firestore writes in this file.",
+        "rendering_jsx_coverage": "~70% — identity column (Clinical Passport tooltip), timing column (caseDay badge), notes/prescription/billing preview columns, and all primary action buttons read. Some overflow menu items and edge-case status renderers for less common states NOT read.",
+        "do_not_rescan_for": "Action button logic per status, caseDay badge rendering, allergy alert display, status-aware button filtering.",
+        "optional_rescan_for": "Overflow menu completeness, tooltip content for rare statuses, minor UI polish.",
+        "key_findings": "Status-aware command actions: pending gets Accept/Defer/Reject, confirmed gets Check-In/Assign/Time/No-Show/Cancel, arrived gets START CONSULT, in-consult/confined/on-hold gets WORKSPACE, dispensing gets VERIFY ITEMS, billing gets OPEN CHECKOUT. caseDay > 1 gets alternate labels (RE-ARRIVE & RESUME, 🔥 RESUME)."
+      },
+      {
+        "file": "VetConnect-Admin/src/components/ClinicalWorkspace.jsx",
+        "lines": 1989,
+        "data_paths_coverage": "100% — full 13-question audit performed via CLINICAL_WORKSPACE_DEEPDIVE.md. Every write path (handleSaveConsult sign-off batch, handleSaveDraft, handleAddRx/RemoveRx/UpdateQty cart mutations, reserveStock/releaseStock, CRM sovereignty sync, follow-up creation block) fully traced with line numbers.",
+        "rendering_jsx_coverage": "~60% — Main SOAP grid, Plan quadrant, sidebar (Treatment Plan card, CRM switch, sign-off buttons) read. God-View duplicate JSX (~180 lines at 1861-1968), Zen-mode overlay, some Autocomplete option renderers, and style objects NOT exhaustively read.",
+        "do_not_rescan_for": "ANY data concern — sign-off flow, cart management, pulse events, seal writing, follow-up creation, draft save/hydrate, vitals propagation, CRM sovereignty, vaccine form trigger, auto-bundling, assistive diagnosis, consent mechanism. ALL fully documented in CLINICAL_WORKSPACE_DEEPDIVE.md.",
+        "optional_rescan_for": "God-View/Zen-mode JSX duplication (T2.32 SoapGrid extraction will address this anyway), style-token compliance, dead rendering code.",
+        "key_findings_summary": "Treatment Plan cart has race conditions (T2.19, T2.20), CRM Sovereignty refactor needed (T2.13), vaccine form trigger uses keyword match (T2.22 fix), auto-bundling has 2 bugs (T2.14), handleSaveConsult missing forensicSeal (T2.44), nextVisit/recheckIn/patientStatus have state but NO UI (T2.28-expanded), KNOWLEDGE_BASE only 6 rules (T2.15), digital consent is vestigial (T2.12 rename), ~300 lines of dead code (T2.18)."
+      }
+    ],
+    "not_scanned_this_session_but_noted": [
+      "VetConnect-Admin/src/features/Patients/ (not drilled into)",
+      "VetConnect-Admin/src/features/Inventory/ (partial — Inventory.jsx seed logic for default categories T2.31)",
+      "VetConnect-Admin/src/features/Services/ (partial — ServiceFormModal linkedProducts)",
+      "VetConnect-Admin/src/features/Sales/ (not read)",
+      "VetConnect-Admin/src/features/Staff/ (not read)",
+      "VetConnect-Admin/src/pages/Dashboard.jsx, Monitor.jsx, Expenses.jsx, Settings.jsx, Login.jsx",
+      "VetConnect-Admin/src/components/POSModal.jsx (read in prior session via ecosystem report)",
+      "VetConnect-Admin/src/components/Sidebar.jsx (quick scan only)",
+      "VetConnect/src/screens/ClientDashboard.js (briefly referenced)",
+      "VetConnect/src/screens/ScannerScreen.js (briefly referenced)",
+      "VetConnect/src/screens/ChatbotScreen.js (briefly referenced)",
+      "VetConnect/src/hooks/useBookingEngine.js (read in prior session via ecosystem report)",
+      "VetConnect-Backend/functions/index.js (confirmed dead code, not re-read)",
+      "VetConnect-Backend/firestore.rules (understood via field enforcement, not fully re-read)"
+    ]
+  },
+  "bugs_and_drift_found_this_session": {
+    "severity_p0_blocking_feature_or_data_integrity": [
+      {
+        "id": "B5_non_functional",
+        "location": "ClinicalWorkspace.jsx:1044-1075 follow-up creation block + missing UI",
+        "symptom": "B5 one-tap follow-up booking is shipped but NEVER fires because soapData.nextVisit has no UI input. Ghost appointment creation code is dead until UI wired.",
+        "fix": "T2.28-expanded (wire nextVisit/recheckIn/patientStatus UI + dedicated Discharge textarea + fix 5 follow-up creation bugs)"
+      },
+      {
+        "id": "forensic_seal_coverage_hole",
+        "location": "ClinicalWorkspace.handleSaveConsult + useQueueActions.changeStatus when target=completed",
+        "symptom": "Normal sign-off (the happy path) does NOT write forensicSeal. Only exception paths (no-show, cancel, defer, reschedule, triage wizard) do. Completed records have no frozen metrics.",
+        "fix": "T2.44"
+      },
+      {
+        "id": "append_only_pulse_not_enforced",
+        "location": "Firestore rules firestore.rules",
+        "symptom": "Nothing at the Firestore layer prevents a malicious or buggy client from replacing clinicalPulse with an empty array. Audit history could be silently erased.",
+        "fix": "T2.37 (size + hasAll rule)"
+      },
+      {
+        "id": "seal_drift_on_revert",
+        "location": "useQueueActions.revertStatus at line 95-147",
+        "symptom": "Revert does NOT clear forensicSeal. After reverting from no-show back to arrived, the old seal persists as a stale frozen snapshot that no longer matches the current pulse state.",
+        "fix": "T2.42"
+      },
+      {
+        "id": "records_jsScheduled_wrong_field",
+        "location": "useGlobalRecords.js:83",
+        "symptom": "Reads doc.data().jsScheduled which doesn't exist — actual field is scheduledDate. Result: Planned Encounter column always shows 'ASAP' for every record regardless of actual schedule.",
+        "fix": "T2.57"
+      },
+      {
+        "id": "records_vets_wrong_collection",
+        "location": "Records.jsx:86",
+        "symptom": "Queries collection('staff') which doesn't exist — actual collection is 'users'. Vets filter dropdown in drawer is always empty.",
+        "fix": "T2.57"
+      },
+      {
+        "id": "records_departments_wrong_source",
+        "location": "Records.jsx:82",
+        "symptom": "Reads settings.departments which is not a field on clinic_settings/general. Actual departments live in 'departments' collection. Departments filter always empty.",
+        "fix": "T2.57"
+      }
+    ],
+    "severity_p1_audit_gaps_or_inconsistency": [
+      {
+        "id": "saveEdit_no_pulse_event",
+        "location": "Queue.jsx:666-703",
+        "symptom": "Full patient identity edit (name, species, breed, gender, DOB) via updateDoc without any clinicalPulse arrayUnion. Staff can silently rename 'Max' to 'Blackie' and change species with zero audit trail.",
+        "fix": "T2.51 (add IDENTITY_EDIT pulse event with field diff)"
+      },
+      {
+        "id": "handleDispenseVerified_not_atomic",
+        "location": "Queue.jsx:598-609",
+        "symptom": "Two sequential writes (updateDoc for dispensingData, then changeStatus for billing). If second fails, doc has dispensingData but wrong status.",
+        "fix": "T2.52 (wrap in single runTransaction)"
+      },
+      {
+        "id": "rescheduleAppointment_inconsistent_mechanism",
+        "location": "useQueueActions.js:350-380",
+        "symptom": "Uses updateDoc while every sibling action uses runTransaction. Races with concurrent writes.",
+        "fix": "T2.53"
+      },
+      {
+        "id": "endofday_gender_healing_no_pulse",
+        "location": "EndOfDayModal.jsx:1020-1045",
+        "symptom": "Atomic healing of pet gender via updateDoc on pets doc. No audit trail on the appointment.",
+        "fix": "T2.54 (IDENTITY_HEALING pulse event)"
+      },
+      {
+        "id": "reschedule_caseDay_overloaded",
+        "location": "Queue.jsx:784",
+        "symptom": "Rescheduling an appointment to a different date increments caseDay, conflating rescheduling with clinical carry-over. caseDay should only increment on actual clinical day progression.",
+        "fix": "T2.41 (remove the increment)"
+      },
+      {
+        "id": "carried_over_transition_ambiguity",
+        "location": "statusConstants.js:101",
+        "symptom": "VALID_TRANSITIONS[carried-over] = [arrived] but the carry-over flow creates a new doc instead of progressing the old doc forward. Transition may be dead code. Needs investigation.",
+        "fix": "T2.43"
+      },
+      {
+        "id": "endofday_scenarioMap_missing_entries",
+        "location": "EndOfDayModal.jsx:598-605",
+        "symptom": "scenarioMap has no entries for 'confined' or 'on-hold'. Those records fall through to 'Unfinished record detected' fallback. Not wrong but unhelpful.",
+        "fix": "T2.46 (add 2 entries + fix line 1310 confined resolution default)"
+      }
+    ],
+    "severity_p2_p3_drift_and_polish": [
+      "Pulse event ID format fragmentation — 9 distinct formats across 10 call sites (T2.38)",
+      "statusHistory duplicates clinicalPulse data — 3 projections of status transitions (T2.45)",
+      "Ancestor chain walker duplicated between useAncestorChain and EndOfDayModal inline resolver (T2.49)",
+      "Phone prefix-match search doesn't handle format variations (T2.69)",
+      "~300 lines of dead code in ClinicalWorkspace (Widget, glucose, labQuickStats, dental/lameness, murmur/palpation, soapRef, applyTemplate, dead alert/confirm — T2.18)",
+      "Hardcoded clinic phone in SuperCard and PetHistoryScreen (T2.7)",
+      "Reminder banner timestamp crash on non-Timestamp nextVisit (T2.6)",
+      "useBookingEngine uses getDoc for clinic_settings — stale closedDates until remount (T2.5)",
+      "Mobile booking bypasses secureBookAppointment entirely (T2.11, Blaze-dependent)"
+    ]
+  },
+  "decision_log_this_session": {
+    "terminology_decisions": [
+      "LOCKED: visit = queue entry, case = multi-visit clinical thread, medical_record = SOAP doc, appointment = mobile client term",
+      "LOCKED: continuation has TWO forms — CONFINE (pet stays in clinic, new doc with status=confined) and Carry-Over (rebook action, pet goes home, new doc with status=confirmed). Both use originApptId + caseDay increment.",
+      "LOCKED: follow-up is a DIFFERENT concept from continuation — uses parentAppointmentId + parentRecordId, caseDay resets to 1, treated as new case."
+    ],
+    "architecture_decisions": [
+      "REJECTED: mid-shift new-doc creation as a feature — breaks forensicSeal timing, caseDay semantics, queue double-vision, reversal complexity. Use 'willContinueTomorrow' alternative? ALSO REJECTED — redundant with T2.46 which makes confined records default to 'hospitalize' at shift end.",
+      "LOCKED: dischargePolicy field with values 'required' | 'optional' (NO 'hidden' — always show the field, even for grooming, so a groomer can note concerning findings). Strictest-wins resolution across cart services.",
+      "LOCKED: Option B serviceType enum was REJECTED in favor of Option C (just dischargePolicy) because the user doesn't want staff confusing department vs serviceType. No new typing taxonomy.",
+      "LOCKED: LLM abstraction pattern with FEATURE_FLAGS.llmEnabled (default false), runClinicalReasoning() function supports both rule-based and LLM paths, Cloud Function gateway is the Blaze activation path. Presaved system prompt stored in Firestore system_prompts/clinical_reasoning doc.",
+      "LOCKED: Firestore append-only rule uses size() + hasAll() pattern (prefix-equality not expressible in Firestore rules syntax).",
+      "LOCKED: Clinical amendments to locked medical_records happen via new clinicalAmendments[] array field — append-only, preserves original SOAP. T2.75 is P2.",
+      "LOCKED: Seal lifecycle is 'snapshot not lock' — written on terminal transitions, cleared on reverts, overwritten on pre-clinical edits, preserved through amendments.",
+      "LOCKED: EndOfDayModal retroactive carry-over fix is MINIMAL — just add scenarioMap entries + fix confined resolution default. No guardrails, no new pulse event types. Originally over-engineered this (T2.46).",
+      "LOCKED: Client self-check-in (T2.76) uses static clinic QR + GPS geofencing (150m default, one-shot location check, graceful fallback for permission denial). No daily token rotation.",
+      "LOCKED: Option C for multi-pet check-in — shared queue number per visit group, staff can split if needed. Lightweight (N/M) indicator in queue until T3.12 ships proper grouped rows.",
+      "LOCKED: 4-tier ticket prefix scheme — A (appointment), W (walk-in), E (emergency), R (return). Self-check-in gets prefix based on booking origin (A), not check-in method. getTicketPrefix() helper shared across AssignStaffModal and self-check-in.",
+      "LOCKED: visitGroupId field added at booking time (T2.78) as data-model-only change. Full multi-pet visit UI support deferred to T3.12 (15-20 hrs).",
+      "LOCKED: findFirstBookableDate capacity check deferred (T2.86 P3) — current behavior acceptable for B5 initial ship, client can manually pick a different date if suggested one is full.",
+      "LOCKED: TOCTOU race fix (T2.87) — convert BookAppointment writeBatch to runTransaction. Zero cost increase, real correctness improvement.",
+      "LOCKED: serviceType field remains after T2.29 ships (primaryService removed). serviceType serves as visit-category label, slightly different semantic from services[0].name.",
+      "LOCKED: Online booking clinical passport is adequate — field set nearly identical to walk-in, real gap is data freshness not field count. Profile-up-to-date nudge (T2.88) is sufficient."
+    ],
+    "mobile_app_scope_decision": [
+      "LOCKED: VetConnect mobile app (VetConnect/) is CLIENT-ONLY going forward. All staff/admin screens are REMOVED from the mobile app.",
+      "REMOVED SCREENS: StaffDashboard.js, StaffAppointments.js, ManageQueueScreen.js, ScannerScreen.js, ConsultationScreen.js — these will be deprecated or deleted from the mobile codebase.",
+      "RATIONALE: All clinical staff operations happen exclusively through the web admin dashboard (VetConnect-Admin/). The mobile app is purely the pet-owner surface for booking, viewing appointments, receiving follow-up banners, and viewing pet health history.",
+      "ROLE-ROUTING CHANGE: App.js currently routes users with staff roles (admin/staff/veterinarian/groomer) to StaffDashboard. After this decision, ALL users route to ClientDashboard regardless of role. Staff use the web admin dashboard on desktop/tablet for their clinical work.",
+      "OPEN QUESTION — QR SCANNER: ScannerScreen.js uses expo-camera for QR check-in at the clinic. If the mobile app is client-only, staff lose their QR scanning tool. Options: (a) add webcam-based QR scanning to the admin dashboard, (b) keep ScannerScreen as a separate utility accessible to staff-role users only (exception to client-only rule), (c) replace QR check-in with manual name-search check-in in the admin dashboard, (d) use a dedicated tablet kiosk app. DECISION PENDING — resolve in next session.",
+      "THESIS IMPACT: Batch 3 scope and Batch 9 tech stack sections need to reflect this. The mobile app description changes from 'client + staff cross-platform app' to 'client-only pet owner mobile app'. T1.1 and T1.2 thesis rewrite tasks should incorporate this.",
+      "TASK IMPACT: No existing tasks in the master inventory specifically target mobile staff screens, so no cancellations needed. But the 'remaining territory to scan' section is updated — mobile staff flow screens are removed from the scan queue."
+    ],
+    "scope_decisions": [
+      "EXCLUDED from Records page: medical_records display (lives in PatientDashboard), billing reconciliation (lives in Sales), inventory tracking (lives in Inventory), real-time queue monitoring (lives in Queue), cross-record analytics (T3.8 reporting dashboard is separate).",
+      "INCLUDED in Records renovation: case-grouping view, case lineage badge, follow-up linkage in popover, amend audit log, bulk reschedule, bulk staff reassignment, saved filter presets, quick-range date buttons, phone normalization, MUI DatePicker swap with color cues.",
+      "DEFERRED to Phase 3: RA 10173 right-to-erasure anonymization (T3.11), LLM gateway (T3.6), grooming-specific consult form (T3.4), full RA 10173 consent system with 3 signature methods (T3.5), clinic-wide reporting dashboard with Blaze graduation scaffolding (T3.8)."
+    ]
+  },
+  "canceled_or_merged_tasks": [
+    {
+      "id": "T2.21",
+      "reason": "Duplicate of T2.17 (Treatment Plan sidebar rename)"
+    },
+    {
+      "id": "T2.36",
+      "reason": "Superseded by T2.63 (same scope: surface follow-up linkage in Records viewer)"
+    },
+    {
+      "id": "T2.55",
+      "reason": "willContinueTomorrow flag is redundant with T2.46 which already makes confined records default to 'hospitalize' at shift end"
+    },
+    {
+      "id": "T2.60",
+      "reason": "Merged into T2.61 — the vague 'Records enhancements' scope is absorbed by the concrete case-grouping view toggle"
+    }
+  ],
+  "master_task_inventory": {
+    "total_tasks": 95,
+    "total_effort_estimate": "~105-125 hours focused code work + ~25-35 days Phase 3 long-form features (includes multi-pet visit T3.12)",
+    "critical_path_to_defense": "~28-40 hours (every P0 + P1 across all phases)",
+    "phase_1_thesis_and_documentation": {
+      "task_count": 10,
+      "total_effort": "~15-25 hours",
+      "critical_path": "~13 hours (T1.1, T1.2, T1.4, T1.5, T1.6, T1.9 are P0)",
+      "tasks": [
+        {
+          "id": "T1.1",
+          "name": "Rewrite thesis Batch 3 scope/limits",
+          "priority": "P0",
+          "effort": "3-4 hrs"
+        },
+        {
+          "id": "T1.2",
+          "name": "Rewrite thesis Batch 9 stack/backend",
+          "priority": "P0",
+          "effort": "4-6 hrs"
+        },
+        {
+          "id": "T1.3",
+          "name": "Regenerate FDD features list Batch 2",
+          "priority": "P1",
+          "effort": "2-3 hrs"
+        },
+        {
+          "id": "T1.4",
+          "name": "Defense reconciliation addendum",
+          "priority": "P0",
+          "effort": "4-6 hrs"
+        },
+        {
+          "id": "T1.5",
+          "name": "Chapter IV temporal data model paragraph (visit/case/medical record)",
+          "priority": "P0",
+          "effort": "1-2 hrs"
+        },
+        {
+          "id": "T1.6",
+          "name": "Chapter IV clinical audit system paragraphs (strengths + limitations)",
+          "priority": "P0",
+          "effort": "1-2 hrs"
+        },
+        {
+          "id": "T1.7",
+          "name": "Chapter I glossary entries + admin UI helper text",
+          "priority": "P1",
+          "effort": "1 hr"
+        },
+        {
+          "id": "T1.8",
+          "name": "Audit thesis prose for overloaded 'record'",
+          "priority": "P1",
+          "effort": "30 min"
+        },
+        {
+          "id": "T1.9",
+          "name": "Chapter IV EndOfDayModal UI integrity paragraph",
+          "priority": "P0",
+          "effort": "30 min"
+        },
+        {
+          "id": "T1.10",
+          "name": "Chapter IV per-visit forensic record design paragraph",
+          "priority": "P1",
+          "effort": "30 min"
+        }
+      ]
+    },
+    "phase_2_code_tasks": {
+      "task_count": 61,
+      "total_effort": "~55-65 hours",
+      "critical_path_p0_and_p1": "~15-20 hours",
+      "tasks_by_priority": {
+        "p0_defense_blocking": [
+          {
+            "id": "T2.28-expanded",
+            "name": "Wire nextVisit UI + fix 5 follow-up creation bugs (scheduledDateStr, caseDay:1, INCEPTION pulse seed, parent service snapshot, isFollowUp queue badge)",
+            "effort": "2-3 hrs",
+            "depends_on": "T2.32"
+          },
+          {
+            "id": "T2.37",
+            "name": "Firestore rule: clinicalPulse append-only enforcement (size + hasAll)",
+            "effort": "1-2 hrs"
+          },
+          {
+            "id": "T2.42",
+            "name": "Revert terminal drift fix: clear forensicSeal + mandatory reversal reason + TERMINAL_REVERSAL event",
+            "effort": "30 min"
+          },
+          {
+            "id": "T2.44",
+            "name": "Write forensicSeal on normal sign-off + changeStatus completed path",
+            "effort": "30 min"
+          },
+          {
+            "id": "T2.57",
+            "name": "Records.jsx bug fixes (jsScheduled, vets query, departments, nav)",
+            "effort": "45 min"
+          },
+          {
+            "id": "T2.58",
+            "name": "Records.jsx terminology cleanup",
+            "effort": "30 min"
+          },
+          {
+            "id": "T2.79",
+            "name": "Fix tiered pricing: resolve per-pet weight, not first pet only (BookAppointment.js:308)",
+            "effort": "30 min",
+            "note": "BILLING BUG — wrong prices on every multi-pet booking with different-weight pets"
+          }
+        ],
+        "p1_high_priority": [
+          {
+            "id": "T2.1",
+            "name": "Firestore RBAC rules (isStaff + isAdmin helpers)",
+            "effort": "2 hrs"
+          },
+          {
+            "id": "T2.2",
+            "name": "Printable visit summary",
+            "effort": "2-3 hrs"
+          },
+          {
+            "id": "T2.3",
+            "name": "Printable vaccination record",
+            "effort": "1-2 hrs"
+          },
+          {
+            "id": "T2.4",
+            "name": "Printable referral report",
+            "effort": "1-2 hrs"
+          },
+          {
+            "id": "T2.30",
+            "name": "Multi-staff clinical attribution",
+            "effort": "2 hrs"
+          },
+          {
+            "id": "T2.31",
+            "name": "Protect default inventory categories (isDefault flag + rule)",
+            "effort": "1-2 hrs"
+          },
+          {
+            "id": "T2.32",
+            "name": "Extract SoapGrid component (blocks T2.28)",
+            "effort": "2-3 hrs"
+          },
+          {
+            "id": "T2.33",
+            "name": "dischargePolicy per service (required/optional)",
+            "effort": "1.5 hrs"
+          },
+          {
+            "id": "T2.41",
+            "name": "Remove caseDay increment from reschedule path",
+            "effort": "10 min"
+          },
+          {
+            "id": "T3.10a",
+            "name": "View in Records quick link on queue row",
+            "effort": "30 min"
+          }
+        ],
+        "p2_medium_priority": [
+          {
+            "id": "T2.5",
+            "name": "useBookingEngine onSnapshot for clinic_settings",
+            "effort": "30 min"
+          },
+          {
+            "id": "T2.6",
+            "name": "Reminder banner timestamp crash fix",
+            "effort": "5 min"
+          },
+          {
+            "id": "T2.8",
+            "name": "Path A clientReport split (mobile-visible vs admin-only subjective)",
+            "effort": "1 hr"
+          },
+          {
+            "id": "T2.9",
+            "name": "Cloud Functions fate decision",
+            "effort": "15 min - 4 hrs"
+          },
+          {
+            "id": "T2.12",
+            "name": "Rename Sign Digital Consent → Lock Clinical Record",
+            "effort": "15 min"
+          },
+          {
+            "id": "T2.13",
+            "name": "Refactor CRM Sovereignty (delete sync, keep vitals cache)",
+            "effort": "1 hr"
+          },
+          {
+            "id": "T2.14",
+            "name": "Fix auto-bundling (all services + stock guard)",
+            "effort": "30 min"
+          },
+          {
+            "id": "T2.15",
+            "name": "Expand KNOWLEDGE_BASE to 30+ rules + LLM-ready abstraction + feature flag + system prompt doc",
+            "effort": "3-4 hrs"
+          },
+          {
+            "id": "T2.16",
+            "name": "POSModal reserved decrement leak fix",
+            "effort": "30-60 min"
+          },
+          {
+            "id": "T2.22",
+            "name": "Vaccine-aware inventory + auto-fill SOAP vaccine form from cart",
+            "effort": "2-3 hrs"
+          },
+          {
+            "id": "T2.23",
+            "name": "useBookingEngine reads lastVitals.weight",
+            "effort": "30 min"
+          },
+          {
+            "id": "T2.24-27",
+            "name": "Promote lab results (mobile card + admin agg + units + print)",
+            "effort": "2-3 hrs"
+          },
+          {
+            "id": "T2.29",
+            "name": "Ditch primaryService field",
+            "effort": "2 hrs"
+          },
+          {
+            "id": "T2.43",
+            "name": "Resolve carried-over → arrived transition ambiguity",
+            "effort": "30 min"
+          },
+          {
+            "id": "T2.45",
+            "name": "Eliminate statusHistory duplication (derive from pulse)",
+            "effort": "45 min"
+          },
+          {
+            "id": "T2.50",
+            "name": "Typed confirmation for Active-silo batch cancel",
+            "effort": "30 min"
+          },
+          {
+            "id": "T2.51",
+            "name": "IDENTITY_EDIT pulse event for Queue.saveEdit",
+            "effort": "15 min"
+          },
+          {
+            "id": "T2.52",
+            "name": "Atomic handleDispenseVerified (single transaction)",
+            "effort": "20 min"
+          },
+          {
+            "id": "T2.59",
+            "name": "Records.jsx UX polish (MUI Dialog, search clear, date UX, icons, pagination)",
+            "effort": "1.5 hrs"
+          },
+          {
+            "id": "T2.61",
+            "name": "Records.jsx case-grouping view toggle (Visit View ↔ Case View)",
+            "effort": "2 hrs"
+          },
+          {
+            "id": "T2.65",
+            "name": "Amend audit log for terminal records (AUDIT_ADDENDUM pulse type)",
+            "effort": "1 hr"
+          },
+          {
+            "id": "T2.70",
+            "name": "Quick-range date filter buttons in Records header",
+            "effort": "30 min"
+          },
+          {
+            "id": "T2.71",
+            "name": "Saved filter presets for Records (per-user subcollection)",
+            "effort": "2.5 hrs"
+          },
+          {
+            "id": "T2.75",
+            "name": "Clinical amendment path for locked medical records (clinicalAmendments array + dialog + mobile render)",
+            "effort": "3 hrs",
+            "priority_note": "MOST IMPORTANT P2 — closes patient-safety gap"
+          },
+          {
+            "id": "T2.80",
+            "name": "Fix POSModal to iterate services[] instead of scalar serviceType/servicePrice for multi-service billing",
+            "effort": "1-2 hrs",
+            "note": "DATA CONTRACT BUG — multi-service bundles show as one line item at POS"
+          },
+          {
+            "id": "T2.87",
+            "name": "Convert BookAppointment JIT check + writeBatch to runTransaction (TOCTOU race fix)",
+            "effort": "45 min"
+          }
+        ],
+        "p3_polish_and_deferred": [
+          {
+            "id": "T2.7",
+            "name": "Move hardcoded clinic phone to settings",
+            "effort": "30 min"
+          },
+          {
+            "id": "T2.10",
+            "name": "Delete orphaned Firestore collections via console",
+            "effort": "5 min"
+          },
+          {
+            "id": "T2.11",
+            "name": "Wire mobile to secureBookAppointment (Blaze-conditional)",
+            "effort": "1-2 hrs"
+          },
+          {
+            "id": "T2.17",
+            "name": "Rename Treatment Plan sidebar → Services & Items",
+            "effort": "5 min"
+          },
+          {
+            "id": "T2.18",
+            "name": "ClinicalWorkspace dead code cleanup pass (absorbs T2.18.1-3, T2.47, SILO enum)",
+            "effort": "1-2 days"
+          },
+          {
+            "id": "T2.19",
+            "name": "handleSaveDraft optimistic lock",
+            "effort": "15 min"
+          },
+          {
+            "id": "T2.20",
+            "name": "Empty-cart sign-off confirm dialog",
+            "effort": "15 min"
+          },
+          {
+            "id": "T2.34",
+            "name": "Normalize lineage field terminology",
+            "effort": "2 hrs"
+          },
+          {
+            "id": "T2.35",
+            "name": "useCaseChain bidirectional walker",
+            "effort": "2-3 hrs"
+          },
+          {
+            "id": "T2.38",
+            "name": "Unified pulse eventId format + schemaVersion (10 call sites)",
+            "effort": "35 min"
+          },
+          {
+            "id": "T2.39",
+            "name": "Code comments at Timestamp.now() pulse sites",
+            "effort": "15 min"
+          },
+          {
+            "id": "T2.46",
+            "name": "EndOfDayModal polish (scenarioMap + confined default)",
+            "effort": "15 min"
+          },
+          {
+            "id": "T2.46.1",
+            "name": "Rename rebook → reschedule/carryover",
+            "effort": "45 min"
+          },
+          {
+            "id": "T2.49",
+            "name": "Unify ancestor chain walkers into shared ancestorChainUtils.js module (covers 3 consumers: useAncestorChain hook, EndOfDayModal inline resolver, Queue.jsx popover inline calculation). Extract resolveAncestorChain() + computeCaseMetrics() pure functions. MUST include snapshot regression test: mock a 3-day case, capture current output from all 3 impls before refactor, verify identical output after refactor. Wire consumers one at a time.",
+            "effort": "1.25 hrs"
+          },
+          {
+            "id": "T2.53",
+            "name": "rescheduleAppointment runTransaction conversion",
+            "effort": "15 min"
+          },
+          {
+            "id": "T2.54",
+            "name": "IDENTITY_HEALING pulse event for gender correction",
+            "effort": "10 min"
+          },
+          {
+            "id": "T2.56",
+            "name": "CONFINE date picker color cues + MUI DatePicker swap (Option A)",
+            "effort": "1 hr"
+          },
+          {
+            "id": "T2.62",
+            "name": "Case lineage indicator column (1/4 badge)",
+            "effort": "30 min"
+          },
+          {
+            "id": "T2.63",
+            "name": "Follow-up linkage surface in audit popover",
+            "effort": "1 hr"
+          },
+          {
+            "id": "T2.66",
+            "name": "Defer triage action in Records",
+            "effort": "20 min"
+          },
+          {
+            "id": "T2.67",
+            "name": "Edit identity fields action in Records",
+            "effort": "45 min"
+          },
+          {
+            "id": "T2.68",
+            "name": "Copy ID + print record actions",
+            "effort": "30 min"
+          },
+          {
+            "id": "T2.69",
+            "name": "Phone normalization (phoneNormalized field + migration)",
+            "effort": "1.5 hrs"
+          },
+          {
+            "id": "T2.72",
+            "name": "Structured reschedule pulse + undo reschedule capability",
+            "effort": "45 min"
+          },
+          {
+            "id": "T2.73",
+            "name": "Bulk reschedule action in Records",
+            "effort": "2 hrs"
+          },
+          {
+            "id": "T2.74",
+            "name": "Bulk staff reassignment action in Records",
+            "effort": "1.5 hrs"
+          },
+          {
+            "id": "T2.76",
+            "name": "Client self-check-in via clinic QR scan (static QR + GPS geofencing + Option C shared queue number + staff split action)",
+            "effort": "5-6 hrs"
+          },
+          {
+            "id": "T2.77",
+            "name": "Implement 4-tier ticket prefix scheme (A=appointment, W=walk-in, E=emergency, R=return) via getTicketPrefix helper",
+            "effort": "30 min"
+          },
+          {
+            "id": "T2.78",
+            "name": "Add visitGroupId to appointment docs at multi-pet booking time (data-model-only, no UI)",
+            "effort": "30 min"
+          },
+          {
+            "id": "T2.81",
+            "name": "Fix advanceNoticeBuffer phantom field (should read advanceNoticeMins)",
+            "effort": "5 min"
+          },
+          {
+            "id": "T2.82",
+            "name": "Mixed-species service filter warning banner in BookAppointment",
+            "effort": "15 min"
+          },
+          {
+            "id": "T2.83",
+            "name": "Debounce slot generation / cache day appointments in useBookingEngine",
+            "effort": "30 min"
+          },
+          {
+            "id": "T2.84",
+            "name": "Write serviceBuffer to appointment root for busyness calculator consistency",
+            "effort": "10 min"
+          },
+          {
+            "id": "T2.85",
+            "name": "Zero-capacity department user explanation in slot grid",
+            "effort": "20 min"
+          },
+          {
+            "id": "T2.86",
+            "name": "findFirstBookableDate lightweight capacity check for B5 prefill",
+            "effort": "1 hr"
+          },
+          {
+            "id": "T2.87",
+            "name": "Convert BookAppointment JIT check + writeBatch to runTransaction (TOCTOU fix)",
+            "effort": "45 min"
+          },
+          {
+            "id": "T2.88",
+            "name": "Profile up-to-date nudge on BookAppointment review step",
+            "effort": "20 min"
+          },
+          {
+            "id": "T2.89",
+            "name": "Past-date submit guard in BookAppointment.submitBooking",
+            "effort": "10 min"
+          }
+        ]
+      }
+    },
+    "phase_3_future_and_polish": {
+      "task_count": 11,
+      "tasks": [
+        {
+          "id": "T3.1",
+          "name": "EMRDrawer slide-over (historical context in consult)",
+          "priority": "P2",
+          "effort": "1 day"
+        },
+        {
+          "id": "T3.2",
+          "name": "Multi-vaccine per visit + manual form toggle",
+          "priority": "P2",
+          "effort": "1 day"
+        },
+        {
+          "id": "T3.3",
+          "name": "Printable vaccination passport",
+          "priority": "P2",
+          "effort": "0.5 day"
+        },
+        {
+          "id": "T3.4",
+          "name": "Grooming-specific consult form",
+          "priority": "P3",
+          "effort": "1-2 days"
+        },
+        {
+          "id": "T3.5",
+          "name": "Real RA 10173 informed consent system (canvas + typed + scanned signatures)",
+          "priority": "P2",
+          "effort": "8-12 days"
+        },
+        {
+          "id": "T3.6",
+          "name": "Cloud Function LLM gateway + system prompts Firestore doc + AI audit trail",
+          "priority": "P3 (Blaze-dep)",
+          "effort": "2-3 days"
+        },
+        {
+          "id": "T3.8",
+          "name": "Clinic-wide forensic reporting dashboard + Blaze graduation scaffolding",
+          "priority": "P1",
+          "effort": "3-4 days"
+        },
+        {
+          "id": "T3.9",
+          "name": "Admin-only revert from terminal states with auditLog entry",
+          "priority": "P2",
+          "effort": "1 hr"
+        },
+        {
+          "id": "T3.10b",
+          "name": "Recently Resolved panel with undo in Queue header",
+          "priority": "P2",
+          "effort": "2-3 hrs"
+        },
+        {
+          "id": "T3.10c",
+          "name": "Show resolved today toggle",
+          "priority": "P3 (demoted)",
+          "effort": "1 hr"
+        },
+        {
+          "id": "T3.10d",
+          "name": "Global patient search in Queue header",
+          "priority": "P2",
+          "effort": "1-2 hrs"
+        },
+        {
+          "id": "T3.11",
+          "name": "RA 10173 right-to-erasure anonymization workflow",
+          "priority": "P2 (defense prep)",
+          "effort": "4 hrs"
+        }
+      ]
+    },
+    "recommended_ship_sequence": [
+      "WEEK 1 DAY 1 AM: T2.37 + T2.42 + T2.44 + T2.57 + T2.58 + T2.41 (~6 hrs — unblocks structural issues)",
+      "WEEK 1 DAY 1 PM: T1.4 defense addendum (~4-6 hrs writing)",
+      "WEEK 1 DAY 2 AM: T2.32 + T2.28-expanded (~5 hrs — activates B5 follow-up booking)",
+      "WEEK 1 DAY 2 PM: T1.1 + T1.2 thesis rewrites (~8 hrs writing)",
+      "WEEK 1 DAY 3: T2.2 + T2.3 + T2.4 printables (~6 hrs)",
+      "WEEK 1 DAY 4: T1.5 + T1.6 + T1.9 + T1.10 + T2.1 RBAC (~6 hrs)",
+      "END OF WEEK 1: Defense-ready core complete",
+      "WEEK 2 DAY 5: T2.33 + T2.75 + T2.65 (~5 hrs — completes audit story)",
+      "WEEK 2 DAY 6: T2.61 + T2.62 + T2.63 (~3.5 hrs — completes Records demo story)",
+      "WEEK 2 DAY 7: T2.13 + T2.14 + T2.50 + T2.70 + T2.71 + T3.10a (~6 hrs — polish)",
+      "END OF WEEK 2: Everything high-value shipped",
+      "WEEK 3+: P2/P3 items, T2.18 cleanup pass, Phase 3 as time permits"
+    ]
+  },
+  "do_not_redo_list_for_fresh_session": {
+    "already_scanned_no_need_to_reread": [
+      "EndOfDayModal.jsx structure and silo logic — documented in architecture_insights",
+      "Records.jsx bugs — documented in bugs_and_drift_found_this_session",
+      "pulseUtils.js W1-W9 weaknesses — documented in known_issues_updated and architecture_insights",
+      "statusConstants.js state machine — documented in architecture_insights.status_machine_structure",
+      "useQueueActions.js action inventory — documented in file_audit_status",
+      "BookAppointment.js full wizard flow + writeBatch structure — documented in MOBILE_BOOKING_DEEPDIVE.md",
+      "useBookingEngine.js Enterprise Tetris algorithm + findFirstBookableDate — documented in MOBILE_BOOKING_DEEPDIVE.md",
+      "AddPetScreen.js field set and validation — documented in file_audit_status.mobile_app_scan_status",
+      "EditPetScreen.js field set and Deletion Shield — documented in file_audit_status.mobile_app_scan_status"
+    ],
+    "architectural_questions_already_answered": [
+      "Why follow-up uses different linkage than carry-over — see architecture_insights.dual_linkage_rationale",
+      "Whether mid-shift new-doc creation is worth building — NO, breaks 5 invariants, use willContinueTomorrow alternative — which is ALSO rejected as redundant with T2.46",
+      "Whether to unify visit/case/medical-record terminology — YES, locked as visit/case/medical_record",
+      "Whether dischargePolicy should have 'hidden' value — NO, two values (required/optional), always show the field",
+      "Whether willContinueTomorrow flag is worth building — NO, T2.46 handles this via smarter defaults for confined records",
+      "Whether the system is genuinely good or a mess — GOOD, well-architected with 4 bounded drift points totaling ~2.5 hrs cleanup",
+      "Whether online bookings have fewer clinical passport fields than walk-ins — NO, field sets are nearly identical (1 field difference: isAgeExact). Real gap is data FRESHNESS not field count. Profile nudge (T2.88) is sufficient.",
+      "Whether findFirstBookableDate needs capacity checking for B5 — deferred to T2.86, current behavior acceptable for initial ship",
+      "Whether BookAppointment TOCTOU race is worth fixing — YES, zero cost (same reads/writes just wrapped in transaction), T2.87",
+      "Whether self-check-in needs its own ticket prefix — NO, prefix reflects booking ORIGIN not check-in METHOD. 4-tier scheme: A/W/E/R",
+      "Whether multi-pet visits need per-pet service customization — NOT NOW, current same-services-all-pets design is documented, per-pet customization is a future redesign of step 2",
+      "Whether multi-pet shared queue number or separate — Option C (shared, staff split if needed)",
+      "Whether T2.46 needed guardrails — NO, I over-engineered it initially, final scope is 15-minute polish fix",
+      "Whether follow-ups should be walked by useAncestorChain — NO, deliberately separate"
+    ],
+    "decisions_locked_do_not_reopen": [
+      "Terminology: visit / case / medical_record / appointment",
+      "CONFINE vs Carry-Over are sibling continuation forms (both use originApptId, differ only in starting status)",
+      "Follow-up is distinct: uses parentAppointmentId + parentRecordId, caseDay resets to 1",
+      "dischargePolicy: required | optional (no hidden)",
+      "LLM integration pattern: feature flag + abstraction + Cloud Function gateway as Blaze activation path",
+      "Seal lifecycle: snapshot-not-lock, cleared on revert, written on all terminals after T2.42+T2.44",
+      "Records scope: appointments only, not medical_records or billing",
+      "Option C chosen over Option B for service typing (no new serviceType enum)"
+    ]
+  },
+  "known_issues_updated": {
+    "from_prior_handoff_still_valid": [
+      {
+        "id": "reminder_banner_timestamp_crash",
+        "severity": "P2",
+        "fix_task": "T2.6",
+        "file": "VetConnect/src/screens/PetHistoryScreen.js:440-451"
+      },
+      {
+        "id": "booking_engine_stale_clinic_settings",
+        "severity": "P2",
+        "fix_task": "T2.5",
+        "file": "VetConnect/src/hooks/useBookingEngine.js"
+      },
+      {
+        "id": "clinic_phone_hardcoded",
+        "severity": "P3",
+        "fix_task": "T2.7",
+        "files": [
+          "VetConnect/src/components/SuperCard.js:~17",
+          "VetConnect/src/screens/PetHistoryScreen.js"
+        ]
+      },
+      {
+        "id": "cloud_functions_are_dead_code",
+        "severity": "P1",
+        "fix_task": "T2.9",
+        "file": "VetConnect-Backend/functions/index.js"
+      },
+      {
+        "id": "mobile_bypasses_secureBookAppointment",
+        "severity": "P2",
+        "fix_task": "T2.11 (Blaze-conditional)",
+        "file": "VetConnect/src/screens/BookAppointment.js:~364-404"
+      }
+    ],
+    "newly_identified_this_session": [
+      {
+        "id": "b5_shipped_but_nonfunctional",
+        "severity": "P0",
+        "fix_task": "T2.28-expanded",
+        "note": "B5 one-tap follow-up booking has code but no UI input to trigger it. Blocked at the Plan quadrant."
+      },
+      {
+        "id": "forensic_seal_coverage_hole_on_happy_path",
+        "severity": "P0",
+        "fix_task": "T2.44",
+        "note": "Normal sign-off does not write a seal. Only exception paths do."
+      },
+      {
+        "id": "seal_drift_on_revert",
+        "severity": "P0",
+        "fix_task": "T2.42",
+        "note": "revertStatus leaves old seal in place. Stale frozen metrics on reverted records."
+      },
+      {
+        "id": "clinicalPulse_not_append_only_at_firestore_layer",
+        "severity": "P0",
+        "fix_task": "T2.37",
+        "note": "Integrity is application-layer only. Malicious/buggy client can erase audit history."
+      },
+      {
+        "id": "records_three_broken_filters_plus_nav_bug",
+        "severity": "P0",
+        "fix_task": "T2.57",
+        "note": "jsScheduled field doesn't exist, vets query wrong collection, departments wrong source, window.location navigation"
+      },
+      {
+        "id": "saveEdit_no_audit_trail",
+        "severity": "P1",
+        "fix_task": "T2.51",
+        "note": "Queue.saveEdit allows full patient identity edit with zero clinicalPulse trail"
+      },
+      {
+        "id": "dispense_verify_not_atomic",
+        "severity": "P1",
+        "fix_task": "T2.52"
+      },
+      {
+        "id": "carried_over_transition_possibly_dead_code",
+        "severity": "P2",
+        "fix_task": "T2.43"
+      },
+      {
+        "id": "pulse_event_id_format_fragmentation",
+        "severity": "P2",
+        "fix_task": "T2.38",
+        "note": "9 distinct eventId formats across 10 call sites"
+      },
+      {
+        "id": "medical_record_no_clinical_amendment_path",
+        "severity": "P2",
+        "fix_task": "T2.75",
+        "note": "Patient-safety gap — locked medical_records cannot be corrected for clinical errors"
+      },
+      {
+        "id": "tiered_pricing_uses_first_pet_weight_for_all",
+        "severity": "P0",
+        "fix_task": "T2.79",
+        "note": "BookAppointment.js:308 reads selectedPets[0]?.lastWeight for ALL pets. A 5kg Chihuahua and 40kg Labrador both get Chihuahua price tier."
+      },
+      {
+        "id": "posmodal_ignores_services_array",
+        "severity": "P1",
+        "fix_task": "T2.80",
+        "note": "POSModal.jsx:52-53 reads scalar serviceType/servicePrice. Multi-service bundles produce ONE line item instead of itemized services."
+      },
+      {
+        "id": "booking_toctou_race_condition",
+        "severity": "P2",
+        "fix_task": "T2.87",
+        "note": "BookAppointment JIT capacity check separate from writeBatch commit. Concurrent bookings can both succeed for the last slot."
+      },
+      {
+        "id": "advance_notice_buffer_phantom_field",
+        "severity": "P3",
+        "fix_task": "T2.81",
+        "note": "BookAppointment.js:701 reads clinicSettings.advanceNoticeBuffer which does not exist. Always shows 2 hour regardless of actual setting."
+      }
+    ]
+  },
+  "execution_patterns": {
+    "sub_agent_delegation": "When implementing non-trivial features (>3 line surgical fix), delegate to elite-code-engineer with self-contained prompt. Exceptions: trivial edits, diagnostic reads.",
+    "static_review_after_implementation": "After any feature ships, invoke code-quality-reviewer sub-agent for static review. Inline execution bypasses this safety net. Review has caught real P0 bugs (B5 auditReason, A3 freshDefaults).",
+    "planning_before_implementation": "For any feature >2 hours of work, create implementation plan file first (via implementation-planner sub-agent) before coding. Plan file naming: FEATURE_NAME_PLAN.md at repo root.",
+    "manual_qa_before_claiming_done": "For any UI change, start dev server and use feature in browser/device before declaring done. Type checks verify code correctness, not feature correctness.",
+    "architectural_pressure_testing": "This session demonstrated value of reading files before proposing fixes. Multiple times I over-engineered based on incomplete reading. Lesson: grep and read first, propose second."
+  },
+  "commit_conventions": {
+    "format": "<type>(<scope>): <short description>",
+    "types": [
+      "feat",
+      "fix",
+      "docs",
+      "chore",
+      "refactor",
+      "test",
+      "style"
+    ],
+    "scopes_used": [
+      "admin",
+      "mobile",
+      "backend"
+    ],
+    "co_author_policy": "No Co-Authored-By trailers. Use commit title only."
+  },
+  "key_conventions": {
+    "firebase_config_locations": [
+      "VetConnect/firebaseConfig.js",
+      "VetConnect-Admin/firebaseConfig.js"
+    ],
+    "phone_validation_regex": "^09\\d{9}$",
+    "qr_code_format": "VC-{userId5chars}-{timestamp}-{index}",
+    "appointment_status_lifecycle": "pending → confirmed → arrived → in-consult → dispensing → billing → completed (with branches to cancelled, no-show, confined, on-hold, carried-over)",
+    "timezone": "Asia/Manila for all server-side scheduling",
+    "date_string_format": "ISO YYYY-MM-DD for closedDates and scheduledDateStr fields",
+    "design_tokens_mandatory": "All admin styling must reference COLORS, TYPE, FONT from VetConnect-Admin/src/theme/designTokens.js"
+  },
+  "next_steps_for_fresh_session": {
+    "immediate_priorities": [
+      "ALL Staff decisions are LOCKED — no pending decisions. Tasks T2.208-T2.227 + T3.40-T3.42 fully scoped and committed to MASTER_TASKLIST.md",
+      "ALL Services decisions are LOCKED — no pending decisions. Tasks T2.191-T2.207 fully scoped and committed to MASTER_TASKLIST.md",
+      "All 7 admin feature modules fully scanned and pressure-tested: Queue, Records, Patients, Sales, Inventory, Services, Staff",
+      "Remaining scans: 4 admin standalone pages (Dashboard, Monitor, Expenses, Login) + 8 mobile client screens",
+      "System is approaching implementation readiness — 248 tasks across 15 batch groupings with 15-day ship sequence"
+    ],
+    "remaining_scans": [
+      "Admin standalone pages: Dashboard.jsx, Monitor.jsx, Expenses.jsx, Login.jsx — can be batched in 1 quick scan",
+      "Mobile client screens: 4 unscanned (QueueScreen, ChatbotScreen, UserProfileScreen, MyPetsScreen) + 4 partial (ClientDashboard, ClientAppointments, PetHistoryScreen, SuperCard)"
+    ],
+    "unscoped_items_deferred": [
+      "12 items identified that would push B/B+ modules to A- but NOT yet scoped as tasks:",
+      "1. clinicalRole field separation (Staff — agreed P3, no task ID assigned)",
+      "2. Staff schedule/availability (workingDays[] per staff — new concept)",
+      "3. Staff KPI dashboard (wire dead KPICard instead of deleting — opposite of T2.221)",
+      "4. Settings change history viewer UI (T2.181 writes diffs but no UI reads them)",
+      "5. Settings configuration validation preview (new concept)",
+      "6. Sales multi-day date range view (new concept, overlaps T3.8)",
+      "7. Sales revenue trend visualization (new concept, overlaps T3.8)",
+      "8. Sales deposit lifecycle tracking (partially covered by T2.102)",
+      "9. Expand designTokens.js with missing tokens (#FFF8E1, #757575, etc.)",
+      "10. Resolve borderRadius contradiction (CLAUDE.md vs designTokens.js)",
+      "11. Cross-system correlation ID for checkout (audit gap #1)",
+      "12. Reserve/release audit logging (audit gap #2)",
+      "ACTION: Scope these after remaining admin pages + mobile screens are scanned"
+    ],
+    "implementation_readiness": "248 tasks accumulated across 4+ sessions. All deep-dive docs + MASTER_TASKLIST.md are current. All admin feature modules scanned and pressure-tested. 12 items identified for A-grade push but deferred to after remaining scans."
+  },
+  "workflow_continuation_for_next_areas": {
+    "important_note": "The user explicitly wants to CONTINUE the prior session's investigative workflow (deep scan + architectural pressure-testing + task accumulation) for NEW parts of the ecosystem that haven't been scanned yet. The fresh session will NOT automatically adopt this workflow — you must explicitly prompt for it using one of the recommended_first_prompts below. Default Claude behavior is to execute tasks when asked; this workflow is investigative and must be requested.",
+    "prior_session_style_and_rules": {
+      "approach": "Deep file scans followed by architectural pressure-testing via conversational Q&A",
+      "workflow_steps": [
+        "1. Read target files end-to-end OR grep-trace all write paths before proposing anything",
+        "2. Identify bugs, drift, and architectural patterns with specific line numbers",
+        "3. Propose fixes as tasks with priority/effort/dependencies",
+        "4. User pressure-tests proposals ('is this really a problem?', 'what are the downsides?', 'what about edge case X?')",
+        "5. Claude acknowledges mistakes, revises scope, cancels redundant tasks, locks decisions",
+        "6. Terminology and architectural questions resolved with explicit lock-in",
+        "7. Every session round produces new tasks added to master_task_inventory"
+      ],
+      "style_rules": [
+        "Be blunt, not sycophantic. If the system is good, say so with specifics. If broken, say so with line numbers.",
+        "Read files BEFORE proposing fixes. Don't pattern-match from assumptions — actually grep and read.",
+        "Acknowledge mistakes openly. I did this ~6 times in the prior session (Gap 4 over-engineering, CONFINE vs Carry-Over misread, willContinueTomorrow redundant, T2.46 over-engineered, terminology initial mistake, 'sealed' overclaiming).",
+        "Avoid over-engineering. If user asks 'is this really problematic', trust the question and re-examine the assumption rather than defending the original proposal.",
+        "Propose cancellations when tasks become redundant. Prior session canceled 4 tasks and merged 1 (T2.21, T2.36, T2.55, T2.60).",
+        "Lock terminology explicitly — don't leave vocabulary ambiguous (visit/case/medical_record/appointment was locked this session, contrast with initial sloppy 'record' overloading).",
+        "Every round adds to the task list. Priorities get re-shuffled as context accumulates."
+      ],
+      "mistakes_to_avoid": [
+        "Do NOT propose fixes without reading the target file first. Push back if Claude does this: 'did you actually read the file?'",
+        "Do NOT over-engineer small problems. Prior session repeatedly shrunk tasks after pressure testing (T2.46 went from 3-4 hours hardened version to 15-minute polish).",
+        "Do NOT conflate concepts. Prior session conflated CONFINE with Carry-Over, conflated 'seal' with 'lock', conflated 'record' with 'visit'. User had to correct each one explicitly.",
+        "Do NOT add features that break existing invariants. willContinueTomorrow was proposed, then canceled because T2.46 already handled it via simpler default-value change."
+      ]
+    },
+    "remaining_territory_not_yet_scanned": {
+      "admin_dashboard_features": [
+        "VetConnect-Admin/src/features/Patients/ — the CRM module. Includes Patients.jsx directory, PatientDashboard.jsx (per-pet :id route), ClientDetails, ClientHeader, BillingLedger, InternalLogs, PatientDirectory, PetList, AddPetModal, EditPetModal, NewClientModal, QuickBookModal, usePatientManager hook. NOT SCANNED.",
+        "VetConnect-Admin/src/features/Inventory/ — PARTIALLY scanned. Inventory.jsx seed logic for default categories was read (T2.31). ProductFormModal, InventoryTable, GlobalActivityLog, InventoryLogModal, ConfirmDeleteModal, StockAdjustModal, useInventory hook — NOT scanned.",
+        "VetConnect-Admin/src/features/Services/ — PARTIALLY scanned. ServiceFormModal linkedProducts code was read (T2.22). Services.jsx, ServiceTable, ServiceActivityLog, ServiceLogModal, useServices hook — NOT scanned.",
+        "VetConnect-Admin/src/features/Sales/ — NOT SCANNED. Sales.jsx, EodSummary, useSalesData hook.",
+        "VetConnect-Admin/src/features/Staff/ — NOT SCANNED. Staff.jsx, StaffTable, StaffFormModal, ConfirmRevokeModal, useStaffManager hook."
+      ],
+      "admin_dashboard_pages": [
+        "VetConnect-Admin/src/pages/Dashboard.jsx — landing page for admin",
+        "VetConnect-Admin/src/pages/Monitor.jsx — fullscreen lobby TV (no sidebar)",
+        "VetConnect-Admin/src/pages/Expenses.jsx — expense tracking",
+        "VetConnect-Admin/src/pages/Settings.jsx — PARTIALLY scanned (closedDates UI), rest not",
+        "VetConnect-Admin/src/pages/Login.jsx"
+      ],
+      "admin_dashboard_shared_components": [
+        "VetConnect-Admin/src/components/POSModal.jsx (554 lines) — read in prior ecosystem report via grep, NOT deep-scanned. FIFO batch deduction, runTransaction checkout, receipt print flow, T2.16 reserved decrement leak to verify.",
+        "VetConnect-Admin/src/components/Sidebar.jsx — quick scan only, adminOnly gating understood",
+        "VetConnect-Admin/src/components/ClinicalWorkspace.jsx — FULLY AUDITED (13 questions). See CLINICAL_WORKSPACE_DEEPDIVE.md. No further scanning needed."
+      ],
+      "mobile_app_scan_status": [
+        "FULLY SCANNED: BookAppointment.js (via codebase-architecture-researcher sub-agent deep-dive — see MOBILE_BOOKING_DEEPDIVE.md). Found: 2 HIGH bugs (tiered pricing uses first pet weight for all, POSModal ignores services[]), TOCTOU race, phantom advanceNoticeBuffer field, group booking prefix chain pollution, no per-pet service customization.",
+        "FULLY SCANNED: useBookingEngine.js (383 lines, Enterprise Tetris algorithm fully traced — see MOBILE_BOOKING_DEEPDIVE.md). Found: stale clinic_settings via getDoc (T2.5), slot gen re-queries on every toggle, findFirstBookableDate doesn't check capacity, closedDates guard works correctly.",
+        "FULLY SCANNED: AddPetScreen.js (827 lines, read via IDE this session). Fields: name, species, breed, color, gender, isNeutered, weight, lastWeight, microchip, petAllergies, dob, isAgeExact. 3-mode DOB (exact/approximate/vet-estimate). Biology Shield 30-year cap. No issues found.",
+        "FULLY SCANNED: EditPetScreen.js (654 lines, read via IDE this session). Same field set as AddPetScreen. Writes updatedAt. Deletion Shield mentioned in comments but not implemented in this file. Duplicate BREED_DATA (slightly different from AddPetScreen — Labrador vs Labrador Retriever, has Scottish Fold, etc). Duplicate allergy styles.",
+        "PARTIALLY SCANNED: ClientDashboard.js — reminder banner, push token registration. Not fully traced.",
+        "PARTIALLY SCANNED: ClientAppointments.js — B5 follow-up banner, SuperCard rendering. Not fully traced.",
+        "PARTIALLY SCANNED: PetHistoryScreen.js — discharge/vaccine/lab sections, reminder banner crash (T2.6). Not fully traced.",
+        "PARTIALLY SCANNED: SuperCard.js — hardcoded phone (T2.7). Not fully traced.",
+        "PARTIALLY SCANNED: statusLabels.js — 12-status badge system, sanitizeCancelReason. Not fully traced.",
+        "NOT SCANNED: QueueScreen.js, ChatbotScreen.js, UserProfileScreen.js, MyPetsScreen.js",
+        "NOT SCANNED: LoginScreen.js, RegisterScreen.js (auth screens)",
+        "DEPRECATED — Staff flow screens: StaffDashboard.js, StaffAppointments.js, ManageQueueScreen.js, ScannerScreen.js, ConsultationScreen.js — DECISION: mobile app is client-only, these screens will be removed. DO NOT SCAN. See decision_log.mobile_app_scope_decision.",
+        "COMPANION FILE: MOBILE_BOOKING_DEEPDIVE.md on disk contains the full 8-question audit report with line numbers, code quotes, and data contract analysis."
+      ],
+      "backend": [
+        "functions/index.js — 5 functions, confirmed dead code. DO NOT RE-SCAN unless user decides on Blaze upgrade.",
+        "firestore.rules — field enforcement understood, full file NOT re-read. Re-read when T2.1 RBAC rules and T2.37 append-only rule are implemented."
+      ],
+      "thesis_and_documentation": [
+        "thesis_notes.md — 243 lines, read in prior session. Contains the academic contract. Needs rewriting per T1.1-T1.10.",
+        "VETCONNECT_MODERN_NEUBRUTALISM_DESIGN_GUIDE.md — not read, referenced in CLAUDE.md"
+      ]
+    },
+    "expected_deliverables_per_scanned_area": [
+      "Update file_audit_status section with fully_read/partially_read entries for each file",
+      "Add bugs to bugs_and_drift_found_this_session with severity/location/symptom/fix_task",
+      "Add architectural insights to architecture_insights_from_deep_scans if non-trivial",
+      "Add new tasks to master_task_inventory with IDs continuing from T2.76 onward (next unused ID)",
+      "Document any terminology questions that arise (add to terminology_locked if resolved)",
+      "Update known_issues_updated with newly identified P0/P1 items",
+      "If canceling or merging tasks, add entries to canceled_or_merged_tasks"
+    ],
+    "recommended_first_prompts_copy_paste_ready": {
+      "to_continue_with_patients_crm": "Read handoff.json in full. I want to continue the SAME deep-scan + pressure-test workflow from the prior session (described in workflow_continuation_for_next_areas.prior_session_style_and_rules), but now for the Patients CRM module in VetConnect-Admin. Start by reading the full Patients/ feature — Patients.jsx, PatientDashboard.jsx, usePatientManager hook, all modals (AddPet, EditPet, NewClient, QuickBook), all components (BillingLedger, ClientDetails, ClientHeader, InternalLogs, PatientDirectory, PetList). Tell me what you find — bugs, drift, architectural patterns, UX concerns, data flow issues — with file paths and line numbers. Don't over-engineer fixes. After you report findings, I'll pressure-test the same way we did for Queue and Records.",
+      "to_continue_with_mobile_app_client_flow": "Read handoff.json in full. I want to continue the SAME deep-scan + pressure-test workflow from the prior session (see workflow_continuation_for_next_areas.prior_session_style_and_rules), but now for the VetConnect mobile app client flow. Start by reading the core client screens: ClientDashboard.js, MyPetsScreen.js, BookAppointment.js, ClientAppointments.js, PetHistoryScreen.js, QueueScreen.js. Tell me what you find — bugs, inconsistencies, data flow issues, UX concerns — with file paths and line numbers. Pay special attention to how these interact with the Firestore collections documented in the handoff. Don't over-engineer. After you report findings, I'll pressure-test.",
+      "to_continue_with_mobile_app_staff_flow": "DEPRECATED — Mobile app is now client-only per decision_log.mobile_app_scope_decision. Staff screens will be removed. DO NOT USE THIS PROMPT. For the QR scanner question specifically, ask: 'The mobile app is now client-only but we need to decide what happens to QR check-in. Read ScannerScreen.js and tell me the options for replicating it in the admin dashboard.'",
+      "to_continue_with_pos_modal_deep_dive": "POSModal.jsx (554 lines) was only referenced in the ecosystem report, never deep-scanned. Do a full audit focusing on: (1) the FIFO batch deduction logic, (2) the runTransaction checkout flow, (3) receipt print path, (4) appointment status flip at checkout, (5) verify the T2.16 reserved-counter decrement issue. Report findings with line numbers. I'll pressure-test.",
+      "to_continue_with_inventory_services_sales": "Read handoff.json in full. Three admin feature modules haven't been deep-scanned yet: Inventory (partial), Services (partial), Sales (not at all). Pick the one with the most defense risk and do a full audit. Report findings with line numbers. Then move to the next one. I'll pressure-test each in turn.",
+      "to_continue_with_booking_engine_deep_dive": "COMPLETED — useBookingEngine.js and BookAppointment.js fully scanned this session. See MOBILE_BOOKING_DEEPDIVE.md. DO NOT USE THIS PROMPT.",
+      "to_discuss_individual_service_completion": "I want to discuss and deep-dive into INDIVIDUAL SERVICE COMPLETION TRACKING. The current system has services[].status on each appointment doc but nothing ever updates it past 'pending' after check-in (AssignStaffModal.jsx:129). I want to explore: how should per-service completion work across departments? How does the handoff from vet to groomer happen? Should ClinicalWorkspace only sign off the medical services while grooming gets its own completion path? How does this interact with dispensing/billing routing? How does this affect queue grid rendering? Start by reading ClinicalWorkspace.jsx sign-off path (lines 866-1078), AssignStaffModal.jsx service priming (line 129), queueColumns.jsx service rendering, and useQueueActions.js status transitions. Tell me what infrastructure already exists vs what's missing. Don't over-engineer. I'll pressure-test.",
+      "to_scan_patients_crm_module": "I want to continue the SAME deep-scan + pressure-test workflow from the prior session (see workflow_continuation_for_next_areas.prior_session_style_and_rules), but now for the Patients CRM module in VetConnect-Admin. Start by reading the full Patients/ feature — Patients.jsx, PatientDashboard.jsx, usePatientManager hook, all modals (AddPetModal, EditPetModal, NewClientModal, QuickBookModal), all components (BillingLedger, ClientDetails, ClientHeader, InternalLogs, PatientDirectory, PetList). Tell me what you find — bugs, drift, architectural patterns, UX concerns, data flow issues — with file paths and line numbers. Don't over-engineer fixes. After you report findings, I'll pressure-test the same way we did for Queue and Records.",
+      "to_scan_pos_modal": "POSModal.jsx (554 lines) was referenced in the ecosystem report but never deep-scanned. Do a full audit focusing on: (1) the FIFO batch deduction logic, (2) the runTransaction checkout flow, (3) receipt print path, (4) appointment status flip at checkout, (5) verify the T2.16 reserved-counter decrement issue, (6) check how it handles multi-service bundles (T2.80 bug — reads scalar serviceType/servicePrice instead of services[] array). Report findings with line numbers. I'll pressure-test.",
+      "to_scan_inventory_module": "I want to deep-scan the Inventory feature module in VetConnect-Admin. Read Inventory.jsx, InventoryTable.jsx, GlobalActivityLog.jsx, ProductFormModal.jsx, StockAdjustModal.jsx, InventoryLogModal.jsx, ConfirmDeleteModal.jsx, and useInventory.js hook. Focus on: FIFO batch management, stock adjustment audit trail, expiry tracking, low-stock alert logic, the scrubDatabase function, category management (T2.31 default category protection). Report bugs, drift, patterns with line numbers. I'll pressure-test.",
+      "to_scan_services_module": "I want to deep-scan the Services feature module in VetConnect-Admin. Read Services.jsx, ServiceTable.jsx, ServiceActivityLog.jsx, ServiceFormModal.jsx, ServiceLogModal.jsx, and useServices.js hook. Focus on: linkedProducts management (auto-bundling source data), tiered pricing configuration, department assignment, archive/restore flow, activity log audit trail. Check for consistency with how ClinicalWorkspace consumes services (T2.14 auto-bundling bug). Report findings. I'll pressure-test.",
+      "to_scan_sales_module": "The Sales feature module has NOT been scanned at all. Read Sales.jsx, EodSummary.jsx, and useSalesData.js hook. Focus on: transaction ledger rendering, end-of-day revenue summary, refund handling, how sales docs link to appointments via appointmentId, SC/PWD discount tracking, cashier attribution. Check data contract with POSModal (which creates sales docs). Report findings. I'll pressure-test.",
+      "to_scan_staff_module": "The Staff feature module has NOT been scanned at all. Read Staff.jsx, StaffTable.jsx, StaffFormModal.jsx, ConfirmRevokeModal.jsx, and useStaffManager.js hook. Focus on: role management, department assignment, active-appointment guard on revocation, staff_logs audit trail, how staff data feeds into AssignStaffModal + useBookingEngine department capacity. Report findings. I'll pressure-test.",
+      "to_scan_remaining_mobile_client_screens": "Several mobile client screens haven't been scanned: QueueScreen.js, ChatbotScreen.js, UserProfileScreen.js, MyPetsScreen.js. Also finish the partial reads on ClientDashboard.js, ClientAppointments.js, and PetHistoryScreen.js (see file_audit_status.mobile_app_scan_status for what was already read). Report bugs, UX issues, data flow concerns with line numbers. Don't re-read what was already traced — the handoff documents what's done. I'll pressure-test.",
+      "to_scan_admin_standalone_pages": "The admin standalone pages haven't been deep-scanned: Dashboard.jsx (landing page), Monitor.jsx (lobby TV fullscreen), Expenses.jsx (expense tracking), Settings.jsx (partially scanned for closedDates only), Login.jsx. Read each and report: bugs, UX issues, missing features, design token compliance, accessibility concerns. I'll pressure-test.",
+      "to_discuss_notes_column_restructure": "Task T2.90 proposes restructuring the queue notes column from a single concatenated 'notes' field into structured clientNotes/staffNotes/system-chips. I want to discuss the implementation details: how should the data split work at write time (BookAppointment vs WalkInModal vs Queue.saveEdit)? How should the column render the three sections? How should the notes hover popover change? How does backward compat work for old docs? How does this interact with the ClinicalWorkspace subjective auto-fill (which reads patient.notes)? Start by reading the current notes field usage across BookAppointment.js, WalkInModal.jsx, Queue.jsx saveEdit, queueColumns.jsx notes column, and ClinicalWorkspace.jsx:437 auto-fill. I'll pressure-test.",
+      "to_discuss_multi_pet_visit_implementation": "Task T2.78 adds visitGroupId to appointment docs. Task T3.12 is the full multi-pet visit support plan (15-20 hrs). I want to discuss the implementation details for the core: how should queue grouping work visually? How should shared queue numbers display? How should the staff split mechanism work? How should consolidated billing merge items from multiple appointments into one POS checkout? Start by reading Queue.jsx row rendering, queueColumns.jsx, POSModal.jsx, and the T3.12 sub-task list in handoff.json. I'll pressure-test.",
+      "to_generate_master_tasklist": "The MASTER_TASKLIST.md file on disk is stale (only has the original 15 tasks from the first session). Please extract the full 95+ task inventory from handoff.json's master_task_inventory section and write it to MASTER_TASKLIST.md as a clean, organized Markdown document with: phase headers, priority tiers, status tracking columns (TODO/IN PROGRESS/DONE), effort estimates, dependency notes, and the recommended ship sequence from master_task_inventory.recommended_ship_sequence.",
+      "to_start_implementing": "I'm ready to start implementing. Look at task_execution_guidance.recommended_batch_groupings and tell me which batch you recommend starting with based on the critical path. Then use the implementation-planner sub-agent to create a detailed plan for that batch. Save the plan as the filename specified in the batch's output_file field. Wait for my approval before executing."
+    },
+    "prior_session_output_as_calibration_reference": {
+      "session_duration": "Long-form investigative planning — multiple rounds spanning hours of conversation",
+      "deliverables_produced": [
+        "ECOSYSTEM_ARCHITECTURE_REPORT.md (~500 lines)",
+        "CLINICAL_WORKSPACE_DEEPDIVE.md (~64KB, 13 questions)",
+        "handoff.json (this file, 800+ lines)",
+        "82 tasks accumulated",
+        "Terminology locked: visit/case/medical_record",
+        "Architectural decisions: dual linkage rationale, dischargePolicy two-value design, LLM feature-flag abstraction, seal lifecycle model"
+      ],
+      "typical_output_per_scanned_area": "Deep scan of ~1500-2500 LOC produces ~10-15 new tasks plus architectural insights + 2-4 cancellations or revisions after pressure testing",
+      "pacing_note": "Don't rush. Prior session averaged 1-2 files per long Q&A round. Each round includes scan, findings, pressure test, revision, lock. Quality over speed."
+    },
+    "task_execution_guidance": {
+      "important_note": "The master_task_inventory contains STRATEGIC task definitions (what, why, priority, effort, dependencies) but NOT TACTICAL implementation details (which lines to change, code snippets, test plans). Most tasks need additional context before an engineer sub-agent can execute them correctly.",
+      "execution_tiers": {
+        "tiny_under_15_min": {
+          "count": "~20 tasks",
+          "examples": [
+            "T2.6 (crash fix)",
+            "T2.17 (rename label)",
+            "T2.41 (delete 3 lines)",
+            "T2.46 (add 2 scenarioMap entries)",
+            "T2.10 (delete collections via console)"
+          ],
+          "approach": "Brief the elite-code-engineer directly with the task definition from master_task_inventory + the relevant bug entry from bugs_and_drift_found_this_session. No implementation plan needed. The engineer reads the target file and makes the fix."
+        },
+        "small_15_to_45_min": {
+          "count": "~25 tasks",
+          "examples": [
+            "T2.38 (eventId normalization)",
+            "T2.51 (pulse event addition)",
+            "T2.52 (wrap in transaction)",
+            "T2.53 (convert to runTransaction)",
+            "T2.12 (rename button + strip consent language)"
+          ],
+          "approach": "Brief the engineer with task definition + the specific finding from architecture_insights or bugs_and_drift. Plan optional. The engineer reads the file(s) and executes."
+        },
+        "medium_1_to_3_hrs": {
+          "count": "~12 tasks",
+          "examples": [
+            "T2.32 (SoapGrid extract)",
+            "T2.33 (dischargePolicy)",
+            "T2.22 (vaccine-aware inventory)",
+            "T2.29 (ditch primaryService)",
+            "T2.45 (eliminate statusHistory)",
+            "T2.73 (bulk reschedule)"
+          ],
+          "approach": "Use implementation-planner sub-agent FIRST to produce a file-by-file change list with code snippets and edge cases. THEN hand the plan to elite-code-engineer for execution. Planning catches cross-file dependencies before code is written."
+        },
+        "large_3_plus_hrs": {
+          "count": "~5 tasks",
+          "examples": [
+            "T2.28-expanded (nextVisit UI + follow-up bugs)",
+            "T2.61 (Records case-grouping)",
+            "T2.75 (clinical amendments)",
+            "T2.15 (KNOWLEDGE_BASE + LLM abstraction)",
+            "T2.71 (saved filter presets)"
+          ],
+          "approach": "MANDATORY implementation-planner before engineering. These have too many moving parts (multiple files, data model changes, UI + logic + rules) to wing it. The plan file becomes the contract between planning and execution."
+        }
+      },
+      "recommended_batch_groupings": {
+        "note": "Instead of planning tasks individually, group related tasks into ONE plan. The planner sees all changes at once and can identify shared patterns, avoid duplication, and sequence edits correctly. The engineer executes the whole batch as one feature branch.",
+        "batches": [
+          {
+            "name": "Records Renovation Plan",
+            "tasks": [
+              "T2.57",
+              "T2.58",
+              "T2.59",
+              "T2.61",
+              "T2.62",
+              "T2.63",
+              "T2.65",
+              "T2.70",
+              "T2.71"
+            ],
+            "total_effort": "~12 hrs",
+            "target_files": [
+              "Records.jsx",
+              "useGlobalRecords.js",
+              "useAncestorChain.js"
+            ],
+            "output_file": "RECORDS_RENOVATION_PLAN.md"
+          },
+          {
+            "name": "Firestore Rules Hardening Plan",
+            "tasks": [
+              "T2.1",
+              "T2.37",
+              "T2.31"
+            ],
+            "total_effort": "~5 hrs",
+            "target_files": [
+              "firestore.rules",
+              "Inventory.jsx (seed logic)"
+            ],
+            "output_file": "FIRESTORE_HARDENING_PLAN.md"
+          },
+          {
+            "name": "ClinicalWorkspace Sign-Off Plan",
+            "tasks": [
+              "T2.32",
+              "T2.28-expanded",
+              "T2.33",
+              "T2.44",
+              "T2.42"
+            ],
+            "total_effort": "~8 hrs",
+            "target_files": [
+              "ClinicalWorkspace.jsx",
+              "queueColumns.jsx",
+              "useQueueActions.js"
+            ],
+            "output_file": "CLINICAL_SIGNOFF_PLAN.md",
+            "sequencing_note": "T2.32 (SoapGrid extraction) MUST ship before T2.28-expanded (nextVisit UI). T2.33 (dischargePolicy) and T2.44/T2.42 (seal fixes) are independent of each other but all touch ClinicalWorkspace."
+          },
+          {
+            "name": "Pulse Engine Cleanup Plan",
+            "tasks": [
+              "T2.38",
+              "T2.45",
+              "T2.18.1",
+              "T2.18.2",
+              "T2.18.3",
+              "T2.39"
+            ],
+            "total_effort": "~3 hrs",
+            "target_files": [
+              "pulseUtils.js",
+              "useQueueActions.js",
+              "ClinicalWorkspace.jsx",
+              "Queue.jsx",
+              "WalkInModal.jsx",
+              "EndOfDayModal.jsx"
+            ],
+            "output_file": "PULSE_CLEANUP_PLAN.md"
+          },
+          {
+            "name": "Queue Audit Polish Plan",
+            "tasks": [
+              "T2.46",
+              "T2.50",
+              "T2.51",
+              "T2.52",
+              "T2.53",
+              "T2.54"
+            ],
+            "total_effort": "~2 hrs",
+            "target_files": [
+              "Queue.jsx",
+              "EndOfDayModal.jsx",
+              "useQueueActions.js"
+            ],
+            "output_file": "QUEUE_AUDIT_POLISH_PLAN.md"
+          },
+          {
+            "name": "Printables Plan",
+            "tasks": [
+              "T2.2",
+              "T2.3",
+              "T2.4"
+            ],
+            "total_effort": "~5 hrs",
+            "target_files": [
+              "ClinicalWorkspace.jsx (or new utils/printHelpers.js)",
+              "PatientDashboard.jsx",
+              "PetHistoryScreen.js"
+            ],
+            "output_file": "PRINTABLES_PLAN.md",
+            "pattern_note": "All three printables share the same window.open + HTML template pattern cloned from POSModal.jsx:381-397. Plan should define the shared printHelper utility first, then three template variants."
+          },
+          {
+            "name": "Clinical Amendment Plan",
+            "tasks": [
+              "T2.75"
+            ],
+            "total_effort": "~3 hrs",
+            "target_files": [
+              "medical_records schema",
+              "ClinicalWorkspace.jsx or PatientDashboard.jsx",
+              "PetHistoryScreen.js (mobile render)",
+              "firestore.rules"
+            ],
+            "output_file": "CLINICAL_AMENDMENT_PLAN.md",
+            "note": "Standalone because it touches the medical_records data model which no other batch does. Needs its own Firestore rule addition (append-only clinicalAmendments array, same pattern as T2.37 for clinicalPulse)."
+          }
+        ]
+      },
+      "prompt_patterns_for_fresh_session": {
+        "to_create_a_batch_plan": "I want to implement the [BATCH NAME] batch ([TASK IDS]). Use the implementation-planner sub-agent to create a detailed plan. The planner should read handoff.json for context (especially architecture_insights, bugs_and_drift, terminology_locked, and the task definitions in master_task_inventory), then read the target files ([FILE LIST]), and output a file-by-file change list with code snippets, edge cases, test plan, and ship sequence. Save the plan as [OUTPUT_FILE] at repo root.",
+        "to_execute_a_plan": "Now use the elite-code-engineer sub-agent to execute the [BATCH NAME] plan. Brief it with the plan file ([OUTPUT_FILE]) and the relevant sections of handoff.json. The engineer should read the plan, read each target file, make the changes, and report what was modified.",
+        "to_review_after_execution": "Use the code-quality-reviewer sub-agent to review the changes from the [BATCH NAME] implementation. Check for: regression risk, missing edge cases, Firestore rule compatibility, pulse event format compliance (unified format per T2.38), design token compliance, and any orphaned imports or dead code introduced.",
+        "for_tiny_tasks_skip_planning": "Implement [TASK ID] — [TASK NAME]. Read handoff.json section [RELEVANT_SECTION] for context, read the target file, make the fix. This is a tiny task, no plan needed.",
+        "full_cycle_example": "Here is the full implementation cycle for a batch:\n1. 'Create a plan for Records Renovation (T2.57-T2.71)' → implementation-planner produces RECORDS_RENOVATION_PLAN.md\n2. Review the plan, pressure-test it, approve or request changes\n3. 'Execute the Records Renovation plan' → elite-code-engineer implements\n4. 'Review the Records Renovation changes' → code-quality-reviewer audits\n5. Start dev server, manually test in browser\n6. Commit with conventional format: feat(admin): Records renovation — case-grouping, bug fixes, terminology"
+      }
+    },
+    "task_id_allocation_for_new_areas": {
+      "next_unused_id": "T2.76 onward",
+      "suggested_namespace_prefixes": {
+        "patients_crm": "T2.76-T2.85 range (leave room for ~10 tasks)",
+        "mobile_client_flow": "T2.86-T2.100 range",
+        "mobile_staff_flow": "T2.101-T2.110 range",
+        "pos_modal_audit": "T2.111-T2.115 range",
+        "inventory_deep_scan": "T2.116-T2.120 range",
+        "services_deep_scan": "T2.121-T2.125 range",
+        "sales_deep_scan": "T2.126-T2.130 range",
+        "staff_module_deep_scan": "T2.131-T2.135 range",
+        "standalone_pages": "T2.136-T2.145 range",
+        "phase_3_new_additions": "T3.12 onward"
+      },
+      "note": "These ranges are suggestions only. Actual IDs assigned as tasks are created. Check master_task_inventory for next unused ID before assigning.",
+      "multi_pet_visit_support_plan": {
+        "architectural_finding": "VetConnect has NO owner-level visit grouping. When an owner books multiple pets for the same day, each pet creates an independent appointment doc with no shared grouping field. This causes 11 downstream gaps: no queue grouping, no batch check-in, no shared queue number, no consolidated billing, no cross-pet status awareness, and no mobile visit grouping. See the full gap analysis in the prior session conversation.",
+        "root_cause": "Missing visitGroupId field on appointment docs",
+        "phase_2_immediate": {
+          "task_id": "T2.78",
+          "name": "Add visitGroupId to appointment docs at multi-pet booking time",
+          "priority": "P2",
+          "effort": "30 min",
+          "description": "In BookAppointment.js writeBatch, generate a UUID visitGroupId and assign it to ALL appointment docs created in the same booking session. Single-pet bookings get visitGroupId: null. WalkInModal: if staff registers multiple pets for the same owner in quick succession, prompt to link them under one visitGroupId. This is a data-model-only change — no UI changes, no downstream consumers yet. The field exists in Firestore for future features to read.",
+          "why_now": "Zero downside, prevents a data migration later. Every multi-pet booking from this point forward carries the grouping information. Retrofitting old data is possible via a script that groups by ownerId + scheduledDate within a time window."
+        },
+        "phase_3_full_feature": {
+          "task_id": "T3.12",
+          "name": "Multi-Pet Visit Support — full downstream UI integration",
+          "priority": "P2",
+          "effort": "15-20 hours total",
+          "depends_on": "T2.78 (visitGroupId field must exist in data first)",
+          "sub_tasks": [
+            {
+              "name": "T2.91 — Queue hover popover keyboard accessibility + identity data-not-JSX refactor + sealedMetrics routing fix",
+              "effort": "1.5 hrs",
+              "priority": "P2"
+            },
+            {
+              "name": "T2.92 — Dedicated hover popovers for Dispensing tab (full prescribedItems list with drug/product indicator + qty + instructions) and Billing tab (itemized price breakdown + total + payment method). NOT reusing services popover — distinct rendering for each.",
+              "effort": "30 min",
+              "priority": "P3"
+            },
+            {
+              "name": "Queue.jsx grouped rows by visitGroupId with expand/collapse",
+              "effort": "3-4 hrs"
+            },
+            {
+              "name": "AssignStaffModal batch check-in for visitGroupId group",
+              "effort": "1-2 hrs"
+            },
+            {
+              "name": "Shared queue number per visitGroupId",
+              "effort": "30 min"
+            },
+            {
+              "name": "queueColumns.jsx per-pet sub-entry rendering within grouped row",
+              "effort": "2-3 hrs"
+            },
+            {
+              "name": "POSModal consolidated billing across visitGroupId (merge items from multiple appointments)",
+              "effort": "3-4 hrs"
+            },
+            {
+              "name": "ClinicalWorkspace 'Next Pet' quick-nav between grouped appointments",
+              "effort": "1 hr"
+            },
+            {
+              "name": "EndOfDayModal group awareness in leftover resolution",
+              "effort": "1 hr"
+            },
+            {
+              "name": "ClientAppointments.js mobile grouping by visitGroupId",
+              "effort": "1-2 hrs"
+            },
+            {
+              "name": "Self-check-in (T2.76) batch-arrive all pets in group with one scan",
+              "effort": "30 min"
+            },
+            {
+              "name": "Records.jsx visit-group visibility in Case View",
+              "effort": "1 hr"
+            }
+          ],
+          "note": "Ship AFTER the current 82-task inventory is substantially complete. The per-pet model works — it is just inelegant for multi-pet owners. This is an enhancement, not a fix."
+        }
+      }
+    }
+  },
+  "session_2026_04_17_supplement": {
+    "session_date": "2026-04-17 to 2026-04-18",
+    "session_type": "Deep-scan + pressure-test + CRM investigation + billing model design",
+    "companion_files_produced": [
+      "PATIENTS_CRM_DEEPDIVE.md (865 lines) — 11 sub-agent forensic audit of all 13 Patients module files",
+      "Updated MASTER_TASKLIST.md — now 138 tasks (was 111), includes all new tasks T2.93-T2.136, T3.13-T3.20"
+    ],
+    "what_was_accomplished_this_session": [
+      "Individual service completion tracking deep dive — traced services[].status across entire system, found workflowType is legacy, handleCompleteService + lockedServices is phantom dead code",
+      "POSModal full deep dive (554 lines) — confirmed T2.80 multi-service bug, found receipt hardcodes clinic name, no pulse event at checkout, reserved counter partially addressed, SC/PWD discount applied incorrectly to grooming",
+      "Billing model design — evaluated 3 options (pay at end, partial billing, deposit), locked Option 1 (pay at end) + Option 3 (deposit) as opt-in for carry-over",
+      "Per-service time tracking design — Option A (explicit start/complete) chosen over Option B (auto-start on consult entry) for multi-department timing accuracy",
+      "Shared component design — ServiceProgressCard (identical in popover + EndOfDayModal), ClinicalTimeline (late task T2.111)",
+      "Full Patients CRM module deep dive — 11 codebase-architecture-researcher sub-agents across 3 rounds, found 23 bugs including P0 allergy field mismatch (patient safety)",
+      "CRM feature gap analysis — evaluated 10 CRM dimensions, added 4 enhancement tasks + 6 Phase 3 future tasks",
+      "Thesis coverage honest assessment — feature presence 80%, feature correctness 65%, data integrity 55%, security/compliance 40%"
+    ],
+    "decisions_locked_this_session": [
+      "LOCKED: workflowType is LEGACY — delete it (T2.93)",
+      "LOCKED: handleCompleteService + lockedServices is PHANTOM dead code — delete it (T2.94)",
+      "LOCKED: Per-service tracking uses 3-state toggle (pending/in-progress/completed) in ClinicalWorkspace sidebar, with inline staff dropdown per service (T2.95). Absorbs T2.103.",
+      "LOCKED: Sign-off decoupled from status advancement — handleSaveConsult only advances when ALL services completed (T2.96)",
+      "LOCKED: Option A (explicit start/complete) for per-service time tracking — accurate for multi-department visits (T2.107)",
+      "LOCKED: SERVICE_STARTED/SERVICE_COMPLETED/SERVICE_REVERTED pulse events for per-service audit trail (T2.110)",
+      "LOCKED: ServiceProgressCard shared component — identical header/list/footer in queue popover and EndOfDayModal. Insertion order (no alphabetical sort). Sort control: booking order / status / department. (T2.97)",
+      "LOCKED: ClinicalTimeline extraction is non-essential late task (T2.111, P3)",
+      "LOCKED: Billing model — Option 1 (pay at end) default + Option 3 (deposit) opt-in for carry-over. Partial billing (Option 2) rejected.",
+      "LOCKED: Outstanding balance — Option A (computed from sales only). Remove Firestore counter. Zero drift risk. (T2.113)",
+      "LOCKED: SC/PWD discount eligibility per service — isScPwdEligible toggle on ServiceFormModal (T2.105, P1 legal compliance RA 9994)",
+      "LOCKED: Transaction void (T2.104) — full void only, partial refund deferred to T3.13",
+      "LOCKED: Outstanding balance audit trail — payments collection + Record Payment in BillingLedger (T2.101)",
+      "LOCKED: allergies field normalized to petAllergies — read petAllergies || allergies everywhere on admin, write petAllergies (T2.119 P0)",
+      "LOCKED: Pet edit propagation — don't propagate except allergies to active appointments (Decision 5, Option A)",
+      "LOCKED: QuickBookModal → WalkInModal direct integration with prefill props (T2.115, Decision 2 Option B)",
+      "LOCKED: Admin-created clients — document as guest with accountStatus: 'admin_registered' flag (T2.124, Decision 3 Option A). Auth creation deferred to T3.15 (Blaze).",
+      "LOCKED: Duplicate client detection — phone check with override dialog (T2.132, Decision 4 Option A)",
+      "LOCKED: Client KPI label uses 'check-ins' not 'visits' or 'appointments' — counts arrived+ status. Avoids terminology conflict with locked 'visit' definition."
+    ],
+    "canceled_tasks_this_session": [
+      {
+        "id": "T2.103",
+        "reason": "ABSORBED into T2.95 — staff reassignment is inline in ClinicalWorkspace service card"
+      },
+      {
+        "id": "T2.106",
+        "reason": "CANCELLED — no separate grooming UI; ClinicalWorkspace toggles serve all departments"
+      }
+    ],
+    "new_tasks_this_session": {
+      "service_completion_and_billing": [
+        "T2.93",
+        "T2.94",
+        "T2.95",
+        "T2.96",
+        "T2.97 (expanded)",
+        "T2.98",
+        "T2.99",
+        "T2.100",
+        "T2.101 (expanded)",
+        "T2.102",
+        "T2.104",
+        "T2.105",
+        "T2.107",
+        "T2.108",
+        "T2.109",
+        "T2.110",
+        "T2.111"
+      ],
+      "patients_crm_bugs": [
+        "T2.112",
+        "T2.113",
+        "T2.114",
+        "T2.115",
+        "T2.116",
+        "T2.117",
+        "T2.118",
+        "T2.119",
+        "T2.120",
+        "T2.121",
+        "T2.122",
+        "T2.123",
+        "T2.124",
+        "T2.125",
+        "T2.126",
+        "T2.127",
+        "T2.128",
+        "T2.129",
+        "T2.130",
+        "T2.131",
+        "T2.132"
+      ],
+      "crm_enhancements": [
+        "T2.133",
+        "T2.134",
+        "T2.135",
+        "T2.136"
+      ],
+      "phase_3_additions": [
+        "T3.13",
+        "T3.14",
+        "T3.15",
+        "T3.16",
+        "T3.17",
+        "T3.18",
+        "T3.19",
+        "T3.20"
+      ],
+      "total_new": 51,
+      "total_canceled": 2,
+      "net_new": 49
+    },
+    "critical_bugs_found_this_session": [
+      {
+        "id": "allergies_vs_petAllergies",
+        "severity": "P0 — PATIENT SAFETY",
+        "fix_task": "T2.119",
+        "summary": "Admin writes 'allergies', mobile writes 'petAllergies'. Mobile-registered pets show NKA (No Known Allergies) in admin dashboard. Allergy warnings silently suppressed. Admin edits overwrite correct data with 'None'."
+      },
+      {
+        "id": "sales_ownerName_not_ownerId",
+        "severity": "P1",
+        "fix_task": "T2.112",
+        "summary": "Sales docs linked by ownerName string. Name changes orphan billing history. Name collisions merge two clients' ledgers."
+      },
+      {
+        "id": "scpwd_discount_grooming",
+        "severity": "P1 — LEGAL (RA 9994)",
+        "fix_task": "T2.105",
+        "summary": "SC/PWD 20% discount hardcoded isDiscountable: true for all services. Grooming incorrectly gets the discount."
+      },
+      {
+        "id": "species_filter_dog_canine",
+        "severity": "P1",
+        "fix_task": "T2.120",
+        "summary": "PetList species filter: 'Dog' !== 'canine'. Dogs disappear when filtering by Canine."
+      },
+      {
+        "id": "date_todate_crash",
+        "severity": "P1",
+        "fix_task": "T2.121",
+        "summary": "PetList sorts + BillingLedger date column crash on non-Timestamp date values. .toDate() and .seconds with no type guard."
+      },
+      {
+        "id": "posmodal_no_checkout_pulse",
+        "severity": "P2",
+        "fix_task": "T2.100",
+        "summary": "No clinicalPulse event at billing→completed transition. Forensic gap at final checkout."
+      },
+      {
+        "id": "outstanding_balance_dual_source",
+        "severity": "P2",
+        "fix_task": "T2.113",
+        "summary": "Firestore counter (append-only) vs computed-from-sales. Two different numbers in two different views. Decision: remove counter, compute only."
+      },
+      {
+        "id": "patient_dashboard_double_fetch",
+        "severity": "P2",
+        "fix_task": "T2.126",
+        "summary": "useEffect depends on [id, pet]. setPet changes pet dependency, triggers entire fetch twice. Up to 50 wasted Firestore reads."
+      },
+      {
+        "id": "staff_notes_race_condition",
+        "severity": "P2",
+        "fix_task": "T2.125",
+        "summary": "Read-modify-write without transaction. Two simultaneous note adds — second silently overwrites first."
+      },
+      {
+        "id": "weight_saved_as_string",
+        "severity": "P2",
+        "fix_task": "T2.122",
+        "summary": "Admin pet creation stores lastWeight as string '12.5' not number 12.5. resolveTieredPrice expects number."
+      }
+    ],
+    "file_audit_status_update": {
+      "newly_fully_scanned_this_session": [
+        "VetConnect-Admin/src/components/POSModal.jsx (554 lines) — full deep dive, FIFO verified, T2.16 partially addressed, T2.80 confirmed",
+        "VetConnect-Admin/src/features/Patients/ (ALL 13 files) — 11 sub-agent deep dives, 865-line PATIENTS_CRM_DEEPDIVE.md produced",
+        "VetConnect-Admin/src/features/Services/modals/ServiceFormModal.jsx — read for SC/PWD isScPwdEligible analysis",
+        "VetConnect-Admin/src/features/Services/hooks/useServices.js — read for field diff engine and save payload"
+      ],
+      "remaining_not_scanned": [
+        "VetConnect-Admin/src/features/Inventory/ — PARTIALLY scanned. ProductFormModal, InventoryTable, GlobalActivityLog, useInventory NOT scanned.",
+        "VetConnect-Admin/src/features/Sales/ — NOT SCANNED. Sales.jsx, EodSummary, useSalesData.",
+        "VetConnect-Admin/src/features/Staff/ — NOT SCANNED. Staff.jsx, StaffTable, StaffFormModal, useStaffManager.",
+        "VetConnect-Admin/src/pages/ — Dashboard.jsx, Monitor.jsx, Expenses.jsx, Settings.jsx (partial), Login.jsx NOT scanned.",
+        "VetConnect mobile client screens — QueueScreen.js, ChatbotScreen.js, UserProfileScreen.js, MyPetsScreen.js NOT scanned.",
+        "VetConnect mobile partially scanned — ClientDashboard.js, ClientAppointments.js, PetHistoryScreen.js, SuperCard.js, statusLabels.js partial."
+      ]
+    },
+    "audit_system_assessment": {
+      "overall_grade": "A- (after all tasks ship)",
+      "architecture": "Sound — dual-clock routing, DNA-link corrections, forensic seals are genuinely good",
+      "coverage_after_tasks": "13 event types covering full lifecycle from booking to checkout to void",
+      "known_limitations": [
+        "Client-side timestamps (Spark constraint, T2.108 documents)",
+        "9 eventId formats (T2.38 unifies)",
+        "statusHistory duplication (T2.45 eliminates)",
+        "No tests for pulseUtils (T3.14)"
+      ],
+      "messy_items_as_tasks": [
+        "T2.38 (format unification, essential)",
+        "T2.45 (statusHistory elimination, recommended)",
+        "T2.108 (timestamp documentation, essential)",
+        "T2.109 (pulse factory, optional for defense)",
+        "T3.14 (tests, optional)"
+      ]
+    },
+    "thesis_coverage_assessment": {
+      "feature_presence": "80% (13/16)",
+      "feature_correctness": "65% — multi-service billing broken, allergy mismatch, tiered pricing bug",
+      "data_integrity": "55% — sales ownerName, admin/mobile field mismatches, balance dual-source",
+      "security_compliance": "40% — no RBAC in rules, DPA consent not auditable, SOAP exposed to clients",
+      "audit_completeness": "70% — architecture A-tier, 5-6 coverage gaps",
+      "defensible_after_critical_path": "85%+ — ~35 hours of P0+P1 work closes material gaps"
+    }
+  },
+  "companion_files_update": {
+    "PATIENTS_CRM_DEEPDIVE.md": {
+      "path": "./PATIENTS_CRM_DEEPDIVE.md",
+      "status": "EXISTS on disk",
+      "when_to_read": "Any Patients CRM task (T2.112-T2.136)"
+    },
+    "SALES_DEEPDIVE.md": {
+      "path": "./SALES_DEEPDIVE.md",
+      "status": "EXISTS on disk — produced 2026-04-18/19 session",
+      "when_to_read": "Any Sales task (T2.137-T2.148), refund flow, EOD revenue"
+    },
+    "INVENTORY_DEEPDIVE.md": {
+      "path": "./INVENTORY_DEEPDIVE.md",
+      "status": "EXISTS on disk — produced 2026-04-18/19 session, updated with dispensing + allergen tasks",
+      "when_to_read": "Any Inventory task (T2.149-T2.176), allergen system (T2.175), dispensing tasks (T2.188-T2.189, T3.36-T3.39)"
+    },
+    "SETTINGS_DEEPDIVE.md": {
+      "path": "./SETTINGS_DEEPDIVE.md",
+      "status": "EXISTS on disk — produced 2026-04-19 session, updated with no-show + dispensing tasks",
+      "when_to_read": "Any Settings task (T2.177-T2.187), no-show rebook (T2.190), dispensing hardening"
+    },
+    "SERVICES_DEEPDIVE.md": {
+      "path": "./SERVICES_DEEPDIVE.md",
+      "status": "EXISTS on disk — produced 2026-04-19 session",
+      "when_to_read": "Any Services task (T2.191-T2.207), tiered pricing, linkedProducts, SC/PWD (T2.105), dischargePolicy (T2.33)"
+    },
+    "STAFF_DEEPDIVE.md": {
+      "path": "./STAFF_DEEPDIVE.md",
+      "status": "EXISTS on disk — produced 2026-04-19 session",
+      "when_to_read": "Any Staff task (T2.208-T2.227, T3.40-T3.42), role/accessLevel architecture, Firebase Auth patterns. CRITICAL: 2 critical bugs (hardcoded password, no phone validation), 3 handoff claims refuted."
+    }
+  },
+  "session_2026_04_19_supplement": {
+    "session_date": "2026-04-19",
+    "session_type": "Deep-scan continuation — Sales, Inventory, Settings, Services, Staff modules + dispensing hardening + no-show rebook system + allergen safety design",
+    "companion_files_produced": [
+      "SALES_DEEPDIVE.md — 3 files, 608 LOC, 17 bugs, 12 tasks (T2.137-T2.148)",
+      "INVENTORY_DEEPDIVE.md — 8 files, 1978 LOC, 38 bugs, 28+ tasks (T2.149-T2.176, T3.21-T3.30), updated with dispensing tasks (T2.188-T2.189, T3.36-T3.39)",
+      "SETTINGS_DEEPDIVE.md — 1 file, 733 LOC, 15 bugs, 11 tasks (T2.177-T2.187), updated with no-show rebook (T2.190) + dispensing late tasks (T3.31-T3.39)",
+      "SERVICES_DEEPDIVE.md — 6 files, 1347 LOC, 22 bugs, 17 tasks (T2.191-T2.207)",
+      "STAFF_DEEPDIVE.md — 5 files, 1039 LOC, 21 bugs (2 CRITICAL), 20 tasks (T2.208-T2.227, T3.40-T3.42)",
+      "Updated MASTER_TASKLIST.md — now 248 tasks (was 138), 15 batch groupings, 15-day ship sequence"
+    ],
+    "what_was_accomplished_this_session": [
+      "Deep-scanned 5 admin feature modules: Sales (3 files), Inventory (8 files), Services (6 files), Staff (5 files), Settings (1 file)",
+      "Deep-scanned DispensingVerificationDialog.jsx — assessed as functional prototype, 10 weaknesses identified",
+      "Designed allergen safety system: Option C dispensing routing + Approach 2 cart-add check + allergyTags on ALL products (T2.175)",
+      "Designed no-show rebook detection: auto-detect on pet selection, rebookedFromId + noShowCount, 3-surface banners (T2.190)",
+      "Designed no-show lifecycle: time-gated button (T2.182), cancel vs no-show distinction documented, B+ assessment with path to A",
+      "Assessed all 7 audit systems (clinicalPulse, inventory_logs, sales, staff_logs, service_logs, staffNotes, auditReason) — B+ architecture, C+ execution, A- after tasks ship",
+      "Identified 7 note systems currently live in codebase (all existing, none planned)",
+      "Identified 8 unaddressed audit gaps — deferred to after remaining module scans",
+      "Refuted 3 handoff claims about Staff module (active-appointment guard FALSE, accountStatus FALSE, specialization/licenseNumber FALSE)",
+      "Found 2 CRITICAL bugs in Staff: hardcoded password in source + no phone validation",
+      "Total: 110 new tasks accumulated (T2.137-T2.227, T3.21-T3.42), 248 total in MASTER_TASKLIST.md"
+    ],
+    "decisions_locked_this_session": [
+      "LOCKED: EOD dual display — primary 'COLLECTED TODAY' + secondary 'total billed' annotation (T2.137)",
+      "LOCKED: Refund access — any Sales-page user, no additional client-side gate. T2.1 Firestore RBAC handles server-side (Spark-compatible) (T2.139)",
+      "LOCKED: Refund date attribution — Option C, show on both days, single-shot 1.5hr implementation (T2.140)",
+      "LOCKED: Batch expiry on restock — Option A, store original batch info at POS time (T2.147)",
+      "LOCKED: isMedicine denormalized onto inventory items, derived from category with optional override toggle (T2.167)",
+      "LOCKED: Batch-aware positive adjustments only (T2.152). Negative stays flat. Batch-aware negative as P3 (T2.174)",
+      "LOCKED: GlobalActivityLog full filtering — action type, date range, product search, user filter, paginated (T2.170)",
+      "LOCKED: No-expiry refund guard — just increment stock, no fake batch creation (T2.147 addendum)",
+      "LOCKED: Allergen safety — Option C routing (allergyTags trigger dispensing) + Approach 2 (cart-add check) (T2.175)",
+      "LOCKED: Dispensing labels — client-facing at dispensing time (T2.176), internal ward labels as T3.28",
+      "LOCKED: Services non-checkable in dispensing — shown for context, auto-verified (T2.188, user's design)",
+      "LOCKED: No-show button UX — Option B disabled with tooltip 'No-Show window opens at [time] per clinic policy' (T2.182)",
+      "LOCKED: No-show rebook — Option A matching (any pet, ignore service), 30-day window, most-recent + count, Promise.all/pre-fetch (T2.190)",
+      "LOCKED: autoNoShowMins + maxFutureBookingDays — wire both features (T2.182, T2.183)",
+      "LOCKED: No-show weaknesses — all P3 (proactive outreach, financial consequences, automated policy)",
+      "LOCKED: Dispensing hold/stock/batch/partial — all P3 (T3.36-T3.39)",
+      "LOCKED: Structured allergies Tier 2 — Phase 3 (T3.29)",
+      "LOCKED: Configurable no-show window — T3.31 (10 min, hardcoded 30 days for now)",
+      "LOCKED: Staff password — Option A (random temp pw in toast) for immediate fix. Option C (Cloud Function) as T3.42 for production.",
+      "LOCKED: Staff role on edit — don't overwrite role, only set on create. 3-line fix (T2.213). Full clinicalRole field as P3.",
+      "LOCKED: Staff departments — hard block if zero departments. Matches * label. No valid use case at Starbarks scale.",
+      "LOCKED: Staff listener — P2 for correctness (server-side role filter). Not premature optimization — listener fires on pet owner changes which is architecturally wrong.",
+      "LOCKED: vetsList rename — DON'T rename. 8 refs across 4 files for zero benefit. Name collision risk.",
+      "LOCKED: Option B vs C for production deployment — Option C (Cloud Function) preferred. Solves password + Auth disable + custom claims. Blaze-dependent."
+    ],
+    "critical_bugs_found_this_session": [
+      {
+        "id": "staff_hardcoded_password",
+        "severity": "CRITICAL",
+        "fix_task": "T2.208",
+        "summary": "Every new staff account gets plaintext password 'vetconnect123!' checked into source control. No reset flow."
+      },
+      {
+        "id": "staff_no_phone_validation",
+        "severity": "CRITICAL",
+        "fix_task": "T2.209",
+        "summary": "StaffFormModal accepts any string as phone. CLAUDE.md mandates /^09\\d{9}$/."
+      },
+      {
+        "id": "inventory_stock_negative",
+        "severity": "P0",
+        "fix_task": "T2.149",
+        "summary": "adjustStock uses increment() without transaction. Stock can go negative."
+      },
+      {
+        "id": "inventory_refund_log_schema",
+        "severity": "P0",
+        "fix_task": "T2.150",
+        "summary": "useSalesData refund writes type/quantity/user instead of action/amountChange/userName. 3 columns render undefined in GlobalActivityLog."
+      },
+      {
+        "id": "staff_firebase_app_leak",
+        "severity": "HIGH",
+        "fix_task": "T2.210",
+        "summary": "Secondary Firebase App never deleteApp()ed. Memory leak per staff creation."
+      },
+      {
+        "id": "staff_no_revoke_guard",
+        "severity": "HIGH",
+        "fix_task": "T2.211",
+        "summary": "No active-appointment check before revoking staff. Handoff claim of guard is FALSE."
+      },
+      {
+        "id": "staff_false_auth_disable",
+        "severity": "HIGH",
+        "fix_task": "T2.212",
+        "summary": "Modal claims Auth disabled but only Firestore flag set. User can still log in."
+      },
+      {
+        "id": "staff_role_overwrite",
+        "severity": "MEDIUM",
+        "fix_task": "T2.213",
+        "summary": "Form only offers staff/admin. Editing vet overwrites role to 'staff', removing from Queue vet dropdown."
+      },
+      {
+        "id": "staff_revoked_in_vet_list",
+        "severity": "MEDIUM",
+        "fix_task": "T2.215",
+        "summary": "Revoked staff pass Queue.jsx filter because 'disabled' is truthy."
+      },
+      {
+        "id": "eod_revenue_wrong",
+        "severity": "P1",
+        "fix_task": "T2.137",
+        "summary": "EOD 'TOTAL REVENUE' counts deposit money collected on other days."
+      },
+      {
+        "id": "services_no_archive_guard",
+        "severity": "P1",
+        "fix_task": "T2.191",
+        "summary": "Can archive services with active appointments, breaking ClinicalWorkspace cart hydration."
+      }
+    ],
+    "file_audit_status_update": {
+      "newly_fully_scanned_this_session": [
+        "VetConnect-Admin/src/features/Sales/ (ALL 3 files) — SALES_DEEPDIVE.md",
+        "VetConnect-Admin/src/features/Inventory/ (ALL 8 files) — INVENTORY_DEEPDIVE.md",
+        "VetConnect-Admin/src/features/Services/ (ALL 6 files) — SERVICES_DEEPDIVE.md",
+        "VetConnect-Admin/src/features/Staff/ (ALL 5 files) — STAFF_DEEPDIVE.md",
+        "VetConnect-Admin/src/pages/Settings.jsx — SETTINGS_DEEPDIVE.md",
+        "VetConnect-Admin/src/features/Queue/DispensingVerificationDialog.jsx — dispensing assessment in INVENTORY_DEEPDIVE.md"
+      ],
+      "remaining_not_scanned": [
+        "VetConnect-Admin/src/pages/Dashboard.jsx — landing page (LOW risk)",
+        "VetConnect-Admin/src/pages/Monitor.jsx — fullscreen lobby TV (LOW risk)",
+        "VetConnect-Admin/src/pages/Expenses.jsx — expense tracking (MEDIUM risk)",
+        "VetConnect-Admin/src/pages/Login.jsx — auth screen (LOW risk)",
+        "VetConnect mobile: QueueScreen.js, ChatbotScreen.js, UserProfileScreen.js, MyPetsScreen.js (NOT scanned)",
+        "VetConnect mobile: ClientDashboard.js, ClientAppointments.js, PetHistoryScreen.js, SuperCard.js (PARTIAL)"
+      ]
+    },
+    "codebase_coverage": {
+      "files_fully_scanned": "~55 of ~80 source files",
+      "loc_coverage": "~75%",
+      "bug_finding_value_coverage": "~92%",
+      "defense_demo_coverage": "~95%",
+      "all_7_admin_feature_modules_complete": true,
+      "remaining": "4 standalone admin pages + 8 mobile client screens"
+    },
+    "audit_system_assessment": {
+      "seven_note_systems_identified": [
+        "appointment notes",
+        "SOAP fields",
+        "auditReason",
+        "clinicalPulse note",
+        "staffNotes",
+        "dischargeSummary",
+        "inventory log reason"
+      ],
+      "overall_grade": "B+ architecture, C+ execution, A- after all tasks ship",
+      "unaddressed_gaps": [
+        "cross-system correlation ID",
+        "reserve/release not logged",
+        "auditReason overwritten not appended",
+        "category changes unaudited",
+        "clinic settings changes unaudited",
+        "dispensing details not in pulse",
+        "draft save/resume unaudited",
+        "staff management audit unknown → NOW VERIFIED: staff_logs exists and works"
+      ]
+    },
+    "handoff_claims_refuted": [
+      "ConfirmRevokeModal active-appointment guard — FALSE: zero appointment queries in revoke chain",
+      "Staff uses accountStatus (active/suspended/revoked) — FALSE: uses disabled boolean + role:'disabled'",
+      "Staff fields include specialization, licenseNumber — FALSE: uses prcLicense instead"
+    ]
+  },
+  "read_order_update_for_fresh_session": [
+    "1. handoff.json (this file) — read session_2026_04_19_supplement FIRST for latest context",
+    "2. MASTER_TASKLIST.md — now 248 tasks with 15 batch groupings and 15-day ship sequence",
+    "3. STAFF_DEEPDIVE.md — CRITICAL: 2 critical bugs, 3 handoff claims refuted, role/accessLevel architecture problem",
+    "4. INVENTORY_DEEPDIVE.md — P0 stock integrity, allergen safety system, dispensing hardening tasks",
+    "5. SETTINGS_DEEPDIVE.md — no-show rebook detection system, dispensing late tasks",
+    "6. SALES_DEEPDIVE.md — EOD revenue fix, refund lifecycle, batch expiry",
+    "7. SERVICES_DEEPDIVE.md — archive guard, tier validation, role mismatch",
+    "8. PATIENTS_CRM_DEEPDIVE.md — allergy normalization, billing integrity",
+    "9. ECOSYSTEM_ARCHITECTURE_REPORT.md — monorepo structure, thesis coverage",
+    "10. CLINICAL_WORKSPACE_DEEPDIVE.md — 13-question audit",
+    "11. MOBILE_BOOKING_DEEPDIVE.md — booking flow + useBookingEngine",
+    "12. CLAUDE.md — project conventions"
+  ],
+  "persistent_memory_note": "The developer uses Claude Code with persistent auto-memory at C:\\Users\\jepdd\\.claude\\projects\\c--Users-jepdd-Documents-VetConnect-Capstone\\memory\\. Memory files contain 5 session records: session_2026_04_17, session_2026_04_18_sales, session_2026_04_18_inventory, session_2026_04_19_settings_dispensing_noshow, session_2026_04_19_services_staff. Trust handoff.json over stale memory.",
+  "session_2026_04_20_supplement": {
+    "session_date": "2026-04-20",
+    "session_type": "Full codebase completion — standalone pages + mobile client + JSX audits + S-tier Dashboard design + design unification + vaccination redesign + PatientDashboard A/A+ scoping",
+    "companion_files_produced": [
+      "DASHBOARD_DEEPDIVE.md — Dashboard.jsx (7-line stub, F grade, S-tier analytics scoped)",
+      "MONITOR_DEEPDIVE.md — Monitor.jsx (125 lines, C- grade, 13 bugs)",
+      "EXPENSES_DEEPDIVE.md — Expenses.jsx (382 lines, B- grade, 19 bugs)",
+      "LOGIN_DEEPDIVE.md — Login.jsx (169 lines, C+ grade, 2 CRITICAL security bugs)",
+      "MOBILE_CLIENT_DEEPDIVE.md — 10 mobile files (5,496 LOC, 91 tasks, ~1,400 lines)",
+      "Updated MASTER_TASKLIST.md — now ~480 tasks (was 248), 969 lines, 25 batch groupings"
+    ],
+    "milestone": "100% CODEBASE COVERAGE ACHIEVED — every source file in VetConnect audited at both data-path and rendering layers",
+    "what_was_accomplished_this_session": [
+      "Deep-scanned 4 admin standalone pages: Dashboard (F), Monitor (C-), Expenses (B-), Login (C+)",
+      "Deep-scanned 10 mobile client files: QueueScreen (C), ChatbotScreen (B-), UserProfileScreen (C+), MyPetsScreen (C+), ClientDashboard (B-), ClientAppointments (B), PetHistoryScreen (B-), SuperCard (B+), RegisterScreen (B), helpers.js (F — empty)",
+      "JSX rendering audit of 4 partially-read files: Queue.jsx, WalkInModal.jsx, queueColumns.jsx, ClinicalWorkspace.jsx",
+      "Designed S-tier Dashboard: 4 tabs (Growth→Operations→Clinical→Financial), period views, recharts, insight engine (30 rules), drill-downs, exports, KPI thresholds, goals, annotations",
+      "Designed mobile design token system (mobileTokens.js) + admin design sweep plan (38 files, skip Queue/ + ClinicalWorkspace)",
+      "Redesigned vaccination system: VACCINE_CATALOG with standardized IDs, dropdown replacing free text, multi-vaccine per visit, vaccineId-based matching eliminates all keyword problems",
+      "Scoped PatientDashboard to A+: amendments, print summary, 4 missing vitals, lab aggregation, chart improvements, vaccination completeness",
+      "Scoped MyPetsScreen to A-: sex/medical filters, sort options, book visit button, vaccination mini-badge",
+      "Scoped QueueScreen to A: position indicator, countdown, number-called alert, average wait, multi-pet, running late",
+      "Scoped UserProfileScreen parity with admin ClientDetails: 8 new fields, collapsible sections",
+      "Scoped ChatbotScreen LLM integration (hybrid approach) as Phase 3",
+      "Graded all 16 admin modules/pages current + future",
+      "Identified designTokens.js internal contradiction (GLASS preset uses glassmorphism contradicting neubrutalism)",
+      "Confirmed mobile LoginScreen + RegisterScreen ARE neubrutalist (positioned View shadows, press snap)",
+      "Found 3 different fake phone numbers across mobile app pointing to different cities",
+      "Discovered pages/Staff.jsx is dead code (317 lines, old version, zero imports)"
+    ],
+    "decisions_locked_this_session": [
+      "LOCKED: Dashboard scope — full analytics, thesis deliverable",
+      "LOCKED: Dashboard tab order — Growth → Operations → Clinical → Financial (Growth first for thesis narrative)",
+      "LOCKED: Period views — per-tab toggle. Operations always Today, others have Today/Week/Month/Quarter/Year",
+      "LOCKED: Charting library — recharts for trends, CSS bars for compositions. No pie/donut (round violates borderRadius:0)",
+      "LOCKED: Login auth gap — Option B route-level role protection in App.jsx + catch-block signout (belt-and-suspenders)",
+      "LOCKED: Monitor priority — 2-tier (red/urgent for emergencies, neutral for everything else)",
+      "LOCKED: Expenses Refunds category — defer to P3",
+      "LOCKED: Monitor sidebar link — add Lobby Monitor to Sidebar",
+      "LOCKED: T2.345 lobby query — Option C (strip to {queueNumber, serviceDuration, priority} in state)",
+      "LOCKED: T2.363 emergencyName — BOTH (write flat field + modernize BookAppointment reader)",
+      "LOCKED: T2.403 legacy records — Option A (hide plan section for records without dischargeSummary)",
+      "LOCKED: T2.417 absorbed into T2.363",
+      "LOCKED: File restructure — minimal. Delete dead pages/Staff.jsx + move Dashboard to features/Dashboard/ only. Full restructure T3.50 post-defense",
+      "LOCKED: Design sweep scope — skip entire Queue/ directory (8 files) + ClinicalWorkspace.jsx. Only fontWeight:1000 fix touches skipped files",
+      "LOCKED: Design sweep timing — LAST P2 batch, after all bug fixes and feature work",
+      "LOCKED: designTokens.js fix — remove GLASS preset (contradicts neubrutalism), add missing tokens. Do BEFORE Dashboard build",
+      "LOCKED: mobileTokens.js — separate file with positioned-View shadow technique, not CSS boxShadow",
+      "LOCKED: Vaccination system — VACCINE_CATALOG with standardized IDs, Autocomplete dropdown, multi-vaccine array, vaccineId matching. Supersedes T2.455/T2.456/T2.471/T2.473/T2.475",
+      "LOCKED: ChatbotScreen LLM — hybrid approach (buttons + free text). All tasks deferred to Phase 3 (T3.62-T3.67)",
+      "LOCKED: QueueScreen self-check-in — deferred to Phase 3 (T3.61)",
+      "LOCKED: UserProfileScreen — full parity with admin ClientDetails (8 new fields, 3 admin-only excluded)"
+    ],
+    "critical_bugs_found_this_session": [
+      {
+        "id": "login_disabled_check_missing",
+        "severity": "CRITICAL",
+        "fix_task": "T2.259",
+        "summary": "Admin Login: disabled flag never checked. Revoked staff can log in."
+      },
+      {
+        "id": "login_catch_block_no_signout",
+        "severity": "CRITICAL",
+        "fix_task": "T2.260",
+        "summary": "Admin Login: Auth succeeds + Firestore fails = unguarded dashboard access. No signout in catch."
+      },
+      {
+        "id": "client_cancel_wrong_field",
+        "severity": "CRITICAL",
+        "fix_task": "T2.395",
+        "summary": "ClientAppointments: writes rejectReason but rules require auditReason. Client cancellation silently fails."
+      },
+      {
+        "id": "ghost_filter_phantom_field",
+        "severity": "CRITICAL",
+        "fix_task": "T2.394",
+        "summary": "ClientAppointments: history tab reads cancelReason (phantom) instead of auditReason. Dismissed ghosts leak."
+      },
+      {
+        "id": "queue_ahead_wrong_field",
+        "severity": "CRITICAL",
+        "fix_task": "T2.384",
+        "summary": "ClientDashboard: queue-ahead queries nonexistent date field. Always shows YOU'RE NEXT."
+      },
+      {
+        "id": "emergency_name_loop",
+        "severity": "CRITICAL",
+        "fix_task": "T2.363",
+        "summary": "UserProfileScreen: writes emergencyContacts[] but BookAppointment checks emergencyName. Infinite redirect loop for new users."
+      },
+      {
+        "id": "walkin_allergy_never_written",
+        "severity": "P0",
+        "fix_task": "T2.514",
+        "summary": "WalkInModal: allergyArray data flows to appointment but guestPetData.petAllergies always empty string in pet doc."
+      },
+      {
+        "id": "clinical_allergy_inconsistent",
+        "severity": "P0",
+        "fix_task": "T2.518",
+        "summary": "ClinicalWorkspace: main strip reads patient?.allergies, God-View reads patient?.petAllergies. Allergies invisible in one view."
+      },
+      {
+        "id": "godview_missing_vaccine_lab_draft",
+        "severity": "HIGH",
+        "fix_task": "T2.519",
+        "summary": "ClinicalWorkspace: God-View Plan quadrant missing vaccine form, lab results, save draft."
+      },
+      {
+        "id": "queue_grid_v1_api",
+        "severity": "HIGH",
+        "fix_task": "T2.506",
+        "summary": "Queue.jsx: Grid item xs={12} uses MUI v1 API — broken layout on v2."
+      },
+      {
+        "id": "expenses_no_auth",
+        "severity": "P0",
+        "fix_task": "T2.243-T2.245",
+        "summary": "Expenses: hardcoded Admin user, no route guard, no Firestore rules."
+      },
+      {
+        "id": "monitor_race_condition",
+        "severity": "P0",
+        "fix_task": "T2.231",
+        "summary": "Monitor: fetchTicketDetails race condition — stale ticket metadata display."
+      },
+      {
+        "id": "monitor_missing_prefix",
+        "severity": "P0",
+        "fix_task": "T2.232",
+        "summary": "Monitor: ticket prefix completely missing — shows 5 not W-005."
+      },
+      {
+        "id": "queue_privacy_leak",
+        "severity": "HIGH",
+        "fix_task": "T2.345",
+        "summary": "QueueScreen: lobby query fetches ALL patients' full appointment data to any authenticated client."
+      },
+      {
+        "id": "three_fake_phones",
+        "severity": "P2",
+        "fix_task": "T2.416",
+        "summary": "Three different fake phone numbers across SuperCard/ChatbotScreen/PetHistoryScreen pointing to different cities."
+      }
+    ],
+    "file_audit_status_update": {
+      "100_percent_coverage": true,
+      "newly_fully_scanned_this_session": [
+        "VetConnect-Admin/src/pages/Dashboard.jsx (7 lines — stub)",
+        "VetConnect-Admin/src/pages/Monitor.jsx (125 lines)",
+        "VetConnect-Admin/src/pages/Expenses.jsx (382 lines)",
+        "VetConnect-Admin/src/pages/Login.jsx (169 lines)",
+        "VetConnect/src/screens/QueueScreen.js (301 lines)",
+        "VetConnect/src/screens/ChatbotScreen.js (446 lines)",
+        "VetConnect/src/screens/UserProfileScreen.js (734 lines)",
+        "VetConnect/src/screens/MyPetsScreen.js (630 lines)",
+        "VetConnect/src/screens/ClientDashboard.js (670 lines)",
+        "VetConnect/src/screens/ClientAppointments.js (994 lines)",
+        "VetConnect/src/screens/PetHistoryScreen.js (1,066 lines)",
+        "VetConnect/src/components/SuperCard.js (241 lines)",
+        "VetConnect/src/screens/RegisterScreen.js (414 lines)",
+        "VetConnect/src/utils/helpers.js (0 bytes — empty)",
+        "Queue.jsx JSX layer (~40% previously unread — now 100%)",
+        "WalkInModal.jsx JSX layer (~70% previously unread — now 100%)",
+        "queueColumns.jsx JSX layer (~30% previously unread — now 100%)",
+        "ClinicalWorkspace.jsx JSX layer (~40% previously unread — now 100%)"
+      ],
+      "remaining_not_scanned": "NONE — full codebase coverage achieved",
+      "deprecated_not_scanned": [
+        "StaffDashboard.js, StaffAppointments.js, ManageQueueScreen.js, ScannerScreen.js, ConsultationScreen.js — locked decision: mobile client-only"
+      ]
+    },
+    "grading_summary": {
+      "admin_modules_current_vs_future": {
+        "Queue": {
+          "current": "A-",
+          "after_tasks": "A",
+          "note": "Design skip caps at A"
+        },
+        "ClinicalWorkspace": {
+          "current": "B+",
+          "after_tasks": "A-",
+          "note": "Design skip + vaccine redesign"
+        },
+        "POSModal": {
+          "current": "B+",
+          "after_tasks": "A-",
+          "note": "Multi-service billing fix"
+        },
+        "Records": {
+          "current": "C+",
+          "after_tasks": "A-",
+          "note": "3 broken filters + case-grouping"
+        },
+        "Patients_CRM": {
+          "current": "B-",
+          "after_tasks": "A-",
+          "note": "N+1 fix + sales ownerId"
+        },
+        "PatientDashboard_EMR": {
+          "current": "B+",
+          "after_tasks": "A+",
+          "note": "Fully scoped to A+"
+        },
+        "Services": {
+          "current": "B",
+          "after_tasks": "A-",
+          "note": "Archive guard + validation"
+        },
+        "Inventory": {
+          "current": "B-",
+          "after_tasks": "A-",
+          "note": "Stock transaction safety"
+        },
+        "Staff": {
+          "current": "C",
+          "after_tasks": "B+",
+          "note": "A- needs Blaze Auth CF"
+        },
+        "Sales": {
+          "current": "B-",
+          "after_tasks": "A-",
+          "note": "EOD accuracy + refund lifecycle"
+        },
+        "Settings": {
+          "current": "B-",
+          "after_tasks": "A-",
+          "note": "Role guard + dead config wired"
+        },
+        "Sidebar": {
+          "current": "B+",
+          "after_tasks": "A-",
+          "note": "Monitor link + route protection"
+        },
+        "Dashboard": {
+          "current": "F",
+          "after_tasks": "S-",
+          "note": "Built from scratch"
+        },
+        "Monitor": {
+          "current": "C-",
+          "after_tasks": "B+",
+          "note": "A- with 3 extra tasks"
+        },
+        "Expenses": {
+          "current": "B-",
+          "after_tasks": "A-",
+          "note": "Security + date filtering"
+        },
+        "Login": {
+          "current": "C+",
+          "after_tasks": "A-",
+          "note": "Disabled check + route protection"
+        }
+      },
+      "mobile_screens_current_vs_future": {
+        "LoginScreen": {
+          "current": "B+",
+          "after_tasks": "A-"
+        },
+        "RegisterScreen": {
+          "current": "B",
+          "after_tasks": "A-"
+        },
+        "ClientDashboard": {
+          "current": "B-",
+          "after_tasks": "A-"
+        },
+        "BookAppointment": {
+          "current": "B",
+          "after_tasks": "A-"
+        },
+        "MyPetsScreen": {
+          "current": "C+",
+          "after_tasks": "A-"
+        },
+        "ClientAppointments": {
+          "current": "B",
+          "after_tasks": "A-"
+        },
+        "SuperCard": {
+          "current": "B+",
+          "after_tasks": "A-"
+        },
+        "QueueScreen": {
+          "current": "C",
+          "after_tasks": "A"
+        },
+        "PetHistoryScreen": {
+          "current": "B-",
+          "after_tasks": "A"
+        },
+        "ChatbotScreen": {
+          "current": "B-",
+          "after_tasks": "B+",
+          "note": "A- with Phase 3 LLM"
+        },
+        "UserProfileScreen": {
+          "current": "C+",
+          "after_tasks": "A-"
+        }
+      },
+      "vaccination_system": {
+        "current": "C+",
+        "after_core": "A-",
+        "after_a_tier": "A",
+        "after_a_plus": "A+"
+      }
+    },
+    "design_system_findings": {
+      "admin_designTokens_contradiction": "GLASS preset in designTokens.js uses glassmorphism (blur, transparency, borderRadius:3) contradicting neubrutalism. T2.442 removes it.",
+      "mobile_has_no_design_tokens": "Zero imports from designTokens.js across entire mobile app. 7 inline utilities scattered. T2.434 creates mobileTokens.js.",
+      "mobile_neubrutalism_inconsistency": "LoginScreen + RegisterScreen + ClientDashboard ARE neubrutalist (positioned View shadows, press snap, borderRadius:0). Other 7 screens use soft/rounded aesthetic. Not intentional divergence — inconsistency.",
+      "admin_design_debt": "165 fontWeight:1000, 50+ borderRadius violations, 230+ hardcoded colors, 20 alert/confirm calls, near-zero ARIA attributes across Queue + WalkIn + queueColumns + ClinicalWorkspace",
+      "design_sweep_scope": "38 admin files swept. Skip: Queue/ (8 files) + ClinicalWorkspace.jsx. Sweep is terminal — do LAST."
+    },
+    "task_count_this_session": {
+      "admin_standalone_pages": "T2.228-T2.342 (~115 tasks, Dashboard S-tier dominant)",
+      "mobile_client": "T2.343-T2.433 (91 tasks)",
+      "design_unification": "T2.434-T2.452 (18 tasks)",
+      "patient_dashboard_a_plus": "T2.453-T2.470 (16 tasks)",
+      "vaccination_redesign": "T2.472-T2.479 (6 tasks, supersedes 5 old tasks)",
+      "mobile_a_push": "T2.480-T2.504 (25 tasks)",
+      "jsx_audit_fixes": "T2.505-T2.523 (19 tasks)",
+      "phase_3_additions": "T3.43-T3.67 (25 tasks)",
+      "total_new": "~230 tasks",
+      "total_cancelled_absorbed": "7 (T2.417, T2.452, T2.455, T2.456, T2.471, T2.473, T2.475)",
+      "running_total_all_sessions": "~480 tasks"
+    }
+  },
+  "read_order_update_for_fresh_session_v3": [
+    "0. CLAUDE.md auto-loads — points to IMPLEMENTATION_GUIDE.md",
+    "1. IMPLEMENTATION_GUIDE.md — trajectory (now includes Step 1.5), module sequence, prompts",
+    "2. handoff.json — read session_2026_04_21_supplement for context + implementation_advisory",
+    "3. MASTER_TASKLIST.md — 165 DONE, 342 TODO Phase 2 tasks, 25 deferred sub-tasks tracked",
+    "4. Deep-dive files — use cross-reference table to find the right one per task"
+  ],
+  "persistent_memory_note_v2": "Developer uses Claude Code with persistent auto-memory. 6 session records exist: session_2026_04_17, session_2026_04_18_sales, session_2026_04_18_inventory, session_2026_04_19_settings_dispensing_noshow, session_2026_04_19_services_staff, session_2026_04_20_standalone_pages. Trust handoff.json over stale memory.",
+  "next_steps_for_fresh_session_v3": {
+    "immediate_priorities": [
+      "Implementation in progress — 15 of 19 Phase 2 modules DONE (253 tasks)",
+      "4 modules remaining: Mobile Client (8 sub-modules), Dashboard Build (6 days), Deferred Cleanup, Design Sweep",
+      "ClinicalWorkspace fully complete (CW-1 through CW-5)",
+      "Firestore security rules DEPLOYED to production",
+      "This planning session served as active advisory for all implementation decisions"
+    ],
+    "implementation_sequence": [
+      "1. T2.442 + T2.434 — Fix designTokens.js + create mobileTokens.js (prerequisites for Dashboard + mobile work)",
+      "2. Mobile Critical Fixes batch — 9 tasks, ~1.5 hrs, fixes 6 CRITICAL bugs",
+      "3. Admin P0/CRITICAL fixes — T2.259, T2.260, T2.243-T2.246, T2.231-T2.232, T2.514, T2.518",
+      "4. Dashboard S-Tier Build — T2.342 (move file) → T2.228-T2.341, ~32 hrs, 6-day sprint",
+      "5. All remaining P1 tasks across all modules",
+      "6. All P2 feature work",
+      "7. Design sweep LAST — T2.434-T2.451 (mobile + admin), ~16 hrs",
+      "8. P3 polish + Phase 3 as time permits"
+    ],
+    "do_not_rescan": "EVERY source file has been audited. Do NOT re-read files for investigation. Use the deep-dive documents as reference. Only read files when implementing specific tasks.",
+    "implementation_guide": "Read IMPLEMENTATION_GUIDE.md for batch ordering, dependency chains, prompt templates, regression protocol, the 10 known remaining gaps (why not 100%), and the full S-tier roadmap (~156 hrs additional). This is the execution playbook.",
+    "pending_next_session": [
+      "Continue with Mobile Client MOB-1. Use the sub-module prompt from IMPLEMENTATION_GUIDE.md.",
+      "Do a deferred-findings sweep for ClinicalWorkspace before starting Mobile Client.",
+      "After Dashboard Build, run Step 1.5 (Deferred Cleanup) — now ~30+ deferred tasks.",
+      "Design Sweep is ALWAYS LAST.",
+      "This planning/advisory session (2026-04-21/22) can be resumed with a new session using the same role."
+    ]
+  },
+  "handoff_completeness_checklist_v3": {
+    "all_sessions_captured": true,
+    "all_decisions_locked": true,
+    "100_percent_codebase_coverage": true,
+    "all_tasks_in_master_tasklist": true,
+    "all_deep_dive_files_current": true,
+    "grading_complete_all_modules": true,
+    "design_system_assessed": true,
+    "vaccination_system_redesigned": true,
+    "implementation_sequence_defined": true,
+    "context_for_fresh_session_sufficient": true,
+    "s_tier_formally_scoped": true,
+    "phase_3_classified": true,
+    "cross_reference_table_built": true,
+    "planner_split_strategy_defined": true,
+    "all_batches_have_planner_splits": true,
+    "post_batch_checklist_defined": true,
+    "status_columns_on_all_tables": true,
+    "mobile_build_verification": true,
+    "build_failure_recovery": true,
+    "claude_md_references_workflow": true,
+    "plan_files_gitignored": true,
+    "sub_agent_delegation_explicit": true,
+    "module_coverage_verified_484_of_484": true
+  },
+  "session_2026_04_21_supplement": {
+    "session_date": "2026-04-21",
+    "session_type": "Planning & task scoping — no code changes",
+    "what_was_accomplished": [
+      "Converted S-tier roadmap (~80 features) into formal tasks T4.1-T4.80 under Phase 4 in MASTER_TASKLIST.md",
+      "Classified all 67 Phase 3 tasks into Essential (13), High-Value (16), Optional (38) tiers",
+      "Created batch groupings for Phase 3 (Batches 12-14) and Phase 4 (Batch 15 with 15 sub-batches)",
+      "Built Task-to-Source Cross-Reference table mapping all ~560 tasks to their backing deep-dive files",
+      "Identified and fixed 3 redundancies: T4.77→T4.71 (biometric), T2.98→T2.148 (clinic name), T4.70→T2.277 (forgot password)",
+      "Annotated T4.59 as rollup of T2.273-T2.275 (not new work)",
+      "Bumped T2.277 from P2 to P1 (absorbs T4.70 priority)",
+      "Designed planner splitting strategy: one planner per deep-dive affinity, parallel execution",
+      "Identified 8 tasks with [NO BACKING] that need fresh planning passes",
+      "Rewrote session prompt with 6-step workflow (plan→review→execute→build→audit→test)",
+      "Added pre-built parallel planner splits for Batch 1 (3 planners) and Batch 2 (4 planners)",
+      "Full task inventory analysis: redundancies, dependency chains, re-prioritization recommendations, optimal sequence",
+      "Built pre-built planner splits for ALL batches 0-11 (Batch 0: single, 1: 3 parallel, 2: 4 parallel, 3: single sequential, 4: 6 sequential days, 5: 9 parallel, 6: 13 parallel, 7: 5 parallel, 8: single, 9: single, 10: 3 parallel, 11: 10 sequential)",
+      "Added post-batch checklist (build→status update→commit→dependency check→confirm) to IMPLEMENTATION_GUIDE.md",
+      "Added Module Sequence as primary workflow in IMPLEMENTATION_GUIDE.md — 19 modules ordered by CRITICAL density, with sub-module splits for CW (5 parts) and Mobile (8 parts)",
+      "Demoted batch structure to reference. Module-by-module approach eliminates the 148-task gap in planner splits",
+      "Discovered 148 Phase 2 tasks were missing from planner splits due to range notation and early-session tasks having no batch home",
+      "Added Status column to ALL task tables in MASTER_TASKLIST.md — 48 tables fixed, 643 tasks now have TODO status",
+      "Fixed mobile build verification gap — execute prompt now has admin vs mobile vs mixed build commands",
+      "Fixed build failure recovery gap — 5-step protocol added to execute prompt",
+      "Added Implementation Workflow section to CLAUDE.md pointing to IMPLEMENTATION_GUIDE.md",
+      "Created root .gitignore to exclude plan files from commits",
+      "Rewrote all prompts (Steps 1-6 + shared) with explicit sub-agent delegation model",
+      "Added delegation model diagram to Module Sequence section",
+      "Fixed Step 0 prompt to use explicit sub-agent delegation (was inline planning)",
+      "Step 0 now embedded in IMPLEMENTATION_GUIDE.md Full Trajectory section"
+    ],
+    "files_modified": [
+      "MASTER_TASKLIST.md — Phase 4 section (T4.1-T4.80), Phase 3 batch groupings, absorbed tasks table, updated header counts",
+      "IMPLEMENTATION_GUIDE.md — Pending action marked done, Batches 12-15 added, cross-reference table, planner split templates, session prompt rewritten, S-tier totals corrected"
+    ],
+    "key_structural_decisions": [
+      "Phase 4 uses T4.x numbering (not T3.68+ as originally planned) — cleaner separation from Phase 3",
+      "Phase 3 Essential batch is the gate to Phase 4 — must complete before S-tier work",
+      "Planner splitting by deep-dive affinity, not arbitrary task count — keeps each planner focused",
+      "Cross-reference table is the bridge between task IDs and evidence files — closes the self-serve gap for sub-agents",
+      "Batch 5 (remaining P1) and Batch 6 (P2) split by named groupings from MASTER_TASKLIST.md — each grouping maps to one deep-dive",
+      "Batch 4 (Dashboard) uses sequential day-by-day planners — each reads prior day output",
+      "Batch 11 (Design Sweep) uses sequential per-module planners — screenshot-sweep-build-compare cycle",
+      "Post-batch checklist enforces status updates and dependency checks between batches",
+      "Module sequence is primary workflow, batches are reference. Solo developer works through one module at a time, P0→P3 within each",
+      "Only 5 hard dependency rules + 2 ordering constraints matter — everything else is flexible",
+      "Module Sequence is primary workflow — 19 modules ordered by CRITICAL density, verified 484/484 coverage",
+      "Main agent is orchestrator only — never reads deep-dives or source files, delegates to sub-agents",
+      "All prompts explicitly say when to spawn which sub-agent and what brief to pass",
+      "Login (Module 1) is the proof-of-concept — 10 tasks, 1 hr, cheapest failure point"
+    ],
+    "task_count_update": {
+      "total_tasks": "~560",
+      "cancelled_absorbed": 16,
+      "active": "~544",
+      "phase_1": "10 tasks",
+      "phase_2": "~290 active tasks",
+      "phase_3": "67 tasks (13 essential, 16 high-value, 38 optional)",
+      "phase_4": "77 active tasks (T4.1-T4.80, 3 absorbed)",
+      "phase_4_effort": "~154 hours"
+    },
+    "redundancies_fixed": [
+      {
+        "absorbed": "T4.77",
+        "into": "T4.71",
+        "reason": "Biometric login — same feature for admin + mobile"
+      },
+      {
+        "absorbed": "T2.98",
+        "into": "T2.148",
+        "reason": "POSModal clinic name — T2.148 is superset (Sales.jsx + POSModal)"
+      },
+      {
+        "absorbed": "T4.70",
+        "into": "T2.277",
+        "reason": "Forgot Password — identical scope. T2.277 bumped P2→P1"
+      }
+    ],
+    "no_backing_tasks": [
+      "T2.1-T2.4",
+      "T2.7-T2.11",
+      "T3.4",
+      "T3.5",
+      "T3.6",
+      "T3.11",
+      "T3.50"
+    ],
+    "re_prioritization_recommendations": [
+      "T2.9 (Cloud Functions fate decision): P2→P1 — gates 12+ downstream tasks across 3 phases",
+      "T2.208+T2.209 (staff security): move to Day 1 — CRITICAL, currently scheduled Day 13",
+      "T2.75 (clinical amendments): P2→P1 — most important P2 per original note, gates 4 downstream tasks",
+      "T2.262 (route role protection): HIGH→P0 — 30 min, fixes 3 auth bugs at once"
+    ],
+    "implementation_advisory": {
+      "role": "This planning session evolved into an active advisory role during implementation. All module audit findings were reviewed here before being applied in the implementation session.",
+      "modules_advised": [
+        "Login (9/10 done, T2.278 deferred to Staff)",
+        "Staff (20/20 done, 6 reviewer fixes applied)",
+        "Inventory (P0+P1 then P2+P3, split execution, 2 audit rounds)",
+        "Sales (P1 then P2+P3, split execution, 2 audit rounds)",
+        "Expenses (all at once, 7 critical+warning fixes from audit)",
+        "Services (all at once, 5 fixes from audit, 1 deferred to Design Sweep)",
+        "Settings (Batch 1 local + Batch 2 cross-module split)",
+        "Monitor (13 tasks + T2.238 Sidebar link fix + T2.7 clinicPhone TextField)",
+        "Queue JSX (completed)",
+        "Booking Engine (completed, T2.23 and T2.86 tracked as incomplete)",
+        "Firestore Rules (RBAC rewrite, role vs accessLevel decision enforced, DEPLOYED to production)",
+        "Printables (ground-up build, no deep-dive, XSS fix from audit)",
+        "Vaccination Redesign (6 tasks strict chain, backward-compat dual write)",
+        "Records (16 tasks, case-grouping, linked visits stub caught, print fix)",
+        "ClinicalWorkspace CW-1 (seal + audit integrity, DONE)"
+      ],
+      "key_decisions_made_during_implementation": [
+        "RBAC helpers must use role field not accessLevel — accessLevel fallback removed from isStaff()",
+        "Split large modules (Inventory, Sales, Settings) into P0+P1 then P2+P3 phases",
+        "Run all-at-once for small safe modules (Expenses, Services)",
+        "Acceptance checks added to planner and reviewer prompts after T2.238 partial implementation discovered",
+        "Deferred suggestions sweep across all prior audits — 3 untracked items found and added to MASTER_TASKLIST",
+        "XSS fix in printables — esc() helper added to all HTML template generators",
+        "Implementation session task count corrected from 696 to 654 (grep pattern was counting reference tables)",
+        "Firestore security rules deployed to production via firebase deploy --only firestore:rules",
+        "T2.63 linked visits navigation is a stub — tracked as T2.63a deferred",
+        "T2.69 phone normalization is search-side only — write-side tracked as T2.69a",
+        "ForensicMetricGrid live age decoupling designed — liveAge prop overrides Record Age + Op Hours Age only, other 6 metrics untouched. Tracked as T2.44a",
+        "Records.jsx ForensicMetricGrid missing settings/sealedMetrics props — inconsistency with Queue.jsx bundled into T2.44a",
+        "Case view visual distinction insufficient — tracked as T2.61a",
+        "Checkbox selection confusing on non-TRIAGE tabs — tracked as T2.73a",
+        "Stub detection (item 7) added to audit prompt permanently"
+      ],
+      "workflow_refinements": [
+        "Planner brief now includes done-when acceptance check per task (step 6)",
+        "Reviewer brief now includes scope completeness check against acceptance criteria (item 6)",
+        "Execute prompt now distinguishes admin/mobile/mixed build verification",
+        "Execute prompt now has 5-step build failure recovery protocol",
+        "Login reclassified from ADMIN to MIXED module (T2.266 touches mobile)",
+        "Booking Engine reclassified from MOBILE to MIXED module (T2.11 touches mobile)",
+        "ClinicalWorkspace, Firestore Rules, Printables confirmed ADMIN-only"
+      ],
+      "deferred_cleanup": {
+        "description": "Step 1.5 added to trajectory — batch cleanup of P3 sub-tasks from completed module audits",
+        "current_count": 25,
+        "note": "Count will grow as remaining 5 modules are audited. Planner prompt is dynamic — finds ALL TODO tasks in completed module ranges.",
+        "when": "After Dashboard Build (module 18), before Design Sweep (module 19)"
+      },
+      "first_session_summary": {
+        "modules_completed": 14,
+        "tasks_done": 165,
+        "note": "First implementation session ended at ~35% context"
+      },
+      "second_session_progress": {
+        "modules_completed_this_session": [
+          "Records",
+          "ClinicalWorkspace CW-1",
+          "ClinicalWorkspace CW-2",
+          "ClinicalWorkspace CW-3",
+          "ClinicalWorkspace CW-4",
+          "ClinicalWorkspace CW-5"
+        ],
+        "total_done_after_session": 253,
+        "firestore_rules_deployed": true,
+        "deferred_tasks_added": [
+          "T2.61a (case view visual distinction)",
+          "T2.63a (linked visits navigation stub)",
+          "T2.69a (write-side phone normalization)",
+          "T2.73a (checkbox TRIAGE-only)",
+          "T2.44a (live age decoupling — designed with full side-effect analysis)",
+          "T2.102a/b/c (deposit validation, cap, borderRadius)",
+          "Plus additional items from CW audit sweeps"
+        ],
+        "remaining_modules": [
+          "Mobile Client (MOB-1 through MOB-8)",
+          "Dashboard Build (6 days)",
+          "Step 1.5 Deferred Cleanup (~30+ tasks)",
+          "Design Sweep (LAST)"
+        ],
+        "key_findings": [
+          "CW-4 Phase A: 19/21 tasks already done from CW-1/2/3 — engineer correctly identified, spot-checks confirmed",
+          "Forensic metrics investigation: auditEnd caps at pulse event day, T2.44a designed to decouple age metrics with liveAge prop",
+          "T2.43 carried-over removed from TERMINAL_STATUSES — Records.jsx had hardcoded duplicate that was caught and fixed by reviewer",
+          "Stub detection (item 7) in audit prompt catching real issues",
+          "Acceptance checks (item 6) preventing partial implementations"
+        ]
+      },
+      "third_session_progress": {
+        "date": "2026-04-23",
+        "advisory_session": true,
+        "advisory_role": "Generated all planner, execute, and audit prompts for MOB-1 through MOB-8. Reviewed every plan file before approving. Caught T2.383/T2.409 neubrutalism-on-mobile error, T2.404 XSS gap, T2.414 queueAhead dependency concern.",
+        "modules_completed_this_session": [
+          "Mobile Client MOB-1 (QueueScreen — 18 tasks)",
+          "Mobile Client MOB-2 (ClientDashboard + ClientAppointments — 18 tasks)",
+          "Mobile Client MOB-3 (UserProfileScreen + MyPetsScreen — 26 tasks, 3 phases)",
+          "Mobile Client MOB-4 (PetHistoryScreen + SuperCard — 14 tasks)",
+          "Mobile Client MOB-5 (ChatbotScreen — 8 tasks)",
+          "Mobile Client MOB-6 (RegisterScreen — 2 tasks)",
+          "Mobile Client MOB-7 (helpers.js extraction — 4 tasks, 8 files)",
+          "Mobile Client MOB-8 (MyPetsScreen A- push — 4 tasks + 6 confirmed DONE from MOB-1)"
+        ],
+        "total_done_after_session": 346,
+        "tasks_done_this_session": 93,
+        "commit": "e28ce06",
+        "new_files_created": [
+          "VetConnect/src/hooks/useClinicContact.js (singleton hook, useSyncExternalStore, reads clinic_settings/general)",
+          "VetConnect/src/utils/helpers.js (6 exports: safeDate, formatFirestoreTime, getLocalDateStr, formatHour, formatDisplayDate, formatDisplayTime + toJSDate internal)"
+        ],
+        "deleted_files": [
+          "VetConnect/src/screens/ManageQueueScreen.js (T2.353)"
+        ],
+        "key_decisions": [
+          "Mobile is NOT neubrutalist — T2.383 and T2.409 deferred to Design Sweep as mobileTokens.js adoption only",
+          "T2.367 absorbed into T2.497 (duplicate email field)",
+          "T2.368 absorbed/decomposed into T2.497-T2.503 (parity fields)",
+          "T2.382 already enforced by Firestore rule — marked DONE without code change",
+          "T2.366 uses deletion-request pattern (not actual Auth deletion) for DPA compliance",
+          "T2.404 generatePDF rewritten client-safe with esc() XSS prevention",
+          "T2.416 useClinicContact mirrors admin useClinicSettings singleton pattern",
+          "helpers.js toJSDate internal normalizer shared by safeDate/formatFirestoreTime/formatDisplayDate/formatDisplayTime",
+          "T2.483 merged medical_records query (removed recordType Firestore filter, client-side filtering instead)"
+        ],
+        "reviewer_fixes_applied_inline": [
+          "MOB-7: nextVisitDate ReferenceError in PetHistoryScreen Book Follow-Up button (variable removed by T2.433 refactor, button still referenced it)",
+          "MOB-8: getVaccineStatus missing {seconds} plain-object dueDate fallback"
+        ],
+        "deferred_tasks_added": [
+          "T2.394a (handleDismissFollowUp optional chaining crash — MOB-2 audit)",
+          "T2.404a (BookAppointment duplicate toTitleCase — MOB-7 audit)",
+          "T2.431a (inline todayStr in ClientAppointments + ClientDashboard — MOB-7 audit)",
+          "T2.379a (MyPetsScreen 4-column demoGrid text clipping on 320px — MOB-8 audit)",
+          "T2.425 reverted to TODO (false DONE — duplicate label style still exists in RegisterScreen)"
+        ],
+        "remaining_modules": [
+          "Dashboard Build (69 tasks, ~32 hrs, 6 days — ground-up)",
+          "Step 1.5: Deferred Cleanup (47 sub-tasks from all completed module audits)",
+          "Design Sweep (16 tasks — ALWAYS LAST)"
+        ]
+      },
+      "dashboard_build_progress": {
+        "date": "2026-04-23",
+        "status": "Day 4 of 6 complete",
+        "commits": ["e67d404", "2aeeeb6", "40f7261", "fd8ea25"],
+        "tasks_done": 54,
+        "total_done_after_dashboard_day4": 401,
+        "days_completed": {
+          "day1": "Base layout, useDashboardData hook (8 listeners total by Day 3), KPICard/HorizontalBar/PeriodSelector shared components, OperationsTab with 8 live metrics, QuickNavTiles (14 tasks)",
+          "day2": "GrowthTab (11 metrics: client trends, species, breeds, peak hours, service ranking, retention, utilization) + FinancialTab (12 metrics: revenue, margins, payment methods, expenses, refunds, outstanding). 4 new Firestore listeners (clients, pets, sales, expenses). recharts bar charts. (23 tasks)",
+          "day3": "ClinicalTab (9 metrics: records signed, diagnoses, vaccines, prescriptions, follow-up compliance, confinement, records per vet, avg vitals by species). chartConfig.js extraction. Period-over-period delta system (buildPrevDateRange + getDocs one-shot + deltas useMemo). KPICard delta+insight props. (12 tasks)",
+          "day4": "generateInsight.js rule engine with 30 contextual rules (10 ops, 8 clinical, 7 financial, 5 growth). Pure function, first-match-wins, try-catch per rule. Wired to all 4 tabs via insights prop. (5 tasks)"
+        },
+        "remaining_days": {
+          "day5": "Drill-down navigation (T2.326-T2.330) + Export reports (T2.333-T2.335). Click KPI → navigate to target page with filter pre-applied. generateReportHTML utility. 8 tasks.",
+          "day6": "Threshold alerts (T2.331-T2.332) + Goals (T2.336-T2.337) + Context annotations (T2.338-T2.341). Settings-driven alert strip. Monthly goal progress bars. Historical min/max/avg tooltips. Chart annotation labels. 10 tasks."
+        },
+        "architecture_established": {
+          "useDashboardData_listeners": "8 onSnapshot (appointments, queue, staff, clients, allClientIds, pets, sales, expenses) + 1 medical_records + 1 getDocs one-shot (prevPeriod)",
+          "useDashboardData_return_shape": "{ loading, error, ops, growth, clinical, financial, deltas, queueData, appointments, staffList, period, dateRange }",
+          "shared_components": "KPICard (6 variants + delta + insight), HorizontalBar, PeriodSelector, chartConfig.js (5 exports), generateInsight.js (30 rules)",
+          "tab_components": "OperationsTab, GrowthTab, ClinicalTab, FinancialTab — all accept { data, clinicSettings, insights }",
+          "file_structure": "features/Dashboard/{Dashboard.jsx, components/(7 files), hooks/useDashboardData.js, utils/generateInsight.js}"
+        },
+        "deferred_tasks_from_audits": [
+          "T2.228a (activeTab index desync on isAdmin flip)",
+          "T2.315a (duck-type guard on scheduledDate in period queries)",
+          "T2.316a (KPICard purple variant hardcoded hex)",
+          "T2.229a (clinic open/closed integer hour comparison)",
+          "T2.313a (retention rate denominator inflation — DONE, reviewer fixed inline)",
+          "T2.303a (FinancialTab overlayData sort)",
+          "T2.316b (chartConfig extraction — DONE in Day 3)",
+          "T2.316c (panelSx duplication in GrowthTab/FinancialTab)",
+          "T2.320a (rolling-window delta bias)",
+          "T2.319a (cross-tab target collision on TOTAL APPOINTMENTS)",
+          "T2.319b (Rule 8 Math.max empty guard)",
+          "T2.319c (Rule 19 zero-delta suppress)"
+        ],
+        "apk_build": "Successfully built via EAS Build (preview profile, APK format)",
+        "admin_deployed": "Firebase Hosting — https://starbarks-vetconnect-f6443.web.app",
+        "github_pushed": "All 26 commits pushed to origin/main (fd8ea25)"
+      },
+      "advisory_session_2026_04_24": {
+        "date": "2026-04-24",
+        "role": "Continuation of advisory session from 2026-04-23",
+        "work_completed": [
+          "Dashboard Day 4 audit review (all 8 areas PASS, 3 deferred sub-tasks added)",
+          "Dashboard Day 4 commit prompt with deferred task tracking",
+          "Thesis rewrites reviewed against rewritten PDF (BetaTestEra version)",
+          "Found 6 remaining thesis inconsistencies — user applied quick fixes",
+          "Thesis-vs-codebase parity confirmed after fixes",
+          "Mermaid diagrams generated (ERD, flowcharts, status lifecycle) — detailed + print-friendly versions",
+          "Beta test function list provided (13 USER + 17 ADMIN)",
+          "Honest scope compliance audit: 4 FAILS identified in original thesis, all fixed in rewrite",
+          "APK built via EAS Build, admin deployed to Firebase Hosting",
+          "All commits pushed to GitHub",
+          "Context persistence files updated for fresh session handoff"
+        ],
+        "thesis_status": {
+          "t1_1": "DONE — applied to thesis PDF. Dual-surface architecture described.",
+          "t1_2": "DONE — applied to thesis PDF. Cloud Functions noted as source-only (Spark plan).",
+          "t1_7": "NOT YET APPLIED — glossary entries drafted in THESIS_REWRITES.md but not in PDF",
+          "t1_8": "PARTIALLY APPLIED — some record→visit substitutions done in rewrite, full audit pending",
+          "remaining_issue": "Page 11 + 15 'automated appointment reminders' changed to 'in-app appointment reminders' per quick fix. Table 3.4 backend services aligned. Patient Portal definition updated."
+        },
+        "system_parity_status": "Thesis and codebase are in parity as of the rewritten PDF. All scope claims match working features. Cloud Functions limitation is disclosed. No contradictions remain."
+      },
+      "forensic_metrics_investigation": {
+        "finding": "Active records show stale Record Age (2D instead of 9D) because auditEnd is capped at pulse event day, not current time",
+        "root_cause": "popoverAuditEnd in Queue.jsx uses end-of-pulse-day when targetDateStr !== todayStr, affecting all 8 metrics. Fix decouples age metrics only.",
+        "solution": "T2.44a — liveAge prop on ForensicMetricGrid. Overrides Record Age + Op Hours Age with new Date() for active unsealed records. Other 6 metrics (shift/total queue/consult/confined) stay day-capped. ~10 lines across 3 files.",
+        "consumers": {
+          "Queue.jsx": "liveAge on latest day only",
+          "EndOfDayModal.jsx": "liveAge on latest active day — staff needs to see true urgency during EOD",
+          "Records.jsx": "liveAge for unsealed+non-terminal records. Also fix missing settings/sealedMetrics props."
+        },
+        "side_effects": "None beyond the 2 age metrics. Confirmed: shift/queue/consult/confined untouched. Sealed records untouched. calculatePulseMetrics unchanged. No Firestore write changes."
+      }
+    }
+  }
+}

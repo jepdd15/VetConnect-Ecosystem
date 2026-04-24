@@ -222,7 +222,8 @@ export default function Settings() {
     if (!lastSavedSettings) return false;
     const tracked = ['openHour', 'closeHour', 'lunchEnabled', 'lunchStart', 'lunchEnd',
       'minSlotInterval', 'advanceNoticeMins', 'maxFutureBookingDays', 'maxPetsPerBooking',
-      'maxCages', 'autoNoShowMins', 'trafficModerate', 'trafficHigh', 'workingDays', 'clinicPhone'];
+      'maxCages', 'autoNoShowMins', 'trafficModerate', 'trafficHigh', 'workingDays', 'clinicPhone',
+      'dashboardAlerts', 'dashboardGoals'];
     return tracked.some(key => JSON.stringify(settings[key]) !== JSON.stringify(lastSavedSettings[key]));
   }, [settings, lastSavedSettings]);
 
@@ -352,7 +353,8 @@ export default function Settings() {
       if (lastSavedSettings) {
         const tracked = ['openHour', 'closeHour', 'lunchEnabled', 'lunchStart', 'lunchEnd',
           'minSlotInterval', 'advanceNoticeMins', 'maxFutureBookingDays', 'maxPetsPerBooking',
-          'maxCages', 'autoNoShowMins', 'trafficModerate', 'trafficHigh', 'workingDays', 'clinicPhone'];
+          'maxCages', 'autoNoShowMins', 'trafficModerate', 'trafficHigh', 'workingDays', 'clinicPhone',
+          'dashboardAlerts', 'dashboardGoals'];
         const changedFields = {};
         tracked.forEach(key => {
           if (JSON.stringify(sanitizedSettings[key]) !== JSON.stringify(lastSavedSettings[key])) {

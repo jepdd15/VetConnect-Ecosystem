@@ -39,7 +39,7 @@ import {
 } from "../utils/statusLabels";
 import SuperCard from "../components/SuperCard";
 import { useClinicContact } from "../hooks/useClinicContact";
-import { formatFirestoreTime, formatDisplayDate } from '../utils/helpers';
+import { formatFirestoreTime, formatDisplayDate, getLocalDateStr } from '../utils/helpers';
 
 const ICONS = {
   Consultation: "🩺",
@@ -132,9 +132,7 @@ const ClientAppointments = ({ navigation }) => {
       return;
     }
 
-    const now = new Date();
-    const todayStr = activeArrived?.scheduledDateStr
-      || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const todayStr = activeArrived?.scheduledDateStr || getLocalDateStr();
 
     const q = query(
       collection(db, "appointments"),

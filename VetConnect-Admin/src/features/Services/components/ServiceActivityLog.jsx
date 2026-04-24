@@ -97,7 +97,9 @@ export default function ServiceActivityLog() {
       setHasMore(snap.docs.length === PAGE_SIZE);
     } catch (err) {
       console.error('[ServiceActivityLog.fetchLogs]:', err.message);
-      setError(err.message);
+      setError(err.code === 'failed-precondition'
+        ? 'A Firestore index is required. Check the browser console for a creation link.'
+        : err.message);
     } finally {
       setLoading(false);
     }

@@ -24,7 +24,7 @@ import {
 } from "react-native";
 import { auth, db } from "../../firebaseConfig";
 import { getClientStatusLabel } from "../utils/statusLabels";
-import { safeDate } from "../utils/helpers";
+import { safeDate, getLocalDateStr } from "../utils/helpers";
 
 // --- PUSH NOTIFICATION IMPORTS ---
 import Constants from "expo-constants";
@@ -196,9 +196,7 @@ const ClientDashboard = ({ navigation }) => {
     }
 
     // Query for all arrived patients on the same day as this appointment
-    const now = new Date();
-    const todayStr = arrivedAppt.scheduledDateStr
-      || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const todayStr = arrivedAppt.scheduledDateStr || getLocalDateStr();
     const q = query(
       collection(db, "appointments"),
       where("status", "==", "arrived"),

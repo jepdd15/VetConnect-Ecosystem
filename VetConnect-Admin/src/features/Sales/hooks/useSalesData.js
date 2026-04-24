@@ -5,10 +5,12 @@ import { db } from '../../../firebaseConfig';
 
 export function useSalesData(filterDate, currentUser) {
   const [sales, setSales] = useState([]);
-  const[loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     setLoading(true);
+    setError(null);
 
     const startOfDay = new Date(filterDate); startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(filterDate); endOfDay.setHours(23, 59, 59, 999);
@@ -61,8 +63,9 @@ export function useSalesData(filterDate, currentUser) {
       }));
       salesReady = true;
       merge();
-    }, (error) => {
-      console.error('[useSalesData] Sales fetch error:', error);
+    }, (err) => {
+      console.error('[useSalesData] Sales fetch error:', err);
+      setError(err.message);
       salesReady = true;
       merge();
     });
@@ -75,8 +78,9 @@ export function useSalesData(filterDate, currentUser) {
       }));
       refundsReady = true;
       merge();
-    }, (error) => {
-      console.error('[useSalesData] Cross-day refund fetch error:', error);
+    }, (err) => {
+      console.error('[useSalesData] Cross-day refund fetch error:', err);
+      setError(err.message);
       refundsReady = true;
       merge();
     });
@@ -245,5 +249,5 @@ export function useSalesData(filterDate, currentUser) {
     });
   };
 
-  return { sales, loading, eodTotals, processRefundTransaction, voidTransaction };
+  return { sales, loading, error, eodTotals, processRefundTransaction, voidTransaction };
 }

@@ -155,7 +155,7 @@ export function useBookingEngine(date, selectedServices = [], selectedPets) {
   useEffect(() => {
     checkClinicLoad(date);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date]);
+  }, [date, clinicSettings.trafficModerate, clinicSettings.trafficHigh]);
 
   // 3a. T2.83: EFFECT 1 — Fetch day's appointments from Firestore.
   // Only re-queries when the date or closed-dates config changes.

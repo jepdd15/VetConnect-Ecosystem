@@ -31,7 +31,7 @@ export default function Sales() {
   const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
 
   // THE BRAIN: Hook handles all database fetching, refund and void transactions
-  const { sales, loading, eodTotals, processRefundTransaction, voidTransaction } = useSalesData(filterDate, profile);
+  const { sales, loading, error: salesError, eodTotals, processRefundTransaction, voidTransaction } = useSalesData(filterDate, profile);
 
   // --- UI STATES ---
   const [searchText, setSearchText] = useState('');
@@ -472,6 +472,12 @@ export default function Sales() {
           <EodSummary totals={eodTotals} filterMethod={filterMethod} setFilterMethod={setFilterMethod} />
         </Box>
       </Box>
+
+      {salesError && (
+        <Alert severity="error" onClose={() => {}} sx={{ mx: 2, mb: 1, borderRadius: 0 }}>
+          {salesError}
+        </Alert>
+      )}
 
       {/* 3. FULL-BLEED TRANSACTION LEDGER (FLEX: 1) */}
       <Box sx={{ flexGrow: 1, minHeight: 0, width: '100%', overflow: 'hidden', bgcolor: 'white' }}>

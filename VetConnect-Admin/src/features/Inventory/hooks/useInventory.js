@@ -163,7 +163,7 @@ export function useInventory() {
       if (amount > 0 && batchInfo && batchInfo.batchNumber) {
         const batches = [...(data.batches || [])];
         batches.push({
-          batchNumber: batchInfo.batchNumber,
+          batchNumber: batchInfo.batchNumber?.trim(),
           expiryDate: batchInfo.expiryDate || null,
           qty: amount,
           dateAdded: new Date().toISOString(),

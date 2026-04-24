@@ -413,8 +413,8 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
                     <Switch
                       checked={formData.isScPwdEligible !== false}
                       onChange={(e) => setFormData({ ...formData, isScPwdEligible: e.target.checked })}
-                      color="secondary"
                       size="small"
+                      sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.accent }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: COLORS.accent } }}
                     />
                   }
                   label={

@@ -89,7 +89,7 @@ export function generateReferralReportHTML({
 
   // ── Vitals (from latest record) ───────────────────────────────
   const vitals = latestRecord?.vitals;
-  const vitalsSection = vitals && (vitals.weight || vitals.temp || vitals.hr || vitals.rr || vitals.crt || vitals.bcs)
+  const vitalsSection = vitals && (vitals.weight || vitals.temp || vitals.hr || vitals.rr || vitals.crt || vitals.bcs || vitals.pain)
     ? `
     <h2>Recent Vitals (from latest record — ${formatPrintDate(latestRecord?.date)})</h2>
     <table>

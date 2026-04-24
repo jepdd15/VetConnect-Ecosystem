@@ -162,8 +162,9 @@ const RULES = [
     target: 'QUEUE SERVING',
     condition: ({ ops }) => {
       if (!ops || ops.totalAppointments < 5) return false;
-      const maxDept = Math.max(...Object.values(ops.deptLoad));
-      return maxDept / ops.totalAppointments > 0.6;
+      const vals = Object.values(ops.deptLoad);
+      if (vals.length === 0) return false;
+      return Math.max(...vals) / ops.totalAppointments > 0.6;
     },
     message: ({ ops }) => {
       const sorted = Object.entries(ops.deptLoad).sort(([, a], [, b]) => b - a);
@@ -330,7 +331,7 @@ const RULES = [
     tab: 'financial',
     target: 'REVENUE COLLECTED',
     condition: ({ financial, deltas }) =>
-      financial && financial.totalCollected > 0 && deltas?.revenue != null,
+      financial && financial.totalCollected > 0 && deltas?.revenue != null && deltas.revenue !== 0,
     message: ({ deltas }) => {
       const dir = deltas.revenue >= 0 ? 'above' : 'below';
       return `${Math.abs(deltas.revenue)}% ${dir} last period`;

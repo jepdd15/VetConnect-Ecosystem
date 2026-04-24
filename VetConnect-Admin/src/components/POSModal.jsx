@@ -148,7 +148,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
       if (p) processProductToCart(p);
     } else if (type === 'service') {
       const s = servicesList.find(i => i.id === id);
-      if (s) pushToCartArray({ type: 'service', id: s.id, name: s.name, price: s.price, qty: 1, isDiscountable: true });
+      if (s) pushToCartArray({ type: 'service', id: s.id, name: s.name, price: s.price, qty: 1, isDiscountable: s.isScPwdEligible !== false });
     }
     setSelectedItemVal(''); 
   };
@@ -204,8 +204,8 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
     });
     const finalTotal = subtotal - discountAmount; 
     const deposit = parseFloat(depositAmount) || 0;
-    const balanceDue = finalTotal - deposit;
-    return { subtotal: subtotal.toFixed(2), vatExempt: applyScPwd && discountAmount > 0 ? vatExemptTotal.toFixed(2) : "0.00", discount: discountAmount.toFixed(2), total: finalTotal.toFixed(2), deposit: deposit.toFixed(2), balanceDue: balanceDue > 0 ? balanceDue.toFixed(2) : "0.00" };
+    const balanceDue = Math.max(0, finalTotal - deposit);
+    return { subtotal: subtotal.toFixed(2), vatExempt: applyScPwd && discountAmount > 0 ? vatExemptTotal.toFixed(2) : "0.00", discount: discountAmount.toFixed(2), total: finalTotal.toFixed(2), deposit: deposit.toFixed(2), balanceDue: balanceDue.toFixed(2) };
   };
   const financials = calculateFinancials();
 
@@ -397,9 +397,9 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         const apptRef = doc(db, "appointments", patient.id);
         transaction.update(apptRef, {
             status: 'completed',
+            statusHistory: arrayUnion(patient.status || 'billing'),
             timeCompleted: Timestamp.now(),
             balanceRemaining: parseFloat(financials.balanceDue),
-            // T2.100: Forensic checkout event — completes the clinical pulse timeline.
             clinicalPulse: arrayUnion({
                 eventId: makePulseEventId('checkout'),
                 type: 'CHECKOUT_COMPLETED',
@@ -541,7 +541,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
                 )}
                 <Divider sx={{ my: 1.5 }} />
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', mb: 2 }}><Typography variant="body1" fontWeight="900" color="#333">GRAND TOTAL:</Typography><Typography variant="h5" fontWeight="900" color="#333">₱{financials.total}</Typography></Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}><Typography variant="body2" color="textSecondary" fontWeight="bold">Less: Deposit Paid</Typography><TextField size="small" type="number" value={depositAmount} onChange={(e) => setDepositAmount(e.target.value)} InputProps={{ startAdornment: <Typography sx={{mr: 0.5, color: '#aaa'}}>₱</Typography> }} sx={{ width: 120, bgcolor: 'white' }} /></Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}><Typography variant="body2" color="textSecondary" fontWeight="bold">Less: Deposit Paid</Typography><TextField size="small" type="number" value={depositAmount} onChange={(e) => { const v = e.target.value; if (v === '' || parseFloat(v) >= 0) setDepositAmount(v); }} error={parseFloat(depositAmount) < 0} helperText={parseFloat(depositAmount) < 0 ? 'Cannot be negative' : ''} InputProps={{ startAdornment: <Typography sx={{mr: 0.5, color: '#aaa'}}>₱</Typography>, inputProps: { min: 0 } }} sx={{ width: 120, bgcolor: 'white' }} /></Box>
                 <Divider sx={{ my: 1.5 }} />
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}><Typography variant="h6" fontWeight="900" color="#3E2723">BALANCE DUE:</Typography><Typography variant="h4" fontWeight="900" color="#2E7D32">₱{financials.balanceDue}</Typography></Box>
              </Paper>

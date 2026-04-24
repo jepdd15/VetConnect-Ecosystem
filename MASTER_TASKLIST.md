@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-04-23 · **Branch:** `main`
 **Total tasks:** ~719 · **Cancelled/Absorbed:** ~16 · **Active:** ~703
-**DONE:** 417 · **TODO:** 281 · **Deferred sub-tasks:** 61
+**DONE:** 449 · **TODO:** 249 · **Deferred sub-tasks:** 61
 **Critical path to defense:** Dashboard Build (~32 hrs) + thesis
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~154 hours (Phase 4 S-Tier)
 
@@ -86,11 +86,11 @@
 | T2.3 | Printable vaccination record | 1-2 hrs | — | DONE | Per-pet history + status summary. **Review fixes:** Timestamp-safe dueDate parsing, dedup comparison via toDate().getTime(). NOTE: reads vaccineData singular — needs update after T2.472 |
 | T2.4 | Printable referral report | 1-2 hrs | — | DONE | ReferralModal (ephemeral, no Firestore write) + printReferralReport. **Review fix:** form state reset on reopen via useEffect([open]) |
 | T2.4a | Extract calculatePetAge to printUtils.js shared helper (duplicated in printVisitSummary + printReferralReport + PatientDashboard) | P3 | 10 min | TODO | Review finding — 3 slightly different implementations |
-| T2.4b | printReferralReport: add vitals.pain to guard condition (omitted from the 7-vital check) | P3 | 1 min | TODO | Review finding |
-| T2.4c | PatientDashboard: remove stale `pet` from useEffect dependency array (pre-existing, causes re-fetch loop risk) | P3 | 1 min | TODO | Review finding — pre-existing tech debt |
-| T2.4d | PatientDashboard banner buttons: borderRadius 1.5 → 0 (neubrutalism compliance, affects Add Record + Book Visit + Referral) | P3 | 5 min | TODO | Review finding — Design Sweep scope |
+| T2.4b | printReferralReport: add vitals.pain to guard condition (omitted from the 7-vital check) | P3 | 1 min | DONE | Review finding |
+| T2.4c | PatientDashboard: remove stale `pet` from useEffect dependency array (pre-existing, causes re-fetch loop risk) | P3 | 1 min | DONE | Review finding — pre-existing tech debt |
+| T2.4d | PatientDashboard banner buttons: borderRadius 1.5 → 0 (neubrutalism compliance, affects Add Record + Book Visit + Referral) | P3 | 5 min | DONE | Review finding — Design Sweep scope |
 | T2.30 | Multi-staff clinical attribution | 2 hrs | — | DONE | |
-| T2.30a | Staff attribution dropdown: add "— Unassigned —" placeholder MenuItem when vetsList is empty or no prior assignment | P3 | 5 min | T2.30 | TODO | Review finding — blank dropdown with no visible option to leave unassigned |
+| T2.30a | Staff attribution dropdown: add "— Unassigned —" placeholder MenuItem when vetsList is empty or no prior assignment | P3 | 5 min | T2.30 | DONE | Review finding — blank dropdown with no visible option to leave unassigned |
 | T2.31 | Protect default inventory categories | 1-2 hrs | — | DONE | Firestore rule !catId.matches default_ + Settings.jsx client guard + hide delete icon |
 | T2.32 | Extract SoapGrid component (blocks T2.28) | 2-3 hrs | — | DONE | |
 | T2.32a | Move ZEN_PLACEHOLDERS to shared constants file — duplicated in SoapGrid.jsx + ClinicalWorkspace.jsx, divergence risk | P3 | 10 min | T2.32 | TODO | Review finding — both files define identical placeholder strings |
@@ -152,14 +152,14 @@
 | T2.71 | Saved filter presets for Records | 2.5 hrs | — | DONE | useSavedFilters hook, users/{uid}/recordFilterPresets subcollection. **Review fix:** Firestore rule added for subcollection |
 | T2.75 | Clinical amendment path for locked records | 3 hrs | — | DONE | Most important P2 |
 | T2.80 | POSModal services[] rewrite for multi-service billing | 1-2 hrs | — | DONE | |
-| T2.80a | POSModal handleDropdownAdd: read `isScPwdEligible` from service definition instead of hardcoding `isDiscountable: true` | P3 | 5 min | T2.80 | TODO | Review finding — manually-added services always marked discountable regardless of service config |
+| T2.80a | POSModal handleDropdownAdd: read `isScPwdEligible` from service definition instead of hardcoding `isDiscountable: true` | P3 | 5 min | T2.80 | DONE | Review finding — manually-added services always marked discountable regardless of service config |
 | T2.87 | BookAppointment TOCTOU race fix (runTransaction) | 45 min | — | DONE | writeBatch → runTransaction with atomic retry |
 | T2.93 | Delete `workflowType` legacy field | 5 min | — | DONE | |
 | T2.94 | Delete phantom per-service code in ClinicalWorkspace | 15 min | — | DONE | |
 | T2.95 | Per-service progress card in ClinicalWorkspace sidebar | 45 min | T2.94, T2.13 | DONE | Absorbs T2.103 |
 | T2.96 | Decouple sign-off from status advancement | 1-2 hrs | T2.95 | DONE | |
 | T2.100 | POSModal: clinicalPulse event on checkout | 10 min | — | DONE | |
-| T2.100a | POSModal handleCheckout: appointment update writes `status: 'completed'` without statusHistory push — billing→completed transition missing from revert index | P3 | 10 min | T2.100 | TODO | Review finding — pre-existing gap, POSModal bypasses changeStatus entirely |
+| T2.100a | POSModal handleCheckout: appointment update writes `status: 'completed'` without statusHistory push — billing→completed transition missing from revert index | P3 | 10 min | T2.100 | DONE | Review finding — pre-existing gap, POSModal bypasses changeStatus entirely |
 | T2.101 | Outstanding balance: remove counter, compute from sales. "Record Payment" in BillingLedger. | 2-3 hrs | — | DONE | Decision locked: computed only |
 | T2.104 | Transaction void with inventory reversal | 3-4 hrs | — | DONE | |
 | T2.108 | Document client-side timestamp limitation | 5 min | — | DONE | |
@@ -231,7 +231,7 @@
 | T2.46.1 | Rename rebook → reschedule/carryover | 45 min | — | DONE | |
 | T2.49 | Unify ancestor chain walkers | 1.25 hrs | — | DONE | |
 | T2.53 | rescheduleAppointment runTransaction conversion | 15 min | — | DONE | |
-| T2.53a | rejectAppointment cancel pulse: add missing `fromStatus` field for audit trail completeness | P3 | 2 min | — | TODO | Review finding — pre-existing gap, all other STATUS_CHANGE events include fromStatus |
+| T2.53a | rejectAppointment cancel pulse: add missing `fromStatus` field for audit trail completeness | P3 | 2 min | — | DONE | Review finding — pre-existing gap, all other STATUS_CHANGE events include fromStatus |
 | T2.54 | IDENTITY_HEALING pulse event | 10 min | — | DONE | |
 | T2.56 | CONFINE date picker color cues | 1 hr | — | DONE | |
 | T2.62 | Case lineage indicator column | 30 min | — | DONE | Day N chip for multi-day cases |
@@ -261,9 +261,9 @@
 | ~~T2.98~~ | ~~POSModal receipt: clinic name from settings~~ | — | — | ABSORBED | Absorbed into T2.148 (superset scope: Sales.jsx + POSModal) |
 | T2.99 | POSModal receipt: cashier name fix | 5 min | — | DONE | |
 | T2.102 | Deposit collection modal for carry-over | 2-3 hrs | — | DONE | |
-| T2.102a | Deposit modal: validate negative amounts with error hint instead of silent discard | P3 | 5 min | T2.102 | TODO | Review finding — `<input min="0">` is advisory only, negative values silently ignored |
-| T2.102b | POSModal: clamp `balanceDue` to `Math.max(0, total - deposit)` to prevent negative balance display | P3 | 5 min | T2.102 | TODO | Review finding — deposit exceeding visit cost shows negative balance |
-| T2.102c | Deposit modal: borderRadius 1.2/4px → 0 for neubrutalism compliance | P3 | 2 min | T2.102 | TODO | Review finding — Design Sweep scope |
+| T2.102a | Deposit modal: validate negative amounts with error hint instead of silent discard | P3 | 5 min | T2.102 | DONE | Review finding — `<input min="0">` is advisory only, negative values silently ignored |
+| T2.102b | POSModal: clamp `balanceDue` to `Math.max(0, total - deposit)` to prevent negative balance display | P3 | 5 min | T2.102 | DONE | Review finding — deposit exceeding visit cost shows negative balance |
+| T2.102c | Deposit modal: borderRadius 1.2/4px → 0 for neubrutalism compliance | P3 | 2 min | T2.102 | DONE | Review finding — Design Sweep scope |
 | T2.107 | Per-service time tracking (Option A: explicit start/complete) | 25 min | T2.95 | DONE | |
 | T2.109 | Centralized pulse event factory | 45 min | T2.38 | DONE | |
 | T2.109a | Adopt createPulseEvent factory: refactor 3+ inline pulse-event objects in useQueueActions.js to use the factory | P3 | 30 min | T2.109 | TODO | Review finding — factory exported but zero consumers, consistency benefit deferred |
@@ -287,7 +287,7 @@
 | T2.148 | Receipt clinic name from settings (Sales.jsx + POSModal) | 15 min | — | DONE | clinicName + clinicAddress added to useClinicSettings defaults |
 | T2.148a | POSModal MUI JSX: design token + borderRadius compliance (50+ hardcoded hex, borderRadius:2 violations) | 45 min | — | TODO | Review finding — out of scope for Sales T2.146 sweep |
 | T2.147a | Flat-stock refund guard: skip batch creation for non-batch-tracked items to prevent phantom batch conversion | 15 min | T2.147 | TODO | Review finding — legacy fallback converts flat-stock to batch-managed |
-| T2.140a | useSalesData: expose error state when dual-query partially fails, show dismissible Alert in Sales.jsx | 15 min | T2.140 | TODO | Review finding — silent partial data on query error |
+| T2.140a | useSalesData: expose error state when dual-query partially fails, show dismissible Alert in Sales.jsx | 15 min | T2.140 | DONE | Review finding — silent partial data on query error |
 | T2.168 | Delete dead code: glassStyle/GLASS, selectedCatObj, dead COLORS imports (Inventory) | 5 min | — | DONE | |
 | T2.169 | Design token compliance: Inventory module (100+ hardcoded colors, 7 files) | 1.5 hrs | — | TODO | Deferred to Design Sweep (Module 19) |
 | T2.171 | `restoreItem`: clear `archivedAt` on restore | 5 min | — | DONE | Uses deleteField() |
@@ -297,7 +297,7 @@
 | T2.174a | GlobalActivityLog: show "Load More" when client-side filter empties page but hasMore is true | 15 min | T2.170 | TODO | Review finding — user can't paginate past non-matching results |
 | T2.174b | Quick-add category: auto-detect isMedicine from medical keywords (antibiotic, vaccine, etc.) | 15 min | T2.162 | TODO | Review finding — "antibiotic" category defaults to isMedicine:false |
 | T2.174c | `normalizeInventoryLog` sign ambiguity: old sale logs with positive `quantity` show up-arrow for "Sold" | 15 min | T2.150 | TODO | Review finding — backward compat edge case, need sign convention for SOLD action |
-| T2.174d | `adjustStock` hook: trim `batchInfo.batchNumber` at hook level for self-protecting contract | 5 min | T2.152 | TODO | Review finding — modal trims, but direct callers don't |
+| T2.174d | `adjustStock` hook: trim `batchInfo.batchNumber` at hook level for self-protecting contract | 5 min | T2.152 | DONE | Review finding — modal trims, but direct callers don't |
 | T2.185 | Settings: replace services + users listeners with one-shot getDocs | 15 min | — | DONE | refreshUsageCounts helper for post-mutation refresh |
 | T2.186 | Settings: replace 2 window.confirm() with MUI Dialog | 10 min | — | DONE | **Review fix:** Dialog Cancel borderRadius: 0 |
 | T2.187 | Settings: delete dead variable `dashboardCream` | 1 min | — | DONE | |
@@ -312,8 +312,8 @@
 | T2.205a | Services.jsx parent page: design token sweep (12+ hardcoded hex in header toolbar) | 20 min | T2.205 | TODO | Review finding — T2.205 swept child components only, parent missed |
 | T2.205b | serviceLogConfig.js: replace raw hex with COLORS token imports | P3 | 10 min | T2.202 | TODO | Review finding — shared config duplicates token values as hardcoded hex |
 | T2.205c | Services child components: remaining #757575/#616161 fallback colors not tokenized | P3 | 10 min | T2.205 | TODO | Review finding — unknown-action and history-icon fallbacks |
-| T2.203a | ServiceActivityLog: friendly error message for failed-precondition (missing Firestore index) | P3 | 5 min | T2.203 | TODO | Review finding — raw Firestore error URL shown to user |
-| T2.5a | useBookingEngine: checkClinicLoad captures stale clinicSettings closure (pre-existing, worsened by T2.5 real-time listener) | P3 | 15 min | T2.5 | TODO | Review finding — add clinicSettings.trafficModerate/High to effect deps or parameterize |
+| T2.203a | ServiceActivityLog: friendly error message for failed-precondition (missing Firestore index) | P3 | 5 min | T2.203 | DONE | Review finding — raw Firestore error URL shown to user |
+| T2.5a | useBookingEngine: checkClinicLoad captures stale clinicSettings closure (pre-existing, worsened by T2.5 real-time listener) | P3 | 15 min | T2.5 | DONE | Review finding — add clinicSettings.trafficModerate/High to effect deps or parameterize |
 | T2.221 | Staff: delete dead code (KPICard + kpis + 4 icons, WorkIcon, headerSx, deleteDoc, showToast prop) | 5 min | — | DONE | |
 | T2.222 | Staff: pass `loading` to StaffTable, add skeleton | 10 min | — | DONE | |
 | T2.223 | Staff: add loading/disabled state on REVOKE button | 5 min | — | DONE | **Review fix:** setRevoking in finally block to prevent stuck button on error |
@@ -321,7 +321,7 @@
 | T2.225 | Staff: add null guard on `departments` prop in StaffTable | 2 min | — | DONE | |
 | T2.226 | Staff: design token compliance across 3 child components (50+ hardcoded colors) | 45 min | — | DONE | **Review fix:** also tokenized Staff.jsx header + temp password dialog; added dangerHover, dangerSurface, warningSurface tokens to designTokens.js |
 | T2.227 | Staff: fix borderRadius violations (search field, warning box, scrollbar) | 5 min | — | DONE | |
-| T2.227a | StaffFormModal: initialize emergencyContacts to `[]` for new staff instead of one empty `{name:'',kinship:'',phone:''}` | P3 | 5 min | — | TODO | Review finding — empty contacts written to Firestore, diffEngine reports phantom "1 record(s)" |
+| T2.227a | StaffFormModal: initialize emergencyContacts to `[]` for new staff instead of one empty `{name:'',kinship:'',phone:''}` | P3 | 5 min | — | DONE | Review finding — empty contacts written to Firestore, diffEngine reports phantom "1 record(s)" |
 
 ---
 
@@ -494,9 +494,9 @@
 | T2.272 | Quick-nav tiles + role gating | P2 | 15 min | DONE | |
 | T2.342 | Delete dead pages/Staff.jsx + move Dashboard to features/Dashboard/ | P1 | 10 min | DONE | Prerequisite for Dashboard build |
 | T2.228a | Dashboard: activeTab index desync if isAdmin flips after mount. Mitigated by currentTab fallback | P3 | 10 min | TODO | Review finding — edge case, no fix needed unless role changes mid-session |
-| T2.315a | useDashboardData: add duck-type guard when reading scheduledDate off individual docs (needed for Days 2-6) | P3 | 10 min | TODO | Review finding — not read in Day 1, needed when Growth/Clinical/Financial tabs read date fields |
-| T2.316a | KPICard: purple variant text uses hardcoded #6A1B9A (no token). Add COLORS.kpiPurpleText to designTokens.js | P3 | 5 min | TODO | Review finding — no current consumer uses variant="purple" |
-| T2.229a | Dashboard: clinic open/closed uses integer hour comparison (same as Queue.jsx). Track for closeMinute support | P3 | 5 min | TODO | Review finding — fine unless Settings adds closeMinute field |
+| T2.315a | useDashboardData: add duck-type guard when reading scheduledDate off individual docs (needed for Days 2-6) | P3 | 10 min | DONE | Review finding — already guarded via duck-type pattern in all 3 usage sites |
+| T2.316a | KPICard: purple variant text uses hardcoded #6A1B9A (no token). Add COLORS.kpiPurpleText to designTokens.js | P3 | 5 min | DONE | Review finding — token added to designTokens.js |
+| T2.229a | Dashboard: clinic open/closed uses integer hour comparison (same as Queue.jsx). Track for closeMinute support | P3 | 5 min | DONE | Review finding — no-op, integer hour comparison is correct as-is |
 
 **Tab 1 — Growth (default: This Month):**
 
@@ -558,9 +558,9 @@
 | T2.306 | Revenue by service/department | P2 | 20 min | DONE |
 | T2.270 | Monthly expense burn rate | P1 | 10 min | DONE |
 | T2.313a | useDashboardData: retention rate denominator inflation — strip walk-in IDs from periodOwnerIds | P3 | 5 min | DONE | Review finding — fix applied inline |
-| T2.303a | FinancialTab: sort overlayData after merging revenue + expense buckets (chronological sort) | P3 | 10 min | TODO | Review finding — relies on merge order which may not be chronological |
+| T2.303a | FinancialTab: sort overlayData after merging revenue + expense buckets (chronological sort) | P3 | 10 min | DONE | Review finding — insertion-order tracking + sort applied |
 | T2.316b | Extract CHART_TOOLTIP_STYLE, CHART_TICK_STYLE, CHART_GRID_STYLE to shared chartConfig.js | P3 | 10 min | DONE | Review finding — extracted to chartConfig.js, all tabs import from it |
-| T2.316c | GrowthTab + FinancialTab: replace local panelSx with imported PANEL_SX from chartConfig.js | P3 | 5 min | TODO | Review finding — ClinicalTab already uses shared export, cosmetic duplication |
+| T2.316c | GrowthTab + FinancialTab: replace local panelSx with imported PANEL_SX from chartConfig.js | P3 | 5 min | DONE | Review finding — ClinicalTab already uses shared export, cosmetic duplication |
 | T2.320a | useDashboardData: rolling-window delta bias — normalize by days elapsed for in-progress periods | P3 | 30 min | TODO | Review finding — week/quarter/year deltas compare incomplete current vs complete previous period |
 
 **S-Tier Features:**
@@ -575,8 +575,8 @@
 | T2.324 | Insight rules: Financial tab (7 rules) | P2 | 45 min | DONE |
 | T2.325 | Insight rules: Growth tab (5 rules) | P2 | 30 min | DONE |
 | T2.319a | generateInsight: cross-tab target collision on "TOTAL APPOINTMENTS" — namespace or separate maps | P3 | 15 min | TODO | Review finding — harmless now (one tab at a time) but fragile |
-| T2.319b | generateInsight Rule 8: Math.max on empty deptLoad returns -Infinity — add empty guard | P3 | 5 min | TODO | Review finding — condition evaluates false, no crash |
-| T2.319c | generateInsight Rule 19: fires when deltas.revenue === 0 producing noisy "0% above" — add !== 0 guard | P3 | 2 min | TODO | Review finding — technically correct but low signal |
+| T2.319b | generateInsight Rule 8: Math.max on empty deptLoad returns -Infinity — add empty guard | P3 | 5 min | DONE | Review finding — condition evaluates false, no crash |
+| T2.319c | generateInsight Rule 19: fires when deltas.revenue === 0 producing noisy "0% above" — add !== 0 guard | P3 | 2 min | DONE | Review finding — technically correct but low signal |
 | T2.326 | Drill-down: Operations → Queue/Records | P1 | 45 min | DONE |
 | T2.327 | Drill-down: Clinical → Records/Patients | P2 | 30 min | DONE |
 | T2.328 | Drill-down: Financial → Sales/Expenses | P2 | 30 min | DONE |
@@ -594,7 +594,7 @@
 | T2.340 | Create `annotateChartData()` utility | P2 | 1 hr | DONE |
 | T2.341 | recharts custom annotation labels | P2 | 45 min | DONE |
 | T2.330a | Queue drill-down "ACTIVE IN FACILITY" maps to tab 3 (Started) but KPI counts arrived+in-consult+dispensing+billing — no single tab matches | P3 | 15 min | TODO | Review finding — Day 5 audit |
-| T2.331a | Settings.jsx: add dashboardAlerts and dashboardGoals to the tracked array so changes appear in activity log | P3 | 5 min | TODO | Review finding — Day 6 audit |
+| T2.331a | Settings.jsx: add dashboardAlerts and dashboardGoals to the tracked array so changes appear in activity log | P3 | 5 min | DONE | Review finding — Day 6 audit |
 
 #### Monitor (T2.231-T2.242, T2.273-T2.275)
 
@@ -649,8 +649,8 @@
 | T2.277 | Login: "Forgot Password" link | P1 | 20 min | DONE | Bumped from P2 — absorbs T4.70. **Review fix:** added `@` guard to prevent misleading success message on clearly invalid input |
 | T2.278 | Login: default password detection warning | P3 | 15 min | TODO | Depends on T2.208 |
 | T2.278a | App.jsx: infinite spinner for profile-less auth users — distinguish null (loading) from false (missing) in UserContext | P2 | 30 min | — | TODO | Review finding from T2.262 — needs UserContext refactor |
-| T2.278b | App.jsx: replace hardcoded `bgcolor: '#212121'` with `COLORS.monitorBg` on Monitor layout | P3 | 1 min | — | TODO | Review finding — token exists but not used |
-| T2.278c | Mobile LoginScreen.js: remove duplicate `label` style in StyleSheet (first definition silently overwritten) | P3 | 2 min | — | TODO | Review finding — pre-existing dead style block |
+| T2.278b | App.jsx: replace hardcoded `bgcolor: '#212121'` with `COLORS.monitorBg` on Monitor layout | P3 | 1 min | — | DONE | Review finding — token exists but not used |
+| T2.278c | Mobile LoginScreen.js: remove duplicate `label` style in StyleSheet (first definition silently overwritten) | P3 | 2 min | — | DONE | Review finding — pre-existing dead style block |
 | ~~T2.524~~ | ~~UserContext infinite spinner~~ | — | — | ABSORBED | Duplicate of T2.278a (sub-ID grouped with Login module) |
 
 ### Mobile Client Screens (T2.343-T2.433)
@@ -739,7 +739,7 @@
 | ID | Name | Priority | Effort | Status |
 |---|---|---|---|---|
 | T2.394 | Fix history-tab ghost filter: cancelReason → auditReason | CRITICAL | 5 min | DONE |
-| T2.394a | ClientAppointments handleDismissFollowUp: incomplete optional chaining on `item.scheduledDate?.toDate().toLocaleDateString()` — crashes when toDate() returns undefined | P3 | 2 min | TODO | Review finding — MOB-2 audit |
+| T2.394a | ClientAppointments handleDismissFollowUp: incomplete optional chaining on `item.scheduledDate?.toDate().toLocaleDateString()` — crashes when toDate() returns undefined | P3 | 2 min | DONE | Review finding — MOB-2 audit. Already fixed via formatDisplayDate in MOB-7 |
 | T2.395 | Fix client cancel: include auditReason | CRITICAL | 5 min | DONE |
 | T2.396 | Show reason for no-show/carried-over | P2 | 10 min | DONE |
 | T2.397 | Fix invalid `my` CSS → marginVertical | P2 | 2 min | DONE |
@@ -755,7 +755,7 @@
 | T2.402 | Remove soap.subjective per Q11 | HIGH | 10 min | DONE |
 | T2.403 | Replace treatment with dischargeSummary.instructions (Option A locked: hide for legacy) | HIGH | 15 min | DONE |
 | T2.404 | Rewrite generatePDF() client-safe only | HIGH | 30 min | DONE |
-| T2.404a | BookAppointment.js: duplicate `toTitleCase` declarations in renderStep4 — two identical const definitions back-to-back | P3 | 1 min | TODO | Review finding — MOB-7 audit, pre-existing dead code |
+| T2.404a | BookAppointment.js: duplicate `toTitleCase` declarations in renderStep4 — two identical const definitions back-to-back | P3 | 1 min | DONE | Review finding — MOB-7 audit. Already fixed during MOB-7 |
 | T2.405 | Guard nextVisit non-Timestamp (T2.6 fix) | P1 | 10 min | DONE |
 | T2.406 | Strip price from prescriptions | P3 | 20 min | DONE |
 | T2.407 | Defensive vitals coercion | P3 | 5 min | DONE |
@@ -798,7 +798,7 @@
 | T2.429 | Extract calculateAge with future-DOB guard | P2 | 10 min | DONE |
 | T2.430 | Extract unified formatFirestoreTime | P2 | 15 min | DONE |
 | T2.431 | Move getLocalDateStrMobile to helpers | P2 | 10 min | DONE |
-| T2.431a | Replace inline todayStr YYYY-MM-DD computation in ClientAppointments.js + ClientDashboard.js with `getLocalDateStr()` from helpers.js | P3 | 5 min | TODO | Review finding — MOB-7 audit |
+| T2.431a | Replace inline todayStr YYYY-MM-DD computation in ClientAppointments.js + ClientDashboard.js with `getLocalDateStr()` from helpers.js | P3 | 5 min | DONE | Review finding — MOB-7 audit |
 | T2.432 | Extract formatHour | P3 | 5 min | DONE |
 | T2.433 | Create formatDisplayDate/Time wrappers | P3 | 20 min | DONE |
 
@@ -942,10 +942,10 @@
 | T2.521 | Remove dentalGrade/lamenessGrade Firestore writes (no input UI, always 0) | P2 | 5 min | DONE |
 | T2.522 | Propagate live weight to main Identity Strip | P2 | 5 min | DONE |
 | T2.523 | Remove dead code: Widget, getGlucoseLevel, selectedRxItem, dischargeRef | P3 | 10 min | DONE |
-| T2.518a | ClinicalWorkspace allergy case inconsistency: Identity Strip checks `!== 'None'` (exact case), God-View checks `.toUpperCase() !== 'NONE'` — normalize to case-insensitive | P3 | 2 min | T2.518 | TODO | Review finding — 'none' (lowercase from legacy data) would show as allergy in Identity Strip |
-| T2.518b | ClinicalWorkspace: remove residual `soapRef` state — attached to Box but never consumed (no scrollTo/focus caller) | P3 | 1 min | — | TODO | Review finding — dead state from T2.18 cleanup |
-| T2.95a | ServiceProgressCard: replace hardcoded `#2E7D32`/`#E8F5E9` with `COLORS.success`/`COLORS.kpiGreenBg` tokens | P3 | 5 min | T2.95 | TODO | Review finding — Design Sweep scope |
-| T2.105a | ServiceFormModal: isScPwdEligible Switch uses `color="secondary"` instead of `COLORS.accent` token override | P3 | 5 min | T2.105 | TODO | Review finding — Design Sweep scope |
+| T2.518a | ClinicalWorkspace allergy case inconsistency: Identity Strip checks `!== 'None'` (exact case), God-View checks `.toUpperCase() !== 'NONE'` — normalize to case-insensitive | P3 | 2 min | T2.518 | DONE | Review finding — 'none' (lowercase from legacy data) would show as allergy in Identity Strip |
+| T2.518b | ClinicalWorkspace: remove residual `soapRef` state — attached to Box but never consumed (no scrollTo/focus caller) | P3 | 1 min | — | DONE | Review finding — dead state from T2.18 cleanup |
+| T2.95a | ServiceProgressCard: replace hardcoded `#2E7D32`/`#E8F5E9` with `COLORS.success`/`COLORS.kpiGreenBg` tokens | P3 | 5 min | T2.95 | DONE | Review finding — Design Sweep scope |
+| T2.105a | ServiceFormModal: isScPwdEligible Switch uses `color="secondary"` instead of `COLORS.accent` token override | P3 | 5 min | T2.105 | DONE | Review finding — Design Sweep scope |
 
 ---
 

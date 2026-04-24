@@ -6,11 +6,12 @@ import {
   IconButton, Avatar, TextField, InputAdornment,
   FormControl, Select, MenuItem, Popover, Collapse, Tooltip,
   Snackbar, Alert,
+  Dialog, DialogTitle, DialogContent, DialogActions,
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
 
 import { db } from '../../firebaseConfig';
-import { doc, getDoc, collection, query, where, orderBy, getDocs, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, orderBy, getDocs, Timestamp, updateDoc } from 'firebase/firestore';
 
 // Icons
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -104,6 +105,11 @@ export default function PatientDashboard() {
   const [collapsedYears, setCollapsedYears] = useState(new Set());
   const [referralOpen, setReferralOpen] = useState(false);
   const [printBlockedToast, setPrintBlockedToast] = useState(false);
+  // T2.101: Owner sales for computed outstanding balance
+  const [ownerSales, setOwnerSales] = useState([]);
+  const [recordPaymentOpen, setRecordPaymentOpen] = useState(false);
+  const [recordPaymentTarget, setRecordPaymentTarget] = useState(null);
+  const [recordPaymentAmount, setRecordPaymentAmount] = useState('');
 
   const clinicSettings = useClinicSettings();
 
@@ -165,6 +171,15 @@ export default function PatientDashboard() {
         setTempData(tp.reverse());
         setHrData(hr.reverse());
 
+        // T2.101: Fetch owner's sales for computed outstanding balance
+        if (currentPet?.ownerId && currentPet.ownerId !== 'WALK_IN_USER') {
+          try {
+            const salesQ = query(collection(db, 'sales'), where('ownerId', '==', currentPet.ownerId));
+            const salesSnap = await getDocs(salesQ);
+            setOwnerSales(salesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+          } catch (e) { console.warn('[PatientDashboard] Sales fetch skipped:', e); }
+        }
+
         // Fetch sibling pets (same owner)
         if (currentPet?.ownerId) {
           try {
@@ -198,7 +213,7 @@ export default function PatientDashboard() {
       }
     }
     fetchDashboardData();
-  }, [id, pet]);
+  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const calculateAge = (dob) => {
     if (!dob) return '—';
@@ -272,6 +287,30 @@ export default function PatientDashboard() {
       });
     });
     return Array.from(rxMap.values());
+  }, [history]);
+
+  // T2.101: Computed outstanding balance — sum of balanceRemaining across all non-refunded/voided sales.
+  // This is authoritative; the legacy outstandingBalance counter on the user doc is no longer updated.
+  const computedOutstandingBalance = useMemo(() => {
+    return ownerSales
+      .filter(s => s.status !== 'refunded' && s.status !== 'voided')
+      .reduce((sum, s) => sum + (s.balanceRemaining || 0), 0);
+  }, [ownerSales]);
+
+  // T2.24-27: Aggregated lab results — most recent result per test name across all records.
+  // Grouped by testName, showing the latest value and date for trend context.
+  const aggregatedLabResults = useMemo(() => {
+    const testMap = new Map();
+    (history || []).slice().reverse().forEach(r => {
+      (r.labResults || []).forEach(lab => {
+        if (!lab.testName) return;
+        const dateStr = r.date?.toDate ? r.date.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+        if (!testMap.has(lab.testName)) {
+          testMap.set(lab.testName, { testName: lab.testName, result: lab.result, status: lab.status || 'normal', date: dateStr });
+        }
+      });
+    });
+    return Array.from(testMap.values());
   }, [history]);
 
   // Vaccination tracker — uses VACCINE_CATALOG for canonical vaccine list.
@@ -402,6 +441,23 @@ export default function PatientDashboard() {
 
   const toggleYear = (year) => setCollapsedYears(p => { const n = new Set(p); n.has(year) ? n.delete(year) : n.add(year); return n; });
 
+  // T2.101: Record a partial payment against an outstanding sale balance.
+  const handleRecordPayment = async () => {
+    const amount = parseFloat(recordPaymentAmount);
+    if (!recordPaymentTarget || isNaN(amount) || amount <= 0) return;
+    try {
+      const newBalance = Math.max(0, (recordPaymentTarget.balanceRemaining || 0) - amount);
+      await updateDoc(doc(db, 'sales', recordPaymentTarget.id), { balanceRemaining: newBalance });
+      setOwnerSales(prev => prev.map(s => s.id === recordPaymentTarget.id ? { ...s, balanceRemaining: newBalance } : s));
+      setRecordPaymentOpen(false);
+      setRecordPaymentTarget(null);
+      setRecordPaymentAmount('');
+    } catch (e) {
+      console.error('[PatientDashboard.handleRecordPayment]:', e.message);
+      alert('Failed to record payment: ' + e.message);
+    }
+  };
+
   // ── TOC: group records by year ──
   const tocGroups = useMemo(() => {
     const groups = [];
@@ -454,17 +510,17 @@ export default function PatientDashboard() {
               </Typography>
               <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary }}>Age: <span style={{ color: COLORS.brand, fontWeight: 700 }}>{calculateAge(pet?.dob)}</span></Typography>
               <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary }}>Wt: <span style={{ color: '#E65100', fontWeight: 700 }}>{pet?.lastWeight ? `${pet.lastWeight}kg` : 'N/A'}</span></Typography>
-              {owner?.outstandingBalance > 0 && (
-                <Tooltip title="This client has an unpaid balance. Please settle at the front desk.">
-                  <Chip 
-                    label={`₱${owner.outstandingBalance.toLocaleString()} OWED`} 
-                    size="small" 
-                    sx={{ 
-                      bgcolor: '#FFEBEE', color: '#B71C1C', 
-                      fontWeight: 900, fontSize: '0.72rem', 
+              {computedOutstandingBalance > 0 && (
+                <Tooltip title="This client has an unpaid balance computed from sales records.">
+                  <Chip
+                    label={`₱${computedOutstandingBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })} OWED`}
+                    size="small"
+                    sx={{
+                      bgcolor: '#FFEBEE', color: '#B71C1C',
+                      fontWeight: 900, fontSize: '0.72rem',
                       height: 22, border: '1px solid #EF9A9A',
                       fontFamily: FONT, animation: 'pulse 2s infinite'
-                    }} 
+                    }}
                   />
                 </Tooltip>
               )}
@@ -506,11 +562,11 @@ export default function PatientDashboard() {
         {/* Actions */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 1.5 }}>
           <Button variant="outlined" size="small" startIcon={<NoteAddIcon sx={{ fontSize: '15px !important' }} />} onClick={() => alert('Coming soon!')}
-            sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.78rem', textTransform: 'none', color: COLORS.accent, borderColor: COLORS.border, borderRadius: 1.5, px: 2, height: 36, '&:hover': { borderColor: COLORS.accentLight, bgcolor: '#EFEBE9' } }}>
+            sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.78rem', textTransform: 'none', color: COLORS.accent, borderColor: COLORS.border, borderRadius: 0, px: 2, height: 36, '&:hover': { borderColor: COLORS.accentLight, bgcolor: '#EFEBE9' } }}>
             Add Record
           </Button>
           <Button variant="contained" size="small" startIcon={<EventAvailableIcon sx={{ fontSize: '15px !important' }} />} onClick={() => navigate('/queue')}
-            sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.78rem', textTransform: 'none', bgcolor: '#2E7D32', borderRadius: 1.5, px: 2, height: 36, boxShadow: 'none', '&:hover': { bgcolor: '#1B5E20' } }}>
+            sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.78rem', textTransform: 'none', bgcolor: '#2E7D32', borderRadius: 0, px: 2, height: 36, boxShadow: 'none', '&:hover': { bgcolor: '#1B5E20' } }}>
             Book Visit
           </Button>
           <Button
@@ -520,7 +576,7 @@ export default function PatientDashboard() {
             onClick={() => setReferralOpen(true)}
             sx={{
               fontFamily: FONT, fontWeight: 700, fontSize: '0.78rem', textTransform: 'none',
-              color: COLORS.accent, borderColor: COLORS.border, borderRadius: 1.5,
+              color: COLORS.accent, borderColor: COLORS.border, borderRadius: 0,
               px: 2, height: 36, '&:hover': { borderColor: COLORS.accentLight, bgcolor: '#EFEBE9' },
             }}
           >
@@ -978,6 +1034,59 @@ export default function PatientDashboard() {
             )}
           </Widget>
 
+          {/* T2.24-27: Lab Results Aggregation */}
+          {aggregatedLabResults.length > 0 && (
+            <Widget title={`Lab Results (${aggregatedLabResults.length})`} icon={<AssignmentIcon sx={{ fontSize: 14, color: '#1565C0' }} />}>
+              <Stack spacing={0.75}>
+                {aggregatedLabResults.map((lab, i) => {
+                  const statusKey = (lab.status || 'normal').toLowerCase();
+                  const statusColor = statusKey === 'critical' ? '#D32F2F' : statusKey === 'abnormal' ? '#E65100' : '#2E7D32';
+                  const statusBg = statusKey === 'critical' ? '#FFEBEE' : statusKey === 'abnormal' ? '#FFF3E0' : '#E8F5E9';
+                  return (
+                    <Box key={i} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 0.5 }}>
+                      <Box>
+                        <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', fontWeight: 700, color: COLORS.textPrimary }}>{lab.testName}</Typography>
+                        <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', color: COLORS.textMuted }}>{lab.result} · {lab.date}</Typography>
+                      </Box>
+                      <Chip
+                        label={statusKey.toUpperCase()}
+                        size="small"
+                        sx={{ fontFamily: FONT, fontSize: '0.6rem', fontWeight: 800, height: 18, bgcolor: statusBg, color: statusColor, border: `1px solid ${statusColor}` }}
+                      />
+                    </Box>
+                  );
+                })}
+              </Stack>
+            </Widget>
+          )}
+
+          {/* T2.101: Billing Ledger — outstanding balances from sales */}
+          {ownerSales.filter(s => (s.balanceRemaining || 0) > 0 && s.status !== 'refunded' && s.status !== 'voided').length > 0 && (
+            <Widget title="Outstanding Balance" icon={<ScaleIcon sx={{ fontSize: 14, color: '#D32F2F' }} />}>
+              <Stack spacing={0.75}>
+                {ownerSales.filter(s => (s.balanceRemaining || 0) > 0 && s.status !== 'refunded' && s.status !== 'voided').map((sale, i) => {
+                  const saleDateStr = sale.date?.toDate ? sale.date.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+                  return (
+                    <Box key={i} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 0.5 }}>
+                      <Box>
+                        <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', fontWeight: 700, color: COLORS.textPrimary }}>{saleDateStr}</Typography>
+                        <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', color: '#D32F2F', fontWeight: 700 }}>₱{(sale.balanceRemaining || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} remaining</Typography>
+                      </Box>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => { setRecordPaymentTarget(sale); setRecordPaymentAmount(''); setRecordPaymentOpen(true); }}
+                        sx={{ fontFamily: FONT, fontSize: '0.62rem', fontWeight: 800, borderRadius: 0, color: '#2E7D32', borderColor: '#A5D6A7', textTransform: 'none', py: 0.25, px: 1 }}
+                      >
+                        Record Payment
+                      </Button>
+                    </Box>
+                  );
+                })}
+              </Stack>
+            </Widget>
+          )}
+
           {/* Sibling Pets */}
           {siblings.length > 0 && (
             <Widget title={`Other Pets (${siblings.length})`} icon={<PetsIcon sx={{ fontSize: 14, color: COLORS.accentLight }} />}>
@@ -1040,6 +1149,38 @@ export default function PatientDashboard() {
         clinicName={clinicSettings.clinicName}
         clinicAddress={clinicSettings.clinicAddress}
       />
+
+      {/* T2.101: Record Payment Dialog */}
+      <Dialog open={recordPaymentOpen} onClose={() => setRecordPaymentOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.95rem', color: COLORS.brand }}>Record Payment</DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', color: COLORS.textSecondary, mb: 1.5 }}>
+            Outstanding: ₱{(recordPaymentTarget?.balanceRemaining || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+          </Typography>
+          <TextField
+            autoFocus
+            fullWidth
+            label="Payment Amount"
+            type="number"
+            size="small"
+            value={recordPaymentAmount}
+            onChange={(e) => setRecordPaymentAmount(e.target.value)}
+            InputProps={{ startAdornment: <Typography sx={{ mr: 0.5, color: '#aaa' }}>₱</Typography> }}
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 2.5, pb: 2 }}>
+          <Button onClick={() => setRecordPaymentOpen(false)} sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textSecondary }}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleRecordPayment}
+            disabled={!recordPaymentAmount || parseFloat(recordPaymentAmount) <= 0}
+            sx={{ fontFamily: FONT, fontWeight: 900, bgcolor: '#2E7D32', borderRadius: 0, '&:hover': { bgcolor: '#1B5E20' } }}
+          >
+            Save Payment
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* ── Popup-blocked warning ── */}
       <Snackbar

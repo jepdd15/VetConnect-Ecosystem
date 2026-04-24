@@ -34,7 +34,7 @@ import LocalFireDepartmentIcon from '@mui/icons-material/LocalFireDepartment';
 import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
 import KPICard from './KPICard';
 import HorizontalBar from './HorizontalBar';
-import { CHART_TOOLTIP_STYLE, CHART_TICK_STYLE, CHART_GRID_PROPS } from './chartConfig';
+import { CHART_TOOLTIP_STYLE, CHART_TICK_STYLE, CHART_GRID_PROPS, PANEL_SX } from './chartConfig';
 import { buildDrillDown } from '../utils/drillDownConfig';
 import { annotateChartData } from '../utils/annotateChartData';
 
@@ -78,8 +78,11 @@ export default function FinancialTab({ data, insights = {}, clinicSettings = {} 
   const overlayData = React.useMemo(() => {
     if (!financial) return [];
     const merged = {};
+    const order = {};
+    let idx = 0;
     financial.revenueTrend.forEach(d => {
       merged[d.label] = { label: d.label, revenue: d.amount, expense: 0 };
+      if (order[d.label] === undefined) order[d.label] = idx++;
     });
     financial.expenseTrend.forEach(d => {
       if (merged[d.label]) {
@@ -87,20 +90,12 @@ export default function FinancialTab({ data, insights = {}, clinicSettings = {} 
       } else {
         merged[d.label] = { label: d.label, revenue: 0, expense: d.amount };
       }
+      if (order[d.label] === undefined) order[d.label] = idx++;
     });
-    return Object.values(merged);
+    return Object.values(merged).sort((a, b) => (order[a.label] || 0) - (order[b.label] || 0));
   }, [financial?.revenueTrend, financial?.expenseTrend, financial]);
 
   if (!financial) return null;
-
-  const panelSx = {
-    bgcolor: COLORS.cardBg,
-    border: `2px solid ${COLORS.accent}`,
-    borderRadius: 0,
-    boxShadow: `4px 4px 0px ${COLORS.brand}`,
-    p: 2.5,
-    height: '100%',
-  };
 
   const isProfit = financial.netMargin >= 0;
 
@@ -160,7 +155,7 @@ export default function FinancialTab({ data, insights = {}, clinicSettings = {} 
       </Grid>
 
       {/* ROW 2: REVENUE TREND (T2.301 + T2.341 annotations) */}
-      <Box sx={panelSx}>
+      <Box sx={PANEL_SX}>
         <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.accent, mb: 1.5 }}>
           REVENUE TREND
         </Typography>
@@ -217,7 +212,7 @@ export default function FinancialTab({ data, insights = {}, clinicSettings = {} 
       </Box>
 
       {/* ROW 3: REVENUE VS EXPENSE OVERLAY (T2.303) */}
-      <Box sx={panelSx}>
+      <Box sx={PANEL_SX}>
         <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.accent, mb: 1.5 }}>
           REVENUE VS EXPENSES
         </Typography>
@@ -261,7 +256,7 @@ export default function FinancialTab({ data, insights = {}, clinicSettings = {} 
       {/* ROW 4: PAYMENT METHODS + REVENUE BY DEPARTMENT (T2.298, T2.306) */}
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 6 }}>
-          <Box sx={panelSx}>
+          <Box sx={PANEL_SX}>
             <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.accent, mb: 1.5 }}>
               PAYMENT METHOD DISTRIBUTION
             </Typography>
@@ -282,7 +277,7 @@ export default function FinancialTab({ data, insights = {}, clinicSettings = {} 
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
-          <Box sx={panelSx}>
+          <Box sx={PANEL_SX}>
             <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.accent, mb: 1.5 }}>
               REVENUE BY DEPARTMENT
             </Typography>
@@ -304,7 +299,7 @@ export default function FinancialTab({ data, insights = {}, clinicSettings = {} 
       </Grid>
 
       {/* ROW 5: EXPENSE CATEGORY BREAKDOWN (T2.302) */}
-      <Box sx={panelSx}>
+      <Box sx={PANEL_SX}>
         <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.accent, mb: 1.5 }}>
           EXPENSE CATEGORY BREAKDOWN
         </Typography>

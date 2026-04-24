@@ -38,13 +38,9 @@ export default function StaffFormModal({ open, onClose, item, dynamicDepartments
     departments: item?.departments || [],
     // Section 3: HR & Emergency (all optional)
     address:          item?.address || '',
-    emergencyContacts: item?.emergencyContacts || [
-      {
-        name: item?.emergencyName || '',
-        kinship: item?.emergencyKinship || '',
-        phone: item?.emergencyPhone || ''
-      }
-    ],
+    emergencyContacts: item?.emergencyContacts || (
+      item?.emergencyName ? [{ name: item.emergencyName, kinship: item.emergencyKinship || '', phone: item.emergencyPhone || '' }] : []
+    ),
   });
 
   const [errors, setErrors] = useState({});

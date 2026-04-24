@@ -54,7 +54,7 @@ export const COLORS = {
   kpiGreenBg:  '#F0FDF4',   kpiGreenBorder:  '#86EFAC',  // Available / value
   kpiOrangeBg: '#FFF7ED',   kpiOrangeBorder: '#FDBA74',  // Low / busy / warning
   kpiRedBg:    '#FEF2F2',   kpiRedBorder:    '#FCA5A5',  // Out of stock / admin
-  kpiPurpleBg: '#F3E8FF',   kpiPurpleBorder: '#D8B4FE',  // Expiring / grooming
+  kpiPurpleBg: '#F3E8FF',   kpiPurpleBorder: '#D8B4FE',  kpiPurpleText: '#6A1B9A', // Expiring / grooming
 
   // Surface palette (page backgrounds, cards, panels)
   surface:     '#F5F0EB',   // Main page background (warm neutral)

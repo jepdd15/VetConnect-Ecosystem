@@ -406,7 +406,6 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   const [isUnifiedZen, setIsUnifiedZen] = useState(false); // Global SOAP zoom
 
   // --- ZEN NAVIGATION & STATE ---
-  const soapRef = useRef(null);
   const treatmentRef = useRef(null);
   const isSavingRef = useRef(false);
 
@@ -418,7 +417,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     WebkitBackdropFilter: 'blur(24px) saturate(180%)',
     border: '1px solid rgba(255, 255, 255, 0.4)',
     boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.08)',
-    borderRadius: 4,
+    borderRadius: 0,
   };
 
 
@@ -1469,14 +1468,14 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   if (!patient) return null;
 
   const vaccineFormJSX = (
-    <Box sx={{ mb: 2, p: 2, bgcolor: '#E8F5E9', border: '1px solid #A5D6A7', flexShrink: 0 }}>
+    <Box sx={{ mb: 2, p: 2, bgcolor: COLORS.kpiGreenBg, border: `1px solid ${COLORS.kpiGreenBorder}`, flexShrink: 0 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-        <Typography sx={{ fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: 1, color: '#2E7D32' }}>
+        <Typography sx={{ fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: 1, color: COLORS.success }}>
           VACCINE DETAILS ({vaccineAdministrations.length})
         </Typography>
         <Button size="small"
           onClick={() => setVaccineAdministrations(prev => [...prev, { ...EMPTY_VAX }])}
-          sx={{ fontWeight: 900, fontSize: '0.6rem', textTransform: 'uppercase', color: '#2E7D32', minWidth: 0 }}>
+          sx={{ fontWeight: 900, fontSize: '0.6rem', textTransform: 'uppercase', color: COLORS.success, minWidth: 0 }}>
           + Add Vaccine
         </Button>
       </Box>
@@ -1694,7 +1693,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
 
         {/* === SOAP COLUMN (LEFT) === */}
-        <Box ref={soapRef} sx={{ flex: 7.5, display: 'flex', flexDirection: 'column', borderRight: '2px solid rgba(0,0,0,0.06)', overflow: 'hidden' }}>
+        <Box sx={{ flex: 7.5, display: 'flex', flexDirection: 'column', borderRight: '2px solid rgba(0,0,0,0.06)', overflow: 'hidden' }}>
 
           {/* --- IDENTITY STRIP --- */}
           <Box sx={{
@@ -1751,7 +1750,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             {/* Allergy — unified read: petAllergies (canonical) || allergies (legacy) */}
             {(() => {
               const allergyVal = patient?.petAllergies || patient?.allergies || '';
-              const hasAllergy = allergyVal && allergyVal !== 'None' && allergyVal.trim().length > 0;
+              const hasAllergy = allergyVal && allergyVal.toUpperCase() !== 'NONE' && allergyVal.trim().length > 0;
               return (
                 <Chip
                   label={hasAllergy ? `ALLERGY: ${allergyVal}` : 'NKA'}
@@ -2050,6 +2049,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                                         sx={{ mt: 1, '& .MuiInputBase-root': { fontSize: '0.72rem', fontWeight: 800 } }}
                                         label="Performed By"
                                     >
+                                        <MenuItem value="" sx={{ fontSize: '0.8rem', fontStyle: 'italic', color: COLORS.textMuted }}>
+                                            — Unassigned —
+                                        </MenuItem>
                                         {(vetsList || []).map(v => (
                                             <MenuItem key={v.id} value={v.id} sx={{ fontSize: '0.8rem' }}>
                                                 {v.fullName}

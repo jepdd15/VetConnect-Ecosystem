@@ -238,8 +238,9 @@ export function useQueueActions() {
     const pulseEvent = {
         eventId: makePulseEventId('cancel'),
         type: 'STATUS_CHANGE',
+        fromStatus: rowData.status || 'unknown',
         toStatus: 'cancelled',
-        timestamp: Timestamp.now(), // CLIENT-SIDE CLOCK — see W1 in pulseUtils.js
+        timestamp: Timestamp.now(),
         staffId: profile?.id || 'unknown',
         staffName: staffSignature,
         note: isForensic ? `Forensic Triage Cleanup: ${reason}` : (reason || 'Individually cancelled')

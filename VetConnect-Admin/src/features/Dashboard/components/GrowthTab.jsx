@@ -31,7 +31,7 @@ import SpeedIcon from '@mui/icons-material/Speed';
 import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
 import KPICard from './KPICard';
 import HorizontalBar from './HorizontalBar';
-import { CHART_COLORS, CHART_TOOLTIP_STYLE, CHART_TICK_STYLE, CHART_GRID_PROPS } from './chartConfig';
+import { CHART_COLORS, CHART_TOOLTIP_STYLE, CHART_TICK_STYLE, CHART_GRID_PROPS, PANEL_SX } from './chartConfig';
 import { buildDrillDown } from '../utils/drillDownConfig';
 import { annotateChartData } from '../utils/annotateChartData';
 
@@ -70,15 +70,6 @@ export default function GrowthTab({ data, clinicSettings, insights = {} }) {
     100,
     maxCapacity > 0 ? Math.round((growth.totalAppointments / maxCapacity) * 100) : 0,
   );
-
-  const panelSx = {
-    bgcolor: COLORS.cardBg,
-    border: `2px solid ${COLORS.accent}`,
-    borderRadius: 0,
-    boxShadow: `4px 4px 0px ${COLORS.brand}`,
-    p: 2.5,
-    height: '100%',
-  };
 
   const maxPeakCount = Math.max(...growth.peakHours.map(h => h.count), 0);
 
@@ -138,7 +129,7 @@ export default function GrowthTab({ data, clinicSettings, insights = {} }) {
       </Grid>
 
       {/* ── ROW 2: CLIENT REGISTRATION TREND (T2.307) ──────────── */}
-      <Box sx={panelSx}>
+      <Box sx={PANEL_SX}>
         <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.accent, mb: 1.5 }}>
           CLIENT REGISTRATION TREND
         </Typography>
@@ -170,7 +161,7 @@ export default function GrowthTab({ data, clinicSettings, insights = {} }) {
       {/* ── ROW 3: SPECIES DISTRIBUTION + TOP BREEDS (T2.308, T2.309) */}
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 6 }}>
-          <Box sx={panelSx}>
+          <Box sx={PANEL_SX}>
             <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.accent, mb: 1.5 }}>
               SPECIES DISTRIBUTION
             </Typography>
@@ -191,7 +182,7 @@ export default function GrowthTab({ data, clinicSettings, insights = {} }) {
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
-          <Box sx={{ ...panelSx }}>
+          <Box sx={{ ...PANEL_SX }}>
             <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.accent, mb: 1.5 }}>
               TOP BREEDS
             </Typography>
@@ -232,7 +223,7 @@ export default function GrowthTab({ data, clinicSettings, insights = {} }) {
       {/* ── ROW 4: APPOINTMENT VOLUME TREND + WALK-IN RATIO (T2.285, T2.280) */}
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 8 }}>
-          <Box sx={panelSx}>
+          <Box sx={PANEL_SX}>
             <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.accent, mb: 1.5 }}>
               APPOINTMENT VOLUME TREND
             </Typography>
@@ -291,7 +282,7 @@ export default function GrowthTab({ data, clinicSettings, insights = {} }) {
 
         <Grid size={{ xs: 12, md: 4 }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, height: '100%' }}>
-            <Box sx={panelSx}>
+            <Box sx={PANEL_SX}>
               <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.accent, mb: 1.5 }}>
                 WALK-IN VS SCHEDULED
               </Typography>
@@ -312,7 +303,7 @@ export default function GrowthTab({ data, clinicSettings, insights = {} }) {
       {/* ── ROW 5: PEAK HOURS + SERVICE POPULARITY (T2.310, T2.311) */}
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 6 }}>
-          <Box sx={panelSx}>
+          <Box sx={PANEL_SX}>
             <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.accent, mb: 1.5 }}>
               PEAK HOURS ANALYSIS
             </Typography>
@@ -364,7 +355,7 @@ export default function GrowthTab({ data, clinicSettings, insights = {} }) {
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
-          <Box sx={panelSx}>
+          <Box sx={PANEL_SX}>
             <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.accent, mb: 1.5 }}>
               SERVICE POPULARITY
             </Typography>

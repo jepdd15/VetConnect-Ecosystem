@@ -46,7 +46,7 @@ const theme = createTheme({
 const MainLayout = ({ children, onLogout }) => {
   const location = useLocation();
   if (location.pathname === '/monitor') {
-    return <Box sx={{ width: '100vw', height: '100vh', overflow: 'hidden', bgcolor: '#212121' }}>{children}</Box>;
+    return <Box sx={{ width: '100vw', height: '100vh', overflow: 'hidden', bgcolor: COLORS.monitorBg }}>{children}</Box>;
   }
   return (
     <Box sx={{ display: 'flex', width: '100%', minHeight: '100vh' }}>

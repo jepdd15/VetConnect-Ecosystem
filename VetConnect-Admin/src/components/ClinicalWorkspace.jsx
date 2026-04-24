@@ -783,6 +783,29 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         }
     }
 
+    // T2.175: Allergen safety check — warn if any of the product's allergenTags match a word
+    // in the patient's petAllergies string. Case-insensitive word-boundary match.
+    if (item.allergenTags && item.allergenTags.length > 0) {
+      const patientAllergies = (patient?.petAllergies || patient?.allergies || '').toLowerCase();
+      if (patientAllergies.length > 0 && patientAllergies !== 'none') {
+        const matchingTags = item.allergenTags.filter(tag => {
+          const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          return new RegExp(`\\b${escaped}\\b`, 'i').test(patientAllergies);
+        });
+        if (matchingTags.length > 0) {
+          const proceed = window.confirm(
+            `ALLERGEN MATCH DETECTED\n\n` +
+            `Product: ${item.itemName || item.name}\n` +
+            `Matching allergen(s): ${matchingTags.join(', ')}\n` +
+            `Patient allergies: ${patient?.petAllergies || patient?.allergies}\n\n` +
+            `This product contains an allergen flagged for this patient. ` +
+            `Add anyway?`
+          );
+          if (!proceed) return;
+        }
+      }
+    }
+
     const isMedicine = !!item.isMedicine; // 🩺 THE FORENSIC FLAG
 
     // Deduplicate: if item already in cart, increment qty instead of adding duplicate

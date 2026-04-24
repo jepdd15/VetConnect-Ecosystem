@@ -1,7 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
-import { Box, CssBaseline, CircularProgress } from '@mui/material';
+import { Box, CssBaseline, CircularProgress, Snackbar, Alert } from '@mui/material';
 import { FONT, COLORS } from './theme/designTokens';
 import { signOut } from 'firebase/auth';
 import { auth } from './firebaseConfig';
@@ -71,6 +71,7 @@ const AdminRoute = ({ children }) => {
 // --- THE SECURE APP SHELL ---
 function AppShell() {
   const { user, profile, isAdmin, loading } = useUser();
+  const [tempPwDismissed, setTempPwDismissed] = React.useState(false);
 
   const handleLogout = () => {
     signOut(auth).catch((error) => {
@@ -104,6 +105,21 @@ function AppShell() {
         element={
           isValidStaff ? (
             <MainLayout onLogout={handleLogout}>
+              {profile.mustChangePassword && !tempPwDismissed && (
+                <Snackbar
+                  open
+                  anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+                  onClose={() => setTempPwDismissed(true)}
+                >
+                  <Alert
+                    severity="warning"
+                    onClose={() => setTempPwDismissed(true)}
+                    sx={{ borderRadius: 0, fontWeight: 700, border: `2px solid ${COLORS.warning}`, boxShadow: `3px 3px 0px ${COLORS.warning}` }}
+                  >
+                    You are using a temporary password. Please change your password in Settings.
+                  </Alert>
+                </Snackbar>
+              )}
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/queue" element={<Queue />} />

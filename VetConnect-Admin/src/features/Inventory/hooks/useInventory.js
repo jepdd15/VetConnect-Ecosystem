@@ -171,6 +171,22 @@ export function useInventory() {
         updatePayload.batches = batches;
       }
 
+      // T2.174: Batch-aware negative adjustment — reduce qty from the specified batch.
+      // If the batch qty reaches zero, remove the batch entry from the array entirely.
+      if (amount < 0 && batchInfo && batchInfo.batchNumber) {
+        const batches = [...(data.batches || [])];
+        const batchIdx = batches.findIndex(b => b.batchNumber === batchInfo.batchNumber);
+        if (batchIdx >= 0) {
+          const updatedQty = (batches[batchIdx].qty || 0) + amount; // amount is negative
+          if (updatedQty <= 0) {
+            batches.splice(batchIdx, 1); // Remove depleted batch
+          } else {
+            batches[batchIdx] = { ...batches[batchIdx], qty: updatedQty };
+          }
+          updatePayload.batches = batches;
+        }
+      }
+
       transaction.update(ref, updatePayload);
     });
 

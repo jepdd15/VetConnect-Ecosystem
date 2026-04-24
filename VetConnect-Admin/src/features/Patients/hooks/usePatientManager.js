@@ -243,10 +243,21 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
   const handleAdminAddPet = async () => {
       if (!newPetData.name || !newPetData.breed) throw new Error("Pet Name and Breed are required.");
       if (!selectedClient) throw new Error("No client selected.");
-      const payload = { ownerId: selectedClient.id, ...newPetData, dob: newPetData.dob ? Timestamp.fromDate(new Date(newPetData.dob)) : null, createdAt: Timestamp.now(), status: 'active' };
+      // T2.119: Write `petAllergies` as the canonical field; keep `allergies` as legacy alias.
+      const resolvedAllergies = (newPetData.allergies || 'None').trim();
+      const { allergies: _legacyField, ...restPetData } = newPetData;
+      const payload = {
+        ownerId: selectedClient.id,
+        ...restPetData,
+        petAllergies: resolvedAllergies,
+        allergies: resolvedAllergies,
+        dob: newPetData.dob ? Timestamp.fromDate(new Date(newPetData.dob)) : null,
+        createdAt: Timestamp.now(),
+        status: 'active',
+      };
       await addDoc(collection(db, "pets"), payload);
       setNewPetData({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', allergies: 'None', microchip: '' });
-      return true; 
+      return true;
   };
   
   const fetchPetClinicalData = async (petId) => {

@@ -2,10 +2,11 @@ import React, { useState, useMemo } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Button, MenuItem, Box, InputAdornment, Divider, Typography, Grid, Paper,
-  FormControlLabel, Switch
+  FormControlLabel, Switch, Chip, Stack
 } from '@mui/material';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import InsightsIcon from '@mui/icons-material/Insights';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { collection, addDoc } from 'firebase/firestore';
 import { db } from '../../../firebaseConfig';
 import MedicationIcon from '@mui/icons-material/Medication';
@@ -33,6 +34,10 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [newCatName, setNewCatName]     = useState('');
   const [errors, setErrors]             = useState({});
+
+  // T2.175: Allergen tags — stored as a string array on the product document.
+  const [allergenTags, setAllergenTags] = useState(item?.allergenTags || []);
+  const [allergenInput, setAllergenInput] = useState('');
   // T2.167b: Per-item isMedicine override — null means "derive from category"
   const [isMedicineOverride, setIsMedicineOverride] = useState(
     item?.isMedicine !== undefined ? item.isMedicine : null
@@ -77,18 +82,20 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
     setErrors({});
 
     onSave({
-      itemName:  formData.itemName.trim(),
-      category:  formData.category.toLowerCase().trim(),
-      price:     Number(formData.price)     || 0,
-      costPrice: Number(formData.costPrice) || 0,
-      minStock:  Number(formData.minStock)  || 0,
-      sku:       formData.sku.trim(),
-      dosage:    formData.dosage.trim(),
-      unit:      formData.unit.trim(),
-      location:  formData.location.trim(),
-      supplier:  formData.supplier.trim(),
-      lotNumber: formData.lotNumber.trim(),
-      expiryDate: formData.expiryDate || null,
+      itemName:     formData.itemName.trim(),
+      category:     formData.category.toLowerCase().trim(),
+      price:        Number(formData.price)     || 0,
+      costPrice:    Number(formData.costPrice) || 0,
+      minStock:     Number(formData.minStock)  || 0,
+      sku:          formData.sku.trim(),
+      dosage:       formData.dosage.trim(),
+      unit:         formData.unit.trim(),
+      location:     formData.location.trim(),
+      supplier:     formData.supplier.trim(),
+      lotNumber:    formData.lotNumber.trim(),
+      expiryDate:   formData.expiryDate || null,
+      // T2.175: Allergen tags — stored as string array, empty array when none declared
+      allergenTags: allergenTags,
       // Only include opening stock for new products
       ...(!isEditing && { openingStock: Number(formData.openingStock) || 0 }),
       // Pass override so Inventory.jsx can resolve final isMedicine value
@@ -293,6 +300,82 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
                   />
                 </Grid>
               </Grid>
+            </Paper>
+          </Box>
+
+          {/* ═══════════════════════════════════════════════════════════════
+              SECTION 2b: ALLERGEN SAFETY TAGS (T2.175)
+              ═══════════════════════════════════════════════════════════════ */}
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="overline" fontWeight="900" display="block" mb={1} sx={{ color: '#C62828', letterSpacing: 1 }}>
+              2b. ALLERGEN SAFETY TAGS
+            </Typography>
+            <Paper elevation={0} sx={{ p: 3, borderRadius: 0, border: '2px solid #C62828', bgcolor: '#FFF' }}>
+              <Typography variant="body2" sx={{ color: '#5D4037', fontWeight: 600, mb: 1.5, fontSize: '0.8rem' }}>
+                Tag any allergens present in this product (e.g. Chicken, Penicillin, Latex). The dispensing
+                workflow will warn staff if a tagged allergen matches a patient's known allergies.
+              </Typography>
+
+              {/* Tag display */}
+              <Stack direction="row" flexWrap="wrap" gap={1} mb={allergenTags.length > 0 ? 1.5 : 0}>
+                {allergenTags.map((tag, idx) => (
+                  <Chip
+                    key={idx}
+                    label={tag}
+                    onDelete={() => setAllergenTags(prev => prev.filter((_, i) => i !== idx))}
+                    icon={<WarningAmberIcon sx={{ fontSize: '14px !important', color: 'white !important' }} />}
+                    sx={{
+                      bgcolor: '#C62828', color: 'white', fontWeight: 900,
+                      fontSize: '0.75rem', borderRadius: '4px',
+                      '& .MuiChip-deleteIcon': { color: 'rgba(255,255,255,0.8) !important' },
+                    }}
+                  />
+                ))}
+              </Stack>
+
+              {/* Tag input */}
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <TextField
+                  size="small"
+                  placeholder="Type allergen and press Enter or +"
+                  value={allergenInput}
+                  onChange={e => setAllergenInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && allergenInput.trim()) {
+                      e.preventDefault();
+                      const tag = allergenInput.trim();
+                      if (!allergenTags.includes(tag)) {
+                        setAllergenTags(prev => [...prev, tag]);
+                      }
+                      setAllergenInput('');
+                    }
+                  }}
+                  sx={{
+                    flex: 1,
+                    bgcolor: 'white',
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: 0,
+                      '& fieldset': { border: '2px solid #C62828' },
+                      '&:hover fieldset': { borderColor: '#B71C1C' },
+                      '&.Mui-focused fieldset': { borderColor: '#C62828' },
+                    },
+                  }}
+                />
+                <Button
+                  variant="contained"
+                  disabled={!allergenInput.trim()}
+                  onClick={() => {
+                    const tag = allergenInput.trim();
+                    if (tag && !allergenTags.includes(tag)) {
+                      setAllergenTags(prev => [...prev, tag]);
+                    }
+                    setAllergenInput('');
+                  }}
+                  sx={{ bgcolor: '#C62828', borderRadius: 0, border: '2px solid #B71C1C', fontWeight: 1000, '&:hover': { bgcolor: '#B71C1C' } }}
+                >
+                  +
+                </Button>
+              </Box>
             </Paper>
           </Box>
 

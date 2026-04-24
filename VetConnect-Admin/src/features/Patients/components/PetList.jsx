@@ -42,22 +42,30 @@ export default function PetList({ pets, onRegisterPet, onViewChart, onQuickBook,
     let list = [...activePets];
 
     // 1. FILTERING
-    if (filter.species !== 'all') list = list.filter(p => (p.species || '').toLowerCase() === filter.species);
+    if (filter.species !== 'all') {
+      const SPECIES_ALIASES = { canine: ['canine', 'dog'], feline: ['feline', 'cat'] };
+      const matches = SPECIES_ALIASES[filter.species] || [filter.species];
+      list = list.filter(p => matches.includes((p.species || '').toLowerCase()));
+    }
     if (filter.sex !== 'all') list = list.filter(p => (p.gender || '').toLowerCase() === filter.sex);
     if (filter.status === 'intact') list = list.filter(p => !p.isNeutered);
     if (filter.status === 'needs_vaccine') list = list.filter(p => {
         if (!p.lastVisit) return true;
-        const daysSinceVisit = (new Date() - p.lastVisit.toDate()) / (1000 * 60 * 60 * 24);
+        const daysSinceVisit = (new Date() - (p.lastVisit?.toDate?.() ?? new Date(p.lastVisit))) / (1000 * 60 * 60 * 24);
         return daysSinceVisit > 365; 
     });
-    if (filter.status === 'has_allergy') list = list.filter(p => p.allergies && p.allergies !== 'None' && p.allergies !== '');
+    // T2.119: Filter using normalized allergy field (petAllergies canonical, allergies legacy).
+    if (filter.status === 'has_allergy') list = list.filter(p => {
+      const a = (p.petAllergies || p.allergies || '').trim();
+      return a.length > 0 && !['None', 'none', 'None recorded'].includes(a);
+    });
 
     // 2. SORTING
     switch (sort) {
-      case 'age_asc': list.sort((a,b) => (a.dob?.toDate() || 0) > (b.dob?.toDate() || 0) ? -1 : 1); break;
-      case 'age_desc': list.sort((a,b) => (a.dob?.toDate() || 0) < (b.dob?.toDate() || 0) ? -1 : 1); break;
-      case 'last_visit_asc': list.sort((a,b) => (a.lastVisit?.toDate() || 0) > (b.lastVisit?.toDate() || 0) ? -1 : 1); break;
-      case 'last_visit_desc': list.sort((a,b) => (a.lastVisit?.toDate() || 0) < (b.lastVisit?.toDate() || 0) ? -1 : 1); break;
+      case 'age_asc': list.sort((a,b) => (a.dob?.toDate?.() ?? new Date(a.dob || 0)) > (b.dob?.toDate?.() ?? new Date(b.dob || 0)) ? -1 : 1); break;
+      case 'age_desc': list.sort((a,b) => (a.dob?.toDate?.() ?? new Date(a.dob || 0)) < (b.dob?.toDate?.() ?? new Date(b.dob || 0)) ? -1 : 1); break;
+      case 'last_visit_asc': list.sort((a,b) => (a.lastVisit?.toDate?.() ?? new Date(a.lastVisit || 0)) > (b.lastVisit?.toDate?.() ?? new Date(b.lastVisit || 0)) ? -1 : 1); break;
+      case 'last_visit_desc': list.sort((a,b) => (a.lastVisit?.toDate?.() ?? new Date(a.lastVisit || 0)) < (b.lastVisit?.toDate?.() ?? new Date(b.lastVisit || 0)) ? -1 : 1); break;
       default: list.sort((a,b) => (a.name || '').localeCompare(b.name || '')); break;
     }
     return list;
@@ -116,7 +124,10 @@ export default function PetList({ pets, onRegisterPet, onViewChart, onQuickBook,
         {processedPets.map(pet => {
           const rawAge = calculateAge(pet.dob);
           const displayAge = rawAge === 'Age TBD' || rawAge === '' ? 'Age Unknown' : rawAge;
-          const hasAllergies = pet.allergies && pet.allergies !== 'None' && pet.allergies !== '';
+          // T2.119: Normalize allergy reads — petAllergies (canonical) falls back to allergies (legacy).
+          const resolvedAllergies = pet.petAllergies || pet.allergies || '';
+          const hasAllergies = resolvedAllergies.trim().length > 0
+            && !['None', 'None recorded', 'none'].includes(resolvedAllergies.trim());
 
           return (
             <Grid size={{ xs: 12, md: 6, lg: 6, xl: 4 }} key={pet.id}>
@@ -130,7 +141,7 @@ export default function PetList({ pets, onRegisterPet, onViewChart, onQuickBook,
                 {hasAllergies && (
                   <Box sx={{ bgcolor: COLORS.kpiRedBg, color: COLORS.danger, py: 0.5, px: 3, display: 'flex', alignItems: 'center', gap: 1, borderBottom: `1px solid ${COLORS.kpiRedBorder}` }}>
                     <WarningAmberIcon fontSize="small" />
-                    <Typography variant="caption" sx={{ fontFamily: FONT, ...TYPE.label, letterSpacing: '0.05em' }}>Allergy: {pet.allergies}</Typography>
+                    <Typography variant="caption" sx={{ fontFamily: FONT, ...TYPE.label, letterSpacing: '0.05em' }}>Allergy: {resolvedAllergies}</Typography>
                   </Box>
                 )}
 
@@ -165,7 +176,7 @@ export default function PetList({ pets, onRegisterPet, onViewChart, onQuickBook,
                     <Paper variant="outlined" sx={{ bgcolor: COLORS.surfaceAlt, p: 1, borderRadius: 1.5, display: 'flex', alignItems: 'center', gap: 1, borderColor: COLORS.borderLight }}>
                       <EventNoteIcon fontSize="small" sx={{ color: COLORS.textMuted }} />
                       <Typography variant="caption" sx={{ fontFamily: FONT, fontWeight: 'bold', color: COLORS.textSecondary }}>
-                        Last Visit: {pet.lastVisit ? pet.lastVisit.toDate().toLocaleDateString() : 'No history'}
+                        Last Visit: {pet.lastVisit ? (pet.lastVisit?.toDate?.() ?? new Date(pet.lastVisit)).toLocaleDateString() : 'No history'}
                       </Typography>
                     </Paper>
                   </Box>

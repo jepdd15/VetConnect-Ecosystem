@@ -14,6 +14,13 @@ export default function StockAdjustModal({ open, onClose, item, onAdjust }) {
   const [batchNumber, setBatchNumber] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
 
+  // T2.174: Selected batch for negative adjustments when the item has batch tracking.
+  const [selectedRemoveBatch, setSelectedRemoveBatch] = useState('');
+
+  // Convenience: batches available on the item (non-zero qty only)
+  const availableBatches = (item?.batches || []).filter(b => (b.qty || 0) > 0);
+  const hasBatches = availableBatches.length > 0;
+
   // T2.158: Reset all form state when modal opens or switches to a different item
   useEffect(() => {
     if (open) {
@@ -22,6 +29,7 @@ export default function StockAdjustModal({ open, onClose, item, onAdjust }) {
       setReason('Restocked from Supplier');
       setBatchNumber('');
       setExpiryDate('');
+      setSelectedRemoveBatch('');
       setErrors({});
     }
   }, [open, item?.id]);
@@ -34,8 +42,23 @@ export default function StockAdjustModal({ open, onClose, item, onAdjust }) {
 
     if (isNaN(amount) || amount <= 0) {
       newErrors.qty = 'Please enter a valid positive quantity.';
-    } else if (action === 'remove' && (item?.stock || 0) - (item?.reserved || 0) - amount < 0) {
-      newErrors.qty = `Cannot remove ${amount}. Only ${(item?.stock || 0) - (item?.reserved || 0)} unit(s) available (${item?.reserved || 0} reserved).`;
+    } else if (action === 'remove') {
+      const available = (item?.stock || 0) - (item?.reserved || 0);
+      if (available - amount < 0) {
+        newErrors.qty = `Cannot remove ${amount}. Only ${available} unit(s) available (${item?.reserved || 0} reserved).`;
+      }
+
+      // T2.174: When batches exist, a batch must be selected and removal must not exceed its qty.
+      if (hasBatches) {
+        if (!selectedRemoveBatch) {
+          newErrors.batch = 'Please select the batch to remove stock from.';
+        } else {
+          const batch = availableBatches.find(b => b.batchNumber === selectedRemoveBatch);
+          if (batch && amount > (batch.qty || 0)) {
+            newErrors.batch = `Cannot remove ${amount} from this batch — only ${batch.qty} available in it.`;
+          }
+        }
+      }
     }
 
     if (!reason.trim()) {
@@ -48,9 +71,16 @@ export default function StockAdjustModal({ open, onClose, item, onAdjust }) {
     }
 
     const finalAmount = action === 'add' ? amount : -amount;
-    const batchInfo = (action === 'add' && batchNumber.trim())
-      ? { batchNumber: batchNumber.trim(), expiryDate: expiryDate || null }
-      : null;
+
+    // For additions: pass batchInfo if a batch number was entered.
+    // For removals with batch tracking: pass batchInfo so adjustStock can update the correct batch.
+    let batchInfo = null;
+    if (action === 'add' && batchNumber.trim()) {
+      batchInfo = { batchNumber: batchNumber.trim(), expiryDate: expiryDate || null };
+    } else if (action === 'remove' && hasBatches && selectedRemoveBatch) {
+      batchInfo = { batchNumber: selectedRemoveBatch };
+    }
+
     setSubmitting(true);
     try {
       await onAdjust(finalAmount, reason.trim(), batchInfo);
@@ -151,6 +181,28 @@ export default function StockAdjustModal({ open, onClose, item, onAdjust }) {
               helperText="Optional."
             />
           </Box>
+        )}
+
+        {/* T2.174: Batch selector for negative adjustments when item has batch tracking */}
+        {action === 'remove' && hasBatches && (
+          <TextField
+            select
+            label="Remove From Batch"
+            fullWidth
+            value={selectedRemoveBatch}
+            onChange={e => { setSelectedRemoveBatch(e.target.value); clearError('batch'); }}
+            sx={{ ...fieldSx, mt: 2 }}
+            error={!!errors.batch}
+            helperText={errors.batch || 'Select which batch to deduct from.'}
+          >
+            {availableBatches.map(b => (
+              <MenuItem key={b.batchNumber} value={b.batchNumber}>
+                {b.batchNumber}
+                {b.expiryDate ? ` — Exp: ${b.expiryDate}` : ''}
+                {` (${b.qty} in stock)`}
+              </MenuItem>
+            ))}
+          </TextField>
         )}
       </DialogContent>
 

@@ -11,7 +11,7 @@ import {
 import Grid from '@mui/material/Grid';
 
 import { db } from '../../firebaseConfig';
-import { doc, getDoc, collection, query, where, orderBy, getDocs, Timestamp, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, orderBy, getDocs, Timestamp, updateDoc, writeBatch } from 'firebase/firestore';
 
 // Icons
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -482,7 +482,12 @@ export default function PatientDashboard() {
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontFamily: FONT }}><CircularProgress sx={{ color: COLORS.accentLight }} /></Box>;
 
   const sexLabel = pet?.gender === 'Male' ? (pet?.isNeutered ? 'MN' : 'MI') : pet?.gender === 'Female' ? (pet?.isNeutered ? 'FS' : 'FI') : '—';
-  const hasAllergies = pet?.allergies && !['None','None recorded',''].includes(pet.allergies);
+
+  // T2.119: Normalize allergy reads — `petAllergies` is canonical; `allergies` is the legacy field.
+  // Always read via this resolved value so both old and new documents display correctly.
+  const resolvedPetAllergies = pet?.petAllergies || pet?.allergies || '';
+  const hasAllergies = resolvedPetAllergies.trim().length > 0
+    && !['None', 'None recorded', 'none'].includes(resolvedPetAllergies.trim());
 
   return (
     <Box sx={{ m: -4, display: 'flex', flexDirection: 'column', height: '100vh', bgcolor: COLORS.surface, overflow: 'hidden', fontFamily: FONT }}>
@@ -525,7 +530,7 @@ export default function PatientDashboard() {
                 </Tooltip>
               )}
               {hasAllergies ? (
-                <Chip icon={<WarningAmberIcon sx={{ color: '#FFF !important', fontSize: 12 }} />} label={pet.allergies} size="small" sx={{ bgcolor: '#C62828', color: '#FFF', fontWeight: 700, fontSize: '0.72rem', height: 22, fontFamily: FONT }} />
+                <Chip icon={<WarningAmberIcon sx={{ color: '#FFF !important', fontSize: 12 }} />} label={resolvedPetAllergies} size="small" sx={{ bgcolor: '#C62828', color: '#FFF', fontWeight: 700, fontSize: '0.72rem', height: 22, fontFamily: FONT }} />
               ) : (
                 <Typography sx={{ fontFamily: FONT, ...TYPE.tiny, color: COLORS.textMuted, bgcolor: '#EFEBE9', px: 0.75, py: 0.25, borderRadius: 0.5 }}>NKA</Typography>
               )}
@@ -1113,10 +1118,10 @@ export default function PatientDashboard() {
             <Widget title="Pet Owner" icon={<PersonIcon sx={{ fontSize: 14, color: COLORS.accent }} />}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
                 <Avatar sx={{ width: 36, height: 36, bgcolor: COLORS.accentLight, fontFamily: FONT, fontWeight: 700, fontSize: '0.85rem' }}>
-                  {(owner.displayName || owner.name || '?')[0].toUpperCase()}
+                  {(owner.fullName || owner.displayName || owner.name || '?')[0].toUpperCase()}
                 </Avatar>
                 <Box>
-                  <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.textPrimary }}>{owner.displayName || owner.name || 'Unknown'}</Typography>
+                  <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.textPrimary }}>{owner.fullName || owner.displayName || owner.name || 'Unknown'}</Typography>
                   <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', color: COLORS.textMuted }}>Pet Owner</Typography>
                 </Box>
               </Box>

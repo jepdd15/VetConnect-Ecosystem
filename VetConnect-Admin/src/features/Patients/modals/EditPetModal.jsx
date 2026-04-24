@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, FormControlLabel, Switch, Typography, Button, Grid, Box, InputAdornment } from '@mui/material';
-import { doc, updateDoc, Timestamp } from 'firebase/firestore';
+import { doc, updateDoc, Timestamp, collection, query, where, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from '../../../firebaseConfig';
 
 // Design Tokens
@@ -19,7 +19,8 @@ export default function EditPetModal({ open, onClose, pet }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // Pre-populate form when pet changes
+  // Pre-populate form when pet changes.
+  // T2.119: Read allergies via normalized fallback — petAllergies (canonical) → allergies (legacy).
   useEffect(() => {
     if (pet) {
       setForm({
@@ -30,7 +31,7 @@ export default function EditPetModal({ open, onClose, pet }) {
         dob: pet.dob?.toDate ? pet.dob.toDate().toISOString().split('T')[0] : (pet.dob || ''),
         color: pet.color || '',
         isNeutered: pet.isNeutered || false,
-        allergies: pet.allergies || 'None',
+        allergies: pet.petAllergies || pet.allergies || 'None',
         microchip: pet.microchip || '',
         lastWeight: pet.lastWeight || '',
       });
@@ -43,6 +44,10 @@ export default function EditPetModal({ open, onClose, pet }) {
     setSaving(true);
     setError('');
     try {
+      const resolvedAllergies = form.allergies.trim() || 'None';
+
+      // T2.119: Write `petAllergies` as the canonical field name.
+      // Retain `allergies` as a legacy alias so existing queries on the old field still resolve.
       const payload = {
         name: form.name.trim(),
         breed: form.breed.trim() || 'Unknown Breed',
@@ -51,14 +56,35 @@ export default function EditPetModal({ open, onClose, pet }) {
         dob: form.dob ? Timestamp.fromDate(new Date(form.dob)) : null,
         color: form.color.trim(),
         isNeutered: form.isNeutered,
-        allergies: form.allergies.trim() || 'None',
+        petAllergies: resolvedAllergies,
+        allergies: resolvedAllergies,
         microchip: form.microchip.trim(),
+        weight: form.lastWeight ? parseFloat(form.lastWeight) : null,
         lastWeight: form.lastWeight ? parseFloat(form.lastWeight) : null,
       };
+
       await updateDoc(doc(db, 'pets', pet.id), payload);
+
+      // T2.119: Propagate updated petAllergies to all active appointments for this pet.
+      // Active statuses are any stage before billing completion.
+      const ACTIVE_STATUSES = ['pending', 'confirmed', 'arrived', 'in-consult', 'dispensing', 'billing'];
+      const apptQuery = query(
+        collection(db, 'appointments'),
+        where('petId', '==', pet.id),
+        where('status', 'in', ACTIVE_STATUSES),
+      );
+      const apptSnap = await getDocs(apptQuery);
+      if (!apptSnap.empty) {
+        const batch = writeBatch(db);
+        apptSnap.docs.forEach(apptDoc => {
+          batch.update(apptDoc.ref, { petAllergies: resolvedAllergies });
+        });
+        await batch.commit();
+      }
+
       onClose(true); // true = saved successfully
     } catch (err) {
-      console.error('Error updating pet:', err);
+      console.error('[EditPetModal.handleSave]:', err);
       setError(err.message || 'Failed to save. Please try again.');
     } finally {
       setSaving(false);

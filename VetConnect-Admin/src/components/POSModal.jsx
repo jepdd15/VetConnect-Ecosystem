@@ -375,6 +375,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         const saleRef = doc(collection(db, "sales")); 
         transaction.set(saleRef, {
             appointmentId: patient.id,
+            ownerId: patient.ownerId || null,
             petName: patient.petName,
             ownerName: patient.ownerName || 'Walk-In',
             items: cart.map(ci => ci.type === 'product' && batchSourceMap[ci.id] ? { ...ci, batchSource: batchSourceMap[ci.id] } : ci),

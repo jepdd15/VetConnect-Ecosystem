@@ -1614,6 +1614,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         patient={dispenseRow}
         onVerified={handleDispenseVerified}
         staffProfile={profile}
+        clinicSettings={clinicSettings}
       />
       <WalkInModal open={openWalkIn} onClose={() => setOpenWalkIn(false)} servicesList={servicesList} departments={departments}/>
       

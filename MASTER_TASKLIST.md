@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-04-23 · **Branch:** `main`
 **Total tasks:** ~719 · **Cancelled/Absorbed:** ~16 · **Active:** ~703
-**DONE:** 449 · **TODO:** 249 · **Deferred sub-tasks:** 61
+**DONE:** 464 · **TODO:** 234 · **Deferred sub-tasks:** 61
 **Critical path to defense:** Dashboard Build (~32 hrs) + thesis
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~154 hours (Phase 4 S-Tier)
 
@@ -71,7 +71,7 @@
 | T2.57a | Records.jsx: undo Snackbar and toast Snackbar overlap — use different `anchorOrigin` values or suppress toast when undo is active | P3 | 5 min | T2.72 | DONE | Review finding — both render at same position simultaneously |
 | T2.58 | Records.jsx terminology cleanup | 30 min | — | DONE | All forensic/teleport/state-vector terms replaced with plain clinical language |
 | T2.79 | Fix tiered pricing per-pet weight | 30 min | — | DONE | Per-pet resolveTieredPrice inside forEach loop. **Review fix:** step 4 shows "Est. Total" with weight-adjustment note |
-| T2.119 | Normalize allergy field: read `petAllergies \|\| allergies` everywhere, write `petAllergies`, propagate to active appointments on edit | 45 min | — | TODO | **PATIENT SAFETY** — allergy warnings suppressed for mobile pets |
+| T2.119 | Normalize allergy field: read `petAllergies \|\| allergies` everywhere, write `petAllergies`, propagate to active appointments on edit | 45 min | — | DONE | **PATIENT SAFETY** — allergy warnings suppressed for mobile pets |
 | T2.149 | `adjustStock`: wrap in `runTransaction` with stock floor check (`newStock >= 0`) and reserved check (`newStock >= reserved`) | 30 min | — | DONE | **Review fix:** spread-copy batches array before push to prevent transaction retry double-append |
 | T2.150 | Normalize refund log schema: use `action: 'RESTOCK'`, `amountChange`, `userName`/`userId`. Add `RESTOCK` to GlobalActivityLog ACTION_CONFIG. Extract shared `normalizeLog` utility. | 45 min | — | DONE | Shared normalizeInventoryLog.js created |
 | T2.208 | Remove hardcoded password. Generate random 12-char temp password, display to admin in toast. | 30 min | — | DONE | **Review fixes:** crypto.getRandomValues replaces Math.random; clipboard fallback for non-HTTPS; sets mustChangePassword flag (unblocks T2.278); token-compliant dialog |
@@ -97,9 +97,9 @@
 | T2.33 | dischargePolicy per service (required/optional) | 1.5 hrs | — | DONE | |
 | T2.41 | Remove caseDay increment from reschedule path | 10 min | — | DONE | |
 | T2.105 | SC/PWD discount eligibility per service (`isScPwdEligible` toggle) | 30 min | — | DONE | **Legal compliance (RA 9994)** |
-| T2.112 | Sales ownerId: add to sales docs + update query | 30 min | — | TODO | Name collisions + name changes break billing |
-| T2.120 | Species filter normalization ('Dog'→'canine') | 5 min | — | TODO | Dogs disappear when filtering |
-| T2.121 | Date type guards across PetList + BillingLedger | 15 min | — | TODO | Crash on non-Timestamp dates |
+| T2.112 | Sales ownerId: add to sales docs + update query | 30 min | — | DONE | Name collisions + name changes break billing |
+| T2.120 | Species filter normalization ('Dog'→'canine') | 5 min | — | DONE | Dogs disappear when filtering |
+| T2.121 | Date type guards across PetList + BillingLedger | 15 min | — | DONE | Crash on non-Timestamp dates |
 | T2.137 | EOD dual display: primary "COLLECTED TODAY" + secondary "total billed" annotation. Expand eodTotals. Payment method tiles use collected amounts. | 45 min | — | DONE | **Review fix:** refunds annotation changed from "- ₱X" to "REFUNDS TODAY: ₱X" to avoid implying deduction |
 | T2.138 | Refund: update appointment status to `billing` + reset `balanceRemaining` + write `TRANSACTION_REFUNDED` clinicalPulse event | 30 min | — | DONE | **Review fix:** balanceRemaining parseFloat guard for legacy data |
 | T2.139 | Refund: pass current user to `useSalesData` hook via `useUser()`. Replace hardcoded `"Admin"` with actual staff identity. | 20 min | — | DONE | |
@@ -136,7 +136,7 @@
 | T2.15 | Expand KNOWLEDGE_BASE to 30+ rules | 3-4 hrs | — | DONE | |
 | T2.16 | POSModal reserved decrement leak fix | 30-60 min | — | DONE | |
 | T2.22 | Vaccine-aware inventory + auto-fill | 2-3 hrs | — | DONE | |
-| T2.23 | useBookingEngine reads lastVitals.weight | 30 min | — | TODO | |
+| T2.23 | useBookingEngine reads lastVitals.weight | 30 min | — | DONE | |
 | T2.24-27 | Promote lab results | 2-3 hrs | — | DONE | Mobile PetHistoryScreen lab card + PatientDashboard aggregatedLabResults widget |
 | T2.29 | Ditch primaryService field | 2 hrs | — | DONE | |
 | T2.43 | Resolve carried-over → arrived ambiguity | 30 min | — | DONE | |
@@ -167,11 +167,11 @@
 | T2.113 | Outstanding balance: remove Firestore counter | 45 min | — | TODO | Decision locked: Option A |
 | T2.115 | QuickBookModal → WalkInModal direct integration with prefill | 1.5-2 hrs | — | TODO | Decision locked: Option B |
 | T2.116 | Archive pet: confirmation dialog + archivedBy + restore | 30 min | — | TODO | |
-| T2.122 | Weight type fix: parseFloat, write both weight + lastWeight | 10 min | — | TODO | |
+| T2.122 | Weight type fix: parseFloat, write both weight + lastWeight | 10 min | — | DONE | |
 | T2.123 | Admin pet modal field parity (updatedAt, isAgeExact, max DOB, petAllergies) | 20 min | — | TODO | |
 | T2.124 | NewClientModal: add `accountStatus: 'admin_registered'` flag | 10 min | — | TODO | Decision locked: Option A |
 | T2.125 | Staff notes: delete confirmation + arrayUnion for atomic adds | 30 min | — | TODO | |
-| T2.126 | PatientDashboard: fix double-fetch (remove pet from useEffect deps) | 15 min | — | TODO | 50 wasted reads |
+| T2.126 | PatientDashboard: fix double-fetch (remove pet from useEffect deps) | 15 min | — | DONE | 50 wasted reads |
 | T2.132 | Duplicate client phone check with override dialog | 20 min | — | TODO | Decision locked: Option A |
 | T2.140 | Refund date: Option C — show on both days. Dual query + dedup + cross-day badge. EOD refund total uses refund date. | 1.5 hrs | — | DONE | **Review fix:** filterStatus case mismatch fixed; needs composite index sales(status ASC, refundedAt ASC) |
 | T2.141 | Add "Bank Transfer" to payment method filter dropdown. Fix Card tile click to include Bank Transfer. | 10 min | — | DONE | |
@@ -190,15 +190,15 @@
 | T2.166 | KPI expiry: check `batches[].expiryDate` in addition to top-level | 15 min | — | DONE | **Review fix:** toDateStr normalizer handles Firestore Timestamps |
 | T2.167 | Write `isMedicine` to inventory items on create/update (derived + optional override toggle). Label: "Requires pharmacy dispensing verification". | 20 min | — | DONE | |
 | T2.170 | GlobalActivityLog: full filtering — action type, date range, product search, user filter, paginated queries. | 3 hrs | T2.150 | DONE | **Review fix:** composite index requirement documented; needs inventory_logs(action ASC, timestamp DESC) |
-| T2.175 | Allergen safety system: `allergyTags[]` on ALL products + cart-add check in ClinicalWorkspace + Option C dispensing routing + DispensingVerificationDialog cross-check | 1.5 hrs | T2.119 | TODO | Decision locked: Option C + Approach 2 |
-| T2.176 | Client-facing dispensing label: per-medication printable label | 1.5 hrs | — | TODO | Benefits from T2.147 for lot/expiry |
+| T2.175 | Allergen safety system: `allergyTags[]` on ALL products + cart-add check in ClinicalWorkspace + Option C dispensing routing + DispensingVerificationDialog cross-check | 1.5 hrs | T2.119 | DONE | Decision locked: Option C + Approach 2 |
+| T2.176 | Client-facing dispensing label: per-medication printable label | 1.5 hrs | — | DONE | Benefits from T2.147 for lot/expiry |
 | T2.180 | Department + category CRUD audit trail: write to `settings_logs` collection | 30 min | — | DONE | logSettingsEvent helper, wired to dept/cat CRUD |
 | T2.181 | Settings save field-level diff: write changed fields to `settings_logs` | 30 min | — | DONE | **Review fix:** sanitized baseline prevents spurious diffs on first save |
 | T2.182 | Wire `autoNoShowMins`: No-Show button disabled until threshold. Tooltip: "No-Show window opens at [time] per clinic policy" (Option B). | 30 min | — | DONE | **Review fix:** `??` instead of `\|\|` so explicit 0 is respected |
 | T2.183 | Wire `maxFutureBookingDays`: date picker constraint in BookAppointment | 15 min | — | DONE | maximumDate on DateTimePicker |
 | T2.184 | Settings bounds validation: minSlotInterval > 0, maxPetsPerBooking 1-10, trafficModerate < trafficHigh, etc. | 20 min | — | DONE | **Review fix:** workingDays deselect guard in onChange |
-| T2.188 | Services non-checkable in dispensing checklist: auto-verified, shown for context. Button: "VERIFY ALL X PRODUCTS". | 20 min | — | TODO | User's design |
-| T2.189 | Dosage/concentration display in dispensing checklist: propagate `dosage` from inventory item to cart item | 15 min | — | TODO | Pharmacy safety |
+| T2.188 | Services non-checkable in dispensing checklist: auto-verified, shown for context. Button: "VERIFY ALL X PRODUCTS". | 20 min | — | DONE | User's design |
+| T2.189 | Dosage/concentration display in dispensing checklist: propagate `dosage` from inventory item to cart item | 15 min | — | DONE | Pharmacy safety |
 | T2.190 | No-show rebook detection: auto-detect on pet selection, `rebookedFromId` + `noShowCount`, banners in BookAppointment (client) + WalkInModal (staff) + ClinicalWorkspace (vet chip). Option A matching, 30-day window, most-recent + count. | 2 hrs | — | DONE | **Review fixes:** conditional spread (no pollution when count=0), Manila timezone cutoff, clinicPhone Alert instead of fake fallback |
 | T2.194 | Audit diff: track individual pricing tier changes (minWeight, maxWeight, price per tier). | 30 min | — | DONE | Per-tier add/remove/change with exact values |
 | T2.195 | Tier validation: overlap, gap, inversion checks before save. | 30 min | — | DONE | **Review fix:** overlap uses strict < (touching boundaries allowed) |
@@ -254,7 +254,7 @@
 | T2.83 | Debounce slot generation | 30 min | — | DONE | Split into effect 3a (fetch) + 3b (compute, 300ms debounce). **Review fix:** closedDatesKey serialized for stable deps |
 | T2.84 | Write serviceBuffer to appointment root | 10 min | — | DONE | bundleTotalBuffer accumulated and written |
 | T2.85 | Zero-capacity department explanation | 20 min | — | DONE | "No staff assigned to [dept]" message |
-| T2.86 | findFirstBookableDate capacity check | 1 hr | — | TODO | PARTIAL: async signature done + await at call site. Capacity callback not wired — needs checkCapacity function defined and passed from ClientAppointments |
+| T2.86 | findFirstBookableDate capacity check | 1 hr | — | DONE | checkCapacity callback wired in ClientAppointments — queries appointment count vs maxSlotsPerDay |
 | T2.88 | Profile up-to-date nudge | 20 min | — | DONE | 6-month freshness check with Update Now / Later Alert |
 | T2.89 | Past-date submit guard | 10 min | — | DONE | Aborts with "Time Passed" alert, resets to step 3 |
 | T2.97 | ServiceProgressCard shared component | 1 hr | T2.95 | DONE | |
@@ -268,7 +268,7 @@
 | T2.109 | Centralized pulse event factory | 45 min | T2.38 | DONE | |
 | T2.109a | Adopt createPulseEvent factory: refactor 3+ inline pulse-event objects in useQueueActions.js to use the factory | P3 | 30 min | T2.109 | TODO | Review finding — factory exported but zero consumers, consistency benefit deferred |
 | T2.111 | Extract shared ClinicalTimeline component | 1.5 hrs | — | DONE | Non-essential refactor |
-| T2.114 | Owner name: fullName fix in PatientDashboard | 2 min | — | TODO | |
+| T2.114 | Owner name: fullName fix in PatientDashboard | 2 min | — | DONE | |
 | T2.117 | Deduplicate calculateAge into shared util | 10 min | — | TODO | |
 | T2.118 | PatientDashboard dead buttons (3) | 15 min | — | TODO | |
 | T2.127 | PatientDirectory: empty state + null guard + React.memo | 15 min | — | TODO | |
@@ -293,7 +293,7 @@
 | T2.171 | `restoreItem`: clear `archivedAt` on restore | 5 min | — | DONE | Uses deleteField() |
 | T2.172 | InventoryTable: negative margins as red percentage | 10 min | — | DONE | Three-tier color: green/orange/red + null for N/A |
 | T2.173 | Category seed idempotency: deterministic IDs | 15 min | — | DONE | default_medicine, default_vaccine, etc. |
-| T2.174 | Batch-aware negative stock adjustments: batch picker for removals | 2 hrs | T2.152 | TODO | Deferred — positive ships first |
+| T2.174 | Batch-aware negative stock adjustments: batch picker for removals | 2 hrs | T2.152 | DONE | Deferred — positive ships first |
 | T2.174a | GlobalActivityLog: show "Load More" when client-side filter empties page but hasMore is true | 15 min | T2.170 | TODO | Review finding — user can't paginate past non-matching results |
 | T2.174b | Quick-add category: auto-detect isMedicine from medical keywords (antibiotic, vaccine, etc.) | 15 min | T2.162 | TODO | Review finding — "antibiotic" category defaults to isMedicine:false |
 | T2.174c | `normalizeInventoryLog` sign ambiguity: old sale logs with positive `quantity` show up-arrow for "Sold" | 15 min | T2.150 | TODO | Review finding — backward compat edge case, need sign convention for SOLD action |
@@ -647,7 +647,7 @@
 | T2.265 | Remove dead LockOutlinedIcon import | LOW | 1 min | DONE | |
 | T2.266 | Mobile LoginScreen: add disabled check | P2 | 5 min | DONE | Cross-project |
 | T2.277 | Login: "Forgot Password" link | P1 | 20 min | DONE | Bumped from P2 — absorbs T4.70. **Review fix:** added `@` guard to prevent misleading success message on clearly invalid input |
-| T2.278 | Login: default password detection warning | P3 | 15 min | TODO | Depends on T2.208 |
+| T2.278 | Login: default password detection warning | P3 | 15 min | DONE | Depends on T2.208 |
 | T2.278a | App.jsx: infinite spinner for profile-less auth users — distinguish null (loading) from false (missing) in UserContext | P2 | 30 min | — | TODO | Review finding from T2.262 — needs UserContext refactor |
 | T2.278b | App.jsx: replace hardcoded `bgcolor: '#212121'` with `COLORS.monitorBg` on Monitor layout | P3 | 1 min | — | DONE | Review finding — token exists but not used |
 | T2.278c | Mobile LoginScreen.js: remove duplicate `label` style in StyleSheet (first definition silently overwritten) | P3 | 2 min | — | DONE | Review finding — pre-existing dead style block |

@@ -9,7 +9,7 @@ import { FONT, TYPE, COLORS, PANEL } from '../../../theme/designTokens';
 export default function BillingLedger({ transactions }) {
   
   const columns =[
-    { field: 'date', headerName: 'Date', width: 130, renderCell: (p) => <Typography sx={{ fontFamily: FONT, ...TYPE.meta }}>{new Date(p.value.seconds * 1000).toLocaleDateString()}</Typography> },
+    { field: 'date', headerName: 'Date', width: 130, renderCell: (p) => { const d = p.value?.toDate?.() ?? (p.value?.seconds ? new Date(p.value.seconds * 1000) : new Date(p.value)); return <Typography sx={{ fontFamily: FONT, ...TYPE.meta }}>{d.toLocaleDateString()}</Typography>; } },
     { field: 'petName', headerName: 'Patient', width: 150, renderCell: (p) => <Typography sx={{ fontFamily: FONT, fontWeight: 'bold', color: COLORS.textPrimary }} variant="body2">{p.value}</Typography> },
     { field: 'total', headerName: 'Total', width: 120, renderCell: (p) => <Typography sx={{ fontFamily: FONT, fontWeight: 'bold' }}>₱{parseFloat(p.value||0).toFixed(2)}</Typography> },
     { field: 'depositPaid', headerName: 'Paid', width: 120, renderCell: (p) => <Typography sx={{ fontFamily: FONT, color: COLORS.success, fontWeight: 'bold' }}>₱{parseFloat(p.value||0).toFixed(2)}</Typography> },

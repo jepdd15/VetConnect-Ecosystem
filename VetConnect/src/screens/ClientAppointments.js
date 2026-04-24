@@ -330,7 +330,27 @@ const ClientAppointments = ({ navigation }) => {
       }
 
       const target = item.scheduledDate?.toDate() || new Date();
-      const result = await findFirstBookableDate(target, 3, clinicSettings);
+
+      const openH = clinicSettings.openHour || 8;
+      const closeH = clinicSettings.closeHour || 17;
+      const slotInterval = clinicSettings.minSlotInterval || 30;
+      const maxSlotsPerDay = Math.floor(((closeH - openH) * 60) / slotInterval);
+
+      const checkCapacity = async (candidateDate) => {
+        const start = new Date(candidateDate);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(candidateDate);
+        end.setHours(23, 59, 59, 999);
+        const snap = await getDocs(query(
+          collection(db, 'appointments'),
+          where('scheduledDate', '>=', Timestamp.fromDate(start)),
+          where('scheduledDate', '<=', Timestamp.fromDate(end)),
+          where('status', 'in', ['pending', 'confirmed']),
+        ));
+        return snap.size < maxSlotsPerDay;
+      };
+
+      const result = await findFirstBookableDate(target, 3, clinicSettings, checkCapacity);
 
       if (result.matchType === 'none') {
         Alert.alert(

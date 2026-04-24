@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-04-25 · **Branch:** `main`
 **Total tasks:** ~719 · **Cancelled/Absorbed:** ~16 · **Active:** ~703
-**DONE:** 510 · **TODO:** 188 · **Deferred sub-tasks:** 52
+**DONE:** 512 · **TODO:** 186 · **Deferred sub-tasks:** 50
 **Critical path to defense:** Dashboard Build (~32 hrs) + thesis
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~154 hours (Phase 4 S-Tier)
 
@@ -713,7 +713,7 @@
 | T2.377 | Auth null guard | P1 | 5 min | DONE |
 | T2.378 | Guard lastVisit.toDate() | P2 | 10 min | DONE |
 | T2.379 | Add weight display | P2 | 10 min | DONE |
-| T2.379a | MyPetsScreen 4-column demoGrid: reduce fontSize or flex ratios to prevent text clipping on 320px screens (weight "12.5 kg" truncates) | P3 | 10 min | TODO | Review finding — MOB-8 audit, QA validation needed |
+| T2.379a | MyPetsScreen 4-column demoGrid: reduce fontSize or flex ratios to prevent text clipping on 320px screens (weight "12.5 kg" truncates) | P3 | 10 min | DONE | demoValue fontSize 15→13 |
 | T2.380 | Add microchip badge | P3 | 10 min | DONE |
 | T2.381 | Memoize processedPets | P2 | 10 min | DONE |
 | T2.382 | Firestore rule: prevent client pet hard-deletion | P2 | 10 min | DONE |
@@ -786,7 +786,7 @@
 | T2.422 | Standard path: add accountStatus | P3 | 5 min | DONE | |
 | T2.423 | Friendly error messages | P3 | 10 min | DONE | |
 | T2.424 | Document/remove dormant mergeGuestAccount CF | P3 | 15 min | DONE | |
-| T2.425 | Remove duplicate label style | P3 | 5 min | TODO | |
+| T2.425 | Remove duplicate label style | P3 | 5 min | DONE | Duplicate removed in lint cleanup pass |
 | T2.426 | Add profileComplete: false to registration | P3 | 5 min | DONE | |
 
 #### helpers.js Extraction (T2.427-T2.433)

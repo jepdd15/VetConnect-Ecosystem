@@ -735,7 +735,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     textTransform: "uppercase",
   },
-  demoValue: { fontSize: 15, color: "#333", fontWeight: "900" },
+  demoValue: { fontSize: 13, color: "#333", fontWeight: "900" },
 
   alertBox: { flexDirection: "row", paddingHorizontal: 18, paddingBottom: 18 },
   alertLabel: { fontSize: 12, color: "#888", fontWeight: "900" },

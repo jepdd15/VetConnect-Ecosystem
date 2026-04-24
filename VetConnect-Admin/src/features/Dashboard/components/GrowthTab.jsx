@@ -120,8 +120,8 @@ export default function GrowthTab({ data, clinicSettings, insights = {} }) {
             variant="orange"
             subtitle={`${growth.walkInCount} walk-in / ${growth.scheduledCount} scheduled`}
             delta={data.deltas?.appointments}
-            onClick={drillDown['TOTAL APPOINTMENTS']}
-            insight={insights['TOTAL APPOINTMENTS']}
+            onClick={drillDown['TOTAL APPOINTMENTS (GROWTH)']}
+            insight={insights['TOTAL APPOINTMENTS (GROWTH)']}
             goalTarget={goals.monthlyAppointments || 0}
             historicalContext={hist.appointmentsPerMonth}
           />

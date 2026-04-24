@@ -85,9 +85,13 @@ export default function Queue() {
   useEffect(() => {
     const df = location.state?.dashboardFilter;
     if (!df) return;
+    // 'active' is intentionally absent: "ACTIVE IN FACILITY" spans arrived + in-consult +
+    // dispensing + billing + confined + on-hold (6 statuses), which no single tab captures.
+    // Dropping it here causes the queue to open on the default view, which is honest
+    // about the scope rather than misleadingly showing only tab 3 (Started).
     const tabMap = {
       'no-show': 7, cancelled: 7, completed: 6,
-      active: 3, confined: 3, emergency: 3,
+      confined: 3, emergency: 3,
     };
     if (df.status && tabMap[df.status] !== undefined) setTabValue(tabMap[df.status]);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

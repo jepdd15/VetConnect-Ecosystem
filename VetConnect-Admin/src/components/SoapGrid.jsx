@@ -1,13 +1,7 @@
 import React from 'react';
 import { Grid, TextField, Box } from '@mui/material';
 import { FONT, COLORS } from '../theme/designTokens';
-
-const ZEN_PLACEHOLDERS = {
-  subjective: "Record client's primary concern, history of present illness (HPI), appetite, energy levels, and behavioral reported changes...",
-  objectiveNotes: "Document systematic physical exam findings, clinical vitals, auscultation results, palpation abnormalities, and hydration markers...",
-  assessment: "Synthesize clinical findings into differential diagnoses (Dx), rule-outs, current patient status, and medical prognosis...",
-  plan: "Define treatment trajectory, diagnostic orders, pharmaceutical interventions, surgical steps, and post-consult recheck schedules..."
-};
+import { ZEN_PLACEHOLDERS } from '../utils/soapConstants';
 
 /**
  * SoapGrid — shared 2x2 SOAP quadrant layout used by both the main

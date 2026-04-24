@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-04-25 · **Branch:** `main`
 **Total tasks:** ~719 · **Cancelled/Absorbed:** ~16 · **Active:** ~703
-**DONE:** 499 · **TODO:** 199 · **Deferred sub-tasks:** 62
+**DONE:** 509 · **TODO:** 189 · **Deferred sub-tasks:** 52
 **Critical path to defense:** Dashboard Build (~32 hrs) + thesis
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~154 hours (Phase 4 S-Tier)
 
@@ -93,7 +93,7 @@
 | T2.30a | Staff attribution dropdown: add "— Unassigned —" placeholder MenuItem when vetsList is empty or no prior assignment | P3 | 5 min | T2.30 | DONE | Review finding — blank dropdown with no visible option to leave unassigned |
 | T2.31 | Protect default inventory categories | 1-2 hrs | — | DONE | Firestore rule !catId.matches default_ + Settings.jsx client guard + hide delete icon |
 | T2.32 | Extract SoapGrid component (blocks T2.28) | 2-3 hrs | — | DONE | |
-| T2.32a | Move ZEN_PLACEHOLDERS to shared constants file — duplicated in SoapGrid.jsx + ClinicalWorkspace.jsx, divergence risk | P3 | 10 min | T2.32 | TODO | Review finding — both files define identical placeholder strings |
+| T2.32a | Move ZEN_PLACEHOLDERS to shared constants file — duplicated in SoapGrid.jsx + ClinicalWorkspace.jsx, divergence risk | P3 | 10 min | T2.32 | DONE | Extracted to soapConstants.js, both consumers import from it |
 | T2.33 | dischargePolicy per service (required/optional) | 1.5 hrs | — | DONE | |
 | T2.41 | Remove caseDay increment from reschedule path | 10 min | — | DONE | |
 | T2.105 | SC/PWD discount eligibility per service (`isScPwdEligible` toggle) | 30 min | — | DONE | **Legal compliance (RA 9994)** |
@@ -241,10 +241,10 @@
 | T2.67 | Edit identity fields in Records | 45 min | — | DONE | Inline petName/ownerName/ownerPhone edit + IDENTITY_EDIT pulse. **Review fixes:** empty string validation, null user guard, trim on save |
 | T2.68 | Copy ID + print record actions | 30 min | — | DONE | Copy to clipboard with toast, formatted print via shared printUtils. **Review fixes:** full XSS escaping, null fallbacks, en-PH locale |
 | T2.69 | Phone normalization | 1.5 hrs | — | DONE | normalizePhone in phoneValidation.js, wired in useGlobalRecords phone search. **Partial — search-side only, write-side normalization deferred** (booking/walk-in already write 09xx; legacy +63 data not covered) |
-| T2.69a | Write-side phone normalization: call normalizePhone(ownerPhone) before writing to Firestore in WalkInModal.jsx and useBookingEngine.js, so all new appointments store canonical 09xx format | P3 | 15 min | T2.69 | TODO | Ensures phone search works for all future data, not just legacy 09xx |
+| T2.69a | Write-side phone normalization: call normalizePhone(ownerPhone) before writing to Firestore in WalkInModal.jsx and useBookingEngine.js, so all new appointments store canonical 09xx format | P3 | 15 min | T2.69 | DONE | WalkInModal guest path only — mobile BookAppointment doesn't write ownerPhone |
 | T2.72 | Structured reschedule pulse + undo | 45 min | — | DONE | 10s undo Snackbar, RESCHEDULE_UNDO pulse. **Review fix:** Timestamp.fromDate for undo write |
 | T2.73 | Bulk reschedule in Records | 2 hrs | — | DONE | Checkbox selection (pending/confirmed only), floating bar, bulk dialog. **Review fix:** per-item failure tracking, DataGrid v8 selection model compat |
-| T2.73a | Records: only show checkboxSelection on TRIAGE tab — disabled checkboxes on other tabs confuse users into thinking the feature is broken | P2 | 15 min | — | TODO | Review finding — checkbox column always visible but never selectable outside TRIAGE |
+| T2.73a | Records: only show checkboxSelection on TRIAGE tab — disabled checkboxes on other tabs confuse users into thinking the feature is broken | P2 | 15 min | — | DONE | checkboxSelection={activeTab === 1} |
 | T2.74 | Bulk staff reassignment in Records | 1.5 hrs | — | DONE | writeBatch atomic update, STAFF_REASSIGN pulse, vet dropdown from users collection |
 | T2.76 | Client self-check-in via clinic QR | 5-6 hrs | — | TODO | |
 | T2.77 | 4-tier ticket prefix scheme (A/W/E/R) | 30 min | — | DONE | R prefix for caseDay > 1; apptLabel shows RETURN |
@@ -266,7 +266,7 @@
 | T2.102c | Deposit modal: borderRadius 1.2/4px → 0 for neubrutalism compliance | P3 | 2 min | T2.102 | DONE | Review finding — Design Sweep scope |
 | T2.107 | Per-service time tracking (Option A: explicit start/complete) | 25 min | T2.95 | DONE | |
 | T2.109 | Centralized pulse event factory | 45 min | T2.38 | DONE | |
-| T2.109a | Adopt createPulseEvent factory: refactor 3+ inline pulse-event objects in useQueueActions.js to use the factory | P3 | 30 min | T2.109 | TODO | Review finding — factory exported but zero consumers, consistency benefit deferred |
+| T2.109a | Adopt createPulseEvent factory: refactor 3+ inline pulse-event objects in useQueueActions.js to use the factory | P3 | 30 min | T2.109 | DONE | 6 sites converted, quickAdmitER INCEPTION left inline. **Review fix:** fromStatus added to rescheduleAppointment |
 | T2.111 | Extract shared ClinicalTimeline component | 1.5 hrs | — | DONE | Non-essential refactor |
 | T2.114 | Owner name: fullName fix in PatientDashboard | 2 min | — | DONE | |
 | T2.117 | Deduplicate calculateAge into shared util | 10 min | — | DONE | |
@@ -286,7 +286,7 @@
 | T2.147 | Refund restock: store batch info at sale time (Option A) + no-expiry guard | 30 min | — | DONE | **Review fix:** spread-copy batches before push |
 | T2.148 | Receipt clinic name from settings (Sales.jsx + POSModal) | 15 min | — | DONE | clinicName + clinicAddress added to useClinicSettings defaults |
 | T2.148a | POSModal MUI JSX: design token + borderRadius compliance (50+ hardcoded hex, borderRadius:2 violations) | 45 min | — | TODO | Review finding — out of scope for Sales T2.146 sweep |
-| T2.147a | Flat-stock refund guard: skip batch creation for non-batch-tracked items to prevent phantom batch conversion | 15 min | T2.147 | TODO | Review finding — legacy fallback converts flat-stock to batch-managed |
+| T2.147a | Flat-stock refund guard: skip batch creation for non-batch-tracked items to prevent phantom batch conversion | 15 min | T2.147 | DONE | isBatchTracked guard, flat-stock only gets stock increment |
 | T2.140a | useSalesData: expose error state when dual-query partially fails, show dismissible Alert in Sales.jsx | 15 min | T2.140 | DONE | Review finding — silent partial data on query error |
 | T2.168 | Delete dead code: glassStyle/GLASS, selectedCatObj, dead COLORS imports (Inventory) | 5 min | — | DONE | |
 | T2.169 | Design token compliance: Inventory module (100+ hardcoded colors, 7 files) | 1.5 hrs | — | TODO | Deferred to Design Sweep (Module 19) |
@@ -294,9 +294,9 @@
 | T2.172 | InventoryTable: negative margins as red percentage | 10 min | — | DONE | Three-tier color: green/orange/red + null for N/A |
 | T2.173 | Category seed idempotency: deterministic IDs | 15 min | — | DONE | default_medicine, default_vaccine, etc. |
 | T2.174 | Batch-aware negative stock adjustments: batch picker for removals | 2 hrs | T2.152 | DONE | Deferred — positive ships first |
-| T2.174a | GlobalActivityLog: show "Load More" when client-side filter empties page but hasMore is true | 15 min | T2.170 | TODO | Review finding — user can't paginate past non-matching results |
-| T2.174b | Quick-add category: auto-detect isMedicine from medical keywords (antibiotic, vaccine, etc.) | 15 min | T2.162 | TODO | Review finding — "antibiotic" category defaults to isMedicine:false |
-| T2.174c | `normalizeInventoryLog` sign ambiguity: old sale logs with positive `quantity` show up-arrow for "Sold" | 15 min | T2.150 | TODO | Review finding — backward compat edge case, need sign convention for SOLD action |
+| T2.174a | GlobalActivityLog: show "Load More" when client-side filter empties page but hasMore is true | 15 min | T2.170 | DONE | Removed filteredLogs.length > 0 gate, updated empty-state hint |
+| T2.174b | Quick-add category: auto-detect isMedicine from medical keywords (antibiotic, vaccine, etc.) | 15 min | T2.162 | DONE | MEDICINE_KEYWORDS constant, autoMedicine flag in addDoc |
+| T2.174c | `normalizeInventoryLog` sign ambiguity: old sale logs with positive `quantity` show up-arrow for "Sold" | 15 min | T2.150 | DONE | SOLD + positive amountChange flipped to negative |
 | T2.174d | `adjustStock` hook: trim `batchInfo.batchNumber` at hook level for self-protecting contract | 5 min | T2.152 | DONE | Review finding — modal trims, but direct callers don't |
 | T2.185 | Settings: replace services + users listeners with one-shot getDocs | 15 min | — | DONE | refreshUsageCounts helper for post-mutation refresh |
 | T2.186 | Settings: replace 2 window.confirm() with MUI Dialog | 10 min | — | DONE | **Review fix:** Dialog Cancel borderRadius: 0 |
@@ -574,7 +574,7 @@
 | T2.323 | Insight rules: Clinical tab (8 rules) | P2 | 45 min | DONE |
 | T2.324 | Insight rules: Financial tab (7 rules) | P2 | 45 min | DONE |
 | T2.325 | Insight rules: Growth tab (5 rules) | P2 | 30 min | DONE |
-| T2.319a | generateInsight: cross-tab target collision on "TOTAL APPOINTMENTS" — namespace or separate maps | P3 | 15 min | TODO | Review finding — harmless now (one tab at a time) but fragile |
+| T2.319a | generateInsight: cross-tab target collision on "TOTAL APPOINTMENTS" — namespace or separate maps | P3 | 15 min | DONE | Growth target → "TOTAL APPOINTMENTS (GROWTH)", GrowthTab + drillDownConfig updated |
 | T2.319b | generateInsight Rule 8: Math.max on empty deptLoad returns -Infinity — add empty guard | P3 | 5 min | DONE | Review finding — condition evaluates false, no crash |
 | T2.319c | generateInsight Rule 19: fires when deltas.revenue === 0 producing noisy "0% above" — add !== 0 guard | P3 | 2 min | DONE | Review finding — technically correct but low signal |
 | T2.326 | Drill-down: Operations → Queue/Records | P1 | 45 min | DONE |
@@ -593,7 +593,7 @@
 | T2.339 | KPICard comparative context tooltip | P2 | 30 min | DONE |
 | T2.340 | Create `annotateChartData()` utility | P2 | 1 hr | DONE |
 | T2.341 | recharts custom annotation labels | P2 | 45 min | DONE |
-| T2.330a | Queue drill-down "ACTIVE IN FACILITY" maps to tab 3 (Started) but KPI counts arrived+in-consult+dispensing+billing — no single tab matches | P3 | 15 min | TODO | Review finding — Day 5 audit |
+| T2.330a | Queue drill-down "ACTIVE IN FACILITY" maps to tab 3 (Started) but KPI counts arrived+in-consult+dispensing+billing — no single tab matches | P3 | 15 min | DONE | Removed active:3 from tabMap, opens default view |
 | T2.331a | Settings.jsx: add dashboardAlerts and dashboardGoals to the tracked array so changes appear in activity log | P3 | 5 min | DONE | Review finding — Day 6 audit |
 
 #### Monitor (T2.231-T2.242, T2.273-T2.275)

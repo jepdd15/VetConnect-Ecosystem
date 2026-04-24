@@ -33,6 +33,7 @@ export function buildDrillDown(navigate) {
     'MONTHLY BURN RATE':    go('/expenses'),
 
     // ── Growth Tab ──────────────────────────────────────────────
+    'TOTAL APPOINTMENTS (GROWTH)': go('/queue'),
     'NEW CLIENTS':          go('/patients'),
     'TOTAL ACTIVE CLIENTS': go('/patients'),
     'TOTAL ACTIVE PETS':    go('/patients'),

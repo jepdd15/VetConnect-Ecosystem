@@ -152,23 +152,32 @@ export function useSalesData(filterDate, currentUser) {
               const newStock = (data.stock || 0) + item.qty;
               const batches = [...(data.batches || [])];
 
-              // Restore to original batches if batchSource was captured at sale time (T2.147)
-              if (item.batchSource && item.batchSource.length > 0) {
-                for (const src of item.batchSource) {
-                  const existing = batches.find(b => b.batchNumber === src.batchNumber);
-                  if (existing) {
-                    existing.qty += src.qtyFromBatch;
-                  } else {
-                    batches.push({ batchNumber: src.batchNumber, expiryDate: src.expiryDate, qty: src.qtyFromBatch, dateAdded: new Date().toISOString() });
-                  }
-                }
-              } else {
-                // Fallback for legacy sales without batchSource
-                const nextYear = new Date(); nextYear.setFullYear(nextYear.getFullYear() + 1);
-                batches.push({ batchNumber: `RET-${selectedSale.id.slice(0,4)}`, expiryDate: nextYear.toISOString().split('T')[0], qty: item.qty, dateAdded: new Date().toISOString() });
-              }
+              // Determine if this product is actually batch-tracked. Flat-stock products
+              // (collars, leashes, etc.) have no batches and no batchSource. Creating a
+              // phantom RET-xxxx batch for them permanently converts them to batch-managed.
+              const isBatchTracked = batches.length > 0 || (item.batchSource && item.batchSource.length > 0);
 
-              transaction.update(itemRef, { stock: newStock, batches: batches });
+              if (isBatchTracked) {
+                // Restore to original batches if batchSource was captured at sale time (T2.147)
+                if (item.batchSource && item.batchSource.length > 0) {
+                  for (const src of item.batchSource) {
+                    const existing = batches.find(b => b.batchNumber === src.batchNumber);
+                    if (existing) {
+                      existing.qty += src.qtyFromBatch;
+                    } else {
+                      batches.push({ batchNumber: src.batchNumber, expiryDate: src.expiryDate, qty: src.qtyFromBatch, dateAdded: new Date().toISOString() });
+                    }
+                  }
+                } else {
+                  // Legacy batch-tracked sales without batchSource — create recovery batch
+                  const nextYear = new Date(); nextYear.setFullYear(nextYear.getFullYear() + 1);
+                  batches.push({ batchNumber: `RET-${selectedSale.id.slice(0,4)}`, expiryDate: nextYear.toISOString().split('T')[0], qty: item.qty, dateAdded: new Date().toISOString() });
+                }
+                transaction.update(itemRef, { stock: newStock, batches: batches });
+              } else {
+                // Flat-stock product — increment count only, no batch creation
+                transaction.update(itemRef, { stock: newStock });
+              }
 
               const logRef = doc(collection(db, "inventory_logs"));
               transaction.set(logRef, {

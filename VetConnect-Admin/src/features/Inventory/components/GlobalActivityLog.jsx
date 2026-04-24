@@ -286,7 +286,7 @@ export default function GlobalActivityLog() {
           <Typography variant="body1" fontWeight="bold" color="#757575">No Activity Recorded Yet</Typography>
           <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mt: 0.5 }}>
             {hasActiveFilters
-              ? 'No events match your current filters. Try clearing the filters.'
+              ? 'No events match your current filters on this page. Try loading more or clearing the filters.'
               : 'Events will appear here as your team adds, adjusts, or removes inventory items.'}
           </Typography>
         </Box>
@@ -420,7 +420,7 @@ export default function GlobalActivityLog() {
       )}
 
       {/* Load More button — appears when there are more server-side results */}
-      {hasMore && !loading && filteredLogs.length > 0 && (
+      {hasMore && !loading && (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 2, borderTop: '1px solid #E0E0E0' }}>
           <Button
             onClick={() => fetchLogs(lastDoc)}

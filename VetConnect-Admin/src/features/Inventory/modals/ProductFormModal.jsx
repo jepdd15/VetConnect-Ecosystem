@@ -103,6 +103,14 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
     });
   };
 
+  // Keywords that indicate a category should be medicine-gated by default.
+  // The per-product isMedicineOverride field allows staff to correct mis-detections.
+  const MEDICINE_KEYWORDS = [
+    'antibiotic', 'vaccine', 'dewormer', 'antifungal', 'analgesic',
+    'anti-inflammatory', 'sedative', 'anesthetic', 'steroid', 'supplement',
+    'ointment', 'injectable', 'serum', 'anthelmintic', 'antimicrobial',
+  ];
+
   // ── Quick-add category ──────────────────────────────────────────────────
   const handleQuickAddCategory = async () => {
     if (!newCatName.trim()) return;
@@ -116,7 +124,8 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
         showToast(`Category "${formatCategory(lowerName)}" already exists. Selected.`, 'info');
         return;
       }
-      await addDoc(collection(db, 'inventory_categories'), { name: lowerName, isMedicine: false });
+      const autoMedicine = MEDICINE_KEYWORDS.some(kw => lowerName.includes(kw));
+      await addDoc(collection(db, 'inventory_categories'), { name: lowerName, isMedicine: autoMedicine });
       setFormData(prev => ({ ...prev, category: lowerName }));
       setShowQuickAdd(false);
       setNewCatName('');

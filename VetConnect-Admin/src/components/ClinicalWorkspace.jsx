@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import './ClinicalWorkspace.css';
 import { resolveTieredPrice } from '../utils/resolveTieredPrice';
 import { VACCINE_CATALOG, VACCINE_KEYWORDS } from '../utils/vaccineConstants';
+import { ZEN_PLACEHOLDERS } from '../utils/soapConstants';
 import {
   Dialog, Slide, AppBar, Toolbar, IconButton, Typography, Button,
   Box, Paper, Avatar, Chip, TextField, MenuItem,
@@ -320,12 +321,7 @@ const KNOWLEDGE_BASE = [
   { keywords: ['aggression', 'biting', 'snapping', 'sudden behavior change'], suggestion: "RECOMMEND: Rule out pain source (orthopedic, dental, neurological). Thyroid panel. Consider behavioral referral if no medical cause found." },
 ];
 
-export const ZEN_PLACEHOLDERS = {
-  subjective: "Record client's primary concern, history of present illness (HPI), appetite, energy levels, and behavioral reported changes...",
-  objectiveNotes: "Document systematic physical exam findings, clinical vitals, auscultation results, palpation abnormalities, and hydration markers...",
-  assessment: "Synthesize clinical findings into differential diagnoses (Dx), rule-outs, current patient status, and medical prognosis...",
-  plan: "Define treatment trajectory, diagnostic orders, pharmaceutical interventions, surgical steps, and post-consult recheck schedules..."
-};
+// ZEN_PLACEHOLDERS imported from shared constants — see src/utils/soapConstants.js
 
 export default function ClinicalWorkspace({ open, onClose, patient, inventoryList, servicesList, departments, vetsList }) {
   const clinicSettings = useClinicSettings();

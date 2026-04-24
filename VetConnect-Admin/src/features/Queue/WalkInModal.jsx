@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { resolveTieredPrice } from '../../utils/resolveTieredPrice';
+import { normalizePhone } from '../../utils/phoneValidation';
 import { 
   Dialog, DialogTitle, DialogContent, DialogActions, 
   Button, TextField, MenuItem, Box, Typography, 
@@ -190,14 +191,14 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
               fullName: guestName || 'Guest Client',
               displayName: guestName || 'Guest Client',
               name: guestName || 'Guest Client',
-              phone: guestPhone,
+              phone: normalizePhone(guestPhone) || guestPhone,
               email: guestEmail || null,
               role: 'pet_owner',
               accountStatus: 'unclaimed_guest',
               createdAt: Timestamp.now()
           });
           finalOwnerId = newUserRef.id; finalOwnerName = guestName || 'Guest Client';
-          finalOwnerPhone = guestPhone || 'No Contact';
+          finalOwnerPhone = normalizePhone(guestPhone) || guestPhone || 'No Contact';
           
           // --- 🗓️ TEMPORAL ALIGNMENT ENGINE (CHRONOS) ---
           let finalDOB = null;

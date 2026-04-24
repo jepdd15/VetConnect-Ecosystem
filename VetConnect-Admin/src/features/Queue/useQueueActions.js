@@ -1,7 +1,7 @@
 import { doc, updateDoc, Timestamp, writeBatch, arrayUnion, runTransaction, collection } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 import { useUser } from '../../context/UserContext';
-import { calculatePulseMetrics, makePulseEventId } from '../../utils/pulseUtils';
+import { calculatePulseMetrics, makePulseEventId, createPulseEvent } from '../../utils/pulseUtils';
 import { STATUS, validateTransition, TERMINAL_STATUSES } from '../../utils/statusConstants';
 import { getLocalDateStr } from '../../utils/dateUtils';
 
@@ -26,16 +26,13 @@ export function useQueueActions() {
         if (!apptDoc.exists()) throw new Error("Appointment not found!");
 
         const now = new Date();
-        const pulseEvent = {
-            eventId: makePulseEventId('status'),
-            type: 'STATUS_CHANGE',
+        const pulseEvent = createPulseEvent('STATUS_CHANGE', {
             fromStatus: row.status || 'unknown',
             toStatus: newStatus,
-            timestamp: Timestamp.now(), // CLIENT-SIDE CLOCK — see W1 in pulseUtils.js
             staffId: profile?.id || 'unknown',
             staffName: staffSignature,
             note: (newStatus === STATUS.ON_HOLD) ? "Patient placed on-hold (Pause Engine Triggered)" : `Status transition to ${newStatus}`
-        };
+        });
 
         // statusHistory is a deliberately denormalized fast-path index for revert operations.
         // It duplicates transition data from clinicalPulse but enables O(1) undo without
@@ -132,20 +129,17 @@ export function useQueueActions() {
       // recompute metrics from the live pulse array.
       const wasTerminal = TERMINAL_STATUSES.has((freshData.status || '').toLowerCase());
 
-      const pulseEvent = {
-          eventId: makePulseEventId('correction'),
-          type: 'CORRECTION',
-          correctedEventId: correctedId, // THE DNA LINK
+      const pulseEvent = createPulseEvent('CORRECTION', {
           fromStatus: freshData.status,
           toStatus: prevStatus,
-          timestamp: Timestamp.now(), // CLIENT-SIDE CLOCK — see W1 in pulseUtils.js
           staffId: profile?.id || 'unknown',
           staffName: staffSignature,
           note: wasTerminal
               ? `TERMINAL REVERSAL: ${row.revertReason || "Manual Status Reversion"} (seal cleared)`
               : `REVERSION: ${row.revertReason || "Manual Status Reversion"}`,
-          isCorrection: true
-      };
+          correctedEventId: correctedId, // THE DNA LINK — passed via ...extra spread
+          isCorrection: true,
+      });
 
       const updateData = {
           status: prevStatus,
@@ -189,16 +183,13 @@ export function useQueueActions() {
     const currentServices = row.services || [];
     const clearedServices = (currentServices || []).map(s => ({ ...s, staffId: null, staffName: 'Unassigned' }));
     
-    const pulseEvent = {
-      eventId: makePulseEventId('noshow'),
-      type: 'STATUS_CHANGE',
+    const pulseEvent = createPulseEvent('STATUS_CHANGE', {
       fromStatus: row.status || 'unknown',
       toStatus: 'no-show',
-      timestamp: Timestamp.now(), // CLIENT-SIDE CLOCK — see W1 in pulseUtils.js
       staffId: profile?.id || 'unknown',
       staffName: staffSignature,
       note: `Individually flagged as No-Show: ${reason}`
-    };
+    });
     
     await runTransaction(db, async (transaction) => {
       const apptRef = doc(db, "appointments", row.id);
@@ -235,16 +226,13 @@ export function useQueueActions() {
     );
 
     const clearedServices = (currentServices || []).map(s => ({ ...s, staffId: null, staffName: 'Unassigned' }));
-    const pulseEvent = {
-        eventId: makePulseEventId('cancel'),
-        type: 'STATUS_CHANGE',
+    const pulseEvent = createPulseEvent('STATUS_CHANGE', {
         fromStatus: rowData.status || 'unknown',
         toStatus: 'cancelled',
-        timestamp: Timestamp.now(),
         staffId: profile?.id || 'unknown',
         staffName: staffSignature,
         note: isForensic ? `Forensic Triage Cleanup: ${reason}` : (reason || 'Individually cancelled')
-    };
+    });
 
     await runTransaction(db, async (transaction) => {
       const apptRef = doc(db, "appointments", id);
@@ -348,15 +336,12 @@ export function useQueueActions() {
             new Date()
         );
 
-        const pulseEvent = {
-            eventId: makePulseEventId('defer'),
-            type: 'STATUS_CHANGE',
+        const pulseEvent = createPulseEvent('STATUS_CHANGE', {
             toStatus: 'pending (deferred)',
-            timestamp: Timestamp.now(), // CLIENT-SIDE CLOCK — see W1 in pulseUtils.js
             staffId: profile?.id || 'unknown',
             staffName: signature,
             note: `Shift Deferred to ${triageKey} (Reason: ${reason})`
-        };
+        });
 
         transaction.update(apptRef, {
             triageDate: triageKey,
@@ -383,14 +368,12 @@ export function useQueueActions() {
     );
 
     const apptRef = doc(db, "appointments", row.id);
-    const pulseEvent = {
-        eventId: makePulseEventId('resched'),
-        type: 'STATUS_CHANGE',
-        timestamp: Timestamp.now(), // CLIENT-SIDE CLOCK — see W1 in pulseUtils.js
+    const pulseEvent = createPulseEvent('STATUS_CHANGE', {
+        fromStatus: row.status || 'unknown',
         staffId: profile?.id || 'unknown',
         staffName: staffSignature,
         note: `SCHEDULE SHIFT: ${reason} (Moved to ${new Date(newDate).toLocaleString()})`
-    };
+    });
 
     // T2.53: Wrap in runTransaction for atomicity — consistent with all other queue actions.
     await runTransaction(db, async (transaction) => {

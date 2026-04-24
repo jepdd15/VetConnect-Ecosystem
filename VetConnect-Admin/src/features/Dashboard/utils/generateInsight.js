@@ -461,10 +461,13 @@ const RULES = [
   },
 
   // Rule 29: Peak hours — name the busiest hour
+  // Namespaced target to avoid collision with Rule 4 (ops-staff-imbalance) which also
+  // targets 'TOTAL APPOINTMENTS'. First-match-wins logic in generateInsight would
+  // silently discard this rule's output when both conditions fire simultaneously.
   {
     id: 'growth-peak',
     tab: 'growth',
-    target: 'TOTAL APPOINTMENTS',
+    target: 'TOTAL APPOINTMENTS (GROWTH)',
     condition: ({ growth }) => {
       if (!growth || growth.peakHours.length === 0) return false;
       return growth.peakHours.some(h => h.count > 0);

@@ -744,7 +744,7 @@ export default function Records() {
           disableRowSelectionOnClick rowHeight={70}
           pageSizeOptions={[25, 50, 100]}
           initialState={{ pagination: { paginationModel: { pageSize: 50, page: 0 } } }}
-          checkboxSelection
+          checkboxSelection={activeTab === 1}
           onRowSelectionModelChange={(newModel) => {
             const ids = newModel?.ids ? [...newModel.ids] : (Array.isArray(newModel) ? newModel : []);
             setSelectedRows(ids);

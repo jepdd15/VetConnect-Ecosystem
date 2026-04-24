@@ -505,6 +505,17 @@ const ClientDashboard = ({ navigation }) => {
         </View>
 
         <View style={styles.cardWrapper}>
+          <View style={[styles.cardShadow, { backgroundColor: '#2E7D32' }]} />
+          <Pressable
+            style={({ pressed }) => [styles.card, pressed && styles.cardPressed, { borderColor: '#3E2723' }]}
+            onPress={() => navigation.navigate("SelfCheckIn")}
+          >
+            <Text style={styles.cardIcon}>📷</Text>
+            <Text style={[styles.cardText, { color: '#2E7D32' }]}>CHECK IN</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.cardWrapper}>
           <View style={[styles.cardShadow, { backgroundColor: '#3ABEF9' }]} />
           <Pressable
             style={({ pressed }) => [styles.card, pressed && styles.cardPressed, { borderColor: '#3E2723' }]}

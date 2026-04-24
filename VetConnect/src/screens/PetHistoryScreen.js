@@ -504,7 +504,7 @@ export default function PetHistoryScreen({ route, navigation }) {
         >
           <MaterialIcons name="arrow-back-ios" size={20} color="#5D4037" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{petName}'s Chart</Text>
+        <Text style={styles.headerTitle}>{petName}&apos;s Chart</Text>
         <View style={{ width: 40 }} /> {/* Spacer for centering */}
       </View>
 

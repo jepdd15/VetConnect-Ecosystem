@@ -407,7 +407,7 @@ export default function AddPetScreen({ navigation }) {
             {dobMode === "unknown" && (
               <View style={styles.noticeBox}>
                 <Text style={styles.noticeText}>
-                  No problem! Our veterinarian will estimate your pet's age
+                  No problem! Our veterinarian will estimate your pet&apos;s age
                   during their first physical exam.
                 </Text>
               </View>
@@ -766,13 +766,6 @@ const styles = StyleSheet.create({
   },
   
   // --- ATOMIC ALLERGY STYLES ---
-  switchRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 5,
-  },
-  switchLabel: { fontSize: 14, fontWeight: "800", color: "#5D4037" },
   allergyContainer: {
     backgroundColor: "#F5F5F5",
     padding: 12,

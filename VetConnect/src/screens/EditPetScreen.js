@@ -262,7 +262,7 @@ const EditPetScreen = ({ route, navigation }) => {
               <Text style={{ color: "white", fontWeight: "bold" }}>✓</Text>
             )}
           </View>
-          <Text style={styles.checkboxLabel}>I don't know the exact age</Text>
+          <Text style={styles.checkboxLabel}>I don&apos;t know the exact age</Text>
         </TouchableOpacity>
 
         {!isAgeTotallyUnknown && (
@@ -591,13 +591,6 @@ const styles = StyleSheet.create({
   closeText: { color: "#D32F2F", fontWeight: "bold" },
   
   // --- ATOMIC ALLERGY STYLES ---
-  switchRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 5,
-  },
-  switchLabel: { fontSize: 14, fontWeight: "800", color: "#5D4037" },
   allergyContainer: {
     backgroundColor: "#F5F5F5",
     padding: 12,

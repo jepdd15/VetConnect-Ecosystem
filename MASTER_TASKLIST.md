@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-04-25 · **Branch:** `main`
 **Total tasks:** ~719 · **Cancelled/Absorbed:** ~16 · **Active:** ~703
-**DONE:** 509 · **TODO:** 189 · **Deferred sub-tasks:** 52
+**DONE:** 510 · **TODO:** 188 · **Deferred sub-tasks:** 52
 **Critical path to defense:** Dashboard Build (~32 hrs) + thesis
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~154 hours (Phase 4 S-Tier)
 
@@ -246,7 +246,7 @@
 | T2.73 | Bulk reschedule in Records | 2 hrs | — | DONE | Checkbox selection (pending/confirmed only), floating bar, bulk dialog. **Review fix:** per-item failure tracking, DataGrid v8 selection model compat |
 | T2.73a | Records: only show checkboxSelection on TRIAGE tab — disabled checkboxes on other tabs confuse users into thinking the feature is broken | P2 | 15 min | — | DONE | checkboxSelection={activeTab === 1} |
 | T2.74 | Bulk staff reassignment in Records | 1.5 hrs | — | DONE | writeBatch atomic update, STAFF_REASSIGN pulse, vet dropdown from users collection |
-| T2.76 | Client self-check-in via clinic QR | 5-6 hrs | — | TODO | |
+| T2.76 | Client self-check-in via clinic QR | 5-6 hrs | — | DONE | Settings QR card + print poster, SelfCheckInScreen (expo-camera + expo-location), GPS geofence with graceful fallback, batchArrive transaction, visitGroupId shared queue numbers, SELF badge in admin queue. **Review fixes:** arrivedResults retry safety, getLocalDateStr timezone, double-tap guard, print QR SVG ref |
 | T2.77 | 4-tier ticket prefix scheme (A/W/E/R) | 30 min | — | DONE | R prefix for caseDay > 1; apptLabel shows RETURN |
 | T2.78 | visitGroupId at multi-pet booking time | 30 min | — | DONE | VG-{uid5}-{timestamp}, groupSize, groupIndex per appointment |
 | T2.81 | Fix advanceNoticeBuffer phantom field | 5 min | — | DONE | Uses advanceNoticeMins/60 |

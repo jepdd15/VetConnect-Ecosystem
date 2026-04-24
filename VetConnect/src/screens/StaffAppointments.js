@@ -143,7 +143,7 @@ const StaffAppointments = ({ navigation }) => {
       <Text style={styles.date}>Request ID: {item.id.slice(0, 6)}...</Text>
 
       {/* Ticket Display (Only if Arrived) */}
-      {item.queueNumber && (
+      {item.queueNumber != null && (
         <View style={styles.ticketBadge}>
           <Text style={styles.ticketText}>🎟️ Ticket #{item.queueNumber}</Text>
         </View>

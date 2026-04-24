@@ -147,15 +147,33 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
           </Box>
 
           <Box sx={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0, justifyContent: 'center' }}>
-            <Box 
+            <Box
                 onMouseEnter={(e) => actions.handleHoverStart(e, 'identity', PassportCard)}
                 onMouseLeave={actions.handleHoverEnd}
                 sx={{ display: 'flex', flexDirection: 'column', width: '100%', cursor: 'zoom-in', gap: 0 }}
             >
-                {/* LINE 1: THE PATIENT HERO */}
-                <Typography sx={{ fontSize: '1.25rem', fontWeight: '1000', color: '#1A1A1A', lineHeight: 1.1, letterSpacing: '-0.02rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {p.row.petName} 
-                </Typography>
+                {/* LINE 1: THE PATIENT HERO + SELF CHECK-IN BADGE */}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
+                  <Typography sx={{ fontSize: '1.25rem', fontWeight: '1000', color: '#1A1A1A', lineHeight: 1.1, letterSpacing: '-0.02rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                      {p.row.petName}
+                  </Typography>
+                  {p.row.selfCheckedIn && (
+                    <Chip
+                      label="SELF"
+                      size="small"
+                      sx={{
+                        fontSize: '0.55rem',
+                        height: 16,
+                        fontWeight: '1000',
+                        bgcolor: '#E8F5E9',
+                        color: '#2E7D32',
+                        border: '1px solid #2E7D32',
+                        borderRadius: 0,
+                        flexShrink: 0,
+                      }}
+                    />
+                  )}
+                </Box>
 
                 {/* LINE 2: THE SEMANTIC ANCHOR (SPECIES * BREED) */}
                 <Typography variant="caption" sx={{ color: '#795548', fontWeight: '900', fontSize: '0.75rem', textTransform: 'uppercase', lineHeight: 1.3, letterSpacing: '0.02rem' }}>

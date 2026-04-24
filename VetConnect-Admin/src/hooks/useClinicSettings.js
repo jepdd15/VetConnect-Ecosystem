@@ -15,6 +15,9 @@ const DEFAULT_SETTINGS = {
   clinicName: 'Starbarks Veterinary Clinic',
   clinicAddress: 'Santa Barbara, Pangasinan',
   clinicPhone: '', // Configurable via Settings > General — displayed to clients
+  clinicLat: 16.0389,    // GPS latitude for geofence center (Starbarks, Santa Barbara, Pangasinan)
+  clinicLng: 120.3977,   // GPS longitude for geofence center
+  geofenceRadiusM: 150,  // Geofence radius in meters for client self-check-in
 };
 
 // --- Module-level singleton store ---

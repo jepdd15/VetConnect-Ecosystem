@@ -18,6 +18,7 @@ import { db } from '../../firebaseConfig';
 import { useUser } from '../../context/UserContext';
 import { STATUS, TERMINAL_STATUSES } from '../../utils/statusConstants';
 import { makePulseEventId } from '../../utils/pulseUtils';
+import { getTicketPrefix } from '../../utils/getTicketPrefix';
 
 export default function AssignStaffModal({ open, onClose, patient, vetsList, activeAppointments, departments, mode = 'check-in' }) {
   const { profile, user } = useUser();
@@ -145,13 +146,7 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
           transaction.update(apptRef, {
             status: STATUS.ARRIVED,
             queueNumber: newNumber,
-            ticketPrefix: patient.priority === 'high'
-              ? 'E'
-              : (patient.caseDay > 1)
-                ? 'R'
-                : (patient.ownerId === 'WALK_IN_USER' || String(patient.ownerId || '').includes('GUEST_'))
-                  ? 'W'
-                  : 'A',
+            ticketPrefix: getTicketPrefix(patient),
             timeArrived: Timestamp.now(),
             services: primedServices,
             clinicalPulse: arrayUnion(pulseEvent)

@@ -335,15 +335,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
 
-  label: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 13,
-    color: "#3E2723",
-    marginBottom: 8,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-  },
-
   formContainer: { position: "relative", marginBottom: 20 },
   formShadow: {
     position: "absolute",

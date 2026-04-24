@@ -7,6 +7,7 @@ import { addDoc, collection, doc, getDoc, Timestamp } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
   Alert,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -278,7 +279,10 @@ const ConsultationScreen = ({ route, navigation }) => {
             value={nextVisit || new Date()}
             mode="date"
             display="default"
-            onChange={onChangeDate}
+            onChange={(event, selectedDate) => {
+              setShowPicker(Platform.OS === "ios");
+              if (selectedDate) setNextVisit(selectedDate);
+            }}
             minimumDate={new Date()}
           />
         )}

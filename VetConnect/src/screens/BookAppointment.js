@@ -634,7 +634,7 @@ export default function BookAppointment({ navigation, route }) {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 150 }}
         ListEmptyComponent={
-            petSearch ? <Text style={styles.emptyText}>No pets found matching "{petSearch}"</Text> : null
+            petSearch ? <Text style={styles.emptyText}>No pets found matching &quot;{petSearch}&quot;</Text> : null
         }
         ListHeaderComponent={
           <View>
@@ -1183,7 +1183,7 @@ export default function BookAppointment({ navigation, route }) {
                     Est. Total: ₱{selectedServices.reduce((sum, s) => sum + (parseFloat(s.price) || 0), 0) * selectedPets.length}
                 </Text>
                 <Text style={{ fontSize: 12, color: '#8D6E63', fontStyle: 'italic', textAlign: 'center' }}>
-                    Final price adjusted per pet's weight at checkout
+                    Final price adjusted per pet&apos;s weight at checkout
                 </Text>
             </View>
 

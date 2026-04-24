@@ -37,6 +37,7 @@ import ConsultationScreen from "./src/screens/ConsultationScreen";
 import ScannerScreen from "./src/screens/ScannerScreen";
 import StaffAppointments from "./src/screens/StaffAppointments";
 
+import SelfCheckInScreen from "./src/screens/SelfCheckInScreen";
 import ChatbotScreen from "./src/screens/ChatbotScreen";
 
 const Stack = createStackNavigator();
@@ -180,6 +181,12 @@ export default function App() {
             headerStyle: { backgroundColor: "#3E2723" },
             headerTintColor: "#FAF9F7",
           }}
+        />
+
+        <Stack.Screen
+          name="SelfCheckIn"
+          component={SelfCheckInScreen}
+          options={{ title: "Scan to Check In" }}
         />
 
         <Stack.Screen

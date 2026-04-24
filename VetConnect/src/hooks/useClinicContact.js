@@ -6,11 +6,15 @@ import { db } from '../../firebaseConfig';
  * Default contact info fallbacks.
  * clinicPhone defaults to '' so Call buttons disable gracefully.
  * clinicAddress defaults to the real clinic location.
+ * Geofence defaults match the clinic's GPS coordinates (Starbarks, Santa Barbara, Pangasinan).
  */
 const DEFAULTS = {
   clinicPhone: '',
   clinicAddress: 'Starbarks Veterinary Clinic, Santa Barbara, Pangasinan',
   clinicName: 'Starbarks Veterinary Clinic',
+  clinicLat: 16.0389,
+  clinicLng: 120.3977,
+  geofenceRadiusM: 150,
 };
 
 // --- Singleton store (module-level) ---
@@ -31,6 +35,9 @@ function ensureListener() {
         clinicPhone: data.clinicPhone || DEFAULTS.clinicPhone,
         clinicAddress: data.clinicAddress || DEFAULTS.clinicAddress,
         clinicName: data.clinicName || DEFAULTS.clinicName,
+        clinicLat: data.clinicLat ?? DEFAULTS.clinicLat,
+        clinicLng: data.clinicLng ?? DEFAULTS.clinicLng,
+        geofenceRadiusM: data.geofenceRadiusM ?? DEFAULTS.geofenceRadiusM,
       };
     }
     notifyAll();
@@ -48,11 +55,18 @@ function getSnapshot() {
 }
 
 /**
- * Returns { clinicPhone, clinicAddress, clinicName } from clinic_settings/general.
+ * Returns clinic contact info and geofence configuration from clinic_settings/general.
  * Singleton Firestore listener shared across all consumers.
  * Compatible with React 19 Strict Mode.
  *
- * @returns {{ clinicPhone: string, clinicAddress: string, clinicName: string }}
+ * @returns {{
+ *   clinicPhone: string,
+ *   clinicAddress: string,
+ *   clinicName: string,
+ *   clinicLat: number,
+ *   clinicLng: number,
+ *   geofenceRadiusM: number,
+ * }}
  */
 export function useClinicContact() {
   return useSyncExternalStore(subscribe, getSnapshot);

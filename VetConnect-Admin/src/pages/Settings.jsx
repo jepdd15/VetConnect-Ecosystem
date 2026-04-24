@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box, Typography, Paper, Button, FormControl, InputLabel, Select, MenuItem,
   Snackbar, Alert, InputAdornment, TextField, Switch, FormControlLabel,
@@ -27,6 +27,8 @@ import MedicationLiquidIcon from '@mui/icons-material/MedicationLiquid';
 import BlockIcon from '@mui/icons-material/Block';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import FlagIcon from '@mui/icons-material/Flag';
+import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
+import QRCode from 'react-qr-code';
 
 // Design Tokens
 import { FONT, TYPE, COLORS } from '../theme/designTokens';
@@ -117,7 +119,8 @@ export default function Settings() {
     minSlotInterval: 30, advanceNoticeMins: 120, maxFutureBookingDays: 30, maxPetsPerBooking: 3,
     maxCages: 5, autoNoShowMins: 30, trafficModerate: 6, trafficHigh: 13,
     clinicPhone: '',
-    workingDays: [1, 2, 3, 4, 5, 6, 0] // [0:Sun, 1:Mon... 6:Sat]
+    workingDays: [1, 2, 3, 4, 5, 6, 0], // [0:Sun, 1:Mon... 6:Sat]
+    clinicLat: 16.0389, clinicLng: 120.3977, geofenceRadiusM: 150,
   });
 
   // --- DYNAMIC STATES ---
@@ -223,7 +226,7 @@ export default function Settings() {
     const tracked = ['openHour', 'closeHour', 'lunchEnabled', 'lunchStart', 'lunchEnd',
       'minSlotInterval', 'advanceNoticeMins', 'maxFutureBookingDays', 'maxPetsPerBooking',
       'maxCages', 'autoNoShowMins', 'trafficModerate', 'trafficHigh', 'workingDays', 'clinicPhone',
-      'dashboardAlerts', 'dashboardGoals'];
+      'dashboardAlerts', 'dashboardGoals', 'clinicLat', 'clinicLng', 'geofenceRadiusM'];
     return tracked.some(key => JSON.stringify(settings[key]) !== JSON.stringify(lastSavedSettings[key]));
   }, [settings, lastSavedSettings]);
 
@@ -314,6 +317,18 @@ export default function Settings() {
     if ((settings.workingDays || []).length === 0) {
       return "At least one working day must be selected.";
     }
+    const lat = parseFloat(settings.clinicLat);
+    const lng = parseFloat(settings.clinicLng);
+    const radius = parseInt(settings.geofenceRadiusM);
+    if (isNaN(lat) || lat < -90 || lat > 90) {
+      return "Clinic Latitude must be between -90 and 90.";
+    }
+    if (isNaN(lng) || lng < -180 || lng > 180) {
+      return "Clinic Longitude must be between -180 and 180.";
+    }
+    if (isNaN(radius) || radius < 50 || radius > 1000) {
+      return "Geofence Radius must be between 50 and 1000 meters.";
+    }
     return null; // All systems go!
   };
 
@@ -354,7 +369,7 @@ export default function Settings() {
         const tracked = ['openHour', 'closeHour', 'lunchEnabled', 'lunchStart', 'lunchEnd',
           'minSlotInterval', 'advanceNoticeMins', 'maxFutureBookingDays', 'maxPetsPerBooking',
           'maxCages', 'autoNoShowMins', 'trafficModerate', 'trafficHigh', 'workingDays', 'clinicPhone',
-          'dashboardAlerts', 'dashboardGoals'];
+          'dashboardAlerts', 'dashboardGoals', 'clinicLat', 'clinicLng', 'geofenceRadiusM'];
         const changedFields = {};
         tracked.forEach(key => {
           if (JSON.stringify(sanitizedSettings[key]) !== JSON.stringify(lastSavedSettings[key])) {
@@ -504,6 +519,43 @@ export default function Settings() {
     return hour24 < 12 ? `${hour24}:00 AM` : `${hour24 - 12}:00 PM`;
   };
   const hoursArray = Array.from({ length: 24 }, (_, i) => i);
+
+  const qrRef = useRef(null);
+  const handlePrintQR = () => {
+    const svgEl = qrRef.current?.querySelector('svg');
+    const qrSvgHtml = svgEl ? svgEl.outerHTML : '<p>QR code unavailable</p>';
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>VetConnect Check-In QR</title>
+          <style>
+            body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #FFF8E1; font-family: sans-serif; }
+            .poster { text-align: center; padding: 48px; border: 4px solid #3E2723; background: white; max-width: 480px; }
+            .clinic-name { font-size: 2rem; font-weight: 900; color: #3E2723; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px; }
+            .instruction { font-size: 1rem; color: #5D4037; margin-bottom: 32px; font-weight: 600; }
+            .qr-box { display: inline-block; padding: 24px; border: 3px solid #3E2723; margin-bottom: 32px; }
+            .qr-box svg { width: 220px; height: 220px; }
+            .footer { font-size: 0.8rem; color: #9E9E9E; }
+            @media print { body { background: white; } }
+          </style>
+        </head>
+        <body>
+          <div class="poster">
+            <div class="clinic-name">Starbarks Veterinary Clinic</div>
+            <div class="instruction">Scan with the VetConnect app to check in</div>
+            <div class="qr-box">${qrSvgHtml}</div>
+            <div class="footer">VetConnect Self Check-In System</div>
+          </div>
+          <script>
+            setTimeout(() => { window.print(); }, 300);
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
 
   return (
     <Box sx={{ p: { xs: 2, md: 4 }, minHeight: 'calc(100vh - 64px)', bgcolor: 'transparent', overflowX: 'hidden' }}>
@@ -1066,6 +1118,80 @@ export default function Settings() {
                     sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
                     inputProps={{ style: { fontWeight: 1000 } }}
                     helperText="Monthly medical records goal"
+                  />
+                </Grid>
+              </Grid>
+            </Box>
+          </Paper>
+        </Grid>
+
+        {/* PILLAR 8: CLIENT SELF-CHECK-IN QR */}
+        <Grid size={{ xs: 12, lg: 6 }}>
+          <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden' }}>
+            <Box sx={{ bgcolor: '#FFF8E1', px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
+              <Typography variant="subtitle1" sx={{
+                color: COLORS.accent, fontWeight: '1000',
+                display: 'flex', alignItems: 'center', gap: 1,
+                textTransform: 'uppercase', letterSpacing: 1,
+              }}>
+                <QrCodeScannerIcon /> Client Self-Check-In QR
+              </Typography>
+            </Box>
+            <Box sx={{ p: 3, bgcolor: '#FFF' }}>
+              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 3 }}>
+                Print and display this QR code in the clinic lobby. Clients scan it with the VetConnect app to self-check-in.
+              </Typography>
+
+              {/* QR code centered */}
+              <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
+                <Box ref={qrRef} sx={{ p: 3, border: `3px solid ${COLORS.accent}`, borderRadius: 0, bgcolor: 'white' }}>
+                  <QRCode value="STARBARKS-CHECKIN-starbarks-vetconnect-f6443" size={180} />
+                </Box>
+              </Box>
+
+              {/* Print button */}
+              <Button
+                variant="contained" fullWidth
+                onClick={handlePrintQR}
+                sx={{
+                  fontWeight: '1000', borderRadius: 0, bgcolor: COLORS.accent,
+                  border: `2px solid ${COLORS.brand}`, mb: 3,
+                  boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
+                  '&:hover': { bgcolor: COLORS.brand }
+                }}
+              >
+                Print QR Poster
+              </Button>
+
+              {/* Geofence settings */}
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="overline" sx={{ fontWeight: '1000', color: COLORS.accent, letterSpacing: 1, display: 'block', mb: 1 }}>
+                GPS Geofence (Check-In Radius)
+              </Typography>
+              <Grid container spacing={2}>
+                <Grid size={{ xs: 4 }}>
+                  <TextField fullWidth label="Latitude" type="number"
+                    value={settings.clinicLat ?? ''}
+                    onChange={(e) => handleChange('clinicLat', parseFloat(e.target.value) || 0)}
+                    inputProps={{ step: 0.0001, style: { fontWeight: 1000 } }}
+                    sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
+                  />
+                </Grid>
+                <Grid size={{ xs: 4 }}>
+                  <TextField fullWidth label="Longitude" type="number"
+                    value={settings.clinicLng ?? ''}
+                    onChange={(e) => handleChange('clinicLng', parseFloat(e.target.value) || 0)}
+                    inputProps={{ step: 0.0001, style: { fontWeight: 1000 } }}
+                    sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
+                  />
+                </Grid>
+                <Grid size={{ xs: 4 }}>
+                  <TextField fullWidth label="Radius" type="number"
+                    value={settings.geofenceRadiusM ?? ''}
+                    onChange={(e) => handleChange('geofenceRadiusM', parseInt(e.target.value) || 0)}
+                    InputProps={{ endAdornment: <InputAdornment position="end">m</InputAdornment> }}
+                    inputProps={{ style: { fontWeight: 1000 } }}
+                    sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
                   />
                 </Grid>
               </Grid>

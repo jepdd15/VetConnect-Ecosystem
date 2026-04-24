@@ -4,6 +4,7 @@
 
 import { collection, doc, getDocs, limit, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
+import { useNavigation } from "@react-navigation/native";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -33,6 +34,7 @@ const formatTicket = (prefix, queueNumber) => {
 };
 
 export default function QueueScreen() {
+  const navigation = useNavigation();
   const [queueData, setQueueData] = useState(null);
   const [myTicket, setMyTicket] = useState(null);
   const [allTickets, setAllTickets] = useState([]);
@@ -290,9 +292,14 @@ export default function QueueScreen() {
             <View style={{ alignItems: "center" }}>
               <Text style={styles.ticketLabel}>Appointment Confirmed</Text>
               <Text style={styles.subText}>
-                Please proceed to the clinic. Your ticket will be issued upon
-                arrival.
+                Scan the clinic QR code to check in and receive your ticket.
               </Text>
+              <TouchableOpacity
+                style={[styles.lateButton, { backgroundColor: COLORS.sky, marginTop: 16 }]}
+                onPress={() => navigation.navigate('SelfCheckIn')}
+              >
+                <Text style={styles.lateButtonText}>SCAN TO CHECK IN</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <>
@@ -303,7 +310,7 @@ export default function QueueScreen() {
               </Text>
 
               {/* Position progress bar -- T2.484 */}
-              {myTicket.queueNumber && lobbyPatients.length > 0 && (
+              {myTicket.queueNumber != null && lobbyPatients.length > 0 && (
                 <View style={styles.progressContainer}>
                   <View style={styles.progressTrack}>
                     <View
@@ -328,7 +335,7 @@ export default function QueueScreen() {
                 {/* T2.354: use isActiveStatus for a nuanced turn check */}
                 {peopleAhead <= 0 && (isActiveStatus(myTicket.status) || myTicket.status === "confirmed") ? (
                   <View style={{ alignItems: "center" }}>
-                    <Text style={styles.readyText}>IT'S YOUR TURN!</Text>
+                    <Text style={styles.readyText}>IT&apos;S YOUR TURN!</Text>
                     <Text style={styles.subText}>
                       Please proceed to the consultation room.
                     </Text>

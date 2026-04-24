@@ -243,6 +243,9 @@ export function useDashboardData(period = 'today') {
     medicalRecords: [],
   });
 
+  // Day 6: Historical raw data for 6-month min/max/avg (one-shot on mount, T2.338)
+  const [historicalData, setHistoricalData] = useState(null);
+
   // True until the first appointments snapshot resolves.
   const [appointmentsLoading, setAppointmentsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -474,6 +477,50 @@ export function useDashboardData(period = 'today') {
 
     fetchPrev();
   }, [period]); // Re-fetch when period changes (not dateRange, since buildPrevDateRange uses period string)
+
+  // ── Historical data fetch (one-shot, 6-month lookback for min/max/avg, T2.338) ──
+  // Fires only on mount — 6 months is a fixed lookback window that doesn't change
+  // with period. This avoids 3 extra real-time listeners for data that changes slowly.
+  useEffect(() => {
+    const now = new Date();
+    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, 1);
+    const startTs = Timestamp.fromDate(startOfDay(sixMonthsAgo));
+    const endTs = Timestamp.fromDate(endOfDay(now));
+
+    const fetchHistorical = async () => {
+      try {
+        const [apptSnap, salesSnap, recSnap] = await Promise.all([
+          getDocs(query(
+            collection(db, 'appointments'),
+            where('scheduledDate', '>=', startTs),
+            where('scheduledDate', '<=', endTs),
+          )),
+          getDocs(query(
+            collection(db, 'sales'),
+            where('date', '>=', startTs),
+            where('date', '<=', endTs),
+          )),
+          getDocs(query(
+            collection(db, 'medical_records'),
+            where('date', '>=', startTs),
+            where('date', '<=', endTs),
+          )),
+        ]);
+
+        setHistoricalData({
+          appointments: apptSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+          sales: salesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+            .filter(s => s.status !== 'refunded' && s.status !== 'voided'),
+          medicalRecords: recSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+        });
+      } catch (err) {
+        console.error('[useDashboardData] historical fetch:', err.message);
+        // Non-fatal — tooltip simply shows no data when historicalData is null
+      }
+    };
+
+    fetchHistorical();
+  }, []); // Empty deps: fires once on mount, 6-month window is fixed
 
   // ── Derived metrics: Operations tab (today only) ──────────────
   const ops = useMemo(() => {
@@ -934,6 +981,71 @@ export function useDashboardData(period = 'today') {
     };
   }, [medicalRecords, appointments]);
 
+  // ── Derived: Historical min/max/avg per month (T2.338) ──────────
+  const historical = useMemo(() => {
+    if (!historicalData) return null;
+
+    // Group appointments by year-month key
+    const monthlyAppts = {};
+    historicalData.appointments.forEach(a => {
+      if (!a.scheduledDate) return;
+      const d = a.scheduledDate.toDate ? a.scheduledDate.toDate() : new Date(a.scheduledDate);
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      if (!monthlyAppts[key]) monthlyAppts[key] = [];
+      monthlyAppts[key].push(a);
+    });
+
+    // Group sales by year-month key
+    const monthlySales = {};
+    historicalData.sales.forEach(s => {
+      if (!s.date) return;
+      const d = s.date.toDate ? s.date.toDate() : new Date(s.date);
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      if (!monthlySales[key]) monthlySales[key] = [];
+      monthlySales[key].push(s);
+    });
+
+    // Group medical records by year-month key
+    const monthlyRecs = {};
+    historicalData.medicalRecords.forEach(r => {
+      if (!r.date) return;
+      const d = r.date.toDate ? r.date.toDate() : new Date(r.date);
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      if (!monthlyRecs[key]) monthlyRecs[key] = [];
+      monthlyRecs[key].push(r);
+    });
+
+    /**
+     * Computes min/max/avg from a monthly map using a per-month value function.
+     * Returns { min: 0, max: 0, avg: 0 } when no months have data.
+     */
+    const computeStats = (monthlyMap, valueFn) => {
+      const values = Object.values(monthlyMap).map(valueFn);
+      if (values.length === 0) return { min: 0, max: 0, avg: 0 };
+      return {
+        min: Math.min(...values),
+        max: Math.max(...values),
+        avg: Math.round(values.reduce((a, b) => a + b, 0) / values.length),
+      };
+    };
+
+    return {
+      appointmentsPerMonth: computeStats(monthlyAppts, arr => arr.length),
+      revenuePerMonth: computeStats(monthlySales, arr =>
+        arr.reduce((sum, s) => sum + (parseFloat(s.total) || 0), 0),
+      ),
+      recordsPerMonth: computeStats(monthlyRecs, arr => arr.length),
+      // Unique active clients per month — approximated from unique ownerIds in appointments
+      newClientsPerMonth: computeStats(monthlyAppts, arr => {
+        const owners = new Set(
+          arr.map(a => a.ownerId)
+            .filter(id => id && id !== 'WALK_IN_USER' && !String(id).includes('GUEST_')),
+        );
+        return owners.size;
+      }),
+    };
+  }, [historicalData]);
+
   // ── Derived metrics: Period-over-period deltas (T2.320) ──────────
   const deltas = useMemo(() => {
     /**
@@ -1018,6 +1130,7 @@ export function useDashboardData(period = 'today') {
     financial,
     clinical,    // Day 3: Clinical tab metrics
     deltas,      // Day 3: Period-over-period deltas
+    historical,  // Day 6: 6-month min/max/avg per metric (T2.338)
     queueData,
     appointments,
     staffList,

@@ -25,6 +25,8 @@ import SortIcon from '@mui/icons-material/Sort';
 import MedicationIcon from '@mui/icons-material/Medication';
 import MedicationLiquidIcon from '@mui/icons-material/MedicationLiquid';
 import BlockIcon from '@mui/icons-material/Block';
+import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
+import FlagIcon from '@mui/icons-material/Flag';
 
 // Design Tokens
 import { FONT, TYPE, COLORS } from '../theme/designTokens';
@@ -137,6 +139,23 @@ export default function Settings() {
   // --- DIRTY TRACKING: Baseline for unsaved-changes detection ---
   const [lastSavedSettings, setLastSavedSettings] = useState(null);
 
+  // --- DASHBOARD ALERT THRESHOLDS (T2.331) ---
+  const [dashboardAlerts, setDashboardAlerts] = useState({
+    avgWaitMax: 30,
+    longestWaitMax: 45,
+    noShowMin: 3,
+    emergencyMin: 2,
+    queueDepthMax: 8,
+  });
+
+  // --- MONTHLY GOALS (T2.336) ---
+  const [dashboardGoals, setDashboardGoals] = useState({
+    monthlyRevenue: 0,
+    monthlyNewClients: 0,
+    monthlyRecordsSigned: 0,
+    monthlyAppointments: 0,
+  });
+
   // --- CONFIRM DIALOG STATE ---
   const [confirmDelete, setConfirmDelete] = useState({ open: false, type: '', id: '', name: '' });
 
@@ -150,6 +169,12 @@ export default function Settings() {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setSettings(prev => ({ ...prev, ...data }));
+        if (data.dashboardAlerts) {
+          setDashboardAlerts(prev => ({ ...prev, ...data.dashboardAlerts }));
+        }
+        if (data.dashboardGoals) {
+          setDashboardGoals(prev => ({ ...prev, ...data.dashboardGoals }));
+        }
         // Seed the baseline only on first load — subsequent saves update it explicitly
         setLastSavedSettings(prev => prev === null ? {
           ...data,
@@ -317,6 +342,8 @@ export default function Settings() {
       const adminIdentity = profile?.fullName || profile?.email || "Unknown Admin";
       await setDoc(doc(db, "clinic_settings", "general"), {
           ...sanitizedSettings,
+          dashboardAlerts,
+          dashboardGoals,
           updatedAt: Timestamp.now(),
           updatedBy: adminIdentity
       }, { merge: true });
@@ -903,6 +930,143 @@ export default function Settings() {
                 )}
               </Box>
 
+            </Box>
+          </Paper>
+        </Grid>
+
+        {/* PILLAR 6: DASHBOARD ALERT THRESHOLDS (T2.331) */}
+        <Grid size={{ xs: 12, lg: 6 }}>
+          <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <Box sx={{ bgcolor: '#FFF8E1', px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
+              <Typography variant="subtitle1" sx={{
+                color: COLORS.accent, fontWeight: '1000',
+                display: 'flex', alignItems: 'center', gap: 1,
+                textTransform: 'uppercase', letterSpacing: 1,
+              }}>
+                <NotificationsActiveIcon /> Dashboard Alert Thresholds
+              </Typography>
+            </Box>
+            <Box sx={{ p: 3, flexGrow: 1, bgcolor: '#FFF' }}>
+              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 3 }}>
+                Triggers visual alerts on the Dashboard Operations tab when metrics exceed these limits.
+              </Typography>
+              <Grid container spacing={2.5}>
+                <Grid size={{ xs: 6 }}>
+                  <TextField
+                    fullWidth label="Max Avg Wait" type="number"
+                    value={dashboardAlerts.avgWaitMax}
+                    onChange={(e) => setDashboardAlerts(prev => ({ ...prev, avgWaitMax: parseInt(e.target.value) || 0 }))}
+                    InputProps={{ endAdornment: <InputAdornment position="end">min</InputAdornment> }}
+                    sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
+                    inputProps={{ style: { fontWeight: 1000 } }}
+                    helperText="Alert when avg wait exceeds this"
+                  />
+                </Grid>
+                <Grid size={{ xs: 6 }}>
+                  <TextField
+                    fullWidth label="Max Longest Wait" type="number"
+                    value={dashboardAlerts.longestWaitMax}
+                    onChange={(e) => setDashboardAlerts(prev => ({ ...prev, longestWaitMax: parseInt(e.target.value) || 0 }))}
+                    InputProps={{ endAdornment: <InputAdornment position="end">min</InputAdornment> }}
+                    sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
+                    inputProps={{ style: { fontWeight: 1000 } }}
+                    helperText="Alert when any patient waits this long"
+                  />
+                </Grid>
+                <Grid size={{ xs: 4 }}>
+                  <TextField
+                    fullWidth label="No-Show Alert" type="number"
+                    value={dashboardAlerts.noShowMin}
+                    onChange={(e) => setDashboardAlerts(prev => ({ ...prev, noShowMin: parseInt(e.target.value) || 0 }))}
+                    InputProps={{ endAdornment: <InputAdornment position="end">count</InputAdornment> }}
+                    sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
+                    inputProps={{ style: { fontWeight: 1000 } }}
+                  />
+                </Grid>
+                <Grid size={{ xs: 4 }}>
+                  <TextField
+                    fullWidth label="Emergency Alert" type="number"
+                    value={dashboardAlerts.emergencyMin}
+                    onChange={(e) => setDashboardAlerts(prev => ({ ...prev, emergencyMin: parseInt(e.target.value) || 0 }))}
+                    InputProps={{ endAdornment: <InputAdornment position="end">count</InputAdornment> }}
+                    sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
+                    inputProps={{ style: { fontWeight: 1000 } }}
+                  />
+                </Grid>
+                <Grid size={{ xs: 4 }}>
+                  <TextField
+                    fullWidth label="Queue Depth Alert" type="number"
+                    value={dashboardAlerts.queueDepthMax}
+                    onChange={(e) => setDashboardAlerts(prev => ({ ...prev, queueDepthMax: parseInt(e.target.value) || 0 }))}
+                    InputProps={{ endAdornment: <InputAdornment position="end">patients</InputAdornment> }}
+                    sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
+                    inputProps={{ style: { fontWeight: 1000 } }}
+                  />
+                </Grid>
+              </Grid>
+            </Box>
+          </Paper>
+        </Grid>
+
+        {/* PILLAR 7: MONTHLY GOALS (T2.336) */}
+        <Grid size={{ xs: 12, lg: 6 }}>
+          <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <Box sx={{ bgcolor: '#FFF8E1', px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
+              <Typography variant="subtitle1" sx={{
+                color: COLORS.accent, fontWeight: '1000',
+                display: 'flex', alignItems: 'center', gap: 1,
+                textTransform: 'uppercase', letterSpacing: 1,
+              }}>
+                <FlagIcon /> Monthly Goals
+              </Typography>
+            </Box>
+            <Box sx={{ p: 3, flexGrow: 1, bgcolor: '#FFF' }}>
+              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 3 }}>
+                Set monthly targets. Progress bars appear on the Dashboard Growth and Financial tabs when goals are configured.
+              </Typography>
+              <Grid container spacing={2.5}>
+                <Grid size={{ xs: 6 }}>
+                  <TextField
+                    fullWidth label="Target Revenue" type="number"
+                    value={dashboardGoals.monthlyRevenue || ''}
+                    onChange={(e) => setDashboardGoals(prev => ({ ...prev, monthlyRevenue: parseInt(e.target.value) || 0 }))}
+                    InputProps={{ startAdornment: <InputAdornment position="start">₱</InputAdornment> }}
+                    sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
+                    inputProps={{ style: { fontWeight: 1000 } }}
+                    helperText="Monthly revenue goal"
+                  />
+                </Grid>
+                <Grid size={{ xs: 6 }}>
+                  <TextField
+                    fullWidth label="Target Appointments" type="number"
+                    value={dashboardGoals.monthlyAppointments || ''}
+                    onChange={(e) => setDashboardGoals(prev => ({ ...prev, monthlyAppointments: parseInt(e.target.value) || 0 }))}
+                    sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
+                    inputProps={{ style: { fontWeight: 1000 } }}
+                    helperText="Monthly appointment count goal"
+                  />
+                </Grid>
+                <Grid size={{ xs: 6 }}>
+                  <TextField
+                    fullWidth label="Target New Clients" type="number"
+                    value={dashboardGoals.monthlyNewClients || ''}
+                    onChange={(e) => setDashboardGoals(prev => ({ ...prev, monthlyNewClients: parseInt(e.target.value) || 0 }))}
+                    sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
+                    inputProps={{ style: { fontWeight: 1000 } }}
+                    helperText="Monthly new registrations goal"
+                  />
+                </Grid>
+                <Grid size={{ xs: 6 }}>
+                  <TextField
+                    fullWidth label="Target Records Signed" type="number"
+                    value={dashboardGoals.monthlyRecordsSigned || ''}
+                    onChange={(e) => setDashboardGoals(prev => ({ ...prev, monthlyRecordsSigned: parseInt(e.target.value) || 0 }))}
+                    sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
+                    inputProps={{ style: { fontWeight: 1000 } }}
+                    helperText="Monthly medical records goal"
+                  />
+                </Grid>
+              </Grid>
             </Box>
           </Paper>
         </Grid>

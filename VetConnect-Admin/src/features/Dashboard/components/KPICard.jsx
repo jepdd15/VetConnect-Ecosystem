@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Typography } from '@mui/material';
+import { Box, Typography, Tooltip } from '@mui/material';
 import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
 
 /**
@@ -29,6 +29,9 @@ export default function KPICard({
   compact = false,
   delta,
   insight,
+  goalTarget = undefined,  // T2.337: numeric monthly target for progress bar
+  goalValue = undefined,   // T2.337: raw numeric value when `value` is a formatted string
+  historicalContext = undefined, // T2.339: { min, avg, max } for hover tooltip
 }) {
   const colorMap = {
     blue:    { bg: COLORS.kpiBlueBg,   border: COLORS.kpiBlueBorder,   text: COLORS.info },
@@ -90,37 +93,61 @@ export default function KPICard({
           {title}
         </Typography>
 
-        {/* Value + inline delta indicator */}
-        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
-          <Typography sx={{
-            fontFamily: FONT,
-            fontWeight: 1000,
-            color: c.text,
-            fontSize: compact ? '1.2rem' : '1.5rem',
-            lineHeight: 1.2,
-          }}>
-            {value}
-          </Typography>
-
-          {delta != null && (
-            <Typography
-              component="span"
-              sx={{
+        {/* Value + inline delta indicator — wrapped in Tooltip for historical context */}
+        <Tooltip
+          title={
+            historicalContext
+              ? `6-mo range: min ${historicalContext.min.toLocaleString()} / avg ${historicalContext.avg.toLocaleString()} / max ${historicalContext.max.toLocaleString()}`
+              : ''
+          }
+          arrow
+          disableHoverListener={!historicalContext}
+          slotProps={{
+            tooltip: {
+              sx: {
                 fontFamily: FONT,
-                fontWeight: 900,
                 fontSize: '0.65rem',
-                lineHeight: 1,
-                color: delta > 0 ? COLORS.success
-                  : delta < 0 ? COLORS.danger
-                  : COLORS.textMuted,
-              }}
-            >
-              {delta > 0 ? '▲' : delta < 0 ? '▼' : '—'}
-              {' '}
-              {delta > 0 ? `+${delta}%` : delta < 0 ? `${delta}%` : '0%'}
+                fontWeight: 700,
+                bgcolor: COLORS.brand,
+                border: `1px solid ${COLORS.accent}`,
+                borderRadius: 0,
+                boxShadow: `2px 2px 0px ${COLORS.accent}`,
+                '& .MuiTooltip-arrow': { color: COLORS.brand },
+              },
+            },
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
+            <Typography sx={{
+              fontFamily: FONT,
+              fontWeight: 1000,
+              color: c.text,
+              fontSize: compact ? '1.2rem' : '1.5rem',
+              lineHeight: 1.2,
+            }}>
+              {value}
             </Typography>
-          )}
-        </Box>
+
+            {delta != null && (
+              <Typography
+                component="span"
+                sx={{
+                  fontFamily: FONT,
+                  fontWeight: 900,
+                  fontSize: '0.65rem',
+                  lineHeight: 1,
+                  color: delta > 0 ? COLORS.success
+                    : delta < 0 ? COLORS.danger
+                    : COLORS.textMuted,
+                }}
+              >
+                {delta > 0 ? '▲' : delta < 0 ? '▼' : '—'}
+                {' '}
+                {delta > 0 ? `+${delta}%` : delta < 0 ? `${delta}%` : '0%'}
+              </Typography>
+            )}
+          </Box>
+        </Tooltip>
 
         {subtitle && (
           <Typography sx={{
@@ -133,7 +160,7 @@ export default function KPICard({
           </Typography>
         )}
 
-        {/* Insight slot — Day 4 will pass contextual text here */}
+        {/* Insight slot — contextual text from the Day 4 engine */}
         {insight && (
           <Box sx={{
             mt: 0.5,
@@ -154,6 +181,41 @@ export default function KPICard({
             </Typography>
           </Box>
         )}
+
+        {/* Goal progress bar (T2.337) — renders when goalTarget > 0 */}
+        {goalTarget > 0 && (() => {
+          const numericVal = typeof goalValue === 'number' ? goalValue
+            : typeof value === 'number' ? value : null;
+          if (numericVal == null) return null;
+          const pct = Math.min(100, Math.round((numericVal / goalTarget) * 100));
+          return (
+            <Box sx={{ mt: 0.75, width: '100%' }}>
+              <Box sx={{
+                height: 6,
+                bgcolor: COLORS.surface,
+                border: `1px solid ${COLORS.border}`,
+                borderRadius: 0,
+                overflow: 'hidden',
+              }}>
+                <Box sx={{
+                  height: '100%',
+                  width: `${pct}%`,
+                  bgcolor: pct >= 100 ? COLORS.success : c.text,
+                  transition: 'width 0.4s ease',
+                }} />
+              </Box>
+              <Typography sx={{
+                fontFamily: FONT,
+                fontSize: '0.55rem',
+                fontWeight: 700,
+                color: pct >= 100 ? COLORS.success : COLORS.textMuted,
+                mt: 0.25,
+              }}>
+                {pct}% of {goalTarget.toLocaleString()} goal
+              </Typography>
+            </Box>
+          );
+        })()}
       </Box>
     </Box>
   );

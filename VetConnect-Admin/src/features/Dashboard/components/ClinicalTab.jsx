@@ -38,11 +38,17 @@ import { buildDrillDown } from '../utils/drillDownConfig';
 
 // ── Component ────────────────────────────────────────────────────
 
-export default function ClinicalTab({ data, insights = {} }) {
+export default function ClinicalTab({ data, insights = {}, clinicSettings = {} }) {
   const navigate = useNavigate();
   const drillDown = buildDrillDown(navigate);
   const { clinical, deltas } = data;
   if (!clinical) return null;
+
+  // Goals from Settings (T2.337)
+  const goals = clinicSettings?.dashboardGoals || {};
+
+  // Historical context from hook (T2.339)
+  const hist = data.historical || {};
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
@@ -59,6 +65,8 @@ export default function ClinicalTab({ data, insights = {} }) {
             delta={deltas?.recordsSigned}
             onClick={drillDown['RECORDS SIGNED']}
             insight={insights['RECORDS SIGNED']}
+            goalTarget={goals.monthlyRecordsSigned || 0}
+            historicalContext={hist.recordsPerMonth}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>

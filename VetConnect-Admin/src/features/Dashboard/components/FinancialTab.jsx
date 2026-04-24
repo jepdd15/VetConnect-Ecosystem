@@ -17,6 +17,7 @@ import Grid from '@mui/material/Grid';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Line, ComposedChart,
   Tooltip as RechartsTooltip, ResponsiveContainer, Cell, Legend,
+  ReferenceLine,
 } from 'recharts';
 
 // Icons
@@ -35,6 +36,7 @@ import KPICard from './KPICard';
 import HorizontalBar from './HorizontalBar';
 import { CHART_TOOLTIP_STYLE, CHART_TICK_STYLE, CHART_GRID_PROPS } from './chartConfig';
 import { buildDrillDown } from '../utils/drillDownConfig';
+import { annotateChartData } from '../utils/annotateChartData';
 
 // Payment method colors — each channel has a distinct, meaningful color
 const METHOD_COLORS = {
@@ -60,25 +62,21 @@ const fmt = (n) => `₱${(n || 0).toLocaleString(undefined, { minimumFractionDig
 
 // ── Component ────────────────────────────────────────────────────
 
-export default function FinancialTab({ data, insights = {} }) {
+export default function FinancialTab({ data, insights = {}, clinicSettings = {} }) {
   const navigate = useNavigate();
   const drillDown = buildDrillDown(navigate);
   const { financial } = data;
-  if (!financial) return null;
 
-  const panelSx = {
-    bgcolor: COLORS.cardBg,
-    border: `2px solid ${COLORS.accent}`,
-    borderRadius: 0,
-    boxShadow: `4px 4px 0px ${COLORS.brand}`,
-    p: 2.5,
-    height: '100%',
-  };
+  const goals = clinicSettings?.dashboardGoals || {};
+  const hist = data.historical || {};
 
-  const isProfit = financial.netMargin >= 0;
+  const revenueAnnotation = React.useMemo(
+    () => annotateChartData(financial?.revenueTrend, 'amount'),
+    [financial?.revenueTrend],
+  );
 
-  // Merge revenue and expense trends into one dataset for the overlay chart
   const overlayData = React.useMemo(() => {
+    if (!financial) return [];
     const merged = {};
     financial.revenueTrend.forEach(d => {
       merged[d.label] = { label: d.label, revenue: d.amount, expense: 0 };
@@ -91,7 +89,20 @@ export default function FinancialTab({ data, insights = {} }) {
       }
     });
     return Object.values(merged);
-  }, [financial.revenueTrend, financial.expenseTrend]);
+  }, [financial?.revenueTrend, financial?.expenseTrend, financial]);
+
+  if (!financial) return null;
+
+  const panelSx = {
+    bgcolor: COLORS.cardBg,
+    border: `2px solid ${COLORS.accent}`,
+    borderRadius: 0,
+    boxShadow: `4px 4px 0px ${COLORS.brand}`,
+    p: 2.5,
+    height: '100%',
+  };
+
+  const isProfit = financial.netMargin >= 0;
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
@@ -108,6 +119,9 @@ export default function FinancialTab({ data, insights = {} }) {
             delta={data.deltas?.revenue}
             onClick={drillDown['REVENUE COLLECTED']}
             insight={insights['REVENUE COLLECTED']}
+            goalTarget={goals.monthlyRevenue || 0}
+            goalValue={financial.totalCollected}
+            historicalContext={hist.revenuePerMonth}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -145,15 +159,15 @@ export default function FinancialTab({ data, insights = {} }) {
         </Grid>
       </Grid>
 
-      {/* ROW 2: REVENUE TREND (T2.301) */}
+      {/* ROW 2: REVENUE TREND (T2.301 + T2.341 annotations) */}
       <Box sx={panelSx}>
         <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.accent, mb: 1.5 }}>
           REVENUE TREND
         </Typography>
-        {financial.revenueTrend.length > 0 ? (
+        {revenueAnnotation.data.length > 0 ? (
           <Box sx={{ width: '100%', height: 220 }}>
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={financial.revenueTrend} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
+              <BarChart data={revenueAnnotation.data} margin={{ top: 5, right: 64, left: 10, bottom: 0 }}>
                 <CartesianGrid {...CHART_GRID_PROPS} />
                 <XAxis dataKey="label" tick={CHART_TICK_STYLE} />
                 <YAxis
@@ -164,7 +178,34 @@ export default function FinancialTab({ data, insights = {} }) {
                   contentStyle={CHART_TOOLTIP_STYLE}
                   formatter={(value) => [fmt(value), 'Revenue']}
                 />
-                <Bar dataKey="amount" fill={COLORS.success} radius={0} />
+                {revenueAnnotation.refLines.map(rl => (
+                  <ReferenceLine
+                    key={rl.label}
+                    y={rl.y}
+                    stroke={rl.color}
+                    strokeDasharray="4 4"
+                    strokeWidth={1.5}
+                    label={{
+                      value: `Avg: ₱${(rl.y / 1000).toFixed(0)}k`,
+                      position: 'right',
+                      style: { fontSize: 9, fontFamily: FONT, fill: rl.color, fontWeight: 700 },
+                    }}
+                  />
+                ))}
+                <Bar dataKey="amount" radius={0}>
+                  {revenueAnnotation.data.map((entry, i) => (
+                    <Cell
+                      key={i}
+                      fill={
+                        entry.annotation === 'peak'     ? COLORS.warning
+                        : entry.annotation === 'trough'   ? COLORS.danger
+                        : entry.annotation === 'aboveAvg' ? COLORS.success
+                        : entry.annotation === 'belowAvg' ? '#BDBDBD'
+                        : COLORS.success
+                      }
+                    />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </Box>

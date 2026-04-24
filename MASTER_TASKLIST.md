@@ -1,8 +1,8 @@
 # VetConnect Master Task List
 
 **Last updated:** 2026-04-23 · **Branch:** `main`
-**Total tasks:** ~717 · **Cancelled/Absorbed:** ~16 · **Active:** ~701
-**DONE:** 409 · **TODO:** 287 · **Deferred sub-tasks:** 59
+**Total tasks:** ~719 · **Cancelled/Absorbed:** ~16 · **Active:** ~703
+**DONE:** 417 · **TODO:** 281 · **Deferred sub-tasks:** 61
 **Critical path to defense:** Dashboard Build (~32 hrs) + thesis
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~154 hours (Phase 4 S-Tier)
 
@@ -582,17 +582,19 @@
 | T2.328 | Drill-down: Financial → Sales/Expenses | P2 | 30 min | DONE |
 | T2.329 | Drill-down: Growth → Patients/Queue | P2 | 15 min | DONE |
 | T2.330 | Drill-down: target page filter acceptance | P1 | 45 min | DONE |
-| T2.331 | Settings: Dashboard Alerts threshold configuration | P2 | 45 min | TODO |
-| T2.332 | Dashboard: alert strip + threshold check | P2 | 30 min | TODO |
+| T2.331 | Settings: Dashboard Alerts threshold configuration | P2 | 45 min | DONE |
+| T2.332 | Dashboard: alert strip + threshold check | P2 | 30 min | DONE |
 | T2.333 | Create `generateReportHTML()` utility | P1 | 1 hr | DONE |
 | T2.334 | "Export Report" button per tab | P1 | 1 hr | DONE |
 | T2.335 | PDF-specific print styling | P2 | 30 min | DONE |
-| T2.336 | Settings: monthly goals configuration | P2 | 30 min | TODO |
-| T2.337 | Dashboard: goal progress bars per tab | P2 | 45 min | TODO |
-| T2.338 | Extend useDashboardData with historical min/max/avg | P2 | 1 hr | TODO |
-| T2.339 | KPICard comparative context tooltip | P2 | 30 min | TODO |
-| T2.340 | Create `annotateChartData()` utility | P2 | 1 hr | TODO |
-| T2.341 | recharts custom annotation labels | P2 | 45 min | TODO |
+| T2.336 | Settings: monthly goals configuration | P2 | 30 min | DONE |
+| T2.337 | Dashboard: goal progress bars per tab | P2 | 45 min | DONE |
+| T2.338 | Extend useDashboardData with historical min/max/avg | P2 | 1 hr | DONE |
+| T2.339 | KPICard comparative context tooltip | P2 | 30 min | DONE |
+| T2.340 | Create `annotateChartData()` utility | P2 | 1 hr | DONE |
+| T2.341 | recharts custom annotation labels | P2 | 45 min | DONE |
+| T2.330a | Queue drill-down "ACTIVE IN FACILITY" maps to tab 3 (Started) but KPI counts arrived+in-consult+dispensing+billing — no single tab matches | P3 | 15 min | TODO | Review finding — Day 5 audit |
+| T2.331a | Settings.jsx: add dashboardAlerts and dashboardGoals to the tracked array so changes appear in activity log | P3 | 5 min | TODO | Review finding — Day 6 audit |
 
 #### Monitor (T2.231-T2.242, T2.273-T2.275)
 

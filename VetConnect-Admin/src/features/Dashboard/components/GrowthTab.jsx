@@ -17,7 +17,7 @@ import Grid from '@mui/material/Grid';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip as RechartsTooltip, ResponsiveContainer,
-  Cell,
+  Cell, ReferenceLine,
 } from 'recharts';
 
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
@@ -33,6 +33,7 @@ import KPICard from './KPICard';
 import HorizontalBar from './HorizontalBar';
 import { CHART_COLORS, CHART_TOOLTIP_STYLE, CHART_TICK_STYLE, CHART_GRID_PROPS } from './chartConfig';
 import { buildDrillDown } from '../utils/drillDownConfig';
+import { annotateChartData } from '../utils/annotateChartData';
 
 // ── Component ────────────────────────────────────────────────────
 
@@ -40,13 +41,20 @@ export default function GrowthTab({ data, clinicSettings, insights = {} }) {
   const navigate = useNavigate();
   const drillDown = buildDrillDown(navigate);
   const { growth, dateRange } = data;
+
+  const goals = clinicSettings?.dashboardGoals || {};
+  const hist = data.historical || {};
+
+  const apptAnnotation = React.useMemo(
+    () => annotateChartData(growth?.appointmentTrend, 'count'),
+    [growth?.appointmentTrend],
+  );
+
   if (!growth) return null;
 
-  // ── T2.314: Clinic utilization rate ────────────────────────────
-  // Max capacity = (closeHour - openHour) * 2 slots/hour * working days in period
   const openHour = clinicSettings.openHour || 8;
   const closeHour = clinicSettings.closeHour || 17;
-  const slotsPerDay = (closeHour - openHour) * 2; // 2 appointments per hour estimate
+  const slotsPerDay = (closeHour - openHour) * 2;
 
   const workingDays = clinicSettings.workingDays || [0, 1, 2, 3, 4, 5, 6];
   let workingDayCount = 0;
@@ -63,7 +71,6 @@ export default function GrowthTab({ data, clinicSettings, insights = {} }) {
     maxCapacity > 0 ? Math.round((growth.totalAppointments / maxCapacity) * 100) : 0,
   );
 
-  // ── Shared panel style ──────────────────────────────────────────
   const panelSx = {
     bgcolor: COLORS.cardBg,
     border: `2px solid ${COLORS.accent}`,
@@ -73,7 +80,6 @@ export default function GrowthTab({ data, clinicSettings, insights = {} }) {
     height: '100%',
   };
 
-  // ── Derived: peak hour max for highlight coloring ───────────────
   const maxPeakCount = Math.max(...growth.peakHours.map(h => h.count), 0);
 
   return (
@@ -91,6 +97,8 @@ export default function GrowthTab({ data, clinicSettings, insights = {} }) {
             delta={data.deltas?.uniqueClients}
             onClick={drillDown['NEW CLIENTS']}
             insight={insights['NEW CLIENTS']}
+            goalTarget={goals.monthlyNewClients || 0}
+            historicalContext={hist.newClientsPerMonth}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -123,6 +131,8 @@ export default function GrowthTab({ data, clinicSettings, insights = {} }) {
             delta={data.deltas?.appointments}
             onClick={drillDown['TOTAL APPOINTMENTS']}
             insight={insights['TOTAL APPOINTMENTS']}
+            goalTarget={goals.monthlyAppointments || 0}
+            historicalContext={hist.appointmentsPerMonth}
           />
         </Grid>
       </Grid>
@@ -226,18 +236,45 @@ export default function GrowthTab({ data, clinicSettings, insights = {} }) {
             <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.accent, mb: 1.5 }}>
               APPOINTMENT VOLUME TREND
             </Typography>
-            {growth.appointmentTrend.length > 0 ? (
+            {apptAnnotation.data.length > 0 ? (
               <Box sx={{ width: '100%', height: 200 }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
-                    data={growth.appointmentTrend}
-                    margin={{ top: 5, right: 10, left: -20, bottom: 0 }}
+                    data={apptAnnotation.data}
+                    margin={{ top: 5, right: 48, left: -20, bottom: 0 }}
                   >
                     <CartesianGrid {...CHART_GRID_PROPS} />
                     <XAxis dataKey="label" tick={CHART_TICK_STYLE} />
                     <YAxis tick={CHART_TICK_STYLE} allowDecimals={false} />
                     <RechartsTooltip contentStyle={CHART_TOOLTIP_STYLE} />
-                    <Bar dataKey="count" fill={COLORS.medical} radius={0} />
+                    {apptAnnotation.refLines.map(rl => (
+                      <ReferenceLine
+                        key={rl.label}
+                        y={rl.y}
+                        stroke={rl.color}
+                        strokeDasharray="4 4"
+                        strokeWidth={1.5}
+                        label={{
+                          value: rl.label,
+                          position: 'right',
+                          style: { fontSize: 9, fontFamily: FONT, fill: rl.color, fontWeight: 700 },
+                        }}
+                      />
+                    ))}
+                    <Bar dataKey="count" radius={0}>
+                      {apptAnnotation.data.map((entry, i) => (
+                        <Cell
+                          key={i}
+                          fill={
+                            entry.annotation === 'peak'     ? COLORS.warning
+                            : entry.annotation === 'trough'   ? COLORS.danger
+                            : entry.annotation === 'aboveAvg' ? COLORS.success
+                            : entry.annotation === 'belowAvg' ? '#BDBDBD'
+                            : COLORS.medical
+                          }
+                        />
+                      ))}
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </Box>

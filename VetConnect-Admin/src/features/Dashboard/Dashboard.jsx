@@ -34,6 +34,7 @@ import FinancialTab from './components/FinancialTab';
 import ClinicalTab from './components/ClinicalTab';
 import { generateInsight } from './utils/generateInsight';
 import { generateReportHTML } from './utils/generateReportHTML';
+import AlertStrip from './components/AlertStrip';
 
 // ── Tab registry ─────────────────────────────────────────────────
 // defaultPeriod is the period the hook uses when that tab is active.
@@ -256,6 +257,11 @@ export default function Dashboard() {
         </Tabs>
       </Box>
 
+      {/* ── ALERT STRIP (Operations tab only, T2.332) ────────── */}
+      {currentTab.key === 'ops' && !data.loading && (
+        <AlertStrip ops={data.ops} clinicSettings={clinicSettings} />
+      )}
+
       {/* ── TAB CONTENT ──────────────────────────────────────── */}
       <Box sx={{ flexGrow: 1, overflow: 'auto', p: 3 }}>
         {data.loading ? (
@@ -273,10 +279,10 @@ export default function Dashboard() {
               <OperationsTab data={data} clinicSettings={clinicSettings} isOpen={isOpen} insights={insights} />
             )}
             {currentTab.key === 'clinical' && (
-              <ClinicalTab data={data} insights={insights} />
+              <ClinicalTab data={data} insights={insights} clinicSettings={clinicSettings} />
             )}
             {currentTab.key === 'financial' && (
-              <FinancialTab data={data} insights={insights} />
+              <FinancialTab data={data} insights={insights} clinicSettings={clinicSettings} />
             )}
           </>
         )}

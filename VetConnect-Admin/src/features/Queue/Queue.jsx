@@ -5,7 +5,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button,
   Tabs, Tab, Menu, MenuItem, ListItemIcon, ListItemText, Divider, List, ListItem, Alert,
   Popover, Chip, keyframes, FormControl, InputLabel, Select, Switch,
-  ToggleButton, ToggleButtonGroup, FormControlLabel, Autocomplete
+  ToggleButton, ToggleButtonGroup, Autocomplete
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, Timestamp, where, getDocs, writeBatch, getDoc, arrayUnion, runTransaction } from 'firebase/firestore';
@@ -36,7 +36,7 @@ import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos'; 
 
 // 🧬 PHASE 6 COMPONENTS
-import { calculatePulseMetrics, formatDuration, getSmartShiftDate, makePulseEventId } from '../../utils/pulseUtils';
+import { calculatePulseMetrics, getSmartShiftDate, makePulseEventId } from '../../utils/pulseUtils';
 import { HIGH_STAKES_STATUSES, ACTIVE_STATUSES, normalizeStatus } from '../../utils/statusConstants';
 import { getLocalDateStr } from '../../utils/dateUtils';
 import { useClinicSettings } from '../../hooks/useClinicSettings';

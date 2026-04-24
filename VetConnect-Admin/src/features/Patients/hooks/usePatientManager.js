@@ -128,16 +128,11 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setClientTransactions(sales);
         
-        // --- THE FINANCIAL FIX ---
-        let owed = 0;
-        sales.forEach(s => {
-          const status = s.status || 'paid';
-          // Only calculate balance if the invoice is NOT fully paid and NOT refunded
-          if (status !== 'paid' && status !== 'refunded') {
-            const bal = (parseFloat(s.total) || 0) - (parseFloat(s.depositPaid) || 0);
-            if (bal > 0) owed += bal;
-          }
-        });
+        // T2.113: Use balanceRemaining field — matches PatientDashboard's computation.
+        // This eliminates divergence from the old total-depositPaid approach.
+        const owed = sales
+          .filter(s => s.status !== 'refunded' && s.status !== 'voided')
+          .reduce((sum, s) => sum + (s.balanceRemaining || 0), 0);
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setOutstandingBalance(owed);
       }
@@ -253,7 +248,20 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
   
   const archivePet = async (petId) => {
     if (!petId) throw new Error("No pet ID provided.");
-    await updateDoc(doc(db, "pets", petId), { status: 'archived', archivedAt: Timestamp.now() });
+    await updateDoc(doc(db, "pets", petId), {
+      status: 'archived',
+      archivedAt: Timestamp.now(),
+      archivedBy: auth.currentUser?.email || 'Admin',
+    });
+  };
+
+  const restorePet = async (petId) => {
+    if (!petId) throw new Error("No pet ID provided.");
+    await updateDoc(doc(db, "pets", petId), {
+      status: 'active',
+      archivedAt: null,
+      archivedBy: null,
+    });
   };
 
   return {
@@ -264,6 +272,6 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
     handleSelectClient, calculatePetAge,
     isEditing, setIsEditing, editForm, setEditForm, handleSaveProfile,
     newNote, setNewNote, noteCategory, setNoteCategory, handleAddNote, handleDeleteNote,
-    newPetData, setNewPetData, handleAdminAddPet, archivePet,
+    newPetData, setNewPetData, handleAdminAddPet, archivePet, restorePet,
   };
 }

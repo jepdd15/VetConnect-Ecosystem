@@ -21,7 +21,7 @@ import { db } from '../../firebaseConfig';
 import { useUser } from '../../context/UserContext';
 import { detectNoShows } from '../../utils/noShowDetection';
 
-export default function WalkInModal({ open, onClose, servicesList, departments }) {
+export default function WalkInModal({ open, onClose, servicesList, departments, prefillClient, prefillPet }) {
   const { profile } = useUser();
   const staffSignature = profile?.fullName || 'System/Admin';
   
@@ -77,6 +77,14 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
     }
   }, [open, clients]);
 
+  // Prefill from Patients CRM (T2.115)
+  useEffect(() => {
+    if (!open || !prefillClient) return;
+    setWalkInType('existing');
+    setSelectedClient(prefillClient);
+    // Pet prefill is handled after clientPets are fetched (see below)
+  }, [open, prefillClient]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (selectedClient) {
       const fetchPets = async () => {
@@ -85,7 +93,8 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
         try {
           const q = query(collection(db, "pets"), where("ownerId", "==", selectedClient.id));
           const snap = await getDocs(q);
-          setClientPets(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+          const petList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          setClientPets(petList);
         } catch (e) { console.error(e); }
         setFetchingPets(false);
       };
@@ -93,7 +102,13 @@ export default function WalkInModal({ open, onClose, servicesList, departments }
     } else {
       setClientPets([]); setSelectedPet(null); setIsNewPet(false);
     }
-  }, [selectedClient]);
+  }, [selectedClient]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!prefillPet || clientPets.length === 0) return;
+    const matched = clientPets.find(p => p.id === prefillPet.id);
+    if (matched) setSelectedPet(matched);
+  }, [prefillPet, clientPets]);
 
   // Check for recent no-shows whenever an existing pet is selected
   useEffect(() => {

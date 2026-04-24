@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Box, Tabs, Tab, Typography, CircularProgress } from '@mui/material';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '../../firebaseConfig';
 
 // Design Tokens
 import { FONT, TYPE, COLORS } from '../../theme/designTokens';
@@ -18,7 +20,7 @@ import InternalLogs from './components/InternalLogs';
 
 // 3. Modals
 import AddPetModal from './modals/AddPetModal';
-import QuickBookModal from './modals/QuickBookModal';
+import WalkInModal from '../Queue/WalkInModal';
 import EditPetModal from './modals/EditPetModal';
 import NewClientModal from './modals/NewClientModal';
 
@@ -41,7 +43,7 @@ export default function Patients() {
     editForm, setEditForm, handleSaveProfile,
     newNote, setNewNote, noteCategory, setNoteCategory, handleAddNote, handleDeleteNote,
     newPetData, setNewPetData, handleAdminAddPet,
-    loading, loadingClientData, archivePet
+    loading, loadingClientData, archivePet, restorePet
   } = usePatientManager(() => setActiveTab(0));
 
   // Modal States
@@ -50,6 +52,20 @@ export default function Patients() {
   const [openNewClient, setOpenNewClient] = useState(false);
   const [openEditPet, setOpenEditPet] = useState(false);
   const [selectedPet, setSelectedPet] = useState(null);
+
+  // Services & departments for WalkInModal (T2.115)
+  const [servicesList, setServicesList] = useState([]);
+  const [departments, setDepartments] = useState([]);
+
+  useEffect(() => {
+    const unsubSvc = onSnapshot(collection(db, 'services'), (snap) => {
+      setServicesList(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(s => !s.isArchived));
+    });
+    const unsubDept = onSnapshot(collection(db, 'departments'), (snap) => {
+      setDepartments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => { unsubSvc(); unsubDept(); };
+  }, []);
 
   const filteredOwners = useMemo(() => {
     if (!searchText) return owners;
@@ -129,7 +145,7 @@ export default function Patients() {
                   <CircularProgress size={32} />
                 </Box>
               )}
-              {activeTab === 0 && <PetList pets={clientPets} calculatePetAge={calculatePetAge} onRegisterPet={() => setOpenAddPet(true)} onArchive={archivePet} onQuickBook={handleQuickBookOpen} onEditPet={(pet) => { setSelectedPet(pet); setOpenEditPet(true); }} />}
+              {activeTab === 0 && <PetList pets={clientPets} calculatePetAge={calculatePetAge} onRegisterPet={() => setOpenAddPet(true)} onArchive={archivePet} onRestore={restorePet} onQuickBook={handleQuickBookOpen} onEditPet={(pet) => { setSelectedPet(pet); setOpenEditPet(true); }} />}
               {activeTab === 1 && <ClientDetails editForm={editForm} setEditForm={setEditForm} isEditing={isEditing} calculatePetAge={calculatePetAge} />}
               {activeTab === 2 && <BillingLedger transactions={clientTransactions} />}
               {activeTab === 3 && <InternalLogs notes={selectedClient.staffNotes || []} newNote={newNote} setNewNote={setNewNote} category={noteCategory} setCategory={setNoteCategory} onAdd={handleAddNote} onDelete={handleDeleteNote} />}
@@ -159,10 +175,13 @@ export default function Patients() {
 
 
       {openQuickBook && selectedPet && (
-        <QuickBookModal 
-          open={openQuickBook} 
-          onClose={() => setOpenQuickBook(false)} 
-          pet={selectedPet} 
+        <WalkInModal
+          open={openQuickBook}
+          onClose={() => setOpenQuickBook(false)}
+          servicesList={servicesList}
+          departments={departments}
+          prefillClient={selectedClient}
+          prefillPet={selectedPet}
         />
       )}
 

@@ -113,6 +113,8 @@ export default function PatientDashboard() {
   // T2.101: Owner sales for computed outstanding balance
   const [ownerSales, setOwnerSales] = useState([]);
   const [recordPaymentOpen, setRecordPaymentOpen] = useState(false);
+  // T2.457: Case-day linkage map — recordId -> { caseDay, totalDays }
+  const [caseDayMap, setCaseDayMap] = useState({});
   const [recordPaymentTarget, setRecordPaymentTarget] = useState(null);
   const [recordPaymentAmount, setRecordPaymentAmount] = useState('');
 
@@ -144,24 +146,71 @@ export default function PatientDashboard() {
         const q = query(collection(db, "medical_records"), where("petId", "==", id), orderBy("date", "desc"));
         const snapshot = await getDocs(q);
 
+        // T2.457: Appointment cache — built during the per-record fetch to avoid N+1 passes.
+        // Captures prescriptions (existing join) and caseDay/originApptId (new) in one pass.
+        const apptCache = {}; // appointmentId -> { caseDay, originApptId }
+
         const historyData = await Promise.all(snapshot.docs.map(async (docSnap) => {
           const rec = { id: docSnap.id, ...docSnap.data() };
-          // D5: Prefer native prescriptions; fall back to appointment join for legacy records
-          if (!rec.prescriptions && rec.appointmentId) {
+          // Fetch appointment doc when available — captures both legacy prescriptions and caseDay.
+          if (rec.appointmentId) {
             try {
               const apptDoc = await getDoc(doc(db, "appointments", rec.appointmentId));
               if (apptDoc.exists()) {
                 const apptData = apptDoc.data();
-                rec.serviceType = rec.serviceType || apptData.serviceType;
-                rec.prescriptions = apptData.prescribedItems || [];
+                // D5: legacy prescription join
+                if (!rec.prescriptions) {
+                  rec.serviceType = rec.serviceType || apptData.serviceType;
+                  rec.prescriptions = apptData.prescribedItems || [];
+                }
+                // T2.457: capture case-day metadata
+                apptCache[rec.appointmentId] = {
+                  caseDay: apptData.caseDay || 1,
+                  originApptId: apptData.originApptId || null,
+                };
               }
             } catch (e) {
-              console.warn(`[PatientDashboard] Legacy join failed for ${rec.appointmentId}:`, e);
+              console.warn(`[PatientDashboard] Appointment join failed for ${rec.appointmentId}:`, e);
             }
           }
           return rec;
         }));
         setHistory(historyData);
+
+        // T2.457: Build case-day linkage map from the appointment cache populated above.
+        // Only records that are part of a multi-day case (caseDay > 1) receive a badge.
+        const cdMap = {};
+        historyData.forEach(r => {
+          if (!r.appointmentId || !apptCache[r.appointmentId]) return;
+          const cached = apptCache[r.appointmentId];
+          if (cached.caseDay < 1) return;
+
+          // Walk the chain back to find the root appointment ID
+          let rootId = r.appointmentId;
+          let walked = apptCache[rootId];
+          const seen = new Set();
+          while (walked?.originApptId && apptCache[walked.originApptId] && !seen.has(rootId)) {
+            seen.add(rootId);
+            rootId = walked.originApptId;
+            walked = apptCache[rootId];
+          }
+
+          // Total days = max caseDay among all cached appointments sharing this root
+          const chainMembers = Object.entries(apptCache).filter(([aid]) => {
+            let cur = aid;
+            let curData = apptCache[cur];
+            const visited = new Set();
+            while (curData?.originApptId && apptCache[curData.originApptId] && !visited.has(cur)) {
+              visited.add(cur);
+              cur = curData.originApptId;
+              curData = apptCache[cur];
+            }
+            return cur === rootId;
+          });
+          const totalDays = Math.max(...chainMembers.map(([, d]) => d.caseDay), cached.caseDay);
+          cdMap[r.id] = { caseDay: cached.caseDay, totalDays };
+        });
+        setCaseDayMap(cdMap);
 
         // Process vitals
         const wt = [], tp = [], hr = [], rr = [], crt = [], bcs = [], pain = [];
@@ -318,16 +367,42 @@ export default function PatientDashboard() {
       .reduce((sum, s) => sum + (s.balanceRemaining || 0), 0);
   }, [ownerSales]);
 
-  // T2.24-27: Aggregated lab results — most recent result per test name across all records.
-  // Grouped by testName, showing the latest value and date for trend context.
+  // T2.459: Aggregated lab results — latest per test with trend context.
+  // Walks records oldest-to-newest; last write per testName = most recent value.
+  // Retains previous result + date for trend display in the widget.
   const aggregatedLabResults = useMemo(() => {
-    const testMap = new Map();
+    const testMap = new Map(); // testName -> { latest entry, previousResult, previousDate }
     (history || []).slice().reverse().forEach(r => {
-      (r.labResults || []).forEach(lab => {
+      const labs = Array.isArray(r.labResults) ? r.labResults : [];
+      const dateStr = r.date?.toDate
+        ? r.date.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        : '';
+      labs.forEach(lab => {
         if (!lab.testName) return;
-        const dateStr = r.date?.toDate ? r.date.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
-        if (!testMap.has(lab.testName)) {
-          testMap.set(lab.testName, { testName: lab.testName, result: lab.result, status: lab.status || 'normal', date: dateStr });
+        const existing = testMap.get(lab.testName);
+        if (existing) {
+          // Existing entry becomes "previous"; this newer one becomes "latest"
+          testMap.set(lab.testName, {
+            testName: lab.testName,
+            result: lab.result,
+            status: lab.status || 'normal',
+            date: dateStr,
+            previousResult: existing.result,
+            previousDate: existing.date,
+            referenceRange: lab.referenceRange || existing.referenceRange || null,
+            unit: lab.unit || existing.unit || null,
+          });
+        } else {
+          testMap.set(lab.testName, {
+            testName: lab.testName,
+            result: lab.result,
+            status: lab.status || 'normal',
+            date: dateStr,
+            previousResult: null,
+            previousDate: null,
+            referenceRange: lab.referenceRange || null,
+            unit: lab.unit || null,
+          });
         }
       });
     });
@@ -781,6 +856,23 @@ export default function PatientDashboard() {
                       <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 800, color: rc, textTransform: 'uppercase', letterSpacing: 0.8 }}>{rec.recordType || 'medical'}</Typography>
                     </Box>
                     <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.textPrimary, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{rec.diagnosis || 'Clinical Visit'}</Typography>
+                    {/* T2.457: Case-day badge for multi-day cases */}
+                    {caseDayMap[rec.id] && (
+                      <Chip
+                        label={`Day ${caseDayMap[rec.id].caseDay}${caseDayMap[rec.id].totalDays > 1 ? ` of ${caseDayMap[rec.id].totalDays}` : ''}`}
+                        size="small"
+                        sx={{
+                          fontFamily: FONT,
+                          fontSize: '0.62rem',
+                          fontWeight: 800,
+                          height: 20,
+                          bgcolor: caseDayMap[rec.id].caseDay === 1 ? '#E3F2FD' : '#FFF3E0',
+                          color: caseDayMap[rec.id].caseDay === 1 ? COLORS.medical : '#E65100',
+                          border: `1px solid ${caseDayMap[rec.id].caseDay === 1 ? COLORS.medical : '#E65100'}`,
+                          flexShrink: 0,
+                        }}
+                      />
+                    )}
                     {!isExpanded && hasV && <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, display: { xs: 'none', md: 'block' } }}>{[rec.vitals.weight&&`${rec.vitals.weight}kg`,rec.vitals.temp&&`${rec.vitals.temp}°C`,rec.vitals.hr&&`${rec.vitals.hr}bpm`].filter(Boolean).join(' · ')}</Typography>}
                     {!isExpanded && hasRx && <MedicationIcon sx={{ fontSize: 14, color: COLORS.rxText, opacity: 0.6 }} />}
                     <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, flexShrink: 0 }}>{rec.vetName || '—'}</Typography>
@@ -925,19 +1017,49 @@ export default function PatientDashboard() {
         {/* ── RIGHT: Analytics Panel (30%) ── */}
         <Box sx={{ flex: 3, maxWidth: 320, minWidth: 240, overflowY: 'auto', bgcolor: '#FAF8F5', py: 2, px: 2, '&::-webkit-scrollbar': { width: 4 }, '&::-webkit-scrollbar-thumb': { bgcolor: COLORS.timelineRail, borderRadius: 2 } }}>
 
-          {/* Weight Trend */}
+          {/* Weight Trend — T2.460: 1-point display + delta annotation */}
           <Widget title="Weight Trend" icon={<ScaleIcon sx={{ fontSize: 14, color: COLORS.accentLight }} />}>
             {vitalsData.length > 1 ? (
-              <Box sx={{ width: '100%', height: 140, minWidth: 50 }}>
-                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
-                  <LineChart data={vitalsData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
-                    <XAxis dataKey="date" tick={{ fontSize: 10, fontFamily: FONT }} />
-                    <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={['dataMin - 1', 'dataMax + 1']} />
-                    <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 6, border: `1px solid ${COLORS.border}` }} />
-                    <Line type="monotone" dataKey="weight" stroke={COLORS.accentLight} strokeWidth={2.5} dot={{ r: 3.5, fill: COLORS.accentLight }} activeDot={{ r: 6 }} />
-                  </LineChart>
-                </ResponsiveContainer>
+              <>
+                <Box sx={{ width: '100%', height: 140, minWidth: 50 }}>
+                  <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+                    <LineChart data={vitalsData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
+                      <XAxis dataKey="date" tick={{ fontSize: 10, fontFamily: FONT }} />
+                      <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={['dataMin - 1', 'dataMax + 1']} />
+                      <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 6, border: `1px solid ${COLORS.border}` }} />
+                      <Line type="monotone" dataKey="weight" stroke={COLORS.accentLight} strokeWidth={2.5} dot={{ r: 3.5, fill: COLORS.accentLight }} activeDot={{ r: 6 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </Box>
+                {/* Delta annotation between last two readings */}
+                {(() => {
+                  const last = vitalsData[vitalsData.length - 1]?.weight;
+                  const prev = vitalsData[vitalsData.length - 2]?.weight;
+                  if (last == null || prev == null) return null;
+                  const delta = last - prev;
+                  const sign = delta > 0 ? '+' : '';
+                  const color = delta > 0 ? '#2E7D32' : delta < 0 ? '#D32F2F' : COLORS.textMuted;
+                  return (
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 0.5 }}>
+                      <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', fontWeight: 700, color }}>
+                        {sign}{delta.toFixed(1)} kg since last visit
+                      </Typography>
+                    </Box>
+                  );
+                })()}
+              </>
+            ) : vitalsData.length === 1 ? (
+              <Box sx={{ textAlign: 'center', py: 2 }}>
+                <Typography sx={{ fontFamily: FONT, fontSize: '1.8rem', fontWeight: 900, color: COLORS.accentLight }}>
+                  {vitalsData[0].weight} <span style={{ fontSize: '0.9rem', fontWeight: 600, color: COLORS.textMuted }}>kg</span>
+                </Typography>
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', color: COLORS.textMuted }}>
+                  Recorded {vitalsData[0].date}
+                </Typography>
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.68rem', color: COLORS.textMuted, fontStyle: 'italic', mt: 0.5 }}>
+                  Trend chart available after 2+ readings
+                </Typography>
               </Box>
             ) : (
               <Box sx={{ textAlign: 'center', py: 3, color: COLORS.textMuted }}>
@@ -1189,31 +1311,55 @@ export default function PatientDashboard() {
             )}
           </Widget>
 
-          {/* T2.24-27: Lab Results Aggregation */}
-          {aggregatedLabResults.length > 0 && (
-            <Widget title={`Lab Results (${aggregatedLabResults.length})`} icon={<AssignmentIcon sx={{ fontSize: 14, color: '#1565C0' }} />}>
-              <Stack spacing={0.75}>
+          {/* T2.459: Lab Results Aggregation — always renders, empty state when no labs */}
+          <Widget title={`Lab Results (${aggregatedLabResults.length})`} icon={<AssignmentIcon sx={{ fontSize: 14, color: '#1565C0' }} />}>
+            {aggregatedLabResults.length > 0 ? (
+              <Stack spacing={1}>
                 {aggregatedLabResults.map((lab, i) => {
                   const statusKey = (lab.status || 'normal').toLowerCase();
                   const statusColor = statusKey === 'critical' ? '#D32F2F' : statusKey === 'abnormal' ? '#E65100' : '#2E7D32';
                   const statusBg = statusKey === 'critical' ? '#FFEBEE' : statusKey === 'abnormal' ? '#FFF3E0' : '#E8F5E9';
                   return (
-                    <Box key={i} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 0.5 }}>
-                      <Box>
+                    <Box key={i} sx={{ py: 0.75, borderBottom: i < aggregatedLabResults.length - 1 ? `1px solid ${COLORS.borderLight}` : 'none' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', fontWeight: 700, color: COLORS.textPrimary }}>{lab.testName}</Typography>
-                        <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', color: COLORS.textMuted }}>{lab.result} · {lab.date}</Typography>
+                        <Chip
+                          label={statusKey.toUpperCase()}
+                          size="small"
+                          sx={{ fontFamily: FONT, fontSize: '0.6rem', fontWeight: 800, height: 18, bgcolor: statusBg, color: statusColor, border: `1px solid ${statusColor}` }}
+                        />
                       </Box>
-                      <Chip
-                        label={statusKey.toUpperCase()}
-                        size="small"
-                        sx={{ fontFamily: FONT, fontSize: '0.6rem', fontWeight: 800, height: 18, bgcolor: statusBg, color: statusColor, border: `1px solid ${statusColor}` }}
-                      />
+                      <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, mt: 0.25 }}>
+                        <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', fontWeight: 800, color: statusColor }}>
+                          {lab.result}{lab.unit ? ` ${lab.unit}` : ''}
+                        </Typography>
+                        {lab.referenceRange && (
+                          <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted }}>
+                            (ref: {lab.referenceRange})
+                          </Typography>
+                        )}
+                      </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.25 }}>
+                        <Typography sx={{ fontFamily: FONT, fontSize: '0.68rem', color: COLORS.textMuted }}>{lab.date}</Typography>
+                        {lab.previousResult && (
+                          <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, fontStyle: 'italic' }}>
+                            prev: {lab.previousResult} ({lab.previousDate})
+                          </Typography>
+                        )}
+                      </Box>
                     </Box>
                   );
                 })}
               </Stack>
-            </Widget>
-          )}
+            ) : (
+              <Box sx={{ textAlign: 'center', py: 2 }}>
+                <AssignmentIcon sx={{ fontSize: 28, opacity: 0.2, color: '#1565C0', mb: 0.5 }} />
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', color: COLORS.textMuted, fontStyle: 'italic' }}>
+                  No lab results on file
+                </Typography>
+              </Box>
+            )}
+          </Widget>
 
           {/* T2.101: Billing Ledger — outstanding balances from sales */}
           {ownerSales.filter(s => (s.balanceRemaining || 0) > 0 && s.status !== 'refunded' && s.status !== 'voided').length > 0 && (

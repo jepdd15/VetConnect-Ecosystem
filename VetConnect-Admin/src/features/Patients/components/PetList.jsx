@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { 
-  Box, Typography, Grid, Card, Avatar, Chip, Button, 
-  IconButton, Menu, MenuItem, ListItemIcon, Divider, Stack, 
-  ToggleButton, ToggleButtonGroup, Popover, TextField, InputAdornment, 
-  Paper
+import {
+  Box, Typography, Grid, Card, Avatar, Chip, Button,
+  IconButton, Menu, MenuItem, ListItemIcon, Divider, Stack,
+  ToggleButton, ToggleButtonGroup, Popover, TextField, InputAdornment,
+  Paper, Collapse,
+  Dialog, DialogTitle, DialogContent, DialogActions,
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 
@@ -22,20 +23,25 @@ import SortIcon from '@mui/icons-material/Sort';
 import ScaleIcon from '@mui/icons-material/Scale'; 
 import EditIcon from '@mui/icons-material/Edit';
 
-export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePetAge, onArchive, onEditPet }) {
+export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePetAge, onArchive, onEditPet, onRestore }) {
   const [anchorEl, setAnchorEl] = useState(null);
-  const[selectedPet, setSelectedPet] = useState(null);
+  const [selectedPet, setSelectedPet] = useState(null);
   const navigate = useNavigate();
-  
+
   // --- ADVANCED SORT & FILTER STATE ---
   const [sort, setSort] = useState('name_asc');
   const [filter, setFilter] = useState({ species: 'all', sex: 'all', status: 'all' });
-  const[filterAnchorEl, setFilterAnchorEl] = useState(null);
+  const [filterAnchorEl, setFilterAnchorEl] = useState(null);
+
+  // Archive confirmation dialog (T2.116)
+  const [archiveConfirm, setArchiveConfirm] = useState(null); // pet object or null
+  const [showArchived, setShowArchived] = useState(false);
 
   const handleMenuClick = (event, pet) => { event.stopPropagation(); setSelectedPet(pet); setAnchorEl(event.currentTarget); };
   const handleMenuClose = () => { setAnchorEl(null); };
 
   const activePets = pets.filter(p => p.status !== 'archived');
+  const archivedPets = pets.filter(p => p.status === 'archived');
 
   // --- MULTI-AXIAL SORT & FILTER ENGINE ---
   const processedPets = useMemo(() => {
@@ -214,7 +220,7 @@ export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePet
             <ListItemIcon><EditIcon fontSize="small" sx={{ color: COLORS.textSecondary }}/></ListItemIcon> 
             <Typography variant="body2" sx={{ fontFamily: FONT, fontWeight: 'bold' }}>Edit Pet Profile</Typography>
         </MenuItem>
-        <MenuItem onClick={() => {onArchive(selectedPet.id); handleMenuClose();}} sx={{color: COLORS.danger, py: 1.5, px: 2}}>
+        <MenuItem onClick={() => { setArchiveConfirm(selectedPet); handleMenuClose(); }} sx={{color: COLORS.danger, py: 1.5, px: 2}}>
             <ListItemIcon><ArchiveIcon fontSize="small" sx={{ color: COLORS.danger }}/></ListItemIcon> 
             <Typography variant="body2" sx={{ fontFamily: FONT, fontWeight: 'bold' }}>Archive Patient</Typography>
         </MenuItem>
@@ -238,6 +244,71 @@ export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePet
           <Button fullWidth variant="text" sx={{ mt: 2, fontFamily: FONT, color: COLORS.textMuted, fontWeight: 'bold' }} onClick={() => { setFilter({species: 'all', sex: 'all', status: 'all'}); setFilterAnchorEl(null); }}>Clear Filters</Button>
         </Box>
       </Popover>
+
+      {/* Archived Patients section (T2.116) */}
+      {archivedPets.length > 0 && (
+        <Box sx={{ mt: 4 }}>
+          <Button
+            size="small"
+            onClick={() => setShowArchived(prev => !prev)}
+            startIcon={<ArchiveIcon />}
+            sx={{ fontFamily: FONT, color: COLORS.textMuted, fontWeight: 'bold', mb: 1 }}
+          >
+            Archived Patients ({archivedPets.length}) {showArchived ? '▲' : '▼'}
+          </Button>
+          <Collapse in={showArchived}>
+            <Grid container spacing={2}>
+              {archivedPets.map(pet => (
+                <Grid size={{ xs: 12, md: 6, lg: 4 }} key={pet.id}>
+                  <Card sx={{ borderRadius: 3, border: `1px dashed ${COLORS.textMuted}`, opacity: 0.7, p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                      <Avatar sx={{ width: 36, height: 36, bgcolor: COLORS.panelBg, fontSize: '1.2rem' }}>
+                        {(pet.species === 'Canine' || pet.species === 'Dog') ? '🐶' : '🐱'}
+                      </Avatar>
+                      <Box>
+                        <Typography sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textMuted }}>{pet.name}</Typography>
+                        <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.textMuted }}>
+                          Archived {pet.archivedAt ? new Date(pet.archivedAt.seconds * 1000).toLocaleDateString() : ''}
+                        </Typography>
+                      </Box>
+                    </Box>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => onRestore(pet.id)}
+                      sx={{ fontFamily: FONT, fontWeight: 'bold', color: COLORS.success, borderColor: COLORS.success, fontSize: '0.72rem' }}
+                    >
+                      Restore
+                    </Button>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          </Collapse>
+        </Box>
+      )}
+
+      {/* Archive confirmation dialog (T2.116) */}
+      <Dialog open={Boolean(archiveConfirm)} onClose={() => setArchiveConfirm(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.danger }}>
+          Archive Patient?
+        </DialogTitle>
+        <DialogContent>
+          <Typography sx={{ fontFamily: FONT, fontSize: '0.9rem', color: COLORS.textSecondary }}>
+            Are you sure you want to archive <strong>{archiveConfirm?.name}</strong>? This will hide the pet from the active list. You can restore it later.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2 }}>
+          <Button onClick={() => setArchiveConfirm(null)} sx={{ fontFamily: FONT, color: COLORS.textMuted, borderRadius: 0 }}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={() => { onArchive(archiveConfirm.id); setArchiveConfirm(null); }}
+            sx={{ fontFamily: FONT, fontWeight: 'bold', bgcolor: COLORS.danger, '&:hover': { bgcolor: '#B71C1C' }, borderRadius: 0 }}
+          >
+            Archive
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

@@ -1,8 +1,8 @@
 # VetConnect Master Task List
 
-**Last updated:** 2026-04-23 · **Branch:** `main`
+**Last updated:** 2026-04-24 · **Branch:** `main`
 **Total tasks:** ~719 · **Cancelled/Absorbed:** ~16 · **Active:** ~703
-**DONE:** 482 · **TODO:** 216 · **Deferred sub-tasks:** 62
+**DONE:** 488 · **TODO:** 210 · **Deferred sub-tasks:** 62
 **Critical path to defense:** Dashboard Build (~32 hrs) + thesis
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~154 hours (Phase 4 S-Tier)
 
@@ -164,9 +164,9 @@
 | T2.104 | Transaction void with inventory reversal | 3-4 hrs | — | DONE | |
 | T2.108 | Document client-side timestamp limitation | 5 min | — | DONE | |
 | T2.110 | Pulse events for per-service state changes | 10 min | T2.95 | DONE | |
-| T2.113 | Outstanding balance: remove Firestore counter | 45 min | — | TODO | Decision locked: Option A |
-| T2.115 | QuickBookModal → WalkInModal direct integration with prefill | 1.5-2 hrs | — | TODO | Decision locked: Option B |
-| T2.116 | Archive pet: confirmation dialog + archivedBy + restore | 30 min | — | TODO | |
+| T2.113 | Outstanding balance: remove Firestore counter | 45 min | — | DONE | Decision locked: Option A. balanceRemaining-based sum replaces total-depositPaid |
+| T2.115 | QuickBookModal → WalkInModal direct integration with prefill | 1.5-2 hrs | — | DONE | Decision locked: Option B. prefillClient/prefillPet props, QuickBookModal deleted. **Review fix:** separate useEffect for pet auto-select |
+| T2.116 | Archive pet: confirmation dialog + archivedBy + restore | 30 min | — | DONE | Confirmation Dialog, archivedBy field, restorePet function, collapsible archived section. **Review fix:** borderRadius:0 on dialog buttons |
 | T2.122 | Weight type fix: parseFloat, write both weight + lastWeight | 10 min | — | DONE | |
 | T2.123 | Admin pet modal field parity (updatedAt, isAgeExact, max DOB, petAllergies) | 20 min | — | DONE | |
 | T2.124 | NewClientModal: add `accountStatus: 'admin_registered'` flag | 10 min | — | DONE | Decision locked: Option A |
@@ -843,10 +843,10 @@
 | T2.453 | Clinical amendment system (= T2.75) | P1 | 3 hrs | DONE | Append-only clinicalAmendments[] |
 | T2.454 | Print Visit Summary button per record | P1 | 1.5 hrs | DONE | Already implemented at PatientDashboard.jsx L834-857 |
 | T2.453a | Records.jsx + PatientDashboard.jsx: replace hardcoded #E65100 amendment orange with COLORS.amendment token (add to designTokens.js) | P3 | 5 min | TODO | Review finding — T2.453 audit |
-| T2.457 | Case-day linkage badges | P2 | 45 min | TODO | "Day 2 of 3" on related records |
+| T2.457 | Case-day linkage badges | P2 | 45 min | DONE | "Day X of Y" badges, integrated into existing appt fetch, blue day-1/orange day-2+. **Review fix:** caseDay<=1 guard → <1 so Day 1 records in chain get badge |
 | T2.458 | Quick Book button per record | P2 | 20 min | TODO | Depends on T2.115 (WalkInModal prefill) |
-| T2.459 | Lab results aggregation in right sidebar (absorbs T2.24-27 admin portion) | P2 | 1.5 hrs | TODO | |
-| T2.460 | Weight trend chart improvements (1-point display, delta annotation) | P2 | 30 min | TODO | |
+| T2.459 | Lab results aggregation in right sidebar (absorbs T2.24-27 admin portion) | P2 | 1.5 hrs | DONE | Always renders, trend context (previous result/date), reference range, status chips, empty state |
+| T2.460 | Weight trend chart improvements (1-point display, delta annotation) | P2 | 30 min | DONE | Single-point prominent display, 2+ points delta annotation (green gain/red loss) |
 | T2.461 | Vitals trend improvements (species-normal reference lines) | P2 | 30 min | TODO | |
 | T2.462 | Expand search: labResults + vaccineData | P2 | 15 min | DONE | |
 | T2.463 | Print-friendly stylesheet (@media print) | P3 | 1 hr | TODO | |

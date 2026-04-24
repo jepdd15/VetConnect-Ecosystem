@@ -47,6 +47,7 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import PrintIcon from '@mui/icons-material/Print';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
+import ShieldIcon from '@mui/icons-material/Shield';
 
 // Charting
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
@@ -58,7 +59,7 @@ import { FONT, TYPE, COLORS, getRecordColor, getInitialColor } from '../../theme
 import { useClinicSettings } from '../../hooks/useClinicSettings';
 
 // ── Printable Document Generators ──────────────────────────────
-import { openPrintWindow } from '../../utils/printUtils';
+import { openPrintWindow, calculatePetAge } from '../../utils/printUtils';
 import { generateVisitSummaryHTML } from '../../utils/printVisitSummary';
 import { generateVaccinationRecordHTML } from '../../utils/printVaccinationRecord';
 
@@ -227,20 +228,6 @@ export default function PatientDashboard() {
     fetchDashboardData();
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const calculateAge = (dob) => {
-    if (!dob) return '—';
-    try {
-      const birthDate = dob.toDate ? dob.toDate() : new Date(dob);
-      if (isNaN(birthDate.getTime())) return '—';
-      const today = new Date();
-      let age = today.getFullYear() - birthDate.getFullYear();
-      const m = today.getMonth() - birthDate.getMonth();
-      if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--;
-      if (age < 0) return '—';
-      if (age === 0) { const mo = Math.floor((today - birthDate) / (1000*60*60*24*30.44)); return mo > 0 ? `${mo}mo` : 'Newborn'; }
-      return `${age}y`;
-    } catch { return '—'; }
-  };
 
   const lastSeenLabel = useMemo(() => {
     if (!history?.length) return null;
@@ -259,7 +246,29 @@ export default function PatientDashboard() {
     let f = [...(history || [])];
     if (timelineSearch) {
       const q = timelineSearch.toLowerCase();
-      f = f.filter(r => [r.diagnosis, r.vetName, r.soap?.subjective, r.soap?.objectiveNotes, r.treatment].some(v => v?.toLowerCase().includes(q)));
+      f = f.filter(r => {
+        // Core SOAP fields
+        const textFields = [
+          r.diagnosis, r.vetName, r.treatment,
+          r.soap?.subjective, r.soap?.objectiveNotes,
+          r.soap?.assessment, r.soap?.plan,
+        ];
+        if (textFields.some(v => v?.toLowerCase().includes(q))) return true;
+
+        // T2.130: Prescriptions — search item names
+        if (r.prescriptions?.some(rx => rx.name?.toLowerCase().includes(q))) return true;
+
+        // T2.462: Lab results — handle both string and array shapes
+        if (typeof r.labResults === 'string' && r.labResults.toLowerCase().includes(q)) return true;
+        if (Array.isArray(r.labResults) && r.labResults.some(lr =>
+          (lr.testName || lr.name || lr.result || '').toLowerCase().includes(q)
+        )) return true;
+
+        // T2.462: Vaccine data
+        if (r.vaccineData?.vaccineName?.toLowerCase().includes(q)) return true;
+
+        return false;
+      });
     }
     if (timelineFilter !== 'All') f = f.filter(r => (r.recordType || 'medical') === timelineFilter);
     f.sort((a, b) => { const dA = a.date?.seconds||0, dB = b.date?.seconds||0; return timelineSort === 'desc' ? dB-dA : dA-dB; });
@@ -525,7 +534,7 @@ export default function PatientDashboard() {
                 {pet?.gender === 'Female' ? <FemaleIcon sx={{ fontSize: 13, color: '#E91E63' }} /> : pet?.gender === 'Male' ? <MaleIcon sx={{ fontSize: 13, color: '#1976D2' }} /> : null}
                 {sexLabel}
               </Typography>
-              <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary }}>Age: <span style={{ color: COLORS.brand, fontWeight: 700 }}>{calculateAge(pet?.dob)}</span></Typography>
+              <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary }}>Age: <span style={{ color: COLORS.brand, fontWeight: 700 }}>{calculatePetAge(pet?.dob)}</span></Typography>
               <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary }}>Wt: <span style={{ color: '#E65100', fontWeight: 700 }}>{pet?.lastWeight ? `${pet.lastWeight}kg` : 'N/A'}</span></Typography>
               {computedOutstandingBalance > 0 && (
                 <Tooltip title="This client has an unpaid balance computed from sales records.">
@@ -830,6 +839,55 @@ export default function PatientDashboard() {
                           </Stack>
                         </Grid>
                       </Grid>
+
+                      {/* Clinical Amendments (T2.453) */}
+                      {rec.amendments?.length > 0 && (
+                        <Box sx={{ mt: 2, pt: 1.5, borderTop: `1px dashed ${COLORS.borderLight}` }}>
+                          <Typography sx={{
+                            fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 1,
+                            display: 'flex', alignItems: 'center', gap: 0.5
+                          }}>
+                            <ShieldIcon sx={{ fontSize: 13, color: '#E65100' }} />
+                            AMENDMENTS ({rec.amendments.length})
+                          </Typography>
+                          <Stack spacing={1}>
+                            {[...rec.amendments]
+                              .sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0))
+                              .map((amend, idx) => {
+                                const ts = amend.timestamp?.toDate
+                                  ? amend.timestamp.toDate()
+                                  : (amend.timestamp?.seconds ? new Date(amend.timestamp.seconds * 1000) : null);
+                                return (
+                                  <Box key={idx} sx={{
+                                    pl: 1.5, borderLeft: `3px solid #E65100`,
+                                    bgcolor: '#FFF8E1', py: 1, px: 1.5,
+                                  }}>
+                                    {amend.reason && (
+                                      <Typography sx={{
+                                        fontFamily: FONT, fontSize: '0.7rem', fontWeight: 700,
+                                        color: '#E65100', textTransform: 'uppercase', mb: 0.25
+                                      }}>
+                                        Reason: {amend.reason}
+                                      </Typography>
+                                    )}
+                                    <Typography sx={{
+                                      fontFamily: FONT, ...TYPE.body, color: COLORS.textPrimary,
+                                      whiteSpace: 'pre-wrap'
+                                    }}>
+                                      {amend.text}
+                                    </Typography>
+                                    <Typography sx={{
+                                      fontFamily: FONT, fontSize: '0.7rem', color: COLORS.textMuted, mt: 0.5
+                                    }}>
+                                      {amend.vetName || 'Clinician'}
+                                      {ts ? ` — ${ts.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${ts.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : ''}
+                                    </Typography>
+                                  </Box>
+                                );
+                              })}
+                          </Stack>
+                        </Box>
+                      )}
 
                       {/* Print Visit Summary — stopPropagation prevents toggling the Collapse */}
                       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1.5, pt: 1, borderTop: `1px solid ${COLORS.borderLight}` }}>

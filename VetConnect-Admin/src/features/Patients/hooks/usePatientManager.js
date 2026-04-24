@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
-import { 
-  collection, query, where, onSnapshot, getDocs, getDoc,
-  updateDoc, doc, addDoc, Timestamp, orderBy, limit
+import { useState, useEffect } from 'react';
+import {
+  collection, query, where, onSnapshot, getDocs,
+  updateDoc, doc, addDoc, Timestamp, orderBy, limit,
+  arrayUnion, runTransaction
 } from 'firebase/firestore';
 import { db, auth } from '../../../firebaseConfig';
+import { calculatePetAge } from '../../../utils/printUtils';
 
 export function usePatientManager(onClientSelected) { // <-- Added callback prop
   const [owners, setOwners] = useState([]);
@@ -47,36 +49,6 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
     return val; 
   };
   
-  const calculateAge = useCallback((dob) => { 
-    // THE FIX: It now handles null, timestamps, and old string data
-    if (!dob) return 'Age TBD'; // "To Be Determined" is more professional
-    
-    let birthDate;
-    try {
-      if (dob.toDate) { // Check if it's a Firestore Timestamp
-        birthDate = dob.toDate();
-      } else {
-        birthDate = new Date(dob); // Try to parse it as a string
-      }
-      
-      if (isNaN(birthDate.getTime())) return 'Age TBD'; // If parsing fails, give up
-
-      const today = new Date(); 
-      let age = today.getFullYear() - birthDate.getFullYear(); 
-      const m = today.getMonth() - birthDate.getMonth(); 
-      if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--; 
-      
-      if (age < 0) return 'Age TBD'; // Handle future dates
-      if (age === 0) {
-        const months = Math.floor((today - birthDate) / (1000 * 60 * 60 * 24 * 30.44));
-        return months > 0 ? `${months} mo` : 'Newborn';
-      }
-
-      return `${age} yrs`;
-    } catch (e) {
-      return 'Age TBD';
-    }
-  },[]);
 
   useEffect(() => {
     const q = query(collection(db, "users"), where("role", "==", "pet_owner"));
@@ -227,17 +199,32 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
   };
 
   const handleAddNote = async () => {
-    if(!newNote || !selectedClient) return;
-    const note = { id: Date.now().toString(), text: newNote, category: noteCategory, date: new Date().toISOString(), staff: auth.currentUser?.email || "Admin" };
-    const updatedNotes = [...(selectedClient.staffNotes || []), note];
-    await updateDoc(doc(db, "users", selectedClient.id), { staffNotes: updatedNotes });
+    if (!newNote.trim() || !selectedClient) return;
+    const note = {
+      id: Date.now().toString(),
+      text: newNote,
+      category: noteCategory,
+      date: new Date().toISOString(),
+      staff: auth.currentUser?.email || 'Admin',
+    };
+    await updateDoc(doc(db, 'users', selectedClient.id), {
+      staffNotes: arrayUnion(note),
+    });
     setNewNote('');
   };
 
   const handleDeleteNote = async (noteId) => {
-    if(!selectedClient) return;
-    const updatedNotes = (selectedClient.staffNotes || []).filter(n => n.id !== noteId);
-    await updateDoc(doc(db, "users", selectedClient.id), { staffNotes: updatedNotes });
+    if (!selectedClient) return;
+    if (!window.confirm('Delete this note permanently?')) return;
+    await runTransaction(db, async (transaction) => {
+      const userRef = doc(db, 'users', selectedClient.id);
+      const snap = await transaction.get(userRef);
+      if (!snap.exists()) return;
+      const currentNotes = snap.data().staffNotes || [];
+      transaction.update(userRef, {
+        staffNotes: currentNotes.filter(n => n.id !== noteId),
+      });
+    });
   };
 
   const handleAdminAddPet = async () => {
@@ -252,7 +239,11 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
         petAllergies: resolvedAllergies,
         allergies: resolvedAllergies,
         dob: newPetData.dob ? Timestamp.fromDate(new Date(newPetData.dob)) : null,
+        isAgeExact: !!newPetData.dob,
+        weight: newPetData.lastWeight ? parseFloat(newPetData.lastWeight) : null,
+        lastWeight: newPetData.lastWeight ? parseFloat(newPetData.lastWeight) : null,
         createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
         status: 'active',
       };
       await addDoc(collection(db, "pets"), payload);
@@ -260,47 +251,19 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
       return true;
   };
   
-  const fetchPetClinicalData = async (petId) => {
-    if (!petId) return { history: [], vitals:[] };
-    try {
-      const q = query(collection(db, "medical_records"), where("petId", "==", petId), orderBy("date", "desc"));
-      const snapshot = await getDocs(q);
-      
-      // THE FIX: We now do a deep fetch to get the Service Name and Prescriptions!
-      const history = await Promise.all(snapshot.docs.map(async (docSnap) => {
-          const rec = { id: docSnap.id, ...docSnap.data() };
-
-          if (rec.appointmentId) {
-              const apptDoc = await getDoc(doc(db, "appointments", rec.appointmentId));
-              if (apptDoc.exists()) {
-                  const apptData = apptDoc.data();
-                  rec.serviceType = apptData.serviceType;
-                  rec.prescriptions = apptData.prescribedItems || [];
-              }
-          }
-          return rec;
-      }));
-
-      const vitals = history.map(rec => rec.vitals && rec.vitals.weight && rec.date ? { date: new Date(rec.date.seconds * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), weight: parseFloat(rec.vitals.weight) } : null).filter(Boolean).reverse(); 
-      return { history, vitals };
-    } catch (error) { 
-      console.error("Error fetching clinical data:", error); 
-      return { history: [], vitals:[] }; 
-    }
-  };
-
   const archivePet = async (petId) => {
     if (!petId) throw new Error("No pet ID provided.");
     await updateDoc(doc(db, "pets", petId), { status: 'archived', archivedAt: Timestamp.now() });
   };
 
   return {
-    owners, allPetsSnapshot, searchText, setSearchText, selectedClient, setSelectedClient, 
+    owners, allPetsSnapshot, searchText, setSearchText, selectedClient, setSelectedClient,
     clientPets, clientTransactions, outstandingBalance,
-    loading: loadingDirectory || loadingClientData, 
-    handleSelectClient, calculateAge,
+    loading: loadingDirectory || loadingClientData,
+    loadingClientData,
+    handleSelectClient, calculatePetAge,
     isEditing, setIsEditing, editForm, setEditForm, handleSaveProfile,
     newNote, setNewNote, noteCategory, setNoteCategory, handleAddNote, handleDeleteNote,
-    newPetData, setNewPetData, handleAdminAddPet, fetchPetClinicalData, archivePet 
+    newPetData, setNewPetData, handleAdminAddPet, archivePet,
   };
 }

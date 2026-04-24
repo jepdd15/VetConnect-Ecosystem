@@ -61,6 +61,8 @@ export default function EditPetModal({ open, onClose, pet }) {
         microchip: form.microchip.trim(),
         weight: form.lastWeight ? parseFloat(form.lastWeight) : null,
         lastWeight: form.lastWeight ? parseFloat(form.lastWeight) : null,
+        updatedAt: Timestamp.now(),
+        isAgeExact: !!form.dob,
       };
 
       await updateDoc(doc(db, 'pets', pet.id), payload);
@@ -139,6 +141,7 @@ export default function EditPetModal({ open, onClose, pet }) {
             <Grid item xs={12} md={6}>
               <TextField type="date" label="Date of Birth" fullWidth size="small"
                 InputLabelProps={{ shrink: true }}
+                inputProps={{ max: new Date().toISOString().split('T')[0] }}
                 value={form.dob} onChange={(e) => setForm({...form, dob: e.target.value})}
                 sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }} />
             </Grid>

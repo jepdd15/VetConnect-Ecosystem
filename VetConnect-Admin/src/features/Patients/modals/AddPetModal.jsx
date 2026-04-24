@@ -51,6 +51,7 @@ export default function AddPetModal({ open, onClose, ownerName, newPetData, setN
                   <Grid item xs={12} md={6}>
                     <TextField type="date" label="Birthday" fullWidth size="small"
                       InputLabelProps={{shrink: true}}
+                      inputProps={{ max: new Date().toISOString().split('T')[0] }}
                       value={newPetData.dob} onChange={(e)=>setNewPetData({...newPetData, dob:e.target.value})}
                       sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }} />
                   </Grid>

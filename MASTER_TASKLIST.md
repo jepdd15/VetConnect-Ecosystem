@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-04-23 · **Branch:** `main`
 **Total tasks:** ~719 · **Cancelled/Absorbed:** ~16 · **Active:** ~703
-**DONE:** 464 · **TODO:** 234 · **Deferred sub-tasks:** 61
+**DONE:** 482 · **TODO:** 216 · **Deferred sub-tasks:** 62
 **Critical path to defense:** Dashboard Build (~32 hrs) + thesis
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~154 hours (Phase 4 S-Tier)
 
@@ -85,7 +85,7 @@
 | T2.2 | Printable visit summary | 2-3 hrs | — | DONE | SOAP, vitals, Rx, vaccine, lab, discharge sections. Shared printUtils.js. **Review fix:** esc() XSS prevention on all dynamic values |
 | T2.3 | Printable vaccination record | 1-2 hrs | — | DONE | Per-pet history + status summary. **Review fixes:** Timestamp-safe dueDate parsing, dedup comparison via toDate().getTime(). NOTE: reads vaccineData singular — needs update after T2.472 |
 | T2.4 | Printable referral report | 1-2 hrs | — | DONE | ReferralModal (ephemeral, no Firestore write) + printReferralReport. **Review fix:** form state reset on reopen via useEffect([open]) |
-| T2.4a | Extract calculatePetAge to printUtils.js shared helper (duplicated in printVisitSummary + printReferralReport + PatientDashboard) | P3 | 10 min | TODO | Review finding — 3 slightly different implementations |
+| T2.4a | Extract calculatePetAge to printUtils.js shared helper (duplicated in printVisitSummary + printReferralReport + PatientDashboard) | P3 | 10 min | DONE | Canonical export in printUtils.js, 4 consumers updated |
 | T2.4b | printReferralReport: add vitals.pain to guard condition (omitted from the 7-vital check) | P3 | 1 min | DONE | Review finding |
 | T2.4c | PatientDashboard: remove stale `pet` from useEffect dependency array (pre-existing, causes re-fetch loop risk) | P3 | 1 min | DONE | Review finding — pre-existing tech debt |
 | T2.4d | PatientDashboard banner buttons: borderRadius 1.5 → 0 (neubrutalism compliance, affects Add Record + Book Visit + Referral) | P3 | 5 min | DONE | Review finding — Design Sweep scope |
@@ -168,11 +168,11 @@
 | T2.115 | QuickBookModal → WalkInModal direct integration with prefill | 1.5-2 hrs | — | TODO | Decision locked: Option B |
 | T2.116 | Archive pet: confirmation dialog + archivedBy + restore | 30 min | — | TODO | |
 | T2.122 | Weight type fix: parseFloat, write both weight + lastWeight | 10 min | — | DONE | |
-| T2.123 | Admin pet modal field parity (updatedAt, isAgeExact, max DOB, petAllergies) | 20 min | — | TODO | |
-| T2.124 | NewClientModal: add `accountStatus: 'admin_registered'` flag | 10 min | — | TODO | Decision locked: Option A |
-| T2.125 | Staff notes: delete confirmation + arrayUnion for atomic adds | 30 min | — | TODO | |
+| T2.123 | Admin pet modal field parity (updatedAt, isAgeExact, max DOB, petAllergies) | 20 min | — | DONE | |
+| T2.124 | NewClientModal: add `accountStatus: 'admin_registered'` flag | 10 min | — | DONE | Decision locked: Option A |
+| T2.125 | Staff notes: delete confirmation + arrayUnion for atomic adds | 30 min | — | DONE | |
 | T2.126 | PatientDashboard: fix double-fetch (remove pet from useEffect deps) | 15 min | — | DONE | 50 wasted reads |
-| T2.132 | Duplicate client phone check with override dialog | 20 min | — | TODO | Decision locked: Option A |
+| T2.132 | Duplicate client phone check with override dialog | 20 min | — | DONE | Decision locked: Option A |
 | T2.140 | Refund date: Option C — show on both days. Dual query + dedup + cross-day badge. EOD refund total uses refund date. | 1.5 hrs | — | DONE | **Review fix:** filterStatus case mismatch fixed; needs composite index sales(status ASC, refundedAt ASC) |
 | T2.141 | Add "Bank Transfer" to payment method filter dropdown. Fix Card tile click to include Bank Transfer. | 10 min | — | DONE | |
 | T2.142 | Wire Print Report button: generate EOD summary HTML | 1 hr | — | DONE | **Review fix:** printWindow.close() added; disabled during loading |
@@ -269,13 +269,13 @@
 | T2.109a | Adopt createPulseEvent factory: refactor 3+ inline pulse-event objects in useQueueActions.js to use the factory | P3 | 30 min | T2.109 | TODO | Review finding — factory exported but zero consumers, consistency benefit deferred |
 | T2.111 | Extract shared ClinicalTimeline component | 1.5 hrs | — | DONE | Non-essential refactor |
 | T2.114 | Owner name: fullName fix in PatientDashboard | 2 min | — | DONE | |
-| T2.117 | Deduplicate calculateAge into shared util | 10 min | — | TODO | |
+| T2.117 | Deduplicate calculateAge into shared util | 10 min | — | DONE | |
 | T2.118 | PatientDashboard dead buttons (3) | 15 min | — | TODO | |
-| T2.127 | PatientDirectory: empty state + null guard + React.memo | 15 min | — | TODO | |
-| T2.128 | Stale-data flash on client switch | 15 min | — | TODO | |
+| T2.127 | PatientDirectory: empty state + null guard + React.memo | 15 min | — | DONE | |
+| T2.128 | Stale-data flash on client switch | 15 min | — | DONE | |
 | T2.129 | Replace 3 alert() calls with MUI Snackbar (Patients) | 15 min | — | TODO | |
-| T2.130 | Expand search to include prescriptions, assessment, plan | 10 min | — | TODO | |
-| T2.131 | Remove dead code (4 items in Patients module) | 5 min | — | TODO | |
+| T2.130 | Expand search to include prescriptions, assessment, plan | 10 min | — | DONE | |
+| T2.131 | Remove dead code (4 items in Patients module) | 5 min | — | DONE | |
 | T2.133 | Contact freshness prompt at check-in (>90 days) | 30 min | — | TODO | |
 | T2.134 | Client-level engagement KPIs in ClientHeader | 45 min | — | TODO | |
 | T2.135 | Deceased pet status + dateOfDeath + memorial indicator | 15 min | — | TODO | |
@@ -840,22 +840,23 @@
 
 | ID | Name | Priority | Effort | Status | Notes |
 |---|---|---|---|---|---|
-| T2.453 | Clinical amendment system (= T2.75) | P1 | 3 hrs | TODO | Append-only clinicalAmendments[] |
-| T2.454 | Print Visit Summary button per record | P1 | 1.5 hrs | TODO | Q11-compliant template |
+| T2.453 | Clinical amendment system (= T2.75) | P1 | 3 hrs | DONE | Append-only clinicalAmendments[] |
+| T2.454 | Print Visit Summary button per record | P1 | 1.5 hrs | DONE | Already implemented at PatientDashboard.jsx L834-857 |
+| T2.453a | Records.jsx + PatientDashboard.jsx: replace hardcoded #E65100 amendment orange with COLORS.amendment token (add to designTokens.js) | P3 | 5 min | TODO | Review finding — T2.453 audit |
 | T2.457 | Case-day linkage badges | P2 | 45 min | TODO | "Day 2 of 3" on related records |
 | T2.458 | Quick Book button per record | P2 | 20 min | TODO | Depends on T2.115 (WalkInModal prefill) |
 | T2.459 | Lab results aggregation in right sidebar (absorbs T2.24-27 admin portion) | P2 | 1.5 hrs | TODO | |
 | T2.460 | Weight trend chart improvements (1-point display, delta annotation) | P2 | 30 min | TODO | |
 | T2.461 | Vitals trend improvements (species-normal reference lines) | P2 | 30 min | TODO | |
-| T2.462 | Expand search: labResults + vaccineData | P2 | 15 min | TODO | |
+| T2.462 | Expand search: labResults + vaccineData | P2 | 15 min | DONE | |
 | T2.463 | Print-friendly stylesheet (@media print) | P3 | 1 hr | TODO | |
 | T2.464 | Prescription frequency analysis | P3 | 45 min | TODO | |
 | T2.465 | Vaccination schedule completeness percentage | P3 | 30 min | TODO | |
-| T2.466 | Add RR, CRT, BCS, Pain to per-record vitals box | P1 | 20 min | TODO | 4 vitals recorded but not displayed |
-| T2.467 | Add RR trend chart to sidebar | P2 | 15 min | TODO | |
-| T2.468 | Add BCS trend chart to sidebar | P2 | 15 min | TODO | |
-| T2.469 | Add Pain Scale trend chart to sidebar | P2 | 15 min | TODO | |
-| T2.470 | Extract RR/CRT/BCS/Pain from medical_records in data processing | P1 | 10 min | TODO | |
+| T2.466 | Add RR, CRT, BCS, Pain to per-record vitals box | P1 | 20 min | DONE | 4 vitals recorded but not displayed |
+| T2.467 | Add RR trend chart to sidebar | P2 | 15 min | DONE | |
+| T2.468 | Add BCS trend chart to sidebar | P2 | 15 min | DONE | |
+| T2.469 | Add Pain Scale trend chart to sidebar | P2 | 15 min | DONE | |
+| T2.470 | Extract RR/CRT/BCS/Pain from medical_records in data processing | P1 | 10 min | DONE | |
 
 ### Vaccination System Redesign (T2.472-T2.479)
 

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, Button, Grid, Box, Typography, Divider } from '@mui/material';
-import { collection, addDoc, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, Timestamp, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../../firebaseConfig';
 
 // Design Tokens
@@ -22,17 +22,38 @@ export default function NewClientModal({ open, onClose }) {
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [duplicates, setDuplicates] = useState([]);
+  const [showDupeWarning, setShowDupeWarning] = useState(false);
 
   const resetForms = () => {
     setForm({ fullName: '', phone: '', email: '', address: '', city: '', clientTag: 'Regular' });
     setPetForm({ name: '', species: 'Canine' });
     setError('');
+    setDuplicates([]);
+    setShowDupeWarning(false);
   };
 
-  const handleSave = async () => {
+  const handleSave = async (forceCreate = false) => {
     // Validation
     if (!form.fullName.trim()) { setError('Client name is required.'); return; }
     if (!form.phone.trim()) { setError('Phone number is required.'); return; }
+
+    // Duplicate phone check — skip if staff already confirmed via override
+    if (!forceCreate) {
+      setSaving(true);
+      const phoneQ = query(
+        collection(db, 'users'),
+        where('phone', '==', form.phone.trim()),
+        where('role', '==', 'pet_owner'),
+      );
+      const phoneSnap = await getDocs(phoneQ);
+      if (!phoneSnap.empty) {
+        setDuplicates(phoneSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setShowDupeWarning(true);
+        setSaving(false);
+        return;
+      }
+    }
 
     setSaving(true);
     setError('');
@@ -46,6 +67,7 @@ export default function NewClientModal({ open, onClose }) {
         city: form.city.trim() || null,
         clientTag: form.clientTag,
         role: 'pet_owner',
+        accountStatus: 'admin_registered',   // no Firebase Auth account — guest-client pattern
         accountStanding: 'Good Standing',
         staffNotes: [],
         emergencyContacts: [],
@@ -62,9 +84,11 @@ export default function NewClientModal({ open, onClose }) {
           breed: 'Unknown Breed',
           gender: 'Male',
           isNeutered: false,
-          allergies: 'None',
+          petAllergies: 'None',   // canonical field
+          allergies: 'None',      // legacy alias
           status: 'active',
           createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
         });
       }
 
@@ -161,11 +185,41 @@ export default function NewClientModal({ open, onClose }) {
       </DialogContent>
       <DialogActions sx={{ p: 2, bgcolor: COLORS.surfaceAlt, gap: 1 }}>
         <Button onClick={() => { resetForms(); onClose(false); }} sx={{ fontFamily: FONT, color: COLORS.textMuted }}>Cancel</Button>
-        <Button onClick={handleSave} variant="contained" disabled={saving} startIcon={<SaveIcon />}
+        <Button onClick={() => handleSave(false)} variant="contained" disabled={saving} startIcon={<SaveIcon />}
           sx={{ fontFamily: FONT, bgcolor: COLORS.cta, fontWeight: 'bold', px: 3, '&:hover': { bgcolor: COLORS.ctaHover } }}>
           {saving ? 'Registering...' : 'Register Client'}
         </Button>
       </DialogActions>
+
+      {/* Duplicate Phone Warning */}
+      <Dialog open={showDupeWarning} onClose={() => setShowDupeWarning(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.warning }}>
+          Possible Duplicate Client
+        </DialogTitle>
+        <DialogContent>
+          <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', mb: 2 }}>
+            A client with phone number <strong>{form.phone}</strong> already exists:
+          </Typography>
+          {duplicates.map(d => (
+            <Box key={d.id} sx={{ p: 1.5, mb: 1, bgcolor: COLORS.surfaceAlt, border: `1px solid ${COLORS.borderLight}` }}>
+              <Typography sx={{ fontFamily: FONT, fontWeight: 700 }}>{d.fullName}</Typography>
+              <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.textMuted }}>{d.phone}</Typography>
+            </Box>
+          ))}
+        </DialogContent>
+        <DialogActions sx={{ p: 2, gap: 1 }}>
+          <Button onClick={() => setShowDupeWarning(false)} sx={{ fontFamily: FONT, color: COLORS.textMuted }}>
+            Go Back
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => { setShowDupeWarning(false); handleSave(true); }}
+            sx={{ fontFamily: FONT, bgcolor: COLORS.warning, fontWeight: 'bold', '&:hover': { bgcolor: '#E65100' } }}
+          >
+            Create Anyway
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Dialog>
   );
 }

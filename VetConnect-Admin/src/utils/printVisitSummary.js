@@ -1,32 +1,4 @@
-import { PRINT_STYLES, formatPrintDate, esc } from './printUtils';
-
-/**
- * Calculates a human-readable age string from a date of birth value.
- * Mirrors the `calculateAge` function in PatientDashboard.jsx — kept local
- * here so the print generators have no dependency on React component files.
- *
- * @param {*} dob  Firestore Timestamp, date string, or null
- * @returns {string}
- */
-function calculatePetAge(dob) {
-  if (!dob) return '—';
-  try {
-    const birthDate = dob.toDate ? dob.toDate() : new Date(dob);
-    if (isNaN(birthDate.getTime())) return '—';
-    const today = new Date();
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const m = today.getMonth() - birthDate.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--;
-    if (age < 0) return '—';
-    if (age === 0) {
-      const mo = Math.floor((today - birthDate) / (1000 * 60 * 60 * 24 * 30.44));
-      return mo > 0 ? `${mo}mo` : 'Newborn';
-    }
-    return `${age}y`;
-  } catch {
-    return '—';
-  }
-}
+import { PRINT_STYLES, formatPrintDate, esc, calculatePetAge } from './printUtils';
 
 /**
  * Renders the vitals table row. Returns an empty string when no vitals exist.

@@ -509,6 +509,7 @@ export default function Records() {
          if (['CANCELLED', 'NO-SHOW'].includes(s)) color = COLORS.danger;
          if (['IN-CONSULT', 'ARRIVED', 'DISPENSING', 'BILLING', 'ON-HOLD', 'CONFINED'].includes(s)) color = COLORS.medical;
 
+         const amendCount = (p.row.clinicalPulse || []).filter(e => e.type === 'CLINICAL_AMENDMENT').length;
          return (
            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
              <Box sx={{ border: `1.5px solid ${color}`, px: 1.5, py: 0.5, borderRadius: 0, bgcolor: 'white' }}>
@@ -517,6 +518,20 @@ export default function Records() {
              {isTerminal && (
                <Tooltip title="Visit sealed">
                  <ShieldIcon sx={{ fontSize: 14, color: COLORS.success, opacity: 0.8 }} />
+               </Tooltip>
+             )}
+             {amendCount > 0 && (
+               <Tooltip title={`${amendCount} amendment${amendCount > 1 ? 's' : ''}`}>
+                 <Chip
+                   label={`${amendCount}A`}
+                   size="small"
+                   sx={{
+                     height: 18, fontSize: '0.55rem', fontWeight: 1000,
+                     borderRadius: 0, ml: 0.5,
+                     bgcolor: '#FFF3E0', color: '#E65100',
+                     border: '1px solid #E65100',
+                   }}
+                 />
                </Tooltip>
              )}
            </Box>

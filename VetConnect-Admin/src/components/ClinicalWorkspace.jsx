@@ -27,6 +27,7 @@ import { db, auth } from '../firebaseConfig';
 import { useInventory } from '../features/Inventory/hooks/useInventory';
 import { calculatePulseMetrics, makePulseEventId } from '../utils/pulseUtils';
 import { useClinicSettings } from '../hooks/useClinicSettings';
+import { useUser } from '../context/UserContext';
 
 // Design Tokens
 import { FONT, TYPE, COLORS } from '../theme/designTokens';
@@ -328,6 +329,7 @@ export const ZEN_PLACEHOLDERS = {
 
 export default function ClinicalWorkspace({ open, onClose, patient, inventoryList, servicesList, departments, vetsList }) {
   const clinicSettings = useClinicSettings();
+  const { profile: cwProfile } = useUser();
   const [isDirty, setIsDirty] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -355,6 +357,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
 
   // T2.75: Clinical amendment state — append-only addenda on sealed records
   const [amendmentText, setAmendmentText] = useState('');
+  const [amendmentReason, setAmendmentReason] = useState('');
   const [showAmendInput, setShowAmendInput] = useState(false);
 
   // C1: Structured vaccine administration records — array for multi-vaccine-per-visit
@@ -1414,7 +1417,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   // T2.75: Append-only clinical amendment on a sealed record.
   // Writes to medical_records.amendments[] and appends a CLINICAL_AMENDMENT pulse event.
   const handleSubmitAmendment = async () => {
-    if (!amendmentText.trim()) return;
+    if (!amendmentText.trim() || !amendmentReason.trim()) return;
     setLoading(true);
     try {
       const q = query(
@@ -1432,8 +1435,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       amendBatch.update(recordRef, {
         amendments: arrayUnion({
           text: amendmentText.trim(),
-          vetId: auth.currentUser?.uid || 'unknown',
-          vetName: auth.currentUser?.displayName || 'Clinician',
+          reason: amendmentReason.trim(),
+          vetId: cwProfile?.id || auth.currentUser?.uid || 'unknown',
+          vetName: cwProfile?.fullName || auth.currentUser?.displayName || 'Clinician',
           timestamp: Timestamp.now(),
         }),
       });
@@ -1442,13 +1446,14 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           eventId: makePulseEventId('amend'),
           type: 'CLINICAL_AMENDMENT',
           timestamp: Timestamp.now(),
-          staffId: auth.currentUser?.uid || 'unknown',
-          staffName: auth.currentUser?.displayName || 'Clinician',
-          note: `Amendment: ${amendmentText.trim().slice(0, 100)}`,
+          staffId: cwProfile?.id || auth.currentUser?.uid || 'unknown',
+          staffName: cwProfile?.fullName || auth.currentUser?.displayName || 'Clinician',
+          note: `Amendment (${amendmentReason.trim().slice(0, 40)}): ${amendmentText.trim().slice(0, 80)}`,
         }),
       });
       await amendBatch.commit();
       setAmendmentText('');
+      setAmendmentReason('');
       setShowAmendInput(false);
       showToast("Amendment saved.", "success");
     } catch (error) {
@@ -2133,6 +2138,14 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                                 <Box sx={{ mt: 1.5, textAlign: 'left' }}>
                                     <TextField
                                         fullWidth
+                                        size="small"
+                                        placeholder="Reason for amendment (required)..."
+                                        value={amendmentReason}
+                                        onChange={(e) => setAmendmentReason(e.target.value)}
+                                        sx={{ mb: 1, bgcolor: 'white', borderRadius: 0, '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+                                    />
+                                    <TextField
+                                        fullWidth
                                         multiline
                                         rows={3}
                                         size="small"
@@ -2146,14 +2159,14 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                                             size="small"
                                             variant="contained"
                                             onClick={handleSubmitAmendment}
-                                            disabled={loading || !amendmentText.trim()}
+                                            disabled={loading || !amendmentText.trim() || !amendmentReason.trim()}
                                             sx={{ fontWeight: 900, bgcolor: '#2E7D32', borderRadius: 0, '&:hover': { bgcolor: '#1B5E20' } }}
                                         >
                                             Save Amendment
                                         </Button>
                                         <Button
                                             size="small"
-                                            onClick={() => { setShowAmendInput(false); setAmendmentText(''); }}
+                                            onClick={() => { setShowAmendInput(false); setAmendmentText(''); setAmendmentReason(''); }}
                                             sx={{ fontWeight: 900, borderRadius: 0, color: COLORS.textSecondary }}
                                         >
                                             Cancel

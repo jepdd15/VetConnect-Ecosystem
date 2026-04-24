@@ -22,7 +22,7 @@ import SortIcon from '@mui/icons-material/Sort';
 import ScaleIcon from '@mui/icons-material/Scale'; 
 import EditIcon from '@mui/icons-material/Edit';
 
-export default function PetList({ pets, onRegisterPet, onViewChart, onQuickBook, calculateAge, onArchive, onEditPet }) {
+export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePetAge, onArchive, onEditPet }) {
   const [anchorEl, setAnchorEl] = useState(null);
   const[selectedPet, setSelectedPet] = useState(null);
   const navigate = useNavigate();
@@ -122,7 +122,7 @@ export default function PetList({ pets, onRegisterPet, onViewChart, onQuickBook,
 
       <Grid container spacing={3}>
         {processedPets.map(pet => {
-          const rawAge = calculateAge(pet.dob);
+          const rawAge = calculatePetAge(pet.dob);
           const displayAge = rawAge === 'Age TBD' || rawAge === '' ? 'Age Unknown' : rawAge;
           // T2.119: Normalize allergy reads — petAllergies (canonical) falls back to allergies (legacy).
           const resolvedAllergies = pet.petAllergies || pet.allergies || '';

@@ -159,6 +159,27 @@ export function esc(str) {
     .replace(/"/g, '&quot;');
 }
 
+// NOTE: Do NOT use calculatePetAge for ClinicalWorkspace or queueColumns — those have intentionally different formats (Xy Xm, isAgeExact).
+export function calculatePetAge(dob) {
+  if (!dob) return '—';
+  try {
+    const birthDate = dob.toDate ? dob.toDate() : new Date(dob);
+    if (isNaN(birthDate.getTime())) return '—';
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const m = today.getMonth() - birthDate.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--;
+    if (age < 0) return '—';
+    if (age === 0) {
+      const mo = Math.floor((today - birthDate) / (1000 * 60 * 60 * 24 * 30.44));
+      return mo > 0 ? `${mo}mo` : 'Newborn';
+    }
+    return `${age}y`;
+  } catch {
+    return '—';
+  }
+}
+
 export function openPrintWindow(html, onBlocked) {
   const win = window.open('', '_blank', 'width=800,height=600');
   if (win) {

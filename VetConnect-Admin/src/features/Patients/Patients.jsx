@@ -24,8 +24,6 @@ import NewClientModal from './modals/NewClientModal';
 
 // Icons
 import PetsIcon from '@mui/icons-material/Pets';
-import CloseIcon from '@mui/icons-material/Close';
-import SaveIcon from '@mui/icons-material/Save';
 
 export default function Patients() {
   const location = useLocation();
@@ -39,12 +37,12 @@ export default function Patients() {
   const { 
     owners, allPetsSnapshot, searchText, setSearchText, selectedClient, 
     clientPets, clientTransactions, outstandingBalance, 
-    handleSelectClient, calculateAge, isEditing, setIsEditing, 
+    handleSelectClient, calculatePetAge, isEditing, setIsEditing,
     editForm, setEditForm, handleSaveProfile,
     newNote, setNewNote, noteCategory, setNoteCategory, handleAddNote, handleDeleteNote,
     newPetData, setNewPetData, handleAdminAddPet,
-    loading, fetchPetClinicalData, archivePet 
-  } = usePatientManager(() => setActiveTab(0)); 
+    loading, loadingClientData, archivePet
+  } = usePatientManager(() => setActiveTab(0));
 
   // Modal States
   const [openAddPet, setOpenAddPet] = useState(false);
@@ -125,11 +123,16 @@ export default function Patients() {
               </Tabs>
             </Box>
 
-            <Box sx={{ flexGrow: 1, overflowY: 'auto', bgcolor: COLORS.surface }}>
-                {activeTab === 0 && <PetList pets={clientPets} calculateAge={calculateAge} onRegisterPet={() => setOpenAddPet(true)} onArchive={archivePet} onQuickBook={handleQuickBookOpen} onEditPet={(pet) => { setSelectedPet(pet); setOpenEditPet(true); }} />}
-                {activeTab === 1 && <ClientDetails editForm={editForm} setEditForm={setEditForm} isEditing={isEditing} calculateAge={calculateAge} />}
-                {activeTab === 2 && <BillingLedger transactions={clientTransactions} />}
-                {activeTab === 3 && <InternalLogs notes={selectedClient.staffNotes || []} newNote={newNote} setNewNote={setNewNote} category={noteCategory} setCategory={setNoteCategory} onAdd={handleAddNote} onDelete={handleDeleteNote} />}
+            <Box sx={{ flexGrow: 1, overflowY: 'auto', bgcolor: COLORS.surface, position: 'relative' }}>
+              {loadingClientData && (
+                <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'rgba(255,255,255,0.7)', zIndex: 10 }}>
+                  <CircularProgress size={32} />
+                </Box>
+              )}
+              {activeTab === 0 && <PetList pets={clientPets} calculatePetAge={calculatePetAge} onRegisterPet={() => setOpenAddPet(true)} onArchive={archivePet} onQuickBook={handleQuickBookOpen} onEditPet={(pet) => { setSelectedPet(pet); setOpenEditPet(true); }} />}
+              {activeTab === 1 && <ClientDetails editForm={editForm} setEditForm={setEditForm} isEditing={isEditing} calculatePetAge={calculatePetAge} />}
+              {activeTab === 2 && <BillingLedger transactions={clientTransactions} />}
+              {activeTab === 3 && <InternalLogs notes={selectedClient.staffNotes || []} newNote={newNote} setNewNote={setNewNote} category={noteCategory} setCategory={setNoteCategory} onAdd={handleAddNote} onDelete={handleDeleteNote} />}
             </Box>
           </>
         ) : (

@@ -56,7 +56,7 @@ const SectionHeader = ({ title }) => (
   </Box>
 );
 
-export default function ClientDetails({ editForm, setEditForm, isEditing, calculateAge }) {
+export default function ClientDetails({ editForm, setEditForm, isEditing, calculatePetAge }) {
   
   const handleRepChange = (idx, field, val) => {
     const reps =[...(editForm.emergencyContacts || [])];
@@ -71,7 +71,7 @@ export default function ClientDetails({ editForm, setEditForm, isEditing, calcul
       <SectionHeader title="Identity & Demographics" />
       <Grid container spacing={2}>
          <DataField label="Full Name" value={editForm.fullName} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, fullName: val})} />
-         <DataField label="Date of Birth" type="date" value={editForm.dob} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, dob: val})} extra={!isEditing && calculateAge(editForm.dob)} />
+         <DataField label="Date of Birth" type="date" value={editForm.dob} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, dob: val})} extra={!isEditing && calculatePetAge(editForm.dob)} />
          <DataField label="Gender" select value={editForm.gender} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, gender: val})}>
              <MenuItem value="Male">Male</MenuItem>
              <MenuItem value="Female">Female</MenuItem>

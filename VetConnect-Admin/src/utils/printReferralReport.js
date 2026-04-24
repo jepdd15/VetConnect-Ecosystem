@@ -1,4 +1,4 @@
-import { PRINT_STYLES, formatPrintDate, esc } from './printUtils';
+import { PRINT_STYLES, formatPrintDate, esc, calculatePetAge } from './printUtils';
 
 /**
  * Generates a complete HTML string for a printable veterinary referral report.
@@ -33,22 +33,7 @@ export function generateReferralReportHTML({
   const breed = esc((pet?.breed && pet.breed !== 'Unknown Breed') ? pet.breed : '—');
   const gender = esc(pet?.gender || '—');
 
-  // Age
-  let age = '—';
-  if (pet?.dob) {
-    try {
-      const bd = pet.dob.toDate ? pet.dob.toDate() : new Date(pet.dob);
-      if (!isNaN(bd.getTime())) {
-        const today = new Date();
-        let y = today.getFullYear() - bd.getFullYear();
-        const m = today.getMonth() - bd.getMonth();
-        if (m < 0 || (m === 0 && today.getDate() < bd.getDate())) y--;
-        age = y < 0 ? '—' : y === 0
-          ? `${Math.floor((today - bd) / (1000 * 60 * 60 * 24 * 30.44))}mo`
-          : `${y}y`;
-      }
-    } catch { /* ignore */ }
-  }
+  const age = calculatePetAge(pet?.dob);
 
   const lastWeight = latestRecord?.vitals?.weight || pet?.lastWeight;
   const weightLabel = lastWeight ? `${esc(String(lastWeight))} kg` : '—';

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Box, Typography } from '@mui/material';
 import Grid from '@mui/material/Grid';
 
@@ -17,6 +18,7 @@ import PeopleAltIcon from '@mui/icons-material/PeopleAlt';
 import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
 import KPICard from './KPICard';
 import HorizontalBar from './HorizontalBar';
+import { buildDrillDown } from '../utils/drillDownConfig';
 
 // Hex colors for each appointment status in the distribution bar.
 // These are deliberate data-viz colors, not COLORS tokens — they need
@@ -64,6 +66,8 @@ const DEPT_COLORS = [
  * @param {boolean} isOpen         - Whether the clinic is currently open
  */
 export default function OperationsTab({ data, clinicSettings, isOpen, insights = {} }) {
+  const navigate = useNavigate();
+  const drillDown = buildDrillDown(navigate);
   const { ops, queueData } = data;
 
   // Guard: ops is null when period !== 'today'. Dashboard.jsx ensures
@@ -154,6 +158,7 @@ export default function OperationsTab({ data, clinicSettings, isOpen, insights =
             value={totalAppointments}
             icon={<EventIcon />}
             variant="blue"
+            onClick={drillDown['TOTAL APPOINTMENTS']}
             insight={insights['TOTAL APPOINTMENTS']}
           />
         </Grid>
@@ -164,6 +169,7 @@ export default function OperationsTab({ data, clinicSettings, isOpen, insights =
             icon={<CheckCircleIcon />}
             variant="green"
             subtitle={throughputPct}
+            onClick={drillDown['COMPLETED']}
             insight={insights['COMPLETED']}
           />
         </Grid>
@@ -173,6 +179,7 @@ export default function OperationsTab({ data, clinicSettings, isOpen, insights =
             value={activeCount}
             icon={<GroupsIcon />}
             variant="orange"
+            onClick={drillDown['ACTIVE IN FACILITY']}
             insight={insights['ACTIVE IN FACILITY']}
           />
         </Grid>
@@ -183,6 +190,7 @@ export default function OperationsTab({ data, clinicSettings, isOpen, insights =
             icon={<PeopleAltIcon />}
             variant="neutral"
             subtitle={queueSubtitle}
+            onClick={drillDown['QUEUE SERVING']}
             insight={insights['QUEUE SERVING']}
           />
         </Grid>
@@ -205,6 +213,7 @@ export default function OperationsTab({ data, clinicSettings, isOpen, insights =
             icon={<HourglassTopIcon />}
             variant={avgWaitVariant}
             subtitle={`${currentWaitingCount} currently waiting`}
+            onClick={drillDown['AVG WAIT TIME']}
             insight={insights['AVG WAIT TIME']}
           />
         </Grid>
@@ -214,6 +223,7 @@ export default function OperationsTab({ data, clinicSettings, isOpen, insights =
             value={longestCurrentWait > 0 ? `${longestCurrentWait} min` : '--'}
             icon={<AccessTimeIcon />}
             variant={longestWaitVariant}
+            onClick={drillDown['LONGEST CURRENT WAIT']}
             insight={insights['LONGEST CURRENT WAIT']}
           />
         </Grid>
@@ -224,6 +234,7 @@ export default function OperationsTab({ data, clinicSettings, isOpen, insights =
             icon={<AccessTimeIcon />}
             variant="blue"
             subtitle={consultCount > 0 ? `from ${consultCount} completed` : 'no completed consults yet'}
+            onClick={drillDown['AVG CONSULT DURATION']}
             insight={insights['AVG CONSULT DURATION']}
           />
         </Grid>
@@ -307,6 +318,7 @@ export default function OperationsTab({ data, clinicSettings, isOpen, insights =
             icon={<PersonOffIcon />}
             variant={noShowCount > 0 ? 'orange' : 'green'}
             compact
+            onClick={drillDown['NO-SHOWS']}
             insight={insights['NO-SHOWS']}
           />
         </Grid>
@@ -317,6 +329,7 @@ export default function OperationsTab({ data, clinicSettings, isOpen, insights =
             icon={<BlockIcon />}
             variant={cancelledCount > 0 ? 'red' : 'green'}
             compact
+            onClick={drillDown['CANCELLATIONS']}
             insight={insights['CANCELLATIONS']}
           />
         </Grid>
@@ -327,6 +340,7 @@ export default function OperationsTab({ data, clinicSettings, isOpen, insights =
             icon={<LocalHospitalIcon />}
             variant={emergencyCount > 0 ? 'red' : 'neutral'}
             compact
+            onClick={drillDown['EMERGENCIES']}
             insight={insights['EMERGENCIES']}
           />
         </Grid>

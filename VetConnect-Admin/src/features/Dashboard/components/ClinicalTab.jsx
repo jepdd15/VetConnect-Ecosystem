@@ -11,6 +11,7 @@
  */
 
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Box, Typography } from '@mui/material';
 import Grid from '@mui/material/Grid';
 import {
@@ -33,10 +34,13 @@ import HorizontalBar from './HorizontalBar';
 import {
   CHART_COLORS, CHART_TOOLTIP_STYLE, CHART_TICK_STYLE, CHART_GRID_PROPS, PANEL_SX,
 } from './chartConfig';
+import { buildDrillDown } from '../utils/drillDownConfig';
 
 // ── Component ────────────────────────────────────────────────────
 
 export default function ClinicalTab({ data, insights = {} }) {
+  const navigate = useNavigate();
+  const drillDown = buildDrillDown(navigate);
   const { clinical, deltas } = data;
   if (!clinical) return null;
 
@@ -53,6 +57,7 @@ export default function ClinicalTab({ data, insights = {} }) {
             variant="blue"
             subtitle="this period"
             delta={deltas?.recordsSigned}
+            onClick={drillDown['RECORDS SIGNED']}
             insight={insights['RECORDS SIGNED']}
           />
         </Grid>
@@ -63,6 +68,7 @@ export default function ClinicalTab({ data, insights = {} }) {
             icon={<VaccinesIcon />}
             variant="green"
             subtitle={`${clinical.vaccinesByType.length} vaccine types`}
+            onClick={drillDown['VACCINATIONS']}
             insight={insights['VACCINATIONS']}
           />
         </Grid>
@@ -77,6 +83,7 @@ export default function ClinicalTab({ data, insights = {} }) {
               : 'red'
             }
             subtitle={`${clinical.followUpAttended} attended / ${clinical.recordsWithFollowUp} requested`}
+            onClick={drillDown['FOLLOW-UP COMPLIANCE']}
             insight={insights['FOLLOW-UP COMPLIANCE']}
           />
         </Grid>
@@ -87,6 +94,7 @@ export default function ClinicalTab({ data, insights = {} }) {
             icon={<HotelIcon />}
             variant={clinical.confinementRate > 10 ? 'orange' : 'neutral'}
             subtitle={`${clinical.confinedCount} confined / ${clinical.carriedOverCount} carried over`}
+            onClick={drillDown['CONFINEMENT RATE']}
             insight={insights['CONFINEMENT RATE']}
           />
         </Grid>

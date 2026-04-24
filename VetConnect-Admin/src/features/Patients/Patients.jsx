@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Box, Tabs, Tab, Typography, CircularProgress } from '@mui/material';
 
 // Design Tokens
@@ -27,7 +28,13 @@ import CloseIcon from '@mui/icons-material/Close';
 import SaveIcon from '@mui/icons-material/Save';
 
 export default function Patients() {
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState(0);
+
+  useEffect(() => {
+    const df = location.state?.dashboardFilter;
+    if (!df) return;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { 
     owners, allPetsSnapshot, searchText, setSearchText, selectedClient, 

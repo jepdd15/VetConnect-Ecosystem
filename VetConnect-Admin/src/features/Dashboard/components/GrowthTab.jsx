@@ -11,6 +11,7 @@
  */
 
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Box, Typography } from '@mui/material';
 import Grid from '@mui/material/Grid';
 import {
@@ -31,10 +32,13 @@ import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
 import KPICard from './KPICard';
 import HorizontalBar from './HorizontalBar';
 import { CHART_COLORS, CHART_TOOLTIP_STYLE, CHART_TICK_STYLE, CHART_GRID_PROPS } from './chartConfig';
+import { buildDrillDown } from '../utils/drillDownConfig';
 
 // ── Component ────────────────────────────────────────────────────
 
 export default function GrowthTab({ data, clinicSettings, insights = {} }) {
+  const navigate = useNavigate();
+  const drillDown = buildDrillDown(navigate);
   const { growth, dateRange } = data;
   if (!growth) return null;
 
@@ -85,6 +89,7 @@ export default function GrowthTab({ data, clinicSettings, insights = {} }) {
             variant="blue"
             subtitle="registered this period"
             delta={data.deltas?.uniqueClients}
+            onClick={drillDown['NEW CLIENTS']}
             insight={insights['NEW CLIENTS']}
           />
         </Grid>
@@ -94,6 +99,7 @@ export default function GrowthTab({ data, clinicSettings, insights = {} }) {
             value={growth.totalActiveClients}
             icon={<PeopleIcon />}
             variant="green"
+            onClick={drillDown['TOTAL ACTIVE CLIENTS']}
             insight={insights['TOTAL ACTIVE CLIENTS']}
           />
         </Grid>
@@ -103,6 +109,7 @@ export default function GrowthTab({ data, clinicSettings, insights = {} }) {
             value={growth.totalActivePets}
             icon={<PetsIcon />}
             variant="purple"
+            onClick={drillDown['TOTAL ACTIVE PETS']}
             insight={insights['TOTAL ACTIVE PETS']}
           />
         </Grid>
@@ -114,6 +121,7 @@ export default function GrowthTab({ data, clinicSettings, insights = {} }) {
             variant="orange"
             subtitle={`${growth.walkInCount} walk-in / ${growth.scheduledCount} scheduled`}
             delta={data.deltas?.appointments}
+            onClick={drillDown['TOTAL APPOINTMENTS']}
             insight={insights['TOTAL APPOINTMENTS']}
           />
         </Grid>
@@ -370,6 +378,7 @@ export default function GrowthTab({ data, clinicSettings, insights = {} }) {
             value={growth.avgLeadTimeHours > 0 ? `${growth.avgLeadTimeHours}h` : '--'}
             icon={<ScheduleIcon />}
             variant="neutral"
+            onClick={drillDown['BOOKING LEAD TIME']}
             subtitle={
               growth.leadTimeCount > 0
                 ? `avg from ${growth.leadTimeCount} bookings`
@@ -391,6 +400,7 @@ export default function GrowthTab({ data, clinicSettings, insights = {} }) {
             }
             subtitle={`${growth.returningClientCount} returning / ${growth.uniqueClientCount} total`}
             compact
+            onClick={drillDown['CLIENT RETENTION']}
             insight={insights['CLIENT RETENTION']}
           />
         </Grid>
@@ -406,6 +416,7 @@ export default function GrowthTab({ data, clinicSettings, insights = {} }) {
             }
             subtitle={`${growth.totalAppointments} of ~${maxCapacity} slots`}
             compact
+            onClick={drillDown['CLINIC UTILIZATION']}
             insight={insights['CLINIC UTILIZATION']}
           />
         </Grid>

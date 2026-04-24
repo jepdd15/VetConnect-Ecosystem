@@ -40,6 +40,7 @@ import { calculatePulseMetrics, formatDuration, getSmartShiftDate, makePulseEven
 import { HIGH_STAKES_STATUSES, ACTIVE_STATUSES, normalizeStatus } from '../../utils/statusConstants';
 import { getLocalDateStr } from '../../utils/dateUtils';
 import { useClinicSettings } from '../../hooks/useClinicSettings';
+import { useLocation } from 'react-router-dom';
 import { ForensicMetricGrid } from './ForensicMetricGrid'; 
 import UndoIcon from '@mui/icons-material/Undo'; 
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital'; 
@@ -79,6 +80,17 @@ export default function Queue() {
 
   // THE FIX: Timezone-aware isToday logic targets local computer time instead of UTC toISOString.
   const isToday = filterDate === getLocalDateStr();
+
+  const location = useLocation();
+  useEffect(() => {
+    const df = location.state?.dashboardFilter;
+    if (!df) return;
+    const tabMap = {
+      'no-show': 7, cancelled: 7, completed: 6,
+      active: 3, confined: 3, emergency: 3,
+    };
+    if (df.status && tabMap[df.status] !== undefined) setTabValue(tabMap[df.status]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // THE RE-CALIBRATION: Update filterDate whenever the Toggle shifts
   useEffect(() => {

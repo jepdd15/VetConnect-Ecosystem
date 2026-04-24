@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-04-23 · **Branch:** `main`
 **Total tasks:** ~717 · **Cancelled/Absorbed:** ~16 · **Active:** ~701
-**DONE:** 401 · **TODO:** 295 · **Deferred sub-tasks:** 59
+**DONE:** 409 · **TODO:** 287 · **Deferred sub-tasks:** 59
 **Critical path to defense:** Dashboard Build (~32 hrs) + thesis
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~154 hours (Phase 4 S-Tier)
 
@@ -577,16 +577,16 @@
 | T2.319a | generateInsight: cross-tab target collision on "TOTAL APPOINTMENTS" — namespace or separate maps | P3 | 15 min | TODO | Review finding — harmless now (one tab at a time) but fragile |
 | T2.319b | generateInsight Rule 8: Math.max on empty deptLoad returns -Infinity — add empty guard | P3 | 5 min | TODO | Review finding — condition evaluates false, no crash |
 | T2.319c | generateInsight Rule 19: fires when deltas.revenue === 0 producing noisy "0% above" — add !== 0 guard | P3 | 2 min | TODO | Review finding — technically correct but low signal |
-| T2.326 | Drill-down: Operations → Queue/Records | P1 | 45 min | TODO |
-| T2.327 | Drill-down: Clinical → Records/Patients | P2 | 30 min | TODO |
-| T2.328 | Drill-down: Financial → Sales/Expenses | P2 | 30 min | TODO |
-| T2.329 | Drill-down: Growth → Patients/Queue | P2 | 15 min | TODO |
-| T2.330 | Drill-down: target page filter acceptance | P1 | 45 min | TODO |
+| T2.326 | Drill-down: Operations → Queue/Records | P1 | 45 min | DONE |
+| T2.327 | Drill-down: Clinical → Records/Patients | P2 | 30 min | DONE |
+| T2.328 | Drill-down: Financial → Sales/Expenses | P2 | 30 min | DONE |
+| T2.329 | Drill-down: Growth → Patients/Queue | P2 | 15 min | DONE |
+| T2.330 | Drill-down: target page filter acceptance | P1 | 45 min | DONE |
 | T2.331 | Settings: Dashboard Alerts threshold configuration | P2 | 45 min | TODO |
 | T2.332 | Dashboard: alert strip + threshold check | P2 | 30 min | TODO |
-| T2.333 | Create `generateReportHTML()` utility | P1 | 1 hr | TODO |
-| T2.334 | "Export Report" button per tab | P1 | 1 hr | TODO |
-| T2.335 | PDF-specific print styling | P2 | 30 min | TODO |
+| T2.333 | Create `generateReportHTML()` utility | P1 | 1 hr | DONE |
+| T2.334 | "Export Report" button per tab | P1 | 1 hr | DONE |
+| T2.335 | PDF-specific print styling | P2 | 30 min | DONE |
 | T2.336 | Settings: monthly goals configuration | P2 | 30 min | TODO |
 | T2.337 | Dashboard: goal progress bars per tab | P2 | 45 min | TODO |
 | T2.338 | Extend useDashboardData with historical min/max/avg | P2 | 1 hr | TODO |

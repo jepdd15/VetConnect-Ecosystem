@@ -11,6 +11,7 @@
  */
 
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Box, Typography } from '@mui/material';
 import Grid from '@mui/material/Grid';
 import {
@@ -33,6 +34,7 @@ import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
 import KPICard from './KPICard';
 import HorizontalBar from './HorizontalBar';
 import { CHART_TOOLTIP_STYLE, CHART_TICK_STYLE, CHART_GRID_PROPS } from './chartConfig';
+import { buildDrillDown } from '../utils/drillDownConfig';
 
 // Payment method colors — each channel has a distinct, meaningful color
 const METHOD_COLORS = {
@@ -59,6 +61,8 @@ const fmt = (n) => `₱${(n || 0).toLocaleString(undefined, { minimumFractionDig
 // ── Component ────────────────────────────────────────────────────
 
 export default function FinancialTab({ data, insights = {} }) {
+  const navigate = useNavigate();
+  const drillDown = buildDrillDown(navigate);
   const { financial } = data;
   if (!financial) return null;
 
@@ -102,6 +106,7 @@ export default function FinancialTab({ data, insights = {} }) {
             variant="green"
             subtitle={`${financial.transactionCount} transactions`}
             delta={data.deltas?.revenue}
+            onClick={drillDown['REVENUE COLLECTED']}
             insight={insights['REVENUE COLLECTED']}
           />
         </Grid>
@@ -112,6 +117,7 @@ export default function FinancialTab({ data, insights = {} }) {
             icon={<ReceiptIcon />}
             variant="blue"
             subtitle="before deposits"
+            onClick={drillDown['TOTAL BILLED']}
             insight={insights['TOTAL BILLED']}
           />
         </Grid>
@@ -121,6 +127,7 @@ export default function FinancialTab({ data, insights = {} }) {
             value={fmt(financial.totalExpenses)}
             icon={<TrendingDownIcon />}
             variant="red"
+            onClick={drillDown['TOTAL EXPENSES']}
             insight={insights['TOTAL EXPENSES']}
           />
         </Grid>
@@ -132,6 +139,7 @@ export default function FinancialTab({ data, insights = {} }) {
             variant={isProfit ? 'green' : 'red'}
             subtitle={isProfit ? 'profit' : 'loss'}
             delta={data.deltas?.netMargin}
+            onClick={drillDown['NET MARGIN']}
             insight={insights['NET MARGIN']}
           />
         </Grid>
@@ -307,6 +315,7 @@ export default function FinancialTab({ data, insights = {} }) {
             variant="purple"
             subtitle={`${financial.scPwdCount} transactions (${financial.scPwdUsageRate}% usage)`}
             compact
+            onClick={drillDown['SC/PWD DISCOUNTS']}
             insight={insights['SC/PWD DISCOUNTS']}
           />
         </Grid>
@@ -318,6 +327,7 @@ export default function FinancialTab({ data, insights = {} }) {
             variant="blue"
             subtitle={`${financial.transactionCount} total transactions`}
             compact
+            onClick={drillDown['AVG TRANSACTION']}
             insight={insights['AVG TRANSACTION']}
           />
         </Grid>
@@ -329,6 +339,7 @@ export default function FinancialTab({ data, insights = {} }) {
             variant={financial.monthlyBurnRate > financial.totalCollected ? 'red' : 'orange'}
             subtitle={`₱${financial.dailyExpenseRate.toLocaleString()}/day avg`}
             compact
+            onClick={drillDown['MONTHLY BURN RATE']}
             insight={insights['MONTHLY BURN RATE']}
           />
         </Grid>
@@ -343,6 +354,7 @@ export default function FinancialTab({ data, insights = {} }) {
             icon={<MoneyOffIcon />}
             variant={financial.refundRate > 5 ? 'red' : financial.refundRate > 0 ? 'orange' : 'green'}
             subtitle={`${financial.refundCount} refunds (${fmt(financial.totalRefunded)})`}
+            onClick={drillDown['REFUND RATE']}
             insight={insights['REFUND RATE']}
           />
         </Grid>
@@ -353,6 +365,7 @@ export default function FinancialTab({ data, insights = {} }) {
             icon={<WarningIcon />}
             variant={financial.outstandingBalances > 0 ? 'orange' : 'green'}
             subtitle={financial.outstandingBalances > 0 ? 'in billing/dispensing' : 'all clear'}
+            onClick={drillDown['OUTSTANDING BALANCES']}
             insight={insights['OUTSTANDING BALANCES']}
           />
         </Grid>

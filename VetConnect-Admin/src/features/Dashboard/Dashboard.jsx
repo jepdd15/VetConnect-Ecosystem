@@ -14,7 +14,8 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import { Box, Typography, Tabs, Tab, Skeleton } from '@mui/material';
+import { Box, Typography, Tabs, Tab, Skeleton, Button } from '@mui/material';
+import PrintIcon from '@mui/icons-material/Print';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import BuildIcon from '@mui/icons-material/Build';
@@ -32,6 +33,7 @@ import GrowthTab from './components/GrowthTab';
 import FinancialTab from './components/FinancialTab';
 import ClinicalTab from './components/ClinicalTab';
 import { generateInsight } from './utils/generateInsight';
+import { generateReportHTML } from './utils/generateReportHTML';
 
 // ── Tab registry ─────────────────────────────────────────────────
 // defaultPeriod is the period the hook uses when that tab is active.
@@ -99,6 +101,16 @@ export default function Dashboard() {
     [data, clinicSettings, isOpen],
   );
 
+  const handleExportReport = () => {
+    const html = generateReportHTML(currentTab.key, data, clinicSettings, effectivePeriod);
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+      setTimeout(() => win.print(), 300);
+    }
+  };
+
   return (
     <Box sx={{
       display: 'flex',
@@ -140,10 +152,42 @@ export default function Dashboard() {
           </Box>
         </Box>
 
-        {/* Period selector — hidden for Operations (always "Today") */}
-        {currentTab.key !== 'ops' && (
-          <PeriodSelector value={effectivePeriod} onChange={setPeriod} />
-        )}
+        {/* Period selector + Export button */}
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+          {currentTab.key !== 'ops' && (
+            <PeriodSelector value={effectivePeriod} onChange={setPeriod} />
+          )}
+          <Button
+            onClick={handleExportReport}
+            disabled={data.loading}
+            startIcon={<PrintIcon />}
+            sx={{
+              fontFamily: FONT,
+              ...TYPE.label,
+              fontSize: '0.65rem',
+              color: COLORS.accent,
+              bgcolor: COLORS.cardBg,
+              border: `2px solid ${COLORS.accent}`,
+              borderRadius: 0,
+              px: 2,
+              py: 0.75,
+              boxShadow: `2px 2px 0px ${COLORS.accent}`,
+              transition: 'transform 0.1s ease, box-shadow 0.1s ease',
+              '&:hover': {
+                bgcolor: COLORS.cream,
+                transform: 'translate(1px, 1px)',
+                boxShadow: `1px 1px 0px ${COLORS.accent}`,
+              },
+              '&.Mui-disabled': {
+                color: COLORS.textMuted,
+                borderColor: COLORS.border,
+                boxShadow: 'none',
+              },
+            }}
+          >
+            EXPORT REPORT
+          </Button>
+        </Box>
 
         {/* Clinic open/closed badge (T2.229 partial) */}
         <Box sx={{

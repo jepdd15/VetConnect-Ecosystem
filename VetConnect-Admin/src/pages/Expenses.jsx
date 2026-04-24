@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
 import { DataGrid } from '@mui/x-data-grid';
 import {
   Box, Typography, IconButton, Dialog, DialogTitle, DialogContent,
@@ -17,7 +18,13 @@ import EditIcon from '@mui/icons-material/Edit';
 
 export default function Expenses() {
   const { user, profile } = useUser();
+  const location = useLocation();
   const [expenses, setExpenses] = useState([]);
+
+  useEffect(() => {
+    const df = location.state?.dashboardFilter;
+    if (!df) return;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [open, setOpen] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [formData, setFormData] = useState({ category: 'Utilities', description: '', amount: '', expenseDate: '' });

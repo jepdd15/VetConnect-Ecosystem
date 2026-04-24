@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Box, Typography, Paper, TextField, InputAdornment, Chip, Stack, Tooltip,
   IconButton, Popover, Divider, Button, Dialog, DialogTitle, DialogContent, DialogActions,
@@ -49,6 +49,7 @@ import { PRINT_STYLES, esc, openPrintWindow } from '../../utils/printUtils';
 
 export default function Records() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useUser();
 
   const [searchText, setSearchText] = useState('');
@@ -69,6 +70,12 @@ export default function Records() {
     petSpecies: '',
     origin: '' // '', 'WALK_IN', 'ONLINE'
   });
+
+  useEffect(() => {
+    const df = location.state?.dashboardFilter;
+    if (!df) return;
+    if (df.searchText) setSearchText(df.searchText);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [vets, setVets] = useState([]);
 

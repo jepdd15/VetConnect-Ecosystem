@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { DataGrid } from '@mui/x-data-grid';
 import {
   Box, Typography, Paper, Chip, IconButton, Tooltip, Snackbar,
@@ -26,16 +27,23 @@ import { useClinicSettings } from '../../hooks/useClinicSettings';
 export default function Sales() {
   const { profile } = useUser();
   const clinicSettings = useClinicSettings();
+  const location = useLocation();
   const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
 
-  // THE BRAIN: Hook handles all database fetching and refund transactions
-  const { sales, loading, eodTotals, processRefundTransaction } = useSalesData(filterDate, profile);
+  // THE BRAIN: Hook handles all database fetching, refund and void transactions
+  const { sales, loading, eodTotals, processRefundTransaction, voidTransaction } = useSalesData(filterDate, profile);
 
   // --- UI STATES ---
   const [searchText, setSearchText] = useState('');
   const [filterMethod, setFilterMethod] = useState(['All']);
   const [filterStatus, setFilterStatus] = useState('All');
-  
+
+  useEffect(() => {
+    const df = location.state?.dashboardFilter;
+    if (!df) return;
+    if (df.status === 'refunded') setFilterStatus('refunded');
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // --- NATIVE SORTING STATES ---
   const [order, setOrder] = useState('desc');
   const [orderBy, setOrderBy] = useState('jsDate');
@@ -44,6 +52,9 @@ export default function Sales() {
   const [selectedSale, setSelectedSale] = useState(null);
   const [restock, setRestock] = useState(true);
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' });
+  // T2.104: Void transaction state
+  const [openVoid, setOpenVoid] = useState(false);
+  const [voidTarget, setVoidTarget] = useState(null);
 
   // --- SORTING & FILTERING ENGINE ---
   const handleRequestSort = (property) => {
@@ -88,6 +99,19 @@ export default function Sales() {
 
   const handleOpenRefund = (sale) => {
     setSelectedSale(sale); setRestock(true); setOpenRefund(true);
+  };
+
+  // T2.104: Void transaction handler
+  const executeVoid = async () => {
+    try {
+      await voidTransaction(voidTarget);
+      setOpenVoid(false);
+      setVoidTarget(null);
+      setToast({ open: true, message: 'Transaction voided. Stock has been restored.', severity: 'success' });
+    } catch (error) {
+      console.error('[Sales.executeVoid]:', error);
+      setToast({ open: true, message: 'Void failed: ' + error.message, severity: 'error' });
+    }
   };
 
   const executeRefund = async () => {
@@ -335,10 +359,18 @@ export default function Sales() {
                     <PrintIcon fontSize="small" />
                 </IconButton>
             </Tooltip>
-            {p.row.status !== 'refunded' && (
+            {p.row.status !== 'refunded' && p.row.status !== 'voided' && (
                 <Tooltip title="Process Refund">
                     <IconButton color="error" size="small" onClick={() => handleOpenRefund(p.row)} sx={{ border: `1px solid ${COLORS.danger}4D`, borderRadius: 0 }}>
                         <SettingsBackupRestoreIcon fontSize="small" />
+                    </IconButton>
+                </Tooltip>
+            )}
+            {p.row.status !== 'refunded' && p.row.status !== 'voided' && (
+                <Tooltip title="Void Transaction">
+                    <IconButton size="small" onClick={() => { setVoidTarget(p.row); setOpenVoid(true); }}
+                        sx={{ border: `1px solid #EF6C0050`, borderRadius: 0, color: '#E65100' }}>
+                        <Typography sx={{ fontSize: '0.55rem', fontWeight: 1000, px: 0.2 }}>VOID</Typography>
                     </IconButton>
                 </Tooltip>
             )}
@@ -512,6 +544,33 @@ export default function Sales() {
             }}
           >
             CONFIRM REFUND
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* T2.104: VOID TRANSACTION MODAL */}
+      <Dialog open={openVoid} onClose={() => setOpenVoid(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 0, border: `2px solid #E65100` } }}>
+        <DialogTitle sx={{ bgcolor: '#FFF3E0', color: '#E65100', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1.5, py: 2, borderBottom: `2px solid #E65100`, textTransform: 'uppercase', letterSpacing: 1, fontSize: '1rem' }}>
+          Void Transaction
+        </DialogTitle>
+        <DialogContent sx={{ p: 4, bgcolor: 'white' }}>
+          <Alert severity="error" sx={{ mb: 3, fontWeight: 800, border: `2px solid #EF9A9A`, borderRadius: 0 }}>
+            Voiding will mark the transaction as invalid, restore inventory stock for all sold products, and revert the appointment to the billing stage.
+          </Alert>
+          <Typography sx={{ fontFamily: FONT, fontSize: '0.9rem', color: COLORS.textPrimary }}>
+            <strong>Receipt:</strong> #{(voidTarget?.id || '').slice(0, 8).toUpperCase()}<br />
+            <strong>Amount:</strong> ₱{voidTarget?.total?.toFixed(2)}<br />
+            <strong>Client:</strong> {voidTarget?.ownerName || 'Walk-In'}
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 3, borderTop: `2px solid #E65100`, bgcolor: '#FFF3E0', justifyContent: 'space-between' }}>
+          <Button onClick={() => setOpenVoid(false)} sx={{ fontWeight: 800, color: COLORS.textSecondary, px: 3, fontFamily: FONT }}>CANCEL</Button>
+          <Button
+            onClick={executeVoid}
+            variant="contained"
+            sx={{ fontWeight: 800, px: 4, py: 1.5, borderRadius: 0, bgcolor: '#E65100', border: `2px solid #BF360C`, '&:hover': { bgcolor: '#BF360C' } }}
+          >
+            VOID TRANSACTION
           </Button>
         </DialogActions>
       </Dialog>

@@ -18,12 +18,13 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
   const [outstandingBalance, setOutstandingBalance] = useState(0);
   
   const[isEditing, setIsEditing] = useState(false);
-  const [editForm, setEditForm] = useState({ 
-    emergencyContacts: [], 
+  const [editForm, setEditForm] = useState({
+    emergencyContacts: [],
     gender: null,
     seniorId: '',
     clientTag: 'Regular',
     referralSource: '',
+    referredBy: '',    // T2.136
     allowPromos: false,
     preferredComm: 'SMS',
     whatsappOptIn: false,
@@ -35,6 +36,14 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
     dpaConsent: false,
     waiverSigned: false,
     accountStanding: 'Good Standing'
+  });
+  // T2.134: Engagement KPIs — populated on client selection
+  const [engagementKPIs, setEngagementKPIs] = useState({
+    totalVisits: 0,
+    lastVisitDate: null,
+    noShowCount: 0,
+    totalAppointments: 0,
+    avgDaysBetween: null,
   });
   const [newNote, setNewNote] = useState('');
   const[noteCategory, setNoteCategory] = useState('General');
@@ -138,6 +147,47 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
       }
     );
     
+    // T2.134: Engagement KPIs — one-shot fetch of all appointments for this client
+    (async () => {
+      try {
+        const apptQ = query(
+          collection(db, 'appointments'),
+          where('ownerId', '==', selectedClient.id),
+        );
+        const apptSnap = await getDocs(apptQ);
+        const allAppts = apptSnap.docs.map(d => d.data());
+        const completed = allAppts.filter(a => a.status === 'completed');
+        const noShows = allAppts.filter(a => a.status === 'no-show');
+
+        // Collect completed visit dates sorted newest-first
+        const visitDates = completed
+          .map(a => a.date?.toDate ? a.date.toDate() : (a.date?.seconds ? new Date(a.date.seconds * 1000) : null))
+          .filter(Boolean)
+          .sort((a, b) => b - a);
+
+        const lastVisitDate = visitDates.length > 0 ? visitDates[0] : null;
+
+        let avgDaysBetween = null;
+        if (visitDates.length >= 2) {
+          let totalGap = 0;
+          for (let i = 0; i < visitDates.length - 1; i++) {
+            totalGap += (visitDates[i] - visitDates[i + 1]) / 86400000;
+          }
+          avgDaysBetween = Math.round(totalGap / (visitDates.length - 1));
+        }
+
+        setEngagementKPIs({
+          totalVisits: completed.length,
+          lastVisitDate,
+          noShowCount: noShows.length,
+          totalAppointments: allAppts.length,
+          avgDaysBetween,
+        });
+      } catch (e) {
+        console.warn('[usePatientManager] Engagement KPIs fetch skipped:', e);
+      }
+    })();
+
     return () => { unsubPets(); unsubSales(); };
   }, [selectedClient]);
 
@@ -183,13 +233,15 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
         dpaConsent: editForm.dpaConsent || false,
         waiverSigned: editForm.waiverSigned || false,
         referralSource: editForm.referralSource,
+        referredBy: editForm.referredBy || null,   // T2.136
         allowPromos: editForm.allowPromos,
         preferredComm: editForm.preferredComm,
         whatsappOptIn: editForm.whatsappOptIn,
         emergencyContacts: editForm.emergencyContacts,
+        updatedAt: Timestamp.now(),                // T2.133: resets the freshness clock
     };
 
-    await updateDoc(doc(db, "users", selectedClient.id), payload); 
+    await updateDoc(doc(db, "users", selectedClient.id), payload);
     setIsEditing(false); 
   };
 
@@ -273,5 +325,6 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
     isEditing, setIsEditing, editForm, setEditForm, handleSaveProfile,
     newNote, setNewNote, noteCategory, setNoteCategory, handleAddNote, handleDeleteNote,
     newPetData, setNewPetData, handleAdminAddPet, archivePet, restorePet,
+    engagementKPIs,  // T2.134
   };
 }

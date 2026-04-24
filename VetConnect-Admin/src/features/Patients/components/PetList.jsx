@@ -7,6 +7,8 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions,
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
+import { updateDoc, doc, Timestamp } from 'firebase/firestore';
+import { db } from '../../../firebaseConfig';
 
 // Design Tokens
 import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
@@ -20,8 +22,9 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import EventNoteIcon from '@mui/icons-material/EventNote';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import SortIcon from '@mui/icons-material/Sort';
-import ScaleIcon from '@mui/icons-material/Scale'; 
+import ScaleIcon from '@mui/icons-material/Scale';
 import EditIcon from '@mui/icons-material/Edit';
+import FavoriteIcon from '@mui/icons-material/Favorite';
 
 export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePetAge, onArchive, onEditPet, onRestore }) {
   const [anchorEl, setAnchorEl] = useState(null);
@@ -36,12 +39,16 @@ export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePet
   // Archive confirmation dialog (T2.116)
   const [archiveConfirm, setArchiveConfirm] = useState(null); // pet object or null
   const [showArchived, setShowArchived] = useState(false);
+  // T2.135: Deceased pet confirmation dialog
+  const [deceasedConfirm, setDeceasedConfirm] = useState(null);
 
   const handleMenuClick = (event, pet) => { event.stopPropagation(); setSelectedPet(pet); setAnchorEl(event.currentTarget); };
   const handleMenuClose = () => { setAnchorEl(null); };
 
-  const activePets = pets.filter(p => p.status !== 'archived');
+  // T2.135: Partition pets by status — deceased are memorial-only, not archived
+  const activePets = pets.filter(p => p.status !== 'archived' && p.status !== 'deceased');
   const archivedPets = pets.filter(p => p.status === 'archived');
+  const deceasedPets = pets.filter(p => p.status === 'deceased');
 
   // --- MULTI-AXIAL SORT & FILTER ENGINE ---
   const processedPets = useMemo(() => {
@@ -217,11 +224,16 @@ export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePet
       
       <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose} sx={{ '& .MuiPaper-root': { borderRadius: 2, boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}}>
         <MenuItem onClick={() => { onEditPet(selectedPet); handleMenuClose(); }} sx={{ py: 1.5, px: 2 }}>
-            <ListItemIcon><EditIcon fontSize="small" sx={{ color: COLORS.textSecondary }}/></ListItemIcon> 
+            <ListItemIcon><EditIcon fontSize="small" sx={{ color: COLORS.textSecondary }}/></ListItemIcon>
             <Typography variant="body2" sx={{ fontFamily: FONT, fontWeight: 'bold' }}>Edit Pet Profile</Typography>
         </MenuItem>
+        {/* T2.135: Mark as Deceased */}
+        <MenuItem onClick={() => { setDeceasedConfirm(selectedPet); handleMenuClose(); }} sx={{ color: COLORS.textMuted, py: 1.5, px: 2 }}>
+            <ListItemIcon><FavoriteIcon fontSize="small" sx={{ color: COLORS.textMuted }}/></ListItemIcon>
+            <Typography variant="body2" sx={{ fontFamily: FONT, fontWeight: 'bold' }}>Mark as Deceased</Typography>
+        </MenuItem>
         <MenuItem onClick={() => { setArchiveConfirm(selectedPet); handleMenuClose(); }} sx={{color: COLORS.danger, py: 1.5, px: 2}}>
-            <ListItemIcon><ArchiveIcon fontSize="small" sx={{ color: COLORS.danger }}/></ListItemIcon> 
+            <ListItemIcon><ArchiveIcon fontSize="small" sx={{ color: COLORS.danger }}/></ListItemIcon>
             <Typography variant="body2" sx={{ fontFamily: FONT, fontWeight: 'bold' }}>Archive Patient</Typography>
         </MenuItem>
       </Menu>
@@ -287,6 +299,75 @@ export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePet
           </Collapse>
         </Box>
       )}
+
+      {/* T2.135: In Memoriam section — deceased pets */}
+      {deceasedPets.length > 0 && (
+        <Box sx={{ mt: 4 }}>
+          <Typography sx={{ fontFamily: FONT, color: COLORS.textMuted, fontWeight: 'bold', mb: 1, fontSize: '0.85rem' }}>
+            In Memoriam ({deceasedPets.length})
+          </Typography>
+          <Grid container spacing={2}>
+            {deceasedPets.map(pet => (
+              <Grid size={{ xs: 12, md: 6, lg: 4 }} key={pet.id}>
+                <Card sx={{ borderRadius: 3, border: `1px solid ${COLORS.borderLight}`, opacity: 0.65, p: 2, display: 'flex', alignItems: 'center', gap: 1.5, bgcolor: '#F3E5F5' }}>
+                  <Avatar sx={{ width: 36, height: 36, bgcolor: '#CE93D8', fontSize: '1.2rem' }}>
+                    🕊️
+                  </Avatar>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textSecondary }}>{pet.name}</Typography>
+                    <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.textMuted }}>
+                      {pet.dateOfDeath
+                        ? `Passed ${new Date(pet.dateOfDeath.seconds * 1000).toLocaleDateString()}`
+                        : 'Deceased'}
+                    </Typography>
+                  </Box>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => navigate(`/patients/${pet.id}`, { state: { pet } })}
+                    sx={{ fontFamily: FONT, fontWeight: 'bold', color: COLORS.textMuted, borderColor: COLORS.border, fontSize: '0.72rem', ml: 'auto', flexShrink: 0 }}
+                  >
+                    View Chart
+                  </Button>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+        </Box>
+      )}
+
+      {/* T2.135: Deceased confirmation dialog */}
+      <Dialog open={Boolean(deceasedConfirm)} onClose={() => setDeceasedConfirm(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.textMuted }}>
+          Mark as Deceased?
+        </DialogTitle>
+        <DialogContent>
+          <Typography sx={{ fontFamily: FONT, fontSize: '0.9rem', color: COLORS.textSecondary }}>
+            Mark <strong>{deceasedConfirm?.name}</strong> as deceased. This will move the pet to the "In Memoriam" section.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2 }}>
+          <Button onClick={() => setDeceasedConfirm(null)} sx={{ fontFamily: FONT, color: COLORS.textMuted, borderRadius: 0 }}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={async () => {
+              try {
+                await updateDoc(doc(db, 'pets', deceasedConfirm.id), {
+                  status: 'deceased',
+                  dateOfDeath: Timestamp.now(),
+                });
+              } catch (e) {
+                console.warn('[PetList] Mark deceased failed:', e);
+              } finally {
+                setDeceasedConfirm(null);
+              }
+            }}
+            sx={{ fontFamily: FONT, fontWeight: 'bold', bgcolor: COLORS.textMuted, '&:hover': { bgcolor: '#78909C' }, borderRadius: 0 }}
+          >
+            Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Archive confirmation dialog (T2.116) */}
       <Dialog open={Boolean(archiveConfirm)} onClose={() => setArchiveConfirm(null)} maxWidth="xs" fullWidth>

@@ -11,7 +11,7 @@ import {
 import Grid from '@mui/material/Grid';
 
 import { db } from '../../firebaseConfig';
-import { doc, getDoc, collection, query, where, orderBy, getDocs, Timestamp, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, orderBy, getDocs, Timestamp, updateDoc, onSnapshot } from 'firebase/firestore';
 
 // Icons
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -50,7 +50,7 @@ import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import ShieldIcon from '@mui/icons-material/Shield';
 
 // Charting
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 
 // ── Design Tokens (shared across all VetConnect pages) ─────────
 import { FONT, TYPE, COLORS, getRecordColor, getInitialColor } from '../../theme/designTokens';
@@ -68,6 +68,18 @@ import { VACCINE_CATALOG, getVaccineAdministrations, resolveVaccineFromName } fr
 
 // ── Modals ──────────────────────────────────────────────────────
 import ReferralModal from './components/ReferralModal';
+import WalkInModal from '../Queue/WalkInModal';
+
+// ── Species-normal vital reference ranges ────────────────────────
+// Sourced from standard veterinary references.
+// Each key maps to { canine: [low, high], feline: [low, high] }.
+const SPECIES_VITAL_RANGES = {
+  temp: { canine: [38.0, 39.2], feline: [38.1, 39.2] },
+  hr:   { canine: [60, 140],    feline: [120, 240]    },
+  rr:   { canine: [10, 30],     feline: [20, 42]      },
+  crt:  { canine: [1.0, 2.0],   feline: [1.0, 2.0]    },
+  bcs:  { canine: [4, 5],       feline: [4, 5]         },
+};
 
 // ── Analytics Widget Shell ──
 const Widget = ({ title, icon, children }) => (
@@ -117,8 +129,25 @@ export default function PatientDashboard() {
   const [caseDayMap, setCaseDayMap] = useState({});
   const [recordPaymentTarget, setRecordPaymentTarget] = useState(null);
   const [recordPaymentAmount, setRecordPaymentAmount] = useState('');
+  // T2.458: Quick-book (WalkIn) modal state
+  const [quickBookOpen, setQuickBookOpen] = useState(false);
+  const [servicesList, setServicesList] = useState([]);
+  const [deptsList, setDeptsList] = useState([]);
+  // T2.129: Generic error snackbar
+  const [errorSnack, setErrorSnack] = useState('');
 
   const clinicSettings = useClinicSettings();
+
+  // T2.458: Load services + departments for WalkInModal
+  useEffect(() => {
+    const unsubSvc = onSnapshot(collection(db, 'services'), (snap) => {
+      setServicesList(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(s => !s.isArchived));
+    });
+    const unsubDept = onSnapshot(collection(db, 'departments'), (snap) => {
+      setDeptsList(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => { unsubSvc(); unsubDept(); };
+  }, []);
 
   const recordRefs = useRef({});
   const timelineScrollRef = useRef(null);
@@ -345,18 +374,30 @@ export default function PatientDashboard() {
     return Object.entries(months).map(([month, visits]) => ({ month, visits }));
   }, [history]);
 
-  // All prescriptions aggregated
-  const allPrescriptions = useMemo(() => {
-    const rxMap = new Map();
+  // T2.464: Prescription frequency — each medication ranked by how many times it was prescribed.
+  // The Nx count badge replaces the old flat de-duplication approach.
+  const prescriptionFrequency = useMemo(() => {
+    const rxMap = new Map(); // name -> { name, count, lastDate, lastInstructions }
     (history || []).forEach(r => {
       (r.prescriptions || []).forEach(rx => {
-        if (rx.name && !rxMap.has(rx.name)) {
-          const dateStr = r.date?.toDate ? r.date.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
-          rxMap.set(rx.name, { ...rx, date: dateStr, recordType: r.recordType });
+        if (!rx.name) return;
+        const dateStr = r.date?.toDate
+          ? r.date.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+          : '';
+        const existing = rxMap.get(rx.name);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          rxMap.set(rx.name, {
+            name: rx.name,
+            count: 1,
+            lastDate: dateStr,
+            lastInstructions: rx.instructions || '',
+          });
         }
       });
     });
-    return Array.from(rxMap.values());
+    return Array.from(rxMap.values()).sort((a, b) => b.count - a.count);
   }, [history]);
 
   // T2.101: Computed outstanding balance — sum of balanceRemaining across all non-refunded/voided sales.
@@ -490,6 +531,23 @@ export default function PatientDashboard() {
     });
   }, [history]);
 
+  // T2.465: Vaccine completeness — fraction of species-relevant recommended vaccines administered.
+  const vaccineCompleteness = useMemo(() => {
+    const sp = (pet?.species || '').toLowerCase();
+    const spKey = sp.includes('cat') || sp.includes('feline') ? 'cat' : 'dog';
+    const relevant = vaccinationStatus.filter(v => {
+      const catalogEntry = VACCINE_CATALOG.find(c => c.id === v.id);
+      return catalogEntry?.species.includes(spKey);
+    });
+    if (relevant.length === 0) return null;
+    const administered = relevant.filter(v => v.status !== 'unknown').length;
+    return {
+      administered,
+      total: relevant.length,
+      percentage: Math.round((administered / relevant.length) * 100),
+    };
+  }, [vaccinationStatus, pet?.species]);
+
   // Records that contain structured vaccine data — used by the vaccination
   // record printable. Sorted ascending so the document reads oldest-to-newest.
   // Uses getVaccineAdministrations() to handle both new and legacy formats.
@@ -550,7 +608,7 @@ export default function PatientDashboard() {
       setRecordPaymentAmount('');
     } catch (e) {
       console.error('[PatientDashboard.handleRecordPayment]:', e.message);
-      alert('Failed to record payment: ' + e.message);
+      setErrorSnack('Failed to record payment: ' + e.message);
     }
   };
 
@@ -584,6 +642,10 @@ export default function PatientDashboard() {
   const resolvedPetAllergies = pet?.petAllergies || pet?.allergies || '';
   const hasAllergies = resolvedPetAllergies.trim().length > 0
     && !['None', 'None recorded', 'none'].includes(resolvedPetAllergies.trim());
+
+  // T2.461: Determine species key for reference-line ranges
+  const speciesKey = (pet?.species || '').toLowerCase().includes('cat') || (pet?.species || '').toLowerCase().includes('feline')
+    ? 'feline' : 'canine';
 
   return (
     <Box sx={{ m: -4, display: 'flex', flexDirection: 'column', height: '100vh', bgcolor: COLORS.surface, overflow: 'hidden', fontFamily: FONT }}>
@@ -662,11 +724,7 @@ export default function PatientDashboard() {
 
         {/* Actions */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 1.5 }}>
-          <Button variant="outlined" size="small" startIcon={<NoteAddIcon sx={{ fontSize: '15px !important' }} />} onClick={() => alert('Coming soon!')}
-            sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.78rem', textTransform: 'none', color: COLORS.accent, borderColor: COLORS.border, borderRadius: 0, px: 2, height: 36, '&:hover': { borderColor: COLORS.accentLight, bgcolor: '#EFEBE9' } }}>
-            Add Record
-          </Button>
-          <Button variant="contained" size="small" startIcon={<EventAvailableIcon sx={{ fontSize: '15px !important' }} />} onClick={() => navigate('/queue')}
+          <Button variant="contained" size="small" startIcon={<EventAvailableIcon sx={{ fontSize: '15px !important' }} />} onClick={() => setQuickBookOpen(true)}
             sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.78rem', textTransform: 'none', bgcolor: '#2E7D32', borderRadius: 0, px: 2, height: 36, boxShadow: 'none', '&:hover': { bgcolor: '#1B5E20' } }}>
             Book Visit
           </Button>
@@ -981,8 +1039,17 @@ export default function PatientDashboard() {
                         </Box>
                       )}
 
-                      {/* Print Visit Summary — stopPropagation prevents toggling the Collapse */}
-                      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1.5, pt: 1, borderTop: `1px solid ${COLORS.borderLight}` }}>
+                      {/* Record footer: Rebook + Print Visit Summary */}
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1.5, pt: 1, borderTop: `1px solid ${COLORS.borderLight}` }}>
+                        {/* T2.458: Rebook — opens WalkInModal with this pet/owner prefilled */}
+                        <Button
+                          size="small"
+                          startIcon={<EventAvailableIcon sx={{ fontSize: '14px !important' }} />}
+                          onClick={(e) => { e.stopPropagation(); setQuickBookOpen(true); }}
+                          sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.75rem', textTransform: 'none', color: '#2E7D32' }}
+                        >
+                          Rebook
+                        </Button>
                         <Button
                           size="small"
                           startIcon={<PrintIcon sx={{ fontSize: '14px !important' }} />}
@@ -1079,6 +1146,8 @@ export default function PatientDashboard() {
                     <XAxis dataKey="date" tick={{ fontSize: 10, fontFamily: FONT }} />
                     <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={[37, 41]} />
                     <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 6 }} />
+                    <ReferenceLine y={SPECIES_VITAL_RANGES.temp[speciesKey][0]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'Low', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
+                    <ReferenceLine y={SPECIES_VITAL_RANGES.temp[speciesKey][1]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'High', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
                     <Line type="monotone" dataKey="temp" stroke="#EF6C00" strokeWidth={2} dot={{ r: 3, fill: '#EF6C00' }} />
                   </LineChart>
                 </ResponsiveContainer>
@@ -1098,6 +1167,8 @@ export default function PatientDashboard() {
                     <XAxis dataKey="date" tick={{ fontSize: 10, fontFamily: FONT }} />
                     <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={['dataMin - 10', 'dataMax + 10']} />
                     <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 6 }} />
+                    <ReferenceLine y={SPECIES_VITAL_RANGES.hr[speciesKey][0]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'Low', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
+                    <ReferenceLine y={SPECIES_VITAL_RANGES.hr[speciesKey][1]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'High', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
                     <Line type="monotone" dataKey="hr" stroke="#E53935" strokeWidth={2} dot={{ r: 3, fill: '#E53935' }} />
                   </LineChart>
                 </ResponsiveContainer>
@@ -1115,8 +1186,10 @@ export default function PatientDashboard() {
                   <LineChart data={rrData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
                     <XAxis dataKey="date" tick={{ fontSize: 10, fontFamily: FONT }} />
-                    <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={[10, 40]} />
+                    <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={[10, 50]} />
                     <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 6 }} />
+                    <ReferenceLine y={SPECIES_VITAL_RANGES.rr[speciesKey][0]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'Low', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
+                    <ReferenceLine y={SPECIES_VITAL_RANGES.rr[speciesKey][1]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'High', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
                     <Line type="monotone" dataKey="rr" stroke="#0288D1" strokeWidth={2} dot={{ r: 3, fill: '#0288D1' }} />
                   </LineChart>
                 </ResponsiveContainer>
@@ -1136,6 +1209,8 @@ export default function PatientDashboard() {
                     <XAxis dataKey="date" tick={{ fontSize: 10, fontFamily: FONT }} />
                     <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={[0, 5]} />
                     <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 6 }} />
+                    <ReferenceLine y={SPECIES_VITAL_RANGES.crt[speciesKey][0]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'Low', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
+                    <ReferenceLine y={SPECIES_VITAL_RANGES.crt[speciesKey][1]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'High', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
                     <Line type="monotone" dataKey="crt" stroke="#00838F" strokeWidth={2} dot={{ r: 3, fill: '#00838F' }} />
                   </LineChart>
                 </ResponsiveContainer>
@@ -1155,6 +1230,8 @@ export default function PatientDashboard() {
                     <XAxis dataKey="date" tick={{ fontSize: 10, fontFamily: FONT }} />
                     <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={[1, 9]} ticks={[1, 3, 5, 7, 9]} />
                     <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 6 }} />
+                    <ReferenceLine y={SPECIES_VITAL_RANGES.bcs[speciesKey][0]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'Low', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
+                    <ReferenceLine y={SPECIES_VITAL_RANGES.bcs[speciesKey][1]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'High', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
                     <Line type="monotone" dataKey="bcs" stroke="#7B1FA2" strokeWidth={2} dot={{ r: 3, fill: '#7B1FA2' }} />
                   </LineChart>
                 </ResponsiveContainer>
@@ -1197,17 +1274,30 @@ export default function PatientDashboard() {
             </Box>
           </Widget>
 
-          {/* Active Prescriptions */}
-          <Widget title={`Prescriptions (${allPrescriptions.length})`} icon={<MedicationIcon sx={{ fontSize: 14, color: COLORS.rxText }} />}>
-            {allPrescriptions.length > 0 ? (
+          {/* Active Prescriptions — T2.464: frequency-ranked with Nx count badge */}
+          <Widget title={`Prescriptions (${prescriptionFrequency.length})`} icon={<MedicationIcon sx={{ fontSize: 14, color: COLORS.rxText }} />}>
+            {prescriptionFrequency.length > 0 ? (
               <Stack spacing={1}>
-                {allPrescriptions.map((rx, i) => (
+                {prescriptionFrequency.map((rx, i) => (
                   <Box key={i} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Box>
                       <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.rxText }}>{rx.name}</Typography>
-                      {rx.instructions && <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: '#B45309' }}>{rx.instructions}</Typography>}
+                      {rx.lastInstructions && (
+                        <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: '#B45309' }}>{rx.lastInstructions}</Typography>
+                      )}
                     </Box>
-                    <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', color: COLORS.textMuted, flexShrink: 0, ml: 1 }}>{rx.date}</Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0, ml: 1 }}>
+                      <Chip
+                        label={`${rx.count}x`}
+                        size="small"
+                        sx={{
+                          fontFamily: FONT, fontSize: '0.62rem', fontWeight: 800,
+                          height: 18, bgcolor: COLORS.kpiOrangeBg, color: COLORS.warning,
+                          border: `1px solid ${COLORS.kpiOrangeBorder}`,
+                        }}
+                      />
+                      <Typography sx={{ fontFamily: FONT, fontSize: '0.68rem', color: COLORS.textMuted }}>{rx.lastDate}</Typography>
+                    </Box>
                   </Box>
                 ))}
               </Stack>
@@ -1218,6 +1308,30 @@ export default function PatientDashboard() {
 
           {/* Vaccination Tracker */}
           <Widget title="Vaccination Status" icon={<VaccinesIcon sx={{ fontSize: 14, color: '#2E7D32' }} />}>
+            {/* T2.465: Completeness bar — species-relevant vaccines only */}
+            {vaccineCompleteness && (
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1, pb: 1, borderBottom: `1px solid ${COLORS.borderLight}` }}>
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', fontWeight: 700, color: COLORS.textSecondary }}>
+                  Completeness
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Box sx={{ width: 60, height: 6, bgcolor: '#E0E0E0', borderRadius: 3, overflow: 'hidden' }}>
+                    <Box sx={{
+                      width: `${vaccineCompleteness.percentage}%`,
+                      height: '100%',
+                      bgcolor: vaccineCompleteness.percentage === 100 ? '#2E7D32' : vaccineCompleteness.percentage >= 50 ? '#F57F17' : '#D32F2F',
+                      borderRadius: 3,
+                    }} />
+                  </Box>
+                  <Typography sx={{
+                    fontFamily: FONT, fontSize: '0.72rem', fontWeight: 800,
+                    color: vaccineCompleteness.percentage === 100 ? '#2E7D32' : COLORS.textSecondary,
+                  }}>
+                    {vaccineCompleteness.administered}/{vaccineCompleteness.total} ({vaccineCompleteness.percentage}%)
+                  </Typography>
+                </Box>
+              </Box>
+            )}
             <Stack spacing={0.75}>
               {vaccinationStatus.map((vax) => {
                 const colors = {
@@ -1304,6 +1418,7 @@ export default function PatientDashboard() {
               <Box sx={{ textAlign: 'center', py: 1.5 }}>
                 <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', color: COLORS.textMuted, fontStyle: 'italic', mb: 1 }}>No upcoming visits</Typography>
                 <Button size="small" variant="outlined" startIcon={<EventAvailableIcon sx={{ fontSize: '14px !important' }} />}
+                  onClick={() => setQuickBookOpen(true)}
                   sx={{ fontFamily: FONT, fontSize: '0.72rem', fontWeight: 700, textTransform: 'none', color: '#2E7D32', borderColor: '#A5D6A7', borderRadius: 1.5, '&:hover': { bgcolor: '#E8F5E9', borderColor: '#66BB6A' } }}>
                   Book Visit
                 </Button>
@@ -1499,6 +1614,28 @@ export default function PatientDashboard() {
           Print window was blocked. Please allow pop-ups for this site and try again.
         </Alert>
       </Snackbar>
+
+      {/* T2.129: Generic error snackbar */}
+      <Snackbar
+        open={!!errorSnack}
+        autoHideDuration={5000}
+        onClose={() => setErrorSnack('')}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setErrorSnack('')} severity="error" variant="filled" sx={{ fontFamily: FONT, width: '100%' }}>
+          {errorSnack}
+        </Alert>
+      </Snackbar>
+
+      {/* T2.458: Quick-book WalkInModal — pet + owner prefilled */}
+      <WalkInModal
+        open={quickBookOpen}
+        onClose={() => setQuickBookOpen(false)}
+        servicesList={servicesList}
+        departments={deptsList}
+        prefillClient={owner}
+        prefillPet={pet}
+      />
     </Box>
   );
 }

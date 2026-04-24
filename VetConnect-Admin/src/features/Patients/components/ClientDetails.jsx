@@ -122,6 +122,8 @@ export default function ClientDetails({ editForm, setEditForm, isEditing, calcul
              <MenuItem value="Social Media">Social Media</MenuItem>
              <MenuItem value="Referral">Client Referral</MenuItem>
          </DataField>
+         {/* T2.136: Referred by — free-text name of referring client or source */}
+         <DataField label="Referred By" value={editForm.referredBy} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, referredBy: val})} />
          <DataField label="Preferred Comm Method" select value={editForm.preferredComm} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, preferredComm: val})}>
              <MenuItem value="SMS">SMS / Text</MenuItem>
              <MenuItem value="Email">Email</MenuItem>

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Box, Tabs, Tab, Typography, CircularProgress } from '@mui/material';
+import { Box, Tabs, Tab, Typography, CircularProgress, Snackbar, Alert } from '@mui/material';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 
@@ -43,8 +43,12 @@ export default function Patients() {
     editForm, setEditForm, handleSaveProfile,
     newNote, setNewNote, noteCategory, setNoteCategory, handleAddNote, handleDeleteNote,
     newPetData, setNewPetData, handleAdminAddPet,
-    loading, loadingClientData, archivePet, restorePet
+    loading, loadingClientData, archivePet, restorePet,
+    engagementKPIs,
   } = usePatientManager(() => setActiveTab(0));
+
+  // T2.129: Snackbar for save feedback
+  const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' });
 
   // Modal States
   const [openAddPet, setOpenAddPet] = useState(false);
@@ -104,20 +108,21 @@ export default function Patients() {
            </Box>
         ) : selectedClient ? (
           <>
-            <ClientHeader 
-              client={selectedClient} 
-              balance={outstandingBalance} 
-              isEditing={isEditing} 
+            <ClientHeader
+              client={selectedClient}
+              balance={outstandingBalance}
+              isEditing={isEditing}
               onEdit={() => setIsEditing(true)}
               onCancel={() => { setEditForm(selectedClient); setIsEditing(false); }}
-              onSave={async () => { 
-                  try { 
-                      await handleSaveProfile(); 
-                      alert("Profile Saved!");
+              engagementKPIs={engagementKPIs}
+              onSave={async () => {
+                  try {
+                      await handleSaveProfile();
+                      setSnack({ open: true, message: 'Profile saved successfully.', severity: 'success' });
                       setIsEditing(false); // Make sure to exit edit mode
-                  } catch(e) { 
-                      alert(e.message) 
-                  } 
+                  } catch(e) {
+                      setSnack({ open: true, message: e.message, severity: 'error' });
+                  }
               }}
             />
             
@@ -132,7 +137,7 @@ export default function Patients() {
                   '& .Mui-selected': { color: `${COLORS.cta} !important` },
                 }}
               >
-                <Tab label={`Pets (${clientPets.filter(p => p.status !== 'archived').length})`} />
+                <Tab label={`Pets (${clientPets.filter(p => p.status !== 'archived' && p.status !== 'deceased').length})`} />
                 <Tab label="Owner Details" />
                 <Tab label="Billing Ledger" />
                 <Tab label="Internal Logs" />
@@ -168,7 +173,7 @@ export default function Patients() {
           ownerName={selectedClient.fullName}
           newPetData={newPetData}
           setNewPetData={setNewPetData}
-          onSubmit={async () => { try { const success = await handleAdminAddPet(); if(success) setOpenAddPet(false); } catch(e) { alert(e.message) } }}
+          onSubmit={async () => { try { const success = await handleAdminAddPet(); if(success) setOpenAddPet(false); } catch(e) { setSnack({ open: true, message: e.message, severity: 'error' }); } }}
         />
       )}
       
@@ -193,12 +198,29 @@ export default function Patients() {
       )}
 
       {openEditPet && selectedPet && (
-        <EditPetModal 
-          open={openEditPet} 
-          onClose={() => setOpenEditPet(false)} 
-          pet={selectedPet} 
+        <EditPetModal
+          open={openEditPet}
+          onClose={() => setOpenEditPet(false)}
+          pet={selectedPet}
         />
       )}
+
+      {/* T2.129: Save/error feedback */}
+      <Snackbar
+        open={snack.open}
+        autoHideDuration={4000}
+        onClose={() => setSnack(s => ({ ...s, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnack(s => ({ ...s, open: false }))}
+          severity={snack.severity}
+          variant="filled"
+          sx={{ fontFamily: FONT, width: '100%' }}
+        >
+          {snack.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

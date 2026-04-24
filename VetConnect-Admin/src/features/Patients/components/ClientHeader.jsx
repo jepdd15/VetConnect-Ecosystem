@@ -12,9 +12,22 @@ import SaveIcon from '@mui/icons-material/Save';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import CancelIcon from '@mui/icons-material/Cancel';
+import UpdateIcon from '@mui/icons-material/Update';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import EventBusyIcon from '@mui/icons-material/EventBusy';
 
-export default function ClientHeader({ client, balance, isEditing, onEdit, onCancel, onSave }) {
+export default function ClientHeader({ client, balance, isEditing, onEdit, onCancel, onSave, engagementKPIs }) {
   const hasDebt = balance > 0;
+
+  // T2.133: Contact freshness — compute days since last profile update.
+  // Falls back to createdAt when updatedAt is absent (legacy records).
+  const profileTimestamp = client.updatedAt?.seconds
+    ? new Date(client.updatedAt.seconds * 1000)
+    : (client.createdAt?.seconds ? new Date(client.createdAt.seconds * 1000) : null);
+  const daysSinceUpdate = profileTimestamp
+    ? Math.floor((Date.now() - profileTimestamp.getTime()) / 86400000)
+    : null;
+  const isStaleProfile = daysSinceUpdate !== null && daysSinceUpdate > 90;
 
   return (
     <Box sx={{ 
@@ -39,7 +52,40 @@ export default function ClientHeader({ client, balance, isEditing, onEdit, onCan
                   </Typography>
                   <Chip label={client.clientTag || 'Regular'} size="small" color={client.clientTag==='VIP'?'warning':client.clientTag==='Bad Payer'?'error':'default'} variant={client.clientTag==='Regular' ? 'outlined' : 'filled'} sx={{fontFamily: FONT, fontWeight: 'bold', height: 22, fontSize: '0.7rem'}} />
                   {client.seniorId && <Chip label="SC/PWD" size="small" sx={{fontFamily: FONT, fontWeight: 'bold', height: 22, fontSize: '0.7rem', bgcolor: COLORS.kpiPurpleBg, color: COLORS.grooming}} />}
+                  {/* T2.136: Referral chip */}
+                  {client.referredBy && (
+                    <Chip label={`Ref: ${client.referredBy}`} size="small" variant="outlined"
+                      sx={{ fontFamily: FONT, fontWeight: 'bold', height: 22, fontSize: '0.7rem', borderColor: COLORS.accentLight, color: COLORS.accentLight }} />
+                  )}
                 </Box>
+
+                {/* T2.134: Engagement KPIs row */}
+                {!isEditing && engagementKPIs && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5, mt: 0.25, mb: 0.25 }}>
+                    <Typography variant="caption" sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textSecondary, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <TrendingUpIcon sx={{ fontSize: 13 }} />
+                      {engagementKPIs.totalVisits} visit{engagementKPIs.totalVisits !== 1 ? 's' : ''}
+                    </Typography>
+                    {engagementKPIs.lastVisitDate && (
+                      <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.textMuted }}>
+                        Last: {engagementKPIs.lastVisitDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </Typography>
+                    )}
+                    {engagementKPIs.avgDaysBetween != null && (
+                      <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.textMuted }}>
+                        ~{engagementKPIs.avgDaysBetween}d between visits
+                      </Typography>
+                    )}
+                    {engagementKPIs.noShowCount > 0 && (
+                      <Chip
+                        icon={<EventBusyIcon sx={{ fontSize: '12px !important' }} />}
+                        label={`${engagementKPIs.noShowCount} no-show${engagementKPIs.noShowCount > 1 ? 's' : ''} (${Math.round((engagementKPIs.noShowCount / engagementKPIs.totalAppointments) * 100)}%)`}
+                        size="small"
+                        sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.65rem', height: 20, bgcolor: '#FFEBEE', color: '#D32F2F', border: '1px solid #EF9A9A' }}
+                      />
+                    )}
+                  </Box>
+                )}
 
                 {/* Row 2: Contacts */}
                 {!isEditing && (
@@ -52,6 +98,20 @@ export default function ClientHeader({ client, balance, isEditing, onEdit, onCan
                     </Typography>
                     <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.textMuted, ml: 1, fontStyle: 'italic', borderLeft: `1px solid ${COLORS.border}`, pl: 2.5 }}>
                       Client Since: {client.createdAt ? new Date(client.createdAt.seconds * 1000).toLocaleDateString() : 'N/A'}
+                    </Typography>
+                  </Box>
+                )}
+
+                {/* T2.133: Stale contact info banner */}
+                {isStaleProfile && !isEditing && (
+                  <Box sx={{
+                    display: 'flex', alignItems: 'center', gap: 1,
+                    bgcolor: '#FFF8E1', px: 2, py: 0.5,
+                    border: `1px solid #FFE082`, mt: 0.5,
+                  }}>
+                    <UpdateIcon sx={{ fontSize: 14, color: '#F57F17' }} />
+                    <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', color: '#F57F17', fontWeight: 600 }}>
+                      Contact info last updated {daysSinceUpdate}d ago — please confirm details are current.
                     </Typography>
                   </Box>
                 )}

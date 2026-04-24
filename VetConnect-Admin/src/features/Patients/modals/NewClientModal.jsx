@@ -16,6 +16,7 @@ export default function NewClientModal({ open, onClose }) {
     fullName: '', phone: '', email: '',
     address: '', city: '',
     clientTag: 'Regular',
+    referredBy: '',  // T2.136
   });
   const [petForm, setPetForm] = useState({
     name: '', species: 'Canine',
@@ -26,7 +27,7 @@ export default function NewClientModal({ open, onClose }) {
   const [showDupeWarning, setShowDupeWarning] = useState(false);
 
   const resetForms = () => {
-    setForm({ fullName: '', phone: '', email: '', address: '', city: '', clientTag: 'Regular' });
+    setForm({ fullName: '', phone: '', email: '', address: '', city: '', clientTag: 'Regular', referredBy: '' });
     setPetForm({ name: '', species: 'Canine' });
     setError('');
     setDuplicates([]);
@@ -66,6 +67,7 @@ export default function NewClientModal({ open, onClose }) {
         address: form.address.trim() || null,
         city: form.city.trim() || null,
         clientTag: form.clientTag,
+        referredBy: form.referredBy.trim() || null,  // T2.136
         role: 'pet_owner',
         accountStatus: 'admin_registered',   // no Firebase Auth account — guest-client pattern
         accountStanding: 'Good Standing',
@@ -149,6 +151,12 @@ export default function NewClientModal({ open, onClose }) {
             <Grid item xs={12} md={6}>
               <TextField label="City / Municipality (Optional)" fullWidth size="small"
                 value={form.city} onChange={(e) => setForm({...form, city: e.target.value})}
+                sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }} />
+            </Grid>
+            {/* T2.136: Referred by — who sent this client */}
+            <Grid item xs={12}>
+              <TextField label="Referred by (Optional)" fullWidth size="small" placeholder="Name of referring client or source"
+                value={form.referredBy} onChange={(e) => setForm({...form, referredBy: e.target.value})}
                 sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }} />
             </Grid>
           </Grid>

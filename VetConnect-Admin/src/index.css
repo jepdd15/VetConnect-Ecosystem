@@ -98,3 +98,86 @@ a {
   filter: blur(1px);
   pointer-events: none;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   PRINT-FRIENDLY STYLESHEET — PatientDashboard
+   Triggered by Ctrl+P or browser print. Hides interactive
+   chrome and expands all records for a complete printed chart.
+   ═══════════════════════════════════════════════════════════ */
+@media print {
+  /* 1. Hide the app sidebar (navigation) */
+  nav,
+  [class*="MuiDrawer"],
+  .sidebar-nav {
+    display: none !important;
+  }
+
+  /* 2. Make main content fill the page */
+  body, #root {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+  }
+
+  /* 3. Remove overflow hidden so all content renders */
+  * {
+    overflow: visible !important;
+  }
+
+  /* 4. Hide interactive controls */
+  button,
+  .MuiIconButton-root,
+  .MuiTextField-root,
+  .MuiSelect-root,
+  .MuiTabs-root,
+  .MuiToggleButtonGroup-root,
+  .MuiMenu-root,
+  .MuiPopover-root,
+  .MuiSnackbar-root,
+  .MuiDialog-root {
+    display: none !important;
+  }
+
+  /* 5. But KEEP content-display chips and typography */
+  .MuiChip-root {
+    display: inline-flex !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* 6. Force all Collapse containers to be visible (expand all records) */
+  .MuiCollapse-root {
+    height: auto !important;
+    visibility: visible !important;
+    overflow: visible !important;
+  }
+  .MuiCollapse-wrapper,
+  .MuiCollapse-wrapperInner {
+    height: auto !important;
+  }
+
+  /* 7. Ensure colors print */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* 8. Remove box shadows and transforms */
+  * {
+    box-shadow: none !important;
+    transform: none !important;
+  }
+
+  /* 9. Page breaks — avoid breaking inside a record card */
+  [data-record-index] {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* 10. Remove fixed heights on flex containers */
+  [style*="height: 100vh"],
+  [style*="height:100vh"] {
+    height: auto !important;
+  }
+}

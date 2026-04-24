@@ -1,8 +1,8 @@
 # VetConnect Master Task List
 
-**Last updated:** 2026-04-24 · **Branch:** `main`
+**Last updated:** 2026-04-25 · **Branch:** `main`
 **Total tasks:** ~719 · **Cancelled/Absorbed:** ~16 · **Active:** ~703
-**DONE:** 488 · **TODO:** 210 · **Deferred sub-tasks:** 62
+**DONE:** 499 · **TODO:** 199 · **Deferred sub-tasks:** 62
 **Critical path to defense:** Dashboard Build (~32 hrs) + thesis
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~154 hours (Phase 4 S-Tier)
 
@@ -270,16 +270,16 @@
 | T2.111 | Extract shared ClinicalTimeline component | 1.5 hrs | — | DONE | Non-essential refactor |
 | T2.114 | Owner name: fullName fix in PatientDashboard | 2 min | — | DONE | |
 | T2.117 | Deduplicate calculateAge into shared util | 10 min | — | DONE | |
-| T2.118 | PatientDashboard dead buttons (3) | 15 min | — | TODO | |
+| T2.118 | PatientDashboard dead buttons (3) | 15 min | — | DONE | "Add Record" removed, both "Book Visit" wired to WalkInModal |
 | T2.127 | PatientDirectory: empty state + null guard + React.memo | 15 min | — | DONE | |
 | T2.128 | Stale-data flash on client switch | 15 min | — | DONE | |
-| T2.129 | Replace 3 alert() calls with MUI Snackbar (Patients) | 15 min | — | TODO | |
+| T2.129 | Replace 3 alert() calls with MUI Snackbar (Patients) | 15 min | — | DONE | 4 alert() → Snackbar across Patients.jsx + PatientDashboard.jsx |
 | T2.130 | Expand search to include prescriptions, assessment, plan | 10 min | — | DONE | |
 | T2.131 | Remove dead code (4 items in Patients module) | 5 min | — | DONE | |
-| T2.133 | Contact freshness prompt at check-in (>90 days) | 30 min | — | TODO | |
-| T2.134 | Client-level engagement KPIs in ClientHeader | 45 min | — | TODO | |
-| T2.135 | Deceased pet status + dateOfDeath + memorial indicator | 15 min | — | TODO | |
-| T2.136 | Referral detail: "Referred by" text field | 15 min | — | TODO | |
+| T2.133 | Contact freshness prompt at check-in (>90 days) | 30 min | — | DONE | Yellow banner in ClientHeader, updatedAt written on profile save, createdAt fallback |
+| T2.134 | Client-level engagement KPIs in ClientHeader | 45 min | — | DONE | totalVisits, lastVisitDate, avgDaysBetween, noShowRate. One-shot getDocs. Gates T4.29 |
+| T2.135 | Deceased pet status + dateOfDeath + memorial indicator | 15 min | — | DONE | Mark Deceased menu + confirm dialog, In Memoriam section, dateOfDeath field. **Review fix:** try/catch/finally. Gates T4.34 |
+| T2.136 | Referral detail: "Referred by" text field | 15 min | — | DONE | NewClientModal field, ClientDetails DataField, ClientHeader chip, usePatientManager payload |
 | T2.144 | Replace 3 alert() calls with MUI Snackbar (Sales) | 15 min | — | DONE | |
 | T2.145 | Delete dead code: clinicalFlatStyle, Divider/Grid imports (Sales) | 2 min | — | DONE | |
 | T2.146 | Design token compliance: Sales.jsx + EodSummary.jsx (60+ hardcoded colors) | 30 min | — | DONE | Sales-scoped only; POSModal deferred to T2.148a |
@@ -844,14 +844,14 @@
 | T2.454 | Print Visit Summary button per record | P1 | 1.5 hrs | DONE | Already implemented at PatientDashboard.jsx L834-857 |
 | T2.453a | Records.jsx + PatientDashboard.jsx: replace hardcoded #E65100 amendment orange with COLORS.amendment token (add to designTokens.js) | P3 | 5 min | TODO | Review finding — T2.453 audit |
 | T2.457 | Case-day linkage badges | P2 | 45 min | DONE | "Day X of Y" badges, integrated into existing appt fetch, blue day-1/orange day-2+. **Review fix:** caseDay<=1 guard → <1 so Day 1 records in chain get badge |
-| T2.458 | Quick Book button per record | P2 | 20 min | TODO | Depends on T2.115 (WalkInModal prefill) |
+| T2.458 | Quick Book button per record | P2 | 20 min | DONE | "Rebook" button per expanded record + banner/sidebar buttons, all via WalkInModal prefill |
 | T2.459 | Lab results aggregation in right sidebar (absorbs T2.24-27 admin portion) | P2 | 1.5 hrs | DONE | Always renders, trend context (previous result/date), reference range, status chips, empty state |
 | T2.460 | Weight trend chart improvements (1-point display, delta annotation) | P2 | 30 min | DONE | Single-point prominent display, 2+ points delta annotation (green gain/red loss) |
-| T2.461 | Vitals trend improvements (species-normal reference lines) | P2 | 30 min | TODO | |
+| T2.461 | Vitals trend improvements (species-normal reference lines) | P2 | 30 min | DONE | SPECIES_VITAL_RANGES constant, dashed green ReferenceLine on Temp/HR/RR/CRT/BCS. **Review fix:** RR domain [10,50]. Gates T4.15 |
 | T2.462 | Expand search: labResults + vaccineData | P2 | 15 min | DONE | |
-| T2.463 | Print-friendly stylesheet (@media print) | P3 | 1 hr | TODO | |
-| T2.464 | Prescription frequency analysis | P3 | 45 min | TODO | |
-| T2.465 | Vaccination schedule completeness percentage | P3 | 30 min | TODO | |
+| T2.463 | Print-friendly stylesheet (@media print) | P3 | 1 hr | DONE | 10 rules in index.css — hide nav/buttons, expand Collapse, force colors, page breaks |
+| T2.464 | Prescription frequency analysis | P3 | 45 min | DONE | prescriptionFrequency memo, Nx count badges, sorted most-frequent first. **Review fix:** don't overwrite lastDate |
+| T2.465 | Vaccination schedule completeness percentage | P3 | 30 min | DONE | vaccineCompleteness memo, species-filtered, progress bar + X/Y (Z%) display |
 | T2.466 | Add RR, CRT, BCS, Pain to per-record vitals box | P1 | 20 min | DONE | 4 vitals recorded but not displayed |
 | T2.467 | Add RR trend chart to sidebar | P2 | 15 min | DONE | |
 | T2.468 | Add BCS trend chart to sidebar | P2 | 15 min | DONE | |

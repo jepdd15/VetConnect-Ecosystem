@@ -996,6 +996,13 @@
 | T3.65 | ChatbotScreen: hybrid UI (buttons + free text) | P3 | 20 min | TODO |
 | T3.66 | ChatbotScreen: system prompt in Firestore | P3 | 15 min | TODO |
 | T3.67 | ChatbotScreen: session management + rate limiting | P3 | 20 min | TODO |
+| T3.68 | Queue services popover: show per-service status (pending/in-progress/completed) via ServiceProgressCard in the hover card. Wire serviceStatus from appointment.services[] into queueColumns.jsx services renderCell. Sort controls: booking order / status / department (per locked decision in handoff.json line 1825). Also addresses dropped T2.91 (popover accessibility) and T2.92 (Dispensing/Billing tab popovers). | P2 | 2-3 hrs | T2.95, T2.97 | TODO | Handoff decision locked but never implemented — ServiceProgressCard only consumed by ClinicalWorkspace |
+| T3.69 | EndOfDayModal service waterfall: show per-service completion status for each unresolved appointment so staff can see which services are incomplete before resolving. Use ServiceProgressCard in the appointment detail expansion. Enables informed carry-over vs cancel decisions. | P2 | 1.5 hrs | T2.95, T2.97 | TODO | Handoff decision locked but never implemented |
+| T3.70 | Queue notes column restructure: split single 'notes' field into structured clientNotes/staffNotes/system-chips. Requires design session for data split, backward compat, ClinicalWorkspace subjective auto-fill interaction. Originally scoped as T2.90 discussion topic (handoff.json line 1509), never formalized. | P3 | 3-4 hrs | — | TODO | Design discussion required before implementation |
+| T3.72 | Checkout correlation ID: shared ID linking sale doc + appointment update for forensic audit matching. Currently relies on appointmentId one-way link + temporal proximity. | P3 | 30 min | T2.100 | TODO | Dropped — handoff.json L1405, L2205 |
+| T3.73 | Reserve/release audit logging: write inventory_log entries when reserveStock/releaseStock modify reserved quantities. Currently invisible to audit trail. | P3 | 1 hr | T2.151 | TODO | Dropped — handoff.json L1406, L2206 |
+| T3.74 | auditReason append-only: convert auditReason field to auditReasons[] array so cancel→revert→re-cancel preserves all reasons. Low priority — clinicalPulse already captures full history. | P3 | 30 min | — | TODO | Dropped — handoff.json L2207 |
+| T3.75 | Draft save/resume pulse events: add DRAFT_SAVED and DRAFT_RESUMED clinicalPulse event types for forensic reconstruction. | P3 | 30 min | T2.19 | TODO | Dropped — handoff.json L2211 |
 
 ---
 
@@ -1108,6 +1115,10 @@
 | T2.98 | Absorbed into T2.148 (superset scope: Sales.jsx + POSModal clinic name) |
 | T4.70 | Absorbed into T2.277 (identical scope — Forgot Password link. T2.277 bumped P2→P1) |
 | T4.77 | Absorbed into T4.71 (biometric login covers both admin + mobile) |
+| T2.47 | Absorbed into T2.18 (ClinicalWorkspace dead code cleanup) |
+| T2.18.1 | Absorbed into T2.18 |
+| T2.18.2 | Absorbed into T2.18 |
+| T2.18.3 | Absorbed into T2.18 |
 
 ---
 
@@ -1210,6 +1221,7 @@
 | T4.46 | Performance metrics dashboard: patients seen, avg consult, revenue per vet | P2 | 2 hrs | — | TODO | |
 | T4.47 | Staff KPI cards: wire dead KPICard component with real data | P2 | 1 hr | T2.221 | TODO | After dead code cleaned |
 | T4.48 | Credential management: PRC license expiry tracking, CE credits, renewal alerts | P3 | 2 hrs | — | TODO | PH regulatory |
+| T4.81 | Unify role/accessLevel redundancy: pick one canonical field, migrate all consumers (Firestore rules, App.jsx, UserContext, LoginScreen, Queue.jsx, useStaffManager, Records.jsx, StaffTable), write Firestore migration script for legacy veterinarian/groomer docs, delete the redundant field. | P3 | 4-5 hrs | T2.213 | TODO | Tech debt — both fields currently work but create confusion. See handoff.json role vs accessLevel analysis. |
 
 ### Sales S (T4.49-T4.53) — +9.5 hrs
 

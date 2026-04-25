@@ -28,6 +28,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { auth, db } from "../../firebaseConfig";
+import { isValidPHPhone } from "../utils/phoneValidation";
 
 const RegisterScreen = ({ navigation }) => {
   const insets = useSafeAreaInsets();
@@ -37,12 +38,6 @@ const RegisterScreen = ({ navigation }) => {
   const [phone, setPhone] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  // --- PH PHONE VALIDATION ENGINE ---
-  const isValidPHPhone = (number) => {
-    const phRegex = /^09\d{9}$/; // Exactly 11 digits starting with 09
-    return phRegex.test(number.trim());
-  };
 
   const handleRegister = async () => {
     if (!fullName.trim() || !email.trim() || !password || !phone.trim()) {

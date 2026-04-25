@@ -31,7 +31,7 @@ import { auth, db } from "../../firebaseConfig";
 // THE BRAIN
 import { useSafeAreaInsets } from "react-native-safe-area-context"; // <-- THE FIX: Hardware measurement hook
 import { useBookingEngine } from "../hooks/useBookingEngine";
-import { formatDisplayDate, formatDisplayTime } from '../utils/helpers';
+import { formatDisplayDate, formatDisplayTime, resolveTieredPrice } from '../utils/helpers';
 
 export default function BookAppointment({ navigation, route }) {
   const insets = useSafeAreaInsets();
@@ -402,20 +402,6 @@ export default function BookAppointment({ navigation, route }) {
       // --- CALCULATE BUNDLE PARAMETERS ---
       let bundleTotalMinutes = 0;
       let bundleTotalBuffer = 0; // T2.84: track total buffer for serviceBuffer field
-
-      // T2.79: resolveTieredPrice is a pure function — defined once, applied per-pet
-      const resolveTieredPrice = (svc, weight) => {
-        if (!svc?.hasTieredPricing || !svc?.pricingTiers?.length || weight == null) {
-          return parseFloat(svc?.price) || 0;
-        }
-        const w = Number(weight);
-        for (const tier of svc.pricingTiers) {
-          const min = Number(tier.minWeight) || 0;
-          const max = Number(tier.maxWeight) || 0;
-          if (w >= min && (max === 0 || w <= max)) return Number(tier.price) || parseFloat(svc.price) || 0;
-        }
-        return parseFloat(svc.price) || 0;
-      };
 
       // Pre-compute durations once (weight-independent)
       const serviceDurations = selectedServices.map(s => {

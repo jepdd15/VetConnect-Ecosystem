@@ -23,6 +23,7 @@ import {
 } from "react-native";
 import { auth, db } from "../../firebaseConfig";
 import { COLORS } from '../theme/mobileTokens';
+import { isValidPHPhone } from "../utils/phoneValidation";
 
 // THE FIX: Notice we added `route` to the props to catch the secret flag!
 export default function UserProfileScreen({ navigation, route }) {
@@ -114,12 +115,6 @@ export default function UserProfileScreen({ navigation, route }) {
     };
     fetchProfile();
   }, []);
-
-  // --- PH PHONE VALIDATION ENGINE ---
-  const isValidPHPhone = (number) => {
-    const phRegex = /^09\d{9}$/; // Exactly 11 digits starting with 09
-    return phRegex.test(number.trim());
-  };
 
   const handleUpdate = async () => {
     // 1. Basic empty check

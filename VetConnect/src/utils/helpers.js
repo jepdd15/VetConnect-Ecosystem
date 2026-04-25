@@ -110,3 +110,42 @@ export const formatDisplayTime = (ts, fallback = '') => {
   const d = toJSDate(ts);
   return d ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : fallback;
 };
+
+export const resolveTieredPrice = (svc, weight) => {
+  if (!svc?.hasTieredPricing || !svc?.pricingTiers?.length || weight == null) {
+    return parseFloat(svc?.price) || 0;
+  }
+  const w = Number(weight);
+  for (const tier of svc.pricingTiers) {
+    const min = Number(tier.minWeight) || 0;
+    const max = Number(tier.maxWeight) || 0;
+    if (w >= min && (max === 0 || w <= max)) return Number(tier.price) || parseFloat(svc.price) || 0;
+  }
+  return parseFloat(svc.price) || 0;
+};
+
+export const calculateAge = (dob) => {
+  if (!dob) return "Age Not Set";
+  try {
+    let birthDate;
+    if (dob.toDate) birthDate = dob.toDate();
+    else birthDate = new Date(dob);
+    if (isNaN(birthDate.getTime())) return "Age Not Set";
+    const today = new Date();
+    let years = today.getFullYear() - birthDate.getFullYear();
+    let months = today.getMonth() - birthDate.getMonth();
+    if (
+      months < 0 ||
+      (months === 0 && today.getDate() < birthDate.getDate())
+    ) {
+      years--;
+      months += 12;
+    }
+    if (years <= 0 && months <= 0) return "Newborn";
+    if (years === 0) return `${months} mo`;
+    if (months === 0) return `${years} yrs`;
+    return `${years} yrs, ${months} mo`;
+  } catch {
+    return "Age Not Set";
+  }
+};

@@ -26,6 +26,7 @@ import {
 } from "react-native";
 import { auth, db } from "../../firebaseConfig";
 import { COLORS } from '../theme/mobileTokens';
+import { calculateAge } from '../utils/helpers';
 
 export default function MyPetsScreen({ navigation }) {
   const [pets, setPets] = useState([]);
@@ -91,32 +92,6 @@ export default function MyPetsScreen({ navigation }) {
     });
     return () => unsubscribe();
   }, [auth.currentUser?.uid]);
-
-  const calculateAge = (dob) => {
-    if (!dob) return "Age Not Set";
-    try {
-      let birthDate;
-      if (dob.toDate) birthDate = dob.toDate();
-      else birthDate = new Date(dob);
-      if (isNaN(birthDate.getTime())) return "Age Not Set";
-      const today = new Date();
-      let years = today.getFullYear() - birthDate.getFullYear();
-      let months = today.getMonth() - birthDate.getMonth();
-      if (
-        months < 0 ||
-        (months === 0 && today.getDate() < birthDate.getDate())
-      ) {
-        years--;
-        months += 12;
-      }
-      if (years <= 0 && months <= 0) return "Newborn";
-      if (years === 0) return `${months} mo`;
-      if (months === 0) return `${years} yrs`;
-      return `${years} yrs, ${months} mo`;
-    } catch (e) {
-      return "Age Not Set";
-    }
-  };
 
   const handleDelete = async (petId, petName) => {
     Alert.alert(

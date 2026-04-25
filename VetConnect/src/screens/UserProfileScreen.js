@@ -29,6 +29,7 @@ import { isValidPHPhone } from "../utils/phoneValidation";
 export default function UserProfileScreen({ navigation, route }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [isErased, setIsErased] = useState(false);
 
   // Catch the flag from BookAppointment.js
   const isBookingRedirect = route.params?.isBookingRedirect || false;
@@ -72,6 +73,15 @@ export default function UserProfileScreen({ navigation, route }) {
 
         if (snap.exists()) {
           const data = snap.data();
+
+          // RA 10173 Step 4.1: Guard — erased accounts show a read-only notice.
+          // The Firebase Auth account may still exist on the Spark plan, so this
+          // prevents interaction with a profile whose PII has been anonymized.
+          if (data.accountStatus === 'erased') {
+            setIsErased(true);
+            return;
+          }
+
           setFullName(data.fullName || "");
           setPhone(data.phone || "");
           setEmail(data.email || auth.currentUser?.email || "");
@@ -296,6 +306,29 @@ export default function UserProfileScreen({ navigation, route }) {
         style={{ marginTop: 50 }}
       />
     );
+
+  // RA 10173 Step 4.1: Read-only notice for erased accounts.
+  // Shown instead of the profile form so the user isn't trapped or confused.
+  if (isErased) {
+    return (
+      <View style={styles.erasedContainer}>
+        <View style={styles.erasedCard}>
+          <Text style={styles.erasedHeader}>Account Erased</Text>
+          <Text style={styles.erasedBody}>
+            Your personal data has been removed per your request under RA 10173
+            (Philippine Data Privacy Act). If you believe this is an error,
+            please contact the clinic directly.
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={styles.erasedLogoutBtn}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.erasedLogoutText}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -1010,5 +1043,45 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     fontSize: 14,
     textDecorationLine: "underline",
+  },
+
+  // RA 10173 Step 4.1 — erased account read-only notice styles
+  erasedContainer: {
+    flex: 1,
+    backgroundColor: "#FAFAFA",
+    padding: 24,
+    justifyContent: "center",
+  },
+  erasedCard: {
+    backgroundColor: "#FFEBEE",
+    borderWidth: 2,
+    borderColor: COLORS.danger,
+    padding: 24,
+    marginBottom: 24,
+  },
+  erasedHeader: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: COLORS.danger,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginBottom: 16,
+  },
+  erasedBody: {
+    fontSize: 14,
+    color: COLORS.textPrimary,
+    lineHeight: 22,
+  },
+  erasedLogoutBtn: {
+    backgroundColor: COLORS.accent,
+    padding: 18,
+    alignItems: "center",
+  },
+  erasedLogoutText: {
+    color: COLORS.white,
+    fontWeight: "900",
+    fontSize: 16,
+    textTransform: "uppercase",
+    letterSpacing: 1,
   },
 });

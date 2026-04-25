@@ -15,8 +15,9 @@ import CancelIcon from '@mui/icons-material/Cancel';
 import UpdateIcon from '@mui/icons-material/Update';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
+import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
 
-export default function ClientHeader({ client, balance, isEditing, onEdit, onCancel, onSave, engagementKPIs }) {
+export default function ClientHeader({ client, balance, isEditing, onEdit, onCancel, onSave, engagementKPIs, onProcessErasure }) {
   const hasDebt = balance > 0;
 
   // T2.133: Contact freshness — compute days since last profile update.
@@ -146,9 +147,32 @@ export default function ClientHeader({ client, balance, isEditing, onEdit, onCan
                   <Button variant="outlined" onClick={onCancel} sx={{ fontFamily: FONT, fontWeight: 'bold', py: 1, color: COLORS.danger, borderColor: COLORS.danger }} startIcon={<CancelIcon />}>Cancel</Button>
               </Stack>
               ) : (
-              <Button variant="outlined" startIcon={<EditIcon />} onClick={onEdit} sx={{fontFamily: FONT, borderColor: COLORS.border, color: COLORS.textSecondary, '&:hover':{borderColor: COLORS.accentWarm, color: COLORS.accentWarm, bgcolor: COLORS.panelBg}, bgcolor: COLORS.cardBg, fontWeight: 'bold', py: 1, px: 2}}>
-                  Edit Profile
-              </Button>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Button variant="outlined" startIcon={<EditIcon />} onClick={onEdit} sx={{fontFamily: FONT, borderColor: COLORS.border, color: COLORS.textSecondary, '&:hover':{borderColor: COLORS.accentWarm, color: COLORS.accentWarm, bgcolor: COLORS.panelBg}, bgcolor: COLORS.cardBg, fontWeight: 'bold', py: 1, px: 2}}>
+                    Edit Profile
+                </Button>
+                {/* RA 10173: Show erasure button only when client has an active deletion request */}
+                {client.deletionRequested && (
+                  <Button
+                    variant="contained"
+                    startIcon={<DeleteForeverIcon />}
+                    onClick={onProcessErasure}
+                    sx={{
+                      fontFamily: FONT,
+                      fontWeight: 'bold',
+                      py: 1,
+                      px: 2,
+                      borderRadius: 0,
+                      bgcolor: COLORS.danger,
+                      color: '#fff',
+                      boxShadow: `3px 3px 0px ${COLORS.dangerHover}`,
+                      '&:hover': { bgcolor: COLORS.dangerHover, boxShadow: 'none' },
+                    }}
+                  >
+                    Process Erasure
+                  </Button>
+                )}
+              </Stack>
               )}
           </Box>
         </Box>

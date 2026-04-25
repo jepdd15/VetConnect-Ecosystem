@@ -342,7 +342,7 @@
 | T3.10b | Recently Resolved panel with undo | P2 | 2-3 hrs | — | DONE | |
 | T3.10c | Show resolved today toggle | P3 | 1 hr | — | TODO | |
 | T3.10d | Global patient search in Queue | P2 | 1-2 hrs | — | DONE | |
-| T3.11 | RA 10173 right-to-erasure anonymization | P2 | 4 hrs | — | TODO | |
+| T3.11 | RA 10173 right-to-erasure anonymization | P2 | 4 hrs | — | DONE | |
 | T3.12 | Multi-Pet Visit Support (full UI) | P2 | 15-20 hrs | T2.78 | TODO | 11 sub-tasks |
 | T3.13 | Partial refund with line-item selection | P3 | 6-8 hrs | T2.104 | TODO | |
 | T3.14 | Unit test suite for pulseUtils.js | P3 | 3-4 hrs | — | TODO | |

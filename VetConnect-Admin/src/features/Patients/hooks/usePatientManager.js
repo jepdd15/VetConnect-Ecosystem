@@ -62,7 +62,12 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
   useEffect(() => {
     const q = query(collection(db, "users"), where("role", "==", "pet_owner"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      // Step 3.1 (RA 10173): Erased users are hidden from the active directory.
+      // Their Firestore docs are preserved for clinical/audit history references
+      // but must not appear in searchable patient workflows.
+      const list = snapshot.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(u => u.accountStatus !== 'erased');
       list.sort((a,b) => (a.fullName || '').localeCompare(b.fullName || ''));
       setOwners(list);
       setLoadingDirectory(false);

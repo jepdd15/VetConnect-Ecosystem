@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Box, Tabs, Tab, Typography, CircularProgress, Snackbar, Alert } from '@mui/material';
+import { Box, Tabs, Tab, Typography, CircularProgress, Snackbar, Alert, Button } from '@mui/material';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 
@@ -23,9 +23,12 @@ import AddPetModal from './modals/AddPetModal';
 import WalkInModal from '../Queue/WalkInModal';
 import EditPetModal from './modals/EditPetModal';
 import NewClientModal from './modals/NewClientModal';
+import ErasureConfirmationDialog from './modals/ErasureConfirmationDialog';
 
 // Icons
 import PetsIcon from '@mui/icons-material/Pets';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
 
 export default function Patients() {
   const location = useLocation();
@@ -56,6 +59,23 @@ export default function Patients() {
   const [openNewClient, setOpenNewClient] = useState(false);
   const [openEditPet, setOpenEditPet] = useState(false);
   const [selectedPet, setSelectedPet] = useState(null);
+
+  // RA 10173 erasure dialog state
+  const [erasureTarget, setErasureTarget] = useState(null); // { userId, userName, requestDate }
+
+  const pendingDeletionRequests = useMemo(
+    () => owners.filter((o) => o.deletionRequested === true),
+    [owners]
+  );
+
+  const handleOpenErasure = (client) => {
+    const requestDate = client.deletionRequestedAt?.seconds
+      ? new Date(client.deletionRequestedAt.seconds * 1000)
+      : null;
+    setErasureTarget({ userId: client.id, userName: client.fullName, requestDate });
+  };
+
+  const handleCloseErasure = () => setErasureTarget(null);
 
   // Services & departments for WalkInModal (T2.115)
   const [servicesList, setServicesList] = useState([]);
@@ -102,6 +122,81 @@ export default function Patients() {
       />
 
       <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: `linear-gradient(160deg, ${COLORS.surface} 0%, ${COLORS.peach} 100%)` }}>
+
+        {/* RA 10173 — Pending deletion requests banner */}
+        {pendingDeletionRequests.length > 0 && (
+          <Box
+            sx={{
+              bgcolor: COLORS.dangerSurface,
+              borderBottom: `2px solid ${COLORS.danger}`,
+              px: 3,
+              py: 1.25,
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: pendingDeletionRequests.length > 0 ? 0.75 : 0 }}>
+              <WarningAmberIcon sx={{ color: COLORS.danger, fontSize: 18 }} />
+              <Typography
+                sx={{
+                  fontFamily: FONT,
+                  fontWeight: 800,
+                  fontSize: '0.78rem',
+                  color: COLORS.danger,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.07em',
+                }}
+              >
+                {pendingDeletionRequests.length} client{pendingDeletionRequests.length !== 1 ? 's' : ''} have requested account erasure under RA 10173
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+              {pendingDeletionRequests.map((client) => (
+                <Box
+                  key={client.id}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1.5,
+                    bgcolor: COLORS.cardBg,
+                    border: `1px solid #EF9A9A`,
+                    px: 1.5,
+                    py: 0.5,
+                  }}
+                >
+                  <Typography sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.8rem', color: COLORS.textPrimary }}>
+                    {client.fullName}
+                  </Typography>
+                  {client.deletionRequestedAt?.seconds && (
+                    <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', color: COLORS.textMuted }}>
+                      {new Date(client.deletionRequestedAt.seconds * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </Typography>
+                  )}
+                  <Button
+                    size="small"
+                    variant="contained"
+                    startIcon={<DeleteForeverIcon sx={{ fontSize: '14px !important' }} />}
+                    onClick={() => handleOpenErasure(client)}
+                    sx={{
+                      fontFamily: FONT,
+                      fontWeight: 700,
+                      fontSize: '0.7rem',
+                      borderRadius: 0,
+                      bgcolor: COLORS.danger,
+                      color: '#fff',
+                      py: 0.25,
+                      px: 1,
+                      minHeight: 0,
+                      boxShadow: `2px 2px 0px ${COLORS.dangerHover}`,
+                      '&:hover': { bgcolor: COLORS.dangerHover, boxShadow: 'none' },
+                    }}
+                  >
+                    Process Erasure
+                  </Button>
+                </Box>
+              ))}
+            </Box>
+          </Box>
+        )}
+
         {loading && !selectedClient ? (
            <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
              <CircularProgress />
@@ -115,6 +210,7 @@ export default function Patients() {
               onEdit={() => setIsEditing(true)}
               onCancel={() => { setEditForm(selectedClient); setIsEditing(false); }}
               engagementKPIs={engagementKPIs}
+              onProcessErasure={() => handleOpenErasure(selectedClient)}
               onSave={async () => {
                   try {
                       await handleSaveProfile();
@@ -202,6 +298,21 @@ export default function Patients() {
           open={openEditPet}
           onClose={() => setOpenEditPet(false)}
           pet={selectedPet}
+        />
+      )}
+
+      {/* RA 10173 erasure confirmation */}
+      {erasureTarget && (
+        <ErasureConfirmationDialog
+          open={Boolean(erasureTarget)}
+          onClose={handleCloseErasure}
+          userId={erasureTarget.userId}
+          userName={erasureTarget.userName}
+          requestDate={erasureTarget.requestDate}
+          onSuccess={(message) => {
+            handleCloseErasure();
+            setSnack({ open: true, message, severity: 'success' });
+          }}
         />
       )}
 

@@ -297,6 +297,20 @@ export default function BookAppointment({ navigation, route }) {
         const userSnap = await getDoc(doc(db, "users", auth.currentUser.uid));
         if (userSnap.exists()) {
           const userData = userSnap.data();
+
+          // RA 10173 Step 3.4: Block erased accounts from creating new bookings.
+          // The Firebase Auth account persists on the Spark plan even after PII
+          // anonymization, so this guard closes the booking path explicitly.
+          if (userData.accountStatus === 'erased') {
+            Alert.alert(
+              "Account Removed",
+              "This account has been erased per your request under RA 10173. Please contact the clinic for assistance.",
+              [{ text: "OK", onPress: () => navigation.goBack() }],
+              { cancelable: false },
+            );
+            return;
+          }
+
           setOwnerName(userData.fullName || auth.currentUser.email);
 
           const hasEmergency = userData.emergencyContacts?.[0]?.name || userData.emergencyName;

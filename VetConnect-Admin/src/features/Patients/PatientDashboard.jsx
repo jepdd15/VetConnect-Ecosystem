@@ -650,6 +650,12 @@ export default function PatientDashboard() {
   const speciesKey = (pet?.species || '').toLowerCase().includes('cat') || (pet?.species || '').toLowerCase().includes('feline')
     ? 'feline' : 'canine';
 
+  // Step 3.6 (RA 10173): Owner's account has been anonymized.
+  // The dashboard remains viewable for historical continuity but all
+  // data-creation actions must be blocked to prevent new PII being
+  // linked to an erased identity.
+  const isErased = owner?.accountStatus === 'erased';
+
   return (
     <Box sx={{ m: -4, display: 'flex', flexDirection: 'column', height: '100vh', bgcolor: COLORS.surface, overflow: 'hidden', fontFamily: FONT }}>
 
@@ -727,13 +733,20 @@ export default function PatientDashboard() {
 
         {/* Actions */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 1.5 }}>
-          <Button variant="contained" size="small" startIcon={<EventAvailableIcon sx={{ fontSize: '15px !important' }} />} onClick={() => setQuickBookOpen(true)}
-            sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.78rem', textTransform: 'none', bgcolor: COLORS.success, borderRadius: 0, px: 2, height: 36, boxShadow: 'none', '&:hover': { bgcolor: '#1B5E20' } }}>
+          <Button
+            variant="contained"
+            size="small"
+            disabled={isErased}
+            startIcon={<EventAvailableIcon sx={{ fontSize: '15px !important' }} />}
+            onClick={() => setQuickBookOpen(true)}
+            sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.78rem', textTransform: 'none', bgcolor: COLORS.success, borderRadius: 0, px: 2, height: 36, boxShadow: 'none', '&:hover': { bgcolor: '#1B5E20' } }}
+          >
             Book Visit
           </Button>
           <Button
             variant="outlined"
             size="small"
+            disabled={isErased}
             startIcon={<LocalHospitalIcon sx={{ fontSize: '15px !important' }} />}
             onClick={() => setReferralOpen(true)}
             sx={{
@@ -746,6 +759,29 @@ export default function PatientDashboard() {
           </Button>
         </Box>
       </Box>
+
+      {/* ═══ RA 10173 ERASURE BANNER ═══ */}
+      {isErased && (
+        <Box sx={{
+          bgcolor: COLORS.dangerSurface,
+          borderBottom: `2px solid ${COLORS.danger}`,
+          px: 3, py: 1.25,
+          display: 'flex', alignItems: 'center', gap: 1.5,
+          flexShrink: 0,
+        }}>
+          <ShieldIcon sx={{ fontSize: 18, color: COLORS.danger, flexShrink: 0 }} />
+          <Typography sx={{
+            fontFamily: FONT,
+            fontSize: '0.82rem',
+            fontWeight: 900,
+            color: COLORS.danger,
+            borderRadius: 0,
+            letterSpacing: '0.02em',
+          }}>
+            This client&apos;s data has been erased under RA 10173. Records shown below are anonymized.
+          </Typography>
+        </Box>
+      )}
 
       {/* ═══ MAIN SPLIT PANEL ═══ */}
       <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
@@ -1047,6 +1083,7 @@ export default function PatientDashboard() {
                         {/* T2.458: Rebook — opens WalkInModal with this pet/owner prefilled */}
                         <Button
                           size="small"
+                          disabled={isErased}
                           startIcon={<EventAvailableIcon sx={{ fontSize: '14px !important' }} />}
                           onClick={(e) => { e.stopPropagation(); setQuickBookOpen(true); }}
                           sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.75rem', textTransform: 'none', color: COLORS.success }}
@@ -1447,9 +1484,14 @@ export default function PatientDashboard() {
             })() : (
               <Box sx={{ textAlign: 'center', py: 1.5 }}>
                 <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', color: COLORS.textMuted, fontStyle: 'italic', mb: 1 }}>No upcoming visits</Typography>
-                <Button size="small" variant="outlined" startIcon={<EventAvailableIcon sx={{ fontSize: '14px !important' }} />}
+                <Button
+                  size="small"
+                  variant="outlined"
+                  disabled={isErased}
+                  startIcon={<EventAvailableIcon sx={{ fontSize: '14px !important' }} />}
                   onClick={() => setQuickBookOpen(true)}
-                  sx={{ fontFamily: FONT, fontSize: '0.72rem', fontWeight: 700, textTransform: 'none', color: COLORS.success, borderColor: '#A5D6A7', borderRadius: 0, '&:hover': { bgcolor: '#E8F5E9', borderColor: '#66BB6A' } }}>
+                  sx={{ fontFamily: FONT, fontSize: '0.72rem', fontWeight: 700, textTransform: 'none', color: COLORS.success, borderColor: '#A5D6A7', borderRadius: 0, '&:hover': { bgcolor: '#E8F5E9', borderColor: '#66BB6A' } }}
+                >
                   Book Visit
                 </Button>
               </Box>
@@ -1521,6 +1563,7 @@ export default function PatientDashboard() {
                       <Button
                         size="small"
                         variant="outlined"
+                        disabled={isErased}
                         onClick={() => { setRecordPaymentTarget(sale); setRecordPaymentAmount(''); setRecordPaymentOpen(true); }}
                         sx={{ fontFamily: FONT, fontSize: '0.62rem', fontWeight: 800, borderRadius: 0, color: COLORS.success, borderColor: '#A5D6A7', textTransform: 'none', py: 0.25, px: 1 }}
                       >

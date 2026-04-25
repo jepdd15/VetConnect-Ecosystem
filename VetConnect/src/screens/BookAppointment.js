@@ -128,6 +128,9 @@ export default function BookAppointment({ navigation, route }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefillDate, fetching, selectedPets.length, selectedServices.length]);
 
+  // Configured no-show lookback window — falls back to 30 days if Firestore hasn't loaded yet.
+  const noShowWindowDays = clinicSettings?.noShowLinkWindowDays || 30;
+
   // Detect recent no-shows whenever the selected pets change.
   // Runs an inline query because the mobile app cannot import from VetConnect-Admin.
   useEffect(() => {
@@ -143,7 +146,7 @@ export default function BookAppointment({ navigation, route }) {
         const manilaToday = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
         manilaToday.setHours(0, 0, 0, 0);
         const cutoff = new Date(manilaToday);
-        cutoff.setDate(cutoff.getDate() - 30);
+        cutoff.setDate(cutoff.getDate() - noShowWindowDays);
 
         // Batch in groups of 30 (Firestore `in` limit)
         const batches = [];
@@ -192,7 +195,7 @@ export default function BookAppointment({ navigation, route }) {
 
     runDetection();
     return () => { cancelled = true; };
-  }, [selectedPets]);
+  }, [selectedPets, noShowWindowDays]);
 
   // THE FIX: High performance department statistics & sorting!
   const departmentStats = useMemo(() => {
@@ -1224,7 +1227,7 @@ export default function BookAppointment({ navigation, route }) {
             No-Show History Detected
           </Text>
           <Text style={styles.noShowBannerText}>
-            {noShowInfo.count} no-show{noShowInfo.count > 1 ? 's' : ''} in the last 30 days.
+            {noShowInfo.count} no-show{noShowInfo.count > 1 ? 's' : ''} in the last {clinicSettings?.noShowLinkWindowDays || 30} days.
             {(() => {
               if (!noShowInfo.mostRecent?.scheduledDate) return '';
               const raw = noShowInfo.mostRecent.scheduledDate;

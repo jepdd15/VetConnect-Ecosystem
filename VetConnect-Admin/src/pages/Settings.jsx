@@ -123,7 +123,7 @@ export default function Settings() {
     openHour: 8, closeHour: 17,
     lunchEnabled: true, lunchStart: 12, lunchEnd: 13,
     minSlotInterval: 30, advanceNoticeMins: 120, maxFutureBookingDays: 30, maxPetsPerBooking: 3,
-    maxCages: 5, autoNoShowMins: 30, trafficModerate: 6, trafficHigh: 13,
+    maxCages: 5, autoNoShowMins: 30, noShowLinkWindowDays: 30, trafficModerate: 6, trafficHigh: 13,
     clinicPhone: '',
     workingDays: [1, 2, 3, 4, 5, 6, 0], // [0:Sun, 1:Mon... 6:Sat]
     clinicLat: 16.0389, clinicLng: 120.3977, geofenceRadiusM: 150,
@@ -202,6 +202,7 @@ export default function Settings() {
           advanceNoticeHours: parseInt(data.advanceNoticeHours) || 2,
           maxFutureBookingDays: parseInt(data.maxFutureBookingDays) || 30,
           autoNoShowMins: parseInt(data.autoNoShowMins) || 30,
+          noShowLinkWindowDays: parseInt(data.noShowLinkWindowDays) || 30,
         } : prev);
       }
     });
@@ -247,8 +248,9 @@ export default function Settings() {
     if (!lastSavedSettings) return false;
     const tracked = ['openHour', 'closeHour', 'lunchEnabled', 'lunchStart', 'lunchEnd',
       'minSlotInterval', 'advanceNoticeMins', 'maxFutureBookingDays', 'maxPetsPerBooking',
-      'maxCages', 'autoNoShowMins', 'trafficModerate', 'trafficHigh', 'workingDays', 'clinicPhone',
-      'dashboardAlerts', 'dashboardGoals', 'clinicLat', 'clinicLng', 'geofenceRadiusM'];
+      'maxCages', 'autoNoShowMins', 'noShowLinkWindowDays', 'trafficModerate', 'trafficHigh',
+      'workingDays', 'clinicPhone', 'dashboardAlerts', 'dashboardGoals',
+      'clinicLat', 'clinicLng', 'geofenceRadiusM'];
     return tracked.some(key => JSON.stringify(settings[key]) !== JSON.stringify(lastSavedSettings[key]));
   }, [settings, lastSavedSettings]);
 
@@ -336,6 +338,10 @@ export default function Settings() {
     if (!noShow || noShow < 1) {
       return "Auto No-Show Trigger must be at least 1 minute.";
     }
+    const linkWindow = parseInt(settings.noShowLinkWindowDays);
+    if (!linkWindow || linkWindow < 1 || linkWindow > 365) {
+      return "No-Show Lookback Window must be between 1 and 365 days.";
+    }
     if ((settings.workingDays || []).length === 0) {
       return "At least one working day must be selected.";
     }
@@ -369,6 +375,7 @@ export default function Settings() {
         maxPetsPerBooking: parseInt(settings.maxPetsPerBooking) || 3,
         maxCages: parseInt(settings.maxCages) || 5,
         autoNoShowMins: parseInt(settings.autoNoShowMins) || 30,
+        noShowLinkWindowDays: parseInt(settings.noShowLinkWindowDays) || 30,
         trafficModerate: parseInt(settings.trafficModerate) || 6,
         trafficHigh: parseInt(settings.trafficHigh) || 13
       };
@@ -390,8 +397,9 @@ export default function Settings() {
       if (lastSavedSettings) {
         const tracked = ['openHour', 'closeHour', 'lunchEnabled', 'lunchStart', 'lunchEnd',
           'minSlotInterval', 'advanceNoticeMins', 'maxFutureBookingDays', 'maxPetsPerBooking',
-          'maxCages', 'autoNoShowMins', 'trafficModerate', 'trafficHigh', 'workingDays', 'clinicPhone',
-          'dashboardAlerts', 'dashboardGoals', 'clinicLat', 'clinicLng', 'geofenceRadiusM'];
+          'maxCages', 'autoNoShowMins', 'noShowLinkWindowDays', 'trafficModerate', 'trafficHigh',
+          'workingDays', 'clinicPhone', 'dashboardAlerts', 'dashboardGoals',
+          'clinicLat', 'clinicLng', 'geofenceRadiusM'];
         const changedFields = {};
         tracked.forEach(key => {
           if (JSON.stringify(sanitizedSettings[key]) !== JSON.stringify(lastSavedSettings[key])) {
@@ -921,6 +929,29 @@ export default function Settings() {
                 <Grid size={{ xs: 12 }}><TextField fullWidth label="Max Confinement Cages" type="number" value={settings.maxCages} onChange={(e) => handleChange('maxCages', e.target.value)} InputProps={{ endAdornment: <InputAdornment position="end" sx={{ fontWeight: 900 }}>Cages</InputAdornment> }} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 900 } }} helperText="Blocks admission" /></Grid>
                 <Grid size={{ xs: 12 }}><Divider sx={{ my: 1 }} /></Grid>
                 <Grid size={{ xs: 12 }}><TextField fullWidth label="Auto-No-Show Trigger" type="number" value={settings.autoNoShowMins} onChange={(e) => handleChange('autoNoShowMins', e.target.value)} InputProps={{ endAdornment: <InputAdornment position="end" sx={{ fontWeight: 900 }}>Mins Late</InputAdornment> }} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 900 } }} helperText="Mins late before Queue displays No-Show button." /></Grid>
+                <Grid size={{ xs: 12 }}>
+                  <TextField
+                    fullWidth
+                    label="No-Show Lookback Window"
+                    type="number"
+                    value={settings.noShowLinkWindowDays}
+                    onChange={(e) => handleChange('noShowLinkWindowDays', e.target.value)}
+                    InputProps={{
+                      endAdornment: (
+                        <InputAdornment position="end" sx={{ fontWeight: 900 }}>Days</InputAdornment>
+                      ),
+                    }}
+                    sx={{
+                      bgcolor: 'white',
+                      '& .MuiOutlinedInput-notchedOutline': {
+                        borderRadius: 0,
+                        border: `1px solid ${COLORS.accent}33`,
+                      },
+                    }}
+                    inputProps={{ style: { fontWeight: 900 }, min: 1, max: 365 }}
+                    helperText="Days to look back when detecting no-show history on booking."
+                  />
+                </Grid>
                 <Grid size={{ xs: 6 }}><TextField fullWidth label="Moderate Traffic" type="number" value={settings.trafficModerate} onChange={(e) => handleChange('trafficModerate', e.target.value)} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 900 } }} helperText="Patients" /></Grid>
                 <Grid size={{ xs: 6 }}><TextField fullWidth label="High Traffic" type="number" value={settings.trafficHigh} onChange={(e) => handleChange('trafficHigh', e.target.value)} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 900 } }} helperText="Patients" /></Grid>
               </Grid>

@@ -362,7 +362,7 @@
 | T3.28 | Internal ward/hospitalization medication labels | P3 | 1 hr | — | TODO | Only for overnight clinics |
 | T3.29 | Structured allergy entries with coded drug classes (Tier 2) | P3 | 6-8 hrs | — | TODO | Supersedes T2.175 keyword matching |
 | T3.30 | Barcode scan before product administration | P3 | 3-5 hrs | T2.175, T3.22 | TODO | Hospital-grade safety |
-| T3.31 | Configurable no-show link window: `noShowLinkWindowDays` in clinic_settings | P3 | 10 min | T2.190 | TODO | Currently hardcoded 30 days |
+| T3.31 | Configurable no-show link window: `noShowLinkWindowDays` in clinic_settings | P3 | 10 min | T2.190 | DONE | Currently hardcoded 30 days |
 | T3.32 | Client-side appointment confirmation flow: `confirmedByClient` + Queue badge | P3 | 1.5 hrs | — | TODO | Spark-compatible |
 | T3.33 | No-show rate display at booking/check-in | P3 | 30 min | — | TODO | Spark-compatible |
 | T3.34 | Pre-appointment push reminder | P3 | 2-3 hrs | Blaze | TODO | Deploy sendAppointmentUpdateNotification |

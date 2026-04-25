@@ -21,10 +21,13 @@ import { makePulseEventId } from '../../utils/pulseUtils';
 import { db } from '../../firebaseConfig';
 import { useUser } from '../../context/UserContext';
 import { detectNoShows } from '../../utils/noShowDetection';
+import { useClinicSettings } from '../../hooks/useClinicSettings';
 
 export default function WalkInModal({ open, onClose, servicesList, departments, prefillClient, prefillPet }) {
   const { profile } = useUser();
   const staffSignature = profile?.fullName || 'System/Admin';
+  const clinicSettings = useClinicSettings();
+  const noShowWindowDays = clinicSettings.noShowLinkWindowDays || 30;
   
   const [loading, setLoading] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
@@ -118,13 +121,13 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
       return;
     }
     let cancelled = false;
-    detectNoShows([selectedPet.id]).then((result) => {
+    detectNoShows([selectedPet.id], noShowWindowDays).then((result) => {
       if (!cancelled) setNoShowInfo(result.count > 0 ? result : null);
     }).catch(() => {
       if (!cancelled) setNoShowInfo(null);
     });
     return () => { cancelled = true; };
-  }, [selectedPet?.id]);
+  }, [selectedPet?.id, noShowWindowDays]);
 
   const handleClose = () => {
     setErrorMsg(''); setWalkInType('existing'); setSelectedClient(null);
@@ -571,7 +574,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
             }}
           >
             <Typography sx={{ fontWeight: '1000', fontSize: '0.8rem' }}>
-              NO-SHOW HISTORY: {noShowInfo.count} no-show{noShowInfo.count > 1 ? 's' : ''} in the last 30 days.
+              NO-SHOW HISTORY: {noShowInfo.count} no-show{noShowInfo.count > 1 ? 's' : ''} in the last {noShowWindowDays} days.
             </Typography>
             {noShowInfo.mostRecent?.scheduledDate && (
               <Typography sx={{ fontWeight: '800', fontSize: '0.72rem', opacity: 0.85 }}>

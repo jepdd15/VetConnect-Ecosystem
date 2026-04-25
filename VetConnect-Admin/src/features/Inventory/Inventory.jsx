@@ -18,6 +18,7 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
+import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 
 // Database
@@ -25,13 +26,14 @@ import { onSnapshot, collection, doc, writeBatch  } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 
 // Logic & Components
-import { useInventory } from './hooks/useInventory';
+import { useInventory, findExpiredBatches } from './hooks/useInventory';
 import { useUser } from '../../context/UserContext';
 import InventoryTable from './components/InventoryTable'; 
 import ProductFormModal from './modals/ProductFormModal';
 import StockAdjustModal from './modals/StockAdjustModal';
 import InventoryLogModal from './modals/InventoryLogModal';
 import ConfirmDeleteModal from './modals/ConfirmDeleteModal';
+import ExpiredDisposalModal from './modals/ExpiredDisposalModal';
 import GlobalActivityLog from './components/GlobalActivityLog';
 
 // Helper for Capitlizing Category strings
@@ -67,7 +69,7 @@ const KPICard = ({ title, value, icon, color, bgcolor, border, onClick, active }
 );
 
 export default function Inventory() {
-  const { inventory, loading, createItem, updateItem, deleteItem, restoreItem, adjustStock, scrubDatabase } = useInventory();
+  const { inventory, loading, createItem, updateItem, deleteItem, restoreItem, adjustStock, scrubDatabase, disposeExpiredBatches } = useInventory();
   const { isAdmin } = useUser();
 
   const [searchText, setSearchText] = useState('');
@@ -88,6 +90,10 @@ export default function Inventory() {
   const showToast = (message, severity = 'success') => setToast({ open: true, message, severity });
 
   const [activeTab, setActiveTab] = useState(0);
+  const [openDisposal, setOpenDisposal] = useState(false);
+
+  // Expired batch scan — recomputed whenever inventory changes
+  const expiredItems = useMemo(() => findExpiredBatches(inventory), [inventory]);
 
   // Toggle helper for KPI quick-filters
   const toggleStockFilter = (value) => setStockFilter(prev => prev === value ? null : value);
@@ -251,6 +257,20 @@ export default function Inventory() {
     } catch (e) { showToast(e.message, 'error'); }
   };
 
+  const handleDispose = async (items) => {
+    try {
+      const results = await disposeExpiredBatches(items);
+      const totalDisposed = results.reduce((sum, r) => sum + r.totalDisposed, 0);
+      setOpenDisposal(false);
+      showToast(
+        `Disposed ${totalDisposed} expired unit(s) across ${results.length} product(s).`,
+        'success',
+      );
+    } catch (e) {
+      showToast(e.message, 'error');
+    }
+  };
+
   const handleScrubDB = async () => {
     try {
       const count = await scrubDatabase();
@@ -322,6 +342,32 @@ export default function Inventory() {
           </>)}
 
           <Box sx={{ flexGrow: 1 }} />
+
+          {activeTab === 0 && !showArchived && (
+            <Button
+              variant="outlined"
+              startIcon={<DeleteSweepIcon />}
+              onClick={() => setOpenDisposal(true)}
+              sx={{
+                fontFamily: FONT,
+                fontWeight: 900,
+                textTransform: 'uppercase',
+                letterSpacing: 1,
+                px: 2,
+                py: 1,
+                borderRadius: 0,
+                border: `2px solid`,
+                color: expiredItems.length > 0 ? COLORS.danger : COLORS.accent,
+                borderColor: expiredItems.length > 0 ? COLORS.danger : `${COLORS.accent}33`,
+                '&:hover': {
+                  bgcolor: COLORS.dangerSurface,
+                  borderColor: COLORS.danger,
+                },
+              }}
+            >
+              Dispose Expired{expiredItems.length > 0 ? ` (${expiredItems.length})` : ''}
+            </Button>
+          )}
 
           <Button
             variant="contained"
@@ -428,6 +474,13 @@ export default function Inventory() {
         onClose={() => setOpenDelete(false)}
         item={selectedItem}
         onConfirm={handleConfirmDelete}
+      />
+
+      <ExpiredDisposalModal
+        open={openDisposal}
+        onClose={() => setOpenDisposal(false)}
+        expiredItems={expiredItems}
+        onDispose={handleDispose}
       />
 
       <Dialog open={openScrubConfirm} onClose={() => setOpenScrubConfirm(false)} maxWidth="xs" fullWidth

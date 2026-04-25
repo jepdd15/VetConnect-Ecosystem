@@ -32,6 +32,7 @@ const ACTION_CONFIG = {
   RESTOCK:  { label: 'Restocked', color: COLORS.medical,  bg: COLORS.kpiBlueBg,    Icon: UnarchiveOutlinedIcon },
   ARCHIVED: { label: 'Archived',  color: COLORS.warning,  bg: COLORS.warningSurface, Icon: ArchiveOutlinedIcon },
   RESTORED: { label: 'Restored',  color: COLORS.success,  bg: COLORS.kpiGreenBg,   Icon: UnarchiveOutlinedIcon },
+  DISPOSED: { label: 'Disposed',  color: COLORS.danger,   bg: COLORS.dangerSurface, Icon: DeleteOutlineIcon },
 };
 
 const ACTION_TYPES = Object.keys(ACTION_CONFIG);

@@ -355,7 +355,7 @@
 | T3.21 | Reorder point alerts: low-stock notification badge + printable reorder list | P3 | 2-3 hrs | — | TODO | In-app only (Spark) |
 | T3.22 | Barcode/QR scanning for stock intake | P3 | 3-5 days | — | TODO | Hardware-dependent |
 | T3.23 | Inventory valuation report: value by category, COGS, margin analysis | P3 | 1-2 days | — | TODO | Overlaps T3.8 |
-| T3.24 | Expiry disposal workflow: "Dispose Expired" batch action | P3 | 1.5 hrs | — | TODO | Idempotent |
+| T3.24 | Expiry disposal workflow: "Dispose Expired" batch action | P3 | 1.5 hrs | — | DONE | Idempotent |
 | T3.25 | Supplier directory: `suppliers` collection, dropdown in ProductFormModal | P3 | 3-4 hrs | — | TODO | Free-text works for small clinics |
 | T3.26 | Structured adjustment types for shrinkage analytics | P3 | 1 hr | — | TODO | |
 | T3.27 | Inventory export (CSV/PDF) | P3 | 1 hr | — | TODO | |

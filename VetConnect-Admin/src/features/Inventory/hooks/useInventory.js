@@ -40,6 +40,45 @@ const diffFields = (before, after) => {
 };
 // ───────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Scans inventory items and returns products that have at least one expired batch with qty > 0.
+ * Pure function — no side effects. Skips archived items and items without batches.
+ *
+ * @param {Array} inventory - The in-memory inventory array from the useInventory hook.
+ * @returns {Array<{ id, itemName, category, currentStock, reserved, expiredBatches, totalExpiredQty }>}
+ */
+export const findExpiredBatches = (inventory) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const results = [];
+  for (const item of inventory) {
+    if (item.isArchived) continue;
+    if (!item.batches || item.batches.length === 0) continue;
+
+    const expired = item.batches.filter(b => {
+      if (!b.expiryDate || (b.qty || 0) <= 0) return false;
+      const exp = new Date(b.expiryDate + 'T00:00:00');
+      return exp < today;
+    });
+
+    if (expired.length > 0) {
+      const totalExpiredQty = expired.reduce((sum, b) => sum + (b.qty || 0), 0);
+      results.push({
+        id: item.id,
+        itemName: item.itemName,
+        category: item.category,
+        currentStock: item.stock || 0,
+        reserved: item.reserved || 0,
+        expiredBatches: expired,
+        totalExpiredQty,
+      });
+    }
+  }
+
+  return results;
+};
+
 export function useInventory() {
   const [inventory, setInventory] = useState([]);
   const[loading, setLoading] = useState(true);
@@ -285,5 +324,62 @@ export function useInventory() {
     }
   };
 
-  return { inventory, loading, createItem, updateItem, deleteItem: archiveItem, permanentlyDeleteItem: deleteItem, restoreItem, adjustStock, scrubDatabase, reserveStock, releaseStock };
+  // DISPOSE EXPIRED BATCHES — bulk transactional disposal of all expired batch entries.
+  // Accepts itemsToDispose array pre-validated by the confirmation modal.
+  // Returns a summary array for the success toast.
+  const disposeExpiredBatches = async (itemsToDispose) => {
+    const results = [];
+
+    for (const entry of itemsToDispose) {
+      const { id, itemName, expiredBatches } = entry;
+      const preDisposed = expiredBatches.reduce((sum, b) => sum + (b.qty || 0), 0);
+      if (preDisposed <= 0) continue;
+
+      let actualDisposed = 0;
+      await runTransaction(db, async (transaction) => {
+        const ref = doc(db, "inventory", id);
+        const snap = await transaction.get(ref);
+        if (!snap.exists()) return;
+
+        const data = snap.data();
+        const currentStock = data.stock || 0;
+        const reserved = data.reserved || 0;
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const expiredBatchNumbers = new Set(expiredBatches.map(b => b.batchNumber));
+        const survivingBatches = [];
+        let disposed = 0;
+
+        for (const b of (data.batches || [])) {
+          if (!expiredBatchNumbers.has(b.batchNumber)) { survivingBatches.push(b); continue; }
+          const expDate = new Date((b.expiryDate || '9999-12-31') + 'T00:00:00');
+          if (expDate >= today || (b.qty || 0) <= 0) { survivingBatches.push(b); continue; }
+          disposed += (b.qty || 0);
+        }
+
+        if (disposed <= 0) return;
+        const newStock = currentStock - disposed;
+
+        if (newStock < 0)
+          throw new Error(`Disposal would bring ${itemName} below zero (current: ${currentStock}, disposing: ${disposed})`);
+        if (newStock < reserved)
+          throw new Error(`Disposal blocked for ${itemName}: ${reserved} units reserved by active consults`);
+
+        transaction.update(ref, { stock: newStock, batches: survivingBatches });
+        actualDisposed = disposed;
+      });
+
+      if (actualDisposed <= 0) continue;
+      const batchDetail = expiredBatches
+        .map(b => `${b.batchNumber || 'Unnamed'} (exp ${b.expiryDate}, qty ${b.qty})`)
+        .join(', ');
+      await logEvent(id, itemName, "DISPOSED", -actualDisposed, `Expired batch disposal: ${batchDetail}`);
+      results.push({ id, itemName, totalDisposed: actualDisposed, batchCount: expiredBatches.length });
+    }
+
+    return results;
+  };
+
+  return { inventory, loading, createItem, updateItem, deleteItem: archiveItem, permanentlyDeleteItem: deleteItem, restoreItem, adjustStock, scrubDatabase, reserveStock, releaseStock, disposeExpiredBatches };
 }

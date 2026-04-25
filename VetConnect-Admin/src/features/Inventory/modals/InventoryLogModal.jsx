@@ -46,6 +46,7 @@ export default function InventoryLogModal({ open, onClose, item }) {
   const getActivityColor = (action, amount) => {
      if (action === "CREATED") return COLORS.medical;
      if (action === "DELETED") return COLORS.surgery;
+     if (action === "DISPOSED") return COLORS.danger;
      if (amount > 0) return COLORS.success;
      if (amount < 0) return COLORS.warning;
      return '#757575';

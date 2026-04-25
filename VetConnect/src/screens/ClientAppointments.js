@@ -875,7 +875,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: COLORS.white,
     padding: 15,
-    borderRadius: 12,
+    borderRadius: 0,
     marginBottom: 15,
     elevation: 3,
     borderWidth: 1,
@@ -914,7 +914,7 @@ const styles = StyleSheet.create({
     gap: 10,
     alignItems: "center",
   },
-  btn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },
+  btn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 0 },
   qrBtn: { backgroundColor: COLORS.brand },
   receiptBtn: {
     backgroundColor: "#EFEBE9",
@@ -951,7 +951,7 @@ const styles = StyleSheet.create({
   modalContent: {
     backgroundColor: "white",
     padding: 30,
-    borderRadius: 12,
+    borderRadius: 0,
     alignItems: "center",
     width: "85%",
   },
@@ -965,7 +965,7 @@ const styles = StyleSheet.create({
   receiptContent: {
     backgroundColor: "#FFFAFA",
     padding: 25,
-    borderRadius: 10,
+    borderRadius: 0,
     width: "90%",
     borderStyle: "dashed",
     borderWidth: 2,
@@ -1027,7 +1027,7 @@ const styles = StyleSheet.create({
   followUpCard: {
     flexDirection: 'row',
     backgroundColor: '#FFF3E0',
-    borderRadius: 16,
+    borderRadius: 0,
     padding: 15,
     marginBottom: 15,
     elevation: 4,
@@ -1078,7 +1078,7 @@ const styles = StyleSheet.create({
   followUpBtn: {
     paddingVertical: 10,
     paddingHorizontal: 16,
-    borderRadius: 10,
+    borderRadius: 0,
   },
   followUpBtnPrimary: {
     backgroundColor: COLORS.warning,

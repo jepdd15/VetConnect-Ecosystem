@@ -94,16 +94,19 @@ const RegisterScreen = ({ navigation }) => {
           const guestId = guestDoc.id;
           const batch = writeBatch(db);
 
+          const guestData = guestDoc.data();
           const newUserRef = doc(db, "users", uid);
           batch.set(newUserRef, {
+            ...guestData,
             uid: uid,
             fullName: fullName.trim(),
             email: email.trim().toLowerCase(),
             phone: phone.trim(),
             role: "pet_owner",
             accountStatus: "claimed",
+            profileComplete: false,
             mergedFromGuest: true,
-            createdAt: Timestamp.now(),
+            createdAt: guestData.createdAt || Timestamp.now(),
           });
 
           batch.delete(doc(db, "users", guestId));
@@ -147,6 +150,8 @@ const RegisterScreen = ({ navigation }) => {
             email: email.trim().toLowerCase(),
             phone: phone.trim(),
             role: "pet_owner",
+            accountStatus: "active",
+            profileComplete: false,
             createdAt: Timestamp.now(),
           });
         }

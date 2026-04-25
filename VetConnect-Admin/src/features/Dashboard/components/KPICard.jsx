@@ -38,7 +38,7 @@ export default function KPICard({
     green:   { bg: COLORS.kpiGreenBg,  border: COLORS.kpiGreenBorder,  text: COLORS.success },
     orange:  { bg: COLORS.kpiOrangeBg, border: COLORS.kpiOrangeBorder, text: COLORS.warning },
     red:     { bg: COLORS.kpiRedBg,    border: COLORS.kpiRedBorder,    text: COLORS.danger },
-    purple:  { bg: COLORS.kpiPurpleBg, border: COLORS.kpiPurpleBorder, text: '#6A1B9A' },
+    purple:  { bg: COLORS.kpiPurpleBg, border: COLORS.kpiPurpleBorder, text: COLORS.kpiPurpleText },
     neutral: { bg: COLORS.cardBg,      border: COLORS.border,          text: COLORS.textPrimary },
   };
 

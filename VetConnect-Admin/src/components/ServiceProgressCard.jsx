@@ -23,7 +23,7 @@ export function ServiceProgressCard({ services = [], serviceProgress = {}, onTog
   const colorMap = {
     pending:     { bg: '#FFF8E1', border: COLORS.warning,  label: 'PENDING'     },
     'in-progress': { bg: '#E3F2FD', border: COLORS.medical,  label: 'IN PROGRESS' },
-    completed:   { bg: '#E8F5E9', border: '#2E7D32',       label: 'COMPLETED'   },
+    completed:   { bg: COLORS.kpiGreenBg, border: COLORS.success, label: 'COMPLETED'   },
   };
 
   return (

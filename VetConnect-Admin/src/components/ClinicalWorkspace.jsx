@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import './ClinicalWorkspace.css';
 import { resolveTieredPrice } from '../utils/resolveTieredPrice';
-import { VACCINE_CATALOG, VACCINE_KEYWORDS } from '../utils/vaccineConstants';
+import { buildVaccineKeywords } from '../utils/vaccineConstants';
+import { useVaccineCatalog } from '../hooks/useVaccineCatalog';
 import { ZEN_PLACEHOLDERS } from '../utils/soapConstants';
 import {
   Dialog, Slide, AppBar, Toolbar, IconButton, Typography, Button,
@@ -325,6 +326,7 @@ const KNOWLEDGE_BASE = [
 
 export default function ClinicalWorkspace({ open, onClose, patient, inventoryList, servicesList, departments, vetsList }) {
   const clinicSettings = useClinicSettings();
+  const vaccineCatalog = useVaccineCatalog();
   const { profile: cwProfile } = useUser();
   const [isDirty, setIsDirty] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -341,6 +343,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   const [nextAppointment, setNextAppointment] = useState(null);
   const [petDetails, setPetDetails] = useState(null);
   const [prevVitals, setPrevVitals] = useState(null);
+  // T3.53: Count of overdue vaccines derived from the pet's medical history.
+  // Displayed as a warning badge in the identity strip to prompt the vet during consult.
+  const [overdueVaccineCount, setOverdueVaccineCount] = useState(0);
 
   const [soapData, setSoapData] = useState({
     subjective: '', objWeight: '', objTemp: '', objHR: '', objRR: '', objCRT: '', bcs: 5, painScale: 0, objectiveNotes: '',
@@ -428,6 +433,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         if (open && patient) {
           setIsDirty(false);
           setAssistiveText('');
+          setOverdueVaccineCount(0);
 
           // Sign-off guard: check if a medical record already exists for this appointment.
           // The 'medical' key in lockedServices prevents duplicate sign-off.
@@ -545,7 +551,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 });
                 // Track the first linked vaccine product for auto-fill below
                 if (!firstVaccineLinkedItem && linkedInv.batches?.length > 0) {
-                    const isVaccineProduct = VACCINE_KEYWORDS.some(kw =>
+                    const isVaccineProduct = vaccineKeywords.some(kw =>
                         (linkedInv.itemName || '').toLowerCase().includes(kw)
                     );
                     if (isVaccineProduct) firstVaccineLinkedItem = linkedInv;
@@ -554,7 +560,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         });
 
         // T2.474 / T2.22: Pre-fill vaccine form from the first linked vaccine product's FIFO batch.
-        const isVax = VACCINE_KEYWORDS.some(kw =>
+        const isVax = vaccineKeywords.some(kw =>
             (patient?.services || []).some(s => (s.name || '').toLowerCase().includes(kw))
         );
         if (isVax && firstVaccineLinkedItem) {
@@ -608,6 +614,44 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             const snapshot = await getDocs(q);
             const historyData = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
             setHistory(historyData);
+
+            // T3.53: Derive overdue vaccine count for the identity strip warning badge.
+            // historyData is sorted desc by date, so the first record per vaccine name is
+            // the most recent. The seen Set deduplicates correctly on that basis.
+            {
+              const nowTs = new Date();
+              let overdueCount = 0;
+              const seen = new Set();
+              historyData.forEach(r => {
+                const admins = r.vaccineAdministrations?.length > 0
+                  ? r.vaccineAdministrations
+                  : (r.vaccineData?.vaccineName ? [r.vaccineData] : []);
+                admins.forEach(vax => {
+                  const name = vax.vaccineName;
+                  if (!name || seen.has(name)) return;
+                  seen.add(name);
+                  const rDate = r.date?.toDate
+                    ? r.date.toDate()
+                    : r.date?.seconds
+                    ? new Date(r.date.seconds * 1000)
+                    : r.date
+                    ? new Date(r.date)
+                    : null;
+                  if (!rDate) return;
+                  const explicit = vax.dueDate
+                    ? (vax.dueDate.toDate
+                      ? vax.dueDate.toDate()
+                      : vax.dueDate.seconds
+                      ? new Date(vax.dueDate.seconds * 1000)
+                      : new Date(vax.dueDate))
+                    : null;
+                  const interval = vax.intervalDays || 365;
+                  const dueDate = explicit || new Date(rDate.getTime() + interval * 86400000);
+                  if (dueDate < nowTs) overdueCount++;
+                });
+              });
+              if (!cancelled) setOverdueVaccineCount(overdueCount);
+            }
 
             if (cancelled) return;
 
@@ -834,7 +878,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     // T2.22: If this is a vaccine product with batch data, auto-fill a new vaccine
     // administration row with manufacturer and lot number from the FIFO batch.
     if (itemObj.type === 'product' && item.batches?.length > 0) {
-        const isVaccineItem = VACCINE_KEYWORDS.some(kw =>
+        const isVaccineItem = vaccineKeywords.some(kw =>
             (item.itemName || item.name || '').toLowerCase().includes(kw)
         );
         if (isVaccineItem) {
@@ -977,20 +1021,24 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
    * against a known set of vaccine keywords. Drives conditional rendering of the
    * structured Vaccine Details form in the Plan quadrant.
    */
+  /** Derives keyword list from the live Firestore catalog so admin-added vaccines are detected. */
+  const vaccineKeywords = useMemo(() => buildVaccineKeywords(vaccineCatalog), [vaccineCatalog]);
+
   // T2.29: Uses services[] array exclusively — no longer reads legacy primaryService string.
   const isVaccinationVisit = useMemo(() => {
     const serviceNames = (patient?.services || []).map(s => (s.name || '').toLowerCase()).join(' ');
-    return VACCINE_KEYWORDS.some(kw => serviceNames.includes(kw));
-  }, [patient]);
+    return vaccineKeywords.some(kw => serviceNames.includes(kw));
+  }, [patient, vaccineKeywords]);
 
-  /** Species-filtered vaccine dropdown options, plus a free-text "Other" entry */
+  /** Species-filtered vaccine dropdown options from the live catalog (active entries only), plus a free-text "Other" entry */
   const vaccineOptions = useMemo(() => {
     const species = (petDetails?.species || '').toLowerCase();
+    const active = vaccineCatalog.filter(v => v.isActive !== false);
     const filtered = species
-      ? VACCINE_CATALOG.filter(v => v.species.includes(species))
-      : VACCINE_CATALOG;
+      ? active.filter(v => v.species.includes(species))
+      : active;
     return [...filtered.map(v => v.name), 'Other'];
-  }, [petDetails]);
+  }, [petDetails, vaccineCatalog]);
 
   const hasDrugsInCart = rxCart.some(item => item.isDrug);
   const nextRouteStatus = hasDrugsInCart ? "dispensing" : "billing";
@@ -1788,6 +1836,23 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 />
               );
             })()}
+
+            {/* T3.53: Overdue vaccine badge — prompts vet to discuss vaccination during consult */}
+            {overdueVaccineCount > 0 && (
+              <Chip
+                label={`${overdueVaccineCount} VACCINE${overdueVaccineCount > 1 ? 'S' : ''} OVERDUE`}
+                size="small"
+                sx={{
+                  bgcolor: COLORS.dangerSurface,
+                  color: COLORS.surgery,
+                  fontWeight: 900,
+                  fontSize: '0.58rem',
+                  height: 20,
+                  borderRadius: 0,
+                  border: `1px solid ${COLORS.surgery}`,
+                }}
+              />
+            )}
 
             {/* No-show lineage chip — display-only, reads written field from appointment doc */}
             {patient?.noShowCount > 0 && (

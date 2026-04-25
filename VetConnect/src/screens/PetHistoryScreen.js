@@ -8,7 +8,7 @@ import {
   query,
   where,
 } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -25,11 +25,439 @@ import { useClinicContact } from "../hooks/useClinicContact";
 import { safeDate, formatDisplayDate } from "../utils/helpers";
 import { COLORS } from '../theme/mobileTokens';
 
+// ---------------------------------------------------------------------------
+// VACCINATION PASSPORT — HTML TEMPLATE
+// Self-contained: no imports from admin utils. Mirrors the admin passport
+// template structure (cover, status cards, history table, certification block).
+// ---------------------------------------------------------------------------
+
+/**
+ * Escapes a value for safe embedding in an HTML attribute or text node.
+ * Prevents XSS from dynamic data (pet names, vet names, lot numbers, etc.).
+ */
+function escHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Resolves a Firestore Timestamp, seconds-epoch object, Date, or date string
+ * to a JS Date. Returns null if the input is not a recognisable date value.
+ */
+function resolveDate(rawDate) {
+  if (!rawDate) return null;
+  if (typeof rawDate.toDate === 'function') return rawDate.toDate();
+  if (rawDate.seconds != null) return new Date(rawDate.seconds * 1000);
+  if (rawDate instanceof Date) return rawDate;
+  const parsed = new Date(rawDate);
+  return isNaN(parsed.getTime()) ? null : parsed;
+}
+
+/** Formats a JS Date as "Month D, YYYY" (e.g. "April 1, 2025"). */
+function fmtDate(date) {
+  if (!date) return 'N/A';
+  return date.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+/**
+ * Derives the current status of a single vaccine administration based on its
+ * due date relative to today. Returns one of: 'current' | 'due-soon' | 'overdue'.
+ *
+ * "Due soon" means the due date is within the next 30 days.
+ */
+function resolveVaccineStatus(dueDate) {
+  const due = resolveDate(dueDate);
+  if (!due) return 'current';
+  const now = new Date();
+  const thirtyDaysFromNow = new Date(now);
+  thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+  if (due < now) return 'overdue';
+  if (due < thirtyDaysFromNow) return 'due-soon';
+  return 'current';
+}
+
+const VACCINE_STATUS_STYLES = {
+  current:   { borderColor: '#2E7D32', badgeBg: '#E8F5E9', badgeColor: '#2E7D32', label: 'CURRENT' },
+  'due-soon': { borderColor: '#E65100', badgeBg: '#FFF8E1', badgeColor: '#E65100', label: 'DUE SOON' },
+  overdue:   { borderColor: '#D32F2F', badgeBg: '#FFEBEE', badgeColor: '#D32F2F', label: 'OVERDUE' },
+};
+
+/**
+ * Produces a print-ready HTML string for a pet's vaccination passport.
+ *
+ * @param {object} params
+ * @param {string} params.petName      - Pet's display name
+ * @param {string} params.ownerName    - Owner's display name (may be empty)
+ * @param {string} params.clinicName   - Clinic name for the header/certification block
+ * @param {Array}  params.vaccineRecords - Array of medical_record documents that contain
+ *                                         vaccineAdministrations or vaccineData
+ */
+function generateMobileVaccinationPassport({ petName, ownerName, clinicName, vaccineRecords }) {
+  const today = fmtDate(new Date());
+  const safeClinic = escHtml(clinicName || 'Starbarks Veterinary Clinic');
+  const safePet = escHtml(petName);
+  const safeOwner = escHtml(ownerName || 'Pet Owner');
+
+  // Flatten all administrations from all records into a single array, newest first.
+  // Each entry carries the parent record's date and vetName for the history table.
+  const allAdministrations = vaccineRecords.flatMap((record) => {
+    const recordDate = resolveDate(record.date);
+    const vetName = record.vetName || 'Clinic Staff';
+    const admins = record.vaccineAdministrations?.length > 0
+      ? record.vaccineAdministrations
+      : (record.vaccineData ? [record.vaccineData] : []);
+    return admins.map((vax) => ({ ...vax, recordDate, vetName }));
+  });
+
+  // Build the "current status" summary: keep only the most recent entry per
+  // vaccine name (array is already newest-first due to orderBy('date','desc')).
+  const seenVaccines = new Set();
+  const latestByVaccine = allAdministrations.filter((vax) => {
+    const key = (vax.vaccineName || 'Unknown').toLowerCase();
+    if (seenVaccines.has(key)) return false;
+    seenVaccines.add(key);
+    return true;
+  });
+
+  // --- STATUS CARDS (one per unique vaccine, colour-coded by due-date status) ---
+  const statusCardsHtml = latestByVaccine.map((vax) => {
+    const status = resolveVaccineStatus(vax.dueDate);
+    const st = VACCINE_STATUS_STYLES[status];
+    const administered = fmtDate(vax.recordDate);
+    const dueDate = fmtDate(resolveDate(vax.dueDate));
+
+    return `
+      <div class="vaccine-card" style="border-left:4px solid ${st.borderColor}">
+        <div class="vaccine-card-header">
+          <strong>${escHtml(vax.vaccineName || 'Unknown Vaccine')}</strong>
+          <span class="status-badge" style="background:${st.badgeBg};color:${st.badgeColor}">${st.label}</span>
+        </div>
+        <div class="vaccine-card-meta">Last administered: <strong>${escHtml(administered)}</strong> by ${escHtml(vax.vetName || 'Clinic Staff')}</div>
+        ${vax.manufacturer ? `<div class="vaccine-card-meta">Manufacturer: ${escHtml(vax.manufacturer)}${vax.lotNumber ? ` &nbsp;|&nbsp; Lot: ${escHtml(vax.lotNumber)}` : ''}</div>` : ''}
+        <div class="vaccine-card-meta">Next due: <strong>${escHtml(dueDate)}</strong></div>
+      </div>`;
+  }).join('');
+
+  // --- HISTORY TABLE (all administrations, newest first) ---
+  const historyRowsHtml = allAdministrations.map((vax) => {
+    const administered = fmtDate(vax.recordDate);
+    const dueDate = fmtDate(resolveDate(vax.dueDate));
+    return `
+      <tr>
+        <td>${escHtml(administered)}</td>
+        <td><strong>${escHtml(vax.vaccineName || 'Unknown')}</strong></td>
+        <td>${escHtml(vax.manufacturer || '—')}</td>
+        <td>${escHtml(vax.lotNumber || '—')}</td>
+        <td>${escHtml(vax.routeOfAdmin || '—')}</td>
+        <td>${escHtml(vax.vetName || 'Clinic Staff')}</td>
+        <td>${escHtml(dueDate)}</td>
+      </tr>`;
+  }).join('');
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vaccination Passport — ${safePet}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: Helvetica, Arial, sans-serif;
+      font-size: 12px;
+      color: #3E2723;
+      background: #FFFFFF;
+      padding: 40px;
+    }
+
+    /* ---- COVER SECTION ---- */
+    .cover {
+      text-align: center;
+      padding-bottom: 28px;
+      border-bottom: 3px solid #3E2723;
+      margin-bottom: 28px;
+    }
+    .clinic-name {
+      font-size: 22px;
+      font-weight: 900;
+      color: #3E2723;
+      text-transform: uppercase;
+      letter-spacing: 3px;
+    }
+    .passport-title {
+      font-size: 28px;
+      font-weight: 900;
+      color: #3E2723;
+      text-transform: uppercase;
+      letter-spacing: 4px;
+      margin: 14px 0 6px;
+    }
+    .passport-subtitle {
+      font-size: 12px;
+      color: #8D6E63;
+      letter-spacing: 1px;
+      margin-bottom: 20px;
+    }
+    .cover-info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 16px;
+      text-align: left;
+    }
+    .cover-field {
+      padding: 10px 14px;
+      border: 2px solid #3E2723;
+      background: #FFF8E1;
+    }
+    .cover-field-label {
+      font-size: 9px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #8D6E63;
+      margin-bottom: 3px;
+    }
+    .cover-field-value {
+      font-size: 14px;
+      font-weight: 900;
+      color: #3E2723;
+    }
+    .doc-date {
+      font-size: 10px;
+      color: #8D6E63;
+      margin-top: 14px;
+    }
+
+    /* ---- SECTION HEADERS ---- */
+    .section-title {
+      font-size: 13px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: #3E2723;
+      padding-bottom: 6px;
+      border-bottom: 2px solid #3E2723;
+      margin-bottom: 14px;
+    }
+
+    /* ---- VACCINE STATUS CARDS ---- */
+    .vaccine-card {
+      padding: 12px 16px;
+      margin-bottom: 10px;
+      border: 1px solid #E0E0E0;
+      page-break-inside: avoid;
+    }
+    .vaccine-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+      font-size: 13px;
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      font-size: 10px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .vaccine-card-meta {
+      font-size: 11px;
+      color: #5D4037;
+      margin-top: 3px;
+    }
+
+    /* ---- HISTORY TABLE ---- */
+    .section { margin-bottom: 28px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 10px;
+    }
+    th {
+      background: #3E2723;
+      color: #FFF8E1;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 6px 8px;
+      text-align: left;
+    }
+    td {
+      padding: 6px 8px;
+      border-bottom: 1px solid #E0E0E0;
+      vertical-align: top;
+    }
+    tr:nth-child(even) td { background: #FAFAFA; }
+
+    /* ---- CERTIFICATION BLOCK ---- */
+    .certification-block {
+      margin-top: 36px;
+      padding: 20px;
+      border: 2px solid #3E2723;
+      page-break-before: always;
+    }
+    .certification-text {
+      font-size: 11px;
+      color: #5D4037;
+      line-height: 1.6;
+      margin-bottom: 24px;
+    }
+    .signature-row {
+      display: flex;
+      gap: 40px;
+      margin-bottom: 16px;
+    }
+    .signature-item { flex: 1; }
+    .signature-line {
+      border-bottom: 2px solid #3E2723;
+      height: 40px;
+      margin-bottom: 4px;
+    }
+    .signature-label {
+      font-size: 9px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #8D6E63;
+    }
+    .certification-footer {
+      font-size: 9px;
+      color: #9E9E9E;
+      border-top: 1px solid #E0E0E0;
+      padding-top: 10px;
+      margin-top: 10px;
+    }
+
+    @media print {
+      body { padding: 20px; }
+      .vaccine-card { page-break-inside: avoid; }
+      .certification-block { page-break-before: always; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- COVER SECTION -->
+  <div class="cover">
+    <div class="clinic-name">${safeClinic}</div>
+    <div class="passport-title">Vaccination Passport</div>
+    <div class="passport-subtitle">Official Veterinary Immunization Record</div>
+    <div class="cover-info-grid">
+      <div class="cover-field">
+        <div class="cover-field-label">Patient Name</div>
+        <div class="cover-field-value">${safePet}</div>
+      </div>
+      <div class="cover-field">
+        <div class="cover-field-label">Owner</div>
+        <div class="cover-field-value">${safeOwner}</div>
+      </div>
+    </div>
+    <div class="doc-date">Document generated: ${escHtml(today)}</div>
+  </div>
+
+  <!-- CURRENT VACCINE STATUS -->
+  <div class="section">
+    <div class="section-title">Current Vaccine Status</div>
+    ${latestByVaccine.length > 0 ? statusCardsHtml : '<p style="color:#8D6E63;font-style:italic">No vaccination records found.</p>'}
+  </div>
+
+  <!-- VACCINATION HISTORY TABLE -->
+  <div class="section">
+    <div class="section-title">Complete Vaccination History</div>
+    ${allAdministrations.length > 0 ? `
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Vaccine</th>
+          <th>Manufacturer</th>
+          <th>Lot #</th>
+          <th>Route</th>
+          <th>Administered By</th>
+          <th>Next Due</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${historyRowsHtml}
+      </tbody>
+    </table>` : '<p style="color:#8D6E63;font-style:italic">No history records found.</p>'}
+  </div>
+
+  <!-- CERTIFICATION BLOCK -->
+  <div class="certification-block">
+    <div class="section-title">Veterinarian Certification</div>
+    <p class="certification-text">
+      I certify that the vaccinations listed in this document were administered to the patient
+      identified herein in accordance with accepted veterinary standards of care. This record
+      is accurate and complete to the best of my knowledge.
+    </p>
+    <div class="signature-row">
+      <div class="signature-item">
+        <div class="signature-line"></div>
+        <div class="signature-label">Veterinarian Signature</div>
+      </div>
+      <div class="signature-item">
+        <div class="signature-line"></div>
+        <div class="signature-label">License Number</div>
+      </div>
+      <div class="signature-item">
+        <div class="signature-line"></div>
+        <div class="signature-label">Date</div>
+      </div>
+    </div>
+    <div class="certification-footer">
+      This document was generated by VetConnect and serves as an official vaccination record
+      from ${safeClinic}. For verification, contact the clinic directly.
+    </div>
+  </div>
+
+</body>
+</html>`;
+}
+
+// ---------------------------------------------------------------------------
+
 export default function PetHistoryScreen({ route, navigation }) {
   const { petId, petName } = route.params;
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
-  const { clinicPhone } = useClinicContact();
+  const { clinicPhone, clinicName } = useClinicContact();
+
+  // Records that carry vaccination data — used to gate the passport button and
+  // to build the passport document. Derived; no extra Firestore read needed.
+  const vaccineRecords = useMemo(
+    () => history.filter(
+      (r) => r.vaccineAdministrations?.length > 0 || r.vaccineData
+    ),
+    [history],
+  );
+
+  /** Generates the vaccination passport PDF and opens the OS share sheet. */
+  const handleDownloadPassport = async () => {
+    try {
+      const html = generateMobileVaccinationPassport({
+        petName,
+        ownerName: '',        // PetHistoryScreen has no owner profile in scope;
+                              // the passport will show 'Pet Owner' as a safe default.
+        clinicName: clinicName || 'Starbarks Veterinary Clinic',
+        vaccineRecords,
+      });
+      const { uri } = await Print.printToFileAsync({ html });
+      await Sharing.shareAsync(uri, {
+        UTI: '.pdf',
+        mimeType: 'application/pdf',
+      });
+    } catch (error) {
+      Alert.alert('Error generating passport', error.message);
+    }
+  };
 
   useEffect(() => {
     const q = query(
@@ -508,6 +936,21 @@ export default function PetHistoryScreen({ route, navigation }) {
         <Text style={styles.headerTitle}>{petName}&apos;s Chart</Text>
         <View style={{ width: 40 }} /> {/* Spacer for centering */}
       </View>
+
+      {/* Vaccination passport button — only visible when the pet has vaccine records */}
+      {!loading && vaccineRecords.length > 0 && (
+        <View style={styles.passportStrip}>
+          <View style={styles.passportShadow} />
+          <TouchableOpacity
+            style={styles.passportBtn}
+            onPress={handleDownloadPassport}
+            activeOpacity={0.85}
+          >
+            <MaterialIcons name="verified" size={18} color={COLORS.cream} />
+            <Text style={styles.passportBtnText}>Download Vaccination Passport</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <View style={styles.container}>
         {loading ? (
@@ -1012,6 +1455,41 @@ const styles = StyleSheet.create({
     color: COLORS.danger,
     fontWeight: "800",
     textAlign: "center",
+  },
+
+  // --- Vaccination passport action strip ---
+  passportStrip: {
+    // Neubrutalist offset-shadow wrapper. The shadow view sits behind the button.
+    marginHorizontal: 20,
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  passportShadow: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    right: -4,
+    bottom: -4,
+    backgroundColor: COLORS.brand,
+  },
+  passportBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: COLORS.accent,
+    paddingVertical: 13,
+    paddingHorizontal: 20,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    borderRadius: 0,
+  },
+  passportBtnText: {
+    color: COLORS.cream,
+    fontWeight: '900',
+    fontSize: 13,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
   },
 
   // --- Lab results card (B4) ---

@@ -64,7 +64,8 @@ import { generateVisitSummaryHTML } from '../../utils/printVisitSummary';
 import { generateVaccinationRecordHTML } from '../../utils/printVaccinationRecord';
 
 // ── Vaccine Catalog & Helpers ────────────────────────────────────
-import { VACCINE_CATALOG, getVaccineAdministrations, resolveVaccineFromName } from '../../utils/vaccineConstants';
+import { getVaccineAdministrations, resolveVaccineFromName } from '../../utils/vaccineConstants';
+import { useVaccineCatalog } from '../../hooks/useVaccineCatalog';
 
 // ── Modals ──────────────────────────────────────────────────────
 import ReferralModal from './components/ReferralModal';
@@ -98,6 +99,7 @@ export default function PatientDashboard() {
   const { id } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+  const vaccineCatalog = useVaccineCatalog();
 
   const [pet, setPet] = useState(location.state?.pet || null);
   const [history, setHistory] = useState([]);
@@ -451,13 +453,13 @@ export default function PatientDashboard() {
     return Array.from(testMap.values());
   }, [history]);
 
-  // Vaccination tracker — uses VACCINE_CATALOG for canonical vaccine list.
+  // Vaccination tracker — uses live Firestore catalog (vaccineCatalog) for canonical vaccine list.
   // Primary: match vaccineAdministrations[].vaccineName via resolveVaccineFromName (id-based match).
   // Fallback: keyword-match against SOAP text for legacy records pre-dating the structured form.
   const vaccinationStatus = useMemo(() => {
     const records = history || [];
 
-    return VACCINE_CATALOG.map(catalogVax => {
+    return vaccineCatalog.map(catalogVax => {
       // --- Structured path: find the MOST RECENT vaccineAdministration matching this catalog entry ---
       let structuredMatch = null;
       let matchedAdmin = null;
@@ -465,7 +467,7 @@ export default function PatientDashboard() {
       for (const r of records) {
         const admins = getVaccineAdministrations(r);
         const admin = admins.find(a => {
-          const resolved = resolveVaccineFromName(a.vaccineName);
+          const resolved = resolveVaccineFromName(a.vaccineName, vaccineCatalog);
           return resolved?.id === catalogVax.id;
         });
         if (admin) {
@@ -530,14 +532,14 @@ export default function PatientDashboard() {
       const status = daysUntilDue < 0 ? 'overdue' : daysUntilDue <= 30 ? 'due_soon' : 'current';
       return { name: catalogVax.name, id: catalogVax.id, intervalDays: catalogVax.intervalDays, status, lastDate, daysUntilDue };
     });
-  }, [history]);
+  }, [history, vaccineCatalog]);
 
   // T2.465: Vaccine completeness — fraction of species-relevant recommended vaccines administered.
   const vaccineCompleteness = useMemo(() => {
     const sp = (pet?.species || '').toLowerCase();
     const spKey = sp.includes('cat') || sp.includes('feline') ? 'cat' : 'dog';
     const relevant = vaccinationStatus.filter(v => {
-      const catalogEntry = VACCINE_CATALOG.find(c => c.id === v.id);
+      const catalogEntry = vaccineCatalog.find(c => c.id === v.id);
       return catalogEntry?.species.includes(spKey);
     });
     if (relevant.length === 0) return null;
@@ -547,7 +549,7 @@ export default function PatientDashboard() {
       total: relevant.length,
       percentage: Math.round((administered / relevant.length) * 100),
     };
-  }, [vaccinationStatus, pet?.species]);
+  }, [vaccinationStatus, pet?.species, vaccineCatalog]);
 
   // Records that contain structured vaccine data — used by the vaccination
   // record printable. Sorted ascending so the document reads oldest-to-newest.
@@ -1380,6 +1382,33 @@ export default function PatientDashboard() {
                 }}
               >
                 Print Vaccination Record
+              </Button>
+            )}
+
+            {vaccineRecords.length > 0 && (
+              <Button
+                size="small"
+                fullWidth
+                startIcon={<PrintIcon sx={{ fontSize: '14px !important' }} />}
+                onClick={() => {
+                  const html = generateVaccinationRecordHTML({
+                    pet,
+                    owner,
+                    vaccineRecords,
+                    clinicName: clinicSettings.clinicName,
+                    clinicAddress: clinicSettings.clinicAddress,
+                    mode: 'passport',
+                    vaccineCatalog,
+                  });
+                  openPrintWindow(html, () => setPrintBlockedToast(true));
+                }}
+                sx={{
+                  fontFamily: FONT, fontWeight: 700, fontSize: '0.72rem',
+                  textTransform: 'none', color: COLORS.medical, mt: 0.5,
+                  borderRadius: 0,
+                }}
+              >
+                Print Vaccination Passport
               </Button>
             )}
           </Widget>

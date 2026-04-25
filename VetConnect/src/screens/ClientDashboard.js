@@ -5,6 +5,7 @@
 import {
   collection,
   doc,
+  getDocs,
   onSnapshot,
   orderBy,
   query,
@@ -44,6 +45,7 @@ Notifications.setNotificationHandler({
 const ClientDashboard = ({ navigation }) => {
   const [activeAppointments, setActiveAppointments] = useState([]);
   const [reminders, setReminders] = useState([]);
+  const [vaccineAlerts, setVaccineAlerts] = useState([]);
   const [userProfile, setUserProfile] = useState(null);
   const [queueAhead, setQueueAhead] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -252,6 +254,94 @@ const ClientDashboard = ({ navigation }) => {
     return () => unsubReminders();
   }, []);
 
+  // ======================================================================
+  // 3.5 FETCH VACCINE ALERTS
+  // Queries each pet's medical_records for vaccine due dates. Produces a
+  // per-pet alert object with overdue and due-soon vaccine name lists.
+  // The onSnapshot on pets triggers a one-time getDocs per pet — acceptable
+  // for <10 pets per owner. Pattern mirrors MyPetsScreen vaccineDueDates.
+  // ======================================================================
+  useEffect(() => {
+    if (!auth.currentUser) return;
+    let mounted = true;
+
+    const petsQuery = query(
+      collection(db, 'pets'),
+      where('ownerId', '==', auth.currentUser.uid),
+    );
+
+    const unsubPets = onSnapshot(petsQuery, async (petsSnap) => {
+      const alerts = [];
+      const now = new Date();
+      const thirtyDaysFromNow = new Date(now);
+      thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+
+      for (const petDoc of petsSnap.docs) {
+        const pet = { id: petDoc.id, ...petDoc.data() };
+        try {
+          const medSnap = await getDocs(
+            query(collection(db, 'medical_records'), where('petId', '==', pet.id)),
+          );
+
+          const dueDates = [];
+          medSnap.docs.forEach((mDoc) => {
+            const mData = mDoc.data();
+            if (mData.vaccineAdministrations?.length > 0) {
+              mData.vaccineAdministrations.forEach((vax) => {
+                if (vax.dueDate) {
+                  dueDates.push({ vaccineName: vax.vaccineName, dueDate: vax.dueDate });
+                }
+              });
+            } else if (mData.vaccineData?.dueDate) {
+              dueDates.push({
+                vaccineName: mData.vaccineData.vaccineName,
+                dueDate: mData.vaccineData.dueDate,
+              });
+            }
+          });
+
+          const petOverdue = [];
+          const petDueSoon = [];
+
+          dueDates.forEach(({ vaccineName, dueDate: d }) => {
+            const date =
+              d?.toDate ? d.toDate()
+              : d?.seconds ? new Date(d.seconds * 1000)
+              : typeof d === 'string' ? new Date(d)
+              : new Date(d);
+
+            if (isNaN(date.getTime())) return;
+
+            const label = vaccineName || 'Vaccine';
+            if (date < now) {
+              petOverdue.push(label);
+            } else if (date < thirtyDaysFromNow) {
+              petDueSoon.push(label);
+            }
+          });
+
+          if (petOverdue.length > 0 || petDueSoon.length > 0) {
+            alerts.push({
+              petName: pet.name,
+              petId: pet.id,
+              overdue: petOverdue,
+              dueSoon: petDueSoon,
+            });
+          }
+        } catch (e) {
+          console.log('[ClientDashboard] Vaccine alert fetch error:', e.message);
+        }
+      }
+
+      if (mounted) setVaccineAlerts(alerts);
+    });
+
+    return () => {
+      mounted = false;
+      unsubPets();
+    };
+  }, []);
+
   const handleLogout = () => {
     auth.signOut();
     navigation.replace("Login");
@@ -442,8 +532,69 @@ const ClientDashboard = ({ navigation }) => {
         </View>
       )}
 
+      {/* --- VACCINE ALERTS --- */}
+      {!loading && vaccineAlerts.length > 0 && (
+        <View style={styles.feedSection}>
+          <Text style={styles.sectionHeader}>Vaccination Alerts</Text>
+          {vaccineAlerts.map((alert) => (
+            <TouchableOpacity
+              key={alert.petId}
+              onPress={() =>
+                navigation.navigate('PetHistory', {
+                  petId: alert.petId,
+                  petName: alert.petName,
+                })
+              }
+              activeOpacity={0.8}
+            >
+              <View style={styles.notifContainer}>
+                <View
+                  style={[
+                    styles.notifShadow,
+                    { backgroundColor: alert.overdue.length > 0 ? '#D32F2F' : '#F57F17' },
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.notifCard,
+                    {
+                      backgroundColor: alert.overdue.length > 0 ? '#FFEBEE' : '#FFF8E1',
+                      borderColor: '#3E2723',
+                      borderLeftWidth: 8,
+                      borderLeftColor: alert.overdue.length > 0 ? '#D32F2F' : '#F57F17',
+                    },
+                  ]}
+                >
+                  <View style={styles.notifContent}>
+                    <Text
+                      style={[
+                        styles.notifTitle,
+                        { color: alert.overdue.length > 0 ? '#C62828' : '#E65100' },
+                      ]}
+                    >
+                      {alert.overdue.length > 0 ? 'OVERDUE' : 'DUE SOON'} — {alert.petName.toUpperCase()}
+                    </Text>
+                    {alert.overdue.length > 0 && (
+                      <Text style={styles.notifMsg}>
+                        OVERDUE: {alert.overdue.join(', ')}
+                      </Text>
+                    )}
+                    {alert.dueSoon.length > 0 && (
+                      <Text style={[styles.notifMsg, alert.overdue.length > 0 && { marginTop: 2 }]}>
+                        DUE SOON: {alert.dueSoon.join(', ')}
+                      </Text>
+                    )}
+                  </View>
+                  <Text style={styles.arrow}>➔</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
       {/* --- FIRST-TIME USER GUIDANCE --- */}
-      {!loading && activeAppointments.length === 0 && reminders.length === 0 && (
+      {!loading && activeAppointments.length === 0 && reminders.length === 0 && vaccineAlerts.length === 0 && (
         <View style={styles.emptyStateContainer}>
           <View style={styles.emptyStateShadow} />
           <View style={styles.emptyStateBox}>

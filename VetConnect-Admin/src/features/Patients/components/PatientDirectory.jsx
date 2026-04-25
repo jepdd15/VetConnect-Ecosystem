@@ -10,10 +10,10 @@ const PatientDirectory = React.memo(function PatientDirectory({ owners, selected
   return (
     <Paper square sx={{ width: 320, display: 'flex', flexDirection: 'column', borderRight: `1px solid ${COLORS.border}`, bgcolor: COLORS.surfaceAlt, zIndex: 1, boxShadow: '2px 0 5px rgba(0,0,0,0.02)' }}>
       <Box sx={{ p: 2.5, borderBottom: `1px solid ${COLORS.border}`, bgcolor: COLORS.cardBg }}>
-         <Button variant="contained" startIcon={<PersonAddIcon />} fullWidth sx={{ mb: 2, bgcolor: COLORS.cta, '&:hover': {bgcolor: COLORS.ctaHover}, fontFamily: FONT, fontWeight: 'bold', py: 1.5, boxShadow: `0 4px 12px ${COLORS.cta}33`, borderRadius: 2 }} onClick={onNewClient}>
+         <Button variant="contained" startIcon={<PersonAddIcon />} fullWidth sx={{ mb: 2, bgcolor: COLORS.cta, '&:hover': {bgcolor: COLORS.ctaHover}, fontFamily: FONT, fontWeight: 'bold', py: 1.5, boxShadow: `0 4px 12px ${COLORS.cta}33`, borderRadius: 0 }} onClick={onNewClient}>
              New Client
          </Button>
-         <TextField fullWidth placeholder="Search owner, pet, or phone..." size="small" value={searchText} onChange={onSearchChange} sx={{bgcolor: COLORS.surface, '& fieldset': {borderColor: COLORS.borderInput}, borderRadius: 1}} InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: COLORS.textMuted }}/></InputAdornment>, spellCheck: 'false', style: { fontFamily: FONT } }} />
+         <TextField fullWidth placeholder="Search owner, pet, or phone..." size="small" value={searchText} onChange={onSearchChange} sx={{bgcolor: COLORS.surface, '& fieldset': {borderColor: COLORS.borderInput}, borderRadius: 0}} InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: COLORS.textMuted }}/></InputAdornment>, spellCheck: 'false', style: { fontFamily: FONT } }} />
       </Box>
       <List sx={{ overflowY: 'auto', flex: 1, p: 0 }}>
         {(!owners || owners.length === 0) ? (

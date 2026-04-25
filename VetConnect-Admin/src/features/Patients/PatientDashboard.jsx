@@ -83,8 +83,8 @@ const SPECIES_VITAL_RANGES = {
 
 // ── Analytics Widget Shell ──
 const Widget = ({ title, icon, children }) => (
-  <Box sx={{ bgcolor: COLORS.cardBg, borderRadius: 2, border: `1px solid ${COLORS.borderLight}`, mb: 2, overflow: 'hidden' }}>
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1, borderBottom: `1px solid ${COLORS.borderLight}`, bgcolor: '#FAF8F5' }}>
+  <Box sx={{ bgcolor: COLORS.cardBg, borderRadius: 0, border: `1px solid ${COLORS.borderLight}`, mb: 2, overflow: 'hidden' }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1, borderBottom: `1px solid ${COLORS.borderLight}`, bgcolor: COLORS.surfaceAlt }}>
       {icon}
       <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textSecondary, letterSpacing: '0.05em' }}>{title}</Typography>
     </Box>
@@ -653,10 +653,10 @@ export default function PatientDashboard() {
       {/* ═══ PATIENT BANNER ═══ */}
       <Box sx={{ bgcolor: COLORS.banner, borderBottom: `2px solid ${COLORS.bannerBorder}`, display: 'flex', alignItems: 'center', flexShrink: 0, boxShadow: '0 1px 4px rgba(62,39,35,0.08)' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', py: 1.5, px: 2, gap: 2, flex: 1 }}>
-          <IconButton onClick={() => navigate('/patients')} size="small" sx={{ color: COLORS.textMuted, '&:hover': { color: COLORS.brand, bgcolor: '#EFEBE9' } }}>
+          <IconButton onClick={() => navigate('/patients')} size="small" sx={{ color: COLORS.textMuted, '&:hover': { color: COLORS.brand, bgcolor: COLORS.panelBg } }}>
             <ArrowBackIcon fontSize="small" />
           </IconButton>
-          <Avatar sx={{ width: 42, height: 42, fontFamily: FONT, bgcolor: getInitialColor(pet?.name), fontWeight: 700, fontSize: '1rem', color: '#FFF' }}>
+          <Avatar sx={{ width: 42, height: 42, fontFamily: FONT, bgcolor: getInitialColor(pet?.name), fontWeight: 700, fontSize: '1rem', color: COLORS.cardBg }}>
             {(pet?.name || '?')[0].toUpperCase()}
           </Avatar>
           <Box sx={{ minWidth: 0 }}>
@@ -672,14 +672,14 @@ export default function PatientDashboard() {
                 {sexLabel}
               </Typography>
               <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary }}>Age: <span style={{ color: COLORS.brand, fontWeight: 700 }}>{calculatePetAge(pet?.dob)}</span></Typography>
-              <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary }}>Wt: <span style={{ color: '#E65100', fontWeight: 700 }}>{pet?.lastWeight ? `${pet.lastWeight}kg` : 'N/A'}</span></Typography>
+              <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary }}>Wt: <span style={{ color: COLORS.warning, fontWeight: 700 }}>{pet?.lastWeight ? `${pet.lastWeight}kg` : 'N/A'}</span></Typography>
               {computedOutstandingBalance > 0 && (
                 <Tooltip title="This client has an unpaid balance computed from sales records.">
                   <Chip
                     label={`₱${computedOutstandingBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })} OWED`}
                     size="small"
                     sx={{
-                      bgcolor: '#FFEBEE', color: '#B71C1C',
+                      bgcolor: COLORS.dangerSurface, color: COLORS.dangerHover,
                       fontWeight: 900, fontSize: '0.72rem',
                       height: 22, border: '1px solid #EF9A9A',
                       fontFamily: FONT, animation: 'pulse 2s infinite'
@@ -688,9 +688,9 @@ export default function PatientDashboard() {
                 </Tooltip>
               )}
               {hasAllergies ? (
-                <Chip icon={<WarningAmberIcon sx={{ color: '#FFF !important', fontSize: 12 }} />} label={resolvedPetAllergies} size="small" sx={{ bgcolor: '#C62828', color: '#FFF', fontWeight: 700, fontSize: '0.72rem', height: 22, fontFamily: FONT }} />
+                <Chip icon={<WarningAmberIcon sx={{ color: `${COLORS.cardBg} !important`, fontSize: 12 }} />} label={resolvedPetAllergies} size="small" sx={{ bgcolor: COLORS.surgery, color: COLORS.cardBg, fontWeight: 700, fontSize: '0.72rem', height: 22, fontFamily: FONT }} />
               ) : (
-                <Typography sx={{ fontFamily: FONT, ...TYPE.tiny, color: COLORS.textMuted, bgcolor: '#EFEBE9', px: 0.75, py: 0.25, borderRadius: 0.5 }}>NKA</Typography>
+                <Typography sx={{ fontFamily: FONT, ...TYPE.tiny, color: COLORS.textMuted, bgcolor: COLORS.panelBg, px: 0.75, py: 0.25, borderRadius: 0 }}>NKA</Typography>
               )}
               {lastSeenLabel && (
                 <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -705,11 +705,11 @@ export default function PatientDashboard() {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, borderLeft: `1px solid ${COLORS.borderLight}`, borderRight: `1px solid ${COLORS.borderLight}`, py: 1.5 }}>
           <TextField size="small" placeholder="Search records..." value={timelineSearch} onChange={(e) => setTimelineSearch(e.target.value)}
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: COLORS.textMuted, fontSize: 18 }} /></InputAdornment> }}
-            sx={{ minWidth: 160, '& .MuiOutlinedInput-root': { fontFamily: FONT, fontSize: '0.85rem', color: COLORS.textPrimary, bgcolor: '#FAFAF9', borderRadius: 1.5, height: 36, '& fieldset': { borderColor: COLORS.border } } }}
+            sx={{ minWidth: 160, '& .MuiOutlinedInput-root': { fontFamily: FONT, fontSize: '0.85rem', color: COLORS.textPrimary, bgcolor: COLORS.formBg, borderRadius: 0, height: 36, '& fieldset': { borderColor: COLORS.border } } }}
           />
           <FormControl size="small" sx={{ minWidth: 100 }}>
             <Select value={timelineFilter} onChange={(e) => setTimelineFilter(e.target.value)}
-              sx={{ fontFamily: FONT, fontWeight: 600, fontSize: '0.8rem', color: COLORS.textPrimary, bgcolor: '#FAFAF9', height: 36, borderRadius: 1.5, '& fieldset': { borderColor: COLORS.border } }}>
+              sx={{ fontFamily: FONT, fontWeight: 600, fontSize: '0.8rem', color: COLORS.textPrimary, bgcolor: COLORS.formBg, height: 36, borderRadius: 0, '& fieldset': { borderColor: COLORS.border } }}>
               <MenuItem value="All" sx={{ fontSize: '0.85rem' }}>All Types</MenuItem>
               <Divider />
               {availableServices.map(s => <MenuItem key={s} value={s} sx={{ textTransform: 'capitalize', fontSize: '0.85rem', fontWeight: 600 }}>{s}</MenuItem>)}
@@ -717,7 +717,7 @@ export default function PatientDashboard() {
           </FormControl>
           <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, fontWeight: 600, whiteSpace: 'nowrap' }}>{processedHistory.length} rec</Typography>
           <IconButton size="small" onClick={() => setTimelineSort(p => p === 'desc' ? 'asc' : 'desc')}
-            sx={{ color: COLORS.textMuted, border: `1px solid ${COLORS.border}`, borderRadius: 1.5, width: 36, height: 36, '&:hover': { bgcolor: '#EFEBE9' } }}>
+            sx={{ color: COLORS.textMuted, border: `1px solid ${COLORS.border}`, borderRadius: 0, width: 36, height: 36, '&:hover': { bgcolor: COLORS.panelBg } }}>
             <SortIcon fontSize="small" />
           </IconButton>
         </Box>
@@ -725,7 +725,7 @@ export default function PatientDashboard() {
         {/* Actions */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 1.5 }}>
           <Button variant="contained" size="small" startIcon={<EventAvailableIcon sx={{ fontSize: '15px !important' }} />} onClick={() => setQuickBookOpen(true)}
-            sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.78rem', textTransform: 'none', bgcolor: '#2E7D32', borderRadius: 0, px: 2, height: 36, boxShadow: 'none', '&:hover': { bgcolor: '#1B5E20' } }}>
+            sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.78rem', textTransform: 'none', bgcolor: COLORS.success, borderRadius: 0, px: 2, height: 36, boxShadow: 'none', '&:hover': { bgcolor: '#1B5E20' } }}>
             Book Visit
           </Button>
           <Button
@@ -736,7 +736,7 @@ export default function PatientDashboard() {
             sx={{
               fontFamily: FONT, fontWeight: 700, fontSize: '0.78rem', textTransform: 'none',
               color: COLORS.accent, borderColor: COLORS.border, borderRadius: 0,
-              px: 2, height: 36, '&:hover': { borderColor: COLORS.accentLight, bgcolor: '#EFEBE9' },
+              px: 2, height: 36, '&:hover': { borderColor: COLORS.accentLight, bgcolor: COLORS.panelBg },
             }}
           >
             Referral
@@ -750,13 +750,13 @@ export default function PatientDashboard() {
         {/* ── LEFT: Collapsible TOC Sidebar ── */}
         {processedHistory.length > 0 && (
           <Box sx={{
-            width: sidebarOpen ? 190 : 44, flexShrink: 0, bgcolor: '#FAF8F5',
+            width: sidebarOpen ? 190 : 44, flexShrink: 0, bgcolor: COLORS.surfaceAlt,
             borderRight: `1px solid ${COLORS.borderLight}`, display: 'flex', flexDirection: 'column',
             transition: 'width 0.25s cubic-bezier(0.4, 0, 0.2, 1)', overflow: 'hidden',
           }}>
             {/* Toggle Button */}
             <Box sx={{ display: 'flex', justifyContent: sidebarOpen ? 'flex-end' : 'center', px: 0.5, py: 0.75, borderBottom: `1px solid ${COLORS.borderLight}`, flexShrink: 0 }}>
-              <IconButton size="small" onClick={() => setSidebarOpen(p => !p)} sx={{ color: COLORS.textMuted, width: 28, height: 28, '&:hover': { bgcolor: '#EFEBE9' } }}>
+              <IconButton size="small" onClick={() => setSidebarOpen(p => !p)} sx={{ color: COLORS.textMuted, width: 28, height: 28, '&:hover': { bgcolor: COLORS.panelBg } }}>
                 {sidebarOpen ? <ChevronLeftIcon sx={{ fontSize: 16 }} /> : <ChevronRightIcon sx={{ fontSize: 16 }} />}
               </IconButton>
             </Box>
@@ -773,7 +773,7 @@ export default function PatientDashboard() {
                         {/* Year Header */}
                         <Box onClick={() => toggleYear(group.year)} sx={{
                           display: 'flex', alignItems: 'center', gap: 0.75, px: 1.5, py: 0.75,
-                          cursor: 'pointer', '&:hover': { bgcolor: '#EFEBE9' },
+                          cursor: 'pointer', '&:hover': { bgcolor: COLORS.panelBg },
                         }}>
                           <Box sx={{ color: COLORS.textMuted, display: 'flex', alignItems: 'center' }}>
                             {isYearCollapsed ? <ChevronRightIcon sx={{ fontSize: 14 }} /> : <ExpandMoreIcon sx={{ fontSize: 14 }} />}
@@ -792,8 +792,8 @@ export default function PatientDashboard() {
                                 display: 'flex', alignItems: 'center', gap: 1, pl: 2, pr: 1, py: 0.6,
                                 cursor: 'pointer', transition: 'all 0.15s ease',
                                 borderLeft: isActive ? `3px solid ${COLORS.accentLight}` : '3px solid transparent',
-                                bgcolor: isActive ? '#EFEBE9' : 'transparent',
-                                '&:hover': { bgcolor: isActive ? '#EFEBE9' : '#F5F0EB' },
+                                bgcolor: isActive ? COLORS.panelBg : 'transparent',
+                                '&:hover': { bgcolor: isActive ? COLORS.panelBg : COLORS.surface },
                               }}>
                                 <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: dotColor, flexShrink: 0 }} />
                                 <Box sx={{ minWidth: 0, flex: 1 }}>
@@ -853,7 +853,7 @@ export default function PatientDashboard() {
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
                 <Button size="small" startIcon={allExpanded ? <UnfoldLessIcon sx={{ fontSize: '14px !important' }}/> : <UnfoldMoreIcon sx={{ fontSize: '14px !important' }}/>}
                   onClick={allExpanded ? collapseAll : expandAll}
-                  sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.75rem', textTransform: 'none', color: COLORS.textMuted, '&:hover': { bgcolor: '#EFEBE9' } }}>
+                  sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.75rem', textTransform: 'none', color: COLORS.textMuted, '&:hover': { bgcolor: COLORS.panelBg } }}>
                   {allExpanded ? 'Collapse All' : 'Expand All'}
                 </Button>
               </Box>
@@ -902,11 +902,11 @@ export default function PatientDashboard() {
                   <Box onClick={() => toggleRecord(index)} sx={{
                     display: 'flex', alignItems: 'center', gap: 1.5, py: 1.25, px: 2,
                     bgcolor: isExpanded ? COLORS.cardBg : 'transparent',
-                    borderRadius: isExpanded ? '8px 8px 0 0' : 1.5,
+                    borderRadius: 0,
                     border: isExpanded ? `1px solid ${COLORS.border}` : '1px solid transparent',
                     borderBottom: isExpanded ? 'none' : '1px solid transparent',
                     cursor: 'pointer', transition: 'all 0.15s ease',
-                    '&:hover': { bgcolor: isExpanded ? COLORS.cardBg : '#EDE7E0' },
+                    '&:hover': { bgcolor: isExpanded ? COLORS.cardBg : COLORS.borderLight },
                   }}>
                     <Box sx={{ width: 3, height: 24, borderRadius: 2, bgcolor: rc, flexShrink: 0 }} />
                     <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary, minWidth: 88, flexShrink: 0 }}>{dateStr}</Typography>
@@ -924,9 +924,9 @@ export default function PatientDashboard() {
                           fontSize: '0.62rem',
                           fontWeight: 800,
                           height: 20,
-                          bgcolor: caseDayMap[rec.id].caseDay === 1 ? '#E3F2FD' : '#FFF3E0',
-                          color: caseDayMap[rec.id].caseDay === 1 ? COLORS.medical : '#E65100',
-                          border: `1px solid ${caseDayMap[rec.id].caseDay === 1 ? COLORS.medical : '#E65100'}`,
+                          bgcolor: caseDayMap[rec.id].caseDay === 1 ? COLORS.chipBlueBg : COLORS.warningSurface,
+                          color: caseDayMap[rec.id].caseDay === 1 ? COLORS.medical : COLORS.warning,
+                          border: `1px solid ${caseDayMap[rec.id].caseDay === 1 ? COLORS.medical : COLORS.warning}`,
                           flexShrink: 0,
                         }}
                       />
@@ -939,7 +939,7 @@ export default function PatientDashboard() {
 
                   {/* Expanded Body */}
                   <Collapse in={isExpanded} timeout={200}>
-                    <Box sx={{ bgcolor: COLORS.cardBg, px: 3, pb: 2.5, pt: 1.5, border: `1px solid ${COLORS.border}`, borderTop: `1px solid ${COLORS.borderLight}`, borderRadius: '0 0 8px 8px', boxShadow: '0 2px 8px rgba(62,39,35,0.04)' }}>
+                    <Box sx={{ bgcolor: COLORS.cardBg, px: 3, pb: 2.5, pt: 1.5, border: `1px solid ${COLORS.border}`, borderTop: `1px solid ${COLORS.borderLight}`, borderRadius: 0, boxShadow: '0 2px 8px rgba(62,39,35,0.04)' }}>
                       <Grid container spacing={3}>
                         <Grid size={{ xs: 12, md: 8 }}>
                           <Stack spacing={1.5}>
@@ -951,7 +951,7 @@ export default function PatientDashboard() {
                               <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.5 }}>Objective</Typography>
                               <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: hasO ? COLORS.textPrimary : COLORS.textMuted, whiteSpace: 'pre-wrap', pl: 1.5, borderLeft: `2px solid ${COLORS.borderLight}`, fontStyle: hasO ? 'normal' : 'italic' }}>{hasO ? rec.soap.objectiveNotes : '—'}</Typography>
                             </Box>
-                            <Box sx={{ bgcolor: COLORS.planBg, py: 1, px: 1.5, borderRadius: 1.5, borderLeft: `3px solid ${COLORS.planBorder}` }}>
+                            <Box sx={{ bgcolor: COLORS.planBg, py: 1, px: 1.5, borderRadius: 0, borderLeft: `3px solid ${COLORS.planBorder}` }}>
                               <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.planText, mb: 0.25 }}>Plan / Treatment</Typography>
                               <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: hasT ? COLORS.planText : COLORS.textMuted, whiteSpace: 'pre-wrap', fontStyle: hasT ? 'normal' : 'italic' }}>{hasT ? rec.treatment : '—'}</Typography>
                             </Box>
@@ -960,7 +960,7 @@ export default function PatientDashboard() {
                         <Grid size={{ xs: 12, md: 4 }}>
                           <Stack spacing={1.5}>
                             {hasV && (
-                              <Box sx={{ bgcolor: COLORS.vitalsBg, py: 1, px: 1.5, borderRadius: 1.5, border: `1px solid ${COLORS.borderLight}` }}>
+                              <Box sx={{ bgcolor: COLORS.vitalsBg, py: 1, px: 1.5, borderRadius: 0, border: `1px solid ${COLORS.borderLight}` }}>
                                 <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.75 }}>Vitals</Typography>
                                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2.5 }}>
                                   {rec.vitals.weight && <Box><Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, textTransform: 'uppercase', fontWeight: 600 }}>Wt</Typography><Typography sx={{ fontFamily: FONT, ...TYPE.emphasis, color: COLORS.textPrimary }}>{rec.vitals.weight} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: COLORS.textMuted }}>kg</span></Typography></Box>}
@@ -974,7 +974,7 @@ export default function PatientDashboard() {
                               </Box>
                             )}
                             {hasRx && (
-                              <Box sx={{ bgcolor: COLORS.rxBg, py: 1, px: 1.5, borderRadius: 1.5, border: `1px solid ${COLORS.rxBorder}` }}>
+                              <Box sx={{ bgcolor: COLORS.rxBg, py: 1, px: 1.5, borderRadius: 0, border: `1px solid ${COLORS.rxBorder}` }}>
                                 <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.rxText, mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}><MedicationIcon sx={{ fontSize: 13 }}/> Rx</Typography>
                                 <Stack spacing={0.5}>
                                   {rec.prescriptions.map((rx, idx) => (
@@ -997,7 +997,7 @@ export default function PatientDashboard() {
                             fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 1,
                             display: 'flex', alignItems: 'center', gap: 0.5
                           }}>
-                            <ShieldIcon sx={{ fontSize: 13, color: '#E65100' }} />
+                            <ShieldIcon sx={{ fontSize: 13, color: COLORS.warning }} />
                             AMENDMENTS ({rec.amendments.length})
                           </Typography>
                           <Stack spacing={1}>
@@ -1009,13 +1009,13 @@ export default function PatientDashboard() {
                                   : (amend.timestamp?.seconds ? new Date(amend.timestamp.seconds * 1000) : null);
                                 return (
                                   <Box key={idx} sx={{
-                                    pl: 1.5, borderLeft: `3px solid #E65100`,
-                                    bgcolor: '#FFF8E1', py: 1, px: 1.5,
+                                    pl: 1.5, borderLeft: `3px solid ${COLORS.warning}`,
+                                    bgcolor: COLORS.cream, py: 1, px: 1.5,
                                   }}>
                                     {amend.reason && (
                                       <Typography sx={{
                                         fontFamily: FONT, fontSize: '0.7rem', fontWeight: 700,
-                                        color: '#E65100', textTransform: 'uppercase', mb: 0.25
+                                        color: COLORS.warning, textTransform: 'uppercase', mb: 0.25
                                       }}>
                                         Reason: {amend.reason}
                                       </Typography>
@@ -1046,7 +1046,7 @@ export default function PatientDashboard() {
                           size="small"
                           startIcon={<EventAvailableIcon sx={{ fontSize: '14px !important' }} />}
                           onClick={(e) => { e.stopPropagation(); setQuickBookOpen(true); }}
-                          sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.75rem', textTransform: 'none', color: '#2E7D32' }}
+                          sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.75rem', textTransform: 'none', color: COLORS.success }}
                         >
                           Rebook
                         </Button>
@@ -1082,7 +1082,7 @@ export default function PatientDashboard() {
         </Box>
 
         {/* ── RIGHT: Analytics Panel (30%) ── */}
-        <Box sx={{ flex: 3, maxWidth: 320, minWidth: 240, overflowY: 'auto', bgcolor: '#FAF8F5', py: 2, px: 2, '&::-webkit-scrollbar': { width: 4 }, '&::-webkit-scrollbar-thumb': { bgcolor: COLORS.timelineRail, borderRadius: 2 } }}>
+        <Box sx={{ flex: 3, maxWidth: 320, minWidth: 240, overflowY: 'auto', bgcolor: COLORS.surfaceAlt, py: 2, px: 2, '&::-webkit-scrollbar': { width: 4 }, '&::-webkit-scrollbar-thumb': { bgcolor: COLORS.timelineRail, borderRadius: 2 } }}>
 
           {/* Weight Trend — T2.460: 1-point display + delta annotation */}
           <Widget title="Weight Trend" icon={<ScaleIcon sx={{ fontSize: 14, color: COLORS.accentLight }} />}>
@@ -1106,7 +1106,7 @@ export default function PatientDashboard() {
                   if (last == null || prev == null) return null;
                   const delta = last - prev;
                   const sign = delta > 0 ? '+' : '';
-                  const color = delta > 0 ? '#2E7D32' : delta < 0 ? '#D32F2F' : COLORS.textMuted;
+                  const color = delta > 0 ? COLORS.success : delta < 0 ? COLORS.danger : COLORS.textMuted;
                   return (
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 0.5 }}>
                       <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', fontWeight: 700, color }}>
@@ -1221,7 +1221,7 @@ export default function PatientDashboard() {
           </Widget>
 
           {/* BCS Trend — T2.468 */}
-          <Widget title="Body Condition Score" icon={<ScaleIcon sx={{ fontSize: 14, color: '#7B1FA2' }} />}>
+          <Widget title="Body Condition Score" icon={<ScaleIcon sx={{ fontSize: 14, color: COLORS.grooming }} />}>
             {bcsData.length > 1 ? (
               <Box sx={{ width: '100%', height: 110, minWidth: 50 }}>
                 <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
@@ -1232,7 +1232,7 @@ export default function PatientDashboard() {
                     <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 6 }} />
                     <ReferenceLine y={SPECIES_VITAL_RANGES.bcs[speciesKey][0]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'Low', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
                     <ReferenceLine y={SPECIES_VITAL_RANGES.bcs[speciesKey][1]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'High', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
-                    <Line type="monotone" dataKey="bcs" stroke="#7B1FA2" strokeWidth={2} dot={{ r: 3, fill: '#7B1FA2' }} />
+                    <Line type="monotone" dataKey="bcs" stroke={COLORS.grooming} strokeWidth={2} dot={{ r: 3, fill: COLORS.grooming }} />
                   </LineChart>
                 </ResponsiveContainer>
               </Box>
@@ -1307,7 +1307,7 @@ export default function PatientDashboard() {
           </Widget>
 
           {/* Vaccination Tracker */}
-          <Widget title="Vaccination Status" icon={<VaccinesIcon sx={{ fontSize: 14, color: '#2E7D32' }} />}>
+          <Widget title="Vaccination Status" icon={<VaccinesIcon sx={{ fontSize: 14, color: COLORS.success }} />}>
             {/* T2.465: Completeness bar — species-relevant vaccines only */}
             {vaccineCompleteness && (
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1, pb: 1, borderBottom: `1px solid ${COLORS.borderLight}` }}>
@@ -1315,17 +1315,17 @@ export default function PatientDashboard() {
                   Completeness
                 </Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Box sx={{ width: 60, height: 6, bgcolor: '#E0E0E0', borderRadius: 3, overflow: 'hidden' }}>
+                  <Box sx={{ width: 60, height: 6, bgcolor: COLORS.borderInput, borderRadius: 0, overflow: 'hidden' }}>
                     <Box sx={{
                       width: `${vaccineCompleteness.percentage}%`,
                       height: '100%',
-                      bgcolor: vaccineCompleteness.percentage === 100 ? '#2E7D32' : vaccineCompleteness.percentage >= 50 ? '#F57F17' : '#D32F2F',
-                      borderRadius: 3,
+                      bgcolor: vaccineCompleteness.percentage === 100 ? COLORS.success : vaccineCompleteness.percentage >= 50 ? '#F57F17' : COLORS.danger,
+                      borderRadius: 0,
                     }} />
                   </Box>
                   <Typography sx={{
                     fontFamily: FONT, fontSize: '0.72rem', fontWeight: 800,
-                    color: vaccineCompleteness.percentage === 100 ? '#2E7D32' : COLORS.textSecondary,
+                    color: vaccineCompleteness.percentage === 100 ? COLORS.success : COLORS.textSecondary,
                   }}>
                     {vaccineCompleteness.administered}/{vaccineCompleteness.total} ({vaccineCompleteness.percentage}%)
                   </Typography>
@@ -1335,10 +1335,10 @@ export default function PatientDashboard() {
             <Stack spacing={0.75}>
               {vaccinationStatus.map((vax) => {
                 const colors = {
-                  current: { bg: '#E8F5E9', text: '#2E7D32', icon: <CheckCircleOutlineIcon sx={{ fontSize: 13, color: '#2E7D32' }} /> },
-                  due_soon: { bg: '#FFF8E1', text: '#F57F17', icon: <WarningAmberIcon sx={{ fontSize: 13, color: '#F57F17' }} /> },
-                  overdue: { bg: '#FFEBEE', text: '#C62828', icon: <ErrorOutlineIcon sx={{ fontSize: 13, color: '#C62828' }} /> },
-                  unknown: { bg: '#F5F5F5', text: COLORS.textMuted, icon: null },
+                  current: { bg: '#E8F5E9', text: COLORS.success, icon: <CheckCircleOutlineIcon sx={{ fontSize: 13, color: COLORS.success }} /> },
+                  due_soon: { bg: COLORS.cream, text: '#F57F17', icon: <WarningAmberIcon sx={{ fontSize: 13, color: '#F57F17' }} /> },
+                  overdue: { bg: COLORS.dangerSurface, text: COLORS.surgery, icon: <ErrorOutlineIcon sx={{ fontSize: 13, color: COLORS.surgery }} /> },
+                  unknown: { bg: COLORS.tableHeaderBg, text: COLORS.textMuted, icon: null },
                 };
                 const c = colors[vax.status];
                 const statusLabel = vax.status === 'current' ? `Due in ${vax.daysUntilDue}d`
@@ -1346,7 +1346,7 @@ export default function PatientDashboard() {
                   : vax.status === 'overdue' ? `${Math.abs(vax.daysUntilDue)}d overdue`
                   : 'No record';
                 return (
-                  <Box key={vax.name} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 0.5, px: 1, borderRadius: 1, bgcolor: c.bg }}>
+                  <Box key={vax.name} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 0.5, px: 1, borderRadius: 0, bgcolor: c.bg }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                       {c.icon}
                       <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', fontWeight: 600, color: c.text }}>{vax.name}</Typography>
@@ -1374,7 +1374,7 @@ export default function PatientDashboard() {
                 }}
                 sx={{
                   fontFamily: FONT, fontWeight: 700, fontSize: '0.72rem',
-                  textTransform: 'none', color: '#2E7D32', mt: 1,
+                  textTransform: 'none', color: COLORS.success, mt: 1,
                   borderTop: `1px solid ${COLORS.borderLight}`, borderRadius: 0, pt: 1,
                 }}
               >
@@ -1399,8 +1399,8 @@ export default function PatientDashboard() {
                     {daysAway !== null && (
                       <Chip label={daysAway === 0 ? 'Today' : daysAway === 1 ? 'Tomorrow' : `In ${daysAway}d`} size="small"
                         sx={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 700, height: 20,
-                          bgcolor: daysAway <= 1 ? '#FFF3E0' : '#E3F2FD',
-                          color: daysAway <= 1 ? '#E65100' : COLORS.medical }} />
+                          bgcolor: daysAway <= 1 ? COLORS.warningSurface : COLORS.chipBlueBg,
+                          color: daysAway <= 1 ? COLORS.warning : COLORS.medical }} />
                     )}
                   </Box>
                   <Stack spacing={0.25}>
@@ -1419,7 +1419,7 @@ export default function PatientDashboard() {
                 <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', color: COLORS.textMuted, fontStyle: 'italic', mb: 1 }}>No upcoming visits</Typography>
                 <Button size="small" variant="outlined" startIcon={<EventAvailableIcon sx={{ fontSize: '14px !important' }} />}
                   onClick={() => setQuickBookOpen(true)}
-                  sx={{ fontFamily: FONT, fontSize: '0.72rem', fontWeight: 700, textTransform: 'none', color: '#2E7D32', borderColor: '#A5D6A7', borderRadius: 1.5, '&:hover': { bgcolor: '#E8F5E9', borderColor: '#66BB6A' } }}>
+                  sx={{ fontFamily: FONT, fontSize: '0.72rem', fontWeight: 700, textTransform: 'none', color: COLORS.success, borderColor: '#A5D6A7', borderRadius: 0, '&:hover': { bgcolor: '#E8F5E9', borderColor: '#66BB6A' } }}>
                   Book Visit
                 </Button>
               </Box>
@@ -1427,13 +1427,13 @@ export default function PatientDashboard() {
           </Widget>
 
           {/* T2.459: Lab Results Aggregation — always renders, empty state when no labs */}
-          <Widget title={`Lab Results (${aggregatedLabResults.length})`} icon={<AssignmentIcon sx={{ fontSize: 14, color: '#1565C0' }} />}>
+          <Widget title={`Lab Results (${aggregatedLabResults.length})`} icon={<AssignmentIcon sx={{ fontSize: 14, color: COLORS.medical }} />}>
             {aggregatedLabResults.length > 0 ? (
               <Stack spacing={1}>
                 {aggregatedLabResults.map((lab, i) => {
                   const statusKey = (lab.status || 'normal').toLowerCase();
-                  const statusColor = statusKey === 'critical' ? '#D32F2F' : statusKey === 'abnormal' ? '#E65100' : '#2E7D32';
-                  const statusBg = statusKey === 'critical' ? '#FFEBEE' : statusKey === 'abnormal' ? '#FFF3E0' : '#E8F5E9';
+                  const statusColor = statusKey === 'critical' ? COLORS.danger : statusKey === 'abnormal' ? COLORS.warning : COLORS.success;
+                  const statusBg = statusKey === 'critical' ? COLORS.dangerSurface : statusKey === 'abnormal' ? COLORS.warningSurface : '#E8F5E9';
                   return (
                     <Box key={i} sx={{ py: 0.75, borderBottom: i < aggregatedLabResults.length - 1 ? `1px solid ${COLORS.borderLight}` : 'none' }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1468,7 +1468,7 @@ export default function PatientDashboard() {
               </Stack>
             ) : (
               <Box sx={{ textAlign: 'center', py: 2 }}>
-                <AssignmentIcon sx={{ fontSize: 28, opacity: 0.2, color: '#1565C0', mb: 0.5 }} />
+                <AssignmentIcon sx={{ fontSize: 28, opacity: 0.2, color: COLORS.medical, mb: 0.5 }} />
                 <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', color: COLORS.textMuted, fontStyle: 'italic' }}>
                   No lab results on file
                 </Typography>
@@ -1478,7 +1478,7 @@ export default function PatientDashboard() {
 
           {/* T2.101: Billing Ledger — outstanding balances from sales */}
           {ownerSales.filter(s => (s.balanceRemaining || 0) > 0 && s.status !== 'refunded' && s.status !== 'voided').length > 0 && (
-            <Widget title="Outstanding Balance" icon={<ScaleIcon sx={{ fontSize: 14, color: '#D32F2F' }} />}>
+            <Widget title="Outstanding Balance" icon={<ScaleIcon sx={{ fontSize: 14, color: COLORS.danger }} />}>
               <Stack spacing={0.75}>
                 {ownerSales.filter(s => (s.balanceRemaining || 0) > 0 && s.status !== 'refunded' && s.status !== 'voided').map((sale, i) => {
                   const saleDateStr = sale.date?.toDate ? sale.date.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
@@ -1486,13 +1486,13 @@ export default function PatientDashboard() {
                     <Box key={i} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 0.5 }}>
                       <Box>
                         <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', fontWeight: 700, color: COLORS.textPrimary }}>{saleDateStr}</Typography>
-                        <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', color: '#D32F2F', fontWeight: 700 }}>₱{(sale.balanceRemaining || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} remaining</Typography>
+                        <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', color: COLORS.danger, fontWeight: 700 }}>₱{(sale.balanceRemaining || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} remaining</Typography>
                       </Box>
                       <Button
                         size="small"
                         variant="outlined"
                         onClick={() => { setRecordPaymentTarget(sale); setRecordPaymentAmount(''); setRecordPaymentOpen(true); }}
-                        sx={{ fontFamily: FONT, fontSize: '0.62rem', fontWeight: 800, borderRadius: 0, color: '#2E7D32', borderColor: '#A5D6A7', textTransform: 'none', py: 0.25, px: 1 }}
+                        sx={{ fontFamily: FONT, fontSize: '0.62rem', fontWeight: 800, borderRadius: 0, color: COLORS.success, borderColor: '#A5D6A7', textTransform: 'none', py: 0.25, px: 1 }}
                       >
                         Record Payment
                       </Button>
@@ -1509,8 +1509,8 @@ export default function PatientDashboard() {
               <Stack spacing={0.75}>
                 {siblings.map((sib) => (
                   <Box key={sib.id} onClick={() => navigate(`/patients/${sib.id}`, { state: { pet: sib } })}
-                    sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 0.75, px: 1, borderRadius: 1.5, cursor: 'pointer', transition: 'all 0.15s ease', '&:hover': { bgcolor: '#EFEBE9' } }}>
-                    <Avatar sx={{ width: 28, height: 28, bgcolor: getInitialColor(sib.name), fontFamily: FONT, fontWeight: 700, fontSize: '0.7rem', color: '#FFF' }}>
+                    sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 0.75, px: 1, borderRadius: 0, cursor: 'pointer', transition: 'all 0.15s ease', '&:hover': { bgcolor: COLORS.panelBg } }}>
+                    <Avatar sx={{ width: 28, height: 28, bgcolor: getInitialColor(sib.name), fontFamily: FONT, fontWeight: 700, fontSize: '0.7rem', color: COLORS.cardBg }}>
                       {(sib.name || '?')[0].toUpperCase()}
                     </Avatar>
                     <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -1591,7 +1591,7 @@ export default function PatientDashboard() {
             variant="contained"
             onClick={handleRecordPayment}
             disabled={!recordPaymentAmount || parseFloat(recordPaymentAmount) <= 0}
-            sx={{ fontFamily: FONT, fontWeight: 900, bgcolor: '#2E7D32', borderRadius: 0, '&:hover': { bgcolor: '#1B5E20' } }}
+            sx={{ fontFamily: FONT, fontWeight: 900, bgcolor: COLORS.success, borderRadius: 0, '&:hover': { bgcolor: '#1B5E20' } }}
           >
             Save Payment
           </Button>

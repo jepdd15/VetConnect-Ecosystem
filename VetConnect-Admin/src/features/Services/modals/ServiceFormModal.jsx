@@ -190,7 +190,7 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
       }}
     >
       <DialogTitle sx={{
-        bgcolor: COLORS.cream, color: COLORS.brand, fontWeight: '1000',
+        bgcolor: COLORS.cream, color: COLORS.brand, fontWeight: 900,
         display: 'flex', alignItems: 'center', gap: 1.5, py: 2,
         borderBottom: `2px solid ${COLORS.accent}`, fontFamily: FONT,
         textTransform: 'uppercase', letterSpacing: 1, fontSize: '1.1rem',
@@ -203,7 +203,7 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
         <Box sx={{ p: 3 }}>
 
           {/* ── Section 1: Identity & Routing ── */}
-          <Typography variant="overline" sx={{ color: COLORS.accent, fontWeight: '1000', mb: 1, display: 'block', letterSpacing: 1 }}>
+          <Typography variant="overline" sx={{ color: COLORS.accent, fontWeight: 900, mb: 1, display: 'block', letterSpacing: 1 }}>
             1. SERVICE IDENTITY & ROUTING
           </Typography>
           <Paper sx={{ p: 3, mb: 4, borderRadius: 0, border: `2px solid ${COLORS.accent}`, bgcolor: COLORS.cardBg, boxShadow: 'none' }}>
@@ -243,9 +243,9 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
               </Grid>
               <Grid size={{ xs: 12, md: 6 }}>
                 <Paper sx={{ p: 2, bgcolor: '#F1F8E9', borderRadius: 0, border: `2px solid ${COLORS.accent}`, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', boxShadow: 'none' }}>
-                  <Typography variant="caption" sx={{ display: 'block', mb: 0.5, fontWeight: '1000', color: COLORS.accent, textTransform: 'uppercase', letterSpacing: 1 }}>RESOURCE ROUTING</Typography>
+                  <Typography variant="caption" sx={{ display: 'block', mb: 0.5, fontWeight: 900, color: COLORS.accent, textTransform: 'uppercase', letterSpacing: 1 }}>RESOURCE ROUTING</Typography>
                   <Typography variant="body2" component="div" sx={{ lineHeight: 1.4, color: COLORS.brand, fontWeight: 'bold' }}>
-                    Mobile bookings route to staff in the <Chip label={formData.department || 'General'} size="small" sx={{ height: 20, fontSize: '0.65rem', fontWeight: '1000', borderRadius: 0, border: `1px solid ${COLORS.accent}`, bgcolor: COLORS.chipBlueBg, color: COLORS.medical }} /> department.
+                    Mobile bookings route to staff in the <Chip label={formData.department || 'General'} size="small" sx={{ height: 20, fontSize: '0.65rem', fontWeight: 900, borderRadius: 0, border: `1px solid ${COLORS.accent}`, bgcolor: COLORS.chipBlueBg, color: COLORS.medical }} /> department.
                   </Typography>
                 </Paper>
               </Grid>
@@ -253,7 +253,7 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
           </Paper>
 
           {/* ── Section 2: Logistics, Time & Billing ── */}
-          <Typography variant="overline" sx={{ color: COLORS.accent, fontWeight: '1000', mb: 1, display: 'block', letterSpacing: 1 }}>
+          <Typography variant="overline" sx={{ color: COLORS.accent, fontWeight: 900, mb: 1, display: 'block', letterSpacing: 1 }}>
             2. LOGISTICS, TIME & BILLING
           </Typography>
           <Paper sx={{ p: 3, mb: 4, bgcolor: COLORS.cardBg, border: `2px solid ${COLORS.accent}`, borderRadius: 0, boxShadow: 'none' }}>
@@ -306,7 +306,7 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
                         sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.accent }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: COLORS.accent } }}
                       />
                     }
-                    label={<Typography variant="body2" sx={{ fontWeight: '1000', color: COLORS.accent }}>ENABLE WEIGHT-BASED PRICING</Typography>}
+                    label={<Typography variant="body2" sx={{ fontWeight: 900, color: COLORS.accent }}>ENABLE WEIGHT-BASED PRICING</Typography>}
                   />
                 </Box>
 
@@ -314,7 +314,7 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
                   <Box>
                     <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 1, mb: 1 }}>
                       {['Min (kg)', 'Max (kg)', 'Price (₱)', ''].map((h, i) => (
-                        <Typography key={i} variant="caption" sx={{ fontWeight: '1000', color: COLORS.accent, textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</Typography>
+                        <Typography key={i} variant="caption" sx={{ fontWeight: 900, color: COLORS.accent, textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</Typography>
                       ))}
                     </Box>
                     {formData.pricingTiers.map((tier, idx) => (
@@ -339,8 +339,8 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
 
               {/* ── Auto-Deduct Inventory (Multi-Bundle) ── */}
               <Grid size={{ xs: 12 }}>
-                <Divider sx={{ my: 1, borderColor: '#E0E0E0' }} />
-                <Typography variant="caption" sx={{ fontWeight: '1000', color: COLORS.accent, textTransform: 'uppercase', letterSpacing: 1, display: 'block', mb: 1 }}>
+                <Divider sx={{ my: 1, borderColor: COLORS.borderInput }} />
+                <Typography variant="caption" sx={{ fontWeight: 900, color: COLORS.accent, textTransform: 'uppercase', letterSpacing: 1, display: 'block', mb: 1 }}>
                   Auto-Deduct Inventory Bundle
                 </Typography>
                 <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 1 }}>
@@ -433,22 +433,22 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
           </Paper>
 
           {/* ── Section 3: Operational Rules ── */}
-          <Typography variant="overline" sx={{ color: COLORS.accent, fontWeight: '1000', display: 'block', mb: 1, letterSpacing: 1 }}>
+          <Typography variant="overline" sx={{ color: COLORS.accent, fontWeight: 900, display: 'block', mb: 1, letterSpacing: 1 }}>
             3. OPERATIONAL RULES
           </Typography>
           <Paper sx={{ p: 2.5, bgcolor: COLORS.cardBg, borderRadius: 0, border: `2px solid ${COLORS.accent}`, boxShadow: 'none' }}>
             <Stack direction="row" justifyContent="space-around" flexWrap="wrap" spacing={2}>
               <FormControlLabel
                 control={<Switch checked={formData.isWalkIn} onChange={(e) => setFormData({ ...formData, isWalkIn: e.target.checked })} sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.accent }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: COLORS.accent } }} />}
-                label={<Typography variant="body2" sx={{ fontWeight: '1000', color: COLORS.accent }}>ALLOW WALK-IN</Typography>}
+                label={<Typography variant="body2" sx={{ fontWeight: 900, color: COLORS.accent }}>ALLOW WALK-IN</Typography>}
               />
               <FormControlLabel
                 control={<Switch checked={formData.isInpatient} onChange={(e) => setFormData({ ...formData, isInpatient: e.target.checked })} sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.accent }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: COLORS.accent } }} />}
-                label={<Typography variant="body2" sx={{ fontWeight: '1000', color: COLORS.accent }}>REQ. CONFINEMENT</Typography>}
+                label={<Typography variant="body2" sx={{ fontWeight: 900, color: COLORS.accent }}>REQ. CONFINEMENT</Typography>}
               />
               <FormControlLabel
                 control={<Switch checked={formData.isEmergency} onChange={(e) => setFormData({ ...formData, isEmergency: e.target.checked })} sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.danger }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: COLORS.danger } }} />}
-                label={<Typography variant="body2" sx={{ fontWeight: '1000', color: COLORS.danger }}>IS EMERGENCY</Typography>}
+                label={<Typography variant="body2" sx={{ fontWeight: 900, color: COLORS.danger }}>IS EMERGENCY</Typography>}
               />
             </Stack>
           </Paper>
@@ -457,13 +457,13 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
       </DialogContent>
 
       <DialogActions sx={{ p: 2.5, bgcolor: COLORS.cream, borderTop: `2px solid ${COLORS.accent}`, borderRadius: 0 }}>
-        <Button onClick={onClose} sx={{ fontWeight: '1000', color: COLORS.accent, px: 3, border: `2px solid ${COLORS.accent}`, borderRadius: 0, '&:hover': { bgcolor: 'rgba(0,0,0,0.05)' } }}>
+        <Button onClick={onClose} sx={{ fontWeight: 900, color: COLORS.accent, px: 3, border: `2px solid ${COLORS.accent}`, borderRadius: 0, '&:hover': { bgcolor: 'rgba(0,0,0,0.05)' } }}>
           CANCEL
         </Button>
         <Button
           onClick={handleSave}
           variant="contained"
-          sx={{ bgcolor: COLORS.success, color: 'white', fontWeight: '1000', px: 4, py: 1, borderRadius: 0, border: `2px solid ${COLORS.accent}`, boxShadow: '4px 4px 0px rgba(0,0,0,0.1)', '&:hover': { bgcolor: '#1B5E20', transform: 'translate(-2px, -2px)', boxShadow: '6px 6px 0px rgba(0,0,0,0.1)' } }}
+          sx={{ bgcolor: COLORS.success, color: COLORS.cardBg, fontWeight: 900, px: 4, py: 1, borderRadius: 0, border: `2px solid ${COLORS.accent}`, boxShadow: '4px 4px 0px rgba(0,0,0,0.1)', '&:hover': { bgcolor: '#1B5E20', transform: 'translate(-2px, -2px)', boxShadow: '6px 6px 0px rgba(0,0,0,0.1)' } }}
         >
           SAVE CONFIGURATION
         </Button>

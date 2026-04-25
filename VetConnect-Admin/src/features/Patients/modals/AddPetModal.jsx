@@ -10,7 +10,7 @@ import SaveIcon from '@mui/icons-material/Save';
 
 export default function AddPetModal({ open, onClose, ownerName, newPetData, setNewPetData, onSubmit }) {
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3, overflow: 'hidden' } }}>
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 0, overflow: 'hidden' } }}>
         <DialogTitle sx={{ bgcolor: COLORS.accent, color: 'white', fontFamily: FONT, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1 }}>
           <PetsIcon /> Register Pet for {ownerName}
         </DialogTitle>

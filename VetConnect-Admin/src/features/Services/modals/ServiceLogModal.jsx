@@ -51,7 +51,7 @@ export default function ServiceLogModal({ open, onClose, item }) {
         <HistoryIcon /> Audit Trail: {item?.name}
       </DialogTitle>
 
-      <DialogContent dividers sx={{ p: 0, bgcolor: '#FAFAF9', minHeight: 280 }}>
+      <DialogContent dividers sx={{ p: 0, bgcolor: COLORS.formBg, minHeight: 280 }}>
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}>
             <CircularProgress sx={{ color: COLORS.accent }} />

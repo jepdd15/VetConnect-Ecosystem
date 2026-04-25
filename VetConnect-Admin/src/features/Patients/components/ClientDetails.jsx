@@ -23,7 +23,7 @@ const DataField = ({ label, value, isEditing, onChange, select, children, type="
           <TextField 
             select={select} fullWidth size="small" value={value || ''} 
             onChange={(e) => onChange(e.target.value)} type={type} variant="outlined" 
-            sx={{ bgcolor: COLORS.formBg, '& .MuiOutlinedInput-root': { borderRadius: 1, fontFamily: FONT } }} 
+            sx={{ bgcolor: COLORS.formBg, '& .MuiOutlinedInput-root': { borderRadius: 0, fontFamily: FONT } }} 
           >
             {children}
           </TextField>
@@ -157,7 +157,7 @@ export default function ClientDetails({ editForm, setEditForm, isEditing, calcul
 
       {editForm.emergencyContacts && editForm.emergencyContacts.length > 0 ? (
         editForm.emergencyContacts.map((rep, i) => (
-          <Box key={i} sx={{ py: 1, position: 'relative', bgcolor: COLORS.formBg, p: 2, borderRadius: 2, mb: 2, border: `1px solid ${COLORS.borderLight}` }}>
+          <Box key={i} sx={{ py: 1, position: 'relative', bgcolor: COLORS.formBg, p: 2, borderRadius: 0, mb: 2, border: `1px solid ${COLORS.borderLight}` }}>
             <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.accent, mb: 1, display: 'block' }}>REP #{i + 1}</Typography>
             
             <Grid container spacing={2} alignItems="center">

@@ -94,7 +94,7 @@ export default function ServiceTable({ data, onEdit, onArchive, onRestore, onDel
 
   const headerSx = {
     fontFamily: FONT,
-    fontWeight: '1000',
+    fontWeight: 900,
     color: COLORS.accent,
     bgcolor: COLORS.cream,
     fontSize: '0.85rem',
@@ -272,7 +272,7 @@ export default function ServiceTable({ data, onEdit, onArchive, onRestore, onDel
                     <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={7}>
                       <Collapse in={isExpanded} timeout="auto" unmountOnExit>
                         <Box sx={{ margin: 1, my: 1, p: 2, bgcolor: COLORS.formBg, borderRadius: 0, border: '2px solid', borderColor: badgeColor, boxShadow: '4px 4px 0px rgba(0,0,0,0.05)' }}>
-                          <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 1, color: badgeColor, fontWeight: '1000', textTransform: 'uppercase', letterSpacing: 1 }}>
+                          <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 1, color: badgeColor, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1 }}>
                             <DescriptionIcon fontSize="small" sx={{ color: badgeColor }} />
                             STANDARD OPERATING PROCEDURE (SOP) | DESCRIPTION & CLINICAL INSTRUCTIONS
                           </Typography>

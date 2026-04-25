@@ -372,7 +372,7 @@ export default function Expenses() {
                 '& .MuiDataGrid-row:hover': { bgcolor: COLORS.surfaceHover },
                 '& .MuiDataGrid-virtualScroller': {
                   '&::-webkit-scrollbar': { width: '10px', height: '10px' },
-                  '&::-webkit-scrollbar-track': { background: '#F5F5F5' },
+                  '&::-webkit-scrollbar-track': { background: COLORS.tableHeaderBg },
                   '&::-webkit-scrollbar-thumb': { background: COLORS.accent, borderRadius: 0 },
                   '&::-webkit-scrollbar-thumb:hover': { background: COLORS.brand }
                 }

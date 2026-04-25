@@ -285,11 +285,11 @@
 | T2.146 | Design token compliance: Sales.jsx + EodSummary.jsx (60+ hardcoded colors) | 30 min | — | DONE | Sales-scoped only; POSModal deferred to T2.148a |
 | T2.147 | Refund restock: store batch info at sale time (Option A) + no-expiry guard | 30 min | — | DONE | **Review fix:** spread-copy batches before push |
 | T2.148 | Receipt clinic name from settings (Sales.jsx + POSModal) | 15 min | — | DONE | clinicName + clinicAddress added to useClinicSettings defaults |
-| T2.148a | POSModal MUI JSX: design token + borderRadius compliance (50+ hardcoded hex, borderRadius:2 violations) | 45 min | — | TODO | Review finding — out of scope for Sales T2.146 sweep |
+| T2.148a | POSModal MUI JSX: design token + borderRadius compliance (50+ hardcoded hex, borderRadius:2 violations) | 45 min | — | DONE | Absorbed into T2.449 Design Sweep |
 | T2.147a | Flat-stock refund guard: skip batch creation for non-batch-tracked items to prevent phantom batch conversion | 15 min | T2.147 | DONE | isBatchTracked guard, flat-stock only gets stock increment |
 | T2.140a | useSalesData: expose error state when dual-query partially fails, show dismissible Alert in Sales.jsx | 15 min | T2.140 | DONE | Review finding — silent partial data on query error |
 | T2.168 | Delete dead code: glassStyle/GLASS, selectedCatObj, dead COLORS imports (Inventory) | 5 min | — | DONE | |
-| T2.169 | Design token compliance: Inventory module (100+ hardcoded colors, 7 files) | 1.5 hrs | — | TODO | Deferred to Design Sweep (Module 19) |
+| T2.169 | Design token compliance: Inventory module (100+ hardcoded colors, 7 files) | 1.5 hrs | — | DONE | Absorbed into T2.445 Design Sweep |
 | T2.171 | `restoreItem`: clear `archivedAt` on restore | 5 min | — | DONE | Uses deleteField() |
 | T2.172 | InventoryTable: negative margins as red percentage | 10 min | — | DONE | Three-tier color: green/orange/red + null for N/A |
 | T2.173 | Category seed idempotency: deterministic IDs | 15 min | — | DONE | default_medicine, default_vaccine, etc. |
@@ -309,9 +309,9 @@
 | T2.205 | Services: design token compliance across 4 child components (60+ hardcoded colors) | 1 hr | — | DONE | Child components done; parent deferred to T2.205a |
 | T2.206 | ServiceTable: add pagination | 15 min | — | DONE | **Review fix:** pagination reset depends on data reference, not data.length |
 | T2.207 | CLAUDE.md: fix `tieredPricing` → `pricingTiers` + `hasTieredPricing` in field docs | 2 min | — | DONE | |
-| T2.205a | Services.jsx parent page: design token sweep (12+ hardcoded hex in header toolbar) | 20 min | T2.205 | TODO | Review finding — T2.205 swept child components only, parent missed |
-| T2.205b | serviceLogConfig.js: replace raw hex with COLORS token imports | P3 | 10 min | T2.202 | TODO | Review finding — shared config duplicates token values as hardcoded hex |
-| T2.205c | Services child components: remaining #757575/#616161 fallback colors not tokenized | P3 | 10 min | T2.205 | TODO | Review finding — unknown-action and history-icon fallbacks |
+| T2.205a | Services.jsx parent page: design token sweep (12+ hardcoded hex in header toolbar) | 20 min | T2.205 | DONE | Absorbed into T2.444 Design Sweep |
+| T2.205b | serviceLogConfig.js: replace raw hex with COLORS token imports | P3 | 10 min | T2.202 | DONE | Absorbed into T2.444 Design Sweep |
+| T2.205c | Services child components: remaining #757575/#616161 fallback colors not tokenized | P3 | 10 min | T2.205 | DONE | Absorbed into T2.444 Design Sweep (kept as-is per plan) |
 | T2.203a | ServiceActivityLog: friendly error message for failed-precondition (missing Firestore index) | P3 | 5 min | T2.203 | DONE | Review finding — raw Firestore error URL shown to user |
 | T2.5a | useBookingEngine: checkClinicLoad captures stale clinicSettings closure (pre-existing, worsened by T2.5 real-time listener) | P3 | 15 min | T2.5 | DONE | Review finding — add clinicSettings.trafficModerate/High to effect deps or parameterize |
 | T2.221 | Staff: delete dead code (KPICard + kpis + 4 icons, WorkIcon, headerSx, deleteDoc, showToast prop) | 5 min | — | DONE | |
@@ -825,13 +825,13 @@
 | ID | Name | Priority | Effort | Status | Notes |
 |---|---|---|---|---|---|
 | T2.442 | Fix designTokens.js: remove GLASS preset, add missing tokens | P1 | 30 min | DONE | Do BEFORE Dashboard build |
-| T2.443 | Sweep: Patients module (13 files) | P2 | 2 hrs | TODO | |
-| T2.444 | Sweep: Services module (6 files) | P2 | 1 hr | TODO | |
-| T2.445 | Sweep: Inventory module (8 files) | P2 | 1.5 hrs | TODO | |
-| T2.446 | Sweep: Sales module (3 files) | P2 | 30 min | TODO | |
-| T2.447 | Sweep: Staff module (5 files) | P2 | 45 min | TODO | |
-| T2.448 | Sweep: standalone pages (Settings, Monitor, Expenses, Login) | P2 | 1.5 hrs | TODO | |
-| T2.449 | Sweep: shared components (Sidebar, POSModal) | P2 | 30 min | TODO | |
+| T2.443 | Sweep: Patients module (13 files) | P2 | 2 hrs | DONE | Absorbs T2.453a |
+| T2.444 | Sweep: Services module (6 files) | P2 | 1 hr | DONE | Absorbs T2.205a/b/c |
+| T2.445 | Sweep: Inventory module (8 files) | P2 | 1.5 hrs | DONE | Absorbs T2.169 |
+| T2.446 | Sweep: Sales module (3 files) | P2 | 30 min | DONE | |
+| T2.447 | Sweep: Staff module (5 files) | P2 | 45 min | DONE | |
+| T2.448 | Sweep: standalone pages (Settings, Monitor, Expenses, Login) | P2 | 1.5 hrs | DONE | |
+| T2.449 | Sweep: shared components (Sidebar, POSModal) | P2 | 30 min | DONE | Absorbs T2.148a |
 | T2.450 | Replace fontWeight:'1000' across ENTIRE admin (including Queue + CW) | P2 | 1 hr | TODO | Value swap only — zero layout risk |
 | T2.451 | Replace all alert()/confirm() with MUI Dialog/Snackbar (sweep scope) | P2 | 2 hrs | TODO | Excludes Queue + CW |
 | T2.452 | ~~Admin sweep: Queue modals~~ | — | — | — | CANCELLED — Queue/ directory skipped entirely |
@@ -842,7 +842,7 @@
 |---|---|---|---|---|---|
 | T2.453 | Clinical amendment system (= T2.75) | P1 | 3 hrs | DONE | Append-only clinicalAmendments[] |
 | T2.454 | Print Visit Summary button per record | P1 | 1.5 hrs | DONE | Already implemented at PatientDashboard.jsx L834-857 |
-| T2.453a | Records.jsx + PatientDashboard.jsx: replace hardcoded #E65100 amendment orange with COLORS.amendment token (add to designTokens.js) | P3 | 5 min | TODO | Review finding — T2.453 audit |
+| T2.453a | Records.jsx + PatientDashboard.jsx: replace hardcoded #E65100 amendment orange with COLORS.amendment token (add to designTokens.js) | P3 | 5 min | DONE | Absorbed into T2.443 Design Sweep (used COLORS.warning) |
 | T2.457 | Case-day linkage badges | P2 | 45 min | DONE | "Day X of Y" badges, integrated into existing appt fetch, blue day-1/orange day-2+. **Review fix:** caseDay<=1 guard → <1 so Day 1 records in chain get badge |
 | T2.458 | Quick Book button per record | P2 | 20 min | DONE | "Rebook" button per expanded record + banner/sidebar buttons, all via WalkInModal prefill |
 | T2.459 | Lab results aggregation in right sidebar (absorbs T2.24-27 admin portion) | P2 | 1.5 hrs | DONE | Always renders, trend context (previous result/date), reference range, status chips, empty state |

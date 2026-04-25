@@ -105,7 +105,7 @@ export default function NewClientModal({ open, onClose }) {
   };
 
   return (
-    <Dialog open={open} onClose={() => { resetForms(); onClose(false); }} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3, overflow: 'hidden' } }}>
+    <Dialog open={open} onClose={() => { resetForms(); onClose(false); }} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 0, overflow: 'hidden' } }}>
       <DialogTitle sx={{ bgcolor: COLORS.cta, color: 'white', fontFamily: FONT, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1 }}>
         <PersonAddIcon /> Register New Client
       </DialogTitle>
@@ -222,7 +222,7 @@ export default function NewClientModal({ open, onClose }) {
           <Button
             variant="contained"
             onClick={() => { setShowDupeWarning(false); handleSave(true); }}
-            sx={{ fontFamily: FONT, bgcolor: COLORS.warning, fontWeight: 'bold', '&:hover': { bgcolor: '#E65100' } }}
+            sx={{ fontFamily: FONT, bgcolor: COLORS.warning, fontWeight: 'bold', '&:hover': { bgcolor: COLORS.ctaHover } }}
           >
             Create Anyway
           </Button>

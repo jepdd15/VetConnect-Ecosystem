@@ -78,18 +78,18 @@ export default function Services() {
 
       {/* ── Header / Toolbar ── */}
       <Paper sx={{
-        bgcolor: '#FFF8E1', border: '0px', borderBottom: '2px solid #5D4037', borderRadius: 0,
+        bgcolor: COLORS.cream, border: '0px', borderBottom: `2px solid ${COLORS.accent}`, borderRadius: 0,
         p: 2.5, px: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         flexWrap: 'wrap', gap: 2.5, flexShrink: 0,
       }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5, flexWrap: 'wrap', flexGrow: 1 }}>
-          <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: '1000', color: '#5D4037', textTransform: 'uppercase', letterSpacing: 1, mr: 1, fontSize: '1.5rem', lineHeight: 1 }}>
+          <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.accent, textTransform: 'uppercase', letterSpacing: 1, mr: 1, fontSize: '1.5rem', lineHeight: 1 }}>
             Services
           </Typography>
 
           {tab === 0 && (
             <>
-              <Box sx={{ display: 'flex', alignItems: 'center', bgcolor: '#EFEBE9', borderRadius: 0, border: '2px solid #5D4037', p: 0.5 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', bgcolor: COLORS.panelBg, borderRadius: 0, border: `2px solid ${COLORS.accent}`, p: 0.5 }}>
                 <TextField
                   variant="standard" placeholder="SEARCH SERVICES..." value={searchText}
                   onChange={(e) => setSearchText(e.target.value)}
@@ -97,7 +97,7 @@ export default function Services() {
                     startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: 'rgba(255,255,255,0.8)', ml: 1 }} /></InputAdornment>,
                     disableUnderline: true, style: { color: 'white', fontWeight: 'bold', textTransform: 'uppercase' },
                   }}
-                  sx={{ width: 260, bgcolor: '#5D4037', borderRadius: 0, px: 2, py: 0.5, '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.6)', opacity: 1 } }}
+                  sx={{ width: 260, bgcolor: COLORS.accent, borderRadius: 0, px: 2, py: 0.5, '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.6)', opacity: 1 } }}
                 />
               </Box>
 
@@ -123,20 +123,20 @@ export default function Services() {
                     checked={showArchived}
                     onChange={(e) => setShowArchived(e.target.checked)}
                     size="small"
-                    sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: '#E65100' }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: '#E65100' } }}
+                    sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.warning }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: COLORS.warning } }}
                   />
                 }
                 label={
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <ArchiveIcon sx={{ fontSize: 14, color: showArchived ? '#E65100' : '#9E9E9E' }} />
-                    <Typography variant="caption" sx={{ fontWeight: '900', color: showArchived ? '#E65100' : '#9E9E9E', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    <ArchiveIcon sx={{ fontSize: 14, color: showArchived ? COLORS.warning : '#9E9E9E' }} />
+                    <Typography variant="caption" sx={{ fontWeight: 900, color: showArchived ? COLORS.warning : '#9E9E9E', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                       Archived
                     </Typography>
                   </Box>
                 }
               />
 
-              <Typography variant="body2" sx={{ color: '#5D4037', fontStyle: 'italic', fontWeight: '900', letterSpacing: 0.5, ml: 1 }}>
+              <Typography variant="body2" sx={{ color: COLORS.accent, fontStyle: 'italic', fontWeight: 900, letterSpacing: 0.5, ml: 1 }}>
                 {filteredServices.length} {filteredServices.length === 1 ? 'Record' : 'Records'}
               </Typography>
             </>
@@ -146,7 +146,7 @@ export default function Services() {
         {tab === 0 && !showArchived && (
           <Button
             variant="contained" startIcon={<AddIcon />}
-            sx={{ bgcolor: '#FF9800', fontWeight: '1000', boxShadow: '0 4px 15px rgba(255, 152, 0, 0.4)', textTransform: 'uppercase', letterSpacing: 0.5, px: 3, whiteSpace: 'nowrap' }}
+            sx={{ bgcolor: COLORS.amber, fontWeight: 900, boxShadow: '0 4px 15px rgba(255, 152, 0, 0.4)', textTransform: 'uppercase', letterSpacing: 0.5, px: 3, whiteSpace: 'nowrap' }}
             onClick={() => { setSelectedItem(null); setOpen(true); }}
           >
             New Service
@@ -155,15 +155,15 @@ export default function Services() {
       </Paper>
 
       {/* ── Tabs ── */}
-      <Box sx={{ borderBottom: '2px solid #5D4037', bgcolor: '#FFF8E1', flexShrink: 0 }}>
+      <Box sx={{ borderBottom: `2px solid ${COLORS.accent}`, bgcolor: COLORS.cream, flexShrink: 0 }}>
         <Tabs
           value={tab}
           onChange={(_, v) => setTab(v)}
           sx={{
             minHeight: 40,
-            '& .MuiTab-root': { fontWeight: '1000', textTransform: 'uppercase', letterSpacing: 1, color: '#9E9E9E', minHeight: 40, fontSize: '0.75rem' },
-            '& .Mui-selected': { color: '#5D4037 !important' },
-            '& .MuiTabs-indicator': { bgcolor: '#5D4037', height: 3 },
+            '& .MuiTab-root': { fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1, color: '#9E9E9E', minHeight: 40, fontSize: '0.75rem' },
+            '& .Mui-selected': { color: `${COLORS.accent} !important` },
+            '& .MuiTabs-indicator': { bgcolor: COLORS.accent, height: 3 },
           }}
         >
           <Tab label="Service Table" />

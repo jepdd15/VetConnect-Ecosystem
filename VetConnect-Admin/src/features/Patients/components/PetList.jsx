@@ -91,12 +91,12 @@ export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePet
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 2 }}>
         <Stack direction="row" spacing={2} alignItems="center">
           <Typography variant="h5" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.textPrimary, display: 'flex', alignItems: 'center' }}>
-            Registered Patients <Chip label={activePets.length} sx={{ ml: 1.5, fontFamily: FONT, fontWeight: 'bold', bgcolor: COLORS.cta, color: '#fff' }} />
+            Registered Patients <Chip label={activePets.length} sx={{ ml: 1.5, fontFamily: FONT, fontWeight: 'bold', bgcolor: COLORS.cta, color: COLORS.cardBg }} />
           </Typography>
           <Button 
             variant="contained" size="small" startIcon={<PetsIcon />} 
             onClick={onRegisterPet} 
-            sx={{ bgcolor: COLORS.cta, color: '#fff', fontFamily: FONT, fontWeight: 'bold', borderRadius: 2, boxShadow: `0 4px 12px ${COLORS.cta}33`, '&:hover': {bgcolor: COLORS.ctaHover} }}
+            sx={{ bgcolor: COLORS.cta, color: COLORS.cardBg, fontFamily: FONT, fontWeight: 'bold', borderRadius: 0, boxShadow: `0 4px 12px ${COLORS.cta}33`, '&:hover': {bgcolor: COLORS.ctaHover} }}
           >
             Register Pet
           </Button>
@@ -109,7 +109,7 @@ export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePet
             value={sort} 
             onChange={(e) => setSort(e.target.value)} 
             size="small" 
-            sx={{ minWidth: 200, fontFamily: FONT, bgcolor: COLORS.cardBg, borderRadius: 1, '& fieldset': { borderColor: COLORS.borderInput } }} 
+            sx={{ minWidth: 200, fontFamily: FONT, bgcolor: COLORS.cardBg, borderRadius: 0, '& fieldset': { borderColor: COLORS.borderInput } }}
             InputProps={{ startAdornment: <InputAdornment position="start"><SortIcon fontSize="small" sx={{ color: COLORS.textMuted }}/></InputAdornment> }}
           >
             <MenuItem value="name_asc">Sort: Name (A-Z)</MenuItem>
@@ -144,8 +144,8 @@ export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePet
 
           return (
             <Grid size={{ xs: 12, md: 6, lg: 6, xl: 4 }} key={pet.id}>
-              <Card sx={{ 
-                borderRadius: 3, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: `1px solid ${COLORS.borderLight}`,
+              <Card sx={{
+                borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: `1px solid ${COLORS.borderLight}`,
                 bgcolor: COLORS.cardBg,
                 display: 'flex', flexDirection: 'column', height: '100%', transition: 'transform 0.2s, box-shadow 0.2s',
                 '&:hover': { transform: 'translateY(-4px)', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' }
@@ -186,7 +186,7 @@ export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePet
                       {pet.lastWeight && <Chip icon={<ScaleIcon fontSize="small"/>} label={`${pet.lastWeight} kg`} size="small" sx={{ fontFamily: FONT, bgcolor: COLORS.kpiOrangeBg, color: COLORS.warning, fontWeight: 'bold', border: `1px solid ${COLORS.kpiOrangeBorder}` }} />}
                       {pet.microchip && <Chip label="Microchipped" size="small" sx={{ fontFamily: FONT, bgcolor: COLORS.kpiBlueBg, color: COLORS.medical, fontWeight: 'bold', height: 24 }} />}
                     </Box>
-                    <Paper variant="outlined" sx={{ bgcolor: COLORS.surfaceAlt, p: 1, borderRadius: 1.5, display: 'flex', alignItems: 'center', gap: 1, borderColor: COLORS.borderLight }}>
+                    <Paper variant="outlined" sx={{ bgcolor: COLORS.surfaceAlt, p: 1, borderRadius: 0, display: 'flex', alignItems: 'center', gap: 1, borderColor: COLORS.borderLight }}>
                       <EventNoteIcon fontSize="small" sx={{ color: COLORS.textMuted }} />
                       <Typography variant="caption" sx={{ fontFamily: FONT, fontWeight: 'bold', color: COLORS.textSecondary }}>
                         Last Visit: {pet.lastVisit ? (pet.lastVisit?.toDate?.() ?? new Date(pet.lastVisit)).toLocaleDateString() : 'No history'}
@@ -197,10 +197,10 @@ export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePet
 
                 <Box sx={{ p: 2, bgcolor: COLORS.surfaceAlt, borderTop: `1px solid ${COLORS.borderLight}`, mt: 'auto' }}>
                   <Stack direction="row" spacing={2} justifyContent="center">
-                    <Button variant="contained" startIcon={<AssignmentIcon />} onClick={() => navigate(`/patients/${pet.id}`, { state: { pet } })} sx={{ bgcolor: COLORS.accent, fontFamily: FONT, color: 'white', fontWeight: 'bold', borderRadius: 2, boxShadow: 0, '&:hover': {bgcolor: COLORS.brand}, flex: 1 }}>
+                    <Button variant="contained" startIcon={<AssignmentIcon />} onClick={() => navigate(`/patients/${pet.id}`, { state: { pet } })} sx={{ bgcolor: COLORS.accent, fontFamily: FONT, color: 'white', fontWeight: 'bold', borderRadius: 0, boxShadow: 0, '&:hover': {bgcolor: COLORS.brand}, flex: 1 }}>
                       View Chart
                     </Button>
-                    <Button variant="outlined" startIcon={<EventAvailableIcon />} onClick={() => onQuickBook(pet)} sx={{ fontFamily: FONT, color: COLORS.success, borderColor: COLORS.success, fontWeight: 'bold', borderRadius: 2, bgcolor: COLORS.cardBg, flex: 1 }}>
+                    <Button variant="outlined" startIcon={<EventAvailableIcon />} onClick={() => onQuickBook(pet)} sx={{ fontFamily: FONT, color: COLORS.success, borderColor: COLORS.success, fontWeight: 'bold', borderRadius: 0, bgcolor: COLORS.cardBg, flex: 1 }}>
                       Book Visit
                     </Button>
                   </Stack>
@@ -213,7 +213,7 @@ export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePet
 
         {processedPets.length === 0 && (
           <Grid size={{ xs: 12 }}>
-            <Box sx={{ width: '100%', textAlign: 'center', py: 10, color: COLORS.textMuted, bgcolor: 'rgba(255,255,255,0.5)', borderRadius: 3, border: `2px dashed ${COLORS.timelineRail}` }}>
+            <Box sx={{ width: '100%', textAlign: 'center', py: 10, color: COLORS.textMuted, bgcolor: 'rgba(255,255,255,0.5)', borderRadius: 0, border: `2px dashed ${COLORS.timelineRail}` }}>
               <PetsIcon sx={{ fontSize: 70, mb: 2, color: COLORS.timelineRail }} />
               <Typography variant="h6" sx={{ fontFamily: FONT, fontWeight: 'bold', color: COLORS.accent }}>No Pets Found</Typography>
               <Typography variant="body2" sx={{ fontFamily: FONT, fontStyle: 'italic', color: COLORS.textMuted }}>Try adjusting your filters or register a new pet.</Typography>
@@ -222,7 +222,7 @@ export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePet
         )}
       </Grid>
       
-      <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose} sx={{ '& .MuiPaper-root': { borderRadius: 2, boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}}>
+      <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose} sx={{ '& .MuiPaper-root': { borderRadius: 0, boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}}>
         <MenuItem onClick={() => { onEditPet(selectedPet); handleMenuClose(); }} sx={{ py: 1.5, px: 2 }}>
             <ListItemIcon><EditIcon fontSize="small" sx={{ color: COLORS.textSecondary }}/></ListItemIcon>
             <Typography variant="body2" sx={{ fontFamily: FONT, fontWeight: 'bold' }}>Edit Pet Profile</Typography>
@@ -239,7 +239,7 @@ export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePet
       </Menu>
 
       {/* FILTER POPOVER */}
-      <Popover open={Boolean(filterAnchorEl)} anchorEl={filterAnchorEl} onClose={() => setFilterAnchorEl(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} transformOrigin={{ vertical: 'top', horizontal: 'right' }} PaperProps={{ sx: { borderRadius: 3, boxShadow: '0 8px 32px rgba(0,0,0,0.12)', mt: 1 } }}>
+      <Popover open={Boolean(filterAnchorEl)} anchorEl={filterAnchorEl} onClose={() => setFilterAnchorEl(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} transformOrigin={{ vertical: 'top', horizontal: 'right' }} PaperProps={{ sx: { borderRadius: 0, boxShadow: '0 8px 32px rgba(0,0,0,0.12)', mt: 1 } }}>
         <Box sx={{ p: 3, width: 280 }}>
           <Typography variant="h6" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.textPrimary, mb: 2, borderBottom: `1px solid ${COLORS.borderLight}`, pb: 1 }}>Filter Patients</Typography>
           <Typography variant="caption" sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 1, display: 'block' }}>By Species</Typography>
@@ -272,7 +272,7 @@ export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePet
             <Grid container spacing={2}>
               {archivedPets.map(pet => (
                 <Grid size={{ xs: 12, md: 6, lg: 4 }} key={pet.id}>
-                  <Card sx={{ borderRadius: 3, border: `1px dashed ${COLORS.textMuted}`, opacity: 0.7, p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Card sx={{ borderRadius: 0, border: `1px dashed ${COLORS.textMuted}`, opacity: 0.7, p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                       <Avatar sx={{ width: 36, height: 36, bgcolor: COLORS.panelBg, fontSize: '1.2rem' }}>
                         {(pet.species === 'Canine' || pet.species === 'Dog') ? '🐶' : '🐱'}
@@ -309,7 +309,7 @@ export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePet
           <Grid container spacing={2}>
             {deceasedPets.map(pet => (
               <Grid size={{ xs: 12, md: 6, lg: 4 }} key={pet.id}>
-                <Card sx={{ borderRadius: 3, border: `1px solid ${COLORS.borderLight}`, opacity: 0.65, p: 2, display: 'flex', alignItems: 'center', gap: 1.5, bgcolor: '#F3E5F5' }}>
+                <Card sx={{ borderRadius: 0, border: `1px solid ${COLORS.borderLight}`, opacity: 0.65, p: 2, display: 'flex', alignItems: 'center', gap: 1.5, bgcolor: '#F3E5F5' }}>
                   <Avatar sx={{ width: 36, height: 36, bgcolor: '#CE93D8', fontSize: '1.2rem' }}>
                     🕊️
                   </Avatar>
@@ -384,7 +384,7 @@ export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePet
           <Button
             variant="contained"
             onClick={() => { onArchive(archiveConfirm.id); setArchiveConfirm(null); }}
-            sx={{ fontFamily: FONT, fontWeight: 'bold', bgcolor: COLORS.danger, '&:hover': { bgcolor: '#B71C1C' }, borderRadius: 0 }}
+            sx={{ fontFamily: FONT, fontWeight: 'bold', bgcolor: COLORS.danger, '&:hover': { bgcolor: COLORS.dangerHover }, borderRadius: 0 }}
           >
             Archive
           </Button>

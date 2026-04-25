@@ -11,6 +11,7 @@ import { collection, addDoc } from 'firebase/firestore';
 import { db } from '../../../firebaseConfig';
 import MedicationIcon from '@mui/icons-material/Medication';
 import { formatCategory } from '../Inventory';
+import { FONT, COLORS } from '../../../theme/designTokens';
 
 export default function ProductFormModal({ open, onClose, item, onSave, categories, showToast }) {
   const isEditing = Boolean(item);
@@ -54,11 +55,11 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
     const cost   = Number(formData.costPrice) || 0;
     const retail = Number(formData.price)     || 0;
     if (!cost || !retail || cost >= retail)
-      return { percentage: 0, profit: 0, color: '#D32F2F', healthy: false };
+      return { percentage: 0, profit: 0, color: COLORS.danger, healthy: false };
     const profit     = retail - cost;
     const percentage = (profit / retail) * 100;
     const isHealthy  = percentage >= 30;
-    return { percentage: percentage.toFixed(1), profit: profit.toFixed(2), color: isHealthy ? '#2E7D32' : '#E65100', healthy: isHealthy };
+    return { percentage: percentage.toFixed(1), profit: profit.toFixed(2), color: isHealthy ? COLORS.success : COLORS.warning, healthy: isHealthy };
   }, [formData.costPrice, formData.price]);
 
   // ── Validation ──────────────────────────────────────────────────────────
@@ -135,15 +136,15 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
     }
   };
 
-  const sxField = { 
-    bgcolor: 'white', 
-    '& .MuiOutlinedInput-root': { 
-      borderRadius: 0, 
-      '& fieldset': { border: '2px solid #5D4037' },
-      '&:hover fieldset': { borderColor: '#3E2723' },
-      '&.Mui-focused fieldset': { borderColor: '#5D4037', borderSize: '3px' }
+  const sxField = {
+    bgcolor: COLORS.cardBg,
+    '& .MuiOutlinedInput-root': {
+      borderRadius: 0,
+      '& fieldset': { border: `2px solid ${COLORS.accent}` },
+      '&:hover fieldset': { borderColor: COLORS.brand },
+      '&.Mui-focused fieldset': { borderColor: COLORS.accent, borderSize: '3px' }
     },
-    '& .MuiInputLabel-root': { color: '#5D4037', fontWeight: 'bold' }
+    '& .MuiInputLabel-root': { color: COLORS.accent, fontWeight: 'bold' }
   };
 
   return (
@@ -154,39 +155,39 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
         maxWidth="md" 
         fullWidth 
         PaperProps={{ 
-          sx: { 
+          sx: {
             borderRadius: 0,
-            border: '2px solid #5D4037',
-            backgroundColor: '#FFF',
+            border: `2px solid ${COLORS.accent}`,
+            backgroundColor: COLORS.cardBg,
             boxShadow: '8px 8px 0px rgba(93, 64, 55, 0.1)',
             maxHeight: '90vh',
-          } 
+          }
         }}
       >
-        <DialogTitle sx={{ 
-          bgcolor: '#FFF8E1', 
-          color: '#3E2723', fontWeight: '1000', display: 'flex', alignItems: 'center', gap: 1.5, py: 2,
-          borderBottom: '2px solid #5D4037',
-          fontFamily: 'Inter, sans-serif',
+        <DialogTitle sx={{
+          bgcolor: COLORS.cream,
+          color: COLORS.brand, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1.5, py: 2,
+          borderBottom: `2px solid ${COLORS.accent}`,
+          fontFamily: FONT,
           textTransform: 'uppercase',
           letterSpacing: 1,
           fontSize: '1.1rem'
         }}>
-          {isEditing ? <MedicationIcon sx={{ color: '#5D4037' }} /> : <AddCircleIcon sx={{ color: '#5D4037' }} />}
+          {isEditing ? <MedicationIcon sx={{ color: COLORS.accent }} /> : <AddCircleIcon sx={{ color: COLORS.accent }} />}
           {isEditing ? 'Edit Product Details' : 'Add New Product'}
         </DialogTitle>
 
-        <DialogContent dividers sx={{ p: 0, bgcolor: '#FAF9F7' }}>
+        <DialogContent dividers sx={{ p: 0, bgcolor: COLORS.formBg }}>
           <Box sx={{ p: { xs: 2.5, md: 4 }, display: 'flex', flexDirection: 'column', gap: 3 }}>
 
           {/* ═══════════════════════════════════════════════════════════════
               SECTION 1: CORE IDENTITY & CLASSIFICATION
               ═══════════════════════════════════════════════════════════════ */}
           <Box sx={{ mb: 4 }}>
-            <Typography variant="overline" fontWeight="900" display="block" mb={1} sx={{ color: '#5D4037', letterSpacing: 1 }}>
+            <Typography variant="overline" fontWeight="900" display="block" mb={1} sx={{ color: COLORS.accent, letterSpacing: 1 }}>
               1. CORE IDENTITY &amp; CLASSIFICATION
             </Typography>
-            <Paper elevation={0} sx={{ p: 3, borderRadius: 0, border: '2px solid #5D4037', bgcolor: '#FFF' }}>
+            <Paper elevation={0} sx={{ p: 3, borderRadius: 0, border: `2px solid ${COLORS.accent}`, bgcolor: COLORS.cardBg }}>
               <Grid container spacing={2}>
                 <Grid size={{ xs: 12, sm: 8 }}>
                   <TextField
@@ -219,11 +220,11 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
                     {(categories || []).map(cat => (
                       <MenuItem key={cat.name} value={cat.name} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         {formatCategory(cat.name)}
-                        {cat.isMedicine && <MedicationIcon sx={{ fontSize: 16, color: '#D32F2F', ml: 1 }} />}
+                        {cat.isMedicine && <MedicationIcon sx={{ fontSize: 16, color: COLORS.danger, ml: 1 }} />}
                       </MenuItem>
                     ))}
                     <Divider />
-                    <MenuItem value="ADD_NEW" sx={{ color: '#D84315', fontWeight: 'bold' }}>
+                    <MenuItem value="ADD_NEW" sx={{ color: COLORS.cta, fontWeight: 'bold' }}>
                       <AddCircleIcon sx={{ mr: 1, fontSize: 18 }} /> Quick Add Category
                     </MenuItem>
                   </TextField>
@@ -266,7 +267,7 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
                       />
                     }
                     label={
-                      <Typography variant="body2" sx={{ fontWeight: 'bold', fontSize: '0.8rem', color: '#5D4037' }}>
+                      <Typography variant="body2" sx={{ fontWeight: 'bold', fontSize: '0.8rem', color: COLORS.accent }}>
                         Requires pharmacy dispensing verification
                       </Typography>
                     }
@@ -280,10 +281,10 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
               SECTION 2: BATCH & TRACEABILITY
               ═══════════════════════════════════════════════════════════════ */}
           <Box sx={{ mb: 4 }}>
-            <Typography variant="overline" fontWeight="900" display="block" mb={1} sx={{ color: '#5D4037', letterSpacing: 1 }}>
+            <Typography variant="overline" fontWeight="900" display="block" mb={1} sx={{ color: COLORS.accent, letterSpacing: 1 }}>
               2. BATCH &amp; TRACEABILITY
             </Typography>
-            <Paper elevation={0} sx={{ p: 3, borderRadius: 0, border: '2px solid #5D4037', bgcolor: '#FFF' }}>
+            <Paper elevation={0} sx={{ p: 3, borderRadius: 0, border: `2px solid ${COLORS.accent}`, bgcolor: COLORS.cardBg }}>
               <Grid container spacing={2}>
                 <Grid size={{ xs: 12, sm: 6 }}>
                   <TextField
@@ -316,11 +317,11 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
               SECTION 2b: ALLERGEN SAFETY TAGS (T2.175)
               ═══════════════════════════════════════════════════════════════ */}
           <Box sx={{ mb: 4 }}>
-            <Typography variant="overline" fontWeight="900" display="block" mb={1} sx={{ color: '#C62828', letterSpacing: 1 }}>
+            <Typography variant="overline" fontWeight="900" display="block" mb={1} sx={{ color: COLORS.surgery, letterSpacing: 1 }}>
               2b. ALLERGEN SAFETY TAGS
             </Typography>
-            <Paper elevation={0} sx={{ p: 3, borderRadius: 0, border: '2px solid #C62828', bgcolor: '#FFF' }}>
-              <Typography variant="body2" sx={{ color: '#5D4037', fontWeight: 600, mb: 1.5, fontSize: '0.8rem' }}>
+            <Paper elevation={0} sx={{ p: 3, borderRadius: 0, border: `2px solid ${COLORS.surgery}`, bgcolor: COLORS.cardBg }}>
+              <Typography variant="body2" sx={{ color: COLORS.accent, fontWeight: 600, mb: 1.5, fontSize: '0.8rem' }}>
                 Tag any allergens present in this product (e.g. Chicken, Penicillin, Latex). The dispensing
                 workflow will warn staff if a tagged allergen matches a patient's known allergies.
               </Typography>
@@ -334,8 +335,8 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
                     onDelete={() => setAllergenTags(prev => prev.filter((_, i) => i !== idx))}
                     icon={<WarningAmberIcon sx={{ fontSize: '14px !important', color: 'white !important' }} />}
                     sx={{
-                      bgcolor: '#C62828', color: 'white', fontWeight: 900,
-                      fontSize: '0.75rem', borderRadius: '4px',
+                      bgcolor: COLORS.surgery, color: COLORS.cardBg, fontWeight: 900,
+                      fontSize: '0.75rem', borderRadius: 0,
                       '& .MuiChip-deleteIcon': { color: 'rgba(255,255,255,0.8) !important' },
                     }}
                   />
@@ -364,9 +365,9 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
                     bgcolor: 'white',
                     '& .MuiOutlinedInput-root': {
                       borderRadius: 0,
-                      '& fieldset': { border: '2px solid #C62828' },
-                      '&:hover fieldset': { borderColor: '#B71C1C' },
-                      '&.Mui-focused fieldset': { borderColor: '#C62828' },
+                      '& fieldset': { border: `2px solid ${COLORS.surgery}` },
+                      '&:hover fieldset': { borderColor: COLORS.dangerHover },
+                      '&.Mui-focused fieldset': { borderColor: COLORS.surgery },
                     },
                   }}
                 />
@@ -380,7 +381,7 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
                     }
                     setAllergenInput('');
                   }}
-                  sx={{ bgcolor: '#C62828', borderRadius: 0, border: '2px solid #B71C1C', fontWeight: 1000, '&:hover': { bgcolor: '#B71C1C' } }}
+                  sx={{ bgcolor: COLORS.surgery, borderRadius: 0, border: `2px solid ${COLORS.dangerHover}`, fontWeight: 900, '&:hover': { bgcolor: COLORS.dangerHover } }}
                 >
                   +
                 </Button>
@@ -392,10 +393,10 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
               SECTION 3: FINANCIALS & MARGINS
               ═══════════════════════════════════════════════════════════════ */}
           <Box sx={{ mb: 4 }}>
-            <Typography variant="overline" fontWeight="900" display="block" mb={1} sx={{ color: '#5D4037', letterSpacing: 1 }}>
+            <Typography variant="overline" fontWeight="900" display="block" mb={1} sx={{ color: COLORS.accent, letterSpacing: 1 }}>
               3. FINANCIALS &amp; MARGINS
             </Typography>
-            <Paper elevation={0} sx={{ p: 3, bgcolor: '#EFEBE9', border: '2px solid #5D4037', borderRadius: 0 }}>
+            <Paper elevation={0} sx={{ p: 3, bgcolor: COLORS.panelBg, border: `2px solid ${COLORS.accent}`, borderRadius: 0 }}>
               <Grid container spacing={2} alignItems="stretch">
                 <Grid size={{ xs: 12, sm: 4 }}>
                   <TextField
@@ -424,7 +425,7 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
                       sx: {
                         fontWeight: '900',
                         color:  formData.costPrice && formData.price ? marginData.color : '#9E9E9E',
-                        bgcolor: formData.costPrice && formData.price ? `${marginData.color}0A` : '#F5F5F5',
+                        bgcolor: formData.costPrice && formData.price ? `${marginData.color}0A` : COLORS.tableHeaderBg,
                       },
                     }}
                     fullWidth
@@ -432,7 +433,7 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
                       height: '100%',
                       '& .MuiOutlinedInput-root': {
                         borderRadius: 0,
-                        '& fieldset': { borderColor: formData.costPrice && formData.price ? marginData.color : '#E0E0E0' },
+                        '& fieldset': { borderColor: formData.costPrice && formData.price ? marginData.color : COLORS.borderInput },
                       },
                     }}
                   />
@@ -445,10 +446,10 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
               SECTION 4: LOGISTICS & SOURCING
               ═══════════════════════════════════════════════════════════════ */}
           <Box sx={{ mb: 4 }}>
-            <Typography variant="overline" fontWeight="900" display="block" mb={1} sx={{ color: '#5D4037', letterSpacing: 1 }}>
+            <Typography variant="overline" fontWeight="900" display="block" mb={1} sx={{ color: COLORS.accent, letterSpacing: 1 }}>
               4. LOGISTICS &amp; SOURCING
             </Typography>
-            <Paper elevation={0} sx={{ p: 3, borderRadius: 0, border: '2px solid #5D4037', bgcolor: '#FFF' }}>
+            <Paper elevation={0} sx={{ p: 3, borderRadius: 0, border: `2px solid ${COLORS.accent}`, bgcolor: COLORS.cardBg }}>
               <Grid container spacing={2}>
                 <Grid size={{ xs: 12, sm: 6 }}>
                   <TextField
@@ -470,10 +471,10 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
               SECTION 5: STOCK SAFEGUARDS
               ═══════════════════════════════════════════════════════════════ */}
           <Box>
-            <Typography variant="overline" fontWeight="900" display="block" mb={1} sx={{ color: '#5D4037', letterSpacing: 1 }}>
+            <Typography variant="overline" fontWeight="900" display="block" mb={1} sx={{ color: COLORS.accent, letterSpacing: 1 }}>
               5. STOCK SAFEGUARDS
             </Typography>
-            <Paper elevation={0} sx={{ p: 3, borderRadius: 0, border: '2px solid #5D4037', bgcolor: '#FFF' }}>
+            <Paper elevation={0} sx={{ p: 3, borderRadius: 0, border: `2px solid ${COLORS.accent}`, bgcolor: COLORS.cardBg }}>
               <Grid container spacing={2}>
                 <Grid size={{ xs: 12, sm: isEditing ? 12 : 6 }}>
                   <TextField
@@ -511,27 +512,27 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
         </Box>
       </DialogContent>
 
-        <DialogActions sx={{ p: 2.5, bgcolor: '#FFF8E1', borderTop: '2px solid #5D4037' }}>
-          <Button 
-            onClick={onClose} 
-            sx={{ 
-              fontWeight: '1000', color: '#5D4037', px: 3, mr: 1, 
-              fontFamily: 'Inter, sans-serif', borderRadius: 0, 
-              border: '2px solid #5D4037',
+        <DialogActions sx={{ p: 2.5, bgcolor: COLORS.cream, borderTop: `2px solid ${COLORS.accent}` }}>
+          <Button
+            onClick={onClose}
+            sx={{
+              fontWeight: 900, color: COLORS.accent, px: 3, mr: 1,
+              fontFamily: FONT, borderRadius: 0,
+              border: `2px solid ${COLORS.accent}`,
               '&:hover': { bgcolor: 'rgba(93, 64, 55, 0.05)' }
             }}
           >
             CANCEL
           </Button>
-          <Button 
-            onClick={handleSubmit} 
-            variant="contained" 
-            sx={{ 
-              bgcolor: '#D84315', fontWeight: '1000', px: 4, py: 1.2, borderRadius: 0, 
+          <Button
+            onClick={handleSubmit}
+            variant="contained"
+            sx={{
+              bgcolor: COLORS.cta, fontWeight: 900, px: 4, py: 1.2, borderRadius: 0,
               boxShadow: '4px 4px 0px rgba(216,67,21,0.2)',
-              border: '2px solid #BF360C',
-              '&:hover': { bgcolor: '#BF360C', boxShadow: '2px 2px 0px rgba(216,67,21,0.2)' },
-              fontFamily: 'Inter, sans-serif'
+              border: `2px solid ${COLORS.ctaHover}`,
+              '&:hover': { bgcolor: COLORS.ctaHover, boxShadow: '2px 2px 0px rgba(216,67,21,0.2)' },
+              fontFamily: FONT
             }}
           >
             {isEditing ? 'SAVE CHANGES' : 'CREATE PRODUCT'}
@@ -540,11 +541,11 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
       </Dialog>
 
       {/* ── Quick-Add Category micro-modal ── */}
-      <Dialog open={showQuickAdd} onClose={() => setShowQuickAdd(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 0, border: '2px solid #5D4037', boxShadow: '8px 8px 0px rgba(0,0,0,0.1)' } }}>
-        <DialogTitle sx={{ bgcolor: '#D84315', color: 'white', fontWeight: '1000', letterSpacing: 1, textTransform: 'uppercase', fontSize: '1rem', borderBottom: '2px solid #BF360C' }}>
+      <Dialog open={showQuickAdd} onClose={() => setShowQuickAdd(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.accent}`, boxShadow: '8px 8px 0px rgba(0,0,0,0.1)' } }}>
+        <DialogTitle sx={{ bgcolor: COLORS.cta, color: COLORS.cardBg, fontWeight: 900, letterSpacing: 1, textTransform: 'uppercase', fontSize: '1rem', borderBottom: `2px solid ${COLORS.ctaHover}` }}>
           Quick Add Category
         </DialogTitle>
-        <DialogContent sx={{ p: 4, bgcolor: '#FAF9F7' }}>
+        <DialogContent sx={{ p: 4, bgcolor: COLORS.formBg }}>
           <TextField
             autoFocus label="Category Name" fullWidth
             sx={{ mt: 1, '& .MuiOutlinedInput-root': { borderRadius: 0, bgcolor: 'white' } }}
@@ -552,9 +553,9 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
             onKeyDown={e => e.key === 'Enter' && handleQuickAddCategory()}
           />
         </DialogContent>
-        <DialogActions sx={{ p: 2, bgcolor: '#FFF8E1', borderTop: '2px solid #5D4037' }}>
-          <Button onClick={() => setShowQuickAdd(false)} sx={{ fontWeight: '1000', color: '#5D4037', border: '1px solid #5D4037', borderRadius: 0 }}>CANCEL</Button>
-          <Button onClick={handleQuickAddCategory} variant="contained" sx={{ bgcolor: '#D84315', fontWeight: '1000', borderRadius: 0, border: '1px solid #BF360C', boxShadow: '2px 2px 0px rgba(0,0,0,0.1)' }}>
+        <DialogActions sx={{ p: 2, bgcolor: COLORS.cream, borderTop: `2px solid ${COLORS.accent}` }}>
+          <Button onClick={() => setShowQuickAdd(false)} sx={{ fontWeight: 900, color: COLORS.accent, border: `1px solid ${COLORS.accent}`, borderRadius: 0 }}>CANCEL</Button>
+          <Button onClick={handleQuickAddCategory} variant="contained" sx={{ bgcolor: COLORS.cta, fontWeight: 900, borderRadius: 0, border: `1px solid ${COLORS.ctaHover}`, boxShadow: '2px 2px 0px rgba(0,0,0,0.1)' }}>
             CREATE & SELECT
           </Button>
         </DialogActions>

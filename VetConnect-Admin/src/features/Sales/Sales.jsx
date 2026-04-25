@@ -318,7 +318,7 @@ export default function Sales() {
         else { icon = <AccountBalanceIcon fontSize="small" />; color = COLORS.grooming; }
         return (
             <Box sx={{ display: 'flex', alignItems: 'center', height: '100%' }}>
-                <Chip icon={icon} label={p.value} size="small" sx={{ borderRadius: 0, bgcolor: 'white', color: color, border: `2px solid ${color}`, fontWeight: '1000', '& .MuiChip-icon': { color: color } }} />
+                <Chip icon={icon} label={p.value} size="small" sx={{ borderRadius: 0, bgcolor: COLORS.cardBg, color: color, border: `2px solid ${color}`, fontWeight: 900, '& .MuiChip-icon': { color: color } }} />
             </Box>
         );
       }
@@ -340,7 +340,7 @@ export default function Sales() {
           const isRefunded = p.value === 'refunded';
           return (
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 0.3 }}>
-                <Chip label={isRefunded ? "REFUNDED" : "PAID"} color={isRefunded ? "error" : "success"} size="small" variant={isRefunded ? "outlined" : "filled"} sx={{ borderRadius: 0, fontWeight: '1000', border: isRefunded ? '2px solid' : 'none' }} />
+                <Chip label={isRefunded ? "REFUNDED" : "PAID"} color={isRefunded ? "error" : "success"} size="small" variant={isRefunded ? "outlined" : "filled"} sx={{ borderRadius: 0, fontWeight: 900, border: isRefunded ? '2px solid' : 'none' }} />
                 {p.row._crossDayRefund && (
                     <Typography variant="caption" sx={{ fontSize: '0.55rem', fontWeight: 800, color: COLORS.accentLight, lineHeight: 1 }}>
                         sold {p.row.jsDate?.toLocaleDateString()}
@@ -369,8 +369,8 @@ export default function Sales() {
             {p.row.status !== 'refunded' && p.row.status !== 'voided' && (
                 <Tooltip title="Void Transaction">
                     <IconButton size="small" onClick={() => { setVoidTarget(p.row); setOpenVoid(true); }}
-                        sx={{ border: `1px solid #EF6C0050`, borderRadius: 0, color: '#E65100' }}>
-                        <Typography sx={{ fontSize: '0.55rem', fontWeight: 1000, px: 0.2 }}>VOID</Typography>
+                        sx={{ border: `1px solid #EF6C0050`, borderRadius: 0, color: COLORS.warning }}>
+                        <Typography sx={{ fontSize: '0.55rem', fontWeight: 900, px: 0.2 }}>VOID</Typography>
                     </IconButton>
                 </Tooltip>
             )}
@@ -414,7 +414,7 @@ export default function Sales() {
                 startAdornment: <InputAdornment position="start"><CalendarMonthIcon fontSize="small" sx={{ color: COLORS.accent }} /></InputAdornment>,
                 sx: { borderRadius: 0, fontWeight: 800, fontFamily: 'Inter', fontSize: '0.85rem' }
               }}
-              sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33`, borderRadius: 0 }, minWidth: 170 }}
+              sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33`, borderRadius: 0 }, minWidth: 170 }}
             />
             <FormControl size="small" sx={{ minWidth: 160 }}>
                 <Select
@@ -435,7 +435,7 @@ export default function Sales() {
                       return selected.join(', ');
                     }}
                     displayEmpty
-                    sx={{ fontWeight: 800, color: COLORS.accent, bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33`, borderRadius: 0 }, borderRadius: 0 }}
+                    sx={{ fontWeight: 800, color: COLORS.accent, bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33`, borderRadius: 0 }, borderRadius: 0 }}
                 >
                     <MenuItem value="All">All Methods (Reset)</MenuItem>
                     <MenuItem value="Cash">Cash</MenuItem>
@@ -445,7 +445,7 @@ export default function Sales() {
                 </Select>
             </FormControl>
             <FormControl size="small" sx={{ minWidth: 130 }}>
-                <Select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} displayEmpty sx={{ fontWeight: 800, color: COLORS.accent, bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33` } }}>
+                <Select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} displayEmpty sx={{ fontWeight: 800, color: COLORS.accent, bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33` } }}>
                     <MenuItem value="All">All Statuses</MenuItem>
                     <MenuItem value="Paid">Paid</MenuItem>
                     <MenuItem value="refunded">Refunded</MenuItem>
@@ -456,7 +456,7 @@ export default function Sales() {
           <Box sx={{ flexGrow: 1 }} />
 
           <Tooltip title="Print Detailed Report">
-            <IconButton onClick={handlePrintReport} disabled={loading} sx={{ bgcolor: 'white', border: `1px solid ${COLORS.accent}33`, color: COLORS.accent }}>
+            <IconButton onClick={handlePrintReport} disabled={loading} sx={{ bgcolor: COLORS.cardBg, border: `1px solid ${COLORS.accent}33`, color: COLORS.accent }}>
               <PrintIcon fontSize="small" />
             </IconButton>
           </Tooltip>
@@ -466,7 +466,7 @@ export default function Sales() {
       {/* 2. FULL-BLEED ANALYTIC MOUNTING (KPIs) */}
       <Box sx={{ flexShrink: 0, mb: 0 }}>
         <Box sx={{
-          p: 2, px: 4, bgcolor: 'white', borderBottom: `2px solid ${COLORS.accent}`,
+          p: 2, px: 4, bgcolor: COLORS.cardBg, borderBottom: `2px solid ${COLORS.accent}`,
           borderTop: 'none', borderLeft: 'none', borderRight: 'none', borderRadius: 0
         }}>
           <EodSummary totals={eodTotals} filterMethod={filterMethod} setFilterMethod={setFilterMethod} />
@@ -480,7 +480,7 @@ export default function Sales() {
       )}
 
       {/* 3. FULL-BLEED TRANSACTION LEDGER (FLEX: 1) */}
-      <Box sx={{ flexGrow: 1, minHeight: 0, width: '100%', overflow: 'hidden', bgcolor: 'white' }}>
+      <Box sx={{ flexGrow: 1, minHeight: 0, width: '100%', overflow: 'hidden', bgcolor: COLORS.cardBg }}>
         <DataGrid 
             loading={loading} rows={processedSales} 
             columns={columns.map(c => ({
@@ -493,7 +493,7 @@ export default function Sales() {
             initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
             sx={{
                 border: 'none',
-                bgcolor: 'white',
+                bgcolor: COLORS.cardBg,
                 '& .forensic-header': {
                   bgcolor: `${COLORS.cream} !important`,
                   color: COLORS.accent,
@@ -526,7 +526,7 @@ export default function Sales() {
         <DialogTitle sx={{ bgcolor: COLORS.dangerSurface, color: COLORS.danger, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1.5, py: 2, borderBottom: `2px solid ${COLORS.danger}`, textTransform: 'uppercase', letterSpacing: 1, fontSize: '1rem' }}>
             <SettingsBackupRestoreIcon /> Authorize Transaction Reversal
         </DialogTitle>
-        <DialogContent sx={{ p: 4, bgcolor: 'white' }}>
+        <DialogContent sx={{ p: 4, bgcolor: COLORS.cardBg }}>
           <Alert severity="warning" sx={{ mb: 3, fontWeight: 800, border: `2px solid ${COLORS.warning}`, borderRadius: 0, bgcolor: COLORS.warningSurface }}>
             You are about to permanently refund ₱{selectedSale?.total?.toFixed(2)} to {selectedSale?.ownerName}.
           </Alert>
@@ -555,11 +555,11 @@ export default function Sales() {
       </Dialog>
 
       {/* T2.104: VOID TRANSACTION MODAL */}
-      <Dialog open={openVoid} onClose={() => setOpenVoid(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 0, border: `2px solid #E65100` } }}>
-        <DialogTitle sx={{ bgcolor: '#FFF3E0', color: '#E65100', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1.5, py: 2, borderBottom: `2px solid #E65100`, textTransform: 'uppercase', letterSpacing: 1, fontSize: '1rem' }}>
+      <Dialog open={openVoid} onClose={() => setOpenVoid(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.warning}` } }}>
+        <DialogTitle sx={{ bgcolor: COLORS.warningSurface, color: COLORS.warning, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1.5, py: 2, borderBottom: `2px solid ${COLORS.warning}`, textTransform: 'uppercase', letterSpacing: 1, fontSize: '1rem' }}>
           Void Transaction
         </DialogTitle>
-        <DialogContent sx={{ p: 4, bgcolor: 'white' }}>
+        <DialogContent sx={{ p: 4, bgcolor: COLORS.cardBg }}>
           <Alert severity="error" sx={{ mb: 3, fontWeight: 800, border: `2px solid #EF9A9A`, borderRadius: 0 }}>
             Voiding will mark the transaction as invalid, restore inventory stock for all sold products, and revert the appointment to the billing stage.
           </Alert>
@@ -569,12 +569,12 @@ export default function Sales() {
             <strong>Client:</strong> {voidTarget?.ownerName || 'Walk-In'}
           </Typography>
         </DialogContent>
-        <DialogActions sx={{ p: 3, borderTop: `2px solid #E65100`, bgcolor: '#FFF3E0', justifyContent: 'space-between' }}>
+        <DialogActions sx={{ p: 3, borderTop: `2px solid ${COLORS.warning}`, bgcolor: COLORS.warningSurface, justifyContent: 'space-between' }}>
           <Button onClick={() => setOpenVoid(false)} sx={{ fontWeight: 800, color: COLORS.textSecondary, px: 3, fontFamily: FONT }}>CANCEL</Button>
           <Button
             onClick={executeVoid}
             variant="contained"
-            sx={{ fontWeight: 800, px: 4, py: 1.5, borderRadius: 0, bgcolor: '#E65100', border: `2px solid #BF360C`, '&:hover': { bgcolor: '#BF360C' } }}
+            sx={{ fontWeight: 800, px: 4, py: 1.5, borderRadius: 0, bgcolor: COLORS.warning, border: `2px solid ${COLORS.ctaHover}`, '&:hover': { bgcolor: COLORS.ctaHover } }}
           >
             VOID TRANSACTION
           </Button>

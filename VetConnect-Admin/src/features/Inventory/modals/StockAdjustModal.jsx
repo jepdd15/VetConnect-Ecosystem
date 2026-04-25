@@ -3,7 +3,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Button, Box, Typography, MenuItem
 } from '@mui/material';
-import { FONT } from '../../../theme/designTokens';
+import { FONT, COLORS } from '../../../theme/designTokens';
 
 export default function StockAdjustModal({ open, onClose, item, onAdjust }) {
   const [action, setAction] = useState('add');
@@ -90,31 +90,31 @@ export default function StockAdjustModal({ open, onClose, item, onAdjust }) {
   };
 
   const fieldSx = {
-    bgcolor: 'white',
+    bgcolor: COLORS.cardBg,
     '& .MuiOutlinedInput-root': {
       borderRadius: 0,
-      '& fieldset': { border: '2px solid #5D4037' },
-      '&:hover fieldset': { borderColor: '#3E2723' },
-      '&.Mui-focused fieldset': { borderColor: '#5D4037' }
+      '& fieldset': { border: `2px solid ${COLORS.accent}` },
+      '&:hover fieldset': { borderColor: COLORS.brand },
+      '&.Mui-focused fieldset': { borderColor: COLORS.accent }
     }
   };
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth
-      PaperProps={{ sx: { borderRadius: 0, border: '2px solid #5D4037', boxShadow: '8px 8px 0px rgba(93,64,55,0.1)' } }}>
-      <DialogTitle sx={{ bgcolor: '#FFF8E1', color: '#3E2723', fontWeight: 1000, fontFamily: FONT, textTransform: 'uppercase', letterSpacing: 1, borderBottom: '2px solid #5D4037' }}>
+      PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.accent}`, boxShadow: '8px 8px 0px rgba(93,64,55,0.1)' } }}>
+      <DialogTitle sx={{ bgcolor: COLORS.cream, color: COLORS.brand, fontWeight: 900, fontFamily: FONT, textTransform: 'uppercase', letterSpacing: 1, borderBottom: `2px solid ${COLORS.accent}` }}>
         Update Stock: {item?.itemName}
       </DialogTitle>
 
-      <DialogContent dividers sx={{ p: 3, bgcolor: '#FAF9F7' }}>
+      <DialogContent dividers sx={{ p: 3, bgcolor: COLORS.formBg }}>
         <Typography variant="body1" sx={{ mb: 1, color: '#555' }}>
           Current Stock Level:{' '}
-          <Box component="span" sx={{ fontWeight: '900', fontSize: '1.3rem', color: '#1565C0', ml: 1 }}>
+          <Box component="span" sx={{ fontWeight: '900', fontSize: '1.3rem', color: COLORS.medical, ml: 1 }}>
             {item?.stock || 0}
           </Box>
         </Typography>
         {(item?.reserved || 0) > 0 && (
-          <Typography variant="body2" sx={{ mb: 2, color: '#E65100', fontWeight: 'bold' }}>
+          <Typography variant="body2" sx={{ mb: 2, color: COLORS.warning, fontWeight: 'bold' }}>
             Available: {(item?.stock || 0) - (item?.reserved || 0)} ({item?.reserved} reserved by active consults)
           </Typography>
         )}
@@ -206,13 +206,13 @@ export default function StockAdjustModal({ open, onClose, item, onAdjust }) {
         )}
       </DialogContent>
 
-      <DialogActions sx={{ p: 2.5, bgcolor: '#FFF8E1', borderTop: '2px solid #5D4037' }}>
-        <Button onClick={onClose} sx={{ borderRadius: 0, border: '2px solid #5D4037', fontFamily: FONT, fontWeight: 1000, color: '#5D4037' }}>Cancel</Button>
+      <DialogActions sx={{ p: 2.5, bgcolor: COLORS.cream, borderTop: `2px solid ${COLORS.accent}` }}>
+        <Button onClick={onClose} sx={{ borderRadius: 0, border: `2px solid ${COLORS.accent}`, fontFamily: FONT, fontWeight: 900, color: COLORS.accent }}>Cancel</Button>
         <Button
           onClick={handleSubmit}
           disabled={submitting}
           variant="contained"
-          sx={{ bgcolor: '#D84315', borderRadius: 0, border: '2px solid #BF360C', boxShadow: '4px 4px 0px rgba(216,67,21,0.2)', fontFamily: FONT, fontWeight: 1000, '&:hover': { bgcolor: '#BF360C' } }}
+          sx={{ bgcolor: COLORS.cta, borderRadius: 0, border: `2px solid ${COLORS.ctaHover}`, boxShadow: '4px 4px 0px rgba(216,67,21,0.2)', fontFamily: FONT, fontWeight: 900, '&:hover': { bgcolor: COLORS.ctaHover } }}
         >
           {submitting ? 'Updating...' : 'Confirm Update'}
         </Button>

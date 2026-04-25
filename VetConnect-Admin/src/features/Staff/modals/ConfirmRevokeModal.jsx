@@ -21,7 +21,7 @@ export default function ConfirmRevokeModal({ open, onClose, staffName, onConfirm
     >
       <DialogTitle sx={{
         bgcolor: COLORS.dangerSurface,
-        color: COLORS.dangerHover, fontWeight: '1000', display: 'flex', alignItems: 'center', gap: 1.5, py: 2,
+        color: COLORS.dangerHover, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1.5, py: 2,
         borderBottom: `2px solid ${COLORS.danger}`,
         textTransform: 'uppercase',
         letterSpacing: 1,
@@ -55,7 +55,7 @@ export default function ConfirmRevokeModal({ open, onClose, staffName, onConfirm
       </DialogContent>
 
       <DialogActions sx={{ p: 2.5, bgcolor: COLORS.dangerSurface, borderTop: `2px solid ${COLORS.danger}`, justifyContent: 'space-between' }}>
-        <Button onClick={onClose} sx={{ fontWeight: '1000', color: COLORS.dangerHover, px: 3, fontFamily: FONT }}>
+        <Button onClick={onClose} sx={{ fontWeight: 900, color: COLORS.dangerHover, px: 3, fontFamily: FONT }}>
           CANCEL
         </Button>
         <Button
@@ -63,7 +63,7 @@ export default function ConfirmRevokeModal({ open, onClose, staffName, onConfirm
           onClick={onConfirm}
           disabled={loading}
           sx={{
-            bgcolor: COLORS.danger, fontWeight: '1000', px: 4, py: 1.2,
+            bgcolor: COLORS.danger, fontWeight: 900, px: 4, py: 1.2,
             borderRadius: 0,
             border: `2px solid ${COLORS.dangerHover}`,
             boxShadow: '4px 4px 0px rgba(211,47,47,0.2)',

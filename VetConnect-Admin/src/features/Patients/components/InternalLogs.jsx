@@ -44,7 +44,7 @@ export default function InternalLogs({ notes, newNote, setNewNote, category, set
           {[...notes].reverse().map((note, i) => {
             const catColor = getCatColor(note.category);
             return (
-              <Paper key={note.id || i} elevation={0} sx={{ mb: 2, p: 2.5, borderLeft: `5px solid ${catColor}`, bgcolor: COLORS.cardBg, display: 'flex', justifyContent: 'space-between', borderRadius: 2, border: `1px solid ${COLORS.borderLight}` }}>
+              <Paper key={note.id || i} elevation={0} sx={{ mb: 2, p: 2.5, borderLeft: `5px solid ${catColor}`, bgcolor: COLORS.cardBg, display: 'flex', justifyContent: 'space-between', borderRadius: 0, border: `1px solid ${COLORS.borderLight}` }}>
                 <Box sx={{ flex: 1, pr: 2 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
                     <Chip label={note.category} size="small" sx={{ height: 20, fontSize: '0.65rem', fontFamily: FONT, fontWeight: 'bold', bgcolor: `${catColor}1A`, color: catColor, border: `1px solid ${catColor}44` }} />

@@ -81,7 +81,7 @@ export default function ClientHeader({ client, balance, isEditing, onEdit, onCan
                         icon={<EventBusyIcon sx={{ fontSize: '12px !important' }} />}
                         label={`${engagementKPIs.noShowCount} no-show${engagementKPIs.noShowCount > 1 ? 's' : ''} (${Math.round((engagementKPIs.noShowCount / engagementKPIs.totalAppointments) * 100)}%)`}
                         size="small"
-                        sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.65rem', height: 20, bgcolor: '#FFEBEE', color: '#D32F2F', border: '1px solid #EF9A9A' }}
+                        sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.65rem', height: 20, bgcolor: COLORS.dangerSurface, color: COLORS.danger, border: '1px solid #EF9A9A' }}
                       />
                     )}
                   </Box>
@@ -106,7 +106,7 @@ export default function ClientHeader({ client, balance, isEditing, onEdit, onCan
                 {isStaleProfile && !isEditing && (
                   <Box sx={{
                     display: 'flex', alignItems: 'center', gap: 1,
-                    bgcolor: '#FFF8E1', px: 2, py: 0.5,
+                    bgcolor: COLORS.cream, px: 2, py: 0.5,
                     border: `1px solid #FFE082`, mt: 0.5,
                   }}>
                     <UpdateIcon sx={{ fontSize: 14, color: '#F57F17' }} />

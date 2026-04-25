@@ -14,7 +14,7 @@ import PhoneIcon from '@mui/icons-material/Phone';
 export default function StaffTable({ data, getWorkload, onEdit, onDelete, departments, loading }) {
 
   const clinicalFlatStyle = {
-    background: '#FFF',
+    background: COLORS.cardBg,
     border: 'none',
     boxShadow: 'none',
     borderRadius: 0,
@@ -51,7 +51,7 @@ export default function StaffTable({ data, getWorkload, onEdit, onDelete, depart
       field: 'accessLevel', headerName: 'System Access', flex: 0.8,
       renderCell: (p) => {
         const level = p.row.accessLevel || (p.row.role === 'admin' ? 'admin' : 'staff');
-        return <Chip icon={level === 'admin' ? <AdminPanelSettingsIcon/> : <BadgeIcon/>} label={level === 'admin' ? 'CLINIC ADMINISTRATOR' : 'CLINICAL STAFF'} color={level === 'admin' ? 'error' : 'default'} size="small" variant={level === 'admin' ? 'filled' : 'outlined'} sx={{fontWeight: '1000', fontSize: '0.65rem'}}/>;
+        return <Chip icon={level === 'admin' ? <AdminPanelSettingsIcon/> : <BadgeIcon/>} label={level === 'admin' ? 'CLINIC ADMINISTRATOR' : 'CLINICAL STAFF'} color={level === 'admin' ? 'error' : 'default'} size="small" variant={level === 'admin' ? 'filled' : 'outlined'} sx={{fontWeight: 900, fontSize: '0.65rem'}}/>;
       }
     },
     {
@@ -154,7 +154,7 @@ export default function StaffTable({ data, getWorkload, onEdit, onDelete, depart
             '& .forensic-header': {
               bgcolor: `${COLORS.cream} !important`,
               color: COLORS.accent,
-              fontWeight: '1000 !important',
+              fontWeight: '900 !important',
               fontSize: '0.75rem',
               letterSpacing: 1,
               textTransform: 'uppercase',

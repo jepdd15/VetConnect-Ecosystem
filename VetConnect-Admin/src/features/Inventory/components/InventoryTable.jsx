@@ -11,15 +11,15 @@ import ExposureIcon from '@mui/icons-material/Exposure';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import HistoryIcon from '@mui/icons-material/History';
 import UnarchiveIcon from '@mui/icons-material/Unarchive';
-import { FONT } from '../../../theme/designTokens';
+import { FONT, COLORS } from '../../../theme/designTokens';
 
 export default function InventoryTable({ data, loading, onEdit, onAdjust, onDelete, onLog, showArchived, onRestore }) {
   
   const clinicalFlatStyle = {
-    background: '#FFF', 
+    background: COLORS.cardBg,
     border: 0,
-    boxShadow: 'none', 
-    borderRadius: 0, 
+    boxShadow: 'none',
+    borderRadius: 0,
   };
   
 // ── Expiry Status Helper ─────────────────────────────────────────────────
@@ -30,9 +30,9 @@ const getExpiryStatus = (expiryDate) => {
   const expiry = new Date(expiryDate + 'T00:00:00'); // avoid timezone shift
   const daysUntil = Math.floor((expiry - today) / (1000 * 60 * 60 * 24));
   const formatted = expiry.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
-  if (daysUntil < 0)   return { label: '⚠ EXPIRED',       color: '#D32F2F', bg: '#FFEBEE' };
-  if (daysUntil <= 30) return { label: `Exp: ${formatted}`, color: '#E65100', bg: '#FFF3E0' };
-  if (daysUntil <= 90) return { label: `Exp: ${formatted}`, color: '#7B1FA2', bg: '#F3E8FF' };
+  if (daysUntil < 0)   return { label: '⚠ EXPIRED',       color: COLORS.danger,   bg: COLORS.dangerSurface };
+  if (daysUntil <= 30) return { label: `Exp: ${formatted}`, color: COLORS.warning,  bg: COLORS.warningSurface };
+  if (daysUntil <= 90) return { label: `Exp: ${formatted}`, color: COLORS.grooming, bg: COLORS.kpiPurpleBg };
   return null; // No badge needed for items expiring far in the future
 };
   
@@ -87,10 +87,10 @@ const getExpiryStatus = (expiryDate) => {
 
   const paginatedData = sortedData.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
-  const headerSx = { 
-    fontWeight: '1000', color: '#5D4037', bgcolor: '#FFF8E1', 
-    fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 1, 
-    borderBottom: '2px solid #5D4037' 
+  const headerSx = {
+    fontWeight: 900, color: COLORS.accent, bgcolor: COLORS.cream,
+    fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 1,
+    borderBottom: `2px solid ${COLORS.accent}`,
   };
 
   const SortableHeader = ({ id, label, align = "left", pl }) => (
@@ -99,7 +99,7 @@ const getExpiryStatus = (expiryDate) => {
            active={orderBy === id}
            direction={orderBy === id ? order : 'asc'}
            onClick={() => handleRequestSort(id)}
-           sx={{ '&.MuiTableSortLabel-active': { color: '#3E2723' }, '& .MuiTableSortLabel-icon': { color: '#D84315 !important' } }}
+           sx={{ '&.MuiTableSortLabel-active': { color: COLORS.brand }, '& .MuiTableSortLabel-icon': { color: `${COLORS.cta} !important` } }}
        >
          {label}
        </TableSortLabel>
@@ -114,22 +114,22 @@ const getExpiryStatus = (expiryDate) => {
         width: '100%',
         overflow: 'auto',
         '&::-webkit-scrollbar': { width: '8px', height: '8px' },
-        '&::-webkit-scrollbar-track': { background: '#FFF8E1' },
-        '&::-webkit-scrollbar-thumb': { background: '#5D4037', borderRadius: '4px' },
-        '&::-webkit-scrollbar-thumb:hover': { background: '#3E2723' }
+        '&::-webkit-scrollbar-track': { background: COLORS.cream },
+        '&::-webkit-scrollbar-thumb': { background: COLORS.accent, borderRadius: 0 },
+        '&::-webkit-scrollbar-thumb:hover': { background: COLORS.brand }
     }}>
-      <Table stickyHeader size="small" sx={{ bgcolor: 'white' }}>
+      <Table stickyHeader size="small" sx={{ bgcolor: COLORS.cardBg }}>
         <TableHead>
           <TableRow>
             <SortableHeader id="itemName" label="PRODUCT NAME" pl={3} />
             <SortableHeader id="category" label="CATEGORY" />
-            <TableCell sx={{ ...headerSx, bgcolor: '#FFF8E1', borderBottom: '2px solid #5D4037', fontWeight: 1000, color: '#5D4037' }} align="center">STATUS</TableCell>
+            <TableCell sx={{ ...headerSx, bgcolor: COLORS.cream, borderBottom: `2px solid ${COLORS.accent}`, fontWeight: 900, color: COLORS.accent }} align="center">STATUS</TableCell>
             <SortableHeader id="stock" label="STOCK LEVEL" align="center" />
             <SortableHeader id="reserved" label="RESERVED" align="center" />
             <SortableHeader id="costPrice" label="COST" align="right" />
             <SortableHeader id="price" label="RETAIL" align="right" />
             <SortableHeader id="margin" label="MARGIN" align="right" />
-            <TableCell sx={{ ...headerSx, bgcolor: '#FFF8E1', borderBottom: '2px solid #5D4037', fontWeight: 1000, color: '#5D4037' }} align="center">ACTIONS</TableCell>
+            <TableCell sx={{ ...headerSx, bgcolor: COLORS.cream, borderBottom: `2px solid ${COLORS.accent}`, fontWeight: 900, color: COLORS.accent }} align="center">ACTIONS</TableCell>
           </TableRow>
         </TableHead>
         
@@ -167,11 +167,11 @@ const getExpiryStatus = (expiryDate) => {
                 }}
               >
                 <TableCell sx={{ pl: 3 }}>
-                   <Typography variant="body2" fontWeight="bold" color="#3E2723">
+                   <Typography variant="body2" fontWeight="bold" color={COLORS.brand}>
                      {row.itemName} 
                      {row.dosage && <Typography component="span" variant="caption" color="textSecondary" sx={{ ml: 0.5, fontWeight: 'bold' }}>({row.dosage})</Typography>}
                    </Typography>
-                   {row.sku && <Typography variant="caption" color="#9E9E9E" sx={{ display: 'block', fontSize: '0.65rem' }}>SKU: {row.sku}</Typography>}
+                   {row.sku && <Typography variant="caption" color="#9E9E9E" sx={{ display: 'block', fontSize: '0.65rem' }}>SKU: {row.sku}</Typography>}  {/* keep #9E9E9E — neutral disabled text */}
                    {/* Expiry Badge */}
                    {(() => {
                      const exp = getExpiryStatus(row.expiryDate);
@@ -181,7 +181,7 @@ const getExpiryStatus = (expiryDate) => {
                          variant="caption"
                          sx={{
                            display: 'inline-block', mt: 0.4,
-                           px: 0.8, py: 0.2, borderRadius: 1,
+                           px: 0.8, py: 0.2, borderRadius: 0,
                            bgcolor: exp.bg, color: exp.color,
                            fontWeight: '900', fontSize: '0.62rem', letterSpacing: 0.3,
                          }}
@@ -208,7 +208,7 @@ const getExpiryStatus = (expiryDate) => {
                      size="small" 
                      color={statusColor} 
                      variant={currentStock <= 0 ? 'filled' : 'outlined'} 
-                     sx={{ fontWeight: '900', letterSpacing: 0.5, borderRadius: 1 }} 
+                     sx={{ fontWeight: '900', letterSpacing: 0.5, borderRadius: 0 }}
                    />
                 </TableCell>
                 
@@ -234,7 +234,7 @@ const getExpiryStatus = (expiryDate) => {
                     placement="right"
                   >
                     <Box>
-                      <Typography variant="body2" sx={{ fontWeight: '900', color: currentStock <= minStock ? '#D32F2F' : '#212121', cursor: row.batches?.length ? 'help' : 'default' }}>
+                      <Typography variant="body2" sx={{ fontWeight: '900', color: currentStock <= minStock ? COLORS.danger : COLORS.monitorBg, cursor: row.batches?.length ? 'help' : 'default' }}>
                           {currentStock}
                           {row.unit && <Typography component="span" variant="caption" color="textSecondary" sx={{ ml: 0.5 }}>{row.unit}</Typography>}
                       </Typography>
@@ -247,7 +247,7 @@ const getExpiryStatus = (expiryDate) => {
                 </TableCell>
 
                 <TableCell align="center">
-                   <Typography variant="body2" sx={{ fontWeight: '900', color: (row.reserved || 0) > 0 ? '#E65100' : '#757575' }}>
+                   <Typography variant="body2" sx={{ fontWeight: '900', color: (row.reserved || 0) > 0 ? COLORS.warning : '#757575' }}>
                        {row.reserved || 0}
                    </Typography>
                 </TableCell>
@@ -257,13 +257,13 @@ const getExpiryStatus = (expiryDate) => {
                 </TableCell>
                 
                 <TableCell align="right">
-                   <Typography variant="body2" fontWeight="bold" color="#2E7D32">₱{retail.toFixed(2)}</Typography>
+                   <Typography variant="body2" fontWeight="bold" color={COLORS.success}>₱{retail.toFixed(2)}</Typography>
                 </TableCell>
                 
                 {/* T2.172: Show negative margins in red; null means cost or price is missing */}
                 <TableCell align="right">
-                   <Box sx={{ display: 'inline-flex', alignItems: 'center', bgcolor: marginValue === null ? '#F5F5F5' : marginValue >= 40 ? '#E8F5E9' : marginValue < 0 ? '#FFEBEE' : '#FFF3E0', px: 1, py: 0.5, borderRadius: 0 }}>
-                     <Typography variant="caption" sx={{ fontWeight: 'bold', color: marginValue === null ? '#757575' : marginValue >= 40 ? '#2E7D32' : marginValue < 0 ? '#D32F2F' : '#E65100' }}>
+                   <Box sx={{ display: 'inline-flex', alignItems: 'center', bgcolor: marginValue === null ? COLORS.tableHeaderBg : marginValue >= 40 ? COLORS.kpiGreenBg : marginValue < 0 ? COLORS.dangerSurface : COLORS.warningSurface, px: 1, py: 0.5, borderRadius: 0 }}>
+                     <Typography variant="caption" sx={{ fontWeight: 'bold', color: marginValue === null ? '#757575' : marginValue >= 40 ? COLORS.success : marginValue < 0 ? COLORS.danger : COLORS.warning }}>
                        {marginValue === null ? 'N/A' : `${margin}%`}
                      </Typography>
                    </Box>
@@ -295,13 +295,13 @@ const getExpiryStatus = (expiryDate) => {
 
                     {showArchived ? (
                       <Tooltip title="Restore Product" arrow>
-                        <IconButton size="small" onClick={() => onRestore(row.id, row.itemName)} sx={{ color: '#2E7D32', bgcolor: 'rgba(46, 125, 50, 0.08)', '&:hover': { bgcolor: 'rgba(46, 125, 50, 0.2)' } }}>
+                        <IconButton size="small" onClick={() => onRestore(row.id, row.itemName)} sx={{ color: COLORS.success, bgcolor: 'rgba(46, 125, 50, 0.08)', '&:hover': { bgcolor: 'rgba(46, 125, 50, 0.2)' } }}>
                           <UnarchiveIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
                     ) : (
                       <Tooltip title="Delete Item" arrow>
-                        <IconButton size="small" onClick={() => onDelete(row.id, row.itemName)} sx={{ color: '#D32F2F', bgcolor: 'rgba(211, 47, 47, 0.08)', '&:hover': { bgcolor: 'rgba(211, 47, 47, 0.2)' } }}>
+                        <IconButton size="small" onClick={() => onDelete(row.id, row.itemName)} sx={{ color: COLORS.danger, bgcolor: 'rgba(211, 47, 47, 0.08)', '&:hover': { bgcolor: 'rgba(211, 47, 47, 0.2)' } }}>
                           <DeleteIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
@@ -314,7 +314,7 @@ const getExpiryStatus = (expiryDate) => {
           
           {loading && (
             <TableRow><TableCell colSpan={9} align="center" sx={{ py: 10, border: 'none' }}>
-              <CircularProgress size={32} sx={{ color: '#5D4037' }} />
+              <CircularProgress size={32} sx={{ color: COLORS.accent }} />
               <Typography variant="body2" color="textSecondary" fontWeight="bold" sx={{ mt: 1.5 }}>Loading inventory...</Typography>
             </TableCell></TableRow>
           )}
@@ -332,8 +332,8 @@ const getExpiryStatus = (expiryDate) => {
         onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
         rowsPerPageOptions={[10, 25, 50, 100]}
         sx={{
-          borderTop: '2px solid #5D4037',
-          bgcolor: '#FFF8E1',
+          borderTop: `2px solid ${COLORS.accent}`,
+          bgcolor: COLORS.cream,
           '& .MuiTablePagination-toolbar': { fontFamily: FONT, fontWeight: 900 },
           '& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows': {
             fontFamily: FONT, fontWeight: 900, fontSize: '0.75rem', textTransform: 'uppercase'

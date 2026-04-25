@@ -95,7 +95,7 @@ export default function Staff() {
           p: 2.5, px: 4, display: 'flex', flexWrap: 'nowrap', gap: 2.5, alignItems: 'center',
           bgcolor: COLORS.cream, border: 'none', borderBottom: `2px solid ${COLORS.accent}`, borderRadius: 0, boxShadow: 'none', width: '100%'
         }}>
-          <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 1000, color: COLORS.accent, whiteSpace: 'nowrap', textTransform: 'uppercase', flexShrink: 0, mr: 1, letterSpacing: 1, fontSize: '1.5rem', lineHeight: 1 }}>
+          <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.accent, whiteSpace: 'nowrap', textTransform: 'uppercase', flexShrink: 0, mr: 1, letterSpacing: 1, fontSize: '1.5rem', lineHeight: 1 }}>
             Staff Registry
           </Typography>
 
@@ -110,23 +110,23 @@ export default function Staff() {
               disableUnderline: true,
               style: { color: COLORS.brand, fontWeight: 'bold', fontFamily: FONT, fontSize: '0.9rem' },
             }}
-            sx={{ width: 220, flexShrink: 0, bgcolor: 'rgba(93, 64, 55, 0.05)', border: '1px solid #5D403733', borderRadius: 0, px: 1.5, py: 0.5 }}
+            sx={{ width: 220, flexShrink: 0, bgcolor: 'rgba(93, 64, 55, 0.05)', border: `1px solid ${COLORS.accent}33`, borderRadius: 0, px: 1.5, py: 0.5 }}
           />
 
           {/* Filters grouped */}
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-            <TextField select size="small" value={filterDept} onChange={(e) => setFilterDept(e.target.value)} sx={{ minWidth: 160, bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#5D403733' } }}>
+            <TextField select size="small" value={filterDept} onChange={(e) => setFilterDept(e.target.value)} sx={{ minWidth: 160, bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33` } }}>
               <MenuItem value="All">All Departments</MenuItem>
               {departments.map(d => <MenuItem key={d.id} value={d.name}>{d.name}</MenuItem>)}
             </TextField>
 
-            <TextField select size="small" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} sx={{ minWidth: 140, bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#5D403733' } }}>
+            <TextField select size="small" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} sx={{ minWidth: 140, bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33` } }}>
               <MenuItem value="All">All Statuses</MenuItem>
               <MenuItem value="Available">Available</MenuItem>
               <MenuItem value="Busy">Busy (Active)</MenuItem>
             </TextField>
 
-            <TextField select size="small" value={filterAccess} onChange={(e) => setFilterAccess(e.target.value)} sx={{ minWidth: 170, bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#5D403733' } }}>
+            <TextField select size="small" value={filterAccess} onChange={(e) => setFilterAccess(e.target.value)} sx={{ minWidth: 170, bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33` } }}>
               <MenuItem value="All">All Access Levels</MenuItem>
               <MenuItem value="staff">Clinical Staff</MenuItem>
               <MenuItem value="admin">Clinic Administrator</MenuItem>
@@ -141,7 +141,7 @@ export default function Staff() {
 
           <Button
             variant="contained" startIcon={<PersonAddIcon />}
-            sx={{ bgcolor: COLORS.danger, fontFamily: FONT, fontWeight: 1000, boxShadow: '4px 4px 0px rgba(211, 47, 47, 0.1)', textTransform: 'uppercase', letterSpacing: 1, px: 3, py: 1, borderRadius: 0, border: `2px solid ${COLORS.dangerHover}`, '&:hover': { bgcolor: COLORS.dangerHover } }}
+            sx={{ bgcolor: COLORS.danger, fontFamily: FONT, fontWeight: 900, boxShadow: '4px 4px 0px rgba(211, 47, 47, 0.1)', textTransform: 'uppercase', letterSpacing: 1, px: 3, py: 1, borderRadius: 0, border: `2px solid ${COLORS.dangerHover}`, '&:hover': { bgcolor: COLORS.dangerHover } }}
             onClick={() => { setSelectedItem(null); setOpen(true); }}
           >
             Authorize Staff
@@ -173,7 +173,7 @@ export default function Staff() {
         fullWidth
         PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.accent}`, boxShadow: '8px 8px 0px rgba(93, 64, 55, 0.1)' } }}
       >
-        <DialogTitle sx={{ bgcolor: COLORS.cream, borderBottom: `2px solid ${COLORS.accent}`, fontFamily: FONT, fontWeight: 1000, textTransform: 'uppercase', letterSpacing: 1, fontSize: '1rem', color: COLORS.brand }}>
+        <DialogTitle sx={{ bgcolor: COLORS.cream, borderBottom: `2px solid ${COLORS.accent}`, fontFamily: FONT, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1, fontSize: '1rem', color: COLORS.brand }}>
           Staff Account Created
         </DialogTitle>
         <DialogContent sx={{ pt: 3, pb: 2 }}>
@@ -214,7 +214,7 @@ export default function Staff() {
               setTempPasswordInfo(null);
               showToast('Staff Authorized.', 'success');
             }}
-            sx={{ bgcolor: COLORS.cta, fontWeight: 1000, px: 4, py: 1, borderRadius: 0, border: `2px solid ${COLORS.ctaHover}`, fontFamily: FONT, '&:hover': { bgcolor: COLORS.ctaHover } }}
+            sx={{ bgcolor: COLORS.cta, fontWeight: 900, px: 4, py: 1, borderRadius: 0, border: `2px solid ${COLORS.ctaHover}`, fontFamily: FONT, '&:hover': { bgcolor: COLORS.ctaHover } }}
           >
             DONE
           </Button>

@@ -82,7 +82,7 @@ export default function Sidebar({ onLogout }) {
               '&:hover': { backgroundColor: 'rgba(255,255,255,0.08)' },
               mx: 2,
               mb: 1,
-              borderRadius: 2
+              borderRadius: 0
             }}
           >
             <ListItemIcon sx={{ color: COLORS.timelineRail }}>{item.icon}</ListItemIcon>
@@ -114,7 +114,7 @@ export default function Sidebar({ onLogout }) {
           color="error" 
           startIcon={<LogoutIcon />}
           onClick={onLogout} 
-          sx={{ fontWeight: 'bold', py: 1.2, borderRadius: 2 }}
+          sx={{ fontWeight: 'bold', py: 1.2, borderRadius: 0 }}
         >
           Logout
         </Button>

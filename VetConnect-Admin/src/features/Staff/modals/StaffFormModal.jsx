@@ -118,7 +118,7 @@ export default function StaffFormModal({ open, onClose, item, dynamicDepartments
         sx: {
           borderRadius: 0,
           border: `2px solid ${COLORS.accent}`,
-          backgroundColor: '#FFF',
+          backgroundColor: COLORS.cardBg,
           boxShadow: '8px 8px 0px rgba(93, 64, 55, 0.1)',
           maxHeight: '90vh',
         }
@@ -127,7 +127,7 @@ export default function StaffFormModal({ open, onClose, item, dynamicDepartments
       {/* ── HEADER — VetConnect warm brown ── */}
       <DialogTitle sx={{
         bgcolor: COLORS.cream,
-        color: COLORS.brand, fontWeight: '1000', display: 'flex', alignItems: 'center', gap: 1.5, py: 2,
+        color: COLORS.brand, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1.5, py: 2,
         borderBottom: `2px solid ${COLORS.accent}`,
         fontFamily: FONT,
         textTransform: 'uppercase',
@@ -148,7 +148,7 @@ export default function StaffFormModal({ open, onClose, item, dynamicDepartments
             <Typography variant="overline" fontWeight="900" display="block" mb={1} sx={{ color: COLORS.accent, letterSpacing: 1 }}>
               1. PERSONAL &amp; PROFESSIONAL IDENTITY
             </Typography>
-            <Paper elevation={0} sx={{ p: 3, borderRadius: 0, border: `2px solid ${COLORS.accent}`, bgcolor: '#FFF' }}>
+            <Paper elevation={0} sx={{ p: 3, borderRadius: 0, border: `2px solid ${COLORS.accent}`, bgcolor: COLORS.cardBg }}>
               <Grid container spacing={2}>
                 <Grid size={{ xs: 12, md: 7 }}>
                   <TextField
@@ -287,7 +287,7 @@ export default function StaffFormModal({ open, onClose, item, dynamicDepartments
             <Typography variant="caption" color="textSecondary" display="block" mb={1} sx={{ fontStyle: 'italic' }}>
               All fields below are optional — fill in during HR onboarding.
             </Typography>
-            <Paper elevation={0} sx={{ p: 3, borderRadius: 0, border: `2px solid ${COLORS.accent}`, bgcolor: '#FFF' }}>
+            <Paper elevation={0} sx={{ p: 3, borderRadius: 0, border: `2px solid ${COLORS.accent}`, bgcolor: COLORS.cardBg }}>
               <Grid container spacing={2}>
                 <Grid size={{ xs: 12 }}>
                   <TextField
@@ -358,7 +358,7 @@ export default function StaffFormModal({ open, onClose, item, dynamicDepartments
                     variant="outlined"
                     sx={{
                       borderRadius: 0, border: `2px solid ${COLORS.accent}`, color: COLORS.accent,
-                      fontWeight: '1000', fontFamily: FONT, fontSize: '0.75rem',
+                      fontWeight: 900, fontFamily: FONT, fontSize: '0.75rem',
                       mt: 1,
                       '&:hover': { border: `2px solid ${COLORS.brand}`, bgcolor: 'rgba(93, 64, 55, 0.05)' }
                     }}
@@ -376,7 +376,7 @@ export default function StaffFormModal({ open, onClose, item, dynamicDepartments
             bgcolor: COLORS.cream, border: `2px solid ${COLORS.accent}`, mt: 1
           }}>
             <InfoIcon sx={{ fontSize: 18, color: COLORS.accent }} />
-            <Typography variant="caption" sx={{ fontFamily: FONT, fontWeight: '1000', color: COLORS.accent, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            <Typography variant="caption" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.accent, textTransform: 'uppercase', letterSpacing: 0.5 }}>
               NOTICE: Fields marked with * are mandatory for clinical authorization.
             </Typography>
           </Box>
@@ -389,7 +389,7 @@ export default function StaffFormModal({ open, onClose, item, dynamicDepartments
         <Button
           onClick={onClose}
           sx={{
-            fontWeight: '1000', color: COLORS.accent, px: 3, mr: 1,
+            fontWeight: 900, color: COLORS.accent, px: 3, mr: 1,
             fontFamily: FONT, borderRadius: 0,
             border: `2px solid ${COLORS.accent}`,
             '&:hover': { bgcolor: 'rgba(93, 64, 55, 0.05)' }
@@ -401,7 +401,7 @@ export default function StaffFormModal({ open, onClose, item, dynamicDepartments
           onClick={handleSave}
           variant="contained"
           sx={{
-            bgcolor: COLORS.cta, fontWeight: '1000', px: 4, py: 1.2, borderRadius: 0,
+            bgcolor: COLORS.cta, fontWeight: 900, px: 4, py: 1.2, borderRadius: 0,
             boxShadow: '4px 4px 0px rgba(216,67,21,0.2)',
             border: `2px solid ${COLORS.ctaHover}`,
             '&:hover': { bgcolor: COLORS.ctaHover, boxShadow: '2px 2px 0px rgba(216,67,21,0.2)' },

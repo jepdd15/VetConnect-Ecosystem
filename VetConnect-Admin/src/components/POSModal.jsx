@@ -18,6 +18,7 @@ import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
 import MedicalServicesIcon from '@mui/icons-material/MedicalServices'; 
 
 import { doc, getDoc, collection, runTransaction, Timestamp, updateDoc, increment, arrayUnion } from 'firebase/firestore';
+import { COLORS, FONT } from '../theme/designTokens';
 import { db } from '../firebaseConfig';
 import { useUser } from '../context/UserContext';
 import { useClinicSettings } from '../hooks/useClinicSettings';
@@ -445,37 +446,37 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
   return (
     <>
       <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
-        <DialogTitle sx={{ bgcolor: '#2E7D32', color: 'white', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 2 }}>
+        <DialogTitle sx={{ bgcolor: COLORS.success, color: COLORS.cardBg, fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 2 }}>
           <Typography variant="h6" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><PaidIcon /> Checkout: {patient?.petName}</Typography>
           <Chip label={patient?.ownerName || 'Walk-In'} sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white', fontWeight: 'bold' }} />
         </DialogTitle>
         
-        <DialogContent dividers sx={{ bgcolor: '#FAFAFA', display: 'flex', gap: 3, p: 3 }}>
+        <DialogContent dividers sx={{ bgcolor: COLORS.surfaceHover, display: 'flex', gap: 3, p: 3 }}>
           {/* LEFT: CART ITEMS */}
           <Box sx={{ flex: 2, display: 'flex', flexDirection: 'column' }}>
             
             <Box sx={{ mb: 2 }}>
-              <TextField autoFocus fullWidth placeholder="Scan Barcode / SKU here..." value={barcodeInput} onChange={(e) => setBarcodeInput(e.target.value)} onKeyDown={handleBarcodeSubmit} InputProps={{ startAdornment: <InputAdornment position="start"><QrCodeScannerIcon color="primary" /></InputAdornment>, spellCheck: 'false' }} sx={{ bgcolor: '#E3F2FD', '& fieldset': { borderColor: '#90CAF9', borderWidth: 2 } }} />
+              <TextField autoFocus fullWidth placeholder="Scan Barcode / SKU here..." value={barcodeInput} onChange={(e) => setBarcodeInput(e.target.value)} onKeyDown={handleBarcodeSubmit} InputProps={{ startAdornment: <InputAdornment position="start"><QrCodeScannerIcon color="primary" /></InputAdornment>, spellCheck: 'false' }} sx={{ bgcolor: COLORS.chipBlueBg, '& fieldset': { borderColor: '#90CAF9', borderWidth: 2 } }} />
             </Box>
 
-            <Divider sx={{ mb: 2, fontWeight: 'bold', color: '#888' }}>OR MANUAL ENTRY</Divider>
+            <Divider sx={{ mb: 2, fontWeight: 'bold', color: COLORS.textMuted }}>OR MANUAL ENTRY</Divider>
 
             <Box sx={{ display: 'flex', gap: 1, mb: 3, alignItems: 'center' }}>
               <FormControl fullWidth size="small" sx={{ bgcolor: 'white' }}>
                   <InputLabel>Select Item / Service</InputLabel>
                   <Select value={selectedItemVal} label="Select Item / Service" onChange={(e) => setSelectedItemVal(e.target.value)}>
-                      <ListSubheader sx={{fontWeight:'900', bgcolor:'#EFEBE9'}}>Clinic Services (Add-ons)</ListSubheader>
+                      <ListSubheader sx={{fontWeight:'900', bgcolor:COLORS.panelBg}}>Clinic Services (Add-ons)</ListSubheader>
                       {servicesList.filter(s => s.name !== patient?.serviceType).map((s) => (
                         <MenuItem key={`service|${s.id}`} value={`service|${s.id}`}>
-                           <MedicalServicesIcon fontSize="small" sx={{mr:1, color:'#1565C0'}}/> {s.name} (+₱{s.price})
+                           <MedicalServicesIcon fontSize="small" sx={{mr:1, color:COLORS.medical}}/> {s.name} (+₱{s.price})
                         </MenuItem>
                       ))}
-                      <ListSubheader sx={{fontWeight:'900', bgcolor:'#EFEBE9'}}>Inventory Products</ListSubheader>
+                      <ListSubheader sx={{fontWeight:'900', bgcolor:COLORS.panelBg}}>Inventory Products</ListSubheader>
                       {inventoryList.map((item) => (
                         <MenuItem key={`product|${item.id}`} value={`product|${item.id}`} disabled={item.stock < 1}>
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
                             <span>
-                              <MedicationIcon fontSize="small" sx={{mr:1, color:'#8B4513', verticalAlign:'middle'}}/> 
+                              <MedicationIcon fontSize="small" sx={{mr:1, color:COLORS.accentWarm, verticalAlign:'middle'}}/>
                               {item.itemName} 
                               {item.isRxOnly && <Typography component="span" color="error" variant="caption" sx={{ ml: 1, fontWeight: 'bold' }}>(Rx Only)</Typography>}
                             </span>
@@ -485,18 +486,18 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
                       ))}
                   </Select>
               </FormControl>
-              <Button variant="contained" onClick={handleDropdownAdd} startIcon={<AddShoppingCartIcon />} sx={{ bgcolor: '#2E7D32', height: 40, fontWeight: 'bold' }}>Add</Button>
+              <Button variant="contained" onClick={handleDropdownAdd} startIcon={<AddShoppingCartIcon />} sx={{ bgcolor: COLORS.success, height: 40, fontWeight: 'bold' }}>Add</Button>
             </Box>
 
             {/* CART TABLE */}
-            <TableContainer component={Paper} variant="outlined" sx={{ flexGrow: 1, borderRadius: 2 }}>
+            <TableContainer component={Paper} variant="outlined" sx={{ flexGrow: 1, borderRadius: 0 }}>
               <Table size="small">
-                <TableHead sx={{ bgcolor: '#EFEBE9' }}>
+                <TableHead sx={{ bgcolor: COLORS.panelBg }}>
                   <TableRow><TableCell sx={{fontWeight:'bold'}}>Item</TableCell><TableCell align="center" sx={{fontWeight:'bold'}}>Qty</TableCell><TableCell align="right" sx={{fontWeight:'bold'}}>Price</TableCell><TableCell align="right" sx={{fontWeight:'bold'}}>Total</TableCell><TableCell align="center"></TableCell></TableRow>
                 </TableHead>
                 <TableBody>
                   {cart.map((item, index) => (
-                    <TableRow key={index} sx={{ bgcolor: item.isBase ? '#E3F2FD' : 'white' }}>
+                    <TableRow key={index} sx={{ bgcolor: item.isBase ? COLORS.chipBlueBg : COLORS.cardBg }}>
                       <TableCell>
                         <Typography variant="body2" fontWeight="bold">
                           {item.isPrescribed && <Tooltip title="Prescribed by Vet"><MedicationIcon fontSize="small" color="warning" sx={{verticalAlign:'middle', mr:0.5}}/></Tooltip>}
@@ -528,26 +529,26 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
 
           {/* RIGHT: BILLING & PAYMENT */}
           <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-             <Paper variant="outlined" sx={{ p: 2, bgcolor: 'white', borderRadius: 2 }}>
+             <Paper variant="outlined" sx={{ p: 2, bgcolor: COLORS.cardBg, borderRadius: 0 }}>
                 <Typography variant="subtitle2" fontWeight="900" color="textSecondary" gutterBottom>DISCOUNTS (RA 9994)</Typography>
                 {hasScId && <Alert severity="info" icon={false} sx={{ py: 0, px: 1, mb: 1, '& .MuiAlert-message': { p: 0.5, fontSize: '0.75rem', fontWeight: 'bold' } }}>Verified Senior/PWD ID found.</Alert>}
                 <FormControlLabel control={<Switch checked={applyScPwd} onChange={(e) => setApplyScPwd(e.target.checked)} color="secondary" />} label={<Typography variant="body2" fontWeight="bold">Apply 20% SC/PWD</Typography>} />
                 <Typography variant="caption" color="textSecondary" display="block" sx={{ mt: 0.5 }}>Applies strictly to eligible medical services & medicines.</Typography>
              </Paper>
 
-             <Paper variant="outlined" sx={{ p: 2.5, bgcolor: '#FFFDE7', border: '1px solid #FFF59D', borderRadius: 2 }}>
+             <Paper variant="outlined" sx={{ p: 2.5, bgcolor: COLORS.warningSurface, border: `1px solid ${COLORS.peach}`, borderRadius: 0 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}><Typography variant="body2" color="textSecondary" fontWeight="bold">Subtotal:</Typography><Typography variant="body2" fontWeight="bold">₱{financials.subtotal}</Typography></Box>
                 {applyScPwd && parseFloat(financials.discount) > 0 && (
                   <><Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}><Typography variant="body2" color="textSecondary" fontWeight="bold">Eligible VAT Exempt:</Typography><Typography variant="body2" fontWeight="bold">₱{financials.vatExempt}</Typography></Box><Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}><Typography variant="body2" color="error" fontWeight="bold">SC/PWD Discount:</Typography><Typography variant="body2" color="error" fontWeight="bold">- ₱{financials.discount}</Typography></Box></>
                 )}
                 <Divider sx={{ my: 1.5 }} />
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', mb: 2 }}><Typography variant="body1" fontWeight="900" color="#333">GRAND TOTAL:</Typography><Typography variant="h5" fontWeight="900" color="#333">₱{financials.total}</Typography></Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}><Typography variant="body2" color="textSecondary" fontWeight="bold">Less: Deposit Paid</Typography><TextField size="small" type="number" value={depositAmount} onChange={(e) => { const v = e.target.value; if (v === '' || parseFloat(v) >= 0) setDepositAmount(v); }} error={parseFloat(depositAmount) < 0} helperText={parseFloat(depositAmount) < 0 ? 'Cannot be negative' : ''} InputProps={{ startAdornment: <Typography sx={{mr: 0.5, color: '#aaa'}}>₱</Typography>, inputProps: { min: 0 } }} sx={{ width: 120, bgcolor: 'white' }} /></Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', mb: 2 }}><Typography variant="body1" fontWeight="900" color={COLORS.brand}>GRAND TOTAL:</Typography><Typography variant="h5" fontWeight="900" color={COLORS.brand}>₱{financials.total}</Typography></Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}><Typography variant="body2" color="textSecondary" fontWeight="bold">Less: Deposit Paid</Typography><TextField size="small" type="number" value={depositAmount} onChange={(e) => { const v = e.target.value; if (v === '' || parseFloat(v) >= 0) setDepositAmount(v); }} error={parseFloat(depositAmount) < 0} helperText={parseFloat(depositAmount) < 0 ? 'Cannot be negative' : ''} InputProps={{ startAdornment: <Typography sx={{mr: 0.5, color: COLORS.textMuted}}>₱</Typography>, inputProps: { min: 0 } }} sx={{ width: 120, bgcolor: COLORS.cardBg }} /></Box>
                 <Divider sx={{ my: 1.5 }} />
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}><Typography variant="h6" fontWeight="900" color="#3E2723">BALANCE DUE:</Typography><Typography variant="h4" fontWeight="900" color="#2E7D32">₱{financials.balanceDue}</Typography></Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}><Typography variant="h6" fontWeight="900" color={COLORS.brand}>BALANCE DUE:</Typography><Typography variant="h4" fontWeight="900" color={COLORS.success}>₱{financials.balanceDue}</Typography></Box>
              </Paper>
 
-             <Paper variant="outlined" sx={{ p: 2, bgcolor: 'white', borderRadius: 2 }}>
+             <Paper variant="outlined" sx={{ p: 2, bgcolor: COLORS.cardBg, borderRadius: 0 }}>
                 <Typography variant="subtitle2" fontWeight="900" color="textSecondary" gutterBottom>PAYMENT METHOD</Typography>
                 <FormControl fullWidth size="small" sx={{ mt: 1 }}>
                   <Select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
@@ -560,8 +561,8 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
              </Paper>
           </Box>
         </DialogContent>
-        <DialogActions sx={{ p: 2.5, bgcolor: '#EFEBE9', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #D7CCC8' }}>
-          <Button onClick={onClose} sx={{ color: '#5D4037', fontWeight: 'bold', px: 3 }}>Cancel</Button>
+        <DialogActions sx={{ p: 2.5, bgcolor: COLORS.panelBg, display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${COLORS.timelineRail}` }}>
+          <Button onClick={onClose} sx={{ color: COLORS.accent, fontWeight: 'bold', px: 3 }}>Cancel</Button>
           <Box sx={{ display: 'flex', gap: 2 }}>
               <Button onClick={handleSaveDraft} disabled={loading} variant="outlined" color="primary" startIcon={<SaveIcon />}>Save Invoice Draft</Button>
               <Button onClick={handleCheckout} disabled={loading} variant="contained" color="success" size="large" startIcon={<PaidIcon />} sx={{ px: 4, fontWeight: '900', boxShadow: 3 }}>
@@ -573,10 +574,10 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
 
       {/* 🚨 EXTERNAL RX OVERRIDE MODAL */}
       <Dialog open={openRxOverride} onClose={() => setOpenRxOverride(false)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ bgcolor: '#D32F2F', color: 'white', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1 }}>
+        <DialogTitle sx={{ bgcolor: COLORS.danger, color: COLORS.cardBg, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1 }}>
           <DescriptionIcon /> External Prescription Override
         </DialogTitle>
-        <DialogContent sx={{ p: 3, bgcolor: '#FAFAFA' }}>
+        <DialogContent sx={{ p: 3, bgcolor: COLORS.surfaceHover }}>
           <Alert severity="warning" sx={{ mb: 3 }}>
             <Typography variant="body2" fontWeight="bold">You are attempting to sell a Prescription-Only (Rx) medication over the counter.</Typography>
             <Typography variant="caption" sx={{ display: 'block', mt: 1 }}>
@@ -587,7 +588,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
           <TextField fullWidth label="External Clinic Name" placeholder="e.g. ABC Animal Hospital" value={extClinicName} onChange={(e) => setExtClinicName(e.target.value)} sx={{ bgcolor: 'white' }} />
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
-          <Button onClick={() => setOpenRxOverride(false)} sx={{ color: '#555', fontWeight: 'bold' }}>Cancel Sale</Button>
+          <Button onClick={() => setOpenRxOverride(false)} sx={{ color: COLORS.textSecondary, fontWeight: 'bold' }}>Cancel Sale</Button>
           <Button onClick={handleExternalRxApprove} variant="contained" color="error" sx={{ fontWeight: 'bold' }}>Authorize & Add to Cart</Button>
         </DialogActions>
       </Dialog>

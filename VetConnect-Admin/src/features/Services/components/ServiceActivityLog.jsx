@@ -24,7 +24,7 @@ const PAGE_SIZE = 100;
 
 const headerSx = {
   fontFamily: FONT,
-  fontWeight: '1000',
+  fontWeight: 900,
   color: COLORS.accent,
   bgcolor: COLORS.cream,
   fontSize: '0.72rem',
@@ -345,7 +345,7 @@ export default function ServiceActivityLog() {
 
       {/* Load More button — appears when there are more server-side results */}
       {hasMore && !loading && filteredLogs.length > 0 && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 2, borderTop: '1px solid #E0E0E0' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 2, borderTop: `1px solid ${COLORS.borderInput}` }}>
           <Button
             onClick={() => fetchLogs(lastDoc)}
             sx={{

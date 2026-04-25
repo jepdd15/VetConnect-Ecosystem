@@ -101,7 +101,7 @@ export default function Patients() {
         onNewClient={() => setOpenNewClient(true)} 
       />
 
-      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: `linear-gradient(160deg, ${COLORS.surface} 0%, #FFE0B2 100%)` }}>
+      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: `linear-gradient(160deg, ${COLORS.surface} 0%, ${COLORS.peach} 100%)` }}>
         {loading && !selectedClient ? (
            <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
              <CircularProgress />

@@ -40,7 +40,7 @@ export default function BillingLedger({ transactions }) {
       </Typography>
       
       {(!transactions || transactions.length === 0) ? (
-        <Box sx={{ width: '100%', textAlign: 'center', py: 8, color: COLORS.textMuted, bgcolor: 'rgba(255,255,255,0.6)', borderRadius: 2, border: `1px dashed ${COLORS.border}` }}>
+        <Box sx={{ width: '100%', textAlign: 'center', py: 8, color: COLORS.textMuted, bgcolor: 'rgba(255,255,255,0.6)', borderRadius: 0, border: `1px dashed ${COLORS.border}` }}>
           <ReceiptLongIcon sx={{ fontSize: 60, mb: 1, opacity: 0.5, color: COLORS.timelineRail }} />
           <Typography sx={{ fontFamily: FONT, fontStyle: 'italic', color: COLORS.textMuted }}>No financial transactions found.</Typography>
         </Box>

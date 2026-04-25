@@ -3,7 +3,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, Typography, Box
 } from '@mui/material';
-import { FONT } from '../../../theme/designTokens';
+import { FONT, COLORS } from '../../../theme/designTokens';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import ArchiveOutlinedIcon from '@mui/icons-material/ArchiveOutlined';
 
@@ -16,18 +16,18 @@ export default function ConfirmDeleteModal({ open, onClose, onConfirm, item }) {
       onClose={onClose}
       maxWidth="xs"
       fullWidth
-      PaperProps={{ sx: { borderRadius: 0, border: '2px solid #5D4037', boxShadow: '8px 8px 0px rgba(93,64,55,0.1)' } }}
+      PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.accent}`, boxShadow: '8px 8px 0px rgba(93,64,55,0.1)' } }}
     >
       <DialogTitle sx={{
-        bgcolor: '#FFF8E1', color: '#3E2723', fontWeight: '900',
+        bgcolor: COLORS.cream, color: COLORS.brand, fontWeight: 900,
         display: 'flex', alignItems: 'center', gap: 1,
         fontFamily: FONT, textTransform: 'uppercase', letterSpacing: 1,
-        borderBottom: '2px solid #5D4037'
+        borderBottom: `2px solid ${COLORS.accent}`,
       }}>
         <ArchiveOutlinedIcon /> ARCHIVE PRODUCT
       </DialogTitle>
 
-      <DialogContent sx={{ p: 4, bgcolor: '#FAFAF9' }}>
+      <DialogContent sx={{ p: 4, bgcolor: COLORS.formBg }}>
         <Box sx={{
           display: 'flex', flexDirection: 'column',
           alignItems: 'center', gap: 2.5, textAlign: 'center', pt: 1
@@ -35,9 +35,9 @@ export default function ConfirmDeleteModal({ open, onClose, onConfirm, item }) {
           {/* Warning icon */}
           <Box sx={{
             width: 60, height: 60, borderRadius: 0,
-            bgcolor: '#FFEBEE', display: 'flex', alignItems: 'center', justifyContent: 'center'
+            bgcolor: COLORS.dangerSurface, display: 'flex', alignItems: 'center', justifyContent: 'center'
           }}>
-            <WarningAmberIcon sx={{ color: '#D32F2F', fontSize: 34 }} />
+            <WarningAmberIcon sx={{ color: COLORS.danger, fontSize: 34 }} />
           </Box>
 
           {/* Product name display */}
@@ -48,10 +48,10 @@ export default function ConfirmDeleteModal({ open, onClose, onConfirm, item }) {
             <Typography
               variant="h6"
               fontWeight="900"
-              color="#3E2723"
+              color={COLORS.brand}
               sx={{
-                bgcolor: '#EFEBE9', px: 3, py: 1.5, borderRadius: 0,
-                border: '2px solid #5D4037', display: 'inline-block'
+                bgcolor: COLORS.panelBg, px: 3, py: 1.5, borderRadius: 0,
+                border: `2px solid ${COLORS.accent}`, display: 'inline-block'
               }}
             >
               {item.itemName}
@@ -60,14 +60,14 @@ export default function ConfirmDeleteModal({ open, onClose, onConfirm, item }) {
 
           {/* T2.161: Impact summary — warns about active reservations and remaining stock */}
           {(item.reserved > 0 || item.stock > 0) && (
-            <Box sx={{ bgcolor: '#FFF3E0', border: '1px solid #E65100', p: 1.5, mb: 1, width: '100%' }}>
+            <Box sx={{ bgcolor: COLORS.warningSurface, border: `1px solid ${COLORS.warning}`, p: 1.5, mb: 1, width: '100%' }}>
               {item.reserved > 0 && (
-                <Typography variant="body2" fontWeight="bold" color="#E65100" sx={{ fontSize: '0.8rem' }}>
+                <Typography variant="body2" fontWeight="bold" color={COLORS.warning} sx={{ fontSize: '0.8rem' }}>
                   {item.reserved} unit(s) are currently reserved by active consults. Reservations will be released.
                 </Typography>
               )}
               {item.stock > 0 && (
-                <Typography variant="body2" fontWeight="bold" color="#5D4037" sx={{ fontSize: '0.8rem', mt: item.reserved > 0 ? 0.5 : 0 }}>
+                <Typography variant="body2" fontWeight="bold" color={COLORS.accent} sx={{ fontSize: '0.8rem', mt: item.reserved > 0 ? 0.5 : 0 }}>
                   {item.stock} unit(s) still in stock.
                 </Typography>
               )}
@@ -85,11 +85,11 @@ export default function ConfirmDeleteModal({ open, onClose, onConfirm, item }) {
         </Box>
       </DialogContent>
 
-      <DialogActions sx={{ p: 2.5, bgcolor: '#FFF8E1', borderTop: '2px solid #5D4037', gap: 1 }}>
+      <DialogActions sx={{ p: 2.5, bgcolor: COLORS.cream, borderTop: `2px solid ${COLORS.accent}`, gap: 1 }}>
         <Button
           onClick={onClose}
           variant="outlined"
-          sx={{ fontWeight: 1000, borderRadius: 0, flex: 1, border: '2px solid #5D4037', color: '#5D4037', fontFamily: FONT }}
+          sx={{ fontWeight: 900, borderRadius: 0, flex: 1, border: `2px solid ${COLORS.accent}`, color: COLORS.accent, fontFamily: FONT }}
         >
           Cancel
         </Button>
@@ -97,7 +97,7 @@ export default function ConfirmDeleteModal({ open, onClose, onConfirm, item }) {
           onClick={() => onConfirm(item.id, item.itemName)}
           variant="contained"
           color="error"
-          sx={{ fontWeight: 1000, borderRadius: 0, flex: 1, boxShadow: '4px 4px 0px rgba(211,47,47,0.2)', border: '2px solid #B71C1C', fontFamily: FONT }}
+          sx={{ fontWeight: 900, borderRadius: 0, flex: 1, boxShadow: '4px 4px 0px rgba(211,47,47,0.2)', border: `2px solid ${COLORS.dangerHover}`, fontFamily: FONT }}
         >
           ARCHIVE PRODUCT
         </Button>

@@ -20,34 +20,34 @@ import TuneIcon from '@mui/icons-material/Tune';
 import PaidIcon from '@mui/icons-material/Paid';
 import ArchiveOutlinedIcon from '@mui/icons-material/ArchiveOutlined';
 import UnarchiveOutlinedIcon from '@mui/icons-material/UnarchiveOutlined';
-import { FONT } from '../../../theme/designTokens';
+import { FONT, COLORS } from '../../../theme/designTokens';
 
 // --- Color token map for each action type ---
 const ACTION_CONFIG = {
-  CREATED:  { label: 'Created',   color: '#1565C0', bg: '#EFF6FF',  Icon: AddCircleOutlineIcon },
-  UPDATED:  { label: 'Updated',   color: '#7B1FA2', bg: '#F3E8FF',  Icon: EditOutlinedIcon },
-  ADJUSTED: { label: 'Adjusted',  color: '#2E7D32', bg: '#F0FDF4',  Icon: TuneIcon },
-  DELETED:  { label: 'Deleted',   color: '#C62828', bg: '#FEF2F2',  Icon: DeleteOutlineIcon },
-  SOLD:     { label: 'Sold',      color: '#2E7D32', bg: '#F0FDF4',  Icon: PaidIcon },
-  RESTOCK:  { label: 'Restocked', color: '#1565C0', bg: '#EFF6FF',  Icon: UnarchiveOutlinedIcon },
-  ARCHIVED: { label: 'Archived',  color: '#E65100', bg: '#FFF3E0',  Icon: ArchiveOutlinedIcon },
-  RESTORED: { label: 'Restored',  color: '#2E7D32', bg: '#F0FDF4',  Icon: UnarchiveOutlinedIcon },
+  CREATED:  { label: 'Created',   color: COLORS.medical,  bg: COLORS.kpiBlueBg,    Icon: AddCircleOutlineIcon },
+  UPDATED:  { label: 'Updated',   color: COLORS.grooming, bg: COLORS.kpiPurpleBg,  Icon: EditOutlinedIcon },
+  ADJUSTED: { label: 'Adjusted',  color: COLORS.success,  bg: COLORS.kpiGreenBg,   Icon: TuneIcon },
+  DELETED:  { label: 'Deleted',   color: COLORS.surgery,  bg: COLORS.kpiRedBg,     Icon: DeleteOutlineIcon },
+  SOLD:     { label: 'Sold',      color: COLORS.success,  bg: COLORS.kpiGreenBg,   Icon: PaidIcon },
+  RESTOCK:  { label: 'Restocked', color: COLORS.medical,  bg: COLORS.kpiBlueBg,    Icon: UnarchiveOutlinedIcon },
+  ARCHIVED: { label: 'Archived',  color: COLORS.warning,  bg: COLORS.warningSurface, Icon: ArchiveOutlinedIcon },
+  RESTORED: { label: 'Restored',  color: COLORS.success,  bg: COLORS.kpiGreenBg,   Icon: UnarchiveOutlinedIcon },
 };
 
 const ACTION_TYPES = Object.keys(ACTION_CONFIG);
 const PAGE_SIZE = 100;
 
 const headerSx = {
-  fontWeight: '1000', color: '#5D4037', bgcolor: '#FFF8E1',
+  fontWeight: 900, color: COLORS.accent, bgcolor: COLORS.cream,
   fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: 1,
-  borderBottom: '2px solid #5D4037',
+  borderBottom: `2px solid ${COLORS.accent}`,
   py: 1.5,
 };
 
 export default function GlobalActivityLog() {
   const clinicalFlatStyle = {
-    background: '#FFF',
-    border: '2px solid #5D4037',
+    background: COLORS.cardBg,
+    border: `2px solid ${COLORS.accent}`,
     boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
     borderRadius: 0,
   };
@@ -159,36 +159,36 @@ export default function GlobalActivityLog() {
         minHeight: 0,
         overflow: 'auto',
         '&::-webkit-scrollbar': { width: '8px', height: '8px' },
-        '&::-webkit-scrollbar-track': { background: '#FFF8E1' },
-        '&::-webkit-scrollbar-thumb': { background: '#5D4037', borderRadius: '4px' },
-        '&::-webkit-scrollbar-thumb:hover': { background: '#3E2723' },
+        '&::-webkit-scrollbar-track': { background: COLORS.cream },
+        '&::-webkit-scrollbar-thumb': { background: COLORS.accent, borderRadius: 0 },
+        '&::-webkit-scrollbar-thumb:hover': { background: COLORS.brand },
       }}
     >
       {/* T2.170: Header bar with filters */}
       <Box sx={{
         px: 3, py: 1.5,
         display: 'flex', flexDirection: 'column', gap: 1,
-        borderBottom: '2px solid #5D4037',
-        bgcolor: '#FFF8E1',
+        borderBottom: `2px solid ${COLORS.accent}`,
+        bgcolor: COLORS.cream,
         position: 'sticky', top: 0, zIndex: 2,
       }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <HistoryIcon sx={{ color: '#5D4037', fontSize: 18 }} />
-            <Typography variant="body2" fontWeight="900" color="#3E2723">
+            <HistoryIcon sx={{ color: COLORS.accent, fontSize: 18 }} />
+            <Typography variant="body2" fontWeight="900" color={COLORS.brand}>
               Clinic-Wide Inventory Audit Trail
             </Typography>
           </Box>
           <Chip
             label={`${filteredLogs.length} event${filteredLogs.length !== 1 ? 's' : ''}${hasMore ? '+' : ''}`}
             size="small"
-            sx={{ bgcolor: '#EFEBE9', color: '#5D4037', fontWeight: '900', fontSize: '0.68rem', borderRadius: 0 }}
+            sx={{ bgcolor: COLORS.panelBg, color: COLORS.accent, fontWeight: '900', fontSize: '0.68rem', borderRadius: 0 }}
           />
         </Box>
 
         {/* Filter row */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
-          <FilterListIcon sx={{ color: '#5D4037', fontSize: 16 }} />
+          <FilterListIcon sx={{ color: COLORS.accent, fontSize: 16 }} />
 
           <TextField
             select
@@ -230,7 +230,7 @@ export default function GlobalActivityLog() {
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <SearchIcon sx={{ fontSize: 16, color: '#5D4037' }} />
+                  <SearchIcon sx={{ fontSize: 16, color: COLORS.accent }} />
                 </InputAdornment>
               ),
             }}
@@ -251,7 +251,7 @@ export default function GlobalActivityLog() {
               onClick={handleClearFilters}
               sx={{
                 fontFamily: FONT, fontWeight: 900, fontSize: '0.7rem',
-                color: '#D32F2F', borderRadius: 0, textTransform: 'uppercase',
+                color: COLORS.danger, borderRadius: 0, textTransform: 'uppercase',
               }}
             >
               Clear
@@ -263,7 +263,7 @@ export default function GlobalActivityLog() {
       {/* Loading state — full-page spinner on initial load */}
       {loading && (
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 10, gap: 2 }}>
-          <CircularProgress sx={{ color: '#5D4037' }} />
+          <CircularProgress sx={{ color: COLORS.accent }} />
           <Typography variant="body2" color="textSecondary" fontWeight="bold">
             Loading audit trail...
           </Typography>
@@ -272,7 +272,7 @@ export default function GlobalActivityLog() {
 
       {/* Error state */}
       {!loading && error && (
-        <Box sx={{ textAlign: 'center', py: 8, color: '#C62828' }}>
+        <Box sx={{ textAlign: 'center', py: 8, color: COLORS.surgery }}>
           <HistoryIcon sx={{ fontSize: 48, mb: 1, opacity: 0.4 }} />
           <Typography variant="body1" fontWeight="bold">Failed to load Activity Log</Typography>
           <Typography variant="caption" color="textSecondary">{error}</Typography>
@@ -325,7 +325,7 @@ export default function GlobalActivityLog() {
                 >
                   {/* Timestamp */}
                   <TableCell sx={{ pl: 3 }}>
-                    <Typography variant="caption" fontWeight="bold" color="#3E2723" sx={{ display: 'block', lineHeight: 1.4 }}>
+                    <Typography variant="caption" fontWeight="bold" color={COLORS.brand} sx={{ display: 'block', lineHeight: 1.4 }}>
                       {ts
                         ? ts.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
                         : '—'}
@@ -337,7 +337,7 @@ export default function GlobalActivityLog() {
 
                   {/* Product Name */}
                   <TableCell>
-                    <Typography variant="body2" fontWeight="bold" color="#3E2723" sx={{ lineHeight: 1.3 }}>
+                    <Typography variant="body2" fontWeight="bold" color={COLORS.brand} sx={{ lineHeight: 1.3 }}>
                       {log.itemName || '—'}
                     </Typography>
                   </TableCell>
@@ -367,15 +367,15 @@ export default function GlobalActivityLog() {
                     {log.amountChange !== 0 ? (
                       <Box sx={{
                         display: 'inline-flex', alignItems: 'center', gap: 0.4,
-                        bgcolor: isPositive ? '#F0FDF4' : isNegative ? '#FEF2F2' : '#F5F5F5',
+                        bgcolor: isPositive ? COLORS.kpiGreenBg : isNegative ? COLORS.kpiRedBg : COLORS.tableHeaderBg,
                         px: 1, py: 0.25, borderRadius: 0,
                       }}>
-                        {isPositive && <ArrowUpwardIcon sx={{ fontSize: 12, color: '#2E7D32' }} />}
-                        {isNegative && <ArrowDownwardIcon sx={{ fontSize: 12, color: '#C62828' }} />}
+                        {isPositive && <ArrowUpwardIcon sx={{ fontSize: 12, color: COLORS.success }} />}
+                        {isNegative && <ArrowDownwardIcon sx={{ fontSize: 12, color: COLORS.surgery }} />}
                         <Typography
                           variant="caption"
                           fontWeight="900"
-                          sx={{ color: isPositive ? '#2E7D32' : isNegative ? '#C62828' : '#757575' }}
+                          sx={{ color: isPositive ? COLORS.success : isNegative ? COLORS.surgery : '#757575' }}
                         >
                           {isPositive ? '+' : ''}{log.amountChange}
                         </Typography>
@@ -403,8 +403,8 @@ export default function GlobalActivityLog() {
                       label={log.userName || 'System'}
                       size="small"
                       sx={{
-                        bgcolor: '#EFEBE9',
-                        color: '#5D4037',
+                        bgcolor: COLORS.panelBg,
+                        color: COLORS.accent,
                         fontWeight: '900',
                         fontSize: '0.65rem',
                         borderRadius: 0,
@@ -421,12 +421,12 @@ export default function GlobalActivityLog() {
 
       {/* Load More button — appears when there are more server-side results */}
       {hasMore && !loading && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 2, borderTop: '1px solid #E0E0E0' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 2, borderTop: `1px solid ${COLORS.borderInput}` }}>
           <Button
             onClick={() => fetchLogs(lastDoc)}
             sx={{
               fontFamily: FONT, fontWeight: 900, fontSize: '0.75rem',
-              color: '#5D4037', borderRadius: 0, border: '1px solid #5D403733',
+              color: COLORS.accent, borderRadius: 0, border: `1px solid ${COLORS.accent}33`,
               textTransform: 'uppercase',
             }}
           >

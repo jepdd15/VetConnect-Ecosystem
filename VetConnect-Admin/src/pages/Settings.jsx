@@ -99,7 +99,7 @@ export default function Settings() {
 
   // --- STYLING MACROS ---
   const forensicHeaderStyle = {
-    bgcolor: '#FFF8E1', 
+    bgcolor: COLORS.cream,
     border: `2px solid ${COLORS.accent}`,
     borderRadius: 0,
     boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
@@ -565,14 +565,14 @@ export default function Settings() {
         <Paper sx={{ 
           ...forensicHeaderStyle, p: 2.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center'
         }}>
-          <Typography variant="h4" sx={{ fontWeight: '1000', color: COLORS.accent, display: 'flex', alignItems: 'center', gap: 1.5, textTransform: 'uppercase', letterSpacing: 0.5, fontSize: '1.5rem' }}>
+          <Typography variant="h4" sx={{ fontWeight: 900, color: COLORS.accent, display: 'flex', alignItems: 'center', gap: 1.5, textTransform: 'uppercase', letterSpacing: 0.5, fontSize: '1.5rem' }}>
             <SettingsSuggestIcon fontSize="large" /> Clinic Configuration
           </Typography>
           <Button 
             variant="contained" color="success" size="large" startIcon={<SaveIcon />} 
             onClick={handleSave} disabled={loading} 
             sx={{ 
-                fontWeight: '1000', px: 4, py: 1.5, borderRadius: 0,
+                fontWeight: 900, px: 4, py: 1.5, borderRadius: 0,
                 bgcolor: COLORS.success, border: `2px solid ${COLORS.brand}`,
                 boxShadow: '4px 4px 0px rgba(46, 125, 50, 0.1)',
                 '&:hover': { bgcolor: COLORS.brand }
@@ -589,21 +589,21 @@ export default function Settings() {
         {/* PILLAR 1: OPERATING HOURS */}
         <Grid size={{ xs: 12, lg: 4 }}>
           <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <Box sx={{ bgcolor: '#FFF8E1', px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
-              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: "1000", display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
+            <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
+              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
                 <AccessTimeIcon /> Operating Hours
               </Typography>
             </Box>
-            <Box sx={{ p: 3, flexGrow: 1, bgcolor: '#FFF' }}>
+            <Box sx={{ p: 3, flexGrow: 1, bgcolor: COLORS.cardBg }}>
               <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 3 }}>Controls the mobile app's booking calendar boundaries.</Typography>
               <Grid container spacing={2.5}>
                 <Grid size={{ xs: 12 }}>
                   <FormControl fullWidth size="medium" sx={{ bgcolor: 'white' }}>
-                    <InputLabel sx={{ fontWeight: 1000, color: COLORS.accent }}>Clinic Opens</InputLabel>
+                    <InputLabel sx={{ fontWeight: 900, color: COLORS.accent }}>Clinic Opens</InputLabel>
                     <Select 
                       value={settings.openHour} label="Clinic Opens" 
                       onChange={(e) => handleChange('openHour', e.target.value)}
-                      sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `2px solid ${COLORS.accent}33` }, fontWeight: 1000 }}
+                      sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `2px solid ${COLORS.accent}33` }, fontWeight: 900 }}
                     >
                       {hoursArray.map(h => <MenuItem key={h} value={h}>{formatHour(h)}</MenuItem>)}
                     </Select>
@@ -611,11 +611,11 @@ export default function Settings() {
                 </Grid>
                 <Grid size={{ xs: 12 }}>
                   <FormControl fullWidth size="medium" sx={{ bgcolor: 'white' }}>
-                    <InputLabel sx={{ fontWeight: 1000, color: COLORS.accent }}>Clinic Closes</InputLabel>
+                    <InputLabel sx={{ fontWeight: 900, color: COLORS.accent }}>Clinic Closes</InputLabel>
                     <Select 
                       value={settings.closeHour} label="Clinic Closes" 
                       onChange={(e) => handleChange('closeHour', e.target.value)}
-                      sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `2px solid ${COLORS.accent}33` }, fontWeight: 1000 }}
+                      sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `2px solid ${COLORS.accent}33` }, fontWeight: 900 }}
                     >
                       {hoursArray.map(h => <MenuItem key={h} value={h}>{formatHour(h)}</MenuItem>)}
                     </Select>
@@ -637,7 +637,7 @@ export default function Settings() {
 
                 {/* 🧬 CLINIC WORKING DAYS SELECTOR (Phase 4 Polish) */}
                 <Grid size={{ xs: 12 }}>
-                    <Typography variant="overline" sx={{ fontWeight: '1000', color: COLORS.accent, letterSpacing: 1, display: 'block', mb: 1 }}>
+                    <Typography variant="overline" sx={{ fontWeight: 900, color: COLORS.accent, letterSpacing: 1, display: 'block', mb: 1 }}>
                         Clinic Working Days
                     </Typography>
                     <ToggleButtonGroup
@@ -651,10 +651,10 @@ export default function Settings() {
                                 border: `2px solid ${COLORS.accent}33 !important`,
                                 borderRadius: '0 !important',
                                 width: 32, height: 32, minWidth: 32,
-                                fontWeight: '1000', fontSize: '0.65rem', color: COLORS.accent,
+                                fontWeight: 900, fontSize: '0.65rem', color: COLORS.accent,
                                 '&.Mui-selected': {
                                     bgcolor: `${COLORS.accent} !important`,
-                                    color: '#FFF !important',
+                                    color: `${COLORS.cardBg} !important`,
                                     boxShadow: '2px 2px 0px rgba(93, 64, 55, 0.2)'
                                 }
                             }
@@ -671,7 +671,7 @@ export default function Settings() {
                 {/* CLOSED DATES */}
                 <Grid size={{ xs: 12 }}>
                   <Divider sx={{ my: 1 }} />
-                  <Typography variant="overline" sx={{ fontWeight: '1000', color: COLORS.accent, letterSpacing: 1, display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                  <Typography variant="overline" sx={{ fontWeight: 900, color: COLORS.accent, letterSpacing: 1, display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                     <BlockIcon sx={{ fontSize: 16 }} /> Clinic Closures (Holidays, Maintenance)
                   </Typography>
                   <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 1.5 }}>
@@ -684,14 +684,14 @@ export default function Settings() {
                       value={newClosedDate}
                       onChange={(e) => setNewClosedDate(e.target.value)}
                       sx={{ flex: 1, bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `2px solid ${COLORS.accent}33` } }}
-                      inputProps={{ style: { fontWeight: 1000 } }}
+                      inputProps={{ style: { fontWeight: 900 } }}
                     />
                     <Button
                       variant="contained"
                       onClick={handleAddClosedDate}
                       disabled={!newClosedDate}
                       sx={{
-                        borderRadius: 0, fontWeight: 1000, px: 3,
+                        borderRadius: 0, fontWeight: 900, px: 3,
                         bgcolor: COLORS.accent, border: `2px solid ${COLORS.accent}`,
                         boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
                         '&:hover': { bgcolor: COLORS.brand }
@@ -714,8 +714,8 @@ export default function Settings() {
                           sx={{
                             borderRadius: 0,
                             border: `2px solid ${COLORS.accent}`,
-                            bgcolor: '#FFF8E1',
-                            fontWeight: 1000,
+                            bgcolor: COLORS.cream,
+                            fontWeight: 900,
                             color: COLORS.accent,
                             boxShadow: '2px 2px 0px rgba(93, 64, 55, 0.15)',
                             '& .MuiChip-deleteIcon': { color: COLORS.accent }
@@ -726,11 +726,11 @@ export default function Settings() {
                   )}
                 </Grid>
 
-                <Grid size={{ xs: 12 }}><Divider sx={{ my: 1 }} /><FormControlLabel control={<Switch checked={settings.lunchEnabled} onChange={(e) => handleChange('lunchEnabled', e.target.checked)} color="primary" />} label={<Typography sx={{ fontWeight: 1000, color: COLORS.accent }}>Enforce Lunch Break</Typography>} /></Grid>
+                <Grid size={{ xs: 12 }}><Divider sx={{ my: 1 }} /><FormControlLabel control={<Switch checked={settings.lunchEnabled} onChange={(e) => handleChange('lunchEnabled', e.target.checked)} color="primary" />} label={<Typography sx={{ fontWeight: 900, color: COLORS.accent }}>Enforce Lunch Break</Typography>} /></Grid>
                 {settings.lunchEnabled && (
                     <React.Fragment>
-                        <Grid size={{ xs: 6 }}><FormControl fullWidth size="small" sx={{ bgcolor: 'white' }}><InputLabel sx={{ fontWeight: 1000 }}>Start</InputLabel><Select value={settings.lunchStart} label="Start" onChange={(e) => handleChange('lunchStart', e.target.value)} sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}>{hoursArray.map(h => <MenuItem key={h} value={h}>{formatHour(h)}</MenuItem>)}</Select></FormControl></Grid>
-                        <Grid size={{ xs: 6 }}><FormControl fullWidth size="small" sx={{ bgcolor: 'white' }}><InputLabel sx={{ fontWeight: 1000 }}>End</InputLabel><Select value={settings.lunchEnd} label="End" onChange={(e) => handleChange('lunchEnd', e.target.value)} sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}>{hoursArray.map(h => <MenuItem key={h} value={h}>{formatHour(h)}</MenuItem>)}</Select></FormControl></Grid>
+                        <Grid size={{ xs: 6 }}><FormControl fullWidth size="small" sx={{ bgcolor: 'white' }}><InputLabel sx={{ fontWeight: 900 }}>Start</InputLabel><Select value={settings.lunchStart} label="Start" onChange={(e) => handleChange('lunchStart', e.target.value)} sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}>{hoursArray.map(h => <MenuItem key={h} value={h}>{formatHour(h)}</MenuItem>)}</Select></FormControl></Grid>
+                        <Grid size={{ xs: 6 }}><FormControl fullWidth size="small" sx={{ bgcolor: 'white' }}><InputLabel sx={{ fontWeight: 900 }}>End</InputLabel><Select value={settings.lunchEnd} label="End" onChange={(e) => handleChange('lunchEnd', e.target.value)} sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}>{hoursArray.map(h => <MenuItem key={h} value={h}>{formatHour(h)}</MenuItem>)}</Select></FormControl></Grid>
                     </React.Fragment>
                 )}
               </Grid>
@@ -741,18 +741,18 @@ export default function Settings() {
         {/* PILLAR 2: BOOKING ENGINE RULES */}
         <Grid size={{ xs: 12, lg: 4 }}>
           <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <Box sx={{ bgcolor: '#FFF8E1', px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
-              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: "1000", display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
+            <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
+              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
                 <EventBusyIcon /> Client Limitations
               </Typography>
             </Box>
-            <Box sx={{ p: 3, flexGrow: 1, bgcolor: '#FFF' }}>
+            <Box sx={{ p: 3, flexGrow: 1, bgcolor: COLORS.cardBg }}>
               <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 3 }}>Protects the clinic from schedule hoarding and last-minute bookings.</Typography>
               <Grid container spacing={2.5}>
-                <Grid size={{ xs: 12 }}><FormControl fullWidth size="medium" sx={{ bgcolor: 'white' }}><InputLabel sx={{ fontWeight: 1000 }}>Base Slot Interval</InputLabel><Select value={settings.minSlotInterval} label="Base Slot Interval" onChange={(e) => handleChange('minSlotInterval', e.target.value)} sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `2px solid ${COLORS.accent}33` }, fontWeight: 1000 }}><MenuItem value={15}>15 Minutes</MenuItem><MenuItem value={30}>30 Minutes</MenuItem><MenuItem value={45}>45 Minutes</MenuItem><MenuItem value={60}>60 Minutes</MenuItem></Select></FormControl></Grid>
-                <Grid size={{ xs: 12 }}><FormControl fullWidth size="medium" sx={{ bgcolor: 'white' }}><InputLabel sx={{ fontWeight: 1000 }}>Advance Notice Buffer</InputLabel><Select value={settings.advanceNoticeMins} label="Advance Notice Buffer" onChange={(e) => handleChange('advanceNoticeMins', e.target.value)} sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `2px solid ${COLORS.accent}33` }, fontWeight: 1000 }}><MenuItem value={0}>0 Mins (Allow immediate walk-ins)</MenuItem><MenuItem value={30}>30 Minutes</MenuItem><MenuItem value={60}>1 Hour</MenuItem><MenuItem value={120}>2 Hours</MenuItem><MenuItem value={1440}>24 Hours (Next-day only)</MenuItem></Select></FormControl></Grid>
-                <Grid size={{ xs: 6 }}><TextField fullWidth label="Future Limit" type="number" value={settings.maxFutureBookingDays} onChange={(e) => handleChange('maxFutureBookingDays', e.target.value)} InputProps={{ endAdornment: <InputAdornment position="end">Days</InputAdornment> }} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 1000 } }} /></Grid>
-                <Grid size={{ xs: 6 }}><TextField fullWidth label="Max Pets" type="number" value={settings.maxPetsPerBooking} onChange={(e) => handleChange('maxPetsPerBooking', e.target.value)} InputProps={{ endAdornment: <InputAdornment position="end">Pets</InputAdornment> }} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 1000 } }} helperText="Per booking" /></Grid>
+                <Grid size={{ xs: 12 }}><FormControl fullWidth size="medium" sx={{ bgcolor: 'white' }}><InputLabel sx={{ fontWeight: 900 }}>Base Slot Interval</InputLabel><Select value={settings.minSlotInterval} label="Base Slot Interval" onChange={(e) => handleChange('minSlotInterval', e.target.value)} sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `2px solid ${COLORS.accent}33` }, fontWeight: 900 }}><MenuItem value={15}>15 Minutes</MenuItem><MenuItem value={30}>30 Minutes</MenuItem><MenuItem value={45}>45 Minutes</MenuItem><MenuItem value={60}>60 Minutes</MenuItem></Select></FormControl></Grid>
+                <Grid size={{ xs: 12 }}><FormControl fullWidth size="medium" sx={{ bgcolor: 'white' }}><InputLabel sx={{ fontWeight: 900 }}>Advance Notice Buffer</InputLabel><Select value={settings.advanceNoticeMins} label="Advance Notice Buffer" onChange={(e) => handleChange('advanceNoticeMins', e.target.value)} sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `2px solid ${COLORS.accent}33` }, fontWeight: 900 }}><MenuItem value={0}>0 Mins (Allow immediate walk-ins)</MenuItem><MenuItem value={30}>30 Minutes</MenuItem><MenuItem value={60}>1 Hour</MenuItem><MenuItem value={120}>2 Hours</MenuItem><MenuItem value={1440}>24 Hours (Next-day only)</MenuItem></Select></FormControl></Grid>
+                <Grid size={{ xs: 6 }}><TextField fullWidth label="Future Limit" type="number" value={settings.maxFutureBookingDays} onChange={(e) => handleChange('maxFutureBookingDays', e.target.value)} InputProps={{ endAdornment: <InputAdornment position="end">Days</InputAdornment> }} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 900 } }} /></Grid>
+                <Grid size={{ xs: 6 }}><TextField fullWidth label="Max Pets" type="number" value={settings.maxPetsPerBooking} onChange={(e) => handleChange('maxPetsPerBooking', e.target.value)} InputProps={{ endAdornment: <InputAdornment position="end">Pets</InputAdornment> }} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 900 } }} helperText="Per booking" /></Grid>
               </Grid>
             </Box>
           </Paper>
@@ -761,19 +761,19 @@ export default function Settings() {
         {/* PILLAR 3: CAPACITY & TRIAGE */}
         <Grid size={{ xs: 12, lg: 4 }}>
           <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <Box sx={{ bgcolor: '#FFF8E1', px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
-              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: "1000", display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
+            <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
+              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
                 <LocalHospitalIcon /> Capacity & Triage
               </Typography>
             </Box>
-            <Box sx={{ p: 3, flexGrow: 1, bgcolor: '#FFF' }}>
+            <Box sx={{ p: 3, flexGrow: 1, bgcolor: COLORS.cardBg }}>
               <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 3 }}>Controls physical clinic limits and algorithmic traffic warnings.</Typography>
               <Grid container spacing={2.5}>
-                <Grid size={{ xs: 12 }}><TextField fullWidth label="Max Confinement Cages" type="number" value={settings.maxCages} onChange={(e) => handleChange('maxCages', e.target.value)} InputProps={{ endAdornment: <InputAdornment position="end" sx={{ fontWeight: 1000 }}>Cages</InputAdornment> }} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 1000 } }} helperText="Blocks admission" /></Grid>
+                <Grid size={{ xs: 12 }}><TextField fullWidth label="Max Confinement Cages" type="number" value={settings.maxCages} onChange={(e) => handleChange('maxCages', e.target.value)} InputProps={{ endAdornment: <InputAdornment position="end" sx={{ fontWeight: 900 }}>Cages</InputAdornment> }} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 900 } }} helperText="Blocks admission" /></Grid>
                 <Grid size={{ xs: 12 }}><Divider sx={{ my: 1 }} /></Grid>
-                <Grid size={{ xs: 12 }}><TextField fullWidth label="Auto-No-Show Trigger" type="number" value={settings.autoNoShowMins} onChange={(e) => handleChange('autoNoShowMins', e.target.value)} InputProps={{ endAdornment: <InputAdornment position="end" sx={{ fontWeight: 1000 }}>Mins Late</InputAdornment> }} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 1000 } }} helperText="Mins late before Queue displays No-Show button." /></Grid>
-                <Grid size={{ xs: 6 }}><TextField fullWidth label="Moderate Traffic" type="number" value={settings.trafficModerate} onChange={(e) => handleChange('trafficModerate', e.target.value)} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 1000 } }} helperText="Patients" /></Grid>
-                <Grid size={{ xs: 6 }}><TextField fullWidth label="High Traffic" type="number" value={settings.trafficHigh} onChange={(e) => handleChange('trafficHigh', e.target.value)} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 1000 } }} helperText="Patients" /></Grid>
+                <Grid size={{ xs: 12 }}><TextField fullWidth label="Auto-No-Show Trigger" type="number" value={settings.autoNoShowMins} onChange={(e) => handleChange('autoNoShowMins', e.target.value)} InputProps={{ endAdornment: <InputAdornment position="end" sx={{ fontWeight: 900 }}>Mins Late</InputAdornment> }} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 900 } }} helperText="Mins late before Queue displays No-Show button." /></Grid>
+                <Grid size={{ xs: 6 }}><TextField fullWidth label="Moderate Traffic" type="number" value={settings.trafficModerate} onChange={(e) => handleChange('trafficModerate', e.target.value)} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 900 } }} helperText="Patients" /></Grid>
+                <Grid size={{ xs: 6 }}><TextField fullWidth label="High Traffic" type="number" value={settings.trafficHigh} onChange={(e) => handleChange('trafficHigh', e.target.value)} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 900 } }} helperText="Patients" /></Grid>
               </Grid>
             </Box>
           </Paper>
@@ -782,12 +782,12 @@ export default function Settings() {
         {/* PILLAR 4: DYNAMIC DEPARTMENTS */}
         <Grid size={{ xs: 12, lg: 6 }}>
           <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <Box sx={{ bgcolor: '#FFF8E1', px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
-              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: "1000", display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
+            <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
+              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
                 <DomainIcon /> Clinic Departments / Categories
               </Typography>
             </Box>
-            <Box sx={{ p: 3, bgcolor: '#FFF', flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+            <Box sx={{ p: 3, bgcolor: COLORS.cardBg, flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
               
               {/* THE FIX: Fixed minHeight on description creates perfect alignment with the Inventory Card */}
               <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 2.5, minHeight: 40 }}>
@@ -799,11 +799,11 @@ export default function Settings() {
                   label="New Department Name" size="small" value={newDepartmentName} 
                   onChange={(e) => setNewDepartmentName(e.target.value)} 
                   sx={{ flexGrow: 1, bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} 
-                  inputProps={{ spellCheck: 'false', style: { fontWeight: 1000 } }}
+                  inputProps={{ spellCheck: 'false', style: { fontWeight: 900 } }}
                 />
                 
                 <FormControl size="small" sx={{ minWidth: 200, bgcolor: 'white' }}>
-                    <InputLabel sx={{ fontWeight: 1000 }}>Color Tag</InputLabel>
+                    <InputLabel sx={{ fontWeight: 900 }}>Color Tag</InputLabel>
                     <Select 
                       value={newDepartmentColor} 
                       label="Color Tag" 
@@ -828,7 +828,7 @@ export default function Settings() {
                   variant="contained" onClick={handleAddDepartment} 
                   startIcon={<AddCircleOutlineIcon/>} 
                   sx={{ 
-                      bgcolor: COLORS.accent, fontWeight: '1000', px: 4, py: 1, 
+                      bgcolor: COLORS.accent, fontWeight: 900, px: 4, py: 1, 
                       borderRadius: 0, border: `2px solid ${COLORS.brand}`,
                       boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
                       '&:hover': { bgcolor: COLORS.brand }
@@ -843,13 +843,13 @@ export default function Settings() {
                 <TextField 
                   placeholder="🔍 Quick find department..." size="small" fullWidth
                   value={deptSearch} onChange={(e) => setDeptSearch(e.target.value)}
-                  sx={{ bgcolor: 'rgba(255,255,255,0.9)', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, borderColor: '#E0E0E0' } }}
-                  inputProps={{ style: { fontWeight: 1000 } }}
+                  sx={{ bgcolor: 'rgba(255,255,255,0.9)', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, borderColor: COLORS.borderInput } }}
+                  inputProps={{ style: { fontWeight: 900 } }}
                 />
                 <FormControl size="small" sx={{ width: 140, bgcolor: 'rgba(255,255,255,0.9)' }}>
-                  <Select 
-                    value={deptSort} onChange={e => setDeptSort(e.target.value)} 
-                    displayEmpty sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: '1px solid #E0E0E0' }, fontWeight: '1000', color: '#555' }}
+                  <Select
+                    value={deptSort} onChange={e => setDeptSort(e.target.value)}
+                    displayEmpty sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.borderInput}` }, fontWeight: 900, color: '#555' }}
                   >
                     <MenuItem value="asc">A - Z</MenuItem>
                     <MenuItem value="desc">Z - A</MenuItem>
@@ -874,7 +874,7 @@ export default function Settings() {
                           label={`${dept.name} (${totalU})`} 
                           onDelete={() => handleDeleteDepartment(dept.id, dept.name)}
                           sx={{ 
-                              fontWeight: '1000', color: 'white', bgcolor: dept.color || '#616161', 
+                              fontWeight: 900, color: 'white', bgcolor: dept.color || '#616161', 
                               borderRadius: 0,
                               border: totalU > 0 ? '2px solid rgba(255,255,255,0.4)' : '1px solid rgba(0,0,0,0.1)', 
                               fontSize: '0.75rem', py: 2.2, px: 1, 
@@ -893,12 +893,12 @@ export default function Settings() {
         {/* PILLAR 5: INVENTORY CATEGORIES */}
         <Grid size={{ xs: 12, lg: 6 }}>
           <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <Box sx={{ bgcolor: '#FFF8E1', px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
-              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: "1000", display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
+            <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
+              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
                 <InventoryIcon /> Inventory Categories
               </Typography>
             </Box>
-            <Box sx={{ p: 3, bgcolor: '#FFF', flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+            <Box sx={{ p: 3, bgcolor: COLORS.cardBg, flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
               
               {/* THE FIX: Fixed minHeight enforces bottom alignment! */}
               <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 2.5, minHeight: 40 }}>
@@ -910,12 +910,12 @@ export default function Settings() {
                   label="New Category Name" size="small" value={newInvCatName} 
                   onChange={(e) => setNewInvCatName(e.target.value)} 
                   sx={{ flexGrow: 1, bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
-                  inputProps={{ spellCheck: 'false', style: { fontWeight: 1000 } }}
+                  inputProps={{ spellCheck: 'false', style: { fontWeight: 900 } }}
                 />
                 
                 {/* 💊 THE PILL TOGGLE UI */}
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 0.5, bgcolor: 'white', border: `1px solid ${COLORS.accent}33`, borderRadius: 0 }}>
-                    <Typography variant="caption" sx={{ fontWeight: 1000, color: newInvCatIsMedicine ? '#B71C1C' : '#757575', fontSize: '0.65rem' }}>
+                    <Typography variant="caption" sx={{ fontWeight: 900, color: newInvCatIsMedicine ? COLORS.dangerHover : '#757575', fontSize: '0.65rem' }}>
                         {newInvCatIsMedicine ? "MEDICINE" : "RETAIL"}
                     </Typography>
                     <MedicinePillSwitch 
@@ -929,7 +929,7 @@ export default function Settings() {
                   onClick={handleAddInvCategory} 
                   startIcon={<AddCircleOutlineIcon/>}
                   sx={{ 
-                      bgcolor: COLORS.accent, fontWeight: '1000', px: 4, py: 1, 
+                      bgcolor: COLORS.accent, fontWeight: 900, px: 4, py: 1, 
                       borderRadius: 0, border: `2px solid ${COLORS.brand}`,
                       boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
                       '&:hover': { bgcolor: COLORS.brand }
@@ -944,13 +944,13 @@ export default function Settings() {
                 <TextField 
                   placeholder="🔍 Quick find category..." size="small" fullWidth
                   value={invCatSearch} onChange={(e) => setInvCatSearch(e.target.value)}
-                  sx={{ bgcolor: 'rgba(255,255,255,0.9)', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, borderColor: '#E0E0E0' } }}
-                  inputProps={{ style: { fontWeight: 1000 } }}
+                  sx={{ bgcolor: 'rgba(255,255,255,0.9)', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, borderColor: COLORS.borderInput } }}
+                  inputProps={{ style: { fontWeight: 900 } }}
                 />
                 <FormControl size="small" sx={{ width: 140, bgcolor: 'rgba(255,255,255,0.9)' }}>
-                  <Select 
-                    value={invCatSort} onChange={e => setInvCatSort(e.target.value)} 
-                    displayEmpty sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: '1px solid #E0E0E0' }, fontWeight: '1000', color: '#555' }}
+                  <Select
+                    value={invCatSort} onChange={e => setInvCatSort(e.target.value)}
+                    displayEmpty sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.borderInput}` }, fontWeight: 900, color: '#555' }}
                   >
                     <MenuItem value="asc">A - Z</MenuItem>
                     <MenuItem value="desc">Z - A</MenuItem>
@@ -967,15 +967,15 @@ export default function Settings() {
                   <Chip 
                     key={cat.id} 
                     label={cat.name} 
-                    icon={cat.isMedicine ? <MedicationIcon sx={{ fontSize: '1rem !important', color: '#D32F2F !important' }} /> : null}
+                    icon={cat.isMedicine ? <MedicationIcon sx={{ fontSize: '1rem !important', color: `${COLORS.danger} !important` }} /> : null}
                     onDelete={cat.id.startsWith('default_') ? undefined : () => handleDeleteInvCategory(cat.id, cat.name)}
                     sx={{ 
-                      fontWeight: '1000', 
+                      fontWeight: 900, 
                       bgcolor: 'white', 
                       borderRadius: 0,
-                      border: cat.isMedicine ? '2px solid #D32F2F' : '1px solid #ccc', 
+                      border: cat.isMedicine ? `2px solid ${COLORS.danger}` : '1px solid #ccc',
                       fontSize: '0.75rem', py: 2.2,
-                      '& .MuiChip-label': { color: cat.isMedicine ? '#D32F2F' : 'inherit' }
+                      '& .MuiChip-label': { color: cat.isMedicine ? COLORS.danger : 'inherit' }
                     }}
                   />
                 ))}
@@ -991,16 +991,16 @@ export default function Settings() {
         {/* PILLAR 6: DASHBOARD ALERT THRESHOLDS (T2.331) */}
         <Grid size={{ xs: 12, lg: 6 }}>
           <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <Box sx={{ bgcolor: '#FFF8E1', px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
+            <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
               <Typography variant="subtitle1" sx={{
-                color: COLORS.accent, fontWeight: '1000',
+                color: COLORS.accent, fontWeight: 900,
                 display: 'flex', alignItems: 'center', gap: 1,
                 textTransform: 'uppercase', letterSpacing: 1,
               }}>
                 <NotificationsActiveIcon /> Dashboard Alert Thresholds
               </Typography>
             </Box>
-            <Box sx={{ p: 3, flexGrow: 1, bgcolor: '#FFF' }}>
+            <Box sx={{ p: 3, flexGrow: 1, bgcolor: COLORS.cardBg }}>
               <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 3 }}>
                 Triggers visual alerts on the Dashboard Operations tab when metrics exceed these limits.
               </Typography>
@@ -1012,7 +1012,7 @@ export default function Settings() {
                     onChange={(e) => setDashboardAlerts(prev => ({ ...prev, avgWaitMax: parseInt(e.target.value) || 0 }))}
                     InputProps={{ endAdornment: <InputAdornment position="end">min</InputAdornment> }}
                     sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
-                    inputProps={{ style: { fontWeight: 1000 } }}
+                    inputProps={{ style: { fontWeight: 900 } }}
                     helperText="Alert when avg wait exceeds this"
                   />
                 </Grid>
@@ -1023,7 +1023,7 @@ export default function Settings() {
                     onChange={(e) => setDashboardAlerts(prev => ({ ...prev, longestWaitMax: parseInt(e.target.value) || 0 }))}
                     InputProps={{ endAdornment: <InputAdornment position="end">min</InputAdornment> }}
                     sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
-                    inputProps={{ style: { fontWeight: 1000 } }}
+                    inputProps={{ style: { fontWeight: 900 } }}
                     helperText="Alert when any patient waits this long"
                   />
                 </Grid>
@@ -1034,7 +1034,7 @@ export default function Settings() {
                     onChange={(e) => setDashboardAlerts(prev => ({ ...prev, noShowMin: parseInt(e.target.value) || 0 }))}
                     InputProps={{ endAdornment: <InputAdornment position="end">count</InputAdornment> }}
                     sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
-                    inputProps={{ style: { fontWeight: 1000 } }}
+                    inputProps={{ style: { fontWeight: 900 } }}
                   />
                 </Grid>
                 <Grid size={{ xs: 4 }}>
@@ -1044,7 +1044,7 @@ export default function Settings() {
                     onChange={(e) => setDashboardAlerts(prev => ({ ...prev, emergencyMin: parseInt(e.target.value) || 0 }))}
                     InputProps={{ endAdornment: <InputAdornment position="end">count</InputAdornment> }}
                     sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
-                    inputProps={{ style: { fontWeight: 1000 } }}
+                    inputProps={{ style: { fontWeight: 900 } }}
                   />
                 </Grid>
                 <Grid size={{ xs: 4 }}>
@@ -1054,7 +1054,7 @@ export default function Settings() {
                     onChange={(e) => setDashboardAlerts(prev => ({ ...prev, queueDepthMax: parseInt(e.target.value) || 0 }))}
                     InputProps={{ endAdornment: <InputAdornment position="end">patients</InputAdornment> }}
                     sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
-                    inputProps={{ style: { fontWeight: 1000 } }}
+                    inputProps={{ style: { fontWeight: 900 } }}
                   />
                 </Grid>
               </Grid>
@@ -1065,16 +1065,16 @@ export default function Settings() {
         {/* PILLAR 7: MONTHLY GOALS (T2.336) */}
         <Grid size={{ xs: 12, lg: 6 }}>
           <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <Box sx={{ bgcolor: '#FFF8E1', px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
+            <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
               <Typography variant="subtitle1" sx={{
-                color: COLORS.accent, fontWeight: '1000',
+                color: COLORS.accent, fontWeight: 900,
                 display: 'flex', alignItems: 'center', gap: 1,
                 textTransform: 'uppercase', letterSpacing: 1,
               }}>
                 <FlagIcon /> Monthly Goals
               </Typography>
             </Box>
-            <Box sx={{ p: 3, flexGrow: 1, bgcolor: '#FFF' }}>
+            <Box sx={{ p: 3, flexGrow: 1, bgcolor: COLORS.cardBg }}>
               <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 3 }}>
                 Set monthly targets. Progress bars appear on the Dashboard Growth and Financial tabs when goals are configured.
               </Typography>
@@ -1086,7 +1086,7 @@ export default function Settings() {
                     onChange={(e) => setDashboardGoals(prev => ({ ...prev, monthlyRevenue: parseInt(e.target.value) || 0 }))}
                     InputProps={{ startAdornment: <InputAdornment position="start">₱</InputAdornment> }}
                     sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
-                    inputProps={{ style: { fontWeight: 1000 } }}
+                    inputProps={{ style: { fontWeight: 900 } }}
                     helperText="Monthly revenue goal"
                   />
                 </Grid>
@@ -1096,7 +1096,7 @@ export default function Settings() {
                     value={dashboardGoals.monthlyAppointments || ''}
                     onChange={(e) => setDashboardGoals(prev => ({ ...prev, monthlyAppointments: parseInt(e.target.value) || 0 }))}
                     sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
-                    inputProps={{ style: { fontWeight: 1000 } }}
+                    inputProps={{ style: { fontWeight: 900 } }}
                     helperText="Monthly appointment count goal"
                   />
                 </Grid>
@@ -1106,7 +1106,7 @@ export default function Settings() {
                     value={dashboardGoals.monthlyNewClients || ''}
                     onChange={(e) => setDashboardGoals(prev => ({ ...prev, monthlyNewClients: parseInt(e.target.value) || 0 }))}
                     sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
-                    inputProps={{ style: { fontWeight: 1000 } }}
+                    inputProps={{ style: { fontWeight: 900 } }}
                     helperText="Monthly new registrations goal"
                   />
                 </Grid>
@@ -1116,7 +1116,7 @@ export default function Settings() {
                     value={dashboardGoals.monthlyRecordsSigned || ''}
                     onChange={(e) => setDashboardGoals(prev => ({ ...prev, monthlyRecordsSigned: parseInt(e.target.value) || 0 }))}
                     sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
-                    inputProps={{ style: { fontWeight: 1000 } }}
+                    inputProps={{ style: { fontWeight: 900 } }}
                     helperText="Monthly medical records goal"
                   />
                 </Grid>
@@ -1128,16 +1128,16 @@ export default function Settings() {
         {/* PILLAR 8: CLIENT SELF-CHECK-IN QR */}
         <Grid size={{ xs: 12, lg: 6 }}>
           <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden' }}>
-            <Box sx={{ bgcolor: '#FFF8E1', px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
+            <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
               <Typography variant="subtitle1" sx={{
-                color: COLORS.accent, fontWeight: '1000',
+                color: COLORS.accent, fontWeight: 900,
                 display: 'flex', alignItems: 'center', gap: 1,
                 textTransform: 'uppercase', letterSpacing: 1,
               }}>
                 <QrCodeScannerIcon /> Client Self-Check-In QR
               </Typography>
             </Box>
-            <Box sx={{ p: 3, bgcolor: '#FFF' }}>
+            <Box sx={{ p: 3, bgcolor: COLORS.cardBg }}>
               <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 3 }}>
                 Print and display this QR code in the clinic lobby. Clients scan it with the VetConnect app to self-check-in.
               </Typography>
@@ -1154,7 +1154,7 @@ export default function Settings() {
                 variant="contained" fullWidth
                 onClick={handlePrintQR}
                 sx={{
-                  fontWeight: '1000', borderRadius: 0, bgcolor: COLORS.accent,
+                  fontWeight: 900, borderRadius: 0, bgcolor: COLORS.accent,
                   border: `2px solid ${COLORS.brand}`, mb: 3,
                   boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
                   '&:hover': { bgcolor: COLORS.brand }
@@ -1165,7 +1165,7 @@ export default function Settings() {
 
               {/* Geofence settings */}
               <Divider sx={{ my: 2 }} />
-              <Typography variant="overline" sx={{ fontWeight: '1000', color: COLORS.accent, letterSpacing: 1, display: 'block', mb: 1 }}>
+              <Typography variant="overline" sx={{ fontWeight: 900, color: COLORS.accent, letterSpacing: 1, display: 'block', mb: 1 }}>
                 GPS Geofence (Check-In Radius)
               </Typography>
               <Grid container spacing={2}>
@@ -1173,7 +1173,7 @@ export default function Settings() {
                   <TextField fullWidth label="Latitude" type="number"
                     value={settings.clinicLat ?? ''}
                     onChange={(e) => handleChange('clinicLat', parseFloat(e.target.value) || 0)}
-                    inputProps={{ step: 0.0001, style: { fontWeight: 1000 } }}
+                    inputProps={{ step: 0.0001, style: { fontWeight: 900 } }}
                     sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
                   />
                 </Grid>
@@ -1181,7 +1181,7 @@ export default function Settings() {
                   <TextField fullWidth label="Longitude" type="number"
                     value={settings.clinicLng ?? ''}
                     onChange={(e) => handleChange('clinicLng', parseFloat(e.target.value) || 0)}
-                    inputProps={{ step: 0.0001, style: { fontWeight: 1000 } }}
+                    inputProps={{ step: 0.0001, style: { fontWeight: 900 } }}
                     sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
                   />
                 </Grid>
@@ -1190,7 +1190,7 @@ export default function Settings() {
                     value={settings.geofenceRadiusM ?? ''}
                     onChange={(e) => handleChange('geofenceRadiusM', parseInt(e.target.value) || 0)}
                     InputProps={{ endAdornment: <InputAdornment position="end">m</InputAdornment> }}
-                    inputProps={{ style: { fontWeight: 1000 } }}
+                    inputProps={{ style: { fontWeight: 900 } }}
                     sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
                   />
                 </Grid>
@@ -1208,7 +1208,7 @@ export default function Settings() {
         maxWidth="xs"
         fullWidth
       >
-        <DialogTitle sx={{ fontWeight: '1000', color: COLORS.danger, pb: 1 }}>
+        <DialogTitle sx={{ fontWeight: 900, color: COLORS.danger, pb: 1 }}>
           Confirm Delete
         </DialogTitle>
         <DialogContent>

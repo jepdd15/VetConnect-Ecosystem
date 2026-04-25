@@ -1,11 +1,11 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { DataGrid } from '@mui/x-data-grid';
-import { 
+import {
   Box, Typography, Paper, IconButton, Tooltip, Stack,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button,
   Tabs, Tab, Menu, MenuItem, ListItemIcon, ListItemText, Divider, List, ListItem, Alert,
   Popover, Chip, keyframes, FormControl, InputLabel, Select, Switch,
-  ToggleButton, ToggleButtonGroup, Autocomplete
+  ToggleButton, ToggleButtonGroup, Autocomplete, InputAdornment
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, Timestamp, where, getDocs, writeBatch, getDoc, arrayUnion, runTransaction } from 'firebase/firestore';
@@ -37,10 +37,10 @@ import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 
 // 🧬 PHASE 6 COMPONENTS
 import { calculatePulseMetrics, getSmartShiftDate, makePulseEventId } from '../../utils/pulseUtils';
-import { HIGH_STAKES_STATUSES, ACTIVE_STATUSES, normalizeStatus } from '../../utils/statusConstants';
+import { HIGH_STAKES_STATUSES, ACTIVE_STATUSES, normalizeStatus, TERMINAL_STATUSES } from '../../utils/statusConstants';
 import { getLocalDateStr } from '../../utils/dateUtils';
 import { useClinicSettings } from '../../hooks/useClinicSettings';
-import { useLocation } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { ForensicMetricGrid } from './ForensicMetricGrid'; 
 import UndoIcon from '@mui/icons-material/Undo'; 
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital'; 
@@ -49,6 +49,8 @@ import WarningIcon from '@mui/icons-material/Warning';
 import NightlightRoundIcon from '@mui/icons-material/NightlightRound';
 import CloseIcon from '@mui/icons-material/Close';
 import CakeIcon from '@mui/icons-material/Cake';
+import AssignmentIcon from '@mui/icons-material/Assignment';
+import SearchIcon from '@mui/icons-material/Search';
 
 const BREED_DATA = {
   Canine: [
@@ -75,12 +77,13 @@ export default function Queue() {
   const[isTomorrowView, setIsTomorrowView] = useState(false);
   const[currentTime, setCurrentTime] = useState(new Date());
   
-  const { user, profile } = useUser(); // Forensic Attribution
+  const { user, profile, isAdmin } = useUser(); // Forensic Attribution
   const { changeStatus, revertStatus, markNoShow, rejectAppointment, quickAdmitER, deferAppointment } = useQueueActions();
 
   // THE FIX: Timezone-aware isToday logic targets local computer time instead of UTC toISOString.
   const isToday = filterDate === getLocalDateStr();
 
+  const navigate = useNavigate();
   const location = useLocation();
   useEffect(() => {
     const df = location.state?.dashboardFilter;
@@ -160,6 +163,12 @@ export default function Queue() {
   const [openRevert, setOpenRevert] = useState(false);
   const [revertReason, setRevertReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // T3.10b — Recently Resolved panel visibility toggle
+  const [showResolved, setShowResolved] = useState(false);
+
+  // T3.10d — Global patient search across all queue tabs
+  const [queueSearchText, setQueueSearchText] = useState('');
 
   const [openConsult, setOpenConsult] = useState(false);
   const[openPOS, setOpenPOS] = useState(false);
@@ -1238,6 +1247,17 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
     };
   }, [rows]);
 
+  // T3.10b — Derive recently resolved rows from the already-loaded dataset, sorted most-recent first
+  const recentlyResolved = useMemo(() => {
+    return rows
+      .filter(r => ['completed', 'cancelled', 'no-show'].includes(r.status))
+      .sort((a, b) => {
+        const aTime = a.timeCompleted?.toDate?.() || a.timeRejected?.toDate?.() || a.createdAt?.toDate?.() || new Date(0);
+        const bTime = b.timeCompleted?.toDate?.() || b.timeRejected?.toDate?.() || b.createdAt?.toDate?.() || new Date(0);
+        return bTime - aTime;
+      });
+  }, [rows]);
+
   const unfinishedCount = countOnline + countScheduled + countArrived + countStarted + countDispense + countPayment;
 
   const getFilteredRows = () => {
@@ -1251,7 +1271,17 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       case 5: filtered = rows.filter(r => r.status === 'billing' && r.status !== 'carried-over' && (isToday ? !r.isTriaged : true)); break;
       case 6: filtered = rows.filter(r => r.status === 'completed' || r.status === 'carried-over' || (r.isTriaged && r.status === 'pending')); break;
       case 7: filtered = rows.filter(r => r.status === 'cancelled' || r.status === 'no-show'); break;
-      default: filtered = rows; 
+      default: filtered = rows;
+    }
+
+    // GLOBAL PATIENT SEARCH (T3.10d) — client-side, 2-char minimum, all tabs
+    if (queueSearchText.trim().length >= 2) {
+      const q = queueSearchText.trim().toLowerCase();
+      filtered = filtered.filter(r =>
+        (r.petName || '').toLowerCase().includes(q) ||
+        (r.ownerName || '').toLowerCase().includes(q) ||
+        (r.ownerPhone || '').includes(q)
+      );
     }
 
     // --- 🧬 FORENSIC SORTING ENGINE (PHASE 5.5) ---
@@ -1497,10 +1527,66 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         
         {/* RIGHT SIDE: Counter & Action Buttons */}
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+          {/* T3.10d — Global patient search */}
+          <TextField
+            size="small"
+            placeholder="Search patient, owner, phone..."
+            value={queueSearchText}
+            onChange={(e) => setQueueSearchText(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon sx={{ fontSize: 18, color: '#5D4037' }} />
+                </InputAdornment>
+              ),
+              ...(queueSearchText && {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton size="small" onClick={() => setQueueSearchText('')}>
+                      <CloseIcon sx={{ fontSize: 14 }} />
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }),
+            }}
+            sx={{
+              width: 280,
+              '& .MuiOutlinedInput-root': {
+                fontWeight: 900,
+                fontSize: '0.85rem',
+                bgcolor: '#FFF',
+                borderRadius: 0,
+                '& fieldset': { borderColor: '#D7CCC8', borderWidth: 2 },
+                '&:hover fieldset': { borderColor: '#5D4037' },
+                '&.Mui-focused fieldset': { borderColor: '#5D4037' },
+              },
+            }}
+          />
            <Typography variant="body2" sx={{ color: '#5D4037', fontStyle: 'italic', fontWeight: '900', letterSpacing: 0.5, mr: 1 }}>
               {rows.length} {rows.length === 1 ? 'Record' : 'Records'}
            </Typography>
 
+           {/* T3.10b — Recently Resolved toggle chip */}
+           {recentlyResolved.length > 0 && (
+             <Chip
+               icon={<HistoryIcon sx={{ fontSize: 16 }} />}
+               label={`${recentlyResolved.length} Resolved`}
+               onClick={() => setShowResolved(prev => !prev)}
+               variant={showResolved ? 'filled' : 'outlined'}
+               sx={{
+                 fontWeight: 900,
+                 fontSize: '0.75rem',
+                 borderColor: '#5D4037',
+                 color: showResolved ? '#FFF' : '#5D4037',
+                 bgcolor: showResolved ? '#5D4037' : 'transparent',
+                 '&:hover': { bgcolor: showResolved ? '#3E2723' : 'rgba(93,64,55,0.08)' },
+                 borderRadius: 0,
+                 border: '2px solid #5D4037',
+                 cursor: 'pointer',
+                 height: 32,
+               }}
+             />
+           )}
 
            {isToday && !isTomorrowView && (
              <Tooltip 
@@ -1572,6 +1658,110 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         </Box>
       )}
 
+
+      {/* RECENTLY RESOLVED PANEL (T3.10b) */}
+      {showResolved && recentlyResolved.length > 0 && (
+        <Paper sx={{
+          ...clinicalFlatStyle,
+          p: 2,
+          mb: 2,
+          flexShrink: 0,
+          maxHeight: 280,
+          overflow: 'auto',
+          border: '2px solid #D7CCC8',
+        }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+            <Typography variant="overline" sx={{ fontWeight: 900, color: '#5D4037', letterSpacing: 1.5, fontSize: '0.7rem' }}>
+              RECENTLY RESOLVED ({recentlyResolved.length})
+            </Typography>
+            <IconButton size="small" onClick={() => setShowResolved(false)}>
+              <CloseIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+          </Box>
+
+          <Stack spacing={1}>
+            {recentlyResolved.slice(0, 10).map(row => {
+              const statusColor = row.status === 'completed' ? '#2E7D32'
+                : row.status === 'no-show' ? '#E65100' : '#D32F2F';
+              const canUndo = row.statusHistory && row.statusHistory.length > 0
+                && (isAdmin || !TERMINAL_STATUSES.has(row.status));
+              const resolvedTime = row.timeCompleted?.toDate?.() || row.timeRejected?.toDate?.() || null;
+
+              return (
+                <Box
+                  key={row.id}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    p: 1.5,
+                    bgcolor: '#FAFAFA',
+                    border: '1px solid #EEEEEE',
+                    borderRadius: 0,
+                    '&:hover': { bgcolor: '#F5F5F5' },
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1, minWidth: 0 }}>
+                    <Chip
+                      label={row.status.toUpperCase()}
+                      size="small"
+                      sx={{
+                        fontWeight: 900,
+                        fontSize: '0.6rem',
+                        height: 20,
+                        bgcolor: statusColor,
+                        color: '#FFF',
+                        borderRadius: 0,
+                        minWidth: 80,
+                      }}
+                    />
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography sx={{ fontWeight: 900, fontSize: '0.85rem', color: '#3E2723' }} noWrap>
+                        {row.petName}
+                      </Typography>
+                      <Typography variant="caption" sx={{ fontWeight: 800, color: '#795548', fontSize: '0.7rem' }}>
+                        {row.ownerName}{resolvedTime ? ` • ${resolvedTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  <Box sx={{ display: 'flex', gap: 1, flexShrink: 0 }}>
+                    <Tooltip title="View in Records">
+                      <IconButton
+                        size="small"
+                        onClick={() => navigate('/records', { state: { dashboardFilter: { searchText: row.petName || '' } } })}
+                        sx={{ border: '1px solid #D7CCC8', borderRadius: 0, color: '#1565C0' }}
+                      >
+                        <AssignmentIcon sx={{ fontSize: 16 }} />
+                      </IconButton>
+                    </Tooltip>
+                    {canUndo && (
+                      <Tooltip title={TERMINAL_STATUSES.has(row.status) ? 'Revert Terminal State (Admin)' : 'Undo Last Status Change'}>
+                        <IconButton
+                          size="small"
+                          onClick={() => revertStatusWithReason(row)}
+                          sx={{
+                            border: `1px solid ${TERMINAL_STATUSES.has(row.status) ? '#D32F2F' : '#E65100'}`,
+                            borderRadius: 0,
+                            color: TERMINAL_STATUSES.has(row.status) ? '#D32F2F' : '#E65100',
+                          }}
+                        >
+                          <UndoIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                  </Box>
+                </Box>
+              );
+            })}
+            {recentlyResolved.length > 10 && (
+              <Typography variant="caption" sx={{ fontWeight: 800, color: '#795548', textAlign: 'center', py: 1 }}>
+                +{recentlyResolved.length - 10} more resolved records (view in Done / Cancelled tabs)
+              </Typography>
+            )}
+          </Stack>
+        </Paper>
+      )}
 
       {/* DATA GRID (FLEX: 1 - THE FILLER) */}
       <Paper sx={{ ...clinicalFlatStyle, flex: 1, minHeight: 0, width: '100%', overflow: 'hidden' }}>
@@ -1791,13 +1981,27 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
            <ListItemIcon><HistoryIcon fontSize="small" /></ListItemIcon>
            <ListItemText primary="View Medical History" />
         </MenuItem>
+        <MenuItem onClick={() => {
+          navigate('/records', { state: { dashboardFilter: { searchText: selectedRow?.petName || '' } } });
+          handleCloseMenu();
+        }}>
+          <ListItemIcon><AssignmentIcon fontSize="small" sx={{ color: '#1565C0' }} /></ListItemIcon>
+          <ListItemText primary="View in Records" sx={{ color: '#1565C0' }} />
+        </MenuItem>
 
-        {selectedRow?.statusHistory && selectedRow.statusHistory.length > 0 && (
-          <MenuItem onClick={() => revertStatusWithReason(selectedRow)}>
-             <ListItemIcon><UndoIcon fontSize="small" sx={{ color: '#E65100' }} /></ListItemIcon>
-             <ListItemText primary="Revert Status (Undo)" sx={{ color: '#E65100' }} />
-          </MenuItem>
-        )}
+        {selectedRow?.statusHistory && selectedRow.statusHistory.length > 0 && (() => {
+          const isTerminal = TERMINAL_STATUSES.has(selectedRow?.status);
+          if (isTerminal && !isAdmin) return null;
+          return (
+            <MenuItem onClick={() => revertStatusWithReason(selectedRow)}>
+               <ListItemIcon><UndoIcon fontSize="small" sx={{ color: isTerminal ? '#D32F2F' : '#E65100' }} /></ListItemIcon>
+               <ListItemText
+                 primary={isTerminal ? 'Revert Terminal State (Admin)' : 'Revert Status (Undo)'}
+                 sx={{ color: isTerminal ? '#D32F2F' : '#E65100' }}
+               />
+            </MenuItem>
+          );
+        })()}
         
         {/* CONTEXTUAL REDUNDANCY SHIELD: Hide Void for Online Requests */}
         {selectedRow?.status !== 'pending' && <Divider />}
@@ -2401,6 +2605,16 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
               🚩 <strong>Warning:</strong> You are reverting a clinical status change. This action is audited and will appear in the patient's Forensic Pulse.
             </Typography>
           </Box>
+
+          {TERMINAL_STATUSES.has(selectedRow?.status) && (
+            <Box sx={{ p: 1.5, bgcolor: '#FFEBEE', border: '1px solid #D32F2F', borderRadius: 0, mb: 3 }}>
+              <Typography variant="body2" sx={{ fontWeight: 900, color: '#D32F2F', lineHeight: 1.5 }}>
+                TERMINAL REVERSAL: You are undoing a completed/cancelled/no-show resolution.
+                If a medical record or sale was created during this visit, those records will NOT
+                be automatically removed. Manual cleanup may be required.
+              </Typography>
+            </Box>
+          )}
 
           <Typography variant="overline" sx={{ fontWeight: '1000', color: '#E65100', display: 'block', mb: 1, fontSize: '0.65rem', letterSpacing: 1 }}>
               ✍️ MANDATORY REVERSION JUSTIFICATION

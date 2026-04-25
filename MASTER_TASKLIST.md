@@ -120,7 +120,7 @@
 | T2.213 | Preserve existing `role` on edit — don't overwrite. Only set `role: formData.accessLevel` on create. 3-line fix. | 5 min | — | DONE | Editing vet overwrites role, removes from Queue |
 | T2.214 | Fix workload query: add `on-hold`, `dispensing`, `billing` to status filter. | 5 min | — | DONE | Staff with dispensing patients show "Available" |
 | T2.215 | Fix Queue.jsx vet filter: exclude `'disabled'` accessLevel. Use allowlist instead of truthy check. | 5 min | — | DONE | **Review fix:** simplified to accessLevel allowlist only, removed redundant role checks |
-| T3.10a | View in Records quick link on queue row | 30 min | — | TODO | |
+| T3.10a | View in Records quick link on queue row | 30 min | — | DONE | |
 
 ### P2 — Medium Priority
 
@@ -338,10 +338,10 @@
 | T3.5 | Real RA 10173 informed consent system | P2 | 8-12 days | — | TODO | |
 | T3.6 | Cloud Function LLM gateway | P3 | 2-3 days | Blaze | TODO | |
 | T3.8 | Clinic-wide forensic reporting dashboard | P1 | 3-4 days | — | TODO | |
-| T3.9 | Admin-only revert from terminal states | P2 | 1 hr | — | TODO | |
-| T3.10b | Recently Resolved panel with undo | P2 | 2-3 hrs | — | TODO | |
+| T3.9 | Admin-only revert from terminal states | P2 | 1 hr | — | DONE | |
+| T3.10b | Recently Resolved panel with undo | P2 | 2-3 hrs | — | DONE | |
 | T3.10c | Show resolved today toggle | P3 | 1 hr | — | TODO | |
-| T3.10d | Global patient search in Queue | P2 | 1-2 hrs | — | TODO | |
+| T3.10d | Global patient search in Queue | P2 | 1-2 hrs | — | DONE | |
 | T3.11 | RA 10173 right-to-erasure anonymization | P2 | 4 hrs | — | TODO | |
 | T3.12 | Multi-Pet Visit Support (full UI) | P2 | 15-20 hrs | T2.78 | TODO | 11 sub-tasks |
 | T3.13 | Partial refund with line-item selection | P3 | 6-8 hrs | T2.104 | TODO | |
@@ -974,9 +974,9 @@
 
 | ID | Name | Priority | Effort | Status |
 |---|---|---|---|---|
-| T3.51 | Move VACCINE_CATALOG to Firestore with Settings UI | P2 | 2 hrs | TODO |
-| T3.52 | Printable vaccination passport/certificate | P2 | 4 hrs | TODO |
-| T3.53 | Overdue vaccine alert on ClientDashboard + check-in banner | P2 | 1.5 hrs | TODO |
+| T3.51 | Move VACCINE_CATALOG to Firestore with Settings UI | P2 | 2 hrs | DONE |
+| T3.52 | Printable vaccination passport/certificate | P2 | 4 hrs | DONE |
+| T3.53 | Overdue vaccine alert on ClientDashboard + check-in banner | P2 | 1.5 hrs | DONE |
 | T3.54 | Vaccine protocol engine (puppy/kitten multi-dose series) | P3 | 3 days | TODO |
 | T3.55 | Vaccine reminder push notifications (Blaze-dependent) | P3 | 2 hrs | TODO |
 | T3.56 | Batch recall query tool | P3 | 1.5 hrs | TODO |

@@ -25,6 +25,7 @@ import {
   View
 } from "react-native";
 import { auth, db } from "../../firebaseConfig";
+import { COLORS } from '../theme/mobileTokens';
 
 export default function MyPetsScreen({ navigation }) {
   const [pets, setPets] = useState([]);
@@ -239,8 +240,8 @@ export default function MyPetsScreen({ navigation }) {
   const renderPetCard = ({ item }) => {
     const healthStatusKey = getHealthStatus(item);
     const healthColor =
-      healthStatusKey === "Overdue" ? "#D32F2F" :
-      healthStatusKey === "Needs Checkup" ? "#F57C00" : "#2E7D32";
+      healthStatusKey === "Overdue" ? COLORS.danger :
+      healthStatusKey === "Needs Checkup" ? COLORS.warning : COLORS.success;
     const healthStatus =
       healthStatusKey === "Overdue" ? "Overdue for Annual Exam" :
       healthStatusKey === "Needs Checkup" ? "Needs Initial Checkup" : "Up to Date";
@@ -265,17 +266,17 @@ export default function MyPetsScreen({ navigation }) {
           <View style={styles.actionRow}>
             <Pressable
               style={styles.iconBtn}
-              android_ripple={{ color: "#ccc", borderless: true }}
+              android_ripple={{ color: COLORS.borderLight, borderless: true }}
               onPress={() => navigation.navigate("EditPet", { pet: item })}
             >
-              <MaterialIcons name="edit" size={20} color="#5D4037" />
+              <MaterialIcons name="edit" size={20} color={COLORS.accent} />
             </Pressable>
             <Pressable
               style={styles.iconBtn}
               android_ripple={{ color: "#FFCDD2", borderless: true }}
               onPress={() => handleDelete(item.id, item.name)}
             >
-              <MaterialIcons name="delete-outline" size={20} color="#D32F2F" />
+              <MaterialIcons name="delete-outline" size={20} color={COLORS.danger} />
             </Pressable>
           </View>
         </View>
@@ -322,7 +323,7 @@ export default function MyPetsScreen({ navigation }) {
             <Text
               style={[
                 styles.demoValue,
-                { color: item.isNeutered ? "#2E7D32" : "#8B4513" },
+                { color: item.isNeutered ? COLORS.success : COLORS.accent },
               ]}
             >
               {item.isNeutered ? "Desexed" : "Intact"}
@@ -351,7 +352,7 @@ export default function MyPetsScreen({ navigation }) {
 
         {item.microchipId && (
           <View style={styles.microchipBadge}>
-            <MaterialIcons name="nfc" size={14} color="#1565C0" />
+            <MaterialIcons name="nfc" size={14} color={COLORS.info} />
             <Text style={styles.microchipText}>CHIP: {item.microchipId}</Text>
           </View>
         )}
@@ -360,8 +361,8 @@ export default function MyPetsScreen({ navigation }) {
           const vaxStatus = getVaccineStatus(item);
           if (!vaxStatus) return null;
           const vaxColor =
-            vaxStatus === "Overdue" ? "#D32F2F" :
-            vaxStatus === "Due Soon" ? "#F57C00" : "#2E7D32";
+            vaxStatus === "Overdue" ? COLORS.danger :
+            vaxStatus === "Due Soon" ? COLORS.warning : COLORS.success;
           const vaxIcon =
             vaxStatus === "Overdue" ? "warning-amber" :
             vaxStatus === "Due Soon" ? "schedule" : "verified";
@@ -383,7 +384,7 @@ export default function MyPetsScreen({ navigation }) {
               navigation.navigate("BookAppointment", { prefillPetId: item.id })
             }
           >
-            <MaterialIcons name="calendar-today" size={20} color="#FFF" />
+            <MaterialIcons name="calendar-today" size={20} color={COLORS.white} />
             <Text style={styles.bookBtnText}>Book Visit</Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -395,7 +396,7 @@ export default function MyPetsScreen({ navigation }) {
               })
             }
           >
-            <MaterialIcons name="assessment" size={20} color="#1565C0" />
+            <MaterialIcons name="assessment" size={20} color={COLORS.info} />
             <Text style={styles.chartBtnText}>View Chart</Text>
           </TouchableOpacity>
         </View>
@@ -410,13 +411,13 @@ export default function MyPetsScreen({ navigation }) {
           <MaterialIcons
             name="search"
             size={22}
-            color="#888"
+            color={COLORS.textMuted}
             style={{ marginLeft: 15 }}
           />
           <TextInput
             style={styles.searchInput}
             placeholder="Search name or breed..."
-            placeholderTextColor="#888"
+            placeholderTextColor={COLORS.textMuted}
             value={searchText}
             onChangeText={setSearchText}
           />
@@ -523,7 +524,7 @@ export default function MyPetsScreen({ navigation }) {
                 sortOrder === "age" ? "cake" : "event"
               }
               size={18}
-              color="#5D4037"
+              color={COLORS.accent}
             />
             <Text style={styles.sortBtnText}>
               {sortOrder === "az" ? " A-Z" :
@@ -537,7 +538,7 @@ export default function MyPetsScreen({ navigation }) {
       {loading ? (
         <ActivityIndicator
           size="large"
-          color="#8B4513"
+          color={COLORS.accent}
           style={{ marginTop: 50 }}
         />
       ) : (
@@ -576,10 +577,10 @@ export default function MyPetsScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FFF8E1" },
+  container: { flex: 1, backgroundColor: COLORS.cream },
 
   controlBar: {
-    backgroundColor: "white",
+    backgroundColor: COLORS.white,
     padding: 15,
     paddingTop: 15,
     borderBottomWidth: 1,
@@ -604,7 +605,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 12,
     fontSize: 16,
-    color: "#333",
+    color: COLORS.textPrimary,
     fontWeight: "600",
   },
   filterRow: {
@@ -623,16 +624,16 @@ const styles = StyleSheet.create({
     borderColor: "#EEEEEE",
   },
   chipActive: {
-    backgroundColor: "#5D4037",
-    borderColor: "#5D4037",
+    backgroundColor: COLORS.accent,
+    borderColor: COLORS.accent,
     elevation: 2,
   },
-  chipText: { color: "#757575", fontWeight: "900", fontSize: 13 },
-  chipTextActive: { color: "white" },
+  chipText: { color: COLORS.muted, fontWeight: "900", fontSize: 13 },
+  chipTextActive: { color: COLORS.white },
   chipDivider: {
     width: 1,
     height: 24,
-    backgroundColor: "#D7CCC8",
+    backgroundColor: COLORS.borderLight,
     marginHorizontal: 8,
     alignSelf: "center",
   },
@@ -644,10 +645,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#EFEBE9",
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#D7CCC8",
+    borderColor: COLORS.borderLight,
   },
   sortBtnText: {
-    color: "#5D4037",
+    color: COLORS.accent,
     fontWeight: "900",
     fontSize: 13,
     marginLeft: 4,
@@ -685,12 +686,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 15,
     borderWidth: 2,
-    borderColor: "#D7CCC8",
+    borderColor: COLORS.borderLight,
     elevation: 2,
   },
   avatarEmoji: { fontSize: 28 },
-  petName: { fontSize: 24, fontWeight: "900", color: "#3E2723" },
-  petBreed: { fontSize: 14, color: "#888", fontWeight: "600" },
+  petName: { fontSize: 24, fontWeight: "900", color: COLORS.brand },
+  petBreed: { fontSize: 14, color: COLORS.textMuted, fontWeight: "600" },
 
   actionRow: { flexDirection: "row", gap: 10 },
   iconBtn: {
@@ -729,18 +730,18 @@ const styles = StyleSheet.create({
   demoItem: { flex: 1 },
   demoLabel: {
     fontSize: 11,
-    color: "#aaa",
+    color: COLORS.muted,
     fontWeight: "900",
     marginBottom: 4,
     letterSpacing: 0.5,
     textTransform: "uppercase",
   },
-  demoValue: { fontSize: 13, color: "#333", fontWeight: "900" },
+  demoValue: { fontSize: 13, color: COLORS.textPrimary, fontWeight: "900" },
 
   alertBox: { flexDirection: "row", paddingHorizontal: 18, paddingBottom: 18 },
-  alertLabel: { fontSize: 12, color: "#888", fontWeight: "900" },
-  alertValue: { fontSize: 12, color: "#333", fontWeight: "800" },
-  alertRed: { color: "#D32F2F" },
+  alertLabel: { fontSize: 12, color: COLORS.textMuted, fontWeight: "900" },
+  alertValue: { fontSize: 12, color: COLORS.textPrimary, fontWeight: "800" },
+  alertRed: { color: COLORS.danger },
 
   microchipBadge: {
     flexDirection: "row",
@@ -751,7 +752,7 @@ const styles = StyleSheet.create({
   },
   microchipText: {
     fontSize: 11,
-    color: "#1565C0",
+    color: COLORS.info,
     fontWeight: "800",
     letterSpacing: 0.5,
   },
@@ -783,17 +784,17 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   bookBtn: {
-    backgroundColor: "#3ABEF9",
+    backgroundColor: COLORS.sky,
     borderWidth: 1,
     borderColor: "#0288D1",
   },
-  bookBtnText: { color: "#FFF", fontWeight: "900", fontSize: 15 },
+  bookBtnText: { color: COLORS.white, fontWeight: "900", fontSize: 15 },
   chartBtn: {
     backgroundColor: "#E3F2FD",
     borderWidth: 1,
     borderColor: "#90CAF9",
   },
-  chartBtnText: { color: "#1565C0", fontWeight: "900", fontSize: 15 },
+  chartBtnText: { color: COLORS.info, fontWeight: "900", fontSize: 15 },
 
   emptyContainer: {
     alignItems: "center",
@@ -802,12 +803,12 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     textAlign: "center",
-    color: "#5D4037",
+    color: COLORS.accent,
     fontSize: 20,
     fontWeight: "900",
   },
   emptySub: {
-    color: "#888",
+    color: COLORS.textMuted,
     marginTop: 10,
     textAlign: "center",
     lineHeight: 22,
@@ -819,17 +820,17 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 30,
     right: 20,
-    backgroundColor: "#8B4513",
+    backgroundColor: COLORS.accent,
     paddingVertical: 18,
     paddingHorizontal: 25,
     borderRadius: 30,
     elevation: 8,
-    shadowColor: "#8B4513",
+    shadowColor: COLORS.accent,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4,
     shadowRadius: 5,
     flexDirection: "row",
     alignItems: "center",
   },
-  fabText: { color: "white", fontWeight: "900", fontSize: 16, marginLeft: 8 },
+  fabText: { color: COLORS.white, fontWeight: "900", fontSize: 16, marginLeft: 8 },
 });

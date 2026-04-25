@@ -22,6 +22,7 @@ import {
   View,
 } from "react-native";
 import { auth, db } from "../../firebaseConfig";
+import { COLORS } from '../theme/mobileTokens';
 
 // THE FIX: Notice we added `route` to the props to catch the secret flag!
 export default function UserProfileScreen({ navigation, route }) {
@@ -296,7 +297,7 @@ export default function UserProfileScreen({ navigation, route }) {
     return (
       <ActivityIndicator
         size="large"
-        color="#8B4513"
+        color={COLORS.accent}
         style={{ marginTop: 50 }}
       />
     );
@@ -325,7 +326,7 @@ export default function UserProfileScreen({ navigation, route }) {
 
           {isBookingRedirect && (
             <View style={styles.warningBanner}>
-              <MaterialIcons name="error-outline" size={24} color="#D32F2F" />
+              <MaterialIcons name="error-outline" size={24} color={COLORS.danger} />
               <Text style={styles.warningText}>
                 Please complete the highlighted fields below to continue booking
                 your appointment.
@@ -339,7 +340,7 @@ export default function UserProfileScreen({ navigation, route }) {
               <MaterialIcons
                 name={collapsedSections.personal ? "expand-more" : "expand-less"}
                 size={24}
-                color="#8D6E63"
+                color={COLORS.accentLight}
               />
             </View>
           </TouchableOpacity>
@@ -389,7 +390,7 @@ export default function UserProfileScreen({ navigation, route }) {
                 style={styles.dateBtn}
                 onPress={() => setShowDatePicker(true)}
               >
-                <Text style={[styles.dateBtnText, !dob && { color: "#aaa" }]}>
+                <Text style={[styles.dateBtnText, !dob && { color: COLORS.muted }]}>
                   {dob ? dob.toLocaleDateString() : "Tap to select date"}
                 </Text>
               </TouchableOpacity>
@@ -414,7 +415,7 @@ export default function UserProfileScreen({ navigation, route }) {
               <MaterialIcons
                 name={collapsedSections.address ? "expand-more" : "expand-less"}
                 size={24}
-                color="#8D6E63"
+                color={COLORS.accentLight}
               />
             </View>
           </TouchableOpacity>
@@ -445,7 +446,7 @@ export default function UserProfileScreen({ navigation, route }) {
               <MaterialIcons
                 name={collapsedSections.emergency ? "expand-more" : "expand-less"}
                 size={24}
-                color="#8D6E63"
+                color={COLORS.accentLight}
               />
             </View>
           </TouchableOpacity>
@@ -465,7 +466,7 @@ export default function UserProfileScreen({ navigation, route }) {
                     <TouchableOpacity
                       onPress={() => removeEmergencyContact(index)}
                     >
-                      <MaterialIcons name="cancel" size={22} color="#D32F2F" />
+                      <MaterialIcons name="cancel" size={22} color={COLORS.danger} />
                     </TouchableOpacity>
                   </View>
                 )}
@@ -526,7 +527,7 @@ export default function UserProfileScreen({ navigation, route }) {
               <MaterialIcons
                 name="add-circle-outline"
                 size={20}
-                color="#1565C0"
+                color={COLORS.info}
               />
               <Text style={styles.addContactText}>Add Another Contact</Text>
             </TouchableOpacity>
@@ -594,7 +595,7 @@ export default function UserProfileScreen({ navigation, route }) {
               <MaterialIcons
                 name={collapsedSections.legal ? "expand-more" : "expand-less"}
                 size={24}
-                color="#8D6E63"
+                color={COLORS.accentLight}
               />
             </View>
           </TouchableOpacity>
@@ -607,13 +608,13 @@ export default function UserProfileScreen({ navigation, route }) {
               <MaterialIcons
                 name={dpaConsent ? "check-box" : "check-box-outline-blank"}
                 size={24}
-                color={dpaConsent ? "#2E7D32" : "#D32F2F"}
+                color={dpaConsent ? COLORS.success : COLORS.danger}
               />
               <View style={{ flex: 1, marginLeft: 10 }}>
                 <Text
                   style={[
                     styles.checkboxTitle,
-                    !dpaConsent && { color: "#D32F2F" },
+                    !dpaConsent && { color: COLORS.danger },
                   ]}
                 >
                   Data Privacy Consent *
@@ -634,7 +635,7 @@ export default function UserProfileScreen({ navigation, route }) {
               <MaterialIcons
                 name={waiverSigned ? "check-box" : "check-box-outline-blank"}
                 size={24}
-                color={waiverSigned ? "#2E7D32" : "#757575"}
+                color={waiverSigned ? COLORS.success : COLORS.muted}
               />
               <View style={{ flex: 1, marginLeft: 10 }}>
                 <Text style={styles.checkboxTitle}>Liability Waiver</Text>
@@ -655,7 +656,7 @@ export default function UserProfileScreen({ navigation, route }) {
               <MaterialIcons
                 name={allowPromos ? "check-box" : "check-box-outline-blank"}
                 size={24}
-                color={allowPromos ? "#8B4513" : "#757575"}
+                color={allowPromos ? COLORS.accent : COLORS.muted}
               />
               <View style={{ flex: 1, marginLeft: 10 }}>
                 <Text style={styles.checkboxTitle}>Promotional Updates</Text>
@@ -730,7 +731,7 @@ export default function UserProfileScreen({ navigation, route }) {
                   <MaterialIcons
                     name={whatsappOptIn ? "check-box" : "check-box-outline-blank"}
                     size={24}
-                    color={whatsappOptIn ? "#2E7D32" : "#757575"}
+                    color={whatsappOptIn ? COLORS.success : COLORS.muted}
                   />
                   <View style={{ flex: 1, marginLeft: 10 }}>
                     <Text style={styles.checkboxTitle}>WhatsApp Notifications</Text>
@@ -799,7 +800,7 @@ export default function UserProfileScreen({ navigation, route }) {
           <TouchableOpacity
             style={[
               styles.saveBtn,
-              (!dpaConsent || saving) && { backgroundColor: "#aaa" },
+              (!dpaConsent || saving) && { backgroundColor: COLORS.muted },
             ]}
             onPress={handleUpdate}
             disabled={saving || !dpaConsent}
@@ -829,16 +830,16 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: "#5D4037",
+    backgroundColor: COLORS.accent,
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 10,
     elevation: 4,
   },
-  avatarText: { color: "white", fontSize: 36, fontWeight: "900" },
+  avatarText: { color: COLORS.white, fontSize: 36, fontWeight: "900" },
   emailText: {
     fontSize: 16,
-    color: "#555",
+    color: COLORS.textSecondary,
     marginBottom: 5,
     fontWeight: "bold",
   },
@@ -848,10 +849,10 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 15,
     borderWidth: 1,
-    borderColor: "#D7CCC8",
+    borderColor: COLORS.borderLight,
   },
   roleText: {
-    color: "#5D4037",
+    color: COLORS.accent,
     fontWeight: "900",
     fontSize: 11,
     textTransform: "uppercase",
@@ -863,19 +864,19 @@ const styles = StyleSheet.create({
     padding: 15,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: "#D32F2F",
+    borderColor: COLORS.danger,
     alignItems: "center",
     marginBottom: 20,
   },
   warningText: {
     flex: 1,
     marginLeft: 10,
-    color: "#D32F2F",
+    color: COLORS.danger,
     fontWeight: "bold",
     fontSize: 13,
   },
   missingFieldHighlight: {
-    borderColor: "#D32F2F",
+    borderColor: COLORS.danger,
     borderWidth: 2,
     backgroundColor: "#FFEBEE",
   },
@@ -883,7 +884,7 @@ const styles = StyleSheet.create({
   sectionHeader: {
     fontSize: 15,
     fontWeight: "900",
-    color: "#8D6E63",
+    color: COLORS.accentLight,
     marginBottom: 8,
     marginLeft: 5,
     marginTop: 10,
@@ -898,7 +899,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 5,
   },
   card: {
-    backgroundColor: "white",
+    backgroundColor: COLORS.white,
     padding: 20,
     borderRadius: 16,
     marginBottom: 20,
@@ -910,7 +911,7 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 13,
     fontWeight: "800",
-    color: "#5D4037",
+    color: COLORS.accent,
     marginBottom: 6,
     marginTop: 5,
   },
@@ -922,11 +923,11 @@ const styles = StyleSheet.create({
     padding: 15,
     fontSize: 16,
     marginBottom: 15,
-    color: "#333",
+    color: COLORS.textPrimary,
   },
   helperText: {
     fontSize: 11,
-    color: "#888",
+    color: COLORS.textMuted,
     fontStyle: "italic",
     marginTop: -8,
     marginBottom: 10,
@@ -941,7 +942,7 @@ const styles = StyleSheet.create({
     padding: 15,
     marginBottom: 15,
   },
-  dateBtnText: { fontSize: 16, color: "#333", fontWeight: "500" },
+  dateBtnText: { fontSize: 16, color: COLORS.textPrimary, fontWeight: "500" },
 
   extraContactBox: {
     marginTop: 10,
@@ -955,7 +956,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 10,
   },
-  contactTitle: { fontSize: 13, fontWeight: "bold", color: "#1565C0" },
+  contactTitle: { fontSize: 13, fontWeight: "bold", color: COLORS.info },
   addContactBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -965,7 +966,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginTop: 5,
   },
-  addContactText: { color: "#1565C0", fontWeight: "bold", marginLeft: 5 },
+  addContactText: { color: COLORS.info, fontWeight: "bold", marginLeft: 5 },
 
   divider: { height: 1, backgroundColor: "#EEEEEE", marginVertical: 15 },
 
@@ -977,40 +978,40 @@ const styles = StyleSheet.create({
   checkboxTitle: {
     fontSize: 14,
     fontWeight: "bold",
-    color: "#333",
+    color: COLORS.textPrimary,
     marginBottom: 3,
   },
-  checkboxDesc: { fontSize: 12, color: "#666", lineHeight: 18 },
+  checkboxDesc: { fontSize: 12, color: COLORS.textMuted, lineHeight: 18 },
 
   toggleGroup: {
     flexDirection: "row",
     borderRadius: 10,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "#8B4513",
+    borderColor: COLORS.accent,
   },
   toggleBtn: {
     flex: 1,
     padding: 12,
     alignItems: "center",
-    backgroundColor: "#FFF",
+    backgroundColor: COLORS.white,
   },
-  activeToggle: { backgroundColor: "#8B4513" },
-  toggleText: { color: "#8B4513", fontWeight: "bold", fontSize: 13 },
-  activeText: { color: "white" },
+  activeToggle: { backgroundColor: COLORS.accent },
+  toggleText: { color: COLORS.accent, fontWeight: "bold", fontSize: 13 },
+  activeText: { color: COLORS.white },
 
   saveBtn: {
-    backgroundColor: "#2E7D32",
+    backgroundColor: COLORS.success,
     padding: 18,
     borderRadius: 14,
     alignItems: "center",
     marginTop: 10,
     elevation: 3,
   },
-  saveBtnText: { color: "white", fontWeight: "900", fontSize: 18 },
+  saveBtnText: { color: COLORS.white, fontWeight: "900", fontSize: 18 },
   deleteBtn: { marginTop: 30, alignItems: "center", padding: 10 },
   deleteBtnText: {
-    color: "#D32F2F",
+    color: COLORS.danger,
     fontWeight: "bold",
     fontSize: 14,
     textDecorationLine: "underline",

@@ -812,13 +812,13 @@
 | ID | Name | Priority | Effort | Status |
 |---|---|---|---|---|
 | T2.434 | Create VetConnect/src/theme/mobileTokens.js | P1 | 30 min | DONE |
-| T2.435 | Convert MyPetsScreen | P2 | 45 min | TODO |
-| T2.436 | Convert UserProfileScreen | P2 | 45 min | TODO |
-| T2.437 | Convert ChatbotScreen | P2 | 30 min | TODO |
-| T2.438 | Convert QueueScreen | P2 | 30 min | TODO |
-| T2.439 | Convert ClientAppointments | P2 | 45 min | TODO |
-| T2.440 | Convert PetHistoryScreen | P2 | 45 min | TODO |
-| T2.441 | Convert SuperCard | P2 | 20 min | TODO |
+| T2.435 | Convert MyPetsScreen | P2 | 45 min | DONE |
+| T2.436 | Convert UserProfileScreen | P2 | 45 min | DONE |
+| T2.437 | Convert ChatbotScreen | P2 | 30 min | DONE |
+| T2.438 | Convert QueueScreen | P2 | 30 min | DONE |
+| T2.439 | Convert ClientAppointments | P2 | 45 min | DONE |
+| T2.440 | Convert PetHistoryScreen | P2 | 45 min | DONE |
+| T2.441 | Convert SuperCard | P2 | 20 min | DONE |
 
 #### Admin Design Sweep
 

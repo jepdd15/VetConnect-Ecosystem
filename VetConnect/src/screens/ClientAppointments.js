@@ -40,6 +40,7 @@ import {
 import SuperCard from "../components/SuperCard";
 import { useClinicContact } from "../hooks/useClinicContact";
 import { formatFirestoreTime, formatDisplayDate, getLocalDateStr } from '../utils/helpers';
+import { COLORS } from '../theme/mobileTokens';
 
 const ICONS = {
   Consultation: "🩺",
@@ -548,7 +549,7 @@ const ClientAppointments = ({ navigation }) => {
                     {
                       backgroundColor: "#FFEBEE",
                       borderWidth: 1,
-                      borderColor: "#D32F2F",
+                      borderColor: COLORS.danger,
                       marginRight: "auto",
                     },
                   ]}
@@ -556,7 +557,7 @@ const ClientAppointments = ({ navigation }) => {
                     handleCancelAppointment(item.id, item.serviceType || item.primaryService)
                   }
                 >
-                  <Text style={[styles.btnText, { color: "#D32F2F" }]}>
+                  <Text style={[styles.btnText, { color: COLORS.danger }]}>
                     ❌ Cancel
                   </Text>
                 </TouchableOpacity>
@@ -579,7 +580,7 @@ const ClientAppointments = ({ navigation }) => {
                 style={[styles.btn, styles.receiptBtn]}
                 onPress={() => handleShowReceipt(item)}
               >
-                <Text style={[styles.btnText, { color: "#5D4037" }]}>
+                <Text style={[styles.btnText, { color: COLORS.accent }]}>
                   🧾 E-Receipt
                 </Text>
               </TouchableOpacity>
@@ -587,7 +588,7 @@ const ClientAppointments = ({ navigation }) => {
                 style={[styles.btn, styles.rebookBtn]}
                 onPress={() => handleRebook(item)}
               >
-                <Text style={[styles.btnText, { color: "#5D4037" }]}>
+                <Text style={[styles.btnText, { color: COLORS.accent }]}>
                   🔄 Re-Book
                 </Text>
               </TouchableOpacity>
@@ -600,7 +601,7 @@ const ClientAppointments = ({ navigation }) => {
               style={[styles.btn, styles.rebookBtn]}
               onPress={() => handleRebook(item)}
             >
-              <Text style={[styles.btnText, { color: "#5D4037" }]}>
+              <Text style={[styles.btnText, { color: COLORS.accent }]}>
                 🔄 Re-Book
               </Text>
             </TouchableOpacity>
@@ -714,7 +715,7 @@ const ClientAppointments = ({ navigation }) => {
       {loading ? (
         <ActivityIndicator
           size="large"
-          color="#8B4513"
+          color={COLORS.accent}
           style={{ marginTop: 50 }}
         />
       ) : (
@@ -747,7 +748,7 @@ const ClientAppointments = ({ navigation }) => {
                   setSelectedServiceFilter("All Services");
                 }}
               >
-                <Text style={{ color: "#8B4513", fontWeight: "bold" }}>
+                <Text style={{ color: COLORS.accent, fontWeight: "bold" }}>
                   Clear Filters
                 </Text>
               </TouchableOpacity>
@@ -781,7 +782,7 @@ const ClientAppointments = ({ navigation }) => {
             <View style={styles.divider} />
 
             {loadingReceipt ? (
-              <ActivityIndicator color="#8B4513" style={{ marginVertical: 20 }} />
+              <ActivityIndicator color={COLORS.accent} style={{ marginVertical: 20 }} />
             ) : (
               <ScrollView style={{ width: "100%", maxHeight: 300 }}>
                 {receiptData?.items?.map((item, i) => (
@@ -801,7 +802,7 @@ const ClientAppointments = ({ navigation }) => {
                   <Text
                     style={{
                       fontSize: 10,
-                      color: "#aaa",
+                      color: COLORS.muted,
                       fontStyle: "italic",
                       textAlign: "center",
                       marginTop: 10,
@@ -842,7 +843,7 @@ const ClientAppointments = ({ navigation }) => {
 
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: "#FFF8E1" },
+  container: { flex: 1, padding: 20, backgroundColor: COLORS.cream },
 
   tabContainer: {
     flexDirection: "row",
@@ -852,9 +853,9 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   tab: { flex: 1, paddingVertical: 10, alignItems: "center", borderRadius: 8 },
-  activeTab: { backgroundColor: "white", elevation: 2 },
-  tabText: { fontWeight: "bold", color: "#8D6E63" },
-  activeTabText: { color: "#5D4037" },
+  activeTab: { backgroundColor: COLORS.white, elevation: 2 },
+  tabText: { fontWeight: "bold", color: COLORS.accentLight },
+  activeTabText: { color: COLORS.accent },
 
   filterSection: { marginBottom: 15 },
   chipRow: { flexDirection: "row", marginBottom: 8 },
@@ -865,14 +866,14 @@ const styles = StyleSheet.create({
     backgroundColor: "#EFEBE9",
     marginRight: 10,
     borderWidth: 1,
-    borderColor: "#D7CCC8",
+    borderColor: COLORS.borderLight,
   },
-  activeFilterChip: { backgroundColor: "#8B4513", borderColor: "#8B4513" },
-  filterText: { color: "#5D4037", fontWeight: "600", fontSize: 13 },
-  activeFilterText: { color: "white" },
+  activeFilterChip: { backgroundColor: COLORS.accent, borderColor: COLORS.accent },
+  filterText: { color: COLORS.accent, fontWeight: "600", fontSize: 13 },
+  activeFilterText: { color: COLORS.white },
 
   card: {
-    backgroundColor: "white",
+    backgroundColor: COLORS.white,
     padding: 15,
     borderRadius: 12,
     marginBottom: 15,
@@ -887,11 +888,11 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   divider: { height: 1, backgroundColor: "#eee", marginVertical: 10 },
-  service: { fontSize: 16, fontWeight: "bold", color: "#5D4037" },
-  pet: { fontSize: 14, color: "#555" },
+  service: { fontSize: 16, fontWeight: "bold", color: COLORS.accent },
+  pet: { fontSize: 14, color: COLORS.textSecondary },
   price: {
     fontWeight: "bold",
-    color: "#8B4513",
+    color: COLORS.accent,
     fontSize: 12,
     marginTop: 2,
     textAlign: "right",
@@ -904,7 +905,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     overflow: "hidden",
   },
-  date: { fontSize: 13, color: "#666" },
+  date: { fontSize: 13, color: COLORS.textMuted },
 
   actionRow: {
     flexDirection: "row",
@@ -914,16 +915,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   btn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },
-  qrBtn: { backgroundColor: "#3E2723" },
+  qrBtn: { backgroundColor: COLORS.brand },
   receiptBtn: {
     backgroundColor: "#EFEBE9",
     borderWidth: 1,
     borderColor: "#ccc",
   },
-  rebookBtn: { borderWidth: 1, borderColor: "#5D4037" },
-  btnText: { color: "white", fontWeight: "bold", fontSize: 12 },
+  rebookBtn: { borderWidth: 1, borderColor: COLORS.accent },
+  btnText: { color: COLORS.white, fontWeight: "bold", fontSize: 12 },
   reasonText: {
-    color: "#D32F2F",
+    color: COLORS.danger,
     fontStyle: "italic",
     fontSize: 12,
     marginTop: 5,
@@ -936,7 +937,7 @@ const styles = StyleSheet.create({
   empty: {
     textAlign: "center",
     marginTop: 10,
-    color: "#888",
+    color: COLORS.textMuted,
     fontSize: 16,
     paddingHorizontal: 20,
   },
@@ -958,7 +959,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "bold",
     marginBottom: 20,
-    color: "#5D4037",
+    color: COLORS.accent,
   },
 
   receiptContent: {
@@ -973,13 +974,13 @@ const styles = StyleSheet.create({
   receiptHeader: {
     fontSize: 22,
     fontWeight: "bold",
-    color: "#333",
+    color: COLORS.textPrimary,
     textAlign: "center",
     letterSpacing: 1,
   },
   receiptSub: {
     fontSize: 12,
-    color: "#888",
+    color: COLORS.textMuted,
     textAlign: "center",
     marginBottom: 10,
   },
@@ -988,9 +989,9 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 12,
   },
-  receiptItemName: { fontSize: 14, fontWeight: "bold", color: "#333" },
-  receiptItemQty: { fontSize: 12, color: "#777" },
-  receiptItemTotal: { fontSize: 14, fontWeight: "bold", color: "#333" },
+  receiptItemName: { fontSize: 14, fontWeight: "bold", color: COLORS.textPrimary },
+  receiptItemQty: { fontSize: 12, color: COLORS.textMuted },
+  receiptItemTotal: { fontSize: 14, fontWeight: "bold", color: COLORS.textPrimary },
   receiptRefundRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1004,23 +1005,23 @@ const styles = StyleSheet.create({
   receiptRefundLabel: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#D32F2F',
+    color: COLORS.danger,
   },
   receiptRefundValue: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#D32F2F',
+    color: COLORS.danger,
   },
   receiptTotalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginTop: 5,
   },
-  receiptTotalLabel: { fontSize: 18, fontWeight: "bold", color: "#333" },
-  receiptTotalValue: { fontSize: 20, fontWeight: "bold", color: "#2E7D32" },
+  receiptTotalLabel: { fontSize: 18, fontWeight: "bold", color: COLORS.textPrimary },
+  receiptTotalValue: { fontSize: 20, fontWeight: "bold", color: COLORS.success },
 
   closeBtn: { marginTop: 20, padding: 10, alignSelf: "center" },
-  closeText: { color: "#D32F2F", fontWeight: "bold", fontSize: 16 },
+  closeText: { color: COLORS.danger, fontWeight: "bold", fontSize: 16 },
 
   // --- Follow-up ghost card (B5) ---
   followUpCard: {
@@ -1030,7 +1031,7 @@ const styles = StyleSheet.create({
     padding: 15,
     marginBottom: 15,
     elevation: 4,
-    shadowColor: '#E65100',
+    shadowColor: COLORS.warning,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.15,
     shadowRadius: 6,
@@ -1040,7 +1041,7 @@ const styles = StyleSheet.create({
   },
   followUpAccent: {
     width: 4,
-    backgroundColor: '#E65100',
+    backgroundColor: COLORS.warning,
     marginRight: 12,
     borderRadius: 2,
   },
@@ -1048,24 +1049,24 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '900',
     letterSpacing: 1,
-    color: '#E65100',
+    color: COLORS.warning,
     marginBottom: 6,
   },
   followUpTitle: {
     fontSize: 18,
     fontWeight: '900',
-    color: '#3E2723',
+    color: COLORS.brand,
     marginBottom: 2,
   },
   followUpSubtitle: {
     fontSize: 13,
-    color: '#5D4037',
+    color: COLORS.accent,
     lineHeight: 18,
     marginBottom: 6,
   },
   followUpDate: {
     fontSize: 13,
-    color: '#8B4513',
+    color: COLORS.accent,
     fontWeight: '700',
     marginBottom: 10,
   },
@@ -1080,20 +1081,20 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   followUpBtnPrimary: {
-    backgroundColor: '#E65100',
+    backgroundColor: COLORS.warning,
   },
   followUpBtnPrimaryText: {
-    color: 'white',
+    color: COLORS.white,
     fontWeight: '900',
     fontSize: 13,
   },
   followUpBtnSecondary: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: '#8D6E63',
+    borderColor: COLORS.accentLight,
   },
   followUpBtnSecondaryText: {
-    color: '#5D4037',
+    color: COLORS.accent,
     fontWeight: '700',
     fontSize: 13,
   },

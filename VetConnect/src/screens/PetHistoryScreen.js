@@ -23,6 +23,7 @@ import {
 import { db } from "../../firebaseConfig";
 import { useClinicContact } from "../hooks/useClinicContact";
 import { safeDate, formatDisplayDate } from "../utils/helpers";
+import { COLORS } from '../theme/mobileTokens';
 
 export default function PetHistoryScreen({ route, navigation }) {
   const { petId, petName } = route.params;
@@ -148,7 +149,7 @@ export default function PetHistoryScreen({ route, navigation }) {
       item.serviceType?.toLowerCase().includes("grooming");
 
     // Semantic Theme Colors
-    const themeColor = isGrooming ? "#9C27B0" : "#1565C0";
+    const themeColor = isGrooming ? "#9C27B0" : COLORS.info;
     const themeBg = isGrooming ? "#F3E5F5" : "#E3F2FD";
 
     const coerceVital = (v) => {
@@ -182,7 +183,7 @@ export default function PetHistoryScreen({ route, navigation }) {
               <Text style={styles.serviceText}>{item.serviceType}</Text>
             </View>
             <View style={styles.vetBadge}>
-              <MaterialIcons name="person" size={14} color="#5D4037" />
+              <MaterialIcons name="person" size={14} color={COLORS.accent} />
               <Text style={styles.vetText}>
                 {item.vetName || "Clinic Staff"}
               </Text>
@@ -448,9 +449,9 @@ export default function PetHistoryScreen({ route, navigation }) {
                 {item.labResults.map((lab, i) => {
                   const statusKey = (lab.status || 'normal').toLowerCase();
                   const statusColor =
-                    statusKey === 'critical' ? '#D32F2F' :
-                    statusKey === 'abnormal' ? '#E65100' :
-                    '#2E7D32';
+                    statusKey === 'critical' ? COLORS.danger :
+                    statusKey === 'abnormal' ? COLORS.warning :
+                    COLORS.success;
                   const statusBg =
                     statusKey === 'critical' ? '#FFEBEE' :
                     statusKey === 'abnormal' ? '#FFF3E0' :
@@ -473,7 +474,7 @@ export default function PetHistoryScreen({ route, navigation }) {
 
           {item.nextVisit && (
             <View style={styles.reminderBanner}>
-              <MaterialIcons name="event" size={16} color="#D32F2F" />
+              <MaterialIcons name="event" size={16} color={COLORS.danger} />
               <Text style={styles.reminderText}>
                 NEXT VISIT DUE:{" "}
                 {safeDate(item.nextVisit, { month: "long", day: "numeric", year: "numeric" }, "an upcoming date")}
@@ -486,7 +487,7 @@ export default function PetHistoryScreen({ route, navigation }) {
               style={styles.pdfBtn}
               onPress={() => generatePDF(item)}
             >
-              <MaterialIcons name="picture-as-pdf" size={18} color="#5D4037" />
+              <MaterialIcons name="picture-as-pdf" size={18} color={COLORS.accent} />
               <Text style={styles.pdfBtnText}>Download Visit Summary</Text>
             </TouchableOpacity>
           </View>
@@ -502,7 +503,7 @@ export default function PetHistoryScreen({ route, navigation }) {
           onPress={() => navigation.goBack()}
           style={styles.backBtn}
         >
-          <MaterialIcons name="arrow-back-ios" size={20} color="#5D4037" />
+          <MaterialIcons name="arrow-back-ios" size={20} color={COLORS.accent} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{petName}&apos;s Chart</Text>
         <View style={{ width: 40 }} /> {/* Spacer for centering */}
@@ -512,7 +513,7 @@ export default function PetHistoryScreen({ route, navigation }) {
         {loading ? (
           <ActivityIndicator
             size="large"
-            color="#8B4513"
+            color={COLORS.accent}
             style={{ marginTop: 50 }}
           />
         ) : (
@@ -539,14 +540,14 @@ export default function PetHistoryScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#FFF8E1" },
+  safeArea: { flex: 1, backgroundColor: COLORS.cream },
   container: { flex: 1, backgroundColor: "#FAFAFA" },
 
   headerBox: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "#FFF8E1",
+    backgroundColor: COLORS.cream,
     paddingVertical: 15,
     paddingHorizontal: 20,
     borderBottomWidth: 1,
@@ -557,7 +558,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "white",
+    backgroundColor: COLORS.white,
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",
@@ -567,7 +568,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   headerTitle: {
-    color: "#3E2723",
+    color: COLORS.brand,
     fontSize: 20,
     fontWeight: "900",
     letterSpacing: 0.5,
@@ -580,7 +581,7 @@ const styles = StyleSheet.create({
     height: 16,
     borderRadius: 8,
     borderWidth: 3,
-    borderColor: "white",
+    borderColor: COLORS.white,
     zIndex: 2,
     marginTop: 15,
     elevation: 2,
@@ -625,7 +626,7 @@ const styles = StyleSheet.create({
   dateText: { fontWeight: "900", fontSize: 16, marginBottom: 2 },
   serviceText: {
     fontSize: 12,
-    color: "#757575",
+    color: COLORS.muted,
     fontWeight: "bold",
     textTransform: "uppercase",
   },
@@ -639,7 +640,7 @@ const styles = StyleSheet.create({
   },
   vetText: {
     fontSize: 12,
-    color: "#5D4037",
+    color: COLORS.accent,
     fontWeight: "bold",
     marginLeft: 4,
   },
@@ -682,11 +683,11 @@ const styles = StyleSheet.create({
   vitalItem: { flex: 1, alignItems: "center" },
   vitalLabel: {
     fontSize: 10,
-    color: "#888",
+    color: COLORS.textMuted,
     fontWeight: "900",
     marginBottom: 4,
   },
-  vitalValue: { fontSize: 15, color: "#333", fontWeight: "800" },
+  vitalValue: { fontSize: 15, color: COLORS.textPrimary, fontWeight: "800" },
 
   planBox: {
     padding: 15,
@@ -700,7 +701,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     letterSpacing: 0.5,
   },
-  planText: { fontSize: 14, color: "#333", lineHeight: 22, fontWeight: "500" },
+  planText: { fontSize: 14, color: COLORS.textPrimary, lineHeight: 22, fontWeight: "500" },
 
   rxBox: {
     backgroundColor: "#FFF3E0",
@@ -713,15 +714,15 @@ const styles = StyleSheet.create({
   rxTitle: {
     fontSize: 12,
     fontWeight: "900",
-    color: "#E65100",
+    color: COLORS.warning,
     marginBottom: 8,
     textTransform: "uppercase",
   },
   rxItem: { marginBottom: 8 },
-  rxName: { fontSize: 15, fontWeight: "800", color: "#3E2723" },
+  rxName: { fontSize: 15, fontWeight: "800", color: COLORS.brand },
   rxSig: {
     fontSize: 13,
-    color: "#555",
+    color: COLORS.textSecondary,
     fontStyle: "italic",
     marginLeft: 10,
     marginTop: 2,
@@ -731,7 +732,7 @@ const styles = StyleSheet.create({
   attachmentTitle: {
     fontSize: 12,
     fontWeight: "900",
-    color: "#1565C0",
+    color: COLORS.info,
     marginBottom: 8,
     textTransform: "uppercase",
   },
@@ -744,7 +745,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#90CAF9",
   },
-  attachmentChipText: { color: "#1565C0", fontSize: 12, fontWeight: "bold" },
+  attachmentChipText: { color: COLORS.info, fontSize: 12, fontWeight: "bold" },
 
   reminderBanner: {
     flexDirection: "row",
@@ -757,26 +758,26 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: "#FFCDD2",
   },
-  reminderText: { color: "#D32F2F", fontWeight: "900", fontSize: 13 },
+  reminderText: { color: COLORS.danger, fontWeight: "900", fontSize: 13 },
 
   cardFooter: { padding: 15, backgroundColor: "#FAFAFA" },
   pdfBtn: {
     flexDirection: "row",
     gap: 8,
-    backgroundColor: "white",
+    backgroundColor: COLORS.white,
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#D7CCC8",
+    borderColor: COLORS.borderLight,
     elevation: 2,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 3,
   },
-  pdfBtnText: { color: "#5D4037", fontWeight: "900", fontSize: 14 },
+  pdfBtnText: { color: COLORS.accent, fontWeight: "900", fontSize: 14 },
 
   emptyContainer: {
     alignItems: "center",
@@ -784,13 +785,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
   },
   emptyText: {
-    color: "#5D4037",
+    color: COLORS.accent,
     fontWeight: "900",
     fontSize: 22,
     textAlign: "center",
   },
   emptySub: {
-    color: "#888",
+    color: COLORS.textMuted,
     fontStyle: "italic",
     fontSize: 15,
     textAlign: "center",
@@ -821,7 +822,7 @@ const styles = StyleSheet.create({
   dischargeHeader: {
     fontSize: 12,
     fontWeight: "900",
-    color: "#2E7D32",
+    color: COLORS.success,
     letterSpacing: 1.2,
   },
   dischargeStatusPill: {
@@ -840,18 +841,18 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     paddingLeft: 10,
     borderLeftWidth: 3,
-    borderLeftColor: "#8B4513",
+    borderLeftColor: COLORS.accent,
   },
   dischargeTldrLabel: {
     fontSize: 10,
     fontWeight: "900",
-    color: "#8B4513",
+    color: COLORS.accent,
     letterSpacing: 1,
     marginBottom: 2,
   },
   dischargeTldrText: {
     fontSize: 15,
-    color: "#3E2723",
+    color: COLORS.brand,
     fontWeight: "600",
     lineHeight: 20,
   },
@@ -861,13 +862,13 @@ const styles = StyleSheet.create({
   dischargeSectionLabel: {
     fontSize: 12,
     fontWeight: "900",
-    color: "#2E7D32",
+    color: COLORS.success,
     marginBottom: 6,
     letterSpacing: 0.5,
   },
   dischargeBullet: {
     fontSize: 14,
-    color: "#3E2723",
+    color: COLORS.brand,
     lineHeight: 20,
     marginLeft: 6,
     marginBottom: 3,
@@ -883,11 +884,11 @@ const styles = StyleSheet.create({
   dischargeMedName: {
     fontSize: 14,
     fontWeight: "800",
-    color: "#3E2723",
+    color: COLORS.brand,
   },
   dischargeMedMeta: {
     fontSize: 12,
-    color: "#666",
+    color: COLORS.textMuted,
     fontStyle: "italic",
     marginTop: 2,
   },
@@ -907,22 +908,22 @@ const styles = StyleSheet.create({
   },
   dischargeNextVisitText: {
     fontSize: 13,
-    color: "#8B4513",
+    color: COLORS.accent,
     flex: 1,
   },
   dischargeNextVisitDate: {
     fontWeight: "900",
-    color: "#E65100",
+    color: COLORS.warning,
   },
   dischargeCallBtn: {
-    backgroundColor: "#8B4513",
+    backgroundColor: COLORS.accent,
     paddingVertical: 12,
     borderRadius: 12,
     alignItems: "center",
     marginBottom: 8,
   },
   dischargeCallBtnText: {
-    color: "white",
+    color: COLORS.white,
     fontWeight: "900",
     fontSize: 14,
     letterSpacing: 0.5,
@@ -937,14 +938,14 @@ const styles = StyleSheet.create({
     borderColor: "#FFCC80",
   },
   dischargeFollowUpBtnText: {
-    color: "#E65100",
+    color: COLORS.warning,
     fontWeight: "900",
     fontSize: 14,
     letterSpacing: 0.5,
   },
   dischargeSignature: {
     fontSize: 11,
-    color: "#888",
+    color: COLORS.textMuted,
     fontStyle: "italic",
     textAlign: "right",
     marginTop: 4,
@@ -954,7 +955,7 @@ const styles = StyleSheet.create({
   vaccineCard: {
     marginTop: 12,
     padding: 14,
-    backgroundColor: "#FFF8E1",
+    backgroundColor: COLORS.cream,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: "#FFE0B2",
@@ -962,14 +963,14 @@ const styles = StyleSheet.create({
   vaccineHeader: {
     fontSize: 11,
     fontWeight: "900",
-    color: "#E65100",
+    color: COLORS.warning,
     letterSpacing: 1.2,
     marginBottom: 6,
   },
   vaccineName: {
     fontSize: 16,
     fontWeight: "900",
-    color: "#3E2723",
+    color: COLORS.brand,
     marginBottom: 10,
   },
   vaccineGrid: {
@@ -989,14 +990,14 @@ const styles = StyleSheet.create({
   },
   vaccineCellLabel: {
     fontSize: 9,
-    color: "#888",
+    color: COLORS.textMuted,
     fontWeight: "900",
     letterSpacing: 0.5,
     marginBottom: 1,
   },
   vaccineCellValue: {
     fontSize: 12,
-    color: "#3E2723",
+    color: COLORS.brand,
     fontWeight: "700",
   },
   vaccineDueBanner: {
@@ -1008,7 +1009,7 @@ const styles = StyleSheet.create({
   },
   vaccineDueText: {
     fontSize: 12,
-    color: "#D32F2F",
+    color: COLORS.danger,
     fontWeight: "800",
     textAlign: "center",
   },
@@ -1025,7 +1026,7 @@ const styles = StyleSheet.create({
   labHeader: {
     fontSize: 11,
     fontWeight: "900",
-    color: "#1565C0",
+    color: COLORS.info,
     letterSpacing: 1.2,
     marginBottom: 10,
   },
@@ -1042,11 +1043,11 @@ const styles = StyleSheet.create({
   labTestName: {
     fontSize: 13,
     fontWeight: "800",
-    color: "#3E2723",
+    color: COLORS.brand,
   },
   labResult: {
     fontSize: 12,
-    color: "#666",
+    color: COLORS.textMuted,
     marginTop: 1,
   },
   labStatusPill: {

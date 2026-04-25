@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { db } from "../../firebaseConfig";
+import { COLORS } from '../theme/mobileTokens';
 import { useClinicContact } from '../hooks/useClinicContact';
 import { getLocalDateStr, formatHour } from '../utils/helpers';
 
@@ -176,7 +177,7 @@ export default function ChatbotScreen({ navigation }) {
           actionButton = {
             label: "🗺️ Open in Google Maps",
             action: handleOpenMaps,
-            color: "#1976D2",
+            color: COLORS.info,
           };
           break;
         case "booking":
@@ -185,7 +186,7 @@ export default function ChatbotScreen({ navigation }) {
           actionButton = {
             label: "📅 Go to Booking Screen",
             action: () => navigation.navigate("BookAppointment"),
-            color: "#2E7D32",
+            color: COLORS.success,
           };
           followUpOptions = [
             { label: "⬅️ I have more questions", id: "reset" },
@@ -196,7 +197,7 @@ export default function ChatbotScreen({ navigation }) {
             "⚠️ DO NOT WAIT FOR AN APP BOOKING.\n\nIf your pet is experiencing heavy bleeding, difficulty breathing, or seizures, proceed directly to the clinic immediately. Emergencies are given absolute priority.";
           // T2.360: hide call button when no phone is configured
           actionButton = clinicPhone
-            ? { label: '📞 Call Clinic Now', action: handleCallClinic, color: '#D32F2F' }
+            ? { label: '📞 Call Clinic Now', action: handleCallClinic, color: COLORS.danger }
             : null;
           break;
         // T2.357: full services catalog grouped by department, tiered pricing fixed
@@ -442,13 +443,13 @@ export default function ChatbotScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F5F5F5" },
   header: {
-    backgroundColor: "#5D4037",
+    backgroundColor: COLORS.accent,
     padding: 20,
     paddingTop: Platform.OS === "ios" ? 50 : 40,
     elevation: 4,
   },
   backBtn: { marginBottom: 15 },
-  backBtnText: { color: "#D7CCC8", fontSize: 16, fontWeight: "bold" },
+  backBtnText: { color: COLORS.borderLight, fontSize: 16, fontWeight: "bold" },
   headerTitleRow: { flexDirection: "row", alignItems: "center" },
   botAvatarHeader: {
     width: 44,
@@ -459,7 +460,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 15,
   },
-  headerText: { color: "white", fontSize: 18, fontWeight: "bold" },
+  headerText: { color: COLORS.white, fontSize: 18, fontWeight: "bold" },
   subText: { color: "#A5D6A7", fontSize: 12, fontWeight: "bold", marginTop: 2 },
   chatArea: { flex: 1, padding: 15 },
   timestampText: {
@@ -479,7 +480,7 @@ const styles = StyleSheet.create({
     borderRadius: 0,
   },
   errorBannerText: {
-    color: '#E65100',
+    color: COLORS.warning,
     fontSize: 12,
     textAlign: 'center',
     fontWeight: '600',
@@ -504,15 +505,15 @@ const styles = StyleSheet.create({
   },
   bubbleColumn: { flexShrink: 1 },
   bubble: { padding: 14, borderRadius: 18, elevation: 1 },
-  userBubble: { backgroundColor: "#8B4513", borderTopRightRadius: 4 },
+  userBubble: { backgroundColor: COLORS.accent, borderTopRightRadius: 4 },
   botBubble: {
-    backgroundColor: "white",
+    backgroundColor: COLORS.white,
     borderTopLeftRadius: 4,
     borderWidth: 1,
     borderColor: "#EEEEEE",
   },
-  userText: { color: "white", fontSize: 15, lineHeight: 22 },
-  botText: { color: "#333", fontSize: 15, lineHeight: 22 },
+  userText: { color: COLORS.white, fontSize: 15, lineHeight: 22 },
+  botText: { color: COLORS.textPrimary, fontSize: 15, lineHeight: 22 },
   actionBtn: {
     marginTop: 15,
     padding: 12,
@@ -520,7 +521,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     elevation: 2,
   },
-  actionBtnText: { color: "white", fontWeight: "bold", fontSize: 14 },
+  actionBtnText: { color: COLORS.white, fontWeight: "bold", fontSize: 14 },
   optionsContainer: {
     marginTop: 10,
     flexDirection: "row",
@@ -528,21 +529,21 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   optionButton: {
-    backgroundColor: "white",
+    backgroundColor: COLORS.white,
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: "#D7CCC8",
+    borderColor: COLORS.borderLight,
     elevation: 1,
   },
-  optionText: { color: "#5D4037", fontWeight: "bold", fontSize: 13 },
+  optionText: { color: COLORS.accent, fontWeight: "bold", fontSize: 13 },
   // T2.359: footer hint replaces fake chat input
   chatFooter: {
     paddingVertical: 12,
     paddingHorizontal: 20,
     paddingBottom: 25,
-    backgroundColor: 'white',
+    backgroundColor: COLORS.white,
     borderTopWidth: 1,
     borderTopColor: '#E0E0E0',
     alignItems: 'center',

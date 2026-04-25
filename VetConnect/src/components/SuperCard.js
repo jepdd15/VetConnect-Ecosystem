@@ -10,6 +10,7 @@
 
 import { useEffect, useRef } from "react";
 import { Animated, Linking, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { COLORS } from '../theme/mobileTokens';
 import { getClientStatusColor, getClientStatusIcon, getClientStatusLabel } from "../utils/statusLabels";
 import { formatFirestoreTime } from '../utils/helpers';
 
@@ -164,7 +165,7 @@ export default function SuperCard({ appointment, clinicPhone = '', clinicAddress
 
 const styles = StyleSheet.create({
   wrapper: {
-    backgroundColor: 'white',
+    backgroundColor: COLORS.white,
     borderRadius: 16,
     borderLeftWidth: 4,
     padding: 16,
@@ -188,16 +189,16 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FFF8E1',
+    backgroundColor: COLORS.cream,
     marginRight: 12,
   },
   avatarEmoji: { fontSize: 26 },
   petInfo: { flex: 1 },
-  petName: { fontSize: 16, fontWeight: 'bold', color: '#5D4037' },
-  petBreed: { fontSize: 13, color: '#888', marginTop: 2 },
+  petName: { fontSize: 16, fontWeight: 'bold', color: COLORS.accent },
+  petBreed: { fontSize: 13, color: COLORS.textMuted, marginTop: 2 },
   serviceType: {
     fontSize: 12,
-    color: '#8D6E63',
+    color: COLORS.accentLight,
     fontWeight: 'bold',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -227,7 +228,7 @@ const styles = StyleSheet.create({
 
   infoLine: {
     fontSize: 13,
-    color: '#5D4037',
+    color: COLORS.accent,
     marginBottom: 5,
     paddingLeft: 4,
   },
@@ -239,25 +240,25 @@ const styles = StyleSheet.create({
   },
   ctaBtn: {
     flex: 1,
-    backgroundColor: '#5D4037',
+    backgroundColor: COLORS.accent,
     borderRadius: 8,
     paddingVertical: 10,
     alignItems: 'center',
   },
   ctaBtnText: {
-    color: 'white',
+    color: COLORS.white,
     fontWeight: 'bold',
     fontSize: 13,
   },
   ctaBtnSecondary: {
-    backgroundColor: 'white',
+    backgroundColor: COLORS.white,
     borderWidth: 1.5,
-    borderColor: '#5D4037',
+    borderColor: COLORS.accent,
   },
   ctaBtnSecondaryText: {
-    color: '#5D4037',
+    color: COLORS.accent,
   },
   ctaBtnDisabled: {
-    backgroundColor: '#BDBDBD',
+    backgroundColor: COLORS.muted,
   },
 });

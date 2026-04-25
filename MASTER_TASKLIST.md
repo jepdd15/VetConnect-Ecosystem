@@ -832,7 +832,7 @@
 | T2.447 | Sweep: Staff module (5 files) | P2 | 45 min | DONE | |
 | T2.448 | Sweep: standalone pages (Settings, Monitor, Expenses, Login) | P2 | 1.5 hrs | DONE | |
 | T2.449 | Sweep: shared components (Sidebar, POSModal) | P2 | 30 min | DONE | Absorbs T2.148a |
-| T2.450 | Replace fontWeight:'1000' across ENTIRE admin (including Queue + CW) | P2 | 1 hr | TODO | Value swap only — zero layout risk |
+| T2.450 | Replace fontWeight:'1000' across ENTIRE admin (including Queue + CW) | P2 | 1 hr | DONE | All sweep-scoped modules fixed. Remaining fontWeight:1000 only in Queue + CW (Phase 4 exempt — T4.10/T4.16) |
 | T2.451 | Replace all alert()/confirm() with MUI Dialog/Snackbar (sweep scope) | P2 | 2 hrs | TODO | Excludes Queue + CW |
 | T2.452 | ~~Admin sweep: Queue modals~~ | — | — | — | CANCELLED — Queue/ directory skipped entirely |
 

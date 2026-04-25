@@ -39,8 +39,9 @@ export function generateReferralReportHTML({
   const weightLabel = lastWeight ? `${esc(String(lastWeight))} kg` : '—';
   const ownerName = esc(owner?.displayName || owner?.name || '—');
   const ownerPhone = esc(owner?.phone || owner?.contactNumber || '—');
-  const allergies = (pet?.allergies && !['None', 'None recorded', ''].includes(pet?.allergies))
-    ? `<strong style="color:#C62828;">${esc(pet.allergies)}</strong>`
+  const rawAllergies = pet?.petAllergies || pet?.allergies;
+  const allergies = (rawAllergies && !['None', 'None recorded', ''].includes(rawAllergies))
+    ? `<strong style="color:#C62828;">${esc(rawAllergies)}</strong>`
     : 'None known';
 
   const {

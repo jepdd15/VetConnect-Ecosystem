@@ -528,7 +528,7 @@ export default function BookAppointment({ navigation, route }) {
             petBirthdate: pet.dob || null,
             // T2.23: Same weight resolution order as pricing
             petWeight: pet.lastVitals?.weight ?? pet.weight ?? pet.lastWeight ?? null,
-            petAllergies: pet.allergies || "None",
+            petAllergies: pet.petAllergies || pet.allergies || "None",
 
             services: petMappedServices,
             primaryService: petMappedServices[0].name,

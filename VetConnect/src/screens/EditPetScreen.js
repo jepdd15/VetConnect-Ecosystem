@@ -118,6 +118,7 @@ const EditPetScreen = ({ route, navigation }) => {
         lastWeight: parseFloat(weight) || null,
         microchip: microchip.trim() || "N/A",
         petAllergies: showAllergyToggle && allergyArray.length > 0 ? allergyArray.join(", ") : "None",
+        allergies: showAllergyToggle && allergyArray.length > 0 ? allergyArray.join(", ") : "None",
         dob: isAgeTotallyUnknown ? null : Timestamp.fromDate(dob),
         isAgeExact: !isAgeTotallyUnknown, // Forensic Parity!
         updatedAt: Timestamp.now(), // Track when it was edited

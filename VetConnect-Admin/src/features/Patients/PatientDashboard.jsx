@@ -381,6 +381,7 @@ export default function PatientDashboard() {
     (history || []).forEach(r => {
       (r.prescriptions || []).forEach(rx => {
         if (!rx.name) return;
+        if (!rx.isDrug && !rx.isMedicine) return;
         const dateStr = r.date?.toDate
           ? r.date.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
           : '';

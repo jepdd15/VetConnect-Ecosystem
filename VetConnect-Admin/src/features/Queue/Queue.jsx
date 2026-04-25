@@ -1627,7 +1627,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         onClose={() => setOpenAssign(false)} 
         patient={selectedRow} 
         vetsList={vets} 
-        activeAppointments={rows.filter(r =>['arrived', 'in-consult', 'confined'].includes(r.status))} 
+        activeAppointments={rows.filter(r =>['arrived', 'in-consult', 'confined', 'dispensing', 'billing'].includes(r.status))} 
         departments={departments} 
         mode={assignMode}
       />

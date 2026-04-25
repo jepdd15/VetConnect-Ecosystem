@@ -47,7 +47,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
     resizable: false, sortable: false, disableColumnMenu: true,
     renderCell: (p) => {
       const isWalkIn = p.row.isWalkIn === true || p.row.ownerId === 'WALK_IN_USER' || String(p.row.ownerId).includes('GUEST_') || p.row.ticketPrefix === 'W' || p.row.ticketPrefix === 'E';
-      const petAllergies = p.row.petAllergies || '';
+      const petAllergies = p.row.petAllergies || p.row.allergies || '';
       const hasSpecificAllergies = petAllergies.trim().length > 0 && petAllergies.toUpperCase() !== 'NONE';
       const petAge = calculateAgeString(p.row.petBirthdate, p.row.isAgeExact);
 

@@ -367,10 +367,10 @@
 | T3.33 | No-show rate display at booking/check-in | P3 | 30 min | — | TODO | Spark-compatible |
 | T3.34 | Pre-appointment push reminder | P3 | 2-3 hrs | Blaze | TODO | Deploy sendAppointmentUpdateNotification |
 | T3.35 | Waitlist and slot recovery automation | P3 | 3-5 hrs | Blaze | TODO | |
-| T3.36 | Hold for vet review in dispensing: `dispensingHold` flag + pulse events | P3 | 1.5 hrs | T2.52 | TODO | |
-| T3.37 | Stock verification at dispensing time: advisory warnings per item | P3 | 30 min | — | TODO | POSModal remains hard gate |
-| T3.38 | Batch/lot selection at dispensing: batch picker per product | P3 | 1.5 hrs | T2.165 | TODO | Drug recall traceability |
-| T3.39 | Partial dispensing support: qty input per item, backorder tracking | P3 | 1 hr | — | TODO | |
+| T3.36 | Hold for vet review in dispensing: `dispensingHold` flag + pulse events | P3 | 1.5 hrs | T2.52 | DONE | |
+| T3.37 | Stock verification at dispensing time: advisory warnings per item | P3 | 30 min | — | DONE | POSModal remains hard gate |
+| T3.38 | Batch/lot selection at dispensing: batch picker per product | P3 | 1.5 hrs | T2.165 | DONE | Drug recall traceability |
+| T3.39 | Partial dispensing support: qty input per item, backorder tracking | P3 | 1 hr | — | DONE | |
 | T3.40 | Firebase Auth disable on staff revocation: Cloud Function with Admin SDK | P3 | 2 hrs | Blaze | TODO | Currently only Firestore flag set |
 | T3.41 | Staff re-enable flow: UI to restore revoked staff + RESTORED audit event | P3 | 1 hr | — | TODO | No re-enable path despite modal text claiming it |
 | T3.42 | Staff password management: Cloud Function for secure creation (Option C) + password reset flow | P3 | 3-4 hrs | Blaze | TODO | Production deployment path |

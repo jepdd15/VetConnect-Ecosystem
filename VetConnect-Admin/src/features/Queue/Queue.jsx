@@ -5,10 +5,10 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button,
   Tabs, Tab, Menu, MenuItem, ListItemIcon, ListItemText, Divider, List, ListItem, Alert,
   Popover, Chip, keyframes, FormControl, InputLabel, Select, Switch,
-  ToggleButton, ToggleButtonGroup, Autocomplete, InputAdornment
+  ToggleButton, ToggleButtonGroup, Autocomplete, InputAdornment, Snackbar,
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, Timestamp, where, getDocs, writeBatch, getDoc, arrayUnion, runTransaction } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, Timestamp, where, getDocs, writeBatch, getDoc, arrayUnion, runTransaction, deleteField } from 'firebase/firestore';
 
 // 1. BACKEND & BRAIN
 import { db } from '../../firebaseConfig'; 
@@ -36,7 +36,7 @@ import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos'; 
 
 // 🧬 PHASE 6 COMPONENTS
-import { calculatePulseMetrics, getSmartShiftDate, makePulseEventId } from '../../utils/pulseUtils';
+import { calculatePulseMetrics, getSmartShiftDate, makePulseEventId, createPulseEvent } from '../../utils/pulseUtils';
 import { HIGH_STAKES_STATUSES, ACTIVE_STATUSES, normalizeStatus, TERMINAL_STATUSES } from '../../utils/statusConstants';
 import { getLocalDateStr } from '../../utils/dateUtils';
 import { useClinicSettings } from '../../hooks/useClinicSettings';
@@ -174,6 +174,15 @@ export default function Queue() {
   const[openPOS, setOpenPOS] = useState(false);
   const [openDispenseVerify, setOpenDispenseVerify] = useState(false);
   const [dispenseRow, setDispenseRow] = useState(null);
+
+  // T3.36 — Hold for Vet Review: dialog state and target row
+  const [dispenseFlagDialogOpen, setDispenseFlagDialogOpen] = useState(false);
+  const [dispenseResolveDialogOpen, setDispenseResolveDialogOpen] = useState(false);
+  const [dispenseReasonText, setDispenseReasonText] = useState('');
+  const [dispenseFlagTarget, setDispenseFlagTarget] = useState(null);
+
+  // Lightweight Snackbar for dispense-hold operation errors
+  const [dispenseHoldToast, setDispenseHoldToast] = useState({ open: false, message: '', severity: 'error' });
   const [openWalkIn, setOpenWalkIn] = useState(false);
   const [openAssign, setOpenAssign] = useState(false);
   const [assignMode, setAssignMode] = useState('check-in'); // 'check-in' or 'assign'
@@ -649,6 +658,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         const apptRef = doc(db, "appointments", dispenseRow.id);
         const apptDoc = await transaction.get(apptRef);
         if (!apptDoc.exists()) throw new Error("Appointment not found.");
+        if (apptDoc.data().dispensingHold) throw new Error("This dispensing was placed on hold while you were reviewing. Refresh and try again.");
         transaction.update(apptRef, {
           ...dispensingData,
           status: 'billing',
@@ -669,10 +679,76 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       setOpenDispenseVerify(false);
       setDispenseRow(null);
     } catch (e) {
-      alert("Dispensing Error: " + e.message);
+      setDispenseHoldToast({ open: true, message: `Dispensing Error: ${e.message}`, severity: 'error' });
     }
   };
-  const handleStatusChange = async (row, newStatus) => { 
+  // T3.36 — Flag an appointment for vet re-review. Writes dispensingHold to the doc
+  // and emits a DISPENSING_FLAGGED pulse event. Uses a transaction for safety.
+  const handleDispenseFlag = async (row, reason) => {
+    try {
+      await runTransaction(db, async (transaction) => {
+        const apptRef = doc(db, 'appointments', row.id);
+        const apptDoc = await transaction.get(apptRef);
+        if (!apptDoc.exists()) throw new Error('Appointment not found.');
+        transaction.update(apptRef, {
+          dispensingHold: {
+            flaggedBy: profile?.id || 'unknown',
+            flaggedByName: profile?.fullName || 'System',
+            flaggedAt: Timestamp.now(),
+            reason: reason || 'Flagged for vet review',
+          },
+          clinicalPulse: arrayUnion(
+            createPulseEvent('DISPENSING_FLAGGED', {
+              staffId: profile?.id,
+              staffName: profile?.fullName,
+              note: reason || 'Flagged for vet review',
+            })
+          ),
+        });
+      });
+    } catch (e) {
+      setDispenseHoldToast({ open: true, message: `Flag Error: ${e.message}`, severity: 'error' });
+    }
+  };
+
+  // T3.36 — Resolve an existing dispensingHold. Removes the hold field and emits
+  // a FLAG_RESOLVED pulse event, restoring the normal VERIFY ITEMS flow.
+  const handleDispenseResolve = async (row, note) => {
+    try {
+      await runTransaction(db, async (transaction) => {
+        const apptRef = doc(db, 'appointments', row.id);
+        const apptDoc = await transaction.get(apptRef);
+        if (!apptDoc.exists()) throw new Error('Appointment not found.');
+        transaction.update(apptRef, {
+          dispensingHold: deleteField(),
+          clinicalPulse: arrayUnion(
+            createPulseEvent('FLAG_RESOLVED', {
+              staffId: profile?.id,
+              staffName: profile?.fullName,
+              note: note || 'Hold resolved',
+            })
+          ),
+        });
+      });
+    } catch (e) {
+      setDispenseHoldToast({ open: true, message: `Resolve Error: ${e.message}`, severity: 'error' });
+    }
+  };
+
+  // Openers passed through the actions object to queueColumns
+  const openDispenseFlagDialog = (row) => {
+    setDispenseFlagTarget(row);
+    setDispenseReasonText('');
+    setDispenseFlagDialogOpen(true);
+  };
+
+  const openDispenseResolveDialog = (row) => {
+    setDispenseFlagTarget(row);
+    setDispenseReasonText('');
+    setDispenseResolveDialogOpen(true);
+  };
+
+  const handleStatusChange = async (row, newStatus) => {
     try { 
       // --- ðŸ›¡ï¸ CLINICAL REALITY PRE-CHECK ---
       if (newStatus === 'confirmed') {
@@ -1403,6 +1479,8 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
     handleRescheduleOpen: (row) => { setSelectedRow(row); handleRescheduleOpen(); },
     handleDefer: (row) => handleDeferOpen(row),
     handleOpenDispenseVerify,
+    openDispenseFlagDialog,
+    openDispenseResolveDialog,
   }, isToday, departments, isTomorrowView, clinicSettings);
 
   const showClosingWarning = isClosingTime && isToday && unfinishedCount > 0;
@@ -1893,6 +1971,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         onVerified={handleDispenseVerified}
         staffProfile={profile}
         clinicSettings={clinicSettings}
+        inventoryList={joinedInventory}
       />
       <WalkInModal open={openWalkIn} onClose={() => setOpenWalkIn(false)} servicesList={servicesList} departments={departments}/>
       
@@ -3001,6 +3080,119 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* T3.36 — FLAG FOR VET REVIEW DIALOG */}
+      <Dialog
+        open={dispenseFlagDialogOpen}
+        onClose={() => setDispenseFlagDialogOpen(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 0, border: '2px solid #5D4037' } }}
+      >
+        <DialogTitle sx={{
+          fontWeight: 900, bgcolor: '#FFF3E0', color: '#E65100',
+          borderBottom: '2px solid #5D4037', letterSpacing: 0.5,
+        }}>
+          FLAG FOR VET REVIEW
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2, bgcolor: '#FFF8E1' }}>
+          <Typography variant="body2" fontWeight="700" sx={{ mb: 1.5, color: '#5D4037' }}>
+            This will pause dispensing for {dispenseFlagTarget?.petName} until a veterinarian resolves the hold.
+          </Typography>
+          <TextField
+            fullWidth
+            multiline
+            rows={2}
+            placeholder="Reason for hold (optional)"
+            value={dispenseReasonText}
+            onChange={(e) => setDispenseReasonText(e.target.value)}
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0, fontWeight: 900 } }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ bgcolor: '#FFF8E1', borderTop: '2px solid #5D4037', p: 2, gap: 1 }}>
+          <Button
+            onClick={() => setDispenseFlagDialogOpen(false)}
+            sx={{ fontWeight: 900, borderRadius: 0, color: '#5D4037' }}
+          >
+            CANCEL
+          </Button>
+          <Button
+            variant="contained"
+            sx={{ fontWeight: 900, borderRadius: 0, bgcolor: '#E65100', '&:hover': { bgcolor: '#BF360C' } }}
+            onClick={() => {
+              handleDispenseFlag(dispenseFlagTarget, dispenseReasonText);
+              setDispenseFlagDialogOpen(false);
+            }}
+          >
+            FLAG
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* T3.36 — RESOLVE HOLD DIALOG */}
+      <Dialog
+        open={dispenseResolveDialogOpen}
+        onClose={() => setDispenseResolveDialogOpen(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 0, border: '2px solid #5D4037' } }}
+      >
+        <DialogTitle sx={{
+          fontWeight: 900, bgcolor: '#E8F5E9', color: '#2E7D32',
+          borderBottom: '2px solid #5D4037', letterSpacing: 0.5,
+        }}>
+          RESOLVE HOLD
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2, bgcolor: '#FFF8E1' }}>
+          <Typography variant="body2" fontWeight="700" sx={{ mb: 1.5, color: '#5D4037' }}>
+            This will clear the hold on {dispenseFlagTarget?.petName} and restore the VERIFY ITEMS action.
+          </Typography>
+          <TextField
+            fullWidth
+            multiline
+            rows={2}
+            placeholder="Resolution note (optional)"
+            value={dispenseReasonText}
+            onChange={(e) => setDispenseReasonText(e.target.value)}
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0, fontWeight: 900 } }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ bgcolor: '#FFF8E1', borderTop: '2px solid #5D4037', p: 2, gap: 1 }}>
+          <Button
+            onClick={() => setDispenseResolveDialogOpen(false)}
+            sx={{ fontWeight: 900, borderRadius: 0, color: '#5D4037' }}
+          >
+            CANCEL
+          </Button>
+          <Button
+            variant="contained"
+            sx={{ fontWeight: 900, borderRadius: 0, bgcolor: '#2E7D32', '&:hover': { bgcolor: '#1B5E20' } }}
+            onClick={() => {
+              handleDispenseResolve(dispenseFlagTarget, dispenseReasonText);
+              setDispenseResolveDialogOpen(false);
+            }}
+          >
+            RESOLVE
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* T3.36 — Dispense hold operation error toast */}
+      <Snackbar
+        open={dispenseHoldToast.open}
+        autoHideDuration={4000}
+        onClose={() => setDispenseHoldToast(prev => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          severity={dispenseHoldToast.severity}
+          onClose={() => setDispenseHoldToast(prev => ({ ...prev, open: false }))}
+          sx={{ width: '100%', fontWeight: 'bold' }}
+        >
+          {dispenseHoldToast.message}
+        </Alert>
+      </Snackbar>
+
     </Box>
   );
 }

@@ -26,6 +26,7 @@ import HowToRegIcon from '@mui/icons-material/HowToReg';
 import EventNoteIcon from '@mui/icons-material/EventNote';
 import UndoIcon from '@mui/icons-material/Undo';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
+import FlagIcon from '@mui/icons-material/Flag';
 
 const calculateAgeString = (dob, isAgeExact) => {
     if (!dob) return "AGE UNKNOWN";
@@ -582,8 +583,12 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
             case STATUS.DISPENSING:
                 const dispenseMins = resolveDate(p.row.timeDispenseStarted) ? Math.round((currentTime - resolveDate(p.row.timeDispenseStarted)) / 60000) : 0;
                 const dispenseTotal = (arrived || scheduled) ? Math.round((currentTime - (arrived || scheduled)) / 60000) : 0;
-                primaryLabel = `DISPENSING: ${formatDuration(dispenseMins)}`;
+                // T3.36: Amber "(HELD)" suffix when the row has a dispensingHold
+                primaryLabel = p.row.dispensingHold
+                  ? `DISPENSING (HELD): ${formatDuration(dispenseMins)}`
+                  : `DISPENSING: ${formatDuration(dispenseMins)}`;
                 secondaryLabel = `TOTAL VISIT: ${formatDuration(dispenseTotal)}`;
+                triageColor = p.row.dispensingHold ? '#FF9800' : '#5D4037';
                 break;
 
             case STATUS.BILLING:
@@ -829,18 +834,62 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
       }
 
       if (params.row.status === STATUS.DISPENSING) {
+        const isHeld = !!params.row.dispensingHold;
         return (
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.8, width: '100%', height: '100%' }}>
-            <Button
-                variant="contained"
-                size="small"
-                startIcon={<LocalHospitalIcon sx={{ fontSize: '14px !important' }} />}
-                sx={{...btnStyle, bgcolor: '#C62828', '&:hover': { bgcolor: '#B71C1C' }, minWidth: 160}}
-                onClick={() => actions.handleOpenDispenseVerify(params.row)}
-            >
-                VERIFY ITEMS
-            </Button>
-            <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)} sx={{ color: '#5D4037' }}><MoreVertIcon fontSize="small" /></IconButton>
+            {isHeld ? (
+              <>
+                {/* T3.36: Row is on hold — show amber badge + resolve button */}
+                <Chip
+                  icon={<FlagIcon sx={{ fontSize: '12px !important', color: 'white !important' }} />}
+                  label="ON HOLD"
+                  size="small"
+                  sx={{
+                    bgcolor: '#FF9800', color: 'white',
+                    fontWeight: 900, fontSize: '0.62rem', height: 20,
+                    borderRadius: 0,
+                    '& .MuiChip-icon': { color: 'white' },
+                  }}
+                />
+                <Button
+                  variant="outlined"
+                  size="small"
+                  sx={{
+                    fontWeight: 900, color: '#2E7D32', borderColor: '#2E7D32',
+                    fontSize: '0.7rem', borderRadius: 0,
+                    '&:hover': { bgcolor: '#E8F5E9' },
+                  }}
+                  onClick={() => actions.openDispenseResolveDialog(params.row)}
+                >
+                  RESOLVE
+                </Button>
+              </>
+            ) : (
+              <>
+                {/* T3.36: Normal flow — VERIFY ITEMS + FLAG icon */}
+                <Button
+                  variant="contained"
+                  size="small"
+                  startIcon={<LocalHospitalIcon sx={{ fontSize: '14px !important' }} />}
+                  sx={{ ...btnStyle, bgcolor: '#C62828', '&:hover': { bgcolor: '#B71C1C' }, minWidth: 140 }}
+                  onClick={() => actions.handleOpenDispenseVerify(params.row)}
+                >
+                  VERIFY ITEMS
+                </Button>
+                <Tooltip title="Flag for vet review">
+                  <IconButton
+                    size="small"
+                    sx={{ color: '#FF9800' }}
+                    onClick={() => actions.openDispenseFlagDialog(params.row)}
+                  >
+                    <FlagIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </>
+            )}
+            <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)} sx={{ color: '#5D4037' }}>
+              <MoreVertIcon fontSize="small" />
+            </IconButton>
           </Box>
         );
       }

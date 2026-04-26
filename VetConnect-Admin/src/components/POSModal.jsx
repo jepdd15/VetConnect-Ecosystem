@@ -67,9 +67,27 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
     const items = [];
 
     if (appt.prescribedItems && appt.prescribedItems.length > 0) {
+      // T3.39: Build a lookup map from pharmacy's dispensingChecklist (written by
+      // DispensingVerificationDialog on confirm). Keyed by item ID (with name fallback)
+      // so partial dispensing quantities override the prescribed quantities in the POS cart.
+      const checklistMap = new Map();
+      if (appt.dispensingChecklist && appt.dispensingChecklist.length > 0) {
+        appt.dispensingChecklist.forEach(ci => checklistMap.set(ci.id || ci.name, ci));
+      }
+
       appt.prescribedItems.forEach(item => {
+        const ci = checklistMap.get(item.id || item.name);
+        // Products with a dispensingChecklist entry use the verified dispensed qty.
+        // Items dispensed at qty=0 are excluded from the cart entirely.
+        const effectiveQty = (ci && item.type === 'product' && ci.qty !== undefined)
+          ? ci.qty
+          : item.qty;
+
+        if (item.type === 'product' && effectiveQty === 0) return;
+
         items.push({
           ...item,
+          qty: effectiveQty,
           name: `${prefix}${item.name}`,
           isPrescribed: item.isBase ? false : true,
           _sourceAppointmentId: appt.id,

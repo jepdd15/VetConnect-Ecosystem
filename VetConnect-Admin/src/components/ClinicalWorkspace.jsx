@@ -1162,6 +1162,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 isDrug: !!item.isDrug,
             })),
         serviceType: patient.services?.[0]?.name || patient.primaryService || patient.serviceType || 'Clinical Visit',
+        serviceNames: (patient.services || []).filter(s => s.name).map(s => s.name),
         serviceAttribution: Object.entries(serviceAttribution).map(([svcId, attr]) => ({
             serviceId: svcId,
             staffId: attr.staffId,

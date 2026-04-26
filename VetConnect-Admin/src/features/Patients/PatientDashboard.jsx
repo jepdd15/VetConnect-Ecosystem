@@ -990,9 +990,14 @@ export default function PatientDashboard() {
                   }}>
                     <Box sx={{ width: 3, height: 24, borderRadius: 2, bgcolor: rc, flexShrink: 0 }} />
                     <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary, minWidth: 88, flexShrink: 0 }}>{dateStr}</Typography>
-                    <Box sx={{ px: 0.75, py: 0.2, borderRadius: 0.5, bgcolor: `${rc}12`, minWidth: 55, textAlign: 'center' }}>
-                      <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 800, color: rc, textTransform: 'uppercase', letterSpacing: 0.8 }}>{rec.recordType || 'medical'}</Typography>
-                    </Box>
+                    {/* T3.81: Per-service chips — falls back to [serviceType] for legacy records */}
+                    {(rec.serviceNames?.length > 0 ? rec.serviceNames : [rec.serviceType || rec.recordType || 'medical']).map((svcName, si) => (
+                      <Box key={si} sx={{ px: 0.75, py: 0.2, borderRadius: 0, bgcolor: `${rc}12`, textAlign: 'center' }}>
+                        <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 800, color: rc, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+                          {svcName}
+                        </Typography>
+                      </Box>
+                    ))}
                     <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.textPrimary, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{rec.diagnosis || 'Clinical Visit'}</Typography>
                     {/* T2.457: Case-day badge for multi-day cases */}
                     {caseDayMap[rec.id] && (

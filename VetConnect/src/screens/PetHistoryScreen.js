@@ -3,6 +3,8 @@ import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import {
   collection,
+  doc,
+  getDoc,
   onSnapshot,
   orderBy,
   query,
@@ -17,6 +19,7 @@ import {
   SafeAreaView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View
 } from "react-native";
@@ -24,6 +27,7 @@ import { db } from "../../firebaseConfig";
 import { useClinicContact } from "../hooks/useClinicContact";
 import { safeDate, formatDisplayDate } from "../utils/helpers";
 import { COLORS } from '../theme/mobileTokens';
+import SparkLine from '../components/SparkLine';
 
 // ---------------------------------------------------------------------------
 // VACCINATION PASSPORT — HTML TEMPLATE
@@ -79,6 +83,8 @@ function resolveVaccineStatus(dueDate) {
   if (due < thirtyDaysFromNow) return 'due-soon';
   return 'current';
 }
+
+const FILTER_OPTIONS = ['All', 'Medical', 'Grooming', 'Vaccination'];
 
 const VACCINE_STATUS_STYLES = {
   current:   { borderColor: '#2E7D32', badgeBg: '#E8F5E9', badgeColor: '#2E7D32', label: 'CURRENT' },
@@ -428,6 +434,11 @@ export default function PetHistoryScreen({ route, navigation }) {
   const { petId, petName } = route.params;
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
+  // T3.95: Case-day metadata derived from appointment documents
+  const [caseDayMap, setCaseDayMap] = useState({});
+  // T3.94: Search and filter state
+  const [searchText, setSearchText] = useState('');
+  const [activeFilter, setActiveFilter] = useState('All');
   const { clinicPhone, clinicName } = useClinicContact();
 
   // Records that carry vaccination data — used to gate the passport button and
@@ -438,6 +449,165 @@ export default function PetHistoryScreen({ route, navigation }) {
     ),
     [history],
   );
+
+
+
+  // T3.94: Derived list after applying type filter and search text.
+  // history is always the source of truth; filteredHistory is read-only derived state.
+  const filteredHistory = useMemo(() => {
+    let result = history;
+
+    if (activeFilter !== 'All') {
+      result = result.filter(r => {
+        const svcLower = (r.serviceType || '').toLowerCase();
+        const typeLower = (r.recordType || '').toLowerCase();
+        const filterLower = activeFilter.toLowerCase();
+        if (filterLower === 'vaccination') {
+          return r.vaccineAdministrations?.length > 0 || !!r.vaccineData;
+        }
+        return svcLower.includes(filterLower) || typeLower.includes(filterLower);
+      });
+    }
+
+    if (searchText.trim()) {
+      const q = searchText.toLowerCase().trim();
+      result = result.filter(r =>
+        (r.diagnosis || '').toLowerCase().includes(q) ||
+        (r.serviceType || '').toLowerCase().includes(q) ||
+        (r.vetName || '').toLowerCase().includes(q) ||
+        (r.treatment || '').toLowerCase().includes(q) ||
+        (r.serviceNames || []).some(n => n.toLowerCase().includes(q))
+      );
+    }
+
+    return result;
+  }, [history, activeFilter, searchText]);
+
+  // T3.97: Aggregate prescription frequency across all history records.
+  // Sorted descending by count so the most-prescribed medications appear first.
+  const prescriptionFrequency = useMemo(() => {
+    const rxMap = new Map();
+    (history || []).forEach(r => {
+      (r.prescriptions || []).forEach(rx => {
+        if (!rx.name) return;
+        const existing = rxMap.get(rx.name);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          rxMap.set(rx.name, {
+            name: rx.name,
+            count: 1,
+            lastInstructions: rx.instructions || '',
+          });
+        }
+      });
+    });
+    return Array.from(rxMap.values()).sort((a, b) => b.count - a.count);
+  }, [history]);
+
+  // T3.93: Derive chart-ready arrays for each vital sign.
+  // History is newest-first from Firestore — reverse for left-to-right time axis.
+  const vitalsChartData = useMemo(() => {
+    const sorted = [...history].reverse();
+    const extract = (field) =>
+      sorted
+        .filter(r => r.vitals?.[field] != null && r.vitals[field] !== '')
+        .map(r => ({ label: formatDisplayDate(r.date), value: parseFloat(r.vitals[field]) }))
+        .filter(d => !isNaN(d.value));
+    return {
+      weight: extract('weight'),
+      temp: extract('temp'),
+      hr: extract('hr'),
+    };
+  }, [history]);
+
+  // T3.93: Collapsible state for the vitals trends card.
+  const [trendsExpanded, setTrendsExpanded] = useState(false);
+  // T3.97: Collapsible state for the prescription frequency card.
+  const [rxFreqExpanded, setRxFreqExpanded] = useState(false);
+
+  const listHeader = useMemo(() => {
+    const hasTrends = vitalsChartData.weight.length >= 2 ||
+      vitalsChartData.temp.length >= 2 ||
+      vitalsChartData.hr.length >= 2;
+    const hasRx = prescriptionFrequency.length > 0;
+    if (!hasTrends && !hasRx) return null;
+    return (
+      <View>
+        {hasTrends && (
+          <View style={styles.trendsCard}>
+            <TouchableOpacity
+              style={styles.trendsHeader}
+              onPress={() => setTrendsExpanded(prev => !prev)}
+            >
+              <Text style={styles.trendsTitle}>VITALS TRENDS</Text>
+              <MaterialIcons
+                name={trendsExpanded ? 'expand-less' : 'expand-more'}
+                size={20}
+                color={COLORS.accent}
+              />
+            </TouchableOpacity>
+            {trendsExpanded && (
+              <View style={styles.trendsBody}>
+                {vitalsChartData.weight.length >= 2 && (
+                  <View style={styles.trendRow}>
+                    <Text style={styles.trendLabel}>WEIGHT</Text>
+                    <SparkLine data={vitalsChartData.weight} lineColor={COLORS.info} unit="kg" />
+                  </View>
+                )}
+                {vitalsChartData.temp.length >= 2 && (
+                  <View style={styles.trendRow}>
+                    <Text style={styles.trendLabel}>TEMPERATURE</Text>
+                    <SparkLine data={vitalsChartData.temp} lineColor={COLORS.danger} unit="°C" />
+                  </View>
+                )}
+                {vitalsChartData.hr.length >= 2 && (
+                  <View style={styles.trendRow}>
+                    <Text style={styles.trendLabel}>HEART RATE</Text>
+                    <SparkLine data={vitalsChartData.hr} lineColor={COLORS.success} unit="bpm" />
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
+        )}
+        {hasRx && (
+          <View style={styles.rxFreqCard}>
+            <TouchableOpacity
+              style={styles.rxFreqHeader}
+              onPress={() => setRxFreqExpanded(prev => !prev)}
+            >
+              <Text style={styles.rxFreqTitle}>
+                Frequently Prescribed ({prescriptionFrequency.length})
+              </Text>
+              <MaterialIcons
+                name={rxFreqExpanded ? 'expand-less' : 'expand-more'}
+                size={20}
+                color={COLORS.accent}
+              />
+            </TouchableOpacity>
+            {rxFreqExpanded && (
+              <View style={styles.rxFreqBody}>
+                {prescriptionFrequency.slice(0, 10).map((rx, i) => (
+                  <View key={i} style={styles.rxFreqRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.rxFreqName}>{rx.name}</Text>
+                      {rx.lastInstructions ? (
+                        <Text style={styles.rxFreqSig}>{rx.lastInstructions}</Text>
+                      ) : null}
+                    </View>
+                    <View style={styles.rxFreqCountBadge}>
+                      <Text style={styles.rxFreqCountText}>{rx.count}x</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
+      </View>
+    );
+  }, [vitalsChartData, trendsExpanded, prescriptionFrequency, rxFreqExpanded]);
 
   /** Generates the vaccination passport PDF and opens the OS share sheet. */
   const handleDownloadPassport = async () => {
@@ -492,6 +662,33 @@ export default function PetHistoryScreen({ route, navigation }) {
     return () => unsubscribe();
   }, [petId]);
 
+  // T3.95: Batch-read appointment docs for records that have an appointmentId.
+  // Only populates entries where caseDay > 1 (Day 1 is the default, not a badge).
+  useEffect(() => {
+    if (!history.length) return;
+    const recordsWithAppt = history.filter(r => r.appointmentId);
+    if (!recordsWithAppt.length) return;
+
+    const fetchCaseDays = async () => {
+      const cdMap = {};
+      await Promise.all(recordsWithAppt.map(async (rec) => {
+        try {
+          const apptSnap = await getDoc(doc(db, 'appointments', rec.appointmentId));
+          if (apptSnap.exists()) {
+            const caseDay = apptSnap.data().caseDay || 1;
+            if (caseDay > 1) {
+              cdMap[rec.id] = caseDay;
+            }
+          }
+        } catch {
+          // Silently skip — missing appointment doc should not break the screen
+        }
+      }));
+      setCaseDayMap(cdMap);
+    };
+    fetchCaseDays();
+  }, [history]);
+
   // --- PDF GENERATOR ---
   const generatePDF = async (record) => {
     const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -531,7 +728,15 @@ export default function PetHistoryScreen({ route, navigation }) {
             <tr><td><b>Service:</b> ${esc(record.serviceType)}</td><td style="text-align: right;"><b>Attending Vet:</b> ${esc(record.vetName || "Staff")}</td></tr>
           </table>
           ${record.vitals ? `<h3>Vitals</h3>
-          <p><b>Weight:</b> ${esc(record.vitals?.weight || "-")} kg &nbsp;&nbsp; | &nbsp;&nbsp; <b>Temp:</b> ${esc(record.vitals?.temp || "-")} &deg;C &nbsp;&nbsp; | &nbsp;&nbsp; <b>Heart Rate:</b> ${esc(record.vitals?.hr || "-")} bpm</p>` : ''}
+          <p>
+            <b>Weight:</b> ${esc(record.vitals?.weight || "-")} kg &nbsp;&nbsp; | &nbsp;&nbsp;
+            <b>Temp:</b> ${esc(record.vitals?.temp || "-")} &deg;C &nbsp;&nbsp; | &nbsp;&nbsp;
+            <b>Heart Rate:</b> ${esc(record.vitals?.hr || "-")} bpm
+            ${record.vitals?.rr ? ` &nbsp;&nbsp; | &nbsp;&nbsp; <b>RR:</b> ${esc(record.vitals.rr)} br/min` : ''}
+            ${record.vitals?.crt ? ` &nbsp;&nbsp; | &nbsp;&nbsp; <b>CRT:</b> ${esc(record.vitals.crt)} sec` : ''}
+            ${record.vitals?.bcs ? ` &nbsp;&nbsp; | &nbsp;&nbsp; <b>BCS:</b> ${esc(record.vitals.bcs)}/9` : ''}
+            ${record.vitals?.pain ? ` &nbsp;&nbsp; | &nbsp;&nbsp; <b>Pain:</b> ${esc(record.vitals.pain)}/10` : ''}
+          </p>` : ''}
           ${dsDiagnosis ? `<h3>Diagnosis</h3><p>${esc(dsDiagnosis)}</p>` : ''}
           ${record.patientStatus ? `<p><b>Status:</b> ${esc(record.patientStatus)}</p>` : ''}
           ${hasDischarge && dsInstructions ? `<h3>Going-Home Instructions</h3><p>${esc(dsInstructions).replace(/\n/g, '<br/>')}</p>` : ''}
@@ -570,11 +775,21 @@ export default function PetHistoryScreen({ route, navigation }) {
     return { bg: "#E8F5E9", border: "#A5D6A7", text: "#2E7D32" };
   };
 
-  const renderRecord = ({ item }) => {
+  const renderRecord = ({ item, index }) => {
     const visitDate = formatDisplayDate(item.date);
     const isGrooming =
       item.recordType === "grooming" ||
       item.serviceType?.toLowerCase().includes("grooming");
+
+    // T3.96: Compute whether this record opens a new year section.
+    // Compares against filteredHistory[index - 1] so year dividers stay
+    // correct after search/filter narrows the list (T3.94).
+    const recDate = resolveDate(item.date);
+    const recYear = recDate?.getFullYear();
+    const prevItem = filteredHistory[index - 1];
+    const prevDate = prevItem ? resolveDate(prevItem.date) : null;
+    const prevYear = prevDate?.getFullYear();
+    const showYearHeader = index === 0 || recYear !== prevYear;
 
     // Semantic Theme Colors
     const themeColor = isGrooming ? "#9C27B0" : COLORS.info;
@@ -588,15 +803,33 @@ export default function PetHistoryScreen({ route, navigation }) {
     const weightStr = coerceVital(item.vitals?.weight);
     const tempStr = coerceVital(item.vitals?.temp);
     const hrStr = coerceVital(item.vitals?.hr);
+    // T3.88: Extended vitals — RR, CRT, BCS, Pain
+    const rrStr = coerceVital(item.vitals?.rr);
+    const crtStr = coerceVital(item.vitals?.crt);
+    const bcsStr = coerceVital(item.vitals?.bcs);
+    const painStr = coerceVital(item.vitals?.pain);
     const hasWeight = weightStr !== '';
     const hasTemp = tempStr !== '';
     const hasHR = hrStr !== '';
-    const hasVitals = hasWeight || hasTemp || hasHR;
+    const hasRR = rrStr !== '';
+    const hasCRT = crtStr !== '';
+    const hasBCS = bcsStr !== '';
+    const hasPain = painStr !== '';
+    const hasVitals = hasWeight || hasTemp || hasHR || hasRR || hasCRT || hasBCS || hasPain;
 
     const statusColors = getStatusColors(item.patientStatus);
 
     return (
-      <View style={styles.timelineRow}>
+      <>
+        {/* T3.96: Year section header — shown when year changes between consecutive records */}
+        {showYearHeader && recYear && (
+          <View style={styles.yearHeader}>
+            <View style={styles.yearLine} />
+            <Text style={styles.yearText}>{recYear}</Text>
+            <View style={styles.yearLine} />
+          </View>
+        )}
+        <View style={styles.timelineRow}>
         <View style={styles.timelineGraphic}>
           <View style={[styles.dot, { backgroundColor: themeColor }]} />
           <View style={styles.line} />
@@ -608,7 +841,20 @@ export default function PetHistoryScreen({ route, navigation }) {
               <Text style={[styles.dateText, { color: themeColor }]}>
                 {visitDate}
               </Text>
-              <Text style={styles.serviceText}>{item.serviceType}</Text>
+              {/* T3.81: Per-service chips — falls back to [serviceType] for legacy records */}
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 2 }}>
+                {(item.serviceNames?.length > 0 ? item.serviceNames : [item.serviceType]).map((svcName, si) => (
+                  <View key={si} style={styles.serviceChip}>
+                    <Text style={[styles.serviceChipText, { color: themeColor }]}>{svcName}</Text>
+                  </View>
+                ))}
+                {/* T3.95: Case-day badge for multi-day cases */}
+                {caseDayMap[item.id] && (
+                  <View style={styles.caseDayBadge}>
+                    <Text style={styles.caseDayText}>Day {caseDayMap[item.id]}</Text>
+                  </View>
+                )}
+              </View>
             </View>
             <View style={styles.vetBadge}>
               <MaterialIcons name="person" size={14} color={COLORS.accent} />
@@ -670,6 +916,14 @@ export default function PetHistoryScreen({ route, navigation }) {
               </Text>
             </View>
 
+            {/* T3.89: SOAP Assessment — shown when no discharge summary exists and assessment differs from diagnosis */}
+            {!item.dischargeSummary && item.soap?.assessment && item.soap.assessment !== item.diagnosis && (
+              <View style={styles.assessmentBox}>
+                <Text style={styles.assessmentLabel}>CLINICAL ASSESSMENT</Text>
+                <Text style={styles.assessmentText}>{item.soap.assessment}</Text>
+              </View>
+            )}
+
             {!isGrooming && hasVitals && (
               <View style={styles.vitalsBox}>
                 {hasWeight && (
@@ -688,6 +942,31 @@ export default function PetHistoryScreen({ route, navigation }) {
                   <View style={styles.vitalItem}>
                     <Text style={styles.vitalLabel}>HR</Text>
                     <Text style={styles.vitalValue}>{hrStr} bpm</Text>
+                  </View>
+                )}
+                {/* T3.88: Extended vitals */}
+                {hasRR && (
+                  <View style={styles.vitalItem}>
+                    <Text style={styles.vitalLabel}>RR</Text>
+                    <Text style={styles.vitalValue}>{rrStr} br/min</Text>
+                  </View>
+                )}
+                {hasCRT && (
+                  <View style={styles.vitalItem}>
+                    <Text style={styles.vitalLabel}>CRT</Text>
+                    <Text style={styles.vitalValue}>{crtStr} sec</Text>
+                  </View>
+                )}
+                {hasBCS && (
+                  <View style={styles.vitalItem}>
+                    <Text style={styles.vitalLabel}>BCS</Text>
+                    <Text style={styles.vitalValue}>{bcsStr} /9</Text>
+                  </View>
+                )}
+                {hasPain && (
+                  <View style={styles.vitalItem}>
+                    <Text style={styles.vitalLabel}>PAIN</Text>
+                    <Text style={styles.vitalValue}>{painStr} /10</Text>
                   </View>
                 )}
               </View>
@@ -917,6 +1196,32 @@ export default function PetHistoryScreen({ route, navigation }) {
                 })}
               </View>
             )}
+
+            {/* T3.90: Amendments history */}
+            {item.amendments?.length > 0 && (
+              <View style={styles.amendmentCard}>
+                <Text style={styles.amendmentHeader}>AMENDMENTS ({item.amendments.length})</Text>
+                {[...item.amendments]
+                  .sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0))
+                  .map((amend, idx) => {
+                    const ts = amend.timestamp?.toDate
+                      ? amend.timestamp.toDate()
+                      : (amend.timestamp?.seconds ? new Date(amend.timestamp.seconds * 1000) : null);
+                    return (
+                      <View key={idx} style={styles.amendmentEntry}>
+                        {amend.reason ? (
+                          <Text style={styles.amendmentReason}>Reason: {amend.reason}</Text>
+                        ) : null}
+                        <Text style={styles.amendmentText}>{amend.text}</Text>
+                        <Text style={styles.amendmentMeta}>
+                          {amend.vetName || 'Clinician'}
+                          {ts ? ` — ${ts.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${ts.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : ''}
+                        </Text>
+                      </View>
+                    );
+                  })}
+              </View>
+            )}
           </View>
 
           {item.nextVisit && (
@@ -940,6 +1245,7 @@ export default function PetHistoryScreen({ route, navigation }) {
           </View>
         </View>
       </View>
+      </>
     );
   };
 
@@ -971,6 +1277,41 @@ export default function PetHistoryScreen({ route, navigation }) {
         </View>
       )}
 
+      {/* T3.94: Search + filter bar — shown once records have loaded */}
+      {!loading && history.length > 0 && (
+        <View style={styles.searchFilterBar}>
+          <View style={styles.searchInputWrapper}>
+            <MaterialIcons name="search" size={18} color={COLORS.textMuted} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search records..."
+              placeholderTextColor={COLORS.placeholder}
+              value={searchText}
+              onChangeText={setSearchText}
+              returnKeyType="search"
+            />
+            {searchText.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchText('')}>
+                <MaterialIcons name="close" size={18} color={COLORS.textMuted} />
+              </TouchableOpacity>
+            )}
+          </View>
+          <View style={styles.filterChipRow}>
+            {FILTER_OPTIONS.map(opt => (
+              <TouchableOpacity
+                key={opt}
+                style={[styles.filterChip, activeFilter === opt && styles.filterChipActive]}
+                onPress={() => setActiveFilter(opt)}
+              >
+                <Text style={[styles.filterChipText, activeFilter === opt && styles.filterChipTextActive]}>
+                  {opt}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      )}
+
       <View style={styles.container}>
         {loading ? (
           <ActivityIndicator
@@ -980,10 +1321,11 @@ export default function PetHistoryScreen({ route, navigation }) {
           />
         ) : (
           <FlatList
-            data={history}
+            data={filteredHistory}
             keyExtractor={(item) => item.id}
             renderItem={renderRecord}
             contentContainerStyle={{ padding: 20, paddingBottom: 150 }}
+            ListHeaderComponent={listHeader}
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
                 <Text style={{ fontSize: 60, marginBottom: 10 }}>📂</Text>
@@ -1135,14 +1477,16 @@ const styles = StyleSheet.create({
 
   vitalsBox: {
     flexDirection: "row",
+    flexWrap: "wrap",
     backgroundColor: "#FAFAFA",
     borderRadius: 12,
     padding: 12,
     marginBottom: 15,
     borderWidth: 1,
     borderColor: "#EEEEEE",
+    gap: 8,
   },
-  vitalItem: { flex: 1, alignItems: "center" },
+  vitalItem: { alignItems: "center", minWidth: 60 },
   vitalLabel: {
     fontSize: 10,
     color: COLORS.textMuted,
@@ -1556,5 +1900,273 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     overflow: "hidden",
     textTransform: "uppercase",
+  },
+
+  // T3.81: Service chips
+  serviceChip: {
+    backgroundColor: '#F5F5F5',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 0,
+  },
+  serviceChipText: {
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+
+  // T3.95: Case-day badge
+  caseDayBadge: {
+    backgroundColor: '#FFF3E0',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: COLORS.warning,
+    borderRadius: 0,
+  },
+  caseDayText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: COLORS.warning,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+
+  // T3.89: SOAP Assessment block
+  assessmentBox: {
+    padding: 12,
+    backgroundColor: '#E8F5E9',
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.success,
+    marginBottom: 15,
+    borderRadius: 0,
+  },
+  assessmentLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: COLORS.success,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  assessmentText: {
+    fontSize: 14,
+    color: COLORS.textPrimary,
+    lineHeight: 20,
+  },
+
+  // T3.90: Amendments history
+  amendmentCard: {
+    marginTop: 12,
+    padding: 14,
+    backgroundColor: COLORS.cream,
+    borderRadius: 0,
+    borderWidth: 1,
+    borderColor: '#FFE0B2',
+  },
+  amendmentHeader: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.warning,
+    letterSpacing: 1.2,
+    marginBottom: 10,
+  },
+  amendmentEntry: {
+    paddingLeft: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.warning,
+    marginBottom: 10,
+    paddingVertical: 6,
+  },
+  amendmentReason: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.warning,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  amendmentText: {
+    fontSize: 14,
+    color: COLORS.textPrimary,
+    lineHeight: 20,
+  },
+  amendmentMeta: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    marginTop: 4,
+  },
+
+  // T3.96: Year section dividers
+  yearHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  yearLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: COLORS.border,
+  },
+  yearText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: COLORS.accent,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+  },
+
+  // T3.94: Search + filter bar
+  searchFilterBar: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 8,
+    backgroundColor: COLORS.cream,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  searchInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    borderRadius: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 8,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: COLORS.textPrimary,
+    padding: 0,
+  },
+  filterChipRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  filterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 2,
+    borderColor: COLORS.borderLight,
+    borderRadius: 0,
+    backgroundColor: COLORS.white,
+  },
+  filterChipActive: {
+    backgroundColor: COLORS.accent,
+    borderColor: COLORS.brand,
+  },
+  filterChipText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  filterChipTextActive: {
+    color: COLORS.cream,
+  },
+
+  // T3.93: Vitals Trends collapsible card
+  trendsCard: {
+    marginBottom: 16,
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    borderRadius: 0,
+  },
+  trendsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 14,
+  },
+  trendsTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: COLORS.accent,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  trendsBody: {
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+    padding: 14,
+    gap: 16,
+  },
+  trendRow: {
+    gap: 4,
+  },
+  trendLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: COLORS.textMuted,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+
+  // T3.97: Prescription Frequency collapsible card
+  rxFreqCard: {
+    marginBottom: 20,
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    borderRadius: 0,
+  },
+  rxFreqHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 14,
+  },
+  rxFreqTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: COLORS.accent,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  rxFreqBody: {
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+    padding: 14,
+    gap: 10,
+  },
+  rxFreqRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  rxFreqName: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: COLORS.brand,
+  },
+  rxFreqSig: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    fontStyle: 'italic',
+    marginTop: 1,
+  },
+  rxFreqCountBadge: {
+    backgroundColor: '#FFF3E0',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#FFE0B2',
+    borderRadius: 0,
+  },
+  rxFreqCountText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: COLORS.warning,
   },
 });

@@ -270,20 +270,79 @@ const RecordCard = ({ record }) => {
               </SectionBlock>
             )}
 
-            {/* Amendments */}
+            {/* Amendments — T3.99: branch on type === 'structured'; fix vetName/author + timestamp/createdAt fallbacks */}
             {hasAmendments && (
               <SectionBlock label={`Amendments (${record.amendments.length})`}>
                 <Stack spacing={0.75}>
-                  {record.amendments.map((am, i) => (
-                    <Box key={i} sx={{ px: 1.5, py: 1, bgcolor: COLORS.kpiOrangeBg, border: `1px solid ${COLORS.kpiOrangeBorder}` }}>
-                      <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, color: COLORS.brand, fontFamily: FONT }}>{am.text}</Typography>
-                      <Box sx={{ display: 'flex', gap: 1.5, mt: 0.5, flexWrap: 'wrap' }}>
-                        {am.reason && <Typography sx={{ fontSize: '0.6rem', color: COLORS.textMuted }}>Reason: {am.reason}</Typography>}
-                        {am.author && <Typography sx={{ fontSize: '0.6rem', color: COLORS.textMuted }}>By: {am.author}</Typography>}
-                        {am.createdAt && <Typography sx={{ fontSize: '0.6rem', color: COLORS.textMuted }}>{formatDate(am.createdAt)}</Typography>}
+                  {record.amendments.map((am, i) => {
+                    const authorName = am.vetName || am.author || 'Clinician';
+                    const dateVal = am.timestamp || am.createdAt;
+
+                    if (am.type === 'structured') {
+                      return (
+                        <Box key={i} sx={{ px: 1.5, py: 1, bgcolor: COLORS.kpiOrangeBg, border: `1px solid ${COLORS.kpiOrangeBorder}` }}>
+                          <Typography sx={{ fontSize: '0.6rem', fontWeight: 900, color: COLORS.warning, textTransform: 'uppercase', mb: 0.5, fontFamily: FONT }}>
+                            AMENDMENT: {am.reason}
+                          </Typography>
+
+                          {/* Mini SOAP grid — only non-empty fields */}
+                          <Stack spacing={0.25}>
+                            {[
+                              { key: 'subjective', label: 'S' },
+                              { key: 'objective',  label: 'O' },
+                              { key: 'assessment', label: 'A' },
+                              { key: 'plan',       label: 'P' },
+                            ].filter(({ key }) => am.soap?.[key]).map(({ key, label }) => (
+                              <Box key={key}>
+                                <Typography sx={{ fontSize: '0.55rem', fontWeight: 900, color: COLORS.warning, textTransform: 'uppercase' }}>
+                                  {label}
+                                </Typography>
+                                <SoapText value={am.soap[key]} />
+                              </Box>
+                            ))}
+                          </Stack>
+
+                          {/* Vitals row — reuse VitalsRow sub-component */}
+                          {am.vitals && Object.values(am.vitals).some(v => v) && (
+                            <Box sx={{ mt: 0.5 }}>
+                              <VitalsRow vitals={am.vitals} />
+                            </Box>
+                          )}
+
+                          {/* Added medications */}
+                          {am.addedMedications?.length > 0 && (
+                            <Box sx={{ mt: 0.5 }}>
+                              <Typography sx={{ fontSize: '0.55rem', fontWeight: 900, color: COLORS.warning, textTransform: 'uppercase', mb: 0.25 }}>
+                                Added Medications
+                              </Typography>
+                              {am.addedMedications.map((med, j) => (
+                                <Typography key={j} sx={{ fontSize: '0.7rem', fontWeight: 700, color: COLORS.brand, fontFamily: FONT }}>
+                                  {med.name}{med.qty ? ` x${med.qty}` : ''}{med.instructions ? ` — ${med.instructions}` : ''}
+                                </Typography>
+                              ))}
+                            </Box>
+                          )}
+
+                          <Box sx={{ display: 'flex', gap: 1.5, mt: 0.5, flexWrap: 'wrap' }}>
+                            <Typography sx={{ fontSize: '0.6rem', color: COLORS.textMuted }}>By: {authorName}</Typography>
+                            {dateVal && <Typography sx={{ fontSize: '0.6rem', color: COLORS.textMuted }}>{formatDate(dateVal)}</Typography>}
+                          </Box>
+                        </Box>
+                      );
+                    }
+
+                    // Legacy text blob — fixed field name fallbacks, rendering unchanged
+                    return (
+                      <Box key={i} sx={{ px: 1.5, py: 1, bgcolor: COLORS.kpiOrangeBg, border: `1px solid ${COLORS.kpiOrangeBorder}` }}>
+                        <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, color: COLORS.brand, fontFamily: FONT }}>{am.text}</Typography>
+                        <Box sx={{ display: 'flex', gap: 1.5, mt: 0.5, flexWrap: 'wrap' }}>
+                          {am.reason && <Typography sx={{ fontSize: '0.6rem', color: COLORS.textMuted }}>Reason: {am.reason}</Typography>}
+                          <Typography sx={{ fontSize: '0.6rem', color: COLORS.textMuted }}>By: {authorName}</Typography>
+                          {dateVal && <Typography sx={{ fontSize: '0.6rem', color: COLORS.textMuted }}>{formatDate(dateVal)}</Typography>}
+                        </Box>
                       </Box>
-                    </Box>
-                  ))}
+                    );
+                  })}
                 </Stack>
               </SectionBlock>
             )}

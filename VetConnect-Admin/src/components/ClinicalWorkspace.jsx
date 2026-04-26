@@ -360,10 +360,19 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   const [assistiveText, setAssistiveText] = useState('');
   const [diagnosticOpen, setDiagnosticOpen] = useState(false);
 
-  // T2.75: Clinical amendment state — append-only addenda on sealed records
-  const [amendmentText, setAmendmentText] = useState('');
+  // T2.75 / T3.99: Clinical amendment state — structured SOAP amendment on sealed records
   const [amendmentReason, setAmendmentReason] = useState('');
   const [showAmendInput, setShowAmendInput] = useState(false);
+  const [amendSoap, setAmendSoap] = useState({ subjective: '', objective: '', assessment: '', plan: '' });
+  const [amendVitals, setAmendVitals] = useState({ weight: '', temp: '', hr: '', rr: '', crt: '', bcs: '', pain: '' });
+  const [amendMeds, setAmendMeds] = useState([]);
+  const [showAmendVitals, setShowAmendVitals] = useState(false);
+
+  const updateAmendSoap = (field, val) => setAmendSoap(prev => ({ ...prev, [field]: val }));
+  const updateAmendVitals = (field, val) => setAmendVitals(prev => ({ ...prev, [field]: val }));
+
+  const hasAnySoapContent = Object.values(amendSoap).some(v => v.trim());
+  const amendmentValid = amendmentReason.trim() && hasAnySoapContent;
 
   // C1: Structured vaccine administration records — array for multi-vaccine-per-visit
   const [vaccineAdministrations, setVaccineAdministrations] = useState([{ ...EMPTY_VAX }]);
@@ -1496,10 +1505,10 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     }
   };
 
-  // T2.75: Append-only clinical amendment on a sealed record.
-  // Writes to medical_records.amendments[] and appends a CLINICAL_AMENDMENT pulse event.
+  // T2.75 / T3.99: Append-only structured SOAP amendment on a sealed record.
+  // Writes a structured entry to medical_records.amendments[] and appends a CLINICAL_AMENDMENT pulse event.
   const handleSubmitAmendment = async () => {
-    if (!amendmentText.trim() || !amendmentReason.trim()) return;
+    if (!amendmentValid) return;
     setLoading(true);
     try {
       const q = query(
@@ -1513,16 +1522,36 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         return;
       }
       const recordRef = snap.docs[0].ref;
+
+      // Build SOAP payload — only include non-empty fields
+      const soapPayload = {};
+      if (amendSoap.subjective.trim()) soapPayload.subjective = amendSoap.subjective.trim();
+      if (amendSoap.objective.trim()) soapPayload.objective = amendSoap.objective.trim();
+      if (amendSoap.assessment.trim()) soapPayload.assessment = amendSoap.assessment.trim();
+      if (amendSoap.plan.trim()) soapPayload.plan = amendSoap.plan.trim();
+
+      // Include vitals only when at least one field has a value
+      const hasVitals = Object.values(amendVitals).some(v => v !== '' && v != null);
+      const vitalsPayload = hasVitals
+        ? Object.fromEntries(Object.entries(amendVitals).filter(([, v]) => v !== '' && v != null))
+        : null;
+
+      // Include medications only when at least one named entry exists
+      const medsPayload = amendMeds.filter(m => m.name.trim());
+
+      const entry = {
+        type: 'structured',
+        reason: amendmentReason.trim(),
+        soap: soapPayload,
+        ...(vitalsPayload && { vitals: vitalsPayload }),
+        ...(medsPayload.length > 0 && { addedMedications: medsPayload }),
+        vetId: cwProfile?.id || auth.currentUser?.uid || 'unknown',
+        vetName: cwProfile?.fullName || auth.currentUser?.displayName || 'Clinician',
+        timestamp: Timestamp.now(),
+      };
+
       const amendBatch = writeBatch(db);
-      amendBatch.update(recordRef, {
-        amendments: arrayUnion({
-          text: amendmentText.trim(),
-          reason: amendmentReason.trim(),
-          vetId: cwProfile?.id || auth.currentUser?.uid || 'unknown',
-          vetName: cwProfile?.fullName || auth.currentUser?.displayName || 'Clinician',
-          timestamp: Timestamp.now(),
-        }),
-      });
+      amendBatch.update(recordRef, { amendments: arrayUnion(entry) });
       amendBatch.update(doc(db, "appointments", patient.id), {
         clinicalPulse: arrayUnion({
           eventId: makePulseEventId('amend'),
@@ -1530,12 +1559,16 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           timestamp: Timestamp.now(),
           staffId: cwProfile?.id || auth.currentUser?.uid || 'unknown',
           staffName: cwProfile?.fullName || auth.currentUser?.displayName || 'Clinician',
-          note: `Amendment (${amendmentReason.trim().slice(0, 40)}): ${amendmentText.trim().slice(0, 80)}`,
+          note: `Structured amendment (${amendmentReason.trim().slice(0, 40)}): ${Object.keys(soapPayload).join(', ')} updated`,
         }),
       });
       await amendBatch.commit();
-      setAmendmentText('');
+
       setAmendmentReason('');
+      setAmendSoap({ subjective: '', objective: '', assessment: '', plan: '' });
+      setAmendVitals({ weight: '', temp: '', hr: '', rr: '', crt: '', bcs: '', pain: '' });
+      setAmendMeds([]);
+      setShowAmendVitals(false);
       setShowAmendInput(false);
       showToast("Amendment saved.", "success");
     } catch (error) {
@@ -2447,38 +2480,179 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                                     Add Amendment
                                 </Button>
                             ) : (
-                                <Box sx={{ mt: 1.5, textAlign: 'left' }}>
+                                /* T3.99: Structured SOAP amendment form */
+                                <Box sx={{
+                                    mt: 1.5, textAlign: 'left',
+                                    bgcolor: COLORS.warningSurface,
+                                    border: `2px solid ${COLORS.warning}`,
+                                    borderRadius: 0,
+                                    p: 2,
+                                }}>
+                                    {/* Header */}
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 1.5 }}>
+                                        <ShieldIcon sx={{ fontSize: 14, color: COLORS.warning }} />
+                                        <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.warning }}>
+                                            STRUCTURED AMENDMENT
+                                        </Typography>
+                                    </Box>
+
+                                    {/* Reason — mandatory */}
                                     <TextField
                                         fullWidth
                                         size="small"
                                         placeholder="Reason for amendment (required)..."
                                         value={amendmentReason}
                                         onChange={(e) => setAmendmentReason(e.target.value)}
-                                        sx={{ mb: 1, bgcolor: 'white', borderRadius: 0, '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+                                        sx={{ mb: 1.5, bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
                                     />
-                                    <TextField
-                                        fullWidth
-                                        multiline
-                                        rows={3}
+
+                                    {/* SOAP fields — at least one required */}
+                                    <Stack spacing={1} sx={{ mb: 1.5 }}>
+                                        {[
+                                            { key: 'subjective',  label: 'S — SUBJECTIVE',  placeholder: 'Subjective amendment...' },
+                                            { key: 'objective',   label: 'O — OBJECTIVE',   placeholder: 'Objective amendment...' },
+                                            { key: 'assessment',  label: 'A — ASSESSMENT',  placeholder: 'Assessment amendment...' },
+                                            { key: 'plan',        label: 'P — PLAN',        placeholder: 'Plan amendment...' },
+                                        ].map(({ key, label, placeholder }) => (
+                                            <Box key={key}>
+                                                <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.warning, mb: 0.4 }}>
+                                                    {label}
+                                                </Typography>
+                                                <TextField
+                                                    fullWidth
+                                                    multiline
+                                                    rows={2}
+                                                    size="small"
+                                                    placeholder={placeholder}
+                                                    value={amendSoap[key]}
+                                                    onChange={(e) => updateAmendSoap(key, e.target.value)}
+                                                    sx={{ bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+                                                />
+                                            </Box>
+                                        ))}
+                                    </Stack>
+
+                                    {/* Optional vitals correction toggle */}
+                                    {!showAmendVitals ? (
+                                        <Button
+                                            size="small"
+                                            onClick={() => setShowAmendVitals(true)}
+                                            sx={{ fontWeight: 700, color: COLORS.warning, borderRadius: 0, textTransform: 'none', mb: 1, p: 0, minWidth: 0, fontSize: '0.78rem' }}
+                                        >
+                                            + Add Vitals Correction
+                                        </Button>
+                                    ) : (
+                                        <Box sx={{ mb: 1.5 }}>
+                                            <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.warning, mb: 0.75 }}>
+                                                VITALS CORRECTION
+                                            </Typography>
+                                            <Grid container spacing={1}>
+                                                {[
+                                                    { key: 'weight', label: 'Wt (kg)' },
+                                                    { key: 'temp',   label: 'Temp (°C)' },
+                                                    { key: 'hr',     label: 'HR (bpm)' },
+                                                    { key: 'rr',     label: 'RR (rpm)' },
+                                                    { key: 'crt',    label: 'CRT (s)' },
+                                                    { key: 'bcs',    label: 'BCS /9' },
+                                                    { key: 'pain',   label: 'Pain /4' },
+                                                ].map(({ key, label }) => (
+                                                    <Grid key={key} size={{ xs: 4, sm: 3 }}>
+                                                        <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 700, color: COLORS.textMuted, mb: 0.25 }}>
+                                                            {label}
+                                                        </Typography>
+                                                        <InputBase
+                                                            value={amendVitals[key]}
+                                                            onChange={(e) => updateAmendVitals(key, e.target.value)}
+                                                            inputProps={{ style: { fontSize: '0.85rem', padding: '4px 6px' } }}
+                                                            sx={{
+                                                                width: '100%',
+                                                                bgcolor: 'white',
+                                                                border: `1px solid ${COLORS.warning}`,
+                                                                borderRadius: 0,
+                                                                px: 0.5,
+                                                            }}
+                                                        />
+                                                    </Grid>
+                                                ))}
+                                            </Grid>
+                                        </Box>
+                                    )}
+
+                                    {/* Optional medication rows */}
+                                    <Button
                                         size="small"
-                                        placeholder="Enter clinical addendum (append-only — existing record is unchanged)..."
-                                        value={amendmentText}
-                                        onChange={(e) => setAmendmentText(e.target.value)}
-                                        sx={{ mb: 1, bgcolor: 'white', borderRadius: 0, '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
-                                    />
+                                        onClick={() => setAmendMeds(prev => [...prev, { name: '', qty: '', instructions: '' }])}
+                                        sx={{ fontWeight: 700, color: COLORS.warning, borderRadius: 0, textTransform: 'none', mb: amendMeds.length > 0 ? 1 : 1.5, p: 0, minWidth: 0, fontSize: '0.78rem' }}
+                                    >
+                                        + Add Medication
+                                    </Button>
+
+                                    {amendMeds.length > 0 && (
+                                        <Stack spacing={0.75} sx={{ mb: 1.5 }}>
+                                            <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.warning }}>
+                                                ADDED MEDICATIONS
+                                            </Typography>
+                                            {amendMeds.map((med, idx) => (
+                                                <Stack key={idx} direction="row" spacing={0.75} alignItems="center">
+                                                    <TextField
+                                                        size="small"
+                                                        placeholder="Medication name..."
+                                                        value={med.name}
+                                                        onChange={(e) => setAmendMeds(prev => prev.map((m, i) => i === idx ? { ...m, name: e.target.value } : m))}
+                                                        sx={{ flex: 2, bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+                                                    />
+                                                    <TextField
+                                                        size="small"
+                                                        placeholder="Qty"
+                                                        value={med.qty}
+                                                        onChange={(e) => setAmendMeds(prev => prev.map((m, i) => i === idx ? { ...m, qty: e.target.value } : m))}
+                                                        sx={{ flex: 0.5, bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+                                                    />
+                                                    <TextField
+                                                        size="small"
+                                                        placeholder="Instructions..."
+                                                        value={med.instructions}
+                                                        onChange={(e) => setAmendMeds(prev => prev.map((m, i) => i === idx ? { ...m, instructions: e.target.value } : m))}
+                                                        sx={{ flex: 3, bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+                                                    />
+                                                    <IconButton
+                                                        size="small"
+                                                        onClick={() => setAmendMeds(prev => prev.filter((_, i) => i !== idx))}
+                                                        sx={{ color: COLORS.danger, borderRadius: 0, flexShrink: 0 }}
+                                                    >
+                                                        <CloseIcon sx={{ fontSize: 16 }} />
+                                                    </IconButton>
+                                                </Stack>
+                                            ))}
+                                        </Stack>
+                                    )}
+
+                                    {/* Action buttons */}
                                     <Stack direction="row" spacing={1}>
                                         <Button
                                             size="small"
                                             variant="contained"
                                             onClick={handleSubmitAmendment}
-                                            disabled={loading || !amendmentText.trim() || !amendmentReason.trim()}
-                                            sx={{ fontWeight: 900, bgcolor: '#2E7D32', borderRadius: 0, '&:hover': { bgcolor: '#1B5E20' } }}
+                                            disabled={loading || !amendmentValid}
+                                            sx={{
+                                                fontWeight: 900, borderRadius: 0,
+                                                bgcolor: COLORS.warning,
+                                                '&:hover': { bgcolor: '#BF360C' },
+                                                '&.Mui-disabled': { bgcolor: COLORS.warningSurface, color: COLORS.textMuted },
+                                            }}
                                         >
                                             Save Amendment
                                         </Button>
                                         <Button
                                             size="small"
-                                            onClick={() => { setShowAmendInput(false); setAmendmentText(''); setAmendmentReason(''); }}
+                                            onClick={() => {
+                                                setShowAmendInput(false);
+                                                setAmendmentReason('');
+                                                setAmendSoap({ subjective: '', objective: '', assessment: '', plan: '' });
+                                                setAmendVitals({ weight: '', temp: '', hr: '', rr: '', crt: '', bcs: '', pain: '' });
+                                                setAmendMeds([]);
+                                                setShowAmendVitals(false);
+                                            }}
                                             sx={{ fontWeight: 900, borderRadius: 0, color: COLORS.textSecondary }}
                                         >
                                             Cancel

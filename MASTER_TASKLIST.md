@@ -1,8 +1,8 @@
 # VetConnect Master Task List
 
 **Last updated:** 2026-04-27 · **Branch:** `main`
-**Total tasks:** ~745 · **Cancelled/Absorbed:** ~17 · **Active:** ~728
-**DONE:** ~585 · **TODO:** ~143 · **Deferred sub-tasks:** 50
+**Total tasks:** ~746 · **Cancelled/Absorbed:** ~17 · **Active:** ~729
+**DONE:** ~586 · **TODO:** ~143 · **Deferred sub-tasks:** 50
 **Phase 2:** COMPLETE · **Phase 3 Essential:** COMPLETE (except Blaze-gated T3.40-42) · **Phase 3 High-Value:** 8/8 batches done (T3.50 remains, T3.5 DONE) · **Phase 4 Dashboard S:** COMPLETE (T4.1-T4.4)
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~158 hours (Phase 4 S-Tier)
 
@@ -1026,6 +1026,7 @@
 | T3.96 | PetHistoryScreen: year section headers | P3 | 30 min | — | DONE | Inline year dividers using resolveDate + filteredHistory comparison. |
 | T3.97 | PetHistoryScreen: prescription frequency analysis | P3 | 1 hr | — | DONE | Collapsible "Frequently Prescribed" card. Top 10 meds with Nx badges. |
 | T3.98 | Rename prescription/rxCart terminology — rxCart→treatmentCart, prescriptions→dispensedProducts, prescribedItems→encounterItems across all code + Firestore fields. Dual-read fallback for existing documents (dispensedProducts || prescriptions). No logic changes — isDrug routing, dispensing flow, discharge medications all unchanged. | P2 | 2-3 hrs | — | DONE | 11 files, ~105 occurrences. Writes use new names, reads use dual-fallback (newField || oldField). Zero logic changes. |
+| T3.99 | Structured SOAP amendment form — replace text-only amendment input with a full SOAP form (S/O/A/P fields + optional vitals + optional medications). Amendments stored with type:'structured' to distinguish from legacy text-only. Display as orange-bordered mini SOAP card on PatientDashboard, PetHistoryScreen, and EMRDrawer. Original record stays locked and untouched — amendment is a structured addendum. Backward compat: legacy amendments (type undefined) render as text blob. | P2 | 3-4 hrs | T2.453 | DONE | 4 files. ClinicalWorkspace: structured SOAP form + handler. PatientDashboard + EMRDrawer + PetHistoryScreen: branch renderer (structured → SOAP card, legacy → text blob). EMRDrawer field name fix. |
 
 ---
 

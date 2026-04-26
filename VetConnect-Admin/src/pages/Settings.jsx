@@ -3,12 +3,13 @@ import {
   Box, Typography, Paper, Button, FormControl, InputLabel, Select, MenuItem,
   Snackbar, Alert, InputAdornment, TextField, Switch, FormControlLabel,
   Divider, Stack, Chip, ListItemText, ToggleButton, ToggleButtonGroup,
-  Dialog, DialogTitle, DialogContent, DialogActions, IconButton
+  Dialog, DialogTitle, DialogContent, DialogActions, IconButton,
+  LinearProgress, CircularProgress,
 } from '@mui/material';
 import Grid from '@mui/material/Grid'; // MUI v6 Standard
 import { styled } from '@mui/material/styles';
 
-import { doc, setDoc, Timestamp, collection, onSnapshot, addDoc, deleteDoc, getDocs } from 'firebase/firestore';
+import { doc, setDoc, Timestamp, collection, onSnapshot, addDoc, deleteDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 
 // Icons
@@ -33,8 +34,16 @@ import EditIcon from '@mui/icons-material/Edit';
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import QRCode from 'react-qr-code';
+import GavelIcon from '@mui/icons-material/Gavel';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import PublishIcon from '@mui/icons-material/Publish';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import GroupIcon from '@mui/icons-material/Group';
 
 import { DEFAULT_VACCINE_CATALOG } from '../hooks/useVaccineCatalog';
+import { useConsentPolicy } from '../hooks/useConsentPolicy';
+import { CONSENT_TYPES } from '../utils/consentConstants';
+import { migrateExistingConsents } from '../utils/consentMigration';
 
 // Design Tokens
 import { FONT, TYPE, COLORS } from '../theme/designTokens';
@@ -177,6 +186,57 @@ export default function Settings() {
   const [editingVaccine, setEditingVaccine] = useState(null); // null = no edit, object = editing row
   const [newVaccine, setNewVaccine] = useState({
     name: '', species: ['dog'], intervalDays: 365, keywords: '', isActive: true,
+  });
+
+  // --- PILLAR 10: CONSENT POLICY STATE ---
+  const {
+    activeVersion: consentActiveVersion,
+    activatedAt: consentActivatedAt,
+    activatedBy: consentActivatedBy,
+    versions: consentVersions,
+    loading: consentLoading,
+    publishVersion: publishConsentVersion,
+    createDraft: createConsentDraft,
+    updateDraft: updateConsentDraft,
+    seedDefaults: seedConsentDefaults,
+  } = useConsentPolicy();
+
+  // Dialog: Create new draft
+  const [createDraftOpen, setCreateDraftOpen] = useState(false);
+  const [draftForm, setDraftForm] = useState({
+    type: CONSENT_TYPES.DPA,
+    title: '',
+    bodyText: '',
+    summary: '',
+  });
+
+  // Dialog: Edit existing draft
+  const [editDraftOpen, setEditDraftOpen] = useState(false);
+  const [editingDraft, setEditingDraft] = useState(null); // full version object being edited
+
+  // Dialog: Publish confirmation
+  const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
+  const [pendingPublishId, setPendingPublishId] = useState(null);
+
+  // Dialog: View full policy text
+  const [viewPolicyOpen, setViewPolicyOpen] = useState(false);
+  const [viewingPolicy, setViewingPolicy] = useState(null); // version object to display
+
+  // Re-consent progress counter — one-shot query, triggered by button
+  const [reconsentProgress, setReconsentProgress] = useState({ consented: 0, total: 0, loading: false, queried: false });
+
+  useEffect(() => {
+    setReconsentProgress({ consented: 0, total: 0, loading: false, queried: false });
+  }, [consentActiveVersion]);
+
+  // Legacy data migration — Step 7.2 (T3.5 Phase 7)
+  const [migrationResult, setMigrationResult] = useState({
+    migrated: 0,
+    skipped: 0,
+    errors: [],
+    loading: false,
+    previewed: false,
+    executed: false,
   });
 
   useEffect(() => {
@@ -669,6 +729,213 @@ export default function Settings() {
       setToast({ open: true, message: e.message, severity: 'error' });
     }
   };
+
+  // --- CONSENT POLICY HANDLERS (Pillar 10) ---
+
+  const handleSeedConsentPolicies = async () => {
+    try {
+      const who = profile?.fullName || profile?.email || 'Unknown Admin';
+      await seedConsentDefaults(who);
+      setToast({ open: true, message: 'Default DPA and Waiver policies created (v1).', severity: 'success' });
+    } catch (e) {
+      console.error('[Settings.handleSeedConsentPolicies]:', e.message);
+      setToast({ open: true, message: e.message, severity: 'error' });
+    }
+  };
+
+  const handleOpenCreateDraft = () => {
+    setDraftForm({ type: CONSENT_TYPES.DPA, title: '', bodyText: '', summary: '' });
+    setCreateDraftOpen(true);
+  };
+
+  const handleSaveNewDraft = async () => {
+    const { type, title, bodyText, summary } = draftForm;
+    if (!title.trim()) {
+      return setToast({ open: true, message: 'Title is required.', severity: 'warning' });
+    }
+    if (!bodyText.trim()) {
+      return setToast({ open: true, message: 'Body text is required.', severity: 'warning' });
+    }
+    try {
+      const who = profile?.fullName || profile?.email || 'Unknown Admin';
+      await createConsentDraft(type, title, bodyText, summary, who);
+      setCreateDraftOpen(false);
+      setDraftForm({ type: CONSENT_TYPES.DPA, title: '', bodyText: '', summary: '' });
+      setToast({ open: true, message: 'Draft policy saved.', severity: 'success' });
+    } catch (e) {
+      console.error('[Settings.handleSaveNewDraft]:', e.message);
+      setToast({ open: true, message: e.message, severity: 'error' });
+    }
+  };
+
+  const handleOpenEditDraft = (versionDoc) => {
+    setEditingDraft({ ...versionDoc });
+    setEditDraftOpen(true);
+  };
+
+  const handleSaveEditedDraft = async () => {
+    if (!editingDraft) return;
+    if (!editingDraft.title?.trim()) {
+      return setToast({ open: true, message: 'Title is required.', severity: 'warning' });
+    }
+    if (!editingDraft.bodyText?.trim()) {
+      return setToast({ open: true, message: 'Body text is required.', severity: 'warning' });
+    }
+    try {
+      await updateConsentDraft(editingDraft.id, {
+        title:    editingDraft.title.trim(),
+        bodyText: editingDraft.bodyText.trim(),
+        summary:  (editingDraft.summary || '').trim(),
+        type:     editingDraft.type,
+      });
+      setEditDraftOpen(false);
+      setEditingDraft(null);
+      setToast({ open: true, message: 'Draft updated.', severity: 'success' });
+    } catch (e) {
+      console.error('[Settings.handleSaveEditedDraft]:', e.message);
+      setToast({ open: true, message: e.message, severity: 'error' });
+    }
+  };
+
+  const handleRequestPublish = (versionDocId) => {
+    setPendingPublishId(versionDocId);
+    setPublishConfirmOpen(true);
+  };
+
+  const handleConfirmPublish = async () => {
+    if (!pendingPublishId) return;
+    try {
+      const who = profile?.fullName || profile?.email || 'Unknown Admin';
+      await publishConsentVersion(pendingPublishId, who);
+      setPublishConfirmOpen(false);
+      setPendingPublishId(null);
+      setToast({ open: true, message: 'Policy version published. Clients will be prompted to re-consent on their next login.', severity: 'success' });
+    } catch (e) {
+      console.error('[Settings.handleConfirmPublish]:', e.message);
+      setToast({ open: true, message: e.message, severity: 'error' });
+    }
+  };
+
+  const handleViewPolicy = (versionDoc) => {
+    setViewingPolicy(versionDoc);
+    setViewPolicyOpen(true);
+  };
+
+  /**
+   * One-shot query: counts pet_owner users and how many have re-consented
+   * to the current active version. Triggered manually — not a real-time listener.
+   */
+  const handleRefreshReconsentProgress = async () => {
+    if (!consentActiveVersion) return;
+
+    setReconsentProgress((prev) => ({ ...prev, loading: true }));
+
+    try {
+      const usersRef = collection(db, 'users');
+      const activeClientsQuery = query(
+        usersRef,
+        where('role', '==', 'pet_owner'),
+        where('accountStatus', '!=', 'erased'),
+      );
+      const snapshot = await getDocs(activeClientsQuery);
+
+      let total = 0;
+      let consented = 0;
+
+      snapshot.forEach((docSnap) => {
+        total += 1;
+        const { consentVersion } = docSnap.data();
+        if (consentVersion != null && Number(consentVersion) >= Number(consentActiveVersion)) {
+          consented += 1;
+        }
+      });
+
+      setReconsentProgress({ consented, total, loading: false, queried: true });
+    } catch (err) {
+      console.error('[Settings.handleRefreshReconsentProgress]:', err.message);
+      setToast({ open: true, message: 'Failed to load re-consent progress.', severity: 'error' });
+      setReconsentProgress((prev) => ({ ...prev, loading: false, queried: true }));
+    }
+  };
+
+  // --- MIGRATION HANDLERS (Step 7.2, T3.5 Phase 7) ---
+
+  /**
+   * Dry-run the migration to count how many users would be affected.
+   * Does not write any Firestore documents.
+   */
+  const handleMigrationPreview = async () => {
+    setMigrationResult((prev) => ({ ...prev, loading: true }));
+    try {
+      const adminName = profile?.fullName || profile?.email || 'Unknown Admin';
+      const result = await migrateExistingConsents(adminName, { dryRun: true });
+      setMigrationResult({
+        ...result,
+        loading: false,
+        previewed: true,
+        executed: false,
+      });
+    } catch (err) {
+      console.error('[Settings.handleMigrationPreview]:', err.message);
+      setToast({ open: true, message: 'Preview failed: ' + err.message, severity: 'error' });
+      setMigrationResult((prev) => ({ ...prev, loading: false }));
+    }
+  };
+
+  /**
+   * Execute the migration — writes consent_records for all eligible users.
+   * Only enabled after a successful preview that found at least one eligible user.
+   */
+  const handleMigrationExecute = async () => {
+    setMigrationResult((prev) => ({ ...prev, loading: true }));
+    try {
+      const adminName = profile?.fullName || profile?.email || 'Unknown Admin';
+      const result = await migrateExistingConsents(adminName);
+      setMigrationResult({
+        ...result,
+        loading: false,
+        previewed: true,
+        executed: true,
+      });
+      const errorSuffix = result.errors.length > 0
+        ? ` ${result.errors.length} error(s) — check console.`
+        : '';
+      setToast({
+        open: true,
+        message: `Migrated ${result.migrated} clients, skipped ${result.skipped}.${errorSuffix}`,
+        severity: result.errors.length > 0 ? 'warning' : 'success',
+      });
+    } catch (err) {
+      console.error('[Settings.handleMigrationExecute]:', err.message);
+      setToast({ open: true, message: 'Migration failed: ' + err.message, severity: 'error' });
+      setMigrationResult((prev) => ({ ...prev, loading: false }));
+    }
+  };
+
+  const formatConsentDate = (timestamp) => {
+    if (!timestamp) return '—';
+    try {
+      return timestamp.toDate().toLocaleDateString('en-PH', {
+        year: 'numeric', month: 'long', day: 'numeric',
+      });
+    } catch {
+      return '—';
+    }
+  };
+
+  const getConsentStatusChipSx = (status) => {
+    switch (status) {
+      case 'active':
+        return { bgcolor: COLORS.success, color: '#fff', fontWeight: 900, borderRadius: 0, fontSize: '0.65rem', letterSpacing: '0.04em' };
+      case 'draft':
+        return { bgcolor: COLORS.warning, color: '#fff', fontWeight: 900, borderRadius: 0, fontSize: '0.65rem', letterSpacing: '0.04em' };
+      case 'superseded':
+      default:
+        return { bgcolor: COLORS.textMuted, color: '#fff', fontWeight: 900, borderRadius: 0, fontSize: '0.65rem', letterSpacing: '0.04em' };
+    }
+  };
+
+  const pendingPublishVersion = consentVersions.find((v) => v.id === pendingPublishId);
 
   const formatHour = (hour24) => {
     if (hour24 === 0) return '12:00 AM (Midnight)';
@@ -1634,7 +1901,633 @@ export default function Settings() {
           </Paper>
         </Grid>
 
+        {/* PILLAR 10: DATA PRIVACY & CONSENT POLICIES */}
+        <Grid size={{ xs: 12 }}>
+          <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden' }}>
+            <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
+              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
+                <GavelIcon /> Data Privacy & Consent Policies
+              </Typography>
+            </Box>
+            <Box sx={{ p: 3, bgcolor: COLORS.cardBg }}>
+
+              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 3 }}>
+                Manage versioned consent policies under Republic Act No. 10173 (Data Privacy Act of 2012). Publishing a new version requires all clients to re-consent on their next login.
+              </Typography>
+
+              {/* SEED BUTTON — visible only when zero versions exist */}
+              {!consentLoading && consentVersions.length === 0 && (
+                <Box sx={{ mb: 3, p: 2.5, border: `2px dashed ${COLORS.accent}`, bgcolor: COLORS.warningSurface }}>
+                  <Typography sx={{ ...TYPE.bodyBold, color: COLORS.accent, mb: 1 }}>
+                    No consent policies configured
+                  </Typography>
+                  <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 2 }}>
+                    Seed the default RA 10173 DPA consent form and veterinary liability waiver (both v1) to get started.
+                  </Typography>
+                  <Button
+                    variant="outlined"
+                    onClick={handleSeedConsentPolicies}
+                    startIcon={<GavelIcon />}
+                    sx={{
+                      fontWeight: 900, borderRadius: 0,
+                      border: `2px solid ${COLORS.accent}`,
+                      color: COLORS.accent,
+                      '&:hover': { bgcolor: COLORS.cream },
+                    }}
+                  >
+                    Seed Default Policies
+                  </Button>
+                </Box>
+              )}
+
+              {/* ACTIVE POLICY SUMMARY */}
+              {consentActiveVersion !== null && (
+                <Box sx={{ mb: 3, p: 2, border: `2px solid ${COLORS.success}`, bgcolor: COLORS.kpiGreenBg }}>
+                  <Typography sx={{ ...TYPE.label, color: COLORS.success, mb: 0.5 }}>Active Policy</Typography>
+                  <Typography sx={{ ...TYPE.bodyBold, color: COLORS.textPrimary }}>
+                    Version {consentActiveVersion}
+                  </Typography>
+                  <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary }}>
+                    Effective {formatConsentDate(consentActivatedAt)} &mdash; Published by {consentActivatedBy || '—'}
+                  </Typography>
+                </Box>
+              )}
+
+              {/* RE-CONSENT PROGRESS COUNTER */}
+              {consentActiveVersion !== null && (
+                <Box sx={{ mb: 3, p: 2, border: `2px solid ${COLORS.border}`, bgcolor: COLORS.cardBg }}>
+                  <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
+                    <Stack direction="row" alignItems="center" spacing={1}>
+                      <GroupIcon sx={{ fontSize: 18, color: COLORS.accent }} />
+                      <Typography sx={{ ...TYPE.label, color: COLORS.accent }}>
+                        Re-consent Progress — Version {consentActiveVersion}
+                      </Typography>
+                    </Stack>
+                    <Button
+                      size="small"
+                      startIcon={
+                        reconsentProgress.loading
+                          ? <CircularProgress size={14} sx={{ color: COLORS.accent }} />
+                          : <RefreshIcon fontSize="small" />
+                      }
+                      onClick={handleRefreshReconsentProgress}
+                      disabled={reconsentProgress.loading}
+                      sx={{
+                        borderRadius: 0,
+                        border: `1px solid ${COLORS.border}`,
+                        color: COLORS.accent,
+                        fontWeight: 700,
+                        fontSize: '0.7rem',
+                        letterSpacing: '0.06em',
+                        textTransform: 'uppercase',
+                        px: 1.5,
+                        '&:hover': { bgcolor: COLORS.cream },
+                        '&.Mui-disabled': { opacity: 0.5 },
+                      }}
+                    >
+                      {reconsentProgress.loading ? 'Loading...' : 'Refresh'}
+                    </Button>
+                  </Stack>
+
+                  {reconsentProgress.total > 0 ? (
+                    <>
+                      <Typography sx={{ ...TYPE.bodyBold, color: COLORS.textPrimary, mb: 1 }}>
+                        {reconsentProgress.consented} / {reconsentProgress.total} clients consented
+                        {' '}
+                        <Typography component="span" sx={{ ...TYPE.meta, color: COLORS.textMuted }}>
+                          ({Math.round((reconsentProgress.consented / reconsentProgress.total) * 100)}%)
+                        </Typography>
+                      </Typography>
+                      <LinearProgress
+                        variant="determinate"
+                        value={(reconsentProgress.consented / reconsentProgress.total) * 100}
+                        sx={{
+                          height: 10,
+                          borderRadius: 0,
+                          border: `1px solid ${COLORS.border}`,
+                          bgcolor: COLORS.borderLight,
+                          '& .MuiLinearProgress-bar': {
+                            borderRadius: 0,
+                            bgcolor: reconsentProgress.consented === reconsentProgress.total
+                              ? COLORS.success
+                              : COLORS.accent,
+                          },
+                        }}
+                      />
+                      {reconsentProgress.consented < reconsentProgress.total && (
+                        <Typography sx={{ ...TYPE.meta, color: COLORS.warning, mt: 1 }}>
+                          {reconsentProgress.total - reconsentProgress.consented} client(s) have not yet re-consented.
+                        </Typography>
+                      )}
+                      {reconsentProgress.consented === reconsentProgress.total && (
+                        <Typography sx={{ ...TYPE.meta, color: COLORS.success, mt: 1 }}>
+                          All active clients have re-consented.
+                        </Typography>
+                      )}
+                    </>
+                  ) : reconsentProgress.queried && reconsentProgress.total === 0 ? (
+                    <Typography sx={{ ...TYPE.meta, color: COLORS.textMuted, fontStyle: 'italic' }}>
+                      No active clients found.
+                    </Typography>
+                  ) : !reconsentProgress.queried && !reconsentProgress.loading ? (
+                    <Typography sx={{ ...TYPE.meta, color: COLORS.textMuted, fontStyle: 'italic' }}>
+                      Press Refresh to load re-consent progress.
+                    </Typography>
+                  ) : null}
+                </Box>
+              )}
+
+              {/* LEGACY DATA MIGRATION — Step 7.2 (T3.5 Phase 7) */}
+              {consentVersions.length > 0 && (
+                <Box sx={{ mb: 3, p: 2.5, border: `2px solid ${COLORS.border}`, bgcolor: COLORS.cardBg }}>
+                  <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+                    <GavelIcon sx={{ fontSize: 18, color: COLORS.accent }} />
+                    <Typography sx={{ ...TYPE.label, color: COLORS.accent }}>
+                      Legacy Data Migration
+                    </Typography>
+                  </Stack>
+
+                  <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 2 }}>
+                    Migrate existing clients who consented under the old boolean system to the new versioned consent records.
+                    This is a one-time operation and is safe to preview before running.
+                  </Typography>
+
+                  {/* Preview result */}
+                  {migrationResult.previewed && !migrationResult.executed && (
+                    <Box sx={{ mb: 2, p: 1.5, bgcolor: COLORS.warningSurface, border: `1px solid ${COLORS.border}` }}>
+                      <Typography sx={{ ...TYPE.bodyBold, color: COLORS.textPrimary }}>
+                        Found {migrationResult.migrated} client(s) eligible for migration
+                        {migrationResult.skipped > 0 && ` (${migrationResult.skipped} already migrated or ineligible)`}
+                      </Typography>
+                      {migrationResult.errors.length > 0 && (
+                        <Typography sx={{ ...TYPE.meta, color: COLORS.danger, mt: 0.5 }}>
+                          {migrationResult.errors.length} error(s) encountered during preview — check console.
+                        </Typography>
+                      )}
+                    </Box>
+                  )}
+
+                  {/* Post-execution result */}
+                  {migrationResult.executed && (
+                    <Box sx={{ mb: 2, p: 1.5, bgcolor: COLORS.kpiGreenBg, border: `1px solid ${COLORS.kpiGreenBorder}` }}>
+                      <Typography sx={{ ...TYPE.bodyBold, color: COLORS.success }}>
+                        Migration complete — migrated {migrationResult.migrated}, skipped {migrationResult.skipped}.
+                        {migrationResult.errors.length > 0 && ` ${migrationResult.errors.length} error(s) — check console.`}
+                      </Typography>
+                    </Box>
+                  )}
+
+                  <Stack direction="row" spacing={1.5}>
+                    {/* Preview button */}
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={
+                        migrationResult.loading && !migrationResult.previewed
+                          ? <CircularProgress size={14} sx={{ color: COLORS.accent }} />
+                          : <RefreshIcon fontSize="small" />
+                      }
+                      onClick={handleMigrationPreview}
+                      disabled={migrationResult.loading || migrationResult.executed}
+                      sx={{
+                        fontFamily: FONT,
+                        fontWeight: 700,
+                        fontSize: '0.8rem',
+                        textTransform: 'none',
+                        borderRadius: 0,
+                        borderColor: COLORS.border,
+                        color: COLORS.textSecondary,
+                        '&:hover': { borderColor: COLORS.accent, color: COLORS.accent },
+                        '&.Mui-disabled': { opacity: 0.5 },
+                      }}
+                    >
+                      {migrationResult.loading && !migrationResult.previewed ? 'Previewing...' : 'Preview'}
+                    </Button>
+
+                    {/* Execute button */}
+                    <Button
+                      variant="contained"
+                      size="small"
+                      startIcon={
+                        migrationResult.loading && migrationResult.previewed
+                          ? <CircularProgress size={14} sx={{ color: COLORS.cardBg }} />
+                          : null
+                      }
+                      onClick={handleMigrationExecute}
+                      disabled={
+                        !migrationResult.previewed ||
+                        migrationResult.migrated === 0 ||
+                        migrationResult.loading ||
+                        migrationResult.executed
+                      }
+                      sx={{
+                        fontFamily: FONT,
+                        fontWeight: 900,
+                        fontSize: '0.8rem',
+                        textTransform: 'none',
+                        borderRadius: 0,
+                        bgcolor: COLORS.accent,
+                        boxShadow: 'none',
+                        '&:hover': { bgcolor: COLORS.brand, boxShadow: 'none' },
+                        '&.Mui-disabled': { bgcolor: COLORS.borderLight, boxShadow: 'none' },
+                      }}
+                    >
+                      {migrationResult.loading && migrationResult.previewed ? 'Migrating...' : 'Run Migration'}
+                    </Button>
+                  </Stack>
+                </Box>
+              )}
+
+              {/* CREATE NEW DRAFT BUTTON */}
+              {consentVersions.length > 0 && (
+                <Box sx={{ mb: 3 }}>
+                  <Button
+                    variant="contained"
+                    startIcon={<AddCircleOutlineIcon />}
+                    onClick={handleOpenCreateDraft}
+                    sx={{
+                      bgcolor: COLORS.accent, fontWeight: 900, borderRadius: 0,
+                      border: `2px solid ${COLORS.brand}`,
+                      boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
+                      '&:hover': { bgcolor: COLORS.brand },
+                    }}
+                  >
+                    Create New Version
+                  </Button>
+                </Box>
+              )}
+
+              {/* VERSION HISTORY TABLE */}
+              {consentVersions.length > 0 && (
+                <Box>
+                  <Typography sx={{ ...TYPE.label, color: COLORS.accent, mb: 1.5 }}>Version History</Typography>
+                  <Box sx={{ border: `2px solid ${COLORS.border}`, overflow: 'hidden' }}>
+
+                    {/* Table header */}
+                    <Box sx={{
+                      display: 'grid',
+                      gridTemplateColumns: '100px 80px 120px 1fr 180px',
+                      gap: 0,
+                      bgcolor: COLORS.tableHeaderBg,
+                      borderBottom: `2px solid ${COLORS.border}`,
+                      px: 2, py: 1,
+                    }}>
+                      {['Status', 'Version', 'Type', 'Summary', 'Actions'].map((header) => (
+                        <Typography key={header} sx={{ ...TYPE.label, color: COLORS.textSecondary, fontSize: '0.65rem' }}>
+                          {header}
+                        </Typography>
+                      ))}
+                    </Box>
+
+                    {/* Table rows */}
+                    {consentVersions.map((v, index) => (
+                      <Box
+                        key={v.id}
+                        sx={{
+                          display: 'grid',
+                          gridTemplateColumns: '100px 80px 120px 1fr 180px',
+                          gap: 0,
+                          alignItems: 'center',
+                          px: 2, py: 1.5,
+                          borderBottom: index < consentVersions.length - 1 ? `1px solid ${COLORS.borderLight}` : 'none',
+                          bgcolor: v.status === 'active' ? COLORS.kpiGreenBg : 'transparent',
+                        }}
+                      >
+                        {/* Status chip */}
+                        <Box>
+                          <Chip
+                            label={v.status.toUpperCase()}
+                            size="small"
+                            sx={getConsentStatusChipSx(v.status)}
+                          />
+                        </Box>
+
+                        {/* Version number */}
+                        <Typography sx={{ ...TYPE.bodyBold, color: COLORS.textPrimary }}>
+                          v{v.versionNumber}
+                        </Typography>
+
+                        {/* Type */}
+                        <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          {v.type === CONSENT_TYPES.DPA ? 'DPA' : 'Waiver'}
+                        </Typography>
+
+                        {/* Summary + created date */}
+                        <Box>
+                          <Typography sx={{ ...TYPE.body, color: COLORS.textPrimary }}>
+                            {v.summary || v.title || '—'}
+                          </Typography>
+                          <Typography sx={{ ...TYPE.meta, color: COLORS.textMuted }}>
+                            Created {formatConsentDate(v.createdAt)} by {v.createdBy || '—'}
+                          </Typography>
+                        </Box>
+
+                        {/* Action buttons */}
+                        <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                          {/* View full text — available for all statuses */}
+                          <IconButton
+                            size="small"
+                            onClick={() => handleViewPolicy(v)}
+                            title="View full policy text"
+                            sx={{ borderRadius: 0, color: COLORS.info, '&:hover': { bgcolor: COLORS.chipBlueBg } }}
+                          >
+                            <VisibilityIcon fontSize="small" />
+                          </IconButton>
+
+                          {/* Edit — draft only */}
+                          {v.status === 'draft' && (
+                            <IconButton
+                              size="small"
+                              onClick={() => handleOpenEditDraft(v)}
+                              title="Edit draft"
+                              sx={{ borderRadius: 0, color: COLORS.accent, '&:hover': { bgcolor: COLORS.cream } }}
+                            >
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                          )}
+
+                          {/* Publish — draft only */}
+                          {v.status === 'draft' && (
+                            <IconButton
+                              size="small"
+                              onClick={() => handleRequestPublish(v.id)}
+                              title="Publish this version"
+                              sx={{ borderRadius: 0, color: COLORS.success, '&:hover': { bgcolor: COLORS.kpiGreenBg } }}
+                            >
+                              <PublishIcon fontSize="small" />
+                            </IconButton>
+                          )}
+                        </Stack>
+                      </Box>
+                    ))}
+                  </Box>
+                </Box>
+              )}
+
+            </Box>
+          </Paper>
+        </Grid>
+
       </Grid>
+
+      {/* ── PILLAR 10 DIALOGS ────────────────────────────────────────────── */}
+
+      {/* CREATE DRAFT DIALOG */}
+      <Dialog open={createDraftOpen} onClose={() => setCreateDraftOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ fontWeight: 900, color: COLORS.accent, bgcolor: COLORS.cream, borderBottom: `2px solid ${COLORS.accent}`, borderRadius: 0, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <GavelIcon /> Create New Policy Version
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3, bgcolor: COLORS.formBg }}>
+          <Stack spacing={2.5}>
+            {/* Type selector */}
+            <Box>
+              <Typography sx={{ ...TYPE.label, color: COLORS.accent, mb: 1 }}>Policy Type</Typography>
+              <ToggleButtonGroup
+                exclusive
+                value={draftForm.type}
+                onChange={(_, val) => { if (val) setDraftForm((prev) => ({ ...prev, type: val })); }}
+                size="small"
+                sx={{
+                  '& .MuiToggleButton-root': {
+                    border: `2px solid ${COLORS.accent}33 !important`,
+                    borderRadius: '0 !important',
+                    fontWeight: 900, fontSize: '0.75rem', color: COLORS.accent, px: 2.5, py: 0.75,
+                    '&.Mui-selected': {
+                      bgcolor: `${COLORS.accent} !important`,
+                      color: `${COLORS.cardBg} !important`,
+                    },
+                  },
+                }}
+              >
+                <ToggleButton value={CONSENT_TYPES.DPA}>DPA Consent (RA 10173)</ToggleButton>
+                <ToggleButton value={CONSENT_TYPES.WAIVER}>Liability Waiver</ToggleButton>
+              </ToggleButtonGroup>
+            </Box>
+
+            {/* Title */}
+            <TextField
+              fullWidth label="Policy Title" size="small"
+              value={draftForm.title}
+              onChange={(e) => setDraftForm((prev) => ({ ...prev, title: e.target.value }))}
+              sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0 } }}
+              inputProps={{ style: { fontWeight: 700 } }}
+              placeholder="e.g. Data Privacy Act Consent (RA 10173) — Version 2"
+            />
+
+            {/* Summary */}
+            <TextField
+              fullWidth label="Summary (what changed from the previous version)" size="small"
+              value={draftForm.summary}
+              onChange={(e) => setDraftForm((prev) => ({ ...prev, summary: e.target.value }))}
+              sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0 } }}
+              inputProps={{ style: { fontWeight: 400 } }}
+              placeholder="e.g. Added data portability section per NPC Circular 23-01"
+            />
+
+            {/* Body text */}
+            <TextField
+              fullWidth label="Policy Body Text" multiline minRows={12}
+              value={draftForm.bodyText}
+              onChange={(e) => setDraftForm((prev) => ({ ...prev, bodyText: e.target.value }))}
+              sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0 } }}
+              inputProps={{ style: { fontFamily: 'monospace', fontSize: '0.8rem', lineHeight: 1.6 } }}
+              helperText="Enter the full policy text. This is what clients will read before signing."
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ p: 2.5, bgcolor: COLORS.cream, borderTop: `2px solid ${COLORS.border}` }}>
+          <Button
+            onClick={() => setCreateDraftOpen(false)}
+            sx={{ fontWeight: 900, color: COLORS.textSecondary, borderRadius: 0 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleSaveNewDraft}
+            sx={{ fontWeight: 900, borderRadius: 0, bgcolor: COLORS.accent, '&:hover': { bgcolor: COLORS.brand } }}
+          >
+            Save as Draft
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* EDIT DRAFT DIALOG */}
+      <Dialog open={editDraftOpen} onClose={() => setEditDraftOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ fontWeight: 900, color: COLORS.accent, bgcolor: COLORS.cream, borderBottom: `2px solid ${COLORS.accent}`, borderRadius: 0, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <EditIcon /> Edit Draft Policy
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3, bgcolor: COLORS.formBg }}>
+          {editingDraft && (
+            <Stack spacing={2.5}>
+              {/* Type selector */}
+              <Box>
+                <Typography sx={{ ...TYPE.label, color: COLORS.accent, mb: 1 }}>Policy Type</Typography>
+                <ToggleButtonGroup
+                  exclusive
+                  value={editingDraft.type}
+                  onChange={(_, val) => { if (val) setEditingDraft((prev) => ({ ...prev, type: val })); }}
+                  size="small"
+                  sx={{
+                    '& .MuiToggleButton-root': {
+                      border: `2px solid ${COLORS.accent}33 !important`,
+                      borderRadius: '0 !important',
+                      fontWeight: 900, fontSize: '0.75rem', color: COLORS.accent, px: 2.5, py: 0.75,
+                      '&.Mui-selected': {
+                        bgcolor: `${COLORS.accent} !important`,
+                        color: `${COLORS.cardBg} !important`,
+                      },
+                    },
+                  }}
+                >
+                  <ToggleButton value={CONSENT_TYPES.DPA}>DPA Consent (RA 10173)</ToggleButton>
+                  <ToggleButton value={CONSENT_TYPES.WAIVER}>Liability Waiver</ToggleButton>
+                </ToggleButtonGroup>
+              </Box>
+
+              {/* Title */}
+              <TextField
+                fullWidth label="Policy Title" size="small"
+                value={editingDraft.title || ''}
+                onChange={(e) => setEditingDraft((prev) => ({ ...prev, title: e.target.value }))}
+                sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0 } }}
+                inputProps={{ style: { fontWeight: 700 } }}
+              />
+
+              {/* Summary */}
+              <TextField
+                fullWidth label="Summary (what changed from the previous version)" size="small"
+                value={editingDraft.summary || ''}
+                onChange={(e) => setEditingDraft((prev) => ({ ...prev, summary: e.target.value }))}
+                sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0 } }}
+              />
+
+              {/* Body text */}
+              <TextField
+                fullWidth label="Policy Body Text" multiline minRows={12}
+                value={editingDraft.bodyText || ''}
+                onChange={(e) => setEditingDraft((prev) => ({ ...prev, bodyText: e.target.value }))}
+                sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0 } }}
+                inputProps={{ style: { fontFamily: 'monospace', fontSize: '0.8rem', lineHeight: 1.6 } }}
+              />
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2.5, bgcolor: COLORS.cream, borderTop: `2px solid ${COLORS.border}` }}>
+          <Button
+            onClick={() => setEditDraftOpen(false)}
+            sx={{ fontWeight: 900, color: COLORS.textSecondary, borderRadius: 0 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleSaveEditedDraft}
+            sx={{ fontWeight: 900, borderRadius: 0, bgcolor: COLORS.accent, '&:hover': { bgcolor: COLORS.brand } }}
+          >
+            Save Draft
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* PUBLISH CONFIRMATION DIALOG */}
+      <Dialog open={publishConfirmOpen} onClose={() => setPublishConfirmOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 900, color: COLORS.accent, bgcolor: COLORS.cream, borderBottom: `2px solid ${COLORS.accent}`, borderRadius: 0, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <PublishIcon /> Publish Policy Version
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3 }}>
+          <Typography sx={{ ...TYPE.body, color: COLORS.textPrimary, mb: 1.5 }}>
+            Publishing{' '}
+            <strong>
+              {pendingPublishVersion
+                ? `"${pendingPublishVersion.title}" (v${pendingPublishVersion.versionNumber})`
+                : 'this version'}
+            </strong>{' '}
+            will:
+          </Typography>
+          <Box component="ul" sx={{ pl: 2.5, ...TYPE.body, color: COLORS.textPrimary }}>
+            <li>Make this the active policy version</li>
+            <li>Require all existing clients to re-consent on their next login</li>
+            <li>Mark all previously active versions as "superseded"</li>
+          </Box>
+          <Box sx={{ mt: 2, p: 2, bgcolor: COLORS.dangerSurface, border: `2px solid ${COLORS.danger}` }}>
+            <Typography sx={{ ...TYPE.bodyBold, color: COLORS.danger }}>
+              This action cannot be undone.
+            </Typography>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: 2.5, bgcolor: COLORS.cream, borderTop: `2px solid ${COLORS.border}` }}>
+          <Button
+            onClick={() => setPublishConfirmOpen(false)}
+            sx={{ fontWeight: 900, color: COLORS.textSecondary, borderRadius: 0 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleConfirmPublish}
+            startIcon={<PublishIcon />}
+            sx={{ fontWeight: 900, borderRadius: 0, bgcolor: COLORS.success, '&:hover': { bgcolor: COLORS.brand } }}
+          >
+            Publish Version
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* VIEW FULL TEXT DIALOG */}
+      <Dialog open={viewPolicyOpen} onClose={() => setViewPolicyOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{
+          fontWeight: 900, color: COLORS.accent, bgcolor: COLORS.cream,
+          borderBottom: `2px solid ${COLORS.accent}`, borderRadius: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <VisibilityIcon />
+            {viewingPolicy?.title || 'Policy Text'}
+          </Box>
+          {viewingPolicy && (
+            <Chip
+              label={viewingPolicy.status.toUpperCase()}
+              size="small"
+              sx={getConsentStatusChipSx(viewingPolicy.status)}
+            />
+          )}
+        </DialogTitle>
+        <DialogContent sx={{ p: 0 }}>
+          <Box sx={{ p: 3, maxHeight: '60vh', overflowY: 'auto', bgcolor: COLORS.formBg }}>
+            {viewingPolicy?.summary && (
+              <Box sx={{ mb: 2, p: 1.5, bgcolor: COLORS.warningSurface, border: `1px solid ${COLORS.border}` }}>
+                <Typography sx={{ ...TYPE.label, color: COLORS.accent, mb: 0.5 }}>Summary</Typography>
+                <Typography sx={{ ...TYPE.body, color: COLORS.textSecondary }}>{viewingPolicy.summary}</Typography>
+              </Box>
+            )}
+            <Typography
+              component="pre"
+              sx={{
+                ...TYPE.body,
+                color: COLORS.textPrimary,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                fontFamily: "'Inter', 'Roboto', sans-serif",
+                lineHeight: 1.8,
+              }}
+            >
+              {viewingPolicy?.bodyText || ''}
+            </Typography>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, bgcolor: COLORS.cream, borderTop: `2px solid ${COLORS.border}` }}>
+          <Typography sx={{ ...TYPE.meta, color: COLORS.textMuted, flexGrow: 1 }}>
+            {viewingPolicy && `v${viewingPolicy.versionNumber} — Created ${formatConsentDate(viewingPolicy.createdAt)}`}
+          </Typography>
+          <Button
+            onClick={() => setViewPolicyOpen(false)}
+            sx={{ fontWeight: 900, color: COLORS.textSecondary, borderRadius: 0 }}
+          >
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* DELETE CONFIRMATION DIALOG */}
       <Dialog

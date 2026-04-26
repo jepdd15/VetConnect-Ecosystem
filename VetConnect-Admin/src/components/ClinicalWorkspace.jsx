@@ -1137,6 +1137,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         },
         legal: {
             ownerSignature: ownerSignature,
+            consentVersion: patient?.consentVersion || null,
             isLocked: true,
             lockedAt: commitTimestamp
         },

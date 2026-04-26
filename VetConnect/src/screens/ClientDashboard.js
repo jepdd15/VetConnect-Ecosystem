@@ -28,6 +28,7 @@ import { auth, db } from "../../firebaseConfig";
 import { getClientStatusLabel } from "../utils/statusLabels";
 import { safeDate, getLocalDateStr } from "../utils/helpers";
 import { COLORS } from "../theme/mobileTokens";
+import { useConsentGate } from "../hooks/useConsentGate";
 
 // --- PUSH NOTIFICATION IMPORTS ---
 import Constants from "expo-constants";
@@ -53,6 +54,20 @@ const ClientDashboard = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [pulseAnim] = useState(new Animated.Value(1));
 
+  // --- CONSENT GATE STATE ---
+  // consentCompleted prevents re-triggering the gate after the user returns
+  // from ConsentScreen. The hook is one-shot (getDoc), so we guard with this
+  // flag instead of forcing a re-fetch on focus.
+  const [consentCompleted, setConsentCompleted] = useState(false);
+  const [waiverBannerVisible, setWaiverBannerVisible] = useState(true);
+  const userId = auth.currentUser?.uid ?? null;
+  const {
+    loading: consentLoading,
+    needsConsent,
+    needsWaiver,
+    activeDpaPolicy,
+  } = useConsentGate(userId);
+
   // PULSE ANIMATION FOR ALERTS
   useEffect(() => {
     Animated.loop(
@@ -62,6 +77,33 @@ const ClientDashboard = ({ navigation }) => {
       ])
     ).start();
   }, []);
+
+  // ======================================================================
+  // CONSENT GATE — navigate to ConsentScreen if DPA consent is required.
+  // Only fires once per dashboard session (guarded by consentCompleted flag).
+  // When the user returns from ConsentScreen after signing, they set
+  // consentCompleted via navigation.goBack(), so the gate does not re-trigger.
+  // ======================================================================
+  useEffect(() => {
+    if (consentLoading || consentCompleted) return;
+    if (!needsConsent || !activeDpaPolicy) return;
+
+    const userConsentVersion = userProfile?.consentVersion ?? null;
+
+    navigation.navigate('Consent', {
+      consentType:        'dpa',
+      versionNumber:      activeDpaPolicy.versionNumber,
+      versionDocId:       activeDpaPolicy.versionDocId,
+      policyText:         activeDpaPolicy.bodyText,
+      policyTitle:        activeDpaPolicy.title,
+      isPostRegistration: false,
+      previousVersion:    userConsentVersion,
+      summary:            activeDpaPolicy.summary,
+    });
+
+    // Mark as completed so focus listener does not re-fire on return
+    setConsentCompleted(true);
+  }, [consentLoading, needsConsent, activeDpaPolicy, consentCompleted, userProfile]);
 
   // ======================================================================
   // 1. PUSH NOTIFICATION SETUP
@@ -504,6 +546,31 @@ const ClientDashboard = ({ navigation }) => {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      {/* WAIVER ADVISORY BANNER — non-blocking, dismissible */}
+      {needsWaiver && waiverBannerVisible && !needsConsent && (
+        <View style={styles.waiverBannerContainer}>
+          <TouchableOpacity
+            style={styles.waiverBanner}
+            onPress={() => navigation.navigate('UserProfile')}
+            activeOpacity={0.8}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={styles.waiverBannerTitle}>WAIVER REQUIRED</Text>
+              <Text style={styles.waiverBannerMsg}>
+                Please complete your liability waiver in your profile settings.
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => setWaiverBannerVisible(false)}
+              style={styles.waiverBannerClose}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Text style={styles.waiverBannerCloseText}>✕</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* BALANCE ALERT BANNER (NEOBRUTALIST REDESIGN) */}
       {userProfile?.outstandingBalance > 0 && (
         <Animated.View style={[styles.balanceContainer, { transform: [{ scale: pulseAnim }] }]}>
@@ -935,6 +1002,41 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#5D4037',
     textAlign: 'center',
+  },
+
+  // WAIVER ADVISORY BANNER
+  waiverBannerContainer: {
+    marginBottom: 12,
+    position: 'relative',
+  },
+  waiverBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    backgroundColor: COLORS.warning,
+    borderWidth: 3,
+    borderColor: COLORS.brand,
+  },
+  waiverBannerTitle: {
+    fontFamily: 'Inter_900Black',
+    fontSize: 12,
+    color: COLORS.white,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 2,
+  },
+  waiverBannerMsg: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 12,
+    color: COLORS.white,
+  },
+  waiverBannerClose: {
+    paddingLeft: 12,
+  },
+  waiverBannerCloseText: {
+    color: COLORS.white,
+    fontWeight: '900',
+    fontSize: 16,
   },
 
   // QUEUE PROGRESS

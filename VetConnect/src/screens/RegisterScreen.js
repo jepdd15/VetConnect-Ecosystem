@@ -3,7 +3,9 @@ import { createUserWithEmailAndPassword, deleteUser } from "firebase/auth";
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
+  limit,
   query,
   setDoc,
   Timestamp,
@@ -38,6 +40,56 @@ const RegisterScreen = ({ navigation }) => {
   const [phone, setPhone] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  /**
+   * After successful registration, check whether an active consent policy
+   * exists. If it does, send the new user to ConsentScreen before the
+   * dashboard. If not (system not yet configured), go straight to the
+   * dashboard for graceful backward compatibility.
+   */
+  const navigateAfterRegistration = async () => {
+    try {
+      const policySnap = await getDoc(doc(db, 'clinic_settings', 'consent_policy'));
+
+      if (!policySnap.exists() || !policySnap.data()?.activeVersion) {
+        // Consent system not configured — proceed to dashboard as before
+        navigation.replace('ClientDashboard');
+        return;
+      }
+
+      // Fetch the active DPA policy document for its text and metadata
+      const dpaQuery = query(
+        collection(db, 'consent_versions'),
+        where('type', '==', 'dpa'),
+        where('status', '==', 'active'),
+        limit(1),
+      );
+      const dpaSnap = await getDocs(dpaQuery);
+
+      if (dpaSnap.empty) {
+        // Policy version record missing — degrade gracefully
+        navigation.replace('ClientDashboard');
+        return;
+      }
+
+      const policyDoc = dpaSnap.docs[0];
+      const policyData = policyDoc.data();
+
+      navigation.replace('Consent', {
+        consentType:        'dpa',
+        versionNumber:      policyData.versionNumber,
+        versionDocId:       policyDoc.id,
+        policyText:         policyData.bodyText,
+        policyTitle:        policyData.title,
+        isPostRegistration: true,
+        previousVersion:    null,
+        summary:            policyData.summary ?? null,
+      });
+    } catch {
+      // On any Firestore read error, fall back to dashboard — do not block user
+      navigation.replace('ClientDashboard');
+    }
+  };
 
   const handleRegister = async () => {
     if (!fullName.trim() || !email.trim() || !password || !phone.trim()) {
@@ -165,7 +217,7 @@ const RegisterScreen = ({ navigation }) => {
       }
 
       Alert.alert("Welcome!", "Your account has been created successfully.");
-      navigation.replace("ClientDashboard");
+      await navigateAfterRegistration();
     } catch (error) {
       let errorMessage = error.message;
       if (error.code === "auth/email-already-in-use")

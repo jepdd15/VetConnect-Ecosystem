@@ -35,7 +35,15 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
     govIdNumber: '',
     dpaConsent: false,
     waiverSigned: false,
-    accountStanding: 'Good Standing'
+    accountStanding: 'Good Standing',
+    // Step 5.4 (T3.5): Versioned consent fields — display-only.
+    // These are read from Firestore and surfaced in ClientDetails for the
+    // consent status cards. They are NEVER written via handleSaveProfile;
+    // consent records are written exclusively through ConsentRecordDialog.
+    consentVersion: null,
+    consentGrantedAt: null,
+    waiverVersion: null,
+    waiverGrantedAt: null,
   });
   // T2.134: Engagement KPIs — populated on client selection
   const [engagementKPIs, setEngagementKPIs] = useState({
@@ -199,14 +207,21 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
   const handleSelectClient = (client) => {
     let reps = client.emergencyContacts ||[];
     if (reps.length === 0 && (client.emergencyName || client.emergencyPhone)) reps =[{ name: client.emergencyName || '', phone: client.emergencyPhone || '', relation: 'Primary' }];
-    const cleanClient = { 
-      ...client, 
-      dob: formatFirestoreDate(client.dob), 
-      clientTag: client.clientTag || 'Regular', 
+    const cleanClient = {
+      ...client,
+      dob: formatFirestoreDate(client.dob),
+      clientTag: client.clientTag || 'Regular',
       accountStanding: client.accountStanding || 'Good Standing',
       dpaConsent: client.dpaConsent || false,
       waiverSigned: client.waiverSigned || false,
-      emergencyContacts: reps 
+      emergencyContacts: reps,
+      // Step 5.4 (T3.5): Read versioned consent fields from Firestore.
+      // Firestore Timestamps are preserved as-is so ClientDetails can format them.
+      // null means the client has never consented under the versioned system.
+      consentVersion: client.consentVersion ?? null,
+      consentGrantedAt: client.consentGrantedAt ?? null,
+      waiverVersion: client.waiverVersion ?? null,
+      waiverGrantedAt: client.waiverGrantedAt ?? null,
     };
     
     setSelectedClient(cleanClient);
@@ -220,7 +235,16 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
   const handleSaveProfile = async () => { 
     if (!selectedClient) throw new Error("No client selected.");
     
-    // THE FIX: Add the new fields to the payload!
+    // Step 5.4 (T3.5): Derive legacy consent booleans from versioned fields.
+    // The authoritative source of truth is consentVersion / waiverVersion.
+    // We write the booleans here for backward compatibility with any code that
+    // still reads dpaConsent / waiverSigned directly.
+    // consentVersion / waiverVersion themselves are NOT included in this payload —
+    // they are only ever written through ConsentRecordDialog (admin portal) or
+    // the mobile consent submission hook.
+    const derivedDpaConsent = editForm.consentVersion != null;
+    const derivedWaiverSigned = editForm.waiverVersion != null;
+
     const payload = {
         fullName: editForm.fullName,
         phone: editForm.phone,
@@ -235,8 +259,8 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
         seniorId: editForm.seniorId,
         clientTag: editForm.clientTag,
         accountStanding: editForm.accountStanding || 'Good Standing',
-        dpaConsent: editForm.dpaConsent || false,
-        waiverSigned: editForm.waiverSigned || false,
+        dpaConsent: derivedDpaConsent,
+        waiverSigned: derivedWaiverSigned,
         referralSource: editForm.referralSource,
         referredBy: editForm.referredBy || null,   // T2.136
         allowPromos: editForm.allowPromos,

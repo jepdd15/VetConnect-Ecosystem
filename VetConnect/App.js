@@ -40,6 +40,9 @@ import StaffAppointments from "./src/screens/StaffAppointments";
 import SelfCheckInScreen from "./src/screens/SelfCheckInScreen";
 import ChatbotScreen from "./src/screens/ChatbotScreen";
 
+// --- 5. CONSENT ---
+import ConsentScreen from "./src/screens/ConsentScreen";
+
 const Stack = createStackNavigator();
 
 export default function App() {
@@ -193,6 +196,13 @@ export default function App() {
           name="Chatbot"
           component={ChatbotScreen}
           options={{ title: "Support" }}
+        />
+
+        {/* --- CONSENT --- */}
+        <Stack.Screen
+          name="Consent"
+          component={ConsentScreen}
+          options={{ headerShown: false }}
         />
       </Stack.Navigator>
     </NavigationContainer>

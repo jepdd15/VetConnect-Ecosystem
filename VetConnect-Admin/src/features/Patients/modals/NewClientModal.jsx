@@ -4,7 +4,7 @@ import { collection, addDoc, Timestamp, query, where, getDocs } from 'firebase/f
 import { db } from '../../../firebaseConfig';
 
 // Design Tokens
-import { FONT, COLORS } from '../../../theme/designTokens';
+import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
 
 // Icons
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
@@ -185,6 +185,16 @@ export default function NewClientModal({ open, onClose }) {
               </TextField>
             </Grid>
           </Grid>
+
+          {/* Step 8.5 (T3.5): Remind staff that DPA consent is a separate step.
+              Admin-registered clients have no mobile account and cannot self-consent via the app.
+              The "Record Consent" button on the client profile is their only path. */}
+          <Box sx={{ bgcolor: COLORS.warningSurface, border: `1px solid ${COLORS.warning}`, borderRadius: 0, px: 2, py: 1.25, mt: 2 }}>
+            <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.warning }}>
+              Note: DPA consent must be recorded separately after client creation.
+              Use the "Record Consent" button on the client profile.
+            </Typography>
+          </Box>
 
           {error && form.fullName.trim() && form.phone.trim() && (
             <Typography sx={{ fontFamily: FONT, color: COLORS.danger, fontSize: '0.8rem', mt: 2, fontWeight: 600 }}>{error}</Typography>

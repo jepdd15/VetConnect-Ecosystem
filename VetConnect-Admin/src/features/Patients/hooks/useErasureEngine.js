@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import {
+  addDoc,
   collection,
   doc,
   getDoc,
   getDocs,
+  limit,
   query,
+  Timestamp,
   where,
   writeBatch,
-  addDoc,
-  Timestamp,
 } from 'firebase/firestore';
 import { db } from '../../../firebaseConfig';
 
@@ -381,6 +382,36 @@ export function useErasureEngine() {
           totalDocuments: scanResult.totalDocuments,
         },
       });
+
+      // --- Phase G: Consent withdrawal record (Step 6.3) ------------------------
+      // Non-fatal: erasure is already complete at this point. A failure here
+      // must not surface as an erasure failure to the admin.
+      try {
+        const existingWithdrawalSnap = await getDocs(
+          query(
+            collection(db, 'users', userId, 'consent_records'),
+            where('action', '==', 'withdrawn'),
+            limit(1),
+          ),
+        );
+
+        if (existingWithdrawalSnap.empty) {
+          await addDoc(collection(db, 'users', userId, 'consent_records'), {
+            consentType: 'dpa',
+            versionNumber: null,
+            versionDocId: null,
+            action: 'withdrawn',
+            signatureType: null,
+            signatureData: null,
+            grantedAt: Timestamp.now(),
+            grantedVia: 'admin_portal',
+            deviceInfo: 'admin',
+            adminNote: 'Withdrawal recorded as part of RA 10173 erasure',
+          });
+        }
+      } catch (phaseGErr) {
+        console.error('[useErasureEngine.executeErasure Phase G]:', phaseGErr.message);
+      }
     } catch (err) {
       const message = `[useErasureEngine.executeErasure]: ${err.message}`;
       console.error(message, err);

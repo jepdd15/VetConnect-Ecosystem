@@ -12,6 +12,7 @@ import Grid from '@mui/material/Grid';
 
 import { db } from '../../firebaseConfig';
 import { doc, getDoc, collection, query, where, orderBy, getDocs, Timestamp, updateDoc, onSnapshot } from 'firebase/firestore';
+import { CONSENT_ACTIONS, SIGNATURE_TYPES } from '../../utils/consentConstants';
 
 // Icons
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -48,6 +49,7 @@ import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import PrintIcon from '@mui/icons-material/Print';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import ShieldIcon from '@mui/icons-material/Shield';
+import GavelIcon from '@mui/icons-material/Gavel';
 
 // Charting
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
@@ -137,6 +139,43 @@ export default function PatientDashboard() {
   const [deptsList, setDeptsList] = useState([]);
   // T2.129: Generic error snackbar
   const [errorSnack, setErrorSnack] = useState('');
+
+  // Step 5.2 (T3.5): Consent Audit Log — lazy-loaded when the section is expanded
+  const [auditLogExpanded, setAuditLogExpanded] = useState(false);
+  const [consentRecords, setConsentRecords] = useState([]);
+  const [consentRecordsLoading, setConsentRecordsLoading] = useState(false);
+  const [sigViewDialogOpen, setSigViewDialogOpen] = useState(false);
+  const [sigViewData, setSigViewData] = useState(null); // { signatureType, signatureData }
+
+  useEffect(() => {
+    if (!auditLogExpanded || !owner?.id) return;
+    let cancelled = false;
+    async function fetchConsentRecords() {
+      setConsentRecordsLoading(true);
+      try {
+        const q = query(
+          collection(db, 'users', owner.id, 'consent_records'),
+          orderBy('grantedAt', 'desc'),
+        );
+        const snap = await getDocs(q);
+        if (!cancelled) {
+          setConsentRecords(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        }
+      } catch (err) {
+        console.error('[PatientDashboard] consent records fetch:', err.message);
+      } finally {
+        if (!cancelled) setConsentRecordsLoading(false);
+      }
+    }
+    fetchConsentRecords();
+    return () => { cancelled = true; };
+  }, [auditLogExpanded, owner?.id]);
+
+  const formatConsentTs = (ts) => {
+    if (!ts) return '—';
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
 
   const clinicSettings = useClinicSettings();
 
@@ -1597,6 +1636,94 @@ export default function PatientDashboard() {
             </Widget>
           )}
 
+          {/* ── Consent Audit Log (Step 5.2) ── */}
+          {owner && (
+            <Widget title="Consent Audit Log" icon={<GavelIcon sx={{ fontSize: 14, color: COLORS.accent }} />}>
+              <Box
+                onClick={() => setAuditLogExpanded((v) => !v)}
+                sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', py: 0.5 }}
+              >
+                <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textMuted }}>
+                  {auditLogExpanded ? 'Hide consent history' : 'Show consent history'}
+                </Typography>
+                {auditLogExpanded
+                  ? <ExpandLessIcon sx={{ fontSize: 16, color: COLORS.textMuted }} />
+                  : <ExpandMoreIcon sx={{ fontSize: 16, color: COLORS.textMuted }} />}
+              </Box>
+              <Collapse in={auditLogExpanded}>
+                {consentRecordsLoading ? (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                    <CircularProgress size={20} />
+                  </Box>
+                ) : consentRecords.length === 0 ? (
+                  <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textMuted, fontStyle: 'italic', py: 1 }}>
+                    No consent records on file.
+                  </Typography>
+                ) : (
+                  <Stack spacing={1} sx={{ mt: 1 }}>
+                    {consentRecords.map((rec) => {
+                      const isGranted = rec.action === CONSENT_ACTIONS.GRANTED;
+                      const actionColor = isGranted ? COLORS.success : COLORS.danger;
+                      const actionLabel = isGranted ? 'GRANTED' : 'WITHDRAWN';
+                      const typeLabel = rec.consentType === 'dpa' ? 'DPA' : 'Waiver';
+                      const sigLabel = rec.signatureType === SIGNATURE_TYPES.DRAWN ? 'Drawn'
+                        : rec.signatureType === SIGNATURE_TYPES.TYPED ? 'Typed'
+                        : 'Checkbox (legacy)';
+                      const viaLabel = rec.grantedVia === 'mobile_app' ? 'Mobile App'
+                        : rec.grantedVia === 'admin_portal' ? 'Admin Portal'
+                        : 'Migration';
+
+                      return (
+                        <Box key={rec.id} sx={{ border: `1px solid ${COLORS.borderLight}`, borderRadius: 0, p: 1.25 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                            <Chip
+                              label={actionLabel}
+                              size="small"
+                              sx={{ fontFamily: FONT, fontWeight: 800, fontSize: '0.6rem', bgcolor: actionColor, color: COLORS.cardBg, borderRadius: 0, height: 20, letterSpacing: 0.5 }}
+                            />
+                            <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', fontWeight: 700, color: COLORS.textPrimary }}>
+                              {typeLabel} v{rec.versionNumber}
+                            </Typography>
+                            <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, ml: 'auto' }}>
+                              {formatConsentTs(rec.grantedAt)}
+                            </Typography>
+                          </Box>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                            <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted }}>
+                              Sig: {sigLabel}
+                            </Typography>
+                            <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted }}>
+                              Via: {viaLabel}
+                            </Typography>
+                            {rec.signatureType === SIGNATURE_TYPES.DRAWN && rec.signatureData && (
+                              <Box
+                                component="img"
+                                src={rec.signatureData}
+                                alt="Signature"
+                                onClick={() => { setSigViewData(rec); setSigViewDialogOpen(true); }}
+                                sx={{ maxHeight: 36, border: `1px solid ${COLORS.borderLight}`, cursor: 'pointer', ml: 'auto' }}
+                              />
+                            )}
+                            {rec.signatureType === SIGNATURE_TYPES.TYPED && rec.signatureData && (
+                              <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontStyle: 'italic', color: COLORS.brand, ml: 'auto' }}>
+                                "{rec.signatureData}"
+                              </Typography>
+                            )}
+                          </Box>
+                          {rec.adminNote && (
+                            <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, mt: 0.5, fontStyle: 'italic' }}>
+                              Note: {rec.adminNote}
+                            </Typography>
+                          )}
+                        </Box>
+                      );
+                    })}
+                  </Stack>
+                )}
+              </Collapse>
+            </Widget>
+          )}
+
           {/* Owner Quick Card */}
           {owner && (
             <Widget title="Pet Owner" icon={<PersonIcon sx={{ fontSize: 14, color: COLORS.accent }} />}>
@@ -1627,6 +1754,33 @@ export default function PatientDashboard() {
           )}
         </Box>
       </Box>
+
+      {/* ── Signature Viewer Dialog (Step 5.2) ── */}
+      <Dialog
+        open={sigViewDialogOpen}
+        onClose={() => setSigViewDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 0 } }}
+      >
+        <DialogTitle sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.95rem', color: COLORS.brand, borderBottom: `2px solid ${COLORS.border}` }}>
+          Signature — {sigViewData?.consentType === 'dpa' ? 'DPA' : 'Waiver'} v{sigViewData?.versionNumber}
+        </DialogTitle>
+        <DialogContent sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+          {sigViewData?.signatureType === SIGNATURE_TYPES.DRAWN && sigViewData?.signatureData ? (
+            <Box component="img" src={sigViewData.signatureData} alt="Signature" sx={{ maxWidth: '100%', border: `2px solid ${COLORS.border}` }} />
+          ) : sigViewData?.signatureType === SIGNATURE_TYPES.TYPED && sigViewData?.signatureData ? (
+            <Typography sx={{ fontFamily: FONT, fontSize: '2rem', fontStyle: 'italic', color: COLORS.brand, py: 3 }}>
+              {sigViewData.signatureData}
+            </Typography>
+          ) : (
+            <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textMuted, fontStyle: 'italic' }}>No signature data available.</Typography>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 2.5, pb: 2 }}>
+          <Button onClick={() => setSigViewDialogOpen(false)} sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textSecondary }}>Close</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* ── Referral Report Modal ── */}
       <ReferralModal

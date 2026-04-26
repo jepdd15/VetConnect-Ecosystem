@@ -1,5 +1,8 @@
-import React from 'react';
-import { Box, Typography, IconButton, Button, TextField, MenuItem, Divider, Switch } from '@mui/material';
+import React, { useState } from 'react';
+import {
+  Box, Typography, IconButton, Button, TextField, MenuItem, Divider, Switch,
+  Chip, Dialog, DialogTitle, DialogContent, DialogActions, Tooltip,
+} from '@mui/material';
 import Grid from '@mui/material/Grid';
 
 // Design Tokens
@@ -8,6 +11,185 @@ import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
 // Icons
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import GppGoodIcon from '@mui/icons-material/GppGood';
+import GppBadIcon from '@mui/icons-material/GppBad';
+import GppMaybeIcon from '@mui/icons-material/GppMaybe';
+
+// Consent hooks, constants, and dialog
+import { useConsentPolicy } from '../../../hooks/useConsentPolicy';
+import { CONSENT_TYPES } from '../../../utils/consentConstants';
+import ConsentRecordDialog from '../modals/ConsentRecordDialog';
+
+// ---------------------------------------------------------------------------
+// Consent Status Card
+// ---------------------------------------------------------------------------
+
+/**
+ * Renders a rich consent status card for a single consent type (DPA or Waiver).
+ *
+ * Four states:
+ *   - consented + current        → green chip with version/date + view signature button
+ *   - consented + outdated       → orange chip with version delta note + re-consent nudge
+ *   - not consented              → red chip + "Record Consent" button
+ *   - admin_registered + no consent → neutral muted chip (no mobile account, admin-record path only)
+ */
+function ConsentStatusCard({ label, clientId, clientName, clientVersion, clientGrantedAt, activeVersion, activeVersionDocId, consentType, accountStatus, onConsentRecorded }) {
+  const [sigDialogOpen, setSigDialogOpen] = useState(false);
+  const [recordDialogOpen, setRecordDialogOpen] = useState(false);
+
+  const formatDate = (ts) => {
+    if (!ts) return '—';
+    const d = ts.toDate ? ts.toDate() : (ts.seconds ? new Date(ts.seconds * 1000) : null);
+    if (!d) return '—';
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  const isAdminRegistered = accountStatus === 'admin_registered';
+  const hasConsent = clientVersion != null;
+  const isOutdated = hasConsent && activeVersion != null && clientVersion < activeVersion;
+  const isCurrent = hasConsent && !isOutdated;
+
+  // Admin-registered clients with no consent yet get a neutral "pending" chip instead
+  // of the red NO CONSENT chip — they have no mobile account so the mobile consent gate
+  // is not applicable; the admin "Record Consent" button is their only path.
+  const isPendingNoAccount = isAdminRegistered && !hasConsent;
+
+  let chipLabel = '';
+  let chipBg = '';
+  let chipTextColor = COLORS.cardBg;
+  let chipIcon = null;
+
+  if (isCurrent) {
+    chipLabel = `${label} v${clientVersion} — Signed ${formatDate(clientGrantedAt)}`;
+    chipBg = COLORS.success;
+    chipIcon = <GppGoodIcon sx={{ fontSize: '0.85rem !important', color: `${COLORS.cardBg} !important` }} />;
+  } else if (isOutdated) {
+    chipLabel = `${label} v${clientVersion} — Needs re-consent (current: v${activeVersion})`;
+    chipBg = COLORS.warning;
+    chipIcon = <GppMaybeIcon sx={{ fontSize: '0.85rem !important', color: `${COLORS.cardBg} !important` }} />;
+  } else if (isPendingNoAccount) {
+    chipLabel = `Pending — No mobile account`;
+    chipBg = COLORS.accentLight;
+    chipIcon = <GppMaybeIcon sx={{ fontSize: '0.85rem !important', color: `${COLORS.cardBg} !important` }} />;
+  } else {
+    chipLabel = `NO ${label.toUpperCase()} CONSENT`;
+    chipBg = COLORS.danger;
+    chipIcon = <GppBadIcon sx={{ fontSize: '0.85rem !important', color: `${COLORS.cardBg} !important` }} />;
+  }
+
+  return (
+    <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
+      <Chip
+        icon={chipIcon}
+        label={chipLabel}
+        size="small"
+        sx={{
+          bgcolor: chipBg,
+          color: chipTextColor,
+          fontFamily: FONT,
+          fontWeight: 700,
+          fontSize: '0.72rem',
+          borderRadius: 0,
+          height: 24,
+          '& .MuiChip-label': { px: 1 },
+          '& .MuiChip-icon': { ml: 0.75 },
+        }}
+      />
+
+      {/* View signature button — only when a signature might exist */}
+      {hasConsent && (
+        <Tooltip title="View consent record details">
+          <IconButton
+            size="small"
+            onClick={() => setSigDialogOpen(true)}
+            sx={{
+              color: COLORS.textMuted,
+              width: 22,
+              height: 22,
+              '&:hover': { color: COLORS.accent, bgcolor: COLORS.panelBg },
+            }}
+          >
+            <VisibilityIcon sx={{ fontSize: 14 }} />
+          </IconButton>
+        </Tooltip>
+      )}
+
+      {/* Record Consent button — only when no consent or outdated */}
+      {(!hasConsent || isOutdated) && (
+        <Button
+          size="small"
+          variant="outlined"
+          onClick={() => setRecordDialogOpen(true)}
+          sx={{
+            fontFamily: FONT,
+            fontWeight: 700,
+            fontSize: '0.68rem',
+            textTransform: 'none',
+            borderRadius: 0,
+            color: COLORS.accent,
+            borderColor: COLORS.border,
+            py: 0.25,
+            px: 1,
+            '&:hover': { borderColor: COLORS.accentLight, bgcolor: COLORS.panelBg },
+          }}
+        >
+          Record Consent
+        </Button>
+      )}
+
+      {/* ── Consent record info dialog ── */}
+      <Dialog
+        open={sigDialogOpen}
+        onClose={() => setSigDialogOpen(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 0 } }}
+      >
+        <DialogTitle sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.95rem', color: COLORS.brand, bgcolor: COLORS.cream, borderBottom: `1px solid ${COLORS.border}` }}>
+          {label} Consent — v{clientVersion}
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary }}>
+            Signed: <span style={{ fontWeight: 700, color: COLORS.textPrimary }}>{formatDate(clientGrantedAt)}</span>
+          </Typography>
+          <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary, mt: 0.5 }}>
+            Version: <span style={{ fontWeight: 700, color: COLORS.textPrimary }}>v{clientVersion}</span>
+            {isOutdated && (
+              <span style={{ color: COLORS.warning, marginLeft: 8 }}>
+                (Current policy: v{activeVersion} — re-consent required)
+              </span>
+            )}
+          </Typography>
+          <Typography sx={{ fontFamily: FONT, ...TYPE.tiny, color: COLORS.textMuted, mt: 1.5, fontStyle: 'italic' }}>
+            View full signature history and details in the Consent Audit Log below.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 1.5 }}>
+          <Button onClick={() => setSigDialogOpen(false)} sx={{ fontFamily: FONT, fontWeight: 700, textTransform: 'none', color: COLORS.textSecondary }}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── ConsentRecordDialog — record consent on behalf of client ── */}
+      <ConsentRecordDialog
+        open={recordDialogOpen}
+        onClose={() => setRecordDialogOpen(false)}
+        clientId={clientId}
+        clientName={clientName}
+        consentType={consentType}
+        activeVersion={activeVersion}
+        activeVersionDocId={activeVersionDocId}
+        onSuccess={onConsentRecorded}
+      />
+    </Box>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// DataField — vertical stack, ultra-high density Enterprise Layout
+// ---------------------------------------------------------------------------
 
 // Vertical Stack DataField for ultra-high density Enterprise Layout
 const DataField = ({ label, value, isEditing, onChange, select, children, type="text", extra, width={ xs: 12, sm: 6, md: 3 } }) => (
@@ -56,8 +238,22 @@ const SectionHeader = ({ title }) => (
   </Box>
 );
 
-export default function ClientDetails({ editForm, setEditForm, isEditing, calculatePetAge }) {
-  
+export default function ClientDetails({ editForm, setEditForm, isEditing, calculatePetAge, onConsentRecorded }) {
+  // Step 5.1 (T3.5): Consent policy metadata for version comparison.
+  // activeVersion lets us determine if the client's stored version is current or outdated.
+  // activeVersionDocId is passed to ConsentRecordDialog so the record links to the correct version doc.
+  const { activeVersion, versions } = useConsentPolicy();
+
+  // Resolve per-type active version docs — DPA and Waiver evolve independently
+  const activeDpaVersionDoc = versions.find(
+    (v) => v.status === 'active' && v.type === CONSENT_TYPES.DPA
+  );
+  const activeWaiverVersionDoc = versions.find(
+    (v) => v.status === 'active' && v.type === CONSENT_TYPES.WAIVER
+  );
+  const activeDpaVersionNumber = activeDpaVersionDoc?.versionNumber ?? null;
+  const activeWaiverVersionNumber = activeWaiverVersionDoc?.versionNumber ?? null;
+
   const handleRepChange = (idx, field, val) => {
     const reps =[...(editForm.emergencyContacts || [])];
     reps[idx][field] = val;
@@ -134,10 +330,45 @@ export default function ClientDetails({ editForm, setEditForm, isEditing, calcul
       </Grid>
 
       {/* SECTION: LEGAL & COMPLIANCE */}
+      {/* Step 5.1 (T3.5): Rich consent status cards replace bare boolean switches.
+          ConsentStatusCard shows version, date, and status chip (green/orange/red),
+          and provides a "Record Consent" action for walk-in or admin-registered clients. */}
       <SectionHeader title="Legal & Compliance" />
       <Grid container spacing={2}>
-         <DataField label="DPA 2012 Consent" type="switch" value={editForm.dpaConsent} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, dpaConsent: val})} extra="Signed Data Privacy Act" />
-         <DataField label="Liability Waiver" type="switch" value={editForm.waiverSigned} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, waiverSigned: val})} extra="Physical signature on file" />
+        <Grid size={{ xs: 12 }}>
+          <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, display: 'block', lineHeight: 1.2, mb: 0.75 }}>
+            DPA 2012 Consent
+          </Typography>
+          <ConsentStatusCard
+            label="DPA"
+            clientId={editForm.id}
+            clientName={editForm.fullName}
+            clientVersion={editForm.consentVersion}
+            clientGrantedAt={editForm.consentGrantedAt}
+            activeVersion={activeDpaVersionNumber}
+            activeVersionDocId={activeDpaVersionDoc?.id || null}
+            consentType={CONSENT_TYPES.DPA}
+            accountStatus={editForm.accountStatus}
+            onConsentRecorded={onConsentRecorded}
+          />
+        </Grid>
+        <Grid size={{ xs: 12 }}>
+          <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, display: 'block', lineHeight: 1.2, mb: 0.75 }}>
+            Liability Waiver
+          </Typography>
+          <ConsentStatusCard
+            label="Waiver"
+            clientId={editForm.id}
+            clientName={editForm.fullName}
+            clientVersion={editForm.waiverVersion}
+            clientGrantedAt={editForm.waiverGrantedAt}
+            activeVersion={activeWaiverVersionNumber}
+            activeVersionDocId={activeWaiverVersionDoc?.id || null}
+            consentType={CONSENT_TYPES.WAIVER}
+            accountStatus={editForm.accountStatus}
+            onConsentRecorded={onConsentRecorded}
+          />
+        </Grid>
       </Grid>
 
       {/* SECTION: EMERGENCY CONTACTS */}

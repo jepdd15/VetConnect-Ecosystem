@@ -1,10 +1,10 @@
 # VetConnect Master Task List
 
-**Last updated:** 2026-04-25 · **Branch:** `main`
-**Total tasks:** ~719 · **Cancelled/Absorbed:** ~16 · **Active:** ~703
-**DONE:** 512 · **TODO:** 186 · **Deferred sub-tasks:** 50
-**Critical path to defense:** Dashboard Build (~32 hrs) + thesis
-**Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~154 hours (Phase 4 S-Tier)
+**Last updated:** 2026-04-27 · **Branch:** `main`
+**Total tasks:** ~723 · **Cancelled/Absorbed:** ~17 · **Active:** ~706
+**DONE:** ~555 · **TODO:** ~151 · **Deferred sub-tasks:** 50
+**Phase 2:** COMPLETE · **Phase 3 Essential:** COMPLETE (except Blaze-gated T3.40-42) · **Phase 3 High-Value:** 8/8 batches done (T3.50 remains, T3.5 DONE)
+**Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~158 hours (Phase 4 S-Tier)
 
 **Companion files:**
 - [handoff.json](handoff.json) — architectural context, decisions, bugs, terminology
@@ -335,7 +335,7 @@
 | T3.2 | Multi-vaccine per visit + manual form toggle | P2 | 1 day | — | DONE | Manual toggle + showVaccineForm gate + info banner |
 | T3.3 | Printable vaccination passport | P2 | 0.5 day | — | DONE | ABSORBED → T3.52 (admin passport + mobile PDF fully shipped) |
 | T3.4 | Grooming-specific consult form | P3 | 1-2 days | — | TODO | |
-| T3.5 | Real RA 10173 informed consent system | P2 | 8-12 days | — | TODO | |
+| T3.5 | Real RA 10173 informed consent system | P2 | 8-12 days | — | DONE | 8-phase build: consent versioning, drawn/typed signatures, consent gate, re-consent flow, admin viewing + ConsentRecordDialog, withdrawal + erasure integration, legacy migration, edge cases |
 | T3.6 | Cloud Function LLM gateway | P3 | 2-3 days | Blaze | TODO | |
 | T3.8 | Clinic-wide forensic reporting dashboard | P1 | 3-4 days | — | DONE | |
 | T3.9 | Admin-only revert from terminal states | P2 | 1 hr | — | DONE | |

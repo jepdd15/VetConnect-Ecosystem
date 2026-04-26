@@ -1,10 +1,16 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import {
+  collection,
   doc,
   getDoc,
+  getDocs,
+  limit,
+  query,
   Timestamp,
-  updateDoc
+  updateDoc,
+  where,
+  writeBatch,
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
@@ -52,7 +58,13 @@ export default function UserProfileScreen({ navigation, route }) {
     { name: "", phone: "", relation: "" },
   ]);
 
+  // Legacy boolean kept for backward compatibility with handleUpdate payload
   const [dpaConsent, setDpaConsent] = useState(false);
+  // Versioned consent fields — the new source of truth
+  const [consentVersion, setConsentVersion] = useState(null);
+  const [consentGrantedAt, setConsentGrantedAt] = useState(null);
+  const [waiverVersion, setWaiverVersion] = useState(null);
+  const [waiverGrantedAt, setWaiverGrantedAt] = useState(null);
   const [allowPromos, setAllowPromos] = useState(false);
   const [gender, setGender] = useState("Decline");
   const [referralSource, setReferralSource] = useState("");
@@ -94,6 +106,11 @@ export default function UserProfileScreen({ navigation, route }) {
           setGovIdNumber(data.govIdNumber || "");
           setAllowPromos(data.allowPromos || false);
           setDpaConsent(data.dpaConsent || false);
+          // Versioned consent fields
+          setConsentVersion(data.consentVersion ?? null);
+          setConsentGrantedAt(data.consentGrantedAt ?? null);
+          setWaiverVersion(data.waiverVersion ?? null);
+          setWaiverGrantedAt(data.waiverGrantedAt ?? null);
           setReferralSource(data.referralSource || "");
           setPreferredComm(data.preferredComm || "SMS");
           setWhatsappOptIn(data.whatsappOptIn || false);
@@ -125,6 +142,37 @@ export default function UserProfileScreen({ navigation, route }) {
     };
     fetchProfile();
   }, []);
+
+  async function navigateToConsentScreen() {
+    try {
+      const policySnap = await getDoc(doc(db, 'clinic_settings', 'consent_policy'));
+      if (!policySnap.exists() || !policySnap.data()?.activeVersion) {
+        return false;
+      }
+      const dpaQ = query(
+        collection(db, 'consent_versions'),
+        where('type', '==', 'dpa'),
+        where('status', '==', 'active'),
+        limit(1),
+      );
+      const dpaSnap = await getDocs(dpaQ);
+      if (dpaSnap.empty) return false;
+      const d = dpaSnap.docs[0];
+      navigation.navigate('Consent', {
+        consentType:        'dpa',
+        versionNumber:      d.data().versionNumber,
+        versionDocId:       d.id,
+        policyText:         d.data().bodyText,
+        policyTitle:        d.data().title,
+        isPostRegistration: false,
+        previousVersion:    consentVersion,
+        summary:            d.data().summary ?? null,
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
   const handleUpdate = async () => {
     // 1. Basic empty check
@@ -178,12 +226,14 @@ export default function UserProfileScreen({ navigation, route }) {
       }
     }
 
-    // 3. Legal Check
-    if (!dpaConsent) {
-      Alert.alert(
-        "Legal Requirement",
-        "You must agree to the Data Privacy Act (RA 10173) terms to store your records in our system.",
-      );
+    // 3. Legal Check — use consentVersion (authoritative) with dpaConsent boolean as fallback.
+    // If neither is present, navigate to ConsentScreen with live policy data.
+    const hasValidConsent = consentVersion != null || dpaConsent;
+    if (!hasValidConsent) {
+      const navigated = await navigateToConsentScreen();
+      if (!navigated) {
+        Alert.alert('Consent Required', 'Please provide Data Privacy Act consent before saving your profile.');
+      }
       return;
     }
 
@@ -210,12 +260,14 @@ export default function UserProfileScreen({ navigation, route }) {
         emergencyContacts: cleanedContacts,
         emergencyName: cleanedContacts[0]?.name?.trim() || "",
         emergencyPhone: cleanedContacts[0]?.phone?.trim() || "",
-        dpaConsent,
+        // Derive the legacy boolean from the authoritative versioned field.
+        // This keeps backward-compat code (admin portal, BookAppointment) accurate.
+        dpaConsent: consentVersion != null ? true : dpaConsent,
         allowPromos,
         referralSource: allowPromos ? (referralSource || null) : null,
         preferredComm: allowPromos ? preferredComm : "SMS",
         whatsappOptIn: allowPromos ? whatsappOptIn : false,
-        waiverSigned,
+        waiverSigned: waiverVersion != null ? true : waiverSigned,
         profileComplete: true,
       };
 
@@ -263,9 +315,122 @@ export default function UserProfileScreen({ navigation, route }) {
     setCollapsedSections((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  /**
+   * Formats a Firestore Timestamp or ISO date string into a human-readable date.
+   * Returns null if the value is missing or unparseable.
+   */
+  const formatConsentDate = (timestampOrString) => {
+    if (!timestampOrString) return null;
+    try {
+      const date =
+        typeof timestampOrString.toDate === 'function'
+          ? timestampOrString.toDate()
+          : new Date(timestampOrString);
+      if (isNaN(date.getTime())) return null;
+      return date.toLocaleDateString('en-PH', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+    } catch {
+      return null;
+    }
+  };
+
   // --- THE UX FIX: Dynamic Highlighting Style ---
   const getHighlightStyle = (val) => {
     return isBookingRedirect && !(val || "").trim() ? styles.missingFieldHighlight : {};
+  };
+
+  // ---------------------------------------------------------------------------
+  // Consent Withdrawal — Phase 6.1 (T3.5)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Writes the withdrawal consent_record and marks the user for erasure.
+   * Called only after the user has confirmed through both Alert dialogs.
+   */
+  const executeWithdrawal = async () => {
+    if (!auth.currentUser) return;
+
+    const uid = auth.currentUser.uid;
+    const userRef = doc(db, 'users', uid);
+    const consentRecordsRef = collection(db, 'users', uid, 'consent_records');
+
+    try {
+      const batch = writeBatch(db);
+
+      // Write the withdrawal consent record
+      const withdrawalRecordRef = doc(consentRecordsRef);
+      batch.set(withdrawalRecordRef, {
+        consentType: 'dpa',
+        versionNumber: consentVersion,
+        versionDocId: null,
+        action: 'withdrawn',
+        signatureType: null,
+        signatureData: null,
+        grantedAt: Timestamp.now(),
+        grantedVia: 'mobile_app',
+        deviceInfo: 'mobile',
+        adminNote: null,
+      });
+
+      // Mark the user doc: clear consent fields, flag for erasure
+      batch.update(userRef, {
+        consentVersion: null,
+        consentGrantedAt: null,
+        dpaConsent: false,
+        deletionRequested: true,
+        deletionRequestedAt: Timestamp.now(),
+      });
+
+      await batch.commit();
+
+      // Update local state so the UI reflects the withdrawal immediately
+      setConsentVersion(null);
+      setConsentGrantedAt(null);
+      setDpaConsent(false);
+
+      Alert.alert(
+        'Consent Withdrawn',
+        'Your consent has been withdrawn. The clinic will process your data erasure request within 30 days as required by RA 10173.',
+      );
+    } catch (err) {
+      console.error('[UserProfileScreen.executeWithdrawal]:', err.message);
+      Alert.alert('Error', 'Could not process withdrawal. Please try again or contact the clinic directly.');
+    }
+  };
+
+  /**
+   * Triggers the two-step Alert confirmation sequence before executing
+   * consent withdrawal.  Two explicit confirmations prevent accidental taps.
+   */
+  const handleWithdrawConsent = () => {
+    Alert.alert(
+      'Withdraw Consent',
+      'Withdrawing consent means we can no longer process your personal data. This will result in your account being scheduled for erasure under RA 10173.\n\nAre you sure?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'I Understand, Continue',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              'Final Confirmation',
+              'This action is irreversible. All your personal data, pet names, and appointment history will be anonymized. Medical records will be retained for clinical audit with identifying information removed.\n\nProceed?',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Withdraw My Consent',
+                  style: 'destructive',
+                  onPress: executeWithdrawal,
+                },
+              ],
+            );
+          },
+        },
+      ],
+    );
   };
 
   const handleDeleteAccount = () => {
@@ -629,51 +794,83 @@ export default function UserProfileScreen({ navigation, route }) {
           </TouchableOpacity>
           {!collapsedSections.legal && (
             <View style={styles.card}>
-            <TouchableOpacity
-              style={styles.checkboxRow}
-              onPress={() => setDpaConsent(!dpaConsent)}
-            >
-              <MaterialIcons
-                name={dpaConsent ? "check-box" : "check-box-outline-blank"}
-                size={24}
-                color={dpaConsent ? COLORS.success : COLORS.danger}
-              />
-              <View style={{ flex: 1, marginLeft: 10 }}>
-                <Text
-                  style={[
-                    styles.checkboxTitle,
-                    !dpaConsent && { color: COLORS.danger },
-                  ]}
+            {/* --- DPA CONSENT STATUS --- */}
+            {consentVersion != null ? (
+              <View>
+                <View style={styles.consentStatusRow}>
+                  <MaterialIcons name="verified" size={24} color={COLORS.success} />
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={[styles.checkboxTitle, { color: COLORS.success }]}>
+                      DPA CONSENT: VERSION {consentVersion}
+                    </Text>
+                    {consentGrantedAt && (
+                      <Text style={styles.checkboxDesc}>
+                        Signed on {formatConsentDate(consentGrantedAt)}
+                      </Text>
+                    )}
+                    <Text style={[styles.checkboxDesc, { marginTop: 4 }]}>
+                      View your consent records in the clinic admin portal.
+                    </Text>
+                  </View>
+                </View>
+                {/* RA 10173 §18 — right to withdraw consent */}
+                <TouchableOpacity
+                  style={styles.withdrawConsentLink}
+                  onPress={handleWithdrawConsent}
                 >
-                  Data Privacy Consent *
-                </Text>
-                <Text style={styles.checkboxDesc}>
-                  I agree to the collection and processing of my data in
-                  accordance with the Data Privacy Act (RA 10173).
-                </Text>
+                  <Text style={styles.withdrawConsentText}>Withdraw My Consent</Text>
+                </TouchableOpacity>
               </View>
-            </TouchableOpacity>
+            ) : (
+              <View style={styles.consentStatusRow}>
+                <MaterialIcons name="gpp-bad" size={24} color={COLORS.danger} />
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={[styles.checkboxTitle, { color: COLORS.danger }]}>
+                    DPA CONSENT: NOT SIGNED *
+                  </Text>
+                  <Text style={styles.checkboxDesc}>
+                    You must provide Data Privacy Act consent to save your profile.
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.signNowBtn}
+                    onPress={() => navigateToConsentScreen()}
+                  >
+                    <Text style={styles.signNowBtnText}>SIGN NOW ➔</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
 
             <View style={styles.divider} />
 
-            <TouchableOpacity
-              style={styles.checkboxRow}
-              onPress={() => setWaiverSigned(!waiverSigned)}
-            >
-              <MaterialIcons
-                name={waiverSigned ? "check-box" : "check-box-outline-blank"}
-                size={24}
-                color={waiverSigned ? COLORS.success : COLORS.muted}
-              />
-              <View style={{ flex: 1, marginLeft: 10 }}>
-                <Text style={styles.checkboxTitle}>Liability Waiver</Text>
-                <Text style={styles.checkboxDesc}>
-                  I acknowledge the inherent risks of veterinary procedures and agree to
-                  hold Starbarks Vet Clinic harmless for complications arising from
-                  standard treatment protocols. Physical signature on file at clinic.
-                </Text>
+            {/* --- WAIVER STATUS --- */}
+            {waiverVersion != null ? (
+              <View style={styles.consentStatusRow}>
+                <MaterialIcons name="verified" size={24} color={COLORS.success} />
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={[styles.checkboxTitle, { color: COLORS.success }]}>
+                    LIABILITY WAIVER: VERSION {waiverVersion}
+                  </Text>
+                  {waiverGrantedAt && (
+                    <Text style={styles.checkboxDesc}>
+                      Signed on {formatConsentDate(waiverGrantedAt)}
+                    </Text>
+                  )}
+                </View>
               </View>
-            </TouchableOpacity>
+            ) : (
+              <View style={styles.consentStatusRow}>
+                <MaterialIcons name="check-box-outline-blank" size={24} color={COLORS.muted} />
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={styles.checkboxTitle}>Liability Waiver</Text>
+                  <Text style={styles.checkboxDesc}>
+                    I acknowledge the inherent risks of veterinary procedures and agree to
+                    hold Starbarks Vet Clinic harmless for complications arising from
+                    standard treatment protocols. Physical signature on file at clinic.
+                  </Text>
+                </View>
+              </View>
+            )}
 
             <View style={styles.divider} />
 
@@ -828,10 +1025,10 @@ export default function UserProfileScreen({ navigation, route }) {
           <TouchableOpacity
             style={[
               styles.saveBtn,
-              (!dpaConsent || saving) && { backgroundColor: COLORS.muted },
+              (!(consentVersion != null || dpaConsent) || saving) && { backgroundColor: COLORS.muted },
             ]}
             onPress={handleUpdate}
-            disabled={saving || !dpaConsent}
+            disabled={saving}
           >
             <Text style={styles.saveBtnText}>
               {saving ? "Processing..." : "Update Profile"}
@@ -998,6 +1195,27 @@ const styles = StyleSheet.create({
 
   divider: { height: 1, backgroundColor: "#EEEEEE", marginVertical: 15 },
 
+  consentStatusRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingVertical: 5,
+  },
+  signNowBtn: {
+    marginTop: 8,
+    alignSelf: "flex-start",
+    backgroundColor: COLORS.danger,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+  },
+  signNowBtnText: {
+    color: COLORS.white,
+    fontWeight: "900",
+    fontSize: 12,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
   checkboxRow: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -1043,6 +1261,22 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     fontSize: 14,
     textDecorationLine: "underline",
+  },
+
+  // RA 10173 §18 — Consent withdrawal link (Step 6.1)
+  withdrawConsentLink: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    marginLeft: 34, // aligns under the text, past the icon (24px icon + 10px margin)
+    paddingVertical: 4,
+  },
+  withdrawConsentText: {
+    color: COLORS.danger,
+    fontWeight: '900',
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    textDecorationLine: 'underline',
   },
 
   // RA 10173 Step 4.1 — erased account read-only notice styles

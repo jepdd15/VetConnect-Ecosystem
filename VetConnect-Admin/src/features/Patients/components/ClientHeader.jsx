@@ -16,6 +16,17 @@ import UpdateIcon from '@mui/icons-material/Update';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
+import GppBadIcon from '@mui/icons-material/GppBad';
+
+/**
+ * Returns true when the client has explicitly withdrawn consent via the mobile
+ * app (consentVersion cleared to null alongside deletionRequested).  A plain
+ * deletionRequested without a cleared consentVersion is a different flow —
+ * shown as a generic erasure button without the consent-withdrawn banner.
+ */
+function isConsentWithdrawal(client) {
+  return client.deletionRequested === true && (client.consentVersion === null || client.consentVersion === undefined);
+}
 
 export default function ClientHeader({ client, balance, isEditing, onEdit, onCancel, onSave, engagementKPIs, onProcessErasure }) {
   const hasDebt = balance > 0;
@@ -30,11 +41,14 @@ export default function ClientHeader({ client, balance, isEditing, onEdit, onCan
     : null;
   const isStaleProfile = daysSinceUpdate !== null && daysSinceUpdate > 90;
 
+  const showConsentWithdrawalBanner = isConsentWithdrawal(client);
+
   return (
-    <Box sx={{ 
-        px: 4, py: 2.5, 
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
-        bgcolor: isEditing ? 'rgba(239, 235, 233, 0.95)' : COLORS.cardBg, 
+    <>
+    <Box sx={{
+        px: 4, py: 2.5,
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        bgcolor: isEditing ? 'rgba(239, 235, 233, 0.95)' : COLORS.cardBg,
         borderBottom: isEditing ? `3px solid ${COLORS.accent}` : `1px solid ${COLORS.borderLight}`,
         boxShadow: '0 4px 20px rgba(0,0,0,0.03)'
     }}>
@@ -151,8 +165,10 @@ export default function ClientHeader({ client, balance, isEditing, onEdit, onCan
                 <Button variant="outlined" startIcon={<EditIcon />} onClick={onEdit} sx={{fontFamily: FONT, borderColor: COLORS.border, color: COLORS.textSecondary, '&:hover':{borderColor: COLORS.accentWarm, color: COLORS.accentWarm, bgcolor: COLORS.panelBg}, bgcolor: COLORS.cardBg, fontWeight: 'bold', py: 1, px: 2}}>
                     Edit Profile
                 </Button>
-                {/* RA 10173: Show erasure button only when client has an active deletion request */}
-                {client.deletionRequested && (
+                {/* RA 10173: Generic deletion-request erasure button.
+                    Suppressed when the consent-withdrawal banner is shown —
+                    that banner carries its own "Process Erasure" button. */}
+                {client.deletionRequested && !showConsentWithdrawalBanner && (
                   <Button
                     variant="contained"
                     startIcon={<DeleteForeverIcon />}
@@ -177,5 +193,66 @@ export default function ClientHeader({ client, balance, isEditing, onEdit, onCan
           </Box>
         </Box>
     </Box>
+
+    {/* RA 10173 §18 — Consent Withdrawal Banner (Step 6.2)
+        Shown when the client explicitly withdrew consent via the mobile app.
+        Takes priority: the generic deletionRequested button is hidden above. */}
+    {showConsentWithdrawalBanner && (
+      <Box sx={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        px: 4,
+        py: 1.5,
+        bgcolor: COLORS.dangerSurface,
+        borderBottom: `2px solid ${COLORS.danger}`,
+        borderLeft: `4px solid ${COLORS.danger}`,
+        gap: 2,
+      }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <GppBadIcon sx={{ color: COLORS.danger, fontSize: 22 }} />
+          <Box>
+            <Typography sx={{
+              fontFamily: FONT,
+              fontWeight: 800,
+              fontSize: '0.75rem',
+              color: COLORS.danger,
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              lineHeight: 1.2,
+            }}>
+              Consent Withdrawn
+            </Typography>
+            <Typography sx={{
+              fontFamily: FONT,
+              ...TYPE.meta,
+              color: COLORS.danger,
+              mt: 0.25,
+            }}>
+              This client has exercised their RA 10173 right to withdraw consent. Process data erasure within 30 days.
+            </Typography>
+          </Box>
+        </Box>
+        <Button
+          variant="contained"
+          startIcon={<DeleteForeverIcon />}
+          onClick={onProcessErasure}
+          size="small"
+          sx={{
+            fontFamily: FONT,
+            fontWeight: 800,
+            borderRadius: 0,
+            bgcolor: COLORS.danger,
+            color: '#fff',
+            flexShrink: 0,
+            boxShadow: `3px 3px 0px ${COLORS.dangerHover}`,
+            '&:hover': { bgcolor: COLORS.dangerHover, boxShadow: 'none' },
+          }}
+        >
+          Process Erasure
+        </Button>
+      </Box>
+    )}
+    </>
   );
 }

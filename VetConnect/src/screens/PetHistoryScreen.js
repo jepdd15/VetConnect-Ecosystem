@@ -622,6 +622,25 @@ export default function PetHistoryScreen({ route, navigation }) {
             {/* T2.8 Path B: raw SOAP subjective/objective/plan hidden from client view.
                 Diagnosis is shown from the top-level field; instructions from dischargeSummary. */}
 
+            {/* T3.70: Show intake context (client's own notes + triage summary) — safe to show to client */}
+            {(item.intakeContext?.clientNotes || item.intakeContext?.staffNotes) && (
+              <View style={{ backgroundColor: '#FAF9F7', borderWidth: 1, borderColor: '#EDE7E0', padding: 12, marginBottom: 10 }}>
+                <Text style={{ fontWeight: '900', fontSize: 10, color: '#8D6E63', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 }}>
+                  INTAKE NOTES
+                </Text>
+                {item.intakeContext.clientNotes ? (
+                  <Text style={{ fontSize: 13, color: COLORS.info, fontWeight: '700', marginBottom: 2 }}>
+                    CLIENT: {item.intakeContext.clientNotes}
+                  </Text>
+                ) : null}
+                {item.intakeContext.staffNotes ? (
+                  <Text style={{ fontSize: 13, color: COLORS.warning, fontWeight: '700' }}>
+                    STAFF TRIAGE: {item.intakeContext.staffNotes}
+                  </Text>
+                ) : null}
+              </View>
+            )}
+
             <View style={styles.diagnosisContainer}>
               {item.patientStatus && !isGrooming && (
                 <View

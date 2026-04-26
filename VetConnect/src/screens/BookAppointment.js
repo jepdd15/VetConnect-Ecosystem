@@ -548,7 +548,13 @@ export default function BookAppointment({ navigation, route }) {
             triageDate: new Date().toISOString().split('T')[0],
             createdAt: Timestamp.now(),
             qrCode: qrData,
-            notes: selectedPets.length > 1 ? `[Group Booking ${index + 1}/${selectedPets.length}] ${notes}` : notes,
+            clientNotes: selectedPets.length > 1 && notes
+              ? `[Group Booking ${index + 1}/${selectedPets.length}] ${notes}`
+              : notes,
+            systemChips: [
+              ...(selectedPets.length > 1 ? [`GROUP-BOOKING:${index + 1}/${selectedPets.length}`] : []),
+              ...(noShowInfo?.count > 0 ? [`NO-SHOW-HISTORY:${noShowInfo.count}`] : []),
+            ],
             // T2.78: Link multi-pet appointments via shared visitGroupId
             ...(visitGroupId ? { visitGroupId, groupSize: selectedPets.length, groupIndex: index } : {}),
             ...(noShowInfo?.count > 0 ? {

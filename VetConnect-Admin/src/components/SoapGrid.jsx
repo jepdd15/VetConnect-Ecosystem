@@ -1,5 +1,5 @@
 import React from 'react';
-import { Grid, TextField, Box, Button } from '@mui/material';
+import { Grid, TextField, Box, Button, Typography } from '@mui/material';
 import { FONT, COLORS } from '../theme/designTokens';
 import { ZEN_PLACEHOLDERS } from '../utils/soapConstants';
 
@@ -31,6 +31,10 @@ import { ZEN_PLACEHOLDERS } from '../utils/soapConstants';
  * @prop {ReactNode}   [followUpNode]
  * @prop {boolean}     [canToggleVaccine=false]      - T3.2: show "+ Administer Vaccine" button when form is hidden
  * @prop {function}    [onManualVaccineToggle]        - T3.2: callback to enable manual vaccine form
+ *
+ * Intake context (T3.70 — read-only, shown above Subjective field):
+ * @prop {string}      [intakeClientNotes='']         - Client's booking notes from the appointment doc
+ * @prop {string}      [intakeStaffNotes='']          - Staff triage/walk-in notes from the appointment doc
  */
 export default function SoapGrid({
   soapData, updateSoap, setFullscreenField,
@@ -42,6 +46,7 @@ export default function SoapGrid({
   showDraftSave = false, draftSaveNode = null,
   followUpNode = null,
   canToggleVaccine = false, onManualVaccineToggle,
+  intakeClientNotes = '', intakeStaffNotes = '',
 }) {
   const textFieldSx = { flex: 1, '& .MuiInputBase-root': { height: '100%', alignItems: 'flex-start' } };
   const inputPropsSx = { disableUnderline: true, sx: { fontFamily: FONT, fontSize: '1.25rem', color: COLORS.brand, lineHeight: 1.6 } };
@@ -52,6 +57,37 @@ export default function SoapGrid({
       {/* S - SUBJECTIVE (top-left) */}
       <Grid size={{ xs: 12, md: 6 }} sx={{ height: { xs: 'auto', md: '50%' }, borderRight: { md: '1px solid #F0F0F0' }, borderBottom: '1px solid #F0F0F0' }}>
         <SoapQuadrant id="subjective" label="S - SUBJECTIVE (HISTORY & CLIENT REPORT)" onZoomField={setFullscreenField}>
+
+          {/* T3.70: Read-only intake context box — shown above the vet's Subjective field */}
+          {(intakeClientNotes || intakeStaffNotes) && (
+            <Box sx={{
+              bgcolor: COLORS.formBg,
+              border: `1px solid ${COLORS.borderLight}`,
+              borderRadius: 0,
+              p: 1.5,
+              mb: 1,
+              maxHeight: 120,
+              overflowY: 'auto',
+            }}>
+              <Typography variant="overline" sx={{
+                fontWeight: 900, color: COLORS.textMuted, fontSize: '0.55rem',
+                letterSpacing: 1.5, display: 'block', mb: 0.5,
+              }}>
+                INTAKE CONTEXT (READ-ONLY)
+              </Typography>
+              {intakeClientNotes && (
+                <Typography sx={{ fontSize: '0.85rem', color: COLORS.medical, fontWeight: 700, mb: 0.5, lineHeight: 1.4 }}>
+                  <strong>CLIENT:</strong> {intakeClientNotes}
+                </Typography>
+              )}
+              {intakeStaffNotes && (
+                <Typography sx={{ fontSize: '0.85rem', color: COLORS.warning, fontWeight: 700, lineHeight: 1.4 }}>
+                  <strong>STAFF TRIAGE:</strong> {intakeStaffNotes}
+                </Typography>
+              )}
+            </Box>
+          )}
+
           <TextField
             multiline fullWidth variant="standard"
             placeholder={ZEN_PLACEHOLDERS.subjective}

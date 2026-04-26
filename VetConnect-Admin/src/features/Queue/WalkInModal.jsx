@@ -246,7 +246,12 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
       scheduledDate: Timestamp.now(),
       createdAt: Timestamp.now(),
       timeArrived: Timestamp.now(),
-      notes: isEmergency ? `EMERGENCY: ${triageNotes}` : triageNotes,
+      staffNotes: triageNotes,
+      systemChips: [
+        ...(isEmergency ? ['EMERGENCY'] : []),
+        ...(noShowData?.count > 0 ? [`NO-SHOW-HISTORY:${noShowData.count}`] : []),
+        ...(visitGroupId ? [`GROUP-BOOKING:${groupIndex + 1}/${groupSize}`] : []),
+      ],
       assignedVetId: null,
       assignedVet: 'Unassigned',
       // visitGroupId fields — only present for multi-pet walk-ins

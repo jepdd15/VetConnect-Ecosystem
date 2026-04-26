@@ -1021,6 +1021,24 @@ export default function PatientDashboard() {
                       <Grid container spacing={3}>
                         <Grid size={{ xs: 12, md: 8 }}>
                           <Stack spacing={1.5}>
+                            {/* T3.70: Show intake context for records created after the restructure */}
+                            {(rec.intakeContext?.clientNotes || rec.intakeContext?.staffNotes) && (
+                              <Box sx={{ bgcolor: COLORS.formBg, border: `1px solid ${COLORS.borderLight}`, p: 1.5, borderRadius: 0 }}>
+                                <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.5, fontSize: '0.6rem' }}>
+                                  INTAKE NOTES
+                                </Typography>
+                                {rec.intakeContext.clientNotes && (
+                                  <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.medical, fontWeight: 700, mb: 0.25 }}>
+                                    CLIENT: {rec.intakeContext.clientNotes}
+                                  </Typography>
+                                )}
+                                {rec.intakeContext.staffNotes && (
+                                  <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.warning, fontWeight: 700 }}>
+                                    STAFF TRIAGE: {rec.intakeContext.staffNotes}
+                                  </Typography>
+                                )}
+                              </Box>
+                            )}
                             <Box>
                               <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.5 }}>Subjective</Typography>
                               <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: hasS ? COLORS.textPrimary : COLORS.textMuted, pl: 1.5, borderLeft: `2px solid ${COLORS.borderLight}`, fontStyle: hasS ? 'normal' : 'italic' }}>{hasS ? rec.soap.subjective : '—'}</Typography>

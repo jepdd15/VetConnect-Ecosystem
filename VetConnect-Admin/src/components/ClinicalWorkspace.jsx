@@ -469,7 +469,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           const isEligibleStatus = ['arrived', 'in-consult'].includes(patient.status);
 
           const freshDefaults = {
-            subjective: patient.notes && patient.notes !== 'Walk-in client' && !patient.notes.includes('QUICK ADMIT') ? `Client noted: "${patient.notes}"\n\n` : '',
+            // T3.70: Subjective starts empty — intake context is shown in the read-only
+            // context box above this field (via intakeClientNotes/intakeStaffNotes props).
+            subjective: '',
             objWeight: '', objTemp: '', objHR: '', objRR: '', objCRT: '2',
             bcs: 5, painScale: 0,
             objectiveNotes: '', assessment: '', prognosis: 'Good', recheckIn: '1 Week',
@@ -1143,6 +1145,12 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         },
         patientStatus: soapData.patientStatus,
         nextVisit: soapData.nextVisit ? (() => { const [y,m,d] = soapData.nextVisit.split('-').map(Number); return Timestamp.fromDate(new Date(y, m-1, d, 8, 0, 0, 0)); })() : null,
+        // T3.70: Preserve intake context on the permanent medical record as a nested
+        // object — clearly separated from the vet's SOAP assessment.
+        intakeContext: {
+          clientNotes: patient?.clientNotes || patient?.notes || '',
+          staffNotes: patient?.staffNotes || '',
+        },
         // D5: Prescriptions natively on the medical record
         prescriptions: rxCart
             .filter(item => item.type === 'product')
@@ -2259,28 +2267,42 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           )}
 
           {/* --- 2x2 SOAP GRID (fills remaining space) --- */}
-          <SoapGrid
-            soapData={soapData}
-            updateSoap={updateSoap}
-            setFullscreenField={setFullscreenField}
-            getTriageLevel={getTriageLevel}
-            renderHistoricalLabel={renderHistoricalLabel}
-            runAssistiveDiagnosis={runAssistiveDiagnosis}
-            assistiveText={assistiveText}
-            diagnosticOpen={diagnosticOpen}
-            setDiagnosticOpen={setDiagnosticOpen}
-            SoapQuadrant={SoapQuadrant}
-            VitalsGrid={VitalsGrid}
-            DiagnosticBridge={DiagnosticBridge}
-            showVaccineForm={showVaccineForm}
-            vaccineFormNode={vaccineFormJSX}
-            labResultsNode={labResultsJSX}
-            showDraftSave={!lockedServices.has('medical')}
-            draftSaveNode={draftSaveJSX}
-            followUpNode={followUpJSX}
-            canToggleVaccine={!showVaccineForm && !isRecordLocked}
-            onManualVaccineToggle={() => setManualVaccineOverride(true)}
-          />
+          {/* T3.70: Compute intake notes with dual-read fallback for legacy appointments */}
+          {(() => {
+            const rawClientNotes = patient?.clientNotes || (!patient?.staffNotes ? patient?.notes : '') || '';
+            const filteredClientNotes = (
+              rawClientNotes === 'Walk-in client' ||
+              rawClientNotes.includes('QUICK ADMIT')
+            ) ? '' : rawClientNotes;
+            const intakeStaffNotes = patient?.staffNotes || '';
+
+            return (
+              <SoapGrid
+                soapData={soapData}
+                updateSoap={updateSoap}
+                setFullscreenField={setFullscreenField}
+                getTriageLevel={getTriageLevel}
+                renderHistoricalLabel={renderHistoricalLabel}
+                runAssistiveDiagnosis={runAssistiveDiagnosis}
+                assistiveText={assistiveText}
+                diagnosticOpen={diagnosticOpen}
+                setDiagnosticOpen={setDiagnosticOpen}
+                SoapQuadrant={SoapQuadrant}
+                VitalsGrid={VitalsGrid}
+                DiagnosticBridge={DiagnosticBridge}
+                showVaccineForm={showVaccineForm}
+                vaccineFormNode={vaccineFormJSX}
+                labResultsNode={labResultsJSX}
+                showDraftSave={!lockedServices.has('medical')}
+                draftSaveNode={draftSaveJSX}
+                followUpNode={followUpJSX}
+                canToggleVaccine={!showVaccineForm && !isRecordLocked}
+                onManualVaccineToggle={() => setManualVaccineOverride(true)}
+                intakeClientNotes={filteredClientNotes}
+                intakeStaffNotes={intakeStaffNotes}
+              />
+            );
+          })()}
         </Box>
 
         {/* === SIDEBAR (RIGHT) === */}
@@ -2578,28 +2600,42 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         </Box>
 
         <Box sx={{ flex: 1, height: 'calc(100vh - 84px)', overflow: 'hidden', bgcolor: '#FFF' }}>
-          <SoapGrid
-            soapData={soapData}
-            updateSoap={updateSoap}
-            setFullscreenField={setFullscreenField}
-            getTriageLevel={getTriageLevel}
-            renderHistoricalLabel={renderHistoricalLabel}
-            runAssistiveDiagnosis={runAssistiveDiagnosis}
-            assistiveText={assistiveText}
-            diagnosticOpen={diagnosticOpen}
-            setDiagnosticOpen={setDiagnosticOpen}
-            SoapQuadrant={SoapQuadrant}
-            VitalsGrid={VitalsGrid}
-            DiagnosticBridge={DiagnosticBridge}
-            showVaccineForm={showVaccineForm}
-            vaccineFormNode={vaccineFormJSX}
-            labResultsNode={labResultsJSX}
-            showDraftSave={!lockedServices.has('medical')}
-            draftSaveNode={draftSaveJSX}
-            followUpNode={followUpJSX}
-            canToggleVaccine={!showVaccineForm && !isRecordLocked}
-            onManualVaccineToggle={() => setManualVaccineOverride(true)}
-          />
+          {/* T3.70: God-View also receives intake context for the read-only context box */}
+          {(() => {
+            const rawClientNotes = patient?.clientNotes || (!patient?.staffNotes ? patient?.notes : '') || '';
+            const filteredClientNotes = (
+              rawClientNotes === 'Walk-in client' ||
+              rawClientNotes.includes('QUICK ADMIT')
+            ) ? '' : rawClientNotes;
+            const intakeStaffNotes = patient?.staffNotes || '';
+
+            return (
+              <SoapGrid
+                soapData={soapData}
+                updateSoap={updateSoap}
+                setFullscreenField={setFullscreenField}
+                getTriageLevel={getTriageLevel}
+                renderHistoricalLabel={renderHistoricalLabel}
+                runAssistiveDiagnosis={runAssistiveDiagnosis}
+                assistiveText={assistiveText}
+                diagnosticOpen={diagnosticOpen}
+                setDiagnosticOpen={setDiagnosticOpen}
+                SoapQuadrant={SoapQuadrant}
+                VitalsGrid={VitalsGrid}
+                DiagnosticBridge={DiagnosticBridge}
+                showVaccineForm={showVaccineForm}
+                vaccineFormNode={vaccineFormJSX}
+                labResultsNode={labResultsJSX}
+                showDraftSave={!lockedServices.has('medical')}
+                draftSaveNode={draftSaveJSX}
+                followUpNode={followUpJSX}
+                canToggleVaccine={!showVaccineForm && !isRecordLocked}
+                onManualVaccineToggle={() => setManualVaccineOverride(true)}
+                intakeClientNotes={filteredClientNotes}
+                intakeStaffNotes={intakeStaffNotes}
+              />
+            );
+          })()}
         </Box>
       </Dialog>
 

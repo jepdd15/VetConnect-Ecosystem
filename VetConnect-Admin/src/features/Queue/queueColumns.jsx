@@ -351,65 +351,105 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
       }
 
       // Default: Medical Intake / Notes (tabs 0-3, 6, 7)
-      const notes = p.row.notes || "";
-      const carryMatch = notes.match(/^\[Carried Over from (.*?)\]\s*(.*)/i);
+      // T3.70: Structured note fields with legacy fallback.
+      const clientNotes = p.row.clientNotes || '';
+      const staffNotes = p.row.staffNotes || '';
+      const systemChips = p.row.systemChips || [];
+      const legacyNotes = (!clientNotes && !staffNotes) ? (p.row.notes || '') : '';
+      const isLegacy = !!legacyNotes && !clientNotes && !staffNotes;
+
+      // Priority preview: staff notes > client notes > legacy
+      const previewText = staffNotes || clientNotes || legacyNotes;
+
+      // Count how many distinct note categories are populated
+      const populatedCount = [clientNotes, staffNotes, legacyNotes].filter(Boolean).length;
+
+      // Chip color mapping
+      const chipColor = (tag) => {
+        if (tag === 'EMERGENCY') return { bg: COLORS.kpiRedBg, border: COLORS.danger, color: COLORS.danger };
+        if (tag === 'CARRY-OVER') return { bg: COLORS.kpiOrangeBg, border: COLORS.warning, color: COLORS.warning };
+        if (tag.startsWith('NO-SHOW')) return { bg: COLORS.kpiOrangeBg, border: COLORS.warning, color: COLORS.warning };
+        if (tag.startsWith('GROUP-BOOKING')) return { bg: COLORS.chipBlueBg, border: COLORS.medical, color: COLORS.medical };
+        if (tag === 'QUICK-ADMIT') return { bg: COLORS.kpiRedBg, border: COLORS.danger, color: COLORS.danger };
+        if (tag === 'DEFERRED') return { bg: COLORS.kpiOrangeBg, border: COLORS.warning, color: COLORS.warning };
+        return { bg: COLORS.cream, border: COLORS.border, color: COLORS.accent };
+      };
 
       return (
         <Box
-          onMouseEnter={(e) => actions.handleHoverStart(e, 'notes', p.row.notes)}
+          onMouseEnter={(e) => actions.handleHoverStart(e, 'notes', {
+            clientNotes,
+            staffNotes,
+            systemChips,
+            legacyNotes,
+            isLegacy,
+          })}
           onMouseLeave={actions.handleHoverEnd}
           sx={{
             display: 'flex',
             flexDirection: 'column',
             width: '100%',
-            pt: 1.5,
+            pt: 1,
             cursor: 'zoom-in',
             '&:hover': { bgcolor: 'rgba(139, 69, 19, 0.04)' },
             transition: 'background-color 0.2s'
           }}
         >
-          {carryMatch ? (
-             <>
-               <Typography variant="overline" sx={{ fontWeight: '1000', fontSize: '0.6rem', color: '#8D6E63', lineHeight: 1, mb: 0.5, letterSpacing: 1 }}>
-                  CARRIED OVER FROM {carryMatch[1]}
-               </Typography>
-               <Typography
-                 variant="body2"
-                 sx={{
-                   display: '-webkit-box',
-                   WebkitLineClamp: 3,
-                   WebkitBoxOrient: 'vertical',
-                   overflow: 'hidden',
-                   fontSize: '0.82rem',
-                   lineHeight: 1.3,
-                   color: 'text.primary',
-                   fontStyle: carryMatch[2] === "No original notes." ? 'italic' : 'normal',
-                   fontWeight: 500,
-                   opacity: carryMatch[2] === "No original notes." ? 0.5 : 1
-                 }}
-               >
-                 {carryMatch[2]}
-               </Typography>
-             </>
-          ) : notes ? (
+          {/* System chips row */}
+          {systemChips.length > 0 && (
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.3, mb: 0.5 }}>
+              {systemChips.map((tag, i) => {
+                const c = chipColor(tag);
+                return (
+                  <Chip
+                    key={i}
+                    label={tag}
+                    size="small"
+                    sx={{
+                      height: 16, fontSize: '0.5rem', fontWeight: 900, borderRadius: 0,
+                      bgcolor: c.bg, color: c.color, border: `1px solid ${c.border}`,
+                      '& .MuiChip-label': { px: 0.5 },
+                    }}
+                  />
+                );
+              })}
+            </Box>
+          )}
+
+          {/* Legacy label */}
+          {isLegacy && (
+            <Typography variant="caption" sx={{ fontSize: '0.55rem', color: COLORS.textMuted, fontWeight: 800, letterSpacing: 0.8, mb: 0.25 }}>
+              LEGACY
+            </Typography>
+          )}
+
+          {/* Preview text */}
+          {previewText ? (
             <Typography
               variant="body2"
               sx={{
                 display: '-webkit-box',
-                WebkitLineClamp: 4,
+                WebkitLineClamp: 3,
                 WebkitBoxOrient: 'vertical',
                 overflow: 'hidden',
                 fontSize: '0.82rem',
-                lineHeight: 1.4,
-                color: 'text.primary',
+                lineHeight: 1.3,
+                color: staffNotes ? COLORS.warning : (clientNotes ? COLORS.medical : 'text.primary'),
                 fontStyle: 'italic',
-                fontWeight: 400
+                fontWeight: 500,
               }}
             >
-              "{notes}"
+              {previewText}
             </Typography>
           ) : (
             <Typography variant="caption" sx={{ color: 'text.disabled' }}>No notes provided</Typography>
+          )}
+
+          {/* +N more badge */}
+          {populatedCount > 1 && (
+            <Typography variant="caption" sx={{ fontSize: '0.6rem', color: COLORS.textMuted, fontWeight: 700, mt: 0.25, alignSelf: 'flex-end' }}>
+              +{populatedCount - 1} more
+            </Typography>
           )}
         </Box>
       );

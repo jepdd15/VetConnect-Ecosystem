@@ -1,8 +1,8 @@
 # VetConnect Master Task List
 
 **Last updated:** 2026-04-27 · **Branch:** `main`
-**Total tasks:** ~727 · **Cancelled/Absorbed:** ~17 · **Active:** ~710
-**DONE:** ~562 · **TODO:** ~148 · **Deferred sub-tasks:** 50
+**Total tasks:** ~744 · **Cancelled/Absorbed:** ~17 · **Active:** ~727
+**DONE:** ~563 · **TODO:** ~164 · **Deferred sub-tasks:** 50
 **Phase 2:** COMPLETE · **Phase 3 Essential:** COMPLETE (except Blaze-gated T3.40-42) · **Phase 3 High-Value:** 8/8 batches done (T3.50 remains, T3.5 DONE) · **Phase 4 Dashboard S:** COMPLETE (T4.1-T4.4)
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~158 hours (Phase 4 S-Tier)
 
@@ -998,7 +998,7 @@
 | T3.67 | ChatbotScreen: session management + rate limiting | P3 | 20 min | TODO |
 | T3.68 | Queue services popover: show per-service status (pending/in-progress/completed) via ServiceProgressCard in the hover card. Wire serviceStatus from appointment.services[] into queueColumns.jsx services renderCell. Sort controls: booking order / status / department (per locked decision in handoff.json line 1825). Also addresses dropped T2.91 (popover accessibility) and T2.92 (Dispensing/Billing tab popovers). | P2 | 2-3 hrs | T2.95, T2.97 | DONE | Services popover: status chips + 3-way sort toggle + X/N DONE cell indicator. Insertion order default per locked decision. |
 | T3.69 | EndOfDayModal service waterfall: show per-service completion status for each unresolved appointment so staff can see which services are incomplete before resolving. Use ServiceProgressCard in the appointment detail expansion. Enables informed carry-over vs cancel decisions. | P2 | 1.5 hrs | T2.95, T2.97 | DONE | Status chips in AuditPatientCard services panel + PROGRESS footer fraction. ServiceProgressCard visual language integrated directly. |
-| T3.70 | Queue notes column restructure: split single 'notes' field into structured clientNotes/staffNotes/system-chips. Requires design session for data split, backward compat, ClinicalWorkspace subjective auto-fill interaction. Originally scoped as T2.90 discussion topic (handoff.json line 1509), never formalized. | P3 | 3-4 hrs | — | TODO | Design discussion required before implementation |
+| T3.70 | Queue notes column restructure: split single 'notes' field into structured clientNotes/staffNotes/system-chips. Requires design session for data split, backward compat, ClinicalWorkspace subjective auto-fill interaction. Originally scoped as T2.90 discussion topic (handoff.json line 1509), never formalized. | P3 | 3-4 hrs | — | DONE | 13-step restructure: 5 write sites (clientNotes/staffNotes/systemChips), EOD carry-over propagation, tabbed popover (Client/Staff/System/Legacy), SoapGrid read-only context box, intakeContext on medical_records, dual-read fallback for legacy. 11 files modified. |
 | T3.72 | Checkout correlation ID: shared ID linking sale doc + appointment update for forensic audit matching. Currently relies on appointmentId one-way link + temporal proximity. | P3 | 30 min | T2.100 | TODO | Dropped — handoff.json L1405, L2205 |
 | T3.73 | Reserve/release audit logging: write inventory_log entries when reserveStock/releaseStock modify reserved quantities. Currently invisible to audit trail. | P3 | 1 hr | T2.151 | TODO | Dropped — handoff.json L1406, L2206 |
 | T3.74 | auditReason append-only: convert auditReason field to auditReasons[] array so cancel→revert→re-cancel preserves all reasons. Low priority — clinicalPulse already captures full history. | P3 | 30 min | — | TODO | Dropped — handoff.json L2207 |
@@ -1008,6 +1008,23 @@
 | T3.78 | Sign-off pulse event gap — add STATUS_CHANGE for in-consult→dispensing/billing | P2 | 30 min | — | DONE | clinicalPulse arrayUnion in handleSaveConsult appointmentUpdate. buildSignOffStatusChangeEvent builder + 6 tests (W17b). 306 tests pass. |
 | T3.79 | Historical tooltip period flexibility — match lookback to selected period | P3 | 30 min | T3.43 | TODO | Dashboard historical min/max/avg tooltip hardcoded to 6 months. Should adapt to 3mo/6mo/1yr. Deferred from T3.43 |
 | T3.80 | Erasure engine Cloud Function migration (T3.11 Phase B) | P3 | 3-4 hrs | T3.11, T3.40, Blaze | TODO | Move useErasureEngine to callable CF + admin.auth().deleteUser() + atomic cross-collection writes. Documented in PHASE3_RA10173_ERASURE_PLAN.md Blaze Upgrade Path |
+| T3.81 | Replace recordType badge with services[] chips on PatientDashboard + PetHistoryScreen | P3 | 1.5 hrs | — | TODO | recordType is effectively legacy (always 'medical' or 'grooming'). Show actual appointment services as colored chips instead. Requires reading services from the medical_records doc (already stored via handleSaveConsult) |
+| T3.82 | Fix serviceType to capture all services, not just the first | P3 | 30 min | — | TODO | handleSaveConsult line 1156 takes patient.services?.[0]?.name — loses all other services. Store full service names array or comma-joined string. Affects medical_records display on PatientDashboard + PetHistoryScreen |
+| T3.83 | PatientDashboard: render discharge summary in expanded record view | P2 | 1.5 hrs | — | TODO | Admin sees raw SOAP but not the discharge card mobile clients see. Add TL;DR diagnosis, instructions, medications, follow-up date to expanded view |
+| T3.84 | PatientDashboard: render lab results in expanded record view | P2 | 30 min | — | TODO | Test name + result + status pill (NORMAL/ABNORMAL/CRITICAL). Data on document, not rendered |
+| T3.85 | PatientDashboard: render patient status badge in expanded record view | P3 | 15 min | — | TODO | STABLE/CRITICAL/GUARDED badge. Already on mobile, missing from admin |
+| T3.86 | PatientDashboard: render attachments in expanded record view | P3 | 30 min | — | TODO | Clickable file links. Data on document, not rendered |
+| T3.87 | PatientDashboard: render SOAP Assessment field in expanded record view | P2 | 15 min | — | TODO | soap.assessment is stored but never displayed anywhere. Add between Objective and Plan/Treatment |
+| T3.88 | PetHistoryScreen: render extended vitals (RR, CRT, BCS, pain) | P2 | 30 min | — | TODO | Mobile shows 3 vitals (weight/temp/HR). Admin shows 7. Add the missing 4 |
+| T3.89 | PetHistoryScreen: render SOAP Assessment in discharge-less records | P2 | 15 min | — | TODO | Records without discharge summary show Instructions fallback but no assessment |
+| T3.90 | PetHistoryScreen: render amendments history | P2 | 30 min | — | TODO | Amendments stored but only shown in EMRDrawer. Show in mobile history with timestamp + author |
+| T3.91 | PatientDashboard: render amendments in expanded record view | P2 | 30 min | — | TODO | Amendments stored on record but only shown in EMRDrawer (T3.1). Show amendment text, reason, timestamp, author |
+| T3.92 | PatientDashboard: render inline vaccination details per record | P3 | 30 min | — | TODO | Admin has separate vaccination tracker but doesn't show manufacturer/lot/route/site inline when expanding a vaccination record |
+| T3.93 | PetHistoryScreen: vitals trend mini-charts (weight + temp sparklines) | P3 | 2-3 hrs | — | TODO | Pet owners ask about weight trends. Admin has full trend charts, mobile has none |
+| T3.94 | PetHistoryScreen: search + filter bar | P3 | 2 hrs | — | TODO | Pets with 20+ records need search. Currently flat chronological scroll |
+| T3.95 | PetHistoryScreen: case day badge for multi-day cases | P3 | 15 min | — | TODO | Admin shows 'Day 2 of 3' badge. Mobile has no multi-day case context |
+| T3.96 | PetHistoryScreen: year section headers | P3 | 30 min | — | TODO | Admin has sticky year dividers. Mobile has no date grouping for long histories |
+| T3.97 | PetHistoryScreen: prescription frequency analysis | P3 | 1 hr | — | TODO | Show most-prescribed medications ranked by frequency. Admin PatientDashboard already has this (T2.464). Replicate for mobile clients — helps track recurring treatments and anticipate refills |
 
 ---
 

@@ -291,7 +291,8 @@ export function useQueueActions() {
         ticketPrefix: "E", // E-Series Ticket!
         timeArrived: Timestamp.now(),
         createdAt: Timestamp.now(),
-        notes: "QUICK ADMIT: Bypassed registration for immediate triage.",
+        staffNotes: "Bypassed registration for immediate triage.",
+        systemChips: ['EMERGENCY', 'QUICK-ADMIT'],
         assignedVet: "Unassigned",
         clinicalPulse: [
           {
@@ -326,7 +327,7 @@ export function useQueueActions() {
         tomorrow.setDate(tomorrow.getDate() + 1);
         const triageKey = getLocalDateStr(tomorrow);
 
-        const currentNotes = data.notes || "";
+        const currentStaffNotes = data.staffNotes || data.notes || "";
         const signature = staffName || staffSignature;
 
         const forensicSeal = calculatePulseMetrics(
@@ -345,7 +346,8 @@ export function useQueueActions() {
 
         transaction.update(apptRef, {
             triageDate: triageKey,
-            notes: `(Deferred to next shift by ${signature}) ${currentNotes}`,
+            staffNotes: `(Deferred to next shift by ${signature}) ${currentStaffNotes}`,
+            systemChips: arrayUnion('DEFERRED'),
             lastTriagedAt: Timestamp.now(),
             triagedBy: signature,
             clinicalPulse: arrayUnion(pulseEvent),

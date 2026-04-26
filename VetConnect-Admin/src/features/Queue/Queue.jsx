@@ -195,6 +195,8 @@ export default function Queue() {
   const [expandedPulseId, setExpandedPulseId] = useState(null);
   const [activeCaseDay, setActiveCaseDay] = useState(0);
   const [isPinned, setIsPinned] = useState(false);
+  // T3.70: Active tab index for the tabbed notes popover (Client | Staff | System | Legacy)
+  const [notesTab, setNotesTab] = useState(0);
   const hoverTimer = useRef(null);
   const closeTimer = useRef(null);
 
@@ -259,6 +261,8 @@ export default function Queue() {
         setActiveCaseDay(0);
         // T3.68: Reset services sort to insertion order on each new popover open.
         if (type === 'services') setServicesSortMode('booking');
+        // T3.70: Reset notes tab to first available tab on each new popover open.
+        if (type === 'notes') setNotesTab(0);
     }, 200); 
   };
 
@@ -430,15 +434,16 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                isTriaged: true // THE FORENSIC SHIELD STAMP
             });
           } else {
-            // Avoid stacking duplicate prefixes
-            const cleanNotes = patient.notes?.startsWith('[Clinical Triage:')
-              ? patient.notes
-              : `${triagePrefix} ${patient.notes || ""}`;
+            // T3.70: Propagate structured fields. Dual-read from new or legacy `notes`.
+            const carryStaffNotes = patient.staffNotes || patient.notes || "";
+            const carryClientNotes = patient.clientNotes || "";
+            const existingChips = patient.systemChips || [];
 
              batch.update(oldRef, {
                 status: 'carried-over',
                 isTriaged: true, // THE FORENSIC SHIELD STAMP
-                notes: cleanNotes,
+                staffNotes: carryStaffNotes,
+                systemChips: arrayUnion('CARRY-OVER'),
                 processedBy: staffSignature,
                 processedAt: Timestamp.now(),
                 forensicSeal, // THE 8-METRIC AUDIT SEAL
@@ -456,7 +461,8 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
              }); 
              
              const newDocRef = doc(collection(db, "appointments")); 
-             const { id, jsScheduled, jsArrived, jsStarted, jsCompleted, queueNumber, ticketPrefix, timeArrived, timeStarted, timeCompleted, isTriaged: oldIsTriaged, ...preservedData } = patient;
+             // T3.70: Destructure `notes` out so it does not leak onto the new structured doc.
+             const { id, jsScheduled, jsArrived, jsStarted, jsCompleted, queueNumber, ticketPrefix, timeArrived, timeStarted, timeCompleted, isTriaged: oldIsTriaged, notes: _legacyNotes, ...preservedData } = patient;
              
              // T2.102: Attach deposit if one was collected during EOD wizard.
              const depositEntry = depositDataMap[patient.id];
@@ -470,7 +476,10 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                 createdAt: patient.createdAt || Timestamp.now(),
                 originApptId: patient.id,
                 caseDay: (patient.caseDay || 1) + 1,
-                notes: cleanNotes,
+                // T3.70: Structured notes propagation — legacy `notes` excluded via destructure above.
+                clientNotes: carryClientNotes,
+                staffNotes: `${triagePrefix} ${carryStaffNotes}`,
+                systemChips: [...existingChips.filter(c => c !== 'CARRY-OVER'), 'CARRY-OVER'],
                 processedBy: staffSignature,
                 assignedVet: action === 'hospitalize' ? (patient.assignedVet || "Unassigned") : "Unassigned",
                 ...(depositEntry ? {
@@ -859,8 +868,15 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         clinicalPulse: arrayUnion({
           // T2.54: IDENTITY_HEALING distinguishes quick-admit ER corrections (placeholder
           // name → real patient) from routine edits, for audit trail clarity.
-          eventId: makePulseEventId(selectedRow.notes?.includes('QUICK ADMIT') ? 'identity-healing' : 'identity-edit'),
-          type: selectedRow.notes?.includes('QUICK ADMIT') ? 'IDENTITY_HEALING' : 'IDENTITY_EDIT',
+          // T3.70: Check systemChips first (new), fall back to legacy string parse.
+          eventId: makePulseEventId(
+            (selectedRow.systemChips || []).includes('QUICK-ADMIT') || selectedRow.notes?.includes('QUICK ADMIT')
+              ? 'identity-healing'
+              : 'identity-edit'
+          ),
+          type: (selectedRow.systemChips || []).includes('QUICK-ADMIT') || selectedRow.notes?.includes('QUICK ADMIT')
+            ? 'IDENTITY_HEALING'
+            : 'IDENTITY_EDIT',
           timestamp: Timestamp.now(),
           staffId: profile?.id || 'unknown',
           staffName: profile?.fullName || 'System',
@@ -1175,8 +1191,10 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       // PHASE 4.4.4: THE TEMPORAL HEALER - Hide rescheduled records from 'Today'
       // if they were accidentally created for the past.
       // PHASE 4.4.10: DEEP CLEAN - Also hide legacy triage notes to clear 'Old Ghosts'.
+      // T3.70: Check systemChips (new) first, then legacy notes string parse.
       const isTriagedRecord =
         appt.isTriaged === true ||
+        (appt.systemChips || []).some(c => c === 'CARRY-OVER' || c === 'DEFERRED') ||
         appt.notes?.includes('[Triage Reschedule]') ||
         appt.notes?.includes('[Clinical Triage:');
 
@@ -2275,21 +2293,76 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                     </IconButton>
                 )}
 
-                {hoverMetadata.type === 'notes' && (
-                  <Box>
-                    <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 2, display: 'block', mb: 1.5, opacity: 0.8 }}>
-                      CLINICAL INTAKE / NOTES
-                    </Typography>
-                    <Typography sx={{ 
-                      fontSize: '1.05rem', lineHeight: 1.6, color: '#3E2723', fontStyle: 'italic', whiteSpace: 'pre-wrap', 
-                      fontFamily: '"Merriweather", serif',
-                      fontWeight: 700,
-                      letterSpacing: '-0.01rem'
-                    }}>
-                      "{hoverMetadata.data}"
-                    </Typography>
-                  </Box>
-                )}
+                {hoverMetadata.type === 'notes' && (() => {
+                  // T3.70: Tabbed notes popover — Client | Staff | System | Legacy
+                  const d = hoverMetadata.data || {};
+                  // Handle legacy callers that pass a plain string
+                  const isStructured = typeof d === 'object' && d !== null;
+                  const clientNotes = isStructured ? (d.clientNotes || '') : '';
+                  const staffNotes = isStructured ? (d.staffNotes || '') : '';
+                  const systemChips = isStructured ? (d.systemChips || []) : [];
+                  const legacyNotes = isStructured ? (d.legacyNotes || '') : (typeof d === 'string' ? d : '');
+                  const isLegacy = isStructured ? d.isLegacy : true;
+
+                  // Build tab list — only tabs with content are shown
+                  const tabs = [];
+                  if (clientNotes) tabs.push({ label: 'CLIENT', content: clientNotes, color: COLORS.medical });
+                  if (staffNotes) tabs.push({ label: 'STAFF', content: staffNotes, color: COLORS.warning });
+                  if (systemChips.length > 0) tabs.push({ label: 'SYSTEM', content: systemChips, color: COLORS.accent, isChips: true });
+                  if (isLegacy && legacyNotes) tabs.push({ label: 'LEGACY', content: legacyNotes, color: COLORS.textMuted });
+
+                  const activeIdx = Math.min(notesTab, Math.max(0, tabs.length - 1));
+                  const activeTab = tabs[activeIdx] || tabs[0];
+
+                  return (
+                    <Box>
+                      <Typography variant="overline" sx={{ fontWeight: '1000', color: COLORS.accent, letterSpacing: 2, display: 'block', mb: 1 }}>
+                        CLINICAL INTAKE / NOTES
+                      </Typography>
+
+                      {tabs.length > 1 && (
+                        <Tabs
+                          value={activeIdx}
+                          onChange={(_, v) => setNotesTab(v)}
+                          sx={{
+                            minHeight: 28, mb: 1.5,
+                            '& .MuiTab-root': { minHeight: 28, py: 0.5, fontWeight: 900, fontSize: '0.65rem', letterSpacing: 1, textTransform: 'uppercase' },
+                          }}
+                        >
+                          {tabs.map((t, i) => (
+                            <Tab
+                              key={i}
+                              label={t.label}
+                              sx={{ color: t.color, '&.Mui-selected': { color: t.color } }}
+                            />
+                          ))}
+                        </Tabs>
+                      )}
+
+                      {activeTab?.isChips ? (
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                          {activeTab.content.map((chip, i) => (
+                            <Chip
+                              key={i}
+                              label={chip}
+                              size="small"
+                              sx={{ fontWeight: 900, fontSize: '0.7rem', borderRadius: 0, height: 24 }}
+                            />
+                          ))}
+                        </Box>
+                      ) : (
+                        <Typography sx={{
+                          fontSize: '1.05rem', lineHeight: 1.6, color: COLORS.brand, fontStyle: 'italic',
+                          whiteSpace: 'pre-wrap', fontFamily: '"Merriweather", serif', fontWeight: 700, letterSpacing: '-0.01rem'
+                        }}>
+                          {activeTab?.label === 'LEGACY'
+                            ? `(Legacy) "${activeTab?.content}"`
+                            : `"${activeTab?.content}"`}
+                        </Typography>
+                      )}
+                    </Box>
+                  );
+                })()}
 
                 {hoverMetadata.type === 'services' && (() => {
                   // T3.68: Backward-compat guard — old callers passed a plain array.

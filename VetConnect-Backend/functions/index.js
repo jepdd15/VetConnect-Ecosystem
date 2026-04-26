@@ -236,7 +236,8 @@ exports.secureBookAppointment = functions.https.onCall(async (data, context) => 
       serviceCategory: service.department || service.category || 'Consultation',
       serviceDuration: baseDuration,
       serviceBuffer: serviceBuffer, 
-      notes: pets.length > 1 ? `[Group Booking ${index + 1}/${pets.length}] ${notes}` : notes, 
+      // TODO(T3.70): Migrate to clientNotes + systemChips when Blaze is available
+      notes: pets.length > 1 ? `[Group Booking ${index + 1}/${pets.length}] ${notes}` : notes,
       status: "pending",           
       scheduledDate: admin.firestore.Timestamp.fromDate(petDateTime), 
       createdAt: admin.firestore.Timestamp.now(), // Stamped by the SERVER clock

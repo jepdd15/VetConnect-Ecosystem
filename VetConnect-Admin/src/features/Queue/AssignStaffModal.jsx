@@ -406,11 +406,11 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
                 bgcolor: BRAND_BROWN, color: 'white', borderRadius: 1.2, px: 2, py: 0.4,
                 transition: 'all 0.2s', '&:hover': { transform: 'scale(1.03)', boxShadow: 4 }
               }}
-              title={patient.notes || "No client notes recorded for this visit."}
+              title={patient.clientNotes || patient.staffNotes || patient.notes || "No intake notes recorded for this visit."}
             >
               <LocalHospitalIcon sx={{ fontSize: 13 }} />
               <Typography variant="caption" sx={{ fontWeight: '900', fontSize: '0.65rem', letterSpacing: 1, textTransform: 'uppercase' }}>
-                view client notes
+                view intake notes
               </Typography>
             </Box>
           </Box>

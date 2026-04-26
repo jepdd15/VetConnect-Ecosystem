@@ -352,13 +352,13 @@
 | T3.18 | Referral Level 2 (ID links + count badge + incentives) | P3 | 2-3 hrs | T2.136 | TODO | |
 | T3.19 | Client profile photo (RA 10173 compliant) | P3 | 2-3 hrs | — | TODO | Build only if advisors request |
 | T3.20 | Client behavior profile analytics card | P3 | 2-3 hrs | — | TODO | No-show rate, late payments, visit regularity |
-| T3.21 | Reorder point alerts: low-stock notification badge + printable reorder list | P3 | 2-3 hrs | — | TODO | In-app only (Spark) |
+| T3.21 | Reorder point alerts: low-stock notification badge + printable reorder list | P3 | 2-3 hrs | — | DONE | In-app only (Spark) |
 | T3.22 | Barcode/QR scanning for stock intake | P3 | 3-5 days | — | TODO | Hardware-dependent |
 | T3.23 | Inventory valuation report: value by category, COGS, margin analysis | P3 | 1-2 days | — | TODO | Overlaps T3.8 |
 | T3.24 | Expiry disposal workflow: "Dispose Expired" batch action | P3 | 1.5 hrs | — | DONE | Idempotent |
 | T3.25 | Supplier directory: `suppliers` collection, dropdown in ProductFormModal | P3 | 3-4 hrs | — | TODO | Free-text works for small clinics |
-| T3.26 | Structured adjustment types for shrinkage analytics | P3 | 1 hr | — | TODO | |
-| T3.27 | Inventory export (CSV/PDF) | P3 | 1 hr | — | TODO | |
+| T3.26 | Structured adjustment types for shrinkage analytics | P3 | 1 hr | — | DONE | |
+| T3.27 | Inventory export (CSV/PDF) | P3 | 1 hr | — | DONE | |
 | T3.28 | Internal ward/hospitalization medication labels | P3 | 1 hr | — | TODO | Only for overnight clinics |
 | T3.29 | Structured allergy entries with coded drug classes (Tier 2) | P3 | 6-8 hrs | — | TODO | Supersedes T2.175 keyword matching |
 | T3.30 | Barcode scan before product administration | P3 | 3-5 hrs | T2.175, T3.22 | TODO | Hospital-grade safety |

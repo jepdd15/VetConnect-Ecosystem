@@ -28,6 +28,9 @@ import Reports from './features/Reports/Reports';
 // --- USER CONTEXT ---
 import { UserProvider, useUser } from './context/UserContext';
 
+// --- HOOKS ---
+import { useLowStockCount } from './hooks/useLowStockCount';
+
 // --- THEME (driven by designTokens.js) ---
 const theme = createTheme({
   palette: {
@@ -46,13 +49,15 @@ const theme = createTheme({
 // --- SMART LAYOUT HANDLER ---
 const MainLayout = ({ children, onLogout }) => {
   const location = useLocation();
+  const lowStockCount = useLowStockCount();
+
   if (location.pathname === '/monitor') {
     return <Box sx={{ width: '100vw', height: '100vh', overflow: 'hidden', bgcolor: COLORS.monitorBg }}>{children}</Box>;
   }
   return (
     <Box sx={{ display: 'flex', width: '100%', minHeight: '100vh' }}>
       <CssBaseline />
-      <Sidebar onLogout={onLogout} />
+      <Sidebar onLogout={onLogout} lowStockCount={lowStockCount} />
       <Box component="main" sx={{ flexGrow: 1, p: 0, minHeight: '100vh', minWidth: 0, overflowX: 'hidden', background: `linear-gradient(160deg, ${COLORS.surface} 0%, #FFE0B2 100%)` }}>
         {children}
       </Box>

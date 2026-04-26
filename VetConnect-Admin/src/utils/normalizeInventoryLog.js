@@ -19,6 +19,9 @@ export const normalizeInventoryLog = (log) => {
     ...log,
     action,
     amountChange,
+    // T3.26: pass through so GlobalActivityLog can display the chip and filter by type.
+    // null for legacy logs written before this field was introduced.
+    adjustmentType: log.adjustmentType || null,
     userName: log.userName || log.user || 'System',
   };
 };

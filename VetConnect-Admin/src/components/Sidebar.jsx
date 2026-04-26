@@ -1,5 +1,5 @@
 import React from 'react';
-import { Drawer, List, ListItemButton, ListItemIcon, ListItemText, Box, Typography, Divider, Button } from '@mui/material';
+import { Drawer, List, ListItemButton, ListItemIcon, ListItemText, Box, Typography, Divider, Button, Badge } from '@mui/material';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 // Design Tokens
@@ -42,7 +42,7 @@ const menuItems =[
   { name: 'Forensic Reports', icon: <AssessmentIcon />, path: '/reports', adminOnly: true },
 ];
 
-export default function Sidebar({ onLogout }) {
+export default function Sidebar({ onLogout, lowStockCount = 0 }) {
   const navigate = useNavigate();
   const location = useLocation();
   
@@ -76,7 +76,7 @@ export default function Sidebar({ onLogout }) {
       <List sx={{ flexGrow: 1, mt: 2 }}>
         {/* Render ONLY the modules they have permission to see */}
         {visibleMenuItems.map((item) => (
-          <ListItemButton 
+          <ListItemButton
             key={item.path} // Unique Key!
             onClick={() => navigate(item.path)}
             sx={{
@@ -87,7 +87,20 @@ export default function Sidebar({ onLogout }) {
               borderRadius: 0
             }}
           >
-            <ListItemIcon sx={{ color: COLORS.timelineRail }}>{item.icon}</ListItemIcon>
+            <ListItemIcon sx={{ color: COLORS.timelineRail }}>
+              {item.name === 'Inventory' && lowStockCount > 0 ? (
+                <Badge
+                  badgeContent={lowStockCount}
+                  color="error"
+                  max={99}
+                  sx={{ '& .MuiBadge-badge': { fontWeight: 900, fontSize: '0.65rem' } }}
+                >
+                  {item.icon}
+                </Badge>
+              ) : (
+                item.icon
+              )}
+            </ListItemIcon>
             <ListItemText primary={item.name} primaryTypographyProps={{ fontFamily: FONT, fontWeight: '600' }} />
           </ListItemButton>
         ))}

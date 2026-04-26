@@ -105,7 +105,17 @@ export function useInventory() {
   const { profile } = useUser();
 
   // --- THE AUDIT LEDGER ENGINE ---
-  const logEvent = async (itemId, itemName, action, amountChange, reason = "System Action") => {
+  /**
+   * Appends an event to the inventory_logs collection.
+   *
+   * @param {string} itemId
+   * @param {string} itemName
+   * @param {string} action       "CREATED" | "UPDATED" | "DELETED" | "ADJUSTED" | "ARCHIVED" | "RESTORED" | "DISPOSED"
+   * @param {number} amountChange Positive for additions, negative for removals, 0 for metadata events
+   * @param {string} [reason]     Human-readable description
+   * @param {object} [metadata]   Optional extra fields spread onto the document (e.g. { adjustmentType: 'RECOUNT' })
+   */
+  const logEvent = async (itemId, itemName, action, amountChange, reason = "System Action", metadata = {}) => {
     try {
       await addDoc(collection(db, "inventory_logs"), {
         itemId,
@@ -113,6 +123,7 @@ export function useInventory() {
         action, // "CREATED", "UPDATED", "DELETED", "ADJUSTED"
         amountChange,
         reason,
+        ...metadata,   // spreads adjustmentType and any future structured fields
         userId: profile?.id || "unknown",
         userName: profile?.fullName || "System Admin",
         timestamp: serverTimestamp()
@@ -177,7 +188,7 @@ export function useInventory() {
   };
 
   // ADJUST STOCK (+ or -)
-  const adjustStock = async (id, itemName, amount, reason, batchInfo = null) => {
+  const adjustStock = async (id, itemName, amount, reason, batchInfo = null, adjustmentType = null) => {
     if (!amount) throw new Error("Amount must be non-zero");
     if (!reason) throw new Error("A reason must be provided to adjust stock.");
 
@@ -232,7 +243,9 @@ export function useInventory() {
     const batchNote = batchInfo?.batchNumber
       ? ` | Batch: ${batchInfo.batchNumber}${batchInfo.expiryDate ? `, Exp: ${batchInfo.expiryDate}` : ''}`
       : '';
-    await logEvent(id, itemName, "ADJUSTED", amount, reason + batchNote);
+    // Persist adjustmentType as a structured field so GlobalActivityLog can filter by it
+    const metadata = adjustmentType ? { adjustmentType } : {};
+    await logEvent(id, itemName, "ADJUSTED", amount, reason + batchNote, metadata);
   };
 
   // --- THE SOFT-RESERVE ENGINE ---

@@ -4,11 +4,13 @@ import {
   TextField, Button, Box, Typography, MenuItem
 } from '@mui/material';
 import { FONT, COLORS } from '../../../theme/designTokens';
+import { ADJUSTMENT_TYPES, getTypesForAction } from '../constants/adjustmentTypes';
 
 export default function StockAdjustModal({ open, onClose, item, onAdjust }) {
   const [action, setAction] = useState('add');
   const [qty, setQty] = useState('');
-  const [reason, setReason] = useState('Restocked from Supplier');
+  const [adjustmentType, setAdjustmentType] = useState('RESTOCK');
+  const [remarks, setRemarks] = useState('');
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [batchNumber, setBatchNumber] = useState('');
@@ -26,7 +28,8 @@ export default function StockAdjustModal({ open, onClose, item, onAdjust }) {
     if (open) {
       setAction('add');
       setQty('');
-      setReason('Restocked from Supplier');
+      setAdjustmentType('RESTOCK');
+      setRemarks('');
       setBatchNumber('');
       setExpiryDate('');
       setSelectedRemoveBatch('');
@@ -61,16 +64,18 @@ export default function StockAdjustModal({ open, onClose, item, onAdjust }) {
       }
     }
 
-    if (!reason.trim()) {
-      newErrors.reason = 'A medical or system reason is required for every stock adjustment.';
-    }
-
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return;
     }
 
     const finalAmount = action === 'add' ? amount : -amount;
+
+    // Build human-readable reason: "Type Label: optional remarks" or just "Type Label"
+    const typeLabel = ADJUSTMENT_TYPES[adjustmentType]?.label || adjustmentType;
+    const fullReason = remarks.trim()
+      ? `${typeLabel}: ${remarks.trim()}`
+      : typeLabel;
 
     // For additions: pass batchInfo if a batch number was entered.
     // For removals with batch tracking: pass batchInfo so adjustStock can update the correct batch.
@@ -83,7 +88,8 @@ export default function StockAdjustModal({ open, onClose, item, onAdjust }) {
 
     setSubmitting(true);
     try {
-      await onAdjust(finalAmount, reason.trim(), batchInfo);
+      // Pass adjustmentType as the 4th argument so Inventory.jsx can persist it on the log doc
+      await onAdjust(finalAmount, fullReason, batchInfo, adjustmentType);
     } finally {
       setSubmitting(false);
     }
@@ -125,8 +131,11 @@ export default function StockAdjustModal({ open, onClose, item, onAdjust }) {
             label="Action"
             value={action}
             onChange={e => {
-              setAction(e.target.value);
-              setReason(e.target.value === 'add' ? 'Restocked from Supplier' : 'Dispensed to Patient');
+              const newAction = e.target.value;
+              setAction(newAction);
+              // Reset to first valid type for the new action
+              setAdjustmentType(getTypesForAction(newAction)[0]?.[0] || 'OTHER');
+              setRemarks('');
               setErrors({});
             }}
             sx={{ width: 140, ...fieldSx }}
@@ -150,15 +159,32 @@ export default function StockAdjustModal({ open, onClose, item, onAdjust }) {
           />
         </Box>
 
+        {/* T3.26: Structured adjustment type — contextually filtered by add/remove action */}
         <TextField
-          label="System Reason / Remarks"
+          select
+          label="Adjustment Type"
           fullWidth
-          value={reason}
-          onChange={e => { setReason(e.target.value); clearError('reason'); }}
+          value={adjustmentType}
+          onChange={e => { setAdjustmentType(e.target.value); clearError('reason'); }}
           sx={{ ...fieldSx, mt: 2 }}
-          placeholder="e.g. Product Expired, Damaged in transit, Manual Correction..."
           error={!!errors.reason}
           helperText={errors.reason}
+        >
+          {getTypesForAction(action).map(([key, { label }]) => (
+            <MenuItem key={key} value={key}>{label}</MenuItem>
+          ))}
+        </TextField>
+
+        {/* Optional free-text remarks for additional context */}
+        <TextField
+          label="Additional Remarks (optional)"
+          fullWidth
+          value={remarks}
+          onChange={e => setRemarks(e.target.value)}
+          sx={{ ...fieldSx, mt: 2 }}
+          placeholder="e.g. Batch recalled by manufacturer, counted 47 actual vs 50 system..."
+          multiline
+          minRows={2}
         />
 
         {action === 'add' && (

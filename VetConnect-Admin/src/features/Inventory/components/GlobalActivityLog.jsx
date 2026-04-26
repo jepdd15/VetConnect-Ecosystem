@@ -21,6 +21,7 @@ import PaidIcon from '@mui/icons-material/Paid';
 import ArchiveOutlinedIcon from '@mui/icons-material/ArchiveOutlined';
 import UnarchiveOutlinedIcon from '@mui/icons-material/UnarchiveOutlined';
 import { FONT, COLORS } from '../../../theme/designTokens';
+import { ADJUSTMENT_TYPES } from '../constants/adjustmentTypes';
 
 // --- Color token map for each action type ---
 const ACTION_CONFIG = {
@@ -61,6 +62,7 @@ export default function GlobalActivityLog() {
 
   // Filter state
   const [filterAction, setFilterAction] = useState('ALL');
+  const [filterAdjType, setFilterAdjType] = useState('ALL');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
   const [filterSearch, setFilterSearch] = useState('');
@@ -126,7 +128,14 @@ export default function GlobalActivityLog() {
     fetchLogs();
   }, [fetchLogs]);
 
-  // Client-side filtering for product name and user (text fields aren't indexable server-side)
+  // Reset adjustment type filter when the action filter changes away from ADJUSTED
+  useEffect(() => {
+    if (filterAction !== 'ADJUSTED') {
+      setFilterAdjType('ALL');
+    }
+  }, [filterAction]);
+
+  // Client-side filtering for product name, user, and adjustment type
   const filteredLogs = useMemo(() => {
     let result = logs;
     if (filterSearch.trim()) {
@@ -137,13 +146,18 @@ export default function GlobalActivityLog() {
       const term = filterUser.toLowerCase();
       result = result.filter(log => (log.userName || '').toLowerCase().includes(term));
     }
+    // T3.26: secondary adjustment type filter — only active when action = ADJUSTED
+    if (filterAdjType !== 'ALL') {
+      result = result.filter(log => log.adjustmentType === filterAdjType);
+    }
     return result;
-  }, [logs, filterSearch, filterUser]);
+  }, [logs, filterSearch, filterUser, filterAdjType]);
 
-  const hasActiveFilters = filterAction !== 'ALL' || filterDateFrom || filterDateTo || filterSearch || filterUser;
+  const hasActiveFilters = filterAction !== 'ALL' || filterAdjType !== 'ALL' || filterDateFrom || filterDateTo || filterSearch || filterUser;
 
   const handleClearFilters = () => {
     setFilterAction('ALL');
+    setFilterAdjType('ALL');
     setFilterDateFrom('');
     setFilterDateTo('');
     setFilterSearch('');
@@ -203,6 +217,22 @@ export default function GlobalActivityLog() {
               <MenuItem key={a} value={a}>{ACTION_CONFIG[a].label}</MenuItem>
             ))}
           </TextField>
+
+          {/* T3.26: Secondary filter — only visible when action = ADJUSTED */}
+          {filterAction === 'ADJUSTED' && (
+            <TextField
+              select
+              size="small"
+              value={filterAdjType}
+              onChange={e => setFilterAdjType(e.target.value)}
+              sx={{ minWidth: 180, '& .MuiOutlinedInput-root': { borderRadius: 0, fontSize: '0.75rem', fontWeight: 'bold' } }}
+            >
+              <MenuItem value="ALL">All Types</MenuItem>
+              {Object.entries(ADJUSTMENT_TYPES).map(([key, { label }]) => (
+                <MenuItem key={key} value={key}>{label}</MenuItem>
+              ))}
+            </TextField>
+          )}
 
           <TextField
             size="small"
@@ -386,16 +416,33 @@ export default function GlobalActivityLog() {
                     )}
                   </TableCell>
 
-                  {/* Reason */}
-                  <TableCell sx={{ maxWidth: 280 }}>
-                    <Typography
-                      variant="body2"
-                      color="textSecondary"
-                      sx={{ fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                      title={log.reason}
-                    >
-                      {log.reason || '—'}
-                    </Typography>
+                  {/* Reason — T3.26: structured type chip displayed for ADJUSTED logs */}
+                  <TableCell sx={{ maxWidth: 300 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                      {log.adjustmentType && ADJUSTMENT_TYPES[log.adjustmentType] && (
+                        <Chip
+                          label={ADJUSTMENT_TYPES[log.adjustmentType].label}
+                          size="small"
+                          sx={{
+                            fontSize: '0.6rem',
+                            height: 18,
+                            borderRadius: 0,
+                            fontWeight: 900,
+                            bgcolor: COLORS.kpiOrangeBg,
+                            color: COLORS.warning,
+                            flexShrink: 0,
+                          }}
+                        />
+                      )}
+                      <Typography
+                        variant="body2"
+                        color="textSecondary"
+                        sx={{ fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        title={log.reason}
+                      >
+                        {log.reason || '—'}
+                      </Typography>
+                    </Box>
                   </TableCell>
 
                   {/* Performed By */}

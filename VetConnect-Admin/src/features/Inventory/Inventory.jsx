@@ -20,13 +20,18 @@ import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
+import PrintIcon from '@mui/icons-material/Print';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
 
 // Database
-import { onSnapshot, collection, doc, writeBatch  } from 'firebase/firestore'; 
+import { onSnapshot, collection, doc, writeBatch, getDocs, query } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 
 // Logic & Components
 import { useInventory, findExpiredBatches } from './hooks/useInventory';
+import { printReorderList } from '../../utils/printReorderList';
+import { exportInventoryCSV } from '../../utils/exportInventoryCSV';
+import { printInventoryReport } from '../../utils/printInventoryReport';
 import { useUser } from '../../context/UserContext';
 import InventoryTable from './components/InventoryTable'; 
 import ProductFormModal from './modals/ProductFormModal';
@@ -91,6 +96,15 @@ export default function Inventory() {
 
   const [activeTab, setActiveTab] = useState(0);
   const [openDisposal, setOpenDisposal] = useState(false);
+  const [clinicSettings, setClinicSettings] = useState({});
+
+  // One-shot fetch for clinic info used in printable reports
+  useEffect(() => {
+    getDocs(query(collection(db, 'clinic_settings'))).then((snap) => {
+      const generalDoc = snap.docs.find((d) => d.id === 'general');
+      if (generalDoc) setClinicSettings(generalDoc.data());
+    }).catch((err) => console.error('[Inventory] clinicSettings fetch failed:', err));
+  }, []);
 
   // Expired batch scan — recomputed whenever inventory changes
   const expiredItems = useMemo(() => findExpiredBatches(inventory), [inventory]);
@@ -208,6 +222,26 @@ export default function Inventory() {
     });
   }, [inventory, searchText, filterCategory, stockFilter, showArchived]);
 
+  // Items currently at or below their minStock threshold (used by Reorder List button)
+  const lowStockItems = useMemo(
+    () => inventory.filter(
+      (i) => !i.isArchived && (Number(i.stock) || 0) <= (Number(i.minStock) || 10)
+    ),
+    [inventory]
+  );
+
+  // Human-readable description of active filters — printed on the inventory report
+  const filterSummary = useMemo(() => {
+    const parts = [];
+    if (searchText) parts.push(`Search: "${searchText}"`);
+    if (filterCategory !== 'All') parts.push(`Category: ${formatCategory(filterCategory)}`);
+    if (stockFilter === 'low') parts.push('Low Stock only');
+    else if (stockFilter === 'out') parts.push('Out of Stock only');
+    else if (stockFilter === 'expiring') parts.push('Expiring Soon only');
+    if (showArchived) parts.push('Archived items');
+    return parts.join(' | ');
+  }, [searchText, filterCategory, stockFilter, showArchived]);
+
   // --- HANDLERS ---
   const handleSaveForm = async (data) => {
     try {
@@ -227,9 +261,9 @@ export default function Inventory() {
     } catch (e) { showToast(e.message, "error"); }
   };
 
-  const handleAdjustStock = async (amount, reason, batchInfo = null) => {
+  const handleAdjustStock = async (amount, reason, batchInfo = null, adjustmentType = null) => {
     try {
-      await adjustStock(selectedItem.id, selectedItem.itemName, amount, reason, batchInfo);
+      await adjustStock(selectedItem.id, selectedItem.itemName, amount, reason, batchInfo, adjustmentType);
       setOpenAdjust(false);
       showToast(`Stock adjusted for ${selectedItem.itemName}.`);
     } catch (e) { showToast(e.message, "error"); }
@@ -342,6 +376,79 @@ export default function Inventory() {
           </>)}
 
           <Box sx={{ flexGrow: 1 }} />
+
+          {/* T3.21: Printable reorder list — shown when on Inventory tab (not archived) */}
+          {activeTab === 0 && !showArchived && (
+            <Button
+              variant="outlined"
+              startIcon={<PrintIcon />}
+              disabled={lowStockItems.length === 0}
+              onClick={() => printReorderList(
+                lowStockItems,
+                clinicSettings,
+                () => showToast('Pop-up blocked — allow pop-ups for this site.', 'warning')
+              )}
+              sx={{
+                fontFamily: FONT, fontWeight: 900, textTransform: 'uppercase',
+                letterSpacing: 1, px: 2, py: 1, borderRadius: 0,
+                border: '2px solid',
+                color: COLORS.warning,
+                borderColor: `${COLORS.warning}33`,
+                '&:hover': { bgcolor: COLORS.warningSurface, borderColor: COLORS.warning },
+              }}
+            >
+              Reorder List{lowStockItems.length > 0 ? ` (${lowStockItems.length})` : ''}
+            </Button>
+          )}
+
+          {/* T3.27: CSV export — always visible on Inventory Table tab */}
+          {activeTab === 0 && (
+            <Button
+              variant="outlined"
+              startIcon={<FileDownloadIcon />}
+              disabled={filteredItems.length === 0}
+              onClick={() => {
+                const timestamp = new Date().toISOString().slice(0, 10);
+                exportInventoryCSV(filteredItems, `inventory_${timestamp}.csv`);
+                showToast(`Exported ${filteredItems.length} items to CSV.`);
+              }}
+              sx={{
+                fontFamily: FONT, fontWeight: 900, textTransform: 'uppercase',
+                letterSpacing: 1, px: 2, py: 1, borderRadius: 0,
+                border: '2px solid',
+                color: COLORS.medical,
+                borderColor: `${COLORS.medical}33`,
+                '&:hover': { bgcolor: COLORS.kpiBlueBg, borderColor: COLORS.medical },
+              }}
+            >
+              Export CSV
+            </Button>
+          )}
+
+          {/* T3.27: Printable inventory report — always visible on Inventory Table tab */}
+          {activeTab === 0 && (
+            <Button
+              variant="outlined"
+              startIcon={<PrintIcon />}
+              disabled={filteredItems.length === 0}
+              onClick={() => printInventoryReport(
+                filteredItems,
+                clinicSettings,
+                filterSummary,
+                () => showToast('Pop-up blocked — allow pop-ups for this site.', 'warning')
+              )}
+              sx={{
+                fontFamily: FONT, fontWeight: 900, textTransform: 'uppercase',
+                letterSpacing: 1, px: 2, py: 1, borderRadius: 0,
+                border: '2px solid',
+                color: COLORS.accent,
+                borderColor: `${COLORS.accent}33`,
+                '&:hover': { bgcolor: COLORS.cream, borderColor: COLORS.accent },
+              }}
+            >
+              Print Report
+            </Button>
+          )}
 
           {activeTab === 0 && !showArchived && (
             <Button

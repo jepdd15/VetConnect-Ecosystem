@@ -11,7 +11,7 @@ import {
 import Grid from '@mui/material/Grid';
 
 import { db } from '../../firebaseConfig';
-import { doc, getDoc, collection, query, where, orderBy, getDocs, Timestamp, updateDoc, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, orderBy, getDocs, Timestamp, updateDoc, onSnapshot, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { CONSENT_ACTIONS, SIGNATURE_TYPES } from '../../utils/consentConstants';
 
 // Icons
@@ -52,12 +52,17 @@ import ShieldIcon from '@mui/icons-material/Shield';
 import GavelIcon from '@mui/icons-material/Gavel';
 import ScienceIcon from '@mui/icons-material/Science';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
+import BlockIcon from '@mui/icons-material/Block';
+import UndoIcon from '@mui/icons-material/Undo';
 
 // Charting
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 
 // ── Design Tokens (shared across all VetConnect pages) ─────────
 import { FONT, TYPE, COLORS, getRecordColor, getInitialColor } from '../../theme/designTokens';
+
+// ── Auth / User Context ──────────────────────────────────────────
+import { useUser } from '../../context/UserContext';
 
 // ── Clinic Settings ─────────────────────────────────────────────
 import { useClinicSettings } from '../../hooks/useClinicSettings';
@@ -104,6 +109,7 @@ export default function PatientDashboard() {
   const location = useLocation();
   const navigate = useNavigate();
   const vaccineCatalog = useVaccineCatalog();
+  const { profile } = useUser();
 
   const [pet, setPet] = useState(location.state?.pet || null);
   const [history, setHistory] = useState([]);
@@ -148,6 +154,12 @@ export default function PatientDashboard() {
   const [consentRecordsLoading, setConsentRecordsLoading] = useState(false);
   const [sigViewDialogOpen, setSigViewDialogOpen] = useState(false);
   const [sigViewData, setSigViewData] = useState(null); // { signatureType, signatureData }
+
+  // T3.101: Vaccine exemption dialog
+  const [exemptionDialogOpen, setExemptionDialogOpen] = useState(false);
+  const [exemptionTarget, setExemptionTarget] = useState(null); // { vaccineId, vaccineName }
+  const [exemptionReason, setExemptionReason] = useState('');
+  const [exemptionSaving, setExemptionSaving] = useState(false);
 
   useEffect(() => {
     if (!auditLogExpanded || !owner?.id) return;
@@ -500,7 +512,11 @@ export default function PatientDashboard() {
   const vaccinationStatus = useMemo(() => {
     const records = history || [];
 
-    return vaccineCatalog.map(catalogVax => {
+    // T3.100: Filter catalog to species-relevant vaccines before building status entries.
+    const sp = (pet?.species || '').toLowerCase();
+    const spKey = sp.includes('cat') || sp.includes('feline') ? 'cat' : 'dog';
+
+    return vaccineCatalog.filter(v => v.species?.includes(spKey)).map(catalogVax => {
       // --- Structured path: find the MOST RECENT vaccineAdministration matching this catalog entry ---
       let structuredMatch = null;
       let matchedAdmin = null;
@@ -573,24 +589,28 @@ export default function PatientDashboard() {
       const status = daysUntilDue < 0 ? 'overdue' : daysUntilDue <= 30 ? 'due_soon' : 'current';
       return { name: catalogVax.name, id: catalogVax.id, intervalDays: catalogVax.intervalDays, status, lastDate, daysUntilDue };
     });
-  }, [history, vaccineCatalog]);
+  }, [history, vaccineCatalog, pet?.species]);
 
-  // T2.465: Vaccine completeness — fraction of species-relevant recommended vaccines administered.
+  // T3.101: Fast lookup map — vaccineId -> exemption object. Derived from pet.vaccineExemptions.
+  const exemptionMap = useMemo(() => {
+    const map = new Map();
+    (pet?.vaccineExemptions || []).forEach(e => map.set(e.vaccineId, e));
+    return map;
+  }, [pet?.vaccineExemptions]);
+
+  // T2.465 / T3.100 / T3.101: Vaccine completeness — fraction of administered vaccines out of the
+  // species-filtered list, excluding exempted vaccines from the denominator.
   const vaccineCompleteness = useMemo(() => {
-    const sp = (pet?.species || '').toLowerCase();
-    const spKey = sp.includes('cat') || sp.includes('feline') ? 'cat' : 'dog';
-    const relevant = vaccinationStatus.filter(v => {
-      const catalogEntry = vaccineCatalog.find(c => c.id === v.id);
-      return catalogEntry?.species.includes(spKey);
-    });
-    if (relevant.length === 0) return null;
-    const administered = relevant.filter(v => v.status !== 'unknown').length;
+    const exemptIds = new Set((pet?.vaccineExemptions || []).map(e => e.vaccineId));
+    const countable = vaccinationStatus.filter(v => !exemptIds.has(v.id));
+    if (countable.length === 0) return null;
+    const administered = countable.filter(v => v.status !== 'unknown').length;
     return {
       administered,
-      total: relevant.length,
-      percentage: Math.round((administered / relevant.length) * 100),
+      total: countable.length,
+      percentage: Math.round((administered / countable.length) * 100),
     };
-  }, [vaccinationStatus, pet?.species, vaccineCatalog]);
+  }, [vaccinationStatus, pet?.vaccineExemptions]);
 
   // Records that contain structured vaccine data — used by the vaccination
   // record printable. Sorted ascending so the document reads oldest-to-newest.
@@ -653,6 +673,53 @@ export default function PatientDashboard() {
     } catch (e) {
       console.error('[PatientDashboard.handleRecordPayment]:', e.message);
       setErrorSnack('Failed to record payment: ' + e.message);
+    }
+  };
+
+  // T3.101: Write a vaccine exemption entry to pets/{id}.vaccineExemptions and re-fetch
+  // the pet document so the UI reflects the change immediately (one-shot getDoc, no listener).
+  const handleMarkExempt = async () => {
+    if (!exemptionTarget || !exemptionReason.trim()) return;
+    setExemptionSaving(true);
+    try {
+      const staffName = profile
+        ? `${profile.firstName || ''} ${profile.lastName || ''}`.trim() || 'Staff'
+        : 'Staff';
+      await updateDoc(doc(db, 'pets', id), {
+        vaccineExemptions: arrayUnion({
+          vaccineId: exemptionTarget.vaccineId,
+          reason: exemptionReason.trim(),
+          exemptedBy: staffName,
+          exemptedAt: Timestamp.now(),
+        }),
+      });
+      const petSnap = await getDoc(doc(db, 'pets', id));
+      if (petSnap.exists()) setPet({ id: petSnap.id, ...petSnap.data() });
+      setExemptionDialogOpen(false);
+      setExemptionTarget(null);
+      setExemptionReason('');
+    } catch (err) {
+      console.error('[PatientDashboard.handleMarkExempt]:', err);
+      setErrorSnack('Failed to save exemption');
+    } finally {
+      setExemptionSaving(false);
+    }
+  };
+
+  // T3.101: Remove an exemption entry using the exact stored object (Firestore arrayRemove
+  // uses deep equality — reconstructing the object would fail on Timestamp comparison).
+  const handleUndoExemption = async (vaccineId) => {
+    try {
+      const existing = (pet?.vaccineExemptions || []).find(e => e.vaccineId === vaccineId);
+      if (!existing) return;
+      await updateDoc(doc(db, 'pets', id), {
+        vaccineExemptions: arrayRemove(existing),
+      });
+      const petSnap = await getDoc(doc(db, 'pets', id));
+      if (petSnap.exists()) setPet({ id: petSnap.id, ...petSnap.data() });
+    } catch (err) {
+      console.error('[PatientDashboard.handleUndoExemption]:', err);
+      setErrorSnack('Failed to undo exemption');
     }
   };
 
@@ -1739,24 +1806,72 @@ export default function PatientDashboard() {
             )}
             <Stack spacing={0.75}>
               {vaccinationStatus.map((vax) => {
-                const colors = {
-                  current: { bg: '#E8F5E9', text: COLORS.success, icon: <CheckCircleOutlineIcon sx={{ fontSize: 13, color: COLORS.success }} /> },
-                  due_soon: { bg: COLORS.cream, text: '#F57F17', icon: <WarningAmberIcon sx={{ fontSize: 13, color: '#F57F17' }} /> },
-                  overdue: { bg: COLORS.dangerSurface, text: COLORS.surgery, icon: <ErrorOutlineIcon sx={{ fontSize: 13, color: COLORS.surgery }} /> },
-                  unknown: { bg: COLORS.tableHeaderBg, text: COLORS.textMuted, icon: null },
+                // T3.101: Exempt rows get a neutral grey treatment instead of red "No record".
+                const isExempt = exemptionMap.has(vax.id);
+                if (isExempt) {
+                  const exemption = exemptionMap.get(vax.id);
+                  return (
+                    <Box key={vax.name} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 0.5, px: 1, borderRadius: 0, bgcolor: COLORS.tableHeaderBg }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                        <BlockIcon sx={{ fontSize: 13, color: COLORS.textMuted }} />
+                        <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', fontWeight: 600, color: COLORS.textMuted }}>{vax.name}</Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+                        <Tooltip title={exemption?.reason || ''}>
+                          <Typography sx={{ fontFamily: FONT, fontSize: '0.68rem', fontWeight: 700, color: COLORS.textMuted, cursor: 'default' }}>
+                            Exempt
+                          </Typography>
+                        </Tooltip>
+                        <Tooltip title="Undo exemption">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleUndoExemption(vax.id)}
+                            sx={{ p: 0.25, ml: 0.5 }}
+                          >
+                            <UndoIcon sx={{ fontSize: 12, color: COLORS.textMuted }} />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
+                    </Box>
+                  );
+                }
+
+                const statusColors = {
+                  current:  { bg: '#E8F5E9',          text: COLORS.success,   icon: <CheckCircleOutlineIcon sx={{ fontSize: 13, color: COLORS.success }} /> },
+                  due_soon: { bg: COLORS.cream,        text: '#F57F17',        icon: <WarningAmberIcon sx={{ fontSize: 13, color: '#F57F17' }} /> },
+                  overdue:  { bg: COLORS.dangerSurface, text: COLORS.surgery,  icon: <ErrorOutlineIcon sx={{ fontSize: 13, color: COLORS.surgery }} /> },
+                  unknown:  { bg: COLORS.tableHeaderBg, text: COLORS.textMuted, icon: null },
                 };
-                const c = colors[vax.status];
-                const statusLabel = vax.status === 'current' ? `Due in ${vax.daysUntilDue}d`
+                const c = statusColors[vax.status];
+                const statusLabel = vax.status === 'current'  ? `Due in ${vax.daysUntilDue}d`
                   : vax.status === 'due_soon' ? `Due in ${vax.daysUntilDue}d`
-                  : vax.status === 'overdue' ? `${Math.abs(vax.daysUntilDue)}d overdue`
+                  : vax.status === 'overdue'  ? `${Math.abs(vax.daysUntilDue)}d overdue`
                   : 'No record';
+
                 return (
                   <Box key={vax.name} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 0.5, px: 1, borderRadius: 0, bgcolor: c.bg }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                       {c.icon}
                       <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', fontWeight: 600, color: c.text }}>{vax.name}</Typography>
                     </Box>
-                    <Typography sx={{ fontFamily: FONT, fontSize: '0.68rem', fontWeight: 700, color: c.text }}>{statusLabel}</Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+                      <Typography sx={{ fontFamily: FONT, fontSize: '0.68rem', fontWeight: 700, color: c.text }}>{statusLabel}</Typography>
+                      {/* T3.101: "Mark N/A" affordance on unknown-status rows */}
+                      {vax.status === 'unknown' && (
+                        <Tooltip title="Mark as exempt (N/A)">
+                          <IconButton
+                            size="small"
+                            onClick={() => {
+                              setExemptionTarget({ vaccineId: vax.id, vaccineName: vax.name });
+                              setExemptionDialogOpen(true);
+                            }}
+                            sx={{ p: 0.25, ml: 0.5 }}
+                          >
+                            <BlockIcon sx={{ fontSize: 12, color: COLORS.textMuted }} />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                    </Box>
                   </Box>
                 );
               })}
@@ -2147,6 +2262,65 @@ export default function PatientDashboard() {
             sx={{ fontFamily: FONT, fontWeight: 900, bgcolor: COLORS.success, borderRadius: 0, '&:hover': { bgcolor: '#1B5E20' } }}
           >
             Save Payment
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* T3.101: Vaccine Exemption Dialog */}
+      <Dialog
+        open={exemptionDialogOpen}
+        onClose={() => { setExemptionDialogOpen(false); setExemptionTarget(null); setExemptionReason(''); }}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 0 } }}
+      >
+        <DialogTitle sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.95rem', color: COLORS.brand, borderBottom: `2px solid ${COLORS.border}` }}>
+          Mark {exemptionTarget?.vaccineName} as Exempt
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          <Typography sx={{ fontFamily: FONT, fontSize: '0.82rem', color: COLORS.textSecondary, mb: 1.5 }}>
+            This vaccine will be excluded from the completeness tracker. Provide a reason for the exemption.
+          </Typography>
+          <TextField
+            autoFocus
+            fullWidth
+            multiline
+            minRows={2}
+            maxRows={4}
+            placeholder="e.g., Indoor-only cat — no exposure risk"
+            value={exemptionReason}
+            onChange={(e) => setExemptionReason(e.target.value)}
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                fontFamily: FONT,
+                fontSize: '0.85rem',
+                borderRadius: 0,
+              },
+            }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 2.5, pb: 2 }}>
+          <Button
+            onClick={() => { setExemptionDialogOpen(false); setExemptionTarget(null); setExemptionReason(''); }}
+            sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textSecondary }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleMarkExempt}
+            disabled={!exemptionReason.trim() || exemptionSaving}
+            variant="contained"
+            sx={{
+              fontFamily: FONT,
+              fontWeight: 700,
+              bgcolor: COLORS.textMuted,
+              color: '#fff',
+              borderRadius: 0,
+              '&:hover': { bgcolor: COLORS.accentLight },
+              '&.Mui-disabled': { bgcolor: COLORS.borderLight },
+            }}
+          >
+            {exemptionSaving ? 'Saving...' : 'Mark Exempt'}
           </Button>
         </DialogActions>
       </Dialog>

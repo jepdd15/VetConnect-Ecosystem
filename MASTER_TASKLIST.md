@@ -1,8 +1,8 @@
 # VetConnect Master Task List
 
 **Last updated:** 2026-04-27 · **Branch:** `main`
-**Total tasks:** ~746 · **Cancelled/Absorbed:** ~17 · **Active:** ~729
-**DONE:** ~586 · **TODO:** ~143 · **Deferred sub-tasks:** 50
+**Total tasks:** ~753 · **Cancelled/Absorbed:** ~17 · **Active:** ~736
+**DONE:** ~588 · **TODO:** ~148 · **Deferred sub-tasks:** 50
 **Phase 2:** COMPLETE · **Phase 3 Essential:** COMPLETE (except Blaze-gated T3.40-42) · **Phase 3 High-Value:** 8/8 batches done (T3.50 remains, T3.5 DONE) · **Phase 4 Dashboard S:** COMPLETE (T4.1-T4.4)
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~158 hours (Phase 4 S-Tier)
 
@@ -1027,6 +1027,13 @@
 | T3.97 | PetHistoryScreen: prescription frequency analysis | P3 | 1 hr | — | DONE | Collapsible "Frequently Prescribed" card. Top 10 meds with Nx badges. |
 | T3.98 | Rename prescription/rxCart terminology — rxCart→treatmentCart, prescriptions→dispensedProducts, prescribedItems→encounterItems across all code + Firestore fields. Dual-read fallback for existing documents (dispensedProducts || prescriptions). No logic changes — isDrug routing, dispensing flow, discharge medications all unchanged. | P2 | 2-3 hrs | — | DONE | 11 files, ~105 occurrences. Writes use new names, reads use dual-fallback (newField || oldField). Zero logic changes. |
 | T3.99 | Structured SOAP amendment form — replace text-only amendment input with a full SOAP form (S/O/A/P fields + optional vitals + optional medications). Amendments stored with type:'structured' to distinguish from legacy text-only. Display as orange-bordered mini SOAP card on PatientDashboard, PetHistoryScreen, and EMRDrawer. Original record stays locked and untouched — amendment is a structured addendum. Backward compat: legacy amendments (type undefined) render as text blob. | P2 | 3-4 hrs | T2.453 | DONE | 4 files. ClinicalWorkspace: structured SOAP form + handler. PatientDashboard + EMRDrawer + PetHistoryScreen: branch renderer (structured → SOAP card, legacy → text blob). EMRDrawer field name fix. |
+| T3.100 | Vaccination tracker species filter — filter completeness bar by pet species. Currently iterates ALL catalog vaccines regardless of species. Cat shows DHPP as 'NOT RECORDED'. Fix: vaccineCatalog.filter(v => v.species.includes(petSpecies)). Affects PatientDashboard vaccinationStatus useMemo. | P2 | 30 min | T3.51 | DONE | Species filter in vaccinationStatus useMemo. vaccineCompleteness simplified to trivial count. Cats see 3 vaccines, dogs see 4. |
+| T3.101 | Vaccine exemption flag — add vaccineExemptions[] array on pet doc. Per-vaccine N/A marking with reason + exemptedBy. Tracker shows grey 'EXEMPT' instead of red 'NOT RECORDED'. UI: small 'Mark N/A' button per vaccine row on PatientDashboard tracker. | P2 | 1 hr | T3.100 | DONE | vaccineExemptions[] on pet doc. Grey Exempt chip + reason Tooltip. MUI Dialog for reason. Undo via arrayRemove. Excluded from completeness denominator. |
+| T3.102 | Vaccine-allergy contraindication warning — cross-reference pet allergies (petAllergies field) against vaccine catalog keywords when vet selects a vaccine in ClinicalWorkspace. Show orange warning chip if potential match. Advisory only, not blocking. | P2 | 1.5 hrs | T3.51 | TODO | Patient safety — requires allergen-to-vaccine mapping in catalog or a simple keyword cross-check |
+| T3.103 | Link vaccine lot number to inventory batch — when vet selects vaccine from catalog in ClinicalWorkspace, auto-populate lot/manufacturer from inventory batch picker (same pattern as T3.38 dispensing batch selection). Creates true batch recall traceability. Currently lot number is free-text with no inventory validation. | P2 | 2 hrs | T3.38 | TODO | Drug recall traceability — lot must trace back to actual inventory batch |
+| T3.104 | Normalize vaccine dueDate to Firestore Timestamp — currently stored as ISO string on some records, Timestamp on others. Every reader needs typeof/toDate fallback parsing. Standardize write to Timestamp.fromDate(), add dual-read fallback at all read sites. | P3 | 1 hr | — | TODO | Data consistency — same pattern as T3.70 dual-read approach |
+| T3.105 | Remove legacy vaccineData shim — stop dual-writing the single-object vaccineData field alongside vaccineAdministrations[]. All readers already use vaccineAdministrations || [vaccineData] fallback. Removing the write saves document size. Keep read fallback for historical records. | P3 | 30 min | — | TODO | Tech debt cleanup — vaccineData is redundant since T2.474 shipped multi-vaccine array |
+| T3.106 | Optimize mobile overdue vaccine detection — ClientDashboard does N+1 getDocs per pet. Refactor to a single collectionGroup query or batch the pet IDs into fewer queries. | P3 | 1 hr | — | TODO | Performance — acceptable for <10 pets but scales poorly for multi-pet owners |
 
 ---
 

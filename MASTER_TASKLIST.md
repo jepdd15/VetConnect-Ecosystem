@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-04-27 · **Branch:** `main`
 **Total tasks:** ~744 · **Cancelled/Absorbed:** ~17 · **Active:** ~727
-**DONE:** ~582 · **TODO:** ~145 · **Deferred sub-tasks:** 50
+**DONE:** ~583 · **TODO:** ~144 · **Deferred sub-tasks:** 50
 **Phase 2:** COMPLETE · **Phase 3 Essential:** COMPLETE (except Blaze-gated T3.40-42) · **Phase 3 High-Value:** 8/8 batches done (T3.50 remains, T3.5 DONE) · **Phase 4 Dashboard S:** COMPLETE (T4.1-T4.4)
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~158 hours (Phase 4 S-Tier)
 
@@ -1306,7 +1306,7 @@
 | T4.75 | Push notifications for all appointment lifecycle events: deploy existing CF | P1 | 2 hrs | Blaze | TODO | CF already written |
 | T4.76 | Dark mode: DARK_COLORS in mobileTokens, useColorScheme detection | P2 | 3-4 hrs | T2.434 | TODO | Needs mobileTokens.js |
 | ~~T4.77~~ | ~~Biometric login~~ | — | — | — | — | ABSORBED into T4.71 |
-| T4.78 | In-app appointment rescheduling: date/slot picker, rescheduleReason | P2 | 2 hrs | — | TODO | |
+| T4.78 | In-app appointment rescheduling: date/slot picker, rescheduleReason | P2 | 2 hrs | — | DONE | Reschedule mode in BookAppointment.js. Single + group support (Amendment 1). Required reason (Amendment 2). JIT capacity check, auditReasons, scheduledDateStr fix. |
 | T4.79 | Pet photo upload and display: Firebase Storage, camera/gallery picker | P3 | 1.5 hrs | — | TODO | |
 | T4.80 | Haptic feedback on key interactions: expo-haptics | P3 | 30 min | — | TODO | Polish |
 

@@ -32,7 +32,8 @@ import { auth, db } from "../../firebaseConfig";
 // THE BRAIN
 import { useSafeAreaInsets } from "react-native-safe-area-context"; // <-- THE FIX: Hardware measurement hook
 import { useBookingEngine } from "../hooks/useBookingEngine";
-import { formatDisplayDate, formatDisplayTime, resolveTieredPrice } from '../utils/helpers';
+import { formatDisplayDate, formatDisplayTime, getLocalDateStr, resolveTieredPrice } from '../utils/helpers';
+import { COLORS } from '../theme/mobileTokens';
 
 export default function BookAppointment({ navigation, route }) {
   const insets = useSafeAreaInsets();
@@ -45,8 +46,17 @@ export default function BookAppointment({ navigation, route }) {
   const fromFollowUp = route?.params?.fromFollowUp === true;
   const ghostAppointmentId = route?.params?.ghostAppointmentId || null;
 
+  // Reschedule mode: reuses Step 3 (slot picker) and a trimmed Step 4 (reason + confirm).
+  // The existing appointment is updated in-place — no new document is created.
+  const rescheduleMode = route?.params?.rescheduleMode === true;
+  const rescheduleAppointmentId = route?.params?.rescheduleAppointmentId || null;
+  const rescheduleAppointment = route?.params?.rescheduleAppointment || null;
+  const rescheduleGroup = route?.params?.rescheduleGroup || null;
+
   // Ensures the prefillDate jump-to-step-3 effect fires at most once per mount.
   const prefillApplied = useRef(false);
+  // Ensures the reschedule jump-to-step-3 effect fires at most once per mount.
+  const rescheduleApplied = useRef(false);
 
   // --- ENTERPRISE WIZARD STATE ---
   const [step, setStep] = useState(1);
@@ -59,6 +69,9 @@ export default function BookAppointment({ navigation, route }) {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  // Reschedule reason — required (Amendment 2). Empty string disables the Confirm button.
+  const [rescheduleReason, setRescheduleReason] = useState("");
 
   // --- SCALABILITY STATES ---
   const [serviceSearch, setServiceSearch] = useState("");
@@ -128,6 +141,48 @@ export default function BookAppointment({ navigation, route }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefillDate, fetching, selectedPets.length, selectedServices.length]);
+
+  // Reschedule mode: seed pet and services from the appointment object passed via navigation params.
+  // Runs only when the pet/service lists have loaded from Firestore.
+  useEffect(() => {
+    if (!rescheduleMode || !rescheduleAppointment) return;
+    if (pets.length > 0 && selectedPets.length === 0) {
+      const match = pets.find(p => p.id === rescheduleAppointment.petId);
+      if (match) setSelectedPets([match]);
+    }
+    if (services.length > 0 && selectedServices.length === 0) {
+      const apptServices = rescheduleAppointment.services || [];
+      const matched = apptServices
+        .map(as => services.find(s => s.id === as.id || s.name === as.name))
+        .filter(Boolean);
+      if (matched.length > 0) {
+        setSelectedServices(matched);
+      } else {
+        // Fallback: match by serviceType string stored on the appointment
+        const fallback = services.find(s => s.name === rescheduleAppointment.serviceType);
+        if (fallback) setSelectedServices([fallback]);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rescheduleMode, rescheduleAppointment, pets, services]);
+
+  // Once both pet and services are seeded in reschedule mode, default the date picker to
+  // the appointment's existing date and jump straight to the slot picker (Step 3).
+  useEffect(() => {
+    if (!rescheduleMode || rescheduleApplied.current) return;
+    if (selectedPets.length > 0 && selectedServices.length > 0) {
+      const rawDate = rescheduleAppointment?.scheduledDate;
+      const existingDate = typeof rawDate?.toDate === 'function'
+        ? rawDate.toDate()
+        : new Date(rawDate);
+      if (existingDate && !isNaN(existingDate.getTime())) {
+        setDate(existingDate);
+      }
+      setStep(3);
+      rescheduleApplied.current = true;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rescheduleMode, selectedPets.length, selectedServices.length]);
 
   // Configured no-show lookback window — falls back to 30 days if Firestore hasn't loaded yet.
   const noShowWindowDays = clinicSettings?.noShowLinkWindowDays || 30;
@@ -400,6 +455,138 @@ export default function BookAppointment({ navigation, route }) {
     }
   };
 
+  // --- RESCHEDULE: In-place appointment update with JIT capacity check ---
+  // Updates the existing appointment document(s) — no new document is created.
+  // The JIT capacity check excludes the appointment's own ID(s) to avoid self-blocking.
+  const submitReschedule = async () => {
+    setLoading(true);
+    try {
+      const [hours, minutes] = selectedSlot.split(":");
+      const newDateTime = new Date(date);
+      newDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+
+      // Guard: reject if the computed appointment time is already in the past.
+      if (newDateTime < new Date()) {
+        Alert.alert("Time Passed", "The selected time slot is now in the past. Please select a new time.");
+        setStep(3);
+        setSelectedSlot(null);
+        setLoading(false);
+        return;
+      }
+
+      // JIT capacity check — same pattern as submitBooking.
+      const startOfDay = new Date(newDateTime);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(newDateTime);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const checkSnap = await getDocs(
+        query(
+          collection(db, "appointments"),
+          where("scheduledDate", ">=", Timestamp.fromDate(startOfDay)),
+          where("scheduledDate", "<=", Timestamp.fromDate(endOfDay)),
+          where("status", "in", ["pending", "confirmed"]),
+        ),
+      );
+
+      // Exclude the current appointment(s) from the capacity count —
+      // they are being moved, not added. Amendment 1: exclude ALL group member IDs.
+      const excludeIds = new Set(
+        rescheduleGroup ? rescheduleGroup.map(a => a.id) : [rescheduleAppointmentId]
+      );
+      const filteredDocs = checkSnap.docs.filter(d => !excludeIds.has(d.id));
+
+      const allGroupServices = rescheduleGroup
+        ? rescheduleGroup.flatMap(a => a.services || [])
+        : (rescheduleAppointment.services || []);
+      let serviceOffset = 0;
+      for (const svc of allGroupServices) {
+        const dur = parseInt(String(svc.duration).replace(/[^0-9]/g, "")) || 30;
+        const buff = parseInt(String(svc.buffer).replace(/[^0-9]/g, "")) || 0;
+        const svcStart = new Date(newDateTime.getTime() + serviceOffset * 60000);
+        const svcEnd = new Date(svcStart.getTime() + (dur + buff) * 60000);
+        const requiredDept = (svc.department || "General").toLowerCase();
+
+        const competing = filteredDocs.filter(d => {
+          const data = d.data();
+          const deptsInAppt = new Set();
+          if (data.services && Array.isArray(data.services)) {
+            data.services.forEach(s => deptsInAppt.add((s.department || "General").toLowerCase()));
+          } else {
+            deptsInAppt.add((data.department || data.serviceCategory || "General").toLowerCase());
+          }
+          return deptsInAppt.has(requiredDept);
+        });
+
+        let overlaps = 0;
+        competing.forEach(d => {
+          const s = d.data().scheduledDate.toDate();
+          const e = new Date(s.getTime() + ((d.data().serviceDuration || 30) + (d.data().serviceBuffer || 0)) * 60000);
+          if (svcStart < e && svcEnd > s) overlaps++;
+        });
+
+        const capacity = departmentCapacity[requiredDept] || 1;
+        if (overlaps >= capacity) {
+          Alert.alert(
+            "Slot Taken",
+            `Another client just booked a ${svc.department || "General"} specialist during this window. Please select another time.`,
+          );
+          setStep(3);
+          setSelectedSlot(null);
+          setLoading(false);
+          return;
+        }
+        serviceOffset += (dur + buff);
+      }
+
+      const newDateStr = getLocalDateStr(newDateTime);
+      const trimmedReason = rescheduleReason.trim();
+
+      // Build the update payload. Fields mirror the admin saveReschedule pattern
+      // with client-specific attribution. scheduledDateStr is explicitly updated
+      // (the admin path currently omits this — this client path fixes that gap).
+      const updatePayload = {
+        scheduledDate: Timestamp.fromDate(newDateTime),
+        scheduledDateStr: newDateStr,
+        status: "pending",
+        rescheduledAt: Timestamp.now(),
+        rescheduledBy: "Client/Self",
+        rescheduleReason: trimmedReason,
+        auditReason: `Rescheduled by client: ${trimmedReason}`,
+        auditReasons: arrayUnion({
+          reason: trimmedReason,
+          action: "client-reschedule",
+          staffName: "Client/Self",
+          timestamp: Timestamp.now(),
+        }),
+        confirmedByClient: false,
+      };
+
+      // Amendment 1: update ALL group members atomically via Promise.all.
+      if (rescheduleGroup && rescheduleGroup.length > 0) {
+        await Promise.all(
+          rescheduleGroup.map(appt => updateDoc(doc(db, "appointments", appt.id), updatePayload))
+        );
+      } else {
+        await updateDoc(doc(db, "appointments", rescheduleAppointmentId), updatePayload);
+      }
+
+      const petCount = rescheduleGroup?.length || 1;
+      Alert.alert(
+        "Rescheduled",
+        petCount > 1
+          ? `All ${petCount} appointments in this group have been moved to ${formatDisplayDate(newDateTime)}. The clinic will confirm the new date.`
+          : `Your appointment has been moved to ${formatDisplayDate(newDateTime)}. The clinic will confirm the new date.`,
+      );
+      navigation.goBack();
+    } catch (error) {
+      Alert.alert("Error", "Could not reschedule. Please try again.");
+      console.error("[BookAppointment.submitReschedule]:", error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // --- THE FATAL FLAW FIX: JIT CONCURRENCY CHECK (Now Multi-Service Aware!) ---
   const submitBooking = async () => {
     setLoading(true);
@@ -602,6 +789,12 @@ export default function BookAppointment({ navigation, route }) {
     if (step === 3 && !selectedSlot)
       return Alert.alert("Required", "Please select a time slot.");
     if (step === 4) {
+      // Reschedule path: submitReschedule validates reason internally but the button
+      // is already disabled when reason is empty, so this is a safety guard only.
+      if (rescheduleMode) {
+        submitReschedule();
+        return;
+      }
       if (busynessLevel === "high") {
         Alert.alert(
           "High Demand",
@@ -620,12 +813,24 @@ export default function BookAppointment({ navigation, route }) {
   };
 
   const handleBack = () => {
+    if (rescheduleMode) {
+      // Reschedule is a 2-step flow: Step 3 (slot picker) → Step 4 (confirm).
+      // Back on Step 3 exits reschedule mode entirely; Back on Step 4 returns to slot picker.
+      if (step === 4) setStep(3);
+      else navigation.goBack();
+      return;
+    }
     if (step > 1) setStep(step - 1);
     else navigation.goBack();
   };
 
   const getButtonText = () => {
     if (loading) return "Processing...";
+    if (rescheduleMode) {
+      if (step === 3 && !selectedSlot) return "Select a New Time";
+      if (step === 3) return "Continue";
+      if (step === 4) return "Confirm Reschedule";
+    }
     if (step === 1 && selectedPets.length === 0) return "1. Select a Pet";
     if (step === 2 && selectedServices.length === 0) return "2. Select Service(s)";
     if (step === 3 && !selectedSlot) return "3. Select a Time";
@@ -1140,10 +1345,69 @@ export default function BookAppointment({ navigation, route }) {
     </Modal>
   );
 
+  // --- RESCHEDULE CONFIRM RENDER (replaces Step 4 in reschedule mode) ---
+  // Shows original vs new date/time comparison and requires a reschedule reason (Amendment 2).
+  const renderRescheduleConfirm = () => {
+    const rawOriginal = rescheduleAppointment?.scheduledDate;
+    const originalDate = typeof rawOriginal?.toDate === 'function'
+      ? rawOriginal.toDate()
+      : new Date(rawOriginal);
+    const isReasonEmpty = rescheduleReason.trim() === '';
+
+    return (
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={styles.stepContainer}
+      >
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+          <Text style={styles.stepHeader}>Confirm Reschedule</Text>
+
+          <View style={styles.summaryBox}>
+            <Text style={styles.summaryTitle}>Schedule Change</Text>
+            <Text style={styles.summaryText}>
+              Patient: {rescheduleAppointment?.petName}
+            </Text>
+            <Text style={styles.summaryText}>
+              Service: {rescheduleAppointment?.serviceType}
+            </Text>
+            <Text style={[styles.summaryText, { textDecorationLine: 'line-through', color: '#9E9E9E' }]}>
+              Original: {formatDisplayDate(originalDate)} at {formatDisplayTime(originalDate)}
+            </Text>
+            <Text style={[styles.summaryText, { color: COLORS.success, fontWeight: '900' }]}>
+              New: {formatDisplayDate(date)} at {selectedSlot}
+            </Text>
+          </View>
+
+          <Text style={styles.inputLabel}>
+            Reason for rescheduling{' '}
+            <Text style={{ color: COLORS.danger }}>*</Text>
+          </Text>
+          <TextInput
+            style={styles.notesInput}
+            placeholder="e.g. Schedule conflict, feeling unwell..."
+            placeholderTextColor="#aaa"
+            multiline
+            numberOfLines={3}
+            value={rescheduleReason}
+            onChangeText={setRescheduleReason}
+          />
+          {isReasonEmpty && (
+            <Text style={{ color: COLORS.danger, fontSize: 11, marginTop: 4, fontWeight: '700' }}>
+              A reason is required before confirming.
+            </Text>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    );
+  };
+
   // --- STEP 4 RENDER: REVIEW & NOTES ---
   const renderStep4 = () => {
+    // Reschedule mode hijacks Step 4 with its own summary + required reason UI.
+    if (rescheduleMode) return renderRescheduleConfirm();
+
     // RESILIENT HINTS (Safety check stays for surgery warnings)
-    const hasSurgery = selectedServices.some(s => 
+    const hasSurgery = selectedServices.some(s =>
         (s.department || s.category || '').toLowerCase().includes('surg') ||
         (s.name || '').toLowerCase().includes('surg')
     );
@@ -1226,10 +1490,17 @@ export default function BookAppointment({ navigation, route }) {
     <SafeAreaView style={styles.rootContainer}>
       {/* HEADER WIZARD PROGRESS */}
       <View style={styles.wizardHeader}>
-        <Text style={styles.wizardTitle}>Booking: Step {step} of 4</Text>
+        <Text style={styles.wizardTitle}>
+          {rescheduleMode
+            ? (step === 3 ? "Reschedule: Pick a New Time" : "Reschedule: Confirm")
+            : `Booking: Step ${step} of 4`}
+        </Text>
         <View style={styles.progressBar}>
           <View
-            style={[styles.progressFill, { width: `${(step / 4) * 100}%` }]}
+            style={[
+              styles.progressFill,
+              { width: rescheduleMode ? (step === 3 ? '50%' : '100%') : `${(step / 4) * 100}%` },
+            ]}
           />
         </View>
       </View>
@@ -1243,7 +1514,7 @@ export default function BookAppointment({ navigation, route }) {
       </View>
 
       {/* NO-SHOW WARNING BANNER — shown when selected pets have recent no-shows */}
-      {noShowInfo && noShowInfo.count > 0 && step > 1 && (
+      {!rescheduleMode && noShowInfo && noShowInfo.count > 0 && step > 1 && (
         <View style={styles.noShowBanner}>
           <Text style={styles.noShowBannerTitle}>
             No-Show History Detected
@@ -1274,7 +1545,7 @@ export default function BookAppointment({ navigation, route }) {
             disabled={loading}
           >
             <Text style={styles.backBtnText}>
-              {step === 1 ? "Cancel" : "Back"}
+              {rescheduleMode ? (step === 3 ? "Cancel" : "Back") : (step === 1 ? "Cancel" : "Back")}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -1283,11 +1554,15 @@ export default function BookAppointment({ navigation, route }) {
               (loading ||
                 (step === 1 && selectedPets.length === 0) ||
                 (step === 2 && selectedServices.length === 0) ||
-                (step === 3 && !selectedSlot)) &&
+                (step === 3 && !selectedSlot) ||
+                (rescheduleMode && step === 4 && rescheduleReason.trim() === '')) &&
                 styles.disabledNextBtn,
             ]}
             onPress={handleNext}
-            disabled={loading}
+            disabled={
+              loading ||
+              (rescheduleMode && step === 4 && rescheduleReason.trim() === '')
+            }
           >
             {loading ? (
               <ActivityIndicator color="#fff" />
@@ -1298,7 +1573,8 @@ export default function BookAppointment({ navigation, route }) {
                   (loading ||
                     (step === 1 && selectedPets.length === 0) ||
                     (step === 2 && selectedServices.length === 0) ||
-                    (step === 3 && !selectedSlot)) && { color: "#9E9E9E" },
+                    (step === 3 && !selectedSlot) ||
+                    (rescheduleMode && step === 4 && rescheduleReason.trim() === '')) && { color: "#9E9E9E" },
                 ]}
               >
                 {getButtonText()}

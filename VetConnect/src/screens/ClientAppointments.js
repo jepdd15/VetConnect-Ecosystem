@@ -334,6 +334,45 @@ const ClientAppointments = ({ navigation }) => {
     }
   };
 
+  // Navigate to BookAppointment in reschedule mode for a single appointment.
+  // If the appointment is part of a group, warn the user about potential desync first.
+  const handleReschedule = (item) => {
+    if (item.visitGroupId) {
+      Alert.alert(
+        'Group Visit',
+        'This appointment is part of a group visit. Rescheduling it separately may desync it from the other pets in the group. Continue?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Continue',
+            onPress: () => navigation.navigate("BookAppointment", {
+              rescheduleMode: true,
+              rescheduleAppointmentId: item.id,
+              rescheduleAppointment: item,
+            }),
+          },
+        ],
+      );
+      return;
+    }
+    navigation.navigate("BookAppointment", {
+      rescheduleMode: true,
+      rescheduleAppointmentId: item.id,
+      rescheduleAppointment: item,
+    });
+  };
+
+  // Navigate to BookAppointment in reschedule mode for an entire visit group.
+  // Passes the full group array so BookAppointment can update all members atomically (Amendment 1).
+  const handleRescheduleGroup = (groupAppts) => {
+    navigation.navigate("BookAppointment", {
+      rescheduleMode: true,
+      rescheduleAppointmentId: groupAppts[0].id,
+      rescheduleAppointment: groupAppts[0],
+      rescheduleGroup: groupAppts,
+    });
+  };
+
   // Cancel all appointments in a visit group
   const handleCancelGroup = (groupAppointments, firstServiceType) => {
     Alert.alert(
@@ -620,6 +659,16 @@ const ClientAppointments = ({ navigation }) => {
               </TouchableOpacity>
             )}
 
+            {/* Reschedule Group: only shown when ALL members are pending/confirmed (Amendment 1) */}
+            {isCancellable && (
+              <TouchableOpacity
+                style={[styles.btn, styles.rescheduleBtn]}
+                onPress={() => handleRescheduleGroup(groupAppts)}
+              >
+                <Text style={[styles.btnText, { color: COLORS.sky }]}>Reschedule Group</Text>
+              </TouchableOpacity>
+            )}
+
             {(() => {
               const confirmedMembers = groupAppts.filter(a => a.status === "confirmed");
               const hasUnconfirmed = confirmedMembers.some(a => !a.confirmedByClient);
@@ -719,6 +768,15 @@ const ClientAppointments = ({ navigation }) => {
                 >
                   <Text style={[styles.btnText, { color: COLORS.danger }]}>
                     ❌ Cancel
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.btn, styles.rescheduleBtn]}
+                  onPress={() => handleReschedule(item)}
+                >
+                  <Text style={[styles.btnText, { color: COLORS.sky }]}>
+                    Reschedule
                   </Text>
                 </TouchableOpacity>
 
@@ -1355,6 +1413,13 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
     fontWeight: '700',
     fontSize: 13,
+  },
+
+  rescheduleBtn: {
+    borderWidth: 1,
+    borderColor: COLORS.sky,
+    backgroundColor: '#E3F2FD',
+    borderRadius: 0,
   },
 
   // --- Client attendance confirmation ---

@@ -35,7 +35,7 @@ export default function DispensingVerificationDialog({
   clinicSettings,
   inventoryList,
 }) {
-  const prescribedItems = patient?.prescribedItems || [];
+  const encounterItems = patient?.encounterItems || patient?.prescribedItems || [];
   const [checklist, setChecklist] = useState({});
 
   // T3.38: batch selection state — keyed by item index, value = batchNumber string
@@ -57,7 +57,7 @@ export default function DispensingVerificationDialog({
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      prescribedItems.forEach((item, idx) => {
+      encounterItems.forEach((item, idx) => {
         // Services are auto-checked — they are not physically dispensed
         if (item.type !== 'product') {
           initialChecklist[idx] = true;
@@ -89,7 +89,7 @@ export default function DispensingVerificationDialog({
       setBatchSelections(initialBatches);
       setDispensedQtys(initialQtys);
     }
-  }, [open, patient?.id, prescribedItems, inventoryList]);
+  }, [open, patient?.id, encounterItems, inventoryList]);
 
   // T3.37: Build O(1) stock lookup map from the live inventory list
   const stockMap = useMemo(() => {
@@ -108,39 +108,39 @@ export default function DispensingVerificationDialog({
 
   // T3.37: Count how many products have insufficient stock for the summary alert
   const stockIssueCount = useMemo(() => {
-    return prescribedItems.filter(item => {
+    return encounterItems.filter(item => {
       if (item.type !== 'product') return false;
       const inv = stockMap.get(item.id);
       if (!inv) return false;
       return inv.available < item.qty;
     }).length;
-  }, [prescribedItems, stockMap]);
+  }, [encounterItems, stockMap]);
 
   const productCount = useMemo(() =>
-    prescribedItems.filter(i => i.type === 'product').length,
-    [prescribedItems],
+    encounterItems.filter(i => i.type === 'product').length,
+    [encounterItems],
   );
 
   // T3.39: allChecked = every index is marked in the checklist (products auto-set via qty input)
   const allChecked = useMemo(() => {
-    if (prescribedItems.length === 0) return true;
-    return prescribedItems.every((_, idx) => checklist[idx]);
-  }, [checklist, prescribedItems]);
+    if (encounterItems.length === 0) return true;
+    return encounterItems.every((_, idx) => checklist[idx]);
+  }, [checklist, encounterItems]);
 
   // T3.39: Whether any product is dispensed at a partial quantity
   const hasPartialItems = useMemo(() =>
-    prescribedItems.some((item, idx) =>
+    encounterItems.some((item, idx) =>
       item.type === 'product' && (dispensedQtys[idx] ?? item.qty) < item.qty
     ),
-    [prescribedItems, dispensedQtys]
+    [encounterItems, dispensedQtys]
   );
 
   // T3.39: Whether any product is set to qty = 0 (not dispensed)
   const hasZeroItems = useMemo(() =>
-    prescribedItems.some((item, idx) =>
+    encounterItems.some((item, idx) =>
       item.type === 'product' && (dispensedQtys[idx] ?? item.qty) === 0
     ),
-    [prescribedItems, dispensedQtys]
+    [encounterItems, dispensedQtys]
   );
 
   const petAllergies = patient?.petAllergies || patient?.allergies || '';
@@ -151,7 +151,7 @@ export default function DispensingVerificationDialog({
   const isHeld = !!patient?.dispensingHold;
 
   const buildAndSubmitDispensing = () => {
-    const checkedItems = prescribedItems.map((item, idx) => {
+    const checkedItems = encounterItems.map((item, idx) => {
       const isProduct = item.type === 'product';
       const dispensedQty = isProduct ? (dispensedQtys[idx] ?? item.qty) : item.qty;
       return {
@@ -170,7 +170,7 @@ export default function DispensingVerificationDialog({
 
     // T3.38: Build a top-level batchSelections map keyed by inventory item ID for audit
     const batchSelectionsMap = Object.entries(batchSelections).reduce((acc, [idx, batch]) => {
-      const item = prescribedItems[parseInt(idx, 10)];
+      const item = encounterItems[parseInt(idx, 10)];
       if (item && item.type === 'product' && batch) {
         acc[item.id] = batch;
       }
@@ -198,10 +198,10 @@ export default function DispensingVerificationDialog({
   };
 
   const zeroItemNames = useMemo(() =>
-    prescribedItems
+    encounterItems
       .filter((item, idx) => item.type === 'product' && (dispensedQtys[idx] ?? item.qty) === 0)
       .map(item => item.name),
-  [prescribedItems, dispensedQtys]);
+  [encounterItems, dispensedQtys]);
 
   return (
     <>
@@ -263,11 +263,11 @@ export default function DispensingVerificationDialog({
         <Typography variant="subtitle2" fontWeight="1000" color="textSecondary"
           sx={{ mb: 2, textTransform: 'uppercase', letterSpacing: 1 }}
         >
-          Prescribed Items ({prescribedItems.length})
+          Prescribed Items ({encounterItems.length})
         </Typography>
 
         <Stack spacing={1.5}>
-          {prescribedItems.map((item, idx) => {
+          {encounterItems.map((item, idx) => {
             const isProduct = item.type === 'product';
 
             // T2.175: Check allergen tags against patient's known allergies
@@ -504,7 +504,7 @@ export default function DispensingVerificationDialog({
           })}
         </Stack>
 
-        {prescribedItems.length === 0 && (
+        {encounterItems.length === 0 && (
           <Alert severity="warning" sx={{ mt: 2 }}>
             No prescribed items found on this appointment. The patient may have
             been fast-tracked. Verify with the attending veterinarian.
@@ -522,7 +522,7 @@ export default function DispensingVerificationDialog({
             <Button
               variant="outlined"
               startIcon={<PrintIcon />}
-              onClick={() => printDispensingLabels(prescribedItems, patient, clinicSettings)}
+              onClick={() => printDispensingLabels(encounterItems, patient, clinicSettings)}
               sx={{
                 fontWeight: '1000',
                 color: '#5D4037',

@@ -81,7 +81,7 @@ exports.reservationCleanup = functions.pubsub
     const legitimatelyReserved = new Map();
     activeAppts.forEach(doc => {
       const data = doc.data();
-      (data.prescribedItems || []).forEach(item => {
+      (data.encounterItems || data.prescribedItems || []).forEach(item => {
         if (item.type === 'product') {
           const current = legitimatelyReserved.get(item.id) || 0;
           legitimatelyReserved.set(item.id, current + (item.qty || 1));

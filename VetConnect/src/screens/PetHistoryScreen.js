@@ -488,7 +488,7 @@ export default function PetHistoryScreen({ route, navigation }) {
   const prescriptionFrequency = useMemo(() => {
     const rxMap = new Map();
     (history || []).forEach(r => {
-      (r.prescriptions || []).forEach(rx => {
+      (r.dispensedProducts || r.prescriptions || []).forEach(rx => {
         if (!rx.name) return;
         const existing = rxMap.get(rx.name);
         if (existing) {
@@ -645,7 +645,7 @@ export default function PetHistoryScreen({ route, navigation }) {
         records.push({
           id: docSnap.id,
           ...data,
-          prescriptions: (data.prescriptions || []).map(({ price, cost, unitPrice, ...rx }) => rx),
+          prescriptions: (data.dispensedProducts || data.prescriptions || []).map(({ price, cost, unitPrice, ...rx }) => rx),
           dischargeSummary: data.dischargeSummary ? {
             ...data.dischargeSummary,
             medications: (data.dischargeSummary.medications || []).map(({ price, cost, unitPrice, ...m }) => m),

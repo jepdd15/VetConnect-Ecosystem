@@ -98,7 +98,8 @@ const RecordCard = ({ record }) => {
   const rv = record.vitals || {};
   const hasVitals = rv.weight || rv.temp || rv.hr || rv.rr || rv.crt || rv.bcs || (rv.pain != null && rv.pain !== '')
     || record.objWeight || record.objTemp || record.objHR || record.objRR || record.objCRT || record.bcs || (record.painScale != null);
-  const hasPrescriptions = record.prescriptions?.length > 0;
+  const prescriptionList = record.dispensedProducts || record.prescriptions || [];
+  const hasPrescriptions = prescriptionList.length > 0;
   const hasDischargeSummary = Boolean(record.dischargeSummary);
   const hasVaccines = record.vaccineAdministrations?.length > 0 || record.vaccineData?.vaccineName;
   const hasLabResults = record.labResults?.length > 0;
@@ -203,9 +204,9 @@ const RecordCard = ({ record }) => {
 
             {/* Prescriptions */}
             {hasPrescriptions && (
-              <SectionBlock label={`Prescriptions (${record.prescriptions.length})`}>
+              <SectionBlock label={`Prescriptions (${prescriptionList.length})`}>
                 <Stack spacing={0.5}>
-                  {record.prescriptions.map((rx, i) => (
+                  {prescriptionList.map((rx, i) => (
                     <Box key={i} sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
                       <Typography sx={{ fontSize: '0.7rem', fontWeight: 900, color: COLORS.brand, minWidth: 16 }}>{i + 1}.</Typography>
                       <Box>

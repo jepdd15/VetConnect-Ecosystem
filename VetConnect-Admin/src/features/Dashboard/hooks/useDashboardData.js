@@ -1049,11 +1049,12 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
       .map(([name, count]) => ({ name, count }));
     const totalVaccinations = vaccinesByType.reduce((s, v) => s + v.count, 0);
 
-    // T2.292: Top prescribed items — flatten prescriptions arrays, group by name
+    // T2.292: Top dispensed items — flatten dispensedProducts arrays, group by name
     const rxMap = {};
     medicalRecords.forEach(r => {
-      if (r.prescriptions && r.prescriptions.length > 0) {
-        r.prescriptions.forEach(rx => {
+      const rxList = r.dispensedProducts || r.prescriptions;
+      if (rxList && rxList.length > 0) {
+        rxList.forEach(rx => {
           const name = (rx.name || 'Unknown').trim();
           if (name) rxMap[name] = (rxMap[name] || 0) + (rx.qty || 1);
         });

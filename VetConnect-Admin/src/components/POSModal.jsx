@@ -66,7 +66,8 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
     const prefix = petPrefix ? `[${petPrefix}] ` : '';
     const items = [];
 
-    if (appt.prescribedItems && appt.prescribedItems.length > 0) {
+    const apptItems = appt.encounterItems || appt.prescribedItems;
+    if (apptItems && apptItems.length > 0) {
       // T3.39: Build a lookup map from pharmacy's dispensingChecklist (written by
       // DispensingVerificationDialog on confirm). Keyed by item ID (with name fallback)
       // so partial dispensing quantities override the prescribed quantities in the POS cart.
@@ -75,7 +76,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         appt.dispensingChecklist.forEach(ci => checklistMap.set(ci.id || ci.name, ci));
       }
 
-      appt.prescribedItems.forEach(item => {
+      apptItems.forEach(item => {
         const ci = checklistMap.get(item.id || item.name);
         // Products with a dispensingChecklist entry use the verified dispensed qty.
         // Items dispensed at qty=0 are excluded from the cart entirely.
@@ -400,17 +401,17 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         const data = snap.data();
 
         // Optimistic lock: reject the write if another session has already committed
-        // a newer version of prescribedItems since this modal was opened.
-        const serverVersion = data.prescribedItemsVersion?.toMillis?.() || 0;
-        const localVersion = patient.prescribedItemsVersion?.toMillis?.() || 0;
+        // a newer version of encounterItems since this modal was opened.
+        const serverVersion = (data.encounterItemsVersion || data.prescribedItemsVersion)?.toMillis?.() || 0;
+        const localVersion = (patient.encounterItemsVersion || patient.prescribedItemsVersion)?.toMillis?.() || 0;
         if (serverVersion > 0 && localVersion > 0 && serverVersion !== localVersion) {
           throw new Error("The Treatment Plan was modified by another user. Please reload and try again.");
         }
 
         transaction.update(apptRef, {
-          prescribedItems: cart,
+          encounterItems: cart,
           depositPaid: parseFloat(depositAmount) || 0,
-          prescribedItemsVersion: Timestamp.now()
+          encounterItemsVersion: Timestamp.now()
         });
       });
       alert("Invoice Draft Saved.");

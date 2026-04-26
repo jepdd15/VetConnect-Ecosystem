@@ -299,7 +299,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
     renderCell: (p) => {
       // DISPENSE tab — Prescription Preview
       if (tabValue === 4) {
-        const items = p.row.prescribedItems || [];
+        const items = p.row.encounterItems || p.row.prescribedItems || [];
         const drugs = items.filter(i => i.isDrug || i.isMedicine || (i.type === 'product' && i.isMedicine !== false));
         if (drugs.length === 0) {
           return <Typography variant="caption" sx={{ color: 'text.disabled', fontStyle: 'italic' }}>No prescribed items</Typography>;
@@ -328,7 +328,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
 
       // PAYMENT tab — Billing Preview
       if (tabValue === 5) {
-        const items = p.row.prescribedItems || [];
+        const items = p.row.encounterItems || p.row.prescribedItems || [];
         const total = p.row.finalTotal || items.reduce((sum, i) => sum + ((i.price || 0) * (i.qty || 1)), 0);
         return (
           <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%', py: 1, justifyContent: 'center', height: '100%' }}>

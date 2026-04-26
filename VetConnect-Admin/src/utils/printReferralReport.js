@@ -106,7 +106,7 @@ export function generateReferralReportHTML({
     : '';
 
   // ── Current Medications (from latest record, no prices) ───────
-  const prescriptions = latestRecord?.prescriptions;
+  const prescriptions = latestRecord?.dispensedProducts || latestRecord?.prescriptions;
   const medsSection = prescriptions?.length
     ? `
     <h2>Current Medications</h2>

@@ -1,8 +1,8 @@
 # VetConnect Master Task List
 
 **Last updated:** 2026-04-27 · **Branch:** `main`
-**Total tasks:** ~744 · **Cancelled/Absorbed:** ~17 · **Active:** ~727
-**DONE:** ~584 · **TODO:** ~143 · **Deferred sub-tasks:** 50
+**Total tasks:** ~745 · **Cancelled/Absorbed:** ~17 · **Active:** ~728
+**DONE:** ~585 · **TODO:** ~143 · **Deferred sub-tasks:** 50
 **Phase 2:** COMPLETE · **Phase 3 Essential:** COMPLETE (except Blaze-gated T3.40-42) · **Phase 3 High-Value:** 8/8 batches done (T3.50 remains, T3.5 DONE) · **Phase 4 Dashboard S:** COMPLETE (T4.1-T4.4)
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~158 hours (Phase 4 S-Tier)
 
@@ -1025,6 +1025,7 @@
 | T3.95 | PetHistoryScreen: case day badge for multi-day cases | P3 | 15 min | — | DONE | "Day N" badge via Promise.all appointment reads. caseDayMap state. |
 | T3.96 | PetHistoryScreen: year section headers | P3 | 30 min | — | DONE | Inline year dividers using resolveDate + filteredHistory comparison. |
 | T3.97 | PetHistoryScreen: prescription frequency analysis | P3 | 1 hr | — | DONE | Collapsible "Frequently Prescribed" card. Top 10 meds with Nx badges. |
+| T3.98 | Rename prescription/rxCart terminology — rxCart→treatmentCart, prescriptions→dispensedProducts, prescribedItems→encounterItems across all code + Firestore fields. Dual-read fallback for existing documents (dispensedProducts || prescriptions). No logic changes — isDrug routing, dispensing flow, discharge medications all unchanged. | P2 | 2-3 hrs | — | DONE | 11 files, ~105 occurrences. Writes use new names, reads use dual-fallback (newField || oldField). Zero logic changes. |
 
 ---
 

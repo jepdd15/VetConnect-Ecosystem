@@ -43,12 +43,12 @@ function renderVitalsSection(vitals) {
  * Renders the prescriptions table. Omits price per clinical document policy
  * (prices belong on receipts, not clinical notes).
  *
- * @param {Array} prescriptions
+ * @param {Array} dispensedProducts
  * @returns {string} HTML string
  */
-function renderPrescriptionsSection(prescriptions) {
-  if (!prescriptions?.length) return '';
-  const rows = prescriptions.map((rx, i) => `
+function renderPrescriptionsSection(dispensedProducts) {
+  if (!dispensedProducts?.length) return '';
+  const rows = dispensedProducts.map((rx, i) => `
     <tr>
       <td>${i + 1}</td>
       <td><strong>${esc(rx.name || '—')}</strong></td>
@@ -264,7 +264,7 @@ export function generateVisitSummaryHTML({ record, pet, owner, clinicName, clini
   </table>
 
   ${renderVitalsSection(rec.vitals)}
-  ${renderPrescriptionsSection(rec.prescriptions)}
+  ${renderPrescriptionsSection(rec.dispensedProducts || rec.prescriptions)}
   ${renderVaccineSection(rec.vaccineData)}
   ${renderLabResultsSection(rec.labResults)}
   ${renderDischargeSection(rec.dischargeSummary)}

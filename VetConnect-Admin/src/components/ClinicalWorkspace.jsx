@@ -379,7 +379,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   // C3: Lab results — array of { testName, result, status, notes }
   const [labResults, setLabResults] = useState([]);
 
-  const [rxCart, setRxCart] = useState([]);
+  const [treatmentCart, setTreatmentCart] = useState([]);
   const [serviceAttribution, setServiceAttribution] = useState({});
   // T2.95: Per-service progress — tracks completion status for each booked service.
   // Keys are service IDs, values are 'pending' | 'in-progress' | 'completed'.
@@ -389,12 +389,12 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   const showToast = (message, severity = 'success') => setToast({ open: true, message, severity });
 
   // Refs to access latest cart and lock state inside cleanup closures without stale captures
-  const rxCartRef = useRef(rxCart);
+  const treatmentCartRef = useRef(treatmentCart);
   const isRecordLockedRef = useRef(isRecordLocked);
   const hasReleasedRef = useRef(false);
 
   // Keep refs in sync so the unmount cleanup always sees the latest values
-  useEffect(() => { rxCartRef.current = rxCart; }, [rxCart]);
+  useEffect(() => { treatmentCartRef.current = treatmentCart; }, [treatmentCart]);
   useEffect(() => { isRecordLockedRef.current = isRecordLocked; }, [isRecordLocked]);
 
   // On unmount: release all product reservations if the record was never signed off.
@@ -405,7 +405,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     return () => {
       if (!isRecordLockedRef.current && !hasReleasedRef.current) {
         hasReleasedRef.current = true;
-        rxCartRef.current.forEach(item => {
+        treatmentCartRef.current.forEach(item => {
           if (item.type === 'product' && releaseStock) {
             releaseStock(item.id, item.qty || 1).catch(e =>
               console.error(`[ClinicalWorkspace] Failed to release reservation for ${item.name}:`, e)
@@ -593,7 +593,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         }
 
         if (cancelled) return;
-        setRxCart(initialCart);
+        setTreatmentCart(initialCart);
 
         const initAttribution = {};
         (patient.services || []).forEach(svc => {
@@ -747,7 +747,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       // double-release when this runs before the unmount cleanup fires.
       if (!isRecordLockedRef.current && !hasReleasedRef.current) {
         hasReleasedRef.current = true;
-        rxCartRef.current.forEach(item => {
+        treatmentCartRef.current.forEach(item => {
           if (item.type === 'product' && releaseStock) {
             releaseStock(item.id, item.qty || 1).catch(e =>
               console.error(`[ClinicalWorkspace] Failed to release reservation for ${item.name}:`, e)
@@ -866,7 +866,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     const isMedicine = !!item.isMedicine; // 🩺 THE FORENSIC FLAG
 
     // Deduplicate: if item already in cart, increment qty instead of adding duplicate
-    const existingIdx = rxCart.findIndex(rx => rx.id === item.id);
+    const existingIdx = treatmentCart.findIndex(rx => rx.id === item.id);
     if (existingIdx >= 0) {
         handleUpdateQty(existingIdx, 1);
         return;
@@ -886,7 +886,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       instructions: '' 
     };
     
-    setRxCart(prev => [...prev, itemObj]);
+    setTreatmentCart(prev => [...prev, itemObj]);
     setIsDirty(true);
 
     // T2.22: If this is a vaccine product with batch data, auto-fill a new vaccine
@@ -931,11 +931,11 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   };
 
   const handleRemoveRx = (index) => {
-    if (rxCart[index].isBase) return; 
-    const itemToRemove = rxCart[index];
-    const newCart =[...rxCart];
+    if (treatmentCart[index].isBase) return;
+    const itemToRemove = treatmentCart[index];
+    const newCart =[...treatmentCart];
     newCart.splice(index, 1);
-    setRxCart(newCart);
+    setTreatmentCart(newCart);
     setIsDirty(true);
 
     // --- SOFT-RELEASE TRIGGER ---
@@ -947,13 +947,13 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   };
 
   const handleUpdateQty = async (index, delta) => {
-    const newCart = [...rxCart];
+    const newCart = [...treatmentCart];
     const item = newCart[index];
     const oldQty = item.qty || 1;
     const newQty = Math.max(1, oldQty + delta);
-    
+
     if (newQty === oldQty) return;
-    
+
     // Check Stock Availability if increasing
     if (delta > 0 && item.type === 'product') {
       const invItem = inventoryList.find(i => i.id === item.id);
@@ -963,7 +963,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     }
 
     item.qty = newQty;
-    setRxCart(newCart);
+    setTreatmentCart(newCart);
     setIsDirty(true);
 
     // Sync Inventory Reservation
@@ -977,16 +977,16 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     }
   };
   const handleUpdateRxSig = (index, text) => {
-    const newCart = [...rxCart];
+    const newCart = [...treatmentCart];
     newCart[index].instructions = text;
-    setRxCart(newCart);
+    setTreatmentCart(newCart);
     setIsDirty(true);
   };
 
   const handleUpdateRxField = (index, field, value) => {
-    const newCart = [...rxCart];
+    const newCart = [...treatmentCart];
     newCart[index][field] = value;
-    setRxCart(newCart);
+    setTreatmentCart(newCart);
     setIsDirty(true);
   };
 
@@ -1057,7 +1057,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     return [...filtered.map(v => v.name), 'Other'];
   }, [petDetails, vaccineCatalog]);
 
-  const hasDrugsInCart = rxCart.some(item => item.isDrug);
+  const hasDrugsInCart = treatmentCart.some(item => item.isDrug);
   const nextRouteStatus = hasDrugsInCart ? "dispensing" : "billing";
   const saveBtnText = hasDrugsInCart ? "Sign & Send to Pharmacy" : "Sign & Send to Cashier";
 
@@ -1071,7 +1071,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     if (!soapData.assessment || !soapData.plan) {
         return alert("Assessment and Plan are required for legal medical documentation.");
     }
-    if (rxCart.length === 0) {
+    if (treatmentCart.length === 0) {
         if (!window.confirm("Services & Items is empty. This will create a consult-only record with no billable items.\n\nProceed?")) return;
     }
 
@@ -1089,7 +1089,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         }
     }
 
-    const dischargeRequired = rxCart
+    const dischargeRequired = treatmentCart
         .filter(item => item.isBase && item.type === 'service')
         .some(item => {
             const svcDef = (servicesList || []).find(s => s.id === item.id);
@@ -1105,7 +1105,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     try {
       const vetUid = auth.currentUser?.uid || "system";
       const vetName = auth.currentUser?.displayName || "Authorized Clinician";
-      const visitTotal = rxCart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+      const visitTotal = treatmentCart.reduce((sum, item) => sum + (item.price * item.qty), 0);
       const commitTimestamp = Timestamp.now();
 
       const batch = writeBatch(db);
@@ -1151,8 +1151,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           clientNotes: patient?.clientNotes || patient?.notes || '',
           staffNotes: patient?.staffNotes || '',
         },
-        // D5: Prescriptions natively on the medical record
-        prescriptions: rxCart
+        // D5: Dispensed products natively on the medical record
+        dispensedProducts: treatmentCart
             .filter(item => item.type === 'product')
             .map(item => ({
                 name: item.name,
@@ -1179,7 +1179,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             visitDate: commitTimestamp,
             diagnosis: soapData.assessment || 'Clinical Visit',
             instructions: soapData.plan || '',
-            medications: rxCart
+            medications: treatmentCart
                 .filter(item => item.isDrug)
                 .map(item => ({
                     name: item.name,
@@ -1259,10 +1259,10 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       }
 
       // 3. APPOINTMENT STATUS ADVANCE — single authoritative write
-      // Merge any mid-consult service additions from rxCart into the appointment's
+      // Merge any mid-consult service additions from treatmentCart into the appointment's
       // service list so the downstream stations see the complete service picture (Issue #14).
       const existingServiceIds = new Set((patient.services || []).map(s => s.id));
-      const addedServices = rxCart
+      const addedServices = treatmentCart
           .filter(item => item.type === 'service' && !existingServiceIds.has(item.id))
           .map(item => ({ id: item.id, name: item.name, price: item.price }));
       const updatedServices = [...(patient.services || []), ...addedServices].map(svc => {
@@ -1286,10 +1286,10 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       const appointmentUpdate = {
           status: nextRouteStatus,
           statusHistory: arrayUnion(patient.status || 'unknown'),
-          prescribedItems: rxCart,
+          encounterItems: treatmentCart,
           finalTotal: visitTotal,
           signedOffAt: commitTimestamp,
-          prescribedItemsVersion: commitTimestamp,
+          encounterItemsVersion: commitTimestamp,
           services: updatedServices,
           forensicSeal,
           // T3.78: Close the sign-off pulse event gap — record the in-consult → dispensing/billing transition.
@@ -1390,8 +1390,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
 
         // Optimistic lock: reject the save if another user saved a newer version
         // while this session had the workspace open.
-        const serverVersion = snap.data().prescribedItemsVersion?.toMillis?.() || 0;
-        const localVersion = patient.prescribedItemsVersion?.toMillis?.() || 0;
+        const serverVersion = (snap.data().encounterItemsVersion || snap.data().prescribedItemsVersion)?.toMillis?.() || 0;
+        const localVersion = (patient.encounterItemsVersion || patient.prescribedItemsVersion)?.toMillis?.() || 0;
         if (serverVersion > 0 && serverVersion !== localVersion) {
           throw new Error("Draft was modified by another user. Please reload to see the latest version.");
         }
@@ -1414,8 +1414,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             patientStatus: soapData.patientStatus,
             nextVisit: soapData.nextVisit,
           },
-          prescribedItems: rxCart,
-          prescribedItemsVersion: Timestamp.now(),
+          encounterItems: treatmentCart,
+          encounterItemsVersion: Timestamp.now(),
           draftSavedAt: Timestamp.now(),
           draftSavedBy: auth.currentUser?.uid || "system",
         });
@@ -2361,7 +2361,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                     )}
 
                     <Stack spacing={2} sx={{ mt: 1 }}>
-                        {rxCart.map((rx, idx) => (
+                        {treatmentCart.map((rx, idx) => (
                             <Box key={idx} sx={{ bgcolor: 'white', p: 2, borderRadius: 2, border: `1px solid ${COLORS.borderLight}` }}>
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                                     <Typography sx={{ fontWeight: 1000, fontSize: '0.85rem', color: COLORS.brand }}>{rx.name}</Typography>
@@ -2403,12 +2403,12 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                         ))}
                     </Stack>
                     
-                    {/* 🧬 PHASE 2: DYNAMIC TOTAL CALCULATOR */}
-                    {rxCart.length > 0 && (
+                    {/* DYNAMIC TOTAL CALCULATOR */}
+                    {treatmentCart.length > 0 && (
                         <Box sx={{ mt: 3, pt: 2, borderTop: `2px solid ${COLORS.borderLight}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <Typography sx={{ fontWeight: 1000, color: COLORS.textMuted, fontSize: '0.75rem', textTransform: 'uppercase' }}>Subtotal</Typography>
                             <Typography sx={{ fontWeight: 1000, color: COLORS.brand, fontSize: '1.2rem' }}>
-                                ₱{rxCart.reduce((sum, item) => sum + (item.price * item.qty), 0).toLocaleString()}
+                                ₱{treatmentCart.reduce((sum, item) => sum + (item.price * item.qty), 0).toLocaleString()}
                             </Typography>
                         </Box>
                     )}

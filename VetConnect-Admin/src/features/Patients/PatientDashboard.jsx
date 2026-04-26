@@ -219,21 +219,21 @@ export default function PatientDashboard() {
         const snapshot = await getDocs(q);
 
         // T2.457: Appointment cache — built during the per-record fetch to avoid N+1 passes.
-        // Captures prescriptions (existing join) and caseDay/originApptId (new) in one pass.
+        // Captures dispensedProducts (existing join) and caseDay/originApptId (new) in one pass.
         const apptCache = {}; // appointmentId -> { caseDay, originApptId }
 
         const historyData = await Promise.all(snapshot.docs.map(async (docSnap) => {
           const rec = { id: docSnap.id, ...docSnap.data() };
-          // Fetch appointment doc when available — captures both legacy prescriptions and caseDay.
+          // Fetch appointment doc when available — captures both legacy dispensedProducts and caseDay.
           if (rec.appointmentId) {
             try {
               const apptDoc = await getDoc(doc(db, "appointments", rec.appointmentId));
               if (apptDoc.exists()) {
                 const apptData = apptDoc.data();
-                // D5: legacy prescription join
-                if (!rec.prescriptions) {
+                // D5: legacy dispensed products join — dual-read from both old and new field names
+                if (!rec.dispensedProducts && !rec.prescriptions) {
                   rec.serviceType = rec.serviceType || apptData.serviceType;
-                  rec.prescriptions = apptData.prescribedItems || [];
+                  rec.dispensedProducts = apptData.encounterItems || apptData.prescribedItems || [];
                 }
                 // T2.457: capture case-day metadata
                 apptCache[rec.appointmentId] = {
@@ -377,7 +377,7 @@ export default function PatientDashboard() {
         if (textFields.some(v => v?.toLowerCase().includes(q))) return true;
 
         // T2.130: Prescriptions — search item names
-        if (r.prescriptions?.some(rx => rx.name?.toLowerCase().includes(q))) return true;
+        if ((r.dispensedProducts || r.prescriptions)?.some(rx => rx.name?.toLowerCase().includes(q))) return true;
 
         // T2.462: Lab results — handle both string and array shapes
         if (typeof r.labResults === 'string' && r.labResults.toLowerCase().includes(q)) return true;
@@ -422,7 +422,7 @@ export default function PatientDashboard() {
   const prescriptionFrequency = useMemo(() => {
     const rxMap = new Map(); // name -> { name, count, lastDate, lastInstructions }
     (history || []).forEach(r => {
-      (r.prescriptions || []).forEach(rx => {
+      (r.dispensedProducts || r.prescriptions || []).forEach(rx => {
         if (!rx.name) return;
         if (!rx.isDrug && !rx.isMedicine) return;
         const dateStr = r.date?.toDate
@@ -957,7 +957,7 @@ export default function PatientDashboard() {
               const dateStr = rec.date?.toDate ? rec.date.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
               const hasS = rec.soap?.subjective, hasO = rec.soap?.objectiveNotes, hasT = rec.treatment;
               const hasV = rec.vitals && (rec.vitals.weight || rec.vitals.temp || rec.vitals.hr || rec.vitals.rr != null || rec.vitals.crt != null || rec.vitals.bcs != null || rec.vitals.pain != null);
-              const hasRx = rec.prescriptions?.length > 0;
+              const hasRx = (rec.dispensedProducts || rec.prescriptions)?.length > 0;
 
               // Determine if we need a sticky year header before this record
               const recDate = rec.date?.toDate ? rec.date.toDate() : null;
@@ -1217,7 +1217,7 @@ export default function PatientDashboard() {
                               <Box sx={{ bgcolor: COLORS.rxBg, py: 1, px: 1.5, borderRadius: 0, border: `1px solid ${COLORS.rxBorder}` }}>
                                 <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.rxText, mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}><MedicationIcon sx={{ fontSize: 13 }}/> Rx</Typography>
                                 <Stack spacing={0.5}>
-                                  {rec.prescriptions.map((rx, idx) => (
+                                  {(rec.dispensedProducts || rec.prescriptions || []).map((rx, idx) => (
                                     <Box key={idx}>
                                       <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.rxText }}>{rx.name}</Typography>
                                       {rx.instructions && <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', color: '#B45309' }}>{rx.instructions}</Typography>}

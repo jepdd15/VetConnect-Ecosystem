@@ -37,6 +37,7 @@ import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 
 // 🧬 PHASE 6 COMPONENTS
 import { calculatePulseMetrics, getSmartShiftDate, makePulseEventId, createPulseEvent } from '../../utils/pulseUtils';
+import { COLORS } from '../../theme/designTokens';
 import { HIGH_STAKES_STATUSES, ACTIVE_STATUSES, normalizeStatus, TERMINAL_STATUSES } from '../../utils/statusConstants';
 import { getLocalDateStr } from '../../utils/dateUtils';
 import { useClinicSettings } from '../../hooks/useClinicSettings';
@@ -192,10 +193,13 @@ export default function Queue() {
   const [hoverAnchor, setHoverAnchor] = useState(null);
   const [hoverMetadata, setHoverMetadata] = useState({ type: null, data: null });
   const [expandedPulseId, setExpandedPulseId] = useState(null);
-  const [activeCaseDay, setActiveCaseDay] = useState(0); 
+  const [activeCaseDay, setActiveCaseDay] = useState(0);
   const [isPinned, setIsPinned] = useState(false);
   const hoverTimer = useRef(null);
   const closeTimer = useRef(null);
+
+  // T3.68: Sort mode for the services popover — resets to insertion order on each open.
+  const [servicesSortMode, setServicesSortMode] = useState('booking'); // 'booking' | 'status' | 'department'
 
   // 🧬 ANCESTOR CHAIN CACHE FOR POPOVER (Session-cached, keyed by record ID)
   const [popoverAncestorCache, setPopoverAncestorCache] = useState({});
@@ -252,7 +256,9 @@ export default function Queue() {
         setHoverAnchor(target);
         setHoverMetadata({ type, data });
         // RESET Temporal DeLorean to latest session
-        setActiveCaseDay(0); 
+        setActiveCaseDay(0);
+        // T3.68: Reset services sort to insertion order on each new popover open.
+        if (type === 'services') setServicesSortMode('booking');
     }, 200); 
   };
 
@@ -2285,47 +2291,154 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                   </Box>
                 )}
 
-                {hoverMetadata.type === 'services' && (
-                  <Box>
-                    <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1.5, display: 'block', mb: 1.5 }}>
-                      SERVICE BUNDLE SUMMARY ({hoverMetadata.data?.length})
-                    </Typography>
-                    <Box sx={{ display: 'flex', gap: 2, mb: 2, pb: 1, borderBottom: '1px dashed #eee' }}>
+                {hoverMetadata.type === 'services' && (() => {
+                  // T3.68: Backward-compat guard — old callers passed a plain array.
+                  const rawData = hoverMetadata.data;
+                  const svcData = Array.isArray(rawData) ? { services: rawData } : (rawData || {});
+                  const { services: svcList = [] } = svcData;
+
+                  // STATUS_ORDER is used for grouping when sort mode is 'status'.
+                  const STATUS_ORDER = { 'completed': 0, 'in-progress': 1, 'pending': 2 };
+
+                  const sortedServices = (() => {
+                    const copy = [...svcList];
+                    if (servicesSortMode === 'status') {
+                      return copy.sort((a, b) => {
+                        const aRank = STATUS_ORDER[a.serviceStatus || 'pending'] ?? 2;
+                        const bRank = STATUS_ORDER[b.serviceStatus || 'pending'] ?? 2;
+                        return aRank - bRank;
+                      });
+                    }
+                    if (servicesSortMode === 'department') {
+                      return copy.sort((a, b) => (a.department || '').localeCompare(b.department || ''));
+                    }
+                    // 'booking' — preserve insertion order (no sort).
+                    return copy;
+                  })();
+
+                  const completedCount = svcList.filter(s => s.serviceStatus === 'completed').length;
+                  const totalCount = svcList.length;
+                  const totalMins = svcList.reduce((acc, s) => acc + (s.duration || 0), 0);
+                  const totalPrice = svcList.reduce((acc, s) => acc + (s.price || 0), 0);
+
+                  const statusChipSx = (status) => {
+                    if (status === 'completed') return { bgcolor: COLORS.kpiGreenBg, border: `1px solid ${COLORS.success}`, color: COLORS.success };
+                    if (status === 'in-progress') return { bgcolor: COLORS.chipBlueBg, border: `1px solid ${COLORS.medical}`, color: COLORS.medical };
+                    return { bgcolor: COLORS.cream, border: `1px solid ${COLORS.warning}`, color: COLORS.warning };
+                  };
+
+                  const statusLabel = (status) => {
+                    if (status === 'completed') return 'COMPLETED';
+                    if (status === 'in-progress') return 'IN PROGRESS';
+                    return 'PENDING';
+                  };
+
+                  return (
+                    <Box>
+                      {/* Header */}
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                        <Typography variant="overline" sx={{ fontWeight: '1000', color: COLORS.accent, letterSpacing: 1.5 }}>
+                          SERVICE BUNDLE ({totalCount})
+                        </Typography>
+                      </Box>
+
+                      {/* Summary bar */}
+                      <Box sx={{ display: 'flex', gap: 2, mb: 1.5, pb: 1, borderBottom: '1px dashed #eee' }}>
                         <Typography variant="caption" sx={{ fontWeight: 'bold' }}>
-                            TOTAL TIME: {hoverMetadata.data?.reduce((acc, s) => acc + (s.duration || 0), 0)}m
+                          TOTAL TIME: {totalMins}m
                         </Typography>
                         <Typography variant="caption" sx={{ fontWeight: 'bold', color: 'success.main' }}>
-                            EST: ₱{hoverMetadata.data?.reduce((acc, s) => acc + (s.price || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          EST: ₱{totalPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </Typography>
+                      </Box>
+
+                      {/* Sort toggle */}
+                      <ToggleButtonGroup
+                        value={servicesSortMode}
+                        exclusive
+                        onChange={(_e, val) => { if (val) setServicesSortMode(val); }}
+                        size="small"
+                        sx={{ mb: 1.5, display: 'flex' }}
+                      >
+                        {[
+                          { value: 'booking', label: 'BOOKING ORDER' },
+                          { value: 'status', label: 'STATUS' },
+                          { value: 'department', label: 'DEPT' },
+                        ].map(({ value, label }) => (
+                          <ToggleButton
+                            key={value}
+                            value={value}
+                            sx={{
+                              flex: 1,
+                              borderRadius: 0,
+                              fontWeight: 900,
+                              fontSize: '0.55rem',
+                              letterSpacing: 0.5,
+                              py: 0.3,
+                            }}
+                          >
+                            {label}
+                          </ToggleButton>
+                        ))}
+                      </ToggleButtonGroup>
+
+                      {/* Service list */}
+                      <List sx={{ p: 0 }}>
+                        {sortedServices.map((svc, i) => {
+                          const deptObj = (departments || []).find(d => d.name === svc.department);
+                          const bColor = deptObj ? deptObj.color : '#616161';
+                          const svcStatus = svc.serviceStatus || 'pending';
+                          return (
+                            <ListItem key={i} sx={{ px: 1.5, py: 0.8, mb: 0.5, borderLeft: `6px solid ${bColor}`, bgcolor: 'rgba(0,0,0,0.02)' }}>
+                              <Box sx={{ width: '100%' }}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                  <Box sx={{ flex: 1, pr: 1 }}>
+                                    <Typography variant="body2" sx={{ fontWeight: 'bold' }}>{svc.name}</Typography>
+                                    <Typography variant="caption" sx={{ display: 'block', color: svc.staffName ? '#5D4037' : '#D32F2F', fontWeight: '900', fontSize: '0.65rem' }}>
+                                      {svc.staffName ? `👤 ${svc.staffName}` : '❌ UNASSIGNED'}
+                                    </Typography>
+                                  </Box>
+                                  <Box sx={{ textAlign: 'right' }}>
+                                    <Typography variant="caption" sx={{ display: 'block', fontSize: '0.6rem', fontWeight: 'bold' }}>
+                                      ₱{svc.price?.toLocaleString()}
+                                    </Typography>
+                                    <Typography variant="caption" sx={{ display: 'block', fontSize: '0.55rem', color: bColor, fontWeight: '900' }}>
+                                      {svc.department?.toUpperCase()}
+                                    </Typography>
+                                  </Box>
+                                </Box>
+                                {/* Per-service status chip */}
+                                <Chip
+                                  label={statusLabel(svcStatus)}
+                                  size="small"
+                                  sx={{
+                                    mt: 0.5,
+                                    height: 16,
+                                    fontSize: '0.5rem',
+                                    fontWeight: 900,
+                                    borderRadius: 0,
+                                    ...statusChipSx(svcStatus),
+                                  }}
+                                />
+                              </Box>
+                            </ListItem>
+                          );
+                        })}
+                      </List>
+
+                      {/* Footer: completion summary */}
+                      <Box sx={{ mt: 1, pt: 1, borderTop: '1px dashed #eee', display: 'flex', justifyContent: 'flex-end' }}>
+                        <Typography variant="caption" sx={{
+                          fontWeight: 900,
+                          fontSize: '0.6rem',
+                          color: completedCount === totalCount ? COLORS.success : COLORS.accent,
+                        }}>
+                          {completedCount}/{totalCount} COMPLETE
+                        </Typography>
+                      </Box>
                     </Box>
-                    <List sx={{ p: 0 }}>
-                      {([...(hoverMetadata.data || [])].sort((a,b) => (a.name || '').localeCompare(b.name || ''))).map((svc, i) => {
-                        const deptObj = (departments || []).find(d => d.name === svc.department);
-                        const bColor = deptObj ? deptObj.color : '#616161';
-                        return (
-                          <ListItem key={i} sx={{ px: 1.5, py: 0.8, mb: 1, borderLeft: `6px solid ${bColor}`, bgcolor: 'rgba(0,0,0,0.02)', borderRadius: '0 4px 4px 0' }}>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-                              <Box>
-                                <Typography variant="body2" sx={{ fontWeight: 'bold' }}>{svc.name}</Typography>
-                                <Typography variant="caption" sx={{ display: 'block', color: svc.staffName ? '#5D4037' : '#D32F2F', fontWeight: '900', fontSize: '0.65rem' }}>
-                                  {svc.staffName ? `👤 ${svc.staffName}` : '❌ UNASSIGNED'}
-                                </Typography>
-                              </Box>
-                              <Box sx={{ textAlign: 'right' }}>
-                                <Typography variant="caption" sx={{ display: 'block', fontSize: '0.6rem', fontWeight: 'bold' }}>
-                                  ₱{svc.price?.toLocaleString()}
-                                </Typography>
-                                <Typography variant="caption" sx={{ display: 'block', fontSize: '0.55rem', color: bColor, fontWeight: '900' }}>
-                                  {svc.department?.toUpperCase()}
-                                </Typography>
-                              </Box>
-                            </Box>
-                          </ListItem>
-                        );
-                      })}
-                    </List>
-                  </Box>
-                )}
+                  );
+                })()}
 
                 {hoverMetadata.type === 'identity' && hoverMetadata.data}
 

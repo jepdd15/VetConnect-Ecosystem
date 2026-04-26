@@ -29,6 +29,7 @@ import { useClinicSettings } from '../../hooks/useClinicSettings';
 import { calculatePulseMetrics, formatDuration, getSmartShiftDate } from '../../utils/pulseUtils';
 import { STATUS, HIGH_STAKES_STATUSES } from '../../utils/statusConstants';
 import { getLocalDateStr } from '../../utils/dateUtils';
+import { COLORS } from '../../theme/designTokens';
 import { ForensicMetricGrid } from './ForensicMetricGrid';
 import TwitterIcon from '@mui/icons-material/Twitter';
 
@@ -232,6 +233,11 @@ const AuditPatientCard = React.memo(({
     const totalEstMins = (patient.services || []).reduce((sum, s) => sum + (Number(s.duration || s.estMinutes) || 0), 0);
     const totalPrice = (patient.services || []).reduce((sum, s) => sum + (Number(s.price) || 0), 0);
 
+    // T3.69: Service completion metrics for status chips and the PROGRESS footer column.
+    const svcList = (patient.services || []).filter(s => s.id);
+    const completedCount = svcList.filter(s => s.serviceStatus === 'completed').length;
+    const svcTotal = svcList.length;
+
     const rawGender = String(patient.petGender || patient.gender || patient.petSex || patient.sex || 'UNKNOWN');
     const upGender = rawGender.toUpperCase();
     const isUnknownGender = !rawGender || upGender === 'UNKNOWN' || upGender === 'SEX UNK' || upGender === '???' || upGender === 'IDENTITY UNKNOWN';
@@ -394,14 +400,41 @@ const AuditPatientCard = React.memo(({
                                         {svc.department || 'GEN'}
                                     </Typography>
                                 </Stack>
+                                {/* T3.69: Per-service completion status chip */}
+                                <Chip
+                                    label={(svc.serviceStatus || 'pending').toUpperCase().replace('-', ' ')}
+                                    size="small"
+                                    sx={{
+                                        mt: 0.3,
+                                        height: 16,
+                                        fontSize: '0.5rem',
+                                        fontWeight: 900,
+                                        borderRadius: 0,
+                                        bgcolor: svc.serviceStatus === 'completed' ? COLORS.success
+                                               : svc.serviceStatus === 'in-progress' ? COLORS.medical
+                                               : COLORS.warning,
+                                        color: '#FFF',
+                                    }}
+                                />
                             </ListItem>
                         );
                     })}
                 </List>
-                <Box sx={{ mt: 'auto', p: 1.5, borderTop: `1px solid ${clinicalBorder}`, bgcolor: '#FFF', display: 'flex', justifyContent: 'space-between' }}>
+                <Box sx={{ mt: 'auto', p: 1.5, borderTop: `1px solid ${clinicalBorder}`, bgcolor: '#FFF', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <Box>
                         <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', fontSize: '0.52rem', display: 'block' }}>EST. TIME</Typography>
                         <Typography sx={{ fontWeight: '1000', fontSize: '0.75rem', color: '#5D4037' }}>{totalEstMins}M</Typography>
+                    </Box>
+                    {/* T3.69: Service completion fraction */}
+                    <Box sx={{ textAlign: 'center' }}>
+                        <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', fontSize: '0.52rem', display: 'block' }}>PROGRESS</Typography>
+                        <Typography sx={{
+                            fontWeight: '1000',
+                            fontSize: '0.75rem',
+                            color: completedCount === svcTotal ? COLORS.success : COLORS.brand,
+                        }}>
+                            {completedCount}/{svcTotal}
+                        </Typography>
                     </Box>
                     <Box sx={{ textAlign: 'right' }}>
                         <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', fontSize: '0.52rem', display: 'block' }}>TOTAL VALUE</Typography>

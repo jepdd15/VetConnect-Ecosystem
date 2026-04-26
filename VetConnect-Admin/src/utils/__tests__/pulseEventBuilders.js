@@ -304,6 +304,22 @@ export const buildServiceProgressEvent = ({ svcId, next, staffId, staffName, ser
 });
 
 /**
+ * W17b: Clinical sign-off STATUS_CHANGE — in-consult → dispensing/billing.
+ * Source: ClinicalWorkspace.jsx → handleSaveConsult → appointmentUpdate → ~1285
+ *
+ * This event was MISSING prior to T3.78. It closes the forensic gap where
+ * sign-off transitions wrote statusHistory + forensicSeal but no pulse event.
+ */
+export const buildSignOffStatusChangeEvent = ({ fromStatus, toStatus, staffId, staffName }) =>
+  createPulseEvent('STATUS_CHANGE', {
+    fromStatus: fromStatus || 'in-consult',
+    toStatus,
+    staffId,
+    staffName,
+    note: `Clinical sign-off. Record finalized. Routed to ${toStatus}.`,
+  });
+
+/**
  * W18: Follow-up creation INCEPTION seed (sign-off path).
  * Source: ClinicalWorkspace.jsx → handleSaveConsult → line ~1323
  *
@@ -530,6 +546,7 @@ export const buildRecordsIdentityEditEvent = ({ staffName, staffId }) => ({
 // buildInlineRescheduleEvent   | Queue.jsx                | saveReschedule            | 930
 // buildIdentityEditEvent       | Queue.jsx                | identity edit handler     | 853
 // buildServiceProgressEvent    | ClinicalWorkspace.jsx    | service toggle handler    | 1011
+// buildSignOffStatusChangeEvent| ClinicalWorkspace.jsx    | handleSaveConsult         | ~1285
 // buildFollowUpInceptionEvent  | ClinicalWorkspace.jsx    | handleSaveConsult         | 1323
 // buildDraftDiscardedEvent     | ClinicalWorkspace.jsx    | handleDiscardDraft        | 1455
 // buildAmendmentEvent          | ClinicalWorkspace.jsx    | handleSubmitAmendment     | 1507

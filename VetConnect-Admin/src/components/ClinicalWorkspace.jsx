@@ -30,7 +30,7 @@ import {
 import { doc, collection, Timestamp, updateDoc, getDoc, query, where, orderBy, getDocs, arrayUnion, writeBatch, runTransaction } from 'firebase/firestore';
 import { db, auth } from '../firebaseConfig';
 import { useInventory } from '../features/Inventory/hooks/useInventory';
-import { calculatePulseMetrics, makePulseEventId } from '../utils/pulseUtils';
+import { calculatePulseMetrics, makePulseEventId, createPulseEvent } from '../utils/pulseUtils';
 import { useClinicSettings } from '../hooks/useClinicSettings';
 import { useUser } from '../context/UserContext';
 
@@ -1283,6 +1283,16 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           prescribedItemsVersion: commitTimestamp,
           services: updatedServices,
           forensicSeal,
+          // T3.78: Close the sign-off pulse event gap — record the in-consult → dispensing/billing transition.
+          // forensicSeal is computed above using the pre-existing pulse array; adding this event here
+          // does not affect the seal (it freezes at sign-off time, before this event is persisted).
+          clinicalPulse: arrayUnion(createPulseEvent('STATUS_CHANGE', {
+              fromStatus: patient.status || 'in-consult',
+              toStatus: nextRouteStatus,
+              staffId: vetUid,
+              staffName: vetName,
+              note: `Clinical sign-off. Record finalized. Routed to ${nextRouteStatus}.`,
+          })),
       };
 
       batch.update(doc(db, "appointments", patient.id), appointmentUpdate);

@@ -2,6 +2,7 @@ import React from 'react';
 import { Box, Typography, Chip, Tooltip, IconButton, Button, Stack, Paper } from '@mui/material';
 import { STATUS } from '../../utils/statusConstants';
 import { formatDuration } from '../../utils/pulseUtils';
+import { COLORS } from '../../theme/designTokens';
 
 // Icons
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'; 
@@ -418,13 +419,17 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
     field: 'services', headerName: 'Services and Staff', flex: 1, minWidth: 220,
     resizable: false, sortable: false, disableColumnMenu: true,
     renderCell: (p) => {
-      const services = [...(p.row.services || [])].sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+      // Preserve insertion order for the cell display; popover handles its own sort.
+      const services = [...(p.row.services || [])];
       if (services.length === 0) return <Chip label={p.row.status.toUpperCase()} color="primary" size="small" sx={{fontWeight:'900', height: 24}}/>;
 
+      // T3.68: Pass richer data shape so the popover can display pet name and context.
+      const hoverPayload = { services, petName: p.row.petName, status: p.row.status };
+
       return (
-        <Box 
+        <Box
           /* FORCE RELOAD: VETCONNECT-HUD-SERVICES-SCALED */
-          onMouseEnter={(e) => actions.handleHoverStart(e, 'services', services)}
+          onMouseEnter={(e) => actions.handleHoverStart(e, 'services', hoverPayload)}
           onMouseLeave={actions.handleHoverEnd}
           sx={{ 
             display: 'flex', 
@@ -488,6 +493,24 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                     )}
                 </Box>
             )}
+
+            {/* T3.68: Completion thermometer — only shown when at least one service has a non-pending status */}
+            {(() => {
+              const completedCount = services.filter(s => s.serviceStatus === 'completed').length;
+              const inProgressCount = services.filter(s => s.serviceStatus === 'in-progress').length;
+              if (completedCount === 0 && inProgressCount === 0) return null;
+              return (
+                <Typography variant="caption" sx={{
+                  fontWeight: 900,
+                  fontSize: '0.55rem',
+                  color: completedCount === services.length ? COLORS.success : COLORS.brand,
+                  pl: 1,
+                  letterSpacing: 0.5,
+                }}>
+                  {completedCount}/{services.length} DONE
+                </Typography>
+              );
+            })()}
           </Stack>
         </Box>
       );

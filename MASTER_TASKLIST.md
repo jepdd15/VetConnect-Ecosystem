@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-04-27 · **Branch:** `main`
 **Total tasks:** ~727 · **Cancelled/Absorbed:** ~17 · **Active:** ~710
-**DONE:** ~559 · **TODO:** ~151 · **Deferred sub-tasks:** 50
+**DONE:** ~562 · **TODO:** ~148 · **Deferred sub-tasks:** 50
 **Phase 2:** COMPLETE · **Phase 3 Essential:** COMPLETE (except Blaze-gated T3.40-42) · **Phase 3 High-Value:** 8/8 batches done (T3.50 remains, T3.5 DONE) · **Phase 4 Dashboard S:** COMPLETE (T4.1-T4.4)
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~158 hours (Phase 4 S-Tier)
 
@@ -996,8 +996,8 @@
 | T3.65 | ChatbotScreen: hybrid UI (buttons + free text) | P3 | 20 min | TODO |
 | T3.66 | ChatbotScreen: system prompt in Firestore | P3 | 15 min | TODO |
 | T3.67 | ChatbotScreen: session management + rate limiting | P3 | 20 min | TODO |
-| T3.68 | Queue services popover: show per-service status (pending/in-progress/completed) via ServiceProgressCard in the hover card. Wire serviceStatus from appointment.services[] into queueColumns.jsx services renderCell. Sort controls: booking order / status / department (per locked decision in handoff.json line 1825). Also addresses dropped T2.91 (popover accessibility) and T2.92 (Dispensing/Billing tab popovers). | P2 | 2-3 hrs | T2.95, T2.97 | TODO | Handoff decision locked but never implemented — ServiceProgressCard only consumed by ClinicalWorkspace |
-| T3.69 | EndOfDayModal service waterfall: show per-service completion status for each unresolved appointment so staff can see which services are incomplete before resolving. Use ServiceProgressCard in the appointment detail expansion. Enables informed carry-over vs cancel decisions. | P2 | 1.5 hrs | T2.95, T2.97 | TODO | Handoff decision locked but never implemented |
+| T3.68 | Queue services popover: show per-service status (pending/in-progress/completed) via ServiceProgressCard in the hover card. Wire serviceStatus from appointment.services[] into queueColumns.jsx services renderCell. Sort controls: booking order / status / department (per locked decision in handoff.json line 1825). Also addresses dropped T2.91 (popover accessibility) and T2.92 (Dispensing/Billing tab popovers). | P2 | 2-3 hrs | T2.95, T2.97 | DONE | Services popover: status chips + 3-way sort toggle + X/N DONE cell indicator. Insertion order default per locked decision. |
+| T3.69 | EndOfDayModal service waterfall: show per-service completion status for each unresolved appointment so staff can see which services are incomplete before resolving. Use ServiceProgressCard in the appointment detail expansion. Enables informed carry-over vs cancel decisions. | P2 | 1.5 hrs | T2.95, T2.97 | DONE | Status chips in AuditPatientCard services panel + PROGRESS footer fraction. ServiceProgressCard visual language integrated directly. |
 | T3.70 | Queue notes column restructure: split single 'notes' field into structured clientNotes/staffNotes/system-chips. Requires design session for data split, backward compat, ClinicalWorkspace subjective auto-fill interaction. Originally scoped as T2.90 discussion topic (handoff.json line 1509), never formalized. | P3 | 3-4 hrs | — | TODO | Design discussion required before implementation |
 | T3.72 | Checkout correlation ID: shared ID linking sale doc + appointment update for forensic audit matching. Currently relies on appointmentId one-way link + temporal proximity. | P3 | 30 min | T2.100 | TODO | Dropped — handoff.json L1405, L2205 |
 | T3.73 | Reserve/release audit logging: write inventory_log entries when reserveStock/releaseStock modify reserved quantities. Currently invisible to audit trail. | P3 | 1 hr | T2.151 | TODO | Dropped — handoff.json L1406, L2206 |
@@ -1005,7 +1005,7 @@
 | T3.75 | Draft save/resume pulse events: add DRAFT_SAVED and DRAFT_RESUMED clinicalPulse event types for forensic reconstruction. | P3 | 30 min | T2.19 | TODO | Dropped — handoff.json L2211 |
 | T3.76 | Unit tests for pulse event writing correctness | P2 | 4-6 hrs | T3.14 | DONE | 28 builders in pulseEventBuilders.js + 246 tests in pulseEventWriters.test.js. All 295 tests pass (246 new + 49 existing). Contract-tests all 7 source files (useQueueActions, Queue, ClinicalWorkspace, WalkInModal, AssignStaffModal, POSModal, Records). |
 | T3.77 | Scanned/photo signature upload for consent system | P3 | 2-3 hrs | T3.5, Blaze | TODO | expo-image-picker → Cloud Storage → URL in signatureData. Add tab to ConsentScreen + ConsentRecordDialog. Deferred from T3.5 Amendment 1 |
-| T3.78 | Sign-off pulse event gap — add STATUS_CHANGE for in-consult→dispensing/billing | P2 | 30 min | — | TODO | handleSaveConsult writes statusHistory + forensicSeal but no clinicalPulse event. Data integrity gap discovered during T3.76 audit |
+| T3.78 | Sign-off pulse event gap — add STATUS_CHANGE for in-consult→dispensing/billing | P2 | 30 min | — | DONE | clinicalPulse arrayUnion in handleSaveConsult appointmentUpdate. buildSignOffStatusChangeEvent builder + 6 tests (W17b). 306 tests pass. |
 | T3.79 | Historical tooltip period flexibility — match lookback to selected period | P3 | 30 min | T3.43 | TODO | Dashboard historical min/max/avg tooltip hardcoded to 6 months. Should adapt to 3mo/6mo/1yr. Deferred from T3.43 |
 | T3.80 | Erasure engine Cloud Function migration (T3.11 Phase B) | P3 | 3-4 hrs | T3.11, T3.40, Blaze | TODO | Move useErasureEngine to callable CF + admin.auth().deleteUser() + atomic cross-collection writes. Documented in PHASE3_RA10173_ERASURE_PLAN.md Blaze Upgrade Path |
 

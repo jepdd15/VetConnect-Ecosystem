@@ -43,6 +43,7 @@ import {
   buildIdentityEditEvent,
   // ClinicalWorkspace.jsx builders
   buildServiceProgressEvent,
+  buildSignOffStatusChangeEvent,
   buildFollowUpInceptionEvent,
   buildDraftDiscardedEvent,
   buildAmendmentEvent,
@@ -551,6 +552,44 @@ describe('Phase 5B: Service progress (W17)', () => {
   });
 });
 
+describe('Phase 3B+: Sign-off STATUS_CHANGE (W17b / T3.78)', () => {
+  it('W17b.1 buildSignOffStatusChangeEvent → type is STATUS_CHANGE', () => {
+    const event = buildSignOffStatusChangeEvent({
+      fromStatus: 'in-consult',
+      toStatus: 'dispensing',
+      staffId: STAFF_ID,
+      staffName: STAFF_NAME,
+    });
+    expect(event.type).toBe('STATUS_CHANGE');
+  });
+
+  it('W17b.2 fromStatus defaults to in-consult when omitted', () => {
+    const event = buildSignOffStatusChangeEvent({ toStatus: 'billing', staffId: STAFF_ID, staffName: STAFF_NAME });
+    expect(event.fromStatus).toBe('in-consult');
+  });
+
+  it('W17b.3 toStatus reflects dispensing path', () => {
+    const event = buildSignOffStatusChangeEvent({ fromStatus: 'in-consult', toStatus: 'dispensing', staffId: STAFF_ID, staffName: STAFF_NAME });
+    expect(event.toStatus).toBe('dispensing');
+  });
+
+  it('W17b.4 toStatus reflects billing path', () => {
+    const event = buildSignOffStatusChangeEvent({ fromStatus: 'in-consult', toStatus: 'billing', staffId: STAFF_ID, staffName: STAFF_NAME });
+    expect(event.toStatus).toBe('billing');
+  });
+
+  it('W17b.5 note contains sign-off context', () => {
+    const event = buildSignOffStatusChangeEvent({ toStatus: 'dispensing', staffId: STAFF_ID, staffName: STAFF_NAME });
+    expect(event.note).toContain('sign-off');
+    expect(event.note).toContain('dispensing');
+  });
+
+  it('W17b.6 has eventId with STATUS_CHANGE prefix', () => {
+    const event = buildSignOffStatusChangeEvent({ toStatus: 'billing', staffId: STAFF_ID, staffName: STAFF_NAME });
+    expect(event.eventId).toMatch(/^pulse_STATUS_CHANGE_/);
+  });
+});
+
 describe('Phase 5C: Draft discarded (W19)', () => {
   it('5C.1 buildDraftDiscardedEvent → type is DRAFT_DISCARDED', () => {
     const event = buildDraftDiscardedEvent({ staffId: STAFF_ID, staffName: STAFF_NAME, savedByName: 'Dr. Cruz', savedAt: null, savedByUid: null });
@@ -734,6 +773,7 @@ describe('Phase 6: Cross-cutting contract tests', () => {
     buildIdentityEditEvent({ isQuickAdmit: false, staffId: STAFF_ID, staffName: STAFF_NAME, changedFields: ['petName'] }),
     // ClinicalWorkspace.jsx (W17–W20)
     buildServiceProgressEvent({ svcId: 'svc-1', next: 'in-progress', staffId: STAFF_ID, staffName: STAFF_NAME, serviceName: 'Checkup' }),
+    buildSignOffStatusChangeEvent({ fromStatus: 'in-consult', toStatus: 'dispensing', staffId: STAFF_ID, staffName: STAFF_NAME }),
     buildFollowUpInceptionEvent({ staffId: STAFF_ID, staffName: STAFF_NAME, originApptId: 'appt-parent' }),
     buildDraftDiscardedEvent({ staffId: STAFF_ID, staffName: STAFF_NAME, savedByName: 'Dr. Cruz', savedAt: null, savedByUid: null }),
     buildAmendmentEvent({ staffId: STAFF_ID, staffName: STAFF_NAME, reason: 'Error', text: 'Correction' }),
@@ -773,7 +813,7 @@ describe('Phase 6: Cross-cutting contract tests', () => {
     expect(typeof event.staffName).toBe('string');
   });
 
-  it('all 28 builders produce unique eventIds', () => {
+  it('all 29 builders produce unique eventIds', () => {
     const ids = allEvents.map(e => e.eventId);
     expect(new Set(ids).size).toBe(ids.length);
   });

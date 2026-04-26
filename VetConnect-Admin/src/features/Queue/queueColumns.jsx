@@ -232,6 +232,22 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                         }}
                       />
                     )}
+                    {p.row.confirmedByClient && (
+                      <Chip
+                        label="CLIENT CONFIRMED"
+                        size="small"
+                        sx={{
+                          fontSize: '0.55rem',
+                          height: 16,
+                          fontWeight: '1000',
+                          bgcolor: '#E8F5E9',
+                          color: '#2E7D32',
+                          border: '1px solid #2E7D32',
+                          borderRadius: 0,
+                          flexShrink: 0,
+                        }}
+                      />
+                    )}
                   </Box>
 
                   {/* LINE 2: THE SEMANTIC ANCHOR (SPECIES * BREED) */}

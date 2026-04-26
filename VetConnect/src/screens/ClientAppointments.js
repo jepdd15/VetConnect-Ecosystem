@@ -301,6 +301,37 @@ const ClientAppointments = ({ navigation }) => {
     );
   };
 
+  // CLIENT ATTENDANCE CONFIRMATION — single appointment
+  const handleConfirmAttendance = async (id) => {
+    try {
+      await updateDoc(doc(db, "appointments", id), {
+        confirmedByClient: true,
+        confirmedByClientAt: Timestamp.now(),
+      });
+    } catch (error) {
+      Alert.alert("Error", "Could not confirm. Please try again.");
+    }
+  };
+
+  // CLIENT ATTENDANCE CONFIRMATION — all unconfirmed siblings in a visit group
+  const handleConfirmGroupAttendance = async (groupAppts) => {
+    try {
+      const unconfirmed = groupAppts.filter(
+        a => a.status === "confirmed" && !a.confirmedByClient
+      );
+      await Promise.all(
+        unconfirmed.map(appt =>
+          updateDoc(doc(db, "appointments", appt.id), {
+            confirmedByClient: true,
+            confirmedByClientAt: Timestamp.now(),
+          })
+        )
+      );
+    } catch (error) {
+      Alert.alert("Error", "Could not confirm. Please try again.");
+    }
+  };
+
   // Cancel all appointments in a visit group
   const handleCancelGroup = (groupAppointments, firstServiceType) => {
     Alert.alert(
@@ -574,14 +605,40 @@ const ClientAppointments = ({ navigation }) => {
         })}
 
         {/* Actions */}
-        {!isHistory && isCancellable && (
+        {!isHistory && (isCancellable || groupAppts.some(a => a.status === "confirmed")) && (
           <View style={styles.actionRow}>
-            <TouchableOpacity
-              style={[styles.btn, { backgroundColor: "#FFEBEE", borderWidth: 1, borderColor: COLORS.danger, marginRight: "auto" }]}
-              onPress={() => handleCancelGroup(groupAppts, first.serviceType || first.primaryService)}
-            >
-              <Text style={[styles.btnText, { color: COLORS.danger }]}>Cancel All</Text>
-            </TouchableOpacity>
+            {isCancellable && (
+              <TouchableOpacity
+                style={[styles.btn, { backgroundColor: "#FFEBEE", borderWidth: 1, borderColor: COLORS.danger, marginRight: "auto" }]}
+                onPress={() => handleCancelGroup(groupAppts, first.serviceType || first.primaryService)}
+              >
+                <Text style={[styles.btnText, { color: COLORS.danger }]}>Cancel All</Text>
+              </TouchableOpacity>
+            )}
+
+            {(() => {
+              const confirmedMembers = groupAppts.filter(a => a.status === "confirmed");
+              const hasUnconfirmed = confirmedMembers.some(a => !a.confirmedByClient);
+              const allDone = confirmedMembers.length > 0 && confirmedMembers.every(a => a.confirmedByClient);
+              if (hasUnconfirmed) return (
+                <TouchableOpacity
+                  style={[styles.btn, styles.confirmBtn, { marginLeft: "auto" }]}
+                  onPress={() => handleConfirmGroupAttendance(groupAppts)}
+                >
+                  <Text style={[styles.btnText, { color: COLORS.success }]}>
+                    Confirm I'm Coming
+                  </Text>
+                </TouchableOpacity>
+              );
+              if (allDone) return (
+                <View style={[styles.btn, styles.confirmedBadge, { marginLeft: "auto" }]}>
+                  <Text style={[styles.btnText, { color: COLORS.success }]}>
+                    ✓ Confirmed
+                  </Text>
+                </View>
+              );
+              return null;
+            })()}
           </View>
         )}
       </View>
@@ -660,6 +717,25 @@ const ClientAppointments = ({ navigation }) => {
                     ❌ Cancel
                   </Text>
                 </TouchableOpacity>
+
+                {item.status === "confirmed" && !item.confirmedByClient && (
+                  <TouchableOpacity
+                    style={[styles.btn, styles.confirmBtn]}
+                    onPress={() => handleConfirmAttendance(item.id)}
+                  >
+                    <Text style={[styles.btnText, { color: COLORS.success }]}>
+                      Confirm I'm Coming
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                {item.status === "confirmed" && item.confirmedByClient && (
+                  <View style={[styles.btn, styles.confirmedBadge]}>
+                    <Text style={[styles.btnText, { color: COLORS.success }]}>
+                      ✓ Confirmed
+                    </Text>
+                  </View>
+                )}
 
                 {item.status === "confirmed" && (
                   <TouchableOpacity
@@ -1275,6 +1351,21 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
     fontWeight: '700',
     fontSize: 13,
+  },
+
+  // --- Client attendance confirmation ---
+  confirmBtn: {
+    borderWidth: 1,
+    borderColor: COLORS.success,
+    backgroundColor: '#E8F5E9',
+    borderRadius: 0,
+  },
+  confirmedBadge: {
+    backgroundColor: '#E8F5E9',
+    borderWidth: 1,
+    borderColor: COLORS.success,
+    borderRadius: 0,
+    opacity: 0.8,
   },
 });
 

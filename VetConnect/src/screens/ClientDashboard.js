@@ -9,6 +9,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  Timestamp,
   updateDoc,
   where,
 } from "firebase/firestore";
@@ -26,6 +27,7 @@ import {
 import { auth, db } from "../../firebaseConfig";
 import { getClientStatusLabel } from "../utils/statusLabels";
 import { safeDate, getLocalDateStr } from "../utils/helpers";
+import { COLORS } from "../theme/mobileTokens";
 
 // --- PUSH NOTIFICATION IMPORTS ---
 import Constants from "expo-constants";
@@ -347,6 +349,20 @@ const ClientDashboard = ({ navigation }) => {
     navigation.replace("Login");
   };
 
+  // Writes confirmedByClient to the appointment document from the dashboard card.
+  // Silently fails — the onSnapshot listener on activeAppointments drives the UI update.
+  // Users can always retry from the ClientAppointments screen if this fails.
+  const handleConfirmFromDashboard = async (appointmentId) => {
+    try {
+      await updateDoc(doc(db, "appointments", appointmentId), {
+        confirmedByClient: true,
+        confirmedByClientAt: Timestamp.now(),
+      });
+    } catch (error) {
+      // Silent fail — user can retry from ClientAppointments
+    }
+  };
+
   // --- RENDER NOTIFICATION CARDS ---
   const renderNotification = (appt) => {
     let bgColor, title, msg, icon, borderColor;
@@ -437,7 +453,33 @@ const ClientDashboard = ({ navigation }) => {
               )}
             </View>
             <Text style={styles.notifMsg}>{msg}</Text>
-            
+
+            {appt.status === 'confirmed' && !appt.confirmedByClient && (
+              <TouchableOpacity
+                onPress={() => handleConfirmFromDashboard(appt.id)}
+                style={{
+                  marginTop: 10,
+                  backgroundColor: COLORS.success,
+                  borderWidth: 2,
+                  borderColor: '#3E2723',
+                  borderRadius: 0,
+                  paddingVertical: 8,
+                  paddingHorizontal: 16,
+                  alignSelf: 'flex-start',
+                }}
+              >
+                <Text style={{ color: 'white', fontWeight: '900', fontSize: 12, letterSpacing: 0.5 }}>
+                  {"CONFIRM I'M COMING"}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {appt.status === 'confirmed' && appt.confirmedByClient && (
+              <Text style={{ marginTop: 8, color: COLORS.success, fontWeight: '900', fontSize: 12 }}>
+                {"✓ YOU'VE CONFIRMED ATTENDANCE"}
+              </Text>
+            )}
+
             {appt.status === 'arrived' && (
               <View style={styles.queueProgressContainer}>
                 <View style={styles.queueProgressBar}>

@@ -123,6 +123,7 @@ export default function QueueScreen() {
           return {
             queueNumber: data.queueNumber ?? null,
             serviceDuration: data.serviceDuration ?? null,
+            serviceType: data.serviceType ?? null,
             priority: data.priority ?? null,
           };
         })
@@ -170,9 +171,9 @@ export default function QueueScreen() {
     fetchAvg();
   }, []);
 
-  // Derived: people ahead + estimated wait (memoized) -- T2.349 + T2.350 + T2.352
-  const { peopleAhead, estWaitTimeMins } = useMemo(() => {
-    if (!myTicket?.queueNumber) return { peopleAhead: 0, estWaitTimeMins: 0 };
+  // Derived: people ahead + estimated wait + per-service breakdown (memoized) -- T2.349 + T2.350 + T2.352 + T3.59
+  const { peopleAhead, estWaitTimeMins, serviceBreakdown } = useMemo(() => {
+    if (!myTicket?.queueNumber) return { peopleAhead: 0, estWaitTimeMins: 0, serviceBreakdown: [] };
 
     const ahead = lobbyPatients.filter((p) => {
       if (p.priority === "high" && myTicket.priority !== "high") return true;
@@ -191,7 +192,21 @@ export default function QueueScreen() {
       }
     });
 
-    return { peopleAhead: ahead.length, estWaitTimeMins: waitMins };
+    // T3.59: Group ahead patients by serviceType for breakdown display
+    const typeMap = {};
+    ahead.forEach((p) => {
+      const type = p.serviceType || "Other";
+      if (!typeMap[type]) typeMap[type] = { count: 0, totalMins: 0 };
+      typeMap[type].count += 1;
+      const dur = parseInt(p.serviceDuration, 10) || 30;
+      typeMap[type].totalMins += dur;
+    });
+
+    const breakdown = Object.entries(typeMap)
+      .map(([serviceType, data]) => ({ serviceType, count: data.count, totalMins: data.totalMins }))
+      .sort((a, b) => b.count - a.count);
+
+    return { peopleAhead: ahead.length, estWaitTimeMins: waitMins, serviceBreakdown: breakdown };
   }, [myTicket, lobbyPatients]);
 
   // 5. Vibrate + banner when it's the user's turn -- T2.487
@@ -358,6 +373,26 @@ export default function QueueScreen() {
                         ~ {countdown != null ? countdown : estWaitTimeMins} min{(countdown ?? estWaitTimeMins) !== 1 ? "s" : ""}
                       </Text>
                     </View>
+
+                    {/* T3.59: Per-service-type breakdown — only shown when 2+ distinct types are ahead */}
+                    {serviceBreakdown.length > 1 && (
+                      <View style={styles.breakdownBox}>
+                        <Text style={styles.breakdownLabel}>By Service Type:</Text>
+                        {serviceBreakdown.map((item, idx) => (
+                          <View key={item.serviceType} style={[styles.breakdownRow, idx === serviceBreakdown.length - 1 && { borderBottomWidth: 0 }]}>
+                            <Text style={styles.breakdownService} numberOfLines={1}>
+                              {item.serviceType}
+                            </Text>
+                            <Text style={styles.breakdownCount}>
+                              {item.count} ahead
+                            </Text>
+                            <Text style={styles.breakdownTime}>
+                              ~{item.totalMins}m wait
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
 
                     {/* Historical average -- T2.488 */}
                     {avgWaitMins != null && (
@@ -626,6 +661,52 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
     textAlign: "center",
     fontStyle: "italic",
+  },
+
+  // T3.59: Service-type breakdown below aggregate estimate
+  breakdownBox: {
+    width: "100%",
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+  },
+  breakdownLabel: {
+    fontSize: 11,
+    fontWeight: "900",
+    color: COLORS.accent,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginBottom: 6,
+  },
+  breakdownRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+  },
+  breakdownService: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "bold",
+    color: COLORS.accent,
+  },
+  breakdownCount: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: COLORS.muted,
+    marginHorizontal: 8,
+  },
+  breakdownTime: {
+    fontSize: 13,
+    fontWeight: "bold",
+    color: COLORS.warning,
+    minWidth: 40,
+    textAlign: "right",
   },
 
   // Running Late button -- T2.490

@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-04-27 · **Branch:** `main`
 **Total tasks:** ~744 · **Cancelled/Absorbed:** ~17 · **Active:** ~727
-**DONE:** ~583 · **TODO:** ~144 · **Deferred sub-tasks:** 50
+**DONE:** ~584 · **TODO:** ~143 · **Deferred sub-tasks:** 50
 **Phase 2:** COMPLETE · **Phase 3 Essential:** COMPLETE (except Blaze-gated T3.40-42) · **Phase 3 High-Value:** 8/8 batches done (T3.50 remains, T3.5 DONE) · **Phase 4 Dashboard S:** COMPLETE (T4.1-T4.4)
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~158 hours (Phase 4 S-Tier)
 
@@ -987,7 +987,7 @@
 
 | ID | Name | Priority | Effort | Status |
 |---|---|---|---|---|
-| T3.59 | QueueScreen: service-specific estimated times | P3 | 30 min | TODO |
+| T3.59 | QueueScreen: service-specific estimated times | P3 | 30 min | DONE | Per-service-type breakdown below aggregate estimate. Groups by serviceType, shows count + total mins. Only renders when 2+ types. |
 | T3.60 | QueueScreen: pet care tips while waiting | P3 | 1 hr | TODO |
 | T3.61 | QueueScreen: self-check-in via GPS geofencing (was T2.486) | P3 | 1.5 hrs | TODO |
 | T3.62 | ChatbotScreen: enable real text input | P3 | 15 min | TODO |

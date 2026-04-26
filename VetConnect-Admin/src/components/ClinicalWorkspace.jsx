@@ -34,6 +34,7 @@ import { useUser } from '../context/UserContext';
 // Design Tokens
 import { FONT, TYPE, COLORS } from '../theme/designTokens';
 import SoapGrid from './SoapGrid';
+import EMRDrawer from './EMRDrawer';
 import { ServiceProgressCard } from './ServiceProgressCard';
 
 const Transition = React.forwardRef(function Transition(props, ref) {
@@ -363,6 +364,10 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
 
   // C1: Structured vaccine administration records — array for multi-vaccine-per-visit
   const [vaccineAdministrations, setVaccineAdministrations] = useState([{ ...EMPTY_VAX }]);
+  // T3.2: Manual override — lets the vet show the vaccine form on non-vaccination visits
+  const [manualVaccineOverride, setManualVaccineOverride] = useState(false);
+  // T3.1: EMR slide-over drawer state
+  const [emrOpen, setEmrOpen] = useState(false);
 
   // C3: Lab results — array of { testName, result, status, notes }
   const [labResults, setLabResults] = useState([]);
@@ -1030,6 +1035,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     return vaccineKeywords.some(kw => serviceNames.includes(kw));
   }, [patient, vaccineKeywords]);
 
+  // T3.2: Effective flag — vaccine form is shown when auto-detected OR manually toggled.
+  const showVaccineForm = isVaccinationVisit || manualVaccineOverride;
+
   /** Species-filtered vaccine dropdown options from the live catalog (active entries only), plus a free-text "Other" entry */
   const vaccineOptions = useMemo(() => {
     const species = (petDetails?.species || '').toLowerCase();
@@ -1169,7 +1177,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         // C1: Structured vaccine records — array, supports multi-vaccine per visit.
         // Also writes legacy vaccineData (first entry) for backward compat with
         // mobile PetHistoryScreen and printVaccinationRecord until they are updated.
-        ...(isVaccinationVisit && vaccineAdministrations.some(v => v.vaccineName) ? (() => {
+        // T3.2: showVaccineForm replaces isVaccinationVisit so manually-toggled vaccines are persisted.
+        ...(showVaccineForm && vaccineAdministrations.some(v => v.vaccineName) ? (() => {
             const filled = vaccineAdministrations.filter(v => v.vaccineName);
             const first = filled[0];
             return {
@@ -1541,6 +1550,22 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
 
   const vaccineFormJSX = (
     <Box sx={{ mb: 2, p: 2, bgcolor: COLORS.kpiGreenBg, border: `1px solid ${COLORS.kpiGreenBorder}`, flexShrink: 0 }}>
+
+      {/* T3.2: Info banner shown only when the form was manually enabled on a non-vaccination visit */}
+      {manualVaccineOverride && !isVaccinationVisit && (
+        <Alert
+          severity="info"
+          sx={{ mb: 1.5, py: 0, fontSize: '0.7rem', fontWeight: 700, borderRadius: 0 }}
+          action={
+            <IconButton size="small" onClick={() => { setManualVaccineOverride(false); setVaccineAdministrations([{ ...EMPTY_VAX }]); }}>
+              <CloseIcon sx={{ fontSize: 14 }} />
+            </IconButton>
+          }
+        >
+          Vaccine form manually enabled — dismiss to hide
+        </Alert>
+      )}
+
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
         <Typography sx={{ fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: 1, color: COLORS.success }}>
           VACCINE DETAILS ({vaccineAdministrations.length})
@@ -1885,6 +1910,13 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 <FitScreenIcon sx={{ fontSize: 18 }} />
               </IconButton>
             </Tooltip>
+
+            {/* T3.1: EMR History Button */}
+            <Tooltip title="View Pet EMR History">
+              <IconButton size="small" onClick={() => setEmrOpen(true)} sx={{ color: COLORS.medical }}>
+                <HistoryEduIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Tooltip>
           </Box>
 
           {/* --- ALERTS --- */}
@@ -2046,12 +2078,14 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             SoapQuadrant={SoapQuadrant}
             VitalsGrid={VitalsGrid}
             DiagnosticBridge={DiagnosticBridge}
-            showVaccineForm={isVaccinationVisit}
+            showVaccineForm={showVaccineForm}
             vaccineFormNode={vaccineFormJSX}
             labResultsNode={labResultsJSX}
             showDraftSave={!lockedServices.has('medical')}
             draftSaveNode={draftSaveJSX}
             followUpNode={followUpJSX}
+            canToggleVaccine={!showVaccineForm && !isRecordLocked}
+            onManualVaccineToggle={() => setManualVaccineOverride(true)}
           />
         </Box>
 
@@ -2363,12 +2397,14 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             SoapQuadrant={SoapQuadrant}
             VitalsGrid={VitalsGrid}
             DiagnosticBridge={DiagnosticBridge}
-            showVaccineForm={isVaccinationVisit}
+            showVaccineForm={showVaccineForm}
             vaccineFormNode={vaccineFormJSX}
             labResultsNode={labResultsJSX}
             showDraftSave={!lockedServices.has('medical')}
             draftSaveNode={draftSaveJSX}
             followUpNode={followUpJSX}
+            canToggleVaccine={!showVaccineForm && !isRecordLocked}
+            onManualVaccineToggle={() => setManualVaccineOverride(true)}
           />
         </Box>
       </Dialog>
@@ -2388,6 +2424,15 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           {toast.message}
         </Alert>
       </Snackbar>
+
+      {/* T3.1: EMR History slide-over — read-only review of pet's full medical records */}
+      <EMRDrawer
+        open={emrOpen}
+        onClose={() => setEmrOpen(false)}
+        history={history}
+        petName={patient?.petName}
+        petSpecies={patient?.petSpecies}
+      />
     </Dialog>
   );
 }

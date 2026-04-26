@@ -1,5 +1,5 @@
 import React from 'react';
-import { Grid, TextField, Box } from '@mui/material';
+import { Grid, TextField, Box, Button } from '@mui/material';
 import { FONT, COLORS } from '../theme/designTokens';
 import { ZEN_PLACEHOLDERS } from '../utils/soapConstants';
 
@@ -29,6 +29,8 @@ import { ZEN_PLACEHOLDERS } from '../utils/soapConstants';
  * @prop {boolean}     [showDraftSave=false]
  * @prop {ReactNode}   [draftSaveNode]
  * @prop {ReactNode}   [followUpNode]
+ * @prop {boolean}     [canToggleVaccine=false]      - T3.2: show "+ Administer Vaccine" button when form is hidden
+ * @prop {function}    [onManualVaccineToggle]        - T3.2: callback to enable manual vaccine form
  */
 export default function SoapGrid({
   soapData, updateSoap, setFullscreenField,
@@ -39,6 +41,7 @@ export default function SoapGrid({
   labResultsNode = null,
   showDraftSave = false, draftSaveNode = null,
   followUpNode = null,
+  canToggleVaccine = false, onManualVaccineToggle,
 }) {
   const textFieldSx = { flex: 1, '& .MuiInputBase-root': { height: '100%', alignItems: 'flex-start' } };
   const inputPropsSx = { disableUnderline: true, sx: { fontFamily: FONT, fontSize: '1.25rem', color: COLORS.brand, lineHeight: 1.6 } };
@@ -94,6 +97,16 @@ export default function SoapGrid({
       {/* P - PLAN (bottom-right) */}
       <Grid size={{ xs: 12, md: 6 }} sx={{ height: { xs: 'auto', md: '50%' } }}>
         <SoapQuadrant id="plan" label="P - PLAN (TREATMENT & RECHECKS)" onZoomField={setFullscreenField}>
+          {/* T3.2: Manual vaccine toggle button — shown when form is not yet visible and record is not locked */}
+          {canToggleVaccine && (
+            <Button
+              size="small"
+              onClick={onManualVaccineToggle}
+              sx={{ fontWeight: 900, fontSize: '0.6rem', textTransform: 'uppercase', color: COLORS.success, mb: 1, borderRadius: 0 }}
+            >
+              + Administer Vaccine
+            </Button>
+          )}
           {showVaccineForm && vaccineFormNode}
           {labResultsNode}
           <TextField

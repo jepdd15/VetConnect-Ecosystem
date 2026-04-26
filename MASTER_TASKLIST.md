@@ -331,9 +331,9 @@
 
 | ID | Name | Priority | Effort | Depends On | Status | Notes |
 |---|---|---|---|---|---|---|
-| T3.1 | EMRDrawer slide-over | P2 | 1 day | — | TODO | |
-| T3.2 | Multi-vaccine per visit + manual form toggle | P2 | 1 day | — | TODO | |
-| T3.3 | Printable vaccination passport | P2 | 0.5 day | — | TODO | |
+| T3.1 | EMRDrawer slide-over | P2 | 1 day | — | DONE | EMRDrawer.jsx created; wired into ClinicalWorkspace identity strip |
+| T3.2 | Multi-vaccine per visit + manual form toggle | P2 | 1 day | — | DONE | Manual toggle + showVaccineForm gate + info banner |
+| T3.3 | Printable vaccination passport | P2 | 0.5 day | — | DONE | ABSORBED → T3.52 (admin passport + mobile PDF fully shipped) |
 | T3.4 | Grooming-specific consult form | P3 | 1-2 days | — | TODO | |
 | T3.5 | Real RA 10173 informed consent system | P2 | 8-12 days | — | TODO | |
 | T3.6 | Cloud Function LLM gateway | P3 | 2-3 days | Blaze | TODO | |

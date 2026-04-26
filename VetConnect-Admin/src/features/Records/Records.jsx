@@ -37,7 +37,7 @@ import { ForensicMetricGrid } from '../Queue/ForensicMetricGrid';
 import { useAncestorChain } from './hooks/useAncestorChain';
 import { calculatePulseMetrics, makePulseEventId } from '../../utils/pulseUtils';
 import { TERMINAL_STATUSES } from '../../utils/statusConstants';
-import { query, collection, where, onSnapshot, arrayUnion, doc, updateDoc, Timestamp, writeBatch } from 'firebase/firestore';
+import { query, collection, where, onSnapshot, arrayUnion, doc, updateDoc, Timestamp, writeBatch, getDocs } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 import { useClinicSettings } from '../../hooks/useClinicSettings';
 import { useUser } from '../../context/UserContext';
@@ -45,6 +45,8 @@ import { useSavedFilters } from './hooks/useSavedFilters';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import PrintIcon from '@mui/icons-material/Print';
+import GroupsIcon from '@mui/icons-material/Groups';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { PRINT_STYLES, esc, openPrintWindow } from '../../utils/printUtils';
 
 export default function Records() {
@@ -98,6 +100,10 @@ export default function Records() {
   const [addendumText, setAddendumText] = useState('');
   const [addendumLoading, setAddendumLoading] = useState(false);
 
+  // Visit-group sibling state — populated async when audit popover opens on a grouped record
+  const [groupSiblings, setGroupSiblings] = useState([]);
+  const [loadingGroupSiblings, setLoadingGroupSiblings] = useState(false);
+
   // Identity edit
   const [editIdentity, setEditIdentity] = useState(null); // { petName, ownerName, ownerPhone }
 
@@ -125,6 +131,52 @@ export default function Records() {
   
   // --- 🧬 ANCESTOR CHAIN ENGINE ---
   const { ancestors, combinedPulse, combinedServices, loading: loadingAncestors } = useAncestorChain(activeAuditRow);
+
+  // --- 🐾 VISIT GROUP SIBLING LOADER ---
+  // When a record belonging to a visit group is opened in the audit popover,
+  // fetch sibling appointment rows to display contextual "same visit" links.
+  // Uses getDocs (one-shot) rather than onSnapshot — siblings are secondary context,
+  // not primary data, so a live listener here would be wasteful.
+  useEffect(() => {
+    const visitGroupId = activeAuditRow?.visitGroupId;
+    if (!visitGroupId) {
+      setGroupSiblings([]);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingGroupSiblings(true);
+    setGroupSiblings([]);
+
+    const fetchSiblings = async () => {
+      try {
+        const siblingsSnap = await getDocs(
+          query(
+            collection(db, "appointments"),
+            where("visitGroupId", "==", visitGroupId)
+          )
+        );
+
+        if (cancelled) return;
+
+        const currentId = activeAuditRow?.id;
+        const siblings = siblingsSnap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .filter(d => d.id !== currentId);
+
+        setGroupSiblings(siblings);
+      } catch (err) {
+        console.error('[Records.fetchGroupSiblings]:', err.message);
+        if (!cancelled) setGroupSiblings([]);
+      } finally {
+        if (!cancelled) setLoadingGroupSiblings(false);
+      }
+    };
+
+    fetchSiblings();
+    return () => { cancelled = true; };
+    // Only re-fetch when the visit group changes, not when switching between siblings in the same group
+  }, [activeAuditRow?.visitGroupId]);
   
   // Clinic settings — shared singleton via useClinicSettings hook
   const settings = useClinicSettings();
@@ -235,6 +287,8 @@ export default function Records() {
   const handleCloseAudit = () => {
     setAnchorEl(null);
     setActiveAuditRow(null);
+    setGroupSiblings([]);
+    setLoadingGroupSiblings(false);
   };
 
   const handleReschedule = async () => {
@@ -462,16 +516,45 @@ export default function Records() {
     },
     {
       field: 'identity', headerName: 'Patient', flex: 1.2, minWidth: 250,
-      renderCell: (p) => (
-        <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%' }}>
-            <Typography sx={{ fontWeight: '1000', color: '#1A1A1A', lineHeight: 1.1 }}>
+      renderCell: (p) => {
+        const isGrouped = !!p.row.visitGroupId;
+        const groupIndex = p.row.groupIndex ?? null;
+        const groupSize = p.row.groupSize ?? null;
+        const hasGroupPosition = isGrouped && groupIndex !== null && groupSize !== null;
+
+        return (
+          <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'nowrap' }}>
+              <Typography sx={{ fontWeight: '1000', color: '#1A1A1A', lineHeight: 1.1 }}>
                 {p.row.petName?.toUpperCase()}
-            </Typography>
+              </Typography>
+              {isGrouped && (
+                <Tooltip title={`Multi-pet visit${hasGroupPosition ? ` — Pet ${groupIndex + 1} of ${groupSize}` : ''}`}>
+                  <Chip
+                    icon={<GroupsIcon sx={{ fontSize: '10px !important' }} />}
+                    label={hasGroupPosition ? `${groupIndex + 1}/${groupSize}` : 'GROUP'}
+                    size="small"
+                    sx={{
+                      height: 16,
+                      fontSize: '0.55rem',
+                      fontWeight: 1000,
+                      borderRadius: 0,
+                      bgcolor: '#E3F2FD',
+                      color: COLORS.medical,
+                      border: `1px solid ${COLORS.medical}`,
+                      '& .MuiChip-icon': { color: COLORS.medical, ml: '4px' },
+                      '& .MuiChip-label': { px: '4px' },
+                    }}
+                  />
+                </Tooltip>
+              )}
+            </Box>
             <Typography variant="caption" sx={{ color: '#795548', fontWeight: '900', fontSize: '0.65rem' }}>
-                {p.row.petSpecies} • {p.row.ownerName}
+              {p.row.petSpecies} • {p.row.ownerName}
             </Typography>
-        </Box>
-      )
+          </Box>
+        );
+      }
     },
     {
       field: 'jsScheduled', headerName: 'Scheduled', width: 180,
@@ -964,6 +1047,107 @@ export default function Records() {
                       </Button>
                     )}
                   </Stack>
+                </Box>
+              )}
+
+              {/* SECTION 4: VISIT GROUP SIBLINGS (T3.12) */}
+              {/* Shown only when this record belongs to a multi-pet visit group.
+                  Siblings are fetched asynchronously (getDocs, not onSnapshot) —
+                  this is contextual information, not primary live data. */}
+              {activeAuditRow.visitGroupId && (
+                <Box sx={{ mb: 2 }}>
+                  <Box sx={{
+                    display: 'flex', alignItems: 'center', gap: 0.75, mb: 1,
+                    pb: 0.5, borderBottom: `1px solid ${COLORS.medical}33`,
+                  }}>
+                    <GroupsIcon sx={{ fontSize: 14, color: COLORS.medical }} />
+                    <Typography variant="overline" sx={{
+                      fontWeight: '1000', color: COLORS.medical,
+                      letterSpacing: 1, fontSize: '0.6rem', lineHeight: 1,
+                    }}>
+                      VISIT GROUP SIBLINGS
+                    </Typography>
+                    <Chip
+                      label={activeAuditRow.visitGroupId.slice(0, 10).toUpperCase()}
+                      size="small"
+                      sx={{
+                        height: 14, fontSize: '0.5rem', fontWeight: 1000,
+                        borderRadius: 0, ml: 'auto',
+                        bgcolor: 'transparent', color: '#A1887F',
+                        border: '1px solid #D7CCC8',
+                        '& .MuiChip-label': { px: '4px' },
+                      }}
+                    />
+                  </Box>
+
+                  {loadingGroupSiblings ? (
+                    <Typography variant="caption" sx={{ color: '#A1887F', fontStyle: 'italic', fontSize: '0.65rem' }}>
+                      Loading siblings...
+                    </Typography>
+                  ) : groupSiblings.length === 0 ? (
+                    <Typography variant="caption" sx={{ color: '#A1887F', fontStyle: 'italic', fontSize: '0.65rem' }}>
+                      No other records found for this visit group.
+                    </Typography>
+                  ) : (
+                    <Stack spacing={0.5}>
+                      {groupSiblings.map((sibling) => {
+                        const siblingGroupIndex = sibling.groupIndex ?? null;
+                        const siblingGroupSize = sibling.groupSize ?? null;
+                        const hasPosition = siblingGroupIndex !== null && siblingGroupSize !== null;
+
+                        return (
+                          <Box
+                            key={sibling.id}
+                            onClick={() => {
+                              // Locate this sibling in the current records grid and select it.
+                              // groupedRecords is the array powering the DataGrid — find the
+                              // matching row and open its audit popover.
+                              const siblingRow = groupedRecords.find(r => r.id === sibling.id);
+                              if (siblingRow) {
+                                setActiveAuditRow(siblingRow);
+                                // anchorEl stays open — popover just switches content
+                              } else {
+                                // Sibling is outside the current filter/date window
+                                setToast({
+                                  open: true,
+                                  message: `Sibling visit (${sibling.petName || '?'}) is outside the current filter. Widen the date range to find it.`,
+                                  severity: 'info',
+                                });
+                              }
+                            }}
+                            sx={{
+                              display: 'flex', alignItems: 'center', gap: 1,
+                              p: 1, bgcolor: '#F3F8FF',
+                              border: '1px solid #BBDEFB',
+                              cursor: 'pointer',
+                              '&:hover': { bgcolor: '#E3F2FD', borderColor: COLORS.medical },
+                              transition: 'background-color 0.15s ease',
+                            }}
+                          >
+                            <PetsIcon sx={{ fontSize: 14, color: COLORS.medical, flexShrink: 0 }} />
+                            <Box sx={{ flex: 1, minWidth: 0 }}>
+                              <Typography sx={{
+                                fontWeight: '1000', fontSize: '0.7rem',
+                                color: '#1A1A1A', lineHeight: 1.2,
+                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                              }}>
+                                {sibling.petName?.toUpperCase() || 'UNKNOWN PET'}
+                                {hasPosition && (
+                                  <Typography component="span" sx={{ fontWeight: 900, fontSize: '0.6rem', color: COLORS.medical, ml: 0.5 }}>
+                                    ({siblingGroupIndex + 1}/{siblingGroupSize})
+                                  </Typography>
+                                )}
+                              </Typography>
+                              <Typography variant="caption" sx={{ color: '#795548', fontSize: '0.6rem', fontWeight: 900 }}>
+                                {sibling.petSpecies || '—'} • {String(sibling.status || '—').toUpperCase()}
+                              </Typography>
+                            </Box>
+                            <OpenInNewIcon sx={{ fontSize: 12, color: '#A1887F', flexShrink: 0 }} />
+                          </Box>
+                        );
+                      })}
+                    </Stack>
+                  )}
                 </Box>
               )}
             </Box>

@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Dialog, DialogTitle, DialogContent, DialogActions, 
-  Box, Typography, Paper, Button, TextField, MenuItem, 
-  Chip, IconButton, Table, TableBody, TableCell, 
+import {
+  Dialog, DialogTitle, DialogContent, DialogActions,
+  Box, Typography, Paper, Button, TextField, MenuItem,
+  Chip, IconButton, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, FormControl, InputLabel, Select,
-  FormControlLabel, Switch, Alert, Divider, ListSubheader, InputAdornment, Tooltip
+  FormControlLabel, Switch, Alert, Divider, ListSubheader, InputAdornment, Tooltip,
+  ToggleButtonGroup, ToggleButton,
 } from '@mui/material';
 
 // --- ALL REQUIRED ICONS ---
@@ -13,9 +14,10 @@ import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
 import PaidIcon from '@mui/icons-material/Paid';
 import SaveIcon from '@mui/icons-material/Save';
 import MedicationIcon from '@mui/icons-material/Medication';
-import DescriptionIcon from '@mui/icons-material/Description'; 
-import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner'; 
-import MedicalServicesIcon from '@mui/icons-material/MedicalServices'; 
+import DescriptionIcon from '@mui/icons-material/Description';
+import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
+import MedicalServicesIcon from '@mui/icons-material/MedicalServices';
+import PetsIcon from '@mui/icons-material/Pets';
 
 import { doc, getDoc, collection, runTransaction, Timestamp, updateDoc, increment, arrayUnion } from 'firebase/firestore';
 import { COLORS, FONT } from '../theme/designTokens';
@@ -25,16 +27,20 @@ import { useClinicSettings } from '../hooks/useClinicSettings';
 import { resolveTieredPrice } from '../utils/resolveTieredPrice';
 import { makePulseEventId } from '../utils/pulseUtils';
 
-export default function POSModal({ open, onClose, patient, inventoryList, servicesList }) {
+export default function POSModal({ open, onClose, patient, inventoryList, servicesList, groupAppointments = [] }) {
   const { profile } = useUser();
   const clinicSettings = useClinicSettings();
   const [cart, setCart] = useState([]);
-  const[selectedItemVal, setSelectedItemVal] = useState(''); 
-  const [paymentMethod, setPaymentMethod] = useState('Cash'); 
-  const [applyScPwd, setApplyScPwd] = useState(false); 
-  const[hasScId, setHasScId] = useState(false); 
+  const[selectedItemVal, setSelectedItemVal] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('Cash');
+  const [applyScPwd, setApplyScPwd] = useState(false);
+  const[hasScId, setHasScId] = useState(false);
   const [loading, setLoading] = useState(false);
   const [depositAmount, setDepositAmount] = useState('');
+
+  // Phase 4 — Consolidated billing mode: 'individual' bills the active patient only;
+  // 'group' merges items from all sibling appointments into a single cart.
+  const [billingMode, setBillingMode] = useState('individual');
 
   const [barcodeInput, setBarcodeInput] = useState('');
   const [openRxOverride, setOpenRxOverride] = useState(false);
@@ -42,62 +48,93 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
   const [extVetName, setExtVetName] = useState('');
   const [extClinicName, setExtClinicName] = useState('');
 
+  /** Whether the group billing toggle should be shown. */
+  const isGroupVisit = groupAppointments.length > 1;
+
   // --- 1. INITIALIZATION & AUTO-BUNDLE ENGINE ---
+
+  /**
+   * Builds the cart items for a single appointment, prefixing each item's name
+   * with `[petName]` when building a group cart so the cashier can see which
+   * pet each line item belongs to.
+   *
+   * @param {object} appt - The appointment row (from rows state, already in memory).
+   * @param {string|null} petPrefix - If non-null, prepended to each item name as "[petPrefix] ".
+   * @returns {Array} Array of cart item objects.
+   */
+  const buildCartForAppointment = (appt, petPrefix = null) => {
+    const prefix = petPrefix ? `[${petPrefix}] ` : '';
+    const items = [];
+
+    if (appt.prescribedItems && appt.prescribedItems.length > 0) {
+      appt.prescribedItems.forEach(item => {
+        items.push({
+          ...item,
+          name: `${prefix}${item.name}`,
+          isPrescribed: item.isBase ? false : true,
+          _sourceAppointmentId: appt.id,
+          _sourcePetName: appt.petName,
+        });
+      });
+    } else {
+      const bookedServices = appt.services && appt.services.length > 0
+        ? appt.services
+        : [{ id: 'svc_fee', name: appt.serviceType || 'Service', price: appt.servicePrice || 0 }];
+
+      bookedServices.forEach(svc => {
+        const svcDef = servicesList.find(s => s.id === svc.id);
+        const petWeight = appt.petWeight ? parseFloat(appt.petWeight) : null;
+        const price = svcDef
+          ? (resolveTieredPrice(svcDef, petWeight) || svcDef.price || svc.price || 0)
+          : (svc.price ?? 0);
+        items.push({
+          type: 'service',
+          id: svc.id || `svc_${svc.name}`,
+          name: `${prefix}${svc.name}`,
+          price,
+          qty: 1,
+          isBase: true,
+          isDiscountable: svcDef?.isScPwdEligible !== false,
+          _sourceAppointmentId: appt.id,
+          _sourcePetName: appt.petName,
+        });
+
+        if (svcDef) {
+          const linkedIds = svcDef.linkedProducts
+            || (svcDef.linkedProduct ? [svcDef.linkedProduct] : []);
+          linkedIds.forEach(productId => {
+            const linkedInv = inventoryList.find(i => i.id === productId);
+            if (linkedInv) {
+              items.push({
+                type: 'product',
+                id: linkedInv.id,
+                name: `${prefix}${linkedInv.itemName}`,
+                price: linkedInv.price,
+                qty: 1,
+                isDiscountable: !!linkedInv.isMedicine,
+                isAutoBundled: true,
+                isBase: false,
+                _sourceAppointmentId: appt.id,
+                _sourcePetName: appt.petName,
+              });
+            }
+          });
+        }
+      });
+    }
+
+    return items;
+  };
+
   useEffect(() => {
     const initPOS = async () => {
       if (open && patient) {
-        let initialCart =[];
-        
-        // Scenario A: Coming from Clinical Workspace (Has Prescriptions)
-        if (patient.prescribedItems && patient.prescribedItems.length > 0) {
-            initialCart = patient.prescribedItems.map(item => ({ ...item, isPrescribed: item.isBase ? false : true }));
-        } 
-        // Scenario B: Fast-Tracked (e.g. Grooming, walk-in) — no ClinicalWorkspace prescriptions.
-        // Iterate the appointment's services[] array for itemized billing.
-        else {
-            const bookedServices = patient.services && patient.services.length > 0
-                ? patient.services
-                : [{ id: 'svc_fee', name: patient.serviceType || 'Service', price: patient.servicePrice || 0 }];
+        // Reset billing mode: default to 'individual' each time the modal opens.
+        setBillingMode('individual');
 
-            bookedServices.forEach(svc => {
-                const svcDef = servicesList.find(s => s.id === svc.id);
-                const petWeight = patient.petWeight ? parseFloat(patient.petWeight) : null;
-                const price = svcDef
-                    ? (resolveTieredPrice(svcDef, petWeight) || svcDef.price || svc.price || 0)
-                    : (svc.price ?? 0);
-                initialCart.push({
-                    type: 'service',
-                    id: svc.id || `svc_${svc.name}`,
-                    name: svc.name,
-                    price: price,
-                    qty: 1,
-                    isBase: true,
-                    isDiscountable: svcDef?.isScPwdEligible !== false,
-                });
+        // Build individual cart (used immediately and also when user switches to individual mode)
+        const initialCart = buildCartForAppointment(patient, null);
 
-                // Auto-bundle linked products for each service
-                if (svcDef) {
-                    const linkedIds = svcDef.linkedProducts
-                        || (svcDef.linkedProduct ? [svcDef.linkedProduct] : []);
-                    linkedIds.forEach(productId => {
-                        const linkedInv = inventoryList.find(i => i.id === productId);
-                        if (linkedInv) {
-                            initialCart.push({
-                                type: 'product',
-                                id: linkedInv.id,
-                                name: linkedInv.itemName,
-                                price: linkedInv.price,
-                                qty: 1,
-                                isDiscountable: !!linkedInv.isMedicine,
-                                isAutoBundled: true,
-                                isBase: false,
-                            });
-                        }
-                    });
-                }
-            });
-        }
-        
         setCart(initialCart); setSelectedItemVal(''); setPaymentMethod('Cash'); setBarcodeInput('');
         setDepositAmount(patient.depositPaid ? patient.depositPaid.toString() : '');
 
@@ -108,11 +145,36 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
                 if (userDoc.exists() && userDoc.data().seniorId) foundId = true;
             }
         } catch (e) { console.error(e); }
-        setHasScId(foundId); setApplyScPwd(foundId); 
+        setHasScId(foundId); setApplyScPwd(foundId);
       }
     };
     initPOS();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   },[open, patient, servicesList, inventoryList]);
+
+  /**
+   * Rebuilds the cart when the billing mode toggle changes.
+   * GROUP mode: merges items from ALL group appointments with pet-name prefixes.
+   * INDIVIDUAL mode: cart contains only the active patient's items (no prefix).
+   */
+  useEffect(() => {
+    if (!open || !patient) return;
+    if (billingMode === 'group' && isGroupVisit) {
+      const merged = [];
+      let totalDeposit = 0;
+      groupAppointments.forEach(appt => {
+        totalDeposit += parseFloat(appt.depositPaid || 0);
+        merged.push(...buildCartForAppointment(appt, appt.petName || 'Pet'));
+      });
+      setCart(merged);
+      setDepositAmount(totalDeposit > 0 ? totalDeposit.toString() : '');
+    } else {
+      // Rebuild individual cart from the active patient
+      setCart(buildCartForAppointment(patient, null));
+      setDepositAmount(patient.depositPaid ? patient.depositPaid.toString() : '');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [billingMode]);
 
   // --- 2. THE RX COMPLIANCE ENGINE ---
   const processProductToCart = (p) => {
@@ -210,17 +272,50 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
   };
   const financials = calculateFinancials();
 
-  // --- 4. 🖨️ THE PDF RECEIPT GENERATOR ---
+  // --- 4. PDF RECEIPT GENERATOR ---
   const generateReceiptHTML = (transactionId) => {
     const today = new Date().toLocaleString();
-    let itemsHTML = cart.map(item => `
-      <tr>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${item.name} ${item.isDiscountable ? '' : '<span style="color:red; font-size:10px;">(No SC/PWD)</span>'}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: center;">${item.qty}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">P${item.price.toFixed(2)}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">P${(item.price * item.qty).toFixed(2)}</td>
-      </tr>
-    `).join('');
+
+    // In GROUP mode, render items grouped by pet name with sub-headers.
+    let itemsHTML;
+    if (billingMode === 'group' && isGroupVisit) {
+      // Group cart items by their source pet
+      const petGroups = {};
+      cart.forEach(item => {
+        const key = item._sourcePetName || patient.petName || 'Unknown';
+        if (!petGroups[key]) petGroups[key] = [];
+        petGroups[key].push(item);
+      });
+
+      itemsHTML = Object.entries(petGroups).map(([petName, items]) => `
+        <tr>
+          <td colspan="4" style="padding: 10px 8px 4px; background: #f0ede8; font-weight: bold; font-size: 13px; border-bottom: 1px solid #ccc;">
+            ${petName.toUpperCase()}
+          </td>
+        </tr>
+        ${items.map(item => `
+          <tr>
+            <td style="padding: 8px 8px 8px 20px; border-bottom: 1px solid #ddd;">${item.name} ${item.isDiscountable ? '' : '<span style="color:red; font-size:10px;">(No SC/PWD)</span>'}</td>
+            <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: center;">${item.qty}</td>
+            <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">P${item.price.toFixed(2)}</td>
+            <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">P${(item.price * item.qty).toFixed(2)}</td>
+          </tr>
+        `).join('')}
+      `).join('');
+    } else {
+      itemsHTML = cart.map(item => `
+        <tr>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd;">${item.name} ${item.isDiscountable ? '' : '<span style="color:red; font-size:10px;">(No SC/PWD)</span>'}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: center;">${item.qty}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">P${item.price.toFixed(2)}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">P${(item.price * item.qty).toFixed(2)}</td>
+        </tr>
+      `).join('');
+    }
+
+    const patientLabel = billingMode === 'group' && isGroupVisit
+      ? `${patient.ownerName || 'Walk-In'} — Multi-Pet Visit (${groupAppointments.length} pets)`
+      : `${patient.petName} (${patient.ownerName || 'Walk-In'})`;
 
     return `
       <html>
@@ -243,12 +338,13 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             <p class="clinic-name">${clinicSettings.clinicName}</p>
             <p style="margin: 0; font-size: 12px; color: #666;">${clinicSettings.clinicAddress} | Official Receipt</p>
           </div>
-          
+
           <div class="details">
             <p><strong>Receipt #:</strong> ${transactionId.slice(0, 8).toUpperCase()}</p>
             <p><strong>Date:</strong> ${today}</p>
-            <p><strong>Patient:</strong> ${patient.petName} (${patient.ownerName || 'Walk-In'})</p>
+            <p><strong>Patient:</strong> ${patientLabel}</p>
             <p><strong>Cashier:</strong> ${profile?.fullName || 'POS Cashier'}</p>
+            ${billingMode === 'group' && isGroupVisit ? `<p><strong>Visit Group:</strong> ${patient.visitGroupId || 'N/A'}</p>` : ''}
           </div>
 
           <table>
@@ -310,81 +406,188 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
   };
 
   // --- 5. ATOMIC CHECKOUT TRANSACTION ---
-  const handleCheckout = async () => { 
+
+  /**
+   * Deducts inventory stock for all product items in the given cart array.
+   * Handles FIFO batch deduction and flat-stock deduction.
+   * Returns a `batchSourceMap` keyed by inventoryItem.id for sale record annotation.
+   * All writes are issued against the passed Firestore `transaction` object.
+   */
+  const deductInventoryInTransaction = async (transaction, cartItems, patientLabel) => {
+    const batchSourceMap = {};
+    for (const item of cartItems) {
+      if (item.type !== 'product') continue;
+      const itemRef = doc(db, "inventory", item.id);
+      const itemDoc = await transaction.get(itemRef);
+      if (!itemDoc.exists()) throw new Error(`Product ${item.name} not found`);
+      const data = itemDoc.data();
+      let currentStock = data.stock || 0;
+      if (currentStock < item.qty) throw new Error(`Not enough stock for ${item.name}`);
+
+      let batches = data.batches || [];
+      let batchesUsed = [];
+      let batchSource = [];
+
+      if (batches.length > 0) {
+        batches.sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        batches = batches.filter(b => new Date(b.expiryDate) >= today);
+        const sellableStock = batches.reduce((sum, b) => sum + b.qty, 0);
+        if (sellableStock < item.qty) throw new Error(`Not enough UNEXPIRED stock for ${item.name}.`);
+
+        let remainingToDeduct = item.qty;
+        batches = batches.map(b => {
+          if (remainingToDeduct <= 0) return b;
+          let amountTaken = 0;
+          if (b.qty >= remainingToDeduct) {
+            amountTaken = remainingToDeduct; b.qty -= remainingToDeduct; remainingToDeduct = 0;
+          } else {
+            amountTaken = b.qty; remainingToDeduct -= b.qty; b.qty = 0;
+          }
+          if (amountTaken > 0) {
+            batchesUsed.push(`${b.batchNumber} (-${amountTaken})`);
+            batchSource.push({ batchNumber: b.batchNumber, expiryDate: b.expiryDate, qtyFromBatch: amountTaken });
+          }
+          return b;
+        });
+        batches = batches.filter(b => b.qty > 0);
+        batchSourceMap[item.id] = batchSource;
+      } else {
+        if (data.expiryDate) {
+          const today = new Date(); today.setHours(0, 0, 0, 0);
+          const expiry = new Date(data.expiryDate + 'T00:00:00');
+          if (expiry < today) throw new Error(`${item.name} is EXPIRED and cannot be sold.`);
+        }
+        batchesUsed.push(`flat-stock (-${item.qty})`);
+      }
+
+      const updatePayload = {
+        stock: currentStock - item.qty,
+        // T2.16: Unconditionally decrement reserved for all product sales.
+        reserved: Math.max(0, (data.reserved || 0) - item.qty),
+      };
+      if (data.batches && data.batches.length > 0) updatePayload.batches = batches;
+      transaction.update(itemRef, updatePayload);
+
+      const logRef = doc(collection(db, "inventory_logs"));
+      const externalNote = item.isExternalRx ? `[Ext Rx: ${item.externalVet}]` : '';
+      transaction.set(logRef, {
+        itemId: item.id,
+        itemName: item.name,
+        action: "SOLD",
+        amountChange: -(item.qty),
+        reason: `POS Sale to ${patientLabel}${externalNote ? ` ${externalNote}` : ''} | Old: ${currentStock} → New: ${currentStock - item.qty}${batchesUsed.length ? ` | FIFO: ${batchesUsed.join(', ')}` : ''}`,
+        userId: profile?.id || "pos_system",
+        userName: profile?.fullName || "POS System",
+        timestamp: Timestamp.now(),
+      });
+    }
+    return batchSourceMap;
+  };
+
+  const handleCheckout = async () => {
     setLoading(true);
-    try { 
-      // THE FIX: We 'catch' the transactionId returned by the database!
+    try {
+      const isGroupBill = billingMode === 'group' && isGroupVisit;
+
       const transactionId = await runTransaction(db, async (transaction) => {
-        const batchSourceMap = {};
-        for (const item of cart) {
-          if (item.type === 'product') { 
-            const itemRef = doc(db, "inventory", item.id); const itemDoc = await transaction.get(itemRef); 
-            if (!itemDoc.exists()) throw new Error(`Product ${item.name} not found`); 
-            const data = itemDoc.data(); let currentStock = data.stock || 0;
-            if (currentStock < item.qty) throw new Error(`Not enough stock for ${item.name}`);
+        const patientLabel = isGroupBill
+          ? `${patient.ownerName || 'Walk-In'} (Group Visit)`
+          : patient.petName;
 
-            let batches = data.batches || [];
-            let batchesUsed = [];
-            let batchSource = [];
+        // Deduct inventory stock for all cart products (shared helper)
+        const batchSourceMap = await deductInventoryInTransaction(transaction, cart, patientLabel);
 
-            if (batches.length > 0) {
-              // FIFO batch deduction
-              batches.sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
-              const today = new Date(); today.setHours(0,0,0,0);
-              batches = batches.filter(b => new Date(b.expiryDate) >= today);
-              const sellableStock = batches.reduce((sum, b) => sum + b.qty, 0);
-              if (sellableStock < item.qty) throw new Error(`Not enough UNEXPIRED stock for ${item.name}.`);
+        // --- SALES DOCUMENT ---
+        const saleRef = doc(collection(db, "sales"));
 
-              let remainingToDeduct = item.qty;
-              batches = batches.map(b => { if (remainingToDeduct <= 0) return b; let amountTaken = 0; if (b.qty >= remainingToDeduct) { amountTaken = remainingToDeduct; b.qty -= remainingToDeduct; remainingToDeduct = 0; } else { amountTaken = b.qty; remainingToDeduct -= b.qty; b.qty = 0; } if (amountTaken > 0) { batchesUsed.push(`${b.batchNumber} (-${amountTaken})`); batchSource.push({ batchNumber: b.batchNumber, expiryDate: b.expiryDate, qtyFromBatch: amountTaken }); } return b; });
-              batches = batches.filter(b => b.qty > 0);
-              batchSourceMap[item.id] = batchSource;
-            } else {
-              // Flat stock deduction — no batch tracking
-              if (currentStock < item.qty) throw new Error(`Not enough stock for ${item.name}.`);
-              if (data.expiryDate) {
-                const today = new Date(); today.setHours(0,0,0,0);
-                const expiry = new Date(data.expiryDate + 'T00:00:00');
-                if (expiry < today) throw new Error(`${item.name} is EXPIRED and cannot be sold.`);
-              }
-              batchesUsed.push(`flat-stock (-${item.qty})`);
-            }
-
-            const updatePayload = {
-              stock: currentStock - item.qty,
-              // T2.16: Unconditionally decrement reserved for all product sales.
-              // The isPrescribed gate was removed — any product leaving stock should
-              // also clear its reservation regardless of how it entered the cart.
-              reserved: Math.max(0, (data.reserved || 0) - item.qty),
+        if (isGroupBill) {
+          // GROUP MODE: Build per-pet breakdown for the sale document.
+          // Each appointment contributes its own items and subtotal.
+          const perPetBreakdown = groupAppointments.map(appt => {
+            const apptItems = cart.filter(ci => ci._sourceAppointmentId === appt.id);
+            const apptSubtotal = apptItems.reduce((sum, ci) => sum + ci.price * ci.qty, 0);
+            return {
+              petId: appt.petId || null,
+              petName: appt.petName || 'Unknown',
+              appointmentId: appt.id,
+              items: apptItems.map(ci =>
+                ci.type === 'product' && batchSourceMap[ci.id]
+                  ? { ...ci, batchSource: batchSourceMap[ci.id] }
+                  : ci
+              ),
+              subtotal: parseFloat(apptSubtotal.toFixed(2)),
             };
-            if (data.batches && data.batches.length > 0) updatePayload.batches = batches;
-            transaction.update(itemRef, updatePayload);
-            const logRef = doc(collection(db, "inventory_logs")); const externalNote = item.isExternalRx ? `[Ext Rx: ${item.externalVet}]` : '';
-            transaction.set(logRef, {
-              itemId: item.id,
-              itemName: item.name,
-              action: "SOLD",
-              amountChange: -(item.qty),
-              reason: `POS Sale to ${patient.petName}${externalNote ? ` ${externalNote}` : ''} | Old: ${currentStock} → New: ${currentStock - item.qty}${batchesUsed.length ? ` | FIFO: ${batchesUsed.join(', ')}` : ''}`,
-              userId: profile?.id || "pos_system",
-              userName: profile?.fullName || "POS System",
-              timestamp: Timestamp.now()
-            });
-          } 
-        } 
-        
-        const saleRef = doc(collection(db, "sales")); 
-        transaction.set(saleRef, {
-            appointmentId: patient.id,
+          });
+
+          transaction.set(saleRef, {
+            visitGroupId: patient.visitGroupId,
+            billingMode: 'group',
+            perPetBreakdown,
+            appointmentId: patient.id, // primary/initiating appointment
             ownerId: patient.ownerId || null,
-            petName: patient.petName,
             ownerName: patient.ownerName || 'Walk-In',
-            items: cart.map(ci => ci.type === 'product' && batchSourceMap[ci.id] ? { ...ci, batchSource: batchSourceMap[ci.id] } : ci),
+            petNames: groupAppointments.map(a => a.petName).join(', '),
+            items: cart.map(ci =>
+              ci.type === 'product' && batchSourceMap[ci.id]
+                ? { ...ci, batchSource: batchSourceMap[ci.id] }
+                : ci
+            ),
             subtotal: parseFloat(financials.subtotal),
             discount: parseFloat(financials.discount),
             depositPaid: parseFloat(financials.deposit),
             total: parseFloat(financials.total),
-            paymentMethod: paymentMethod,
+            paymentMethod,
+            hasScPwdDiscount: applyScPwd,
+            date: Timestamp.now(),
+            cashier: profile?.fullName || 'POS Cashier',
+            cashierId: profile?.id || null,
+            status: 'paid',
+            prescribedItemCount: cart.filter(i => i.isPrescribed).length,
+            cashierAddedItemCount: cart.filter(i => i.addedBy === 'cashier').length,
+            hasUnprescribedAdditions: cart.some(i => i.addedBy === 'cashier'),
+          });
+
+          // Update ALL appointment docs in the group to 'completed'.
+          // Each appointment gets its own proportional share of the balance.
+          const breakdown = perPetBreakdown;
+          for (const appt of groupAppointments) {
+            const apptBreakdown = breakdown.find(b => b.appointmentId === appt.id);
+            const apptRef = doc(db, "appointments", appt.id);
+            transaction.update(apptRef, {
+              status: 'completed',
+              statusHistory: arrayUnion(appt.status || 'billing'),
+              timeCompleted: Timestamp.now(),
+              balanceRemaining: apptBreakdown
+                ? parseFloat(((apptBreakdown.subtotal / parseFloat(financials.total || 1)) * parseFloat(financials.balanceDue)).toFixed(2))
+                : 0,
+              clinicalPulse: arrayUnion({
+                eventId: makePulseEventId('checkout'),
+                type: 'CHECKOUT_COMPLETED',
+                timestamp: Timestamp.now(),
+                staffId: profile?.id || 'pos_system',
+                staffName: profile?.fullName || 'POS Cashier',
+                note: `Group checkout: ₱${apptBreakdown?.subtotal?.toFixed(2) || '0.00'} (subtotal) via ${paymentMethod}`,
+              }),
+            });
+          }
+        } else {
+          // INDIVIDUAL MODE: existing behavior unchanged.
+          transaction.set(saleRef, {
+            appointmentId: patient.id,
+            ownerId: patient.ownerId || null,
+            petName: patient.petName,
+            ownerName: patient.ownerName || 'Walk-In',
+            items: cart.map(ci =>
+              ci.type === 'product' && batchSourceMap[ci.id]
+                ? { ...ci, batchSource: batchSourceMap[ci.id] }
+                : ci
+            ),
+            subtotal: parseFloat(financials.subtotal),
+            discount: parseFloat(financials.discount),
+            depositPaid: parseFloat(financials.deposit),
+            total: parseFloat(financials.total),
+            paymentMethod,
             hasScPwdDiscount: applyScPwd,
             date: Timestamp.now(),
             cashier: profile?.fullName || 'POS Cashier',
@@ -394,64 +597,117 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             prescribedItemCount: cart.filter(i => i.isPrescribed).length,
             cashierAddedItemCount: cart.filter(i => i.addedBy === 'cashier').length,
             hasUnprescribedAdditions: cart.some(i => i.addedBy === 'cashier'),
-        });
-        
-        const apptRef = doc(db, "appointments", patient.id);
-        transaction.update(apptRef, {
+          });
+
+          const apptRef = doc(db, "appointments", patient.id);
+          transaction.update(apptRef, {
             status: 'completed',
             statusHistory: arrayUnion(patient.status || 'billing'),
             timeCompleted: Timestamp.now(),
             balanceRemaining: parseFloat(financials.balanceDue),
             clinicalPulse: arrayUnion({
-                eventId: makePulseEventId('checkout'),
-                type: 'CHECKOUT_COMPLETED',
-                timestamp: Timestamp.now(),
-                staffId: profile?.id || 'pos_system',
-                staffName: profile?.fullName || 'POS Cashier',
-                note: `Checkout: ₱${financials.total} via ${paymentMethod}`,
+              eventId: makePulseEventId('checkout'),
+              type: 'CHECKOUT_COMPLETED',
+              timestamp: Timestamp.now(),
+              staffId: profile?.id || 'pos_system',
+              staffName: profile?.fullName || 'POS Cashier',
+              note: `Checkout: ₱${financials.total} via ${paymentMethod}`,
             }),
-        });
+          });
+        }
 
         // T2.101: outstandingBalance is now computed from sales (sum of balanceRemaining),
         // not a Firestore counter. This block intentionally removed.
-        
-        return saleRef.id; 
-      }); 
 
-      onClose(); 
-      
-      // THE FIX: Bulletproof Print Engine with Pop-up Blocker Detection!
+        return saleRef.id;
+      });
+
+      onClose();
+
       if (window.confirm(`Transaction Complete! Collected: ₱${financials.balanceDue}\n\nWould you like to print the Official Receipt?`)) {
-          const receiptContent = generateReceiptHTML(transactionId);
-          const printWindow = window.open('', '_blank', 'width=800,height=600');
-          
-          if (printWindow) {
-              // Browser allowed it! Print the receipt.
-              printWindow.document.write(receiptContent);
-              printWindow.document.close();
-              printWindow.focus();
-              setTimeout(() => {
-                  printWindow.print();
-                  printWindow.close();
-              }, 250);
-          } else {
-              // Browser blocked it! Show a friendly, non-crashing alert.
-              alert("⚠️ Pop-up blocked!\n\nPlease look at the top right of your browser address bar to allow pop-ups for VetConnect, then try printing again from the Transactions tab.");
-          }
+        const receiptContent = generateReceiptHTML(transactionId);
+        const printWindow = window.open('', '_blank', 'width=800,height=600');
+        if (printWindow) {
+          printWindow.document.write(receiptContent);
+          printWindow.document.close();
+          printWindow.focus();
+          setTimeout(() => { printWindow.print(); printWindow.close(); }, 250);
+        } else {
+          alert("Pop-up blocked!\n\nPlease allow pop-ups for VetConnect in your browser, then try printing again from the Transactions tab.");
+        }
       }
-      
-    } catch (error) { alert("Checkout Failed: " + error.message); } finally { setLoading(false); }
+    } catch (error) {
+      alert("Checkout Failed: " + error.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <>
       <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
         <DialogTitle sx={{ bgcolor: COLORS.success, color: COLORS.cardBg, fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 2 }}>
-          <Typography variant="h6" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><PaidIcon /> Checkout: {patient?.petName}</Typography>
+          <Typography variant="h6" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <PaidIcon />
+            {billingMode === 'group' && isGroupVisit
+              ? `Group Bill — ${patient?.ownerName || 'Walk-In'} (${groupAppointments.length} pets)`
+              : `Checkout: ${patient?.petName}`}
+          </Typography>
           <Chip label={patient?.ownerName || 'Walk-In'} sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white', fontWeight: 'bold' }} />
         </DialogTitle>
         
-        <DialogContent dividers sx={{ bgcolor: COLORS.surfaceHover, display: 'flex', gap: 3, p: 3 }}>
+        <DialogContent dividers sx={{ bgcolor: COLORS.surfaceHover, display: 'flex', flexDirection: 'column', gap: 0, p: 0 }}>
+
+          {/* Phase 4 — Group billing mode toggle.
+              Only shown when this appointment belongs to a visit group (2+ members).
+              Switching modes rebuilds the cart from the groupAppointments array. */}
+          {isGroupVisit && (
+            <Box sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 2,
+              px: 3,
+              py: 1.25,
+              bgcolor: COLORS.kpiOrangeBg || '#FFF3E0',
+              borderBottom: `2px solid ${COLORS.brand}`,
+              flexShrink: 0,
+            }}>
+              <PetsIcon sx={{ fontSize: 18, color: COLORS.brand }} />
+              <Typography sx={{
+                fontFamily: 'monospace', fontSize: '0.78rem', fontWeight: 900,
+                color: COLORS.brand, textTransform: 'uppercase', letterSpacing: 0.8,
+              }}>
+                Multi-Pet Visit — {groupAppointments.length} pets
+              </Typography>
+              <ToggleButtonGroup
+                value={billingMode}
+                exclusive
+                onChange={(_, val) => { if (val) setBillingMode(val); }}
+                size="small"
+                sx={{ ml: 'auto', '& .MuiToggleButton-root': { borderRadius: 0, fontWeight: 900, fontSize: '0.7rem', px: 1.5, border: `2px solid ${COLORS.brand}` } }}
+              >
+                <ToggleButton
+                  value="individual"
+                  sx={{
+                    '&.Mui-selected': { bgcolor: COLORS.brand, color: '#fff', '&:hover': { bgcolor: COLORS.brand } },
+                  }}
+                >
+                  INDIVIDUAL BILL
+                </ToggleButton>
+                <ToggleButton
+                  value="group"
+                  sx={{
+                    '&.Mui-selected': { bgcolor: COLORS.accent, color: '#fff', '&:hover': { bgcolor: COLORS.accent } },
+                  }}
+                >
+                  GROUP BILL
+                </ToggleButton>
+              </ToggleButtonGroup>
+            </Box>
+          )}
+
+          {/* Main content area — flex row matching original layout */}
+          <Box sx={{ display: 'flex', gap: 3, p: 3, flex: 1 }}>
           {/* LEFT: CART ITEMS */}
           <Box sx={{ flex: 2, display: 'flex', flexDirection: 'column' }}>
             
@@ -560,6 +816,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
                 </FormControl>
              </Paper>
           </Box>
+          </Box>{/* closes the main content flex row */}
         </DialogContent>
         <DialogActions sx={{ p: 2.5, bgcolor: COLORS.panelBg, display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${COLORS.timelineRail}` }}>
           <Button onClick={onClose} sx={{ color: COLORS.accent, fontWeight: 'bold', px: 3 }}>Cancel</Button>

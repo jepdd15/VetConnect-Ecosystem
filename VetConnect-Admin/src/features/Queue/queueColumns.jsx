@@ -126,72 +126,131 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
         </Box>
       );
       
-      return (
-        <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', py: 1, px: 0.5, overflow: 'hidden', height: '100%' }}>
-          {/* THE TICKET ANCHOR (DYNAMIC) */}
-          <Box sx={{ 
-              width: 56, height: 56, borderRadius: '12px', mr: 2, flexShrink: 0,
-              bgcolor: p.row.queueNumber ? '#FFF3E0' : '#F5F5F5', 
-              border: '2px solid', borderColor: p.row.queueNumber ? '#FFB74D' : '#EEEEEE',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
-          }}>
-            {p.row.queueNumber ? (
-              <>
-                <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: '900', color: '#E65100', lineHeight: 1 }}>{p.row.ticketPrefix || 'TKT'}</Typography>
-                <Typography variant="h6" sx={{ fontWeight: '900', color: '#D32F2F', lineHeight: 1, fontSize: '1.4rem' }}>{p.row.queueNumber}</Typography>
-              </>
-            ) : (
-                <LocalHospitalIcon sx={{ fontSize: 24, color: '#BDBDBD', opacity: 0.8 }} />
-            )}
-          </Box>
+      // ── VISIT GROUP DISPLAY HELPERS ──────────────────────────────
+      const groupSize  = p.row._visitGroupSize  || 0;
+      const groupIndex = p.row._visitGroupIndex || 0;
+      const isInGroup  = groupSize > 1;
+      const isGroupHeader = p.row.isGroupHeader === true;
+      // Non-header group members share the queue number — dim the ticket anchor
+      const isDimTicket = isInGroup && !isGroupHeader && p.row.queueNumber;
 
-          <Box sx={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0, justifyContent: 'center' }}>
-            <Box
-                onMouseEnter={(e) => actions.handleHoverStart(e, 'identity', PassportCard)}
-                onMouseLeave={actions.handleHoverEnd}
-                sx={{ display: 'flex', flexDirection: 'column', width: '100%', cursor: 'zoom-in', gap: 0 }}
-            >
-                {/* LINE 1: THE PATIENT HERO + SELF CHECK-IN BADGE */}
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
-                  <Typography sx={{ fontSize: '1.25rem', fontWeight: '1000', color: '#1A1A1A', lineHeight: 1.1, letterSpacing: '-0.02rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                      {p.row.petName}
+      return (
+        <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%', py: 0.5, px: 0.5, overflow: 'hidden', height: '100%', justifyContent: 'center' }}>
+
+          {/* ── MULTI-PET VISIT HEADER CHIP (group header row only) ── */}
+          {isGroupHeader && (
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+              <Box sx={{
+                bgcolor: '#3ABEF9',
+                color: '#1A1A1A',
+                px: 1,
+                py: 0.2,
+                borderRadius: 0,
+                border: '1.5px solid #1A1A1A',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 0.5,
+              }}>
+                <Typography sx={{ fontSize: '0.6rem', fontWeight: '900', letterSpacing: '0.08em', lineHeight: 1 }}>
+                  MULTI-PET VISIT ({groupSize})
+                </Typography>
+              </Box>
+            </Box>
+          )}
+
+          <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', overflow: 'hidden' }}>
+            {/* THE TICKET ANCHOR (DYNAMIC) */}
+            <Box sx={{
+                width: 56, height: 56, borderRadius: 0, mr: 2, flexShrink: 0,
+                bgcolor: p.row.queueNumber ? (isDimTicket ? '#F5F5F5' : '#FFF3E0') : '#F5F5F5',
+                border: '2px solid', borderColor: p.row.queueNumber ? (isDimTicket ? '#E0E0E0' : '#FFB74D') : '#EEEEEE',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                opacity: isDimTicket ? 0.45 : 1,
+                boxShadow: isDimTicket ? 'none' : '0 2px 8px rgba(0,0,0,0.04)',
+            }}>
+              {p.row.queueNumber ? (
+                <>
+                  <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: '900', color: isDimTicket ? '#9E9E9E' : '#E65100', lineHeight: 1 }}>
+                    {p.row.ticketPrefix || 'TKT'}
                   </Typography>
-                  {p.row.selfCheckedIn && (
-                    <Chip
-                      label="SELF"
-                      size="small"
-                      sx={{
-                        fontSize: '0.55rem',
-                        height: 16,
-                        fontWeight: '1000',
-                        bgcolor: '#E8F5E9',
-                        color: '#2E7D32',
-                        border: '1px solid #2E7D32',
+                  <Typography variant="h6" sx={{ fontWeight: '900', color: isDimTicket ? '#9E9E9E' : '#D32F2F', lineHeight: 1, fontSize: '1.4rem' }}>
+                    {p.row.queueNumber}
+                  </Typography>
+                  {/* Position indicator for non-header group members */}
+                  {isDimTicket && (
+                    <Typography sx={{ fontSize: '0.55rem', fontWeight: '900', color: '#9E9E9E', lineHeight: 1 }}>
+                      {groupIndex + 1}/{groupSize}
+                    </Typography>
+                  )}
+                </>
+              ) : (
+                  <LocalHospitalIcon sx={{ fontSize: 24, color: '#BDBDBD', opacity: 0.8 }} />
+              )}
+            </Box>
+
+            <Box sx={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0, justifyContent: 'center' }}>
+              <Box
+                  onMouseEnter={(e) => actions.handleHoverStart(e, 'identity', PassportCard)}
+                  onMouseLeave={actions.handleHoverEnd}
+                  sx={{ display: 'flex', flexDirection: 'column', width: '100%', cursor: 'zoom-in', gap: 0 }}
+              >
+                  {/* LINE 1: THE PATIENT HERO + SELF CHECK-IN BADGE + GROUP POSITION */}
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
+                    <Typography sx={{ fontSize: '1.25rem', fontWeight: '1000', color: '#1A1A1A', lineHeight: 1.1, letterSpacing: '-0.02rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                        {p.row.petName}
+                    </Typography>
+                    {/* Group position badge: (1/3), (2/3), etc. */}
+                    {isInGroup && (
+                      <Box sx={{
+                        bgcolor: '#3E2723',
+                        color: 'white',
+                        px: 0.7,
+                        py: 0.15,
                         borderRadius: 0,
                         flexShrink: 0,
-                      }}
-                    />
-                  )}
-                </Box>
-
-                {/* LINE 2: THE SEMANTIC ANCHOR (SPECIES * BREED) */}
-                <Typography variant="caption" sx={{ color: '#795548', fontWeight: '900', fontSize: '0.75rem', textTransform: 'uppercase', lineHeight: 1.3, letterSpacing: '0.02rem' }}>
-                    {String(p.row.petSpecies || 'PET')} ★ {String(p.row.petBreed || 'Mixed Breed')}
-                </Typography>
-
-                {/* LINE 3: THE WAITING ROOM ANCHOR (HUMAN) */}
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, mt: 0.2 }}>
-                    {isWalkIn ? <DirectionsWalkIcon sx={{ fontSize: 13, color: 'rgba(0,0,0,0.4)' }} /> : <SmartphoneIcon sx={{ fontSize: 13, color: '#1976D2' }} />}
-                    <Typography variant="caption" sx={{ fontSize: '0.85rem', fontWeight: '800', color: '#5D4037', textTransform: 'uppercase', letterSpacing: '0.01rem', lineHeight: 1 }}>
-                        {p.row.ownerName || 'Online Client'}
-                    </Typography>
-                    {hasSpecificAllergies && (
-                        <Tooltip title={`Allergies: ${petAllergies}`}>
-                            <WarningIcon sx={{ fontSize: 14, color: '#D32F2F' }} />
-                        </Tooltip>
+                        lineHeight: 1,
+                      }}>
+                        <Typography sx={{ fontSize: '0.6rem', fontWeight: '900', lineHeight: 1 }}>
+                          {groupIndex + 1}/{groupSize}
+                        </Typography>
+                      </Box>
                     )}
-                </Box>
+                    {p.row.selfCheckedIn && (
+                      <Chip
+                        label="SELF"
+                        size="small"
+                        sx={{
+                          fontSize: '0.55rem',
+                          height: 16,
+                          fontWeight: '1000',
+                          bgcolor: '#E8F5E9',
+                          color: '#2E7D32',
+                          border: '1px solid #2E7D32',
+                          borderRadius: 0,
+                          flexShrink: 0,
+                        }}
+                      />
+                    )}
+                  </Box>
+
+                  {/* LINE 2: THE SEMANTIC ANCHOR (SPECIES * BREED) */}
+                  <Typography variant="caption" sx={{ color: '#795548', fontWeight: '900', fontSize: '0.75rem', textTransform: 'uppercase', lineHeight: 1.3, letterSpacing: '0.02rem' }}>
+                      {String(p.row.petSpecies || 'PET')} ★ {String(p.row.petBreed || 'Mixed Breed')}
+                  </Typography>
+
+                  {/* LINE 3: THE WAITING ROOM ANCHOR (HUMAN) */}
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, mt: 0.2 }}>
+                      {isWalkIn ? <DirectionsWalkIcon sx={{ fontSize: 13, color: 'rgba(0,0,0,0.4)' }} /> : <SmartphoneIcon sx={{ fontSize: 13, color: '#1976D2' }} />}
+                      <Typography variant="caption" sx={{ fontSize: '0.85rem', fontWeight: '800', color: '#5D4037', textTransform: 'uppercase', letterSpacing: '0.01rem', lineHeight: 1 }}>
+                          {p.row.ownerName || 'Online Client'}
+                      </Typography>
+                      {hasSpecificAllergies && (
+                          <Tooltip title={`Allergies: ${petAllergies}`}>
+                              <WarningIcon sx={{ fontSize: 14, color: '#D32F2F' }} />
+                          </Tooltip>
+                      )}
+                  </Box>
+              </Box>
             </Box>
           </Box>
         </Box>

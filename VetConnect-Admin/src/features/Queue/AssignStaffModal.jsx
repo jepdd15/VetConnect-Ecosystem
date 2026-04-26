@@ -20,7 +20,7 @@ import { STATUS, TERMINAL_STATUSES } from '../../utils/statusConstants';
 import { makePulseEventId } from '../../utils/pulseUtils';
 import { getTicketPrefix } from '../../utils/getTicketPrefix';
 
-export default function AssignStaffModal({ open, onClose, patient, vetsList, activeAppointments, departments, mode = 'check-in' }) {
+export default function AssignStaffModal({ open, onClose, patient, vetsList, activeAppointments, departments, mode = 'check-in', siblingAppointments = [] }) {
   const { profile, user } = useUser();
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -28,18 +28,32 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
   // THE BUFFER: Stores local changes before they hit the cloud!
   const [tempServices, setTempServices] = useState([]);
 
+  // GROUP CHECK-IN: per-sibling service buffers (index matches siblingAppointments)
+  const [siblingServices, setSiblingServices] = useState([]);
+
+  // Toggle: true = check in ALL group members, false = individual only
+  const [groupMode, setGroupMode] = useState(true);
+
   // --- DROPDOWN STATE ---
   const [anchorEl, setAnchorEl] = useState(null);
   const [activeSvcIdx, setActiveSvcIdx] = useState(null); // null = BATCH Assign
+  // activePetIdx: null = primary patient, 0..N-1 = sibling index
+  const [activePetIdx, setActivePetIdx] = useState(null);
   const [sortBy, setSortBy] = useState('alpha'); // alpha | load
 
   useEffect(() => {
     if (open && patient) {
-      const sortedServices = (patient.services || []).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      const sortedServices = [...(patient.services || [])].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
       setTempServices(sortedServices);
+      setSiblingServices(
+        (siblingAppointments || []).map(sib =>
+          [...(sib.services || [])].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+        )
+      );
+      setGroupMode(true);
       setErrorMsg('');
     }
-  }, [open, patient]);
+  }, [open, patient]); // siblingAppointments intentionally omitted — reset only on open/patient change
 
   // --- 🧬 TRIAGE ANALYTICS ENGINE ---
   const servicesCount = tempServices.length;
@@ -68,24 +82,42 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
     });
   };
 
-  const handleOpenMenu = (event, idx) => {
+  const handleOpenMenu = (event, idx, petIdx = null) => {
     setAnchorEl(event.currentTarget);
     setActiveSvcIdx(idx);
+    setActivePetIdx(petIdx);
   };
 
   const handleCloseMenu = () => {
     setAnchorEl(null);
     setActiveSvcIdx(null);
+    setActivePetIdx(null);
   };
 
   const handleSelectStaff = (vId, vName) => {
-    if (activeSvcIdx === null) {
-      const updated = tempServices.map(s => ({ ...s, staffId: vId, staffName: vName }));
-      setTempServices(updated);
+    if (activePetIdx !== null) {
+      // Assigning staff to a sibling pet's service
+      setSiblingServices(prev => {
+        const updated = prev.map((services, i) => {
+          if (i !== activePetIdx) return services;
+          if (activeSvcIdx === null) {
+            return services.map(s => ({ ...s, staffId: vId, staffName: vName }));
+          }
+          return services.map((s, si) =>
+            si === activeSvcIdx ? { ...s, staffId: vId, staffName: vName } : s
+          );
+        });
+        return updated;
+      });
     } else {
-      const updated = [...tempServices];
-      updated[activeSvcIdx] = { ...updated[activeSvcIdx], staffId: vId, staffName: vName };
-      setTempServices(updated);
+      // Assigning staff to the primary patient's service
+      if (activeSvcIdx === null) {
+        setTempServices(prev => prev.map(s => ({ ...s, staffId: vId, staffName: vName })));
+      } else {
+        setTempServices(prev => prev.map((s, i) =>
+          i === activeSvcIdx ? { ...s, staffId: vId, staffName: vName } : s
+        ));
+      }
     }
     handleCloseMenu();
   };
@@ -93,6 +125,11 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
   const handleUnassignAll = () => {
     const cleared = tempServices.map(s => ({ ...s, staffId: null, staffName: 'Unassigned' }));
     setTempServices(cleared);
+    if (groupMode) {
+      setSiblingServices(prev =>
+        prev.map(services => services.map(s => ({ ...s, staffId: null, staffName: 'Unassigned' })))
+      );
+    }
   };
 
   const handleSubmit = async () => {
@@ -101,64 +138,132 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
 
     try {
       if (patient.status === STATUS.CONFIRMED && mode === 'check-in') {
-        const allAssigned = tempServices.every(s => s.staffId);
-        if (!allAssigned) throw new Error("SECURITY BLOCK: All clinical services must have assigned personnel before check-in.");
+        // ── VALIDATION ────────────────────────────────────────────
+        const allPrimaryAssigned = tempServices.every(s => s.staffId);
+        if (!allPrimaryAssigned) {
+          throw new Error("SECURITY BLOCK: All clinical services must have assigned personnel before check-in.");
+        }
+
+        const isGroupCheckIn = groupMode && siblingAppointments.length > 0;
+
+        if (isGroupCheckIn) {
+          // Validate sibling services too
+          for (let i = 0; i < siblingAppointments.length; i++) {
+            const sibSvcs = siblingServices[i] || [];
+            if (sibSvcs.length > 0 && !sibSvcs.every(s => s.staffId)) {
+              const sibName = siblingAppointments[i].petName || `Pet ${i + 2}`;
+              throw new Error(`SECURITY BLOCK: All services for ${sibName} must be assigned before group check-in.`);
+            }
+          }
+        }
 
         await runTransaction(db, async (transaction) => {
-          const apptRef = doc(db, "appointments", patient.id);
-          const queueRef = doc(db, "queue", "daily_queue");
+          const queueRef   = doc(db, "queue", "daily_queue");
+          const primaryRef = doc(db, "appointments", patient.id);
 
-          // Optimistic lock: read fresh appointment state before issuing the ticket.
-          // If another staff member already processed this appointment, abort.
-          const [apptDoc, queueDoc] = await Promise.all([
-            transaction.get(apptRef),
+          // Collect sibling refs to read atomically
+          const siblingRefs = isGroupCheckIn
+            ? siblingAppointments.map(sib => doc(db, "appointments", sib.id))
+            : [];
+
+          // Read all docs in one round-trip
+          const reads = await Promise.all([
+            transaction.get(primaryRef),
             transaction.get(queueRef),
+            ...siblingRefs.map(ref => transaction.get(ref)),
           ]);
 
-          if (!apptDoc.exists()) throw new Error("Appointment not found. It may have been deleted.");
+          const [primaryDoc, queueDoc, ...siblingDocs] = reads;
 
-          const freshStatus = apptDoc.data().status;
-          if (freshStatus !== STATUS.CONFIRMED) {
+          if (!primaryDoc.exists()) throw new Error("Appointment not found. It may have been deleted.");
+
+          const freshPrimaryStatus = primaryDoc.data().status;
+          if (freshPrimaryStatus !== STATUS.CONFIRMED) {
             throw new Error(
-              `CONCURRENT CONFLICT: This appointment's status is now '${freshStatus}'. ` +
+              `CONCURRENT CONFLICT: This appointment's status is now '${freshPrimaryStatus}'. ` +
               `Another staff member may have already processed it.`
             );
           }
 
-          const newNumber = queueDoc.exists() ? (queueDoc.data().lastNumberIssued || 0) + 1 : 1;
+          // Validate sibling statuses — only check-in confirmed siblings
+          for (let i = 0; i < siblingDocs.length; i++) {
+            const sibDoc = siblingDocs[i];
+            if (!sibDoc.exists()) continue;
+            const sibStatus = sibDoc.data().status;
+            if (sibStatus !== STATUS.CONFIRMED) {
+              const sibName = siblingAppointments[i]?.petName || `Pet ${i + 2}`;
+              throw new Error(
+                `CONCURRENT CONFLICT: ${sibName} is already '${sibStatus}'. ` +
+                `Check in the group individually or refresh the queue.`
+              );
+            }
+          }
 
-          // --- STATUS PRIMING: Ensuring all services start as 'pending' ---
-          const primedServices = tempServices.map(s => ({ ...s, status: 'pending' }));
-
+          // Increment queue counter ONCE — shared number for the entire visit group
+          const sharedNumber = queueDoc.exists() ? (queueDoc.data().lastNumberIssued || 0) + 1 : 1;
+          const arrivedAt     = Timestamp.now();
           const staffSignature = profile?.fullName || user?.email || 'System/Admin';
-          const pulseEvent = {
-              eventId: makePulseEventId('assign'),
-              type: 'STATUS_CHANGE',
-              fromStatus: STATUS.CONFIRMED,
-              toStatus: STATUS.ARRIVED,
-              timestamp: Timestamp.now(), // CLIENT-SIDE CLOCK — see W1 in pulseUtils.js
-              staffId: user?.uid || 'unknown',
-              staffName: staffSignature,
-              note: 'Patient physically arrived and checked-in.'
+
+          // ── WRITE QUEUE COUNTER ──────────────────────────────
+          transaction.set(queueRef, { lastNumberIssued: sharedNumber }, { merge: true });
+
+          // ── WRITE PRIMARY APPOINTMENT ────────────────────────
+          const primaryPrimedServices = tempServices.map(s => ({ ...s, status: 'pending' }));
+          const primaryPulseEvent = {
+            eventId:    makePulseEventId('assign'),
+            type:       'STATUS_CHANGE',
+            fromStatus: STATUS.CONFIRMED,
+            toStatus:   STATUS.ARRIVED,
+            timestamp:  arrivedAt,
+            staffId:    user?.uid || 'unknown',
+            staffName:  staffSignature,
+            note:       isGroupCheckIn
+              ? `Group check-in (1/${siblingAppointments.length + 1}). Shared queue: ${sharedNumber}.`
+              : 'Patient physically arrived and checked-in.',
           };
 
-          transaction.set(queueRef, { lastNumberIssued: newNumber }, { merge: true });
-          transaction.update(apptRef, {
-            status: STATUS.ARRIVED,
-            queueNumber: newNumber,
+          transaction.update(primaryRef, {
+            status:      STATUS.ARRIVED,
+            queueNumber: sharedNumber,
             ticketPrefix: getTicketPrefix(patient),
-            timeArrived: Timestamp.now(),
-            services: primedServices,
-            clinicalPulse: arrayUnion(pulseEvent)
+            timeArrived: arrivedAt,
+            services:    primaryPrimedServices,
+            clinicalPulse: arrayUnion(primaryPulseEvent),
           });
 
-          // --- DUAL-SYNC: Update the Master Pet Record ---
           if (patient.petId) {
-            const petRef = doc(db, "pets", patient.petId);
-            transaction.update(petRef, {
-                lastVisit: Timestamp.now()
-            });
+            transaction.update(doc(db, "pets", patient.petId), { lastVisit: arrivedAt });
           }
+
+          // ── WRITE SIBLING APPOINTMENTS (shared queue number) ──
+          siblingDocs.forEach((sibDoc, i) => {
+            if (!sibDoc.exists()) return;
+            const sib = siblingAppointments[i];
+            const sibPrimedServices = (siblingServices[i] || sib.services || []).map(s => ({ ...s, status: 'pending' }));
+            const sibPulseEvent = {
+              eventId:    makePulseEventId('assign'),
+              type:       'STATUS_CHANGE',
+              fromStatus: STATUS.CONFIRMED,
+              toStatus:   STATUS.ARRIVED,
+              timestamp:  arrivedAt,
+              staffId:    user?.uid || 'unknown',
+              staffName:  staffSignature,
+              note:       `Group check-in (${i + 2}/${siblingAppointments.length + 1}). Shared queue: ${sharedNumber}.`,
+            };
+
+            transaction.update(siblingRefs[i], {
+              status:       STATUS.ARRIVED,
+              queueNumber:  sharedNumber,
+              ticketPrefix: getTicketPrefix(sib),
+              timeArrived:  arrivedAt,
+              services:     sibPrimedServices,
+              clinicalPulse: arrayUnion(sibPulseEvent),
+            });
+
+            if (sib.petId) {
+              transaction.update(doc(db, "pets", sib.petId), { lastVisit: arrivedAt });
+            }
+          });
         });
       } else {
         // PREP ONLY OR EXISTING PATIENT: Enforce assignment if they already arrived.
@@ -201,13 +306,40 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
   const BRAND_BROWN = '#3E2723';
   const isBundle = tempServices.length > 1;
 
+  // Visit group state
+  const isGroupCheckIn = isCheckInAction && groupMode && siblingAppointments.length > 0;
+  const totalPetsInGroup = siblingAppointments.length + 1; // primary + siblings
+
   // --- UNITARY BRANDING LOGIC ---
   const singleSvc = !isBundle ? tempServices[0] : null;
   const dObj = singleSvc ? (departments || []).find(d => d.name === singleSvc.department) : null;
-  const headerChipColor = isBundle ? BRAND_BROWN : (dObj?.color || BRAND_BROWN);
-  const headerChipLabel = isBundle ? "SERVICE BUNDLE" : (singleSvc?.name?.toUpperCase() || "VISIT");
+  const headerChipColor = isGroupCheckIn ? '#3ABEF9' : (isBundle ? BRAND_BROWN : (dObj?.color || BRAND_BROWN));
+  const headerChipLabel = isGroupCheckIn
+    ? `GROUP CHECK-IN (${totalPetsInGroup} PETS)`
+    : (isBundle ? "SERVICE BUNDLE" : (singleSvc?.name?.toUpperCase() || "VISIT"));
 
-  const allAssigned = tempServices.every(s => s.staffId);
+  const allPrimaryAssigned = tempServices.every(s => s.staffId);
+  const allSiblingsAssigned = siblingServices.every(svcs => svcs.length === 0 || svcs.every(s => s.staffId));
+  const allAssigned = allPrimaryAssigned && (!isGroupCheckIn || allSiblingsAssigned);
+
+  // Staff list used by the dropdown — depends on which pet/service is active
+  const getStaffListForMenu = () => {
+    if (activeSvcIdx === null && activePetIdx === null) return masterStaff;
+    if (activePetIdx !== null) {
+      const sibSvcs = siblingServices[activePetIdx] || [];
+      if (activeSvcIdx === null) {
+        // Batch assign for sibling — find staff covering all their departments
+        const requiredDepts = [...new Set(sibSvcs.map(s => s.department))];
+        return (vetsList || []).filter(v => requiredDepts.every(d => v.departments?.includes(d)));
+      }
+      const dept = sibSvcs[activeSvcIdx]?.department;
+      return (vetsList || []).filter(v => v.departments?.includes(dept));
+    }
+    // Primary patient single-service assign
+    return (vetsList || []).filter(v => v.departments?.includes(tempServices[activeSvcIdx]?.department));
+  };
+
+  const activeStaffList = getStaffListForMenu();
 
   return (
     <Dialog
@@ -228,11 +360,14 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
     >
       {/* DIALOG HEADER: STARBARKS BRANDING */}
       <DialogTitle sx={{
-        background: `linear-gradient(135deg, ${BRAND_BROWN} 0%, #1A0D0A 100%)`,
+        background: isGroupCheckIn
+          ? `linear-gradient(135deg, #0D47A1 0%, #1565C0 100%)`
+          : `linear-gradient(135deg, ${BRAND_BROWN} 0%, #1A0D0A 100%)`,
         color: 'white', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1, py: 2,
         zIndex: 10
       }}>
-        <AssignmentIndIcon /> Assign Staff
+        <AssignmentIndIcon />
+        {isGroupCheckIn ? `GROUP CHECK-IN — ${totalPetsInGroup} PETS` : 'Assign Staff'}
       </DialogTitle>
 
       {/* --- 🧬 THE CLINICAL IDENTITY TOWER (MATCHES MAIN QUEUE) --- */}
@@ -306,7 +441,62 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
             {errorMsg}
           </Alert>
         )}
+
+        {/* ── GROUP CHECK-IN MODE BANNER ─────────────────────────────
+            Shown only when this is a group check-in AND siblings exist. */}
+        {isCheckInAction && siblingAppointments.length > 0 && (
+          <Box sx={{
+            mx: 4, mt: 3,
+            p: 2,
+            bgcolor: groupMode ? '#E3F2FD' : '#FFF8E1',
+            border: `2px solid ${groupMode ? '#1565C0' : '#FFB74D'}`,
+            borderRadius: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 2,
+          }}>
+            <Box>
+              <Typography sx={{ fontWeight: '900', fontSize: '0.85rem', color: groupMode ? '#1565C0' : '#E65100', letterSpacing: '0.05em' }}>
+                {groupMode
+                  ? `GROUP CHECK-IN — ALL ${totalPetsInGroup} PETS WILL SHARE ONE QUEUE NUMBER`
+                  : 'INDIVIDUAL CHECK-IN — ONLY THIS PET WILL BE CHECKED IN'}
+              </Typography>
+              {groupMode && (
+                <Typography sx={{ fontSize: '0.75rem', fontWeight: '700', color: '#5D4037', mt: 0.3 }}>
+                  {siblingAppointments.map(s => s.petName).join(', ')} + {patient.petName}
+                </Typography>
+              )}
+            </Box>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => setGroupMode(m => !m)}
+              sx={{
+                fontWeight: '900',
+                fontSize: '0.65rem',
+                borderRadius: 0,
+                borderColor: groupMode ? '#1565C0' : '#E65100',
+                color: groupMode ? '#1565C0' : '#E65100',
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
+              }}
+            >
+              {groupMode ? 'CHECK IN INDIVIDUALLY' : 'SWITCH TO GROUP CHECK-IN'}
+            </Button>
+          </Box>
+        )}
+
         <Box sx={{ p: 4 }}>
+
+          {/* ── PRIMARY PATIENT SERVICE SECTION ─────────────────────── */}
+          {isGroupCheckIn && (
+            <Box sx={{ mb: 1, pb: 0.5, borderBottom: `2px solid ${BRAND_BROWN}` }}>
+              <Typography sx={{ fontWeight: '900', fontSize: '0.75rem', color: BRAND_BROWN, letterSpacing: '0.08em' }}>
+                PET 1 OF {totalPetsInGroup}: {patient.petName?.toUpperCase()} ({patient.petSpecies})
+              </Typography>
+            </Box>
+          )}
 
           {/* --- CRYSTALLINE TOOLBAR: Hardened against text-wrapping --- */}
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -325,7 +515,7 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
               size="small"
               variant="contained"
               startIcon={<PersonAddIcon sx={{ fontSize: 16 }} />}
-              onClick={(e) => handleOpenMenu(e, null)}
+              onClick={(e) => handleOpenMenu(e, null, null)}
               disabled={masterStaff.length === 0}
               sx={{
                 fontSize: '0.7rem', fontWeight: '1000', py: 0.6, px: 3,
@@ -338,7 +528,7 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
             </Button>
           </Box>
 
-          {/* --- 3-COLUMN TACTICAL PILL GRID --- */}
+          {/* --- 3-COLUMN TACTICAL PILL GRID (PRIMARY PATIENT) --- */}
           <Box sx={{
             display: 'grid',
             gridTemplateColumns: 'repeat(3, 1fr)',
@@ -352,7 +542,7 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
               return (
                 <Box
                   key={idx}
-                  onClick={(e) => handleOpenMenu(e, idx)}
+                  onClick={(e) => handleOpenMenu(e, idx, null)}
                   sx={{
                     display: 'flex', alignItems: 'center',
                     border: '1px solid', borderColor: isUnassigned ? '#E0E0E0' : `${bColor}40`,
@@ -381,6 +571,72 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
               Note: Clinical complexity threshold reached. Please perform individual service routing.
             </Alert>
           )}
+
+          {/* ── SIBLING PET SECTIONS (group mode only) ───────────────── */}
+          {isGroupCheckIn && siblingAppointments.map((sib, sibIdx) => {
+            const sibSvcs = siblingServices[sibIdx] || [];
+            return (
+              <Box key={sib.id} sx={{ mt: 4 }}>
+                <Box sx={{ mb: 1, pb: 0.5, borderBottom: `2px solid #1565C0` }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Typography sx={{ fontWeight: '900', fontSize: '0.75rem', color: '#1565C0', letterSpacing: '0.08em' }}>
+                      PET {sibIdx + 2} OF {totalPetsInGroup}: {sib.petName?.toUpperCase()} ({sib.petSpecies})
+                    </Typography>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<PersonAddIcon sx={{ fontSize: 12 }} />}
+                      onClick={(e) => handleOpenMenu(e, null, sibIdx)}
+                      sx={{
+                        fontSize: '0.6rem', fontWeight: '1000', py: 0.3, px: 1.5,
+                        borderRadius: 0,
+                        borderColor: '#1565C0', color: '#1565C0',
+                      }}
+                    >
+                      BATCH ASSIGN
+                    </Button>
+                  </Box>
+                </Box>
+                {sibSvcs.length === 0 ? (
+                  <Typography variant="caption" sx={{ color: '#9E9E9E', fontStyle: 'italic' }}>
+                    No services on this appointment.
+                  </Typography>
+                ) : (
+                  <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2 }}>
+                    {sibSvcs.map((svc, idx) => {
+                      const svcDept = (departments || []).find(d => d.name === svc.department);
+                      const bColor = svcDept ? svcDept.color : '#616161';
+                      const isUnassigned = !svc.staffId;
+                      return (
+                        <Box
+                          key={idx}
+                          onClick={(e) => handleOpenMenu(e, idx, sibIdx)}
+                          sx={{
+                            display: 'flex', alignItems: 'center',
+                            border: '1px solid', borderColor: isUnassigned ? '#E0E0E0' : `${bColor}40`,
+                            borderRadius: 1.5, overflow: 'hidden', height: 50, cursor: 'pointer',
+                            bgcolor: 'white', transition: 'all 0.15s',
+                            '&:hover': { transform: 'translateY(-2px)', boxShadow: 6, borderColor: bColor }
+                          }}
+                        >
+                          <Box sx={{ px: 2, bgcolor: bColor, color: 'white', display: 'flex', alignItems: 'center', height: '100%', minWidth: 100 }}>
+                            <Typography variant="caption" sx={{ fontWeight: '1000', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5, lineHeight: 1 }}>
+                              {svc.name}
+                            </Typography>
+                          </Box>
+                          <Box sx={{ px: 2, display: 'flex', alignItems: 'center', minWidth: 140 }}>
+                            <Typography variant="body2" sx={{ fontWeight: '800', fontSize: '0.85rem', color: isUnassigned ? '#BDBDBD' : BRAND_BROWN }}>
+                              {svc.staffName || 'Assign Personnel'}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      );
+                    })}
+                  </Box>
+                )}
+              </Box>
+            );
+          })}
         </Box>
       </DialogContent>
 
@@ -398,10 +654,17 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
             size="small"
             sx={{
               fontWeight: '1000', px: 4, py: 1,
-              bgcolor: BRAND_BROWN, '&:hover': { bgcolor: '#1A0D0A' }, boxShadow: 4, borderRadius: 1.5
+              bgcolor: isGroupCheckIn ? '#1565C0' : BRAND_BROWN,
+              '&:hover': { bgcolor: isGroupCheckIn ? '#0D47A1' : '#1A0D0A' },
+              boxShadow: 4, borderRadius: 1.5
             }}
           >
-            {loading ? "Processing..." : (isCheckInAction ? "ISSUE TICKET & DISPATCH" : "SAVE ASSIGNMENTS")}
+            {loading
+              ? "Processing..."
+              : isGroupCheckIn
+                ? `ISSUE SHARED TICKET — ${totalPetsInGroup} PETS`
+                : (isCheckInAction ? "ISSUE TICKET & DISPATCH" : "SAVE ASSIGNMENTS")
+            }
           </Button>
         </Stack>
       </DialogActions>
@@ -416,7 +679,10 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
         {/* --- 📈 DROPDOWN SORT HEADER: EXPANSIVE SPACING --- */}
         <Box sx={{ px: 4, py: 2.5, bgcolor: '#F5F5F5', display: 'flex', alignItems: 'center' }}>
           <Typography variant="overline" sx={{ fontWeight: '1000', color: activeSvcIdx === null ? '#2E7D32' : BRAND_BROWN, fontSize: '0.85rem', letterSpacing: 1.5, flexGrow: 1 }}>
-            {activeSvcIdx === null ? "BATCH ASSIGNMENT TOOL" : `Assignment: ${tempServices[activeSvcIdx].department}`}
+            {activePetIdx !== null
+              ? `${siblingAppointments[activePetIdx]?.petName?.toUpperCase() || 'SIBLING'}: ${activeSvcIdx === null ? 'BATCH ASSIGN' : (siblingServices[activePetIdx]?.[activeSvcIdx]?.department || 'SERVICE')}`
+              : (activeSvcIdx === null ? "BATCH ASSIGNMENT TOOL" : `Assignment: ${tempServices[activeSvcIdx]?.department || ''}`)
+            }
           </Typography>
 
           <Box sx={{ display: 'flex', gap: 1.5, ml: 4 }}>
@@ -438,8 +704,7 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
         </Box>
         <Divider />
 
-        {sortStaff(activeSvcIdx === null ? masterStaff : (vetsList || []).filter(v => v.departments?.includes(tempServices[activeSvcIdx].department)))
-          .map(v => {
+        {sortStaff(activeStaffList).map(v => {
             const load = getVetWorkload(v.id);
             return (
               <MenuItem key={v.id} onClick={() => handleSelectStaff(v.id, v.fullName)} sx={{ py: 2.5, px: 4 }}>
@@ -457,7 +722,7 @@ export default function AssignStaffModal({ open, onClose, patient, vetsList, act
           })
         }
 
-        {((activeSvcIdx === null ? masterStaff : (vetsList || []).filter(v => v.departments?.includes(tempServices[activeSvcIdx].department))).length === 0) && (
+        {activeStaffList.length === 0 && (
           <MenuItem disabled><Typography variant="caption" sx={{ px: 4, py: 2 }}>No universally qualified personnel found</Typography></MenuItem>
         )}
       </Menu>

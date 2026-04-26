@@ -22,7 +22,10 @@ import {
   Shield as ShieldIcon,
   OpenInFull as OpenInFullIcon, FitScreen as FitScreenIcon,
   SaveAlt as SaveAltIcon,
-  WarningAmber as WarningAmberIcon
+  WarningAmber as WarningAmberIcon,
+  NavigateBefore as NavigateBeforeIcon,
+  NavigateNext as NavigateNextIcon,
+  Pets as PetsIcon,
 } from '@mui/icons-material';
 import { doc, collection, Timestamp, updateDoc, getDoc, query, where, orderBy, getDocs, arrayUnion, writeBatch, runTransaction } from 'firebase/firestore';
 import { db, auth } from '../firebaseConfig';
@@ -325,7 +328,7 @@ const KNOWLEDGE_BASE = [
 
 // ZEN_PLACEHOLDERS imported from shared constants — see src/utils/soapConstants.js
 
-export default function ClinicalWorkspace({ open, onClose, patient, inventoryList, servicesList, departments, vetsList }) {
+export default function ClinicalWorkspace({ open, onClose, patient, inventoryList, servicesList, departments, vetsList, groupAppointments = [], onSwitchPatient }) {
   const clinicSettings = useClinicSettings();
   const vaccineCatalog = useVaccineCatalog();
   const { profile: cwProfile } = useUser();
@@ -368,6 +371,10 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   const [manualVaccineOverride, setManualVaccineOverride] = useState(false);
   // T3.1: EMR slide-over drawer state
   const [emrOpen, setEmrOpen] = useState(false);
+
+  // Phase 3 — Group navigation: confirmation dialog when switching pets with unsaved SOAP data.
+  // pendingSwitchTarget holds the appointment row the vet clicked; the dialog prompts Save/Discard/Cancel.
+  const [pendingSwitchTarget, setPendingSwitchTarget] = useState(null);
 
   // C3: Lab results — array of { testName, result, status, notes }
   const [labResults, setLabResults] = useState([]);
@@ -1395,9 +1402,11 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       });
       setIsDirty(false);
       showToast("Draft saved successfully.", "success");
+      return true;
     } catch (error) {
       console.error('[ClinicalWorkspace.handleSaveDraft]:', error.message);
       showToast("Failed to save draft: " + error.message, "error");
+      return false;
     } finally {
       setLoading(false);
     }
@@ -1515,6 +1524,39 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     } finally {
       setLoading(false);
     }
+  };
+
+  // --- Phase 3: Group Navigation Handlers ---
+
+  /**
+   * Requests a pet switch. If there are unsaved SOAP changes (isDirty), opens the
+   * confirmation dialog so the vet can choose to Save, Discard, or Cancel.
+   * If the current record is clean, switches immediately.
+   */
+  const handleRequestPetSwitch = (targetAppointment) => {
+    if (!onSwitchPatient || targetAppointment.id === patient?.id) return;
+    if (isDirty) {
+      setPendingSwitchTarget(targetAppointment);
+    } else {
+      onSwitchPatient(targetAppointment);
+    }
+  };
+
+  /** Save current draft, then switch to the pending target. */
+  const handleSaveThenSwitch = async () => {
+    const saved = await handleSaveDraft();
+    if (!saved) return;
+    const target = pendingSwitchTarget;
+    setPendingSwitchTarget(null);
+    if (target && onSwitchPatient) onSwitchPatient(target);
+  };
+
+  /** Discard dirty state and switch immediately. */
+  const handleDiscardThenSwitch = () => {
+    const target = pendingSwitchTarget;
+    setPendingSwitchTarget(null);
+    setIsDirty(false);
+    if (target && onSwitchPatient) onSwitchPatient(target);
   };
 
   const getWeightDelta = () => {
@@ -1918,6 +1960,147 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
               </IconButton>
             </Tooltip>
           </Box>
+
+          {/* --- PHASE 3: MULTI-PET GROUP NAVIGATION BAR ---
+              Rendered only when this appointment belongs to a visit group (groupAppointments.length > 1).
+              Shows all sibling pets as clickable chips. Clicking a different pet triggers dirty-state
+              checking before calling onSwitchPatient. Arrow buttons allow cycling through the group. */}
+          {groupAppointments.length > 1 && (() => {
+            const currentIdx = groupAppointments.findIndex(a => a.id === patient?.id);
+            const safeIdx = currentIdx < 0 ? 0 : currentIdx;
+
+            /** Returns a readable status label for the small status chips. */
+            const petStatusLabel = (status) => {
+              const map = {
+                confirmed: 'CONFIRMED', arrived: 'ARRIVED', 'in-consult': 'IN-CONSULT',
+                dispensing: 'DISPENSING', billing: 'BILLING', completed: 'DONE', pending: 'PENDING',
+              };
+              return map[status] || (status || 'UNKNOWN').toUpperCase();
+            };
+
+            /** Returns a background color for the pet status chip. */
+            const petStatusBg = (status) => {
+              if (status === 'in-consult') return COLORS.medical || '#1565C0';
+              if (status === 'arrived') return COLORS.success || '#2E7D32';
+              if (status === 'completed') return COLORS.textMuted || '#757575';
+              if (status === 'billing') return COLORS.accentWarm || '#E65100';
+              if (status === 'dispensing') return '#6A1B9A';
+              return COLORS.brand;
+            };
+
+            return (
+              <Box sx={{
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                px: 2,
+                py: 0.75,
+                bgcolor: '#F3F0EC',
+                borderBottom: `2px solid ${COLORS.border}`,
+                overflowX: 'auto',
+                minHeight: 44,
+              }}>
+                {/* Prev arrow */}
+                <Tooltip title="Previous Pet">
+                  <span>
+                    <IconButton
+                      size="small"
+                      disabled={safeIdx === 0}
+                      onClick={() => handleRequestPetSwitch(groupAppointments[safeIdx - 1])}
+                      sx={{ color: COLORS.brand, p: 0.25 }}
+                    >
+                      <NavigateBeforeIcon fontSize="small" />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+
+                {/* Pet chips */}
+                {groupAppointments.map((appt, idx) => {
+                  const isCurrent = appt.id === patient?.id;
+                  return (
+                    <Box
+                      key={appt.id}
+                      onClick={() => handleRequestPetSwitch(appt)}
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 0.5,
+                        px: 1.25,
+                        py: 0.4,
+                        cursor: isCurrent ? 'default' : 'pointer',
+                        bgcolor: isCurrent ? COLORS.accent : 'transparent',
+                        border: `2px solid ${isCurrent ? COLORS.accent : COLORS.border}`,
+                        borderRadius: 0,
+                        boxShadow: isCurrent ? `2px 2px 0 ${COLORS.brand}` : 'none',
+                        flexShrink: 0,
+                        transition: 'background 0.15s',
+                        '&:hover': isCurrent ? {} : { bgcolor: 'rgba(58,190,249,0.12)' },
+                      }}
+                    >
+                      <PetsIcon sx={{ fontSize: 12, color: isCurrent ? '#fff' : COLORS.brand }} />
+                      <Typography sx={{
+                        fontFamily: FONT,
+                        fontSize: '0.72rem',
+                        fontWeight: 900,
+                        color: isCurrent ? '#fff' : COLORS.brand,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.4,
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {appt.petName || `Pet ${idx + 1}`}
+                      </Typography>
+                      <Box sx={{
+                        ml: 0.5,
+                        px: 0.6,
+                        py: 0.1,
+                        bgcolor: petStatusBg(appt.status),
+                        borderRadius: 0,
+                      }}>
+                        <Typography sx={{
+                          fontFamily: FONT,
+                          fontSize: '0.55rem',
+                          fontWeight: 1000,
+                          color: '#fff',
+                          letterSpacing: 0.5,
+                        }}>
+                          {petStatusLabel(appt.status)}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  );
+                })}
+
+                {/* Next arrow */}
+                <Tooltip title="Next Pet">
+                  <span>
+                    <IconButton
+                      size="small"
+                      disabled={safeIdx === groupAppointments.length - 1}
+                      onClick={() => handleRequestPetSwitch(groupAppointments[safeIdx + 1])}
+                      sx={{ color: COLORS.brand, p: 0.25 }}
+                    >
+                      <NavigateNextIcon fontSize="small" />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+
+                {/* Group progress label */}
+                <Typography sx={{
+                  ml: 'auto',
+                  fontFamily: FONT,
+                  fontSize: '0.65rem',
+                  fontWeight: 900,
+                  color: COLORS.textMuted,
+                  whiteSpace: 'nowrap',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5,
+                }}>
+                  Pet {safeIdx + 1} of {groupAppointments.length}
+                </Typography>
+              </Box>
+            );
+          })()}
 
           {/* --- ALERTS --- */}
 
@@ -2433,6 +2616,61 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         petName={patient?.petName}
         petSpecies={patient?.petSpecies}
       />
+
+      {/* Phase 3 — Pet-switch confirmation dialog.
+          Shown when the vet clicks a sibling pet chip while isDirty (unsaved SOAP data).
+          Options: Save (persists draft then switches), Discard (clears dirty, switches), Cancel (stays). */}
+      <Dialog
+        open={!!pendingSwitchTarget}
+        onClose={() => setPendingSwitchTarget(null)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.brand}`, boxShadow: `6px 6px 0 ${COLORS.brand}` } }}
+      >
+        <DialogTitle sx={{
+          fontFamily: FONT, fontWeight: 900, fontSize: '1rem',
+          bgcolor: COLORS.kpiOrangeBg, borderBottom: `2px solid ${COLORS.brand}`,
+          display: 'flex', alignItems: 'center', gap: 1,
+        }}>
+          <WarningAmberIcon sx={{ color: COLORS.warning, fontSize: 20 }} />
+          UNSAVED CHANGES
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2, pb: 1 }}>
+          <DialogContentText sx={{ fontFamily: FONT, fontSize: '0.9rem', color: COLORS.brand, fontWeight: 600 }}>
+            You have unsaved SOAP changes for <strong>{patient?.petName}</strong>.
+            What would you like to do before switching to <strong>{pendingSwitchTarget?.petName}</strong>?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2, gap: 1, justifyContent: 'flex-end', bgcolor: COLORS.panelBg }}>
+          <Button
+            onClick={() => setPendingSwitchTarget(null)}
+            sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.textMuted, borderRadius: 0 }}
+          >
+            CANCEL
+          </Button>
+          <Button
+            onClick={handleDiscardThenSwitch}
+            variant="outlined"
+            color="error"
+            sx={{ fontFamily: FONT, fontWeight: 900, borderRadius: 0, borderWidth: 2 }}
+          >
+            DISCARD
+          </Button>
+          <Button
+            onClick={handleSaveThenSwitch}
+            variant="contained"
+            disabled={loading}
+            sx={{
+              fontFamily: FONT, fontWeight: 900, borderRadius: 0,
+              bgcolor: COLORS.accent, color: '#fff',
+              boxShadow: `3px 3px 0 ${COLORS.brand}`,
+              '&:hover': { bgcolor: COLORS.accentDark || COLORS.accent },
+            }}
+          >
+            {loading ? 'SAVING...' : 'SAVE & SWITCH'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Dialog>
   );
 }

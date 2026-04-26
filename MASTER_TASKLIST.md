@@ -345,7 +345,7 @@
 | T3.11 | RA 10173 right-to-erasure anonymization | P2 | 4 hrs | — | DONE | |
 | T3.12 | Multi-Pet Visit Support (full UI) | P2 | 15-20 hrs | T2.78 | DONE | Phase 8 (Step 8.1) done: group chip in identity col, sibling panel in audit popover |
 | T3.13 | Partial refund with line-item selection | P3 | 6-8 hrs | T2.104 | TODO | |
-| T3.14 | Unit test suite for pulseUtils.js | P3 | 3-4 hrs | — | TODO | |
+| T3.14 | Unit test suite for pulseUtils.js | P3 | 3-4 hrs | — | DONE | 50 tests, 0 fail; vitest + vite.config test block + eslint globals |
 | T3.15 | Firebase Auth for admin-created clients | P3 | 2-3 hrs | Blaze | TODO | |
 | T3.16 | Household/family modeling | P3 | 3-4 days | — | TODO | Late optional |
 | T3.17 | Communication history tab + routing | P3 | 3-5 days | Blaze | TODO | Late optional |
@@ -1003,6 +1003,7 @@
 | T3.73 | Reserve/release audit logging: write inventory_log entries when reserveStock/releaseStock modify reserved quantities. Currently invisible to audit trail. | P3 | 1 hr | T2.151 | TODO | Dropped — handoff.json L1406, L2206 |
 | T3.74 | auditReason append-only: convert auditReason field to auditReasons[] array so cancel→revert→re-cancel preserves all reasons. Low priority — clinicalPulse already captures full history. | P3 | 30 min | — | TODO | Dropped — handoff.json L2207 |
 | T3.75 | Draft save/resume pulse events: add DRAFT_SAVED and DRAFT_RESUMED clinicalPulse event types for forensic reconstruction. | P3 | 30 min | T2.19 | TODO | Dropped — handoff.json L2211 |
+| T3.76 | Unit tests for pulse event writing correctness | P2 | 4-6 hrs | T3.14 | DONE | 28 builders in pulseEventBuilders.js + 246 tests in pulseEventWriters.test.js. All 295 tests pass (246 new + 49 existing). Contract-tests all 7 source files (useQueueActions, Queue, ClinicalWorkspace, WalkInModal, AssignStaffModal, POSModal, Records). |
 
 ---
 
@@ -1222,6 +1223,9 @@
 | T4.47 | Staff KPI cards: wire dead KPICard component with real data | P2 | 1 hr | T2.221 | TODO | After dead code cleaned |
 | T4.48 | Credential management: PRC license expiry tracking, CE credits, renewal alerts | P3 | 2 hrs | — | TODO | PH regulatory |
 | T4.81 | Unify role/accessLevel redundancy: pick one canonical field, migrate all consumers (Firestore rules, App.jsx, UserContext, LoginScreen, Queue.jsx, useStaffManager, Records.jsx, StaffTable), write Firestore migration script for legacy veterinarian/groomer docs, delete the redundant field. | P3 | 4-5 hrs | T2.213 | TODO | Tech debt — both fields currently work but create confusion. See handoff.json role vs accessLevel analysis. |
+| T4.82 | Integration tests — pulseUtils consumer argument validation | P3 | 8-12 hrs | T3.14 | TODO | @testing-library/react + jsdom. Test consumers pass correct args to calculatePulseMetrics |
+| T4.83 | End-to-end clinical workflow automated tests | P3 | 15-20 hrs | T3.76 | TODO | Playwright/Cypress + Firestore emulator. Full patient lifecycle automated testing |
+| T4.84 | UI rendering tests for forensic components | P3 | 6-8 hrs | T3.14 | TODO | @testing-library/react + jsdom. ForensicMetricGrid, KPICard, chart rendering |
 
 ### Sales S (T4.49-T4.53) — +9.5 hrs
 

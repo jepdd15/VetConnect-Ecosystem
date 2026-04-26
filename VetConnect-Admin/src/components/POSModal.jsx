@@ -507,6 +507,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
     setLoading(true);
     try {
       const isGroupBill = billingMode === 'group' && isGroupVisit;
+      const checkoutCorrelationId = `CHK-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
       const transactionId = await runTransaction(db, async (transaction) => {
         const patientLabel = isGroupBill
@@ -539,6 +540,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
           });
 
           transaction.set(saleRef, {
+            checkoutCorrelationId,
             visitGroupId: patient.visitGroupId,
             billingMode: 'group',
             perPetBreakdown,
@@ -573,6 +575,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             const apptBreakdown = breakdown.find(b => b.appointmentId === appt.id);
             const apptRef = doc(db, "appointments", appt.id);
             transaction.update(apptRef, {
+              checkoutCorrelationId,
               status: 'completed',
               statusHistory: arrayUnion(appt.status || 'billing'),
               timeCompleted: Timestamp.now(),
@@ -592,6 +595,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         } else {
           // INDIVIDUAL MODE: existing behavior unchanged.
           transaction.set(saleRef, {
+            checkoutCorrelationId,
             appointmentId: patient.id,
             ownerId: patient.ownerId || null,
             petName: patient.petName,
@@ -619,6 +623,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
 
           const apptRef = doc(db, "appointments", patient.id);
           transaction.update(apptRef, {
+            checkoutCorrelationId,
             status: 'completed',
             statusHistory: arrayUnion(patient.status || 'billing'),
             timeCompleted: Timestamp.now(),

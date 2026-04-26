@@ -6,7 +6,7 @@
  * add `growth`, `clinical`, and `financial` computed blocks inside this
  * same hook without changing the existing return shape.
  *
- * @param {'today'|'week'|'month'|'quarter'|'year'} period
+ * @param {'today'|'week'|'month'|'quarter'|'year'|'3month'|'6month'|'1year'} period
  * @returns {{ loading, error, ops, growth, financial, queueData, appointments, staffList, period, dateRange }}
  */
 
@@ -64,6 +64,24 @@ function buildDateRange(period) {
       return { startDate: startOfDay(firstOfYear), endDate: endOfDay(now) };
     }
 
+    case '3month': {
+      const start = new Date(now);
+      start.setDate(now.getDate() - 89); // 90-day rolling window
+      return { startDate: startOfDay(start), endDate: endOfDay(now) };
+    }
+
+    case '6month': {
+      const start = new Date(now);
+      start.setDate(now.getDate() - 179); // 180-day rolling window
+      return { startDate: startOfDay(start), endDate: endOfDay(now) };
+    }
+
+    case '1year': {
+      const start = new Date(now);
+      start.setDate(now.getDate() - 364); // 365-day rolling window
+      return { startDate: startOfDay(start), endDate: endOfDay(now) };
+    }
+
     default:
       return { startDate: startOfDay(now), endDate: endOfDay(now) };
   }
@@ -106,6 +124,30 @@ function buildPrevDateRange(period) {
       const prevYearEnd = new Date(now.getFullYear() - 1, 11, 31);
       return { startDate: startOfDay(prevYear), endDate: endOfDay(prevYearEnd) };
     }
+    case '3month': {
+      // Previous 90 days: [now-179d, now-90d]
+      const prevEnd = new Date(now);
+      prevEnd.setDate(now.getDate() - 90);
+      const prevStart = new Date(prevEnd);
+      prevStart.setDate(prevEnd.getDate() - 89);
+      return { startDate: startOfDay(prevStart), endDate: endOfDay(prevEnd) };
+    }
+    case '6month': {
+      // Previous 180 days: [now-359d, now-180d]
+      const prevEnd = new Date(now);
+      prevEnd.setDate(now.getDate() - 180);
+      const prevStart = new Date(prevEnd);
+      prevStart.setDate(prevEnd.getDate() - 179);
+      return { startDate: startOfDay(prevStart), endDate: endOfDay(prevEnd) };
+    }
+    case '1year': {
+      // Previous 365 days: [now-729d, now-365d]
+      const prevEnd = new Date(now);
+      prevEnd.setDate(now.getDate() - 365);
+      const prevStart = new Date(prevEnd);
+      prevStart.setDate(prevEnd.getDate() - 364);
+      return { startDate: startOfDay(prevStart), endDate: endOfDay(prevEnd) };
+    }
     default:
       return buildDateRange(period);
   }
@@ -122,12 +164,12 @@ const STAFF_ROLES = ['veterinarian', 'groomer', 'staff', 'admin'];
  * sorted chronologically by the earliest timestamp in each bucket.
  *
  * For 'today': group by hour. For 'week': group by weekday label.
- * For 'month': group by day-of-month. For 'quarter': group by ISO week.
- * For 'year': group by month name.
+ * For 'month': group by day-of-month. For 'quarter'/'3month'/'6month': group by ISO week.
+ * For 'year'/'1year': group by month name.
  *
  * @param {Object[]} docs       - Array of Firestore document objects
  * @param {string}   dateField  - Field name holding a Firestore Timestamp or Date
- * @param {string}   period     - One of 'today' | 'week' | 'month' | 'quarter' | 'year'
+ * @param {string}   period     - One of 'today' | 'week' | 'month' | 'quarter' | 'year' | '3month' | '6month' | '1year'
  * @returns {{ label: string, count: number }[]}
  */
 function buildTrend(docs, dateField, period) {
@@ -149,12 +191,13 @@ function buildTrend(docs, dateField, period) {
       key = date.toLocaleDateString('en-PH', { weekday: 'short' });
     } else if (period === 'month') {
       key = `${date.getMonth() + 1}/${date.getDate()}`;
-    } else if (period === 'quarter') {
+    } else if (period === 'quarter' || period === '3month' || period === '6month') {
       const weekOfYear = Math.ceil(
         ((date - new Date(date.getFullYear(), 0, 1)) / 86400000 + 1) / 7,
       );
       key = `W${weekOfYear}`;
     } else {
+      // 'year' and '1year' both bucket by month name
       key = date.toLocaleDateString('en-PH', { month: 'short' });
     }
 
@@ -174,7 +217,7 @@ function buildTrend(docs, dateField, period) {
  *
  * @param {Object[]} docs       - Array of Firestore document objects
  * @param {string}   dateField  - Field name holding a Firestore Timestamp or Date
- * @param {string}   period     - One of 'today' | 'week' | 'month' | 'quarter' | 'year'
+ * @param {string}   period     - One of 'today' | 'week' | 'month' | 'quarter' | 'year' | '3month' | '6month' | '1year'
  * @param {string}   valueField - Field name holding the numeric value to sum
  * @returns {{ label: string, amount: number }[]}
  */
@@ -198,12 +241,13 @@ function buildFinancialTrend(docs, dateField, period, valueField) {
       key = date.toLocaleDateString('en-PH', { weekday: 'short' });
     } else if (period === 'month') {
       key = `${date.getMonth() + 1}/${date.getDate()}`;
-    } else if (period === 'quarter') {
+    } else if (period === 'quarter' || period === '3month' || period === '6month') {
       const weekOfYear = Math.ceil(
         ((date - new Date(date.getFullYear(), 0, 1)) / 86400000 + 1) / 7,
       );
       key = `W${weekOfYear}`;
     } else {
+      // 'year' and '1year' both bucket by month name
       key = date.toLocaleDateString('en-PH', { month: 'short' });
     }
 
@@ -1118,7 +1162,11 @@ export function useDashboardData(period = 'today') {
         : period === 'week' ? 'prior week'
         : period === 'month' ? 'last month'
         : period === 'quarter' ? 'prior quarter'
-        : 'last year',
+        : period === 'year' ? 'last year'
+        : period === '3month' ? 'prior 3 months'
+        : period === '6month' ? 'prior 6 months'
+        : period === '1year' ? 'prior year'
+        : 'previous period',
     };
   }, [appointments, sales, expenses, medicalRecords, prevData, period]);
 

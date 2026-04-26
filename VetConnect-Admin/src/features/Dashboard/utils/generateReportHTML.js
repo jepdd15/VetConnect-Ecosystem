@@ -248,6 +248,9 @@ export function generateReportHTML(tabKey, data, clinicSettings, period) {
     month: 'This Month',
     quarter: 'This Quarter',
     year: 'This Year',
+    '3month': 'Last 3 Months',
+    '6month': 'Last 6 Months',
+    '1year': 'Last 1 Year',
   }[period] || period;
 
   const toDate = (v) => v instanceof Date ? v : (v?.toDate?.() ?? new Date());

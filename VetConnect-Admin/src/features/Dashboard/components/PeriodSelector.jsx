@@ -8,6 +8,9 @@ const PERIODS = [
   { key: 'month',   label: 'This Month' },
   { key: 'quarter', label: 'This Quarter' },
   { key: 'year',    label: 'This Year' },
+  { key: '3month',  label: '3 Months' },
+  { key: '6month',  label: '6 Months' },
+  { key: '1year',   label: '1 Year' },
 ];
 
 /**

@@ -956,7 +956,7 @@
 
 | ID | Name | Priority | Effort | Status |
 |---|---|---|---|---|
-| T3.43 | Revenue trend extended (3mo/6mo/1yr) | P3 | 1.5 hrs | TODO |
+| T3.43 | Revenue trend extended (3mo/6mo/1yr) | P3 | 1.5 hrs | DONE |
 | T3.44 | Stock turnover rate per product | P3 | 2 hrs | TODO |
 | T3.45 | Shrinkage estimate | P3 | 1 hr | TODO |
 | T3.46 | Predictive demand forecasting | P3 | 3-5 hrs | TODO |

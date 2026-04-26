@@ -18,6 +18,7 @@ import PeopleAltIcon from '@mui/icons-material/PeopleAlt';
 import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
 import KPICard from './KPICard';
 import HorizontalBar from './HorizontalBar';
+import DraggableKPIGrid from './DraggableKPIGrid';
 import { buildDrillDown } from '../utils/drillDownConfig';
 
 // Hex colors for each appointment status in the distribution bar.
@@ -65,7 +66,15 @@ const DEPT_COLORS = [
  * @param {object} clinicSettings  - From useClinicSettings()
  * @param {boolean} isOpen         - Whether the clinic is currently open
  */
-export default function OperationsTab({ data, clinicSettings, isOpen, insights = {} }) {
+export default function OperationsTab({
+  data,
+  clinicSettings,
+  isOpen,
+  insights = {},
+  yearAgoDeltas = null,
+  layout,
+  onLayoutChange,
+}) {
   const navigate = useNavigate();
   const drillDown = buildDrillDown(navigate);
   const { ops, queueData } = data;
@@ -150,9 +159,9 @@ export default function OperationsTab({ data, clinicSettings, isOpen, insights =
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
 
-      {/* ROW 1: PRIMARY KPI STRIP */}
-      <Grid container spacing={2}>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+      {/* ROWS 1 + 3 + 5: DRAGGABLE KPI CARDS (T4.2) */}
+      <DraggableKPIGrid layout={layout} onLayoutChange={onLayoutChange}>
+        <div key="totalAppointments">
           <KPICard
             title="TOTAL APPOINTMENTS"
             value={totalAppointments}
@@ -160,9 +169,10 @@ export default function OperationsTab({ data, clinicSettings, isOpen, insights =
             variant="blue"
             onClick={drillDown['TOTAL APPOINTMENTS']}
             insight={insights['TOTAL APPOINTMENTS']}
+            yearAgoDelta={yearAgoDeltas?.appointments}
           />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        </div>
+        <div key="completed">
           <KPICard
             title="COMPLETED"
             value={statusCounts.completed || 0}
@@ -171,9 +181,10 @@ export default function OperationsTab({ data, clinicSettings, isOpen, insights =
             subtitle={throughputPct}
             onClick={drillDown['COMPLETED']}
             insight={insights['COMPLETED']}
+            yearAgoDelta={yearAgoDeltas?.appointments}
           />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        </div>
+        <div key="activeInFacility">
           <KPICard
             title="ACTIVE IN FACILITY"
             value={activeCount}
@@ -181,9 +192,10 @@ export default function OperationsTab({ data, clinicSettings, isOpen, insights =
             variant="orange"
             onClick={drillDown['ACTIVE IN FACILITY']}
             insight={insights['ACTIVE IN FACILITY']}
+            yearAgoDelta={yearAgoDeltas?.appointments}
           />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        </div>
+        <div key="queueServing">
           <KPICard
             title="QUEUE SERVING"
             value={queueDisplay}
@@ -193,20 +205,8 @@ export default function OperationsTab({ data, clinicSettings, isOpen, insights =
             onClick={drillDown['QUEUE SERVING']}
             insight={insights['QUEUE SERVING']}
           />
-        </Grid>
-      </Grid>
-
-      {/* ROW 2: APPOINTMENT STATUS DISTRIBUTION (T2.228b) */}
-      <Box sx={panelSx}>
-        <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.accent, mb: 1.5 }}>
-          APPOINTMENT STATUS DISTRIBUTION
-        </Typography>
-        <HorizontalBar segments={statusSegments} height={32} showLabels showLegend />
-      </Box>
-
-      {/* ROW 3: WAIT TIMES + CONSULT DURATION (T2.281, T2.271) */}
-      <Grid container spacing={2}>
-        <Grid size={{ xs: 12, md: 4 }}>
+        </div>
+        <div key="avgWaitTime">
           <KPICard
             title="AVG WAIT TIME"
             value={`${avgWaitMins} min`}
@@ -216,8 +216,8 @@ export default function OperationsTab({ data, clinicSettings, isOpen, insights =
             onClick={drillDown['AVG WAIT TIME']}
             insight={insights['AVG WAIT TIME']}
           />
-        </Grid>
-        <Grid size={{ xs: 12, md: 4 }}>
+        </div>
+        <div key="longestWait">
           <KPICard
             title="LONGEST CURRENT WAIT"
             value={longestCurrentWait > 0 ? `${longestCurrentWait} min` : '--'}
@@ -226,8 +226,8 @@ export default function OperationsTab({ data, clinicSettings, isOpen, insights =
             onClick={drillDown['LONGEST CURRENT WAIT']}
             insight={insights['LONGEST CURRENT WAIT']}
           />
-        </Grid>
-        <Grid size={{ xs: 12, md: 4 }}>
+        </div>
+        <div key="avgConsultDuration">
           <KPICard
             title="AVG CONSULT DURATION"
             value={consultCount > 0 ? `${avgConsultMins} min` : '--'}
@@ -237,8 +237,49 @@ export default function OperationsTab({ data, clinicSettings, isOpen, insights =
             onClick={drillDown['AVG CONSULT DURATION']}
             insight={insights['AVG CONSULT DURATION']}
           />
-        </Grid>
-      </Grid>
+        </div>
+        <div key="noShows">
+          <KPICard
+            title="NO-SHOWS"
+            value={noShowCount}
+            icon={<PersonOffIcon />}
+            variant={noShowCount > 0 ? 'orange' : 'green'}
+            compact
+            onClick={drillDown['NO-SHOWS']}
+            insight={insights['NO-SHOWS']}
+          />
+        </div>
+        <div key="cancellations">
+          <KPICard
+            title="CANCELLATIONS"
+            value={cancelledCount}
+            icon={<BlockIcon />}
+            variant={cancelledCount > 0 ? 'red' : 'green'}
+            compact
+            onClick={drillDown['CANCELLATIONS']}
+            insight={insights['CANCELLATIONS']}
+          />
+        </div>
+        <div key="emergencies">
+          <KPICard
+            title="EMERGENCIES"
+            value={emergencyCount}
+            icon={<LocalHospitalIcon />}
+            variant={emergencyCount > 0 ? 'red' : 'neutral'}
+            compact
+            onClick={drillDown['EMERGENCIES']}
+            insight={insights['EMERGENCIES']}
+          />
+        </div>
+      </DraggableKPIGrid>
+
+      {/* ROW 2: APPOINTMENT STATUS DISTRIBUTION (T2.228b) */}
+      <Box sx={panelSx}>
+        <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.accent, mb: 1.5 }}>
+          APPOINTMENT STATUS DISTRIBUTION
+        </Typography>
+        <HorizontalBar segments={statusSegments} height={32} showLabels showLegend />
+      </Box>
 
       {/* ROW 4: DEPARTMENT LOAD + STAFF WORKLOAD (T2.286, T2.287) */}
       <Grid container spacing={2}>
@@ -309,42 +350,6 @@ export default function OperationsTab({ data, clinicSettings, isOpen, insights =
         </Grid>
       </Grid>
 
-      {/* ROW 5: NO-SHOW / CANCELLATION / EMERGENCY (T2.279, T2.288) */}
-      <Grid container spacing={2}>
-        <Grid size={{ xs: 12, sm: 4 }}>
-          <KPICard
-            title="NO-SHOWS"
-            value={noShowCount}
-            icon={<PersonOffIcon />}
-            variant={noShowCount > 0 ? 'orange' : 'green'}
-            compact
-            onClick={drillDown['NO-SHOWS']}
-            insight={insights['NO-SHOWS']}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 4 }}>
-          <KPICard
-            title="CANCELLATIONS"
-            value={cancelledCount}
-            icon={<BlockIcon />}
-            variant={cancelledCount > 0 ? 'red' : 'green'}
-            compact
-            onClick={drillDown['CANCELLATIONS']}
-            insight={insights['CANCELLATIONS']}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 4 }}>
-          <KPICard
-            title="EMERGENCIES"
-            value={emergencyCount}
-            icon={<LocalHospitalIcon />}
-            variant={emergencyCount > 0 ? 'red' : 'neutral'}
-            compact
-            onClick={drillDown['EMERGENCIES']}
-            insight={insights['EMERGENCIES']}
-          />
-        </Grid>
-      </Grid>
 
     </Box>
   );

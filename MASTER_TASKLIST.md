@@ -1,9 +1,9 @@
 # VetConnect Master Task List
 
 **Last updated:** 2026-04-27 · **Branch:** `main`
-**Total tasks:** ~723 · **Cancelled/Absorbed:** ~17 · **Active:** ~706
-**DONE:** ~555 · **TODO:** ~151 · **Deferred sub-tasks:** 50
-**Phase 2:** COMPLETE · **Phase 3 Essential:** COMPLETE (except Blaze-gated T3.40-42) · **Phase 3 High-Value:** 8/8 batches done (T3.50 remains, T3.5 DONE)
+**Total tasks:** ~727 · **Cancelled/Absorbed:** ~17 · **Active:** ~710
+**DONE:** ~559 · **TODO:** ~151 · **Deferred sub-tasks:** 50
+**Phase 2:** COMPLETE · **Phase 3 Essential:** COMPLETE (except Blaze-gated T3.40-42) · **Phase 3 High-Value:** 8/8 batches done (T3.50 remains, T3.5 DONE) · **Phase 4 Dashboard S:** COMPLETE (T4.1-T4.4)
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~158 hours (Phase 4 S-Tier)
 
 **Companion files:**
@@ -1004,6 +1004,10 @@
 | T3.74 | auditReason append-only: convert auditReason field to auditReasons[] array so cancel→revert→re-cancel preserves all reasons. Low priority — clinicalPulse already captures full history. | P3 | 30 min | — | TODO | Dropped — handoff.json L2207 |
 | T3.75 | Draft save/resume pulse events: add DRAFT_SAVED and DRAFT_RESUMED clinicalPulse event types for forensic reconstruction. | P3 | 30 min | T2.19 | TODO | Dropped — handoff.json L2211 |
 | T3.76 | Unit tests for pulse event writing correctness | P2 | 4-6 hrs | T3.14 | DONE | 28 builders in pulseEventBuilders.js + 246 tests in pulseEventWriters.test.js. All 295 tests pass (246 new + 49 existing). Contract-tests all 7 source files (useQueueActions, Queue, ClinicalWorkspace, WalkInModal, AssignStaffModal, POSModal, Records). |
+| T3.77 | Scanned/photo signature upload for consent system | P3 | 2-3 hrs | T3.5, Blaze | TODO | expo-image-picker → Cloud Storage → URL in signatureData. Add tab to ConsentScreen + ConsentRecordDialog. Deferred from T3.5 Amendment 1 |
+| T3.78 | Sign-off pulse event gap — add STATUS_CHANGE for in-consult→dispensing/billing | P2 | 30 min | — | TODO | handleSaveConsult writes statusHistory + forensicSeal but no clinicalPulse event. Data integrity gap discovered during T3.76 audit |
+| T3.79 | Historical tooltip period flexibility — match lookback to selected period | P3 | 30 min | T3.43 | TODO | Dashboard historical min/max/avg tooltip hardcoded to 6 months. Should adapt to 3mo/6mo/1yr. Deferred from T3.43 |
+| T3.80 | Erasure engine Cloud Function migration (T3.11 Phase B) | P3 | 3-4 hrs | T3.11, T3.40, Blaze | TODO | Move useErasureEngine to callable CF + admin.auth().deleteUser() + atomic cross-collection writes. Documented in PHASE3_RA10173_ERASURE_PLAN.md Blaze Upgrade Path |
 
 ---
 
@@ -1134,10 +1138,10 @@
 
 | ID | Name | Priority | Effort | Depends On | Status | Notes |
 |---|---|---|---|---|---|---|
-| T4.1 | Real-time auto-refresh: 30s interval on useDashboardData | P2 | 1 hr | T2.315 | TODO | |
-| T4.2 | Customizable widget layout: react-grid-layout, per-user prefs in Firestore | P3 | 3-4 hrs | T2.228 | TODO | |
-| T4.3 | Comparative benchmarking: this month vs same month last year | P2 | 2 hrs | T2.320 | TODO | Needs historical data |
-| T4.4 | Dashboard sharing: snapshot URL or full multi-tab PDF export | P3 | 1.5 hrs | T2.333, T2.334 | TODO | |
+| T4.1 | Real-time auto-refresh: 30s interval on useDashboardData | P2 | 1 hr | T2.315 | DONE | refreshKey param, 30s interval with 3 guards (toggle + Page Visibility + interaction pause), spinning AutorenewIcon |
+| T4.2 | Customizable widget layout: react-grid-layout, per-user prefs in Firestore | P3 | 3-4 hrs | T2.228 | DONE | DraggableKPIGrid + useDashboardPreferences + defaultLayouts. KPI cards draggable, layout saved per-user, Reset Layout button |
+| T4.3 | Comparative benchmarking: this month vs same month last year | P2 | 2 hrs | T2.320 | DONE | buildYearAgoRange, benchmarkEnabled 3rd param, "VS LAST YEAR" chip, blue YoY deltas on KPICards |
+| T4.4 | Dashboard sharing: snapshot URL or full multi-tab PDF export | P3 | 1.5 hrs | T2.333, T2.334 | DONE | generateFullReportHTML (4-tab concatenation with page breaks), EXPORT ALL TABS button, popup-blocked Snackbar |
 
 ### Queue S (T4.5-T4.10) — +13 hrs
 

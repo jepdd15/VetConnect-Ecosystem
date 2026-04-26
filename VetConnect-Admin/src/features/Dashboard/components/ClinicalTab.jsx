@@ -31,6 +31,7 @@ import PersonIcon from '@mui/icons-material/Person';
 import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
 import KPICard from './KPICard';
 import HorizontalBar from './HorizontalBar';
+import DraggableKPIGrid from './DraggableKPIGrid';
 import {
   CHART_COLORS, CHART_TOOLTIP_STYLE, CHART_TICK_STYLE, CHART_GRID_PROPS, PANEL_SX,
 } from './chartConfig';
@@ -38,7 +39,14 @@ import { buildDrillDown } from '../utils/drillDownConfig';
 
 // ── Component ────────────────────────────────────────────────────
 
-export default function ClinicalTab({ data, insights = {}, clinicSettings = {} }) {
+export default function ClinicalTab({
+  data,
+  insights = {},
+  clinicSettings = {},
+  yearAgoDeltas = null,
+  layout,
+  onLayoutChange,
+}) {
   const navigate = useNavigate();
   const drillDown = buildDrillDown(navigate);
   const { clinical, deltas } = data;
@@ -53,9 +61,9 @@ export default function ClinicalTab({ data, insights = {}, clinicSettings = {} }
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
 
-      {/* ── ROW 1: PRIMARY KPIs (T2.289, T2.291, T2.293, T2.295) ── */}
-      <Grid container spacing={2}>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+      {/* ── ROW 1: PRIMARY KPIs — DRAGGABLE (T4.2) ────────────────── */}
+      <DraggableKPIGrid layout={layout} onLayoutChange={onLayoutChange}>
+        <div key="recordsSigned">
           <KPICard
             title="RECORDS SIGNED"
             value={clinical.recordsSigned}
@@ -67,9 +75,10 @@ export default function ClinicalTab({ data, insights = {}, clinicSettings = {} }
             insight={insights['RECORDS SIGNED']}
             goalTarget={goals.monthlyRecordsSigned || 0}
             historicalContext={hist.recordsPerMonth}
+            yearAgoDelta={yearAgoDeltas?.recordsSigned}
           />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        </div>
+        <div key="vaccinations">
           <KPICard
             title="VACCINATIONS"
             value={clinical.totalVaccinations}
@@ -78,9 +87,10 @@ export default function ClinicalTab({ data, insights = {}, clinicSettings = {} }
             subtitle={`${clinical.vaccinesByType.length} vaccine types`}
             onClick={drillDown['VACCINATIONS']}
             insight={insights['VACCINATIONS']}
+            yearAgoDelta={null}
           />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        </div>
+        <div key="followUpCompliance">
           <KPICard
             title="FOLLOW-UP COMPLIANCE"
             value={`${clinical.followUpComplianceRate}%`}
@@ -94,8 +104,8 @@ export default function ClinicalTab({ data, insights = {}, clinicSettings = {} }
             onClick={drillDown['FOLLOW-UP COMPLIANCE']}
             insight={insights['FOLLOW-UP COMPLIANCE']}
           />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        </div>
+        <div key="confinementRate">
           <KPICard
             title="CONFINEMENT RATE"
             value={`${clinical.confinementRate}%`}
@@ -105,8 +115,8 @@ export default function ClinicalTab({ data, insights = {}, clinicSettings = {} }
             onClick={drillDown['CONFINEMENT RATE']}
             insight={insights['CONFINEMENT RATE']}
           />
-        </Grid>
-      </Grid>
+        </div>
+      </DraggableKPIGrid>
 
       {/* ── ROW 2: TOP 5 DIAGNOSES (T2.290) ─────────────────────── */}
       <Box sx={PANEL_SX}>

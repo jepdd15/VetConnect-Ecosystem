@@ -1,5 +1,125 @@
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+// ── Shared CSS for all report documents ───────────────────────────────────
+// Both generateReportHTML and generateFullReportHTML reference this constant
+// so the stylesheet stays in one place.
+const REPORT_CSS = `
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 12px;
+      color: #333;
+      padding: 24px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .header {
+      border-bottom: 3px solid #3E2723;
+      padding-bottom: 12px;
+      margin-bottom: 20px;
+    }
+    .header h1 {
+      font-size: 20px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: #3E2723;
+      margin-bottom: 4px;
+    }
+    .header .subtitle {
+      font-size: 11px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .header .period {
+      font-size: 13px;
+      font-weight: 700;
+      color: #5D4037;
+      margin-top: 6px;
+    }
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .kpi-card {
+      border: 2px solid #3E2723;
+      padding: 12px;
+    }
+    .kpi-card .label {
+      font-size: 9px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #666;
+      margin-bottom: 4px;
+    }
+    .kpi-card .value {
+      font-size: 18px;
+      font-weight: 900;
+      color: #3E2723;
+    }
+    .kpi-card .sub {
+      font-size: 9px;
+      color: #888;
+      margin-top: 2px;
+    }
+    .section {
+      margin-bottom: 20px;
+    }
+    .section h2 {
+      font-size: 12px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: #3E2723;
+      border-bottom: 2px solid #3E2723;
+      padding-bottom: 4px;
+      margin-bottom: 8px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
+    th {
+      background: #FFF8E1;
+      border: 1px solid #3E2723;
+      padding: 6px 8px;
+      font-weight: 800;
+      text-transform: uppercase;
+      font-size: 9px;
+      letter-spacing: 0.5px;
+      text-align: left;
+      color: #3E2723;
+    }
+    td {
+      border: 1px solid #ccc;
+      padding: 5px 8px;
+    }
+    td.numeric {
+      text-align: right;
+      font-weight: 700;
+    }
+    .footer {
+      margin-top: 30px;
+      padding-top: 12px;
+      border-top: 1px solid #ccc;
+      font-size: 9px;
+      color: #999;
+      text-align: center;
+    }
+    @media print {
+      body { padding: 12px; }
+      .kpi-grid { grid-template-columns: repeat(4, 1fr); }
+      .kpi-card { break-inside: avoid; }
+      .section { break-inside: avoid; }
+      .footer { position: fixed; bottom: 0; left: 0; right: 0; }
+    }
+`;
+
 function fmt(n) {
   return `₱${(n || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
@@ -233,6 +353,18 @@ function buildFinancialReport(data) {
   return html;
 }
 
+// ── Period label lookup (shared between single-tab and full-report exports) ──
+const PERIOD_LABELS = {
+  today:   'Today',
+  week:    'This Week',
+  month:   'This Month',
+  quarter: 'This Quarter',
+  year:    'This Year',
+  '3month': 'Last 3 Months',
+  '6month': 'Last 6 Months',
+  '1year':  'Last 1 Year',
+};
+
 export function generateReportHTML(tabKey, data, clinicSettings, period) {
   const clinicName = esc(clinicSettings.clinicName || 'Starbarks Veterinary Clinic');
   const now = new Date();
@@ -242,16 +374,7 @@ export function generateReportHTML(tabKey, data, clinicSettings, period) {
     hour: '2-digit', minute: '2-digit',
   });
 
-  const periodLabel = {
-    today: 'Today',
-    week: 'This Week',
-    month: 'This Month',
-    quarter: 'This Quarter',
-    year: 'This Year',
-    '3month': 'Last 3 Months',
-    '6month': 'Last 6 Months',
-    '1year': 'Last 1 Year',
-  }[period] || period;
+  const periodLabel = PERIOD_LABELS[period] || period;
 
   const toDate = (v) => v instanceof Date ? v : (v?.toDate?.() ?? new Date());
   const dateRangeStr = data.dateRange
@@ -279,122 +402,7 @@ export function generateReportHTML(tabKey, data, clinicSettings, period) {
 <head>
   <meta charset="UTF-8">
   <title>${esc(tabLabels[tabKey])} — ${clinicName}</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-      font-size: 12px;
-      color: #333;
-      padding: 24px;
-      max-width: 800px;
-      margin: 0 auto;
-    }
-    .header {
-      border-bottom: 3px solid #3E2723;
-      padding-bottom: 12px;
-      margin-bottom: 20px;
-    }
-    .header h1 {
-      font-size: 20px;
-      font-weight: 900;
-      text-transform: uppercase;
-      letter-spacing: 2px;
-      color: #3E2723;
-      margin-bottom: 4px;
-    }
-    .header .subtitle {
-      font-size: 11px;
-      color: #666;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-    .header .period {
-      font-size: 13px;
-      font-weight: 700;
-      color: #5D4037;
-      margin-top: 6px;
-    }
-    .kpi-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 12px;
-      margin-bottom: 24px;
-    }
-    .kpi-card {
-      border: 2px solid #3E2723;
-      padding: 12px;
-    }
-    .kpi-card .label {
-      font-size: 9px;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: #666;
-      margin-bottom: 4px;
-    }
-    .kpi-card .value {
-      font-size: 18px;
-      font-weight: 900;
-      color: #3E2723;
-    }
-    .kpi-card .sub {
-      font-size: 9px;
-      color: #888;
-      margin-top: 2px;
-    }
-    .section {
-      margin-bottom: 20px;
-    }
-    .section h2 {
-      font-size: 12px;
-      font-weight: 900;
-      text-transform: uppercase;
-      letter-spacing: 1.5px;
-      color: #3E2723;
-      border-bottom: 2px solid #3E2723;
-      padding-bottom: 4px;
-      margin-bottom: 8px;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 11px;
-    }
-    th {
-      background: #FFF8E1;
-      border: 1px solid #3E2723;
-      padding: 6px 8px;
-      font-weight: 800;
-      text-transform: uppercase;
-      font-size: 9px;
-      letter-spacing: 0.5px;
-      text-align: left;
-      color: #3E2723;
-    }
-    td {
-      border: 1px solid #ccc;
-      padding: 5px 8px;
-    }
-    td.numeric {
-      text-align: right;
-      font-weight: 700;
-    }
-    .footer {
-      margin-top: 30px;
-      padding-top: 12px;
-      border-top: 1px solid #ccc;
-      font-size: 9px;
-      color: #999;
-      text-align: center;
-    }
-    @media print {
-      body { padding: 12px; }
-      .kpi-grid { grid-template-columns: repeat(4, 1fr); }
-      .kpi-card { break-inside: avoid; }
-      .section { break-inside: avoid; }
-      .footer { position: fixed; bottom: 0; left: 0; right: 0; }
-    }
-  </style>
+  <style>${REPORT_CSS}</style>
 </head>
 <body>
   <div class="header">
@@ -407,6 +415,104 @@ export function generateReportHTML(tabKey, data, clinicSettings, period) {
 
   <div class="footer">
     Generated on ${esc(generated)} &bull; VetConnect Admin Dashboard
+  </div>
+</body>
+</html>`;
+}
+
+/**
+ * Generates a single HTML document containing all Dashboard tab reports
+ * (Operations, Growth, Clinical, and — for admins — Financial), separated
+ * by CSS page breaks for clean PDF/print output.
+ *
+ * Operations is always "today" data regardless of the selected period;
+ * its section heading makes this explicit with "(Today)".
+ *
+ * @param {object}  data           - Full return value from useDashboardData
+ * @param {object}  clinicSettings - From useClinicSettings
+ * @param {string}  period         - Active period key (e.g. 'month', 'week')
+ * @param {boolean} [isAdmin=true] - When false, the Financial tab is omitted
+ * @returns {string} Complete HTML document string
+ */
+export function generateFullReportHTML(data, clinicSettings, period, isAdmin = true) {
+  const clinicName = esc(clinicSettings.clinicName || 'Starbarks Veterinary Clinic');
+  const now = new Date();
+  const generated = now.toLocaleString('en-PH', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric', month: 'long', day: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+
+  const periodLabel = PERIOD_LABELS[period] || period;
+
+  const toDate = (v) => v instanceof Date ? v : (v?.toDate?.() ?? new Date());
+  const dateRangeStr = data.dateRange
+    ? `${toDate(data.dateRange.startDate).toLocaleDateString('en-PH')} — ${toDate(data.dateRange.endDate).toLocaleDateString('en-PH')}`
+    : periodLabel;
+
+  // Operations is always forced to today — label it explicitly so the reader
+  // knows this section doesn't reflect the selected period.
+  const sections = [
+    { title: `Operations Report (Today)`,          body: buildOpsReport(data) },
+    { title: `Growth Report (${periodLabel})`,     body: buildGrowthReport(data) },
+    { title: `Clinical Report (${periodLabel})`,   body: buildClinicalReport(data) },
+  ];
+
+  if (isAdmin) {
+    sections.push({ title: `Financial Report (${periodLabel})`, body: buildFinancialReport(data) });
+  }
+
+  const tabsHTML = sections.map((section, i) => `
+    ${i > 0 ? '<div class="page-break"></div>' : ''}
+    <div class="tab-section">
+      <h2 class="tab-title">${esc(section.title)}</h2>
+      ${section.body}
+    </div>
+  `).join('\n');
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Full Dashboard Report — ${clinicName}</title>
+  <style>
+    ${REPORT_CSS}
+    /* Multi-tab layout additions */
+    .page-break {
+      page-break-before: always;
+      margin-top: 40px;
+    }
+    .tab-title {
+      font-size: 16px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: #3E2723;
+      border-bottom: 2px solid #5D4037;
+      padding-bottom: 6px;
+      margin-bottom: 16px;
+      margin-top: 24px;
+    }
+    .tab-section {
+      margin-bottom: 30px;
+    }
+    @media print {
+      .page-break { page-break-before: always; margin-top: 0; }
+      .tab-section { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>${clinicName}</h1>
+    <div class="subtitle">Full Dashboard Report</div>
+    <div class="period">${esc(periodLabel)} &mdash; ${esc(dateRangeStr)}</div>
+  </div>
+
+  ${tabsHTML}
+
+  <div class="footer">
+    Generated on ${esc(generated)} &bull; VetConnect Admin Dashboard &bull; All Tabs
   </div>
 </body>
 </html>`;

@@ -31,13 +31,21 @@ import SpeedIcon from '@mui/icons-material/Speed';
 import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
 import KPICard from './KPICard';
 import HorizontalBar from './HorizontalBar';
+import DraggableKPIGrid from './DraggableKPIGrid';
 import { CHART_COLORS, CHART_TOOLTIP_STYLE, CHART_TICK_STYLE, CHART_GRID_PROPS, PANEL_SX } from './chartConfig';
 import { buildDrillDown } from '../utils/drillDownConfig';
 import { annotateChartData } from '../utils/annotateChartData';
 
 // ── Component ────────────────────────────────────────────────────
 
-export default function GrowthTab({ data, clinicSettings, insights = {} }) {
+export default function GrowthTab({
+  data,
+  clinicSettings,
+  insights = {},
+  yearAgoDeltas = null,
+  layout,
+  onLayoutChange,
+}) {
   const navigate = useNavigate();
   const drillDown = buildDrillDown(navigate);
   const { growth, dateRange } = data;
@@ -76,9 +84,9 @@ export default function GrowthTab({ data, clinicSettings, insights = {} }) {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
 
-      {/* ── ROW 1: POPULATION KPIs (T2.282, T2.308, T2.285) ──── */}
-      <Grid container spacing={2}>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+      {/* ── ROWS 1 + 6: DRAGGABLE KPI CARDS (T4.2) ──────────────── */}
+      <DraggableKPIGrid layout={layout} onLayoutChange={onLayoutChange}>
+        <div key="newClients">
           <KPICard
             title="NEW CLIENTS"
             value={growth.newClientCount}
@@ -90,9 +98,10 @@ export default function GrowthTab({ data, clinicSettings, insights = {} }) {
             insight={insights['NEW CLIENTS']}
             goalTarget={goals.monthlyNewClients || 0}
             historicalContext={hist.newClientsPerMonth}
+            yearAgoDelta={null}
           />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        </div>
+        <div key="totalActiveClients">
           <KPICard
             title="TOTAL ACTIVE CLIENTS"
             value={growth.totalActiveClients}
@@ -101,8 +110,8 @@ export default function GrowthTab({ data, clinicSettings, insights = {} }) {
             onClick={drillDown['TOTAL ACTIVE CLIENTS']}
             insight={insights['TOTAL ACTIVE CLIENTS']}
           />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        </div>
+        <div key="totalActivePets">
           <KPICard
             title="TOTAL ACTIVE PETS"
             value={growth.totalActivePets}
@@ -111,8 +120,8 @@ export default function GrowthTab({ data, clinicSettings, insights = {} }) {
             onClick={drillDown['TOTAL ACTIVE PETS']}
             insight={insights['TOTAL ACTIVE PETS']}
           />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        </div>
+        <div key="totalAppointments">
           <KPICard
             title="TOTAL APPOINTMENTS"
             value={growth.totalAppointments}
@@ -124,9 +133,58 @@ export default function GrowthTab({ data, clinicSettings, insights = {} }) {
             insight={insights['TOTAL APPOINTMENTS (GROWTH)']}
             goalTarget={goals.monthlyAppointments || 0}
             historicalContext={hist.appointmentsPerMonth}
+            yearAgoDelta={yearAgoDeltas?.appointments}
           />
-        </Grid>
-      </Grid>
+        </div>
+        <div key="bookingLeadTime">
+          <KPICard
+            title="BOOKING LEAD TIME"
+            value={growth.avgLeadTimeHours > 0 ? `${growth.avgLeadTimeHours}h` : '--'}
+            icon={<ScheduleIcon />}
+            variant="neutral"
+            onClick={drillDown['BOOKING LEAD TIME']}
+            subtitle={
+              growth.leadTimeCount > 0
+                ? `avg from ${growth.leadTimeCount} bookings`
+                : 'no pre-booked appointments'
+            }
+            compact
+            insight={insights['BOOKING LEAD TIME']}
+          />
+        </div>
+        <div key="clientRetention">
+          <KPICard
+            title="CLIENT RETENTION"
+            value={`${growth.retentionRate}%`}
+            icon={<LoyaltyIcon />}
+            variant={
+              growth.retentionRate >= 50 ? 'green'
+              : growth.retentionRate >= 25 ? 'orange'
+              : 'red'
+            }
+            subtitle={`${growth.returningClientCount} returning / ${growth.uniqueClientCount} total`}
+            compact
+            onClick={drillDown['CLIENT RETENTION']}
+            insight={insights['CLIENT RETENTION']}
+          />
+        </div>
+        <div key="clinicUtilization">
+          <KPICard
+            title="CLINIC UTILIZATION"
+            value={`${utilizationRate}%`}
+            icon={<SpeedIcon />}
+            variant={
+              utilizationRate >= 80 ? 'green'
+              : utilizationRate >= 50 ? 'orange'
+              : 'red'
+            }
+            subtitle={`${growth.totalAppointments} of ~${maxCapacity} slots`}
+            compact
+            onClick={drillDown['CLINIC UTILIZATION']}
+            insight={insights['CLINIC UTILIZATION']}
+          />
+        </div>
+      </DraggableKPIGrid>
 
       {/* ── ROW 2: CLIENT REGISTRATION TREND (T2.307) ──────────── */}
       <Box sx={PANEL_SX}>
@@ -398,57 +456,6 @@ export default function GrowthTab({ data, clinicSettings, insights = {} }) {
         </Grid>
       </Grid>
 
-      {/* ── ROW 6: LEAD TIME + RETENTION + UTILIZATION (T2.312, T2.313, T2.314) */}
-      <Grid container spacing={2}>
-        <Grid size={{ xs: 12, sm: 4 }}>
-          <KPICard
-            title="BOOKING LEAD TIME"
-            value={growth.avgLeadTimeHours > 0 ? `${growth.avgLeadTimeHours}h` : '--'}
-            icon={<ScheduleIcon />}
-            variant="neutral"
-            onClick={drillDown['BOOKING LEAD TIME']}
-            subtitle={
-              growth.leadTimeCount > 0
-                ? `avg from ${growth.leadTimeCount} bookings`
-                : 'no pre-booked appointments'
-            }
-            compact
-            insight={insights['BOOKING LEAD TIME']}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 4 }}>
-          <KPICard
-            title="CLIENT RETENTION"
-            value={`${growth.retentionRate}%`}
-            icon={<LoyaltyIcon />}
-            variant={
-              growth.retentionRate >= 50 ? 'green'
-              : growth.retentionRate >= 25 ? 'orange'
-              : 'red'
-            }
-            subtitle={`${growth.returningClientCount} returning / ${growth.uniqueClientCount} total`}
-            compact
-            onClick={drillDown['CLIENT RETENTION']}
-            insight={insights['CLIENT RETENTION']}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 4 }}>
-          <KPICard
-            title="CLINIC UTILIZATION"
-            value={`${utilizationRate}%`}
-            icon={<SpeedIcon />}
-            variant={
-              utilizationRate >= 80 ? 'green'
-              : utilizationRate >= 50 ? 'orange'
-              : 'red'
-            }
-            subtitle={`${growth.totalAppointments} of ~${maxCapacity} slots`}
-            compact
-            onClick={drillDown['CLINIC UTILIZATION']}
-            insight={insights['CLINIC UTILIZATION']}
-          />
-        </Grid>
-      </Grid>
 
     </Box>
   );

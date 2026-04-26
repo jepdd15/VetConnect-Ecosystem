@@ -34,6 +34,7 @@ import LocalFireDepartmentIcon from '@mui/icons-material/LocalFireDepartment';
 import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
 import KPICard from './KPICard';
 import HorizontalBar from './HorizontalBar';
+import DraggableKPIGrid from './DraggableKPIGrid';
 import { CHART_TOOLTIP_STYLE, CHART_TICK_STYLE, CHART_GRID_PROPS, PANEL_SX } from './chartConfig';
 import { buildDrillDown } from '../utils/drillDownConfig';
 import { annotateChartData } from '../utils/annotateChartData';
@@ -62,7 +63,14 @@ const fmt = (n) => `₱${(n || 0).toLocaleString(undefined, { minimumFractionDig
 
 // ── Component ────────────────────────────────────────────────────
 
-export default function FinancialTab({ data, insights = {}, clinicSettings = {} }) {
+export default function FinancialTab({
+  data,
+  insights = {},
+  clinicSettings = {},
+  yearAgoDeltas = null,
+  layout,
+  onLayoutChange,
+}) {
   const navigate = useNavigate();
   const drillDown = buildDrillDown(navigate);
   const { financial } = data;
@@ -102,9 +110,9 @@ export default function FinancialTab({ data, insights = {}, clinicSettings = {} 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
 
-      {/* ROW 1: REVENUE + MARGIN KPIs (T2.230, T2.283) */}
-      <Grid container spacing={2}>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+      {/* ROWS 1 + 6 + 7: DRAGGABLE KPI CARDS (T4.2) */}
+      <DraggableKPIGrid layout={layout} onLayoutChange={onLayoutChange}>
+        <div key="revenueCollected">
           <KPICard
             title="REVENUE COLLECTED"
             value={fmt(financial.totalCollected)}
@@ -117,9 +125,10 @@ export default function FinancialTab({ data, insights = {}, clinicSettings = {} 
             goalTarget={goals.monthlyRevenue || 0}
             goalValue={financial.totalCollected}
             historicalContext={hist.revenuePerMonth}
+            yearAgoDelta={yearAgoDeltas?.revenue}
           />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        </div>
+        <div key="totalBilled">
           <KPICard
             title="TOTAL BILLED"
             value={fmt(financial.totalBilled)}
@@ -128,9 +137,10 @@ export default function FinancialTab({ data, insights = {}, clinicSettings = {} 
             subtitle="before deposits"
             onClick={drillDown['TOTAL BILLED']}
             insight={insights['TOTAL BILLED']}
+            yearAgoDelta={yearAgoDeltas?.revenue}
           />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        </div>
+        <div key="totalExpenses">
           <KPICard
             title="TOTAL EXPENSES"
             value={fmt(financial.totalExpenses)}
@@ -138,9 +148,10 @@ export default function FinancialTab({ data, insights = {}, clinicSettings = {} 
             variant="red"
             onClick={drillDown['TOTAL EXPENSES']}
             insight={insights['TOTAL EXPENSES']}
+            yearAgoDelta={yearAgoDeltas?.expenses}
           />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        </div>
+        <div key="netMargin">
           <KPICard
             title="NET MARGIN"
             value={fmt(Math.abs(financial.netMargin))}
@@ -150,9 +161,68 @@ export default function FinancialTab({ data, insights = {}, clinicSettings = {} 
             delta={data.deltas?.netMargin}
             onClick={drillDown['NET MARGIN']}
             insight={insights['NET MARGIN']}
+            yearAgoDelta={yearAgoDeltas?.netMargin}
           />
-        </Grid>
-      </Grid>
+        </div>
+        <div key="scPwdDiscounts">
+          <KPICard
+            title="SC/PWD DISCOUNTS"
+            value={fmt(financial.totalDiscounts)}
+            icon={<DiscountIcon />}
+            variant="purple"
+            subtitle={`${financial.scPwdCount} transactions (${financial.scPwdUsageRate}% usage)`}
+            compact
+            onClick={drillDown['SC/PWD DISCOUNTS']}
+            insight={insights['SC/PWD DISCOUNTS']}
+          />
+        </div>
+        <div key="avgTransaction">
+          <KPICard
+            title="AVG TRANSACTION"
+            value={fmt(financial.avgTransactionValue)}
+            icon={<CreditCardIcon />}
+            variant="blue"
+            subtitle={`${financial.transactionCount} total transactions`}
+            compact
+            onClick={drillDown['AVG TRANSACTION']}
+            insight={insights['AVG TRANSACTION']}
+          />
+        </div>
+        <div key="monthlyBurnRate">
+          <KPICard
+            title="MONTHLY BURN RATE"
+            value={fmt(financial.monthlyBurnRate)}
+            icon={<LocalFireDepartmentIcon />}
+            variant={financial.monthlyBurnRate > financial.totalCollected ? 'red' : 'orange'}
+            subtitle={`₱${financial.dailyExpenseRate.toLocaleString()}/day avg`}
+            compact
+            onClick={drillDown['MONTHLY BURN RATE']}
+            insight={insights['MONTHLY BURN RATE']}
+          />
+        </div>
+        <div key="refundRate">
+          <KPICard
+            title="REFUND RATE"
+            value={`${financial.refundRate}%`}
+            icon={<MoneyOffIcon />}
+            variant={financial.refundRate > 5 ? 'red' : financial.refundRate > 0 ? 'orange' : 'green'}
+            subtitle={`${financial.refundCount} refunds (${fmt(financial.totalRefunded)})`}
+            onClick={drillDown['REFUND RATE']}
+            insight={insights['REFUND RATE']}
+          />
+        </div>
+        <div key="outstandingBalances">
+          <KPICard
+            title="OUTSTANDING BALANCES"
+            value={fmt(financial.outstandingBalances)}
+            icon={<WarningIcon />}
+            variant={financial.outstandingBalances > 0 ? 'orange' : 'green'}
+            subtitle={financial.outstandingBalances > 0 ? 'in billing/dispensing' : 'all clear'}
+            onClick={drillDown['OUTSTANDING BALANCES']}
+            insight={insights['OUTSTANDING BALANCES']}
+          />
+        </div>
+      </DraggableKPIGrid>
 
       {/* ROW 2: REVENUE TREND (T2.301 + T2.341 annotations) */}
       <Box sx={PANEL_SX}>
@@ -341,71 +411,6 @@ export default function FinancialTab({ data, insights = {}, clinicSettings = {} 
         )}
       </Box>
 
-      {/* ROW 6: SC/PWD + AVG TRANSACTION + BURN RATE (T2.299, T2.300, T2.270) */}
-      <Grid container spacing={2}>
-        <Grid size={{ xs: 12, sm: 4 }}>
-          <KPICard
-            title="SC/PWD DISCOUNTS"
-            value={fmt(financial.totalDiscounts)}
-            icon={<DiscountIcon />}
-            variant="purple"
-            subtitle={`${financial.scPwdCount} transactions (${financial.scPwdUsageRate}% usage)`}
-            compact
-            onClick={drillDown['SC/PWD DISCOUNTS']}
-            insight={insights['SC/PWD DISCOUNTS']}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 4 }}>
-          <KPICard
-            title="AVG TRANSACTION"
-            value={fmt(financial.avgTransactionValue)}
-            icon={<CreditCardIcon />}
-            variant="blue"
-            subtitle={`${financial.transactionCount} total transactions`}
-            compact
-            onClick={drillDown['AVG TRANSACTION']}
-            insight={insights['AVG TRANSACTION']}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 4 }}>
-          <KPICard
-            title="MONTHLY BURN RATE"
-            value={fmt(financial.monthlyBurnRate)}
-            icon={<LocalFireDepartmentIcon />}
-            variant={financial.monthlyBurnRate > financial.totalCollected ? 'red' : 'orange'}
-            subtitle={`₱${financial.dailyExpenseRate.toLocaleString()}/day avg`}
-            compact
-            onClick={drillDown['MONTHLY BURN RATE']}
-            insight={insights['MONTHLY BURN RATE']}
-          />
-        </Grid>
-      </Grid>
-
-      {/* ROW 7: REFUND + OUTSTANDING (T2.304, T2.305) */}
-      <Grid container spacing={2}>
-        <Grid size={{ xs: 12, sm: 6 }}>
-          <KPICard
-            title="REFUND RATE"
-            value={`${financial.refundRate}%`}
-            icon={<MoneyOffIcon />}
-            variant={financial.refundRate > 5 ? 'red' : financial.refundRate > 0 ? 'orange' : 'green'}
-            subtitle={`${financial.refundCount} refunds (${fmt(financial.totalRefunded)})`}
-            onClick={drillDown['REFUND RATE']}
-            insight={insights['REFUND RATE']}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6 }}>
-          <KPICard
-            title="OUTSTANDING BALANCES"
-            value={fmt(financial.outstandingBalances)}
-            icon={<WarningIcon />}
-            variant={financial.outstandingBalances > 0 ? 'orange' : 'green'}
-            subtitle={financial.outstandingBalances > 0 ? 'in billing/dispensing' : 'all clear'}
-            onClick={drillDown['OUTSTANDING BALANCES']}
-            insight={insights['OUTSTANDING BALANCES']}
-          />
-        </Grid>
-      </Grid>
 
     </Box>
   );

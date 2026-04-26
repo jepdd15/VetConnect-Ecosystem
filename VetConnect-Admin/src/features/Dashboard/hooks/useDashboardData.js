@@ -88,6 +88,75 @@ function buildDateRange(period) {
 }
 
 /**
+ * Computes the date range for the same period one year ago.
+ * Used for year-over-year benchmarking (T4.3).
+ *
+ * For rolling windows (3month, 6month, 1year) the entire window shifts
+ * back 365 days so the comparison is apples-to-apples in duration.
+ */
+function buildYearAgoRange(period) {
+  const now = new Date();
+  const oneYearAgo = new Date(now);
+  oneYearAgo.setFullYear(now.getFullYear() - 1);
+
+  switch (period) {
+    case 'today':
+      return { startDate: startOfDay(oneYearAgo), endDate: endOfDay(oneYearAgo) };
+
+    case 'week': {
+      const weekStart = new Date(oneYearAgo);
+      weekStart.setDate(oneYearAgo.getDate() - 6);
+      return { startDate: startOfDay(weekStart), endDate: endOfDay(oneYearAgo) };
+    }
+
+    case 'month': {
+      const firstOfMonth = new Date(oneYearAgo.getFullYear(), oneYearAgo.getMonth(), 1);
+      return { startDate: startOfDay(firstOfMonth), endDate: endOfDay(oneYearAgo) };
+    }
+
+    case 'quarter': {
+      const qStartMonth = Math.floor(oneYearAgo.getMonth() / 3) * 3;
+      const firstOfQ = new Date(oneYearAgo.getFullYear(), qStartMonth, 1);
+      return { startDate: startOfDay(firstOfQ), endDate: endOfDay(oneYearAgo) };
+    }
+
+    case 'year': {
+      const firstOfYear = new Date(now.getFullYear() - 1, 0, 1);
+      const lastOfYear = new Date(now.getFullYear() - 1, 11, 31);
+      return { startDate: startOfDay(firstOfYear), endDate: endOfDay(lastOfYear) };
+    }
+
+    case '3month': {
+      // Shift the current 90-day window back 365 days
+      const end = new Date(now);
+      end.setDate(now.getDate() - 365);
+      const start = new Date(end);
+      start.setDate(end.getDate() - 89);
+      return { startDate: startOfDay(start), endDate: endOfDay(end) };
+    }
+
+    case '6month': {
+      const end = new Date(now);
+      end.setDate(now.getDate() - 365);
+      const start = new Date(end);
+      start.setDate(end.getDate() - 179);
+      return { startDate: startOfDay(start), endDate: endOfDay(end) };
+    }
+
+    case '1year': {
+      const end = new Date(now);
+      end.setDate(now.getDate() - 365);
+      const start = new Date(end);
+      start.setDate(end.getDate() - 364);
+      return { startDate: startOfDay(start), endDate: endOfDay(end) };
+    }
+
+    default:
+      return { startDate: startOfDay(oneYearAgo), endDate: endOfDay(oneYearAgo) };
+  }
+}
+
+/**
  * Computes the previous period's date range for delta comparisons.
  * 'today' -> yesterday, 'week' -> prior 7 days, 'month' -> prior month,
  * 'quarter' -> prior quarter, 'year' -> prior year.
@@ -262,7 +331,7 @@ function buildFinancialTrend(docs, dateField, period, valueField) {
 
 // ── Hook ────────────────────────────────────────────────────────
 
-export function useDashboardData(period = 'today') {
+export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnabled = false) {
   const [appointments, setAppointments] = useState([]);
   const [queueData, setQueueData] = useState(null);
   const [staffList, setStaffList] = useState([]);
@@ -287,6 +356,14 @@ export function useDashboardData(period = 'today') {
     medicalRecords: [],
   });
 
+  // T4.3: Year-ago data for YoY benchmarking (one-shot, fires when benchmarkEnabled)
+  const [yearAgoData, setYearAgoData] = useState({
+    appointments: [],
+    sales: [],
+    expenses: [],
+    medicalRecords: [],
+  });
+
   // Day 6: Historical raw data for 6-month min/max/avg (one-shot on mount, T2.338)
   const [historicalData, setHistoricalData] = useState(null);
 
@@ -296,7 +373,10 @@ export function useDashboardData(period = 'today') {
 
   // Derive stable date range from period so the query only rebuilds when
   // the period string actually changes (not on every render).
-  const dateRange = useMemo(() => buildDateRange(period), [period]);
+  // refreshKey is included so a manual refresh tick (T4.1) forces date
+  // recomputation — important for 'today' crossing midnight, and for
+  // re-triggering the period-scoped onSnapshot listeners.
+  const dateRange = useMemo(() => buildDateRange(period), [period, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Listener 1: Appointments (period-scoped) ──────────────────
   useEffect(() => {
@@ -520,7 +600,7 @@ export function useDashboardData(period = 'today') {
     };
 
     fetchPrev();
-  }, [period]); // Re-fetch when period changes (not dateRange, since buildPrevDateRange uses period string)
+  }, [period, refreshKey]); // Re-fetch on period change or manual refresh tick (T4.1)
 
   // ── Historical data fetch (one-shot, 6-month lookback for min/max/avg, T2.338) ──
   // Fires only on mount — 6 months is a fixed lookback window that doesn't change
@@ -564,7 +644,62 @@ export function useDashboardData(period = 'today') {
     };
 
     fetchHistorical();
-  }, []); // Empty deps: fires once on mount, 6-month window is fixed
+  }, [refreshKey]); // Re-fetches on manual refresh tick (T4.1); 6-month window is otherwise fixed
+
+  // ── T4.3: Year-ago data fetch (one-shot, fires when benchmarkEnabled) ──
+  // Fetches same period from one year ago for YoY comparison.
+  // Resets to empty arrays when benchmark is disabled to avoid stale state.
+  useEffect(() => {
+    if (!benchmarkEnabled) {
+      setYearAgoData({ appointments: [], sales: [], expenses: [], medicalRecords: [] });
+      return;
+    }
+
+    const yaRange = buildYearAgoRange(period);
+    const yaStartTs = Timestamp.fromDate(yaRange.startDate);
+    const yaEndTs = Timestamp.fromDate(yaRange.endDate);
+
+    const fetchYearAgo = async () => {
+      try {
+        const [apptSnap, salesSnap, expSnap, recSnap] = await Promise.all([
+          getDocs(query(
+            collection(db, 'appointments'),
+            where('scheduledDate', '>=', yaStartTs),
+            where('scheduledDate', '<=', yaEndTs),
+          )),
+          getDocs(query(
+            collection(db, 'sales'),
+            where('date', '>=', yaStartTs),
+            where('date', '<=', yaEndTs),
+          )),
+          getDocs(query(
+            collection(db, 'expenses'),
+            where('date', '>=', yaStartTs),
+            where('date', '<=', yaEndTs),
+          )),
+          getDocs(query(
+            collection(db, 'medical_records'),
+            where('date', '>=', yaStartTs),
+            where('date', '<=', yaEndTs),
+          )),
+        ]);
+
+        setYearAgoData({
+          appointments: apptSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+          sales: salesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+            .filter(s => s.status !== 'refunded' && s.status !== 'voided'),
+          expenses: expSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+            .filter(e => !e.deletedAt),
+          medicalRecords: recSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+        });
+      } catch (err) {
+        console.error('[useDashboardData] yearAgo fetch:', err.message);
+        // Non-fatal — YoY indicators simply won't appear if the fetch fails
+      }
+    };
+
+    fetchYearAgo();
+  }, [period, benchmarkEnabled, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Derived metrics: Operations tab (today only) ──────────────
   const ops = useMemo(() => {
@@ -1170,15 +1305,52 @@ export function useDashboardData(period = 'today') {
     };
   }, [appointments, sales, expenses, medicalRecords, prevData, period]);
 
+  // ── T4.3: Year-over-year deltas ──────────────────────────────────
+  // Returns null when benchmark is disabled so KPICard hides the indicator.
+  // Uses the same pctChange pattern as the period-over-period deltas block.
+  const yearAgoDeltas = useMemo(() => {
+    if (!benchmarkEnabled) return null;
+
+    const pctChange = (current, prev) => {
+      if (prev === 0 || prev == null) return null;
+      return Math.round(((current - prev) / prev) * 100);
+    };
+
+    const currAppointments = appointments.length;
+    const yaAppointments = yearAgoData.appointments.length;
+
+    const currRevenue = sales
+      .filter(s => s.status !== 'refunded' && s.status !== 'voided')
+      .reduce((sum, s) => sum + (parseFloat(s.total) || 0), 0);
+    const yaRevenue = yearAgoData.sales
+      .reduce((sum, s) => sum + (parseFloat(s.total) || 0), 0);
+
+    const currExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+    const yaExpenses = yearAgoData.expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+
+    const currRecords = medicalRecords.length;
+    const yaRecords = yearAgoData.medicalRecords.length;
+
+    return {
+      appointments: pctChange(currAppointments, yaAppointments),
+      revenue: pctChange(currRevenue, yaRevenue),
+      expenses: pctChange(currExpenses, yaExpenses),
+      netMargin: pctChange(currRevenue - currExpenses, yaRevenue - yaExpenses),
+      recordsSigned: pctChange(currRecords, yaRecords),
+      label: 'vs same period last year',
+    };
+  }, [appointments, sales, expenses, medicalRecords, yearAgoData, benchmarkEnabled]);
+
   return {
     loading: appointmentsLoading,
     error,
     ops,
     growth,
     financial,
-    clinical,    // Day 3: Clinical tab metrics
-    deltas,      // Day 3: Period-over-period deltas
-    historical,  // Day 6: 6-month min/max/avg per metric (T2.338)
+    clinical,     // Day 3: Clinical tab metrics
+    deltas,       // Day 3: Period-over-period deltas
+    historical,   // Day 6: 6-month min/max/avg per metric (T2.338)
+    yearAgoDeltas, // T4.3: Year-over-year deltas (null when benchmarkEnabled is false)
     queueData,
     appointments,
     staffList,

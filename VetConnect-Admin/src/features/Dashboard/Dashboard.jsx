@@ -13,9 +13,17 @@
  * and Inventory.jsx.
  */
 
-import React, { useState, useMemo } from 'react';
-import { Box, Typography, Tabs, Tab, Skeleton, Button } from '@mui/material';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import {
+  Box, Typography, Tabs, Tab, Skeleton, Button, Chip,
+  IconButton, Tooltip, Snackbar, Alert,
+} from '@mui/material';
 import PrintIcon from '@mui/icons-material/Print';
+import SummarizeIcon from '@mui/icons-material/Summarize';
+import AutorenewIcon from '@mui/icons-material/Autorenew';
+import PauseCircleIcon from '@mui/icons-material/PauseCircle';
+import CompareArrowsIcon from '@mui/icons-material/CompareArrows';
+import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import BuildIcon from '@mui/icons-material/Build';
@@ -26,6 +34,7 @@ import { FONT, TYPE, COLORS } from '../../theme/designTokens';
 import { useUser } from '../../context/UserContext';
 import { useClinicSettings } from '../../hooks/useClinicSettings';
 import { useDashboardData } from './hooks/useDashboardData';
+import { useDashboardPreferences } from './hooks/useDashboardPreferences';
 import PeriodSelector from './components/PeriodSelector';
 import QuickNavTiles from './components/QuickNavTiles';
 import OperationsTab from './components/OperationsTab';
@@ -33,7 +42,8 @@ import GrowthTab from './components/GrowthTab';
 import FinancialTab from './components/FinancialTab';
 import ClinicalTab from './components/ClinicalTab';
 import { generateInsight } from './utils/generateInsight';
-import { generateReportHTML } from './utils/generateReportHTML';
+import { generateReportHTML, generateFullReportHTML } from './utils/generateReportHTML';
+import { openPrintWindow } from '../../utils/printUtils';
 import AlertStrip from './components/AlertStrip';
 
 // ── Tab registry ─────────────────────────────────────────────────
@@ -93,8 +103,72 @@ export default function Dashboard() {
   // Operations is always "today" — override any stale period state
   const effectivePeriod = currentTab.key === 'ops' ? 'today' : period;
 
-  const data = useDashboardData(effectivePeriod);
+  // ── T4.1: Auto-refresh state ────────────────────────────────────
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [isPageVisible, setIsPageVisible] = useState(true);
+  const [isInteracting, setIsInteracting] = useState(false);
+  const intervalRef = useRef(null);
+  const interactionTimeout = useRef(null);
+
+  // ── T4.3: Year-over-year benchmark toggle ───────────────────────
+  const [benchmarkEnabled, setBenchmarkEnabled] = useState(false);
+
+  // ── T4.2: Per-user layout preferences ──────────────────────────
+  const { layouts, saveLayout, resetLayouts } = useDashboardPreferences();
+
+  // ── T4.4: Popup-blocked snackbar ───────────────────────────────
+  const [popupBlockedOpen, setPopupBlockedOpen] = useState(false);
+
+  const data = useDashboardData(effectivePeriod, refreshKey, benchmarkEnabled);
   const isOpen = computeClinicOpenStatus(clinicSettings);
+
+  // ── T4.1: 30-second interval with three guards ─────────────────
+  // Only ticks when user has auto-refresh on, the page is visible,
+  // and the user isn't hovering over tab content.
+  useEffect(() => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+
+    if (autoRefresh && isPageVisible && !isInteracting) {
+      intervalRef.current = setInterval(() => {
+        setRefreshKey(k => k + 1);
+      }, 30000);
+    }
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [autoRefresh, isPageVisible, isInteracting]);
+
+  // ── T4.1: Page Visibility API ──────────────────────────────────
+  // Pauses the interval when the browser tab is backgrounded.
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      setIsPageVisible(document.visibilityState === 'visible');
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
+
+  // ── T4.1: Interaction pause handlers ──────────────────────────
+  // Mouse entering the tab content area pauses auto-refresh immediately.
+  // After mouse leaves, a 5-second debounce prevents a refresh mid-read.
+  const handleInteractionStart = useCallback(() => {
+    if (interactionTimeout.current) clearTimeout(interactionTimeout.current);
+    setIsInteracting(true);
+  }, []);
+
+  const handleInteractionEnd = useCallback(() => {
+    if (interactionTimeout.current) clearTimeout(interactionTimeout.current);
+    interactionTimeout.current = setTimeout(() => setIsInteracting(false), 5000);
+  }, []);
+
+  // Cleanup debounce timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (interactionTimeout.current) clearTimeout(interactionTimeout.current);
+    };
+  }, []);
 
   // Day 4: Insight engine — compute once per data/settings change
   const insights = useMemo(
@@ -104,12 +178,13 @@ export default function Dashboard() {
 
   const handleExportReport = () => {
     const html = generateReportHTML(currentTab.key, data, clinicSettings, effectivePeriod);
-    const win = window.open('', '_blank');
-    if (win) {
-      win.document.write(html);
-      win.document.close();
-      setTimeout(() => win.print(), 300);
-    }
+    openPrintWindow(html, () => setPopupBlockedOpen(true));
+  };
+
+  // T4.4: Export all visible tabs as a single combined print document.
+  const handleExportAllTabs = () => {
+    const html = generateFullReportHTML(data, clinicSettings, period, isAdmin);
+    openPrintWindow(html, () => setPopupBlockedOpen(true));
   };
 
   return (
@@ -153,11 +228,36 @@ export default function Dashboard() {
           </Box>
         </Box>
 
-        {/* Period selector + Export button */}
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+        {/* Period selector + Export buttons + Auto-refresh toggle */}
+        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
           {currentTab.key !== 'ops' && (
             <PeriodSelector value={effectivePeriod} onChange={setPeriod} />
           )}
+
+          {/* T4.3: Year-over-year benchmark toggle */}
+          <Chip
+            label={benchmarkEnabled ? 'VS LAST YEAR: ON' : 'VS LAST YEAR'}
+            size="small"
+            onClick={() => setBenchmarkEnabled(prev => !prev)}
+            icon={<CompareArrowsIcon sx={{ fontSize: '14px !important' }} />}
+            sx={{
+              fontFamily: FONT,
+              ...TYPE.label,
+              fontSize: '0.65rem',
+              borderRadius: 0,
+              border: `2px solid ${benchmarkEnabled ? COLORS.info : COLORS.border}`,
+              bgcolor: benchmarkEnabled ? COLORS.kpiBlueBg : COLORS.cardBg,
+              color: benchmarkEnabled ? COLORS.info : COLORS.textSecondary,
+              fontWeight: benchmarkEnabled ? 900 : TYPE.label.fontWeight,
+              boxShadow: benchmarkEnabled ? `2px 2px 0px ${COLORS.info}` : 'none',
+              cursor: 'pointer',
+              '& .MuiChip-icon': {
+                color: benchmarkEnabled ? COLORS.info : COLORS.textMuted,
+              },
+            }}
+          />
+
+          {/* T4.4: Export current tab as print document */}
           <Button
             onClick={handleExportReport}
             disabled={data.loading}
@@ -188,6 +288,98 @@ export default function Dashboard() {
           >
             EXPORT REPORT
           </Button>
+
+          {/* T4.4: Export all tabs as a single combined document */}
+          <Button
+            onClick={handleExportAllTabs}
+            disabled={data.loading}
+            startIcon={<SummarizeIcon />}
+            sx={{
+              fontFamily: FONT,
+              ...TYPE.label,
+              fontSize: '0.65rem',
+              color: COLORS.info,
+              bgcolor: COLORS.cardBg,
+              border: `2px solid ${COLORS.info}`,
+              borderRadius: 0,
+              px: 2,
+              py: 0.75,
+              boxShadow: `2px 2px 0px ${COLORS.info}`,
+              transition: 'transform 0.1s ease, box-shadow 0.1s ease',
+              '&:hover': {
+                bgcolor: COLORS.kpiBlueBg,
+                transform: 'translate(1px, 1px)',
+                boxShadow: `1px 1px 0px ${COLORS.info}`,
+              },
+              '&.Mui-disabled': {
+                color: COLORS.textMuted,
+                borderColor: COLORS.border,
+                boxShadow: 'none',
+              },
+            }}
+          >
+            EXPORT ALL TABS
+          </Button>
+
+          {/* T4.2: Reset draggable layout back to defaults */}
+          <Tooltip title="Reset KPI card positions to default" arrow>
+            <Button
+              onClick={resetLayouts}
+              startIcon={<RestartAltIcon />}
+              sx={{
+                fontFamily: FONT,
+                ...TYPE.label,
+                fontSize: '0.65rem',
+                color: COLORS.textSecondary,
+                bgcolor: COLORS.cardBg,
+                border: `2px solid ${COLORS.border}`,
+                borderRadius: 0,
+                px: 1.5,
+                py: 0.75,
+                boxShadow: `2px 2px 0px ${COLORS.border}`,
+                transition: 'transform 0.1s ease, box-shadow 0.1s ease',
+                '&:hover': {
+                  bgcolor: COLORS.surface,
+                  transform: 'translate(1px, 1px)',
+                  boxShadow: `1px 1px 0px ${COLORS.border}`,
+                },
+              }}
+            >
+              RESET LAYOUT
+            </Button>
+          </Tooltip>
+
+          {/* T4.1: Auto-refresh toggle — spins when all three guards are active */}
+          <Tooltip
+            title={autoRefresh ? 'Auto-refresh ON (30s)' : 'Auto-refresh paused'}
+            arrow
+          >
+            <IconButton
+              onClick={() => setAutoRefresh(prev => !prev)}
+              sx={{
+                color: autoRefresh ? COLORS.success : COLORS.textMuted,
+                border: `2px solid ${autoRefresh ? COLORS.success : COLORS.border}`,
+                borderRadius: 0,
+                p: 0.75,
+                transition: 'color 0.2s ease, border-color 0.2s ease',
+              }}
+            >
+              {autoRefresh ? (
+                <AutorenewIcon sx={{
+                  fontSize: 20,
+                  animation: (autoRefresh && isPageVisible && !isInteracting)
+                    ? 'dashboardSpin 2s linear infinite'
+                    : 'none',
+                  '@keyframes dashboardSpin': {
+                    '0%':   { transform: 'rotate(0deg)' },
+                    '100%': { transform: 'rotate(360deg)' },
+                  },
+                }} />
+              ) : (
+                <PauseCircleIcon sx={{ fontSize: 20 }} />
+              )}
+            </IconButton>
+          </Tooltip>
         </Box>
 
         {/* Clinic open/closed badge (T2.229 partial) */}
@@ -263,7 +455,13 @@ export default function Dashboard() {
       )}
 
       {/* ── TAB CONTENT ──────────────────────────────────────── */}
-      <Box sx={{ flexGrow: 1, overflow: 'auto', p: 3 }}>
+      {/* T4.1: onMouseEnter/Leave pause auto-refresh while the user is
+          hovering over charts or tooltips to prevent refresh mid-read. */}
+      <Box
+        onMouseEnter={handleInteractionStart}
+        onMouseLeave={handleInteractionEnd}
+        sx={{ flexGrow: 1, overflow: 'auto', p: 3 }}
+      >
         {data.loading ? (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {[...Array(3)].map((_, i) => (
@@ -273,16 +471,45 @@ export default function Dashboard() {
         ) : (
           <>
             {currentTab.key === 'growth' && (
-              <GrowthTab data={data} clinicSettings={clinicSettings} insights={insights} />
+              <GrowthTab
+                data={data}
+                clinicSettings={clinicSettings}
+                insights={insights}
+                yearAgoDeltas={data.yearAgoDeltas}
+                layout={layouts.growth}
+                onLayoutChange={(newLayout) => saveLayout('growth', newLayout)}
+              />
             )}
             {currentTab.key === 'ops' && (
-              <OperationsTab data={data} clinicSettings={clinicSettings} isOpen={isOpen} insights={insights} />
+              <OperationsTab
+                data={data}
+                clinicSettings={clinicSettings}
+                isOpen={isOpen}
+                insights={insights}
+                yearAgoDeltas={data.yearAgoDeltas}
+                layout={layouts.ops}
+                onLayoutChange={(newLayout) => saveLayout('ops', newLayout)}
+              />
             )}
             {currentTab.key === 'clinical' && (
-              <ClinicalTab data={data} insights={insights} clinicSettings={clinicSettings} />
+              <ClinicalTab
+                data={data}
+                insights={insights}
+                clinicSettings={clinicSettings}
+                yearAgoDeltas={data.yearAgoDeltas}
+                layout={layouts.clinical}
+                onLayoutChange={(newLayout) => saveLayout('clinical', newLayout)}
+              />
             )}
             {currentTab.key === 'financial' && (
-              <FinancialTab data={data} insights={insights} clinicSettings={clinicSettings} />
+              <FinancialTab
+                data={data}
+                insights={insights}
+                clinicSettings={clinicSettings}
+                yearAgoDeltas={data.yearAgoDeltas}
+                layout={layouts.financial}
+                onLayoutChange={(newLayout) => saveLayout('financial', newLayout)}
+              />
             )}
           </>
         )}
@@ -290,6 +517,22 @@ export default function Dashboard() {
 
       {/* ── QUICK NAV (sticky bottom) ─────────────────────────── */}
       <QuickNavTiles />
+
+      {/* T4.4: Popup-blocked fallback — shown when window.open returns null */}
+      <Snackbar
+        open={popupBlockedOpen}
+        autoHideDuration={6000}
+        onClose={() => setPopupBlockedOpen(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          severity="warning"
+          onClose={() => setPopupBlockedOpen(false)}
+          sx={{ fontFamily: FONT, borderRadius: 0, border: `2px solid ${COLORS.warning}` }}
+        >
+          Pop-up was blocked. Please allow pop-ups for this site and try again.
+        </Alert>
+      </Snackbar>
 
     </Box>
   );

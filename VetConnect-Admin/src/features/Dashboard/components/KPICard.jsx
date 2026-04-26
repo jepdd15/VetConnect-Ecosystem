@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Typography, Tooltip } from '@mui/material';
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
 
 /**
@@ -15,9 +16,10 @@ import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
  * @param {'blue'|'green'|'orange'|'red'|'purple'|'neutral'} variant
  * @param {string}              subtitle - Optional secondary line
  * @param {function}            onClick  - Optional click handler (makes card interactive)
- * @param {boolean}             compact  - Smaller padding for dense grid layouts
- * @param {number|null}         delta    - Period-over-period % change (null = no indicator)
- * @param {React.ReactNode}     insight  - Contextual insight text (Day 4 engine)
+ * @param {boolean}             compact      - Smaller padding for dense grid layouts
+ * @param {number|null}         delta        - Period-over-period % change (null = no indicator)
+ * @param {React.ReactNode}     insight      - Contextual insight text (Day 4 engine)
+ * @param {number|null}         yearAgoDelta - T4.3 YoY % change (null = hide indicator)
  */
 export default function KPICard({
   title,
@@ -29,9 +31,10 @@ export default function KPICard({
   compact = false,
   delta,
   insight,
-  goalTarget = undefined,  // T2.337: numeric monthly target for progress bar
-  goalValue = undefined,   // T2.337: raw numeric value when `value` is a formatted string
+  goalTarget = undefined,     // T2.337: numeric monthly target for progress bar
+  goalValue = undefined,      // T2.337: raw numeric value when `value` is a formatted string
   historicalContext = undefined, // T2.339: { min, avg, max } for hover tooltip
+  yearAgoDelta = undefined,   // T4.3: year-over-year % change (null = hide, undefined = not active)
 }) {
   const colorMap = {
     blue:    { bg: COLORS.kpiBlueBg,   border: COLORS.kpiBlueBorder,   text: COLORS.info },
@@ -63,6 +66,8 @@ export default function KPICard({
           transform: 'translate(2px, 2px)',
           boxShadow: `1px 1px 0px ${c.border}`,
         } : {},
+        // T4.2: Reveal the drag handle icon when the card is hovered
+        '&:hover .kpi-drag-handle-icon': { opacity: 0.6 },
         height: '100%',
       }}
     >
@@ -84,14 +89,36 @@ export default function KPICard({
       )}
 
       <Box sx={{ minWidth: 0 }}>
-        <Typography sx={{
-          fontFamily: FONT,
-          ...TYPE.label,
-          color: COLORS.textMuted,
-          fontSize: '0.65rem',
-        }}>
-          {title}
-        </Typography>
+        {/* T4.2: Title row acts as the drag handle — DragIndicatorIcon fades in on hover */}
+        <Box
+          className="kpi-drag-handle"
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 0.5,
+            cursor: 'grab',
+            '&:active': { cursor: 'grabbing' },
+          }}
+        >
+          <DragIndicatorIcon
+            className="kpi-drag-handle-icon"
+            sx={{
+              fontSize: 12,
+              color: COLORS.textMuted,
+              opacity: 0,
+              transition: 'opacity 0.2s',
+              flexShrink: 0,
+            }}
+          />
+          <Typography sx={{
+            fontFamily: FONT,
+            ...TYPE.label,
+            color: COLORS.textMuted,
+            fontSize: '0.65rem',
+          }}>
+            {title}
+          </Typography>
+        </Box>
 
         {/* Value + inline delta indicator — wrapped in Tooltip for historical context */}
         <Tooltip
@@ -117,7 +144,7 @@ export default function KPICard({
             },
           }}
         >
-          <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, flexWrap: 'wrap' }}>
             <Typography sx={{
               fontFamily: FONT,
               fontWeight: 1000,
@@ -144,6 +171,24 @@ export default function KPICard({
                 {delta > 0 ? '▲' : delta < 0 ? '▼' : '—'}
                 {' '}
                 {delta > 0 ? `+${delta}%` : delta < 0 ? `${delta}%` : '0%'}
+              </Typography>
+            )}
+
+            {/* T4.3: YoY benchmark indicator — blue/red distinguishes it from period delta */}
+            {yearAgoDelta != null && (
+              <Typography
+                component="span"
+                sx={{
+                  fontFamily: FONT,
+                  fontWeight: 800,
+                  fontSize: '0.6rem',
+                  lineHeight: 1,
+                  color: yearAgoDelta > 0 ? COLORS.info
+                    : yearAgoDelta < 0 ? COLORS.danger
+                    : COLORS.textMuted,
+                }}
+              >
+                YoY {yearAgoDelta > 0 ? `+${yearAgoDelta}%` : `${yearAgoDelta}%`}
               </Typography>
             )}
           </Box>

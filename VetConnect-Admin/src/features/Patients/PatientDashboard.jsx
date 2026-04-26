@@ -50,6 +50,8 @@ import PrintIcon from '@mui/icons-material/Print';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import ShieldIcon from '@mui/icons-material/Shield';
 import GavelIcon from '@mui/icons-material/Gavel';
+import ScienceIcon from '@mui/icons-material/Science';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
 
 // Charting
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
@@ -1009,6 +1011,34 @@ export default function PatientDashboard() {
                         }}
                       />
                     )}
+                    {/* T3.85: Patient status badge */}
+                    {rec.patientStatus && (() => {
+                      const status = rec.patientStatus.toLowerCase();
+                      const statusColors = {
+                        critical: { bgcolor: COLORS.dangerSurface, color: COLORS.danger, border: `1px solid ${COLORS.danger}` },
+                        guarded:  { bgcolor: COLORS.warningSurface, color: COLORS.warning, border: `1px solid ${COLORS.warning}` },
+                        stable:   { bgcolor: COLORS.kpiGreenBg, color: COLORS.success, border: `1px solid ${COLORS.success}` },
+                      };
+                      const sc = statusColors[status] || statusColors.stable;
+                      return (
+                        <Chip
+                          label={rec.patientStatus.toUpperCase()}
+                          size="small"
+                          sx={{
+                            fontFamily: FONT,
+                            fontSize: '0.62rem',
+                            fontWeight: 800,
+                            height: 20,
+                            borderRadius: 0,
+                            flexShrink: 0,
+                            textTransform: 'uppercase',
+                            bgcolor: sc.bgcolor,
+                            color: sc.color,
+                            border: sc.border,
+                          }}
+                        />
+                      );
+                    })()}
                     {!isExpanded && hasV && <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, display: { xs: 'none', md: 'block' } }}>{[rec.vitals.weight&&`${rec.vitals.weight}kg`,rec.vitals.temp&&`${rec.vitals.temp}°C`,rec.vitals.hr&&`${rec.vitals.hr}bpm`].filter(Boolean).join(' · ')}</Typography>}
                     {!isExpanded && hasRx && <MedicationIcon sx={{ fontSize: 14, color: COLORS.rxText, opacity: 0.6 }} />}
                     <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, flexShrink: 0 }}>{rec.vetName || '—'}</Typography>
@@ -1047,10 +1077,119 @@ export default function PatientDashboard() {
                               <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.5 }}>Objective</Typography>
                               <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: hasO ? COLORS.textPrimary : COLORS.textMuted, whiteSpace: 'pre-wrap', pl: 1.5, borderLeft: `2px solid ${COLORS.borderLight}`, fontStyle: hasO ? 'normal' : 'italic' }}>{hasO ? rec.soap.objectiveNotes : '—'}</Typography>
                             </Box>
+                            {/* T3.87: Assessment — the A in SOAP */}
+                            {rec.soap?.assessment && (
+                              <Box>
+                                <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.5 }}>Assessment</Typography>
+                                <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.textPrimary, whiteSpace: 'pre-wrap', pl: 1.5, borderLeft: `2px solid ${COLORS.success}` }}>{rec.soap.assessment}</Typography>
+                              </Box>
+                            )}
                             <Box sx={{ bgcolor: COLORS.planBg, py: 1, px: 1.5, borderRadius: 0, borderLeft: `3px solid ${COLORS.planBorder}` }}>
                               <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.planText, mb: 0.25 }}>Plan / Treatment</Typography>
                               <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: hasT ? COLORS.planText : COLORS.textMuted, whiteSpace: 'pre-wrap', fontStyle: hasT ? 'normal' : 'italic' }}>{hasT ? rec.treatment : '—'}</Typography>
                             </Box>
+                            {/* T3.83: Discharge / going-home summary */}
+                            {rec.dischargeSummary && (
+                              <Box sx={{ bgcolor: COLORS.cream, border: `1px solid ${COLORS.peach}`, p: 1.5, borderRadius: 0 }}>
+                                <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.warning, mb: 0.75 }}>
+                                  Going-Home Instructions
+                                </Typography>
+                                {rec.dischargeSummary.diagnosis && (
+                                  <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.textPrimary, mb: 0.75 }}>
+                                    {rec.dischargeSummary.diagnosis}
+                                  </Typography>
+                                )}
+                                {rec.dischargeSummary.instructions && (
+                                  <Stack spacing={0.25} sx={{ mb: 0.75 }}>
+                                    {rec.dischargeSummary.instructions
+                                      .split('\n')
+                                      .filter(line => line.trim())
+                                      .map((line, i) => (
+                                        <Typography key={i} sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.textPrimary }}>
+                                          — {line.trim()}
+                                        </Typography>
+                                      ))}
+                                  </Stack>
+                                )}
+                                {rec.dischargeSummary.medications?.length > 0 && (
+                                  <Stack spacing={0.25} sx={{ mb: 0.75 }}>
+                                    {rec.dischargeSummary.medications.map((med, i) => (
+                                      <Typography key={i} sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.textPrimary }}>
+                                        <Typography component="span" sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.textPrimary }}>
+                                          {med.name}
+                                        </Typography>
+                                        {med.qty ? ` x${med.qty}` : ''}
+                                        {med.instructions ? ` — ${med.instructions}` : ''}
+                                      </Typography>
+                                    ))}
+                                  </Stack>
+                                )}
+                                {rec.dischargeSummary.nextVisit && (
+                                  <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.danger, mb: 0.25 }}>
+                                    Follow-up: {rec.dischargeSummary.nextVisit}
+                                  </Typography>
+                                )}
+                                {rec.dischargeSummary.recheckIn && (
+                                  <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.textSecondary, mb: 0.25 }}>
+                                    Recheck in: {rec.dischargeSummary.recheckIn}
+                                  </Typography>
+                                )}
+                                {rec.dischargeSummary.vetName && (
+                                  <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, mt: 0.5 }}>
+                                    Signed by {rec.dischargeSummary.vetName}
+                                  </Typography>
+                                )}
+                              </Box>
+                            )}
+                            {/* T3.84: Lab results */}
+                            {rec.labResults?.length > 0 && (
+                              <Box sx={{ bgcolor: COLORS.kpiBlueBg, border: `1px solid ${COLORS.kpiBlueBorder}`, py: 1, px: 1.5, borderRadius: 0 }}>
+                                <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.info, mb: 0.75, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                  <ScienceIcon sx={{ fontSize: 13 }} />
+                                  Lab Results ({rec.labResults.length})
+                                </Typography>
+                                <Stack spacing={1}>
+                                  {rec.labResults.map((lab, i) => {
+                                    const labStatus = (lab.status || '').toLowerCase();
+                                    const labChipColors = {
+                                      normal:   { bgcolor: COLORS.kpiGreenBg, color: COLORS.success },
+                                      abnormal: { bgcolor: COLORS.warningSurface, color: COLORS.warning },
+                                      critical: { bgcolor: COLORS.dangerSurface, color: COLORS.danger },
+                                    };
+                                    const lc = labChipColors[labStatus] || labChipColors.normal;
+                                    return (
+                                      <Box key={i}>
+                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                          <Box sx={{ flex: 1, minWidth: 0, mr: 1 }}>
+                                            <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.textPrimary }}>{lab.testName}</Typography>
+                                            <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.textSecondary }}>{lab.result}</Typography>
+                                          </Box>
+                                          <Chip
+                                            label={(lab.status || 'normal').toUpperCase()}
+                                            size="small"
+                                            sx={{
+                                              fontFamily: FONT,
+                                              fontSize: '0.62rem',
+                                              fontWeight: 800,
+                                              height: 20,
+                                              borderRadius: 0,
+                                              flexShrink: 0,
+                                              bgcolor: lc.bgcolor,
+                                              color: lc.color,
+                                            }}
+                                          />
+                                        </Box>
+                                        {lab.notes && (
+                                          <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.textMuted, fontStyle: 'italic', mt: 0.25 }}>
+                                            {lab.notes}
+                                          </Typography>
+                                        )}
+                                      </Box>
+                                    );
+                                  })}
+                                </Stack>
+                              </Box>
+                            )}
                           </Stack>
                         </Grid>
                         <Grid size={{ xs: 12, md: 4 }}>
@@ -1078,6 +1217,36 @@ export default function PatientDashboard() {
                                       <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.rxText }}>{rx.name}</Typography>
                                       {rx.instructions && <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', color: '#B45309' }}>{rx.instructions}</Typography>}
                                     </Box>
+                                  ))}
+                                </Stack>
+                              </Box>
+                            )}
+                            {/* T3.86: Attachments */}
+                            {rec.attachments?.length > 0 && (
+                              <Box sx={{ bgcolor: COLORS.formBg, border: `1px solid ${COLORS.borderLight}`, py: 1, px: 1.5, borderRadius: 0 }}>
+                                <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                  <AttachFileIcon sx={{ fontSize: 13 }} />
+                                  Attachments ({rec.attachments.length})
+                                </Typography>
+                                <Stack spacing={0.5}>
+                                  {rec.attachments.map((file, i) => (
+                                    <Typography
+                                      key={i}
+                                      component="a"
+                                      href={file.url || file}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      sx={{
+                                        fontFamily: FONT,
+                                        ...TYPE.body,
+                                        color: COLORS.medical,
+                                        textDecoration: 'underline',
+                                        cursor: 'pointer',
+                                        display: 'block',
+                                      }}
+                                    >
+                                      {file.name || `Attachment ${i + 1}`}
+                                    </Typography>
                                   ))}
                                 </Stack>
                               </Box>
@@ -1134,6 +1303,64 @@ export default function PatientDashboard() {
                           </Stack>
                         </Box>
                       )}
+
+                      {/* T3.92: Inline vaccination details */}
+                      {(rec.vaccineAdministrations?.length > 0 || rec.vaccineData?.vaccineName) && (() => {
+                        const vaccines = rec.vaccineAdministrations || (rec.vaccineData ? [rec.vaccineData] : []);
+                        return (
+                          <Box sx={{ mt: 2, pt: 1.5, borderTop: `1px dashed ${COLORS.borderLight}` }}>
+                            <Typography sx={{
+                              fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 1,
+                              display: 'flex', alignItems: 'center', gap: 0.5,
+                            }}>
+                              <VaccinesIcon sx={{ fontSize: 13, color: COLORS.success }} />
+                              Vaccination Details ({vaccines.length})
+                            </Typography>
+                            <Stack spacing={1}>
+                              {vaccines.map((vax, i) => {
+                                const rawDue = vax.dueDate;
+                                const dueDateStr = rawDue
+                                  ? (rawDue.toDate ? rawDue.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : String(rawDue))
+                                  : null;
+                                return (
+                                  <Box key={i} sx={{ bgcolor: COLORS.kpiGreenBg, border: `1px solid ${COLORS.kpiGreenBorder}`, px: 1.5, py: 1, borderRadius: 0 }}>
+                                    <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.success }}>
+                                      {vax.vaccineName || 'Unknown Vaccine'}
+                                    </Typography>
+                                    <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mt: 0.5 }}>
+                                      {vax.manufacturer && (
+                                        <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', color: COLORS.textSecondary }}>
+                                          Mfr: {vax.manufacturer}
+                                        </Typography>
+                                      )}
+                                      {vax.lotNumber && (
+                                        <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', color: COLORS.textSecondary }}>
+                                          Lot: {vax.lotNumber}
+                                        </Typography>
+                                      )}
+                                      {vax.routeOfAdmin && (
+                                        <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', color: COLORS.textSecondary }}>
+                                          Route: {vax.routeOfAdmin}
+                                        </Typography>
+                                      )}
+                                      {vax.siteOfInjection && (
+                                        <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', color: COLORS.textSecondary }}>
+                                          Site: {vax.siteOfInjection}
+                                        </Typography>
+                                      )}
+                                      {dueDateStr && (
+                                        <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', color: COLORS.textSecondary }}>
+                                          Due: {dueDateStr}
+                                        </Typography>
+                                      )}
+                                    </Box>
+                                  </Box>
+                                );
+                              })}
+                            </Stack>
+                          </Box>
+                        );
+                      })()}
 
                       {/* Record footer: Rebook + Print Visit Summary */}
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1.5, pt: 1, borderTop: `1px solid ${COLORS.borderLight}` }}>

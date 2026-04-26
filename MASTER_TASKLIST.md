@@ -337,7 +337,7 @@
 | T3.4 | Grooming-specific consult form | P3 | 1-2 days | — | TODO | |
 | T3.5 | Real RA 10173 informed consent system | P2 | 8-12 days | — | TODO | |
 | T3.6 | Cloud Function LLM gateway | P3 | 2-3 days | Blaze | TODO | |
-| T3.8 | Clinic-wide forensic reporting dashboard | P1 | 3-4 days | — | TODO | |
+| T3.8 | Clinic-wide forensic reporting dashboard | P1 | 3-4 days | — | DONE | |
 | T3.9 | Admin-only revert from terminal states | P2 | 1 hr | — | DONE | |
 | T3.10b | Recently Resolved panel with undo | P2 | 2-3 hrs | — | DONE | |
 | T3.10c | Show resolved today toggle | P3 | 1 hr | — | TODO | |

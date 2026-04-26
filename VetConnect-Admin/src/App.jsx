@@ -23,6 +23,7 @@ import Sales from './features/Sales/Sales';
 import Expenses from './pages/Expenses'; 
 import Monitor from './pages/Monitor';   
 import Settings from './pages/Settings';
+import Reports from './features/Reports/Reports';
 
 // --- USER CONTEXT ---
 import { UserProvider, useUser } from './context/UserContext';
@@ -133,6 +134,7 @@ function AppShell() {
                 <Route path="/expenses" element={<AdminRoute><Expenses /></AdminRoute>} />
                 <Route path="/monitor" element={<Monitor />} />
                 <Route path="/settings" element={<AdminRoute><Settings /></AdminRoute>} />
+                <Route path="/reports" element={<AdminRoute><Reports /></AdminRoute>} />
                 {/* Fallback for unknown internal routes */}
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>

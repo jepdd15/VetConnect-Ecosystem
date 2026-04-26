@@ -21,6 +21,7 @@ import ExpenseIcon from '@mui/icons-material/MoneyOff';
 import SettingsIcon from '@mui/icons-material/Settings';
 import LogoutIcon from '@mui/icons-material/Logout';
 import TvIcon from '@mui/icons-material/Tv';
+import AssessmentIcon from '@mui/icons-material/Assessment';
 
 const drawerWidth = 260;
 
@@ -38,6 +39,7 @@ const menuItems =[
   { name: 'Transactions', icon: <TransactionIcon />, path: '/sales', adminOnly: true },
   { name: 'Expenses', icon: <ExpenseIcon />, path: '/expenses', adminOnly: true },
   { name: 'Settings', icon: <SettingsIcon />, path: '/settings', adminOnly: true },
+  { name: 'Forensic Reports', icon: <AssessmentIcon />, path: '/reports', adminOnly: true },
 ];
 
 export default function Sidebar({ onLogout }) {

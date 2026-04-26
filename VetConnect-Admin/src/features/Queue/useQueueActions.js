@@ -210,6 +210,7 @@ export function useQueueActions() {
         clinicalPulse: arrayUnion(pulseEvent),
         isForensicAudit: true,
         auditReason: reason,
+        auditReasons: arrayUnion({ reason, action: 'no-show', staffName: staffSignature, timestamp: Timestamp.now() }),
         forensicSeal // THE 8-METRIC STAMP
       });
     });
@@ -254,6 +255,7 @@ export function useQueueActions() {
         clinicalPulse: arrayUnion(pulseEvent),
         isForensicAudit: isForensic,
         auditReason: reason || 'Individually cancelled',
+        auditReasons: arrayUnion({ reason: reason || 'Individually cancelled', action: isForensic ? 'forensic-cancel' : 'cancel', staffName: staffSignature, timestamp: Timestamp.now() }),
         forensicSeal // THE 8-METRIC STAMP
       });
     });
@@ -352,6 +354,7 @@ export function useQueueActions() {
             triagedBy: signature,
             clinicalPulse: arrayUnion(pulseEvent),
             auditReason: reason,
+            auditReasons: arrayUnion({ reason, action: 'defer', staffName: signature, timestamp: Timestamp.now() }),
             forensicSeal
         });
     });
@@ -387,6 +390,7 @@ export function useQueueActions() {
             lastModifiedAt: Timestamp.now(),
             modifiedBy: staffSignature,
             auditReason: reason,
+            auditReasons: arrayUnion({ reason, action: 'reschedule', staffName: staffSignature, timestamp: Timestamp.now() }),
             forensicSeal
         });
     });

@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-04-27 · **Branch:** `main`
 **Total tasks:** ~744 · **Cancelled/Absorbed:** ~17 · **Active:** ~727
-**DONE:** ~581 · **TODO:** ~146 · **Deferred sub-tasks:** 50
+**DONE:** ~582 · **TODO:** ~145 · **Deferred sub-tasks:** 50
 **Phase 2:** COMPLETE · **Phase 3 Essential:** COMPLETE (except Blaze-gated T3.40-42) · **Phase 3 High-Value:** 8/8 batches done (T3.50 remains, T3.5 DONE) · **Phase 4 Dashboard S:** COMPLETE (T4.1-T4.4)
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~158 hours (Phase 4 S-Tier)
 
@@ -1001,7 +1001,7 @@
 | T3.70 | Queue notes column restructure: split single 'notes' field into structured clientNotes/staffNotes/system-chips. Requires design session for data split, backward compat, ClinicalWorkspace subjective auto-fill interaction. Originally scoped as T2.90 discussion topic (handoff.json line 1509), never formalized. | P3 | 3-4 hrs | — | DONE | 13-step restructure: 5 write sites (clientNotes/staffNotes/systemChips), EOD carry-over propagation, tabbed popover (Client/Staff/System/Legacy), SoapGrid read-only context box, intakeContext on medical_records, dual-read fallback for legacy. 11 files modified. |
 | T3.72 | Checkout correlation ID: shared ID linking sale doc + appointment update for forensic audit matching. Currently relies on appointmentId one-way link + temporal proximity. | P3 | 30 min | T2.100 | DONE | checkoutCorrelationId (CHK-timestamp-random) written to both individual + group checkout paths. Generated outside transaction for retry safety. |
 | T3.73 | Reserve/release audit logging: write inventory_log entries when reserveStock/releaseStock modify reserved quantities. Currently invisible to audit trail. | P3 | 1 hr | T2.151 | TODO | Dropped — handoff.json L1406, L2206 |
-| T3.74 | auditReason append-only: convert auditReason field to auditReasons[] array so cancel→revert→re-cancel preserves all reasons. Low priority — clinicalPulse already captures full history. | P3 | 30 min | — | TODO | Dropped — handoff.json L2207 |
+| T3.74 | auditReason append-only: convert auditReason field to auditReasons[] array so cancel→revert→re-cancel preserves all reasons. Low priority — clinicalPulse already captures full history. | P3 | 30 min | — | DONE | Dual-write: scalar auditReason preserved + auditReasons arrayUnion at all 13 write sites (5 files). Each entry: { reason, action, staffName, timestamp }. |
 | T3.75 | Draft save/resume pulse events: add DRAFT_SAVED and DRAFT_RESUMED clinicalPulse event types for forensic reconstruction. | P3 | 30 min | T2.19 | TODO | Dropped — handoff.json L2211 |
 | T3.76 | Unit tests for pulse event writing correctness | P2 | 4-6 hrs | T3.14 | DONE | 28 builders in pulseEventBuilders.js + 246 tests in pulseEventWriters.test.js. All 295 tests pass (246 new + 49 existing). Contract-tests all 7 source files (useQueueActions, Queue, ClinicalWorkspace, WalkInModal, AssignStaffModal, POSModal, Records). |
 | T3.77 | Scanned/photo signature upload for consent system | P3 | 2-3 hrs | T3.5, Blaze | TODO | expo-image-picker → Cloud Storage → URL in signatureData. Add tab to ConsentScreen + ConsentRecordDialog. Deferred from T3.5 Amendment 1 |

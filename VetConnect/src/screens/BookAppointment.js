@@ -1,5 +1,6 @@
 import DateTimePicker from "@react-native-community/datetimepicker";
 import {
+  arrayUnion,
   collection,
   doc,
   getDoc,
@@ -572,6 +573,7 @@ export default function BookAppointment({ navigation, route }) {
           await updateDoc(doc(db, 'appointments', ghostAppointmentId), {
             status: 'cancelled',
             auditReason: 'client-booked-followup',
+            auditReasons: arrayUnion({ reason: 'client-booked-followup', action: 'client-booked-followup', staffName: 'Client/System', timestamp: Timestamp.now() }),
             cancelledAt: Timestamp.now(),
           });
         } catch (e) {

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   addDoc,
+  arrayUnion,
   collection,
   doc,
   getDoc,
@@ -324,6 +325,7 @@ export function useErasureEngine() {
 
           if (isFuture && isCancellable) {
             Object.assign(payload, APPOINTMENT_CANCELLATION_PAYLOAD);
+            payload.auditReasons = arrayUnion({ reason: 'RA 10173 erasure', action: 'erasure', staffName: 'System/Erasure', timestamp: Timestamp.now() });
           }
 
           batch.update(apptSnap.ref, payload);

@@ -421,6 +421,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                processedAt: Timestamp.now(),
                forensicSeal, // THE 8-METRIC AUDIT SEAL
                auditReason: targetReasonMap[patient.id],
+               auditReasons: arrayUnion({ reason: targetReasonMap[patient.id], action: `eod-${action}`, staffName: staffSignature, timestamp: Timestamp.now() }),
                clinicalPulse: arrayUnion({
                   eventId: makePulseEventId('carryover'),
                   type: pulseType,
@@ -448,6 +449,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                 processedAt: Timestamp.now(),
                 forensicSeal, // THE 8-METRIC AUDIT SEAL
                 auditReason: targetReasonMap[patient.id],
+                auditReasons: arrayUnion({ reason: targetReasonMap[patient.id], action: `eod-${action}`, staffName: staffSignature, timestamp: Timestamp.now() }),
                 clinicalPulse: arrayUnion({
                    eventId: makePulseEventId('carryover'),
                    type: pulseType,
@@ -511,6 +513,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
              processedAt: Timestamp.now(),
              isForensicAudit: isHighStakes,
              auditReason: targetReasonMap[patient.id],
+             auditReasons: arrayUnion({ reason: targetReasonMap[patient.id], action: `eod-${action}`, staffName: staffSignature, timestamp: Timestamp.now() }),
              forensicSeal,
              clinicalPulse: arrayUnion({
                 eventId: makePulseEventId('triage'),
@@ -962,12 +965,13 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                   : `Manual Clinical Shift to ${updatedDayStr} (Reason: ${auditReason})`
         };
 
-        let updateData = { 
-            scheduledDate: Timestamp.fromDate(updatedSchDate), 
+        let updateData = {
+            scheduledDate: Timestamp.fromDate(updatedSchDate),
             status: 'confirmed',
             rescheduledBy: staffSignature,
             clinicalPulse: arrayUnion(pulseEvent),
             auditReason: auditReason,
+            auditReasons: arrayUnion({ reason: auditReason, action: 'reschedule', staffName: staffSignature, timestamp: Timestamp.now() }),
             accumulatedWaitMins: (selectedRow.accumulatedWaitMins || 0) + additionalWaitMins
         };
 

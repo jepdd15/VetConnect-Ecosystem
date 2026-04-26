@@ -3,6 +3,7 @@
 // immediately freeing up the slot in the database. Provides access to their generated QR Codes.
 
 import {
+  arrayUnion,
   collection,
   doc,
   documentId,
@@ -283,6 +284,7 @@ const ClientAppointments = ({ navigation }) => {
               await updateDoc(doc(db, "appointments", id), {
                 status: "cancelled",
                 auditReason: "Cancelled by Pet Owner",
+                auditReasons: arrayUnion({ reason: 'Cancelled by Pet Owner', action: 'client-cancel', staffName: 'Client/Self', timestamp: Timestamp.now() }),
                 cancelledAt: Timestamp.now(),
               });
               Alert.alert(
@@ -349,6 +351,7 @@ const ClientAppointments = ({ navigation }) => {
                   updateDoc(doc(db, "appointments", appt.id), {
                     status: "cancelled",
                     auditReason: "Cancelled by Pet Owner (Group)",
+                    auditReasons: arrayUnion({ reason: 'Cancelled by Pet Owner (Group)', action: 'client-cancel-group', staffName: 'Client/Self', timestamp: Timestamp.now() }),
                     cancelledAt: Timestamp.now(),
                   })
                 )
@@ -458,6 +461,7 @@ const ClientAppointments = ({ navigation }) => {
               await updateDoc(doc(db, 'appointments', item.id), {
                 status: 'cancelled',
                 auditReason: 'client-dismissed-followup',
+                auditReasons: arrayUnion({ reason: 'client-dismissed-followup', action: 'client-dismissed-followup', staffName: 'Client/Self', timestamp: Timestamp.now() }),
                 cancelledAt: Timestamp.now(),
               });
             } catch (error) {

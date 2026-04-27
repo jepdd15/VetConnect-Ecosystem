@@ -175,8 +175,9 @@ service cloud.firestore {
 
     // ─── QUEUE ────────────────────────────────────────────────────
     match /queue/{queueDoc} {
-      allow read: if isAuth();  // Mobile clients see queue position
-      allow write: if isStaff();
+      allow read: if isAuth();    // Mobile clients see queue position
+      allow update: if isAuth();  // Mobile clients increment lastNumberIssued during self-check-in
+      allow create, delete: if isStaff();
     }
 
     // ─── CLINIC SETTINGS ──────────────────────────────────────────

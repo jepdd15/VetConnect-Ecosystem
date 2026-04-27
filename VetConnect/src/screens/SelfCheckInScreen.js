@@ -36,6 +36,9 @@ import { getLocalDateStr } from '../utils/helpers';
 // The canonical QR value printed on the clinic poster.
 const CLINIC_QR_VALUE = 'STARBARKS-CHECKIN-starbarks-vetconnect-f6443';
 
+// GPS acquisition timeout. Resolves to null so the geofence falls back gracefully.
+const GPS_TIMEOUT_MS = 10000;
+
 // Screen state machine values.
 const SCREEN_STATE = {
   SCANNING: 'SCANNING',
@@ -88,9 +91,14 @@ async function checkGeofence(clinicLat, clinicLng, radiusM) {
       return { ok: true, fallback: true, reason: 'Location permission not granted' };
     }
 
-    const loc = await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.Balanced,
-    });
+    const loc = await Promise.race([
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+      new Promise((resolve) => setTimeout(() => resolve(null), GPS_TIMEOUT_MS)),
+    ]);
+
+    if (!loc) {
+      return { ok: true, fallback: true, reason: 'Location check timed out' };
+    }
 
     const distance = haversineMeters(
       loc.coords.latitude,
@@ -180,11 +188,14 @@ async function batchArrive() {
           arrivedBy: 'Self Check-In',
           selfCheckedIn: true,
           clinicalPulse: arrayUnion({
+            eventId: `pulse_STATUS_CHANGE_${Date.now()}_${Math.random().toString(36).substr(2, 7)}`,
             type: 'STATUS_CHANGE',
-            from: 'confirmed',
-            to: 'arrived',
+            fromStatus: 'confirmed',
+            toStatus: 'arrived',
+            timestamp: Timestamp.now(),
+            staffId: auth.currentUser.uid,
+            staffName: 'Self Check-In',
             note: 'Client self-check-in via clinic QR',
-            at: new Date().toISOString(),
           }),
         });
 

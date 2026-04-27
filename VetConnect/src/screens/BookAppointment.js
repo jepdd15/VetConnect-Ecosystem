@@ -749,6 +749,19 @@ export default function BookAppointment({ navigation, route }) {
               rebookedFromId: noShowInfo.mostRecent?.id || null,
               noShowCount: noShowInfo.count,
             } : {}),
+            clinicalPulse: [
+              {
+                eventId: `pulse_INCEPTION_${Date.now()}_${Math.random().toString(36).substr(2, 7)}`,
+                type: 'INCEPTION',
+                toStatus: 'pending',
+                timestamp: Timestamp.now(),
+                staffId: auth.currentUser.uid,
+                staffName: ownerName,
+                note: selectedPets.length > 1
+                  ? `Online booking by client [Group ${index + 1}/${selectedPets.length}]`
+                  : 'Online booking by client',
+              },
+            ],
           });
         });
       });

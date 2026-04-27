@@ -1135,12 +1135,28 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           ? (item.price || 0)
           : resolveTieredPrice(item, parseFloat(soapData.objWeight) || (patient?.petWeight ? parseFloat(patient.petWeight) : null)),
       qty: 1,
-      isDrug: isMedicine, 
+      isDrug: isMedicine,
       isDispensed: false, // Default to Clinic Admin
       sig: { dose: '1', frequency: 'SID', duration: '1', unit: item.unit || 'unit', route: 'SQ' },
-      instructions: '' 
+      instructions: ''
     };
-    
+
+    // Step 4 (T3.110): Auto-populate instructions for drug items from sig defaults.
+    // Gives the vet a readable starting point (e.g. "1 unit once daily for 1 day (SQ)")
+    // that they can overwrite before signing off.
+    if (isMedicine) {
+      const s = itemObj.sig;
+      const freqMap = {
+        SID: 'once daily',
+        BID: 'twice daily',
+        TID: 'three times daily',
+        QID: 'four times daily',
+        EOD: 'every other day',
+        PRN: 'as needed',
+      };
+      itemObj.instructions = `${s.dose} ${s.unit} ${freqMap[s.frequency] || s.frequency} for ${s.duration} day${s.duration !== '1' ? 's' : ''} (${s.route})`;
+    }
+
     setTreatmentCart(prev => [...prev, itemObj]);
     setIsDirty(true);
 
@@ -1541,7 +1557,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       const appointmentUpdate = {
           status: nextRouteStatus,
           statusHistory: arrayUnion(patient.status || 'unknown'),
-          encounterItems: treatmentCart,
+          encounterItems: treatmentCart.map(({ _showInstructions, ...rest }) => rest),
           finalTotal: visitTotal,
           signedOffAt: commitTimestamp,
           encounterItemsVersion: commitTimestamp,
@@ -1669,7 +1685,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             patientStatus: soapData.patientStatus,
             nextVisit: soapData.nextVisit,
           },
-          encounterItems: treatmentCart,
+          encounterItems: treatmentCart.map(({ _showInstructions, ...rest }) => rest),
           encounterItemsVersion: Timestamp.now(),
           draftSavedAt: Timestamp.now(),
           draftSavedBy: auth.currentUser?.uid || "system",
@@ -2679,6 +2695,89 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                                     </Box>
                                     <Typography sx={{ fontWeight: 1000, fontSize: '0.9rem', color: COLORS.brand }}>₱{(rx.price * rx.qty).toLocaleString()}</Typography>
                                 </Box>
+
+                                {/* Step 1 (T3.110): Always-visible dosing instructions for drug items.
+                                    Clinical safety: every prescription must have explicit instructions
+                                    before the record is signed off — "Use as directed" is inadequate. */}
+                                {rx.isDrug && (
+                                    <TextField
+                                        size="small"
+                                        fullWidth
+                                        multiline
+                                        minRows={1}
+                                        maxRows={3}
+                                        placeholder="e.g., 1 tab twice daily for 7 days"
+                                        value={rx.instructions || ''}
+                                        onChange={(e) => handleUpdateRxSig(idx, e.target.value)}
+                                        disabled={isRecordLocked}
+                                        sx={{
+                                            mt: 1,
+                                            '& .MuiInputBase-root': {
+                                                fontSize: '0.75rem',
+                                                fontWeight: 700,
+                                                fontFamily: FONT,
+                                                borderRadius: 0,
+                                                bgcolor: COLORS.rxBg,
+                                                border: `1px solid ${COLORS.rxBorder}`,
+                                            },
+                                            '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
+                                        }}
+                                        InputProps={{
+                                            startAdornment: (
+                                                <MedicationIcon sx={{ fontSize: 14, color: COLORS.rxText, mr: 0.5, mt: 0.25 }} />
+                                            ),
+                                        }}
+                                    />
+                                )}
+
+                                {/* Step 2 (T3.110): Collapsible instructions for non-drug items.
+                                    Collapsed by default to keep sidebar compact — most non-drug
+                                    items (shampoos, collars, etc.) don't need dosing notes. */}
+                                {!rx.isDrug && (
+                                    <>
+                                        <Typography
+                                            onClick={() => !isRecordLocked && handleUpdateRxField(idx, '_showInstructions', !rx._showInstructions)}
+                                            sx={{
+                                                mt: 0.75,
+                                                fontSize: '0.65rem',
+                                                fontWeight: 800,
+                                                color: rx.instructions ? COLORS.rxText : COLORS.textMuted,
+                                                cursor: isRecordLocked ? 'default' : 'pointer',
+                                                fontFamily: FONT,
+                                                letterSpacing: '0.05em',
+                                                textTransform: 'uppercase',
+                                                '&:hover': !isRecordLocked ? { color: COLORS.accent } : {},
+                                            }}
+                                        >
+                                            {rx._showInstructions
+                                                ? 'HIDE INSTRUCTIONS'
+                                                : (rx.instructions ? `INSTRUCTIONS: ${rx.instructions}` : '+ ADD INSTRUCTIONS')}
+                                        </Typography>
+                                        <Collapse in={!!rx._showInstructions}>
+                                            <TextField
+                                                size="small"
+                                                fullWidth
+                                                placeholder="Optional usage notes"
+                                                value={rx.instructions || ''}
+                                                onChange={(e) => handleUpdateRxSig(idx, e.target.value)}
+                                                disabled={isRecordLocked}
+                                                sx={{
+                                                    mt: 0.5,
+                                                    '& .MuiInputBase-root': {
+                                                        fontSize: '0.75rem',
+                                                        fontWeight: 700,
+                                                        fontFamily: FONT,
+                                                        borderRadius: 0,
+                                                        bgcolor: COLORS.formBg,
+                                                        border: `1px solid ${COLORS.borderLight}`,
+                                                    },
+                                                    '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
+                                                }}
+                                            />
+                                        </Collapse>
+                                    </>
+                                )}
+
                                 {rx.isBase && (
                                     <TextField
                                         size="small" select fullWidth

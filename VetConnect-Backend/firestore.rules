@@ -213,6 +213,48 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // ─── SYSTEM PROMPTS (AI clinical reasoning + chatbot) ────────
+    // Everyone reads (mobile chatbot + admin ClinicalWorkspace).
+    // Only admin can modify (Settings Pillar 11).
+    match /system_prompts/{promptId} {
+      allow read: if isAuth();
+      allow write: if isAdmin();
+    }
+
+    // ─── LLM AUDIT LOGS (AI call tracking) ────────────────────────
+    // Staff can create + read audit entries. Nobody can update or delete.
+    match /llm_audit_logs/{logId} {
+      allow read: if isStaff();
+      allow create: if isStaff();
+      allow update: if isStaff();
+      allow delete: if false;
+    }
+
+    // ─── FAQS (chatbot knowledge base) ────────────────────────────
+    // Everyone reads (mobile chatbot injects into prompt).
+    // Only admin can write (Settings Pillar 12).
+    match /faqs/{faqId} {
+      allow read: if isAuth();
+      allow write: if isAdmin();
+    }
+
+    // ─── CONSENT VERSIONS (RA 10173 informed consent) ─────────────
+    // Everyone reads (mobile ConsentScreen).
+    // Only admin can write (Settings Pillar 10).
+    match /consent_versions/{versionId} {
+      allow read: if isAuth();
+      allow write: if isAdmin();
+    }
+
+    // ─── CONSENT RECORDS (per-user sub-collection) ────────────────
+    // User can read their own. Staff can read all. Staff can create (admin records consent on behalf).
+    // User can create their own (mobile consent grant/withdrawal).
+    match /users/{userId}/consent_records/{recordId} {
+      allow read: if isOwner(userId) || isStaff();
+      allow create: if isOwner(userId) || isStaff();
+      allow update, delete: if false;
+    }
+
     // ─── DENY-ALL FALLBACK ────────────────────────────────────────
     // Any collection not explicitly matched above is denied.
     // This prevents accidental exposure if new collections are added

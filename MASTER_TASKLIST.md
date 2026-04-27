@@ -1,8 +1,8 @@
 # VetConnect Master Task List
 
 **Last updated:** 2026-04-27 · **Branch:** `main`
-**Total tasks:** ~759 · **Cancelled/Absorbed:** ~17 · **Active:** ~742
-**DONE:** ~603 · **TODO:** ~141 · **Deferred sub-tasks:** 50
+**Total tasks:** ~761 · **Cancelled/Absorbed:** ~17 · **Active:** ~744
+**DONE:** ~605 · **TODO:** ~141 · **Deferred sub-tasks:** 50
 **Phase 2:** COMPLETE · **Phase 3 Essential:** COMPLETE (except Blaze-gated T3.40-42) · **Phase 3 High-Value:** 8/8 batches done (T3.50 remains, T3.5 DONE) · **Phase 4 Dashboard S:** COMPLETE (T4.1-T4.4)
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~158 hours (Phase 4 S-Tier)
 
@@ -1042,6 +1042,8 @@
 | T3.112 | Mobile booking INCEPTION pulse event — online appointments created via BookAppointment.js (not useBookingEngine — that hook is read-only) write zero clinicalPulse events. Fix: add clinicalPulse array with INCEPTION event to transaction.set payload in BookAppointment.js. Reschedule/ghost paths are updateDoc only — no INCEPTION needed. | P2 | 15 min | — | DONE | clinicalPulse: [{ type: 'INCEPTION', toStatus: 'pending', staffName: ownerName, note: 'Online booking by client [Group X/Y]' }] added to transaction.set. Inline eventId, no new imports. |
 | T3.113 | Self-check-in broken — Firestore rule blocks client queue write + pulse event format wrong. | P1 | 20 min | — | DONE | Queue rule split: allow update isAuth() + allow create,delete isStaff(). Pulse event rewritten to canonical format (fromStatus/toStatus/timestamp/eventId/staffId/staffName). Deploy firestore.rules required. |
 | T3.114 | Self-check-in GPS timeout — Location.getCurrentPositionAsync hangs on slow GPS. | P2 | 15 min | — | DONE | Promise.race with 10s GPS_TIMEOUT_MS. Resolves to null → graceful fallback { ok: true, fallback: true, reason: 'Location check timed out' }. |
+| T3.115 | Ask AI panel invisible — DiagnosticBridge Collapse hidden during loading + below scroll fold. | P2 | 30 min | — | DONE | Collapse in simplified to llmPanelOpen. Loading spinner + "Analyzing clinical data..." during fetch. Auto-scroll via useRef + scrollIntoView with 150ms delay. Fixes all 3 views (SOAP, God View, Zen). |
+| T3.116 | Ask AI panel Markdown rendering — replace raw whiteSpace pre-line with ReactMarkdown. | P2 | 20 min | T3.115 | DONE | react-markdown installed. DiagnosticBridge renders h1-h3 (purple), p, li, table/th/td (kpiPurpleBorder borders), hr via components prop. All 3 views auto-covered. |
 
 ---
 

@@ -35,6 +35,7 @@ import { calculatePulseMetrics, makePulseEventId, createPulseEvent } from '../ut
 import { useClinicSettings } from '../hooks/useClinicSettings';
 import { useUser } from '../context/UserContext';
 import { callClinicalReasoning, DEFAULT_CLINICAL_SYSTEM_PROMPT } from '../utils/llmService';
+import ReactMarkdown from 'react-markdown';
 
 // Design Tokens
 import { FONT, TYPE, COLORS } from '../theme/designTokens';
@@ -253,6 +254,33 @@ export const DiagnosticBridge = React.memo(function DiagnosticBridge({
 }) {
   const hasInputData = !!(soapData.subjective || soapData.objectiveNotes);
 
+  const llmPanelRef = useRef(null);
+
+  useEffect(() => {
+    if (llmPanelOpen && llmPanelRef.current) {
+      // Small delay lets MUI Collapse animation begin before scroll position calculates
+      const timer = setTimeout(() => {
+        const el = llmPanelRef.current;
+        if (el) {
+          // Walk up to the first ancestor with a scrollable overflowY — the SoapQuadrant
+          // scroller — so we never trigger scrollIntoView on the God View's overflow:hidden parent
+          let parent = el.parentElement;
+          while (parent && !['auto', 'scroll'].includes(getComputedStyle(parent).overflowY)) {
+            parent = parent.parentElement;
+          }
+          if (parent) {
+            const parentRect = parent.getBoundingClientRect();
+            const elRect = el.getBoundingClientRect();
+            if (elRect.bottom > parentRect.bottom || elRect.top < parentRect.top) {
+              parent.scrollTo({ top: parent.scrollTop + (elRect.top - parentRect.top), behavior: 'smooth' });
+            }
+          }
+        }
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [llmPanelOpen]);
+
   return (
     <Box sx={{ mb: 1.5, flexShrink: 0 }}>
       {/* Button row — rule-based + AI side by side */}
@@ -332,8 +360,8 @@ export const DiagnosticBridge = React.memo(function DiagnosticBridge({
 
       {/* LLM response panel (purple) — only rendered when llmEnabled */}
       {llmEnabled && (
-        <Collapse in={llmPanelOpen && (!!llmResponse || !!llmError)}>
-          <Box sx={{
+        <Collapse in={llmPanelOpen}>
+          <Box ref={llmPanelRef} sx={{
             bgcolor: 'rgba(123,31,162,0.04)',
             border: `1px solid ${COLORS.kpiPurpleBorder}`,
             p: 1.5,
@@ -359,6 +387,16 @@ export const DiagnosticBridge = React.memo(function DiagnosticBridge({
               AI-generated suggestions for reference only. All clinical decisions must be made by the attending veterinarian.
             </Typography>
 
+            {/* Loading state — visible while LLM call is in-flight */}
+            {llmLoading && !llmResponse && !llmError && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 1 }}>
+                <CircularProgress size={16} sx={{ color: COLORS.grooming }} />
+                <Typography sx={{ fontSize: '0.8rem', color: COLORS.grooming, fontWeight: 700 }}>
+                  Analyzing clinical data...
+                </Typography>
+              </Box>
+            )}
+
             {/* Error state */}
             {llmError && (
               <Typography sx={{ fontSize: '0.8rem', color: COLORS.danger, fontWeight: 700 }}>
@@ -366,16 +404,26 @@ export const DiagnosticBridge = React.memo(function DiagnosticBridge({
               </Typography>
             )}
 
-            {/* Response text — pre-line preserves numbered-list formatting */}
+            {/* Response text — ReactMarkdown renders headings, lists, tables */}
             {llmResponse && (
-              <Typography sx={{
-                fontSize: '0.8rem',
-                color: COLORS.textPrimary,
-                whiteSpace: 'pre-line',
-                lineHeight: 1.6,
-              }}>
-                {llmResponse}
-              </Typography>
+              <Box sx={{ fontSize: '0.8rem', color: COLORS.textPrimary, lineHeight: 1.6, fontFamily: FONT }}>
+                <ReactMarkdown
+                  components={{
+                    h1: ({ children }) => <Typography sx={{ fontFamily: FONT, fontSize: '1rem', fontWeight: 900, color: COLORS.grooming, mt: 1.5, mb: 0.5 }}>{children}</Typography>,
+                    h2: ({ children }) => <Typography sx={{ fontFamily: FONT, fontSize: '0.9rem', fontWeight: 900, color: COLORS.grooming, mt: 1.25, mb: 0.5 }}>{children}</Typography>,
+                    h3: ({ children }) => <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', fontWeight: 800, color: COLORS.grooming, mt: 1, mb: 0.25 }}>{children}</Typography>,
+                    p: ({ children }) => <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', color: COLORS.textPrimary, lineHeight: 1.6, mb: 0.75 }}>{children}</Typography>,
+                    li: ({ children }) => <li style={{ fontSize: '0.8rem', marginBottom: '2px', lineHeight: 1.5 }}>{children}</li>,
+                    strong: ({ children }) => <strong>{children}</strong>,
+                    table: ({ children }) => <table style={{ borderCollapse: 'collapse', width: '100%', marginBottom: '8px', fontSize: '0.75rem' }}>{children}</table>,
+                    th: ({ children }) => <th style={{ border: `1px solid ${COLORS.kpiPurpleBorder}`, padding: '4px 8px', fontWeight: 800, textAlign: 'left', borderRadius: 0, backgroundColor: 'rgba(123,31,162,0.06)' }}>{children}</th>,
+                    td: ({ children }) => <td style={{ border: `1px solid ${COLORS.kpiPurpleBorder}`, padding: '4px 8px', borderRadius: 0 }}>{children}</td>,
+                    hr: () => <hr style={{ border: 'none', borderTop: `1px solid ${COLORS.kpiPurpleBorder}`, margin: '8px 0' }} />,
+                  }}
+                >
+                  {llmResponse}
+                </ReactMarkdown>
+              </Box>
             )}
           </Box>
         </Collapse>
@@ -531,6 +579,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   // closes the workspace without completing the encounter.
   // hasReleasedRef guards against double-release when handleCloseRequest already ran.
   useEffect(() => {
+    llmAbortRef.current = false;
     return () => {
       // Signal any in-flight LLM call to not update state after unmount.
       llmAbortRef.current = true;

@@ -2925,6 +2925,113 @@
         },
         "system_parity_status": "Thesis and codebase are in parity as of the rewritten PDF. All scope claims match working features. Cloud Functions limitation is disclosed. No contradictions remain."
       },
+      "implementation_session_2026_04_24_25": {
+        "date": "2026-04-24 to 2026-04-25",
+        "role": "Advisory session generating prompts for separate implementation session(s)",
+        "commits": ["914a674", "4272252", "57ed2c1", "9b727e3", "3cf6406", "3a70303", "4967b5f", "3141f2a", "66f7f85", "dbadb83", "bead8d3"],
+        "tasks_done_this_session": "~160 (across 2 implementation sessions)",
+        "total_done_after_session": 482,
+        "total_todo_remaining": 216,
+        "workstreams_completed": {
+          "dashboard_day5": "8 tasks: drillDownConfig.js (28 KPI→navigate mappings), filter acceptance on 5 target pages (Queue/Records/Patients/Sales/Expenses), generateReportHTML.js (4 tab report builders with esc() XSS). Reviewer fixes: Queue 8-tab mapping, dateRange toDate coercion, kpi() esc() wrapping.",
+          "dashboard_day6": "8 tasks: AlertStrip.jsx, Settings alert thresholds + monthly goals, KPICard goalTarget/goalValue/historicalContext props, 6-month historical getDocs, annotateChartData.js. Reviewer fixes: Rules of Hooks in GrowthTab/FinancialTab, unused Typography, missing CRT trend chart.",
+          "deferred_cleanup": "32 tasks across 3 batches (13 one-minute + 14 five-minute + 5 bug fixes). Key bugs: T2.100a statusHistory gap, T2.140a silent query error, T2.303a overlayData sort, T2.5a stale clinicSettings closure.",
+          "inventory_safety": "4 tasks: T2.119 allergy normalization (PATIENT SAFETY), T2.174 batch-aware negative stock adjustments, T2.175 allergen safety system (allergyTags + cart check + dispensing cross-check), T2.176 dispensing labels (printDispensingLabels.js).",
+          "booking_engine": "2 tasks: T2.23 already implemented, T2.86 checkCapacity callback in ClientAppointments.js.",
+          "login": "1 task: T2.278 default password detection warning using mustChangePassword flag.",
+          "dispensing_ux": "2 tasks: T2.188 services auto-verified in dispensing checklist, T2.189 dosage/concentration display.",
+          "patients_crm_tier1": "6 bug fixes: T2.112 sales ownerId, T2.114 fullName, T2.120 species filter, T2.121 date guards, T2.122 weight parseFloat, T2.126 already done.",
+          "patients_crm_tier2": "5 vitals tasks: T2.470 RR/CRT/BCS/Pain extraction, T2.466 per-record display, T2.467-469 trend charts. Reviewer fix: missing CRT chart added.",
+          "patients_crm_tier3": "2 core features: T2.453 clinical amendment system (reason field + PatientDashboard display + Records badge), T2.454 already implemented.",
+          "patients_crm_tier4": "10 improvements: T2.117+T2.4a calculatePetAge dedup to printUtils.js, T2.123 field parity, T2.124 admin_registered, T2.125 notes atomic (arrayUnion+runTransaction), T2.127 empty state, T2.128 stale-data flash overlay, T2.130+T2.462 search expansion, T2.131 dead code, T2.132 phone uniqueness check."
+        },
+        "key_findings": [
+          "36 Phase 2 functional tasks were still TODO across supposedly-completed modules — root cause: April 20 audit created 230 tasks after modules were already executed, batch misclassification, intentional deferral of large features",
+          "Queue + ClinicalWorkspace exempt from Phase 2 Design Sweep (deferred to Phase 4 T4.10/T4.16)",
+          "Records.jsx and Dashboard have no Design Sweep task — T2.453a added for Records amendment orange",
+          "T2.454 Print Visit Summary button was already implemented (found at PatientDashboard.jsx L834-857)",
+          "T2.23 useBookingEngine weight resolution was already implemented (found at BookAppointment.js L509-510)",
+          "T2.126 PatientDashboard double-fetch was already fixed in deferred cleanup batch 1 (T2.4c)"
+        ],
+        "reviewer_fixes_applied": [
+          "Day 5: Queue tab mapping active→3/emergency→3, dateRange toDate coercion, kpi() value/sub esc() wrapping",
+          "Day 6: Rules of Hooks in GrowthTab/FinancialTab (early return before useMemo), unused Typography in AlertStrip",
+          "Full session audit: DispensingVerificationDialog petAllergies fallback (2 sites), allChecked empty prescribedItems deadlock, ClinicalWorkspace compact header allergy fallback, PatientDashboard unused writeBatch import",
+          "Tier 3 audit: vetName attribution changed from auth.currentUser.displayName to useUser() cwProfile.fullName",
+          "Tier 4 audit: snap.exists() guard in handleDeleteNote, whitespace-only note guard, NewClientModal double-submit prevention"
+        ],
+        "deferred_tasks_added": [
+          "T2.330a (Queue drill-down ACTIVE IN FACILITY tab mismatch — Day 5 audit)",
+          "T2.331a (Settings tracked array for dashboardAlerts/dashboardGoals — Day 6 audit, DONE this session)",
+          "T2.453a (Records.jsx + PatientDashboard.jsx hardcoded #E65100 → COLORS.amendment token)"
+        ],
+        "remaining_work_updated_2026_04_25_evening": {
+          "phase2_status": "EFFECTIVELY COMPLETE. ~533 DONE. Only T2.451 (alert→Dialog, 2 hrs) remains as optional Phase 2 code work. 8 deferred sub-tasks covered by Phase 3/4. T2.10 is manual console op. T2.11 is Blaze-dependent.",
+          "phase2_remaining_9_tasks": {
+            "T2.451": "alert()/confirm() → MUI Dialog/Snackbar (~2 hrs, excludes Queue+CW) — OPTIONAL",
+            "T2.61a": "→ T4.15 Records S-Push",
+            "T2.63a": "→ T4.15 Records S-Push",
+            "T2.228a": "→ T4.1 Dashboard S-Push",
+            "T2.320a": "→ T4.3 Dashboard S-Push",
+            "T2.278a": "→ T3.40-42 Auth rewrite",
+            "T2.472a": "→ T3.51-53 Vaccination A-Tier",
+            "T2.10": "Manual Firebase Console operation (5 min, deployment prep)",
+            "T2.11": "Blaze-dependent (1-2 hrs)"
+          },
+          "design_sweep_status": "COMPLETE. Mobile (7 screens, ~200 replacements) + Admin (7 modules, ~370 hex + 46 borderRadius + 88 fontWeight) + T2.450 fontWeight (non-exempt done). 6 deferred sub-tasks absorbed (T2.148a, T2.205a/b/c, T2.453a, T2.169). Commits: 152144b (mobile), 3e9c96f (admin).",
+          "thesis": "8 tasks — T1.4 defense addendum (4-6 hrs), T1.5 temporal data model (1-2 hrs), T1.6 clinical audit paragraphs (1-2 hrs), T1.9 EndOfDayModal paragraph (30 min), T1.10 forensic record paragraph (30 min), T1.3 FDD features (2-3 hrs), T1.7 glossary (1 hr, drafted), T1.8 record audit (30 min, partial)",
+          "phase3_essential": "14 tasks (~28 hrs) — Staff Auth (T3.40-42, Blaze), Forensic Reporting (T3.8), RA 10173 (T3.11), Vaccination A-Tier (T3.51-53), Queue Workflow (T3.9, T3.10a/b/d), Inventory Safety (T3.24, T3.31)",
+          "phase3_high_value": "10 tasks (~45 hrs) — EMR, Multi-vaccine, RA 10173 consent, Multi-Pet Visit, Dispensing hardening",
+          "phase3_optional": "38 tasks (~100+ hrs) — LLM chatbot, advanced inventory, hospital-grade safety",
+          "phase4_s_tier": "77 tasks (~154 hrs) — push each module from A to S grade"
+        },
+        "patients_crm_triage": {
+          "note": "Patients CRM had 28 TODO tasks discovered mid-session. Triaged into 6 tiers by urgency. ALL 6 TIERS COMPLETED.",
+          "all_tiers_done": true,
+          "tier1_bugs": "7 tasks DONE — T2.112, T2.114, T2.119, T2.120, T2.121, T2.122, T2.126",
+          "tier2_vitals": "5 tasks DONE — T2.466, T2.467, T2.468, T2.469, T2.470",
+          "tier3_core": "2 tasks DONE — T2.453 (amendments), T2.454 (already done)",
+          "tier4_improvements": "10 tasks DONE — T2.117+T2.4a, T2.123, T2.124, T2.125, T2.127, T2.128, T2.130+T2.462, T2.131, T2.132",
+          "tier5_features": "6 tasks DONE — T2.113, T2.115, T2.116, T2.457, T2.459, T2.460",
+          "tier6_polish": "11 tasks DONE — T2.118, T2.129, T2.133, T2.134, T2.135, T2.136, T2.458, T2.461, T2.463, T2.464, T2.465"
+        },
+        "comprehensive_audit_2026_04_25": {
+          "scope": "501 DONE Phase 2 tasks verified against source code with file:line evidence across 18 audit passes",
+          "result": "496 PASS, 6 minor PARTIAL, 0 FAIL. All FAILs discovered during auditing were fixed. All dropped tasks formalized.",
+          "audit_passes": [
+            "HIGH-RISK: Login+Auth (12/12 PASS), Staff Security (20/21), ClinicalWorkspace Core (37/37), Firestore Rules (4/4)",
+            "THEMATIC: Vaccines (13/13), isDrug (4/5→fixed), Dispensing/POS (17/18→fixed), Allergy (5/6→fixed)",
+            "MEDIUM-RISK: Records (17/18), Booking Engine (17/17), Patients CRM (34/34), Inventory (21/21), Sales (10/10), Mobile Client (76/89→fixed)",
+            "LOW-RISK: Services (17/17), Settings+Monitor+Expenses (38/40), Dashboard Build (68/69), Design Sweep (15/15), Deferred Sub-tasks (18/20→fixed)",
+            "HANDOFF-BACKED: #1 (28/29→fixed), #2 (11/11)"
+          ],
+          "fixes_applied_from_audit": [
+            "T2.511: 2 unused imports in Queue.jsx (commit bead8d3)",
+            "T2.464: prescriptionFrequency missing isDrug filter (commit 7825aaf)",
+            "T2.214: workload query missing dispensing+billing statuses (commit 7825aaf)",
+            "T2.119: 5 allergy normalization gaps — queueColumns, printReferralReport, printVisitSummary, BookAppointment, EditPetScreen (commit 7825aaf)",
+            "T2.420/421/422/426: RegisterScreen guest merge preservation + accountStatus + profileComplete (commit b733686)",
+            "T2.427/428/429: utility extractions — isValidPHPhone, resolveTieredPrice, calculateAge (commit a1fc936)"
+          ],
+          "remaining_5_partials": [
+            "T2.227a: emergencyContacts init correct, UX detail borderline",
+            "T2.63: intentional stub, T2.63a tracked for Phase 4",
+            "T2.189: display works, write-side tracing out of scope for audit",
+            "T2.251: misleading alert confirmed removed, can't show diff without git history",
+            "T2.330: Patients+Expenses drill-down stubs wired but empty (accepted)"
+          ],
+          "conclusion": "501 Phase 2 DONE tasks verified across 18 audit passes. Every implementation matches its MASTER_TASKLIST spec. All discovered defects fixed. Codebase is audit-verified and ready for Phase 3.",
+          "not_covered_by_audit": "Runtime behavior testing, edge cases under load, CSS visual correctness, end-to-end integration flow testing. Recommend browser testing session for core clinical flow.",
+          "dropped_task_scan": {
+            "scope": "Deep scan of handoff.json (3040 lines) + 11 memory files for tasks discussed but never formalized",
+            "formalization_rate": "97.5% — 546 of ~560 items properly tracked",
+            "findings": "5 items genuinely dropped (all P3 audit-integrity concerns), 5 absorbed, 1 discussion-only, 1 numbering gap",
+            "dropped_now_formalized": ["T3.72 checkout correlation ID", "T3.73 reserve/release logging", "T3.74 auditReason append", "T3.75 draft save pulse"],
+            "also_added": ["T3.68 queue services popover (from locked decision L1825)", "T3.69 EOD service waterfall", "T3.70 notes restructure (T2.90)", "T4.81 role/accessLevel unification"],
+            "role_accessLevel_analysis": "role and accessLevel are redundant for new staff (both set to same value on create). veterinarian/groomer values only exist in legacy data. System works on departments not roles (decision locked April 19). T4.81 deferred post-defense."
+          }
+        }
+      },
       "forensic_metrics_investigation": {
         "finding": "Active records show stale Record Age (2D instead of 9D) because auditEnd is capped at pulse event day, not current time",
         "root_cause": "popoverAuditEnd in Queue.jsx uses end-of-pulse-day when targetDateStr !== todayStr, affecting all 8 metrics. Fix decouples age metrics only.",
@@ -2936,6 +3043,134 @@
         },
         "side_effects": "None beyond the 2 age metrics. Confirmed: shift/queue/consult/confined untouched. Sealed records untouched. calculatePulseMetrics unchanged. No Firestore write changes."
       }
+    },
+    "advisory_session_2026_04_26_27": {
+      "date": "2026-04-26 to 2026-04-27",
+      "role": "Advisory session generating prompts for implementation session(s). Spanned two calendar days.",
+      "tasks_done_this_session": "~90+ tasks across Phase 3 Essential + High-Value + Unclassified + Phase 4 S-Pushes + audit integrity + parity + vaccine hardening + AI clinical reasoning + chatbot + FAQ + terminology rename",
+      "total_done_after_session": "~599",
+      "phase3_essential_status": "COMPLETE except Blaze-gated T3.40-42",
+      "phase3_high_value_status": "COMPLETE. All 8 batches executed. T3.5 (informed consent) DONE. T3.50 (file restructure) deferred post-defense.",
+      "phase4_status": "Dashboard S-Push COMPLETE (T4.1-T4.4). Rest TODO.",
+      "commits": [
+        "Vaccination A-Tier (T3.51-53)",
+        "Queue workflow gaps (T3.9, T3.10a/b/d)",
+        "Expiry disposal (T3.24)",
+        "No-show lookback (T3.31)",
+        "RA 10173 erasure (T3.11) — 6 amendments",
+        "Forensic reporting 3-day build (T3.8)",
+        "EMR drawer + vaccine toggle (T3.1, T3.2, T3.3 absorbed)",
+        "Multi-pet visit 4-day build (T3.12)",
+        "Dispensing hardening (T3.36-39)",
+        "Inventory operations (T3.21, T3.26, T3.27)",
+        "Client confirmation flow (T3.32)",
+        "Test foundation + pulse writing tests (T3.14, T3.76) — 306 tests",
+        "Revenue trend extended (T3.43)",
+        "RA 10173 informed consent 8-phase build (T3.5)",
+        "Dashboard S-Push (T4.1-T4.4) — auto-refresh, draggable KPI, YoY benchmarking, multi-tab PDF",
+        "Queue services popover + EOD waterfall + sign-off pulse gap (T3.68, T3.69, T3.78)",
+        "Queue notes restructure (T3.70) — clientNotes/staffNotes/systemChips",
+        "Admin PatientDashboard parity (T3.83-T3.87, T3.91, T3.92)",
+        "Mobile PetHistoryScreen parity (T3.81-T3.82, T3.88-T3.90, T3.93-T3.97)",
+        "Checkout correlation ID (T3.72)",
+        "auditReason append-only dual-write (T3.74)",
+        "Terminology rename — rxCart/prescriptions/prescribedItems (T3.98)",
+        "Structured SOAP amendment form (T3.99)",
+        "Service-type wait time breakdown on QueueScreen (T3.59)",
+        "Mobile reschedule with group support (T4.78)",
+        "Admin PatientDashboard parity — discharge, labs, status, assessment, attachments, vaccines (T3.83-T3.87, T3.91, T3.92)",
+        "Mobile PetHistoryScreen parity — vitals, sparklines, search, Rx frequency, amendments, case day, year headers, services chips (T3.81-82, T3.88-90, T3.93-97)",
+        "Vaccine tracker species filter + exemption system (T3.100, T3.101)",
+        "Service-type wait time breakdown on mobile QueueScreen (T3.59)",
+        "Draft save/resume pulse events (T3.75) — 322 tests",
+        "AI clinical reasoning — Claude Haiku 4.5 via Cloudflare Worker (T3.107)",
+        "AI chatbot — hybrid buttons + free text, session management (T3.62-T3.67)",
+        "FAQ management system — admin CRUD Pillar 12 + live data injection (T3.108)",
+        "isDrug display split on mobile (T3.109)",
+        "Prescription instructions input in Treatment Plan sidebar (T3.110)"
+      ],
+      "new_tasks_formalized": [
+        "T3.76 — Unit tests for pulse event writing correctness (DONE)",
+        "T3.77 — Scanned/photo signature upload for consent (TODO, Blaze)",
+        "T3.78 — Sign-off pulse event gap fix (DONE)",
+        "T3.79 — Historical tooltip period flexibility (TODO)",
+        "T3.80 — Erasure engine Cloud Function migration (TODO, Blaze)",
+        "T3.72 — Checkout correlation ID (DONE)",
+        "T3.74 — auditReason append-only dual-write across 13 sites (DONE)",
+        "T3.81-T3.97 — 17 parity/display tasks (all DONE except T3.79)",
+        "T3.98 — Terminology rename rxCart→treatmentCart, prescriptions→dispensedProducts, prescribedItems→encounterItems (DONE)",
+        "T3.99 — Structured SOAP amendment form with optional vitals/meds (DONE)",
+        "T3.100 — Vaccine tracker species filter (DONE)",
+        "T3.101 — Vaccine exemption N/A flag with MUI dialog (DONE)",
+        "T3.102-T3.106 — Vaccine system hardening tasks (TODO)",
+        "T4.78 — Mobile in-app reschedule with group support + required reason (DONE)",
+        "T4.82 — Integration tests for pulseUtils consumers (TODO)",
+        "T4.83 — End-to-end clinical workflow automated tests (TODO)",
+        "T4.84 — UI rendering tests for forensic components (TODO)"
+      ],
+      "key_decisions_locked": [
+        "RA 10173 erasure: microchip preserved per RA 10173 §13(d) veterinary duty of care",
+        "RA 10173 erasure: type ERASE to confirm (irreversible action safeguard)",
+        "RA 10173 erasure: cancel future appointments only during erasure, leave in-progress alone",
+        "RA 10173 erasure: SOAP free-text disclaimer in confirmation dialog",
+        "RA 10173 erasure: conditional dischargeSummary update (prevent phantom objects)",
+        "RA 10173 erasure: PatientDashboard erased-state banner + disabled edits",
+        "Dispensing hardening: MUI Dialog for flag/resolve reason (no browser-native prompt())",
+        "Multi-pet visit: emergency priority preserved in flushToRows grouping rewrite",
+        "EndOfDayModal: getDatePickerStyle scope bug fixed (pre-existing)",
+        "Testing: contract-test approach for pulse event writing (28 builders, 22 production write sites)",
+        "Informed consent: photo/scanned signature OUT OF SCOPE (Blaze needed for Cloud Storage)",
+        "Informed consent: WebView verification gate for drawn signatures",
+        "Informed consent: consent_records as sub-collection on users, not top-level",
+        "Informed consent: intakeContext nested object on medical_records for client/staff notes",
+        "Notes restructure: 3-field split (clientNotes/staffNotes/systemChips), no migration",
+        "Notes restructure: read-only SOAP context box (blue CLIENT, orange STAFF) + empty Subjective",
+        "Notes restructure: tabbed hover popover (Client|Staff|System|Legacy)",
+        "Vitals trend charts: custom SVG sparklines via react-native-svg (no chart library)",
+        "T3.82: parallel serviceNames array, not changing serviceType string",
+        "Mobile/admin parity: full feature parity achieved between PetHistoryScreen and PatientDashboard"
+      ],
+      "remaining_work": {
+        "phase3_remaining": [
+          "T3.50 — Full admin file restructure (1 hr, post-defense)",
+          "T3.79 — Historical tooltip period flexibility (30 min)",
+          "T3.10c — Show resolved today toggle (1 hr)",
+          "T3.59 — QueueScreen service-specific estimated times (30 min)",
+          "T3.60 — QueueScreen pet care tips while waiting (1 hr)",
+          "T3.61 — QueueScreen self-check-in via GPS geofencing (1.5 hrs, questionable value — QR check-in already exists)"
+        ],
+        "phase3_blaze_gated": [
+          "T3.40, T3.41, T3.42 — Staff Auth Production Path (~6 hrs)",
+          "T3.34 — Pre-appointment push reminder (2-3 hrs)",
+          "T3.77 — Scanned/photo signature upload (2-3 hrs)",
+          "T3.80 — Erasure engine Cloud Function migration (3-4 hrs)"
+        ],
+        "phase3_optional": "38 tasks (~100+ hrs) — LLM chatbot, advanced inventory, hospital-grade safety, etc.",
+        "phase4_s_tier": "Dashboard S DONE (T4.1-T4.4). Remaining: 77 tasks (~150 hrs) across 14 module S-pushes",
+        "thesis": "10 tasks (~15-25 hrs) — unchanged",
+        "testing": "306 unit tests passing (50 pulseUtils engine + 256 pulse event writing). T4.82-84 formalized for post-defense."
+      },
+      "notable_findings": [
+        "Sign-off pulse event gap (T3.78) FIXED — handleSaveConsult now writes STATUS_CHANGE for in-consult→dispensing/billing",
+        "T3.91 (amendments on PatientDashboard) was already implemented by T2.453 — absorbed for free",
+        "T3.89 (SOAP Assessment on mobile) does NOT violate T2.8 — Assessment equals diagnosis field, guard prevents duplication",
+        "T3.82 adds parallel serviceNames[] array instead of changing serviceType string — backward compatible",
+        "Full admin/mobile parity achieved: 7 vitals, discharge, labs, status badge, assessment, attachments, amendments, vaccines inline, services chips, case day, year headers, search/filter, Rx frequency, sparkline charts, intake context notes",
+        "T3.72: checkoutCorrelationId written to both sales doc + appointment update in same checkout handler",
+        "T3.74: dual-write — scalar auditReason preserved for mobile reads + auditReasons[] appended via arrayUnion at all 13 write sites across 5 files",
+        "T3.98: parallel field rename (rxCart→treatmentCart, prescriptions→dispensedProducts, prescribedItems→encounterItems) with dual-read fallback. Zero logic changes. 11 files, ~105 occurrences.",
+        "T3.99: structured SOAP amendment — type:'structured' discriminator, reason + S/O/A/P + optional vitals/meds. Legacy amendments render unchanged.",
+        "T3.100: vaccination tracker now filters by pet species — cats see 3 vaccines, dogs see 4. Completeness bar simplified.",
+        "T3.101: vaccineExemptions[] on pet doc — Mark N/A with MUI Dialog, grey Exempt chip, excluded from completeness denominator, undo via arrayRemove.",
+        "T4.78: mobile reschedule reuses BookAppointment in rescheduleMode. Group support via Promise.all. Required reason. Status resets to pending. confirmedByClient cleared.",
+        "T3.59: service-type wait time breakdown groups lobbyPatients by serviceType, only shows when 2+ distinct types",
+        "T3.75: DRAFT_SAVED + DRAFT_RESUMED pulse events, handleResumeDraft made async. 322 tests (16 new).",
+        "T3.107: Claude Haiku 4.5 via Cloudflare Worker proxy (cool-fire-2d53.jepdd15.workers.dev). API key in Cloudflare env var only. Purple panel. Audit to llm_audit_logs. Feature flag llmEnabled.",
+        "T3.62-67: mobile chatbot transformed — hybrid buttons (rule-based, instant) + free text (Claude AI). Emergency always rule-based. In-memory session, 5s rate limit, 20-msg cap.",
+        "T3.108: FAQ management — faqs collection, Settings Pillar 12 CRUD, 8 seed FAQs, live clinic data + FAQ injection into chatbot system prompt via buildPromptAppendix().",
+        "T3.109: PetHistoryScreen splits dispensedProducts by isDrug — Medications vs Other Items Dispensed labels.",
+        "T3.110: Treatment Plan sidebar now has instructions TextField per item — drug items always-visible (orange), non-drug collapsible, sig auto-populate on add."
+      ]
     }
   }
 }

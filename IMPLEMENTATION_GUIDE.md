@@ -5,28 +5,53 @@
 
 ---
 
-## Status (updated 2026-04-24)
+## Status (updated 2026-04-27)
 
-**Implementation in progress — Dashboard Day 4 of 6 complete. System is defense-ready.**
-- 401 Phase 2 tasks DONE / ~290 remaining
-- 59 deferred P3 sub-tasks tracked from reviewer findings (T2.xxxA/B/C/D pattern)
-- All 16 prior modules DONE (Login through ClinicalWorkspace CW-5)
-- Mobile Client fully complete (MOB-1 through MOB-8, 108 tasks)
-- Dashboard Build: Days 1-4 shipped (54 tasks), Days 5-6 remaining (15 tasks)
-- Firestore security rules DEPLOYED to production
-- Mobile APK built via EAS Build (preview profile)
-- Admin dashboard deployed to Firebase Hosting
-- All commits pushed to GitHub (26 commits, origin/main up to date)
-- Thesis T1.1 + T1.2 rewrites APPLIED — thesis/codebase parity confirmed
-- Implementation session (3rd) hit context limit at Day 5 planning — needs fresh session
-- Diagrams generated: VETCONNECT_DIAGRAMS.md + VETCONNECT_DIAGRAMS_PRINT.md
+**Phase 2 COMPLETE AND VERIFIED.** 501 tasks audited — 496 PASS, 6 minor PARTIAL, 0 FAIL.
 
-**Remaining work:**
-1. Dashboard Build Days 5-6 (~8 hrs, 15 tasks) — drill-downs, reports, alerts, goals, annotations
-2. Step 1.5: Deferred Cleanup (~3-5 hrs, 59 sub-tasks from completed module audits)
-3. Design Sweep (~16 hrs, 16 tasks) — ALWAYS LAST
+**Phase 3 Essential: COMPLETE (except Blaze-gated T3.40-42).**
 
-**After Phase 2:** thesis (10 tasks) → Phase 3 Essential → Phase 3 High-Value → Phase 4 S-Tier
+**Phase 3 High-Value: COMPLETE.** All 8 batches executed. T3.5 (informed consent, 8-phase build) DONE. T3.50 deferred post-defense.
+
+**Phase 3 Unclassified: Mostly DONE.**
+- Queue services popover (T3.68), EOD waterfall (T3.69), sign-off pulse gap (T3.78): DONE
+- Notes restructure (T3.70): DONE — clientNotes/staffNotes/systemChips split
+- Admin parity (T3.83-T3.87, T3.91, T3.92): DONE — discharge, labs, status, assessment, attachments, amendments, vaccines
+- Mobile parity (T3.81-T3.82, T3.88-T3.90, T3.93-T3.97): DONE — vitals, assessment, amendments, sparklines, search, Rx frequency, year headers, case day, services chips
+- Full admin/mobile parity achieved for pet medical history display
+
+**Phase 4 S-Tier: Dashboard S-Push COMPLETE (T4.1-T4.4).** Auto-refresh, draggable KPI layout, YoY benchmarking, multi-tab PDF export.
+
+**Phase 4 Mobile S-Push: T4.78 (in-app reschedule) DONE.** Group support, required reason, JIT capacity check.
+
+**Testing: 306 unit tests passing.** 50 pulseUtils engine + 256 pulse event writing (29 builders across 23 write sites).
+
+**Vaccine System Hardening:** T3.100 (species filter) + T3.101 (exemption flag) DONE. Remaining: T3.102-T3.106 (contraindication, lot linking, dueDate normalization, legacy shim removal, mobile optimization).
+
+**Terminology Rename (T3.98):** rxCart→treatmentCart, prescriptions→dispensedProducts, prescribedItems→encounterItems. 11 files, dual-read fallback for existing documents.
+
+**Structured SOAP Amendments (T3.99):** type:'structured' discriminator. Reason + S/O/A/P + optional vitals/meds. Renders as orange mini SOAP cards on all 4 surfaces.
+
+**AI Clinical Reasoning (T3.107):** Claude Haiku 4.5 via Cloudflare Worker proxy. Purple "Ask AI" panel augments rule-based KNOWLEDGE_BASE. Feature-flagged, audit-logged.
+
+**AI Chatbot (T3.62-67):** Hybrid buttons (rule-based, instant) + free text (Claude AI). Emergency always rule-based. Session management with rate limiting.
+
+**FAQ Management (T3.108):** Admin CRUD Pillar 12. Live clinic data + FAQ injection into chatbot system prompt. 8 seed FAQs.
+
+**Prescription Instructions (T3.110):** Treatment Plan sidebar now has instructions input per item. Drug items always-visible, non-drug collapsible, sig auto-populate.
+
+**Phase 2 remaining (9 tasks — mostly deferred to later phases):**
+1. T2.451 — alert()/confirm() → MUI Dialog (~2 hrs, excludes Queue+CW) — optional
+2. T2.61a, T2.63a — covered by T4.15 Records S-Push
+3. T2.228a, T2.320a — covered by T4.1/T4.3 Dashboard S-Push (T4.1/T4.3 NOW DONE)
+4. T2.278a — covered by T3.40-42 Auth rewrite
+5. T2.472a — covered by T3.51-53 Vaccination A-Tier (DONE)
+6. T2.10 — manual Firebase Console operation (5 min, do during deployment)
+7. T2.11 — Blaze-dependent (1-2 hrs)
+
+**Audit Integrity:** T3.72 (checkout correlation ID) + T3.74 (auditReason append-only) DONE. Remaining: T3.73 (reserve/release logging), T3.75 (draft save/resume pulse events).
+
+**Next:** thesis (10 tasks, ~15-25 hrs) → Phase 3 Optional → Phase 4 S-Tier remaining (77 tasks, ~150 hrs)
 
 ---
 

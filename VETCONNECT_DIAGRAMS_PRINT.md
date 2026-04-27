@@ -112,28 +112,40 @@ erDiagram
 
 ```mermaid
 flowchart LR
-    LOGIN[Login / Register] --> DASH[Dashboard]
+    START([START: Client Opens App]) --> AUTH{Authenticated?}
+    AUTH -->|No| LOGIN[Login / Register]
+    AUTH -->|Yes| DASH[Client Dashboard]
+    LOGIN --> DASH
 
     DASH --> PETS[My Pets]
     DASH --> BOOK[Book Appointment]
     DASH --> APPTS[My Bookings]
     DASH --> QUEUE[Queue Status]
-    DASH --> CHAT[Chatbot FAQ]
+    DASH --> CHAT[AI Chatbot]
     DASH --> PROFILE[My Profile]
 
     PETS --> HISTORY[Pet History]
     PETS --> BOOK
-    HISTORY --> PDF[Download Summary]
+    HISTORY --> PDF[/Download PDF Summary/]
     APPTS --> CANCEL[Cancel Booking]
-    APPTS --> REBOOK[Re-Book Visit]
-    QUEUE --> ALERT[Called Alert + Vibration]
+    APPTS --> RESCHEDULE[Reschedule Visit]
+    APPTS --> CONFIRM_BTN[Confirm Attendance]
+    QUEUE --> ALERT[/Called Alert + Vibration/]
+    CHAT --> QUICK{Quick Action or Free Text?}
+    QUICK -->|Quick Action| RULE[Rule-Based Answer]
+    QUICK -->|Free Text| AI[AI Response via Claude]
+
+    CANCEL & RESCHEDULE & CONFIRM_BTN & RULE & AI & PDF & ALERT --> END_CLIENT([END: Client Action Complete])
 ```
 
 ## 2B. Admin Web Dashboard Flow
 
 ```mermaid
 flowchart LR
-    LOGIN[Staff Login] --> DASH[Dashboard Analytics]
+    START([START: Staff Opens Browser]) --> LOGIN[Staff Login]
+    LOGIN --> ROLE{Role Check}
+    ROLE -->|Unauthorized| BLOCKED([END: Access Denied])
+    ROLE -->|Authorized| DASH[Dashboard Analytics]
 
     DASH --> QUEUE[Queue Management]
     DASH --> PATIENTS[Patients CRM]
@@ -145,16 +157,23 @@ flowchart LR
     DASH --> EXPENSES[Expenses]
     DASH --> MONITOR[Lobby Monitor]
     DASH --> SETTINGS[Clinic Settings]
+    DASH --> REPORTS[Forensic Reports]
 
-    QUEUE --> TRIAGE[Triage + Check-In]
-    QUEUE --> CLINICAL[Clinical Workspace]
-    QUEUE --> POS[Billing + Checkout]
-    QUEUE --> EOD[End of Day]
+    QUEUE --> TRIAGE{New Appointment?}
+    TRIAGE -->|Accept| CHECK_IN[Check-In + Assign Staff]
+    TRIAGE -->|Reject| REJECT([END: Rejected])
+    CHECK_IN --> CLINICAL[Clinical Workspace]
 
     CLINICAL --> SOAP[SOAP Notes]
-    CLINICAL --> RX[Prescriptions]
+    CLINICAL --> RX[Treatment Plan]
     CLINICAL --> VAX[Vaccines]
-    CLINICAL --> DISCHARGE[Discharge + Sign-Off]
+    CLINICAL --> SIGNOFF[Discharge + Sign-Off]
+
+    SIGNOFF --> HAS_DRUGS{Has Drug Items?}
+    HAS_DRUGS -->|Yes| DISPENSE[Dispensing Verification]
+    HAS_DRUGS -->|No| POS[POS Billing]
+    DISPENSE --> POS
+    POS --> COMPLETE([END: Visit Complete])
 ```
 
 ---
@@ -163,11 +182,9 @@ flowchart LR
 
 ```mermaid
 stateDiagram-v2
-    direction LR
-
-    [*] --> pending
+    [*] --> pending : Client books
     pending --> confirmed : Staff accepts
-    pending --> cancelled : Rejected / Cancelled
+    pending --> cancelled : Rejected
 
     confirmed --> arrived : Check-in
     confirmed --> no_show : Did not arrive
@@ -186,7 +203,7 @@ stateDiagram-v2
 
     billing --> completed : Payment collected
 
-    confined --> carried_over : End of day rebook
+    confined --> carried_over : EOD rebook
 
     carried_over --> arrived : Returns next day
 

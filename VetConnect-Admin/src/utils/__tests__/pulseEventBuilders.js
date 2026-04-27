@@ -353,6 +353,28 @@ export const buildDraftDiscardedEvent = ({ staffId, staffName, savedByName, save
 });
 
 /**
+ * W19b: handleSaveDraft — DRAFT_SAVED audit event (inside transaction).
+ * Source: ClinicalWorkspace.jsx → handleSaveDraft → transaction.update payload
+ */
+export const buildDraftSavedEvent = ({ staffId, staffName }) =>
+  createPulseEvent('DRAFT_SAVED', {
+    staffId: staffId || 'unknown',
+    staffName: staffName || 'Clinician',
+    note: 'SOAP draft saved.',
+  });
+
+/**
+ * W19c: handleResumeDraft — DRAFT_RESUMED audit event (non-blocking updateDoc).
+ * Source: ClinicalWorkspace.jsx → handleResumeDraft → updateDoc after state updates
+ */
+export const buildDraftResumedEvent = ({ staffId, staffName, savedByName }) =>
+  createPulseEvent('DRAFT_RESUMED', {
+    staffId: staffId || 'unknown',
+    staffName: staffName || 'Clinician',
+    note: `Draft resumed (was saved by ${savedByName || 'unknown'}).`,
+  });
+
+/**
  * W20: handleSubmitAmendment — append-only clinical amendment on sealed record.
  * Source: ClinicalWorkspace.jsx → handleSubmitAmendment → line ~1507
  */
@@ -549,6 +571,8 @@ export const buildRecordsIdentityEditEvent = ({ staffName, staffId }) => ({
 // buildSignOffStatusChangeEvent| ClinicalWorkspace.jsx    | handleSaveConsult         | ~1285
 // buildFollowUpInceptionEvent  | ClinicalWorkspace.jsx    | handleSaveConsult         | 1323
 // buildDraftDiscardedEvent     | ClinicalWorkspace.jsx    | handleDiscardDraft        | 1455
+// buildDraftSavedEvent         | ClinicalWorkspace.jsx    | handleSaveDraft           | ~1408
+// buildDraftResumedEvent       | ClinicalWorkspace.jsx    | handleResumeDraft         | ~1449
 // buildAmendmentEvent          | ClinicalWorkspace.jsx    | handleSubmitAmendment     | 1507
 // buildWalkInInceptionEvent    | WalkInModal.jsx          | buildApptPayload          | 258
 // buildCheckInEvent            | AssignStaffModal.jsx     | check-in transaction      | 212

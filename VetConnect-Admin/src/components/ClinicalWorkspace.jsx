@@ -1427,6 +1427,11 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           encounterItemsVersion: Timestamp.now(),
           draftSavedAt: Timestamp.now(),
           draftSavedBy: auth.currentUser?.uid || "system",
+          clinicalPulse: arrayUnion(createPulseEvent('DRAFT_SAVED', {
+            staffId: auth.currentUser?.uid || 'unknown',
+            staffName: cwProfile?.fullName || auth.currentUser?.displayName || 'Clinician',
+            note: 'SOAP draft saved.',
+          })),
         });
       });
       setIsDirty(false);
@@ -1446,12 +1451,14 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
    * Clears the banner. Does NOT modify Firestore — the existing auto-save handles persistence.
    * isDirty is set to false because the state exactly mirrors the saved draft.
    */
-  const handleResumeDraft = () => {
+  const handleResumeDraft = async () => {
     const d = draftBannerState?.draft;
     if (!d) {
       setDraftBannerState(null);
       return;
     }
+    // Capture banner context before clearing it — setDraftBannerState(null) runs below.
+    const savedByName = draftBannerState?.savedByName;
     setSoapData({
       subjective: d.subjective || '',
       objWeight: d.objWeight || '',
@@ -1472,6 +1479,17 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     setIsDirty(false);
     setDraftBannerState(null);
     showToast("Draft restored. Continue editing.", "success");
+    try {
+      await updateDoc(doc(db, "appointments", patient.id), {
+        clinicalPulse: arrayUnion(createPulseEvent('DRAFT_RESUMED', {
+          staffId: auth.currentUser?.uid || 'unknown',
+          staffName: cwProfile?.fullName || auth.currentUser?.displayName || 'Clinician',
+          note: `Draft resumed (was saved by ${savedByName || 'unknown'}).`,
+        })),
+      });
+    } catch (e) {
+      console.error('[ClinicalWorkspace.handleResumeDraft] DRAFT_RESUMED pulse write failed:', e.message);
+    }
   };
 
   /**

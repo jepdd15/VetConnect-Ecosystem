@@ -46,6 +46,8 @@ import {
   buildSignOffStatusChangeEvent,
   buildFollowUpInceptionEvent,
   buildDraftDiscardedEvent,
+  buildDraftSavedEvent,
+  buildDraftResumedEvent,
   buildAmendmentEvent,
   // WalkInModal.jsx builders
   buildWalkInInceptionEvent,
@@ -616,6 +618,39 @@ describe('Phase 5C: Draft discarded (W19)', () => {
   });
 });
 
+describe('Phase 3C: Draft Save/Resume Events (W19b-W19c / T3.75)', () => {
+  it('W19b.1 buildDraftSavedEvent → type is DRAFT_SAVED', () => {
+    const event = buildDraftSavedEvent({ staffId: STAFF_ID, staffName: STAFF_NAME });
+    expect(event.type).toBe('DRAFT_SAVED');
+  });
+
+  it('W19b.2 buildDraftSavedEvent → note contains "draft saved"', () => {
+    const event = buildDraftSavedEvent({ staffId: STAFF_ID, staffName: STAFF_NAME });
+    expect(event.note.toLowerCase()).toContain('draft saved');
+  });
+
+  it('W19b.3 buildDraftSavedEvent → has eventId with DRAFT_SAVED prefix', () => {
+    const event = buildDraftSavedEvent({ staffId: STAFF_ID, staffName: STAFF_NAME });
+    expect(event.eventId).toMatch(/^pulse_DRAFT_SAVED_/);
+  });
+
+  it('W19c.1 buildDraftResumedEvent → type is DRAFT_RESUMED', () => {
+    const event = buildDraftResumedEvent({ staffId: STAFF_ID, staffName: STAFF_NAME, savedByName: 'Dr. Cruz' });
+    expect(event.type).toBe('DRAFT_RESUMED');
+  });
+
+  it('W19c.2 buildDraftResumedEvent → note contains "resumed" and savedByName', () => {
+    const event = buildDraftResumedEvent({ staffId: STAFF_ID, staffName: STAFF_NAME, savedByName: 'Dr. Cruz' });
+    expect(event.note.toLowerCase()).toContain('resumed');
+    expect(event.note).toContain('Dr. Cruz');
+  });
+
+  it('W19c.3 buildDraftResumedEvent → has eventId with DRAFT_RESUMED prefix', () => {
+    const event = buildDraftResumedEvent({ staffId: STAFF_ID, staffName: STAFF_NAME, savedByName: 'Dr. Cruz' });
+    expect(event.eventId).toMatch(/^pulse_DRAFT_RESUMED_/);
+  });
+});
+
 describe('Phase 5D: Clinical amendment (W20)', () => {
   it('5D.1 buildAmendmentEvent → type is CLINICAL_AMENDMENT', () => {
     const event = buildAmendmentEvent({ staffId: STAFF_ID, staffName: STAFF_NAME, reason: 'Dosage error', text: 'Corrected amoxicillin to 250mg' });
@@ -752,7 +787,7 @@ describe('Phase 5G: Records-only events (W25–W28)', () => {
 // ---------------------------------------------------------------------------
 
 describe('Phase 6: Cross-cutting contract tests', () => {
-  // Collect one instance of every builder to exercise all 28 write sites.
+  // Collect one instance of every builder to exercise all 31 write sites.
   const allEvents = [
     // useQueueActions.js (W1–W7)
     buildStatusChangeEvent({ fromStatus: 'arrived', toStatus: 'in-consult', staffId: STAFF_ID, staffName: STAFF_NAME }),
@@ -776,6 +811,8 @@ describe('Phase 6: Cross-cutting contract tests', () => {
     buildSignOffStatusChangeEvent({ fromStatus: 'in-consult', toStatus: 'dispensing', staffId: STAFF_ID, staffName: STAFF_NAME }),
     buildFollowUpInceptionEvent({ staffId: STAFF_ID, staffName: STAFF_NAME, originApptId: 'appt-parent' }),
     buildDraftDiscardedEvent({ staffId: STAFF_ID, staffName: STAFF_NAME, savedByName: 'Dr. Cruz', savedAt: null, savedByUid: null }),
+    buildDraftSavedEvent({ staffId: STAFF_ID, staffName: STAFF_NAME }),
+    buildDraftResumedEvent({ staffId: STAFF_ID, staffName: STAFF_NAME, savedByName: 'Dr. Cruz' }),
     buildAmendmentEvent({ staffId: STAFF_ID, staffName: STAFF_NAME, reason: 'Error', text: 'Correction' }),
     // WalkInModal.jsx (W21)
     buildWalkInInceptionEvent({ staffId: STAFF_ID, staffName: STAFF_NAME, weight: 5, isEmergency: false, triageNotes: 'Limping' }),
@@ -813,7 +850,7 @@ describe('Phase 6: Cross-cutting contract tests', () => {
     expect(typeof event.staffName).toBe('string');
   });
 
-  it('all 29 builders produce unique eventIds', () => {
+  it('all 31 builders produce unique eventIds', () => {
     const ids = allEvents.map(e => e.eventId);
     expect(new Set(ids).size).toBe(ids.length);
   });
@@ -825,6 +862,8 @@ describe('Phase 6: Cross-cutting contract tests', () => {
     'CHECKOUT_COMPLETED',
     'CLINICAL_AMENDMENT',
     'DRAFT_DISCARDED',
+    'DRAFT_SAVED',
+    'DRAFT_RESUMED',
     'SERVICE_STARTED',
     'SERVICE_COMPLETED',
     'DISPENSING_FLAGGED',

@@ -23,7 +23,6 @@ import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 import { getDoc, doc, query, collection, where, orderBy, limit, getDocs, onSnapshot, updateDoc } from 'firebase/firestore';
 import { useAncestorChain } from '../Records/hooks/useAncestorChain';
-import { ClinicalTimeline } from '../../components/ClinicalTimeline';
 import { db } from '../../firebaseConfig';
 import { useClinicSettings } from '../../hooks/useClinicSettings';
 import { calculatePulseMetrics, formatDuration, getSmartShiftDate } from '../../utils/pulseUtils';
@@ -224,10 +223,10 @@ const AuditPatientCard = React.memo(({
             label: p.toStatus ? p.toStatus.toUpperCase() : (p.type || 'EVENT'),
             val: p.timestamp,
             by: p.staffName,
-            isVoided: voidedIds.has(p.eventId), 
+            isVoided: voidedIds.has(p.eventId),
             type: p.type,
             note: p.note
-        }));
+        })).filter(m => m.val != null);
     }, [filteredPulse, combinedPulse, patient, activeCaseDay]);
 
     const totalEstMins = (patient.services || []).reduce((sum, s) => sum + (Number(s.duration || s.estMinutes) || 0), 0);
@@ -472,6 +471,7 @@ const AuditPatientCard = React.memo(({
                 <Stack spacing={1.5} sx={{ position: 'relative', pl: 2.2, flex: 1, overflowY: 'auto' }}>
                     <Box sx={{ position: 'absolute', left: 8, top: 4, bottom: 4, width: '2px', borderLeft: '2px dashed #D7CCC8' }} />
                     {(ancestorData?.milestones || milestones).map((m, idx) => {
+                        if (!m.val) return null;
                         const date = m.val.toDate ? m.val.toDate() : new Date(m.val);
                         const isLast = idx === (ancestorData?.milestones || milestones).length - 1;
 
@@ -540,17 +540,8 @@ const AuditPatientCard = React.memo(({
                                 )}
                             </Box>
                         );
-                    })}
+                    }).filter(Boolean)}
                 </Stack>
-                {/* T2.111: Raw pulse event timeline for current shift day */}
-                {filteredPulse.length > 0 && (
-                    <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px dashed #D7CCC8' }}>
-                        <Typography variant="caption" sx={{ fontWeight: 1000, color: '#9E9E9E', fontSize: '0.52rem', letterSpacing: 0.5, display: 'block', mb: 0.75 }}>
-                            PULSE EVENTS
-                        </Typography>
-                        <ClinicalTimeline pulse={filteredPulse} compact maxItems={8} />
-                    </Box>
-                )}
 
                     {/* Inline feedback for handleFetchHistory (replaces alert) */}
                 {historyMessage && (

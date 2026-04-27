@@ -126,7 +126,7 @@ export default function SoapGrid({
       </Grid>
 
       {/* A - ASSESSMENT (bottom-left) */}
-      <Grid size={{ xs: 12, md: 6 }} sx={{ height: { xs: 'auto', md: '50%' }, borderRight: { md: '1px solid #F0F0F0' } }}>
+      <Grid size={{ xs: 12, md: 6 }} sx={{ height: { xs: 'auto', md: '50%' }, borderRight: { md: '1px solid #F0F0F0' }, borderTop: { xs: '1px solid #F0F0F0', md: 'none' } }}>
         <SoapQuadrant id="assessment" label="A - ASSESSMENT (DIAGNOSIS & PROGNOSIS)" onZoomField={setFullscreenField}>
           <DiagnosticBridge
             soapData={soapData}
@@ -154,7 +154,7 @@ export default function SoapGrid({
       </Grid>
 
       {/* P - PLAN (bottom-right) */}
-      <Grid size={{ xs: 12, md: 6 }} sx={{ height: { xs: 'auto', md: '50%' } }}>
+      <Grid size={{ xs: 12, md: 6 }} sx={{ height: { xs: 'auto', md: '50%' }, borderTop: { xs: '1px solid #F0F0F0', md: 'none' } }}>
         <SoapQuadrant id="plan" label="P - PLAN (TREATMENT & RECHECKS)" onZoomField={setFullscreenField}>
           {/* T3.2: Manual vaccine toggle button — shown when form is not yet visible and record is not locked */}
           {canToggleVaccine && (

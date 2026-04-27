@@ -3170,10 +3170,10 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       {/* 🏛️ THE 'GOD-VIEW' UNIFIED CLINICAL COMMAND CENTER ── */}
       <Dialog 
         fullScreen open={isUnifiedZen} onClose={() => setIsUnifiedZen(false)} 
-        TransitionComponent={Transition} PaperProps={{ sx: { bgcolor: '#FDFCFB' } }}
+        TransitionComponent={Transition} PaperProps={{ sx: { bgcolor: '#FDFCFB', display: 'flex', flexDirection: 'column' } }}
       >
         {/* --- 🆕 LEGACY IMMERSION HEADER --- */}
-        <Box sx={{ p: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(0,0,0,0.05)', bgcolor: 'white' }}>
+        <Box sx={{ p: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(0,0,0,0.05)', bgcolor: 'white', flexShrink: 0 }}>
             <Box>
                 <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 1000, color: COLORS.brand, letterSpacing: -1, lineHeight: 1, mb: 0.5 }}>
                     {patient?.petName?.toUpperCase() || 'UNKNOWN PATIENT'}
@@ -3200,7 +3200,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             </Button>
         </Box>
 
-        <Box sx={{ flex: 1, height: 'calc(100vh - 84px)', overflow: 'hidden', bgcolor: '#FFF' }}>
+        <Box sx={{ flex: 1, minHeight: 0, overflow: 'hidden', bgcolor: '#FFF' }}>
           {/* T3.70: God-View also receives intake context for the read-only context box */}
           {(() => {
             const rawClientNotes = patient?.clientNotes || (!patient?.staffNotes ? patient?.notes : '') || '';

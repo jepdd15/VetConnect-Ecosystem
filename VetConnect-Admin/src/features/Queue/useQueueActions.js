@@ -37,9 +37,10 @@ export function useQueueActions() {
         // statusHistory is a deliberately denormalized fast-path index for revert operations.
         // It duplicates transition data from clinicalPulse but enables O(1) undo without
         // scanning the full audit log. See T2.45 evaluation: KEEP decision.
+        const freshApptData = apptDoc.data();
         let updateData = {
             status: newStatus,
-            statusHistory: arrayUnion(row.status || 'unknown'),
+            statusHistory: [...(freshApptData.statusHistory || []), row.status || 'unknown'],
             clinicalPulse: arrayUnion(pulseEvent)
         };
 

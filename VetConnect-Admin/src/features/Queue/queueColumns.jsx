@@ -785,27 +785,9 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                 boxShadow: isTomorrow ? 'none' : '0 4px 10px rgba(25, 118, 210, 0.3)',
                 '&.Mui-disabled': { bgcolor: 'rgba(0,0,0,0.08)', color: 'rgba(0,0,0,0.26)' },
               }}
-              onClick={() => actions.handleOpenAssign(params.row, 'check-in')}
+              onClick={() => actions.handleOpenAssign(params.row)}
             >
               {isTomorrow ? 'Locked' : (params.row.caseDay > 1 ? '🗂️ RE-ARRIVE & RESUME' : 'Check In')}
-            </Button>
-            <Button
-              variant="outlined"
-              size="small"
-              disabled={isTomorrow}
-              sx={{
-                ...btnStyle,
-                minWidth: 'auto',
-                px: 1,
-                fontSize: '0.7rem',
-                borderColor: '#5D4037',
-                color: '#5D4037',
-                height: 32,
-                '&.Mui-disabled': { borderColor: 'rgba(0,0,0,0.05)', opacity: 0.3 },
-              }}
-              onClick={() => actions.handleOpenAssign(params.row, 'assign')}
-            >
-              Assign
             </Button>
             <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)} sx={{ border: '1px solid rgba(0,0,0,0.1)', color: '#5D4037', flexShrink: 0 }}>
               <MoreVertIcon fontSize="small" />

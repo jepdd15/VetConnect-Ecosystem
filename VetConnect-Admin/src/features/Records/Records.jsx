@@ -983,7 +983,9 @@ export default function Records() {
                      <Box key={i} sx={{ position: 'relative' }}>
                         <Box sx={{ position: 'absolute', left: -26, top: 4, width: 8, height: 8, borderRadius: '50%', bgcolor: '#5D4037', border: '2px solid white' }} />
                         <Typography variant="caption" sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '0.62rem', display: 'block' }}>
-                           {p.type}: {String(p.toStatus || 'EVENT').toUpperCase()}
+                           {p.type}: {(p.serviceName && (p.type === 'SERVICE_STARTED' || p.type === 'SERVICE_COMPLETED'))
+                              ? `${p.serviceName} ${p.type === 'SERVICE_STARTED' ? 'STARTED' : 'COMPLETED'}`
+                              : String(p.toStatus || 'EVENT').toUpperCase()}
                         </Typography>
                         <Typography sx={{ fontWeight: '900', fontSize: '0.75rem', color: '#1A1A1A' }}>
                            {p.timestamp?.toDate ? p.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}

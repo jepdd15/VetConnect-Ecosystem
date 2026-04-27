@@ -733,7 +733,7 @@ export default function BookAppointment({ navigation, route }) {
             caseDay: 1,
             scheduledDate: Timestamp.fromDate(petDateTime),
             scheduledDateStr: `${petDateTime.getFullYear()}-${String(petDateTime.getMonth() + 1).padStart(2, '0')}-${String(petDateTime.getDate()).padStart(2, '0')}`,
-            triageDate: new Date().toISOString().split('T')[0],
+            triageDate: getLocalDateStr(),
             createdAt: Timestamp.now(),
             qrCode: qrData,
             clientNotes: selectedPets.length > 1 && notes

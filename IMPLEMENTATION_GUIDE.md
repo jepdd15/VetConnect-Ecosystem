@@ -5,7 +5,7 @@
 
 ---
 
-## Status (updated 2026-04-27)
+## Status (updated 2026-04-28)
 
 **Phase 2 COMPLETE AND VERIFIED.** 501 tasks audited — 496 PASS, 6 minor PARTIAL, 0 FAIL.
 
@@ -24,21 +24,31 @@
 
 **Phase 4 Mobile S-Push: T4.78 (in-app reschedule) DONE.** Group support, required reason, JIT capacity check.
 
-**Testing: 306 unit tests passing.** 50 pulseUtils engine + 256 pulse event writing (29 builders across 23 write sites).
+**Testing: 322 unit tests passing.** 50 pulseUtils engine + 256 pulse event writing + 16 draft save/resume.
+
+**Session 2026-04-27/28 (T3.111-T3.124):**
+- Queue action column collapse (T3.111): Check In button visible, Assign/Time/Cancel moved to overflow
+- Mobile INCEPTION pulse (T3.112): every online booking now has an INCEPTION event in clinicalPulse
+- Self-check-in fix (T3.113-T3.114): Firestore rule deployed, pulse format corrected, GPS timeout
+- Ask AI panel (T3.115-T3.116): loading spinner, auto-scroll, Strict Mode fix, Markdown rendering via react-markdown
+- God View symmetry (T3.117): flex layout, scroll chain, border lines
+- Shared AmendmentDialog (T3.118): extracted from CW, PatientDashboard amendment button added
+- EndOfDayModal cleanup (T3.119): services sort toggle, null guard, redundant PULSE EVENTS removed
+- Check-in simplification (T3.120): staff UI stripped from AssignStaffModal, Assign mode removed, statusHistory arrayUnion→array-spread across 6 write sites
+- Sign-off guard (T3.121): auto-transitions arrived/confirmed→in-consult before sign-off
+- On-hold UI (T3.122): Put On Hold + Resume Consult overflow menu items
+- Service pulse display (T3.123): serviceName in labels on 3 display surfaces
+- Re-route button (T3.124): RE-ROUTE TO CASHIER for reverted sealed records
+
+**Firestore rules deployed:** queue collection `allow update: if isAuth()` (was isStaff) — enables mobile self-check-in.
 
 **Vaccine System Hardening:** T3.100 (species filter) + T3.101 (exemption flag) DONE. Remaining: T3.102-T3.106 (contraindication, lot linking, dueDate normalization, legacy shim removal, mobile optimization).
 
 **Terminology Rename (T3.98):** rxCart→treatmentCart, prescriptions→dispensedProducts, prescribedItems→encounterItems. 11 files, dual-read fallback for existing documents.
 
-**Structured SOAP Amendments (T3.99):** type:'structured' discriminator. Reason + S/O/A/P + optional vitals/meds. Renders as orange mini SOAP cards on all 4 surfaces.
+**AI Clinical Reasoning (T3.107):** Claude Haiku 4.5 via Cloudflare Worker proxy. Purple "Ask AI" panel with loading spinner, auto-scroll, Markdown rendering. Feature-flagged, audit-logged.
 
-**AI Clinical Reasoning (T3.107):** Claude Haiku 4.5 via Cloudflare Worker proxy. Purple "Ask AI" panel augments rule-based KNOWLEDGE_BASE. Feature-flagged, audit-logged.
-
-**AI Chatbot (T3.62-67):** Hybrid buttons (rule-based, instant) + free text (Claude AI). Emergency always rule-based. Session management with rate limiting.
-
-**FAQ Management (T3.108):** Admin CRUD Pillar 12. Live clinic data + FAQ injection into chatbot system prompt. 8 seed FAQs.
-
-**Prescription Instructions (T3.110):** Treatment Plan sidebar now has instructions input per item. Drug items always-visible, non-drug collapsible, sig auto-populate.
+**Cloudflare Worker URL:** https://cool-fire-2d53.jepdd15.workers.dev
 
 **Phase 2 remaining (9 tasks — mostly deferred to later phases):**
 1. T2.451 — alert()/confirm() → MUI Dialog (~2 hrs, excludes Queue+CW) — optional
@@ -49,7 +59,7 @@
 6. T2.10 — manual Firebase Console operation (5 min, do during deployment)
 7. T2.11 — Blaze-dependent (1-2 hrs)
 
-**Audit Integrity:** T3.72 (checkout correlation ID) + T3.74 (auditReason append-only) DONE. Remaining: T3.73 (reserve/release logging), T3.75 (draft save/resume pulse events).
+**Audit Integrity:** T3.72 (checkout correlation ID) + T3.74 (auditReason append-only) DONE. T3.120 fixed statusHistory across 6 write sites. Remaining: T3.73 (reserve/release logging).
 
 **Next:** thesis (10 tasks, ~15-25 hrs) → Phase 3 Optional → Phase 4 S-Tier remaining (77 tasks, ~150 hrs)
 

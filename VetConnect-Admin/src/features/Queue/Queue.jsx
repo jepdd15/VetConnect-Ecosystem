@@ -37,7 +37,7 @@ import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 
 // 🧬 PHASE 6 COMPONENTS
 import { calculatePulseMetrics, getSmartShiftDate, makePulseEventId, createPulseEvent } from '../../utils/pulseUtils';
-import { COLORS } from '../../theme/designTokens';
+import { COLORS, FONT } from '../../theme/designTokens';
 import { HIGH_STAKES_STATUSES, ACTIVE_STATUSES, normalizeStatus, TERMINAL_STATUSES } from '../../utils/statusConstants';
 import { getLocalDateStr } from '../../utils/dateUtils';
 import { useClinicSettings } from '../../hooks/useClinicSettings';
@@ -52,6 +52,8 @@ import CloseIcon from '@mui/icons-material/Close';
 import CakeIcon from '@mui/icons-material/Cake';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import SearchIcon from '@mui/icons-material/Search';
+import PauseCircleIcon from '@mui/icons-material/PauseCircle';
+import PlayCircleFilledWhiteIcon from '@mui/icons-material/PlayCircleFilledWhite';
 
 const BREED_DATA = {
   Canine: [
@@ -186,7 +188,6 @@ export default function Queue() {
   const [dispenseHoldToast, setDispenseHoldToast] = useState({ open: false, message: '', severity: 'error' });
   const [openWalkIn, setOpenWalkIn] = useState(false);
   const [openAssign, setOpenAssign] = useState(false);
-  const [assignMode, setAssignMode] = useState('check-in'); // 'check-in' or 'assign'
   const [siblingAppts, setSiblingAppts] = useState([]); // Sibling appointments for group check-in
 
   // --- ðŸ›°ï¸ UNIVERSAL CLINICAL HOVER ENGINE ---
@@ -637,9 +638,9 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
 
   const handleMenuClick = (e, row) => { setAnchorEl(e.currentTarget); setSelectedRow(row); };
   const handleCloseMenu = () => { setAnchorEl(null); };
-  const handleOpenAssign = (row, mode = 'check-in') => {
+  const handleOpenAssign = (row) => {
     // Collect confirmed siblings for group check-in (confirmed only — don't carry in-progress pets)
-    const siblings = (row.visitGroupId && mode === 'check-in')
+    const siblings = row.visitGroupId
       ? rows.filter(r =>
           r.visitGroupId === row.visitGroupId &&
           r.id !== row.id &&
@@ -648,7 +649,6 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       : [];
     setSiblingAppts(siblings);
     setSelectedRow(row);
-    setAssignMode(mode);
     setOpenAssign(true);
     handleCloseMenu();
   };
@@ -677,11 +677,12 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         const apptDoc = await transaction.get(apptRef);
         if (!apptDoc.exists()) throw new Error("Appointment not found.");
         if (apptDoc.data().dispensingHold) throw new Error("This dispensing was placed on hold while you were reviewing. Refresh and try again.");
+        const freshApptData = apptDoc.data();
         transaction.update(apptRef, {
           ...dispensingData,
           status: 'billing',
           timePaymentStarted: Timestamp.now(),
-          statusHistory: arrayUnion(dispenseRow.status || 'dispensing'),
+          statusHistory: [...(freshApptData.statusHistory || []), dispenseRow.status || 'dispensing'],
           clinicalPulse: arrayUnion({
             eventId: makePulseEventId('status'),
             type: 'STATUS_CHANGE',
@@ -2007,10 +2008,6 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         open={openAssign}
         onClose={() => { setOpenAssign(false); setSiblingAppts([]); }}
         patient={selectedRow}
-        vetsList={vets}
-        activeAppointments={rows.filter(r => ['arrived', 'in-consult', 'confined', 'dispensing', 'billing'].includes(r.status))}
-        departments={departments}
-        mode={assignMode}
         siblingAppointments={siblingAppts}
       />
       
@@ -2151,6 +2148,24 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
            </>
          )}
 
+         {/* T3.122: On-hold controls */}
+         {selectedRow?.status === 'in-consult' && (
+           <MenuItem onClick={() => { handleStatusChange(selectedRow, 'on-hold'); handleCloseMenu(); }}>
+             <PauseCircleIcon sx={{ mr: 1, fontSize: 18, color: COLORS.warning }} />
+             <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', fontWeight: 700, color: COLORS.warning }}>
+               Put On Hold
+             </Typography>
+           </MenuItem>
+         )}
+         {selectedRow?.status === 'on-hold' && (
+           <MenuItem onClick={() => { handleStatusChange(selectedRow, 'in-consult'); handleCloseMenu(); }}>
+             <PlayCircleFilledWhiteIcon sx={{ mr: 1, fontSize: 18, color: COLORS.success }} />
+             <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', fontWeight: 700, color: COLORS.success }}>
+               Resume Consult
+             </Typography>
+           </MenuItem>
+         )}
+
          {/* GROUP CHECK-IN: Show when the selected row is confirmed and has
              confirmed siblings sharing the same visitGroupId */}
          {selectedRow?.status === 'confirmed' && selectedRow?.visitGroupId && (() => {
@@ -2163,7 +2178,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
            const groupPetCount = confirmedSiblings.length + 1;
            return (
              <MenuItem
-               onClick={() => handleOpenAssign(selectedRow, 'check-in')}
+               onClick={() => handleOpenAssign(selectedRow)}
                sx={{ bgcolor: '#E3F2FD', '&:hover': { bgcolor: '#BBDEFB' } }}
              >
                <ListItemIcon>
@@ -2641,13 +2656,17 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                                 if (filteredPulse.length > 0) {
                                     events = filteredPulse.map(p => ({
                                         id: p.eventId,
-                                        label: p.toStatus ? p.toStatus.toUpperCase() : 'EVENT',
+                                        label: p.toStatus ? p.toStatus.toUpperCase()
+                                            : (p.serviceName && (p.type === 'SERVICE_STARTED' || p.type === 'SERVICE_COMPLETED'))
+                                              ? `${p.serviceName}: ${p.type === 'SERVICE_STARTED' ? 'STARTED' : 'COMPLETED'}`
+                                              : (p.type || 'EVENT'),
                                         val: p.timestamp,
                                         by: p.staffName,
                                         note: p.note,
                                         type: p.type,
+                                        serviceName: p.serviceName,
                                         isCorrection: p.isCorrection || p.type === 'CORRECTION',
-                                        isVoided: voidedIds.has(p.eventId) 
+                                        isVoided: voidedIds.has(p.eventId)
                                     }));
                                 } else {
                                     events = [

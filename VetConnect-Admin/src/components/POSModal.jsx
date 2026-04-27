@@ -515,6 +515,14 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
           ? `${patient.ownerName || 'Walk-In'} (Group Visit)`
           : patient.petName;
 
+        // Read fresh appointment docs upfront for statusHistory
+        const groupApptDocs = isGroupBill
+          ? await Promise.all(groupAppointments.map(appt => transaction.get(doc(db, "appointments", appt.id))))
+          : null;
+        const individualApptDoc = !isGroupBill
+          ? await transaction.get(doc(db, "appointments", patient.id))
+          : null;
+
         // Deduct inventory stock for all cart products (shared helper)
         const batchSourceMap = await deductInventoryInTransaction(transaction, cart, patientLabel);
 
@@ -572,13 +580,15 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
           // Update ALL appointment docs in the group to 'completed'.
           // Each appointment gets its own proportional share of the balance.
           const breakdown = perPetBreakdown;
-          for (const appt of groupAppointments) {
+          for (let i = 0; i < groupAppointments.length; i++) {
+            const appt = groupAppointments[i];
+            const freshApptData = groupApptDocs[i].data();
             const apptBreakdown = breakdown.find(b => b.appointmentId === appt.id);
             const apptRef = doc(db, "appointments", appt.id);
             transaction.update(apptRef, {
               checkoutCorrelationId,
               status: 'completed',
-              statusHistory: arrayUnion(appt.status || 'billing'),
+              statusHistory: [...(freshApptData.statusHistory || []), freshApptData.status || 'billing'],
               timeCompleted: Timestamp.now(),
               balanceRemaining: apptBreakdown
                 ? parseFloat(((apptBreakdown.subtotal / parseFloat(financials.total || 1)) * parseFloat(financials.balanceDue)).toFixed(2))
@@ -623,10 +633,11 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
           });
 
           const apptRef = doc(db, "appointments", patient.id);
+          const freshApptData = individualApptDoc.data();
           transaction.update(apptRef, {
             checkoutCorrelationId,
             status: 'completed',
-            statusHistory: arrayUnion(patient.status || 'billing'),
+            statusHistory: [...(freshApptData.statusHistory || []), freshApptData.status || 'billing'],
             timeCompleted: Timestamp.now(),
             balanceRemaining: parseFloat(financials.balanceDue),
             clinicalPulse: arrayUnion({

@@ -1328,7 +1328,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           staffName: auth.currentUser?.displayName || 'Authorized Clinician',
           serviceId: svcId,
           serviceName: (patient.services || []).find(s => s.id === svcId)?.name || svcId,
-          note: `Service ${next === 'in-progress' ? 'started' : 'completed'}.`,
+          note: `${(patient.services || []).find(s => s.id === svcId)?.name || 'Service'} ${next === 'in-progress' ? 'started' : 'completed'}.`,
         }),
       });
     } catch (e) {
@@ -1417,6 +1417,47 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       const vetName = auth.currentUser?.displayName || "Authorized Clinician";
       const visitTotal = treatmentCart.reduce((sum, item) => sum + (item.price * item.qty), 0);
       const commitTimestamp = Timestamp.now();
+
+      // Read fresh appointment data before the batch so statusHistory uses the
+      // server-side array rather than arrayUnion (which silently deduplicates).
+      // Option A: pre-batch read — small race window, acceptable for this path.
+      const freshApptSnap = await getDoc(doc(db, "appointments", patient.id));
+      const freshStatusHistory = freshApptSnap.exists() ? (freshApptSnap.data().statusHistory || []) : [];
+
+      // T3.121: Sign-off guard — auto-transition arrived/confirmed patients to in-consult.
+      // Group-visit pet switching (onSwitchPatient) can load siblings that haven't started
+      // consult yet. Without this guard, sign-off would skip the arrived→in-consult
+      // transition — corrupting statusHistory, pulse timeline, timeStarted, and consult
+      // duration metrics. Uses fresh server-side status (not stale patient prop).
+      let currentFreshStatus = freshApptSnap.exists() ? (freshApptSnap.data().status || 'unknown') : 'unknown';
+      const PRE_CONSULT_STATUSES = ['arrived', 'confirmed'];
+
+      if (PRE_CONSULT_STATUSES.includes(currentFreshStatus)) {
+          const transitionEvent = createPulseEvent('STATUS_CHANGE', {
+              fromStatus: currentFreshStatus,
+              toStatus: 'in-consult',
+              staffId: vetUid,
+              staffName: vetName,
+              note: 'Auto-transition: sign-off initiated on pre-consult patient (T3.121 guard).',
+          });
+
+          try {
+              await updateDoc(doc(db, "appointments", patient.id), {
+                  status: 'in-consult',
+                  timeStarted: Timestamp.now(),
+                  startedBy: vetName,
+                  statusHistory: [...freshStatusHistory, currentFreshStatus],
+                  clinicalPulse: arrayUnion(transitionEvent),
+              });
+              // Mutate local tracking so the subsequent sign-off batch uses correct values.
+              freshStatusHistory.push(currentFreshStatus);
+              currentFreshStatus = 'in-consult';
+          } catch (guardError) {
+              isSavingRef.current = false;
+              setLoading(false);
+              return alert(`Failed to transition patient to in-consult before sign-off: ${guardError.message}`);
+          }
+      }
 
       const batch = writeBatch(db);
 
@@ -1595,7 +1636,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
 
       const appointmentUpdate = {
           status: nextRouteStatus,
-          statusHistory: arrayUnion(patient.status || 'unknown'),
+          statusHistory: [...freshStatusHistory, currentFreshStatus],
           encounterItems: treatmentCart.map(({ _showInstructions, ...rest }) => rest),
           finalTotal: visitTotal,
           signedOffAt: commitTimestamp,
@@ -1606,7 +1647,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           // forensicSeal is computed above using the pre-existing pulse array; adding this event here
           // does not affect the seal (it freezes at sign-off time, before this event is persisted).
           clinicalPulse: arrayUnion(createPulseEvent('STATUS_CHANGE', {
-              fromStatus: patient.status || 'in-consult',
+              fromStatus: currentFreshStatus,
               toStatus: nextRouteStatus,
               staffId: vetUid,
               staffName: vetName,
@@ -2123,6 +2164,47 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       )}
     </Box>
   ) : null;
+
+  // T3.124: Re-route a patient whose record is already sealed but whose appointment
+  // was reverted (e.g. by an admin) back to a pre-cashier status. Determines the
+  // correct next station (dispensing vs billing) by inspecting treatmentCart — the
+  // same logic used by handleSaveConsult's nextRouteStatus derivation.
+  const handleRerouteSealed = async () => {
+    setLoading(true);
+    try {
+      const freshSnap = await getDoc(doc(db, 'appointments', patient.id));
+      const freshData = freshSnap.exists() ? freshSnap.data() : {};
+      const freshHistory = freshData.statusHistory || [];
+      const freshStatus = freshData.status || patient.status;
+
+      // Mirror handleSaveConsult's nextRouteStatus: dispensing if any drug is in cart,
+      // otherwise send straight to billing.
+      const hasDispensableItems = treatmentCart.some(item => item.isDrug);
+      const nextStatus = hasDispensableItems ? 'dispensing' : 'billing';
+
+      const rerouteEvent = createPulseEvent('STATUS_CHANGE', {
+        fromStatus: freshStatus,
+        toStatus: nextStatus,
+        staffId: auth.currentUser?.uid || 'system',
+        staffName: auth.currentUser?.displayName || 'Clinician',
+        note: 'Re-routed to cashier after revert — record already sealed.',
+      });
+
+      await updateDoc(doc(db, 'appointments', patient.id), {
+        status: nextStatus,
+        statusHistory: [...freshHistory, freshStatus],
+        clinicalPulse: arrayUnion(rerouteEvent),
+      });
+
+      showToast(`Patient re-routed to ${nextStatus}.`, 'success');
+      onClose();
+    } catch (err) {
+      console.error('[ClinicalWorkspace.handleRerouteSealed]:', err.message);
+      showToast(`Re-route failed: ${err.message}`, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <Dialog fullScreen open={open} onClose={handleCloseRequest} TransitionComponent={Transition}
@@ -2794,7 +2876,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 )}
 
                 <Box sx={{ pt: 2 }}>
-                    {!isRecordLocked ? (
+                    {!isRecordLocked && !lockedServices.has('medical') ? (
                         <Stack spacing={2}>
                             {/* Staff-initiated record lock — two-step commit guard.
                                 Clicking this arms the sign-off button; the vet confirms by clicking Sign & Send. */}
@@ -2814,6 +2896,32 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                             >
                                 Add Amendment
                             </Button>
+
+                            {/* T3.124: Re-route button for reverted sealed records.
+                                Only shown when the appointment was reverted back to a
+                                pre-cashier status after the record was already sealed — so the
+                                clinician can push it forward without re-signing. */}
+                            {!['dispensing', 'billing', 'completed', 'carried-over', 'cancelled', 'no-show'].includes(patient.status) && (
+                                <Button
+                                    variant="contained"
+                                    fullWidth
+                                    size="small"
+                                    onClick={handleRerouteSealed}
+                                    disabled={loading}
+                                    sx={{
+                                        mt: 1.5,
+                                        fontWeight: 900,
+                                        borderRadius: 0,
+                                        bgcolor: COLORS.warning,
+                                        color: 'white',
+                                        fontSize: '0.72rem',
+                                        textTransform: 'uppercase',
+                                        '&:hover': { bgcolor: '#BF360C' },
+                                    }}
+                                >
+                                    {loading ? 'RE-ROUTING...' : 'RE-ROUTE TO CASHIER'}
+                                </Button>
+                            )}
                         </Box>
                     )}
                 </Box>

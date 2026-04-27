@@ -240,7 +240,10 @@ const AuditPatientCard = React.memo(({
         }
         return filteredPulse.map(p => ({
             id: p.eventId,
-            label: p.toStatus ? p.toStatus.toUpperCase() : (p.type || 'EVENT'),
+            label: p.toStatus ? p.toStatus.toUpperCase()
+                : (p.serviceName && (p.type === 'SERVICE_STARTED' || p.type === 'SERVICE_COMPLETED'))
+                  ? `${p.serviceName}: ${p.type === 'SERVICE_STARTED' ? 'STARTED' : 'COMPLETED'}`
+                  : (p.type || 'EVENT'),
             val: p.timestamp,
             by: p.staffName,
             isVoided: voidedIds.has(p.eventId),

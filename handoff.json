@@ -3171,6 +3171,71 @@
         "T3.109: PetHistoryScreen splits dispensedProducts by isDrug — Medications vs Other Items Dispensed labels.",
         "T3.110: Treatment Plan sidebar now has instructions TextField per item — drug items always-visible (orange), non-drug collapsible, sig auto-populate on add."
       ]
+    },
+    "advisory_session_2026_04_27_28": {
+      "date": "2026-04-27 to 2026-04-28",
+      "role": "Advisory + implementation session. Investigated bugs, formalized tasks, generated planner/execute prompts, reviewed plans, tested manually.",
+      "tasks_done_this_session": "T3.111-T3.124 (14 tasks) + 4 hotfixes + triageDate timezone fix",
+      "total_done_after_session": "~613",
+      "phase3_status": "~613 DONE / ~142 TODO. T3.111-T3.124 shipped.",
+      "commits": [
+        "T3.111 — Queue action column layout collapse (Check In button visibility fix)",
+        "T3.112 — Mobile booking INCEPTION pulse event (BookAppointment.js)",
+        "T3.113 — Self-check-in Firestore rule fix (queue collection allow update:isAuth) + pulse event format (from/to→fromStatus/toStatus)",
+        "T3.114 — Self-check-in GPS timeout (Promise.race 10s)",
+        "T3.115 — Ask AI panel: loading spinner, auto-scroll, Strict Mode llmAbortRef reset, Collapse in=llmPanelOpen",
+        "T3.116 — Ask AI Markdown rendering (react-markdown + styled components overrides)",
+        "T3.117 — God View quadrant symmetry: flex layout (calc→minHeight:0), scroll chain, border lines",
+        "T3.118 — Shared AmendmentDialog: extracted from ClinicalWorkspace, PatientDashboard amendment button, CW refactor (~270 lines removed)",
+        "T3.119 — EndOfDayModal services sort toggle (Booking/Status/Dept), null guard for legacy timestamps, redundant PULSE EVENTS removed",
+        "T3.120 — Simplify check-in: strip staff UI from AssignStaffModal, remove Assign mode, fix missing statusHistory in check-in, fix arrayUnion dedup across 6 write sites",
+        "T3.121 — ClinicalWorkspace sign-off guard: auto-transitions arrived/confirmed→in-consult before sign-off via inline updateDoc",
+        "T3.122 — On-hold overflow menu: Put On Hold (in-consult only) + Resume Consult (on-hold only) MenuItems",
+        "T3.123 — Service-level pulse event display: serviceName in labels on 3 surfaces + improved note text",
+        "T3.124 — RE-ROUTE TO CASHIER button for reverted sealed records + hotfix (lockedServices.has('medical') condition)"
+      ],
+      "hotfixes": [
+        "EndOfDayModal null guard for legacy pulse timestamps (m.val undefined → filter)",
+        "EndOfDayModal redundant PULSE EVENTS section removed (ClinicalTimeline import cleaned)",
+        "BookAppointment.js triageDate timezone fix (toISOString→getLocalDateStr for PH timezone)",
+        "T3.115 llmAbortRef Strict Mode reset (useEffect body: llmAbortRef.current = false)",
+        "T3.115 scrollIntoView God View fix (walk to overflowY:auto parent instead of scrollIntoView)",
+        "T3.124 isRecordLocked→lockedServices.has('medical') condition fix"
+      ],
+      "firestore_rules_deployed": true,
+      "firestore_rules_change": "queue collection: allow update: if isAuth() (was isStaff). Enables mobile self-check-in queue number increment.",
+      "new_tasks_formalized": [
+        "T3.111-T3.124 (all DONE)",
+        "T3.119 — EndOfDayModal services sort toggle (DONE)",
+        "T3.120 — Simplify check-in + statusHistory fixes (DONE)",
+        "T3.121 — Sign-off guard for non-consult patients (DONE)",
+        "T3.122 — On-hold UI button (DONE)",
+        "T3.123 — Service-level pulse event display (DONE)",
+        "T3.124 — Re-route button for reverted sealed records (DONE)"
+      ],
+      "key_decisions_locked": [
+        "Self-check-in: static QR code (STARBARKS-CHECKIN-...) with GPS geofence graceful degradation",
+        "Ask AI: DiagnosticBridge is shared React.memo component — fixes apply to default SOAP, God View, and Zen mode simultaneously",
+        "Check-in simplification: staff assignment removed from AssignStaffModal — vets assign via ClinicalWorkspace Performed By dropdown only",
+        "statusHistory: changed from arrayUnion to array-spread at ALL 6 write sites — allows duplicate entries for correct revert chain",
+        "On-hold: overflow menu only (not CW button) — sufficient for solo-vet clinic frequency",
+        "T3.121 guard: inline updateDoc (not changeStatus import) — avoids queue/daily_queue side effects",
+        "T3.124 re-route: lockedServices.has('medical') is the authority, not isRecordLocked state"
+      ],
+      "remaining_work_uncommitted": {
+        "T3.124_hotfix": "lockedServices.has('medical') condition fix — needs commit",
+        "pending_manual_tests": "Tests 4-6 from T3.120 verification: on-hold cycle partially tested, simple revert and double revert still pending"
+      },
+      "cloudflare_worker_url": "https://cool-fire-2d53.jepdd15.workers.dev",
+      "notable_findings": [
+        "React 18/19 Strict Mode double-mount causes llmAbortRef to permanently stay true — fixed by resetting in useEffect body",
+        "MUI Dialog fullScreen does NOT reliably set display:flex/flexDirection:column on Paper — must be explicit",
+        "Firestore arrayUnion silently deduplicates — corrupts statusHistory revert chain for on-hold cycles",
+        "BookAppointment.js triageDate used toISOString (UTC) — PH timezone offset caused bookings after midnight to appear on wrong day in admin queue",
+        "AssignStaffModal check-in path never wrote statusHistory — confirmed→arrived transition was invisible to revert system",
+        "ClinicalWorkspace sign-off on group-visit sibling in arrived status bypasses in-consult transition entirely",
+        "isRecordLocked (useState) vs lockedServices.has('medical') (Set from signedOffAt) — different lifecycle, different truth source"
+      ]
     }
   }
 }

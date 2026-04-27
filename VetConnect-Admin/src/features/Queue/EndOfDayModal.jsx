@@ -28,7 +28,7 @@ import { useClinicSettings } from '../../hooks/useClinicSettings';
 import { calculatePulseMetrics, formatDuration, getSmartShiftDate } from '../../utils/pulseUtils';
 import { STATUS, HIGH_STAKES_STATUSES } from '../../utils/statusConstants';
 import { getLocalDateStr } from '../../utils/dateUtils';
-import { COLORS } from '../../theme/designTokens';
+import { COLORS, FONT } from '../../theme/designTokens';
 import { ForensicMetricGrid } from './ForensicMetricGrid';
 import TwitterIcon from '@mui/icons-material/Twitter';
 
@@ -56,6 +56,9 @@ const getSpeciesIcon = (species) => {
 };
 
 
+// T3.119: Sort priority for service status — completed first, then in-progress, then pending.
+const SERVICES_STATUS_ORDER = { completed: 0, 'in-progress': 1, pending: 2 };
+
 // --- 📡 MEMOIZED AUDIT CARD: THE PERFORMANCE CURE ---
 const AuditPatientCard = React.memo(({
     patient, resolution, targetDate, targetTime, auditReason, realTimeStatus, tabMode, ancestorData, loadingHistory, historyMessage, departments, settings,
@@ -76,6 +79,23 @@ const AuditPatientCard = React.memo(({
 
     const [expandedNotes, setExpandedNotes] = useState({});
     const toggleNote = (id) => setExpandedNotes(prev => ({ ...prev, [id]: !prev[id] }));
+
+    // T3.119: Per-card services sort mode — default 'booking' preserves insertion order.
+    const [servicesSortMode, setServicesSortMode] = useState('booking');
+
+    const sortedServices = useMemo(() => {
+        const svcs = [...(patient.services || [])];
+        if (servicesSortMode === 'status') {
+            svcs.sort((a, b) =>
+                (SERVICES_STATUS_ORDER[a.serviceStatus] ?? 99) -
+                (SERVICES_STATUS_ORDER[b.serviceStatus] ?? 99)
+            );
+        } else if (servicesSortMode === 'department') {
+            svcs.sort((a, b) => (a.department || '').localeCompare(b.department || ''));
+        }
+        // 'booking' — no sort; preserve insertion order.
+        return svcs;
+    }, [patient.services, servicesSortMode]);
 
     const handleReasonChange = (newVal) => {
         setLocalReason(newVal);
@@ -377,8 +397,34 @@ const AuditPatientCard = React.memo(({
                         🏥 SERVICES ({patient.services?.length || 0})
                     </Typography>
                 </Box>
+                {/* T3.119: Sort toggle — compact 3-way for the 300px column */}
+                <Box sx={{ px: 1.2, pt: 0.8, pb: 0 }}>
+                    <ToggleButtonGroup
+                        value={servicesSortMode}
+                        exclusive
+                        onChange={(e, v) => v && setServicesSortMode(v)}
+                        size="small"
+                        sx={{
+                            mb: 0.5,
+                            '& .MuiToggleButton-root': {
+                                borderRadius: 0,
+                                py: 0.25,
+                                px: 0.75,
+                                fontSize: '0.5rem',
+                                fontWeight: 900,
+                                fontFamily: FONT,
+                                textTransform: 'uppercase',
+                                letterSpacing: 0.5,
+                            },
+                        }}
+                    >
+                        <ToggleButton value="booking">Booking</ToggleButton>
+                        <ToggleButton value="status">Status</ToggleButton>
+                        <ToggleButton value="department">Dept</ToggleButton>
+                    </ToggleButtonGroup>
+                </Box>
                 <List sx={{ p: 0, flex: 1, overflowY: 'auto' }}>
-                    {(patient.services || []).map((svc, i) => {
+                    {sortedServices.map((svc, i) => {
                         const deptObj = (departments || []).find(d => d.name === svc.department);
                         const bColor = deptObj ? deptObj.color : '#616161';
                         return (

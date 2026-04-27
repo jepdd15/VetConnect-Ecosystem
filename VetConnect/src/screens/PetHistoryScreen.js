@@ -488,7 +488,7 @@ export default function PetHistoryScreen({ route, navigation }) {
   const prescriptionFrequency = useMemo(() => {
     const rxMap = new Map();
     (history || []).forEach(r => {
-      (r.dispensedProducts || r.prescriptions || []).forEach(rx => {
+      (r.dispensedProducts || r.prescriptions || []).filter(rx => rx.isDrug).forEach(rx => {
         if (!rx.name) return;
         const existing = rxMap.get(rx.name);
         if (existing) {
@@ -708,9 +708,20 @@ export default function PetHistoryScreen({ route, navigation }) {
 
     let rxHtml = '';
     if (record.prescriptions && record.prescriptions.length > 0 && !dsMeds.length) {
-      rxHtml = `<h3>Prescribed Medications</h3><ul>${record.prescriptions.map((rx) =>
-        `<li><b>${esc(rx.name)}</b>: ${esc(rx.instructions || "Use as directed")}</li>`
-      ).join("")}</ul>`;
+      const medications = record.prescriptions.filter(rx => rx.isDrug);
+      const nonDrugItems = record.prescriptions.filter(rx => !rx.isDrug);
+      rxHtml = [
+        medications.length > 0
+          ? `<h3>Prescribed Medications</h3><ul>${medications.map((rx) =>
+              `<li><b>${esc(rx.name)}</b>: ${esc(rx.instructions || "Use as directed")}</li>`
+            ).join("")}</ul>`
+          : '',
+        nonDrugItems.length > 0
+          ? `<h3>Other Items Dispensed</h3><ul>${nonDrugItems.map((rx) =>
+              `<li><b>${esc(rx.name)}</b>: ${esc(rx.instructions || "Use as directed")}</li>`
+            ).join("")}</ul>`
+          : '',
+      ].join('');
     }
 
     const nextVisitRaw = record.dischargeSummary?.nextVisit || record.nextVisit;
@@ -991,14 +1002,28 @@ export default function PetHistoryScreen({ route, navigation }) {
               </View>
             )}
 
-            {item.prescriptions && item.prescriptions.length > 0 && (
+            {item.prescriptions?.filter(rx => rx.isDrug).length > 0 && (
               <View style={styles.rxBox}>
-                <Text style={styles.rxTitle}>💊 Prescribed Medications:</Text>
-                {item.prescriptions.map((rx, idx) => (
+                <Text style={styles.rxTitle}>💊 Medications:</Text>
+                {item.prescriptions.filter(rx => rx.isDrug).map((rx, idx) => (
                   <View key={idx} style={styles.rxItem}>
                     <Text style={styles.rxName}>• {rx.name}</Text>
                     <Text style={styles.rxSig}>
                       Sig: {rx.instructions || "Use as directed"}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {item.prescriptions?.filter(rx => !rx.isDrug).length > 0 && (
+              <View style={styles.rxBox}>
+                <Text style={styles.rxTitle}>🛍️ Items Dispensed:</Text>
+                {item.prescriptions.filter(rx => !rx.isDrug).map((rx, idx) => (
+                  <View key={idx} style={styles.rxItem}>
+                    <Text style={styles.rxName}>• {rx.name}</Text>
+                    <Text style={styles.rxSig}>
+                      {rx.instructions || ""}
                     </Text>
                   </View>
                 ))}

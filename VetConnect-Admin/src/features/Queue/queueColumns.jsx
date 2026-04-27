@@ -11,8 +11,7 @@ import DirectionsWalkIcon from '@mui/icons-material/DirectionsWalk';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital'; 
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'; 
 import PaidIcon from '@mui/icons-material/Paid';
-import PersonAddIcon from '@mui/icons-material/PersonAdd'; 
-import MoreVertIcon from '@mui/icons-material/MoreVert'; 
+import MoreVertIcon from '@mui/icons-material/MoreVert';
 import SmartphoneIcon from '@mui/icons-material/Smartphone'; 
 import AccessTimeIcon from '@mui/icons-material/AccessTime'; 
 import PauseCircleIcon from '@mui/icons-material/PauseCircle'; 
@@ -22,9 +21,7 @@ import PersonIcon from '@mui/icons-material/Person';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import ReceiptIcon from '@mui/icons-material/Receipt';
 import ScaleIcon from '@mui/icons-material/Scale';
-import PersonOffIcon from '@mui/icons-material/PersonOff';
 import HowToRegIcon from '@mui/icons-material/HowToReg';
-import EventNoteIcon from '@mui/icons-material/EventNote';
 import UndoIcon from '@mui/icons-material/Undo';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import FlagIcon from '@mui/icons-material/Flag';
@@ -745,125 +742,74 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
 
       if (params.row.status === 'pending') {
         return (
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 0.8, width: '100%', height: '100%', py: 1 }}>
-            
-            {/* TOP ROW: PRIMARY ACCEPTANCE GATE & AUDIT ANCHOR */}
-            <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', gap: 1, mb: 0.6 }}>
-                <Button 
-                    variant="contained" 
-                    size="small" 
-                    fullWidth
-                    color="success"
-                    startIcon={<CheckCircleIcon sx={{ fontSize: '14px !important' }} />} 
-                    sx={{ ...btnStyle, flexGrow: 1, fontWeight: '1000', height: 32, bgcolor: '#2E7D32' }} 
-                    onClick={() => actions.handleStatusChange(params.row, 'confirmed')}
-                >
-                    Accept
-                </Button>
-                <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)} sx={{ border: '1px solid rgba(0,0,0,0.1)', color: '#5D4037', flexShrink: 0 }}><MoreVertIcon fontSize="small" /></IconButton>
-            </Box>
-
-            {/* SECONDARY TRIAGE UTILITIES (DEFER/REJECT) */}
-            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.5, width: '100%' }}>
-                <Button variant="outlined" size="small" sx={{...btnStyle, fontSize: '0.65rem', px: 0, color: '#5D4037', borderColor: '#D7CCC8', minWidth: 0, height: 26}} onClick={() => actions.handleDefer(params.row)}>Defer</Button>
-                <Button variant="outlined" size="small" color="error" sx={{...btnStyle, fontSize: '0.65rem', px: 0, fontWeight: 'bold', minWidth: 0, height: 26}} onClick={() => { 
-                    actions.setSelectedId(params.row.id); 
-                    actions.handleMenuClick({ currentTarget: null }, params.row); // SENSOR SYNC
-                    actions.setOpenReject(true); 
-                }}>Reject</Button>
-            </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.8, width: '100%', height: '100%' }}>
+            <Button
+              variant="contained"
+              size="small"
+              color="success"
+              startIcon={<CheckCircleIcon sx={{ fontSize: '14px !important' }} />}
+              sx={{ ...btnStyle, flex: 1, fontWeight: '1000', height: 32, bgcolor: '#2E7D32' }}
+              onClick={() => actions.handleStatusChange(params.row, 'confirmed')}
+            >
+              Accept
+            </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              sx={{ ...btnStyle, minWidth: 'auto', px: 1, fontSize: '0.7rem', color: '#5D4037', borderColor: '#D7CCC8', height: 32 }}
+              onClick={() => actions.handleDefer(params.row)}
+            >
+              Defer
+            </Button>
+            <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)} sx={{ border: '1px solid rgba(0,0,0,0.1)', color: '#5D4037', flexShrink: 0 }}>
+              <MoreVertIcon fontSize="small" />
+            </IconButton>
           </Box>
         );
       }
 
       if (params.row.status === 'confirmed') {
-        const isWalkIn = params.row.ownerId === 'WALK_IN_USER' || String(params.row.ownerId).includes('GUEST_');
-        
         return (
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 0.8, width: '100%', height: '100%', py: 1 }}>
-            
-            {/* TOP ROW: PRIMARY GATEKEEPER & AUDIT ANCHOR */}
-            <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', gap: 1, mb: 0.6 }}>
-                <Button 
-                    variant="contained" 
-                    size="small" 
-                    fullWidth
-                    disabled={isTomorrow}
-                    startIcon={<HowToRegIcon sx={{ fontSize: '14px !important' }} />} 
-                    sx={{ 
-                        ...btnStyle, 
-                        flexGrow: 1,
-                        bgcolor: isTomorrow ? '#BDBDBD' : (params.row.caseDay > 1 ? '#E65100' : '#1976D2'), 
-                        fontWeight: '1000', 
-                        height: 32,
-                        boxShadow: isTomorrow ? 'none' : '0 4px 10px rgba(25, 118, 210, 0.3)',
-                        '&.Mui-disabled': { bgcolor: 'rgba(0,0,0,0.08)', color: 'rgba(0,0,0,0.26)' }
-                    }} 
-                    onClick={() => actions.handleOpenAssign(params.row, 'check-in')}
-                >
-                    {isTomorrow ? 'Locked' : (params.row.caseDay > 1 ? '🗂️ RE-ARRIVE & RESUME' : 'Check In')}
-                </Button>
-                <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)} sx={{ border: '1px solid rgba(0,0,0,0.1)', color: '#5D4037', flexShrink: 0 }}><MoreVertIcon fontSize="small" /></IconButton>
-            </Box>
-            
-            {/* SECONDARY UTILITY GRID (100% CASE COVERAGE) */}
-            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.5, width: '100%' }}>
-                <Button 
-                    variant="outlined" 
-                    size="small" 
-                    disabled={isTomorrow}
-                    sx={{ 
-                      ...btnStyle, fontSize: '0.6rem', px: 0, borderColor: '#5D4037', color: '#5D4037', opacity: 0.8, minWidth: 0, height: 26,
-                      '&.Mui-disabled': { borderColor: 'rgba(0,0,0,0.05)', opacity: 0.3 }
-                    }} 
-                    startIcon={<PersonAddIcon sx={{ fontSize: '10px !important' }} />} 
-                    onClick={() => actions.handleOpenAssign(params.row, 'assign')}
-                >
-                    Assign
-                </Button>
-                <Button 
-                    variant="outlined" 
-                    size="small" 
-                    sx={{ ...btnStyle, fontSize: '0.6rem', px: 0, borderColor: '#5D4037', color: '#5D4037', opacity: 0.8, minWidth: 0, height: 26 }} 
-                    startIcon={<EventNoteIcon sx={{ fontSize: '10px !important' }} />} 
-                    onClick={() => actions.handleRescheduleOpen(params.row)}
-                >
-                    Time
-                </Button>
-                <Tooltip
-                    title={noShowWindowOpen
-                        ? "Flag this patient as No-Show"
-                        : `No-Show window opens at ${noShowOpenTime?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || '??:??'} per clinic policy`
-                    }
-                >
-                  <span>
-                    <Button
-                        variant="outlined"
-                        size="small"
-                        color="error"
-                        disabled={!noShowWindowOpen}
-                        sx={{ ...btnStyle, fontSize: '0.6rem', px: 0, borderColor: noShowWindowOpen ? 'rgba(211, 47, 47, 0.3)' : 'rgba(0,0,0,0.08)', minWidth: 0, height: 26 }}
-                        startIcon={<PersonOffIcon sx={{ fontSize: '10px !important' }} />}
-                        onClick={() => actions.handleQuickNoShow(params.row)}
-                    >
-                        No-Show
-                    </Button>
-                  </span>
-                </Tooltip>
-                <Button 
-                    variant="outlined" 
-                    size="small" 
-                    color="inherit"
-                    sx={{ ...btnStyle, fontSize: '0.6rem', px: 0, borderColor: 'rgba(0,0,0,0.1)', color: '#757575', minWidth: 0, height: 26 }} 
-                    onClick={() => {
-                        actions.setSelectedId(params.row.id);
-                        actions.handleMenuClick({ currentTarget: null }, params.row); // SYNCING SENSOR
-                        actions.setOpenReject(true);
-                    }}
-                >
-                    Cancel
-                </Button>
-            </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.8, width: '100%', height: '100%' }}>
+            <Button
+              variant="contained"
+              size="small"
+              disabled={isTomorrow}
+              startIcon={<HowToRegIcon sx={{ fontSize: '14px !important' }} />}
+              sx={{
+                ...btnStyle,
+                flex: 1,
+                bgcolor: isTomorrow ? '#BDBDBD' : (params.row.caseDay > 1 ? '#E65100' : '#1976D2'),
+                fontWeight: '1000',
+                height: 32,
+                boxShadow: isTomorrow ? 'none' : '0 4px 10px rgba(25, 118, 210, 0.3)',
+                '&.Mui-disabled': { bgcolor: 'rgba(0,0,0,0.08)', color: 'rgba(0,0,0,0.26)' },
+              }}
+              onClick={() => actions.handleOpenAssign(params.row, 'check-in')}
+            >
+              {isTomorrow ? 'Locked' : (params.row.caseDay > 1 ? '🗂️ RE-ARRIVE & RESUME' : 'Check In')}
+            </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              disabled={isTomorrow}
+              sx={{
+                ...btnStyle,
+                minWidth: 'auto',
+                px: 1,
+                fontSize: '0.7rem',
+                borderColor: '#5D4037',
+                color: '#5D4037',
+                height: 32,
+                '&.Mui-disabled': { borderColor: 'rgba(0,0,0,0.05)', opacity: 0.3 },
+              }}
+              onClick={() => actions.handleOpenAssign(params.row, 'assign')}
+            >
+              Assign
+            </Button>
+            <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)} sx={{ border: '1px solid rgba(0,0,0,0.1)', color: '#5D4037', flexShrink: 0 }}>
+              <MoreVertIcon fontSize="small" />
+            </IconButton>
           </Box>
         );
       }

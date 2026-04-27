@@ -1,58 +1,121 @@
-// The Rule-Based Virtual Assistant.
-// Queries the clinic_settings database to calculate if the clinic is currently Open or Closed.
-// Provides instant answers for prices, booking methods, and emergency protocols, drastically reducing front-desk phone calls.
+// Hybrid AI + Rule-Based Virtual Assistant.
+//
+// Quick-action buttons (Hours, Location, Services, Booking, Emergency) are always
+// rule-based: instant, deterministic, zero API tokens. Free-text questions route
+// through the Cloudflare Worker proxy → Claude Haiku 4.5.
+//
+// Session management: in-memory conversation history, 5-second client-side rate
+// limiter, 20-message cap, and a "NEW CHAT" reset button.
 
 import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import {
+  KeyboardAvoidingView,
   Linking,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 import { db } from "../../firebaseConfig";
-import { COLORS } from '../theme/mobileTokens';
+import { COLORS, FONTS } from '../theme/mobileTokens';
 import { useClinicContact } from '../hooks/useClinicContact';
 import { getLocalDateStr, formatHour } from '../utils/helpers';
+import {
+  sendChatMessage,
+  DEFAULT_CHATBOT_SYSTEM_PROMPT,
+} from '../utils/chatbotService';
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** Hard caps for session management (T3.67). */
+const RATE_LIMIT_MS = 5000;
+const MESSAGE_CAP = 20; // user turns; history array cap = MESSAGE_CAP * 2
+
+/** Quick-action chip definitions. Order matters for horizontal scroll UX. */
+const INITIAL_OPTIONS = [
+  { label: "🕒 Operating Hours", id: "hours" },
+  { label: "📍 Clinic Location", id: "location" },
+  { label: "💰 Services & Prices", id: "services" },
+  { label: "📅 How to Book", id: "booking" },
+  { label: "🚨 EMERGENCY", id: "emergency", isRed: true },
+];
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+function buildGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function buildInitialMessage() {
+  return {
+    id: Date.now(),
+    type: 'bot',
+    text: `${buildGreeting()}! 🐾 I am the Starbarks Virtual Assistant. How can I help you today?`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 export default function ChatbotScreen({ navigation }) {
-  const scrollViewRef = useRef();
+  const scrollViewRef = useRef(null);
+
+  // --- Display state ---
   const [messages, setMessages] = useState([]);
+  const [isTyping, setIsTyping] = useState(false);      // rule-based 800ms delay
+  const [isAiLoading, setIsAiLoading] = useState(false); // Worker round-trip
+  const [fetchError, setFetchError] = useState(false);
+
+  // --- Data state ---
   const [servicesList, setServicesList] = useState([]);
-  // T2.356: defaults survive a partial/missing Firestore doc
-  // T2.355: workingDays and closedDates added with safe defaults
   const [clinicSettings, setClinicSettings] = useState({
     openHour: 8,
     closeHour: 17,
-    workingDays: [1, 2, 3, 4, 5, 6], // Mon-Sat default
+    workingDays: [1, 2, 3, 4, 5, 6],
     closedDates: [],
   });
-  const [isTyping, setIsTyping] = useState(false);
-  // T2.360: error state for failed Firestore fetch
-  const [fetchError, setFetchError] = useState(false);
 
-  // T2.362: clinic contact from shared singleton hook — no hardcoded phone/address
+  // --- LLM / session state (T3.62, T3.64, T3.66, T3.67) ---
+  const [systemPrompt, setSystemPrompt] = useState(DEFAULT_CHATBOT_SYSTEM_PROMPT);
+  const [llmEnabled, setLlmEnabled] = useState(false);
+  const [workerUrl, setWorkerUrl] = useState('');
+  const [inputText, setInputText] = useState('');
+  const [conversationHistory, setConversationHistory] = useState([]); // { role, content }[]
+  const [isRateLimited, setIsRateLimited] = useState(false);
+  const [messageCapReached, setMessageCapReached] = useState(false);
+
+  // --- Refs ---
+  const lastSentRef = useRef(0);
+  const rateLimitTimerRef = useRef(null);
+
+  // --- Shared data ---
   const { clinicPhone, clinicAddress } = useClinicContact();
 
-  // T2.362: dynamic maps URL from Firestore-sourced address (constructed inside handler to avoid stale closure)
+  // ---------------------------------------------------------------------------
+  // Mount effects
+  // ---------------------------------------------------------------------------
 
-  const INITIAL_OPTIONS = [
-    { label: "🕒 Operating Hours", id: "hours" },
-    { label: "📍 Clinic Location", id: "location" },
-    { label: "💰 Services & Prices", id: "services" },
-    { label: "📅 How to Book", id: "booking" },
-    { label: "🚨 EMERGENCY", id: "emergency", isRed: true },
-  ];
-
+  // T3.66: load system prompt + LLM config from Firestore on mount
   useEffect(() => {
     navigation.setOptions({ headerShown: false });
 
     const fetchEcosystem = async () => {
       try {
-        // T2.358: filter archived services
+        // Services catalog (T2.358: filter archived)
         const snap = await getDocs(collection(db, "services"));
         setServicesList(
           snap.docs
@@ -60,39 +123,50 @@ export default function ChatbotScreen({ navigation }) {
             .filter((s) => !s.isArchived)
         );
 
-        const settingsRef = doc(db, "clinic_settings", "general");
-        const settingsSnap = await getDoc(settingsRef);
+        // Clinic general settings (T2.355/T2.356: safe merge with defaults)
+        const settingsSnap = await getDoc(doc(db, "clinic_settings", "general"));
         if (settingsSnap.exists()) {
-          // T2.356: merge with spread so missing fields keep their defaults
           setClinicSettings((prev) => ({ ...prev, ...settingsSnap.data() }));
         }
+
+        // LLM feature flag + Worker URL (T3.66)
+        const llmSnap = await getDoc(doc(db, "clinic_settings", "llm_config"));
+        if (llmSnap.exists()) {
+          const llmData = llmSnap.data();
+          setLlmEnabled(llmData.enabled ?? false);
+          setWorkerUrl(llmData.workerUrl ?? '');
+        }
+
+        // Chatbot system prompt (T3.66) — falls back to DEFAULT if doc missing
+        const promptSnap = await getDoc(doc(db, "system_prompts", "chatbot_assistant"));
+        if (promptSnap.exists()) {
+          setSystemPrompt(promptSnap.data().prompt || DEFAULT_CHATBOT_SYSTEM_PROMPT);
+        }
       } catch (e) {
-        // T2.360: surface fetch failure to the user
-        console.warn('ChatbotScreen: Failed to fetch clinic data', e);
+        console.warn('[ChatbotScreen.fetchEcosystem]:', e.message);
         setFetchError(true);
       }
     };
+
     fetchEcosystem();
 
-    const currentHour = new Date().getHours();
-    let greeting = "Hi there";
-    if (currentHour < 12) greeting = "Good morning";
-    else if (currentHour < 18) greeting = "Good afternoon";
-    else greeting = "Good evening";
-
+    // Show greeting after brief delay so the mount animation settles
     setTimeout(() => {
-      setMessages([
-        {
-          id: 1,
-          type: "bot",
-          text: `${greeting}! 🐾 I am the Starbarks Virtual Assistant. How can I help you today?`,
-          options: INITIAL_OPTIONS,
-        },
-      ]);
+      setMessages([buildInitialMessage()]);
     }, 600);
   }, [navigation]);
 
-  // T2.362: uses hook-sourced clinicPhone; Alert was never imported (latent crash), removed entirely
+  // Clean up rate-limit timer on unmount (T3.67)
+  useEffect(() => {
+    return () => {
+      if (rateLimitTimerRef.current) clearTimeout(rateLimitTimerRef.current);
+    };
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // Rule-based helpers
+  // ---------------------------------------------------------------------------
+
   const handleCallClinic = () => {
     if (!clinicPhone) return;
     Linking.openURL(`tel:${clinicPhone}`);
@@ -102,10 +176,7 @@ export default function ChatbotScreen({ navigation }) {
     Linking.openURL(`https://maps.google.com/?q=${encodeURIComponent(clinicAddress)}`);
   };
 
-
-  // T2.355: day-name helpers
-  const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
+  // T2.355: consecutive-day compression for display
   const formatWorkingDays = (days) => {
     if (!days || days.length === 0) return 'by appointment only';
     if (days.length === 7) return 'every day';
@@ -117,29 +188,30 @@ export default function ChatbotScreen({ navigation }) {
     return sorted.map((d) => DAY_NAMES[d]).join(', ');
   };
 
-
-  // T2.357: display price helper — tiered services show lowest tier price
+  // T2.357: tiered-price display helper
   const getDisplayPrice = (service) => {
     if (service.hasTieredPricing && service.pricingTiers?.length) {
       const prices = service.pricingTiers.map((t) => Number(t.price) || 0).filter((p) => p > 0);
-      if (prices.length > 0) {
-        return `starts at ₱${Math.min(...prices)}`;
-      }
+      if (prices.length > 0) return `starts at ₱${Math.min(...prices)}`;
     }
     const base = Number(service.price) || 0;
     return base > 0 ? `₱${base}` : 'Price on consultation';
   };
 
+  /**
+   * Processes structured quick-action button taps via the rule-based switch.
+   * Emergency is always handled here — never via AI — for safety.
+   * Hours / Location / Services / Booking remain rule-based: instant, free, deterministic.
+   */
   const handleSelectOption = (option) => {
     const userMsg = { id: Date.now(), type: "user", text: option.label };
     setMessages((prev) => [...prev, userMsg]);
     setIsTyping(true);
 
     setTimeout(() => {
-      let botResponse = "";
+      let botText = "";
       let actionButton = null;
-      let followUpOptions = INITIAL_OPTIONS;
-      // T2.357/T2.361: department drill-down options populated in services/dept_ cases
+      let followUpOptions = null;
       let followUpDeptOptions = null;
 
       switch (option.id) {
@@ -156,10 +228,7 @@ export default function ChatbotScreen({ navigation }) {
           const isWithinHours = nowHour >= openHour && nowHour < closeHour;
           const isOpen = isWorkingDay && !isClosedDate && isWithinHours;
 
-          const statusText = isOpen
-            ? "🟢 We are currently OPEN."
-            : "🔴 We are currently CLOSED.";
-
+          const statusText = isOpen ? "🟢 We are currently OPEN." : "🔴 We are currently CLOSED.";
           let reason = '';
           if (!isOpen) {
             if (isClosedDate) reason = '\n(Today is a scheduled closed date.)';
@@ -167,40 +236,34 @@ export default function ChatbotScreen({ navigation }) {
           }
 
           const daysText = formatWorkingDays(workingDays);
-          botResponse = `${statusText}${reason}\n\nOur regular operating hours are ${daysText}, from ${formatHour(openHour)} to ${formatHour(closeHour)}.`;
+          botText = `${statusText}${reason}\n\nOur regular operating hours are ${daysText}, from ${formatHour(openHour)} to ${formatHour(closeHour)}.`;
           break;
         }
+
         case "location":
-          // T2.362: address from hook, not hardcoded
-          botResponse =
-            `We are located at ${clinicAddress}. Look for the brown and beige sign!`;
-          actionButton = {
-            label: "🗺️ Open in Google Maps",
-            action: handleOpenMaps,
-            color: COLORS.info,
-          };
+          botText = `We are located at ${clinicAddress}. Look for the brown and beige sign!`;
+          actionButton = { label: "🗺️ Open in Google Maps", action: handleOpenMaps, color: COLORS.info };
           break;
+
         case "booking":
-          botResponse =
-            "Booking is easy! Just go back to your Dashboard and tap 'Schedule Visit'. You can book multiple pets at the same time.";
+          botText = "Booking is easy! Just go back to your Dashboard and tap 'Schedule Visit'. You can book multiple pets at the same time.";
           actionButton = {
             label: "📅 Go to Booking Screen",
             action: () => navigation.navigate("BookAppointment"),
             color: COLORS.success,
           };
-          followUpOptions = [
-            { label: "⬅️ I have more questions", id: "reset" },
-          ];
+          followUpOptions = [{ label: "⬅️ I have more questions", id: "reset" }];
           break;
+
         case "emergency":
-          botResponse =
+          botText =
             "⚠️ DO NOT WAIT FOR AN APP BOOKING.\n\nIf your pet is experiencing heavy bleeding, difficulty breathing, or seizures, proceed directly to the clinic immediately. Emergencies are given absolute priority.";
-          // T2.360: hide call button when no phone is configured
           actionButton = clinicPhone
             ? { label: '📞 Call Clinic Now', action: handleCallClinic, color: COLORS.danger }
             : null;
           break;
-        // T2.357: full services catalog grouped by department, tiered pricing fixed
+
+        // T2.357: full services catalog grouped by department, tiered pricing (T2.361: dept drill-down)
         case "services": {
           if (servicesList.length > 0) {
             const grouped = {};
@@ -221,9 +284,8 @@ export default function ChatbotScreen({ navigation }) {
               })
               .join('\n\n');
 
-            botResponse = `Here are our services and prices:\n\n${sections}\n\nPrices may vary based on your pet's weight and specific needs.`;
+            botText = `Here are our services and prices:\n\n${sections}\n\nPrices may vary based on your pet's weight and specific needs.`;
 
-            // T2.361: department drill-down buttons when multiple departments exist
             const deptNames = Object.keys(grouped).sort();
             if (deptNames.length > 1) {
               followUpDeptOptions = [
@@ -232,14 +294,15 @@ export default function ChatbotScreen({ navigation }) {
               ];
             }
           } else {
-            botResponse =
-              'Our service catalog is currently unavailable. Please check the booking screen or call the clinic for prices.';
+            botText = 'Our service catalog is currently unavailable. Please check the booking screen or call the clinic for prices.';
           }
           break;
         }
+
         case "reset":
-          botResponse = "What else can I help you with?";
+          botText = "What else can I help you with?";
           break;
+
         default: {
           // T2.361: department sub-intent drill-down
           if (option.id.startsWith('dept_')) {
@@ -258,9 +321,9 @@ export default function ChatbotScreen({ navigation }) {
                   return `• ${s.name}: ${detail}`;
                 })
                 .join('\n');
-              botResponse = `${deptName} Services:\n\n${lines}\n\nPrices may vary based on your pet's weight.`;
+              botText = `${deptName} Services:\n\n${lines}\n\nPrices may vary based on your pet's weight.`;
             } else {
-              botResponse = `No services found under ${deptName}.`;
+              botText = `No services found under ${deptName}.`;
             }
             followUpOptions = [
               { label: '💰 All Services', id: 'services' },
@@ -268,7 +331,7 @@ export default function ChatbotScreen({ navigation }) {
             ];
             break;
           }
-          botResponse = "I'm sorry, I didn't understand that.";
+          botText = "I'm sorry, I didn't understand that.";
         }
       }
 
@@ -277,8 +340,8 @@ export default function ChatbotScreen({ navigation }) {
         {
           id: Date.now() + 1,
           type: "bot",
-          text: botResponse,
-          actionButton: actionButton,
+          text: botText,
+          actionButton,
           options: followUpDeptOptions ?? followUpOptions,
         },
       ]);
@@ -286,43 +349,157 @@ export default function ChatbotScreen({ navigation }) {
     }, 800);
   };
 
+  // ---------------------------------------------------------------------------
+  // AI gateway handler (T3.64)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Submits a free-text message through the Cloudflare Worker.
+   * Enforces rate limit and message cap before calling the gateway.
+   */
+  const handleSendMessage = async () => {
+    const text = inputText.trim();
+    if (!text || isAiLoading || isRateLimited || messageCapReached) return;
+
+    // Rate limit: 5 seconds between sends (T3.67)
+    const now = Date.now();
+    const elapsed = now - lastSentRef.current;
+    if (lastSentRef.current > 0 && elapsed < RATE_LIMIT_MS) {
+      setIsRateLimited(true);
+      const remaining = RATE_LIMIT_MS - elapsed;
+      rateLimitTimerRef.current = setTimeout(() => setIsRateLimited(false), remaining);
+      return;
+    }
+
+    // Message cap: 20 user turns = 40 history items (T3.67)
+    const userTurns = conversationHistory.filter((m) => m.role === 'user').length;
+    if (userTurns >= MESSAGE_CAP) {
+      setMessageCapReached(true);
+      return;
+    }
+
+    setInputText('');
+    lastSentRef.current = Date.now();
+
+    // Append user bubble immediately for responsiveness
+    setMessages((prev) => [...prev, { id: Date.now(), type: 'user', text }]);
+
+    // Build updated history to send (include this new turn)
+    const updatedHistory = [...conversationHistory, { role: 'user', content: text }];
+    setConversationHistory(updatedHistory);
+
+    setIsAiLoading(true);
+
+    try {
+      const result = await sendChatMessage({ messages: updatedHistory, systemPrompt, workerUrl });
+
+      setMessages((prev) => [
+        ...prev,
+        { id: Date.now(), type: 'bot', text: result.text },
+      ]);
+
+      setConversationHistory((prev) => [
+        ...prev,
+        { role: 'assistant', content: result.text },
+      ]);
+    } catch (error) {
+      // Errors surface as tinted bot bubbles — never Alert.alert (T3.64)
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now(),
+          type: 'bot',
+          text: error.message || 'Something went wrong. Please try again.',
+          isError: true,
+        },
+      ]);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // Session management (T3.67)
+  // ---------------------------------------------------------------------------
+
+  /** Resets the entire conversation to the initial greeting. */
+  const handleClearConversation = () => {
+    setConversationHistory([]);
+    setMessageCapReached(false);
+    setIsRateLimited(false);
+    if (rateLimitTimerRef.current) clearTimeout(rateLimitTimerRef.current);
+    setInputText('');
+    setMessages([buildInitialMessage()]);
+  };
+
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
+
+  const showTypingDots = isTyping || isAiLoading;
+  const isLlmReady = llmEnabled && !!workerUrl;
+
   return (
     <View style={styles.container}>
+
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => navigation.goBack()}
-        >
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
           <Text style={styles.backBtnText}>← Back</Text>
         </TouchableOpacity>
         <View style={styles.headerTitleRow}>
           <View style={styles.botAvatarHeader}>
             <Text style={{ fontSize: 22 }}>🤖</Text>
           </View>
-          <View>
+          <View style={{ flex: 1 }}>
             <Text style={styles.headerText}>Starbarks Virtual Assistant</Text>
             <Text style={styles.subText}>🟢 Online • Automated Support</Text>
           </View>
+          {/* NEW CHAT button (T3.67): only visible once a conversation has started */}
+          {conversationHistory.length > 0 && (
+            <View style={styles.headerActions}>
+              <TouchableOpacity style={styles.clearBtn} onPress={handleClearConversation}>
+                <Text style={styles.clearBtnText}>NEW CHAT</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </View>
 
+      {/* Persistent quick-action chips (T3.65) */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.quickActionsBar}
+        contentContainerStyle={styles.quickActionsContent}
+      >
+        {INITIAL_OPTIONS.map((opt) => (
+          <TouchableOpacity
+            key={opt.id}
+            style={[styles.quickActionChip, opt.isRed && styles.quickActionChipDanger]}
+            onPress={() => handleSelectOption(opt)}
+          >
+            <Text style={[styles.quickActionText, opt.isRed && styles.quickActionTextDanger]}>
+              {opt.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      {/* Chat area */}
       <ScrollView
         style={styles.chatArea}
         contentContainerStyle={{ paddingBottom: 20 }}
         ref={scrollViewRef}
-        onContentSizeChange={() =>
-          scrollViewRef.current?.scrollToEnd({ animated: true })
-        }
+        onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+        keyboardShouldPersistTaps="handled"
       >
         <Text style={styles.timestampText}>
           Today,{" "}
-          {new Date().toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
+          {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
         </Text>
 
-        {/* T2.360: error banner when Firestore fetch failed */}
+        {/* T2.360: Firestore fetch error banner */}
         {fetchError && (
           <View style={styles.errorBanner}>
             <Text style={styles.errorBannerText}>
@@ -349,6 +526,7 @@ export default function ChatbotScreen({ navigation }) {
                 style={[
                   styles.bubble,
                   msg.type === "user" ? styles.userBubble : styles.botBubble,
+                  msg.isError && styles.errorBubble,
                 ]}
               >
                 <Text
@@ -361,39 +539,33 @@ export default function ChatbotScreen({ navigation }) {
                 </Text>
                 {msg.actionButton && (
                   <TouchableOpacity
-                    style={[
-                      styles.actionBtn,
-                      { backgroundColor: msg.actionButton.color },
-                    ]}
+                    style={[styles.actionBtn, { backgroundColor: msg.actionButton.color }]}
                     onPress={msg.actionButton.action}
                   >
-                    <Text style={styles.actionBtnText}>
-                      {msg.actionButton.label}
-                    </Text>
+                    <Text style={styles.actionBtnText}>{msg.actionButton.label}</Text>
                   </TouchableOpacity>
                 )}
               </View>
+
+              {/* Inline options for dept drill-down and contextual follow-ups (T3.65 Step 5.2) */}
               {msg.type === "bot" &&
                 msg.options &&
-                msg.id === messages[messages.length - 1].id && (
+                msg.id === messages[messages.length - 1].id &&
+                msg.options.some(
+                  (o) => o.id.startsWith('dept_') || o.id === 'reset' || o.id === 'services'
+                ) && (
                   <View style={styles.optionsContainer}>
                     {msg.options.map((opt) => (
                       <TouchableOpacity
                         key={opt.id}
                         style={[
                           styles.optionButton,
-                          opt.isRed && {
-                            borderColor: "#EF9A9A",
-                            backgroundColor: "#FFEBEE",
-                          },
+                          opt.isRed && { borderColor: "#EF9A9A", backgroundColor: "#FFEBEE" },
                         ]}
                         onPress={() => handleSelectOption(opt)}
                       >
                         <Text
-                          style={[
-                            styles.optionText,
-                            opt.isRed && { color: "#C62828" },
-                          ]}
+                          style={[styles.optionText, opt.isRed && { color: "#C62828" }]}
                         >
                           {opt.label}
                         </Text>
@@ -405,7 +577,8 @@ export default function ChatbotScreen({ navigation }) {
           </View>
         ))}
 
-        {isTyping && (
+        {/* Typing / loading indicator */}
+        {showTypingDots && (
           <View style={[styles.messageWrapper, styles.botWrapper]}>
             <View style={styles.botAvatarBubble}>
               <Text style={{ fontSize: 18 }}>🤖</Text>
@@ -414,34 +587,83 @@ export default function ChatbotScreen({ navigation }) {
               style={[
                 styles.bubble,
                 styles.botBubble,
-                {
-                  width: 60,
-                  height: 40,
-                  justifyContent: "center",
-                  alignItems: "center",
-                },
+                { width: 60, height: 40, justifyContent: "center", alignItems: "center" },
               ]}
             >
-              <Text style={[styles.botText, { fontSize: 20, lineHeight: 20 }]}>
-                •••
-              </Text>
+              <Text style={[styles.botText, { fontSize: 20, lineHeight: 20 }]}>•••</Text>
             </View>
           </View>
         )}
       </ScrollView>
 
-      {/* T2.359: replaced fake input bar with honest footer hint */}
-      <View style={styles.chatFooter}>
-        <Text style={styles.chatFooterText}>
-          Tap a button above to continue the conversation
-        </Text>
-      </View>
+      {/* Input area (T3.62, T3.67) */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={0}
+      >
+        {/* Rate limit feedback (T3.67) */}
+        {isRateLimited && (
+          <Text style={styles.rateLimitText}>Please wait a moment...</Text>
+        )}
+
+        <View style={styles.inputBar}>
+          {/* LLM not configured: show static fallback */}
+          {!isLlmReady ? (
+            <Text style={styles.chatFooterText}>
+              AI chat is not yet configured. Contact clinic staff.
+            </Text>
+          ) : messageCapReached ? (
+            /* Message cap reached: replace input with reset prompt (T3.67) */
+            <View style={styles.capReachedBar}>
+              <Text style={styles.capReachedText}>Conversation limit reached.</Text>
+              <TouchableOpacity style={styles.newConversationBtn} onPress={handleClearConversation}>
+                <Text style={styles.newConversationBtnText}>START NEW CONVERSATION</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            /* Normal state: free-text input + send button (T3.62) */
+            <>
+              <TextInput
+                style={styles.textInput}
+                value={inputText}
+                onChangeText={setInputText}
+                placeholder="Ask me anything..."
+                placeholderTextColor={COLORS.placeholder}
+                multiline
+                maxLength={500}
+                editable={!isAiLoading}
+                onSubmitEditing={handleSendMessage}
+                blurOnSubmit={false}
+              />
+              <TouchableOpacity
+                style={[
+                  styles.sendButton,
+                  (!inputText.trim() || isAiLoading || isRateLimited) && styles.sendButtonDisabled,
+                ]}
+                onPress={handleSendMessage}
+                disabled={!inputText.trim() || isAiLoading || isRateLimited}
+              >
+                <Text style={styles.sendButtonText}>SEND</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+      </KeyboardAvoidingView>
     </View>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Styles — Phase 7 design compliance pass
+// All borderRadius: 0. Colors from COLORS/FONTS tokens only.
+// ---------------------------------------------------------------------------
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F5F5F5" },
+  // Layout
+  container: { flex: 1, backgroundColor: COLORS.cream },
+  chatArea: { flex: 1, padding: 15 },
+
+  // Header (T3.67: headerTitleRow accommodates NEW CHAT button on same row)
   header: {
     backgroundColor: COLORS.accent,
     padding: 20,
@@ -454,7 +676,7 @@ const styles = StyleSheet.create({
   botAvatarHeader: {
     width: 44,
     height: 44,
-    borderRadius: 22,
+    borderRadius: 0, // Phase 7: was 22
     backgroundColor: "#EFEBE9",
     alignItems: "center",
     justifyContent: "center",
@@ -462,7 +684,61 @@ const styles = StyleSheet.create({
   },
   headerText: { color: COLORS.white, fontSize: 18, fontWeight: "bold" },
   subText: { color: "#A5D6A7", fontSize: 12, fontWeight: "bold", marginTop: 2 },
-  chatArea: { flex: 1, padding: 15 },
+  headerActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginLeft: 8,
+  },
+  clearBtn: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    borderRadius: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  clearBtnText: {
+    fontFamily: FONTS.bold,
+    color: COLORS.white,
+    fontSize: 11,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+
+  // Quick-action chip bar (T3.65)
+  quickActionsBar: {
+    maxHeight: 50,
+    borderBottomWidth: 2,
+    borderBottomColor: COLORS.brand,
+    backgroundColor: COLORS.cream,
+  },
+  quickActionsContent: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+    alignItems: 'center',
+  },
+  quickActionChip: {
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    borderRadius: 0,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  quickActionChipDanger: {
+    backgroundColor: '#FFEBEE',
+    borderColor: COLORS.danger,
+  },
+  quickActionText: {
+    fontFamily: FONTS.bold,
+    fontSize: 12,
+    color: COLORS.brand,
+    letterSpacing: 0.5,
+  },
+  quickActionTextDanger: { color: COLORS.danger },
+
+  // Chat messages
   timestampText: {
     textAlign: "center",
     color: "#9E9E9E",
@@ -470,7 +746,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     fontWeight: "bold",
   },
-  // T2.360: error banner styles
   errorBanner: {
     backgroundColor: '#FFF3E0',
     borderWidth: 1,
@@ -496,7 +771,7 @@ const styles = StyleSheet.create({
   botAvatarBubble: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: 0, // Phase 7: was 16
     backgroundColor: "#E0E0E0",
     alignItems: "center",
     justifyContent: "center",
@@ -504,24 +779,42 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   bubbleColumn: { flexShrink: 1 },
-  bubble: { padding: 14, borderRadius: 18, elevation: 1 },
-  userBubble: { backgroundColor: COLORS.accent, borderTopRightRadius: 4 },
-  botBubble: {
-    backgroundColor: COLORS.white,
-    borderTopLeftRadius: 4,
-    borderWidth: 1,
-    borderColor: "#EEEEEE",
+  bubble: {
+    padding: 14,
+    borderRadius: 0, // Phase 7: was 18
+    elevation: 1,
   },
-  userText: { color: COLORS.white, fontSize: 15, lineHeight: 22 },
-  botText: { color: COLORS.textPrimary, fontSize: 15, lineHeight: 22 },
+  userBubble: {
+    // Phase 7: sky blue user bubbles per spec
+    backgroundColor: COLORS.sky,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+  },
+  botBubble: {
+    // Phase 7: cream bot bubbles, brand border
+    backgroundColor: COLORS.cream,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+  },
+  // Error bot bubble: warm orange tint (T3.64)
+  errorBubble: {
+    backgroundColor: '#FFF3E0',
+    borderColor: COLORS.warning,
+    borderWidth: 2,
+  },
+  messageText: { fontSize: 15, lineHeight: 22 },
+  userText: { color: COLORS.brand }, // Phase 7: dark on sky blue for contrast
+  botText: { color: COLORS.textPrimary },
   actionBtn: {
     marginTop: 15,
     padding: 12,
-    borderRadius: 10,
+    borderRadius: 0, // Phase 7: was 10
     alignItems: "center",
     elevation: 2,
   },
   actionBtnText: { color: COLORS.white, fontWeight: "bold", fontSize: 14 },
+
+  // Inline drill-down options (dept + contextual follow-ups)
   optionsContainer: {
     marginTop: 10,
     flexDirection: "row",
@@ -532,25 +825,94 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 20,
+    borderRadius: 0, // Phase 7: was 20
     borderWidth: 1,
     borderColor: COLORS.borderLight,
     elevation: 1,
   },
   optionText: { color: COLORS.accent, fontWeight: "bold", fontSize: 13 },
-  // T2.359: footer hint replaces fake chat input
-  chatFooter: {
-    paddingVertical: 12,
-    paddingHorizontal: 20,
+
+  // Input bar (T3.62)
+  inputBar: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     paddingBottom: 25,
     backgroundColor: COLORS.white,
-    borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
-    alignItems: 'center',
+    borderTopWidth: 2,
+    borderTopColor: COLORS.brand,
+    gap: 8,
   },
-  chatFooterText: {
-    color: '#9E9E9E',
+  textInput: {
+    flex: 1,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    borderRadius: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    fontFamily: FONTS.regular,
+    color: COLORS.textPrimary,
+    backgroundColor: COLORS.cream,
+    maxHeight: 100,
+  },
+  sendButton: {
+    backgroundColor: COLORS.sky,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    borderRadius: 0,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sendButtonText: {
+    fontFamily: FONTS.black,
     fontSize: 13,
-    fontWeight: '600',
+    color: COLORS.brand,
+    letterSpacing: 1,
+  },
+  sendButtonDisabled: { opacity: 0.4 },
+
+  // LLM not configured fallback text
+  chatFooterText: { color: '#9E9E9E', fontSize: 13, fontWeight: '600', flex: 1, textAlign: 'center' },
+
+  // Rate limit feedback (T3.67)
+  rateLimitText: {
+    fontSize: 11,
+    color: COLORS.warning,
+    textAlign: 'center',
+    fontFamily: FONTS.bold,
+    paddingBottom: 2,
+    backgroundColor: COLORS.white,
+    paddingTop: 4,
+  },
+
+  // Message cap UI (T3.67)
+  capReachedBar: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+    gap: 8,
+  },
+  capReachedText: {
+    fontFamily: FONTS.bold,
+    fontSize: 13,
+    color: COLORS.textMuted,
+  },
+  newConversationBtn: {
+    backgroundColor: COLORS.sky,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    borderRadius: 0,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  newConversationBtnText: {
+    fontFamily: FONTS.black,
+    fontSize: 12,
+    color: COLORS.brand,
+    letterSpacing: 1,
   },
 });

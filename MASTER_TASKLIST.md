@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-04-27 · **Branch:** `main`
 **Total tasks:** ~754 · **Cancelled/Absorbed:** ~17 · **Active:** ~737
-**DONE:** ~590 · **TODO:** ~147 · **Deferred sub-tasks:** 50
+**DONE:** ~596 · **TODO:** ~141 · **Deferred sub-tasks:** 50
 **Phase 2:** COMPLETE · **Phase 3 Essential:** COMPLETE (except Blaze-gated T3.40-42) · **Phase 3 High-Value:** 8/8 batches done (T3.50 remains, T3.5 DONE) · **Phase 4 Dashboard S:** COMPLETE (T4.1-T4.4)
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~158 hours (Phase 4 S-Tier)
 
@@ -990,12 +990,12 @@
 | T3.59 | QueueScreen: service-specific estimated times | P3 | 30 min | DONE | Per-service-type breakdown below aggregate estimate. Groups by serviceType, shows count + total mins. Only renders when 2+ types. |
 | T3.60 | QueueScreen: pet care tips while waiting | P3 | 1 hr | TODO |
 | T3.61 | QueueScreen: self-check-in via GPS geofencing (was T2.486) | P3 | 1.5 hrs | TODO |
-| T3.62 | ChatbotScreen: enable real text input | P3 | 15 min | TODO |
-| T3.63 | ChatbotScreen: Cloud Function chatbotGateway (Blaze, LLM) | P3 | 2 hrs | TODO |
-| T3.64 | ChatbotScreen: integrate gateway send/receive | P3 | 30 min | TODO |
-| T3.65 | ChatbotScreen: hybrid UI (buttons + free text) | P3 | 20 min | TODO |
-| T3.66 | ChatbotScreen: system prompt in Firestore | P3 | 15 min | TODO |
-| T3.67 | ChatbotScreen: session management + rate limiting | P3 | 20 min | TODO |
+| T3.62 | ChatbotScreen: enable real text input | P3 | 15 min | DONE | TextInput + Send button, KeyboardAvoidingView, fallback when LLM not configured |
+| T3.63 | ChatbotScreen: chatbot gateway via Cloudflare Worker (Claude Haiku 4.5) | P3 | 2 hrs | DONE | chatbotService.js — plain fetch to Worker URL, DEFAULT_CHATBOT_SYSTEM_PROMPT. No Cloud Function needed. |
+| T3.64 | ChatbotScreen: integrate gateway send/receive | P3 | 30 min | DONE | handleSendMessage with multi-turn conversationHistory, AI bubbles, error bubbles, typing indicator |
+| T3.65 | ChatbotScreen: hybrid UI (buttons + free text) | P3 | 20 min | DONE | Quick-action chips as persistent horizontal bar. Emergency/Hours/Location/Services rule-based. Free text → AI. |
+| T3.66 | ChatbotScreen: system prompt in Firestore | P3 | 15 min | DONE | Reads system_prompts/chatbot_assistant on mount, falls back to DEFAULT_CHATBOT_SYSTEM_PROMPT |
+| T3.67 | ChatbotScreen: session management + rate limiting | P3 | 20 min | DONE | 5s rate limit, 20-msg cap, NEW CHAT button, in-memory conversation history |
 | T3.68 | Queue services popover: show per-service status (pending/in-progress/completed) via ServiceProgressCard in the hover card. Wire serviceStatus from appointment.services[] into queueColumns.jsx services renderCell. Sort controls: booking order / status / department (per locked decision in handoff.json line 1825). Also addresses dropped T2.91 (popover accessibility) and T2.92 (Dispensing/Billing tab popovers). | P2 | 2-3 hrs | T2.95, T2.97 | DONE | Services popover: status chips + 3-way sort toggle + X/N DONE cell indicator. Insertion order default per locked decision. |
 | T3.69 | EndOfDayModal service waterfall: show per-service completion status for each unresolved appointment so staff can see which services are incomplete before resolving. Use ServiceProgressCard in the appointment detail expansion. Enables informed carry-over vs cancel decisions. | P2 | 1.5 hrs | T2.95, T2.97 | DONE | Status chips in AuditPatientCard services panel + PROGRESS footer fraction. ServiceProgressCard visual language integrated directly. |
 | T3.70 | Queue notes column restructure: split single 'notes' field into structured clientNotes/staffNotes/system-chips. Requires design session for data split, backward compat, ClinicalWorkspace subjective auto-fill interaction. Originally scoped as T2.90 discussion topic (handoff.json line 1509), never formalized. | P3 | 3-4 hrs | — | DONE | 13-step restructure: 5 write sites (clientNotes/staffNotes/systemChips), EOD carry-over propagation, tabbed popover (Client/Staff/System/Legacy), SoapGrid read-only context box, intakeContext on medical_records, dual-read fallback for legacy. 11 files modified. |

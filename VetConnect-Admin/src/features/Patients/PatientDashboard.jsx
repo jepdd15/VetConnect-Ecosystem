@@ -79,6 +79,7 @@ import { useVaccineCatalog } from '../../hooks/useVaccineCatalog';
 // ── Modals ──────────────────────────────────────────────────────
 import ReferralModal from './components/ReferralModal';
 import WalkInModal from '../Queue/WalkInModal';
+import AmendmentDialog from '../../components/AmendmentDialog';
 
 // ── Species-normal vital reference ranges ────────────────────────
 // Sourced from standard veterinary references.
@@ -160,6 +161,11 @@ export default function PatientDashboard() {
   const [exemptionTarget, setExemptionTarget] = useState(null); // { vaccineId, vaccineName }
   const [exemptionReason, setExemptionReason] = useState('');
   const [exemptionSaving, setExemptionSaving] = useState(false);
+
+  // T3.118: Amendment dialog — single instance shared across all sealed record cards
+  const [amendDialogOpen, setAmendDialogOpen] = useState(false);
+  const [amendTargetApptId, setAmendTargetApptId] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!auditLogExpanded || !owner?.id) return;
@@ -359,7 +365,7 @@ export default function PatientDashboard() {
       }
     }
     fetchDashboardData();
-  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [id, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
   const lastSeenLabel = useMemo(() => {
@@ -1452,6 +1458,33 @@ export default function PatientDashboard() {
                         </Box>
                       )}
 
+                      {/* T3.118: Amendment creation button — sealed records only */}
+                      {rec.legal?.isLocked === true && rec.appointmentId && (
+                        <Box sx={{ mt: 1.5, pt: 1.5, borderTop: rec.amendments?.length > 0 ? 'none' : `1px dashed ${COLORS.borderLight}` }}>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<ShieldIcon sx={{ fontSize: 13 }} />}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setAmendTargetApptId(rec.appointmentId);
+                              setAmendDialogOpen(true);
+                            }}
+                            sx={{
+                              fontWeight: 900,
+                              borderRadius: 0,
+                              color: COLORS.warning,
+                              borderColor: COLORS.warning,
+                              fontSize: '0.72rem',
+                              textTransform: 'uppercase',
+                              '&:hover': { bgcolor: COLORS.warningSurface, borderColor: COLORS.warning },
+                            }}
+                          >
+                            Add Amendment
+                          </Button>
+                        </Box>
+                      )}
+
                       {/* T3.92: Inline vaccination details */}
                       {(rec.vaccineAdministrations?.length > 0 || rec.vaccineData?.vaccineName) && (() => {
                         const vaccines = rec.vaccineAdministrations || (rec.vaccineData ? [rec.vaccineData] : []);
@@ -2362,6 +2395,18 @@ export default function PatientDashboard() {
         departments={deptsList}
         prefillClient={owner}
         prefillPet={pet}
+      />
+
+      {/* T3.118: Shared amendment creation dialog */}
+      <AmendmentDialog
+        open={amendDialogOpen}
+        onClose={() => { setAmendDialogOpen(false); setAmendTargetApptId(null); }}
+        appointmentId={amendTargetApptId}
+        onSuccess={() => {
+          setRefreshKey(k => k + 1);
+          setAmendDialogOpen(false);
+          setAmendTargetApptId(null);
+        }}
       />
     </Box>
   );

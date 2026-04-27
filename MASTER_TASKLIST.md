@@ -1,8 +1,8 @@
 # VetConnect Master Task List
 
 **Last updated:** 2026-04-27 · **Branch:** `main`
-**Total tasks:** ~762 · **Cancelled/Absorbed:** ~17 · **Active:** ~745
-**DONE:** ~606 · **TODO:** ~141 · **Deferred sub-tasks:** 50
+**Total tasks:** ~763 · **Cancelled/Absorbed:** ~17 · **Active:** ~746
+**DONE:** ~607 · **TODO:** ~141 · **Deferred sub-tasks:** 50
 **Phase 2:** COMPLETE · **Phase 3 Essential:** COMPLETE (except Blaze-gated T3.40-42) · **Phase 3 High-Value:** 8/8 batches done (T3.50 remains, T3.5 DONE) · **Phase 4 Dashboard S:** COMPLETE (T4.1-T4.4)
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~158 hours (Phase 4 S-Tier)
 
@@ -1045,6 +1045,7 @@
 | T3.115 | Ask AI panel invisible — DiagnosticBridge Collapse hidden during loading + below scroll fold. | P2 | 30 min | — | DONE | Collapse in simplified to llmPanelOpen. Loading spinner + "Analyzing clinical data..." during fetch. Auto-scroll via useRef + scrollIntoView with 150ms delay. Fixes all 3 views (SOAP, God View, Zen). |
 | T3.116 | Ask AI panel Markdown rendering — replace raw whiteSpace pre-line with ReactMarkdown. | P2 | 20 min | T3.115 | DONE | react-markdown installed. DiagnosticBridge renders h1-h3 (purple), p, li, table/th/td (kpiPurpleBorder borders), hr via components prop. All 3 views auto-covered. |
 | T3.117 | God View quadrant symmetry — flex layout, scroll chain, border lines. | P3 | 30 min | — | DONE | Replaced calc(100vh-84px) with minHeight:0 (flex fill). Plan quadrant scrolls via existing SoapQuadrant overflowY:auto. Added borderTop on A+P for mobile cross pattern. |
+| T3.118 | PatientDashboard amendment button — the "Add Amendment" form currently only exists in ClinicalWorkspace.jsx (lines 2891-3070), requiring vets to navigate Queue → find appointment → open workspace to amend a sealed record. The PatientDashboard.jsx displays amendments read-only (lines 1330-1379) but has no creation UI. Fix: add an "Add Amendment" button on each sealed medical record card in PatientDashboard. The button opens a Dialog with the same structured amendment form (reason + SOAP fields + optional vitals + optional meds) from ClinicalWorkspace. The write handler performs the same dual writeBatch: medical_records.amendments[] via arrayUnion + appointments.clinicalPulse[] CLINICAL_AMENDMENT event. Extract the amendment form + handler from ClinicalWorkspace into a shared AmendmentDialog component that both surfaces can use (ClinicalWorkspace passes appointmentId + recordRef, PatientDashboard passes the same from its medical records query). The button should only appear when record.legal.isLocked === true. Use the same orange styling and structured SOAP mini-card pattern as existing amendment displays. | P2 | 1.5 hrs | T3.99 | DONE | Extracted AmendmentDialog.jsx (~350 lines). PatientDashboard: orange button on sealed cards, refreshKey re-fetch. ClinicalWorkspace: removed ~270 lines inline form, replaced with dialog. Net ~95 fewer lines. |
 
 ---
 

@@ -1,8 +1,8 @@
 # VetConnect Master Task List
 
 **Last updated:** 2026-04-27 · **Branch:** `main`
-**Total tasks:** ~754 · **Cancelled/Absorbed:** ~17 · **Active:** ~737
-**DONE:** ~596 · **TODO:** ~141 · **Deferred sub-tasks:** 50
+**Total tasks:** ~755 · **Cancelled/Absorbed:** ~17 · **Active:** ~738
+**DONE:** ~597 · **TODO:** ~141 · **Deferred sub-tasks:** 50
 **Phase 2:** COMPLETE · **Phase 3 Essential:** COMPLETE (except Blaze-gated T3.40-42) · **Phase 3 High-Value:** 8/8 batches done (T3.50 remains, T3.5 DONE) · **Phase 4 Dashboard S:** COMPLETE (T4.1-T4.4)
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~158 hours (Phase 4 S-Tier)
 
@@ -1035,6 +1035,7 @@
 | T3.105 | Remove legacy vaccineData shim — stop dual-writing the single-object vaccineData field alongside vaccineAdministrations[]. All readers already use vaccineAdministrations || [vaccineData] fallback. Removing the write saves document size. Keep read fallback for historical records. | P3 | 30 min | — | TODO | Tech debt cleanup — vaccineData is redundant since T2.474 shipped multi-vaccine array |
 | T3.106 | Optimize mobile overdue vaccine detection — ClientDashboard does N+1 getDocs per pet. Refactor to a single collectionGroup query or batch the pet IDs into fewer queries. | P3 | 1 hr | — | TODO | Performance — acceptable for <10 pets but scales poorly for multi-pet owners |
 | T3.107 | Client-side LLM clinical reasoning — Anthropic Claude Haiku 4.5 via Cloudflare Worker proxy. Augments existing KNOWLEDGE_BASE with "Ask AI" button. Settings Pillar 11: Worker URL, system prompt, feature toggle. Audit logging to llm_audit_logs. Purple-themed response panel with mandatory disclaimer. | P2 | 3-4 hrs | — | DONE | llmService.js (plain fetch, zero npm deps) + Settings Pillar 11 + ClinicalWorkspace Ask AI button + purple panel + audit trail. API key in Cloudflare env only. |
+| T3.108 | FAQ management system — admin CRUD for chatbot knowledge base. New faqs Firestore collection with question/answer/category/active fields. Settings Pillar 12 UI for managing FAQ entries. On ChatbotScreen mount, inject FAQ entries + live clinic data (clinic_settings + services catalog with prices) into the system prompt appendix so Claude references real clinic information in free-text answers. Categories: General, Services, Pricing, Policies, Pet Care. | P2 | 4-6 hrs | T3.62-T3.67 | DONE | buildPromptAppendix (live clinic data + FAQ injection), faqConstants.js (5 categories + 8 seed entries), Settings Pillar 12 (CRUD with category tabs + dialogs + seed defaults), mobile FAQ fetch via getDocs. |
 
 ---
 

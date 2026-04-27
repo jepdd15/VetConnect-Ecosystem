@@ -40,8 +40,10 @@ import PublishIcon from '@mui/icons-material/Publish';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import GroupIcon from '@mui/icons-material/Group';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 
 import { DEFAULT_VACCINE_CATALOG } from '../hooks/useVaccineCatalog';
+import { FAQ_CATEGORIES, DEFAULT_FAQS } from '../utils/faqConstants';
 import { testLlmConnection, DEFAULT_CLINICAL_SYSTEM_PROMPT } from '../utils/llmService';
 import { useConsentPolicy } from '../hooks/useConsentPolicy';
 import { CONSENT_TYPES } from '../utils/consentConstants';
@@ -241,6 +243,17 @@ export default function Settings() {
   const [llmTestLoading, setLlmTestLoading] = useState(false);
   const [llmSaving, setLlmSaving] = useState(false);
 
+  // --- PILLAR 12: FAQ MANAGEMENT STATE ---
+  const [faqList, setFaqList] = useState([]);
+  const [faqDialogOpen, setFaqDialogOpen] = useState(false);
+  const [faqForm, setFaqForm] = useState({
+    question: '', answer: '', category: 'General', isActive: true,
+  });
+  const [editingFaqId, setEditingFaqId] = useState(null); // null = creating, string = editing
+  const [faqDeleteConfirm, setFaqDeleteConfirm] = useState({ open: false, id: '', question: '' });
+  const [faqActiveTab, setFaqActiveTab] = useState('All');
+  const [faqSaving, setFaqSaving] = useState(false);
+
   // Legacy data migration — Step 7.2 (T3.5 Phase 7)
   const [migrationResult, setMigrationResult] = useState({
     migrated: 0,
@@ -325,7 +338,15 @@ export default function Settings() {
       }
     });
 
-    return () => { unsubSettings(); unsubDepts(); unsubInvCats(); unsubVaxCatalog(); unsubLlm(); };
+    // 7. Fetch FAQs (Pillar 12)
+    const unsubFaqs = onSnapshot(collection(db, 'faqs'), (snapshot) => {
+      const entries = snapshot.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999));
+      setFaqList(entries);
+    });
+
+    return () => { unsubSettings(); unsubDepts(); unsubInvCats(); unsubVaxCatalog(); unsubLlm(); unsubFaqs(); };
   },[]);
 
   // --- NAVIGATION GUARD: Warn on unsaved changes to form fields ---
@@ -1017,6 +1038,127 @@ export default function Settings() {
       setLlmTestResult({ ok: false, message: e.message || 'Test failed.' });
     } finally {
       setLlmTestLoading(false);
+    }
+  };
+
+  // --- PILLAR 12: FAQ MANAGEMENT HANDLERS ---
+
+  const handleOpenFaqDialog = (faq = null) => {
+    if (faq) {
+      setEditingFaqId(faq.id);
+      setFaqForm({
+        question: faq.question || '',
+        answer: faq.answer || '',
+        category: faq.category || 'General',
+        isActive: faq.isActive ?? true,
+      });
+    } else {
+      setEditingFaqId(null);
+      setFaqForm({ question: '', answer: '', category: 'General', isActive: true });
+    }
+    setFaqDialogOpen(true);
+  };
+
+  const handleSaveFaq = async () => {
+    if (!faqForm.question.trim()) {
+      return setToast({ open: true, message: 'Question is required.', severity: 'warning' });
+    }
+    if (!faqForm.answer.trim()) {
+      return setToast({ open: true, message: 'Answer is required.', severity: 'warning' });
+    }
+    setFaqSaving(true);
+    try {
+      const who = profile?.fullName || profile?.email || 'Unknown Admin';
+      if (editingFaqId) {
+        await setDoc(doc(db, 'faqs', editingFaqId), {
+          question:  faqForm.question.trim(),
+          answer:    faqForm.answer.trim(),
+          category:  faqForm.category,
+          isActive:  faqForm.isActive,
+          updatedAt: Timestamp.now(),
+          updatedBy: who,
+        }, { merge: true });
+        await logSettingsEvent('UPDATE', 'faq', faqForm.question.trim().slice(0, 50), {});
+        setToast({ open: true, message: 'FAQ updated.', severity: 'success' });
+      } else {
+        const sortOrder = faqList.filter((f) => f.category === faqForm.category).length;
+        await addDoc(collection(db, 'faqs'), {
+          question:  faqForm.question.trim(),
+          answer:    faqForm.answer.trim(),
+          category:  faqForm.category,
+          isActive:  faqForm.isActive,
+          sortOrder,
+          createdAt: Timestamp.now(),
+          createdBy: who,
+          updatedAt: Timestamp.now(),
+          updatedBy: who,
+        });
+        await logSettingsEvent('CREATE', 'faq', faqForm.question.trim().slice(0, 50), {});
+        setToast({ open: true, message: 'FAQ created.', severity: 'success' });
+      }
+      setFaqDialogOpen(false);
+    } catch (e) {
+      console.error('[Settings.handleSaveFaq]:', e.message);
+      setToast({ open: true, message: e.message, severity: 'error' });
+    } finally {
+      setFaqSaving(false);
+    }
+  };
+
+  const handleDeleteFaq = async () => {
+    try {
+      await deleteDoc(doc(db, 'faqs', faqDeleteConfirm.id));
+      await logSettingsEvent('DELETE', 'faq', faqDeleteConfirm.question.slice(0, 50), {});
+      setFaqDeleteConfirm({ open: false, id: '', question: '' });
+      setToast({ open: true, message: 'FAQ deleted.', severity: 'success' });
+    } catch (e) {
+      console.error('[Settings.handleDeleteFaq]:', e.message);
+      setToast({ open: true, message: e.message, severity: 'error' });
+    }
+  };
+
+  const handleToggleFaqActive = async (faq) => {
+    try {
+      const who = profile?.fullName || profile?.email || 'Unknown Admin';
+      await setDoc(doc(db, 'faqs', faq.id), {
+        isActive:  !faq.isActive,
+        updatedAt: Timestamp.now(),
+        updatedBy: who,
+      }, { merge: true });
+    } catch (e) {
+      console.error('[Settings.handleToggleFaqActive]:', e.message);
+      setToast({ open: true, message: e.message, severity: 'error' });
+    }
+  };
+
+  const handleSeedFaqs = async () => {
+    if (faqList.length > 0) {
+      return setToast({
+        open: true,
+        message: 'FAQs already exist. Seed is only available when the list is empty.',
+        severity: 'warning',
+      });
+    }
+    try {
+      const who = profile?.fullName || profile?.email || 'Unknown Admin';
+      await Promise.all(
+        DEFAULT_FAQS.map((faq, i) =>
+          addDoc(collection(db, 'faqs'), {
+            ...faq,
+            isActive:  true,
+            sortOrder: i,
+            createdAt: Timestamp.now(),
+            createdBy: who,
+            updatedAt: Timestamp.now(),
+            updatedBy: who,
+          })
+        )
+      );
+      await logSettingsEvent('CREATE', 'faq', 'seed_defaults', { count: DEFAULT_FAQS.length });
+      setToast({ open: true, message: `${DEFAULT_FAQS.length} default FAQs seeded.`, severity: 'success' });
+    } catch (e) {
+      console.error('[Settings.handleSeedFaqs]:', e.message);
+      setToast({ open: true, message: e.message, severity: 'error' });
     }
   };
 
@@ -2579,6 +2721,200 @@ export default function Settings() {
           </Paper>
         </Grid>
 
+        {/* PILLAR 12: FAQ MANAGEMENT */}
+        <Grid size={{ xs: 12 }}>
+          <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden' }}>
+            {/* Header */}
+            <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
+              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
+                <HelpOutlineIcon /> Chatbot FAQ Knowledge Base
+              </Typography>
+            </Box>
+
+            <Box sx={{ p: 3 }}>
+              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 3 }}>
+                Active FAQ entries are injected into the chatbot's system prompt on the mobile app.
+                The AI uses them to answer common client questions accurately and consistently.
+                Keep answers concise (1-3 sentences) to stay within the token budget.
+              </Typography>
+
+              {/* Category filter tabs */}
+              <Box sx={{ mb: 3 }}>
+                <ToggleButtonGroup
+                  exclusive
+                  value={faqActiveTab}
+                  onChange={(_, val) => { if (val !== null) setFaqActiveTab(val); }}
+                  size="small"
+                  sx={{
+                    flexWrap: 'wrap',
+                    gap: 0.5,
+                    '& .MuiToggleButton-root': {
+                      border: `2px solid ${COLORS.accent}33 !important`,
+                      borderRadius: '0 !important',
+                      fontWeight: 900,
+                      fontSize: '0.72rem',
+                      color: COLORS.accent,
+                      px: 2,
+                      py: 0.5,
+                      textTransform: 'uppercase',
+                      letterSpacing: 0.5,
+                      '&.Mui-selected': {
+                        bgcolor: `${COLORS.accent} !important`,
+                        color: `${COLORS.cardBg} !important`,
+                      },
+                    },
+                  }}
+                >
+                  <ToggleButton value="All">All</ToggleButton>
+                  {FAQ_CATEGORIES.map((cat) => (
+                    <ToggleButton key={cat} value={cat}>{cat}</ToggleButton>
+                  ))}
+                </ToggleButtonGroup>
+              </Box>
+
+              {/* FAQ list */}
+              {(() => {
+                const filteredFaqs = faqActiveTab === 'All'
+                  ? faqList
+                  : faqList.filter((f) => f.category === faqActiveTab);
+
+                if (filteredFaqs.length === 0) {
+                  return (
+                    <Box sx={{ py: 4, textAlign: 'center', border: `2px dashed ${COLORS.accent}33` }}>
+                      <Typography sx={{ ...TYPE.meta, color: COLORS.textMuted }}>
+                        {faqActiveTab === 'All' ? 'No FAQs yet. Add one or seed the defaults.' : `No FAQs in the "${faqActiveTab}" category.`}
+                      </Typography>
+                    </Box>
+                  );
+                }
+
+                return (
+                  <Stack spacing={1.5} sx={{ mb: 2 }}>
+                    {filteredFaqs.map((faq) => (
+                      <Box
+                        key={faq.id}
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: 2,
+                          p: 2,
+                          bgcolor: faq.isActive ? 'white' : COLORS.formBg,
+                          border: `2px solid ${faq.isActive ? COLORS.accent + '33' : COLORS.border}`,
+                          opacity: faq.isActive ? 1 : 0.65,
+                        }}
+                      >
+                        {/* Text content */}
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Typography sx={{ fontWeight: 900, color: COLORS.accent, fontSize: '0.9rem', mb: 0.5 }}>
+                            {faq.question}
+                          </Typography>
+                          <Typography
+                            sx={{
+                              ...TYPE.meta,
+                              color: COLORS.textSecondary,
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                              overflow: 'hidden',
+                              mb: 1,
+                            }}
+                          >
+                            {faq.answer}
+                          </Typography>
+                          <Chip
+                            label={faq.category}
+                            size="small"
+                            sx={{
+                              fontWeight: 900,
+                              fontSize: '0.65rem',
+                              borderRadius: 0,
+                              bgcolor: COLORS.cream,
+                              border: `1px solid ${COLORS.accent}33`,
+                              color: COLORS.accent,
+                              letterSpacing: '0.04em',
+                            }}
+                          />
+                        </Box>
+
+                        {/* Controls */}
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
+                          <FormControlLabel
+                            control={
+                              <Switch
+                                size="small"
+                                checked={faq.isActive}
+                                onChange={() => handleToggleFaqActive(faq)}
+                                sx={{ '& .MuiSwitch-thumb': { borderRadius: 0 }, '& .MuiSwitch-track': { borderRadius: 0 } }}
+                              />
+                            }
+                            label={
+                              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, fontSize: '0.7rem' }}>
+                                {faq.isActive ? 'Active' : 'Off'}
+                              </Typography>
+                            }
+                            sx={{ mr: 0 }}
+                          />
+                          <IconButton
+                            size="small"
+                            onClick={() => handleOpenFaqDialog(faq)}
+                            sx={{ color: COLORS.accent, borderRadius: 0, '&:hover': { bgcolor: COLORS.cream } }}
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            onClick={() => setFaqDeleteConfirm({ open: true, id: faq.id, question: faq.question })}
+                            sx={{ color: COLORS.danger, borderRadius: 0, '&:hover': { bgcolor: '#FFEBEE' } }}
+                          >
+                            <CloseIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
+                      </Box>
+                    ))}
+                  </Stack>
+                );
+              })()}
+
+              {/* Footer actions */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 2, flexWrap: 'wrap' }}>
+                <Button
+                  variant="contained"
+                  startIcon={<AddCircleOutlineIcon />}
+                  onClick={() => handleOpenFaqDialog()}
+                  sx={{
+                    fontWeight: 900,
+                    borderRadius: 0,
+                    bgcolor: COLORS.accent,
+                    border: `2px solid ${COLORS.brand}`,
+                    boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
+                    '&:hover': { bgcolor: COLORS.brand },
+                  }}
+                >
+                  Add FAQ
+                </Button>
+                <Button
+                  variant="outlined"
+                  disabled={faqList.length > 0}
+                  onClick={handleSeedFaqs}
+                  sx={{
+                    fontWeight: 900,
+                    borderRadius: 0,
+                    borderColor: COLORS.accentLight,
+                    color: COLORS.textSecondary,
+                    '&:hover': { bgcolor: COLORS.cream },
+                    '&.Mui-disabled': { borderColor: COLORS.border, color: COLORS.textMuted },
+                  }}
+                >
+                  Seed Defaults
+                </Button>
+                <Typography sx={{ ...TYPE.meta, color: COLORS.textMuted, ml: 'auto' }}>
+                  {faqList.filter((f) => f.isActive).length} of {faqList.length} FAQs active — injected into chatbot prompt
+                </Typography>
+              </Box>
+            </Box>
+          </Paper>
+        </Grid>
+
       </Grid>
 
       {/* ── PILLAR 10 DIALOGS ────────────────────────────────────────────── */}
@@ -2868,6 +3204,153 @@ export default function Settings() {
             onClick={handleConfirmDelete}
             variant="contained"
             sx={{ bgcolor: COLORS.danger, fontWeight: 'bold', borderRadius: 0, '&:hover': { bgcolor: COLORS.danger } }}
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── FAQ ADD / EDIT DIALOG (T3.108) ────────────────────────────── */}
+      <Dialog open={faqDialogOpen} onClose={() => setFaqDialogOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 0 } }}>
+        <DialogTitle
+          sx={{
+            fontWeight: 900,
+            color: COLORS.accent,
+            bgcolor: COLORS.cream,
+            borderBottom: `2px solid ${COLORS.accent}`,
+            borderRadius: 0,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+          }}
+        >
+          <HelpOutlineIcon /> {editingFaqId ? 'Edit FAQ' : 'Add FAQ'}
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3, bgcolor: COLORS.formBg }}>
+          <Stack spacing={2.5}>
+            {/* Category */}
+            <FormControl fullWidth size="small" sx={{ bgcolor: 'white' }}>
+              <InputLabel sx={{ fontWeight: 900, color: COLORS.accent }}>Category</InputLabel>
+              <Select
+                value={faqForm.category}
+                label="Category"
+                onChange={(e) => setFaqForm((prev) => ({ ...prev, category: e.target.value }))}
+                sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0 }, fontWeight: 700 }}
+              >
+                {FAQ_CATEGORIES.map((cat) => (
+                  <MenuItem key={cat} value={cat}>{cat}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            {/* Question */}
+            <TextField
+              fullWidth
+              label="Question"
+              size="small"
+              required
+              value={faqForm.question}
+              onChange={(e) => setFaqForm((prev) => ({ ...prev, question: e.target.value }))}
+              placeholder="e.g. Do you accept walk-ins?"
+              sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0 } }}
+              inputProps={{ style: { fontWeight: 700 } }}
+            />
+
+            {/* Answer */}
+            <TextField
+              fullWidth
+              label="Answer"
+              multiline
+              minRows={3}
+              maxRows={6}
+              required
+              value={faqForm.answer}
+              onChange={(e) => setFaqForm((prev) => ({ ...prev, answer: e.target.value }))}
+              placeholder="Keep answers concise — 1 to 3 sentences is ideal."
+              sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0 } }}
+              helperText="This text is injected directly into the chatbot's prompt. Keep it concise."
+            />
+
+            {/* Active toggle */}
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={faqForm.isActive}
+                  onChange={(e) => setFaqForm((prev) => ({ ...prev, isActive: e.target.checked }))}
+                  sx={{ '& .MuiSwitch-thumb': { borderRadius: 0 }, '& .MuiSwitch-track': { borderRadius: 0 } }}
+                />
+              }
+              label={
+                <Typography sx={{ fontWeight: 700, color: COLORS.accent }}>
+                  Active (visible to chatbot)
+                </Typography>
+              }
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ p: 2.5, bgcolor: COLORS.cream, borderTop: `2px solid ${COLORS.border}` }}>
+          <Button
+            onClick={() => setFaqDialogOpen(false)}
+            sx={{ fontWeight: 'bold', color: COLORS.textSecondary, borderRadius: 0 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSaveFaq}
+            variant="contained"
+            disabled={faqSaving}
+            sx={{
+              fontWeight: 900,
+              borderRadius: 0,
+              bgcolor: COLORS.accent,
+              border: `2px solid ${COLORS.brand}`,
+              '&:hover': { bgcolor: COLORS.brand },
+              '&.Mui-disabled': { bgcolor: COLORS.textMuted, color: '#fff' },
+            }}
+          >
+            {faqSaving ? 'Saving...' : editingFaqId ? 'Update FAQ' : 'Create FAQ'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── FAQ DELETE CONFIRMATION DIALOG (T3.108) ─────────────────────── */}
+      <Dialog
+        open={faqDeleteConfirm.open}
+        onClose={() => setFaqDeleteConfirm({ open: false, id: '', question: '' })}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 0 } }}
+      >
+        <DialogTitle sx={{ fontWeight: 900, color: COLORS.danger, pb: 1 }}>
+          Delete FAQ
+        </DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete this FAQ?
+          </Typography>
+          <Typography sx={{ fontWeight: 700, color: COLORS.accent, mt: 1 }}>
+            "{faqDeleteConfirm.question}"
+          </Typography>
+          <Typography sx={{ ...TYPE.meta, color: COLORS.textMuted, mt: 1 }}>
+            This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, pt: 0 }}>
+          <Button
+            onClick={() => setFaqDeleteConfirm({ open: false, id: '', question: '' })}
+            sx={{ fontWeight: 'bold', color: COLORS.textSecondary, borderRadius: 0 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleDeleteFaq}
+            variant="contained"
+            sx={{
+              fontWeight: 900,
+              borderRadius: 0,
+              bgcolor: COLORS.danger,
+              '&:hover': { bgcolor: COLORS.danger },
+            }}
           >
             Delete
           </Button>

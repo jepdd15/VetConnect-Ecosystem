@@ -7,7 +7,7 @@
 // Session management: in-memory conversation history, 5-second client-side rate
 // limiter, 20-message cap, and a "NEW CHAT" reset button.
 
-import { collection, doc, getDoc, getDocs } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
@@ -67,6 +67,92 @@ function buildInitialMessage() {
   };
 }
 
+/**
+ * Returns a formatted price string for a service.
+ * Handles tiered pricing (weight-based) and flat pricing.
+ * Moved to module scope so both the component and buildPromptAppendix can use it.
+ */
+function getDisplayPrice(service) {
+  if (service.hasTieredPricing && service.pricingTiers?.length) {
+    const prices = service.pricingTiers.map((t) => Number(t.price) || 0).filter((p) => p > 0);
+    if (prices.length > 0) return `starts at ₱${Math.min(...prices)}`;
+  }
+  const base = Number(service.price) || 0;
+  return base > 0 ? `₱${base}` : 'Price on consultation';
+}
+
+/**
+ * Builds a structured text block appended to the base system prompt before every AI call.
+ * Grounds Claude in real clinic data — hours, service prices, and admin-managed FAQ entries.
+ * Target: ~1500 words / ~2000 tokens maximum to stay within Haiku's budget.
+ *
+ * @param {{ clinicSettings: object, servicesList: Array, clinicPhone: string, clinicAddress: string, faqEntries: Array }} params
+ * @returns {string}
+ */
+function buildPromptAppendix({ clinicSettings, servicesList, clinicPhone, clinicAddress, faqEntries = [] }) {
+  const lines = ['\n\n--- LIVE CLINIC DATA (use this to answer questions accurately) ---'];
+
+  // Clinic contact
+  lines.push('\n## Clinic Contact');
+  if (clinicPhone) lines.push(`Phone: ${clinicPhone}`);
+  if (clinicAddress) lines.push(`Address: ${clinicAddress}`);
+
+  // Operating hours
+  const { openHour, closeHour, workingDays = [], closedDates = [] } = clinicSettings;
+  const days = [...workingDays].sort((a, b) => a - b).map((d) => DAY_NAMES[d]).join(', ');
+  lines.push('\n## Operating Hours');
+  lines.push(`Days: ${days || 'Not configured'}`);
+  lines.push(`Hours: ${formatHour(openHour)} - ${formatHour(closeHour)}`);
+  if (closedDates.length > 0) {
+    lines.push(`Upcoming closed dates: ${closedDates.slice(0, 5).join(', ')}`);
+  }
+
+  // Services catalog grouped by department
+  if (servicesList.length > 0) {
+    lines.push('\n## Services & Pricing');
+    const grouped = {};
+    servicesList.forEach((s) => {
+      const dept = s.department || s.category || 'General';
+      if (!grouped[dept]) grouped[dept] = [];
+      grouped[dept].push(s);
+    });
+    Object.entries(grouped)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .forEach(([dept, svcs]) => {
+        lines.push(`\n${dept}:`);
+        svcs
+          .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+          .forEach((s) => {
+            let detail = getDisplayPrice(s);
+            if (s.duration) detail += `, ${s.duration} min`;
+            lines.push(`- ${s.name}: ${detail}`);
+          });
+      });
+  }
+
+  // FAQ entries grouped by category (empty until Phase 2 wires them in)
+  if (faqEntries.length > 0) {
+    lines.push('\n## Frequently Asked Questions');
+    const grouped = {};
+    faqEntries.forEach((f) => {
+      if (!grouped[f.category]) grouped[f.category] = [];
+      grouped[f.category].push(f);
+    });
+    Object.entries(grouped)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .forEach(([cat, faqs]) => {
+        lines.push(`\n### ${cat}`);
+        faqs.forEach((f) => {
+          lines.push(`Q: ${f.question}`);
+          lines.push(`A: ${f.answer}`);
+        });
+      });
+  }
+
+  lines.push('\n--- END LIVE CLINIC DATA ---');
+  return lines.join('\n');
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -88,6 +174,8 @@ export default function ChatbotScreen({ navigation }) {
     workingDays: [1, 2, 3, 4, 5, 6],
     closedDates: [],
   });
+  const [faqEntries, setFaqEntries] = useState([]); // active FAQs injected into prompt (T3.108)
+  const [promptAppendix, setPromptAppendix] = useState(''); // rebuilt on data change (T3.108)
 
   // --- LLM / session state (T3.62, T3.64, T3.66, T3.67) ---
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_CHATBOT_SYSTEM_PROMPT);
@@ -142,6 +230,16 @@ export default function ChatbotScreen({ navigation }) {
         if (promptSnap.exists()) {
           setSystemPrompt(promptSnap.data().prompt || DEFAULT_CHATBOT_SYSTEM_PROMPT);
         }
+
+        // FAQ knowledge base (T3.108) — inject active entries into prompt appendix
+        const faqSnap = await getDocs(
+          query(collection(db, 'faqs'), where('isActive', '==', true))
+        );
+        setFaqEntries(
+          faqSnap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999))
+        );
       } catch (e) {
         console.warn('[ChatbotScreen.fetchEcosystem]:', e.message);
         setFetchError(true);
@@ -162,6 +260,14 @@ export default function ChatbotScreen({ navigation }) {
       if (rateLimitTimerRef.current) clearTimeout(rateLimitTimerRef.current);
     };
   }, []);
+
+  // T3.108: Rebuild prompt appendix whenever source data changes.
+  // The appendix is stored in state so it is always current when handleSendMessage fires.
+  useEffect(() => {
+    setPromptAppendix(
+      buildPromptAppendix({ clinicSettings, servicesList, clinicPhone, clinicAddress, faqEntries })
+    );
+  }, [clinicSettings, servicesList, clinicPhone, clinicAddress, faqEntries]);
 
   // ---------------------------------------------------------------------------
   // Rule-based helpers
@@ -186,16 +292,6 @@ export default function ChatbotScreen({ navigation }) {
       return `${DAY_NAMES[sorted[0]]} to ${DAY_NAMES[sorted[sorted.length - 1]]}`;
     }
     return sorted.map((d) => DAY_NAMES[d]).join(', ');
-  };
-
-  // T2.357: tiered-price display helper
-  const getDisplayPrice = (service) => {
-    if (service.hasTieredPricing && service.pricingTiers?.length) {
-      const prices = service.pricingTiers.map((t) => Number(t.price) || 0).filter((p) => p > 0);
-      if (prices.length > 0) return `starts at ₱${Math.min(...prices)}`;
-    }
-    const base = Number(service.price) || 0;
-    return base > 0 ? `₱${base}` : 'Price on consultation';
   };
 
   /**
@@ -391,7 +487,11 @@ export default function ChatbotScreen({ navigation }) {
     setIsAiLoading(true);
 
     try {
-      const result = await sendChatMessage({ messages: updatedHistory, systemPrompt, workerUrl });
+      const result = await sendChatMessage({
+        messages: updatedHistory,
+        systemPrompt: systemPrompt + promptAppendix,
+        workerUrl,
+      });
 
       setMessages((prev) => [
         ...prev,

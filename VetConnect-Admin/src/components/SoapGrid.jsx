@@ -35,6 +35,15 @@ import { ZEN_PLACEHOLDERS } from '../utils/soapConstants';
  * Intake context (T3.70 — read-only, shown above Subjective field):
  * @prop {string}      [intakeClientNotes='']         - Client's booking notes from the appointment doc
  * @prop {string}      [intakeStaffNotes='']          - Staff triage/walk-in notes from the appointment doc
+ *
+ * LLM Clinical Reasoning props (T3.107 — forwarded to DiagnosticBridge):
+ * @prop {boolean}     [llmEnabled=false]    - Whether the LLM feature is active
+ * @prop {boolean}     [llmLoading=false]    - Whether an LLM call is in-flight
+ * @prop {string}      [llmResponse='']      - The LLM's response text
+ * @prop {string}      [llmError='']         - Error message if the LLM call failed
+ * @prop {boolean}     [llmPanelOpen=false]  - Whether the LLM response panel is expanded
+ * @prop {function}    [onAskAI]             - Triggers the LLM reasoning call
+ * @prop {function}    [onDismissLlm]        - Collapses the LLM panel
  */
 export default function SoapGrid({
   soapData, updateSoap, setFullscreenField,
@@ -47,6 +56,8 @@ export default function SoapGrid({
   followUpNode = null,
   canToggleVaccine = false, onManualVaccineToggle,
   intakeClientNotes = '', intakeStaffNotes = '',
+  llmEnabled = false, llmLoading = false, llmResponse = '', llmError = '',
+  llmPanelOpen = false, onAskAI, onDismissLlm,
 }) {
   const textFieldSx = { flex: 1, '& .MuiInputBase-root': { height: '100%', alignItems: 'flex-start' } };
   const inputPropsSx = { disableUnderline: true, sx: { fontFamily: FONT, fontSize: '1.25rem', color: COLORS.brand, lineHeight: 1.6 } };
@@ -117,8 +128,20 @@ export default function SoapGrid({
       {/* A - ASSESSMENT (bottom-left) */}
       <Grid size={{ xs: 12, md: 6 }} sx={{ height: { xs: 'auto', md: '50%' }, borderRight: { md: '1px solid #F0F0F0' } }}>
         <SoapQuadrant id="assessment" label="A - ASSESSMENT (DIAGNOSIS & PROGNOSIS)" onZoomField={setFullscreenField}>
-          <DiagnosticBridge soapData={soapData} assistiveText={assistiveText} diagnosticOpen={diagnosticOpen}
-            onAnalyze={() => { runAssistiveDiagnosis(); setDiagnosticOpen(true); }} onDismiss={() => setDiagnosticOpen(false)} />
+          <DiagnosticBridge
+            soapData={soapData}
+            assistiveText={assistiveText}
+            diagnosticOpen={diagnosticOpen}
+            onAnalyze={() => { runAssistiveDiagnosis(); setDiagnosticOpen(true); }}
+            onDismiss={() => setDiagnosticOpen(false)}
+            llmEnabled={llmEnabled}
+            llmLoading={llmLoading}
+            llmResponse={llmResponse}
+            llmError={llmError}
+            llmPanelOpen={llmPanelOpen}
+            onAskAI={onAskAI}
+            onDismissLlm={onDismissLlm}
+          />
           <TextField
             multiline fullWidth variant="standard"
             placeholder={ZEN_PLACEHOLDERS.assessment}

@@ -9,7 +9,7 @@ import {
   Box, Paper, Avatar, Chip, TextField, MenuItem,
   Grid, // MUI v6 Grid
   Stack, Collapse, Tooltip, InputBase, Switch,
-  Autocomplete, Alert, Snackbar,
+  Autocomplete, Alert, Snackbar, CircularProgress,
   DialogTitle, DialogContent, DialogContentText, DialogActions
 } from '@mui/material';
 
@@ -26,13 +26,15 @@ import {
   NavigateBefore as NavigateBeforeIcon,
   NavigateNext as NavigateNextIcon,
   Pets as PetsIcon,
+  Psychology as PsychologyIcon,
 } from '@mui/icons-material';
-import { doc, collection, Timestamp, updateDoc, getDoc, query, where, orderBy, getDocs, arrayUnion, writeBatch, runTransaction } from 'firebase/firestore';
+import { doc, collection, Timestamp, addDoc, updateDoc, getDoc, query, where, orderBy, getDocs, arrayUnion, writeBatch, runTransaction } from 'firebase/firestore';
 import { db, auth } from '../firebaseConfig';
 import { useInventory } from '../features/Inventory/hooks/useInventory';
 import { calculatePulseMetrics, makePulseEventId, createPulseEvent } from '../utils/pulseUtils';
 import { useClinicSettings } from '../hooks/useClinicSettings';
 import { useUser } from '../context/UserContext';
+import { callClinicalReasoning, DEFAULT_CLINICAL_SYSTEM_PROMPT } from '../utils/llmService';
 
 // Design Tokens
 import { FONT, TYPE, COLORS } from '../theme/designTokens';
@@ -214,36 +216,94 @@ export const VitalsGrid = React.memo(function VitalsGrid({ soapData, updateSoap,
 });
 
 /**
- * DiagnosticBridge — "Analyze S+O" button + collapsible AI suggestion panel.
+ * DiagnosticBridge — "Analyze S+O" button + collapsible rule-based suggestion panel,
+ * plus an optional "Ask AI" button and purple LLM response panel.
+ *
+ * Rule-based engine (blue) and LLM panel (purple) are visually distinct and
+ * can be open simultaneously.
  *
  * @prop {object}   soapData       - Current SOAP data (used to determine disabled state)
- * @prop {string}   assistiveText  - Rendered suggestion text
- * @prop {boolean}  diagnosticOpen - Whether the suggestion panel is expanded
- * @prop {function} onAnalyze      - Runs the diagnosis engine and opens the panel
- * @prop {function} onDismiss      - Collapses the suggestion panel
+ * @prop {string}   assistiveText  - Rule-based suggestion text
+ * @prop {boolean}  diagnosticOpen - Whether the rule-based panel is expanded
+ * @prop {function} onAnalyze      - Runs the rule-based engine and opens its panel
+ * @prop {function} onDismiss      - Collapses the rule-based panel
+ *
+ * LLM props (all optional — feature is invisible when llmEnabled is false):
+ * @prop {boolean}  [llmEnabled=false]   - Whether the LLM feature is active
+ * @prop {boolean}  [llmLoading=false]   - Whether an LLM call is in-flight
+ * @prop {string}   [llmResponse='']     - The LLM's response text
+ * @prop {string}   [llmError='']        - Error message if the LLM call failed
+ * @prop {boolean}  [llmPanelOpen=false] - Whether the LLM response panel is expanded
+ * @prop {function} [onAskAI]            - Triggers the LLM reasoning call
+ * @prop {function} [onDismissLlm]       - Collapses the LLM panel
  */
-export const DiagnosticBridge = React.memo(function DiagnosticBridge({ soapData, assistiveText, diagnosticOpen, onAnalyze, onDismiss }) {
+export const DiagnosticBridge = React.memo(function DiagnosticBridge({
+  soapData,
+  assistiveText,
+  diagnosticOpen,
+  onAnalyze,
+  onDismiss,
+  llmEnabled = false,
+  llmLoading = false,
+  llmResponse = '',
+  llmError = '',
+  llmPanelOpen = false,
+  onAskAI,
+  onDismissLlm,
+}) {
+  const hasInputData = !!(soapData.subjective || soapData.objectiveNotes);
+
   return (
     <Box sx={{ mb: 1.5, flexShrink: 0 }}>
-      <Button
-        size="small"
-        variant="outlined"
-        startIcon={<AutoFixHighIcon />}
-        onClick={onAnalyze}
-        disabled={!soapData.subjective && !soapData.objectiveNotes}
-        sx={{
-          fontWeight: 900,
-          fontSize: '0.65rem',
-          textTransform: 'uppercase',
-          letterSpacing: 0.5,
-          color: COLORS.medical || '#1565C0',
-          borderColor: COLORS.medical || '#1565C0',
-          mb: 1,
-          '&:hover': { bgcolor: 'rgba(21,101,192,0.05)' },
-        }}
-      >
-        Analyze S+O
-      </Button>
+      {/* Button row — rule-based + AI side by side */}
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 0.5 }}>
+        {/* Rule-based "Analyze S+O" button — unchanged */}
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<AutoFixHighIcon />}
+          onClick={onAnalyze}
+          disabled={!hasInputData}
+          sx={{
+            fontWeight: 900,
+            fontSize: '0.65rem',
+            textTransform: 'uppercase',
+            letterSpacing: 0.5,
+            color: COLORS.medical || '#1565C0',
+            borderColor: COLORS.medical || '#1565C0',
+            mb: 0.5,
+            '&:hover': { bgcolor: 'rgba(21,101,192,0.05)' },
+          }}
+        >
+          Analyze S+O
+        </Button>
+
+        {/* LLM "Ask AI" button — only visible when llmEnabled */}
+        {llmEnabled && (
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={llmLoading ? <CircularProgress size={14} sx={{ color: COLORS.grooming }} /> : <PsychologyIcon />}
+            onClick={onAskAI}
+            disabled={!hasInputData || llmLoading}
+            sx={{
+              fontWeight: 900,
+              fontSize: '0.65rem',
+              textTransform: 'uppercase',
+              letterSpacing: 0.5,
+              color: COLORS.grooming,
+              borderColor: COLORS.grooming,
+              mb: 0.5,
+              '&:hover': { bgcolor: 'rgba(123,31,162,0.05)' },
+              '&.Mui-disabled': { opacity: 0.5 },
+            }}
+          >
+            {llmLoading ? 'Analyzing...' : 'Ask AI'}
+          </Button>
+        )}
+      </Box>
+
+      {/* Rule-based response panel (blue) — unchanged */}
       <Collapse in={diagnosticOpen && !!assistiveText}>
         <Box sx={{
           bgcolor: 'rgba(21,101,192,0.04)',
@@ -269,6 +329,57 @@ export const DiagnosticBridge = React.memo(function DiagnosticBridge({ soapData,
           </Typography>
         </Box>
       </Collapse>
+
+      {/* LLM response panel (purple) — only rendered when llmEnabled */}
+      {llmEnabled && (
+        <Collapse in={llmPanelOpen && (!!llmResponse || !!llmError)}>
+          <Box sx={{
+            bgcolor: 'rgba(123,31,162,0.04)',
+            border: `1px solid ${COLORS.kpiPurpleBorder}`,
+            p: 1.5,
+            mb: 1,
+          }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+              <Typography sx={{ ...TYPE.label, color: COLORS.grooming, fontWeight: 900, fontSize: '0.6rem' }}>
+                AI CLINICAL REASONING (CLAUDE)
+              </Typography>
+              <IconButton size="small" onClick={onDismissLlm} sx={{ p: 0.25 }}>
+                <CloseIcon sx={{ fontSize: 12, color: COLORS.textMuted }} />
+              </IconButton>
+            </Box>
+
+            {/* Mandatory disclaimer */}
+            <Typography sx={{
+              fontSize: '0.65rem',
+              color: COLORS.textMuted,
+              fontStyle: 'italic',
+              mb: 1,
+              lineHeight: 1.4,
+            }}>
+              AI-generated suggestions for reference only. All clinical decisions must be made by the attending veterinarian.
+            </Typography>
+
+            {/* Error state */}
+            {llmError && (
+              <Typography sx={{ fontSize: '0.8rem', color: COLORS.danger, fontWeight: 700 }}>
+                {llmError}
+              </Typography>
+            )}
+
+            {/* Response text — pre-line preserves numbered-list formatting */}
+            {llmResponse && (
+              <Typography sx={{
+                fontSize: '0.8rem',
+                color: COLORS.textPrimary,
+                whiteSpace: 'pre-line',
+                lineHeight: 1.6,
+              }}>
+                {llmResponse}
+              </Typography>
+            )}
+          </Box>
+        </Collapse>
+      )}
     </Box>
   );
 });
@@ -360,6 +471,15 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   const [assistiveText, setAssistiveText] = useState('');
   const [diagnosticOpen, setDiagnosticOpen] = useState(false);
 
+  // --- LLM CLINICAL REASONING STATE (T3.107) ---
+  const [llmConfig, setLlmConfig] = useState({ enabled: false, workerUrl: '', systemPrompt: '' });
+  const [llmResponse, setLlmResponse] = useState('');
+  const [llmLoading, setLlmLoading] = useState(false);
+  const [llmError, setLlmError] = useState('');
+  const [llmPanelOpen, setLlmPanelOpen] = useState(false);
+  // Unmount guard: set to true on unmount to prevent setState after component is gone.
+  const llmAbortRef = useRef(false);
+
   // T2.75 / T3.99: Clinical amendment state — structured SOAP amendment on sealed records
   const [amendmentReason, setAmendmentReason] = useState('');
   const [showAmendInput, setShowAmendInput] = useState(false);
@@ -412,6 +532,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   // hasReleasedRef guards against double-release when handleCloseRequest already ran.
   useEffect(() => {
     return () => {
+      // Signal any in-flight LLM call to not update state after unmount.
+      llmAbortRef.current = true;
+
       if (!isRecordLockedRef.current && !hasReleasedRef.current) {
         hasReleasedRef.current = true;
         treatmentCartRef.current.forEach(item => {
@@ -424,6 +547,35 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // --- LLM CONFIG FETCH (one-shot on mount) ---
+  // ClinicalWorkspace mounts fresh each time it opens, so a one-shot getDoc is
+  // sufficient — no real-time listener needed.
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchLlmConfig = async () => {
+      try {
+        const [configSnap, promptSnap] = await Promise.all([
+          getDoc(doc(db, 'clinic_settings', 'llm_config')),
+          getDoc(doc(db, 'system_prompts', 'clinical_reasoning')),
+        ]);
+        if (cancelled) return;
+        const config = configSnap.exists() ? configSnap.data() : {};
+        const promptDoc = promptSnap.exists() ? promptSnap.data() : {};
+        setLlmConfig({
+          enabled: config.enabled ?? false,
+          workerUrl: config.workerUrl ?? '',
+          systemPrompt: promptDoc.prompt || config.systemPrompt || DEFAULT_CLINICAL_SYSTEM_PROMPT,
+        });
+      } catch (e) {
+        console.warn('[ClinicalWorkspace] Failed to load LLM config:', e.message);
+      }
+    };
+
+    fetchLlmConfig();
+    return () => { cancelled = true; };
   }, []);
 
   // --- 🧘 ZEN FOCUS & IMMERSION ---
@@ -835,6 +987,100 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       if (c.keywords.some(k => combinedNotes.includes(k))) suggestions.push(c.suggestion);
     });
     setAssistiveText(suggestions.length > 0 ? suggestions.join('\n\n') : 'No rule-based suggestions found. Please proceed with standard diagnostics.');
+  };
+
+  /**
+   * Sends the current SOAP S+O data to the LLM via the Cloudflare Worker proxy
+   * and writes a full audit trail to the `llm_audit_logs` Firestore collection.
+   *
+   * Guard: only runs when llmEnabled is true and a workerUrl is configured.
+   * Unmount guard: checks llmAbortRef before every setState to prevent React
+   * warnings when the vet closes the workspace during an in-flight call.
+   */
+  const runLlmDiagnosis = async () => {
+    if (!llmConfig.enabled || !llmConfig.workerUrl) return;
+    if (llmLoading) return;
+
+    if (!llmAbortRef.current) {
+      setLlmLoading(true);
+      setLlmError('');
+      setLlmPanelOpen(true);
+    }
+
+    const auditBase = {
+      staffId: cwProfile?.uid || '',
+      staffName: cwProfile?.fullName || cwProfile?.email || 'Unknown',
+      appointmentId: patient?.id || '',
+      petName: patient?.petName || '',
+      species: patient?.petSpecies || petDetails?.species || '',
+      timestamp: Timestamp.now(),
+    };
+
+    // Pre-call audit log — written unconditionally so every request is traced,
+    // even if the call subsequently fails.
+    let auditRef;
+    try {
+      auditRef = await addDoc(collection(db, 'llm_audit_logs'), {
+        ...auditBase,
+        type: 'request',
+        status: 'pending',
+        promptSummary: `S: ${(soapData.subjective || '').substring(0, 100)}... O: ${(soapData.objectiveNotes || '').substring(0, 100)}...`,
+      });
+    } catch (auditErr) {
+      // Non-fatal: log and continue — a failed audit write should not block the AI call.
+      console.error('[ClinicalWorkspace.runLlmDiagnosis] Audit pre-log failed:', auditErr.message);
+    }
+
+    try {
+      const result = await callClinicalReasoning({
+        subjective: soapData.subjective || '',
+        objective: soapData.objectiveNotes || '',
+        vitals: {
+          temp: soapData.objTemp,
+          hr: soapData.objHR,
+          rr: soapData.objRR,
+          crt: soapData.objCRT,
+          bcs: soapData.bcs,
+          pain: soapData.painScale,
+        },
+        species: patient?.petSpecies || petDetails?.species || '',
+        breed: patient?.petBreed || petDetails?.breed || '',
+        age: calculateAge(patient?.petBirthdate || petDetails?.dob) || '',
+        weight: soapData.objWeight || patient?.petWeight || '',
+        systemPrompt: llmConfig.systemPrompt,
+        workerUrl: llmConfig.workerUrl,
+      });
+
+      if (!llmAbortRef.current) {
+        setLlmResponse(result.text);
+      }
+
+      if (auditRef) {
+        await updateDoc(auditRef, {
+          status: 'success',
+          responseSummary: (result.text || '').substring(0, 500),
+          tokenCount: result.tokenCount ?? null,
+          completedAt: Timestamp.now(),
+        });
+      }
+    } catch (err) {
+      if (!llmAbortRef.current) {
+        setLlmError(err.message || 'LLM request failed.');
+        setLlmResponse('');
+      }
+
+      if (auditRef) {
+        await updateDoc(auditRef, {
+          status: 'error',
+          errorMessage: err.message || 'Unknown error',
+          completedAt: Timestamp.now(),
+        }).catch(() => {});
+      }
+    } finally {
+      if (!llmAbortRef.current) {
+        setLlmLoading(false);
+      }
+    }
   };
 
   // --- 3. TREATMENT PLAN LOGIC (THE BRIDGE) ---
@@ -2352,6 +2598,13 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 onManualVaccineToggle={() => setManualVaccineOverride(true)}
                 intakeClientNotes={filteredClientNotes}
                 intakeStaffNotes={intakeStaffNotes}
+                llmEnabled={llmConfig.enabled && !!llmConfig.workerUrl}
+                llmLoading={llmLoading}
+                llmResponse={llmResponse}
+                llmError={llmError}
+                llmPanelOpen={llmPanelOpen}
+                onAskAI={runLlmDiagnosis}
+                onDismissLlm={() => setLlmPanelOpen(false)}
               />
             );
           })()}
@@ -2743,6 +2996,13 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
               diagnosticOpen={diagnosticOpen}
               onAnalyze={() => { runAssistiveDiagnosis(); setDiagnosticOpen(true); }}
               onDismiss={() => setDiagnosticOpen(false)}
+              llmEnabled={llmConfig.enabled && !!llmConfig.workerUrl}
+              llmLoading={llmLoading}
+              llmResponse={llmResponse}
+              llmError={llmError}
+              llmPanelOpen={llmPanelOpen}
+              onAskAI={runLlmDiagnosis}
+              onDismissLlm={() => setLlmPanelOpen(false)}
             />
           )}
 
@@ -2826,6 +3086,13 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 onManualVaccineToggle={() => setManualVaccineOverride(true)}
                 intakeClientNotes={filteredClientNotes}
                 intakeStaffNotes={intakeStaffNotes}
+                llmEnabled={llmConfig.enabled && !!llmConfig.workerUrl}
+                llmLoading={llmLoading}
+                llmResponse={llmResponse}
+                llmError={llmError}
+                llmPanelOpen={llmPanelOpen}
+                onAskAI={runLlmDiagnosis}
+                onDismissLlm={() => setLlmPanelOpen(false)}
               />
             );
           })()}

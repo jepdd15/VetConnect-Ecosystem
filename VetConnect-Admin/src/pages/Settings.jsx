@@ -39,8 +39,10 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import PublishIcon from '@mui/icons-material/Publish';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import GroupIcon from '@mui/icons-material/Group';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 
 import { DEFAULT_VACCINE_CATALOG } from '../hooks/useVaccineCatalog';
+import { testLlmConnection, DEFAULT_CLINICAL_SYSTEM_PROMPT } from '../utils/llmService';
 import { useConsentPolicy } from '../hooks/useConsentPolicy';
 import { CONSENT_TYPES } from '../utils/consentConstants';
 import { migrateExistingConsents } from '../utils/consentMigration';
@@ -229,6 +231,16 @@ export default function Settings() {
     setReconsentProgress({ consented: 0, total: 0, loading: false, queried: false });
   }, [consentActiveVersion]);
 
+  // --- PILLAR 11: AI CLINICAL REASONING STATE ---
+  const [llmConfig, setLlmConfig] = useState({
+    enabled: false,
+    workerUrl: '',      // Cloudflare Worker URL — API key lives in Worker env, never here
+    systemPrompt: '',   // Loaded from Firestore; falls back to DEFAULT_CLINICAL_SYSTEM_PROMPT
+  });
+  const [llmTestResult, setLlmTestResult] = useState(null); // { ok, message } | null
+  const [llmTestLoading, setLlmTestLoading] = useState(false);
+  const [llmSaving, setLlmSaving] = useState(false);
+
   // Legacy data migration — Step 7.2 (T3.5 Phase 7)
   const [migrationResult, setMigrationResult] = useState({
     migrated: 0,
@@ -300,7 +312,20 @@ export default function Settings() {
       }
     });
 
-    return () => { unsubSettings(); unsubDepts(); unsubInvCats(); unsubVaxCatalog(); };
+    // 6. Fetch LLM Config (Pillar 11)
+    const unsubLlm = onSnapshot(doc(db, 'clinic_settings', 'llm_config'), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setLlmConfig(prev => ({
+          ...prev,
+          enabled:      data.enabled      ?? false,
+          workerUrl:    data.workerUrl    ?? '',
+          systemPrompt: data.systemPrompt ?? '',
+        }));
+      }
+    });
+
+    return () => { unsubSettings(); unsubDepts(); unsubInvCats(); unsubVaxCatalog(); unsubLlm(); };
   },[]);
 
   // --- NAVIGATION GUARD: Warn on unsaved changes to form fields ---
@@ -909,6 +934,89 @@ export default function Settings() {
       console.error('[Settings.handleMigrationExecute]:', err.message);
       setToast({ open: true, message: 'Migration failed: ' + err.message, severity: 'error' });
       setMigrationResult((prev) => ({ ...prev, loading: false }));
+    }
+  };
+
+  // --- PILLAR 11: AI CLINICAL REASONING HANDLERS ---
+
+  /**
+   * Saves LLM configuration to Firestore.
+   * Worker URL is required when the feature is enabled.
+   * The system prompt is also written to system_prompts/clinical_reasoning
+   * so ClinicalWorkspace can fetch it independently.
+   */
+  const handleSaveLlmConfig = async () => {
+    const url = llmConfig.workerUrl.trim();
+    if (llmConfig.enabled && !url) {
+      return setToast({
+        open: true,
+        message: 'Worker URL is required when AI Clinical Reasoning is enabled.',
+        severity: 'warning',
+      });
+    }
+    if (url && !url.startsWith('https://')) {
+      return setToast({
+        open: true,
+        message: 'Worker URL must start with https://',
+        severity: 'warning',
+      });
+    }
+
+    setLlmSaving(true);
+    try {
+      const adminIdentity = profile?.fullName || profile?.email || 'Unknown Admin';
+      const effectivePrompt = llmConfig.systemPrompt || DEFAULT_CLINICAL_SYSTEM_PROMPT;
+
+      await setDoc(
+        doc(db, 'clinic_settings', 'llm_config'),
+        {
+          enabled:      llmConfig.enabled,
+          workerUrl:    llmConfig.workerUrl.trim(),
+          systemPrompt: effectivePrompt,
+          updatedAt:    Timestamp.now(),
+          updatedBy:    adminIdentity,
+        },
+        { merge: true },
+      );
+
+      // Mirror the system prompt to its own collection so ClinicalWorkspace
+      // can fetch it with a single getDoc without reading all of clinic_settings.
+      await setDoc(
+        doc(db, 'system_prompts', 'clinical_reasoning'),
+        {
+          prompt:    effectivePrompt,
+          updatedAt: Timestamp.now(),
+          updatedBy: adminIdentity,
+        },
+      );
+
+      await logSettingsEvent('UPDATE', 'llm_config', 'ai_clinical_reasoning', {
+        enabled: llmConfig.enabled,
+      });
+
+      setToast({ open: true, message: 'AI configuration saved.', severity: 'success' });
+    } catch (e) {
+      console.error('[Settings.handleSaveLlmConfig]:', e.message);
+      setToast({ open: true, message: e.message, severity: 'error' });
+    } finally {
+      setLlmSaving(false);
+    }
+  };
+
+  /**
+   * Sends a minimal test request to the configured Worker URL
+   * and shows the result as a Chip below the URL field.
+   */
+  const handleTestLlm = async () => {
+    setLlmTestLoading(true);
+    setLlmTestResult(null);
+    try {
+      const result = await testLlmConnection({ workerUrl: llmConfig.workerUrl });
+      setLlmTestResult(result);
+    } catch (e) {
+      setLlmTestResult({ ok: false, message: e.message || 'Test failed.' });
+    } finally {
+      setLlmTestLoading(false);
     }
   };
 
@@ -2263,6 +2371,209 @@ export default function Settings() {
                   </Box>
                 </Box>
               )}
+
+            </Box>
+          </Paper>
+        </Grid>
+
+        {/* PILLAR 11: AI CLINICAL REASONING */}
+        <Grid size={{ xs: 12 }}>
+          <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden' }}>
+
+            {/* Header */}
+            <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
+              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
+                <AutoFixHighIcon /> AI Clinical Reasoning
+              </Typography>
+            </Box>
+
+            <Box sx={{ p: 3, bgcolor: COLORS.cardBg }}>
+
+              {/* Description */}
+              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 3 }}>
+                Enable AI-powered differential diagnosis suggestions in the Clinical Workspace. The LLM analysis is additive — the existing rule-based engine continues to run. This feature is advisory only; the attending veterinarian makes all clinical decisions.
+              </Typography>
+
+              {/* Provider notice */}
+              <Box sx={{ mb: 3, p: 2, bgcolor: COLORS.kpiBlueBg, border: `2px solid ${COLORS.kpiBlueBorder}` }}>
+                <Typography sx={{ ...TYPE.label, color: COLORS.info, mb: 0.5 }}>
+                  Provider: Anthropic Claude Haiku 4.5 via Cloudflare Worker
+                </Typography>
+                <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary }}>
+                  Requests are proxied through a Cloudflare Worker. The API key lives in the
+                  Worker's environment variable — it never touches the browser or Firestore.
+                  Deploy a Worker using the instructions in PHASE3_LLM_CLINICAL_REASONING_PLAN.md Phase 0.
+                </Typography>
+              </Box>
+
+              {/* Enable toggle */}
+              <Box sx={{ mb: 3 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={llmConfig.enabled}
+                      onChange={(e) => setLlmConfig(prev => ({ ...prev, enabled: e.target.checked }))}
+                      sx={{
+                        '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.info },
+                        '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: COLORS.info },
+                      }}
+                    />
+                  }
+                  label={
+                    <Typography sx={{ ...TYPE.bodyBold, color: COLORS.textPrimary }}>
+                      Enable AI Clinical Reasoning
+                    </Typography>
+                  }
+                />
+              </Box>
+
+              {/* Worker URL + Test button */}
+              <Box sx={{ mb: 1 }}>
+                <TextField
+                  fullWidth
+                  label="Cloudflare Worker URL"
+                  placeholder="https://vetconnect-ai.your-name.workers.dev"
+                  value={llmConfig.workerUrl}
+                  onChange={(e) => {
+                    setLlmConfig(prev => ({ ...prev, workerUrl: e.target.value }));
+                    setLlmTestResult(null);
+                  }}
+                  helperText="The URL of your deployed Cloudflare Worker proxy. The API key is not entered here."
+                  sx={{
+                    bgcolor: 'white',
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: 0,
+                      '& fieldset': { border: `2px solid ${COLORS.accent}33` },
+                    },
+                  }}
+                  InputProps={{
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={handleTestLlm}
+                          disabled={llmTestLoading || !llmConfig.workerUrl.trim()}
+                          startIcon={llmTestLoading ? <CircularProgress size={14} /> : null}
+                          sx={{
+                            fontWeight: 900,
+                            fontSize: '0.7rem',
+                            borderRadius: 0,
+                            textTransform: 'uppercase',
+                            letterSpacing: 0.5,
+                            borderColor: COLORS.accent,
+                            color: COLORS.accent,
+                            whiteSpace: 'nowrap',
+                            '&:hover': { bgcolor: COLORS.cream },
+                          }}
+                        >
+                          {llmTestLoading ? 'Testing...' : 'Test Connection'}
+                        </Button>
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Box>
+
+              {/* Test result chip */}
+              {llmTestResult && (
+                <Box sx={{ mb: 3 }}>
+                  <Chip
+                    label={llmTestResult.message}
+                    size="small"
+                    sx={{
+                      borderRadius: 0,
+                      fontWeight: 900,
+                      fontSize: '0.7rem',
+                      bgcolor: llmTestResult.ok ? COLORS.kpiGreenBg : COLORS.kpiRedBg,
+                      color: llmTestResult.ok ? COLORS.success : COLORS.danger,
+                      border: `1px solid ${llmTestResult.ok ? COLORS.kpiGreenBorder : COLORS.kpiRedBorder}`,
+                    }}
+                  />
+                </Box>
+              )}
+
+              {/* System prompt */}
+              <Box sx={{ mb: 1, mt: 3 }}>
+                <Typography sx={{ ...TYPE.label, color: COLORS.accent, mb: 1 }}>
+                  System Prompt
+                </Typography>
+                <TextField
+                  fullWidth
+                  multiline
+                  minRows={8}
+                  maxRows={16}
+                  value={llmConfig.systemPrompt || DEFAULT_CLINICAL_SYSTEM_PROMPT}
+                  onChange={(e) => setLlmConfig(prev => ({ ...prev, systemPrompt: e.target.value }))}
+                  helperText="Customize the AI's clinical reasoning instructions. Changes take effect after saving."
+                  sx={{
+                    bgcolor: 'white',
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: 0,
+                      fontFamily: "'Inter', 'Roboto', monospace",
+                      fontSize: '0.8rem',
+                      lineHeight: 1.6,
+                      '& fieldset': { border: `2px solid ${COLORS.accent}33` },
+                    },
+                  }}
+                />
+              </Box>
+
+              {/* Reset to default prompt */}
+              <Box sx={{ mb: 3 }}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<RefreshIcon />}
+                  onClick={() => setLlmConfig(prev => ({ ...prev, systemPrompt: DEFAULT_CLINICAL_SYSTEM_PROMPT }))}
+                  sx={{
+                    fontWeight: 900,
+                    fontSize: '0.7rem',
+                    borderRadius: 0,
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.5,
+                    borderColor: COLORS.accentLight,
+                    color: COLORS.textSecondary,
+                    '&:hover': { bgcolor: COLORS.cream },
+                  }}
+                >
+                  Reset to Default Prompt
+                </Button>
+              </Box>
+
+              {/* Billing guidance */}
+              <Box sx={{ mb: 3, p: 2, bgcolor: COLORS.warningSurface, border: `2px solid ${COLORS.warning}` }}>
+                <Typography sx={{ ...TYPE.label, color: COLORS.warning, mb: 0.5 }}>
+                  Billing Notice
+                </Typography>
+                <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary }}>
+                  Claude Haiku 4.5: approximately $0.55–$2.76/month for typical clinic volume.
+                  Each clinical reasoning call uses approximately 500–2,000 tokens.
+                  Set billing limits at console.anthropic.com to prevent unexpected charges.
+                  Cloudflare Worker free tier: 100,000 requests/day.
+                </Typography>
+              </Box>
+
+              {/* Save button */}
+              <Button
+                variant="contained"
+                startIcon={<SaveIcon />}
+                onClick={handleSaveLlmConfig}
+                disabled={llmSaving}
+                sx={{
+                  fontWeight: 900,
+                  px: 4,
+                  py: 1,
+                  borderRadius: 0,
+                  bgcolor: COLORS.accent,
+                  border: `2px solid ${COLORS.brand}`,
+                  boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
+                  '&:hover': { bgcolor: COLORS.brand },
+                  '&.Mui-disabled': { bgcolor: COLORS.textMuted, color: '#fff' },
+                }}
+              >
+                {llmSaving ? 'Saving...' : 'Save AI Configuration'}
+              </Button>
 
             </Box>
           </Paper>

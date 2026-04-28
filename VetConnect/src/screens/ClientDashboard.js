@@ -35,12 +35,14 @@ import Constants from "expo-constants";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 
-// Tells the app to show notifications even if the app is currently open and active
+// Tells the app to show notifications even if the app is currently open and active.
+// Must be called at module level (outside any component) so it is registered before
+// any notification can arrive.
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
     shouldPlaySound: true,
-    shouldSetBadge: false,
+    shouldSetBadge: true,
   }),
 });
 
@@ -110,6 +112,7 @@ const ClientDashboard = ({ navigation }) => {
   // ======================================================================
   useEffect(() => {
     if (!auth.currentUser) return;
+
     registerForPushNotificationsAsync().then((token) => {
       if (token) {
         // Securely save the hardware token to the User's Database Profile
@@ -119,6 +122,19 @@ const ClientDashboard = ({ navigation }) => {
         );
       }
     });
+
+    // Listen for notification taps — fires when the user presses a notification
+    // while the app is backgrounded or foregrounded. No deep navigation needed:
+    // opening the app lands on ClientDashboard which already shows live status.
+    const responseSubscription = Notifications.addNotificationResponseReceivedListener(
+      (response) => {
+        console.log('[Push] Notification tapped:', response.notification.request.content);
+      }
+    );
+
+    return () => {
+      responseSubscription.remove();
+    };
   }, []);
 
   async function registerForPushNotificationsAsync() {
@@ -152,10 +168,10 @@ const ClientDashboard = ({ navigation }) => {
     // Android specific channel requirements
     if (Platform.OS === "android") {
       Notifications.setNotificationChannelAsync("default", {
-        name: "default",
+        name: "Default",
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
-        lightColor: "#FF231F7C",
+        lightColor: "#3ABEF9",
       });
     }
     return token;

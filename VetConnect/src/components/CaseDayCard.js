@@ -30,6 +30,7 @@ import {
 import { formatDisplayDate, formatFirestoreTime } from '../utils/helpers';
 import { buildVisitTimeline } from '../utils/buildVisitTimeline';
 import VisitTimeline from './VisitTimeline';
+import EncounterSummary from './EncounterSummary';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -62,6 +63,21 @@ const CaseDayCard = ({ caseChain, isHistory, salesByAppt, onShowReceipt, onReboo
 
   const toggleDayTimeline = (index) => {
     setExpandedDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
+  };
+
+  // Per-day encounter summary collapse state — independent from the timeline collapse.
+  const [expandedEncounterDays, setExpandedEncounterDays] = useState(new Set());
+
+  const toggleDayEncounter = (index) => {
+    setExpandedEncounterDays((prev) => {
       const next = new Set(prev);
       if (next.has(index)) {
         next.delete(index);
@@ -177,8 +193,21 @@ const CaseDayCard = ({ caseChain, isHistory, salesByAppt, onShowReceipt, onReboo
             );
           })()}
 
-          {/* Paid amount */}
-          {hasSaleData && (
+          {/* Encounter summary for completed case days — hideViewRecord since no navigation context */}
+          {appt.encounterItems?.length > 0 && appt.status === 'completed' && (
+            <EncounterSummary
+              appointment={appt}
+              collapsed={!expandedEncounterDays.has(index)}
+              onToggle={() => toggleDayEncounter(index)}
+              onViewRecord={() => {}}
+              onRebook={() => onRebook(appt)}
+              salesTotal={salesByAppt?.[appt.id]?.total ?? null}
+              hideViewRecord={true}
+            />
+          )}
+
+          {/* Paid amount — hidden when encounter summary already shows it */}
+          {hasSaleData && !(appt.encounterItems?.length > 0 && appt.status === 'completed') && (
             <Text style={styles.paidText}>Paid ₱{saleTotal}</Text>
           )}
 

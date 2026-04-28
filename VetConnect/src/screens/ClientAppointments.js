@@ -41,6 +41,7 @@ import {
 import SuperCard from "../components/SuperCard";
 import CaseDayCard from "../components/CaseDayCard";
 import VisitTimeline from "../components/VisitTimeline";
+import EncounterSummary from "../components/EncounterSummary";
 import { buildVisitTimeline } from "../utils/buildVisitTimeline";
 import { useClinicContact } from "../hooks/useClinicContact";
 import { formatFirestoreTime, formatDisplayDate, getLocalDateStr } from '../utils/helpers';
@@ -95,6 +96,22 @@ const ClientAppointments = ({ navigation }) => {
 
   const toggleTimeline = (id) => {
     setExpandedTimelines((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  // Encounter summary collapse state — separate from timeline collapse so both
+  // can be expanded/collapsed independently per card.
+  const [expandedEncounters, setExpandedEncounters] = useState(new Set());
+
+  const toggleEncounter = (id) => {
+    setExpandedEncounters((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
         next.delete(id);
@@ -800,6 +817,23 @@ const ClientAppointments = ({ navigation }) => {
           );
         })()}
 
+        {/* Encounter summary — services, medications, next steps for completed signed-off visits */}
+        {isHistory && item.status === 'completed' && item.encounterItems?.length > 0 && (
+          <View style={styles.encounterSection}>
+            <EncounterSummary
+              appointment={item}
+              collapsed={!expandedEncounters.has(item.id)}
+              onToggle={() => toggleEncounter(item.id)}
+              onViewRecord={() => navigation.navigate('PetHistory', {
+                petId: item.petId,
+                petName: item.petName,
+              })}
+              onRebook={(appt) => handleRebook(appt)}
+              salesTotal={salesByAppt[item.id]?.total ?? null}
+            />
+          </View>
+        )}
+
         {/* --- ACTION BUTTONS --- */}
         <View style={styles.actionRow}>
           {/* UPCOMING ACTIONS: Cancel & QR */}
@@ -999,6 +1033,37 @@ const ClientAppointments = ({ navigation }) => {
               </TouchableOpacity>
             ))}
           </ScrollView>
+        </View>
+      )}
+
+      {/* Expand All / Collapse All toggle — History tab only, above the FlatList */}
+      {tab === 'history' && filteredData.length > 0 && (
+        <View style={styles.expandCollapseRow}>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => {
+              const hasAnyExpanded = expandedTimelines.size > 0 || expandedEncounters.size > 0;
+              if (hasAnyExpanded) {
+                setExpandedTimelines(new Set());
+                setExpandedEncounters(new Set());
+              } else {
+                // Expand all standalone completed cards — skip group and case wrappers.
+                const completedIds = new Set();
+                filteredData.forEach((item) => {
+                  if (item._isGroupWrapper || item._isCaseWrapper) return;
+                  if (item.status === 'completed') completedIds.add(item.id);
+                });
+                setExpandedTimelines(new Set(completedIds));
+                setExpandedEncounters(new Set(completedIds));
+              }
+            }}
+          >
+            <Text style={styles.expandCollapseText}>
+              {(expandedTimelines.size > 0 || expandedEncounters.size > 0)
+                ? '▲ COLLAPSE ALL'
+                : '▼ EXPAND ALL'}
+            </Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -1495,6 +1560,25 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#eee',
     paddingTop: 8,
+  },
+
+  encounterSection: {
+    marginTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    paddingTop: 8,
+  },
+
+  expandCollapseRow: {
+    alignItems: 'flex-end',
+    paddingBottom: 8,
+  },
+  expandCollapseText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.sky,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
 
   rescheduleBtn: {

@@ -156,7 +156,29 @@ export const buildVisitTimeline = (clinicalPulse, opts = {}) => {
     const isStatusChange = type === 'STATUS_CHANGE';
     const isCorrection   = type === 'CORRECTION';
 
-    if (!isStatusChange && !isCorrection) continue;
+    const isNotification = type === 'NOTIFICATION';
+
+    if (!isStatusChange && !isCorrection && !isNotification) continue;
+
+    // NOTIFICATION events: visible clinic message — surfaced directly without status filtering.
+    if (isNotification) {
+      const staffName = (event.staffName && event.staffName !== 'System')
+        ? event.staffName
+        : null;
+      events.push({
+        label:        'Message from clinic',
+        staffName,
+        timestamp:    resolveDate(event.timestamp),
+        durationMins: null,
+        isCurrent:    false,
+        isCorrection: false,
+        isTerminal:   false,
+        isNotification: true,
+        toStatus:     '',
+        signedOffAt:  null,
+      });
+      continue;
+    }
 
     const toStatus = (event.toStatus || '').toLowerCase();
 
@@ -181,13 +203,14 @@ export const buildVisitTimeline = (clinicalPulse, opts = {}) => {
     events.push({
       label,
       staffName,
-      timestamp:    resolveDate(event.timestamp),
-      durationMins: null,   // computed in Pass 3
-      isCurrent:    false,  // set in Pass 4
+      timestamp:      resolveDate(event.timestamp),
+      durationMins:   null,   // computed in Pass 3
+      isCurrent:      false,  // set in Pass 4
       isCorrection,
-      isTerminal:   TERMINAL_STATUSES.has(toStatus),
-      toStatus,             // retained for terminal icon logic in the component
-      signedOffAt:  null,   // set in Pass 5
+      isNotification: false,
+      isTerminal:     TERMINAL_STATUSES.has(toStatus),
+      toStatus,               // retained for terminal icon logic in the component
+      signedOffAt:    null,   // set in Pass 5
     });
   }
 

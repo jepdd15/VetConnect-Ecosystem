@@ -29,9 +29,9 @@ import { formatDurationMins } from '../utils/buildVisitTimeline';
  * Single timeline dot with optional pulse animation for the active current event.
  * Extracted so the Animated.loop lifecycle is isolated per-dot.
  *
- * @param {{ isCurrent: boolean, isActive: boolean, isCorrection: boolean, isTerminal: boolean, toStatus: string }} props
+ * @param {{ isCurrent: boolean, isActive: boolean, isCorrection: boolean, isTerminal: boolean, isNotification: boolean, toStatus: string }} props
  */
-const TimelineDot = ({ isCurrent, isActive, isCorrection, isTerminal, toStatus }) => {
+const TimelineDot = ({ isCurrent, isActive, isCorrection, isTerminal, isNotification, toStatus }) => {
   const pulseAnim = useRef(new Animated.Value(0.4)).current;
 
   useEffect(() => {
@@ -70,6 +70,15 @@ const TimelineDot = ({ isCurrent, isActive, isCorrection, isTerminal, toStatus }
     return (
       <View style={styles.dotContainer}>
         <View style={[styles.dot, { backgroundColor: COLORS.warning }]} />
+      </View>
+    );
+  }
+
+  // Notification dot: static sky-blue (no pulse — not an active clinical state).
+  if (isNotification) {
+    return (
+      <View style={styles.dotContainer}>
+        <View style={[styles.dot, { backgroundColor: COLORS.sky }]} />
       </View>
     );
   }
@@ -220,6 +229,7 @@ const VisitTimeline = ({ events, isActive, collapsed, onToggle, assignedVet }) =
                   isActive={isActive}
                   isCorrection={event.isCorrection}
                   isTerminal={event.isTerminal}
+                  isNotification={event.isNotification}
                   toStatus={event.toStatus}
                 />
 
@@ -229,6 +239,7 @@ const VisitTimeline = ({ events, isActive, collapsed, onToggle, assignedVet }) =
                     style={[
                       styles.eventLabel,
                       event.isCorrection && styles.eventLabelCorrection,
+                      event.isNotification && styles.eventLabelNotification,
                     ]}
                   >
                     {event.label}
@@ -349,6 +360,10 @@ const styles = StyleSheet.create({
   eventLabelCorrection: {
     fontStyle: 'italic',
     color: COLORS.warning,
+  },
+  // Notification events: sky-blue label to match the static blue dot.
+  eventLabelNotification: {
+    color: COLORS.sky,
   },
   signedByText: {
     fontSize: 11,

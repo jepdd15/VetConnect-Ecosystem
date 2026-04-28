@@ -44,9 +44,9 @@ import { getLocalDateStr } from '../../utils/dateUtils';
 import { useClinicSettings } from '../../hooks/useClinicSettings';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ForensicMetricGrid } from './ForensicMetricGrid'; 
-import UndoIcon from '@mui/icons-material/Undo'; 
-import LocalHospitalIcon from '@mui/icons-material/LocalHospital'; 
-import HomeIcon from '@mui/icons-material/Home'; 
+import UndoIcon from '@mui/icons-material/Undo';
+import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
+import HomeIcon from '@mui/icons-material/Home';
 import WarningIcon from '@mui/icons-material/Warning';
 import NightlightRoundIcon from '@mui/icons-material/NightlightRound';
 import CloseIcon from '@mui/icons-material/Close';
@@ -55,6 +55,10 @@ import AssignmentIcon from '@mui/icons-material/Assignment';
 import SearchIcon from '@mui/icons-material/Search';
 import PauseCircleIcon from '@mui/icons-material/PauseCircle';
 import PlayCircleFilledWhiteIcon from '@mui/icons-material/PlayCircleFilledWhite';
+import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
+
+// T4.92: Custom notification dialog
+import SendNotificationDialog from '../../components/SendNotificationDialog';
 
 const BREED_DATA = {
   Canine: [
@@ -187,6 +191,10 @@ export default function Queue() {
 
   // Lightweight Snackbar for dispense-hold operation errors
   const [dispenseHoldToast, setDispenseHoldToast] = useState({ open: false, message: '', severity: 'error' });
+
+  // T4.92: Custom notification dialog
+  const [notifDialogOpen, setNotifDialogOpen] = useState(false);
+
   const [openWalkIn, setOpenWalkIn] = useState(false);
   const [openAssign, setOpenAssign] = useState(false);
   const [siblingAppts, setSiblingAppts] = useState([]); // Sibling appointments for group check-in
@@ -2432,6 +2440,12 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           <ListItemText primary="View in Records" sx={{ color: '#1565C0' }} />
         </MenuItem>
 
+        {/* T4.92: Send a custom free-text push notification to the owner */}
+        <MenuItem onClick={() => { setNotifDialogOpen(true); handleCloseMenu(); }}>
+          <ListItemIcon><NotificationsActiveIcon fontSize="small" sx={{ color: COLORS.medical }} /></ListItemIcon>
+          <ListItemText primary="Send Notification" sx={{ color: COLORS.medical }} />
+        </MenuItem>
+
         {selectedRow?.statusHistory && selectedRow.statusHistory.length > 0 && (() => {
           const isTerminal = TERMINAL_STATUSES.has(selectedRow?.status);
           if (isTerminal && !isAdmin) return null;
@@ -3609,6 +3623,30 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           {dispenseHoldToast.message}
         </Alert>
       </Snackbar>
+
+      {/* T4.92: Custom notification dialog with clinicalPulse audit trail */}
+      <SendNotificationDialog
+        open={notifDialogOpen}
+        onClose={() => setNotifDialogOpen(false)}
+        recipientName={selectedRow?.ownerName || 'Client'}
+        ownerId={selectedRow?.ownerId}
+        petName={selectedRow?.petName}
+        onSent={async ({ title, body }) => {
+          if (!selectedRow?.id) return;
+          try {
+            const pulseEvent = createPulseEvent('NOTIFICATION', {
+              staffId: profile?.id || user?.uid || 'unknown',
+              staffName: profile?.fullName || profile?.displayName || 'Staff',
+              note: `Custom notification — "${title}": ${body}`,
+            });
+            await updateDoc(doc(db, 'appointments', selectedRow.id), {
+              clinicalPulse: arrayUnion(pulseEvent),
+            });
+          } catch (err) {
+            console.error('[Queue] Notification audit write failed:', err);
+          }
+        }}
+      />
 
     </Box>
   );

@@ -54,6 +54,7 @@ import ScienceIcon from '@mui/icons-material/Science';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import BlockIcon from '@mui/icons-material/Block';
 import UndoIcon from '@mui/icons-material/Undo';
+import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 
 // Charting
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
@@ -80,6 +81,7 @@ import { useVaccineCatalog } from '../../hooks/useVaccineCatalog';
 import ReferralModal from './components/ReferralModal';
 import WalkInModal from '../Queue/WalkInModal';
 import AmendmentDialog from '../../components/AmendmentDialog';
+import SendNotificationDialog from '../../components/SendNotificationDialog';
 
 // ── Species-normal vital reference ranges ────────────────────────
 // Sourced from standard veterinary references.
@@ -166,6 +168,9 @@ export default function PatientDashboard() {
   const [amendDialogOpen, setAmendDialogOpen] = useState(false);
   const [amendTargetApptId, setAmendTargetApptId] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // T4.92: Custom notification dialog
+  const [notifDialogOpen, setNotifDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!auditLogExpanded || !owner?.id) return;
@@ -870,6 +875,22 @@ export default function PatientDashboard() {
             }}
           >
             Referral
+          </Button>
+          {/* T4.92: Send custom push notification to the pet owner */}
+          <Button
+            variant="outlined"
+            size="small"
+            disabled={isErased || !pet?.ownerId || pet?.ownerId === 'WALK_IN_USER'}
+            startIcon={<NotificationsActiveIcon sx={{ fontSize: '15px !important' }} />}
+            onClick={() => setNotifDialogOpen(true)}
+            sx={{
+              fontFamily: FONT, fontWeight: 700, fontSize: '0.78rem', textTransform: 'none',
+              color: COLORS.medical, borderColor: COLORS.border, borderRadius: 0,
+              px: 2, height: 36,
+              '&:hover': { borderColor: COLORS.medical, bgcolor: COLORS.chipBlueBg },
+            }}
+          >
+            Notify Owner
           </Button>
         </Box>
       </Box>
@@ -2406,6 +2427,18 @@ export default function PatientDashboard() {
           setRefreshKey(k => k + 1);
           setAmendDialogOpen(false);
           setAmendTargetApptId(null);
+        }}
+      />
+
+      {/* T4.92: Custom notification dialog — no appointmentId context, logs to console only */}
+      <SendNotificationDialog
+        open={notifDialogOpen}
+        onClose={() => setNotifDialogOpen(false)}
+        recipientName={owner?.fullName || owner?.displayName || owner?.name || 'Client'}
+        ownerId={pet?.ownerId}
+        petName={pet?.name}
+        onSent={({ title, body }) => {
+          console.log('[PatientDashboard] Custom notification sent:', { title, body, ownerId: pet?.ownerId });
         }}
       />
     </Box>

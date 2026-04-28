@@ -531,7 +531,7 @@ export default function Settings() {
           'minSlotInterval', 'advanceNoticeMins', 'maxFutureBookingDays', 'maxPetsPerBooking',
           'maxCages', 'autoNoShowMins', 'noShowLinkWindowDays', 'trafficModerate', 'trafficHigh',
           'workingDays', 'clinicPhone', 'dashboardAlerts', 'dashboardGoals',
-          'clinicLat', 'clinicLng', 'geofenceRadiusM'];
+          'clinicLat', 'clinicLng', 'geofenceRadiusM', 'enableAppointmentReminders'];
         const changedFields = {};
         tracked.forEach(key => {
           if (JSON.stringify(sanitizedSettings[key]) !== JSON.stringify(lastSavedSettings[key])) {
@@ -3032,6 +3032,28 @@ export default function Settings() {
                 Changes take effect immediately after saving — the next notification will use the updated wording.
                 Placeholders like <strong>{'{petName}'}</strong> are replaced with real values when the notification is sent.
               </Typography>
+
+              {/* Appointment Reminders toggle (T4.93) */}
+              <Box sx={{ mb: 3, p: 2, bgcolor: COLORS.cream, border: `2px solid ${COLORS.accent}22`, borderRadius: 0 }}>
+                <FormControlLabel
+                  control={
+                    <MedicinePillSwitch
+                      checked={settings.enableAppointmentReminders !== false}
+                      onChange={(e) => handleChange('enableAppointmentReminders', e.target.checked)}
+                    />
+                  }
+                  label={
+                    <Box>
+                      <Typography sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.accent, fontSize: '0.85rem' }}>
+                        Enable Appointment Reminders
+                      </Typography>
+                      <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary, fontSize: '0.75rem' }}>
+                        When enabled, a "Send Reminders" button appears on the Dashboard allowing staff to send push notifications to pet owners with confirmed appointments the next day.
+                      </Typography>
+                    </Box>
+                  }
+                />
+              </Box>
 
               {/* Placeholder reference guide */}
               <Box sx={{ mb: 3, p: 2, bgcolor: COLORS.kpiBlueBg, border: `2px solid ${COLORS.kpiBlueBorder}` }}>

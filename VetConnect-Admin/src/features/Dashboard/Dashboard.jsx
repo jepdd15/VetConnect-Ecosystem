@@ -45,6 +45,7 @@ import { generateInsight } from './utils/generateInsight';
 import { generateReportHTML, generateFullReportHTML } from './utils/generateReportHTML';
 import { openPrintWindow } from '../../utils/printUtils';
 import AlertStrip from './components/AlertStrip';
+import ReminderWidget from './components/ReminderWidget';
 
 // ── Tab registry ─────────────────────────────────────────────────
 // defaultPeriod is the period the hook uses when that tab is active.
@@ -452,6 +453,13 @@ export default function Dashboard() {
       {/* ── ALERT STRIP (Operations tab only, T2.332) ────────── */}
       {currentTab.key === 'ops' && !data.loading && (
         <AlertStrip ops={data.ops} clinicSettings={clinicSettings} />
+      )}
+
+      {/* ── REMINDER WIDGET (Operations tab only, T4.93) ─────── */}
+      {currentTab.key === 'ops' && !data.loading && (
+        <Box sx={{ px: 3, pt: 1.5 }}>
+          <ReminderWidget clinicSettings={clinicSettings} />
+        </Box>
       )}
 
       {/* ── TAB CONTENT ──────────────────────────────────────── */}

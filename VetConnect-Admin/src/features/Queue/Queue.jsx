@@ -510,6 +510,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
 
           batch.update(oldRef, {
              status: finalStatus,
+             statusHistory: [...(patient.statusHistory || []), rawStatus],
              processedBy: staffSignature,
              processedAt: Timestamp.now(),
              isForensicAudit: isHighStakes,

@@ -204,6 +204,7 @@ export function useQueueActions() {
 
       transaction.update(apptRef, {
         status: 'no-show',
+        statusHistory: [...(apptDoc.data().statusHistory || []), apptDoc.data().status],
         assignedVet: "Unassigned",
         assignedVetId: null,
         services: clearedServices,
@@ -248,6 +249,7 @@ export function useQueueActions() {
 
       transaction.update(apptRef, {
         status: 'cancelled',
+        statusHistory: [...(apptDoc.data().statusHistory || []), apptDoc.data().status],
         assignedVet: "Unassigned",
         assignedVetId: null,
         services: clearedServices,

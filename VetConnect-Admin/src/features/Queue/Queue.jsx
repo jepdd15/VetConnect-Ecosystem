@@ -37,6 +37,7 @@ import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 
 // 🧬 PHASE 6 COMPONENTS
 import { calculatePulseMetrics, getSmartShiftDate, makePulseEventId, createPulseEvent } from '../../utils/pulseUtils';
+import { sendPushNotification } from '../../utils/sendPushNotification';
 import { COLORS, FONT } from '../../theme/designTokens';
 import { HIGH_STAKES_STATUSES, ACTIVE_STATUSES, normalizeStatus, TERMINAL_STATUSES } from '../../utils/statusConstants';
 import { getLocalDateStr } from '../../utils/dateUtils';
@@ -532,10 +533,31 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         }
       }); 
 
-      const queueRef = doc(db, "queue", "daily_queue"); 
-      batch.update(queueRef, { currentServing: 0, currentPrefix: '', lastNumberIssued: 0, status: 'active', lastResetDate: todayStr }); 
-      await batch.commit(); 
-      
+      const queueRef = doc(db, "queue", "daily_queue");
+      batch.update(queueRef, { currentServing: 0, currentPrefix: '', lastNumberIssued: 0, status: 'active', lastResetDate: todayStr });
+      await batch.commit();
+
+      // T4.90: Push notifications for EOD batch (fire-and-forget, non-blocking)
+      leftoverPatients.forEach((patient) => {
+        const action = patientResolutions[patient.id] || (patient.status === 'pending' ? 'defer' : 'cancel');
+        let pushStatus;
+        if (action === 'reschedule' || action === 'carryover' || action === 'carry-over' || action === 'defer' || action === 'confined' || action === 'hospitalize') {
+          pushStatus = 'carried-over';
+        } else if (action === 'no-show') {
+          pushStatus = 'no-show';
+        } else {
+          pushStatus = 'cancelled';
+        }
+        sendPushNotification({
+          ownerId: patient.ownerId,
+          status: pushStatus,
+          petName: patient.petName,
+          vetName: profile?.fullName || 'Staff',
+          appointmentId: patient.id,
+          visitGroupId: patient.visitGroupId,
+        });
+      });
+
       setOpenEndDay(false);
       setIsForcedCleanup(false);
       setHasGhostPatients(false);
@@ -697,6 +719,17 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           }),
         });
       });
+
+      // T4.90: Push notification — billing ready
+      sendPushNotification({
+        ownerId: dispenseRow.ownerId,
+        status: 'billing',
+        petName: dispenseRow.petName,
+        vetName: profile?.fullName || 'Pharmacy',
+        appointmentId: dispenseRow.id,
+        visitGroupId: dispenseRow.visitGroupId,
+      });
+
       setOpenDispenseVerify(false);
       setDispenseRow(null);
     } catch (e) {
@@ -1003,6 +1036,18 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           });
         });
 
+        // T4.90: Push notification — rescheduled (simple)
+        sendPushNotification({
+          ownerId: selectedRow.ownerId,
+          status: 'confirmed',
+          petName: selectedRow.petName,
+          vetName: profile?.fullName || 'Staff',
+          appointmentId: selectedRow.id,
+          visitGroupId: selectedRow.visitGroupId,
+          customTitle: 'Appointment Rescheduled',
+          customBody: `Your appointment for ${selectedRow.petName || 'your pet'} has been rescheduled to ${updatedSchDate.toLocaleDateString()}.`,
+        });
+
       } else {
         // === BRANCH 2: FULL CLINICAL CARRY-OVER (active patients) ===
         // Replicates EOD carry-over pattern: old record is sealed and terminated;
@@ -1119,6 +1164,18 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         });
 
         await batch.commit();
+
+        // T4.90: Push notification — carry-over (active patient rescheduled)
+        sendPushNotification({
+          ownerId: selectedRow.ownerId,
+          status: 'carried-over',
+          petName: selectedRow.petName,
+          vetName: profile?.fullName || 'Staff',
+          appointmentId: selectedRow.id,
+          visitGroupId: selectedRow.visitGroupId,
+          customTitle: 'Visit Carried Over',
+          customBody: `${selectedRow.petName || 'Your pet'}'s visit has been rescheduled to ${updatedSchDate.toLocaleDateString()}. Your progress is preserved.`,
+        });
       }
 
       setOpenReschedule(false);

@@ -15,6 +15,7 @@ import { useUser } from '../../context/UserContext';
 import { STATUS, TERMINAL_STATUSES } from '../../utils/statusConstants';
 import { makePulseEventId } from '../../utils/pulseUtils';
 import { getTicketPrefix } from '../../utils/getTicketPrefix';
+import { sendPushNotification } from '../../utils/sendPushNotification';
 
 export default function AssignStaffModal({ open, onClose, patient, siblingAppointments = [] }) {
   const { profile, user } = useUser();
@@ -150,6 +151,27 @@ export default function AssignStaffModal({ open, onClose, patient, siblingAppoin
           }
         });
       });
+
+      // T4.90: Push notification — arrived (check-in)
+      sendPushNotification({
+        ownerId: patient.ownerId,
+        status: 'arrived',
+        petName: patient.petName,
+        appointmentId: patient.id,
+        visitGroupId: patient.visitGroupId,
+      });
+
+      if (groupMode && siblingAppointments.length > 0) {
+        siblingAppointments.forEach((sib) => {
+          sendPushNotification({
+            ownerId: sib.ownerId,
+            status: 'arrived',
+            petName: sib.petName,
+            appointmentId: sib.id,
+            visitGroupId: sib.visitGroupId,
+          });
+        });
+      }
 
       onClose();
     } catch (e) {

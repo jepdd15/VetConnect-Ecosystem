@@ -35,6 +35,7 @@ import { calculatePulseMetrics, makePulseEventId, createPulseEvent } from '../ut
 import { useClinicSettings } from '../hooks/useClinicSettings';
 import { useUser } from '../context/UserContext';
 import { callClinicalReasoning, DEFAULT_CLINICAL_SYSTEM_PROMPT } from '../utils/llmService';
+import { sendPushNotification } from '../utils/sendPushNotification';
 import ReactMarkdown from 'react-markdown';
 
 // Design Tokens
@@ -1449,6 +1450,17 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                   statusHistory: [...freshStatusHistory, currentFreshStatus],
                   clinicalPulse: arrayUnion(transitionEvent),
               });
+
+              // T4.90: Push notification — auto-transition to in-consult
+              sendPushNotification({
+                ownerId: patient.ownerId,
+                status: 'in-consult',
+                petName: patient.petName,
+                vetName: vetName,
+                appointmentId: patient.id,
+                visitGroupId: patient.visitGroupId,
+              });
+
               // Mutate local tracking so the subsequent sign-off batch uses correct values.
               freshStatusHistory.push(currentFreshStatus);
               currentFreshStatus = 'in-consult';
@@ -1705,6 +1717,16 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
 
       // Single atomic commit — all writes succeed together or none do.
       await batch.commit();
+
+      // T4.90: Push notification — sign-off route (dispensing or billing)
+      sendPushNotification({
+        ownerId: patient.ownerId,
+        status: nextRouteStatus,
+        petName: patient.petName,
+        vetName: vetName,
+        appointmentId: patient.id,
+        visitGroupId: patient.visitGroupId,
+      });
 
       // Set ref SYNCHRONOUSLY so unmount cleanup sees it immediately, before React
       // schedules the state update and re-render that follows.
@@ -2194,6 +2216,16 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         status: nextStatus,
         statusHistory: [...freshHistory, freshStatus],
         clinicalPulse: arrayUnion(rerouteEvent),
+      });
+
+      // T4.90: Push notification — re-route to dispensing/billing
+      sendPushNotification({
+        ownerId: patient.ownerId,
+        status: nextStatus,
+        petName: patient.petName,
+        vetName: auth.currentUser?.displayName || 'Clinician',
+        appointmentId: patient.id,
+        visitGroupId: patient.visitGroupId,
       });
 
       showToast(`Patient re-routed to ${nextStatus}.`, 'success');

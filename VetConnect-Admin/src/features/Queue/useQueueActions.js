@@ -4,6 +4,7 @@ import { useUser } from '../../context/UserContext';
 import { calculatePulseMetrics, makePulseEventId, createPulseEvent } from '../../utils/pulseUtils';
 import { STATUS, validateTransition, TERMINAL_STATUSES } from '../../utils/statusConstants';
 import { getLocalDateStr } from '../../utils/dateUtils';
+import { sendPushNotification } from '../../utils/sendPushNotification';
 
 export function useQueueActions() {
   const { profile } = useUser();
@@ -92,19 +93,32 @@ export function useQueueActions() {
         }
 
         transaction.update(apptRef, updateData);
-        
+
         if (newStatus === STATUS.IN_CONSULT && row.queueNumber) {
             const queueRef = doc(db, "queue", "daily_queue");
-            transaction.update(queueRef, { 
-                currentServing: row.queueNumber, 
-                currentPrefix: row.ticketPrefix || '' 
+            transaction.update(queueRef, {
+                currentServing: row.queueNumber,
+                currentPrefix: row.ticketPrefix || ''
             });
         }
+    });
+
+    // T4.90: Push notification — fire and forget
+    const pushStatus = (row.status === 'on-hold' && newStatus === 'in-consult') ? 'resumed' : newStatus;
+    sendPushNotification({
+      ownerId: row.ownerId,
+      status: pushStatus,
+      petName: row.petName,
+      vetName: staffSignature,
+      ticketNumber: row.queueNumber,
+      appointmentId: row.id,
+      visitGroupId: row.visitGroupId,
     });
   };
 
   // 2. THE SMART UNDO
   const revertStatus = async (row) => {
+    let freshPrevStatus = null;
     await runTransaction(db, async (transaction) => {
       const apptRef = doc(db, "appointments", row.id);
       const apptDoc = await transaction.get(apptRef);
@@ -116,6 +130,7 @@ export function useQueueActions() {
       if (history.length === 0) throw new Error("Cannot revert. No previous status recorded.");
 
       const prevStatus = history[history.length - 1];
+      freshPrevStatus = prevStatus;
       const newHistory = history.slice(0, -1);
 
       // PHASE 4.3: THE FORENSIC LINKER
@@ -161,6 +176,20 @@ export function useQueueActions() {
 
       transaction.update(apptRef, updateData);
     });
+
+    // T4.90: Push notification for revert — uses fresh prevStatus from transaction
+    if (freshPrevStatus) {
+      sendPushNotification({
+        ownerId: row.ownerId,
+        status: freshPrevStatus,
+        petName: row.petName,
+        vetName: staffSignature,
+        appointmentId: row.id,
+        visitGroupId: row.visitGroupId,
+        customTitle: 'Status Updated',
+        customBody: `${row.petName || 'Your pet'}'s appointment status was corrected to: ${freshPrevStatus}.`,
+      });
+    }
   };
 
   const markNoShow = async (row, reason, settings) => {
@@ -216,6 +245,16 @@ export function useQueueActions() {
         forensicSeal // THE 8-METRIC STAMP
       });
     });
+
+    // T4.90: Push notification
+    sendPushNotification({
+      ownerId: row.ownerId,
+      status: 'no-show',
+      petName: row.petName,
+      vetName: staffSignature,
+      appointmentId: row.id,
+      visitGroupId: row.visitGroupId,
+    });
   };
 
   const rejectAppointment = async (id, reason, currentServices = [], isForensic = false, settings, rowData) => {
@@ -261,6 +300,16 @@ export function useQueueActions() {
         auditReasons: arrayUnion({ reason: reason || 'Individually cancelled', action: isForensic ? 'forensic-cancel' : 'cancel', staffName: staffSignature, timestamp: Timestamp.now() }),
         forensicSeal // THE 8-METRIC STAMP
       });
+    });
+
+    // T4.90: Push notification
+    sendPushNotification({
+      ownerId: rowData.ownerId,
+      status: 'cancelled',
+      petName: rowData.petName,
+      vetName: staffSignature,
+      appointmentId: id,
+      visitGroupId: rowData.visitGroupId,
     });
   };
 

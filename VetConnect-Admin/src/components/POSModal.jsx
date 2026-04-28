@@ -26,6 +26,7 @@ import { useUser } from '../context/UserContext';
 import { useClinicSettings } from '../hooks/useClinicSettings';
 import { resolveTieredPrice } from '../utils/resolveTieredPrice';
 import { makePulseEventId } from '../utils/pulseUtils';
+import { sendPushNotification } from '../utils/sendPushNotification';
 
 export default function POSModal({ open, onClose, patient, inventoryList, servicesList, groupAppointments = [] }) {
   const { profile } = useUser();
@@ -656,6 +657,27 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
 
         return saleRef.id;
       });
+
+      // T4.90: Push notification — checkout complete
+      if (billingMode === 'group' && isGroupVisit) {
+        groupAppointments.forEach((appt) => {
+          sendPushNotification({
+            ownerId: appt.ownerId || patient.ownerId,
+            status: 'completed',
+            petName: appt.petName,
+            appointmentId: appt.id,
+            visitGroupId: patient.visitGroupId,
+          });
+        });
+      } else {
+        sendPushNotification({
+          ownerId: patient.ownerId,
+          status: 'completed',
+          petName: patient.petName,
+          appointmentId: patient.id,
+          visitGroupId: patient.visitGroupId,
+        });
+      }
 
       onClose();
 

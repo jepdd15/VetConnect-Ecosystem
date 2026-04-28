@@ -28,6 +28,7 @@ import { db } from '../../firebaseConfig';
 import { useUser } from '../../context/UserContext';
 import { detectNoShows } from '../../utils/noShowDetection';
 import { useClinicSettings } from '../../hooks/useClinicSettings';
+import { sendPushNotification } from '../../utils/sendPushNotification';
 
 // --- BLANK PET TEMPLATE ---
 const BLANK_PET_DATA = () => ({
@@ -461,6 +462,18 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
 
           const newApptRef = doc(collection(db, "appointments"));
           transaction.set(newApptRef, appointmentPayload);
+        }
+      });
+
+      // T4.90: Push notification — walk-in arrived (existing clients only; guests no-op via guard)
+      petEntries.forEach((entry) => {
+        const resolvedOwnerId = walkInType === 'guest' ? null : selectedClient?.id;
+        if (resolvedOwnerId) {
+          sendPushNotification({
+            ownerId: resolvedOwnerId,
+            status: 'arrived',
+            petName: entry.isNewPet || walkInType === 'guest' ? entry.name : entry.selectedPet?.name,
+          });
         }
       });
 

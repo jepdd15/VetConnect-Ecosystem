@@ -13,6 +13,7 @@
 import { useCallback, useRef, useState } from 'react';
 import {
   FlatList,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -27,6 +28,8 @@ import {
   sanitizeCancelReason,
 } from '../utils/statusLabels';
 import { formatDisplayDate, formatFirestoreTime } from '../utils/helpers';
+import { buildVisitTimeline } from '../utils/buildVisitTimeline';
+import VisitTimeline from './VisitTimeline';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -52,6 +55,22 @@ const CaseDayCard = ({ caseChain, isHistory, salesByAppt, onShowReceipt, onReboo
   const [activeIndex, setActiveIndex] = useState(0);
   const pagerRef = useRef(null);
   const { width: windowWidth } = useWindowDimensions();
+
+  // Per-day timeline collapse state — each day page manages its own independently.
+  // A Set of expanded day indices lets us track any combination of open/closed pages.
+  const [expandedDays, setExpandedDays] = useState(new Set());
+
+  const toggleDayTimeline = (index) => {
+    setExpandedDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
+  };
 
   // Track which page is visible for the dot indicators.
   const viewabilityConfig = useRef({ viewAreaCoveragePercentThreshold: 50 });
@@ -114,59 +133,86 @@ const CaseDayCard = ({ caseChain, isHistory, salesByAppt, onShowReceipt, onReboo
 
     return (
       <View style={[styles.dayPage, { width: pageWidth }]}>
-        {/* Day label */}
-        <View style={styles.dayLabelRow}>
-          <Text style={styles.dayLabel}>DAY {dayNumber}</Text>
-          <Text style={styles.dayDate}>{dateStr}</Text>
-        </View>
-
-        {/* Time */}
-        {timeStr ? (
-          <Text style={styles.dayTime}>⏰ {timeStr}</Text>
-        ) : null}
-
-        {/* Status badge */}
-        <View style={[styles.statusBadge, { backgroundColor: statusColors.backgroundColor }]}>
-          <Text style={[styles.statusText, { color: statusColors.color }]}>
-            {statusIcon} {statusLabel.toUpperCase()}
-          </Text>
-        </View>
-
-        {/* Paid amount */}
-        {hasSaleData && (
-          <Text style={styles.paidText}>Paid ₱{saleTotal}</Text>
-        )}
-
-        {/* Cancel / carry-over reason */}
-        {cancelReason ? (
-          <Text style={styles.reasonText}>{cancelReason}</Text>
-        ) : null}
-
-        {/* Action buttons */}
-        {(showReceiptButton || showRebookButton) && (
-          <View style={styles.actionRow}>
-            {showReceiptButton && (
-              <TouchableOpacity
-                style={[styles.actionBtn, styles.receiptBtn]}
-                onPress={() => onShowReceipt(appt)}
-              >
-                <Text style={[styles.actionBtnText, { color: COLORS.accent }]}>
-                  🧾 E-Receipt
-                </Text>
-              </TouchableOpacity>
-            )}
-            {showRebookButton && (
-              <TouchableOpacity
-                style={[styles.actionBtn, styles.rebookBtn]}
-                onPress={() => onRebook(appt)}
-              >
-                <Text style={[styles.actionBtnText, { color: COLORS.accent }]}>
-                  🔄 Re-Book
-                </Text>
-              </TouchableOpacity>
-            )}
+        <ScrollView
+          nestedScrollEnabled
+          showsVerticalScrollIndicator={false}
+          style={styles.dayPageScroll}
+        >
+          {/* Day label */}
+          <View style={styles.dayLabelRow}>
+            <Text style={styles.dayLabel}>DAY {dayNumber}</Text>
+            <Text style={styles.dayDate}>{dateStr}</Text>
           </View>
-        )}
+
+          {/* Time */}
+          {timeStr ? (
+            <Text style={styles.dayTime}>⏰ {timeStr}</Text>
+          ) : null}
+
+          {/* Status badge */}
+          <View style={[styles.statusBadge, { backgroundColor: statusColors.backgroundColor }]}>
+            <Text style={[styles.statusText, { color: statusColors.color }]}>
+              {statusIcon} {statusLabel.toUpperCase()}
+            </Text>
+          </View>
+
+          {/* Visit timeline — per-day clinical journey (collapsed by default) */}
+          {(() => {
+            const dayEvents = appt.clinicalPulse
+              ? buildVisitTimeline(appt.clinicalPulse, {
+                  isActive: false,
+                  assignedVet: appt.assignedVet,
+                  signedOffAt: appt.signedOffAt,
+                })
+              : [];
+            if (dayEvents.length === 0) return null;
+            return (
+              <VisitTimeline
+                events={dayEvents}
+                isActive={false}
+                collapsed={!expandedDays.has(index)}
+                onToggle={() => toggleDayTimeline(index)}
+                assignedVet={appt.assignedVet}
+              />
+            );
+          })()}
+
+          {/* Paid amount */}
+          {hasSaleData && (
+            <Text style={styles.paidText}>Paid ₱{saleTotal}</Text>
+          )}
+
+          {/* Cancel / carry-over reason */}
+          {cancelReason ? (
+            <Text style={styles.reasonText}>{cancelReason}</Text>
+          ) : null}
+
+          {/* Action buttons */}
+          {(showReceiptButton || showRebookButton) && (
+            <View style={styles.actionRow}>
+              {showReceiptButton && (
+                <TouchableOpacity
+                  style={[styles.actionBtn, styles.receiptBtn]}
+                  onPress={() => onShowReceipt(appt)}
+                >
+                  <Text style={[styles.actionBtnText, { color: COLORS.accent }]}>
+                    🧾 E-Receipt
+                  </Text>
+                </TouchableOpacity>
+              )}
+              {showRebookButton && (
+                <TouchableOpacity
+                  style={[styles.actionBtn, styles.rebookBtn]}
+                  onPress={() => onRebook(appt)}
+                >
+                  <Text style={[styles.actionBtnText, { color: COLORS.accent }]}>
+                    🔄 Re-Book
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+        </ScrollView>
       </View>
     );
   };
@@ -318,7 +364,8 @@ const styles = StyleSheet.create({
   pager: {
     // Height is determined by the content of the tallest day page,
     // but we set a minimum so the pager has consistent visual weight.
-    minHeight: 160,
+    // Increased from 160 → 180 to accommodate the collapsed timeline toggle row.
+    minHeight: 180,
   },
 
   // ── Day page ───────────────────────────────────────────────────────────
@@ -326,6 +373,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     // Width is set dynamically via inline style (pageWidth)
+  },
+  dayPageScroll: {
+    maxHeight: 400,
   },
   dayLabelRow: {
     flexDirection: 'row',

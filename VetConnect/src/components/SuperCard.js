@@ -8,11 +8,13 @@
 // If `appointment` is null/undefined this component renders nothing — the caller
 // passes unconditionally and SuperCard decides whether to paint.
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Animated, Linking, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { COLORS } from '../theme/mobileTokens';
 import { getClientStatusColor, getClientStatusIcon, getClientStatusLabel } from "../utils/statusLabels";
 import { formatFirestoreTime } from '../utils/helpers';
+import { buildVisitTimeline } from '../utils/buildVisitTimeline';
+import VisitTimeline from './VisitTimeline';
 
 const SPECIES_EMOJI = {
   Dog: '🐶',
@@ -45,10 +47,13 @@ const handleDirections = async (address) => {
 export default function SuperCard({ appointment, clinicPhone = '', clinicAddress = '', queueAhead = null }) {
   const pulseAnim = useRef(new Animated.Value(0.4)).current;
 
+  const [timelineCollapsed, setTimelineCollapsed] = useState(true);
+
   useEffect(() => {
     if (!appointment) return;
 
     pulseAnim.setValue(0.4); // Reset to initial opacity on appointment change
+    setTimelineCollapsed(true); // Reset timeline collapse when appointment changes
 
     const loop = Animated.loop(
       Animated.sequence([
@@ -70,6 +75,17 @@ export default function SuperCard({ appointment, clinicPhone = '', clinicAddress
   }, [appointment?.id]);
 
   if (!appointment) return null;
+
+  // Derive timeline events from the appointment's pulse history.
+  // An empty array (legacy appointments with no clinicalPulse) causes the
+  // timeline section to be gated out entirely — no UI noise for old records.
+  const timelineEvents = appointment.clinicalPulse
+    ? buildVisitTimeline(appointment.clinicalPulse, {
+        isActive: true,
+        assignedVet: appointment.assignedVet,
+        signedOffAt: null,
+      })
+    : [];
 
   const statusColors = getClientStatusColor(appointment.status);
   const statusIcon = getClientStatusIcon(appointment.status);
@@ -139,7 +155,20 @@ export default function SuperCard({ appointment, clinicPhone = '', clinicAddress
         </Text>
       )}
 
-      {/* Row 7 — CTAs */}
+      {/* Row 7 — Visit timeline (collapsed by default; only shown when pulse data exists) */}
+      {timelineEvents.length > 0 && (
+        <View style={styles.timelineSection}>
+          <VisitTimeline
+            events={timelineEvents}
+            isActive={true}
+            collapsed={timelineCollapsed}
+            onToggle={() => setTimelineCollapsed((prev) => !prev)}
+            assignedVet={appointment.assignedVet}
+          />
+        </View>
+      )}
+
+      {/* Row 8 — CTAs */}
       <View style={styles.ctaRow}>
         <TouchableOpacity
           style={[styles.ctaBtn, !clinicPhone && styles.ctaBtnDisabled]}
@@ -231,6 +260,14 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
     marginBottom: 5,
     paddingLeft: 4,
+  },
+
+  timelineSection: {
+    marginTop: 8,
+    marginBottom: 4,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+    paddingTop: 8,
   },
 
   ctaRow: {

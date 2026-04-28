@@ -40,6 +40,8 @@ import {
 } from "../utils/statusLabels";
 import SuperCard from "../components/SuperCard";
 import CaseDayCard from "../components/CaseDayCard";
+import VisitTimeline from "../components/VisitTimeline";
+import { buildVisitTimeline } from "../utils/buildVisitTimeline";
 import { useClinicContact } from "../hooks/useClinicContact";
 import { formatFirestoreTime, formatDisplayDate, getLocalDateStr } from '../utils/helpers';
 import { COLORS } from '../theme/mobileTokens';
@@ -86,6 +88,22 @@ const ClientAppointments = ({ navigation }) => {
   const { clinicPhone, clinicAddress } = useClinicContact();
 
   const [queueAhead, setQueueAhead] = useState(null);
+
+  // Timeline collapse state for standalone history cards — keyed by appointment ID.
+  // A Set of expanded IDs lets each card manage its own open/closed state independently.
+  const [expandedTimelines, setExpandedTimelines] = useState(new Set());
+
+  const toggleTimeline = (id) => {
+    setExpandedTimelines((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
 
   const prevCompletedIdsRef = useRef('');
   const prevParentIdsRef = useRef('');
@@ -760,6 +778,27 @@ const ClientAppointments = ({ navigation }) => {
             ⏰ {formatFirestoreTime(item.scheduledDate)}
           </Text>
         </View>
+
+        {/* Visit timeline — clinical journey for completed history cards */}
+        {isHistory && item.clinicalPulse?.length > 0 && (() => {
+          const events = buildVisitTimeline(item.clinicalPulse, {
+            isActive: false,
+            assignedVet: item.assignedVet,
+            signedOffAt: item.signedOffAt,
+          });
+          if (events.length === 0) return null;
+          return (
+            <View style={styles.timelineSection}>
+              <VisitTimeline
+                events={events}
+                isActive={false}
+                collapsed={!expandedTimelines.has(item.id)}
+                onToggle={() => toggleTimeline(item.id)}
+                assignedVet={item.assignedVet}
+              />
+            </View>
+          );
+        })()}
 
         {/* --- ACTION BUTTONS --- */}
         <View style={styles.actionRow}>
@@ -1449,6 +1488,13 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
     fontWeight: '700',
     fontSize: 13,
+  },
+
+  timelineSection: {
+    marginTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    paddingTop: 8,
   },
 
   rescheduleBtn: {

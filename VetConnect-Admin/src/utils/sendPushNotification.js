@@ -5,7 +5,7 @@
  * POSTs to the Cloudflare Worker /push endpoint. Never blocks the UI.
  * Never causes a status write to fail.
  */
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, getDocs, collection } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 
 // ─── Module-level caches ─────────────────────────────────────────────────────
@@ -49,6 +49,49 @@ export async function getWorkerUrl() {
     cachedWorkerUrl = null;
     return null;
   }
+}
+
+// ─── Notification template cache ────────────────────────────────────────────
+let templateCache = undefined; // undefined = not loaded yet, Map = loaded
+
+export function invalidateTemplateCache() {
+  templateCache = undefined;
+}
+
+/**
+ * One-shot loader: reads all notification_templates docs from Firestore.
+ * Returns a Map<statusKey, { title, body }>.
+ * Caches for the page session — same pattern as tokenCache and cachedWorkerUrl.
+ * Silent fallback to empty Map if the collection is unreadable.
+ */
+async function loadNotificationTemplates() {
+  if (templateCache !== undefined) return templateCache;
+
+  try {
+    const snap = await getDocs(collection(db, 'notification_templates'));
+    const map = new Map();
+    snap.docs.forEach((d) => {
+      const data = d.data();
+      if (data.title && data.body) {
+        map.set(d.id, { title: data.title, body: data.body });
+      }
+    });
+    templateCache = map;
+    return map;
+  } catch {
+    templateCache = new Map(); // Silent fallback — push will use Worker defaults
+    return templateCache;
+  }
+}
+
+/**
+ * Returns { customTitle, customBody } if the admin has customized the template
+ * for the given status key. Returns null if no override exists.
+ */
+async function getCustomTemplate(status) {
+  const templates = await loadNotificationTemplates();
+  const tpl = templates.get(status);
+  return tpl ? { customTitle: tpl.title, customBody: tpl.body } : null;
 }
 
 // ─── Main push function ──────────────────────────────────────────────────────
@@ -99,6 +142,18 @@ async function _dispatchPush({ ownerId, status, petName, vetName, ticketNumber, 
 
   if (!pushToken || !workerUrl) return; // Silent exit — not configured or no token
 
+  // Auto-resolve admin-customized template if the caller did not provide explicit overrides.
+  // The 4 call sites that pass customTitle/customBody (revert, reschedule, carry-over) still take priority.
+  let finalTitle = customTitle;
+  let finalBody = customBody;
+  if (!finalTitle && !finalBody && status) {
+    const custom = await getCustomTemplate(status);
+    if (custom) {
+      finalTitle = custom.customTitle;
+      finalBody = custom.customBody;
+    }
+  }
+
   const endpoint = workerUrl.replace(/\/+$/, '') + '/push';
 
   await fetch(endpoint, {
@@ -112,8 +167,8 @@ async function _dispatchPush({ ownerId, status, petName, vetName, ticketNumber, 
       ticketNumber: ticketNumber || '',
       appointmentId: appointmentId || '',
       visitGroupId: visitGroupId || '',
-      ...(customTitle ? { customTitle } : {}),
-      ...(customBody ? { customBody } : {}),
+      ...(finalTitle ? { customTitle: finalTitle } : {}),
+      ...(finalBody ? { customBody: finalBody } : {}),
     }),
   });
 }

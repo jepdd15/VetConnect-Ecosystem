@@ -4,7 +4,7 @@ import {
   Snackbar, Alert, InputAdornment, TextField, Switch, FormControlLabel,
   Divider, Stack, Chip, ListItemText, ToggleButton, ToggleButtonGroup,
   Dialog, DialogTitle, DialogContent, DialogActions, IconButton,
-  LinearProgress, CircularProgress,
+  LinearProgress, CircularProgress, Tooltip,
 } from '@mui/material';
 import Grid from '@mui/material/Grid'; // MUI v6 Standard
 import { styled } from '@mui/material/styles';
@@ -44,6 +44,11 @@ import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 
 import { DEFAULT_VACCINE_CATALOG } from '../hooks/useVaccineCatalog';
 import { FAQ_CATEGORIES, DEFAULT_FAQS } from '../utils/faqConstants';
+import {
+  DEFAULT_TEMPLATES, TEMPLATE_GROUPS, STATUS_LABELS,
+  STATUS_CHIP_COLORS, PLACEHOLDER_REFERENCE,
+} from '../utils/notificationTemplateConstants';
+import { invalidateTemplateCache } from '../utils/sendPushNotification';
 import { testLlmConnection, DEFAULT_CLINICAL_SYSTEM_PROMPT } from '../utils/llmService';
 import { useConsentPolicy } from '../hooks/useConsentPolicy';
 import { CONSENT_TYPES } from '../utils/consentConstants';
@@ -254,6 +259,11 @@ export default function Settings() {
   const [faqActiveTab, setFaqActiveTab] = useState('All');
   const [faqSaving, setFaqSaving] = useState(false);
 
+  // --- PILLAR 13: NOTIFICATION TEMPLATES STATE ---
+  const [notifTemplates, setNotifTemplates] = useState({}); // { [statusKey]: { title, body, isCustom } }
+  const [notifSaving, setNotifSaving] = useState(false);
+  const [notifResetConfirm, setNotifResetConfirm] = useState({ open: false, key: null }); // key = null => reset all
+
   // Legacy data migration — Step 7.2 (T3.5 Phase 7)
   const [migrationResult, setMigrationResult] = useState({
     migrated: 0,
@@ -346,7 +356,23 @@ export default function Settings() {
       setFaqList(entries);
     });
 
-    return () => { unsubSettings(); unsubDepts(); unsubInvCats(); unsubVaxCatalog(); unsubLlm(); unsubFaqs(); };
+    // 8. Fetch Notification Templates (Pillar 13)
+    const unsubNotifTemplates = onSnapshot(collection(db, 'notification_templates'), (snapshot) => {
+      const custom = {};
+      snapshot.docs.forEach((d) => {
+        custom[d.id] = { title: d.data().title || '', body: d.data().body || '' };
+      });
+      // Merge: start from defaults, overlay any Firestore overrides
+      const merged = {};
+      Object.keys(DEFAULT_TEMPLATES).forEach((key) => {
+        merged[key] = custom[key]
+          ? { title: custom[key].title, body: custom[key].body, isCustom: true }
+          : { title: DEFAULT_TEMPLATES[key].title, body: DEFAULT_TEMPLATES[key].body, isCustom: false };
+      });
+      setNotifTemplates(merged);
+    });
+
+    return () => { unsubSettings(); unsubDepts(); unsubInvCats(); unsubVaxCatalog(); unsubLlm(); unsubFaqs(); unsubNotifTemplates(); };
   },[]);
 
   // --- NAVIGATION GUARD: Warn on unsaved changes to form fields ---
@@ -1160,6 +1186,78 @@ export default function Settings() {
       console.error('[Settings.handleSeedFaqs]:', e.message);
       setToast({ open: true, message: e.message, severity: 'error' });
     }
+  };
+
+  // --- PILLAR 13: NOTIFICATION TEMPLATES HANDLERS ---
+
+  const handleNotifTemplateChange = (statusKey, field, value) => {
+    setNotifTemplates((prev) => {
+      const updated = { ...prev[statusKey], [field]: value };
+      const def = DEFAULT_TEMPLATES[statusKey];
+      const isCustom = updated.title !== def.title || updated.body !== def.body;
+      return { ...prev, [statusKey]: { ...updated, isCustom } };
+    });
+  };
+
+  const handleSaveNotifTemplates = async () => {
+    setNotifSaving(true);
+    try {
+      const who = profile?.fullName || profile?.email || 'Unknown Admin';
+      const ops = [];
+      let customCount = 0;
+
+      Object.keys(DEFAULT_TEMPLATES).forEach((key) => {
+        const current = notifTemplates[key];
+        const def = DEFAULT_TEMPLATES[key];
+        const isDefault = current.title === def.title && current.body === def.body;
+
+        if (isDefault) {
+          // Matches default — delete any Firestore override to keep the collection lean
+          ops.push(deleteDoc(doc(db, 'notification_templates', key)).catch(() => {}));
+        } else {
+          customCount += 1;
+          ops.push(
+            setDoc(doc(db, 'notification_templates', key), {
+              title:     current.title,
+              body:      current.body,
+              updatedAt: Timestamp.now(),
+              updatedBy: who,
+            })
+          );
+        }
+      });
+
+      await Promise.all(ops);
+      invalidateTemplateCache();
+      await logSettingsEvent('UPDATE', 'notification_templates', 'bulk_save', { customCount });
+      setToast({ open: true, message: 'Notification templates saved.', severity: 'success' });
+    } catch (e) {
+      console.error('[Settings.handleSaveNotifTemplates]:', e.message);
+      setToast({ open: true, message: e.message, severity: 'error' });
+    } finally {
+      setNotifSaving(false);
+    }
+  };
+
+  const handleResetNotifTemplate = (statusKey) => {
+    const def = DEFAULT_TEMPLATES[statusKey];
+    if (!def) return;
+    setNotifTemplates((prev) => ({
+      ...prev,
+      [statusKey]: { title: def.title, body: def.body, isCustom: false },
+    }));
+    setNotifResetConfirm({ open: false, key: null });
+    setToast({ open: true, message: `"${STATUS_LABELS[statusKey]}" reset to default. Save to apply.`, severity: 'info' });
+  };
+
+  const handleResetAllNotifTemplates = () => {
+    const reset = {};
+    Object.keys(DEFAULT_TEMPLATES).forEach((key) => {
+      reset[key] = { title: DEFAULT_TEMPLATES[key].title, body: DEFAULT_TEMPLATES[key].body, isCustom: false };
+    });
+    setNotifTemplates(reset);
+    setNotifResetConfirm({ open: false, key: null });
+    setToast({ open: true, message: 'All templates reset to defaults. Save to apply.', severity: 'info' });
   };
 
   const formatConsentDate = (timestamp) => {
@@ -2915,6 +3013,233 @@ export default function Settings() {
           </Paper>
         </Grid>
 
+        {/* ── PILLAR 13: NOTIFICATION TEMPLATES ───────────────────────────── */}
+        <Grid size={{ xs: 12 }}>
+          <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden' }}>
+
+            {/* Header */}
+            <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
+              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
+                <NotificationsActiveIcon /> Notification Templates
+              </Typography>
+            </Box>
+
+            <Box sx={{ p: 3, bgcolor: COLORS.cardBg }}>
+
+              {/* Description */}
+              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 2 }}>
+                Customize the push notification messages sent to pet owners at each stage of their visit.
+                Changes take effect immediately after saving — the next notification will use the updated wording.
+                Placeholders like <strong>{'{petName}'}</strong> are replaced with real values when the notification is sent.
+              </Typography>
+
+              {/* Placeholder reference guide */}
+              <Box sx={{ mb: 3, p: 2, bgcolor: COLORS.kpiBlueBg, border: `2px solid ${COLORS.kpiBlueBorder}` }}>
+                <Typography sx={{ ...TYPE.label, color: COLORS.info, mb: 1 }}>
+                  Available Placeholders
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
+                  {PLACEHOLDER_REFERENCE.map((ph) => (
+                    <Tooltip key={ph.token} title={ph.description} arrow>
+                      <Chip
+                        label={ph.token}
+                        size="small"
+                        sx={{
+                          fontWeight: 900,
+                          fontSize: '0.72rem',
+                          fontFamily: "'Inter', 'Roboto', monospace",
+                          borderRadius: 0,
+                          bgcolor: 'white',
+                          border: `1px solid ${COLORS.kpiBlueBorder}`,
+                          color: COLORS.info,
+                          cursor: 'help',
+                        }}
+                      />
+                    </Tooltip>
+                  ))}
+                </Box>
+              </Box>
+
+              {/* Template groups */}
+              {TEMPLATE_GROUPS.map((group) => (
+                <Box key={group.label} sx={{ mb: 4 }}>
+
+                  {/* Group header */}
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                    <Typography sx={{ ...TYPE.label, color: COLORS.accent }}>
+                      {group.label}
+                    </Typography>
+                    <Divider sx={{ flex: 1, borderColor: COLORS.border }} />
+                  </Box>
+                  <Typography sx={{ ...TYPE.meta, color: COLORS.textMuted, mb: 2, fontSize: '0.75rem' }}>
+                    {group.description}
+                  </Typography>
+
+                  {/* Template cards */}
+                  <Stack spacing={2}>
+                    {group.keys.map((statusKey) => {
+                      const tpl = notifTemplates[statusKey];
+                      if (!tpl) return null;
+                      const chipColor = STATUS_CHIP_COLORS[statusKey] || STATUS_CHIP_COLORS.confirmed;
+                      const isDefault = tpl.title === DEFAULT_TEMPLATES[statusKey]?.title
+                                     && tpl.body  === DEFAULT_TEMPLATES[statusKey]?.body;
+
+                      return (
+                        <Box
+                          key={statusKey}
+                          sx={{
+                            p: 2.5,
+                            bgcolor: isDefault ? 'white' : COLORS.warningSurface,
+                            border: `2px solid ${isDefault ? COLORS.accent + '22' : COLORS.warning + '44'}`,
+                          }}
+                        >
+                          {/* Status chip + customized indicator + reset button */}
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+                            <Chip
+                              label={STATUS_LABELS[statusKey]}
+                              size="small"
+                              sx={{
+                                fontWeight: 900,
+                                fontSize: '0.68rem',
+                                letterSpacing: '0.04em',
+                                borderRadius: 0,
+                                bgcolor: chipColor.bg,
+                                color: chipColor.text,
+                                border: `1px solid ${chipColor.border}`,
+                              }}
+                            />
+                            {!isDefault && (
+                              <Chip
+                                label="CUSTOMIZED"
+                                size="small"
+                                sx={{
+                                  fontWeight: 900,
+                                  fontSize: '0.6rem',
+                                  borderRadius: 0,
+                                  bgcolor: COLORS.warningSurface,
+                                  color: COLORS.warning,
+                                  border: `1px solid ${COLORS.warning}`,
+                                }}
+                              />
+                            )}
+                            {!isDefault && (
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                startIcon={<RefreshIcon sx={{ fontSize: '0.85rem' }} />}
+                                onClick={() => setNotifResetConfirm({ open: true, key: statusKey })}
+                                sx={{
+                                  ml: 'auto',
+                                  fontWeight: 900,
+                                  fontSize: '0.65rem',
+                                  borderRadius: 0,
+                                  textTransform: 'uppercase',
+                                  letterSpacing: 0.5,
+                                  borderColor: COLORS.accentLight,
+                                  color: COLORS.textSecondary,
+                                  py: 0.25,
+                                  '&:hover': { bgcolor: COLORS.cream },
+                                }}
+                              >
+                                Reset
+                              </Button>
+                            )}
+                          </Box>
+
+                          {/* Title field */}
+                          <TextField
+                            fullWidth
+                            label="Title"
+                            size="small"
+                            value={tpl.title}
+                            onChange={(e) => handleNotifTemplateChange(statusKey, 'title', e.target.value)}
+                            sx={{
+                              mb: 1.5,
+                              bgcolor: 'white',
+                              '& .MuiOutlinedInput-root': {
+                                borderRadius: 0,
+                                '& fieldset': { border: `2px solid ${COLORS.accent}33` },
+                              },
+                            }}
+                            inputProps={{ style: { fontWeight: 700 } }}
+                          />
+
+                          {/* Body field */}
+                          <TextField
+                            fullWidth
+                            label="Body"
+                            size="small"
+                            multiline
+                            minRows={2}
+                            maxRows={4}
+                            value={tpl.body}
+                            onChange={(e) => handleNotifTemplateChange(statusKey, 'body', e.target.value)}
+                            sx={{
+                              bgcolor: 'white',
+                              '& .MuiOutlinedInput-root': {
+                                borderRadius: 0,
+                                '& fieldset': { border: `2px solid ${COLORS.accent}33` },
+                              },
+                            }}
+                            helperText={
+                              isDefault
+                                ? 'Default template — edit to customize.'
+                                : 'Customized — will override the default notification.'
+                            }
+                          />
+                        </Box>
+                      );
+                    })}
+                  </Stack>
+                </Box>
+              ))}
+
+              {/* Footer actions */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 1, flexWrap: 'wrap' }}>
+                <Button
+                  variant="contained"
+                  startIcon={<SaveIcon />}
+                  onClick={handleSaveNotifTemplates}
+                  disabled={notifSaving}
+                  sx={{
+                    fontWeight: 900,
+                    px: 4,
+                    py: 1,
+                    borderRadius: 0,
+                    bgcolor: COLORS.accent,
+                    border: `2px solid ${COLORS.brand}`,
+                    boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
+                    '&:hover': { bgcolor: COLORS.brand },
+                    '&.Mui-disabled': { bgcolor: COLORS.textMuted, color: '#fff' },
+                  }}
+                >
+                  {notifSaving ? 'Saving...' : 'Save All Templates'}
+                </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<RefreshIcon />}
+                  onClick={() => setNotifResetConfirm({ open: true, key: null })}
+                  sx={{
+                    fontWeight: 900,
+                    borderRadius: 0,
+                    borderColor: COLORS.danger,
+                    color: COLORS.danger,
+                    '&:hover': { bgcolor: COLORS.dangerSurface },
+                  }}
+                >
+                  Reset All to Defaults
+                </Button>
+                <Typography sx={{ ...TYPE.meta, color: COLORS.textMuted, ml: 'auto' }}>
+                  {Object.entries(notifTemplates).filter(([key, tpl]) =>
+                    tpl.title !== DEFAULT_TEMPLATES[key]?.title || tpl.body !== DEFAULT_TEMPLATES[key]?.body
+                  ).length} of {Object.keys(DEFAULT_TEMPLATES).length} templates customized
+                </Typography>
+              </Box>
+
+            </Box>
+          </Paper>
+        </Grid>
+
       </Grid>
 
       {/* ── PILLAR 10 DIALOGS ────────────────────────────────────────────── */}
@@ -3353,6 +3678,53 @@ export default function Settings() {
             }}
           >
             Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── NOTIFICATION TEMPLATE RESET CONFIRMATION (T4.91) ────────────── */}
+      <Dialog
+        open={notifResetConfirm.open}
+        onClose={() => setNotifResetConfirm({ open: false, key: null })}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 0 } }}
+      >
+        <DialogTitle sx={{ fontWeight: 900, color: COLORS.danger, pb: 1 }}>
+          {notifResetConfirm.key ? 'Reset Template' : 'Reset All Templates'}
+        </DialogTitle>
+        <DialogContent>
+          <Typography>
+            {notifResetConfirm.key
+              ? <>Reset <strong>"{STATUS_LABELS[notifResetConfirm.key]}"</strong> to its default wording?</>
+              : 'Reset all 12 notification templates to their default wording?'
+            }
+          </Typography>
+          <Typography sx={{ ...TYPE.meta, color: COLORS.textMuted, mt: 1 }}>
+            Click "Save All Templates" after resetting to persist the change.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, pt: 0 }}>
+          <Button
+            onClick={() => setNotifResetConfirm({ open: false, key: null })}
+            sx={{ fontWeight: 900, color: COLORS.textSecondary, borderRadius: 0 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={() => notifResetConfirm.key
+              ? handleResetNotifTemplate(notifResetConfirm.key)
+              : handleResetAllNotifTemplates()
+            }
+            variant="contained"
+            sx={{
+              fontWeight: 900,
+              borderRadius: 0,
+              bgcolor: COLORS.danger,
+              '&:hover': { bgcolor: COLORS.dangerHover },
+            }}
+          >
+            {notifResetConfirm.key ? 'Reset' : 'Reset All'}
           </Button>
         </DialogActions>
       </Dialog>

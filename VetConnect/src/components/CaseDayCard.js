@@ -28,9 +28,10 @@ import {
   sanitizeCancelReason,
 } from '../utils/statusLabels';
 import { formatDisplayDate, formatFirestoreTime } from '../utils/helpers';
-import { buildVisitTimeline } from '../utils/buildVisitTimeline';
+import { buildVisitTimeline, formatDurationMins } from '../utils/buildVisitTimeline';
 import VisitTimeline from './VisitTimeline';
 import EncounterSummary from './EncounterSummary';
+import WaitTimeMetrics from './WaitTimeMetrics';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -119,8 +120,19 @@ const CaseDayCard = ({ caseChain, isHistory, salesByAppt, onShowReceipt, onReboo
   // Show single date if the chain started and ended on the same calendar day (edge case).
   const dateRangeStr = startDateStr === endDateStr ? startDateStr : `${startDateStr} – ${endDateStr}`;
 
-  // accumulatedWaitMins lives on the last appointment in the chain.
-  const clinicTimeStr = formatClinicTime(lastDay.accumulatedWaitMins);
+  // Prefer forensicSeal aggregate across all days; fall back to accumulatedWaitMins.
+  // forensicSeal-derived totals are more accurate as they include actual consult + queue time.
+  const clinicTimeStr = (() => {
+    const sealedDays = caseChain.filter(a => a.forensicSeal?.raw);
+    if (sealedDays.length > 0) {
+      const totalMins = sealedDays.reduce((sum, a) => {
+        const r = a.forensicSeal.raw;
+        return sum + (r.shiftQueue || 0) + (r.shiftConsult || 0) + (r.shiftConfined || 0);
+      }, 0);
+      return formatDurationMins(totalMins) ?? null;
+    }
+    return formatClinicTime(lastDay.accumulatedWaitMins);
+  })();
 
   // ── Day page renderer ────────────────────────────────────────────────────
 
@@ -171,6 +183,15 @@ const CaseDayCard = ({ caseChain, isHistory, salesByAppt, onShowReceipt, onReboo
               {statusIcon} {statusLabel.toUpperCase()}
             </Text>
           </View>
+
+          {/* Per-day visit metrics from forensicSeal */}
+          {appt.status === 'completed' && (
+            <WaitTimeMetrics
+              appointment={appt}
+              isActive={false}
+              avgWaitMins={null}
+            />
+          )}
 
           {/* Visit timeline — per-day clinical journey (collapsed by default) */}
           {(() => {

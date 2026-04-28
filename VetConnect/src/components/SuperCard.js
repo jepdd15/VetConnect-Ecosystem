@@ -15,6 +15,7 @@ import { getClientStatusColor, getClientStatusIcon, getClientStatusLabel } from 
 import { formatFirestoreTime } from '../utils/helpers';
 import { buildVisitTimeline } from '../utils/buildVisitTimeline';
 import VisitTimeline from './VisitTimeline';
+import WaitTimeMetrics from './WaitTimeMetrics';
 
 const SPECIES_EMOJI = {
   Dog: '🐶',
@@ -44,7 +45,7 @@ const handleDirections = async (address) => {
  *   Falls back to the correct Pangasinan address inside handleDirections.
  * - `queueAhead` — count of arrived appointments ahead of this one; null hides the row.
  */
-export default function SuperCard({ appointment, clinicPhone = '', clinicAddress = '', queueAhead = null }) {
+export default function SuperCard({ appointment, clinicPhone = '', clinicAddress = '', queueAhead = null, avgWaitMins = null }) {
   const pulseAnim = useRef(new Animated.Value(0.4)).current;
 
   const [timelineCollapsed, setTimelineCollapsed] = useState(true);
@@ -154,6 +155,13 @@ export default function SuperCard({ appointment, clinicPhone = '', clinicAddress
           {queueAhead === 0 ? "You're next in line!" : `${queueAhead} pet${queueAhead !== 1 ? 's' : ''} ahead of you`}
         </Text>
       )}
+
+      {/* Row 6.5 — Live wait/consult metrics */}
+      <WaitTimeMetrics
+        appointment={appointment}
+        isActive={true}
+        avgWaitMins={avgWaitMins}
+      />
 
       {/* Row 7 — Visit timeline (collapsed by default; only shown when pulse data exists) */}
       {timelineEvents.length > 0 && (

@@ -16,7 +16,7 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -39,6 +39,7 @@ import {
   sanitizeCancelReason,
 } from "../utils/statusLabels";
 import SuperCard from "../components/SuperCard";
+import WaitTimeMetrics from "../components/WaitTimeMetrics";
 import CaseDayCard from "../components/CaseDayCard";
 import VisitTimeline from "../components/VisitTimeline";
 import EncounterSummary from "../components/EncounterSummary";
@@ -89,6 +90,17 @@ const ClientAppointments = ({ navigation }) => {
   const { clinicPhone, clinicAddress } = useClinicContact();
 
   const [queueAhead, setQueueAhead] = useState(null);
+
+  // Personal clinic average wait time — computed from the client's own completed visits.
+  // Only shown when >=3 completed visits have forensicSeal data (insufficient data = hide).
+  const avgWaitMins = useMemo(() => {
+    const withSeal = appointments.filter(a =>
+      a.status === 'completed' && a.forensicSeal?.raw?.shiftQueue != null
+    );
+    if (withSeal.length < 3) return null;
+    const total = withSeal.reduce((sum, a) => sum + a.forensicSeal.raw.shiftQueue, 0);
+    return Math.round(total / withSeal.length);
+  }, [appointments]);
 
   // Timeline collapse state for standalone history cards — keyed by appointment ID.
   // A Set of expanded IDs lets each card manage its own open/closed state independently.
@@ -796,6 +808,15 @@ const ClientAppointments = ({ navigation }) => {
           </Text>
         </View>
 
+        {/* Frozen visit metrics from forensicSeal */}
+        {isHistory && item.status === 'completed' && (
+          <WaitTimeMetrics
+            appointment={item}
+            isActive={false}
+            avgWaitMins={null}
+          />
+        )}
+
         {/* Visit timeline — clinical journey for completed history cards */}
         {isHistory && item.clinicalPulse?.length > 0 && (() => {
           const events = buildVisitTimeline(item.clinicalPulse, {
@@ -952,7 +973,7 @@ const ClientAppointments = ({ navigation }) => {
   return (
     <View style={styles.container}>
       {/* SUPER-CARD — pinned above tabs so it stays visible while switching tabs */}
-      <SuperCard appointment={activeAppointment} clinicPhone={clinicPhone} clinicAddress={clinicAddress} queueAhead={queueAhead} />
+      <SuperCard appointment={activeAppointment} clinicPhone={clinicPhone} clinicAddress={clinicAddress} queueAhead={queueAhead} avgWaitMins={avgWaitMins} />
 
       {/* TABS */}
       <View style={styles.tabContainer}>

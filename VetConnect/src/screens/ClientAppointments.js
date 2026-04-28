@@ -39,9 +39,11 @@ import {
   sanitizeCancelReason,
 } from "../utils/statusLabels";
 import SuperCard from "../components/SuperCard";
+import CaseDayCard from "../components/CaseDayCard";
 import { useClinicContact } from "../hooks/useClinicContact";
 import { formatFirestoreTime, formatDisplayDate, getLocalDateStr } from '../utils/helpers';
 import { COLORS } from '../theme/mobileTokens';
+import { buildCaseChains } from '../utils/buildCaseChains';
 
 const ICONS = {
   Consultation: "🩺",
@@ -704,6 +706,19 @@ const ClientAppointments = ({ navigation }) => {
       return renderGroupCard(item);
     }
 
+    // Case chain wrappers (multi-day carry-over visits) render as a swipeable card.
+    if (item._isCaseWrapper) {
+      return (
+        <CaseDayCard
+          caseChain={item.caseChain}
+          isHistory={tab === 'history'}
+          salesByAppt={salesByAppt}
+          onShowReceipt={handleShowReceipt}
+          onRebook={handleRebook}
+        />
+      );
+    }
+
     // Follow-up ghosts get a dedicated banner treatment — not the regular card layout.
     if (item.isFollowUp === true && item.status === 'pending') {
       return renderFollowUpRow(item);
@@ -984,18 +999,39 @@ const ClientAppointments = ({ navigation }) => {
               }
             });
 
-            const processedNonFollowUps = [];
+            const groupWrappers = [];
             // Emit group wrappers (sort pets within group by groupIndex)
             for (const [visitGroupId, groupAppts] of groupMap) {
               const sorted = [...groupAppts].sort((a, b) => (a.groupIndex || 0) - (b.groupIndex || 0));
-              processedNonFollowUps.push({
+              groupWrappers.push({
                 _isGroupWrapper: true,
                 id: `group-${visitGroupId}`,
                 visitGroupId,
                 appointments: sorted,
               });
             }
-            // Emit standalone items
+
+            // History tab: detect case chains among standalone items.
+            // Upcoming tab: always emit standalones as-is (no case grouping).
+            if (tab === 'history') {
+              const { chains, standaloneIds } = buildCaseChains(standaloneItems);
+
+              const caseWrappers = [];
+              for (const [rootId, chainMembers] of chains) {
+                caseWrappers.push({
+                  _isCaseWrapper: true,
+                  id: `case-${rootId}`,
+                  caseChain: chainMembers,
+                });
+              }
+
+              const remainingStandalones = standaloneItems.filter(a => standaloneIds.has(a.id));
+
+              return [...followUps, ...groupWrappers, ...caseWrappers, ...remainingStandalones];
+            }
+
+            // Upcoming tab — preserve original behavior exactly.
+            const processedNonFollowUps = [...groupWrappers];
             standaloneItems.forEach(a => processedNonFollowUps.push(a));
 
             return [...followUps, ...processedNonFollowUps];

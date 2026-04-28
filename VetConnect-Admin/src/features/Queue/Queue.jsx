@@ -930,60 +930,204 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
   };
 
   const saveReschedule = async () => {
-    if(!newDate || !auditReason.trim() || submitting) return;
+    if (!newDate || !auditReason.trim() || submitting) return;
     setSubmitting(true);
     const staffSignature = profile?.fullName || user?.email || 'System Triage';
 
     try {
-        const currentSchDate = selectedRow.scheduledDate ? selectedRow.scheduledDate.toDate() : (selectedRow.createdAt?.toDate() || new Date());
-        const updatedSchDate = new Date(newDate);
+      const currentSchDate = selectedRow.scheduledDate
+        ? selectedRow.scheduledDate.toDate()
+        : (selectedRow.createdAt?.toDate() || new Date());
+      const updatedSchDate = new Date(newDate);
 
-        // GAP B FIX: The Reliability Highlight (Day-Slip Detection)
-        const currentDayStr = currentSchDate.toISOString().split('T')[0];
-        const updatedDayStr = updatedSchDate.toISOString().split('T')[0];
-        
-        const isCarryOver = selectedRow.status === 'arrived' || 
-                           selectedRow.status === 'in-consult' || 
-                           selectedRow.status === 'confined' || 
-                           selectedRow.status === 'on-hold' || 
-                           selectedRow.status === 'dispensing' || 
-                           selectedRow.status === 'billing';
-        let additionalWaitMins = 0;
+      // GAP B FIX: The Reliability Highlight (Day-Slip Detection)
+      const currentDayStr = currentSchDate.toISOString().split('T')[0];
+      const updatedDayStr = updatedSchDate.toISOString().split('T')[0];
 
-        if (isCarryOver) {
-            const arr = selectedRow.timeArrived?.toDate() || selectedRow.jsScheduled?.toDate() || new Date();
-            additionalWaitMins = Math.round((new Date() - arr) / 60000);
-        }
+      const isCarryOver = selectedRow.status === 'arrived' ||
+                          selectedRow.status === 'in-consult' ||
+                          selectedRow.status === 'confined' ||
+                          selectedRow.status === 'on-hold' ||
+                          selectedRow.status === 'dispensing' ||
+                          selectedRow.status === 'billing';
 
-        const pulseEvent = {
-            eventId: makePulseEventId('shift'),
-            type: 'STATUS_CHANGE',
-            toStatus: isCarryOver ? 'carried-over' : 'confirmed',
-            shiftNote: 'shifted',
-            timestamp: Timestamp.now(), // CLIENT-SIDE CLOCK — see W1 in pulseUtils.js
-            staffId: profile?.id || 'unknown',
-            staffName: staffSignature,
-            note: isCarryOver 
-                  ? `CLINICAL CARRY-OVER to ${updatedDayStr} [Wait: ${additionalWaitMins}m] (Reason: ${auditReason})`
-                  : `Manual Clinical Shift to ${updatedDayStr} (Reason: ${auditReason})`
-        };
+      let additionalWaitMins = 0;
+      if (isCarryOver) {
+        const arr = selectedRow.timeArrived?.toDate() || selectedRow.jsScheduled?.toDate() || new Date();
+        additionalWaitMins = Math.round((new Date() - arr) / 60000);
+      }
 
-        let updateData = {
+      const pulseEvent = {
+        eventId: makePulseEventId('shift'),
+        type: 'STATUS_CHANGE',
+        toStatus: isCarryOver ? 'carried-over' : 'confirmed',
+        shiftNote: 'shifted',
+        timestamp: Timestamp.now(), // CLIENT-SIDE CLOCK — see W1 in pulseUtils.js
+        staffId: profile?.id || 'unknown',
+        staffName: staffSignature,
+        note: isCarryOver
+          ? `CLINICAL CARRY-OVER to ${updatedDayStr} [Wait: ${additionalWaitMins}m] (Reason: ${auditReason})`
+          : `Manual Clinical Shift to ${updatedDayStr} (Reason: ${auditReason})`
+      };
+
+      if (!isCarryOver) {
+        // === BRANCH 1: SIMPLE RESCHEDULE (pending/confirmed) ===
+        // Wraps in a transaction for fresh-read terminal guard — prevents double-reschedule
+        // or reschedule of a record resolved between dialog open and submit.
+        const apptRef = doc(db, "appointments", selectedRow.id);
+
+        await runTransaction(db, async (transaction) => {
+          const freshSnap = await transaction.get(apptRef);
+          if (!freshSnap.exists()) throw new Error("Appointment not found.");
+          const freshData = freshSnap.data();
+          const freshStatus = (freshData.status || '').toLowerCase();
+
+          if (TERMINAL_STATUSES.has(freshStatus)) {
+            throw new Error(`Record already resolved (status: ${freshStatus}). Cannot reschedule.`);
+          }
+
+          transaction.update(apptRef, {
             scheduledDate: Timestamp.fromDate(updatedSchDate),
             status: 'confirmed',
+            statusHistory: [...(freshData.statusHistory || []), freshData.status],
             rescheduledBy: staffSignature,
             clinicalPulse: arrayUnion(pulseEvent),
             auditReason: auditReason,
-            auditReasons: arrayUnion({ reason: auditReason, action: 'reschedule', staffName: staffSignature, timestamp: Timestamp.now() }),
-            accumulatedWaitMins: (selectedRow.accumulatedWaitMins || 0) + additionalWaitMins
-        };
+            auditReasons: arrayUnion({
+              reason: auditReason,
+              action: 'reschedule',
+              staffName: staffSignature,
+              timestamp: Timestamp.now()
+            }),
+            accumulatedWaitMins: (selectedRow.accumulatedWaitMins || 0) + additionalWaitMins,
+          });
+        });
 
-        await updateDoc(doc(db, "appointments", selectedRow.id), updateData);
-        setOpenReschedule(false);
-        setAuditReason("");
+      } else {
+        // === BRANCH 2: FULL CLINICAL CARRY-OVER (active patients) ===
+        // Replicates EOD carry-over pattern: old record is sealed and terminated;
+        // a new clone document is created for the rescheduled date with a fresh pulse chain.
+        const apptRef = doc(db, "appointments", selectedRow.id);
+
+        const freshSnap = await getDoc(apptRef);
+        if (!freshSnap.exists()) throw new Error("Appointment not found.");
+        const freshData = freshSnap.data();
+        const freshStatus = (freshData.status || '').toLowerCase();
+
+        if (TERMINAL_STATUSES.has(freshStatus)) {
+          throw new Error(`Record already resolved (status: ${freshStatus}). Cannot carry over.`);
+        }
+
+        // Forensic seal — freeze metrics at the exact moment of carry-over
+        const forensicSeal = calculatePulseMetrics(
+          freshData.clinicalPulse || [],
+          clinicSettings,
+          freshData.createdAt,
+          new Date()
+        );
+
+        // T3.70: Structured notes propagation — dual-read from new or legacy `notes`
+        const carryStaffNotes = freshData.staffNotes || freshData.notes || "";
+        const carryClientNotes = freshData.clientNotes || "";
+        const existingChips = freshData.systemChips || [];
+        const triagePrefix = '[Clinical Triage: CARRY-OVER]';
+
+        // Strip all temporal, forensic, and attribution fields from the clone.
+        // Explicit overrides below further ensure correctness (spread-then-override).
+        const {
+          id: _id,
+          jsScheduled, jsArrived, jsStarted, jsCompleted,
+          queueNumber: _qn, ticketPrefix: _tp,
+          timeArrived, timeStarted, timeCompleted,
+          isTriaged: _oldIsTriaged,
+          notes: _legacyNotes,
+          status: _oldStatus,
+          statusHistory: _oldHistory,
+          clinicalPulse: _oldPulse,
+          forensicSeal: _oldSeal,
+          processedBy: _oldProcessedBy,
+          processedAt: _oldProcessedAt,
+          auditReason: _oldAuditReason,
+          auditReasons: _oldAuditReasons,
+          rescheduledBy: _oldRescheduledBy,
+          accumulatedWaitMins: _oldAccum,
+          assignedVet: _oldAssignedVet,
+          assignedVetId: _oldAssignedVetId,
+          ...preservedData
+        } = freshData;
+
+        const batch = writeBatch(db);
+
+        // OLD RECORD: Seal and terminate with forensic stamp
+        batch.update(apptRef, {
+          status: 'carried-over',
+          statusHistory: [...(freshData.statusHistory || []), freshData.status],
+          forensicSeal,
+          isTriaged: true,
+          systemChips: arrayUnion('CARRY-OVER'),
+          processedBy: staffSignature,
+          processedAt: Timestamp.now(),
+          auditReason: auditReason,
+          auditReasons: arrayUnion({
+            reason: auditReason,
+            action: 'inline-carryover',
+            staffName: staffSignature,
+            timestamp: Timestamp.now()
+          }),
+          clinicalPulse: arrayUnion(pulseEvent), // pulse with toStatus: 'carried-over'
+          rescheduledBy: staffSignature,
+        });
+
+        // NEW CLONE: Fresh record for the rescheduled date
+        const newDocRef = doc(collection(db, "appointments"));
+
+        batch.set(newDocRef, {
+          ...preservedData,
+          status: 'confirmed',
+          scheduledDate: Timestamp.fromDate(updatedSchDate),
+          createdAt: freshData.createdAt || Timestamp.now(),
+          originApptId: selectedRow.id,
+          caseDay: (selectedRow.caseDay || 1) + 1,
+          queueNumber: null,
+          ticketPrefix: null,
+          clientNotes: carryClientNotes,
+          staffNotes: `${triagePrefix} ${carryStaffNotes}`,
+          systemChips: [...existingChips.filter(c => c !== 'CARRY-OVER'), 'CARRY-OVER'],
+          assignedVet: 'Unassigned',
+          assignedVetId: null,
+          processedBy: staffSignature,
+          rescheduledBy: staffSignature,
+          accumulatedWaitMins: (selectedRow.accumulatedWaitMins || 0) + additionalWaitMins,
+          auditReason: auditReason,
+          auditReasons: [{
+            reason: auditReason,
+            action: 'inline-carryover-clone',
+            staffName: staffSignature,
+            timestamp: Timestamp.now()
+          }],
+          clinicalPulse: [
+            {
+              eventId: makePulseEventId('inception'),
+              type: 'INCEPTION',
+              toStatus: 'confirmed',
+              timestamp: Timestamp.now(), // CLIENT-SIDE CLOCK — see W1 in pulseUtils.js
+              staffId: profile?.id || user?.uid || 'unknown',
+              staffName: staffSignature,
+              note: `Generated via Inline Carry-Over from Appt ${selectedRow.id} — Wait: ${additionalWaitMins}m (Reason: ${auditReason})`
+            }
+          ],
+        });
+
+        await batch.commit();
+      }
+
+      setOpenReschedule(false);
+      setAuditReason("");
     } catch (e) {
-        alert("Reschedule failed: " + e.message);
-    } finally { setSubmitting(false); }
+      alert("Reschedule failed: " + e.message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const saveDefer = async () => {

@@ -247,6 +247,16 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ─── NOTIFICATION TEMPLATES (push notification customization) ──
+    // Staff reads templates when sending push notifications (T4.90).
+    // Only admin can customize templates (Settings UI — T4.91).
+    // The Cloudflare Worker never reads Firestore directly (Option B);
+    // templates are passed by the caller.
+    match /notification_templates/{templateId} {
+      allow read: if isStaff();
+      allow write: if isAdmin();
+    }
+
     // ─── CONSENT RECORDS (per-user sub-collection) ────────────────
     // User can read their own. Staff can read all. Staff can create (admin records consent on behalf).
     // User can create their own (mobile consent grant/withdrawal).

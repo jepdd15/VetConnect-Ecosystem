@@ -53,15 +53,17 @@ export const HIGH_STAKES_STATUSES = new Set([
 /**
  * Statuses that represent a fully resolved case. The clinical clock stops here.
  *
- * NOTE: CARRIED_OVER is intentionally excluded. A carried-over patient returns
- * the next shift and transitions to ARRIVED, so the record must not be treated
- * as fully resolved — the pulse engine must keep the clock running until the
- * follow-up appointment is sealed.
+ * CARRIED_OVER is included because reverting a carry-over without cleaning up
+ * the cloned next-day record creates duplicate live records — the most dangerous
+ * gap in the queue system. The old pulse-engine concern (clock must keep running)
+ * is moot: carried-over records receive a forensicSeal at EOD resolution time,
+ * and the cloned record starts its own independent pulse chain.
  */
 export const TERMINAL_STATUSES = new Set([
   STATUS.COMPLETED,
   STATUS.CANCELLED,
   STATUS.NO_SHOW,
+  STATUS.CARRIED_OVER,
 ]);
 
 /**

@@ -443,6 +443,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
 
              batch.update(oldRef, {
                 status: 'carried-over',
+                statusHistory: [...(patient.statusHistory || []), rawStatus],
                 isTriaged: true, // THE FORENSIC SHIELD STAMP
                 staffNotes: carryStaffNotes,
                 systemChips: arrayUnion('CARRY-OVER'),
@@ -3016,10 +3017,15 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           {TERMINAL_STATUSES.has(selectedRow?.status) && (
             <Box sx={{ p: 1.5, bgcolor: '#FFEBEE', border: '1px solid #D32F2F', borderRadius: 0, mb: 3 }}>
               <Typography variant="body2" sx={{ fontWeight: 900, color: '#D32F2F', lineHeight: 1.5 }}>
-                TERMINAL REVERSAL: You are undoing a completed/cancelled/no-show resolution.
+                TERMINAL REVERSAL: You are undoing a completed/cancelled/no-show/carried-over resolution.
                 If a medical record or sale was created during this visit, those records will NOT
                 be automatically removed. Manual cleanup may be required.
               </Typography>
+              {selectedRow?.status === 'carried-over' && (
+                <Typography variant="body2" sx={{ fontWeight: 900, color: '#D32F2F', lineHeight: 1.5, mt: 1 }}>
+                  A cloned next-day record may still exist. Manual cleanup of the duplicate is required after this revert.
+                </Typography>
+              )}
             </Box>
           )}
 

@@ -107,11 +107,10 @@ const getExpiryStatus = (expiryDate) => {
   );
 
   return (
-    <TableContainer component={Paper} elevation={0} sx={{ 
-        ...clinicalFlatStyle, 
+    <Paper elevation={0} sx={{ ...clinicalFlatStyle, flex: 1, minHeight: 0, width: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <TableContainer sx={{
         flex: 1,
         minHeight: 0,
-        width: '100%',
         overflow: 'auto',
         '&::-webkit-scrollbar': { width: '8px', height: '8px' },
         '&::-webkit-scrollbar-track': { background: COLORS.cream },
@@ -323,6 +322,7 @@ const getExpiryStatus = (expiryDate) => {
           )}
         </TableBody>
       </Table>
+    </TableContainer>
       <TablePagination
         component="div"
         count={sortedData.length}
@@ -332,6 +332,7 @@ const getExpiryStatus = (expiryDate) => {
         onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
         rowsPerPageOptions={[10, 25, 50, 100]}
         sx={{
+          flexShrink: 0,
           borderTop: `2px solid ${COLORS.accent}`,
           bgcolor: COLORS.cream,
           '& .MuiTablePagination-toolbar': { fontFamily: FONT, fontWeight: 900 },
@@ -340,6 +341,6 @@ const getExpiryStatus = (expiryDate) => {
           }
         }}
       />
-    </TableContainer>
+    </Paper>
   );
 }

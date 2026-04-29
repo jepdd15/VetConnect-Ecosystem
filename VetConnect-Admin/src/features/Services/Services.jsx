@@ -172,7 +172,7 @@ export default function Services() {
       </Box>
 
       {/* ── Content ── */}
-      <Box sx={{ flexGrow: 1, overflow: 'hidden', p: tab === 1 ? 2 : 0, bgcolor: COLORS.surface, display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ flexGrow: 1, overflow: 'hidden', p: 0, bgcolor: COLORS.surface, display: 'flex', flexDirection: 'column' }}>
         {tab === 0 && (
           <ServiceTable
             data={filteredServices}

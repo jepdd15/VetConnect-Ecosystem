@@ -34,7 +34,7 @@ import { useInventory } from '../features/Inventory/hooks/useInventory';
 import { calculatePulseMetrics, makePulseEventId, createPulseEvent } from '../utils/pulseUtils';
 import { useClinicSettings } from '../hooks/useClinicSettings';
 import { useUser } from '../context/UserContext';
-import { callClinicalReasoning, DEFAULT_CLINICAL_SYSTEM_PROMPT } from '../utils/llmService';
+import { chatWithHistory, buildUserMessage, DEFAULT_CLINICAL_SYSTEM_PROMPT } from '../utils/llmService';
 import { sendPushNotification } from '../utils/sendPushNotification';
 import { normalizeMarkdownTables } from '../utils/normalizeMarkdownTables';
 import ReactMarkdown from 'react-markdown';
@@ -233,13 +233,17 @@ export const VitalsGrid = React.memo(function VitalsGrid({ soapData, updateSoap,
  * @prop {function} onDismiss      - Collapses the rule-based panel
  *
  * LLM props (all optional — feature is invisible when llmEnabled is false):
- * @prop {boolean}  [llmEnabled=false]   - Whether the LLM feature is active
- * @prop {boolean}  [llmLoading=false]   - Whether an LLM call is in-flight
- * @prop {string}   [llmResponse='']     - The LLM's response text
- * @prop {string}   [llmError='']        - Error message if the LLM call failed
- * @prop {boolean}  [llmPanelOpen=false] - Whether the LLM response panel is expanded
- * @prop {function} [onAskAI]            - Triggers the LLM reasoning call
- * @prop {function} [onDismissLlm]       - Collapses the LLM panel
+ * @prop {boolean}  [llmEnabled=false]        - Whether the LLM feature is active
+ * @prop {boolean}  [llmLoading=false]         - Whether an LLM call is in-flight
+ * @prop {Array}    [llmMessages=[]]           - Conversation history [{role, content}]
+ * @prop {string}   [llmError='']              - Error message if the LLM call failed
+ * @prop {boolean}  [llmPanelOpen=false]       - Whether the LLM response panel is expanded
+ * @prop {string}   [llmFollowUpInput='']      - Current follow-up input value
+ * @prop {function} [onAskAI]                  - Triggers initial LLM reasoning call
+ * @prop {function} [onDismissLlm]             - Collapses the LLM panel
+ * @prop {function} [onLlmFollowUpChange]      - Updates follow-up input value
+ * @prop {function} [onLlmFollowUp]            - Sends the current follow-up message
+ * @prop {function} [onResetAndAskAI]          - Clears conversation and re-analyzes
  */
 export const DiagnosticBridge = React.memo(function DiagnosticBridge({
   soapData,
@@ -249,13 +253,33 @@ export const DiagnosticBridge = React.memo(function DiagnosticBridge({
   onDismiss,
   llmEnabled = false,
   llmLoading = false,
-  llmResponse = '',
+  llmMessages = [],
   llmError = '',
   llmPanelOpen = false,
+  llmFollowUpInput = '',
   onAskAI,
   onDismissLlm,
+  onLlmFollowUpChange,
+  onLlmFollowUp,
+  onResetAndAskAI,
 }) {
   const hasInputData = !!(soapData.subjective || soapData.objectiveNotes);
+  const hasAssistantResponse = llmMessages.some(m => m.role === 'assistant');
+
+  // Memoized at empty deps — same object reference every render so ReactMarkdown
+  // does not re-mount its tree on every keystroke in the follow-up input.
+  const markdownComponents = useMemo(() => ({
+    h1: ({ children }) => <Typography sx={{ fontFamily: FONT, fontSize: '1rem', fontWeight: 900, color: COLORS.grooming, mt: 1.5, mb: 0.5 }}>{children}</Typography>,
+    h2: ({ children }) => <Typography sx={{ fontFamily: FONT, fontSize: '0.9rem', fontWeight: 900, color: COLORS.grooming, mt: 1.25, mb: 0.5 }}>{children}</Typography>,
+    h3: ({ children }) => <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', fontWeight: 800, color: COLORS.grooming, mt: 1, mb: 0.25 }}>{children}</Typography>,
+    p: ({ children }) => <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', color: COLORS.textPrimary, lineHeight: 1.6, mb: 0.75 }}>{children}</Typography>,
+    li: ({ children }) => <li style={{ fontSize: '0.8rem', marginBottom: '2px', lineHeight: 1.5 }}>{children}</li>,
+    strong: ({ children }) => <strong>{children}</strong>,
+    table: ({ children }) => <table style={{ borderCollapse: 'collapse', width: '100%', marginBottom: '8px', fontSize: '0.75rem' }}>{children}</table>,
+    th: ({ children }) => <th style={{ border: `1px solid ${COLORS.kpiPurpleBorder}`, padding: '4px 8px', fontWeight: 800, textAlign: 'left', borderRadius: 0, backgroundColor: 'rgba(123,31,162,0.06)' }}>{children}</th>,
+    td: ({ children }) => <td style={{ border: `1px solid ${COLORS.kpiPurpleBorder}`, padding: '4px 8px', borderRadius: 0 }}>{children}</td>,
+    hr: () => <hr style={{ border: 'none', borderTop: `1px solid ${COLORS.kpiPurpleBorder}`, margin: '8px 0' }} />,
+  }), []);
 
   const llmPanelRef = useRef(null);
 
@@ -309,13 +333,14 @@ export const DiagnosticBridge = React.memo(function DiagnosticBridge({
           Analyze S+O
         </Button>
 
-        {/* LLM "Ask AI" button — only visible when llmEnabled */}
+        {/* LLM AI button — only visible when llmEnabled.
+            Label changes to "New Analysis" when a conversation exists. */}
         {llmEnabled && (
           <Button
             size="small"
             variant="outlined"
             startIcon={llmLoading ? <CircularProgress size={14} sx={{ color: COLORS.grooming }} /> : <PsychologyIcon />}
-            onClick={onAskAI}
+            onClick={llmMessages.length > 0 ? onResetAndAskAI : onAskAI}
             disabled={!hasInputData || llmLoading}
             sx={{
               fontWeight: 900,
@@ -329,7 +354,7 @@ export const DiagnosticBridge = React.memo(function DiagnosticBridge({
               '&.Mui-disabled': { opacity: 0.5 },
             }}
           >
-            {llmLoading ? 'Analyzing...' : 'Ask AI'}
+            {llmLoading ? 'Analyzing...' : llmMessages.length > 0 ? 'New Analysis' : 'Ask AI'}
           </Button>
         )}
       </Box>
@@ -390,8 +415,8 @@ export const DiagnosticBridge = React.memo(function DiagnosticBridge({
               AI-generated suggestions for reference only. All clinical decisions must be made by the attending veterinarian.
             </Typography>
 
-            {/* Loading state — visible while LLM call is in-flight */}
-            {llmLoading && !llmResponse && !llmError && (
+            {/* Initial loading state — shown before first response arrives */}
+            {llmLoading && llmMessages.length <= 1 && !llmError && (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 1 }}>
                 <CircularProgress size={16} sx={{ color: COLORS.grooming }} />
                 <Typography sx={{ fontSize: '0.8rem', color: COLORS.grooming, fontWeight: 700 }}>
@@ -400,32 +425,99 @@ export const DiagnosticBridge = React.memo(function DiagnosticBridge({
               </Box>
             )}
 
-            {/* Error state */}
+            {/* Conversation view — scrollable list of user and assistant turns */}
+            {llmMessages.length > 0 && (
+              <Box sx={{
+                maxHeight: 300,
+                overflowY: 'auto',
+                mb: 1,
+                scrollbarWidth: 'thin',
+                '&::-webkit-scrollbar': { width: '4px' },
+                '&::-webkit-scrollbar-thumb': { background: '#E0E0E0' },
+              }}>
+                {llmMessages.map((msg, idx) => (
+                  <Box key={idx} sx={{
+                    mb: 1,
+                    p: 1,
+                    bgcolor: msg.role === 'user' ? 'rgba(62,39,35,0.04)' : 'rgba(123,31,162,0.04)',
+                    borderLeft: msg.role === 'user'
+                      ? `3px solid ${COLORS.brand}`
+                      : `3px solid ${COLORS.grooming}`,
+                  }}>
+                    <Typography sx={{
+                      ...TYPE.label,
+                      color: msg.role === 'user' ? COLORS.brand : COLORS.grooming,
+                      fontWeight: 900,
+                      fontSize: '0.55rem',
+                      mb: 0.5,
+                    }}>
+                      {msg.role === 'user' ? 'YOU' : 'AI ASSISTANT'}
+                    </Typography>
+                    {msg.role === 'assistant' ? (
+                      <Box sx={{ fontSize: '0.8rem', color: COLORS.textPrimary, lineHeight: 1.6, fontFamily: FONT }}>
+                        <ReactMarkdown components={markdownComponents}>
+                          {normalizeMarkdownTables(msg.content)}
+                        </ReactMarkdown>
+                      </Box>
+                    ) : (
+                      <Typography sx={{ fontSize: '0.8rem', color: COLORS.textPrimary, lineHeight: 1.5, whiteSpace: 'pre-line' }}>
+                        {msg.content.length > 200 ? `${msg.content.substring(0, 200)}...` : msg.content}
+                      </Typography>
+                    )}
+                  </Box>
+                ))}
+
+                {/* Inline "Thinking..." indicator during follow-up calls */}
+                {llmLoading && llmMessages.length > 1 && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5, pl: 1 }}>
+                    <CircularProgress size={12} sx={{ color: COLORS.grooming }} />
+                    <Typography sx={{ fontSize: '0.75rem', color: COLORS.grooming, fontWeight: 700 }}>
+                      Thinking...
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+            )}
+
+            {/* Error state — shown after messages list so follow-up errors appear at the bottom */}
             {llmError && (
-              <Typography sx={{ fontSize: '0.8rem', color: COLORS.danger, fontWeight: 700 }}>
+              <Typography sx={{ fontSize: '0.8rem', color: COLORS.danger, fontWeight: 700, mb: 0.5 }}>
                 {llmError}
               </Typography>
             )}
 
-            {/* Response text — ReactMarkdown renders headings, lists, tables */}
-            {llmResponse && (
-              <Box sx={{ fontSize: '0.8rem', color: COLORS.textPrimary, lineHeight: 1.6, fontFamily: FONT }}>
-                <ReactMarkdown
-                  components={{
-                    h1: ({ children }) => <Typography sx={{ fontFamily: FONT, fontSize: '1rem', fontWeight: 900, color: COLORS.grooming, mt: 1.5, mb: 0.5 }}>{children}</Typography>,
-                    h2: ({ children }) => <Typography sx={{ fontFamily: FONT, fontSize: '0.9rem', fontWeight: 900, color: COLORS.grooming, mt: 1.25, mb: 0.5 }}>{children}</Typography>,
-                    h3: ({ children }) => <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', fontWeight: 800, color: COLORS.grooming, mt: 1, mb: 0.25 }}>{children}</Typography>,
-                    p: ({ children }) => <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', color: COLORS.textPrimary, lineHeight: 1.6, mb: 0.75 }}>{children}</Typography>,
-                    li: ({ children }) => <li style={{ fontSize: '0.8rem', marginBottom: '2px', lineHeight: 1.5 }}>{children}</li>,
-                    strong: ({ children }) => <strong>{children}</strong>,
-                    table: ({ children }) => <table style={{ borderCollapse: 'collapse', width: '100%', marginBottom: '8px', fontSize: '0.75rem' }}>{children}</table>,
-                    th: ({ children }) => <th style={{ border: `1px solid ${COLORS.kpiPurpleBorder}`, padding: '4px 8px', fontWeight: 800, textAlign: 'left', borderRadius: 0, backgroundColor: 'rgba(123,31,162,0.06)' }}>{children}</th>,
-                    td: ({ children }) => <td style={{ border: `1px solid ${COLORS.kpiPurpleBorder}`, padding: '4px 8px', borderRadius: 0 }}>{children}</td>,
-                    hr: () => <hr style={{ border: 'none', borderTop: `1px solid ${COLORS.kpiPurpleBorder}`, margin: '8px 0' }} />,
+            {/* Follow-up input — only shown after the first assistant response */}
+            {hasAssistantResponse && !llmLoading && (
+              <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', mt: 0.5 }}>
+                <InputBase
+                  placeholder="Ask a follow-up question..."
+                  value={llmFollowUpInput}
+                  onChange={(e) => onLlmFollowUpChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      onLlmFollowUp();
+                    }
                   }}
+                  sx={{
+                    flex: 1,
+                    fontSize: '0.8rem',
+                    fontFamily: FONT,
+                    border: `1px solid ${COLORS.kpiPurpleBorder}`,
+                    px: 1,
+                    py: 0.5,
+                    '&:focus-within': { borderColor: COLORS.grooming },
+                  }}
+                  inputProps={{ 'aria-label': 'Follow-up question for AI' }}
+                />
+                <IconButton
+                  size="small"
+                  onClick={onLlmFollowUp}
+                  disabled={!llmFollowUpInput?.trim()}
+                  sx={{ color: COLORS.grooming, '&.Mui-disabled': { opacity: 0.3 } }}
                 >
-                  {normalizeMarkdownTables(llmResponse)}
-                </ReactMarkdown>
+                  <NavigateNextIcon sx={{ fontSize: 18 }} />
+                </IconButton>
               </Box>
             )}
           </Box>
@@ -522,9 +614,11 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   const [assistiveText, setAssistiveText] = useState('');
   const [diagnosticOpen, setDiagnosticOpen] = useState(false);
 
-  // --- LLM CLINICAL REASONING STATE (T3.107) ---
+  // --- LLM CLINICAL REASONING STATE (T3.107 / T4.109 multi-turn) ---
   const [llmConfig, setLlmConfig] = useState({ enabled: false, workerUrl: '', systemPrompt: '' });
-  const [llmResponse, setLlmResponse] = useState('');
+  // Multi-turn conversation history. Each entry: { role: 'user'|'assistant', content: string }
+  const [llmMessages, setLlmMessages] = useState([]);
+  const [llmFollowUpInput, setLlmFollowUpInput] = useState('');
   const [llmLoading, setLlmLoading] = useState(false);
   const [llmError, setLlmError] = useState('');
   const [llmPanelOpen, setLlmPanelOpen] = useState(false);
@@ -648,6 +742,10 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           setIsDirty(false);
           setAssistiveText('');
           setOverdueVaccineCount(0);
+          setLlmMessages([]);
+          setLlmFollowUpInput('');
+          setLlmError('');
+          setLlmPanelOpen(false);
 
           // Sign-off guard: check if a medical record already exists for this appointment.
           // The 'medical' key in lockedServices prevents duplicate sign-off.
@@ -1038,14 +1136,68 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
    * Unmount guard: checks llmAbortRef before every setState to prevent React
    * warnings when the vet closes the workspace during an in-flight call.
    */
-  const runLlmDiagnosis = async () => {
+  /**
+   * Builds the structured SOAP user message for the initial AI analysis.
+   * Delegates message assembly to the exported buildUserMessage from llmService
+   * so the format stays consistent with the structured clinical prompt format.
+   */
+  const buildInitialSoapMessage = () => buildUserMessage({
+    subjective: soapData.subjective || '',
+    objective: soapData.objectiveNotes || '',
+    vitals: {
+      temp: soapData.objTemp,
+      hr: soapData.objHR,
+      rr: soapData.objRR,
+      crt: soapData.objCRT,
+      bcs: soapData.bcs,
+      pain: soapData.painScale,
+    },
+    species: patient?.petSpecies || petDetails?.species || '',
+    breed: patient?.petBreed || petDetails?.breed || '',
+    age: calculateAge(patient?.petBirthdate || petDetails?.dob) || '',
+    weight: soapData.objWeight || patient?.petWeight || '',
+  });
+
+  /**
+   * Multi-turn LLM handler (T4.109). On the first call (empty messages + no followUpText),
+   * assembles the SOAP context message and opens the panel. On subsequent calls, appends the
+   * follow-up text to the existing conversation and sends the full history via chatWithHistory.
+   *
+   * A 20-message sliding window (first message preserved + last 19) prevents context overflow
+   * while keeping the original SOAP signalment in every request.
+   *
+   * @param {string} [followUpText] - Follow-up question text. Omit for an initial "Analyze S+O" call.
+   * @param {{ forceInitial?: boolean }} [options]
+   *   forceInitial: true starts a fresh analysis regardless of existing messages (used by
+   *   handleResetAndAskAI to avoid a setState race between clearing messages and re-triggering).
+   */
+  const runLlmDiagnosis = async (followUpText, { forceInitial = false } = {}) => {
     if (!llmConfig.enabled || !llmConfig.workerUrl) return;
     if (llmLoading) return;
 
+    // Determine message content and conversation base
+    const isInitial = (llmMessages.length === 0 && !followUpText) || forceInitial;
+    const userContent = isInitial
+      ? buildInitialSoapMessage()
+      : (followUpText || '').trim();
+
+    if (!userContent) return;
+
+    const baseMessages = forceInitial ? [] : llmMessages;
+    const userMsg = { role: 'user', content: userContent };
+    const updatedMessages = [...baseMessages, userMsg];
+
+    // Sliding window: always preserve the first SOAP context message + last 19 turns
+    const cappedMessages = updatedMessages.length > 20
+      ? [updatedMessages[0], ...updatedMessages.slice(-19)]
+      : updatedMessages;
+
     if (!llmAbortRef.current) {
+      setLlmMessages(cappedMessages);
       setLlmLoading(true);
       setLlmError('');
       setLlmPanelOpen(true);
+      setLlmFollowUpInput('');
     }
 
     const auditBase = {
@@ -1063,9 +1215,10 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     try {
       auditRef = await addDoc(collection(db, 'llm_audit_logs'), {
         ...auditBase,
-        type: 'request',
+        type: isInitial ? 'request' : 'follow_up',
         status: 'pending',
-        promptSummary: `S: ${(soapData.subjective || '').substring(0, 100)}... O: ${(soapData.objectiveNotes || '').substring(0, 100)}...`,
+        promptSummary: userContent.substring(0, 200),
+        messageCount: cappedMessages.length,
       });
     } catch (auditErr) {
       // Non-fatal: log and continue — a failed audit write should not block the AI call.
@@ -1073,27 +1226,14 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     }
 
     try {
-      const result = await callClinicalReasoning({
-        subjective: soapData.subjective || '',
-        objective: soapData.objectiveNotes || '',
-        vitals: {
-          temp: soapData.objTemp,
-          hr: soapData.objHR,
-          rr: soapData.objRR,
-          crt: soapData.objCRT,
-          bcs: soapData.bcs,
-          pain: soapData.painScale,
-        },
-        species: patient?.petSpecies || petDetails?.species || '',
-        breed: patient?.petBreed || petDetails?.breed || '',
-        age: calculateAge(patient?.petBirthdate || petDetails?.dob) || '',
-        weight: soapData.objWeight || patient?.petWeight || '',
+      const result = await chatWithHistory({
+        messages: cappedMessages,
         systemPrompt: llmConfig.systemPrompt,
         workerUrl: llmConfig.workerUrl,
       });
 
       if (!llmAbortRef.current) {
-        setLlmResponse(result.text);
+        setLlmMessages(prev => [...prev, { role: 'assistant', content: result.text }]);
       }
 
       if (auditRef) {
@@ -1107,7 +1247,6 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     } catch (err) {
       if (!llmAbortRef.current) {
         setLlmError(err.message || 'LLM request failed.');
-        setLlmResponse('');
       }
 
       if (auditRef) {
@@ -1122,6 +1261,26 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         setLlmLoading(false);
       }
     }
+  };
+
+  /**
+   * Sends the current follow-up input as a new turn in the conversation.
+   * No-ops if the input is blank or an LLM call is already in-flight.
+   */
+  const handleLlmFollowUp = () => {
+    const text = llmFollowUpInput.trim();
+    if (!text) return;
+    runLlmDiagnosis(text);
+  };
+
+  /**
+   * Clears the existing conversation and runs a fresh SOAP analysis.
+   * Uses forceInitial=true to build from scratch regardless of current llmMessages state,
+   * avoiding the async setState race that would occur with setLlmMessages([]) + runLlmDiagnosis().
+   */
+  const handleResetAndAskAI = () => {
+    setLlmMessages([]);
+    runLlmDiagnosis(undefined, { forceInitial: true });
   };
 
   // --- 3. TREATMENT PLAN LOGIC (THE BRIDGE) ---
@@ -2701,11 +2860,15 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 intakeStaffNotes={intakeStaffNotes}
                 llmEnabled={llmConfig.enabled && !!llmConfig.workerUrl}
                 llmLoading={llmLoading}
-                llmResponse={llmResponse}
+                llmMessages={llmMessages}
                 llmError={llmError}
                 llmPanelOpen={llmPanelOpen}
+                llmFollowUpInput={llmFollowUpInput}
                 onAskAI={runLlmDiagnosis}
                 onDismissLlm={() => setLlmPanelOpen(false)}
+                onLlmFollowUpChange={setLlmFollowUpInput}
+                onLlmFollowUp={handleLlmFollowUp}
+                onResetAndAskAI={handleResetAndAskAI}
               />
             );
           })()}
@@ -3036,11 +3199,15 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
               onDismiss={() => setDiagnosticOpen(false)}
               llmEnabled={llmConfig.enabled && !!llmConfig.workerUrl}
               llmLoading={llmLoading}
-              llmResponse={llmResponse}
+              llmMessages={llmMessages}
               llmError={llmError}
               llmPanelOpen={llmPanelOpen}
+              llmFollowUpInput={llmFollowUpInput}
               onAskAI={runLlmDiagnosis}
               onDismissLlm={() => setLlmPanelOpen(false)}
+              onLlmFollowUpChange={setLlmFollowUpInput}
+              onLlmFollowUp={handleLlmFollowUp}
+              onResetAndAskAI={handleResetAndAskAI}
             />
           )}
 
@@ -3126,11 +3293,15 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 intakeStaffNotes={intakeStaffNotes}
                 llmEnabled={llmConfig.enabled && !!llmConfig.workerUrl}
                 llmLoading={llmLoading}
-                llmResponse={llmResponse}
+                llmMessages={llmMessages}
                 llmError={llmError}
                 llmPanelOpen={llmPanelOpen}
+                llmFollowUpInput={llmFollowUpInput}
                 onAskAI={runLlmDiagnosis}
                 onDismissLlm={() => setLlmPanelOpen(false)}
+                onLlmFollowUpChange={setLlmFollowUpInput}
+                onLlmFollowUp={handleLlmFollowUp}
+                onResetAndAskAI={handleResetAndAskAI}
               />
             );
           })()}

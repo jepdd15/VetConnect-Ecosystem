@@ -36,14 +36,18 @@ import { ZEN_PLACEHOLDERS } from '../utils/soapConstants';
  * @prop {string}      [intakeClientNotes='']         - Client's booking notes from the appointment doc
  * @prop {string}      [intakeStaffNotes='']          - Staff triage/walk-in notes from the appointment doc
  *
- * LLM Clinical Reasoning props (T3.107 — forwarded to DiagnosticBridge):
- * @prop {boolean}     [llmEnabled=false]    - Whether the LLM feature is active
- * @prop {boolean}     [llmLoading=false]    - Whether an LLM call is in-flight
- * @prop {string}      [llmResponse='']      - The LLM's response text
- * @prop {string}      [llmError='']         - Error message if the LLM call failed
- * @prop {boolean}     [llmPanelOpen=false]  - Whether the LLM response panel is expanded
- * @prop {function}    [onAskAI]             - Triggers the LLM reasoning call
- * @prop {function}    [onDismissLlm]        - Collapses the LLM panel
+ * LLM Clinical Reasoning props (T3.107 / T4.109 — forwarded to DiagnosticBridge):
+ * @prop {boolean}     [llmEnabled=false]          - Whether the LLM feature is active
+ * @prop {boolean}     [llmLoading=false]           - Whether an LLM call is in-flight
+ * @prop {Array}       [llmMessages=[]]             - Conversation history [{role, content}]
+ * @prop {string}      [llmError='']                - Error message if the LLM call failed
+ * @prop {boolean}     [llmPanelOpen=false]         - Whether the LLM response panel is expanded
+ * @prop {string}      [llmFollowUpInput='']        - Current follow-up input value
+ * @prop {function}    [onAskAI]                    - Triggers initial LLM reasoning call
+ * @prop {function}    [onDismissLlm]               - Collapses the LLM panel
+ * @prop {function}    [onLlmFollowUpChange]        - Updates follow-up input value
+ * @prop {function}    [onLlmFollowUp]              - Sends the current follow-up message
+ * @prop {function}    [onResetAndAskAI]            - Clears conversation and re-analyzes
  */
 export default function SoapGrid({
   soapData, updateSoap, setFullscreenField,
@@ -56,8 +60,9 @@ export default function SoapGrid({
   followUpNode = null,
   canToggleVaccine = false, onManualVaccineToggle,
   intakeClientNotes = '', intakeStaffNotes = '',
-  llmEnabled = false, llmLoading = false, llmResponse = '', llmError = '',
-  llmPanelOpen = false, onAskAI, onDismissLlm,
+  llmEnabled = false, llmLoading = false, llmMessages = [], llmError = '',
+  llmPanelOpen = false, llmFollowUpInput = '', onAskAI, onDismissLlm,
+  onLlmFollowUpChange, onLlmFollowUp, onResetAndAskAI,
 }) {
   const textFieldSx = { flex: 1, '& .MuiInputBase-root': { height: '100%', alignItems: 'flex-start' } };
   const inputPropsSx = { disableUnderline: true, sx: { fontFamily: FONT, fontSize: '1.25rem', color: COLORS.brand, lineHeight: 1.6 } };
@@ -110,23 +115,8 @@ export default function SoapGrid({
         </SoapQuadrant>
       </Grid>
 
-      {/* O - OBJECTIVE (top-right) */}
+      {/* A - ASSESSMENT (top-right) — swapped from bottom-left (T4.109) */}
       <Grid size={{ xs: 12, md: 6 }} sx={{ height: { xs: 'auto', md: '50%' }, borderBottom: '1px solid #F0F0F0' }}>
-        <SoapQuadrant id="objectiveNotes" label="O - OBJECTIVE (EXAM & VITALS)" onZoomField={setFullscreenField}>
-          <VitalsGrid soapData={soapData} updateSoap={updateSoap} getTriageLevel={getTriageLevel} renderHistoricalLabel={renderHistoricalLabel} compact />
-          <TextField
-            multiline fullWidth variant="standard"
-            placeholder={ZEN_PLACEHOLDERS.objectiveNotes}
-            value={soapData.objectiveNotes || ''}
-            onChange={(e) => updateSoap('objectiveNotes', e.target.value)}
-            sx={textFieldSx}
-            InputProps={inputPropsSx}
-          />
-        </SoapQuadrant>
-      </Grid>
-
-      {/* A - ASSESSMENT (bottom-left) */}
-      <Grid size={{ xs: 12, md: 6 }} sx={{ height: { xs: 'auto', md: '50%' }, borderRight: { md: '1px solid #F0F0F0' }, borderTop: { xs: '1px solid #F0F0F0', md: 'none' } }}>
         <SoapQuadrant id="assessment" label="A - ASSESSMENT (DIAGNOSIS & PROGNOSIS)" onZoomField={setFullscreenField}>
           <DiagnosticBridge
             soapData={soapData}
@@ -136,11 +126,15 @@ export default function SoapGrid({
             onDismiss={() => setDiagnosticOpen(false)}
             llmEnabled={llmEnabled}
             llmLoading={llmLoading}
-            llmResponse={llmResponse}
+            llmMessages={llmMessages}
             llmError={llmError}
             llmPanelOpen={llmPanelOpen}
+            llmFollowUpInput={llmFollowUpInput}
             onAskAI={onAskAI}
             onDismissLlm={onDismissLlm}
+            onLlmFollowUpChange={onLlmFollowUpChange}
+            onLlmFollowUp={onLlmFollowUp}
+            onResetAndAskAI={onResetAndAskAI}
           />
           <TextField
             multiline fullWidth variant="standard"
@@ -149,6 +143,21 @@ export default function SoapGrid({
             onChange={(e) => updateSoap('assessment', e.target.value)}
             sx={textFieldSx}
             InputProps={{ disableUnderline: true, sx: { fontFamily: FONT, fontSize: '1.25rem', color: COLORS.success, fontWeight: 900, lineHeight: 1.6 } }}
+          />
+        </SoapQuadrant>
+      </Grid>
+
+      {/* O - OBJECTIVE (bottom-left) — swapped from top-right (T4.109) */}
+      <Grid size={{ xs: 12, md: 6 }} sx={{ height: { xs: 'auto', md: '50%' }, borderRight: { md: '1px solid #F0F0F0' }, borderTop: { xs: '1px solid #F0F0F0', md: 'none' } }}>
+        <SoapQuadrant id="objectiveNotes" label="O - OBJECTIVE (EXAM & VITALS)" onZoomField={setFullscreenField}>
+          <VitalsGrid soapData={soapData} updateSoap={updateSoap} getTriageLevel={getTriageLevel} renderHistoricalLabel={renderHistoricalLabel} compact />
+          <TextField
+            multiline fullWidth variant="standard"
+            placeholder={ZEN_PLACEHOLDERS.objectiveNotes}
+            value={soapData.objectiveNotes || ''}
+            onChange={(e) => updateSoap('objectiveNotes', e.target.value)}
+            sx={textFieldSx}
+            InputProps={inputPropsSx}
           />
         </SoapQuadrant>
       </Grid>

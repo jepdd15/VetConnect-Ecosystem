@@ -53,7 +53,7 @@ function buildErrorMessage(status, fallback) {
  * @param {string|number} params.weight
  * @returns {string}
  */
-function buildUserMessage({ subjective, objective, vitals = {}, species, breed, age, weight }) {
+export function buildUserMessage({ subjective, objective, vitals = {}, species, breed, age, weight }) {
   const { temp, hr, rr, crt, bcs, pain } = vitals;
 
   const vitalsLine = [

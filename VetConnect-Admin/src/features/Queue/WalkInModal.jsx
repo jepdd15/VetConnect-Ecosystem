@@ -473,6 +473,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
             ownerId: resolvedOwnerId,
             status: 'arrived',
             petName: entry.isNewPet || walkInType === 'guest' ? entry.name : entry.selectedPet?.name,
+            sentBy: profile?.fullName || 'Staff',
           });
         }
       });

@@ -24,6 +24,7 @@ import Expenses from './pages/Expenses';
 import Monitor from './pages/Monitor';   
 import Settings from './pages/Settings';
 import Reports from './features/Reports/Reports';
+import NotificationLogs from './pages/NotificationLogs';
 
 // --- USER CONTEXT ---
 import { UserProvider, useUser } from './context/UserContext';
@@ -140,6 +141,7 @@ function AppShell() {
                 <Route path="/monitor" element={<Monitor />} />
                 <Route path="/settings" element={<AdminRoute><Settings /></AdminRoute>} />
                 <Route path="/reports" element={<AdminRoute><Reports /></AdminRoute>} />
+                <Route path="/notification-logs" element={<NotificationLogs />} />
                 {/* Fallback for unknown internal routes */}
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>

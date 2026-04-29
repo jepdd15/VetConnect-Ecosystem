@@ -257,6 +257,16 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ─── NOTIFICATION LOG (push notification audit trail) ──────────
+    // Staff read for the Notification Logs admin page.
+    // Any auth creates (all staff roles trigger pushes).
+    // No updates or deletes — append-only audit trail.
+    match /notification_log/{logId} {
+      allow read: if isStaff();
+      allow create: if isAuth();
+      allow update, delete: if false;
+    }
+
     // ─── CONSENT RECORDS (per-user sub-collection) ────────────────
     // User can read their own. Staff can read all. Staff can create (admin records consent on behalf).
     // User can create their own (mobile consent grant/withdrawal).

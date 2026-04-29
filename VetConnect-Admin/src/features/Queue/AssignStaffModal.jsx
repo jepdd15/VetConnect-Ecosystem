@@ -153,12 +153,14 @@ export default function AssignStaffModal({ open, onClose, patient, siblingAppoin
       });
 
       // T4.90: Push notification — arrived (check-in)
+      const staffSignatureForLog = profile?.fullName || user?.email || 'System/Admin';
       sendPushNotification({
         ownerId: patient.ownerId,
         status: 'arrived',
         petName: patient.petName,
         appointmentId: patient.id,
         visitGroupId: patient.visitGroupId,
+        sentBy: staffSignatureForLog,
       });
 
       if (groupMode && siblingAppointments.length > 0) {
@@ -169,6 +171,7 @@ export default function AssignStaffModal({ open, onClose, patient, siblingAppoin
             petName: sib.petName,
             appointmentId: sib.id,
             visitGroupId: sib.visitGroupId,
+            sentBy: staffSignatureForLog,
           });
         });
       }

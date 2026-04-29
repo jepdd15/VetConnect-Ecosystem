@@ -6,8 +6,11 @@ import {
 } from '@mui/material';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import SendIcon from '@mui/icons-material/Send';
+import { addDoc, collection, Timestamp } from 'firebase/firestore';
+import { db } from '../firebaseConfig';
 import { FONT, TYPE, COLORS } from '../theme/designTokens';
 import { resolvePushToken, getWorkerUrl } from '../utils/sendPushNotification';
+import { useUser } from '../context/UserContext';
 
 /**
  * T4.92 — Reusable dialog for sending free-text push notifications to a client.
@@ -30,6 +33,7 @@ import { resolvePushToken, getWorkerUrl } from '../utils/sendPushNotification';
 export default function SendNotificationDialog({
   open, onClose, recipientName, ownerId, petName, onSent,
 }) {
+  const { profile } = useUser();
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
@@ -102,6 +106,21 @@ export default function SendNotificationDialog({
 
       // Notify the parent for any context-specific audit work (e.g., clinicalPulse write).
       if (onSent) onSent({ title: title.trim(), body: body.trim() });
+
+      // T4.95: Fire-and-forget notification log
+      addDoc(collection(db, 'notification_log'), {
+        ownerId:       ownerId,
+        ownerName:     recipientName || null,
+        status:        null,
+        petName:       petName || null,
+        title:         title.trim(),
+        body:          body.trim(),
+        appointmentId: null,
+        sentAt:        Timestamp.now(),
+        sentBy:        profile?.fullName || 'Staff',
+        channel:       'push',
+        type:          'custom',
+      }).catch(() => {});
 
       // Brief delay so the Snackbar is visible before the dialog dismisses.
       setTimeout(() => {

@@ -113,6 +113,7 @@ export function useQueueActions() {
       ticketNumber: row.queueNumber,
       appointmentId: row.id,
       visitGroupId: row.visitGroupId,
+      sentBy: staffSignature,
     });
   };
 
@@ -188,6 +189,7 @@ export function useQueueActions() {
         visitGroupId: row.visitGroupId,
         customTitle: 'Status Updated',
         customBody: `${row.petName || 'Your pet'}'s appointment status was corrected to: ${freshPrevStatus}.`,
+        sentBy: staffSignature,
       });
     }
   };
@@ -254,6 +256,7 @@ export function useQueueActions() {
       vetName: staffSignature,
       appointmentId: row.id,
       visitGroupId: row.visitGroupId,
+      sentBy: staffSignature,
     });
   };
 
@@ -310,6 +313,7 @@ export function useQueueActions() {
       vetName: staffSignature,
       appointmentId: id,
       visitGroupId: rowData.visitGroupId,
+      sentBy: staffSignature,
     });
   };
 

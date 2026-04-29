@@ -563,6 +563,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           vetName: profile?.fullName || 'Staff',
           appointmentId: patient.id,
           visitGroupId: patient.visitGroupId,
+          sentBy: profile?.fullName || 'Staff',
         });
       });
 
@@ -736,6 +737,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         vetName: profile?.fullName || 'Pharmacy',
         appointmentId: dispenseRow.id,
         visitGroupId: dispenseRow.visitGroupId,
+        sentBy: profile?.fullName || 'Staff',
       });
 
       setOpenDispenseVerify(false);
@@ -1054,6 +1056,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           visitGroupId: selectedRow.visitGroupId,
           customTitle: 'Appointment Rescheduled',
           customBody: `Your appointment for ${selectedRow.petName || 'your pet'} has been rescheduled to ${updatedSchDate.toLocaleDateString()}.`,
+          sentBy: profile?.fullName || 'Staff',
         });
 
       } else {
@@ -1183,6 +1186,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           visitGroupId: selectedRow.visitGroupId,
           customTitle: 'Visit Carried Over',
           customBody: `${selectedRow.petName || 'Your pet'}'s visit has been rescheduled to ${updatedSchDate.toLocaleDateString()}. Your progress is preserved.`,
+          sentBy: profile?.fullName || 'Staff',
         });
       }
 

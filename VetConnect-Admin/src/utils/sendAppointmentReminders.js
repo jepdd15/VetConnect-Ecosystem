@@ -9,7 +9,7 @@
  * Returns { sent, skipped, failed, noToken, total } — never throws.
  */
 import {
-  collection, query, where, getDocs, getDoc, doc, updateDoc, Timestamp,
+  collection, query, where, getDocs, getDoc, doc, updateDoc, Timestamp, addDoc,
 } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { resolvePushToken, getWorkerUrl } from './sendPushNotification';
@@ -187,6 +187,21 @@ export async function sendAppointmentReminders() {
             appointmentId: appt.id,
           }),
         });
+
+        // T4.95: Fire-and-forget notification log
+        addDoc(collection(db, 'notification_log'), {
+          ownerId:       ownerId,
+          ownerName:     appt.ownerName || null,
+          status:        'reminder',
+          petName:       vars.petName,
+          title:         title,
+          body:          body,
+          appointmentId: appt.id,
+          sentAt:        Timestamp.now(),
+          sentBy:        'System (Auto-Reminder)',
+          channel:       'push',
+          type:          'reminder',
+        }).catch(() => {});
 
         // 4f. Stamp reminderSentAt to prevent re-sending today
         await updateDoc(doc(db, 'appointments', appt.id), {

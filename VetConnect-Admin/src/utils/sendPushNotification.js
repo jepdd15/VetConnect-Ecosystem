@@ -5,11 +5,12 @@
  * POSTs to the Cloudflare Worker /push endpoint. Never blocks the UI.
  * Never causes a status write to fail.
  */
-import { doc, getDoc, getDocs, collection } from 'firebase/firestore';
+import { doc, getDoc, getDocs, collection, addDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 
 // ─── Module-level caches ─────────────────────────────────────────────────────
-const tokenCache = new Map(); // ownerId → expoPushToken | null
+const tokenCache     = new Map(); // ownerId → expoPushToken | null
+const ownerNameCache = new Map(); // ownerId → displayName | null
 let cachedWorkerUrl = undefined; // undefined = not fetched, null = fetched but empty, string = ready
 
 // ─── Token resolver ──────────────────────────────────────────────────────────
@@ -24,8 +25,11 @@ export async function resolvePushToken(ownerId) {
 
   try {
     const userSnap = await getDoc(doc(db, 'users', ownerId));
-    const token = userSnap.exists() ? (userSnap.data().expoPushToken || null) : null;
+    const data = userSnap.exists() ? userSnap.data() : {};
+    const token = data.expoPushToken || null;
     tokenCache.set(ownerId, token);
+    // T4.95: Cache owner name while we have the doc — zero extra reads
+    ownerNameCache.set(ownerId, data.fullName || data.name || null);
     return token;
   } catch {
     tokenCache.set(ownerId, null);
@@ -109,6 +113,7 @@ async function getCustomTemplate(status) {
  * @param {string} [params.visitGroupId] - Multi-pet visit group ID
  * @param {string} [params.customTitle] - Override title (from notification_templates)
  * @param {string} [params.customBody] - Override body (from notification_templates)
+ * @param {string} [params.sentBy] - Staff display name for audit logging (T4.95)
  */
 export function sendPushNotification({
   ownerId,
@@ -120,6 +125,7 @@ export function sendPushNotification({
   visitGroupId,
   customTitle,
   customBody,
+  sentBy,
 }) {
   // Guard: walk-ins and unknown owners have no mobile app
   if (!ownerId || ownerId === 'WALK_IN_USER' || ownerId === 'UNKNOWN') return;
@@ -127,14 +133,14 @@ export function sendPushNotification({
   // Internal async work — fire and forget
   _dispatchPush({
     ownerId, status, petName, vetName, ticketNumber,
-    appointmentId, visitGroupId, customTitle, customBody,
+    appointmentId, visitGroupId, customTitle, customBody, sentBy,
   }).catch((err) => {
     console.error('[sendPushNotification] Silent failure:', err?.message || err);
   });
 }
 
 // ─── Internal dispatch (async, never exposed) ────────────────────────────────
-async function _dispatchPush({ ownerId, status, petName, vetName, ticketNumber, appointmentId, visitGroupId, customTitle, customBody }) {
+async function _dispatchPush({ ownerId, status, petName, vetName, ticketNumber, appointmentId, visitGroupId, customTitle, customBody, sentBy }) {
   const [pushToken, workerUrl] = await Promise.all([
     resolvePushToken(ownerId),
     getWorkerUrl(),
@@ -171,4 +177,19 @@ async function _dispatchPush({ ownerId, status, petName, vetName, ticketNumber, 
       ...(finalBody ? { customBody: finalBody } : {}),
     }),
   });
+
+  // T4.95: Fire-and-forget notification log — never blocks or throws
+  addDoc(collection(db, 'notification_log'), {
+    ownerId,
+    ownerName:     ownerNameCache.get(ownerId) || null,
+    status:        status || null,
+    petName:       petName || null,
+    title:         finalTitle || null,
+    body:          finalBody || null,
+    appointmentId: appointmentId || null,
+    sentAt:        Timestamp.now(),
+    sentBy:        sentBy || 'System',
+    channel:       'push',
+    type:          'status',
+  }).catch(() => {});
 }

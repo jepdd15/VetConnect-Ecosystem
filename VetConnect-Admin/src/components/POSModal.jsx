@@ -659,6 +659,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
       });
 
       // T4.90: Push notification — checkout complete
+      const posCashierName = profile?.fullName || 'POS Cashier';
       if (billingMode === 'group' && isGroupVisit) {
         groupAppointments.forEach((appt) => {
           sendPushNotification({
@@ -667,6 +668,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             petName: appt.petName,
             appointmentId: appt.id,
             visitGroupId: patient.visitGroupId,
+            sentBy: posCashierName,
           });
         });
       } else {
@@ -676,6 +678,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
           petName: patient.petName,
           appointmentId: patient.id,
           visitGroupId: patient.visitGroupId,
+          sentBy: posCashierName,
         });
       }
 

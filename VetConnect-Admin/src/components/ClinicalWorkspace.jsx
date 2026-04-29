@@ -1459,6 +1459,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 vetName: vetName,
                 appointmentId: patient.id,
                 visitGroupId: patient.visitGroupId,
+                sentBy: vetName,
               });
 
               // Mutate local tracking so the subsequent sign-off batch uses correct values.
@@ -1726,6 +1727,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         vetName: vetName,
         appointmentId: patient.id,
         visitGroupId: patient.visitGroupId,
+        sentBy: vetName,
       });
 
       // Set ref SYNCHRONOUSLY so unmount cleanup sees it immediately, before React
@@ -2219,13 +2221,15 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       });
 
       // T4.90: Push notification — re-route to dispensing/billing
+      const rerouteVetName = auth.currentUser?.displayName || 'Clinician';
       sendPushNotification({
         ownerId: patient.ownerId,
         status: nextStatus,
         petName: patient.petName,
-        vetName: auth.currentUser?.displayName || 'Clinician',
+        vetName: rerouteVetName,
         appointmentId: patient.id,
         visitGroupId: patient.visitGroupId,
+        sentBy: rerouteVetName,
       });
 
       showToast(`Patient re-routed to ${nextStatus}.`, 'success');

@@ -55,6 +55,7 @@ import AttachFileIcon from '@mui/icons-material/AttachFile';
 import BlockIcon from '@mui/icons-material/Block';
 import UndoIcon from '@mui/icons-material/Undo';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 
 // Charting
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
@@ -82,6 +83,7 @@ import ReferralModal from './components/ReferralModal';
 import WalkInModal from '../Queue/WalkInModal';
 import AmendmentDialog from '../../components/AmendmentDialog';
 import SendNotificationDialog from '../../components/SendNotificationDialog';
+import PetHistoryAIDrawer from './components/PetHistoryAIDrawer';
 
 // ── Species-normal vital reference ranges ────────────────────────
 // Sourced from standard veterinary references.
@@ -172,6 +174,10 @@ export default function PatientDashboard() {
   // T4.92: Custom notification dialog
   const [notifDialogOpen, setNotifDialogOpen] = useState(false);
 
+  // T4.96: AI History Assistant
+  const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
+  const [llmConfig, setLlmConfig] = useState({ enabled: false, workerUrl: '' });
+
   useEffect(() => {
     if (!auditLogExpanded || !owner?.id) return;
     let cancelled = false;
@@ -213,6 +219,20 @@ export default function PatientDashboard() {
       setDeptsList(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
     return () => { unsubSvc(); unsubDept(); };
+  }, []);
+
+  // T4.96: LLM config fetch — one-shot, no listener needed
+  useEffect(() => {
+    let cancelled = false;
+    getDoc(doc(db, 'clinic_settings', 'llm_config'))
+      .then(snap => {
+        if (!cancelled && snap.exists()) {
+          const d = snap.data();
+          setLlmConfig({ enabled: d.enabled ?? false, workerUrl: d.workerUrl ?? '' });
+        }
+      })
+      .catch(e => console.warn('[PatientDashboard] LLM config fetch skipped:', e.message));
+    return () => { cancelled = true; };
   }, []);
 
   const recordRefs = useRef({});
@@ -892,6 +912,25 @@ export default function PatientDashboard() {
           >
             Notify Owner
           </Button>
+
+          {/* T4.96: AI History Assistant — gated on LLM config */}
+          {llmConfig.enabled && !!llmConfig.workerUrl && (
+            <Button
+              variant="outlined"
+              size="small"
+              disabled={isErased}
+              startIcon={<AutoAwesomeIcon sx={{ fontSize: '15px !important' }} />}
+              onClick={() => setAiDrawerOpen(true)}
+              sx={{
+                fontFamily: FONT, fontWeight: 700, fontSize: '0.78rem', textTransform: 'none',
+                color: COLORS.grooming, borderColor: COLORS.kpiPurpleBorder, borderRadius: 0,
+                px: 2, height: 36,
+                '&:hover': { borderColor: COLORS.grooming, bgcolor: COLORS.kpiPurpleBg },
+              }}
+            >
+              AI Assistant
+            </Button>
+          )}
         </Box>
       </Box>
 
@@ -2440,6 +2479,17 @@ export default function PatientDashboard() {
         onSent={({ title, body }) => {
           console.log('[PatientDashboard] Custom notification sent:', { title, body, ownerId: pet?.ownerId });
         }}
+      />
+
+      {/* T4.96: AI History Assistant drawer */}
+      <PetHistoryAIDrawer
+        open={aiDrawerOpen}
+        onClose={() => setAiDrawerOpen(false)}
+        pet={pet}
+        owner={owner}
+        records={history}
+        vaccinations={vaccinationStatus}
+        workerUrl={llmConfig.workerUrl}
       />
     </Box>
   );

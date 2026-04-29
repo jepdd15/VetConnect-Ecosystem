@@ -151,6 +151,64 @@ export async function callClinicalReasoning({
 }
 
 /**
+ * Sends a multi-turn conversation to the Cloudflare Worker proxy.
+ * Unlike callClinicalReasoning (which builds a single structured message),
+ * this function accepts a pre-built messages array for conversational use.
+ *
+ * @param {object} params
+ * @param {Array<{role: 'user'|'assistant', content: string}>} params.messages
+ * @param {string} params.systemPrompt - System prompt providing context
+ * @param {string} params.workerUrl    - Cloudflare Worker URL
+ * @returns {Promise<{ text: string, tokenCount: number | null }>}
+ * @throws {Error} with a human-readable message on failure
+ */
+export async function chatWithHistory({ messages, systemPrompt, workerUrl }) {
+  if (!workerUrl?.trim()) {
+    throw new Error('Worker URL is not configured.');
+  }
+  if (!messages?.length) {
+    throw new Error('At least one message is required.');
+  }
+
+  let response;
+  try {
+    response = await fetch(workerUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system: systemPrompt || '',
+        messages,
+      }),
+    });
+  } catch {
+    throw new Error(buildErrorMessage(null, 'Network error.'));
+  }
+
+  if (!response.ok) {
+    throw new Error(buildErrorMessage(response.status, `HTTP ${response.status}`));
+  }
+
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error('Invalid response from Worker — could not parse JSON.');
+  }
+
+  const text = data?.content?.[0]?.text;
+  if (!text) {
+    throw new Error('Worker returned an empty response. Check the Worker logs.');
+  }
+
+  const tokenCount =
+    data.usage
+      ? (data.usage.input_tokens || 0) + (data.usage.output_tokens || 0)
+      : null;
+
+  return { text, tokenCount };
+}
+
+/**
  * Sends a minimal test request to the Cloudflare Worker to validate
  * connectivity and API key validity without consuming significant tokens.
  *

@@ -36,18 +36,14 @@ import { ZEN_PLACEHOLDERS } from '../utils/soapConstants';
  * @prop {string}      [intakeClientNotes='']         - Client's booking notes from the appointment doc
  * @prop {string}      [intakeStaffNotes='']          - Staff triage/walk-in notes from the appointment doc
  *
- * LLM Clinical Reasoning props (T3.107 / T4.109 — forwarded to DiagnosticBridge):
- * @prop {boolean}     [llmEnabled=false]          - Whether the LLM feature is active
- * @prop {boolean}     [llmLoading=false]           - Whether an LLM call is in-flight
- * @prop {Array}       [llmMessages=[]]             - Conversation history [{role, content}]
- * @prop {string}      [llmError='']                - Error message if the LLM call failed
- * @prop {boolean}     [llmPanelOpen=false]         - Whether the LLM response panel is expanded
- * @prop {string}      [llmFollowUpInput='']        - Current follow-up input value
- * @prop {function}    [onAskAI]                    - Triggers initial LLM reasoning call
- * @prop {function}    [onDismissLlm]               - Collapses the LLM panel
- * @prop {function}    [onLlmFollowUpChange]        - Updates follow-up input value
- * @prop {function}    [onLlmFollowUp]              - Sends the current follow-up message
- * @prop {function}    [onResetAndAskAI]            - Clears conversation and re-analyzes
+ * LLM Clinical Reasoning props (T4.110 — button-level only; display panels moved to ClinicalAIPanel):
+ * @prop {boolean}     [llmEnabled=false]      - Whether the LLM feature is active
+ * @prop {boolean}     [llmLoading=false]       - Whether an LLM call is in-flight
+ * @prop {Array}       [llmMessages=[]]         - Conversation history (used for button label switching)
+ * @prop {function}    [onAskAI]                - Triggers initial LLM reasoning call
+ * @prop {function}    [onResetAndAskAI]        - Clears conversation and re-analyzes
+ * @prop {function}    [onToggleAIPanel]        - (open: boolean) => void — toggles the AI drawer
+ * @prop {boolean}     [isAIPanelOpen=false]    - Whether the AI side panel is currently visible
  */
 export default function SoapGrid({
   soapData, updateSoap, setFullscreenField,
@@ -60,9 +56,9 @@ export default function SoapGrid({
   followUpNode = null,
   canToggleVaccine = false, onManualVaccineToggle,
   intakeClientNotes = '', intakeStaffNotes = '',
-  llmEnabled = false, llmLoading = false, llmMessages = [], llmError = '',
-  llmPanelOpen = false, llmFollowUpInput = '', onAskAI, onDismissLlm,
-  onLlmFollowUpChange, onLlmFollowUp, onResetAndAskAI,
+  llmEnabled = false, llmLoading = false, llmMessages = [],
+  onAskAI, onResetAndAskAI,
+  onToggleAIPanel, isAIPanelOpen = false,
 }) {
   const textFieldSx = { flex: 1, '& .MuiInputBase-root': { height: '100%', alignItems: 'flex-start' } };
   const inputPropsSx = { disableUnderline: true, sx: { fontFamily: FONT, fontSize: '1.25rem', color: COLORS.brand, lineHeight: 1.6 } };
@@ -120,21 +116,14 @@ export default function SoapGrid({
         <SoapQuadrant id="assessment" label="A - ASSESSMENT (DIAGNOSIS & PROGNOSIS)" onZoomField={setFullscreenField}>
           <DiagnosticBridge
             soapData={soapData}
-            assistiveText={assistiveText}
-            diagnosticOpen={diagnosticOpen}
-            onAnalyze={() => { runAssistiveDiagnosis(); setDiagnosticOpen(true); }}
-            onDismiss={() => setDiagnosticOpen(false)}
             llmEnabled={llmEnabled}
             llmLoading={llmLoading}
             llmMessages={llmMessages}
-            llmError={llmError}
-            llmPanelOpen={llmPanelOpen}
-            llmFollowUpInput={llmFollowUpInput}
+            onAnalyze={() => { runAssistiveDiagnosis(); setDiagnosticOpen(true); }}
             onAskAI={onAskAI}
-            onDismissLlm={onDismissLlm}
-            onLlmFollowUpChange={onLlmFollowUpChange}
-            onLlmFollowUp={onLlmFollowUp}
             onResetAndAskAI={onResetAndAskAI}
+            onToggleAIPanel={onToggleAIPanel}
+            isAIPanelOpen={isAIPanelOpen}
           />
           <TextField
             multiline fullWidth variant="standard"

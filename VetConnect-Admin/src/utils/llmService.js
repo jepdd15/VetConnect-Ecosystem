@@ -286,6 +286,7 @@ Given a patient's SOAP data (Subjective history, Objective findings including vi
 FORMAT RULES:
 - Use clear headings with the numbers above
 - Be concise but thorough
+- Do NOT use markdown tables — they render poorly in narrow panels. Use numbered or bulleted lists with bold labels instead (e.g., "1. **Trauma (fracture/sprain)** — HIGH — Limping is classic; wild cat at higher injury risk")
 - Never diagnose definitively — always frame as differentials
 - If data is insufficient, state what additional information would help
 - Do not repeat the patient data back — go straight to analysis`;

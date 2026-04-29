@@ -10,7 +10,8 @@ import {
   Grid, // MUI v6 Grid
   Stack, Collapse, Tooltip, InputBase, Switch,
   Autocomplete, Alert, Snackbar, CircularProgress,
-  DialogTitle, DialogContent, DialogContentText, DialogActions
+  DialogTitle, DialogContent, DialogContentText, DialogActions,
+  Drawer,
 } from '@mui/material';
 
 // Icons (Unified)
@@ -36,12 +37,11 @@ import { useClinicSettings } from '../hooks/useClinicSettings';
 import { useUser } from '../context/UserContext';
 import { chatWithHistory, buildUserMessage, DEFAULT_CLINICAL_SYSTEM_PROMPT } from '../utils/llmService';
 import { sendPushNotification } from '../utils/sendPushNotification';
-import { normalizeMarkdownTables } from '../utils/normalizeMarkdownTables';
-import ReactMarkdown from 'react-markdown';
 
 // Design Tokens
 import { FONT, TYPE, COLORS } from '../theme/designTokens';
 import SoapGrid from './SoapGrid';
+import ClinicalAIPanel from './ClinicalAIPanel';
 import EMRDrawer from './EMRDrawer';
 import { ServiceProgressCard } from './ServiceProgressCard';
 import AmendmentDialog from './AmendmentDialog';
@@ -220,127 +220,75 @@ export const VitalsGrid = React.memo(function VitalsGrid({ soapData, updateSoap,
 });
 
 /**
- * DiagnosticBridge — "Analyze S+O" button + collapsible rule-based suggestion panel,
- * plus an optional "Ask AI" button and purple LLM response panel.
+ * DiagnosticBridge — buttons-only trigger surface for AI clinical reasoning.
  *
- * Rule-based engine (blue) and LLM panel (purple) are visually distinct and
- * can be open simultaneously.
+ * The response panels (rule-based blue + LLM purple) have moved to ClinicalAIPanel.
+ * This component now renders only the "Analyze S+O" and "Ask AI" / "New Analysis"
+ * trigger buttons, plus a "Show/Hide AI Panel" toggle.
  *
- * @prop {object}   soapData       - Current SOAP data (used to determine disabled state)
- * @prop {string}   assistiveText  - Rule-based suggestion text
- * @prop {boolean}  diagnosticOpen - Whether the rule-based panel is expanded
- * @prop {function} onAnalyze      - Runs the rule-based engine and opens its panel
- * @prop {function} onDismiss      - Collapses the rule-based panel
- *
- * LLM props (all optional — feature is invisible when llmEnabled is false):
- * @prop {boolean}  [llmEnabled=false]        - Whether the LLM feature is active
- * @prop {boolean}  [llmLoading=false]         - Whether an LLM call is in-flight
- * @prop {Array}    [llmMessages=[]]           - Conversation history [{role, content}]
- * @prop {string}   [llmError='']              - Error message if the LLM call failed
- * @prop {boolean}  [llmPanelOpen=false]       - Whether the LLM response panel is expanded
- * @prop {string}   [llmFollowUpInput='']      - Current follow-up input value
- * @prop {function} [onAskAI]                  - Triggers initial LLM reasoning call
- * @prop {function} [onDismissLlm]             - Collapses the LLM panel
- * @prop {function} [onLlmFollowUpChange]      - Updates follow-up input value
- * @prop {function} [onLlmFollowUp]            - Sends the current follow-up message
- * @prop {function} [onResetAndAskAI]          - Clears conversation and re-analyzes
+ * @prop {object}   soapData           - Current SOAP data (for disabled state check)
+ * @prop {boolean}  [llmEnabled=false] - Whether LLM feature is active
+ * @prop {boolean}  [llmLoading=false] - LLM call in-flight
+ * @prop {Array}    [llmMessages=[]]   - Conversation history (used for label switching)
+ * @prop {function} onAnalyze          - Runs rule-based engine + opens AI panel
+ * @prop {function} [onAskAI]          - Triggers initial LLM call
+ * @prop {function} [onResetAndAskAI]  - Clears conversation and re-analyzes
+ * @prop {function} onToggleAIPanel    - (open: boolean) => void — toggles drawer/panel
+ * @prop {boolean}  isAIPanelOpen      - Whether the AI panel is currently visible
  */
 export const DiagnosticBridge = React.memo(function DiagnosticBridge({
   soapData,
-  assistiveText,
-  diagnosticOpen,
-  onAnalyze,
-  onDismiss,
   llmEnabled = false,
   llmLoading = false,
   llmMessages = [],
-  llmError = '',
-  llmPanelOpen = false,
-  llmFollowUpInput = '',
+  onAnalyze,
   onAskAI,
-  onDismissLlm,
-  onLlmFollowUpChange,
-  onLlmFollowUp,
   onResetAndAskAI,
+  onToggleAIPanel,
+  isAIPanelOpen,
 }) {
   const hasInputData = !!(soapData.subjective || soapData.objectiveNotes);
-  const hasAssistantResponse = llmMessages.some(m => m.role === 'assistant');
-
-  // Memoized at empty deps — same object reference every render so ReactMarkdown
-  // does not re-mount its tree on every keystroke in the follow-up input.
-  const markdownComponents = useMemo(() => ({
-    h1: ({ children }) => <Typography sx={{ fontFamily: FONT, fontSize: '1rem', fontWeight: 900, color: COLORS.grooming, mt: 1.5, mb: 0.5 }}>{children}</Typography>,
-    h2: ({ children }) => <Typography sx={{ fontFamily: FONT, fontSize: '0.9rem', fontWeight: 900, color: COLORS.grooming, mt: 1.25, mb: 0.5 }}>{children}</Typography>,
-    h3: ({ children }) => <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', fontWeight: 800, color: COLORS.grooming, mt: 1, mb: 0.25 }}>{children}</Typography>,
-    p: ({ children }) => <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', color: COLORS.textPrimary, lineHeight: 1.6, mb: 0.75 }}>{children}</Typography>,
-    li: ({ children }) => <li style={{ fontSize: '0.8rem', marginBottom: '2px', lineHeight: 1.5 }}>{children}</li>,
-    strong: ({ children }) => <strong>{children}</strong>,
-    table: ({ children }) => <table style={{ borderCollapse: 'collapse', width: '100%', marginBottom: '8px', fontSize: '0.75rem' }}>{children}</table>,
-    th: ({ children }) => <th style={{ border: `1px solid ${COLORS.kpiPurpleBorder}`, padding: '4px 8px', fontWeight: 800, textAlign: 'left', borderRadius: 0, backgroundColor: 'rgba(123,31,162,0.06)' }}>{children}</th>,
-    td: ({ children }) => <td style={{ border: `1px solid ${COLORS.kpiPurpleBorder}`, padding: '4px 8px', borderRadius: 0 }}>{children}</td>,
-    hr: () => <hr style={{ border: 'none', borderTop: `1px solid ${COLORS.kpiPurpleBorder}`, margin: '8px 0' }} />,
-  }), []);
-
-  const llmPanelRef = useRef(null);
-
-  useEffect(() => {
-    if (llmPanelOpen && llmPanelRef.current) {
-      // Small delay lets MUI Collapse animation begin before scroll position calculates
-      const timer = setTimeout(() => {
-        const el = llmPanelRef.current;
-        if (el) {
-          // Walk up to the first ancestor with a scrollable overflowY — the SoapQuadrant
-          // scroller — so we never trigger scrollIntoView on the God View's overflow:hidden parent
-          let parent = el.parentElement;
-          while (parent && !['auto', 'scroll'].includes(getComputedStyle(parent).overflowY)) {
-            parent = parent.parentElement;
-          }
-          if (parent) {
-            const parentRect = parent.getBoundingClientRect();
-            const elRect = el.getBoundingClientRect();
-            if (elRect.bottom > parentRect.bottom || elRect.top < parentRect.top) {
-              parent.scrollTo({ top: parent.scrollTop + (elRect.top - parentRect.top), behavior: 'smooth' });
-            }
-          }
-        }
-      }, 150);
-      return () => clearTimeout(timer);
-    }
-  }, [llmPanelOpen]);
+  const hasConversation = llmMessages.length > 0;
 
   return (
     <Box sx={{ mb: 1.5, flexShrink: 0 }}>
-      {/* Button row — rule-based + AI side by side */}
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 0.5 }}>
-        {/* Rule-based "Analyze S+O" button — unchanged */}
+
+        {/* Rule-based "Analyze S+O" — opens AI panel to show suggestions */}
         <Button
           size="small"
           variant="outlined"
           startIcon={<AutoFixHighIcon />}
-          onClick={onAnalyze}
+          onClick={() => { onAnalyze(); onToggleAIPanel(true); }}
           disabled={!hasInputData}
           sx={{
             fontWeight: 900,
             fontSize: '0.65rem',
             textTransform: 'uppercase',
             letterSpacing: 0.5,
-            color: COLORS.medical || '#1565C0',
-            borderColor: COLORS.medical || '#1565C0',
-            mb: 0.5,
+            color: COLORS.medical,
+            borderColor: COLORS.medical,
+            borderRadius: 0,
             '&:hover': { bgcolor: 'rgba(21,101,192,0.05)' },
           }}
         >
           Analyze S+O
         </Button>
 
-        {/* LLM AI button — only visible when llmEnabled.
-            Label changes to "New Analysis" when a conversation exists. */}
+        {/* LLM "Ask AI" / "New Analysis" — opens AI panel */}
         {llmEnabled && (
           <Button
             size="small"
             variant="outlined"
-            startIcon={llmLoading ? <CircularProgress size={14} sx={{ color: COLORS.grooming }} /> : <PsychologyIcon />}
-            onClick={llmMessages.length > 0 ? onResetAndAskAI : onAskAI}
+            startIcon={llmLoading
+              ? <CircularProgress size={14} sx={{ color: COLORS.grooming }} />
+              : <PsychologyIcon />
+            }
+            onClick={() => {
+              if (hasConversation) onResetAndAskAI();
+              else onAskAI();
+              onToggleAIPanel(true);
+            }}
             disabled={!hasInputData || llmLoading}
             sx={{
               fontWeight: 900,
@@ -349,180 +297,36 @@ export const DiagnosticBridge = React.memo(function DiagnosticBridge({
               letterSpacing: 0.5,
               color: COLORS.grooming,
               borderColor: COLORS.grooming,
-              mb: 0.5,
+              borderRadius: 0,
               '&:hover': { bgcolor: 'rgba(123,31,162,0.05)' },
               '&.Mui-disabled': { opacity: 0.5 },
             }}
           >
-            {llmLoading ? 'Analyzing...' : llmMessages.length > 0 ? 'New Analysis' : 'Ask AI'}
+            {llmLoading ? 'Analyzing...' : hasConversation ? 'New Analysis' : 'Ask AI'}
+          </Button>
+        )}
+
+        {/* Show/Hide toggle — visible once a conversation exists (default view only) */}
+        {llmEnabled && hasConversation && (
+          <Button
+            size="small"
+            variant="text"
+            startIcon={<PsychologyIcon />}
+            onClick={() => onToggleAIPanel(!isAIPanelOpen)}
+            sx={{
+              fontWeight: 900,
+              fontSize: '0.65rem',
+              textTransform: 'uppercase',
+              letterSpacing: 0.5,
+              borderRadius: 0,
+              color: isAIPanelOpen ? COLORS.grooming : COLORS.textMuted,
+              '&:hover': { bgcolor: 'rgba(123,31,162,0.05)' },
+            }}
+          >
+            {isAIPanelOpen ? 'Hide AI Panel' : 'Show AI Panel'}
           </Button>
         )}
       </Box>
-
-      {/* Rule-based response panel (blue) — unchanged */}
-      <Collapse in={diagnosticOpen && !!assistiveText}>
-        <Box sx={{
-          bgcolor: 'rgba(21,101,192,0.04)',
-          border: '1px solid rgba(21,101,192,0.15)',
-          p: 1.5,
-          mb: 1,
-        }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
-            <Typography sx={{ ...TYPE.label, color: '#1565C0', fontWeight: 900, fontSize: '0.6rem' }}>
-              CLINICAL INTELLIGENCE SUGGESTIONS
-            </Typography>
-            <IconButton size="small" onClick={onDismiss} sx={{ p: 0.25 }}>
-              <CloseIcon sx={{ fontSize: 12, color: COLORS.textMuted }} />
-            </IconButton>
-          </Box>
-          <Typography sx={{
-            fontSize: '0.8rem',
-            color: COLORS.textPrimary,
-            whiteSpace: 'pre-line',
-            lineHeight: 1.6,
-          }}>
-            {assistiveText}
-          </Typography>
-        </Box>
-      </Collapse>
-
-      {/* LLM response panel (purple) — only rendered when llmEnabled */}
-      {llmEnabled && (
-        <Collapse in={llmPanelOpen}>
-          <Box ref={llmPanelRef} sx={{
-            bgcolor: 'rgba(123,31,162,0.04)',
-            border: `1px solid ${COLORS.kpiPurpleBorder}`,
-            p: 1.5,
-            mb: 1,
-          }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
-              <Typography sx={{ ...TYPE.label, color: COLORS.grooming, fontWeight: 900, fontSize: '0.6rem' }}>
-                AI CLINICAL REASONING (CLAUDE)
-              </Typography>
-              <IconButton size="small" onClick={onDismissLlm} sx={{ p: 0.25 }}>
-                <CloseIcon sx={{ fontSize: 12, color: COLORS.textMuted }} />
-              </IconButton>
-            </Box>
-
-            {/* Mandatory disclaimer */}
-            <Typography sx={{
-              fontSize: '0.65rem',
-              color: COLORS.textMuted,
-              fontStyle: 'italic',
-              mb: 1,
-              lineHeight: 1.4,
-            }}>
-              AI-generated suggestions for reference only. All clinical decisions must be made by the attending veterinarian.
-            </Typography>
-
-            {/* Initial loading state — shown before first response arrives */}
-            {llmLoading && llmMessages.length <= 1 && !llmError && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 1 }}>
-                <CircularProgress size={16} sx={{ color: COLORS.grooming }} />
-                <Typography sx={{ fontSize: '0.8rem', color: COLORS.grooming, fontWeight: 700 }}>
-                  Analyzing clinical data...
-                </Typography>
-              </Box>
-            )}
-
-            {/* Conversation view — scrollable list of user and assistant turns */}
-            {llmMessages.length > 0 && (
-              <Box sx={{
-                maxHeight: 300,
-                overflowY: 'auto',
-                mb: 1,
-                scrollbarWidth: 'thin',
-                '&::-webkit-scrollbar': { width: '4px' },
-                '&::-webkit-scrollbar-thumb': { background: '#E0E0E0' },
-              }}>
-                {llmMessages.map((msg, idx) => (
-                  <Box key={idx} sx={{
-                    mb: 1,
-                    p: 1,
-                    bgcolor: msg.role === 'user' ? 'rgba(62,39,35,0.04)' : 'rgba(123,31,162,0.04)',
-                    borderLeft: msg.role === 'user'
-                      ? `3px solid ${COLORS.brand}`
-                      : `3px solid ${COLORS.grooming}`,
-                  }}>
-                    <Typography sx={{
-                      ...TYPE.label,
-                      color: msg.role === 'user' ? COLORS.brand : COLORS.grooming,
-                      fontWeight: 900,
-                      fontSize: '0.55rem',
-                      mb: 0.5,
-                    }}>
-                      {msg.role === 'user' ? 'YOU' : 'AI ASSISTANT'}
-                    </Typography>
-                    {msg.role === 'assistant' ? (
-                      <Box sx={{ fontSize: '0.8rem', color: COLORS.textPrimary, lineHeight: 1.6, fontFamily: FONT }}>
-                        <ReactMarkdown components={markdownComponents}>
-                          {normalizeMarkdownTables(msg.content)}
-                        </ReactMarkdown>
-                      </Box>
-                    ) : (
-                      <Typography sx={{ fontSize: '0.8rem', color: COLORS.textPrimary, lineHeight: 1.5, whiteSpace: 'pre-line' }}>
-                        {msg.content.length > 200 ? `${msg.content.substring(0, 200)}...` : msg.content}
-                      </Typography>
-                    )}
-                  </Box>
-                ))}
-
-                {/* Inline "Thinking..." indicator during follow-up calls */}
-                {llmLoading && llmMessages.length > 1 && (
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5, pl: 1 }}>
-                    <CircularProgress size={12} sx={{ color: COLORS.grooming }} />
-                    <Typography sx={{ fontSize: '0.75rem', color: COLORS.grooming, fontWeight: 700 }}>
-                      Thinking...
-                    </Typography>
-                  </Box>
-                )}
-              </Box>
-            )}
-
-            {/* Error state — shown after messages list so follow-up errors appear at the bottom */}
-            {llmError && (
-              <Typography sx={{ fontSize: '0.8rem', color: COLORS.danger, fontWeight: 700, mb: 0.5 }}>
-                {llmError}
-              </Typography>
-            )}
-
-            {/* Follow-up input — only shown after the first assistant response */}
-            {hasAssistantResponse && !llmLoading && (
-              <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', mt: 0.5 }}>
-                <InputBase
-                  placeholder="Ask a follow-up question..."
-                  value={llmFollowUpInput}
-                  onChange={(e) => onLlmFollowUpChange(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      onLlmFollowUp();
-                    }
-                  }}
-                  sx={{
-                    flex: 1,
-                    fontSize: '0.8rem',
-                    fontFamily: FONT,
-                    border: `1px solid ${COLORS.kpiPurpleBorder}`,
-                    px: 1,
-                    py: 0.5,
-                    '&:focus-within': { borderColor: COLORS.grooming },
-                  }}
-                  inputProps={{ 'aria-label': 'Follow-up question for AI' }}
-                />
-                <IconButton
-                  size="small"
-                  onClick={onLlmFollowUp}
-                  disabled={!llmFollowUpInput?.trim()}
-                  sx={{ color: COLORS.grooming, '&.Mui-disabled': { opacity: 0.3 } }}
-                >
-                  <NavigateNextIcon sx={{ fontSize: 18 }} />
-                </IconButton>
-              </Box>
-            )}
-          </Box>
-        </Collapse>
-      )}
     </Box>
   );
 });
@@ -621,7 +425,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   const [llmFollowUpInput, setLlmFollowUpInput] = useState('');
   const [llmLoading, setLlmLoading] = useState(false);
   const [llmError, setLlmError] = useState('');
-  const [llmPanelOpen, setLlmPanelOpen] = useState(false);
+  // T4.110: AI side panel — replaces the inline LLM Collapse panel in DiagnosticBridge.
+  // Default view opens a right-anchored MUI Drawer; God View uses a persistent third column.
+  const [isAIDrawerOpen, setIsAIDrawerOpen] = useState(false);
   // Unmount guard: set to true on unmount to prevent setState after component is gone.
   const llmAbortRef = useRef(false);
 
@@ -745,7 +551,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           setLlmMessages([]);
           setLlmFollowUpInput('');
           setLlmError('');
-          setLlmPanelOpen(false);
+          setIsAIDrawerOpen(false);
 
           // Sign-off guard: check if a medical record already exists for this appointment.
           // The 'medical' key in lockedServices prevents duplicate sign-off.
@@ -1196,7 +1002,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       setLlmMessages(cappedMessages);
       setLlmLoading(true);
       setLlmError('');
-      setLlmPanelOpen(true);
+      setIsAIDrawerOpen(true);
       setLlmFollowUpInput('');
     }
 
@@ -1282,6 +1088,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     setLlmMessages([]);
     runLlmDiagnosis(undefined, { forceInitial: true });
   };
+
+  /** Opens or closes the AI side panel (drawer in default view, no-op in God View). */
+  const handleToggleAIPanel = (open) => setIsAIDrawerOpen(open);
 
   // --- 3. TREATMENT PLAN LOGIC (THE BRIDGE) ---
   const handleAddRx = async (item) => {
@@ -2861,14 +2670,10 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 llmEnabled={llmConfig.enabled && !!llmConfig.workerUrl}
                 llmLoading={llmLoading}
                 llmMessages={llmMessages}
-                llmError={llmError}
-                llmPanelOpen={llmPanelOpen}
-                llmFollowUpInput={llmFollowUpInput}
                 onAskAI={runLlmDiagnosis}
-                onDismissLlm={() => setLlmPanelOpen(false)}
-                onLlmFollowUpChange={setLlmFollowUpInput}
-                onLlmFollowUp={handleLlmFollowUp}
                 onResetAndAskAI={handleResetAndAskAI}
+                onToggleAIPanel={handleToggleAIPanel}
+                isAIPanelOpen={isAIDrawerOpen}
               />
             );
           })()}
@@ -3190,24 +2995,18 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           )}
 
           {/* Show diagnostic bridge when Zen-expanding the Assessment section */}
+          {/* T4.110: Zen Focus Assessment — buttons only; clicking opens the AI drawer overlay */}
           {fullscreenField === 'assessment' && (
             <DiagnosticBridge
               soapData={soapData}
-              assistiveText={assistiveText}
-              diagnosticOpen={diagnosticOpen}
-              onAnalyze={() => { runAssistiveDiagnosis(); setDiagnosticOpen(true); }}
-              onDismiss={() => setDiagnosticOpen(false)}
               llmEnabled={llmConfig.enabled && !!llmConfig.workerUrl}
               llmLoading={llmLoading}
               llmMessages={llmMessages}
-              llmError={llmError}
-              llmPanelOpen={llmPanelOpen}
-              llmFollowUpInput={llmFollowUpInput}
+              onAnalyze={() => { runAssistiveDiagnosis(); setDiagnosticOpen(true); }}
               onAskAI={runLlmDiagnosis}
-              onDismissLlm={() => setLlmPanelOpen(false)}
-              onLlmFollowUpChange={setLlmFollowUpInput}
-              onLlmFollowUp={handleLlmFollowUp}
               onResetAndAskAI={handleResetAndAskAI}
+              onToggleAIPanel={handleToggleAIPanel}
+              isAIPanelOpen={isAIDrawerOpen}
             />
           )}
 
@@ -3257,54 +3056,86 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             </Button>
         </Box>
 
-        <Box sx={{ flex: 1, minHeight: 0, overflow: 'hidden', bgcolor: '#FFF' }}>
-          {/* T3.70: God-View also receives intake context for the read-only context box */}
-          {(() => {
-            const rawClientNotes = patient?.clientNotes || (!patient?.staffNotes ? patient?.notes : '') || '';
-            const filteredClientNotes = (
-              rawClientNotes === 'Walk-in client' ||
-              rawClientNotes.includes('QUICK ADMIT')
-            ) ? '' : rawClientNotes;
-            const intakeStaffNotes = patient?.staffNotes || '';
+        {/* T4.110: God View 3-column layout — SOAP grid (flex 7) + AI panel (flex 3).
+            AI panel is always visible, no close button (variant='column'). */}
+        <Box sx={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'row', bgcolor: '#FFF' }}>
+          {/* Left ~70%: SOAP Grid */}
+          <Box sx={{ flex: 7, minWidth: 0, overflow: 'hidden' }}>
+            {/* T3.70: God-View also receives intake context for the read-only context box */}
+            {(() => {
+              const rawClientNotes = patient?.clientNotes || (!patient?.staffNotes ? patient?.notes : '') || '';
+              const filteredClientNotes = (
+                rawClientNotes === 'Walk-in client' ||
+                rawClientNotes.includes('QUICK ADMIT')
+              ) ? '' : rawClientNotes;
+              const intakeStaffNotes = patient?.staffNotes || '';
 
-            return (
-              <SoapGrid
-                soapData={soapData}
-                updateSoap={updateSoap}
-                setFullscreenField={setFullscreenField}
-                getTriageLevel={getTriageLevel}
-                renderHistoricalLabel={renderHistoricalLabel}
-                runAssistiveDiagnosis={runAssistiveDiagnosis}
-                assistiveText={assistiveText}
-                diagnosticOpen={diagnosticOpen}
-                setDiagnosticOpen={setDiagnosticOpen}
-                SoapQuadrant={SoapQuadrant}
-                VitalsGrid={VitalsGrid}
-                DiagnosticBridge={DiagnosticBridge}
-                showVaccineForm={showVaccineForm}
-                vaccineFormNode={vaccineFormJSX}
-                labResultsNode={labResultsJSX}
-                showDraftSave={!lockedServices.has('medical')}
-                draftSaveNode={draftSaveJSX}
-                followUpNode={followUpJSX}
-                canToggleVaccine={!showVaccineForm && !isRecordLocked}
-                onManualVaccineToggle={() => setManualVaccineOverride(true)}
-                intakeClientNotes={filteredClientNotes}
-                intakeStaffNotes={intakeStaffNotes}
-                llmEnabled={llmConfig.enabled && !!llmConfig.workerUrl}
-                llmLoading={llmLoading}
-                llmMessages={llmMessages}
-                llmError={llmError}
-                llmPanelOpen={llmPanelOpen}
-                llmFollowUpInput={llmFollowUpInput}
-                onAskAI={runLlmDiagnosis}
-                onDismissLlm={() => setLlmPanelOpen(false)}
-                onLlmFollowUpChange={setLlmFollowUpInput}
-                onLlmFollowUp={handleLlmFollowUp}
-                onResetAndAskAI={handleResetAndAskAI}
-              />
-            );
-          })()}
+              return (
+                <SoapGrid
+                  soapData={soapData}
+                  updateSoap={updateSoap}
+                  setFullscreenField={setFullscreenField}
+                  getTriageLevel={getTriageLevel}
+                  renderHistoricalLabel={renderHistoricalLabel}
+                  runAssistiveDiagnosis={runAssistiveDiagnosis}
+                  assistiveText={assistiveText}
+                  diagnosticOpen={diagnosticOpen}
+                  setDiagnosticOpen={setDiagnosticOpen}
+                  SoapQuadrant={SoapQuadrant}
+                  VitalsGrid={VitalsGrid}
+                  DiagnosticBridge={DiagnosticBridge}
+                  showVaccineForm={showVaccineForm}
+                  vaccineFormNode={vaccineFormJSX}
+                  labResultsNode={labResultsJSX}
+                  showDraftSave={!lockedServices.has('medical')}
+                  draftSaveNode={draftSaveJSX}
+                  followUpNode={followUpJSX}
+                  canToggleVaccine={!showVaccineForm && !isRecordLocked}
+                  onManualVaccineToggle={() => setManualVaccineOverride(true)}
+                  intakeClientNotes={filteredClientNotes}
+                  intakeStaffNotes={intakeStaffNotes}
+                  llmEnabled={llmConfig.enabled && !!llmConfig.workerUrl}
+                  llmLoading={llmLoading}
+                  llmMessages={llmMessages}
+                  onAskAI={runLlmDiagnosis}
+                  onResetAndAskAI={handleResetAndAskAI}
+                  onToggleAIPanel={() => {}}
+                  isAIPanelOpen={true}
+                />
+              );
+            })()}
+          </Box>
+
+          {/* Right ~30%: Persistent AI Panel — always visible, no close button */}
+          <Box sx={{
+            flex: 3,
+            minWidth: 280,
+            maxWidth: 460,
+            borderLeft: `3px solid ${COLORS.grooming}`,
+            display: 'flex',
+            flexDirection: 'column',
+            bgcolor: '#FDFCFB',
+          }}>
+            <ClinicalAIPanel
+              variant="column"
+              soapData={soapData}
+              assistiveText={assistiveText}
+              diagnosticOpen={diagnosticOpen}
+              onAnalyze={() => { runAssistiveDiagnosis(); setDiagnosticOpen(true); }}
+              onDismissRuleBased={() => setDiagnosticOpen(false)}
+              llmEnabled={llmConfig.enabled && !!llmConfig.workerUrl}
+              llmLoading={llmLoading}
+              llmMessages={llmMessages}
+              llmError={llmError}
+              llmFollowUpInput={llmFollowUpInput}
+              onAskAI={runLlmDiagnosis}
+              onLlmFollowUpChange={setLlmFollowUpInput}
+              onLlmFollowUp={handleLlmFollowUp}
+              onResetAndAskAI={handleResetAndAskAI}
+              onClose={null}
+              petName={patient?.petName}
+            />
+          </Box>
         </Box>
       </Dialog>
 
@@ -3323,6 +3154,48 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           {toast.message}
         </Alert>
       </Snackbar>
+
+      {/* T4.110: AI Clinical Reasoning Drawer — right-anchored overlay (default view).
+          Temporary variant means it renders above content without pushing layout.
+          EMRDrawer and AI Drawer are mutually exclusive in practice — no z-index conflict. */}
+      <Drawer
+        anchor="right"
+        open={isAIDrawerOpen}
+        onClose={() => setIsAIDrawerOpen(false)}
+        variant="temporary"
+        sx={{ zIndex: 1400 }}
+        PaperProps={{
+          sx: {
+            width: 420,
+            borderRadius: 0,
+            border: `3px solid ${COLORS.grooming}`,
+            borderRight: 'none',
+            boxShadow: `-6px 0 0 ${COLORS.grooming}`,
+            display: 'flex',
+            flexDirection: 'column',
+          },
+        }}
+      >
+        <ClinicalAIPanel
+          variant="drawer"
+          soapData={soapData}
+          assistiveText={assistiveText}
+          diagnosticOpen={diagnosticOpen}
+          onAnalyze={() => { runAssistiveDiagnosis(); setDiagnosticOpen(true); }}
+          onDismissRuleBased={() => setDiagnosticOpen(false)}
+          llmEnabled={llmConfig.enabled && !!llmConfig.workerUrl}
+          llmLoading={llmLoading}
+          llmMessages={llmMessages}
+          llmError={llmError}
+          llmFollowUpInput={llmFollowUpInput}
+          onAskAI={runLlmDiagnosis}
+          onLlmFollowUpChange={setLlmFollowUpInput}
+          onLlmFollowUp={handleLlmFollowUp}
+          onResetAndAskAI={handleResetAndAskAI}
+          onClose={() => setIsAIDrawerOpen(false)}
+          petName={patient?.petName}
+        />
+      </Drawer>
 
       {/* T3.1: EMR History slide-over — read-only review of pet's full medical records */}
       <EMRDrawer

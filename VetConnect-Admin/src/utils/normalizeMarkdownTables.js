@@ -100,14 +100,51 @@ export function normalizeMarkdownTables(text) {
         normalized += ' |';
       }
 
-      // Rules 3 & 4: normalise cell spacing
-      if (isDelimiterRow(normalized)) {
-        normalized = normalizeDelimiterRow(normalized);
+      // Rule 6: detect header+delimiter merged on one line.
+      // Claude often outputs: "| Col1 | Col2 | | --- | --- |" or
+      // "| Col1 | Col2 | --- | --- |" (header + delimiter on same line).
+      // Split at the boundary where dash-only cells begin.
+      const delimInlineMatch = normalized.match(
+        /^(\|(?:[^|]*\|)+?)\s*\|\s*([-:\s|]+\|)$/
+      );
+      if (!delimInlineMatch) {
+        // Try alternate pattern: cells then "| --- | --- |" separated by "| |"
+        const pipeBreak = normalized.indexOf('| |');
+        if (pipeBreak > 0) {
+          const part1 = normalized.substring(0, pipeBreak + 1).trim();
+          const part2 = '|' + normalized.substring(pipeBreak + 2).trim();
+          if (part1.startsWith('|') && /^[\s|:\-]+$/.test(part2.replace(/\|/g, ''))) {
+            result.push(normalizeDataRow(part1.endsWith('|') ? part1 : part1 + ' |'));
+            result.push(normalizeDelimiterRow(part2.endsWith('|') ? part2 : part2 + ' |'));
+          } else {
+            // Both parts are data rows
+            if (isDelimiterRow(normalized)) {
+              result.push(normalizeDelimiterRow(normalized));
+            } else {
+              result.push(normalizeDataRow(normalized));
+            }
+          }
+        } else if (isDelimiterRow(normalized)) {
+          result.push(normalizeDelimiterRow(normalized));
+        } else {
+          // Check if the line has mixed text cells and dash cells
+          const allCells = normalized.split('|').slice(1, -1);
+          const texts = allCells.filter(c => c.trim() && !/^[\s:\-]+$/.test(c.trim()));
+          const dashes = allCells.filter(c => c.trim() && /^[\s:\-]+$/.test(c.trim()));
+          if (texts.length > 0 && dashes.length >= texts.length) {
+            result.push(normalizeDataRow('| ' + texts.map(c => c.trim()).join(' | ') + ' |'));
+            result.push('| ' + texts.map(() => '---').join(' | ') + ' |');
+          } else {
+            result.push(normalizeDataRow(normalized));
+          }
+        }
       } else {
-        normalized = normalizeDataRow(normalized);
+        // Regex matched: split into header + delimiter
+        const headerPart = delimInlineMatch[1].trim();
+        const delimPart = '| ' + delimInlineMatch[2].trim();
+        result.push(normalizeDataRow(headerPart.endsWith('|') ? headerPart : headerPart + ' |'));
+        result.push(normalizeDelimiterRow(delimPart.endsWith('|') ? delimPart : delimPart + ' |'));
       }
-
-      result.push(normalized);
     } else {
       // Rule 5: inject blank line after table block before non-empty content
       if (prevIsTable && trimmed !== '') {

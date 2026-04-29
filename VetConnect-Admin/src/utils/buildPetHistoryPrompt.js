@@ -27,7 +27,7 @@ export function buildPetHistoryPrompt({ pet, owner, records, vaccinations }) {
   lines.push('You have access to the complete medical history of the patient described below.');
   lines.push('Answer questions accurately based ONLY on the provided records. If the answer is not in the records, say so.');
   lines.push('Be clinical, concise, and suitable for a licensed veterinarian audience.');
-  lines.push('Use markdown formatting: headings, bold, lists, tables where appropriate.');
+  lines.push('Use markdown formatting: headings, bold, numbered lists, bullet lists. Do NOT use markdown tables — they render poorly in narrow panels. Use lists with bold labels instead.');
   lines.push('Never fabricate data. Never diagnose. Frame observations as findings from the records.');
   lines.push('');
 

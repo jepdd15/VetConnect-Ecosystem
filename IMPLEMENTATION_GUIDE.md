@@ -5,7 +5,7 @@
 
 ---
 
-## Status (updated 2026-04-28)
+## Status (updated 2026-04-29)
 
 **Phase 2 COMPLETE AND VERIFIED.** 501 tasks audited — 496 PASS, 6 minor PARTIAL, 0 FAIL.
 
@@ -61,7 +61,17 @@
 
 **Audit Integrity:** T3.72 (checkout correlation ID) + T3.74 (auditReason append-only) DONE. T3.120 fixed statusHistory across 6 write sites. Remaining: T3.73 (reserve/release logging).
 
-**Next:** thesis (10 tasks, ~15-25 hrs) → Phase 3 Optional → Phase 4 S-Tier remaining (77 tasks, ~150 hrs)
+**Session 2026-04-29 (T3.125-T3.127, T4.85-T4.97):**
+- Queue hardening: statusHistory push on cancel/no-show/EOD (T3.125), carried-over added to TERMINAL_STATUSES (T3.126), inline reschedule split into simple + full carry-over (T3.127)
+- My Bookings redesign: case day chain with swipe pager (T4.85), vertical visit timeline from clinicalPulse (T4.86), encounter summary with lazy medical_records (T4.87), wait time transparency from forensicSeal (T4.88)
+- Push notifications: Cloudflare Worker /push + /push/custom (T4.89), sendPushNotification utility + 18 write paths (T4.90), notification template editor in Settings (T4.91), custom notification dialog (T4.92), appointment reminders widget (T4.93), mobile handler (T4.94), notification logging + NotificationLogs page (T4.95)
+- AI assistants: admin PetHistoryAIDrawer with multi-turn chat (T4.96), mobile PetHistoryAISheet with SOAP stripping + safety guardrails + rate limit (T4.97)
+
+**Cloudflare Worker model:** claude-haiku-4-5-20251001 (updated from 20250401 which was retired).
+
+**Firestore rules deployed:** notification_templates (staff read, admin write) + notification_log (staff read, auth create, append-only).
+
+**Next:** thesis (10 tasks, ~15-25 hrs) → Phase 3 Optional → Phase 4 S-Tier remaining (~60 tasks, ~120 hrs)
 
 ---
 

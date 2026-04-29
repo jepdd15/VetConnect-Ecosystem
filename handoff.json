@@ -3236,6 +3236,88 @@
         "ClinicalWorkspace sign-off on group-visit sibling in arrived status bypasses in-consult transition entirely",
         "isRecordLocked (useState) vs lockedServices.has('medical') (Set from signedOffAt) — different lifecycle, different truth source"
       ]
+    },
+    "advisory_session_2026_04_29": {
+      "date": "2026-04-29",
+      "role": "Advisory + implementation session. Queue statusHistory audit, My Bookings redesign, push notification system, AI pet history assistants.",
+      "tasks_done_this_session": "T3.125-T3.127, T4.85-T4.88, T4.89-T4.95, T4.96-T4.97 (~30 tasks)",
+      "total_done_after_session": "~629",
+      "status_summary": "~629 DONE / ~143 TODO. Phase 3 fully hardened. My Bookings professional-grade. Push notifications complete. AI assistants on both surfaces.",
+      "commits": [
+        "T3.120-T3.124 batch commit (carryover from previous session)",
+        "T3.125 — statusHistory push on cancel/no-show/EOD terminal paths",
+        "T3.126 — EOD carry-over statusHistory + CARRIED_OVER in TERMINAL_STATUSES",
+        "T3.127 — Inline reschedule split: simple transaction (scheduled) + full carry-over with clone (active)",
+        "T4.85 — My Bookings case day chain with swipe pager (buildCaseChains + CaseDayCard)",
+        "T4.86 — Vertical visit timeline from clinicalPulse (buildVisitTimeline + VisitTimeline)",
+        "T4.87 — Encounter summary with expand/collapse (EncounterSummary + lazy medical_records)",
+        "T4.88 — Wait time transparency from forensicSeal (WaitTimeMetrics + personal avg)",
+        "T4.89 — Cloudflare Worker push endpoints (/push + /push/custom) + Firestore rules",
+        "T4.90 — sendPushNotification utility + 18 write path integrations",
+        "T4.91 — Notification template editor in Settings + auto-resolve in push utility",
+        "T4.92 — SendNotificationDialog + PatientDashboard/Queue integration + NOTIFICATION pulse events in mobile timeline",
+        "T4.93 — Appointment reminder widget on Dashboard (admin-triggered, Option B)",
+        "T4.94 — Mobile notification handler (setNotificationHandler + tap listener + Android channel)",
+        "T4.95 — Notification logging + NotificationLogs page with DataGrid + sentBy threading",
+        "T4.96 — AI Pet History Assistant (admin) — chatWithHistory + buildPetHistoryPrompt + PetHistoryAIDrawer",
+        "T4.97 — AI Pet History Assistant (mobile) — buildPetOwnerPrompt (SOAP stripped) + SimpleMarkdown + PetHistoryAISheet + rate limit"
+      ],
+      "key_decisions_locked": [
+        "carried-over added to TERMINAL_STATUSES — reversed 'intentionally excluded' decision. Carry-over revert creates duplicate records (old reactivated + clone persists).",
+        "Inline reschedule for active patients: full carry-over (2 documents: old→carried-over with forensicSeal, new clone→confirmed with caseDay+1). Was previously modify-in-place for everyone.",
+        "Push notifications via Cloudflare Worker — bypasses Spark plan Cloud Functions limitation entirely.",
+        "Template override: Option B (caller passes customTitle/customBody, worker stays stateless with zero Firestore access).",
+        "Debounce: Option D (skip for v1, one notification per pet for multi-pet visits).",
+        "Reminders: Option B (admin-triggered Dashboard button, not Cloudflare Cron — avoids service account JWT complexity).",
+        "notification_log: append-only collection (create yes, update/delete no). Fire-and-forget logging on all push paths.",
+        "Client AI: SOAP subjective/objective/plan STRIPPED from pet owner prompts. 7 NEVER rules. 10/day rate limit via AsyncStorage.",
+        "No record cap for LLM prompts — even 150 records = 15% of Haiku's 200K context.",
+        "Clinical record stays locked after revert — amendments are the correct approach, not re-unlocking."
+      ],
+      "cloudflare_worker_state": {
+        "url": "https://cool-fire-2d53.jepdd15.workers.dev",
+        "model": "claude-haiku-4-5-20251001",
+        "endpoints": ["POST / (AI proxy)", "POST /push (template notifications)", "POST /push/custom (free-text)"],
+        "env_vars": ["ANTHROPIC_API_KEY"],
+        "note": "Worker source NOT in repo — deployed manually via Cloudflare Dashboard Quick Edit"
+      },
+      "firestore_rules_deployed": true,
+      "firestore_rules_changes": [
+        "notification_templates/{templateId}: staff read, admin write",
+        "notification_log/{logId}: staff read, auth create, no update/delete (append-only)"
+      ],
+      "new_files_created": [
+        "VetConnect/src/utils/buildCaseChains.js",
+        "VetConnect/src/utils/buildVisitTimeline.js",
+        "VetConnect/src/utils/buildPetOwnerPrompt.js",
+        "VetConnect/src/components/CaseDayCard.js",
+        "VetConnect/src/components/VisitTimeline.js",
+        "VetConnect/src/components/EncounterSummary.js",
+        "VetConnect/src/components/WaitTimeMetrics.js",
+        "VetConnect/src/components/SimpleMarkdown.js",
+        "VetConnect/src/components/PetHistoryAISheet.js",
+        "VetConnect-Admin/src/utils/sendPushNotification.js",
+        "VetConnect-Admin/src/utils/notificationTemplateConstants.js",
+        "VetConnect-Admin/src/utils/sendAppointmentReminders.js",
+        "VetConnect-Admin/src/utils/buildPetHistoryPrompt.js",
+        "VetConnect-Admin/src/components/SendNotificationDialog.jsx",
+        "VetConnect-Admin/src/features/Dashboard/components/ReminderWidget.jsx",
+        "VetConnect-Admin/src/features/Patients/components/PetHistoryAIDrawer.jsx",
+        "VetConnect-Admin/src/pages/NotificationLogs.jsx"
+      ],
+      "notable_findings": [
+        "Cloudflare Worker model claude-haiku-4-5-20250401 was retired — caused 404. Updated to 20251001.",
+        "Inline reschedule pulse event said toStatus:'carried-over' but actual status was always 'confirmed' — the implementation never matched the intent. T3.127 fixed this.",
+        "EOD carry-over path had no statusHistory push — same class of bug as the cancel/no-show paths (T3.125).",
+        "Durable Objects (Cloudflare) require paid plan — debounce not viable on free tier.",
+        "react-native-markdown-display not installed — SimpleMarkdown regex renderer covers Claude's actual output patterns without a dependency.",
+        "PetHistoryScreen only receives petId/petName from route params — needs one-shot getDoc for full pet profile (species/breed/dob/allergies) for AI context."
+      ],
+      "system_assessments_performed": {
+        "queue_audit_system": "Professional-grade. forensicSeal + correction DNA linking + 18-path clinicalPulse coverage. Weakness: no centralized transition function (18 scattered write paths).",
+        "my_bookings_mobile": "Professional-grade. Case day chains + forensicSeal-derived client metrics + clinical timeline exposure innovative. Weakness: 1,629-line god component, no offline support, no pagination.",
+        "push_notifications": "Professional-grade. Cloudflare Worker bypass of Spark limitations architecturally creative. 18-path fire-and-forget with 3-level caching. Weakness: no delivery receipts, no stale token cleanup, manual reminders."
+      }
     }
   }
 }

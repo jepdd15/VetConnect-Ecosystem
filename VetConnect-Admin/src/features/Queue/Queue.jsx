@@ -195,6 +195,10 @@ export default function Queue() {
   // T4.92: Custom notification dialog
   const [notifDialogOpen, setNotifDialogOpen] = useState(false);
 
+  // T4.111: Staffing gap dialog
+  const [staffGapDialogOpen, setStaffGapDialogOpen] = useState(false);
+  const [staffGapDepts, setStaffGapDepts] = useState([]);
+
   const [openWalkIn, setOpenWalkIn] = useState(false);
   const [openAssign, setOpenAssign] = useState(false);
   const [siblingAppts, setSiblingAppts] = useState([]); // Sibling appointments for group check-in
@@ -817,18 +821,15 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       // --- ðŸ›¡ï¸ CLINICAL REALITY PRE-CHECK ---
       if (newStatus === 'confirmed') {
         const services = row.services || [];
-        const missingDepts = [];
-        
-        services.forEach(svc => {
-          const dept = svc.department || 'General';
-          const hasStaff = vets.some(v => v.departments?.includes(dept) || v.role?.toLowerCase() === dept.toLowerCase());
-          if (!hasStaff) missingDepts.push(dept);
-        });
+        const missingDepts = [...new Set(
+          services
+            .map(svc => svc.department || 'General')
+            .filter(dept => !vets.some(v => v.departments?.includes(dept) || v.role?.toLowerCase() === dept.toLowerCase()))
+        )];
 
         if (missingDepts.length > 0) {
-          alert(
-            `âŒ STAFFING GAP DETECTED\n\nCannot accept this appointment. There are currently no staff members assigned to the following departments: ${missingDepts.join(", ")}.\n\nPlease assign staff to these departments in the Staff module before accepting.`
-          );
+          setStaffGapDepts(missingDepts);
+          setStaffGapDialogOpen(true);
           return;
         }
       }
@@ -3627,6 +3628,43 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           {dispenseHoldToast.message}
         </Alert>
       </Snackbar>
+
+      <Dialog open={staffGapDialogOpen} onClose={() => setStaffGapDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 900, fontSize: '1rem' }}>
+          Staffing Gap Detected
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            Cannot accept this appointment. No staff members are assigned to the following departments:
+          </Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+            {staffGapDepts.map(dept => {
+              const deptObj = (departments || []).find(d => d.name === dept);
+              return (
+                <Chip
+                  key={dept}
+                  label={dept}
+                  size="small"
+                  sx={{
+                    fontWeight: 800,
+                    bgcolor: deptObj?.color || '#9E9E9E',
+                    color: '#fff',
+                    borderRadius: 0,
+                  }}
+                />
+              );
+            })}
+          </Box>
+          <Typography variant="body2" sx={{ mt: 2, color: 'text.secondary' }}>
+            Assign staff to these departments in the Staff module before accepting.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setStaffGapDialogOpen(false)} variant="contained" sx={{ borderRadius: 0, fontWeight: 800 }}>
+            Understood
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* T4.92: Custom notification dialog with clinicalPulse audit trail */}
       <SendNotificationDialog

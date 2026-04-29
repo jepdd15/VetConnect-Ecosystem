@@ -11,7 +11,7 @@ import {
   Stack, Collapse, Tooltip, InputBase, Switch,
   Autocomplete, Alert, Snackbar, CircularProgress,
   DialogTitle, DialogContent, DialogContentText, DialogActions,
-  Drawer,
+  Drawer, ListSubheader,
 } from '@mui/material';
 
 // Icons (Unified)
@@ -640,6 +640,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 type: 'service', id: svc.id, name: svc.name,
                 price: resolvedPrice, qty: 1, isDrug: false, isBase: true,
                 isDiscountable: svcDef?.isScPwdEligible !== false,
+                department: svc.department || svcDef?.department || 'General',
             });
         });
 
@@ -2831,30 +2832,58 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                                     </>
                                 )}
 
-                                {rx.isBase && (
-                                    <TextField
-                                        size="small" select fullWidth
-                                        value={serviceAttribution[rx.id]?.staffId || ''}
-                                        onChange={(e) => {
-                                            const vet = (vetsList || []).find(v => v.id === e.target.value);
-                                            setServiceAttribution(prev => ({
-                                                ...prev,
-                                                [rx.id]: { staffId: e.target.value, staffName: vet?.fullName || 'Unknown' },
-                                            }));
-                                        }}
-                                        sx={{ mt: 1, '& .MuiInputBase-root': { fontSize: '0.72rem', fontWeight: 800 } }}
-                                        label="Performed By"
-                                    >
-                                        <MenuItem value="" sx={{ fontSize: '0.8rem', fontStyle: 'italic', color: COLORS.textMuted }}>
-                                            — Unassigned —
-                                        </MenuItem>
-                                        {(vetsList || []).map(v => (
-                                            <MenuItem key={v.id} value={v.id} sx={{ fontSize: '0.8rem' }}>
-                                                {v.fullName}
+                                {rx.isBase && (() => {
+                                    const dept = rx.department || 'General';
+                                    const deptObj = (departments || []).find(d => d.name === dept);
+                                    const deptColor = deptObj?.color || '#616161';
+                                    const allStaff = vetsList || [];
+                                    const matched = allStaff.filter(v => v.departments?.includes(dept));
+                                    const others = allStaff.filter(v => !v.departments?.includes(dept));
+
+                                    return (
+                                        <TextField
+                                            size="small" select fullWidth
+                                            value={serviceAttribution[rx.id]?.staffId || ''}
+                                            onChange={(e) => {
+                                                const vet = allStaff.find(v => v.id === e.target.value);
+                                                setServiceAttribution(prev => ({
+                                                    ...prev,
+                                                    [rx.id]: { staffId: e.target.value, staffName: vet?.fullName || (e.target.value === '' ? 'Unassigned' : 'Unknown') },
+                                                }));
+                                            }}
+                                            sx={{ mt: 1, '& .MuiInputBase-root': { fontSize: '0.72rem', fontWeight: 800 } }}
+                                            label="Performed By"
+                                        >
+                                            <MenuItem value="" sx={{ fontSize: '0.8rem', fontStyle: 'italic', color: COLORS.textMuted }}>
+                                                — Unassigned —
                                             </MenuItem>
-                                        ))}
-                                    </TextField>
-                                )}
+                                            {matched.map(v => (
+                                                <MenuItem key={v.id} value={v.id} sx={{ fontSize: '0.8rem' }}>
+                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, width: '100%' }}>
+                                                        <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: deptColor, flexShrink: 0 }} />
+                                                        <span style={{ fontWeight: 700 }}>{v.fullName}</span>
+                                                    </Box>
+                                                </MenuItem>
+                                            ))}
+                                            {others.length > 0 && (
+                                                <ListSubheader
+                                                    sx={{
+                                                        fontSize: '0.65rem', fontWeight: 900, letterSpacing: 1,
+                                                        textTransform: 'uppercase', color: COLORS.textMuted,
+                                                        lineHeight: '28px', bgcolor: COLORS.formBg,
+                                                    }}
+                                                >
+                                                    Other Staff
+                                                </ListSubheader>
+                                            )}
+                                            {others.map(v => (
+                                                <MenuItem key={v.id} value={v.id} sx={{ fontSize: '0.8rem', color: COLORS.textMuted, fontStyle: 'italic' }}>
+                                                    {v.fullName}
+                                                </MenuItem>
+                                            ))}
+                                        </TextField>
+                                    );
+                                })()}
                             </Box>
                         ))}
                     </Stack>

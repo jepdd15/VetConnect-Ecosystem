@@ -1,8 +1,8 @@
 # VetConnect Master Task List
 
 **Last updated:** 2026-04-27 · **Branch:** `main`
-**Total tasks:** ~798 · **Cancelled/Absorbed:** ~17 · **Active:** ~781
-**DONE:** ~633 · **TODO:** ~150 · **Deferred sub-tasks:** 50
+**Total tasks:** ~799 · **Cancelled/Absorbed:** ~17 · **Active:** ~782
+**DONE:** ~634 · **TODO:** ~150 · **Deferred sub-tasks:** 50
 **Phase 2:** COMPLETE · **Phase 3 Essential:** COMPLETE (except Blaze-gated T3.40-42) · **Phase 3 High-Value:** 8/8 batches done (T3.50 remains, T3.5 DONE) · **Phase 4 Dashboard S:** COMPLETE (T4.1-T4.4)
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~158 hours (Phase 4 S-Tier)
 
@@ -1130,7 +1130,7 @@
 |---|---|---|---|---|
 | Dashboard S-Push | T4.1-T4.4 | 7.5 hrs | T2.315, T2.320, T2.333 | Auto-refresh + custom layout + benchmarking + sharing |
 | Queue S-Push | T4.5-T4.10 | 13 hrs | T2.214, T2.281, T2.331, T2.442 | Drag-drop + forecasting + recommendations + multi-dept + alerts + design sweep |
-| ClinicalWorkspace S-Push | T4.11-T4.17 | 17 hrs | T2.32, T2.442, T2.461 | Templates + attachments + problem list + voice + decision support + design sweep + unification |
+| ClinicalWorkspace S-Push | T4.11-T4.17, T4.111 | 18.5 hrs | T2.32, T2.442, T2.461 | Templates + attachments + problem list + voice + decision support + design sweep + unification + dept-filtered staff assignment |
 | POSModal S-Push | T4.18-T4.23 | 12 hrs | T2.101, T2.102, T2.105, Blaze | Partial pay + receipt email + GCash + VAT + multi-currency + deposits |
 | Records S-Push | T4.24-T4.28 | 10 hrs | T2.57, T2.71, T2.75, T2.130 | Full-text search + bulk export + audit viz + comparison + saved queries |
 | Patients/EMR S-Push | T4.29-T4.34 | 11 hrs | T2.134, T2.135, T2.460, Blaze | Engagement scoring + birthdays + growth charts + health risk + comms + deceased |
@@ -1201,7 +1201,7 @@
 | T4.9 | Audio/visual alert for staff when wait >X minutes | P2 | 30 min | T2.331 | TODO | Uses threshold config |
 | T4.10 | Full Queue design sweep: 8 files, tokens + borderRadius + shadows | P2 | 3-4 hrs | T2.442 | TODO | Currently skipped from sweep |
 
-### ClinicalWorkspace S (T4.11-T4.17) — +17 hrs
+### ClinicalWorkspace S (T4.11-T4.17, T4.111) — +18.5 hrs
 
 | ID | Name | Priority | Effort | Depends On | Status | Notes |
 |---|---|---|---|---|---|---|
@@ -1212,6 +1212,7 @@
 | T4.15 | Clinical decision support: species-adjusted vital range alerts | P2 | 1 hr | T2.461 | TODO | Uses species-normal ref lines |
 | T4.16 | Full ClinicalWorkspace design sweep: 1,989 lines, glassmorphism removal | P2 | 2-3 hrs | T2.442 | TODO | Currently skipped from sweep |
 | T4.17 | God-View + main grid unification via SoapGrid extraction | P1 | 2-3 hrs | T2.32 | TODO | Completes T2.32 scope |
+| T4.111 | Department-filtered staff assignment in ClinicalWorkspace — The "Performed By" dropdown in ClinicalWorkspace.jsx (~line 2839-2854) renders ALL staff via unfiltered `(vetsList || []).map(v => ...)` regardless of whether the staff member's `departments[]` array includes the service's department. This means a staff member assigned only to General + Vaccination can be selected as "Performed By" for a Grooming service, defeating the purpose of department-based routing. Fix: filter `vetsList` by the current service's `department` field (available on each `rx` item in the treatment cart). Show only staff whose `departments[]` includes the service department. Add a "Show All Staff" toggle or divider ("Other Staff") below the filtered list as an escape hatch for small clinics where staff cross-cover. Also show department chips or a subtitle next to each staff name in the dropdown for clarity. Secondary: the Queue.jsx department validation at ~line 815-834 that blocks CONFIRM when a department has zero staff uses `alert()` — replace with MUI Dialog (partial T2.451 scope). | P2 | 1.5 hrs | — | DONE | Functional gap — department routing is enforced at booking time but not at clinical assignment time. ClinicalWorkspace.jsx ~line 2839, Queue.jsx ~line 815. |
 
 ### POSModal S (T4.18-T4.23) — +12 hrs
 
@@ -1374,7 +1375,7 @@
 |---|---|---|---|
 | Dashboard | T4.1-T4.4 | 7.5 hrs | T2.315, T2.320, T2.333 |
 | Queue | T4.5-T4.10 | 13 hrs | T2.214, T2.281, T2.331, T2.442 |
-| ClinicalWorkspace | T4.11-T4.17 | 17 hrs | T2.32, T2.442, T2.461 |
+| ClinicalWorkspace | T4.11-T4.17, T4.111 | 18.5 hrs | T2.32, T2.442, T2.461 |
 | POSModal | T4.18-T4.23 | 12 hrs | T2.101, T2.102, T2.105, Blaze |
 | Records | T4.24-T4.28 | 10 hrs | T2.57, T2.71, T2.75, T2.130 |
 | Patients/EMR | T4.29-T4.34 | 11 hrs | T2.134, T2.135, T2.460, Blaze |

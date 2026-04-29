@@ -84,6 +84,7 @@ import WalkInModal from '../Queue/WalkInModal';
 import AmendmentDialog from '../../components/AmendmentDialog';
 import SendNotificationDialog from '../../components/SendNotificationDialog';
 import PetHistoryAIDrawer from './components/PetHistoryAIDrawer';
+import { resolveDepartmentForRecord } from '../../utils/resolveDepartmentForRecord';
 
 // ── Species-normal vital reference ranges ────────────────────────
 // Sourced from standard veterinary references.
@@ -401,10 +402,19 @@ export default function PatientDashboard() {
     return d === 0 ? 'Today' : d === 1 ? 'Yesterday' : d < 30 ? `${d}d ago` : d < 365 ? `${Math.floor(d/30)}mo ago` : `${Math.floor(d/365)}y ago`;
   }, [history]);
 
-  const availableServices = useMemo(() => {
-    if (!history?.length) return [];
-    return Array.from(new Set(history.map(r => r.recordType || 'medical'))).sort();
-  }, [history]);
+  const availableFilters = useMemo(() => {
+    // Dynamic department names from Firestore departments collection.
+    // Falls back to legacy values if departments haven't loaded yet.
+    if (!deptsList.length) return ['medical', 'grooming'];
+    return deptsList.map(d => d.name);
+  }, [deptsList]);
+
+  useEffect(() => {
+    const allOptions = ['All', ...availableFilters, 'Vaccination'];
+    if (timelineFilter !== 'All' && !allOptions.includes(timelineFilter)) {
+      setTimelineFilter('All');
+    }
+  }, [availableFilters, timelineFilter]);
 
   const processedHistory = useMemo(() => {
     let f = [...(history || [])];
@@ -434,10 +444,16 @@ export default function PatientDashboard() {
         return false;
       });
     }
-    if (timelineFilter !== 'All') f = f.filter(r => (r.recordType || 'medical') === timelineFilter);
+    if (timelineFilter !== 'All') {
+      if (timelineFilter === 'Vaccination') {
+        f = f.filter(r => r.vaccineAdministrations?.length > 0 || !!r.vaccineData);
+      } else {
+        f = f.filter(r => resolveDepartmentForRecord(r, deptsList) === timelineFilter);
+      }
+    }
     f.sort((a, b) => { const dA = a.date?.seconds||0, dB = b.date?.seconds||0; return timelineSort === 'desc' ? dB-dA : dA-dB; });
     return f;
-  }, [history, timelineSearch, timelineFilter, timelineSort]);
+  }, [history, timelineSearch, timelineFilter, timelineSort, deptsList]);
 
   // Visit frequency data (visits per month, last 6 months)
   const visitFreqData = useMemo(() => {
@@ -796,7 +812,7 @@ export default function PatientDashboard() {
   const isErased = owner?.accountStatus === 'erased';
 
   return (
-    <Box sx={{ m: -4, display: 'flex', flexDirection: 'column', height: '100vh', bgcolor: COLORS.surface, overflow: 'hidden', fontFamily: FONT }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', bgcolor: COLORS.surface, overflow: 'hidden', fontFamily: FONT }}>
 
       {/* ═══ PATIENT BANNER ═══ */}
       <Box sx={{ bgcolor: COLORS.banner, borderBottom: `2px solid ${COLORS.bannerBorder}`, display: 'flex', alignItems: 'center', flexShrink: 0, boxShadow: '0 1px 4px rgba(62,39,35,0.08)' }}>
@@ -860,7 +876,17 @@ export default function PatientDashboard() {
               sx={{ fontFamily: FONT, fontWeight: 600, fontSize: '0.8rem', color: COLORS.textPrimary, bgcolor: COLORS.formBg, height: 36, borderRadius: 0, '& fieldset': { borderColor: COLORS.border } }}>
               <MenuItem value="All" sx={{ fontSize: '0.85rem' }}>All Types</MenuItem>
               <Divider />
-              {availableServices.map(s => <MenuItem key={s} value={s} sx={{ textTransform: 'capitalize', fontSize: '0.85rem', fontWeight: 600 }}>{s}</MenuItem>)}
+              {availableFilters.map(f => {
+                const deptColor = deptsList.find(d => d.name === f)?.color || '#616161';
+                return (
+                  <MenuItem key={f} value={f} sx={{ fontSize: '0.85rem', fontWeight: 600 }}>
+                    <Box sx={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', bgcolor: deptColor, mr: 1, flexShrink: 0 }} />
+                    {f}
+                  </MenuItem>
+                );
+              })}
+              <Divider />
+              <MenuItem value="Vaccination" sx={{ fontSize: '0.85rem', fontWeight: 600 }}>Vaccination</MenuItem>
             </Select>
           </FormControl>
           <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, fontWeight: 600, whiteSpace: 'nowrap' }}>{processedHistory.length} rec</Typography>

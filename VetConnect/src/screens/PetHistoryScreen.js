@@ -5,6 +5,7 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
   orderBy,
   query,
@@ -26,6 +27,7 @@ import {
 import { auth, db } from "../../firebaseConfig";
 import { useClinicContact } from "../hooks/useClinicContact";
 import { safeDate, formatDisplayDate } from "../utils/helpers";
+import { resolveDepartmentForRecord } from '../utils/resolveDepartmentForRecord';
 import { COLORS } from '../theme/mobileTokens';
 import SparkLine from '../components/SparkLine';
 import PetHistoryAISheet from '../components/PetHistoryAISheet';
@@ -86,7 +88,6 @@ function resolveVaccineStatus(dueDate) {
   return 'current';
 }
 
-const FILTER_OPTIONS = ['All', 'Medical', 'Grooming', 'Vaccination'];
 
 const VACCINE_STATUS_STYLES = {
   current:   { borderColor: '#2E7D32', badgeBg: '#E8F5E9', badgeColor: '#2E7D32', label: 'CURRENT' },
@@ -441,6 +442,8 @@ export default function PetHistoryScreen({ route, navigation }) {
   // T3.94: Search and filter state
   const [searchText, setSearchText] = useState('');
   const [activeFilter, setActiveFilter] = useState('All');
+  // T4.107: Departments — one-shot fetch for dynamic filter chips
+  const [departments, setDepartments] = useState([]);
   const { clinicPhone, clinicName } = useClinicContact();
 
   // T4.97: AI Pet History Assistant — pet doc, worker URL, and sheet visibility
@@ -457,7 +460,32 @@ export default function PetHistoryScreen({ route, navigation }) {
     [history],
   );
 
+  // T4.107: Dynamic filter options — department names from Firestore, with
+  // 'Vaccination' pinned at the end as a special cross-department filter.
+  // Falls back to hardcoded values while the fetch is in-flight or if it fails.
+  const filterOptions = useMemo(() => {
+    if (!departments.length) return ['All', 'medical', 'grooming', 'Vaccination'];
+    return ['All', ...departments.map(d => d.name), 'Vaccination'];
+  }, [departments]);
 
+  // T4.107: One-shot departments fetch — sufficient since departments rarely
+  // change mid-session. Mirrors the LLM config fetch pattern from T4.97.
+  useEffect(() => {
+    getDocs(collection(db, 'departments'))
+      .then(snap => {
+        const depts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setDepartments(depts);
+      })
+      .catch(err => console.warn('[PetHistoryScreen] departments fetch skipped:', err.message));
+  }, []);
+
+  // T4.107: Defensive reset — if the active filter no longer exists in the
+  // updated options (e.g., after a successful departments fetch), fall back to All.
+  useEffect(() => {
+    if (activeFilter !== 'All' && !filterOptions.includes(activeFilter)) {
+      setActiveFilter('All');
+    }
+  }, [filterOptions, activeFilter]);
 
   // T4.97: One-shot fetch for pet profile — provides species/breed/age/allergies to the AI prompt.
   // Falls back gracefully if the doc is missing; the AI just gets less context.
@@ -515,13 +543,10 @@ export default function PetHistoryScreen({ route, navigation }) {
 
     if (activeFilter !== 'All') {
       result = result.filter(r => {
-        const svcLower = (r.serviceType || '').toLowerCase();
-        const typeLower = (r.recordType || '').toLowerCase();
-        const filterLower = activeFilter.toLowerCase();
-        if (filterLower === 'vaccination') {
+        if (activeFilter === 'Vaccination') {
           return r.vaccineAdministrations?.length > 0 || !!r.vaccineData;
         }
-        return svcLower.includes(filterLower) || typeLower.includes(filterLower);
+        return resolveDepartmentForRecord(r, departments) === activeFilter;
       });
     }
 
@@ -537,7 +562,7 @@ export default function PetHistoryScreen({ route, navigation }) {
     }
 
     return result;
-  }, [history, activeFilter, searchText]);
+  }, [history, activeFilter, searchText, departments]);
 
   // T3.97: Aggregate prescription frequency across all history records.
   // Sorted descending by count so the most-prescribed medications appear first.
@@ -1431,17 +1456,26 @@ export default function PetHistoryScreen({ route, navigation }) {
             )}
           </View>
           <View style={styles.filterChipRow}>
-            {FILTER_OPTIONS.map(opt => (
-              <TouchableOpacity
-                key={opt}
-                style={[styles.filterChip, activeFilter === opt && styles.filterChipActive]}
-                onPress={() => setActiveFilter(opt)}
-              >
-                <Text style={[styles.filterChipText, activeFilter === opt && styles.filterChipTextActive]}>
-                  {opt}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            {filterOptions.map(opt => {
+              const isActive = activeFilter === opt;
+              const deptColor = opt !== 'All' && opt !== 'Vaccination'
+                ? departments.find(d => d.name === opt)?.color
+                : null;
+              return (
+                <TouchableOpacity
+                  key={opt}
+                  style={[
+                    styles.filterChip,
+                    isActive && [styles.filterChipActive, deptColor ? { backgroundColor: deptColor, borderColor: deptColor } : null],
+                  ]}
+                  onPress={() => setActiveFilter(opt)}
+                >
+                  <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
+                    {opt}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
       )}

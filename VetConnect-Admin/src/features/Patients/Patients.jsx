@@ -109,8 +109,7 @@ export default function Patients() {
   };
 
   return (
-    // THE FIX: m: -4 pulls the container to the absolute edges, filling the screen!
-    <Box sx={{ m: -4, display: 'flex', height: '100vh', width: 'calc(100% + 64px)', overflow: 'hidden', bgcolor: COLORS.surfaceAlt }}>
+    <Box sx={{ display: 'flex', height: '100vh', width: '100%', overflow: 'hidden', bgcolor: COLORS.surfaceAlt }}>
       
       <PatientDirectory 
         owners={filteredOwners} 

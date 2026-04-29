@@ -325,7 +325,7 @@ export default function Inventory() {
       {/* 1. BOXED FORENSIC HEADER */}
       <Box sx={{ flexShrink: 0, mb: 0 }}>
         <Paper sx={{
-          p: 2.5, px: 4, display: 'flex', flexWrap: 'nowrap', gap: 2.5, alignItems: 'center',
+          p: 2.5, px: 4, display: 'flex', flexWrap: 'wrap', gap: 2.5, alignItems: 'center',
           bgcolor: COLORS.cream, borderBottom: `2px solid ${COLORS.accent}`, borderRadius: 0, boxShadow: 'none'
         }}>
           <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.accent, textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0, mr: 1, fontSize: '1.5rem', lineHeight: 1 }}>

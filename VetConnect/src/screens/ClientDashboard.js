@@ -604,18 +604,9 @@ const ClientDashboard = ({ navigation }) => {
         </Animated.View>
       )}
 
-      {/* NEW NEUBRUTALIST HEADER */}
+      {/* NEUBRUTALIST HEADER — title + profile button inline */}
       <View style={styles.headerBox}>
         <Text style={styles.dashboardTitle}>DASHBOARD</Text>
-      </View>
-
-      <View style={styles.greetingRow}>
-        <View>
-          <Text style={styles.welcome}>Hi, {userProfile?.fullName?.split(' ')[0] || 'Member'}! 👋</Text>
-          <Text style={styles.subtitle}>
-            {activeAppointments.length > 0 ? "COMMAND CENTER ACTIVE" : "YOUR PETS ARE WAITING"}
-          </Text>
-        </View>
         <TouchableOpacity
           style={styles.profileSquare}
           onPress={() => navigation.navigate("UserProfile")}
@@ -721,20 +712,13 @@ const ClientDashboard = ({ navigation }) => {
       {/* --- FIRST-TIME USER GUIDANCE --- */}
       {!loading && activeAppointments.length === 0 && reminders.length === 0 && vaccineAlerts.length === 0 && (
         <View style={styles.emptyStateContainer}>
-          <View style={styles.emptyStateShadow} />
-          <View style={styles.emptyStateBox}>
-            <Text style={{ fontSize: 48, textAlign: 'center', marginBottom: 10 }}>🐾</Text>
-            <Text style={styles.emptyStateTitle}>WELCOME TO STARBARKS</Text>
-            <Text style={styles.emptyStateMsg}>
-              Start by adding your pet, then book your first visit.
-            </Text>
-          </View>
+          <Text style={styles.emptyStateMsg}>
+            No active visits or upcoming reminders. Book a visit to get started!
+          </Text>
         </View>
       )}
 
       {/* --- MAIN MENU GRID --- */}
-      <Text style={styles.sectionHeader}>⚡ Quick Actions</Text>
-
       <View style={styles.grid}>
         <View style={styles.cardWrapper}>
           <View style={styles.cardShadow} />
@@ -820,24 +804,20 @@ const ClientDashboard = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: { flexGrow: 1, padding: 20, backgroundColor: "#FFF8E1", paddingTop: 60 },
 
-  headerBox: { marginBottom: 15 },
-  dashboardTitle: {
-    fontFamily: "Inter_900Black",
-    fontSize: 48,
-    color: "#3E2723",
-    textTransform: "uppercase",
-    letterSpacing: -1.5,
-    lineHeight: 48,
-  },
-
-  greetingRow: {
+  headerBox: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 30,
+    marginBottom: 25,
   },
-  welcome: { fontFamily: "Inter_900Black", fontSize: 24, color: "#3E2723" },
-  subtitle: { fontFamily: "Inter_700Bold", fontSize: 13, color: "#8D6E63", marginTop: 2, textTransform: 'uppercase', letterSpacing: 1 },
+  dashboardTitle: {
+    fontFamily: "Inter_900Black",
+    fontSize: 36,
+    color: "#3E2723",
+    textTransform: "uppercase",
+    letterSpacing: -1.5,
+    lineHeight: 38,
+  },
   profileSquare: {
     width: 60,
     height: 60,
@@ -985,32 +965,11 @@ const styles = StyleSheet.create({
   },
   balanceActionText: { color: "#3E2723", fontWeight: "900", fontSize: 11 },
 
-  // FIRST-TIME EMPTY STATE
+  // EMPTY STATE
   emptyStateContainer: {
     marginBottom: 25,
-    position: 'relative',
-  },
-  emptyStateShadow: {
-    position: 'absolute',
-    top: 5,
-    left: 5,
-    right: -2,
-    bottom: -2,
-    backgroundColor: '#3ABEF9',
-  },
-  emptyStateBox: {
-    padding: 25,
-    backgroundColor: 'white',
-    borderWidth: 3,
-    borderColor: '#3E2723',
+    paddingVertical: 20,
     alignItems: 'center',
-  },
-  emptyStateTitle: {
-    fontFamily: 'Inter_900Black',
-    fontSize: 16,
-    color: '#3E2723',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
     marginBottom: 6,
   },
   emptyStateMsg: {

@@ -21,16 +21,11 @@
  *   rowHeight      — pixel height per grid row (default 110)
  */
 
-import React from 'react';
-// react-grid-layout v2 ships ResponsiveGridLayout as a pre-composed export
-// (WidthProvider + Responsive bundled together). No need to compose manually.
+import React, { useRef, useState, useEffect } from 'react';
 import { ResponsiveGridLayout } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 
-// Neubrutalism CSS overrides injected as raw CSS strings.
-// Cannot use COLORS tokens here since this is a raw <style> block.
-// The Espresso and Cream values match the design system palette.
 const GRID_STYLE_OVERRIDES = `
   .dashboard-kpi-grid .react-grid-placeholder {
     background: #FFF8E1 !important;
@@ -56,27 +51,44 @@ export default function DraggableKPIGrid({
   children,
   rowHeight = 110,
 }) {
+  const containerRef = useRef(null);
+  const [width, setWidth] = useState(0);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const measure = () => setWidth(el.offsetWidth);
+    measure();
+
+    const ro = new ResizeObserver(() => measure());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   return (
-    <>
-      {/* Neubrutalism CSS overrides for react-grid-layout placeholder and drag states */}
+    <div ref={containerRef} style={{ width: '100%' }}>
       <style>{GRID_STYLE_OVERRIDES}</style>
 
-      <ResponsiveGridLayout
-        className="dashboard-kpi-grid"
-        layouts={{ lg: layout, md: layout, sm: layout }}
-        breakpoints={{ lg: 1200, md: 996, sm: 768 }}
-        cols={{ lg: 12, md: 12, sm: 6 }}
-        rowHeight={rowHeight}
-        margin={[16, 16]}
-        containerPadding={[0, 0]}
-        isDraggable
-        isResizable={false}
-        onLayoutChange={(currentLayout, allLayouts) => onLayoutChange?.(allLayouts?.lg || currentLayout)}
-        draggableHandle=".kpi-drag-handle"
-        useCSSTransforms
-      >
-        {children}
-      </ResponsiveGridLayout>
-    </>
+      {width > 0 && (
+        <ResponsiveGridLayout
+          className="dashboard-kpi-grid"
+          layouts={{ lg: layout, md: layout, sm: layout }}
+          breakpoints={{ lg: 1200, md: 996, sm: 768 }}
+          cols={{ lg: 12, md: 12, sm: 6 }}
+          rowHeight={rowHeight}
+          width={width}
+          margin={[16, 16]}
+          containerPadding={[0, 0]}
+          isDraggable
+          isResizable={false}
+          onLayoutChange={(currentLayout, allLayouts) => onLayoutChange?.(allLayouts?.lg || currentLayout)}
+          draggableHandle=".kpi-drag-handle"
+          useCSSTransforms
+        >
+          {children}
+        </ResponsiveGridLayout>
+      )}
+    </div>
   );
 }

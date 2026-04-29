@@ -938,7 +938,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     paddingVertical: 8,
     paddingHorizontal: 12,
-    paddingBottom: 25,
+    paddingBottom: 40,
     backgroundColor: COLORS.white,
     borderTopWidth: 2,
     borderTopColor: COLORS.brand,

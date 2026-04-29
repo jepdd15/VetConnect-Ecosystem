@@ -112,7 +112,7 @@ function renderInline(text) {
         </Text>
       );
     }
-    return part;
+    return <Text key={index}>{part}</Text>;
   });
 }
 

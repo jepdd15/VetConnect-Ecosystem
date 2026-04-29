@@ -23,11 +23,13 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
-import { db } from "../../firebaseConfig";
+import { auth, db } from "../../firebaseConfig";
 import { useClinicContact } from "../hooks/useClinicContact";
 import { safeDate, formatDisplayDate } from "../utils/helpers";
 import { COLORS } from '../theme/mobileTokens';
 import SparkLine from '../components/SparkLine';
+import PetHistoryAISheet from '../components/PetHistoryAISheet';
+import { buildPetOwnerPrompt } from '../utils/buildPetOwnerPrompt';
 
 // ---------------------------------------------------------------------------
 // VACCINATION PASSPORT — HTML TEMPLATE
@@ -441,6 +443,11 @@ export default function PetHistoryScreen({ route, navigation }) {
   const [activeFilter, setActiveFilter] = useState('All');
   const { clinicPhone, clinicName } = useClinicContact();
 
+  // T4.97: AI Pet History Assistant — pet doc, worker URL, and sheet visibility
+  const [petDoc, setPetDoc]               = useState(null);
+  const [workerUrl, setWorkerUrl]         = useState('');
+  const [aiSheetVisible, setAiSheetVisible] = useState(false);
+
   // Records that carry vaccination data — used to gate the passport button and
   // to build the passport document. Derived; no extra Firestore read needed.
   const vaccineRecords = useMemo(
@@ -451,6 +458,55 @@ export default function PetHistoryScreen({ route, navigation }) {
   );
 
 
+
+  // T4.97: One-shot fetch for pet profile — provides species/breed/age/allergies to the AI prompt.
+  // Falls back gracefully if the doc is missing; the AI just gets less context.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'pets', petId));
+        if (!cancelled && snap.exists()) {
+          setPetDoc({ id: snap.id, ...snap.data() });
+        }
+      } catch {
+        // Non-critical — AI prompt falls back to { name: petName }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [petId]);
+
+  // T4.97: One-shot fetch for the Cloudflare Worker URL from clinic_settings.
+  // The FAB is hidden when workerUrl is empty, so this doubles as a feature gate.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'clinic_settings', 'llm_config'));
+        if (!cancelled && snap.exists()) {
+          const data = snap.data();
+          if (data.enabled && data.workerUrl) {
+            setWorkerUrl(data.workerUrl);
+          }
+        }
+      } catch {
+        // Non-critical — FAB stays hidden
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // T4.97: Memoized AI system prompt. Rebuilds only when pet data or records change.
+  // Deliberately omits SOAP subjective/objective/plan (clinical-only notes).
+  const aiSystemPrompt = useMemo(
+    () =>
+      buildPetOwnerPrompt({
+        pet: petDoc || { name: petName },
+        records: history,
+        vaccinations: vaccineRecords,
+      }),
+    [petDoc, petName, history, vaccineRecords],
+  );
 
   // T3.94: Derived list after applying type filter and search text.
   // history is always the source of truth; filteredHistory is read-only derived state.
@@ -1417,6 +1473,31 @@ export default function PetHistoryScreen({ route, navigation }) {
           />
         )}
       </View>
+
+      {/* T4.97: Floating AI button — feature-gated on workerUrl and records present */}
+      {!!workerUrl && !loading && history.length > 0 && (
+        <TouchableOpacity
+          style={styles.aiFab}
+          activeOpacity={0.85}
+          onPress={() => setAiSheetVisible(true)}
+        >
+          <View style={styles.aiFabShadow} />
+          <View style={styles.aiFabInner}>
+            <MaterialIcons name="auto-awesome" size={20} color={COLORS.cream} />
+            <Text style={styles.aiFabText}>Ask AI</Text>
+          </View>
+        </TouchableOpacity>
+      )}
+
+      {/* T4.97: AI Pet History bottom sheet */}
+      <PetHistoryAISheet
+        visible={aiSheetVisible}
+        onClose={() => setAiSheetVisible(false)}
+        petName={petName}
+        systemPrompt={aiSystemPrompt}
+        workerUrl={workerUrl}
+        userId={auth.currentUser?.uid || 'anonymous'}
+      />
     </SafeAreaView>
   );
 }
@@ -2123,6 +2204,40 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
     letterSpacing: 2,
     textTransform: 'uppercase',
+  },
+
+  // T4.97: Floating "Ask AI" action button
+  aiFab: {
+    position: 'absolute',
+    bottom: 30,
+    right: 20,
+    zIndex: 100,
+  },
+  aiFabShadow: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    right: -4,
+    bottom: -4,
+    backgroundColor: COLORS.brand,
+  },
+  aiFabInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: COLORS.sky,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    borderRadius: 0,   // Neubrutalism
+  },
+  aiFabText: {
+    color: COLORS.cream,
+    fontWeight: '900',
+    fontSize: 14,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
 
   // T3.94: Search + filter bar

@@ -36,6 +36,7 @@ import { useClinicSettings } from '../hooks/useClinicSettings';
 import { useUser } from '../context/UserContext';
 import { callClinicalReasoning, DEFAULT_CLINICAL_SYSTEM_PROMPT } from '../utils/llmService';
 import { sendPushNotification } from '../utils/sendPushNotification';
+import { normalizeMarkdownTables } from '../utils/normalizeMarkdownTables';
 import ReactMarkdown from 'react-markdown';
 
 // Design Tokens
@@ -423,7 +424,7 @@ export const DiagnosticBridge = React.memo(function DiagnosticBridge({
                     hr: () => <hr style={{ border: 'none', borderTop: `1px solid ${COLORS.kpiPurpleBorder}`, margin: '8px 0' }} />,
                   }}
                 >
-                  {llmResponse}
+                  {normalizeMarkdownTables(llmResponse)}
                 </ReactMarkdown>
               </Box>
             )}

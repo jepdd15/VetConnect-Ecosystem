@@ -21,6 +21,7 @@ import ReactMarkdown from 'react-markdown';
 import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
 import { chatWithHistory } from '../../../utils/llmService';
 import { buildPetHistoryPrompt } from '../../../utils/buildPetHistoryPrompt';
+import { normalizeMarkdownTables } from '../../../utils/normalizeMarkdownTables';
 
 // ─── Quick-action prompts shown in empty state ──────────────────────────────
 
@@ -303,7 +304,7 @@ export default function PetHistoryAIDrawer({ open, onClose, pet, owner, records,
               {msg.role === 'assistant' ? (
                 <Box sx={{ fontSize: '0.8rem', color: COLORS.textPrimary, lineHeight: 1.6, fontFamily: FONT }}>
                   <ReactMarkdown components={markdownComponents}>
-                    {msg.content}
+                    {normalizeMarkdownTables(msg.content)}
                   </ReactMarkdown>
                 </Box>
               ) : (

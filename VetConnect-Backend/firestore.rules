@@ -262,7 +262,7 @@ service cloud.firestore {
     // Any auth creates (all staff roles trigger pushes).
     // No updates or deletes — append-only audit trail.
     match /notification_log/{logId} {
-      allow read: if isStaff();
+      allow read: if isStaff() || (isAuth() && resource.data.ownerId == request.auth.uid);
       allow create: if isAuth();
       allow update, delete: if false;
     }

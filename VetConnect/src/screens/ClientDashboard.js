@@ -5,7 +5,9 @@
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
+  limit,
   onSnapshot,
   orderBy,
   query,
@@ -27,13 +29,14 @@ import {
 import { auth, db } from "../../firebaseConfig";
 import { getClientStatusLabel } from "../utils/statusLabels";
 import { safeDate, getLocalDateStr } from "../utils/helpers";
-import { COLORS } from "../theme/mobileTokens";
+import { COLORS, FONTS } from "../theme/mobileTokens";
 import { useConsentGate } from "../hooks/useConsentGate";
 
 // --- PUSH NOTIFICATION IMPORTS ---
 import Constants from "expo-constants";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
+import { MaterialIcons } from "@expo/vector-icons";
 
 // Tells the app to show notifications even if the app is currently open and active.
 // Must be called at module level (outside any component) so it is registered before
@@ -55,6 +58,7 @@ const ClientDashboard = ({ navigation }) => {
   const [queueAhead, setQueueAhead] = useState(0);
   const [loading, setLoading] = useState(true);
   const [pulseAnim] = useState(new Animated.Value(1));
+  const [unreadCount, setUnreadCount] = useState(0);
 
   // --- CONSENT GATE STATE ---
   // consentCompleted prevents re-triggering the gate after the user returns
@@ -136,6 +140,45 @@ const ClientDashboard = ({ navigation }) => {
       responseSubscription.remove();
     };
   }, []);
+
+  // ======================================================================
+  // 1.7 UNREAD NOTIFICATION COUNT
+  // One-shot count of notification_log docs newer than lastNotificationReadAt.
+  // Not a real-time listener — notifications are infrequent. Re-runs on
+  // focus return (e.g., after viewing NotificationHistory clears the badge).
+  // ======================================================================
+  useEffect(() => {
+    if (!auth.currentUser) return;
+
+    const fetchUnreadCount = async () => {
+      try {
+        const userSnap = await getDoc(doc(db, 'users', auth.currentUser.uid));
+        const lastRead = userSnap.exists() ? userSnap.data().lastNotificationReadAt : null;
+
+        const constraints = [
+          where('ownerId', '==', auth.currentUser.uid),
+          orderBy('sentAt', 'desc'),
+        ];
+        if (lastRead) {
+          constraints.push(where('sentAt', '>', lastRead));
+        }
+        // Limit to 100 — we only need to know "how many", not fetch thousands
+        constraints.push(limit(100));
+
+        const snap = await getDocs(query(collection(db, 'notification_log'), ...constraints));
+        setUnreadCount(snap.size);
+      } catch (err) {
+        console.log('[ClientDashboard] Unread notification count error:', err.message);
+        setUnreadCount(0);
+      }
+    };
+
+    fetchUnreadCount();
+
+    // Re-fetch on screen focus (e.g., returning from NotificationHistory)
+    const unsubFocus = navigation.addListener('focus', fetchUnreadCount);
+    return () => unsubFocus();
+  }, [navigation]);
 
   async function registerForPushNotificationsAsync() {
     let token;
@@ -604,18 +647,39 @@ const ClientDashboard = ({ navigation }) => {
         </Animated.View>
       )}
 
-      {/* NEUBRUTALIST HEADER — title + profile button inline */}
+      {/* NEUBRUTALIST HEADER — title + bell + profile button inline */}
       <View style={styles.headerBox}>
         <Text style={styles.dashboardTitle}>DASHBOARD</Text>
-        <TouchableOpacity
-          style={styles.profileSquare}
-          onPress={() => navigation.navigate("UserProfile")}
-        >
-          <View style={styles.profileShadow} />
-          <View style={styles.profileInner}>
-            <Text style={{ fontSize: 24 }}>👤</Text>
-          </View>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          {/* NOTIFICATION BELL */}
+          <TouchableOpacity
+            style={styles.bellSquare}
+            onPress={() => navigation.navigate('NotificationHistory')}
+          >
+            <View style={styles.bellShadow} />
+            <View style={styles.bellInner}>
+              <MaterialIcons name="notifications" size={24} color={COLORS.brand} />
+              {unreadCount > 0 && (
+                <View style={styles.bellBadge}>
+                  <Text style={styles.bellBadgeText}>
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+
+          {/* PROFILE BUTTON */}
+          <TouchableOpacity
+            style={styles.profileSquare}
+            onPress={() => navigation.navigate("UserProfile")}
+          >
+            <View style={styles.profileShadow} />
+            <View style={styles.profileInner}>
+              <Text style={{ fontSize: 24 }}>👤</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* --- ACTIVE STATUS FEED --- */}
@@ -839,6 +903,52 @@ const styles = StyleSheet.create({
     borderColor: '#3E2723',
     alignItems: "center",
     justifyContent: "center",
+  },
+
+  // NOTIFICATION BELL BUTTON (neubrutalist offset shadow, matches profileSquare)
+  bellSquare: {
+    width: 48,
+    height: 48,
+    position: 'relative',
+  },
+  bellShadow: {
+    position: 'absolute',
+    width: 48,
+    height: 48,
+    backgroundColor: COLORS.brand,
+    top: 4,
+    left: 4,
+  },
+  bellInner: {
+    width: 48,
+    height: 48,
+    backgroundColor: 'white',
+    borderWidth: 3,
+    borderColor: COLORS.brand,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // bellBadge intentionally uses borderRadius: 9 — sole exception to zero-radius
+  // rule. Status badges are universally circular on mobile platforms.
+  bellBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: COLORS.danger,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: 'white',
+  },
+  bellBadgeText: {
+    color: 'white',
+    fontSize: 10,
+    fontFamily: FONTS.black,
+    lineHeight: 12,
   },
 
   sectionHeader: {

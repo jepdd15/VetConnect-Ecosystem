@@ -57,6 +57,7 @@ import BlockIcon from '@mui/icons-material/Block';
 import UndoIcon from '@mui/icons-material/Undo';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import OpenInFullIcon from '@mui/icons-material/OpenInFull';
 
 // Charting
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
@@ -98,12 +99,56 @@ const SPECIES_VITAL_RANGES = {
   bcs:  { canine: [4, 5],       feline: [4, 5]         },
 };
 
+// T4.112: Chart configuration registry for 7 vitals — drives sidebar widgets + zoom dialog.
+// stroke: null means the render site resolves the color from runtime design tokens.
+// refLines: false = no reference lines; string = key into SPECIES_VITAL_RANGES.
+const VITALS_CHART_CONFIG = {
+  weight: { label: 'Weight Trend',         dataKey: 'weight', unit: 'kg',   stroke: null,      yDomain: ['dataMin - 1', 'dataMax + 1'], refLines: false },
+  temp:   { label: 'Temperature',          dataKey: 'temp',   unit: '°C',   stroke: '#EF6C00', yDomain: [37, 41],                      refLines: 'temp' },
+  hr:     { label: 'Heart Rate',           dataKey: 'hr',     unit: 'bpm',  stroke: '#E53935', yDomain: ['dataMin - 10', 'dataMax + 10'], refLines: 'hr' },
+  rr:     { label: 'Resp. Rate',           dataKey: 'rr',     unit: 'bpm',  stroke: '#0288D1', yDomain: [10, 50],                      refLines: 'rr' },
+  crt:    { label: 'Cap. Refill Time',     dataKey: 'crt',    unit: 's',    stroke: '#00838F', yDomain: [0, 5],                        refLines: 'crt' },
+  bcs:    { label: 'Body Condition Score', dataKey: 'bcs',    unit: '/9',   stroke: null,      yDomain: [1, 9],  yTicks: [1, 3, 5, 7, 9], refLines: 'bcs' },
+  pain:   { label: 'Pain Scale',           dataKey: 'pain',   unit: '/10',  stroke: '#D84315', yDomain: [0, 10], yTicks: [0, 2, 4, 6, 8, 10], refLines: false },
+};
+
+/**
+ * T4.112: Render a delta annotation between the last two readings of a vitals array.
+ * Returns JSX showing "↑/↓ ±X.X unit since last visit", or null if insufficient data.
+ * Color is always neutral (textMuted) — clinical interpretation is context-dependent.
+ * Weight keeps its own inline green/red delta and does NOT use this function.
+ */
+const renderVitalsDelta = (data, dataKey, unit) => {
+  if (!data || data.length < 2) return null;
+  const last = data[data.length - 1]?.[dataKey];
+  const prev = data[data.length - 2]?.[dataKey];
+  if (last == null || prev == null) return null;
+  const delta = last - prev;
+  if (delta === 0) return null;
+  const arrow = delta > 0 ? '↑' : '↓';
+  const sign = delta > 0 ? '+' : '';
+  const decimals = Number.isInteger(last) && Number.isInteger(prev) ? 0 : 1;
+  return (
+    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 0.5 }}>
+      <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', fontWeight: 700, color: COLORS.textMuted }}>
+        {arrow} {sign}{delta.toFixed(decimals)} {unit} since last visit
+      </Typography>
+    </Box>
+  );
+};
+
 // ── Analytics Widget Shell ──
-const Widget = ({ title, icon, children }) => (
+// T4.112: onExpand — optional callback; when provided, renders an OpenInFull icon button (right-aligned in header).
+const Widget = ({ title, icon, children, onExpand }) => (
   <Box sx={{ bgcolor: COLORS.cardBg, borderRadius: 0, border: `1px solid ${COLORS.borderLight}`, mb: 2, overflow: 'hidden' }}>
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1, borderBottom: `1px solid ${COLORS.borderLight}`, bgcolor: COLORS.surfaceAlt }}>
       {icon}
-      <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textSecondary, letterSpacing: '0.05em' }}>{title}</Typography>
+      <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textSecondary, letterSpacing: '0.05em', flex: 1 }}>{title}</Typography>
+      {onExpand && (
+        <IconButton size="small" onClick={onExpand} sx={{ p: 0.25, color: COLORS.textMuted, '&:hover': { color: COLORS.brand } }}>
+          <OpenInFullIcon sx={{ fontSize: 13 }} />
+        </IconButton>
+      )}
     </Box>
     <Box sx={{ px: 2, py: 1.5 }}>
       {children}
@@ -175,6 +220,9 @@ export default function PatientDashboard() {
 
   // T4.92: Custom notification dialog
   const [notifDialogOpen, setNotifDialogOpen] = useState(false);
+
+  // T4.112: Vitals zoom dialog — shared across all 7 vitals widgets
+  const [vitalsZoom, setVitalsZoom] = useState({ open: false, key: null });
 
   // T4.96: AI History Assistant
   const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
@@ -329,19 +377,20 @@ export default function PatientDashboard() {
         });
         setCaseDayMap(cdMap);
 
-        // Process vitals
+        // Process vitals — T4.112: ts (epoch ms) added for time-proportional X-axis
         const wt = [], tp = [], hr = [], rr = [], crt = [], bcs = [], pain = [];
         historyData.forEach(rec => {
           if (!rec.date) return;
-          const label = new Date(rec.date.seconds * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          const ms = rec.date.seconds * 1000;
+          const label = new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
           const v = resolveVitals(rec);
-          if (v.weight) wt.push({ date: label, weight: parseFloat(v.weight) });
-          if (v.temp) tp.push({ date: label, temp: parseFloat(v.temp) });
-          if (v.hr) hr.push({ date: label, hr: parseInt(v.hr) });
-          if (v.rr != null && v.rr !== '') rr.push({ date: label, rr: parseFloat(v.rr) });
-          if (v.crt != null && v.crt !== '') crt.push({ date: label, crt: parseFloat(v.crt) });
-          if (v.bcs != null && v.bcs !== '') bcs.push({ date: label, bcs: parseFloat(v.bcs) });
-          if (v.pain != null && v.pain !== '') pain.push({ date: label, pain: parseFloat(v.pain) });
+          if (v.weight) wt.push({ date: label, ts: ms, weight: parseFloat(v.weight) });
+          if (v.temp) tp.push({ date: label, ts: ms, temp: parseFloat(v.temp) });
+          if (v.hr) hr.push({ date: label, ts: ms, hr: parseInt(v.hr) });
+          if (v.rr != null && v.rr !== '') rr.push({ date: label, ts: ms, rr: parseFloat(v.rr) });
+          if (v.crt != null && v.crt !== '') crt.push({ date: label, ts: ms, crt: parseFloat(v.crt) });
+          if (v.bcs != null && v.bcs !== '') bcs.push({ date: label, ts: ms, bcs: parseFloat(v.bcs) });
+          if (v.pain != null && v.pain !== '') pain.push({ date: label, ts: ms, pain: parseFloat(v.pain) });
         });
         setVitalsData(wt.reverse());
         setTempData(tp.reverse());
@@ -1679,16 +1728,16 @@ export default function PatientDashboard() {
         <Box sx={{ flex: 3, maxWidth: 320, minWidth: 240, overflowY: 'auto', bgcolor: COLORS.surfaceAlt, py: 2, px: 2, '&::-webkit-scrollbar': { width: 4 }, '&::-webkit-scrollbar-thumb': { bgcolor: COLORS.timelineRail, borderRadius: 2 } }}>
 
           {/* Weight Trend — T2.460: 1-point display + delta annotation */}
-          <Widget title="Weight Trend" icon={<ScaleIcon sx={{ fontSize: 14, color: COLORS.accentLight }} />}>
+          <Widget title="Weight Trend" icon={<ScaleIcon sx={{ fontSize: 14, color: COLORS.accentLight }} />} onExpand={vitalsData.length > 1 ? () => setVitalsZoom({ open: true, key: 'weight' }) : undefined}>
             {vitalsData.length > 1 ? (
               <>
                 <Box sx={{ width: '100%', height: 140, minWidth: 50 }}>
-                  <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+                  <ResponsiveContainer width="100%" height={140}>
                     <LineChart data={vitalsData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
-                      <XAxis dataKey="date" tick={{ fontSize: 10, fontFamily: FONT }} />
+                      <XAxis dataKey="ts" type="number" scale="time" domain={['dataMin', 'dataMax']} tickFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} tick={{ fontSize: 10, fontFamily: FONT }} />
                       <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={['dataMin - 1', 'dataMax + 1']} />
-                      <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 6, border: `1px solid ${COLORS.border}` }} />
+                      <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 0, border: `1px solid ${COLORS.border}` }} labelFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} />
                       <Line type="monotone" dataKey="weight" stroke={COLORS.accentLight} strokeWidth={2.5} dot={{ r: 3.5, fill: COLORS.accentLight }} activeDot={{ r: 6 }} />
                     </LineChart>
                   </ResponsiveContainer>
@@ -1731,124 +1780,142 @@ export default function PatientDashboard() {
           </Widget>
 
           {/* Temperature Trend */}
-          <Widget title="Temperature" icon={<ThermostatIcon sx={{ fontSize: 14, color: '#EF6C00' }} />}>
+          <Widget title="Temperature" icon={<ThermostatIcon sx={{ fontSize: 14, color: '#EF6C00' }} />} onExpand={tempData.length > 1 ? () => setVitalsZoom({ open: true, key: 'temp' }) : undefined}>
             {tempData.length > 1 ? (
-              <Box sx={{ width: '100%', height: 110, minWidth: 50 }}>
-                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
-                  <LineChart data={tempData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
-                    <XAxis dataKey="date" tick={{ fontSize: 10, fontFamily: FONT }} />
-                    <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={[37, 41]} />
-                    <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 6 }} />
-                    <ReferenceLine y={SPECIES_VITAL_RANGES.temp[speciesKey][0]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'Low', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
-                    <ReferenceLine y={SPECIES_VITAL_RANGES.temp[speciesKey][1]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'High', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
-                    <Line type="monotone" dataKey="temp" stroke="#EF6C00" strokeWidth={2} dot={{ r: 3, fill: '#EF6C00' }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </Box>
+              <>
+                <Box sx={{ width: '100%', height: 110, minWidth: 50 }}>
+                  <ResponsiveContainer width="100%" height={110}>
+                    <LineChart data={tempData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
+                      <XAxis dataKey="ts" type="number" scale="time" domain={['dataMin', 'dataMax']} tickFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} tick={{ fontSize: 10, fontFamily: FONT }} />
+                      <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={[37, 41]} />
+                      <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 0, border: `1px solid ${COLORS.border}` }} labelFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} />
+                      <ReferenceLine y={SPECIES_VITAL_RANGES.temp[speciesKey][0]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'Low', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
+                      <ReferenceLine y={SPECIES_VITAL_RANGES.temp[speciesKey][1]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'High', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
+                      <Line type="monotone" dataKey="temp" stroke="#EF6C00" strokeWidth={2} dot={{ r: 3, fill: '#EF6C00' }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </Box>
+                {renderVitalsDelta(tempData, 'temp', '°C')}
+              </>
             ) : (
               <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', color: COLORS.textMuted, fontStyle: 'italic', textAlign: 'center', py: 2 }}>No temperature data yet</Typography>
             )}
           </Widget>
 
           {/* Heart Rate Trend */}
-          <Widget title="Heart Rate" icon={<FavoriteIcon sx={{ fontSize: 14, color: '#E53935' }} />}>
+          <Widget title="Heart Rate" icon={<FavoriteIcon sx={{ fontSize: 14, color: '#E53935' }} />} onExpand={hrData.length > 1 ? () => setVitalsZoom({ open: true, key: 'hr' }) : undefined}>
             {hrData.length > 1 ? (
-              <Box sx={{ width: '100%', height: 110, minWidth: 50 }}>
-                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
-                  <LineChart data={hrData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
-                    <XAxis dataKey="date" tick={{ fontSize: 10, fontFamily: FONT }} />
-                    <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={['dataMin - 10', 'dataMax + 10']} />
-                    <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 6 }} />
-                    <ReferenceLine y={SPECIES_VITAL_RANGES.hr[speciesKey][0]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'Low', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
-                    <ReferenceLine y={SPECIES_VITAL_RANGES.hr[speciesKey][1]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'High', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
-                    <Line type="monotone" dataKey="hr" stroke="#E53935" strokeWidth={2} dot={{ r: 3, fill: '#E53935' }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </Box>
+              <>
+                <Box sx={{ width: '100%', height: 110, minWidth: 50 }}>
+                  <ResponsiveContainer width="100%" height={110}>
+                    <LineChart data={hrData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
+                      <XAxis dataKey="ts" type="number" scale="time" domain={['dataMin', 'dataMax']} tickFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} tick={{ fontSize: 10, fontFamily: FONT }} />
+                      <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={['dataMin - 10', 'dataMax + 10']} />
+                      <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 0, border: `1px solid ${COLORS.border}` }} labelFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} />
+                      <ReferenceLine y={SPECIES_VITAL_RANGES.hr[speciesKey][0]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'Low', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
+                      <ReferenceLine y={SPECIES_VITAL_RANGES.hr[speciesKey][1]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'High', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
+                      <Line type="monotone" dataKey="hr" stroke="#E53935" strokeWidth={2} dot={{ r: 3, fill: '#E53935' }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </Box>
+                {renderVitalsDelta(hrData, 'hr', 'bpm')}
+              </>
             ) : (
               <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', color: COLORS.textMuted, fontStyle: 'italic', textAlign: 'center', py: 2 }}>No heart rate data yet</Typography>
             )}
           </Widget>
 
           {/* Respiratory Rate Trend — T2.467 */}
-          <Widget title="Resp. Rate" icon={<AccessTimeIcon sx={{ fontSize: 14, color: '#0288D1' }} />}>
+          <Widget title="Resp. Rate" icon={<AccessTimeIcon sx={{ fontSize: 14, color: '#0288D1' }} />} onExpand={rrData.length > 1 ? () => setVitalsZoom({ open: true, key: 'rr' }) : undefined}>
             {rrData.length > 1 ? (
-              <Box sx={{ width: '100%', height: 110, minWidth: 50 }}>
-                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
-                  <LineChart data={rrData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
-                    <XAxis dataKey="date" tick={{ fontSize: 10, fontFamily: FONT }} />
-                    <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={[10, 50]} />
-                    <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 6 }} />
-                    <ReferenceLine y={SPECIES_VITAL_RANGES.rr[speciesKey][0]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'Low', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
-                    <ReferenceLine y={SPECIES_VITAL_RANGES.rr[speciesKey][1]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'High', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
-                    <Line type="monotone" dataKey="rr" stroke="#0288D1" strokeWidth={2} dot={{ r: 3, fill: '#0288D1' }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </Box>
+              <>
+                <Box sx={{ width: '100%', height: 110, minWidth: 50 }}>
+                  <ResponsiveContainer width="100%" height={110}>
+                    <LineChart data={rrData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
+                      <XAxis dataKey="ts" type="number" scale="time" domain={['dataMin', 'dataMax']} tickFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} tick={{ fontSize: 10, fontFamily: FONT }} />
+                      <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={[10, 50]} />
+                      <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 0, border: `1px solid ${COLORS.border}` }} labelFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} />
+                      <ReferenceLine y={SPECIES_VITAL_RANGES.rr[speciesKey][0]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'Low', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
+                      <ReferenceLine y={SPECIES_VITAL_RANGES.rr[speciesKey][1]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'High', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
+                      <Line type="monotone" dataKey="rr" stroke="#0288D1" strokeWidth={2} dot={{ r: 3, fill: '#0288D1' }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </Box>
+                {renderVitalsDelta(rrData, 'rr', 'bpm')}
+              </>
             ) : (
               <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', color: COLORS.textMuted, fontStyle: 'italic', textAlign: 'center', py: 2 }}>No respiratory rate data yet</Typography>
             )}
           </Widget>
 
           {/* CRT Trend */}
-          <Widget title="Cap. Refill Time" icon={<AccessTimeIcon sx={{ fontSize: 14, color: '#00838F' }} />}>
+          <Widget title="Cap. Refill Time" icon={<AccessTimeIcon sx={{ fontSize: 14, color: '#00838F' }} />} onExpand={crtData.length > 1 ? () => setVitalsZoom({ open: true, key: 'crt' }) : undefined}>
             {crtData.length > 1 ? (
-              <Box sx={{ width: '100%', height: 110, minWidth: 50 }}>
-                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
-                  <LineChart data={crtData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
-                    <XAxis dataKey="date" tick={{ fontSize: 10, fontFamily: FONT }} />
-                    <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={[0, 5]} />
-                    <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 6 }} />
-                    <ReferenceLine y={SPECIES_VITAL_RANGES.crt[speciesKey][0]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'Low', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
-                    <ReferenceLine y={SPECIES_VITAL_RANGES.crt[speciesKey][1]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'High', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
-                    <Line type="monotone" dataKey="crt" stroke="#00838F" strokeWidth={2} dot={{ r: 3, fill: '#00838F' }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </Box>
+              <>
+                <Box sx={{ width: '100%', height: 110, minWidth: 50 }}>
+                  <ResponsiveContainer width="100%" height={110}>
+                    <LineChart data={crtData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
+                      <XAxis dataKey="ts" type="number" scale="time" domain={['dataMin', 'dataMax']} tickFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} tick={{ fontSize: 10, fontFamily: FONT }} />
+                      <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={[0, 5]} />
+                      <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 0, border: `1px solid ${COLORS.border}` }} labelFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} />
+                      <ReferenceLine y={SPECIES_VITAL_RANGES.crt[speciesKey][0]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'Low', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
+                      <ReferenceLine y={SPECIES_VITAL_RANGES.crt[speciesKey][1]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'High', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
+                      <Line type="monotone" dataKey="crt" stroke="#00838F" strokeWidth={2} dot={{ r: 3, fill: '#00838F' }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </Box>
+                {renderVitalsDelta(crtData, 'crt', 's')}
+              </>
             ) : (
               <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', color: COLORS.textMuted, fontStyle: 'italic', textAlign: 'center', py: 2 }}>No CRT data yet</Typography>
             )}
           </Widget>
 
           {/* BCS Trend — T2.468 */}
-          <Widget title="Body Condition Score" icon={<ScaleIcon sx={{ fontSize: 14, color: COLORS.grooming }} />}>
+          <Widget title="Body Condition Score" icon={<ScaleIcon sx={{ fontSize: 14, color: COLORS.grooming }} />} onExpand={bcsData.length > 1 ? () => setVitalsZoom({ open: true, key: 'bcs' }) : undefined}>
             {bcsData.length > 1 ? (
-              <Box sx={{ width: '100%', height: 110, minWidth: 50 }}>
-                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
-                  <LineChart data={bcsData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
-                    <XAxis dataKey="date" tick={{ fontSize: 10, fontFamily: FONT }} />
-                    <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={[1, 9]} ticks={[1, 3, 5, 7, 9]} />
-                    <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 6 }} />
-                    <ReferenceLine y={SPECIES_VITAL_RANGES.bcs[speciesKey][0]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'Low', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
-                    <ReferenceLine y={SPECIES_VITAL_RANGES.bcs[speciesKey][1]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'High', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
-                    <Line type="monotone" dataKey="bcs" stroke={COLORS.grooming} strokeWidth={2} dot={{ r: 3, fill: COLORS.grooming }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </Box>
+              <>
+                <Box sx={{ width: '100%', height: 110, minWidth: 50 }}>
+                  <ResponsiveContainer width="100%" height={110}>
+                    <LineChart data={bcsData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
+                      <XAxis dataKey="ts" type="number" scale="time" domain={['dataMin', 'dataMax']} tickFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} tick={{ fontSize: 10, fontFamily: FONT }} />
+                      <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={[1, 9]} ticks={[1, 3, 5, 7, 9]} />
+                      <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 0, border: `1px solid ${COLORS.border}` }} labelFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} />
+                      <ReferenceLine y={SPECIES_VITAL_RANGES.bcs[speciesKey][0]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'Low', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
+                      <ReferenceLine y={SPECIES_VITAL_RANGES.bcs[speciesKey][1]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'High', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
+                      <Line type="monotone" dataKey="bcs" stroke={COLORS.grooming} strokeWidth={2} dot={{ r: 3, fill: COLORS.grooming }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </Box>
+                {renderVitalsDelta(bcsData, 'bcs', '/9')}
+              </>
             ) : (
               <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', color: COLORS.textMuted, fontStyle: 'italic', textAlign: 'center', py: 2 }}>No BCS data yet</Typography>
             )}
           </Widget>
 
           {/* Pain Scale Trend — T2.469 */}
-          <Widget title="Pain Scale" icon={<WarningAmberIcon sx={{ fontSize: 14, color: '#D84315' }} />}>
+          <Widget title="Pain Scale" icon={<WarningAmberIcon sx={{ fontSize: 14, color: '#D84315' }} />} onExpand={painData.length > 1 ? () => setVitalsZoom({ open: true, key: 'pain' }) : undefined}>
             {painData.length > 1 ? (
-              <Box sx={{ width: '100%', height: 110, minWidth: 50 }}>
-                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
-                  <LineChart data={painData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
-                    <XAxis dataKey="date" tick={{ fontSize: 10, fontFamily: FONT }} />
-                    <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={[0, 10]} ticks={[0, 2, 4, 6, 8, 10]} />
-                    <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 6 }} />
-                    <Line type="monotone" dataKey="pain" stroke="#D84315" strokeWidth={2} dot={{ r: 3, fill: '#D84315' }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </Box>
+              <>
+                <Box sx={{ width: '100%', height: 110, minWidth: 50 }}>
+                  <ResponsiveContainer width="100%" height={110}>
+                    <LineChart data={painData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
+                      <XAxis dataKey="ts" type="number" scale="time" domain={['dataMin', 'dataMax']} tickFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} tick={{ fontSize: 10, fontFamily: FONT }} />
+                      <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={[0, 10]} ticks={[0, 2, 4, 6, 8, 10]} />
+                      <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 0, border: `1px solid ${COLORS.border}` }} labelFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} />
+                      <Line type="monotone" dataKey="pain" stroke="#D84315" strokeWidth={2} dot={{ r: 3, fill: '#D84315' }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </Box>
+                {renderVitalsDelta(painData, 'pain', '/10')}
+              </>
             ) : (
               <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', color: COLORS.textMuted, fontStyle: 'italic', textAlign: 'center', py: 2 }}>No pain scale data yet</Typography>
             )}
@@ -1857,11 +1924,11 @@ export default function PatientDashboard() {
           {/* Visit Frequency */}
           <Widget title="Visit Frequency (6mo)" icon={<CalendarMonthIcon sx={{ fontSize: 14, color: COLORS.medical }} />}>
             <Box sx={{ width: '100%', height: 100, minWidth: 50 }}>
-              <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+              <ResponsiveContainer width="100%" height={100}>
                 <BarChart data={visitFreqData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
                   <XAxis dataKey="month" tick={{ fontSize: 10, fontFamily: FONT }} />
                   <YAxis tick={{ fontSize: 10, fontFamily: FONT }} allowDecimals={false} />
-                  <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 6 }} />
+                  <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 0, border: `1px solid ${COLORS.border}` }} />
                   <Bar dataKey="visits" fill={COLORS.accentLight} radius={[3, 3, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -2520,6 +2587,76 @@ export default function PatientDashboard() {
         vaccinations={vaccinationStatus}
         workerUrl={llmConfig.workerUrl}
       />
+
+      {/* T4.112: Vitals Zoom Dialog — single shared instance, content resolved from vitalsZoom.key */}
+      <Dialog
+        open={vitalsZoom.open}
+        onClose={() => setVitalsZoom({ open: false, key: null })}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.border}` } }}
+      >
+        {vitalsZoom.key && (() => {
+          const cfg = VITALS_CHART_CONFIG[vitalsZoom.key];
+          const dataMap = { weight: vitalsData, temp: tempData, hr: hrData, rr: rrData, crt: crtData, bcs: bcsData, pain: painData };
+          const data = dataMap[vitalsZoom.key] || [];
+          const strokeColor = cfg.stroke || (vitalsZoom.key === 'weight' ? COLORS.accentLight : COLORS.grooming);
+          const rangeKey = cfg.refLines;
+          return (
+            <>
+              <DialogTitle sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '1rem', color: COLORS.brand, borderBottom: `2px solid ${COLORS.border}`, display: 'flex', alignItems: 'center', gap: 1 }}>
+                {cfg.label}{pet?.name ? ` — ${pet.name}` : ''}
+              </DialogTitle>
+              <DialogContent sx={{ py: 3, px: 3 }}>
+                {data.length > 1 ? (
+                  <Box sx={{ width: '100%', height: 380 }}>
+                    <ResponsiveContainer width="100%" height={380}>
+                      <LineChart data={data} margin={{ top: 10, right: 30, left: 10, bottom: 10 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
+                        <XAxis
+                          dataKey="ts"
+                          type="number"
+                          scale="time"
+                          domain={['dataMin', 'dataMax']}
+                          tickFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          tick={{ fontSize: 11, fontFamily: FONT }}
+                        />
+                        <YAxis
+                          tick={{ fontSize: 11, fontFamily: FONT }}
+                          domain={cfg.yDomain}
+                          {...(cfg.yTicks ? { ticks: cfg.yTicks } : {})}
+                        />
+                        <RechartsTooltip
+                          contentStyle={{ fontSize: 12, fontFamily: FONT, borderRadius: 0, border: `1px solid ${COLORS.border}` }}
+                          formatter={(value) => [`${value} ${cfg.unit}`, cfg.label]}
+                          labelFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                        />
+                        {rangeKey && SPECIES_VITAL_RANGES[rangeKey] && (
+                          <>
+                            <ReferenceLine y={SPECIES_VITAL_RANGES[rangeKey][speciesKey][0]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'Low', fill: '#66BB6A', fontSize: 10, position: 'right' }} />
+                            <ReferenceLine y={SPECIES_VITAL_RANGES[rangeKey][speciesKey][1]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'High', fill: '#66BB6A', fontSize: 10, position: 'right' }} />
+                          </>
+                        )}
+                        <Line type="monotone" dataKey={cfg.dataKey} stroke={strokeColor} strokeWidth={2.5} dot={{ r: 4, fill: strokeColor }} activeDot={{ r: 7 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </Box>
+                ) : (
+                  <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', color: COLORS.textMuted, fontStyle: 'italic', textAlign: 'center', py: 4 }}>
+                    Insufficient data for trend chart
+                  </Typography>
+                )}
+                {renderVitalsDelta(data, cfg.dataKey, cfg.unit)}
+              </DialogContent>
+              <DialogActions sx={{ px: 2.5, pb: 2, borderTop: `1px solid ${COLORS.borderLight}` }}>
+                <Button onClick={() => setVitalsZoom({ open: false, key: null })} sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textSecondary, borderRadius: 0 }}>
+                  Close
+                </Button>
+              </DialogActions>
+            </>
+          );
+        })()}
+      </Dialog>
     </Box>
   );
 }

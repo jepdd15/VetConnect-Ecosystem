@@ -13,7 +13,12 @@
  * @returns {string}
  */
 function buildErrorMessage(status, fallback = 'Could not get a response. Try again.') {
-  if (status === 401 || status === 403) return 'Service unavailable. Contact clinic staff.';
+  // 401/403: surface the real Anthropic error when the caller extracted one,
+  // otherwise show a generic user-safe message (key details stay server-side).
+  if (status === 401 || status === 403) {
+    if (fallback && fallback !== `HTTP ${status}`) return fallback;
+    return 'Service unavailable. Contact clinic staff.';
+  }
   if (status === 429) return 'Too many requests. Please wait a moment.';
   if (status === 529) return 'AI service is busy. Try again shortly.';
   if (status === null) return 'Network error. Check your connection.';
@@ -41,7 +46,13 @@ export async function sendChatMessage({ messages, systemPrompt, workerUrl }) {
   }
 
   if (!response.ok) {
-    throw new Error(buildErrorMessage(response.status));
+    let detail = `HTTP ${response.status}`;
+    try {
+      const errBody = await response.json();
+      const raw = errBody?.error?.message || errBody?.error || detail;
+      detail = typeof raw === 'object' ? JSON.stringify(raw) : raw;
+    } catch {}
+    throw new Error(buildErrorMessage(response.status, detail));
   }
 
   let data;

@@ -22,6 +22,12 @@
  */
 function buildErrorMessage(status, fallback) {
   if (status === 401 || status === 403) {
+    // If the caller extracted a real Anthropic error message (not just the
+    // generic "HTTP {status}" placeholder), surface it directly so the operator
+    // can see the exact reason (e.g. "Invalid API Key", "permission denied").
+    if (fallback && fallback !== `HTTP ${status}`) {
+      return fallback;
+    }
     return 'API key invalid — check Cloudflare Worker environment variable.';
   }
   if (status === 429) {
@@ -127,7 +133,13 @@ export async function callClinicalReasoning({
   }
 
   if (!response.ok) {
-    throw new Error(buildErrorMessage(response.status, `HTTP ${response.status}`));
+    let detail = `HTTP ${response.status}`;
+    try {
+      const errBody = await response.json();
+      const raw = errBody?.error?.message || errBody?.error || detail;
+      detail = typeof raw === 'object' ? JSON.stringify(raw) : raw;
+    } catch {}
+    throw new Error(buildErrorMessage(response.status, detail));
   }
 
   let data;
@@ -185,7 +197,13 @@ export async function chatWithHistory({ messages, systemPrompt, workerUrl }) {
   }
 
   if (!response.ok) {
-    throw new Error(buildErrorMessage(response.status, `HTTP ${response.status}`));
+    let detail = `HTTP ${response.status}`;
+    try {
+      const errBody = await response.json();
+      const raw = errBody?.error?.message || errBody?.error || detail;
+      detail = typeof raw === 'object' ? JSON.stringify(raw) : raw;
+    } catch {}
+    throw new Error(buildErrorMessage(response.status, detail));
   }
 
   let data;
@@ -232,7 +250,13 @@ export async function testLlmConnection({ workerUrl }) {
     });
 
     if (!response.ok) {
-      return { ok: false, message: buildErrorMessage(response.status, `HTTP ${response.status}`) };
+      let detail = `HTTP ${response.status}`;
+      try {
+        const errBody = await response.json();
+        const raw = errBody?.error?.message || errBody?.error || detail;
+        detail = typeof raw === 'object' ? JSON.stringify(raw) : raw;
+      } catch {}
+      return { ok: false, message: buildErrorMessage(response.status, detail) };
     }
 
     const data = await response.json();

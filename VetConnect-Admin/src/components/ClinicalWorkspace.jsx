@@ -430,6 +430,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   const [isAIDrawerOpen, setIsAIDrawerOpen] = useState(false);
   // Unmount guard: set to true on unmount to prevent setState after component is gone.
   const llmAbortRef = useRef(false);
+  // Stores the last user content sent to the LLM so handleLlmRetry can re-send it.
+  const lastLlmUserContentRef = useRef('');
 
   // T3.118: Amendment dialog state — inline form extracted to shared AmendmentDialog
   const [amendDialogOpen, setAmendDialogOpen] = useState(false);
@@ -990,6 +992,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
 
     if (!userContent) return;
 
+    // Persist the content so handleLlmRetry can re-send after an error.
+    lastLlmUserContentRef.current = userContent;
+
     const baseMessages = forceInitial ? [] : llmMessages;
     const userMsg = { role: 'user', content: userContent };
     const updatedMessages = [...baseMessages, userMsg];
@@ -1088,6 +1093,34 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   const handleResetAndAskAI = () => {
     setLlmMessages([]);
     runLlmDiagnosis(undefined, { forceInitial: true });
+  };
+
+  /**
+   * Retries the last failed LLM call using the stored user message content.
+   * Called by ClinicalAIPanel's "Try Again" button after all auto-retries fail.
+   * Drops the orphaned user message (no paired assistant reply) before re-sending
+   * to prevent the conversation accumulating incomplete turns.
+   */
+  const handleLlmRetry = () => {
+    if (!lastLlmUserContentRef.current) return;
+    setLlmError('');
+    setLlmMessages(prev => {
+      // Drop the trailing user message that had no paired assistant reply.
+      if (prev.length > 0 && prev[prev.length - 1].role === 'user') {
+        return prev.slice(0, -1);
+      }
+      return prev;
+    });
+    // Use setTimeout(0) to let the state flush before runLlmDiagnosis reads llmMessages.
+    setTimeout(() => {
+      const content = lastLlmUserContentRef.current;
+      // If only 1 message existed (the initial SOAP call), re-run as fresh analysis.
+      if (llmMessages.length <= 1) {
+        runLlmDiagnosis(undefined, { forceInitial: true });
+      } else {
+        runLlmDiagnosis(content);
+      }
+    }, 0);
   };
 
   /** Opens or closes the AI side panel (drawer in default view, no-op in God View). */
@@ -2268,12 +2301,6 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
               {patient?.ownerName || 'Walk-In'} {patient?.ownerPhone ? `| ${patient.ownerPhone}` : ''}
             </Typography>
 
-            {/* Service Chips */}
-            {(patient?.services || []).slice(0, 3).map((svc, i) => (
-              <Chip key={i} label={svc.name || svc.serviceName || 'Service'}
-                size="small" sx={{ height: 20, fontSize: '0.58rem', fontWeight: 1000 }} />
-            ))}
-
             {/* Allergy — unified read: petAllergies (canonical) || allergies (legacy) */}
             {(() => {
               const allergyVal = patient?.petAllergies || patient?.allergies || '';
@@ -2682,7 +2709,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         </Box>
 
         {/* === SIDEBAR (RIGHT) === */}
-        <Box sx={{ flex: 2.5, overflowY: 'auto', p: 3, bgcolor: '#FAF8F5' }}>
+        <Box sx={{ flex: 2.5, display: 'flex', flexDirection: 'column', bgcolor: '#FAF8F5', overflow: 'hidden' }}>
+          {/* Scrollable area: search, cart, service progress */}
+          <Box sx={{ flex: 1, overflowY: 'auto', minHeight: 0, p: 3 }}>
             <Stack spacing={3}>
                 <Paper ref={treatmentRef} sx={{ ...glassStyle, p: 3, borderLeft: `8px solid ${COLORS.accent}` }}>
                     <Typography variant="h6" sx={{ fontWeight: 1000, color: COLORS.brand, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -2909,8 +2938,11 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                         sx={{ ...glassStyle }}
                     />
                 )}
+            </Stack>
+          </Box>
 
-                <Box sx={{ pt: 2 }}>
+          {/* Pinned bottom: sign-off / sealed section */}
+          <Box sx={{ flexShrink: 0, p: 3, pt: 2, borderTop: `1px solid ${COLORS.borderLight}`, borderRadius: 0 }}>
                     {!isRecordLocked && !lockedServices.has('medical') ? (
                         <Stack spacing={2}>
                             {/* Staff-initiated record lock — two-step commit guard.
@@ -2959,8 +2991,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                             )}
                         </Box>
                     )}
-                </Box>
-            </Stack>
+          </Box>
         </Box>
       </Box>
 
@@ -3162,6 +3193,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
               onLlmFollowUpChange={setLlmFollowUpInput}
               onLlmFollowUp={handleLlmFollowUp}
               onResetAndAskAI={handleResetAndAskAI}
+              onRetry={handleLlmRetry}
               onClose={null}
               petName={patient?.petName}
             />
@@ -3222,6 +3254,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           onLlmFollowUpChange={setLlmFollowUpInput}
           onLlmFollowUp={handleLlmFollowUp}
           onResetAndAskAI={handleResetAndAskAI}
+          onRetry={handleLlmRetry}
           onClose={() => setIsAIDrawerOpen(false)}
           petName={patient?.petName}
         />

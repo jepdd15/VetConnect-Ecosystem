@@ -42,6 +42,53 @@ function buildErrorMessage(status, fallback) {
   return fallback || `Unexpected error (HTTP ${status}).`;
 }
 
+// ─── Retry helper (internal — not exported) ─────────────────────────────────
+
+const RETRYABLE_STATUSES = new Set([429, 529, 503]);
+const BACKOFF_MS = [1000, 3000]; // delay before retry 2, retry 3
+
+/**
+ * Wraps fetch() with automatic retry for transient errors.
+ * Returns the Response object on success OR after all retries are exhausted.
+ * Throws only on network errors that persist through all retries.
+ *
+ * Non-retryable codes (401, 403, 400) return immediately — retrying auth or
+ * bad-request errors is pointless and would mask real configuration problems.
+ *
+ * @param {string} url
+ * @param {RequestInit} options
+ * @returns {Promise<Response>}
+ */
+async function fetchWithRetry(url, options) {
+  const maxAttempts = BACKOFF_MS.length + 1; // 3 total
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const response = await fetch(url, options);
+
+      // Non-retryable failure or success — return immediately
+      if (response.ok || !RETRYABLE_STATUSES.has(response.status)) {
+        return response;
+      }
+
+      // Retryable status but last attempt — return the failed response
+      // so the caller's existing buildErrorMessage logic handles it
+      if (attempt === maxAttempts) {
+        return response;
+      }
+
+      // Wait before next retry
+      await new Promise(r => setTimeout(r, BACKOFF_MS[attempt - 1]));
+    } catch (networkError) {
+      // Network error (DNS failure, offline, CORS, etc.)
+      if (attempt === maxAttempts) {
+        throw networkError; // Let caller's catch block handle it
+      }
+      await new Promise(r => setTimeout(r, BACKOFF_MS[attempt - 1]));
+    }
+  }
+}
+
 // ─── User message builder ─────────────────────────────────────────────────────
 
 /**
@@ -89,83 +136,8 @@ export function buildUserMessage({ subjective, objective, vitals = {}, species, 
 // ─── Exported API ─────────────────────────────────────────────────────────────
 
 /**
- * Calls the Cloudflare Worker proxy with structured clinical SOAP data
- * and returns the LLM's differential diagnosis reasoning.
- *
- * @param {object} params
- * @param {string} params.subjective      - SOAP subjective history
- * @param {string} params.objective       - SOAP objective notes
- * @param {object} params.vitals          - Vitals object { temp, hr, rr, crt, bcs, pain }
- * @param {string} params.species         - Patient species (e.g. "dog")
- * @param {string} params.breed           - Patient breed
- * @param {string} params.age             - Formatted age string
- * @param {string|number} params.weight   - Patient weight in kg
- * @param {string} params.systemPrompt    - The clinical reasoning system prompt
- * @param {string} params.workerUrl       - Cloudflare Worker URL
- * @returns {Promise<{ text: string, tokenCount: number | null }>}
- * @throws {Error} with a human-readable message on failure
- */
-export async function callClinicalReasoning({
-  subjective,
-  objective,
-  vitals,
-  species,
-  breed,
-  age,
-  weight,
-  systemPrompt,
-  workerUrl,
-}) {
-  const userMessage = buildUserMessage({ subjective, objective, vitals, species, breed, age, weight });
-
-  let response;
-  try {
-    response = await fetch(workerUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        system: systemPrompt || '',
-        messages: [{ role: 'user', content: userMessage }],
-      }),
-    });
-  } catch {
-    throw new Error(buildErrorMessage(null, 'Network error.'));
-  }
-
-  if (!response.ok) {
-    let detail = `HTTP ${response.status}`;
-    try {
-      const errBody = await response.json();
-      const raw = errBody?.error?.message || errBody?.error || detail;
-      detail = typeof raw === 'object' ? JSON.stringify(raw) : raw;
-    } catch {}
-    throw new Error(buildErrorMessage(response.status, detail));
-  }
-
-  let data;
-  try {
-    data = await response.json();
-  } catch {
-    throw new Error('Invalid response from Worker — could not parse JSON.');
-  }
-
-  const text = data?.content?.[0]?.text;
-  if (!text) {
-    throw new Error('Worker returned an empty response. Check the Worker logs.');
-  }
-
-  const tokenCount =
-    data.usage
-      ? (data.usage.input_tokens || 0) + (data.usage.output_tokens || 0)
-      : null;
-
-  return { text, tokenCount };
-}
-
-/**
  * Sends a multi-turn conversation to the Cloudflare Worker proxy.
- * Unlike callClinicalReasoning (which builds a single structured message),
- * this function accepts a pre-built messages array for conversational use.
+ * Accepts a pre-built messages array for conversational use.
  *
  * @param {object} params
  * @param {Array<{role: 'user'|'assistant', content: string}>} params.messages
@@ -184,7 +156,7 @@ export async function chatWithHistory({ messages, systemPrompt, workerUrl }) {
 
   let response;
   try {
-    response = await fetch(workerUrl, {
+    response = await fetchWithRetry(workerUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

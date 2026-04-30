@@ -177,6 +177,25 @@ export default function PetHistoryAISheet({
     }
   }, [input, messages, loading, systemPrompt, workerUrl, userId]);
 
+  /**
+   * Retries the last failed message. Finds the last user message,
+   * drops the orphaned copy (since it had no paired assistant reply),
+   * and re-sends it — bypassing the daily rate limit check since this
+   * is a retry of an already-counted request.
+   */
+  const handleRetry = useCallback(() => {
+    const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+    if (!lastUserMsg) return;
+    setError('');
+    setMessages(prev => {
+      if (prev.length > 0 && prev[prev.length - 1].role === 'user') {
+        return prev.slice(0, -1);
+      }
+      return prev;
+    });
+    setTimeout(() => handleSend(lastUserMsg.content), 0);
+  }, [messages, handleSend]);
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   const isInputDisabled = loading || rateLimited;
@@ -283,11 +302,19 @@ export default function PetHistoryAISheet({
             </View>
           )}
 
-          {/* Inline error — no Alert.alert */}
+          {/* Inline error with retry — no Alert.alert */}
           {!!error && (
             <View style={styles.errorBanner}>
-              <MaterialIcons name="error-outline" size={16} color={COLORS.danger} />
-              <Text style={styles.errorText}>{error}</Text>
+              <Text style={styles.errorTitle}>AI temporarily unavailable</Text>
+              <Text style={styles.errorDetail}>{error}</Text>
+              <TouchableOpacity
+                style={styles.retryBtn}
+                onPress={handleRetry}
+                activeOpacity={0.7}
+              >
+                <MaterialIcons name="replay" size={16} color={COLORS.danger} />
+                <Text style={styles.retryText}>TRY AGAIN</Text>
+              </TouchableOpacity>
             </View>
           )}
 
@@ -505,9 +532,6 @@ const styles = StyleSheet.create({
 
   // Error banner (inline, not Alert.alert)
   errorBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
     backgroundColor: '#FFEBEE',
     borderWidth: 1,
     borderColor: '#FFCDD2',
@@ -515,11 +539,36 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 12,
   },
-  errorText: {
-    fontSize: 13,
+  errorTitle: {
+    fontSize: 14,
+    fontWeight: '800',
     color: COLORS.danger,
-    flex: 1,
+    marginBottom: 4,
+  },
+  errorDetail: {
+    fontSize: 12,
+    color: '#8D6E63',
     lineHeight: 18,
+    marginBottom: 10,
+  },
+  retryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderWidth: 2,
+    borderColor: COLORS.danger,
+    borderRadius: 0,
+    backgroundColor: 'transparent',
+  },
+  retryText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.danger,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
 
   // Rate limit banner (inline)

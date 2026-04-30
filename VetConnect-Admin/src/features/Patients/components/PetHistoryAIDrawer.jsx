@@ -17,6 +17,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import SendIcon from '@mui/icons-material/Send';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
+import ReplayIcon from '@mui/icons-material/Replay';
 import ReactMarkdown from 'react-markdown';
 import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
 import { chatWithHistory } from '../../../utils/llmService';
@@ -170,6 +171,24 @@ export default function PetHistoryAIDrawer({ open, onClose, pet, owner, records,
     setMessages([]);
     setError('');
   }, []);
+
+  /**
+   * Retries the last failed message.
+   * Finds the last user message from the conversation, drops the orphaned
+   * copy (since it produced no paired assistant reply), then re-sends it.
+   */
+  const handleRetry = useCallback(() => {
+    const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+    if (!lastUserMsg) return;
+    setError('');
+    setMessages(prev => {
+      if (prev.length > 0 && prev[prev.length - 1].role === 'user') {
+        return prev.slice(0, -1);
+      }
+      return prev;
+    });
+    setTimeout(() => handleSend(lastUserMsg.content), 0);
+  }, [messages, handleSend]);
 
   return (
     <Drawer
@@ -326,12 +345,48 @@ export default function PetHistoryAIDrawer({ open, onClose, pet, owner, records,
           </Box>
         )}
 
-        {/* Inline error display — no window.alert() */}
+        {/* Inline error display with retry — no window.alert() */}
         {error && (
-          <Box sx={{ px: 1.5, py: 1, bgcolor: COLORS.dangerSurface, border: `1.5px solid ${COLORS.danger}`, borderRadius: 0 }}>
-            <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', color: COLORS.danger, fontWeight: 700 }}>
+          <Box sx={{
+            px: 1.5, py: 1.25,
+            bgcolor: COLORS.dangerSurface,
+            border: `1.5px solid ${COLORS.danger}`,
+            borderRadius: 0,
+          }}>
+            <Typography sx={{
+              fontFamily: FONT, fontSize: '0.82rem',
+              color: COLORS.danger, fontWeight: 800, mb: 0.25,
+            }}>
+              AI temporarily unavailable
+            </Typography>
+            <Typography sx={{
+              fontFamily: FONT, fontSize: '0.72rem',
+              color: COLORS.textMuted, lineHeight: 1.4, mb: 1,
+            }}>
               {error}
             </Typography>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<ReplayIcon sx={{ fontSize: 14 }} />}
+              onClick={handleRetry}
+              sx={{
+                fontFamily: FONT,
+                fontWeight: 900,
+                fontSize: '0.65rem',
+                textTransform: 'uppercase',
+                letterSpacing: 0.5,
+                borderRadius: 0,
+                borderColor: COLORS.danger,
+                color: COLORS.danger,
+                '&:hover': {
+                  borderColor: '#B71C1C',
+                  bgcolor: 'rgba(211,47,47,0.04)',
+                },
+              }}
+            >
+              Try Again
+            </Button>
           </Box>
         )}
 

@@ -25,6 +25,53 @@ function buildErrorMessage(status, fallback = 'Could not get a response. Try aga
   return fallback;
 }
 
+// ─── Retry helper (internal — not exported) ─────────────────────────────────
+
+const RETRYABLE_STATUSES = new Set([429, 529, 503]);
+const BACKOFF_MS = [1000, 3000]; // delay before retry 2, retry 3
+
+/**
+ * Wraps fetch() with automatic retry for transient errors.
+ * Returns the Response object on success OR after all retries are exhausted.
+ * Throws only on network errors that persist through all retries.
+ *
+ * Non-retryable codes (401, 403, 400) return immediately — retrying auth or
+ * bad-request errors is pointless and would mask real configuration problems.
+ *
+ * @param {string} url
+ * @param {RequestInit} options
+ * @returns {Promise<Response>}
+ */
+async function fetchWithRetry(url, options) {
+  const maxAttempts = BACKOFF_MS.length + 1; // 3 total
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const response = await fetch(url, options);
+
+      // Non-retryable failure or success — return immediately
+      if (response.ok || !RETRYABLE_STATUSES.has(response.status)) {
+        return response;
+      }
+
+      // Retryable status but last attempt — return the failed response
+      // so the caller's existing buildErrorMessage logic handles it
+      if (attempt === maxAttempts) {
+        return response;
+      }
+
+      // Wait before next retry
+      await new Promise(r => setTimeout(r, BACKOFF_MS[attempt - 1]));
+    } catch (networkError) {
+      // Network error (DNS failure, offline, CORS, etc.)
+      if (attempt === maxAttempts) {
+        throw networkError; // Let caller's catch block handle it
+      }
+      await new Promise(r => setTimeout(r, BACKOFF_MS[attempt - 1]));
+    }
+  }
+}
+
 /**
  * Send a multi-turn conversation to the Cloudflare Worker and return the AI reply.
  *
@@ -36,7 +83,7 @@ export async function sendChatMessage({ messages, systemPrompt, workerUrl }) {
   let response;
 
   try {
-    response = await fetch(workerUrl, {
+    response = await fetchWithRetry(workerUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ system: systemPrompt, messages }),

@@ -15,6 +15,7 @@ import PsychologyIcon from '@mui/icons-material/Psychology';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import SendIcon from '@mui/icons-material/Send';
+import ReplayIcon from '@mui/icons-material/Replay';
 import ReactMarkdown from 'react-markdown';
 import { FONT, TYPE, COLORS } from '../theme/designTokens';
 import { normalizeMarkdownTables } from '../utils/normalizeMarkdownTables';
@@ -60,6 +61,7 @@ export default function ClinicalAIPanel({
   onLlmFollowUpChange,
   onLlmFollowUp,
   onResetAndAskAI,
+  onRetry,
   onClose,
   petName,
 }) {
@@ -398,12 +400,57 @@ export default function ClinicalAIPanel({
           </Box>
         )}
 
-        {/* ── ERROR DISPLAY ── */}
+        {/* ── ERROR DISPLAY WITH RETRY ── */}
         {llmError && (
-          <Box sx={{ bgcolor: COLORS.dangerSurface, border: `1px solid ${COLORS.danger}`, p: 1.25, borderRadius: 0, mb: 1 }}>
-            <Typography sx={{ fontSize: '0.8rem', color: COLORS.danger, fontWeight: 700, fontFamily: FONT }}>
+          <Box sx={{
+            bgcolor: COLORS.dangerSurface,
+            border: `1px solid ${COLORS.danger}`,
+            p: 1.5,
+            borderRadius: 0,
+            mb: 1,
+          }}>
+            <Typography sx={{
+              fontSize: '0.82rem',
+              color: COLORS.danger,
+              fontWeight: 800,
+              fontFamily: FONT,
+              mb: 0.5,
+            }}>
+              AI temporarily unavailable
+            </Typography>
+            <Typography sx={{
+              fontSize: '0.72rem',
+              color: COLORS.textMuted,
+              fontFamily: FONT,
+              mb: 1,
+              lineHeight: 1.4,
+            }}>
               {llmError}
             </Typography>
+            {onRetry && (
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<ReplayIcon sx={{ fontSize: 14 }} />}
+                onClick={onRetry}
+                sx={{
+                  fontFamily: FONT,
+                  fontWeight: 900,
+                  fontSize: '0.65rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5,
+                  borderRadius: 0,
+                  borderColor: COLORS.danger,
+                  color: COLORS.danger,
+                  '&:hover': {
+                    borderColor: '#B71C1C',
+                    bgcolor: 'rgba(211,47,47,0.04)',
+                  },
+                }}
+              >
+                Try Again
+              </Button>
+            )}
           </Box>
         )}
 

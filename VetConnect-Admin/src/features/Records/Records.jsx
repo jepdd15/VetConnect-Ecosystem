@@ -631,7 +631,7 @@ export default function Records() {
             </IconButton>
           </Tooltip>
           <Tooltip title="View File (CRM)">
-            <IconButton size="small" onClick={() => navigate(`/patients/${p.row.petId}`)} sx={{ border: '1px solid #D7CCC8', color: COLORS.accent }}>
+            <IconButton size="small" onClick={() => navigate(`/patients/${p.row.petId}`, { state: { from: 'records' } })} sx={{ border: '1px solid #D7CCC8', color: COLORS.accent }}>
               <HistoryIcon fontSize="small" />
             </IconButton>
           </Tooltip>

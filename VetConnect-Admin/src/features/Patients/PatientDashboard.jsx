@@ -12,7 +12,6 @@ import Grid from '@mui/material/Grid';
 
 import { db } from '../../firebaseConfig';
 import { doc, getDoc, collection, query, where, orderBy, getDocs, Timestamp, updateDoc, onSnapshot, arrayUnion, arrayRemove } from 'firebase/firestore';
-import { CONSENT_ACTIONS, SIGNATURE_TYPES } from '../../utils/consentConstants';
 import { resolveVitals } from '../../utils/resolveVitals';
 import { resolveObjectiveText, hasExamData } from '../../utils/examUtils';
 
@@ -44,14 +43,12 @@ import PhoneIcon from '@mui/icons-material/Phone';
 import EmailIcon from '@mui/icons-material/Email';
 import PetsIcon from '@mui/icons-material/Pets';
 import VaccinesIcon from '@mui/icons-material/Vaccines';
-import EventNoteIcon from '@mui/icons-material/EventNote';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import PrintIcon from '@mui/icons-material/Print';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import ShieldIcon from '@mui/icons-material/Shield';
-import GavelIcon from '@mui/icons-material/Gavel';
 import ScienceIcon from '@mui/icons-material/Science';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import BlockIcon from '@mui/icons-material/Block';
@@ -59,6 +56,8 @@ import UndoIcon from '@mui/icons-material/Undo';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import OpenInFullIcon from '@mui/icons-material/OpenInFull';
+import PushPinIcon from '@mui/icons-material/PushPin';
+import Inventory2Icon from '@mui/icons-material/Inventory2';
 
 // Charting
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
@@ -175,7 +174,6 @@ export default function PatientDashboard() {
   const [painData, setPainData] = useState([]);
   const [owner, setOwner] = useState(null);
   const [siblings, setSiblings] = useState([]);
-  const [nextAppointment, setNextAppointment] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const [expandedRecords, setExpandedRecords] = useState(new Set([0]));
@@ -201,12 +199,6 @@ export default function PatientDashboard() {
   // T2.129: Generic error snackbar
   const [errorSnack, setErrorSnack] = useState('');
 
-  // Step 5.2 (T3.5): Consent Audit Log — lazy-loaded when the section is expanded
-  const [auditLogExpanded, setAuditLogExpanded] = useState(false);
-  const [consentRecords, setConsentRecords] = useState([]);
-  const [consentRecordsLoading, setConsentRecordsLoading] = useState(false);
-  const [sigViewDialogOpen, setSigViewDialogOpen] = useState(false);
-  const [sigViewData, setSigViewData] = useState(null); // { signatureType, signatureData }
 
   // T3.101: Vaccine exemption dialog
   const [exemptionDialogOpen, setExemptionDialogOpen] = useState(false);
@@ -225,39 +217,21 @@ export default function PatientDashboard() {
   // T4.112: Vitals zoom dialog — shared across all 7 vitals widgets
   const [vitalsZoom, setVitalsZoom] = useState({ open: false, key: null });
 
+  // T4.116: Prescription sidebar — historical section toggle + pin Snackbar
+  const [showHistoricalRx, setShowHistoricalRx] = useState(false);
+  const [rxPinSnack, setRxPinSnack] = useState('');
+
+  // T4.116: Prescription zoom dialog
+  const [rxZoom, setRxZoom] = useState(false);
+  const [rxZoomFilter, setRxZoomFilter] = useState('All');
+  const [rxZoomSearch, setRxZoomSearch] = useState('');
+
+  // T4.116: Other Pets widget — collapsed by default
+  const [siblingExpanded, setSiblingExpanded] = useState(false);
+
   // T4.96: AI History Assistant
   const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
   const [llmConfig, setLlmConfig] = useState({ enabled: false, workerUrl: '' });
-
-  useEffect(() => {
-    if (!auditLogExpanded || !owner?.id) return;
-    let cancelled = false;
-    async function fetchConsentRecords() {
-      setConsentRecordsLoading(true);
-      try {
-        const q = query(
-          collection(db, 'users', owner.id, 'consent_records'),
-          orderBy('grantedAt', 'desc'),
-        );
-        const snap = await getDocs(q);
-        if (!cancelled) {
-          setConsentRecords(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-        }
-      } catch (err) {
-        console.error('[PatientDashboard] consent records fetch:', err.message);
-      } finally {
-        if (!cancelled) setConsentRecordsLoading(false);
-      }
-    }
-    fetchConsentRecords();
-    return () => { cancelled = true; };
-  }, [auditLogExpanded, owner?.id]);
-
-  const formatConsentTs = (ts) => {
-    if (!ts) return '—';
-    const d = ts.toDate ? ts.toDate() : new Date(ts);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  };
 
   const clinicSettings = useClinicSettings();
 
@@ -419,23 +393,6 @@ export default function PatientDashboard() {
           } catch (e) { console.warn('Sibling fetch skipped:', e); }
         }
 
-        // Fetch upcoming appointment
-        try {
-          const apptQ = query(collection(db, 'appointments'), where('petId', '==', id));
-          const apptSnap = await getDocs(apptQ);
-          const now = new Date();
-          const future = apptSnap.docs
-            .map(d => ({ id: d.id, ...d.data() }))
-            .filter(a => {
-              const aDate = a.date?.toDate ? a.date.toDate() : (a.date?.seconds ? new Date(a.date.seconds * 1000) : null);
-              return aDate && aDate > now && !['completed', 'cancelled', 'no-show'].includes(a.status);
-            })
-            .sort((a, b) => {
-              const dA = a.date?.seconds || 0, dB = b.date?.seconds || 0;
-              return dA - dB;
-            });
-          setNextAppointment(future.length > 0 ? future[0] : null);
-        } catch (e) { console.warn('Appointment fetch skipped:', e); }
       } catch (err) {
         console.error("Dashboard fetch error:", err);
       } finally {
@@ -528,32 +485,97 @@ export default function PatientDashboard() {
     return Object.entries(months).map(([month, visits]) => ({ month, visits }));
   }, [history]);
 
-  // T2.464: Prescription frequency — each medication ranked by how many times it was prescribed.
-  // The Nx count badge replaces the old flat de-duplication approach.
-  const prescriptionFrequency = useMemo(() => {
-    const rxMap = new Map(); // name -> { name, count, lastDate, lastInstructions }
-    (history || []).forEach(r => {
+  // T4.116: Prescription frequency — active/historical split with pin toggle.
+  // Active = last 90 days OR pinned. Historical = older, not pinned.
+  // Tracks firstDate/firstShort for tenure range display (Item 2).
+  const { activeRx, historicalRx } = useMemo(() => {
+    const rxMap = new Map(); // name -> { name, count, lastDate, firstDate, firstShort, lastShort, lastRawMs, lastInstructions }
+    const sortedHistory = [...(history || [])].sort((a, b) => {
+      const aMs = a.date?.seconds ? a.date.seconds * 1000 : 0;
+      const bMs = b.date?.seconds ? b.date.seconds * 1000 : 0;
+      return aMs - bMs; // oldest first so lastDate = final write
+    });
+    sortedHistory.forEach(r => {
       (r.dispensedProducts || r.prescriptions || []).forEach(rx => {
         if (!rx.name) return;
         if (!rx.isDrug && !rx.isMedicine) return;
-        const dateStr = r.date?.toDate
-          ? r.date.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        const ms = r.date?.seconds ? r.date.seconds * 1000 : 0;
+        const dateStr = ms
+          ? new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+          : '';
+        const shortDate = ms
+          ? new Date(ms).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
           : '';
         const existing = rxMap.get(rx.name);
         if (existing) {
           existing.count += 1;
+          existing.lastDate = dateStr;
+          existing.lastRawMs = ms;
+          existing.lastShort = shortDate;
+          // firstDate/firstShort stays as first occurrence
         } else {
           rxMap.set(rx.name, {
             name: rx.name,
             count: 1,
             lastDate: dateStr,
+            firstDate: dateStr,
+            firstShort: shortDate,
+            lastShort: shortDate,
+            lastRawMs: ms,
             lastInstructions: rx.instructions || '',
           });
         }
       });
     });
-    return Array.from(rxMap.values()).sort((a, b) => b.count - a.count);
+
+    const all = Array.from(rxMap.values()).sort((a, b) => b.count - a.count);
+    const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const pinned = pet?.pinnedMedications || [];
+
+    const active = [];
+    const historical = [];
+    all.forEach(rx => {
+      const isRecent = (now - rx.lastRawMs) <= NINETY_DAYS_MS;
+      const isPinned = pinned.includes(rx.name);
+      if (isRecent || isPinned) {
+        active.push({ ...rx, isPinned });
+      } else {
+        historical.push({ ...rx, isPinned: false });
+      }
+    });
+
+    return { activeRx: active, historicalRx: historical };
+  }, [history, pet?.pinnedMedications]);
+
+  // T4.116: Full chronological Rx timeline for zoom modal — drug items only, newest first.
+  const rxTimeline = useMemo(() => {
+    const entries = [];
+    (history || []).forEach(rec => {
+      const ms = rec.date?.seconds ? rec.date.seconds * 1000 : 0;
+      const dateStr = ms
+        ? new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        : '—';
+      (rec.dispensedProducts || rec.prescriptions || []).forEach(rx => {
+        if (!rx.name) return;
+        if (!rx.isDrug && !rx.isMedicine) return;
+        entries.push({
+          name: rx.name,
+          date: dateStr,
+          ms,
+          qty: rx.qty || null,
+          instructions: rx.instructions || '',
+          vet: rec.vetName || rec.attendingVet || '—',
+        });
+      });
+    });
+    return entries.sort((a, b) => b.ms - a.ms); // newest first
   }, [history]);
+
+  const rxUniqueNames = useMemo(() => {
+    const set = new Set(rxTimeline.map(e => e.name));
+    return Array.from(set).sort();
+  }, [rxTimeline]);
 
   // T2.101: Computed outstanding balance — sum of balanceRemaining across all non-refunded/voided sales.
   // This is authoritative; the legacy outstandingBalance counter on the user doc is no longer updated.
@@ -822,6 +844,27 @@ export default function PatientDashboard() {
     }
   };
 
+  // T4.116: Pin/unpin a medication as permanently active
+  const handleTogglePin = async (medName, currentlyPinned) => {
+    try {
+      const petRef = doc(db, 'pets', id);
+      await updateDoc(petRef, {
+        pinnedMedications: currentlyPinned ? arrayRemove(medName) : arrayUnion(medName),
+      });
+      setRxPinSnack(currentlyPinned ? `Unpinned ${medName}` : `Pinned ${medName} as active`);
+      // Refresh pet state so useMemo recomputes without a full Firestore round-trip
+      setPet(prev => ({
+        ...prev,
+        pinnedMedications: currentlyPinned
+          ? (prev.pinnedMedications || []).filter(n => n !== medName)
+          : [...(prev.pinnedMedications || []), medName],
+      }));
+    } catch (err) {
+      console.error('[PatientDashboard.handleTogglePin]:', err);
+      setErrorSnack('Failed to update pin status');
+    }
+  };
+
   // ── TOC: group records by year ──
   const tocGroups = useMemo(() => {
     const groups = [];
@@ -869,7 +912,17 @@ export default function PatientDashboard() {
       {/* ═══ PATIENT BANNER ═══ */}
       <Box sx={{ bgcolor: COLORS.banner, borderBottom: `2px solid ${COLORS.bannerBorder}`, display: 'flex', alignItems: 'center', flexShrink: 0, boxShadow: '0 1px 4px rgba(62,39,35,0.08)' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', py: 1.5, px: 2, gap: 2, flex: 1 }}>
-          <IconButton onClick={() => navigate('/patients')} size="small" sx={{ color: COLORS.textMuted, '&:hover': { color: COLORS.brand, bgcolor: COLORS.panelBg } }}>
+          <IconButton
+            onClick={() => {
+              if (location.state?.from === 'records') {
+                navigate('/records');
+              } else {
+                navigate('/patients');
+              }
+            }}
+            size="small"
+            sx={{ color: COLORS.textMuted, '&:hover': { color: COLORS.brand, bgcolor: COLORS.panelBg } }}
+          >
             <ArrowBackIcon fontSize="small" />
           </IconButton>
           <Avatar sx={{ width: 42, height: 42, fontFamily: FONT, bgcolor: getInitialColor(pet?.name), fontWeight: 700, fontSize: '1rem', color: COLORS.cardBg }}>
@@ -914,6 +967,24 @@ export default function PatientDashboard() {
                 </Typography>
               )}
             </Box>
+            {/* T4.116: Owner contact row — compact, below the pet vitals row */}
+            {owner && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 0.25 }}>
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <PersonIcon sx={{ fontSize: 12 }} /> {owner.fullName || owner.displayName || owner.name || 'Unknown'}
+                </Typography>
+                {(owner.phone || owner.contactNumber) && (
+                  <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textSecondary, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <PhoneIcon sx={{ fontSize: 11 }} /> {owner.phone || owner.contactNumber}
+                  </Typography>
+                )}
+                {owner.email && (
+                  <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textSecondary, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <EmailIcon sx={{ fontSize: 11 }} /> {owner.email}
+                  </Typography>
+                )}
+              </Box>
+            )}
           </Box>
         </Box>
 
@@ -1425,19 +1496,49 @@ export default function PatientDashboard() {
                                 </Box>
                               </Box>
                             )}
-                            {hasRx && (
-                              <Box sx={{ bgcolor: COLORS.rxBg, py: 1, px: 1.5, borderRadius: 0, border: `1px solid ${COLORS.rxBorder}` }}>
-                                <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.rxText, mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}><MedicationIcon sx={{ fontSize: 13 }}/> Rx</Typography>
-                                <Stack spacing={0.5}>
-                                  {(rec.dispensedProducts || rec.prescriptions || []).map((rx, idx) => (
-                                    <Box key={idx}>
-                                      <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.rxText }}>{rx.name}</Typography>
-                                      {rx.instructions && <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', color: '#B45309' }}>{rx.instructions}</Typography>}
+                            {hasRx && (() => {
+                              const allRx = rec.dispensedProducts || rec.prescriptions || [];
+                              const drugs = allRx.filter(rx => rx.isDrug || rx.isMedicine);
+                              const nonDrugs = allRx.filter(rx => !rx.isDrug && !rx.isMedicine);
+                              return (
+                                <>
+                                  {drugs.length > 0 && (
+                                    <Box sx={{ bgcolor: COLORS.rxBg, py: 1, px: 1.5, borderRadius: 0, border: `1px solid ${COLORS.rxBorder}` }}>
+                                      <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.rxText, mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                        <MedicationIcon sx={{ fontSize: 13 }}/> Rx
+                                      </Typography>
+                                      <Stack spacing={0.5}>
+                                        {drugs.map((rx, idx) => (
+                                          <Box key={idx}>
+                                            <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.rxText }}>
+                                              {rx.name}{rx.qty ? ` x${rx.qty}` : ''}
+                                            </Typography>
+                                            {rx.instructions && <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', color: '#B45309' }}>{rx.instructions}</Typography>}
+                                          </Box>
+                                        ))}
+                                      </Stack>
                                     </Box>
-                                  ))}
-                                </Stack>
-                              </Box>
-                            )}
+                                  )}
+                                  {nonDrugs.length > 0 && (
+                                    <Box sx={{ bgcolor: COLORS.formBg, py: 1, px: 1.5, borderRadius: 0, border: `1px solid ${COLORS.borderLight}` }}>
+                                      <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                        <Inventory2Icon sx={{ fontSize: 13 }}/> Dispensed Products
+                                      </Typography>
+                                      <Stack spacing={0.5}>
+                                        {nonDrugs.map((rx, idx) => (
+                                          <Box key={idx}>
+                                            <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.textSecondary }}>
+                                              {rx.name}{rx.qty ? ` x${rx.qty}` : ''}
+                                            </Typography>
+                                            {rx.instructions && <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', color: COLORS.textMuted }}>{rx.instructions}</Typography>}
+                                          </Box>
+                                        ))}
+                                      </Stack>
+                                    </Box>
+                                  )}
+                                </>
+                              );
+                            })()}
                             {/* T3.86: Attachments */}
                             {rec.attachments?.length > 0 && (
                               <Box sx={{ bgcolor: COLORS.formBg, border: `1px solid ${COLORS.borderLight}`, py: 1, px: 1.5, borderRadius: 0 }}>
@@ -1936,35 +2037,129 @@ export default function PatientDashboard() {
             </Box>
           </Widget>
 
-          {/* Active Prescriptions — T2.464: frequency-ranked with Nx count badge */}
-          <Widget title={`Prescriptions (${prescriptionFrequency.length})`} icon={<MedicationIcon sx={{ fontSize: 14, color: COLORS.rxText }} />}>
-            {prescriptionFrequency.length > 0 ? (
-              <Stack spacing={1}>
-                {prescriptionFrequency.map((rx, i) => (
-                  <Box key={i} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Box>
-                      <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.rxText }}>{rx.name}</Typography>
-                      {rx.lastInstructions && (
-                        <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: '#B45309' }}>{rx.lastInstructions}</Typography>
-                      )}
+          {/* Active Prescriptions — T4.116: active/historical split with pin toggle */}
+          <Widget
+            title={`Prescriptions (${activeRx.length + historicalRx.length})`}
+            icon={<MedicationIcon sx={{ fontSize: 14, color: COLORS.rxText }} />}
+            onExpand={(activeRx.length + historicalRx.length) > 0 ? () => setRxZoom(true) : undefined}
+          >
+            {activeRx.length > 0 ? (
+              <>
+                <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.75, letterSpacing: '0.05em' }}>
+                  ACTIVE MEDICATIONS
+                </Typography>
+                <Stack spacing={1}>
+                  {activeRx.map((rx, i) => (
+                    <Box key={i} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.rxText }}>{rx.name}</Typography>
+                          {rx.isPinned && (
+                            <Tooltip title="Pinned — always shows as active">
+                              <PushPinIcon sx={{ fontSize: 12, color: COLORS.warning, transform: 'rotate(45deg)' }} />
+                            </Tooltip>
+                          )}
+                        </Box>
+                        {rx.lastInstructions && (
+                          <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: '#B45309' }}>{rx.lastInstructions}</Typography>
+                        )}
+                        <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted }}>
+                          {rx.firstShort !== rx.lastShort ? `${rx.firstShort} → ${rx.lastShort}` : rx.lastDate}
+                        </Typography>
+                        {rx.isPinned && (
+                          <Typography sx={{ fontFamily: FONT, fontSize: '0.62rem', color: COLORS.textMuted, fontStyle: 'italic' }}>
+                            pinned — last Rx {Math.round((Date.now() - rx.lastRawMs) / 86400000)}d ago
+                          </Typography>
+                        )}
+                      </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0, ml: 1 }}>
+                        <Chip
+                          label={`${rx.count}x`}
+                          size="small"
+                          sx={{
+                            fontFamily: FONT, fontSize: '0.62rem', fontWeight: 800,
+                            height: 18, bgcolor: COLORS.kpiOrangeBg, color: COLORS.warning,
+                            border: `1px solid ${COLORS.kpiOrangeBorder}`,
+                            borderRadius: 0,
+                          }}
+                        />
+                        <Tooltip title={rx.isPinned ? 'Unpin medication' : 'Pin as always active'}>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleTogglePin(rx.name, rx.isPinned)}
+                            sx={{ p: 0.25, color: rx.isPinned ? COLORS.warning : COLORS.textMuted, '&:hover': { color: COLORS.brand } }}
+                          >
+                            <PushPinIcon sx={{ fontSize: 13, transform: rx.isPinned ? 'rotate(45deg)' : 'none' }} />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
                     </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0, ml: 1 }}>
-                      <Chip
-                        label={`${rx.count}x`}
-                        size="small"
-                        sx={{
-                          fontFamily: FONT, fontSize: '0.62rem', fontWeight: 800,
-                          height: 18, bgcolor: COLORS.kpiOrangeBg, color: COLORS.warning,
-                          border: `1px solid ${COLORS.kpiOrangeBorder}`,
-                        }}
-                      />
-                      <Typography sx={{ fontFamily: FONT, fontSize: '0.68rem', color: COLORS.textMuted }}>{rx.lastDate}</Typography>
-                    </Box>
-                  </Box>
-                ))}
-              </Stack>
+                  ))}
+                </Stack>
+              </>
             ) : (
-              <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', color: COLORS.textMuted, fontStyle: 'italic', textAlign: 'center', py: 2 }}>No prescriptions on file</Typography>
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', color: COLORS.textMuted, fontStyle: 'italic', textAlign: 'center', py: 1 }}>
+                No active prescriptions
+              </Typography>
+            )}
+
+            {/* Historical Medications — collapsed by default */}
+            {historicalRx.length > 0 && (
+              <Box sx={{ mt: 1.5, pt: 1, borderTop: `1px solid ${COLORS.borderLight}` }}>
+                <Box
+                  onClick={() => setShowHistoricalRx(v => !v)}
+                  sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', py: 0.5 }}
+                >
+                  <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textMuted }}>
+                    {showHistoricalRx ? 'Hide' : 'Show'} {historicalRx.length} historical
+                  </Typography>
+                  {showHistoricalRx
+                    ? <ExpandLessIcon sx={{ fontSize: 16, color: COLORS.textMuted }} />
+                    : <ExpandMoreIcon sx={{ fontSize: 16, color: COLORS.textMuted }} />
+                  }
+                </Box>
+                <Collapse in={showHistoricalRx}>
+                  <Stack spacing={0.75} sx={{ mt: 0.5 }}>
+                    {historicalRx.map((rx, i) => (
+                      <Box key={i} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: 0.7 }}>
+                        <Box>
+                          <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', color: COLORS.rxText }}>{rx.name}</Typography>
+                          <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted }}>
+                            {rx.firstShort !== rx.lastShort ? `${rx.firstShort} → ${rx.lastShort}` : rx.lastDate}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0, ml: 1 }}>
+                          <Chip
+                            label={`${rx.count}x`}
+                            size="small"
+                            sx={{
+                              fontFamily: FONT, fontSize: '0.62rem', fontWeight: 800,
+                              height: 18, bgcolor: COLORS.formBg, color: COLORS.textMuted,
+                              border: `1px solid ${COLORS.borderLight}`,
+                              borderRadius: 0,
+                            }}
+                          />
+                          <Tooltip title="Pin as always active">
+                            <IconButton
+                              size="small"
+                              onClick={() => handleTogglePin(rx.name, false)}
+                              sx={{ p: 0.25, color: COLORS.textMuted, '&:hover': { color: COLORS.brand } }}
+                            >
+                              <PushPinIcon sx={{ fontSize: 13 }} />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
+                      </Box>
+                    ))}
+                  </Stack>
+                </Collapse>
+              </Box>
+            )}
+
+            {activeRx.length === 0 && historicalRx.length === 0 && (
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', color: COLORS.textMuted, fontStyle: 'italic', textAlign: 'center', py: 2 }}>
+                No prescriptions on file
+              </Typography>
             )}
           </Widget>
 
@@ -2120,57 +2315,10 @@ export default function PatientDashboard() {
             )}
           </Widget>
 
-          {/* Upcoming Appointment */}
-          <Widget title="Next Appointment" icon={<EventNoteIcon sx={{ fontSize: 14, color: COLORS.medical }} />}>
-            {nextAppointment ? (() => {
-              const apptDate = nextAppointment.date?.toDate
-                ? nextAppointment.date.toDate()
-                : (nextAppointment.date?.seconds ? new Date(nextAppointment.date.seconds * 1000) : null);
-              const dateStr = apptDate ? apptDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
-              const timeStr = apptDate ? apptDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '';
-              const daysAway = apptDate ? Math.ceil((apptDate.getTime() - Date.now()) / 86400000) : null;
-              return (
-                <Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                    <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.textPrimary }}>{dateStr}</Typography>
-                    {daysAway !== null && (
-                      <Chip label={daysAway === 0 ? 'Today' : daysAway === 1 ? 'Tomorrow' : `In ${daysAway}d`} size="small"
-                        sx={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 700, height: 20,
-                          bgcolor: daysAway <= 1 ? COLORS.warningSurface : COLORS.chipBlueBg,
-                          color: daysAway <= 1 ? COLORS.warning : COLORS.medical }} />
-                    )}
-                  </Box>
-                  <Stack spacing={0.25}>
-                    {timeStr && <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textSecondary }}>{timeStr}</Typography>}
-                    {nextAppointment.serviceType && (
-                      <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', color: COLORS.textMuted, textTransform: 'capitalize' }}>{nextAppointment.serviceType}</Typography>
-                    )}
-                    {nextAppointment.vetName && (
-                      <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', color: COLORS.textMuted }}>w/ {nextAppointment.vetName}</Typography>
-                    )}
-                  </Stack>
-                </Box>
-              );
-            })() : (
-              <Box sx={{ textAlign: 'center', py: 1.5 }}>
-                <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', color: COLORS.textMuted, fontStyle: 'italic', mb: 1 }}>No upcoming visits</Typography>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  disabled={isErased}
-                  startIcon={<EventAvailableIcon sx={{ fontSize: '14px !important' }} />}
-                  onClick={() => setQuickBookOpen(true)}
-                  sx={{ fontFamily: FONT, fontSize: '0.72rem', fontWeight: 700, textTransform: 'none', color: COLORS.success, borderColor: '#A5D6A7', borderRadius: 0, '&:hover': { bgcolor: '#E8F5E9', borderColor: '#66BB6A' } }}
-                >
-                  Book Visit
-                </Button>
-              </Box>
-            )}
-          </Widget>
 
-          {/* T2.459: Lab Results Aggregation — always renders, empty state when no labs */}
-          <Widget title={`Lab Results (${aggregatedLabResults.length})`} icon={<AssignmentIcon sx={{ fontSize: 14, color: COLORS.medical }} />}>
-            {aggregatedLabResults.length > 0 ? (
+          {/* T2.459: Lab Results Aggregation — only renders when pet has lab data */}
+          {aggregatedLabResults.length > 0 && (
+            <Widget title={`Lab Results (${aggregatedLabResults.length})`} icon={<AssignmentIcon sx={{ fontSize: 14, color: COLORS.medical }} />}>
               <Stack spacing={1}>
                 {aggregatedLabResults.map((lab, i) => {
                   const statusKey = (lab.status || 'normal').toLowerCase();
@@ -2208,15 +2356,8 @@ export default function PatientDashboard() {
                   );
                 })}
               </Stack>
-            ) : (
-              <Box sx={{ textAlign: 'center', py: 2 }}>
-                <AssignmentIcon sx={{ fontSize: 28, opacity: 0.2, color: COLORS.medical, mb: 0.5 }} />
-                <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', color: COLORS.textMuted, fontStyle: 'italic' }}>
-                  No lab results on file
-                </Typography>
-              </Box>
-            )}
-          </Widget>
+            </Widget>
+          )}
 
           {/* T2.101: Billing Ledger — outstanding balances from sales */}
           {ownerSales.filter(s => (s.balanceRemaining || 0) > 0 && s.status !== 'refunded' && s.status !== 'voided').length > 0 && (
@@ -2246,172 +2387,43 @@ export default function PatientDashboard() {
             </Widget>
           )}
 
-          {/* Sibling Pets */}
+          {/* Sibling Pets — collapsed by default */}
           {siblings.length > 0 && (
             <Widget title={`Other Pets (${siblings.length})`} icon={<PetsIcon sx={{ fontSize: 14, color: COLORS.accentLight }} />}>
-              <Stack spacing={0.75}>
-                {siblings.map((sib) => (
-                  <Box key={sib.id} onClick={() => navigate(`/patients/${sib.id}`, { state: { pet: sib } })}
-                    sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 0.75, px: 1, borderRadius: 0, cursor: 'pointer', transition: 'all 0.15s ease', '&:hover': { bgcolor: COLORS.panelBg } }}>
-                    <Avatar sx={{ width: 28, height: 28, bgcolor: getInitialColor(sib.name), fontFamily: FONT, fontWeight: 700, fontSize: '0.7rem', color: COLORS.cardBg }}>
-                      {(sib.name || '?')[0].toUpperCase()}
-                    </Avatar>
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', fontWeight: 600, color: COLORS.textPrimary, textTransform: 'capitalize' }}>{sib.name}</Typography>
-                      <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted }}>{sib.species}{sib.breed && sib.breed !== 'Unknown Breed' ? ` · ${sib.breed}` : ''}</Typography>
-                    </Box>
-                    <NavigateNextIcon sx={{ fontSize: 16, color: COLORS.textMuted }} />
-                  </Box>
-                ))}
-              </Stack>
-            </Widget>
-          )}
-
-          {/* ── Consent Audit Log (Step 5.2) ── */}
-          {owner && (
-            <Widget title="Consent Audit Log" icon={<GavelIcon sx={{ fontSize: 14, color: COLORS.accent }} />}>
               <Box
-                onClick={() => setAuditLogExpanded((v) => !v)}
-                sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', py: 0.5 }}
+                onClick={() => setSiblingExpanded(v => !v)}
+                sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', py: 0.25 }}
               >
                 <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textMuted }}>
-                  {auditLogExpanded ? 'Hide consent history' : 'Show consent history'}
+                  {siblingExpanded ? 'Hide' : `Show ${siblings.length} other pet${siblings.length > 1 ? 's' : ''}`}
                 </Typography>
-                {auditLogExpanded
+                {siblingExpanded
                   ? <ExpandLessIcon sx={{ fontSize: 16, color: COLORS.textMuted }} />
-                  : <ExpandMoreIcon sx={{ fontSize: 16, color: COLORS.textMuted }} />}
+                  : <ExpandMoreIcon sx={{ fontSize: 16, color: COLORS.textMuted }} />
+                }
               </Box>
-              <Collapse in={auditLogExpanded}>
-                {consentRecordsLoading ? (
-                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
-                    <CircularProgress size={20} />
-                  </Box>
-                ) : consentRecords.length === 0 ? (
-                  <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textMuted, fontStyle: 'italic', py: 1 }}>
-                    No consent records on file.
-                  </Typography>
-                ) : (
-                  <Stack spacing={1} sx={{ mt: 1 }}>
-                    {consentRecords.map((rec) => {
-                      const isGranted = rec.action === CONSENT_ACTIONS.GRANTED;
-                      const actionColor = isGranted ? COLORS.success : COLORS.danger;
-                      const actionLabel = isGranted ? 'GRANTED' : 'WITHDRAWN';
-                      const typeLabel = rec.consentType === 'dpa' ? 'DPA' : 'Waiver';
-                      const sigLabel = rec.signatureType === SIGNATURE_TYPES.DRAWN ? 'Drawn'
-                        : rec.signatureType === SIGNATURE_TYPES.TYPED ? 'Typed'
-                        : 'Checkbox (legacy)';
-                      const viaLabel = rec.grantedVia === 'mobile_app' ? 'Mobile App'
-                        : rec.grantedVia === 'admin_portal' ? 'Admin Portal'
-                        : 'Migration';
-
-                      return (
-                        <Box key={rec.id} sx={{ border: `1px solid ${COLORS.borderLight}`, borderRadius: 0, p: 1.25 }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                            <Chip
-                              label={actionLabel}
-                              size="small"
-                              sx={{ fontFamily: FONT, fontWeight: 800, fontSize: '0.6rem', bgcolor: actionColor, color: COLORS.cardBg, borderRadius: 0, height: 20, letterSpacing: 0.5 }}
-                            />
-                            <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', fontWeight: 700, color: COLORS.textPrimary }}>
-                              {typeLabel} v{rec.versionNumber}
-                            </Typography>
-                            <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, ml: 'auto' }}>
-                              {formatConsentTs(rec.grantedAt)}
-                            </Typography>
-                          </Box>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                            <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted }}>
-                              Sig: {sigLabel}
-                            </Typography>
-                            <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted }}>
-                              Via: {viaLabel}
-                            </Typography>
-                            {rec.signatureType === SIGNATURE_TYPES.DRAWN && rec.signatureData && (
-                              <Box
-                                component="img"
-                                src={rec.signatureData}
-                                alt="Signature"
-                                onClick={() => { setSigViewData(rec); setSigViewDialogOpen(true); }}
-                                sx={{ maxHeight: 36, border: `1px solid ${COLORS.borderLight}`, cursor: 'pointer', ml: 'auto' }}
-                              />
-                            )}
-                            {rec.signatureType === SIGNATURE_TYPES.TYPED && rec.signatureData && (
-                              <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontStyle: 'italic', color: COLORS.brand, ml: 'auto' }}>
-                                "{rec.signatureData}"
-                              </Typography>
-                            )}
-                          </Box>
-                          {rec.adminNote && (
-                            <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, mt: 0.5, fontStyle: 'italic' }}>
-                              Note: {rec.adminNote}
-                            </Typography>
-                          )}
-                        </Box>
-                      );
-                    })}
-                  </Stack>
-                )}
+              <Collapse in={siblingExpanded}>
+                <Stack spacing={0.75} sx={{ mt: 0.5 }}>
+                  {siblings.map((sib) => (
+                    <Box key={sib.id} onClick={() => navigate(`/patients/${sib.id}`, { state: { pet: sib } })}
+                      sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 0.75, px: 1, borderRadius: 0, cursor: 'pointer', transition: 'all 0.15s ease', '&:hover': { bgcolor: COLORS.panelBg } }}>
+                      <Avatar sx={{ width: 28, height: 28, bgcolor: getInitialColor(sib.name), fontFamily: FONT, fontWeight: 700, fontSize: '0.7rem', color: COLORS.cardBg }}>
+                        {(sib.name || '?')[0].toUpperCase()}
+                      </Avatar>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', fontWeight: 600, color: COLORS.textPrimary, textTransform: 'capitalize' }}>{sib.name}</Typography>
+                        <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted }}>{sib.species}{sib.breed && sib.breed !== 'Unknown Breed' ? ` · ${sib.breed}` : ''}</Typography>
+                      </Box>
+                      <NavigateNextIcon sx={{ fontSize: 16, color: COLORS.textMuted }} />
+                    </Box>
+                  ))}
+                </Stack>
               </Collapse>
             </Widget>
           )}
 
-          {/* Owner Quick Card */}
-          {owner && (
-            <Widget title="Pet Owner" icon={<PersonIcon sx={{ fontSize: 14, color: COLORS.accent }} />}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
-                <Avatar sx={{ width: 36, height: 36, bgcolor: COLORS.accentLight, fontFamily: FONT, fontWeight: 700, fontSize: '0.85rem' }}>
-                  {(owner.fullName || owner.displayName || owner.name || '?')[0].toUpperCase()}
-                </Avatar>
-                <Box>
-                  <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.textPrimary }}>{owner.fullName || owner.displayName || owner.name || 'Unknown'}</Typography>
-                  <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', color: COLORS.textMuted }}>Pet Owner</Typography>
-                </Box>
-              </Box>
-              <Stack spacing={0.75}>
-                {(owner.phone || owner.contactNumber) && (
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <PhoneIcon sx={{ fontSize: 14, color: COLORS.textMuted }} />
-                    <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textPrimary }}>{owner.phone || owner.contactNumber}</Typography>
-                  </Box>
-                )}
-                {owner.email && (
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <EmailIcon sx={{ fontSize: 14, color: COLORS.textMuted }} />
-                    <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textPrimary }}>{owner.email}</Typography>
-                  </Box>
-                )}
-              </Stack>
-            </Widget>
-          )}
         </Box>
       </Box>
-
-      {/* ── Signature Viewer Dialog (Step 5.2) ── */}
-      <Dialog
-        open={sigViewDialogOpen}
-        onClose={() => setSigViewDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-        PaperProps={{ sx: { borderRadius: 0 } }}
-      >
-        <DialogTitle sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.95rem', color: COLORS.brand, borderBottom: `2px solid ${COLORS.border}` }}>
-          Signature — {sigViewData?.consentType === 'dpa' ? 'DPA' : 'Waiver'} v{sigViewData?.versionNumber}
-        </DialogTitle>
-        <DialogContent sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
-          {sigViewData?.signatureType === SIGNATURE_TYPES.DRAWN && sigViewData?.signatureData ? (
-            <Box component="img" src={sigViewData.signatureData} alt="Signature" sx={{ maxWidth: '100%', border: `2px solid ${COLORS.border}` }} />
-          ) : sigViewData?.signatureType === SIGNATURE_TYPES.TYPED && sigViewData?.signatureData ? (
-            <Typography sx={{ fontFamily: FONT, fontSize: '2rem', fontStyle: 'italic', color: COLORS.brand, py: 3 }}>
-              {sigViewData.signatureData}
-            </Typography>
-          ) : (
-            <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textMuted, fontStyle: 'italic' }}>No signature data available.</Typography>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ px: 2.5, pb: 2 }}>
-          <Button onClick={() => setSigViewDialogOpen(false)} sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textSecondary }}>Close</Button>
-        </DialogActions>
-      </Dialog>
 
       {/* ── Referral Report Modal ── */}
       <ReferralModal
@@ -2544,6 +2556,18 @@ export default function PatientDashboard() {
         </Alert>
       </Snackbar>
 
+      {/* T4.116: Pin/unpin medication confirmation */}
+      <Snackbar
+        open={!!rxPinSnack}
+        autoHideDuration={2500}
+        onClose={() => setRxPinSnack('')}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity="info" onClose={() => setRxPinSnack('')} sx={{ fontFamily: FONT, borderRadius: 0 }}>
+          {rxPinSnack}
+        </Alert>
+      </Snackbar>
+
       {/* T2.458: Quick-book WalkInModal — pet + owner prefilled */}
       <WalkInModal
         open={quickBookOpen}
@@ -2657,6 +2681,106 @@ export default function PatientDashboard() {
             </>
           );
         })()}
+      </Dialog>
+
+      {/* T4.116: Prescription Zoom Dialog — full chronological medication timeline */}
+      <Dialog
+        open={rxZoom}
+        onClose={() => { setRxZoom(false); setRxZoomFilter('All'); setRxZoomSearch(''); }}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.border}` } }}
+      >
+        <DialogTitle sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '1rem', color: COLORS.brand, borderBottom: `2px solid ${COLORS.border}`, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <MedicationIcon sx={{ fontSize: 18 }} /> Medication History{pet?.name ? ` — ${pet.name}` : ''}
+        </DialogTitle>
+        <DialogContent sx={{ py: 2, px: 3 }}>
+          {/* Filter chips + optional search */}
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 2, alignItems: 'center' }}>
+            <Chip
+              label="All"
+              size="small"
+              onClick={() => setRxZoomFilter('All')}
+              sx={{
+                fontFamily: FONT, fontSize: '0.7rem', fontWeight: rxZoomFilter === 'All' ? 800 : 500,
+                bgcolor: rxZoomFilter === 'All' ? COLORS.brand : COLORS.formBg,
+                color: rxZoomFilter === 'All' ? COLORS.cardBg : COLORS.textSecondary,
+                border: `1px solid ${rxZoomFilter === 'All' ? COLORS.brand : COLORS.borderLight}`,
+                borderRadius: 0, cursor: 'pointer',
+              }}
+            />
+            {rxUniqueNames.map(name => (
+              <Chip
+                key={name}
+                label={name}
+                size="small"
+                onClick={() => setRxZoomFilter(name)}
+                sx={{
+                  fontFamily: FONT, fontSize: '0.7rem', fontWeight: rxZoomFilter === name ? 800 : 500,
+                  bgcolor: rxZoomFilter === name ? COLORS.rxText : COLORS.formBg,
+                  color: rxZoomFilter === name ? COLORS.cardBg : COLORS.rxText,
+                  border: `1px solid ${rxZoomFilter === name ? COLORS.rxText : COLORS.rxBorder}`,
+                  borderRadius: 0, cursor: 'pointer',
+                }}
+              />
+            ))}
+            {rxUniqueNames.length >= 10 && (
+              <TextField
+                size="small"
+                placeholder="Search meds..."
+                value={rxZoomSearch}
+                onChange={(e) => setRxZoomSearch(e.target.value)}
+                InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ fontSize: 16, color: COLORS.textMuted }} /></InputAdornment> }}
+                sx={{ ml: 'auto', '& .MuiOutlinedInput-root': { fontFamily: FONT, fontSize: '0.8rem', height: 32, borderRadius: 0, '& fieldset': { borderColor: COLORS.border } } }}
+              />
+            )}
+          </Box>
+
+          {/* Chronological timeline entries */}
+          <Stack spacing={1} sx={{ maxHeight: 450, overflow: 'auto' }}>
+            {rxTimeline
+              .filter(e => rxZoomFilter === 'All' || e.name === rxZoomFilter)
+              .filter(e => !rxZoomSearch || e.name.toLowerCase().includes(rxZoomSearch.toLowerCase()))
+              .map((e, i) => (
+                <Box key={i} sx={{ display: 'flex', gap: 2, py: 0.75, borderBottom: `1px solid ${COLORS.borderLight}` }}>
+                  <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, minWidth: 100, flexShrink: 0 }}>{e.date}</Typography>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.rxText }}>{e.name}</Typography>
+                      {e.qty && (
+                        <Chip
+                          label={`x${e.qty}`}
+                          size="small"
+                          sx={{ fontFamily: FONT, fontSize: '0.6rem', fontWeight: 800, height: 16, bgcolor: COLORS.kpiOrangeBg, color: COLORS.warning, border: `1px solid ${COLORS.kpiOrangeBorder}`, borderRadius: 0 }}
+                        />
+                      )}
+                    </Box>
+                    {e.instructions && (
+                      <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: '#B45309' }}>{e.instructions}</Typography>
+                    )}
+                  </Box>
+                  <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', color: COLORS.textMuted, flexShrink: 0 }}>{e.vet}</Typography>
+                </Box>
+              ))
+            }
+            {rxTimeline
+              .filter(e => rxZoomFilter === 'All' || e.name === rxZoomFilter)
+              .filter(e => !rxZoomSearch || e.name.toLowerCase().includes(rxZoomSearch.toLowerCase()))
+              .length === 0 && (
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', color: COLORS.textMuted, fontStyle: 'italic', textAlign: 'center', py: 4 }}>
+                No matching prescriptions
+              </Typography>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 2.5, pb: 2, borderTop: `1px solid ${COLORS.borderLight}` }}>
+          <Button
+            onClick={() => { setRxZoom(false); setRxZoomFilter('All'); setRxZoomSearch(''); }}
+            sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textSecondary, borderRadius: 0 }}
+          >
+            Close
+          </Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );

@@ -100,7 +100,7 @@ const RecordCard = ({ record }) => {
     || record.objWeight || record.objTemp || record.objHR || record.objRR || record.objCRT || record.bcs || (record.painScale != null);
   const prescriptionList = record.dispensedProducts || record.prescriptions || [];
   const hasPrescriptions = prescriptionList.length > 0;
-  const hasDischargeSummary = Boolean(record.dischargeSummary);
+  const hasDischargeSummary = record.dischargeSummary && (typeof record.dischargeSummary === 'string' || typeof record.dischargeSummary === 'object');
   const hasVaccines = record.vaccineAdministrations?.length > 0 || record.vaccineData?.vaccineName;
   const hasLabResults = record.labResults?.length > 0;
   const hasAmendments = record.amendments?.length > 0;
@@ -226,7 +226,54 @@ const RecordCard = ({ record }) => {
             {/* Discharge summary */}
             {hasDischargeSummary && (
               <SectionBlock label="Discharge Summary">
-                <SoapText value={record.dischargeSummary} />
+                {typeof record.dischargeSummary === 'string' ? (
+                  <SoapText value={record.dischargeSummary} />
+                ) : (
+                  <Stack spacing={0.5}>
+                    {record.dischargeSummary.patientStatus && (
+                      <Typography sx={{ fontSize: '0.75rem', fontFamily: FONT }}>
+                        <strong>Patient Status:</strong> {record.dischargeSummary.patientStatus}
+                      </Typography>
+                    )}
+                    {record.dischargeSummary.diagnosis && (
+                      <Typography sx={{ fontSize: '0.75rem', fontFamily: FONT }}>
+                        <strong>Diagnosis:</strong> {record.dischargeSummary.diagnosis}
+                      </Typography>
+                    )}
+                    {record.dischargeSummary.instructions && (
+                      <Typography sx={{ fontSize: '0.75rem', fontFamily: FONT, whiteSpace: 'pre-wrap' }}>
+                        <strong>Instructions:</strong> {record.dischargeSummary.instructions}
+                      </Typography>
+                    )}
+                    {record.dischargeSummary.medications?.length > 0 && (
+                      <Box>
+                        <Typography sx={{ fontSize: '0.75rem', fontFamily: FONT, fontWeight: 700 }}>
+                          Medications:
+                        </Typography>
+                        {record.dischargeSummary.medications.map((med, i) => (
+                          <Typography key={i} sx={{ fontSize: '0.7rem', fontFamily: FONT, pl: 1.5 }}>
+                            {i + 1}. {med.name}{med.qty ? ` (×${med.qty})` : ''}{med.instructions ? ` — ${med.instructions}` : ''}
+                          </Typography>
+                        ))}
+                      </Box>
+                    )}
+                    {record.dischargeSummary.recheckIn && (
+                      <Typography sx={{ fontSize: '0.75rem', fontFamily: FONT }}>
+                        <strong>Recheck In:</strong> {record.dischargeSummary.recheckIn}
+                      </Typography>
+                    )}
+                    {record.dischargeSummary.nextVisit && (
+                      <Typography sx={{ fontSize: '0.75rem', fontFamily: FONT }}>
+                        <strong>Next Visit:</strong> {record.dischargeSummary.nextVisit}
+                      </Typography>
+                    )}
+                    {record.dischargeSummary.vetName && (
+                      <Typography sx={{ fontSize: '0.75rem', fontFamily: FONT }}>
+                        <strong>Attending Vet:</strong> {record.dischargeSummary.vetName}
+                      </Typography>
+                    )}
+                  </Stack>
+                )}
               </SectionBlock>
             )}
 
@@ -377,6 +424,7 @@ export default function EMRDrawer({ open, onClose, history = [], petName, petSpe
       open={open}
       onClose={onClose}
       variant="temporary"
+      sx={{ zIndex: 1400 }}
       PaperProps={{
         sx: {
           width: '55vw',

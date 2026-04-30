@@ -32,9 +32,11 @@ import { COLORS } from '../theme/mobileTokens';
 import SparkLine from '../components/SparkLine';
 import VitalsZoomModal from '../components/VitalsZoomModal';
 import PetHistoryAISheet from '../components/PetHistoryAISheet';
+import VaccinationStatusCard from '../components/VaccinationStatusCard';
 import { buildPetOwnerPrompt } from '../utils/buildPetOwnerPrompt';
 import { resolveVitals } from '../utils/resolveVitals';
 import { getNormalRange } from '../utils/speciesVitalRanges';
+import { fetchVaccineCatalog, buildVaccinationStatus } from '../utils/vaccineHelpers';
 
 // ---------------------------------------------------------------------------
 // VACCINATION PASSPORT — HTML TEMPLATE
@@ -504,6 +506,9 @@ export default function PetHistoryScreen({ route, navigation }) {
   const [workerUrl, setWorkerUrl]         = useState('');
   const [aiSheetVisible, setAiSheetVisible] = useState(false);
 
+  // T4.118: Vaccine catalog — one-shot fetch from inventory, falls back to defaults.
+  const [vaccineCatalog, setVaccineCatalog] = useState([]);
+
   // Records that carry vaccination data — used to gate the passport button and
   // to build the passport document. Derived; no extra Firestore read needed.
   const vaccineRecords = useMemo(
@@ -556,6 +561,17 @@ export default function PetHistoryScreen({ route, navigation }) {
     })();
     return () => { cancelled = true; };
   }, [petId]);
+
+  // T4.118: One-shot vaccine catalog fetch — uses inventory products or falls back
+  // to DEFAULT_VACCINE_CATALOG. Not a real-time listener; catalog changes mid-session
+  // are irrelevant for a pet owner.
+  useEffect(() => {
+    let cancelled = false;
+    fetchVaccineCatalog().then(catalog => {
+      if (!cancelled) setVaccineCatalog(catalog);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   // T4.97: One-shot fetch for the Cloudflare Worker URL from clinic_settings.
   // The FAB is hidden when workerUrl is empty, so this doubles as a feature gate.
@@ -673,12 +689,42 @@ export default function PetHistoryScreen({ route, navigation }) {
   // T4.113: Zoom modal state — tracks which vital key is currently expanded.
   const [vitalsZoom, setVitalsZoom] = useState({ open: false, key: null });
 
+  // T4.118: Vaccination status derived from history + vaccine catalog + species.
+  // buildVaccinationStatus also performs keyword-fallback against legacy SOAP records.
+  const { statuses: vaccinationStatuses, completeness: vaccineCompleteness } = useMemo(
+    () => buildVaccinationStatus(history, vaccineCatalog, petSpecies),
+    [history, vaccineCatalog, petSpecies],
+  );
+
+  /** Generates the vaccination passport PDF and opens the OS share sheet. */
+  const handleDownloadPassport = async () => {
+    try {
+      const html = generateMobileVaccinationPassport({
+        petName,
+        ownerName: '',        // PetHistoryScreen has no owner profile in scope;
+                              // the passport will show 'Pet Owner' as a safe default.
+        clinicName: clinicName || 'Starbarks Veterinary Clinic',
+        vaccineRecords,
+      });
+      const { uri } = await Print.printToFileAsync({ html });
+      await Sharing.shareAsync(uri, {
+        UTI: '.pdf',
+        mimeType: 'application/pdf',
+      });
+    } catch (error) {
+      Alert.alert('Error generating passport', error.message);
+    }
+  };
+
   const listHeader = useMemo(() => {
     // T4.113: Card shows when any vital has at least 1 reading (was >= 2).
     // SparkLine handles the 1-point graceful fallback internally.
     const hasTrends = Object.values(vitalsChartData).some(arr => arr.length >= 1);
     const hasRx = prescriptionFrequency.length > 0;
-    if (!hasTrends && !hasRx) return null;
+    // T4.118: Show the header whenever there are species-relevant catalog vaccines
+    // OR the pet already has vaccine records (even if catalog is still loading).
+    const hasVaxStatus = vaccinationStatuses.length > 0 || vaccineRecords.length > 0;
+    if (!hasTrends && !hasRx && !hasVaxStatus) return null;
     return (
       <View>
         {hasTrends && (
@@ -727,6 +773,20 @@ export default function PetHistoryScreen({ route, navigation }) {
             )}
           </View>
         )}
+        {/* T4.118: Vaccination status card — between VITALS TRENDS and Rx Frequency */}
+        {hasVaxStatus && (
+          <VaccinationStatusCard
+            statuses={vaccinationStatuses}
+            completeness={vaccineCompleteness}
+            petName={petName}
+            petId={petId}
+            history={history}
+            catalog={vaccineCatalog}
+            navigation={navigation}
+            onDownloadPassport={handleDownloadPassport}
+            hasVaccineRecords={vaccineRecords.length > 0}
+          />
+        )}
         {hasRx && (
           <View style={styles.rxFreqCard}>
             <TouchableOpacity
@@ -763,27 +823,9 @@ export default function PetHistoryScreen({ route, navigation }) {
         )}
       </View>
     );
-  }, [vitalsChartData, trendsExpanded, prescriptionFrequency, rxFreqExpanded, petSpecies]);
-
-  /** Generates the vaccination passport PDF and opens the OS share sheet. */
-  const handleDownloadPassport = async () => {
-    try {
-      const html = generateMobileVaccinationPassport({
-        petName,
-        ownerName: '',        // PetHistoryScreen has no owner profile in scope;
-                              // the passport will show 'Pet Owner' as a safe default.
-        clinicName: clinicName || 'Starbarks Veterinary Clinic',
-        vaccineRecords,
-      });
-      const { uri } = await Print.printToFileAsync({ html });
-      await Sharing.shareAsync(uri, {
-        UTI: '.pdf',
-        mimeType: 'application/pdf',
-      });
-    } catch (error) {
-      Alert.alert('Error generating passport', error.message);
-    }
-  };
+  }, [vitalsChartData, trendsExpanded, prescriptionFrequency, rxFreqExpanded, petSpecies,
+      vaccinationStatuses, vaccineCompleteness, vaccineRecords, vaccineCatalog,
+      handleDownloadPassport]);
 
   useEffect(() => {
     const q = query(
@@ -1502,21 +1544,6 @@ export default function PetHistoryScreen({ route, navigation }) {
         <View style={{ width: 40 }} /> {/* Spacer for centering */}
       </View>
 
-      {/* Vaccination passport button — only visible when the pet has vaccine records */}
-      {!loading && vaccineRecords.length > 0 && (
-        <View style={styles.passportStrip}>
-          <View style={styles.passportShadow} />
-          <TouchableOpacity
-            style={styles.passportBtn}
-            onPress={handleDownloadPassport}
-            activeOpacity={0.85}
-          >
-            <MaterialIcons name="verified" size={18} color={COLORS.cream} />
-            <Text style={styles.passportBtnText}>Download Vaccination Passport</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
       {/* T3.94: Search + filter bar — shown once records have loaded */}
       {!loading && history.length > 0 && (
         <View style={styles.searchFilterBar}>
@@ -2108,41 +2135,6 @@ const styles = StyleSheet.create({
     color: COLORS.danger,
     fontWeight: "800",
     textAlign: "center",
-  },
-
-  // --- Vaccination passport action strip ---
-  passportStrip: {
-    // Neubrutalist offset-shadow wrapper. The shadow view sits behind the button.
-    marginHorizontal: 20,
-    marginTop: 12,
-    marginBottom: 4,
-  },
-  passportShadow: {
-    position: 'absolute',
-    top: 4,
-    left: 4,
-    right: -4,
-    bottom: -4,
-    backgroundColor: COLORS.brand,
-  },
-  passportBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: COLORS.accent,
-    paddingVertical: 13,
-    paddingHorizontal: 20,
-    borderWidth: 2,
-    borderColor: COLORS.brand,
-    borderRadius: 0,
-  },
-  passportBtnText: {
-    color: COLORS.cream,
-    fontWeight: '900',
-    fontSize: 13,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
   },
 
   // --- Lab results card (B4) ---

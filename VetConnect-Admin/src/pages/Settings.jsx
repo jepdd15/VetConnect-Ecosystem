@@ -8,7 +8,7 @@ import {
 } from '@mui/material';
 import Grid from '@mui/material/Grid'; // MUI v6 Standard
 
-import { doc, setDoc, Timestamp, collection, onSnapshot, addDoc, deleteDoc, getDocs, query, where } from 'firebase/firestore';
+import { doc, setDoc, Timestamp, collection, onSnapshot, addDoc, deleteDoc, getDocs, query, where, writeBatch } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 
 // Icons
@@ -36,6 +36,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import GroupIcon from '@mui/icons-material/Group';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
+import MoveToInboxIcon from '@mui/icons-material/MoveToInbox';
 
 import { DEFAULT_VACCINE_CATALOG } from '../hooks/useVaccineCatalog';
 import { FAQ_CATEGORIES, DEFAULT_FAQS } from '../utils/faqConstants';
@@ -144,10 +145,15 @@ export default function Settings() {
 
   // --- PILLAR 9: VACCINE CATALOG STATE ---
   const [vaccineList, setVaccineList] = useState([]);
+  const [vaccinesMigrated, setVaccinesMigrated] = useState(false);
   const [editingVaccine, setEditingVaccine] = useState(null); // null = no edit, object = editing row
   const [newVaccine, setNewVaccine] = useState({
     name: '', species: ['dog'], intervalDays: 365, keywords: '', isActive: true,
   });
+
+  // --- PILLAR 9: MIGRATION DIALOG STATE (T4.117) ---
+  const [migrationDialogOpen, setMigrationDialogOpen] = useState(false);
+  const [isMigrating, setIsMigrating] = useState(false);
 
   // --- PILLAR 10: CONSENT POLICY STATE ---
   const {
@@ -274,9 +280,16 @@ export default function Settings() {
 
     // 5. Fetch Vaccine Catalog (Pillar 9)
     const unsubVaxCatalog = onSnapshot(doc(db, 'clinic_settings', 'vaccine_catalog'), (docSnap) => {
-      if (docSnap.exists() && Array.isArray(docSnap.data().vaccines)) {
-        setVaccineList(docSnap.data().vaccines);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setVaccinesMigrated(data.migratedToInventory === true);
+        if (Array.isArray(data.vaccines)) {
+          setVaccineList(data.vaccines);
+        } else {
+          setVaccineList([]);
+        }
       } else {
+        setVaccinesMigrated(false);
         setVaccineList([]);
       }
     });
@@ -697,6 +710,64 @@ export default function Settings() {
       setToast({ open: true, message: '6 default vaccines seeded successfully.', severity: 'success' });
     } catch (e) {
       setToast({ open: true, message: e.message, severity: 'error' });
+    }
+  };
+
+  /**
+   * Migrates each vaccine catalog entry into the inventory collection as a
+   * vaccine-category product with $0 price, 0 stock, and a vaccineConfig
+   * sub-object preserving species, interval, route, and site defaults.
+   * Stamps migratedToInventory: true on the vaccine_catalog doc so this
+   * action is irreversible from the UI. T4.117 Step 3.1.
+   */
+  const handleMigrateVaccines = async () => {
+    if (vaccineList.length === 0) return;
+    setIsMigrating(true);
+    try {
+      const batch = writeBatch(db);
+
+      vaccineList.forEach((entry) => {
+        const inventoryRef = doc(collection(db, 'inventory'));
+        batch.set(inventoryRef, {
+          itemName: entry.name,
+          category: 'vaccine',
+          isMedicine: true,
+          stock: 0,
+          price: 0,
+          isArchived: false,
+          vaccineConfig: {
+            species:             entry.species             || ['dog'],
+            intervalDays:        entry.intervalDays        || 365,
+            defaultRoute:        entry.defaultRoute        || 'SQ',
+            defaultSite:         entry.defaultSite         || 'Right Scruff',
+            defaultManufacturer: entry.defaultManufacturer || '',
+          },
+        });
+      });
+
+      // Mark the catalog doc as migrated — hides the CRUD UI in Settings
+      const catalogRef = doc(db, 'clinic_settings', 'vaccine_catalog');
+      const who = profile?.fullName || profile?.email || 'Unknown Admin';
+      batch.update(catalogRef, { migratedToInventory: true, migratedAt: Timestamp.now(), migratedBy: who });
+
+      await batch.commit();
+      setVaccinesMigrated(true);
+
+      await logSettingsEvent('MIGRATE', 'vaccine_catalog', 'migrate_to_inventory', {
+        count: vaccineList.length,
+      });
+
+      setMigrationDialogOpen(false);
+      setToast({
+        open: true,
+        message: `${vaccineList.length} vaccines migrated! Set prices and add stock in Inventory.`,
+        severity: 'success',
+      });
+    } catch (e) {
+      console.error('[Settings.handleMigrateVaccines]:', e.message);
+      setToast({ open: true, message: e.message, severity: 'error' });
+    } finally {
+      setIsMigrating(false);
     }
   };
 
@@ -1804,247 +1875,299 @@ export default function Settings() {
             </Box>
             <Box sx={{ p: 3, bgcolor: COLORS.cardBg, flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
 
-              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 2.5 }}>
-                Manage the clinic's vaccine catalog. Active vaccines appear in the ClinicalWorkspace form dropdown. Deactivated vaccines are preserved for historical record matching.
-              </Typography>
-
-              {/* ADD FORM — only shown when not editing */}
-              {!editingVaccine && (
-                <Box sx={{ mb: 3 }}>
-                  <Grid container spacing={1.5} alignItems="flex-end">
-                    <Grid size={{ xs: 12, sm: 4 }}>
-                      <TextField
-                        fullWidth label="Vaccine Name" size="small"
-                        value={newVaccine.name}
-                        onChange={(e) => setNewVaccine((prev) => ({ ...prev, name: e.target.value }))}
-                        sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
-                        inputProps={{ spellCheck: 'false', style: { fontWeight: 900 } }}
-                      />
-                    </Grid>
-                    <Grid size={{ xs: 12, sm: 4 }}>
-                      <Typography variant="caption" sx={{ fontWeight: 900, color: COLORS.accent, display: 'block', mb: 0.5, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                        Species
-                      </Typography>
-                      <ToggleButtonGroup
-                        multiple
-                        value={newVaccine.species}
-                        onChange={(_, val) => { if (val.length > 0) setNewVaccine((prev) => ({ ...prev, species: val })); }}
-                        size="small"
-                        sx={{
-                          gap: 0.5,
-                          '& .MuiToggleButton-root': {
-                            border: `2px solid ${COLORS.accent}33 !important`,
-                            borderRadius: '0 !important',
-                            fontWeight: 900, fontSize: '0.65rem', color: COLORS.accent, px: 1.5, py: 0.5,
-                            '&.Mui-selected': {
-                              bgcolor: `${COLORS.accent} !important`,
-                              color: `${COLORS.cardBg} !important`,
-                            },
-                          },
-                        }}
-                      >
-                        <ToggleButton value="dog">Dog</ToggleButton>
-                        <ToggleButton value="cat">Cat</ToggleButton>
-                      </ToggleButtonGroup>
-                    </Grid>
-                    <Grid size={{ xs: 6, sm: 2 }}>
-                      <TextField
-                        fullWidth label="Interval (days)" size="small" type="number"
-                        value={newVaccine.intervalDays}
-                        onChange={(e) => setNewVaccine((prev) => ({ ...prev, intervalDays: e.target.value }))}
-                        sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
-                        inputProps={{ style: { fontWeight: 900 } }}
-                      />
-                    </Grid>
-                    <Grid size={{ xs: 6, sm: 2 }}>
-                      <Button
-                        variant="contained" fullWidth onClick={handleAddVaccine}
-                        startIcon={<AddCircleOutlineIcon />}
-                        sx={{
-                          bgcolor: COLORS.accent, fontWeight: 900, borderRadius: 0,
-                          border: `2px solid ${COLORS.brand}`,
-                          boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
-                          '&:hover': { bgcolor: COLORS.brand },
-                        }}
-                      >
-                        Add
-                      </Button>
-                    </Grid>
-                    <Grid size={{ xs: 12 }}>
-                      <TextField
-                        fullWidth label="Keywords (comma-separated)" size="small"
-                        placeholder="e.g. rabies, rage virus"
-                        value={newVaccine.keywords}
-                        onChange={(e) => setNewVaccine((prev) => ({ ...prev, keywords: e.target.value }))}
-                        sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
-                        inputProps={{ spellCheck: 'false', style: { fontWeight: 900 } }}
-                        helperText="Used to auto-detect vaccine type from medical record notes"
-                      />
-                    </Grid>
-                  </Grid>
-                </Box>
-              )}
-
-              {/* SEED BUTTON — shown only when list is empty */}
-              {vaccineList.length === 0 && (
-                <Button
-                  variant="outlined" onClick={handleSeedVaccineCatalog}
-                  sx={{
-                    mb: 2, fontWeight: 900, borderRadius: 0,
-                    border: `2px solid ${COLORS.accent}`,
-                    color: COLORS.accent,
-                    '&:hover': { bgcolor: COLORS.cream },
-                  }}
-                >
-                  Seed Default Vaccines (6 entries)
-                </Button>
-              )}
-
-              {/* VACCINE LIST */}
-              <Box sx={{ flexGrow: 1, overflowY: 'auto', maxHeight: 340 }}>
-                {vaccineList.length === 0 ? (
-                  <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, fontStyle: 'italic', mt: 1 }}>
-                    No vaccines configured. Click "Seed Default Vaccines" or add entries above.
+              {/* POST-MIGRATION STATE: hide CRUD, show link to Inventory */}
+              {vaccinesMigrated ? (
+                <Box sx={{
+                  p: 3, border: `2px solid ${COLORS.success}`,
+                  bgcolor: COLORS.kpiGreenBg,
+                  display: 'flex', flexDirection: 'column', gap: 1.5,
+                }}>
+                  <Typography sx={{ ...TYPE.bodyBold, color: COLORS.success, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <CheckIcon fontSize="small" /> Migrated to Inventory
                   </Typography>
-                ) : (
-                  vaccineList.map((vaccine) => (
-                    <Box key={vaccine.id}>
-                      {editingVaccine?.id === vaccine.id ? (
-                        /* INLINE EDIT ROW */
-                        <Box sx={{
-                          p: 1.5, mb: 1, bgcolor: 'white',
-                          border: `2px solid ${COLORS.accent}`,
-                          display: 'flex', flexDirection: 'column', gap: 1,
-                        }}>
-                          <Grid container spacing={1} alignItems="center">
-                            <Grid size={{ xs: 12, sm: 4 }}>
-                              <TextField
-                                fullWidth size="small" label="Name"
-                                value={editingVaccine.name}
-                                onChange={(e) => setEditingVaccine((prev) => ({ ...prev, name: e.target.value }))}
-                                sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0 } }}
-                                inputProps={{ style: { fontWeight: 900 } }}
-                              />
-                            </Grid>
-                            <Grid size={{ xs: 8, sm: 4 }}>
-                              <ToggleButtonGroup
-                                multiple
-                                value={editingVaccine.species}
-                                onChange={(_, val) => { if (val.length > 0) setEditingVaccine((prev) => ({ ...prev, species: val })); }}
-                                size="small"
-                                sx={{
-                                  gap: 0.5,
-                                  '& .MuiToggleButton-root': {
-                                    border: `2px solid ${COLORS.accent}33 !important`,
-                                    borderRadius: '0 !important',
-                                    fontWeight: 900, fontSize: '0.65rem', color: COLORS.accent, px: 1.5, py: 0.5,
-                                    '&.Mui-selected': {
-                                      bgcolor: `${COLORS.accent} !important`,
-                                      color: `${COLORS.cardBg} !important`,
-                                    },
-                                  },
-                                }}
-                              >
-                                <ToggleButton value="dog">Dog</ToggleButton>
-                                <ToggleButton value="cat">Cat</ToggleButton>
-                              </ToggleButtonGroup>
-                            </Grid>
-                            <Grid size={{ xs: 4, sm: 2 }}>
-                              <TextField
-                                fullWidth size="small" label="Days" type="number"
-                                value={editingVaccine.intervalDays}
-                                onChange={(e) => setEditingVaccine((prev) => ({ ...prev, intervalDays: e.target.value }))}
-                                sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0 } }}
-                                inputProps={{ style: { fontWeight: 900 } }}
-                              />
-                            </Grid>
-                            <Grid size={{ xs: 12, sm: 2 }} sx={{ display: 'flex', gap: 0.5, justifyContent: 'flex-end' }}>
-                              <IconButton size="small" onClick={handleUpdateVaccine} sx={{ borderRadius: 0, bgcolor: COLORS.success, color: 'white', '&:hover': { bgcolor: COLORS.brand } }}>
-                                <CheckIcon fontSize="small" />
-                              </IconButton>
-                              <IconButton size="small" onClick={() => setEditingVaccine(null)} sx={{ borderRadius: 0, bgcolor: '#9E9E9E', color: 'white', '&:hover': { bgcolor: '#757575' } }}>
-                                <CloseIcon fontSize="small" />
-                              </IconButton>
-                            </Grid>
-                            <Grid size={{ xs: 12 }}>
-                              <TextField
-                                fullWidth size="small" label="Keywords (comma-separated)"
-                                value={
-                                  Array.isArray(editingVaccine.keywords)
-                                    ? editingVaccine.keywords.join(', ')
-                                    : editingVaccine.keywords
-                                }
-                                onChange={(e) => setEditingVaccine((prev) => ({ ...prev, keywords: e.target.value }))}
-                                sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0 } }}
-                                inputProps={{ spellCheck: 'false', style: { fontWeight: 900 } }}
-                              />
-                            </Grid>
-                          </Grid>
-                        </Box>
-                      ) : (
-                        /* READ-ONLY ROW */
-                        <Box sx={{
-                          display: 'flex', alignItems: 'center', gap: 1,
-                          px: 1.5, py: 1, mb: 0.75,
-                          bgcolor: vaccine.isActive ? 'white' : 'rgba(0,0,0,0.04)',
-                          border: `1px solid ${vaccine.isActive ? COLORS.accent + '33' : '#ccc'}`,
-                          opacity: vaccine.isActive ? 1 : 0.65,
-                        }}>
-                          {/* Name + species chips */}
-                          <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                            <Typography sx={{
-                              fontWeight: 900, fontSize: '0.8rem', color: COLORS.accent,
-                              textDecoration: vaccine.isActive ? 'none' : 'line-through',
-                            }}>
-                              {vaccine.name}
-                            </Typography>
-                            <Box sx={{ display: 'flex', gap: 0.5, mt: 0.25, flexWrap: 'wrap' }}>
-                              {(vaccine.species || []).map((sp) => (
-                                <Chip
-                                  key={sp}
-                                  label={sp.charAt(0).toUpperCase() + sp.slice(1)}
-                                  size="small"
-                                  sx={{
-                                    fontWeight: 900, fontSize: '0.6rem', height: 16, borderRadius: 0,
-                                    bgcolor: sp === 'dog' ? '#E3F2FD' : '#FCE4EC',
-                                    border: `1px solid ${sp === 'dog' ? '#90CAF9' : '#F48FB1'}`,
-                                    color: sp === 'dog' ? '#1565C0' : '#880E4F',
-                                  }}
-                                />
-                              ))}
-                              <Typography sx={{ fontSize: '0.65rem', color: COLORS.textSecondary, alignSelf: 'center' }}>
-                                {vaccine.intervalDays}d interval
-                              </Typography>
-                            </Box>
-                          </Box>
+                  <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary }}>
+                    Vaccine products are now managed in Inventory. Set prices, add stock, and configure batch/lot details there.
+                  </Typography>
+                  <Button
+                    variant="outlined"
+                    href="/inventory"
+                    sx={{
+                      alignSelf: 'flex-start', fontWeight: 900, borderRadius: 0,
+                      border: `2px solid ${COLORS.success}`,
+                      color: COLORS.success,
+                      '&:hover': { bgcolor: `${COLORS.success}11` },
+                    }}
+                  >
+                    Go to Inventory
+                  </Button>
+                </Box>
+              ) : (
+                <>
+                  <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 2.5 }}>
+                    Manage the clinic's vaccine catalog. Active vaccines appear in the ClinicalWorkspace form dropdown. Deactivated vaccines are preserved for historical record matching.
+                  </Typography>
 
-                          {/* Active toggle */}
-                          <Switch
-                            checked={vaccine.isActive !== false}
-                            onChange={() => handleToggleVaccine(vaccine.id)}
-                            size="small"
-                            color="success"
+                  {/* ADD FORM — only shown when not editing */}
+                  {!editingVaccine && (
+                    <Box sx={{ mb: 3 }}>
+                      <Grid container spacing={1.5} alignItems="flex-end">
+                        <Grid size={{ xs: 12, sm: 4 }}>
+                          <TextField
+                            fullWidth label="Vaccine Name" size="small"
+                            value={newVaccine.name}
+                            onChange={(e) => setNewVaccine((prev) => ({ ...prev, name: e.target.value }))}
+                            sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
+                            inputProps={{ spellCheck: 'false', style: { fontWeight: 900 } }}
                           />
-
-                          {/* Edit button */}
-                          <IconButton
+                        </Grid>
+                        <Grid size={{ xs: 12, sm: 4 }}>
+                          <Typography variant="caption" sx={{ fontWeight: 900, color: COLORS.accent, display: 'block', mb: 0.5, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                            Species
+                          </Typography>
+                          <ToggleButtonGroup
+                            multiple
+                            value={newVaccine.species}
+                            onChange={(_, val) => { if (val.length > 0) setNewVaccine((prev) => ({ ...prev, species: val })); }}
                             size="small"
-                            onClick={() => setEditingVaccine({
-                              ...vaccine,
-                              keywords: Array.isArray(vaccine.keywords)
-                                ? vaccine.keywords.join(', ')
-                                : (vaccine.keywords || ''),
-                            })}
-                            sx={{ borderRadius: 0, color: COLORS.accent, '&:hover': { bgcolor: COLORS.cream } }}
+                            sx={{
+                              gap: 0.5,
+                              '& .MuiToggleButton-root': {
+                                border: `2px solid ${COLORS.accent}33 !important`,
+                                borderRadius: '0 !important',
+                                fontWeight: 900, fontSize: '0.65rem', color: COLORS.accent, px: 1.5, py: 0.5,
+                                '&.Mui-selected': {
+                                  bgcolor: `${COLORS.accent} !important`,
+                                  color: `${COLORS.cardBg} !important`,
+                                },
+                              },
+                            }}
                           >
-                            <EditIcon fontSize="small" />
-                          </IconButton>
-                        </Box>
-                      )}
+                            <ToggleButton value="dog">Dog</ToggleButton>
+                            <ToggleButton value="cat">Cat</ToggleButton>
+                          </ToggleButtonGroup>
+                        </Grid>
+                        <Grid size={{ xs: 6, sm: 2 }}>
+                          <TextField
+                            fullWidth label="Interval (days)" size="small" type="number"
+                            value={newVaccine.intervalDays}
+                            onChange={(e) => setNewVaccine((prev) => ({ ...prev, intervalDays: e.target.value }))}
+                            sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
+                            inputProps={{ style: { fontWeight: 900 } }}
+                          />
+                        </Grid>
+                        <Grid size={{ xs: 6, sm: 2 }}>
+                          <Button
+                            variant="contained" fullWidth onClick={handleAddVaccine}
+                            startIcon={<AddCircleOutlineIcon />}
+                            sx={{
+                              bgcolor: COLORS.accent, fontWeight: 900, borderRadius: 0,
+                              border: `2px solid ${COLORS.brand}`,
+                              boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
+                              '&:hover': { bgcolor: COLORS.brand },
+                            }}
+                          >
+                            Add
+                          </Button>
+                        </Grid>
+                        <Grid size={{ xs: 12 }}>
+                          <TextField
+                            fullWidth label="Keywords (comma-separated)" size="small"
+                            placeholder="e.g. rabies, rage virus"
+                            value={newVaccine.keywords}
+                            onChange={(e) => setNewVaccine((prev) => ({ ...prev, keywords: e.target.value }))}
+                            sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
+                            inputProps={{ spellCheck: 'false', style: { fontWeight: 900 } }}
+                            helperText="Used to auto-detect vaccine type from medical record notes"
+                          />
+                        </Grid>
+                      </Grid>
                     </Box>
-                  ))
-                )}
-              </Box>
+                  )}
+
+                  {/* SEED BUTTON — shown only when list is empty */}
+                  {vaccineList.length === 0 && (
+                    <Button
+                      variant="outlined" onClick={handleSeedVaccineCatalog}
+                      sx={{
+                        mb: 2, fontWeight: 900, borderRadius: 0,
+                        border: `2px solid ${COLORS.accent}`,
+                        color: COLORS.accent,
+                        '&:hover': { bgcolor: COLORS.cream },
+                      }}
+                    >
+                      Seed Default Vaccines (6 entries)
+                    </Button>
+                  )}
+
+                  {/* VACCINE LIST */}
+                  <Box sx={{ flexGrow: 1, overflowY: 'auto', maxHeight: 340 }}>
+                    {vaccineList.length === 0 ? (
+                      <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, fontStyle: 'italic', mt: 1 }}>
+                        No vaccines configured. Click "Seed Default Vaccines" or add entries above.
+                      </Typography>
+                    ) : (
+                      vaccineList.map((vaccine) => (
+                        <Box key={vaccine.id}>
+                          {editingVaccine?.id === vaccine.id ? (
+                            /* INLINE EDIT ROW */
+                            <Box sx={{
+                              p: 1.5, mb: 1, bgcolor: 'white',
+                              border: `2px solid ${COLORS.accent}`,
+                              display: 'flex', flexDirection: 'column', gap: 1,
+                            }}>
+                              <Grid container spacing={1} alignItems="center">
+                                <Grid size={{ xs: 12, sm: 4 }}>
+                                  <TextField
+                                    fullWidth size="small" label="Name"
+                                    value={editingVaccine.name}
+                                    onChange={(e) => setEditingVaccine((prev) => ({ ...prev, name: e.target.value }))}
+                                    sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0 } }}
+                                    inputProps={{ style: { fontWeight: 900 } }}
+                                  />
+                                </Grid>
+                                <Grid size={{ xs: 8, sm: 4 }}>
+                                  <ToggleButtonGroup
+                                    multiple
+                                    value={editingVaccine.species}
+                                    onChange={(_, val) => { if (val.length > 0) setEditingVaccine((prev) => ({ ...prev, species: val })); }}
+                                    size="small"
+                                    sx={{
+                                      gap: 0.5,
+                                      '& .MuiToggleButton-root': {
+                                        border: `2px solid ${COLORS.accent}33 !important`,
+                                        borderRadius: '0 !important',
+                                        fontWeight: 900, fontSize: '0.65rem', color: COLORS.accent, px: 1.5, py: 0.5,
+                                        '&.Mui-selected': {
+                                          bgcolor: `${COLORS.accent} !important`,
+                                          color: `${COLORS.cardBg} !important`,
+                                        },
+                                      },
+                                    }}
+                                  >
+                                    <ToggleButton value="dog">Dog</ToggleButton>
+                                    <ToggleButton value="cat">Cat</ToggleButton>
+                                  </ToggleButtonGroup>
+                                </Grid>
+                                <Grid size={{ xs: 4, sm: 2 }}>
+                                  <TextField
+                                    fullWidth size="small" label="Days" type="number"
+                                    value={editingVaccine.intervalDays}
+                                    onChange={(e) => setEditingVaccine((prev) => ({ ...prev, intervalDays: e.target.value }))}
+                                    sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0 } }}
+                                    inputProps={{ style: { fontWeight: 900 } }}
+                                  />
+                                </Grid>
+                                <Grid size={{ xs: 12, sm: 2 }} sx={{ display: 'flex', gap: 0.5, justifyContent: 'flex-end' }}>
+                                  <IconButton size="small" onClick={handleUpdateVaccine} sx={{ borderRadius: 0, bgcolor: COLORS.success, color: 'white', '&:hover': { bgcolor: COLORS.brand } }}>
+                                    <CheckIcon fontSize="small" />
+                                  </IconButton>
+                                  <IconButton size="small" onClick={() => setEditingVaccine(null)} sx={{ borderRadius: 0, bgcolor: '#9E9E9E', color: 'white', '&:hover': { bgcolor: '#757575' } }}>
+                                    <CloseIcon fontSize="small" />
+                                  </IconButton>
+                                </Grid>
+                                <Grid size={{ xs: 12 }}>
+                                  <TextField
+                                    fullWidth size="small" label="Keywords (comma-separated)"
+                                    value={
+                                      Array.isArray(editingVaccine.keywords)
+                                        ? editingVaccine.keywords.join(', ')
+                                        : editingVaccine.keywords
+                                    }
+                                    onChange={(e) => setEditingVaccine((prev) => ({ ...prev, keywords: e.target.value }))}
+                                    sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0 } }}
+                                    inputProps={{ spellCheck: 'false', style: { fontWeight: 900 } }}
+                                  />
+                                </Grid>
+                              </Grid>
+                            </Box>
+                          ) : (
+                            /* READ-ONLY ROW */
+                            <Box sx={{
+                              display: 'flex', alignItems: 'center', gap: 1,
+                              px: 1.5, py: 1, mb: 0.75,
+                              bgcolor: vaccine.isActive ? 'white' : 'rgba(0,0,0,0.04)',
+                              border: `1px solid ${vaccine.isActive ? COLORS.accent + '33' : '#ccc'}`,
+                              opacity: vaccine.isActive ? 1 : 0.65,
+                            }}>
+                              {/* Name + species chips */}
+                              <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                                <Typography sx={{
+                                  fontWeight: 900, fontSize: '0.8rem', color: COLORS.accent,
+                                  textDecoration: vaccine.isActive ? 'none' : 'line-through',
+                                }}>
+                                  {vaccine.name}
+                                </Typography>
+                                <Box sx={{ display: 'flex', gap: 0.5, mt: 0.25, flexWrap: 'wrap' }}>
+                                  {(vaccine.species || []).map((sp) => (
+                                    <Chip
+                                      key={sp}
+                                      label={sp.charAt(0).toUpperCase() + sp.slice(1)}
+                                      size="small"
+                                      sx={{
+                                        fontWeight: 900, fontSize: '0.6rem', height: 16, borderRadius: 0,
+                                        bgcolor: sp === 'dog' ? '#E3F2FD' : '#FCE4EC',
+                                        border: `1px solid ${sp === 'dog' ? '#90CAF9' : '#F48FB1'}`,
+                                        color: sp === 'dog' ? '#1565C0' : '#880E4F',
+                                      }}
+                                    />
+                                  ))}
+                                  <Typography sx={{ fontSize: '0.65rem', color: COLORS.textSecondary, alignSelf: 'center' }}>
+                                    {vaccine.intervalDays}d interval
+                                  </Typography>
+                                </Box>
+                              </Box>
+
+                              {/* Active toggle */}
+                              <Switch
+                                checked={vaccine.isActive !== false}
+                                onChange={() => handleToggleVaccine(vaccine.id)}
+                                size="small"
+                                color="success"
+                              />
+
+                              {/* Edit button */}
+                              <IconButton
+                                size="small"
+                                onClick={() => setEditingVaccine({
+                                  ...vaccine,
+                                  keywords: Array.isArray(vaccine.keywords)
+                                    ? vaccine.keywords.join(', ')
+                                    : (vaccine.keywords || ''),
+                                })}
+                                sx={{ borderRadius: 0, color: COLORS.accent, '&:hover': { bgcolor: COLORS.cream } }}
+                              >
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                            </Box>
+                          )}
+                        </Box>
+                      ))
+                    )}
+                  </Box>
+
+                  {/* MIGRATE TO INVENTORY BUTTON — shown when catalog has entries */}
+                  {vaccineList.length > 0 && (
+                    <Box sx={{ mt: 3, pt: 2, borderTop: `2px dashed ${COLORS.accent}44` }}>
+                      <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 1.5 }}>
+                        Ready to track vaccines as inventory products with stock, batch/lot, and expiry? One-time migration — irreversible.
+                      </Typography>
+                      <Button
+                        variant="outlined"
+                        onClick={() => setMigrationDialogOpen(true)}
+                        startIcon={<MoveToInboxIcon />}
+                        sx={{
+                          fontWeight: 900, borderRadius: 0,
+                          border: `2px solid ${COLORS.brand}`,
+                          color: COLORS.brand,
+                          '&:hover': { bgcolor: `${COLORS.brand}11` },
+                        }}
+                      >
+                        Migrate to Inventory
+                      </Button>
+                    </Box>
+                  )}
+                </>
+              )}
             </Box>
           </Paper>
         </Grid>
@@ -3546,6 +3669,61 @@ export default function Settings() {
             }}
           >
             {notifResetConfirm.key ? 'Reset' : 'Reset All'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── VACCINE MIGRATION CONFIRMATION DIALOG (T4.117) ──────────────── */}
+      <Dialog
+        open={migrationDialogOpen}
+        onClose={() => !isMigrating && setMigrationDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.accent}` } }}
+      >
+        <DialogTitle sx={{
+          fontWeight: 900, bgcolor: COLORS.cream,
+          borderBottom: `2px solid ${COLORS.accent}`,
+          display: 'flex', alignItems: 'center', gap: 1,
+          ...TYPE.label,
+        }}>
+          <MoveToInboxIcon fontSize="small" /> Migrate {vaccineList.length} Vaccines to Inventory?
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2.5 }}>
+          <Typography sx={{ ...TYPE.body, color: COLORS.textPrimary, mb: 1.5 }}>
+            This will create <strong>{vaccineList.length}</strong> inventory product{vaccineList.length !== 1 ? 's' : ''} — one per vaccine — with:
+          </Typography>
+          <Box component="ul" sx={{ pl: 2.5, mb: 1.5, '& li': { ...TYPE.meta, color: COLORS.textSecondary, mb: 0.5 } }}>
+            <li>Category: <strong>Vaccine</strong></li>
+            <li>Price: <strong>$0</strong> (set after migration)</li>
+            <li>Stock: <strong>0</strong> (add via stock adjustments)</li>
+            <li>Vaccine config: species, interval, route, and site from existing catalog</li>
+          </Box>
+          <Typography sx={{ ...TYPE.meta, color: COLORS.danger, fontWeight: 700 }}>
+            This action is irreversible. The catalog CRUD form will be hidden once migration completes. You will need to set prices and add stock in Inventory afterward.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+          <Button
+            onClick={() => setMigrationDialogOpen(false)}
+            disabled={isMigrating}
+            sx={{ fontWeight: 900, color: COLORS.textSecondary, borderRadius: 0 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleMigrateVaccines}
+            disabled={isMigrating}
+            startIcon={isMigrating ? <CircularProgress size={16} color="inherit" /> : <MoveToInboxIcon />}
+            sx={{
+              fontWeight: 900, borderRadius: 0,
+              bgcolor: COLORS.brand,
+              '&:hover': { bgcolor: COLORS.accent },
+              '&.Mui-disabled': { bgcolor: COLORS.brand, opacity: 0.6, color: 'white' },
+            }}
+          >
+            {isMigrating ? 'Migrating...' : 'Migrate'}
           </Button>
         </DialogActions>
       </Dialog>

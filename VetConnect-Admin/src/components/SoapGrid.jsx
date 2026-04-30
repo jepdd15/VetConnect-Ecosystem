@@ -1,5 +1,5 @@
 import React from 'react';
-import { Grid, TextField, Box, Button, Typography } from '@mui/material';
+import { Grid, TextField, Box, Typography, Autocomplete, Chip } from '@mui/material';
 import { FONT, COLORS } from '../theme/designTokens';
 import { ZEN_PLACEHOLDERS } from '../utils/soapConstants';
 import PhysicalExamChecklist from './PhysicalExamChecklist';
@@ -30,8 +30,10 @@ import PhysicalExamChecklist from './PhysicalExamChecklist';
  * @prop {boolean}     [showDraftSave=false]
  * @prop {ReactNode}   [draftSaveNode]
  * @prop {ReactNode}   [followUpNode]
- * @prop {boolean}     [canToggleVaccine=false]      - T3.2: show "+ Administer Vaccine" button when form is hidden
- * @prop {function}    [onManualVaccineToggle]        - T3.2: callback to enable manual vaccine form
+ * @prop {boolean}     [canToggleVaccine=false]      - T4.117: show vaccine Autocomplete when form is hidden
+ * @prop {function}    [onManualVaccineToggle]        - kept for backward compat (unused since T4.117)
+ * @prop {Array}       [vaccineProducts=[]]           - T4.117: species-filtered vaccine inventory products
+ * @prop {function}    [onAddVaccineProduct]          - T4.117: (product) => void — adds vaccine to cart
  *
  * Intake context (T3.70 — read-only, shown above Subjective field):
  * @prop {string}      [intakeClientNotes='']         - Client's booking notes from the appointment doc
@@ -56,6 +58,7 @@ export default function SoapGrid({
   showDraftSave = false, draftSaveNode = null,
   followUpNode = null,
   canToggleVaccine = false, onManualVaccineToggle,
+  vaccineProducts = [], onAddVaccineProduct,
   intakeClientNotes = '', intakeStaffNotes = '',
   llmEnabled = false, llmLoading = false, llmMessages = [],
   onAskAI, onResetAndAskAI,
@@ -155,15 +158,61 @@ export default function SoapGrid({
       {/* P - PLAN (bottom-right) */}
       <Grid size={{ xs: 12, md: 6 }} sx={{ height: { xs: 'auto', md: '50%' }, borderTop: { xs: '1px solid #F0F0F0', md: 'none' } }}>
         <SoapQuadrant id="plan" label="P - PLAN (TREATMENT & RECHECKS)" onZoomField={setFullscreenField}>
-          {/* T3.2: Manual vaccine toggle button — shown when form is not yet visible and record is not locked */}
+          {/* T4.117: Vaccine shortcut — species-filtered Autocomplete of vaccine-category
+              inventory products. Selecting a product delegates to handleAddRx in
+              ClinicalWorkspace (same code path as the sidebar search), ensuring
+              consistent cart handling, stock reservation, and form auto-population. */}
           {canToggleVaccine && (
-            <Button
+            <Autocomplete
               size="small"
-              onClick={onManualVaccineToggle}
-              sx={{ fontWeight: 900, fontSize: '0.6rem', textTransform: 'uppercase', color: COLORS.success, mb: 1, borderRadius: 0 }}
-            >
-              + Administer Vaccine
-            </Button>
+              options={vaccineProducts}
+              getOptionLabel={(opt) => opt.itemName || opt.name || ''}
+              onChange={(_, product) => {
+                if (product && onAddVaccineProduct) onAddVaccineProduct(product);
+              }}
+              renderOption={(props, option) => {
+                const net = (option.stock || 0) - (option.reserved || 0);
+                const isOut = net <= 0;
+                return (
+                  <Box component="li" {...props} sx={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+                    <Typography sx={{ fontWeight: 900, fontSize: '0.8rem', color: isOut ? COLORS.textMuted : 'inherit' }}>
+                      {option.itemName || option.name}
+                    </Typography>
+                    {isOut && (
+                      <Chip
+                        label="OUT OF STOCK"
+                        size="small"
+                        color="warning"
+                        sx={{ height: 16, fontSize: '0.55rem', fontWeight: 1000, borderRadius: 0 }}
+                      />
+                    )}
+                  </Box>
+                );
+              }}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  placeholder="+ Administer Vaccine..."
+                  variant="outlined"
+                  size="small"
+                  sx={{
+                    mb: 1,
+                    maxWidth: 300,
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: 0,
+                      bgcolor: 'white',
+                      fontWeight: 900,
+                      fontSize: '0.75rem',
+                      '& fieldset': { border: `2px solid ${COLORS.success}` },
+                    },
+                  }}
+                />
+              )}
+              noOptionsText="No vaccines in inventory"
+              clearOnBlur
+              blurOnSelect
+              sx={{ mb: 1 }}
+            />
           )}
           {showVaccineForm && vaccineFormNode}
           {labResultsNode}

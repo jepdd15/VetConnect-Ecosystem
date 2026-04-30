@@ -2,11 +2,12 @@ import React, { useState, useMemo } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Button, MenuItem, Box, InputAdornment, Divider, Typography, Grid, Paper,
-  FormControlLabel, Switch, Chip, Stack
+  FormControlLabel, Switch, Chip, Stack, ToggleButton, ToggleButtonGroup
 } from '@mui/material';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import InsightsIcon from '@mui/icons-material/Insights';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import VaccinesIcon from '@mui/icons-material/Vaccines';
 import { collection, addDoc } from 'firebase/firestore';
 import { db } from '../../../firebaseConfig';
 import MedicationIcon from '@mui/icons-material/Medication';
@@ -44,11 +45,23 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
     item?.isMedicine !== undefined ? item.isMedicine : null
   );
 
+  // T4.117: Vaccine-specific configuration — only persisted when category === 'vaccine'
+  const [vaccineConfig, setVaccineConfig] = useState({
+    species:             item?.vaccineConfig?.species             || ['dog'],
+    intervalDays:        item?.vaccineConfig?.intervalDays?.toString() || '365',
+    defaultRoute:        item?.vaccineConfig?.defaultRoute        || 'SQ',
+    defaultSite:         item?.vaccineConfig?.defaultSite         || 'Right Scruff',
+    defaultManufacturer: item?.vaccineConfig?.defaultManufacturer || '',
+  });
+
   // Helper: update one field and clear its error
   const set = (key) => (e) => {
     setFormData(prev => ({ ...prev, [key]: e.target.value }));
     if (errors[key]) setErrors(prev => ({ ...prev, [key]: undefined }));
   };
+
+  // T4.117: True when the selected category is 'vaccine' — drives conditional section visibility
+  const isVaccineCategory = formData.category === 'vaccine';
 
   // ── Live Margin Calculator ──────────────────────────────────────────────
   const marginData = useMemo(() => {
@@ -101,6 +114,16 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
       ...(!isEditing && { openingStock: Number(formData.openingStock) || 0 }),
       // Pass override so Inventory.jsx can resolve final isMedicine value
       ...(isMedicineOverride !== null && { isMedicineOverride }),
+      // T4.117: Include vaccineConfig sub-object only for vaccine-category products
+      ...(isVaccineCategory && {
+        vaccineConfig: {
+          species:             vaccineConfig.species,
+          intervalDays:        Number(vaccineConfig.intervalDays) || 365,
+          defaultRoute:        vaccineConfig.defaultRoute,
+          defaultSite:         vaccineConfig.defaultSite,
+          defaultManufacturer: vaccineConfig.defaultManufacturer,
+        },
+      }),
     });
   };
 
@@ -221,6 +244,7 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
                       <MenuItem key={cat.name} value={cat.name} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         {formatCategory(cat.name)}
                         {cat.isMedicine && <MedicationIcon sx={{ fontSize: 16, color: COLORS.danger, ml: 1 }} />}
+                        {cat.name === 'vaccine' && <VaccinesIcon sx={{ fontSize: 16, color: COLORS.success, ml: 0.5 }} />}
                       </MenuItem>
                     ))}
                     <Divider />
@@ -388,6 +412,118 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
               </Box>
             </Paper>
           </Box>
+
+          {/* ═══════════════════════════════════════════════════════════════
+              SECTION 2c: VACCINE CONFIGURATION (T4.117 — conditional)
+              ═══════════════════════════════════════════════════════════════ */}
+          {isVaccineCategory && (
+            <Box sx={{ mb: 4 }}>
+              <Typography variant="overline" fontWeight="900" display="block" mb={1}
+                sx={{ color: COLORS.success, letterSpacing: 1 }}>
+                2c. VACCINE CONFIGURATION
+              </Typography>
+              <Paper elevation={0} sx={{ p: 3, borderRadius: 0,
+                border: `2px solid ${COLORS.success}`, bgcolor: COLORS.cardBg }}>
+
+                <Typography variant="body2" sx={{ color: COLORS.accent, fontWeight: 600,
+                  mb: 1.5, fontSize: '0.8rem' }}>
+                  These fields configure vaccine-specific behavior: species targeting,
+                  revaccination interval tracking, and clinical form defaults.
+                </Typography>
+
+                <Grid container spacing={2}>
+                  {/* Species multi-select */}
+                  <Grid size={{ xs: 12, sm: 4 }}>
+                    <Typography variant="caption" sx={{ fontWeight: 900, color: COLORS.accent,
+                      display: 'block', mb: 0.5, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      Target Species
+                    </Typography>
+                    <ToggleButtonGroup
+                      multiple
+                      value={vaccineConfig.species}
+                      onChange={(_, val) => {
+                        // Prevent deselecting all species
+                        if (val.length > 0) setVaccineConfig(prev => ({ ...prev, species: val }));
+                      }}
+                      size="small"
+                      sx={{
+                        gap: 0.5,
+                        '& .MuiToggleButton-root': {
+                          border: `2px solid ${COLORS.success}33 !important`,
+                          borderRadius: '0 !important',
+                          fontWeight: 900, fontSize: '0.65rem', color: COLORS.accent,
+                          px: 1.5, py: 0.5,
+                          '&.Mui-selected': {
+                            bgcolor: `${COLORS.success} !important`,
+                            color: `${COLORS.cardBg} !important`,
+                          },
+                        },
+                      }}
+                    >
+                      <ToggleButton value="dog">Dog</ToggleButton>
+                      <ToggleButton value="cat">Cat</ToggleButton>
+                    </ToggleButtonGroup>
+                  </Grid>
+
+                  {/* Revaccination interval */}
+                  <Grid size={{ xs: 6, sm: 4 }}>
+                    <TextField
+                      fullWidth label="Revaccination Interval (days)" size="small"
+                      type="number"
+                      value={vaccineConfig.intervalDays}
+                      onChange={(e) => setVaccineConfig(prev => ({
+                        ...prev, intervalDays: e.target.value
+                      }))}
+                      sx={sxField}
+                      helperText="Auto-calculates next due date"
+                    />
+                  </Grid>
+
+                  {/* Default manufacturer */}
+                  <Grid size={{ xs: 6, sm: 4 }}>
+                    <TextField
+                      fullWidth label="Default Manufacturer" size="small"
+                      value={vaccineConfig.defaultManufacturer}
+                      onChange={(e) => setVaccineConfig(prev => ({
+                        ...prev, defaultManufacturer: e.target.value
+                      }))}
+                      sx={sxField}
+                      helperText="Pre-fills in clinical form"
+                    />
+                  </Grid>
+
+                  {/* Default route */}
+                  <Grid size={{ xs: 6, sm: 6 }}>
+                    <TextField
+                      fullWidth label="Default Route" size="small" select
+                      value={vaccineConfig.defaultRoute}
+                      onChange={(e) => setVaccineConfig(prev => ({
+                        ...prev, defaultRoute: e.target.value
+                      }))}
+                      sx={sxField}
+                    >
+                      {['SQ', 'IM', 'ID', 'IN', 'PO'].map(r => (
+                        <MenuItem key={r} value={r}>{r}</MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+
+                  {/* Default injection site */}
+                  <Grid size={{ xs: 6, sm: 6 }}>
+                    <TextField
+                      fullWidth label="Default Injection Site" size="small"
+                      value={vaccineConfig.defaultSite}
+                      onChange={(e) => setVaccineConfig(prev => ({
+                        ...prev, defaultSite: e.target.value
+                      }))}
+                      sx={sxField}
+                      helperText="e.g. Right Scruff, Left Thigh"
+                    />
+                  </Grid>
+                </Grid>
+              </Paper>
+            </Box>
+          )}
 
           {/* ═══════════════════════════════════════════════════════════════
               SECTION 3: FINANCIALS & MARGINS

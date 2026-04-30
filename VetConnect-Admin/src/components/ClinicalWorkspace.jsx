@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import './ClinicalWorkspace.css';
 import { resolveTieredPrice } from '../utils/resolveTieredPrice';
-import { buildVaccineKeywords } from '../utils/vaccineConstants';
+// T4.117: buildVaccineKeywords import removed — detection is now category-based
 import { useVaccineCatalog } from '../hooks/useVaccineCatalog';
 import { ZEN_PLACEHOLDERS } from '../utils/soapConstants';
 import {
@@ -28,6 +28,7 @@ import {
   NavigateNext as NavigateNextIcon,
   Pets as PetsIcon,
   Psychology as PsychologyIcon,
+  Vaccines as VaccinesIcon,
 } from '@mui/icons-material';
 import { doc, collection, Timestamp, addDoc, updateDoc, getDoc, query, where, orderBy, getDocs, arrayUnion, writeBatch, runTransaction } from 'firebase/firestore';
 import { db, auth } from '../firebaseConfig';
@@ -707,6 +708,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 price: resolvedPrice, qty: 1, isDrug: false, isBase: true,
                 isDiscountable: svcDef?.isScPwdEligible !== false,
                 department: svc.department || svcDef?.department || 'General',
+                category: '', // Services don't carry inventory categories
             });
         });
 
@@ -734,31 +736,43 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                     type: 'product', id: linkedInv.id, name: linkedInv.itemName,
                     price: linkedInv.price, qty: 1,
                     isDrug: !!linkedInv.isMedicine,
-                    isBase: false, isAutoBundled: true, instructions: ''
+                    isBase: false, isAutoBundled: true, instructions: '',
+                    category: (linkedInv.category || '').toLowerCase(), // T4.117: enables category-based detection
                 });
                 // Track the first linked vaccine product for auto-fill below
                 if (!firstVaccineLinkedItem && linkedInv.batches?.length > 0) {
-                    const isVaccineProduct = vaccineKeywords.some(kw =>
-                        (linkedInv.itemName || '').toLowerCase().includes(kw)
-                    );
-                    if (isVaccineProduct) firstVaccineLinkedItem = linkedInv;
+                    if ((linkedInv.category || '').toLowerCase() === 'vaccine') {
+                        firstVaccineLinkedItem = linkedInv;
+                    }
                 }
             });
         });
 
-        // T2.474 / T2.22: Pre-fill vaccine form from the first linked vaccine product's FIFO batch.
-        const isVax = vaccineKeywords.some(kw =>
-            (patient?.services || []).some(s => (s.name || '').toLowerCase().includes(kw))
-        );
+        // T2.474 / T2.22 / T4.117: Pre-fill vaccine form from the first linked vaccine product.
+        // Uses vaccineConfig defaults (route, site, interval, manufacturer) in addition to
+        // batch lot number. Detection is category-based.
+        const isVax = initialCart.some(item => item.category === 'vaccine');
         if (isVax && firstVaccineLinkedItem) {
             const batch = firstVaccineLinkedItem.batches[0];
+            const vc = firstVaccineLinkedItem.vaccineConfig || {};
+            const hydrationDueDate = (() => {
+                const days = vc.intervalDays || 365;
+                const due = new Date();
+                due.setDate(due.getDate() + days);
+                return due.toISOString().slice(0, 10);
+            })();
             setVaccineAdministrations(prev => {
                 const updated = [...prev];
                 if (updated[0]) {
                     updated[0] = {
                         ...updated[0],
-                        manufacturer: updated[0].manufacturer || firstVaccineLinkedItem.manufacturer || '',
-                        lotNumber: updated[0].lotNumber || batch.batchNumber || batch.lotNumber || '',
+                        vaccineName: updated[0].vaccineName || firstVaccineLinkedItem.itemName || '',
+                        manufacturer: updated[0].manufacturer || batch?.manufacturer || vc.defaultManufacturer || '',
+                        lotNumber: updated[0].lotNumber || batch?.batchNumber || batch?.lotNumber || '',
+                        routeOfAdmin: updated[0].routeOfAdmin || vc.defaultRoute || 'SQ',
+                        siteOfInjection: updated[0].siteOfInjection || vc.defaultSite || 'Right Scruff',
+                        dueDate: updated[0].dueDate || hydrationDueDate,
+                        intervalDays: updated[0].intervalDays || vc.intervalDays || 365,
                     };
                 }
                 return updated;
@@ -1196,11 +1210,17 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   const handleAddRx = async (item) => {
     if (!item) return;
 
-    // Block out-of-stock products
+    // T4.117: Block out-of-stock products — with vaccine-specific override.
+    // Vaccine products can be administered even when stock is zero (client-supplied
+    // vaccine scenario). Non-vaccine products retain the hard block.
     if (item.stock !== undefined) {
         const netAvailable = (item.stock || 0) - (item.reserved || 0);
         if (netAvailable <= 0) {
-            return alert("This product is out of stock and cannot be added.");
+            if ((item.category || '').toLowerCase() !== 'vaccine') {
+                showToast("This product is out of stock and cannot be added.", "error");
+                return;
+            }
+            // Vaccine: allow add — noStockDeduction flag set on itemObj below
         }
     }
 
@@ -1236,6 +1256,10 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         return;
     }
 
+    const itemCategory = (item.category || '').toLowerCase();
+    const netAvailableForItem = item.stock !== undefined
+      ? (item.stock || 0) - (item.reserved || 0)
+      : Infinity;
     const itemObj = {
       type: item.stock !== undefined ? 'product' : 'service',
       id: item.id,
@@ -1246,6 +1270,11 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       qty: 1,
       isDrug: isMedicine,
       isDispensed: false, // Default to Clinic Admin
+      // T4.117: Carry inventory category so category-based vaccine detection works
+      category: itemCategory,
+      // T4.117: Flag zero-stock vaccine adds — stock deduction is skipped for these,
+      // and the flag is persisted to the medical record for audit purposes.
+      noStockDeduction: itemCategory === 'vaccine' && netAvailableForItem <= 0,
       sig: { dose: '1', frequency: 'SID', duration: '1', unit: item.unit || 'unit', route: 'SQ' },
       instructions: ''
     };
@@ -1269,43 +1298,62 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     setTreatmentCart(prev => [...prev, itemObj]);
     setIsDirty(true);
 
-    // T2.22: If this is a vaccine product with batch data, auto-fill a new vaccine
-    // administration row with manufacturer and lot number from the FIFO batch.
-    if (itemObj.type === 'product' && item.batches?.length > 0) {
-        const isVaccineItem = vaccineKeywords.some(kw =>
-            (item.itemName || item.name || '').toLowerCase().includes(kw)
-        );
-        if (isVaccineItem) {
-            const batch = item.batches[0];
-            setVaccineAdministrations(prev => {
-                // Find an unfilled row first; if all filled, append a new one
-                const emptyIdx = prev.findIndex(v => !v.vaccineName);
-                const updated = [...prev];
-                if (emptyIdx >= 0) {
-                    updated[emptyIdx] = {
-                        ...updated[emptyIdx],
-                        manufacturer: updated[emptyIdx].manufacturer || item.manufacturer || '',
-                        lotNumber: updated[emptyIdx].lotNumber || batch.batchNumber || batch.lotNumber || '',
-                    };
-                } else {
-                    updated.push({
-                        ...EMPTY_VAX,
-                        manufacturer: item.manufacturer || '',
-                        lotNumber: batch.batchNumber || batch.lotNumber || '',
-                    });
-                }
-                return updated;
-            });
+    // T4.117: If this is a vaccine-category product, auto-fill the vaccine form
+    // from vaccineConfig defaults + FIFO batch data. Replaces the old keyword-based
+    // detection (vaccineKeywords.some(kw => name.includes(kw))).
+    if (itemObj.type === 'product' && itemObj.category === 'vaccine') {
+        const vc = item.vaccineConfig || {};
+        const batch = item.batches?.length > 0 ? item.batches[0] : null;
+
+        // Enable the vaccine form if not already showing
+        if (!showVaccineForm) {
+            setManualVaccineOverride(true);
+        }
+
+        const dueDate = (() => {
+            const days = vc.intervalDays || 365;
+            const due = new Date();
+            due.setDate(due.getDate() + days);
+            return due.toISOString().slice(0, 10);
+        })();
+
+        setVaccineAdministrations(prev => {
+            const emptyIdx = prev.findIndex(v => !v.vaccineName);
+            const updated = [...prev];
+            const newEntry = {
+                vaccineName: item.itemName || item.name || '',
+                manufacturer: batch?.manufacturer || vc.defaultManufacturer || '',
+                lotNumber: batch?.batchNumber || batch?.lotNumber || '',
+                routeOfAdmin: vc.defaultRoute || 'SQ',
+                siteOfInjection: vc.defaultSite || 'Right Scruff',
+                dueDate,
+                intervalDays: vc.intervalDays || 365,
+                noStockDeduction: itemObj.noStockDeduction || false,
+            };
+            if (emptyIdx >= 0) {
+                updated[emptyIdx] = { ...updated[emptyIdx], ...newEntry };
+            } else {
+                updated.push(newEntry);
+            }
+            return updated;
+        });
+
+        if (itemObj.noStockDeduction) {
+            showToast(
+                `${itemObj.name} added with no stock deduction — client-supplied vaccine. Record will be flagged for audit.`,
+                'warning'
+            );
         }
     }
 
     // --- SOFT-RESERVE TRIGGER ---
-    if (itemObj.type === 'product' && reserveStock) {
+    // T4.117: Skip reservation for noStockDeduction items (zero-stock vaccines).
+    if (itemObj.type === 'product' && reserveStock && !itemObj.noStockDeduction) {
         try {
             await reserveStock(itemObj.id, 1);
         } catch (e) {
             console.error(`[ClinicalWorkspace] Stock reservation failed for ${itemObj.name}:`, e);
-            alert(`Warning: Could not reserve stock for ${itemObj.name}. The item was added but may not be available at checkout.`);
+            showToast(`Warning: Could not reserve stock for ${itemObj.name}. The item was added but may not be available at checkout.`, 'warning');
         }
     }
   };
@@ -1411,18 +1459,15 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   // --- 4. SAVE LOGIC ---
 
   /**
-   * Detects if the current visit is vaccine-related by matching booked service names
-   * against a known set of vaccine keywords. Drives conditional rendering of the
-   * structured Vaccine Details form in the Plan quadrant.
+   * T4.117: Detects vaccination visits by checking whether any treatment cart item
+   * carries category === 'vaccine'. Category-based detection is deterministic and
+   * eliminates false positives from keyword substring matching.
+   *
+   * This replaces the previous keyword-based approach (buildVaccineKeywords + string
+   * matching against service names) which was fragile and required manual curation
+   * of the keyword list.
    */
-  /** Derives keyword list from the live Firestore catalog so admin-added vaccines are detected. */
-  const vaccineKeywords = useMemo(() => buildVaccineKeywords(vaccineCatalog), [vaccineCatalog]);
-
-  // T2.29: Uses services[] array exclusively — no longer reads legacy primaryService string.
-  const isVaccinationVisit = useMemo(() => {
-    const serviceNames = (patient?.services || []).map(s => (s.name || '').toLowerCase()).join(' ');
-    return vaccineKeywords.some(kw => serviceNames.includes(kw));
-  }, [patient, vaccineKeywords]);
+  const isVaccinationVisit = treatmentCart.some(item => item.category === 'vaccine');
 
   // T3.2: Effective flag — vaccine form is shown when auto-detected OR manually toggled.
   const showVaccineForm = isVaccinationVisit || manualVaccineOverride;
@@ -1436,6 +1481,32 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       : active;
     return [...filtered.map(v => v.name), 'Other'];
   }, [petDetails, vaccineCatalog]);
+
+  /**
+   * T4.117: Species-filtered vaccine-category inventory products for the Plan
+   * quadrant Autocomplete. Non-archived products only. Species matching uses
+   * vaccineConfig.species array; if absent, the product appears for all species.
+   */
+  const vaccineProducts = useMemo(() => {
+    const species = (petDetails?.species || patient?.petSpecies || '').toLowerCase();
+    const spKey = (species.includes('cat') || species.includes('feline')) ? 'cat' : 'dog';
+    return (inventoryList || [])
+      .filter(p => (p.category || '').toLowerCase() === 'vaccine' && !p.isArchived)
+      .filter(p => {
+        const vcSpecies = p.vaccineConfig?.species;
+        return !vcSpecies || vcSpecies.length === 0 || vcSpecies.includes(spKey);
+      });
+  }, [inventoryList, petDetails, patient?.petSpecies]);
+
+  /**
+   * T4.117: Plan quadrant vaccine Autocomplete handler.
+   * Delegates to handleAddRx so cart handling, stock reservation, and vaccine
+   * form auto-population all use a single code path.
+   */
+  const handleAddVaccineProduct = (product) => {
+    if (!product) return;
+    handleAddRx(product);
+  };
 
   const hasDrugsInCart = treatmentCart.some(item => item.isDrug);
   const nextRouteStatus = hasDrugsInCart ? "dispensing" : "billing";
@@ -1667,6 +1738,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                     siteOfInjection: v.siteOfInjection,
                     dueDate: v.dueDate || null,
                     intervalDays: v.intervalDays || 365,
+                    // T4.117: Audit flag — persisted so reports can identify client-supplied vaccine administrations.
+                    ...(v.noStockDeduction ? { noStockDeduction: true } : {}),
                 })),
                 // Legacy shim — first vaccine duplicated as vaccineData for old readers
                 vaccineData: {
@@ -2036,6 +2109,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       return {
         ...i,
         label: `${i.itemName} (${netAvailable} avail)`,
+        // T4.117: Preserve the inventory product's category before overwriting for groupBy
+        inventoryCategory: (i.category || '').toLowerCase(),
         category: 'Pharmacy/Products',
         isLow: netAvailable <= 5,
         isOut: netAvailable <= 0,
@@ -2044,6 +2119,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     ...(servicesList || []).filter(s => !s.isArchived).map(s => ({
       ...s,
       label: s.name,
+      inventoryCategory: '',
       category: 'Clinical Services',
       isLow: false,
       isOut: false,
@@ -2788,6 +2864,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 followUpNode={followUpJSX}
                 canToggleVaccine={!showVaccineForm && !isRecordLocked}
                 onManualVaccineToggle={() => setManualVaccineOverride(true)}
+                vaccineProducts={vaccineProducts}
+                onAddVaccineProduct={handleAddVaccineProduct}
                 intakeClientNotes={filteredClientNotes}
                 intakeStaffNotes={intakeStaffNotes}
                 llmEnabled={llmConfig.enabled && !!llmConfig.workerUrl}
@@ -2821,7 +2899,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                             options={autocompleteOptions}
                             groupBy={(option) => option.category}
                             getOptionLabel={(option) => option.label || ''}
-                            getOptionDisabled={(option) => option.isOut === true}
+                            getOptionDisabled={(option) => option.isOut === true && option.inventoryCategory !== 'vaccine'}
                             onChange={(event, newValue) => handleAddRx(newValue)}
                             renderOption={(props, option) => (
                                 <Box component="li" {...props} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', py: 1 }}>
@@ -2829,6 +2907,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                                         <Typography sx={{ fontWeight: 900, fontSize: '0.85rem', color: option.isOut ? COLORS.textMuted : 'inherit', display: 'flex', alignItems: 'center' }}>
                                             {option.itemName || option.name}
                                             {option.isMedicine && <MedicationIcon sx={{ fontSize: 14, color: '#D32F2F', ml: 1 }} />}
+                                            {/* T4.117: Vaccine indicator — distinct visual for vaccine-category products */}
+                                            {option.inventoryCategory === 'vaccine' && <VaccinesIcon sx={{ fontSize: 14, color: COLORS.success, ml: 0.5 }} />}
                                         </Typography>
                                         {option.stock !== undefined && (
                                             <Typography variant="caption" sx={{ color: option.isOut ? '#D32F2F' : (option.isLow ? '#EF6C00' : COLORS.textMuted), fontWeight: 800 }}>
@@ -2956,6 +3036,23 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                                             />
                                         </Collapse>
                                     </>
+                                )}
+
+                                {/* T4.117: No-stock-deduction audit badge — shown when a
+                                    zero-stock vaccine was added (client-supplied scenario).
+                                    The flag is persisted to the medical record on sign-off. */}
+                                {rx.noStockDeduction && (
+                                    <Alert
+                                        severity="warning"
+                                        sx={{
+                                            py: 0, px: 1, mt: 0.5,
+                                            fontSize: '0.6rem', fontWeight: 700,
+                                            borderRadius: 0,
+                                            '& .MuiAlert-icon': { fontSize: 14 },
+                                        }}
+                                    >
+                                        No stock deduction — client-supplied vaccine
+                                    </Alert>
                                 )}
 
                                 {rx.isBase && (() => {
@@ -3259,6 +3356,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                   followUpNode={followUpJSX}
                   canToggleVaccine={!showVaccineForm && !isRecordLocked}
                   onManualVaccineToggle={() => setManualVaccineOverride(true)}
+                  vaccineProducts={vaccineProducts}
+                  onAddVaccineProduct={handleAddVaccineProduct}
                   intakeClientNotes={filteredClientNotes}
                   intakeStaffNotes={intakeStaffNotes}
                   llmEnabled={llmConfig.enabled && !!llmConfig.workerUrl}

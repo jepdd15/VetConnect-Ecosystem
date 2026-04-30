@@ -2,12 +2,14 @@
  * Canonical vaccine catalog — hardcoded fallback.
  *
  * This is the compile-time default used when Firestore has not been seeded yet.
- * T3.51 moves the live catalog to clinic_settings/vaccine_catalog in Firestore,
+ * T3.51 moved the live catalog to clinic_settings/vaccine_catalog in Firestore,
  * accessed via useVaccineCatalog(). This constant remains as:
  *   1. The seed dataset written on "Seed Default Vaccines" in Settings.
  *   2. The fallback for useVaccineCatalog when the Firestore doc is absent.
- *   3. A default argument for resolveVaccineFromName / buildVaccineKeywords
- *      so existing callers remain valid during incremental migration.
+ *
+ * T4.117 (Day 3): Removed buildVaccineKeywords, VACCINE_KEYWORDS, and the
+ * VACCINE_CATALOG re-export alias. Detection is now category-based
+ * (category === 'vaccine' on inventory products), not keyword-based.
  *
  * Note: isActive defaults to true on all entries; the field is managed
  * exclusively via Firestore once the catalog is seeded.
@@ -20,34 +22,6 @@ export const DEFAULT_VACCINE_CATALOG = [
   { id: 'fvrcp',         name: 'FVRCP',         species: ['cat'],        intervalDays: 365, keywords: ['fvrcp', 'feline distemper', 'panleukopenia'],                       isActive: true },
   { id: 'felv',          name: 'FeLV',          species: ['cat'],        intervalDays: 365, keywords: ['felv', 'feline leukemia'],                                          isActive: true },
 ];
-
-// Backward-compat re-export. Existing `import { VACCINE_CATALOG }` statements
-// continue to work unchanged throughout the codebase during migration.
-export { DEFAULT_VACCINE_CATALOG as VACCINE_CATALOG };
-
-/**
- * Derives the keyword list used by isVaccinationVisit to detect vaccine-related
- * appointments. Parameterized so it can be called with the live Firestore catalog
- * (from useVaccineCatalog) instead of the hardcoded constant.
- *
- * @param {Array<object>} catalog  Vaccine catalog array (each entry must have a keywords field)
- * @returns {string[]} Flat array of lowercase keyword strings, prefixed with 'vaccine'/'vaccination'
- */
-export function buildVaccineKeywords(catalog) {
-  return [
-    'vaccine',
-    'vaccination',
-    ...catalog.flatMap((v) => v.keywords || []),
-  ];
-}
-
-/**
- * Pre-computed keyword list from the hardcoded fallback catalog.
- * Kept for backward compat — components that import VACCINE_KEYWORDS directly
- * continue to work. After T3.51 Steps 3-4, ClinicalWorkspace and PatientDashboard
- * derive this dynamically from the live catalog via buildVaccineKeywords(vaccineCatalog).
- */
-export const VACCINE_KEYWORDS = buildVaccineKeywords(DEFAULT_VACCINE_CATALOG);
 
 /**
  * Resolve a catalog entry from a free-text vaccine name using name equality

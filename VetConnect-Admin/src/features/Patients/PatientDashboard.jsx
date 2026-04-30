@@ -14,6 +14,7 @@ import { db } from '../../firebaseConfig';
 import { doc, getDoc, collection, query, where, orderBy, getDocs, Timestamp, updateDoc, onSnapshot, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { CONSENT_ACTIONS, SIGNATURE_TYPES } from '../../utils/consentConstants';
 import { resolveVitals } from '../../utils/resolveVitals';
+import { resolveObjectiveText, hasExamData } from '../../utils/examUtils';
 
 // Icons
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -475,7 +476,7 @@ export default function PatientDashboard() {
         // Core SOAP fields
         const textFields = [
           r.diagnosis, r.vetName, r.treatment,
-          r.soap?.subjective, r.soap?.objectiveNotes,
+          r.soap?.subjective, resolveObjectiveText(r),
           r.soap?.assessment, r.soap?.plan,
         ];
         if (textFields.some(v => v?.toLowerCase().includes(q))) return true;
@@ -659,7 +660,7 @@ export default function PatientDashboard() {
 
       // --- Legacy fallback: keyword-match against SOAP / diagnosis text ---
       const keywordMatches = records.filter(r => {
-        const text = [r.diagnosis, r.treatment, r.soap?.subjective, r.soap?.objectiveNotes]
+        const text = [r.diagnosis, r.treatment, r.soap?.subjective, resolveObjectiveText(r)]
           .filter(Boolean).join(' ').toLowerCase();
         return catalogVax.keywords.some(kw => text.includes(kw));
       });
@@ -1165,7 +1166,7 @@ export default function PatientDashboard() {
               const isExpanded = expandedRecords.has(index);
               const rc = getRecordColor(rec.recordType);
               const dateStr = rec.date?.toDate ? rec.date.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
-              const hasS = rec.soap?.subjective, hasO = rec.soap?.objectiveNotes, hasT = rec.treatment;
+              const hasS = rec.soap?.subjective, hasO = hasExamData(rec.objectiveExam) || rec.soap?.objectiveNotes || rec.soap?.objective, hasT = rec.treatment;
               const rv = resolveVitals(rec);
               const hasV = rv.weight || rv.temp || rv.hr || rv.rr != null || rv.crt != null || rv.bcs != null || rv.pain != null;
               const hasRx = (rec.dispensedProducts || rec.prescriptions)?.length > 0;
@@ -1291,7 +1292,7 @@ export default function PatientDashboard() {
                             </Box>
                             <Box>
                               <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.5 }}>Objective</Typography>
-                              <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: hasO ? COLORS.textPrimary : COLORS.textMuted, whiteSpace: 'pre-wrap', pl: 1.5, borderLeft: `2px solid ${COLORS.borderLight}`, fontStyle: hasO ? 'normal' : 'italic' }}>{hasO ? rec.soap.objectiveNotes : '—'}</Typography>
+                              <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: hasO ? COLORS.textPrimary : COLORS.textMuted, whiteSpace: 'pre-wrap', pl: 1.5, borderLeft: `2px solid ${COLORS.borderLight}`, fontStyle: hasO ? 'normal' : 'italic' }}>{hasO ? resolveObjectiveText(rec) : '—'}</Typography>
                             </Box>
                             {/* T3.87: Assessment — the A in SOAP */}
                             {rec.soap?.assessment && (

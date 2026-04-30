@@ -18,6 +18,7 @@ import SendIcon from '@mui/icons-material/Send';
 import ReplayIcon from '@mui/icons-material/Replay';
 import ReactMarkdown from 'react-markdown';
 import { FONT, TYPE, COLORS } from '../theme/designTokens';
+import { hasExamData } from '../utils/examUtils';
 import { normalizeMarkdownTables } from '../utils/normalizeMarkdownTables';
 
 /**
@@ -66,7 +67,7 @@ export default function ClinicalAIPanel({
   petName,
 }) {
   const chatEndRef = useRef(null);
-  const hasInputData = !!(soapData?.subjective || soapData?.objectiveNotes);
+  const hasInputData = !!(soapData?.subjective || hasExamData(soapData?.objectiveExam) || soapData?.objectiveNotes);
   const hasAssistantResponse = llmMessages.some(m => m.role === 'assistant');
   const isEmpty = llmMessages.length === 0 && !diagnosticOpen;
 

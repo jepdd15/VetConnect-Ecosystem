@@ -33,6 +33,7 @@ import { doc, collection, Timestamp, addDoc, updateDoc, getDoc, query, where, or
 import { db, auth } from '../firebaseConfig';
 import { useInventory } from '../features/Inventory/hooks/useInventory';
 import { calculatePulseMetrics, makePulseEventId, createPulseEvent } from '../utils/pulseUtils';
+import { createDefaultExam, examToText } from '../utils/examUtils';
 import { useClinicSettings } from '../hooks/useClinicSettings';
 import { useUser } from '../context/UserContext';
 import { chatWithHistory, buildUserMessage, DEFAULT_CLINICAL_SYSTEM_PROMPT } from '../utils/llmService';
@@ -41,6 +42,7 @@ import { sendPushNotification } from '../utils/sendPushNotification';
 // Design Tokens
 import { FONT, TYPE, COLORS } from '../theme/designTokens';
 import SoapGrid from './SoapGrid';
+import PhysicalExamChecklist from './PhysicalExamChecklist';
 import ClinicalAIPanel from './ClinicalAIPanel';
 import EMRDrawer from './EMRDrawer';
 import { ServiceProgressCard } from './ServiceProgressCard';
@@ -469,7 +471,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   const [overdueVaccineCount, setOverdueVaccineCount] = useState(0);
 
   const [soapData, setSoapData] = useState({
-    subjective: '', objWeight: '', objTemp: '', objHR: '', objRR: '', objCRT: '', bcs: 5, painScale: 0, objectiveNotes: '',
+    subjective: '', objWeight: '', objTemp: '', objHR: '', objRR: '', objCRT: '', bcs: 5, painScale: 0,
+    objectiveNotes: '', objectiveExam: createDefaultExam(),
     assessment: '', prognosis: 'Good', plan: '', recheckIn: '1 Week', patientStatus: 'Stable', nextVisit: ''
   });
   const [isRecordLocked, setIsRecordLocked] = useState(false);
@@ -641,7 +644,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             subjective: '',
             objWeight: '', objTemp: '', objHR: '', objRR: '', objCRT: '2',
             bcs: 5, painScale: 0,
-            objectiveNotes: '', assessment: '', prognosis: 'Good', recheckIn: '1 Week',
+            objectiveNotes: '', objectiveExam: createDefaultExam(),
+            assessment: '', prognosis: 'Good', recheckIn: '1 Week',
             patientStatus: 'Stable', plan: '', nextVisit: '',
           };
 
@@ -674,6 +678,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
               bcs: draft.bcs ?? 5,
               painScale: draft.painScale ?? 0,
               objectiveNotes: draft.objectiveNotes || '',
+              objectiveExam: draft.objectiveExam || createDefaultExam(),
               assessment: draft.assessment || '',
               prognosis: draft.prognosis || 'Good',
               patientStatus: draft.patientStatus || 'Stable',
@@ -938,11 +943,12 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   const applyTemplate = (type) => {
     switch (type) {
       case 'wnl': {
-        // Inject species-appropriate baseline vitals alongside full-body WNL notes
+        // Populate species-appropriate vitals and reset structured exam to all-normal
         const isDog = (patient?.petSpecies === 'Canine' || patient?.petSpecies === 'Dog');
         setSoapData(prev => ({
           ...prev,
-          objectiveNotes: "MM: Pink/Moist, CRT <2s\nHydration: Normal\nResp Effort: Normal\nAbdomen: Soft/Non-painful\nDental: Grade 0 (No calc/gingivitis)\n\nGeneral Appearance: WNL\nEENT: WNL\nCardiovascular: WNL\nRespiratory: WNL\nGastrointestinal: WNL\nMusculoskeletal: WNL\nIntegumentary (Skin): WNL\nLymph Nodes: WNL\nNeurological: WNL\nUrogenital: WNL",
+          objectiveExam: createDefaultExam(),   // All systems normal, dental 0, hydration normal, MM pink/moist
+          objectiveNotes: '',                   // Clear legacy general notes
           objTemp: isDog ? '38.5' : '38.6',
           objHR: isDog ? '100' : '140',
           objRR: isDog ? '20' : '24',
@@ -988,7 +994,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   };
 
   const runAssistiveDiagnosis = () => {
-    const combinedNotes = (soapData.subjective + " " + soapData.objectiveNotes).toLowerCase();
+    const examText = examToText(soapData.objectiveExam) || soapData.objectiveNotes || '';
+    const combinedNotes = (soapData.subjective + " " + examText).toLowerCase();
     let suggestions =[];
     KNOWLEDGE_BASE.forEach(c => {
       if (c.keywords.some(k => combinedNotes.includes(k))) suggestions.push(c.suggestion);
@@ -1011,7 +1018,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
    */
   const buildInitialSoapMessage = () => buildUserMessage({
     subjective: soapData.subjective || '',
-    objective: soapData.objectiveNotes || '',
+    objective: examToText(soapData.objectiveExam) || soapData.objectiveNotes || '',
     vitals: {
       temp: soapData.objTemp,
       hr: soapData.objHR,
@@ -1576,9 +1583,11 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         recordType: 'medical',
         diagnosis: soapData.assessment || "Clinical Visit",
         treatment: soapData.plan,
+        objectiveExam: soapData.objectiveExam,
         soap: {
             subjective: soapData.subjective,
-            objective: soapData.objectiveNotes,
+            objective: examToText(soapData.objectiveExam) || soapData.objectiveNotes || '',
+            objectiveNotes: examToText(soapData.objectiveExam) || soapData.objectiveNotes || '',
             assessment: soapData.assessment,
             prognosis: soapData.prognosis,
             plan: soapData.plan,
@@ -1862,6 +1871,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           soapDraft: {
             subjective: soapData.subjective,
             objectiveNotes: soapData.objectiveNotes,
+            objectiveExam: soapData.objectiveExam,
             objWeight: soapData.objWeight,
             objTemp: soapData.objTemp,
             objHR: soapData.objHR,
@@ -1922,6 +1932,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       bcs: d.bcs ?? 5,
       painScale: d.painScale ?? 0,
       objectiveNotes: d.objectiveNotes || '',
+      objectiveExam: d.objectiveExam || createDefaultExam(),
       assessment: d.assessment || '',
       prognosis: d.prognosis || 'Good',
       patientStatus: d.patientStatus || 'Stable',
@@ -2786,6 +2797,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 onResetAndAskAI={handleResetAndAskAI}
                 onToggleAIPanel={handleToggleAIPanel}
                 isAIPanelOpen={isAIDrawerOpen}
+                onMarkAllNormal={() => applyTemplate('wnl')}
+                disabled={lockedServices.has('medical')}
               />
             );
           })()}
@@ -3093,7 +3106,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         fullScreen open={!!fullscreenField} onClose={() => setFullscreenField(null)} 
         TransitionComponent={Transition} PaperProps={{ sx: { bgcolor: 'rgba(253, 252, 251, 0.98)', backdropFilter: 'blur(20px)' } }}
       >
-        <AppBar elevation={0} sx={{ position: 'relative', bgcolor: COLORS.banner, borderBottom: `1px solid ${COLORS.bannerBorder}`, py: 1 }}>
+        <AppBar elevation={0} sx={{ position: 'sticky', top: 0, zIndex: 10, bgcolor: COLORS.banner, borderBottom: `1px solid ${COLORS.bannerBorder}`, py: 1 }}>
           <Toolbar>
             <IconButton edge="start" color="inherit" onClick={() => setFullscreenField(null)} aria-label="close"><CloseIcon sx={{ color: COLORS.textMuted }} /></IconButton>
             <Box sx={{ ml: 2, flex: 1 }}>
@@ -3128,14 +3141,22 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             {fullscreenField?.includes('obj') ? 'OBJECTIVE' : fullscreenField?.toUpperCase()}
           </Typography>
 
-          {/* Show vitals grid when Zen-expanding the Objective section */}
+          {/* Show vitals grid + structured exam checklist when Zen-expanding the Objective section */}
           {fullscreenField === 'objectiveNotes' && (
-            <VitalsGrid
-              soapData={soapData}
-              updateSoap={updateSoap}
-              getTriageLevel={getTriageLevel}
-              renderHistoricalLabel={renderHistoricalLabel}
-            />
+            <>
+              <VitalsGrid
+                soapData={soapData}
+                updateSoap={updateSoap}
+                getTriageLevel={getTriageLevel}
+                renderHistoricalLabel={renderHistoricalLabel}
+              />
+              <PhysicalExamChecklist
+                examData={soapData.objectiveExam}
+                onChange={(updated) => updateSoap('objectiveExam', updated)}
+                onMarkAllNormal={() => applyTemplate('wnl')}
+                disabled={lockedServices.has('medical')}
+              />
+            </>
           )}
 
           {/* Show diagnostic bridge when Zen-expanding the Assessment section */}
@@ -3154,16 +3175,18 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             />
           )}
 
-          <TextField
-            autoFocus multiline fullWidth variant="standard"
-            placeholder={ZEN_PLACEHOLDERS[fullscreenField] || "Enter clinical notes..."}
-            value={soapData[fullscreenField] || ''}
-            onChange={(e) => updateSoap(fullscreenField, e.target.value)}
-            InputProps={{ 
-              disableUnderline: true, 
-              sx: { fontSize: '2.5rem', fontFamily: FONT, fontWeight: 500, lineHeight: 1.4, color: COLORS.brand } 
-            }}
-          />
+          {fullscreenField !== 'objectiveNotes' && (
+            <TextField
+              autoFocus multiline fullWidth variant="standard"
+              placeholder={ZEN_PLACEHOLDERS[fullscreenField] || "Enter clinical notes..."}
+              value={soapData[fullscreenField] || ''}
+              onChange={(e) => updateSoap(fullscreenField, e.target.value)}
+              InputProps={{
+                disableUnderline: true,
+                sx: { fontSize: '2.5rem', fontFamily: FONT, fontWeight: 500, lineHeight: 1.4, color: COLORS.brand }
+              }}
+            />
+          )}
         </Box>
       </Dialog>
 
@@ -3245,6 +3268,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                   onResetAndAskAI={handleResetAndAskAI}
                   onToggleAIPanel={() => {}}
                   isAIPanelOpen={true}
+                  onMarkAllNormal={() => applyTemplate('wnl')}
+                  disabled={lockedServices.has('medical')}
                 />
               );
             })()}

@@ -10,6 +10,7 @@
 
 import { calculatePetAge } from './printUtils';
 import { resolveVitals } from './resolveVitals';
+import { resolveObjectiveText } from './examUtils';
 
 /**
  * Builds a structured system prompt from a pet's full medical history.
@@ -82,7 +83,8 @@ export function buildPetHistoryPrompt({ pet, owner, records, vaccinations }) {
 
       // SOAP
       if (r.soap?.subjective)    lines.push(`- S: ${r.soap.subjective}`);
-      if (r.soap?.objectiveNotes) lines.push(`- O: ${r.soap.objectiveNotes}`);
+      const objText = resolveObjectiveText(r);
+      if (objText) lines.push(`- O: ${objText}`);
       if (r.soap?.assessment)    lines.push(`- A: ${r.soap.assessment}`);
       if (r.soap?.plan)          lines.push(`- P: ${r.soap.plan}`);
 

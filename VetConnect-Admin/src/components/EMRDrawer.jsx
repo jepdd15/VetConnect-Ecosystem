@@ -6,6 +6,7 @@ import {
 import { Close as CloseIcon, ExpandMore as ExpandMoreIcon } from '@mui/icons-material';
 import { FONT, COLORS } from '../theme/designTokens';
 import { resolveVitals } from '../utils/resolveVitals';
+import { resolveObjectiveText, hasExamData } from '../utils/examUtils';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -95,7 +96,7 @@ const RecordCard = ({ record }) => {
   const recordDate = formatDate(record.createdAt || record.date);
   const status = record.status || 'completed';
 
-  const hasSoap = record.subjective || record.objectiveNotes || record.assessment || record.plan;
+  const hasSoap = record.subjective || hasExamData(record.objectiveExam) || record.objectiveNotes || record.soap?.objectiveNotes || record.soap?.objective || record.assessment || record.plan;
   const rv = resolveVitals(record);
   const hasVitals = rv.weight || rv.temp || rv.hr || rv.rr || rv.crt || rv.bcs || (rv.pain != null && rv.pain !== '')
     || record.objWeight || record.objTemp || record.objHR || record.objRR || record.objCRT || record.bcs || (record.painScale != null);
@@ -181,12 +182,15 @@ const RecordCard = ({ record }) => {
                       <SoapText value={record.subjective} />
                     </Box>
                   )}
-                  {record.objectiveNotes && (
-                    <Box>
-                      <Typography sx={{ fontSize: '0.58rem', fontWeight: 900, color: COLORS.medical, textTransform: 'uppercase', mb: 0.25 }}>O — Objective</Typography>
-                      <SoapText value={record.objectiveNotes} />
-                    </Box>
-                  )}
+                  {(() => {
+                    const objText = resolveObjectiveText(record);
+                    return objText ? (
+                      <Box>
+                        <Typography sx={{ fontSize: '0.58rem', fontWeight: 900, color: COLORS.medical, textTransform: 'uppercase', mb: 0.25 }}>O — Objective</Typography>
+                        <SoapText value={objText} />
+                      </Box>
+                    ) : null;
+                  })()}
                   {record.assessment && (
                     <Box>
                       <Typography sx={{ fontSize: '0.58rem', fontWeight: 900, color: COLORS.success, textTransform: 'uppercase', mb: 0.25 }}>A — Assessment</Typography>

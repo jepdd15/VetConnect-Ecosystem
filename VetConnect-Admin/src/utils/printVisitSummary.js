@@ -1,5 +1,6 @@
 import { PRINT_STYLES, formatPrintDate, esc, calculatePetAge } from './printUtils';
 import { resolveVitals } from './resolveVitals';
+import { resolveObjectiveText } from './examUtils';
 
 /**
  * Renders the vitals table row. Returns an empty string when no vitals exist.
@@ -251,7 +252,7 @@ export function generateVisitSummaryHTML({ record, pet, owner, clinicName, clini
       </tr>
       <tr>
         <td><strong>Objective</strong></td>
-        <td style="white-space:pre-wrap">${esc(soap.objectiveNotes || soap.objective || '—')}</td>
+        <td style="white-space:pre-wrap">${esc(resolveObjectiveText(rec) || '—')}</td>
       </tr>
       <tr>
         <td><strong>Assessment</strong></td>

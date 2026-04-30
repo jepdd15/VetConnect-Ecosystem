@@ -2,6 +2,7 @@ import React from 'react';
 import { Grid, TextField, Box, Button, Typography } from '@mui/material';
 import { FONT, COLORS } from '../theme/designTokens';
 import { ZEN_PLACEHOLDERS } from '../utils/soapConstants';
+import PhysicalExamChecklist from './PhysicalExamChecklist';
 
 /**
  * SoapGrid — shared 2x2 SOAP quadrant layout used by both the main
@@ -59,6 +60,8 @@ export default function SoapGrid({
   llmEnabled = false, llmLoading = false, llmMessages = [],
   onAskAI, onResetAndAskAI,
   onToggleAIPanel, isAIPanelOpen = false,
+  onMarkAllNormal,
+  disabled = false,
 }) {
   const textFieldSx = { flex: 1, '& .MuiInputBase-root': { height: '100%', alignItems: 'flex-start' } };
   const inputPropsSx = { disableUnderline: true, sx: { fontFamily: FONT, fontSize: '1.25rem', color: COLORS.brand, lineHeight: 1.6 } };
@@ -140,13 +143,11 @@ export default function SoapGrid({
       <Grid size={{ xs: 12, md: 6 }} sx={{ height: { xs: 'auto', md: '50%' }, borderRight: { md: '1px solid #F0F0F0' }, borderTop: { xs: '1px solid #F0F0F0', md: 'none' } }}>
         <SoapQuadrant id="objectiveNotes" label="O - OBJECTIVE (EXAM & VITALS)" onZoomField={setFullscreenField}>
           <VitalsGrid soapData={soapData} updateSoap={updateSoap} getTriageLevel={getTriageLevel} renderHistoricalLabel={renderHistoricalLabel} compact />
-          <TextField
-            multiline fullWidth variant="standard"
-            placeholder={ZEN_PLACEHOLDERS.objectiveNotes}
-            value={soapData.objectiveNotes || ''}
-            onChange={(e) => updateSoap('objectiveNotes', e.target.value)}
-            sx={textFieldSx}
-            InputProps={inputPropsSx}
+          <PhysicalExamChecklist
+            examData={soapData.objectiveExam}
+            onChange={(updated) => updateSoap('objectiveExam', updated)}
+            onMarkAllNormal={onMarkAllNormal}
+            disabled={disabled}
           />
         </SoapQuadrant>
       </Grid>

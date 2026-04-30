@@ -32,6 +32,7 @@ import { COLORS } from '../theme/mobileTokens';
 import SparkLine from '../components/SparkLine';
 import PetHistoryAISheet from '../components/PetHistoryAISheet';
 import { buildPetOwnerPrompt } from '../utils/buildPetOwnerPrompt';
+import { resolveVitals } from '../utils/resolveVitals';
 
 // ---------------------------------------------------------------------------
 // VACCINATION PASSPORT — HTML TEMPLATE
@@ -588,12 +589,14 @@ export default function PetHistoryScreen({ route, navigation }) {
 
   // T3.93: Derive chart-ready arrays for each vital sign.
   // History is newest-first from Firestore — reverse for left-to-right time axis.
+  // T3.133: Resolve amendments once per record so amended vitals appear in trends.
   const vitalsChartData = useMemo(() => {
     const sorted = [...history].reverse();
+    const resolved = sorted.map(r => ({ ...r, _rv: resolveVitals(r) }));
     const extract = (field) =>
-      sorted
-        .filter(r => r.vitals?.[field] != null && r.vitals[field] !== '')
-        .map(r => ({ label: formatDisplayDate(r.date), value: parseFloat(r.vitals[field]) }))
+      resolved
+        .filter(r => r._rv[field] != null && r._rv[field] !== '')
+        .map(r => ({ label: formatDisplayDate(r.date), value: parseFloat(r._rv[field]) }))
         .filter(d => !isNaN(d.value));
     return {
       weight: extract('weight'),
@@ -810,6 +813,10 @@ export default function PetHistoryScreen({ route, navigation }) {
       ? formatDisplayDate(nextVisitRaw, { month: 'long', day: 'numeric', year: 'numeric' }, null)
       : null;
 
+    // T3.133: Resolve amendments so the PDF reflects the latest amended vitals.
+    const pdfVitals = resolveVitals(record);
+    const hasAnyVital = Object.values(pdfVitals).some(v => v != null && v !== '');
+
     const htmlContent = `
       <html>
         <body style="font-family: Helvetica, Arial, sans-serif; padding: 40px; color: #333;">
@@ -819,15 +826,15 @@ export default function PetHistoryScreen({ route, navigation }) {
             <tr><td><b>Patient:</b> ${esc(petName)}</td><td style="text-align: right;"><b>Date:</b> ${esc(dateStr)}</td></tr>
             <tr><td><b>Service:</b> ${esc(record.serviceType)}</td><td style="text-align: right;"><b>Attending Vet:</b> ${esc(record.vetName || "Staff")}</td></tr>
           </table>
-          ${record.vitals ? `<h3>Vitals</h3>
+          ${hasAnyVital ? `<h3>Vitals</h3>
           <p>
-            <b>Weight:</b> ${esc(record.vitals?.weight || "-")} kg &nbsp;&nbsp; | &nbsp;&nbsp;
-            <b>Temp:</b> ${esc(record.vitals?.temp || "-")} &deg;C &nbsp;&nbsp; | &nbsp;&nbsp;
-            <b>Heart Rate:</b> ${esc(record.vitals?.hr || "-")} bpm
-            ${record.vitals?.rr ? ` &nbsp;&nbsp; | &nbsp;&nbsp; <b>RR:</b> ${esc(record.vitals.rr)} br/min` : ''}
-            ${record.vitals?.crt ? ` &nbsp;&nbsp; | &nbsp;&nbsp; <b>CRT:</b> ${esc(record.vitals.crt)} sec` : ''}
-            ${record.vitals?.bcs ? ` &nbsp;&nbsp; | &nbsp;&nbsp; <b>BCS:</b> ${esc(record.vitals.bcs)}/9` : ''}
-            ${record.vitals?.pain ? ` &nbsp;&nbsp; | &nbsp;&nbsp; <b>Pain:</b> ${esc(record.vitals.pain)}/10` : ''}
+            <b>Weight:</b> ${esc(pdfVitals.weight || "-")} kg &nbsp;&nbsp; | &nbsp;&nbsp;
+            <b>Temp:</b> ${esc(pdfVitals.temp || "-")} &deg;C &nbsp;&nbsp; | &nbsp;&nbsp;
+            <b>Heart Rate:</b> ${esc(pdfVitals.hr || "-")} bpm
+            ${pdfVitals.rr ? ` &nbsp;&nbsp; | &nbsp;&nbsp; <b>RR:</b> ${esc(pdfVitals.rr)} br/min` : ''}
+            ${pdfVitals.crt ? ` &nbsp;&nbsp; | &nbsp;&nbsp; <b>CRT:</b> ${esc(pdfVitals.crt)} sec` : ''}
+            ${pdfVitals.bcs ? ` &nbsp;&nbsp; | &nbsp;&nbsp; <b>BCS:</b> ${esc(pdfVitals.bcs)}/9` : ''}
+            ${pdfVitals.pain ? ` &nbsp;&nbsp; | &nbsp;&nbsp; <b>Pain:</b> ${esc(pdfVitals.pain)}/10` : ''}
           </p>` : ''}
           ${dsDiagnosis ? `<h3>Diagnosis</h3><p>${esc(dsDiagnosis)}</p>` : ''}
           ${record.patientStatus ? `<p><b>Status:</b> ${esc(record.patientStatus)}</p>` : ''}
@@ -892,14 +899,16 @@ export default function PetHistoryScreen({ route, navigation }) {
       const s = typeof v === 'number' || typeof v === 'string' ? String(v).trim() : '';
       return s;
     };
-    const weightStr = coerceVital(item.vitals?.weight);
-    const tempStr = coerceVital(item.vitals?.temp);
-    const hrStr = coerceVital(item.vitals?.hr);
+    // T3.133: Resolve amendments once per record so amended values are displayed.
+    const rv = resolveVitals(item);
+    const weightStr = coerceVital(rv.weight);
+    const tempStr = coerceVital(rv.temp);
+    const hrStr = coerceVital(rv.hr);
     // T3.88: Extended vitals — RR, CRT, BCS, Pain
-    const rrStr = coerceVital(item.vitals?.rr);
-    const crtStr = coerceVital(item.vitals?.crt);
-    const bcsStr = coerceVital(item.vitals?.bcs);
-    const painStr = coerceVital(item.vitals?.pain);
+    const rrStr = coerceVital(rv.rr);
+    const crtStr = coerceVital(rv.crt);
+    const bcsStr = coerceVital(rv.bcs);
+    const painStr = coerceVital(rv.pain);
     const hasWeight = weightStr !== '';
     const hasTemp = tempStr !== '';
     const hasHR = hrStr !== '';

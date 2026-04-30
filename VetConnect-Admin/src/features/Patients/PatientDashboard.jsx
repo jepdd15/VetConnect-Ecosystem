@@ -13,6 +13,7 @@ import Grid from '@mui/material/Grid';
 import { db } from '../../firebaseConfig';
 import { doc, getDoc, collection, query, where, orderBy, getDocs, Timestamp, updateDoc, onSnapshot, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { CONSENT_ACTIONS, SIGNATURE_TYPES } from '../../utils/consentConstants';
+import { resolveVitals } from '../../utils/resolveVitals';
 
 // Icons
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -333,13 +334,14 @@ export default function PatientDashboard() {
         historyData.forEach(rec => {
           if (!rec.date) return;
           const label = new Date(rec.date.seconds * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-          if (rec.vitals?.weight) wt.push({ date: label, weight: parseFloat(rec.vitals.weight) });
-          if (rec.vitals?.temp) tp.push({ date: label, temp: parseFloat(rec.vitals.temp) });
-          if (rec.vitals?.hr) hr.push({ date: label, hr: parseInt(rec.vitals.hr) });
-          if (rec.vitals?.rr != null && rec.vitals.rr !== '') rr.push({ date: label, rr: parseFloat(rec.vitals.rr) });
-          if (rec.vitals?.crt != null && rec.vitals.crt !== '') crt.push({ date: label, crt: parseFloat(rec.vitals.crt) });
-          if (rec.vitals?.bcs != null && rec.vitals.bcs !== '') bcs.push({ date: label, bcs: parseFloat(rec.vitals.bcs) });
-          if (rec.vitals?.pain != null && rec.vitals.pain !== '') pain.push({ date: label, pain: parseFloat(rec.vitals.pain) });
+          const v = resolveVitals(rec);
+          if (v.weight) wt.push({ date: label, weight: parseFloat(v.weight) });
+          if (v.temp) tp.push({ date: label, temp: parseFloat(v.temp) });
+          if (v.hr) hr.push({ date: label, hr: parseInt(v.hr) });
+          if (v.rr != null && v.rr !== '') rr.push({ date: label, rr: parseFloat(v.rr) });
+          if (v.crt != null && v.crt !== '') crt.push({ date: label, crt: parseFloat(v.crt) });
+          if (v.bcs != null && v.bcs !== '') bcs.push({ date: label, bcs: parseFloat(v.bcs) });
+          if (v.pain != null && v.pain !== '') pain.push({ date: label, pain: parseFloat(v.pain) });
         });
         setVitalsData(wt.reverse());
         setTempData(tp.reverse());
@@ -1115,7 +1117,8 @@ export default function PatientDashboard() {
               const rc = getRecordColor(rec.recordType);
               const dateStr = rec.date?.toDate ? rec.date.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
               const hasS = rec.soap?.subjective, hasO = rec.soap?.objectiveNotes, hasT = rec.treatment;
-              const hasV = rec.vitals && (rec.vitals.weight || rec.vitals.temp || rec.vitals.hr || rec.vitals.rr != null || rec.vitals.crt != null || rec.vitals.bcs != null || rec.vitals.pain != null);
+              const rv = resolveVitals(rec);
+              const hasV = rv.weight || rv.temp || rv.hr || rv.rr != null || rv.crt != null || rv.bcs != null || rv.pain != null;
               const hasRx = (rec.dispensedProducts || rec.prescriptions)?.length > 0;
 
               // Determine if we need a sticky year header before this record
@@ -1203,7 +1206,7 @@ export default function PatientDashboard() {
                         />
                       );
                     })()}
-                    {!isExpanded && hasV && <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, display: { xs: 'none', md: 'block' } }}>{[rec.vitals.weight&&`${rec.vitals.weight}kg`,rec.vitals.temp&&`${rec.vitals.temp}°C`,rec.vitals.hr&&`${rec.vitals.hr}bpm`].filter(Boolean).join(' · ')}</Typography>}
+                    {!isExpanded && hasV && <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, display: { xs: 'none', md: 'block' } }}>{[rv.weight&&`${rv.weight}kg`,rv.temp&&`${rv.temp}°C`,rv.hr&&`${rv.hr}bpm`].filter(Boolean).join(' · ')}</Typography>}
                     {!isExpanded && hasRx && <MedicationIcon sx={{ fontSize: 14, color: COLORS.rxText, opacity: 0.6 }} />}
                     <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, flexShrink: 0 }}>{rec.vetName || '—'}</Typography>
                     <Box sx={{ color: COLORS.textMuted }}>{isExpanded ? <ExpandLessIcon sx={{ fontSize: 18 }}/> : <ExpandMoreIcon sx={{ fontSize: 18 }}/>}</Box>
@@ -1362,13 +1365,13 @@ export default function PatientDashboard() {
                               <Box sx={{ bgcolor: COLORS.vitalsBg, py: 1, px: 1.5, borderRadius: 0, border: `1px solid ${COLORS.borderLight}` }}>
                                 <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.75 }}>Vitals</Typography>
                                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2.5 }}>
-                                  {rec.vitals.weight && <Box><Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, textTransform: 'uppercase', fontWeight: 600 }}>Wt</Typography><Typography sx={{ fontFamily: FONT, ...TYPE.emphasis, color: COLORS.textPrimary }}>{rec.vitals.weight} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: COLORS.textMuted }}>kg</span></Typography></Box>}
-                                  {rec.vitals.temp && <Box><Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, textTransform: 'uppercase', fontWeight: 600 }}>Temp</Typography><Typography sx={{ fontFamily: FONT, ...TYPE.emphasis, color: COLORS.textPrimary }}>{rec.vitals.temp} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: COLORS.textMuted }}>°C</span></Typography></Box>}
-                                  {rec.vitals.hr && <Box><Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, textTransform: 'uppercase', fontWeight: 600 }}>HR</Typography><Typography sx={{ fontFamily: FONT, ...TYPE.emphasis, color: COLORS.textPrimary }}>{rec.vitals.hr} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: COLORS.textMuted }}>bpm</span></Typography></Box>}
-                                  {rec.vitals.rr != null && rec.vitals.rr !== '' && <Box><Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, textTransform: 'uppercase', fontWeight: 600 }}>RR</Typography><Typography sx={{ fontFamily: FONT, ...TYPE.emphasis, color: COLORS.textPrimary }}>{rec.vitals.rr} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: COLORS.textMuted }}>br/min</span></Typography></Box>}
-                                  {rec.vitals.crt != null && rec.vitals.crt !== '' && <Box><Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, textTransform: 'uppercase', fontWeight: 600 }}>CRT</Typography><Typography sx={{ fontFamily: FONT, ...TYPE.emphasis, color: COLORS.textPrimary }}>{rec.vitals.crt} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: COLORS.textMuted }}>sec</span></Typography></Box>}
-                                  {rec.vitals.bcs != null && rec.vitals.bcs !== '' && <Box><Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, textTransform: 'uppercase', fontWeight: 600 }}>BCS</Typography><Typography sx={{ fontFamily: FONT, ...TYPE.emphasis, color: COLORS.textPrimary }}>{rec.vitals.bcs} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: COLORS.textMuted }}>/9</span></Typography></Box>}
-                                  {rec.vitals.pain != null && rec.vitals.pain !== '' && <Box><Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, textTransform: 'uppercase', fontWeight: 600 }}>Pain</Typography><Typography sx={{ fontFamily: FONT, ...TYPE.emphasis, color: COLORS.textPrimary }}>{rec.vitals.pain} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: COLORS.textMuted }}>/10</span></Typography></Box>}
+                                  {rv.weight && <Box><Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, textTransform: 'uppercase', fontWeight: 600 }}>Wt</Typography><Typography sx={{ fontFamily: FONT, ...TYPE.emphasis, color: COLORS.textPrimary }}>{rv.weight} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: COLORS.textMuted }}>kg</span></Typography></Box>}
+                                  {rv.temp && <Box><Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, textTransform: 'uppercase', fontWeight: 600 }}>Temp</Typography><Typography sx={{ fontFamily: FONT, ...TYPE.emphasis, color: COLORS.textPrimary }}>{rv.temp} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: COLORS.textMuted }}>°C</span></Typography></Box>}
+                                  {rv.hr && <Box><Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, textTransform: 'uppercase', fontWeight: 600 }}>HR</Typography><Typography sx={{ fontFamily: FONT, ...TYPE.emphasis, color: COLORS.textPrimary }}>{rv.hr} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: COLORS.textMuted }}>bpm</span></Typography></Box>}
+                                  {rv.rr != null && rv.rr !== '' && <Box><Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, textTransform: 'uppercase', fontWeight: 600 }}>RR</Typography><Typography sx={{ fontFamily: FONT, ...TYPE.emphasis, color: COLORS.textPrimary }}>{rv.rr} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: COLORS.textMuted }}>br/min</span></Typography></Box>}
+                                  {rv.crt != null && rv.crt !== '' && <Box><Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, textTransform: 'uppercase', fontWeight: 600 }}>CRT</Typography><Typography sx={{ fontFamily: FONT, ...TYPE.emphasis, color: COLORS.textPrimary }}>{rv.crt} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: COLORS.textMuted }}>sec</span></Typography></Box>}
+                                  {rv.bcs != null && rv.bcs !== '' && <Box><Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, textTransform: 'uppercase', fontWeight: 600 }}>BCS</Typography><Typography sx={{ fontFamily: FONT, ...TYPE.emphasis, color: COLORS.textPrimary }}>{rv.bcs} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: COLORS.textMuted }}>/9</span></Typography></Box>}
+                                  {rv.pain != null && rv.pain !== '' && <Box><Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, textTransform: 'uppercase', fontWeight: 600 }}>Pain</Typography><Typography sx={{ fontFamily: FONT, ...TYPE.emphasis, color: COLORS.textPrimary }}>{rv.pain} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: COLORS.textMuted }}>/10</span></Typography></Box>}
                                 </Box>
                               </Box>
                             )}

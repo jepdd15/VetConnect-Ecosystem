@@ -5,6 +5,7 @@ import {
 } from '@mui/material';
 import { Close as CloseIcon, ExpandMore as ExpandMoreIcon } from '@mui/icons-material';
 import { FONT, COLORS } from '../theme/designTokens';
+import { resolveVitals } from '../utils/resolveVitals';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -95,7 +96,7 @@ const RecordCard = ({ record }) => {
   const status = record.status || 'completed';
 
   const hasSoap = record.subjective || record.objectiveNotes || record.assessment || record.plan;
-  const rv = record.vitals || {};
+  const rv = resolveVitals(record);
   const hasVitals = rv.weight || rv.temp || rv.hr || rv.rr || rv.crt || rv.bcs || (rv.pain != null && rv.pain !== '')
     || record.objWeight || record.objTemp || record.objHR || record.objRR || record.objCRT || record.bcs || (record.painScale != null);
   const prescriptionList = record.dispensedProducts || record.prescriptions || [];
@@ -166,7 +167,7 @@ const RecordCard = ({ record }) => {
             {/* Vitals */}
             {hasVitals && (
               <SectionBlock label="Vitals">
-                <VitalsRow vitals={record} />
+                <VitalsRow vitals={rv} />
               </SectionBlock>
             )}
 

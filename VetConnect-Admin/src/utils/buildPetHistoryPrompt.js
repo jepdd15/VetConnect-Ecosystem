@@ -9,6 +9,7 @@
  */
 
 import { calculatePetAge } from './printUtils';
+import { resolveVitals } from './resolveVitals';
 
 /**
  * Builds a structured system prompt from a pet's full medical history.
@@ -68,7 +69,7 @@ export function buildPetHistoryPrompt({ pet, owner, records, vaccinations }) {
       lines.push(`### Record ${i + 1} — ${date} [${type}] (Dr. ${vet})`);
 
       // Vitals
-      const v = r.vitals || {};
+      const v = resolveVitals(r);
       const vParts = [];
       if (v.weight) vParts.push(`Weight: ${v.weight} kg`);
       if (v.temp)   vParts.push(`Temp: ${v.temp}°C`);
@@ -159,16 +160,18 @@ export function buildPetHistoryPrompt({ pet, owner, records, vaccinations }) {
 
   // ── Weight Trend (last 10 readings, newest first) ───────────────────────────
   const weightReadings = (records || [])
-    .filter(r => r.vitals?.weight)
-    .slice(0, 10)
     .map(r => {
+      const rv2 = resolveVitals(r);
+      if (!rv2.weight) return null;
       const date = r.date?.toDate
         ? r.date.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
         : r.date?.seconds
           ? new Date(r.date.seconds * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
           : '?';
-      return `${date}: ${r.vitals.weight} kg`;
-    });
+      return `${date}: ${rv2.weight} kg`;
+    })
+    .filter(Boolean)
+    .slice(0, 10);
 
   if (weightReadings.length > 0) {
     lines.push('## WEIGHT TREND (newest first)');

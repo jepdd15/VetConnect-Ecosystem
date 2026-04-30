@@ -1,4 +1,5 @@
 import { PRINT_STYLES, formatPrintDate, esc, calculatePetAge } from './printUtils';
+import { resolveVitals } from './resolveVitals';
 
 /**
  * Renders the vitals table row. Returns an empty string when no vitals exist.
@@ -189,7 +190,8 @@ export function generateVisitSummaryHTML({ record, pet, owner, clinicName, clini
     : pet?.gender === 'Female' ? (pet?.isNeutered ? 'FS (Female Spayed)' : 'FI (Female Intact)')
     : '—';
   const age = calculatePetAge(pet?.dob);
-  const weight = rec.vitals?.weight ? `${rec.vitals.weight} kg` : (pet?.lastWeight ? `${pet.lastWeight} kg` : '—');
+  const rvPrint = resolveVitals(rec);
+  const weight = rvPrint.weight ? `${rvPrint.weight} kg` : (pet?.lastWeight ? `${pet.lastWeight} kg` : '—');
   const ownerName = esc(owner?.displayName || owner?.name || rec.ownerName || '—');
   const ownerPhone = esc(owner?.phone || owner?.contactNumber || '—');
   const rawAllergies = pet?.petAllergies || pet?.allergies;
@@ -263,7 +265,7 @@ export function generateVisitSummaryHTML({ record, pet, owner, clinicName, clini
     </tbody>
   </table>
 
-  ${renderVitalsSection(rec.vitals)}
+  ${renderVitalsSection(rvPrint)}
   ${renderPrescriptionsSection(rec.dispensedProducts || rec.prescriptions)}
   ${renderVaccineSection(rec.vaccineData)}
   ${renderLabResultsSection(rec.labResults)}

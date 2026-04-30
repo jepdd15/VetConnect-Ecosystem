@@ -1349,8 +1349,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         return alert("This clinical record has already been signed off. No duplicate records can be created.");
     }
 
-    if (!soapData.assessment || !soapData.plan) {
-        return alert("Assessment and Plan are required for legal medical documentation.");
+    if (!soapData.subjective?.trim() || !soapData.assessment?.trim() || !soapData.plan?.trim()) {
+        showToast("Subjective, Assessment, and Plan are required for legal medical documentation.", "error");
+        return;
     }
     if (treatmentCart.length === 0) {
         if (!window.confirm("Services & Items is empty. This will create a consult-only record with no billable items.\n\nProceed?")) return;

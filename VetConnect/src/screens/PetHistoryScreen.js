@@ -30,9 +30,11 @@ import { safeDate, formatDisplayDate } from "../utils/helpers";
 import { resolveDepartmentForRecord } from '../utils/resolveDepartmentForRecord';
 import { COLORS } from '../theme/mobileTokens';
 import SparkLine from '../components/SparkLine';
+import VitalsZoomModal from '../components/VitalsZoomModal';
 import PetHistoryAISheet from '../components/PetHistoryAISheet';
 import { buildPetOwnerPrompt } from '../utils/buildPetOwnerPrompt';
 import { resolveVitals } from '../utils/resolveVitals';
+import { getNormalRange } from '../utils/speciesVitalRanges';
 
 // ---------------------------------------------------------------------------
 // VACCINATION PASSPORT — HTML TEMPLATE
@@ -433,6 +435,56 @@ function generateMobileVaccinationPassport({ petName, ownerName, clinicName, vac
 }
 
 // ---------------------------------------------------------------------------
+// T4.113: Vitals chart configuration registry.
+// Maps each vital key to its display metadata. refKey drives the species-normal
+// reference band — null means no universal range exists for that vital.
+// ---------------------------------------------------------------------------
+
+const VITALS_CONFIG = {
+  weight: { label: 'Weight Trend',     unit: 'kg',  color: COLORS.info,    refKey: null    },
+  temp:   { label: 'Temperature',      unit: '°C',  color: COLORS.danger,  refKey: 'temp'  },
+  hr:     { label: 'Heart Rate',       unit: 'bpm', color: COLORS.success, refKey: 'hr'    },
+  rr:     { label: 'Respiratory Rate', unit: 'bpm', color: '#7B1FA2',      refKey: 'rr'    },
+  crt:    { label: 'Capillary Refill', unit: 's',   color: '#00838F',      refKey: 'crt'   },
+  bcs:    { label: 'Body Condition',   unit: '/9',  color: '#EF6C00',      refKey: 'bcs'   },
+  pain:   { label: 'Pain Score',       unit: '/10', color: COLORS.danger,  refKey: null    },
+};
+
+/**
+ * Renders a delta annotation for a vitals sparkline data array.
+ * Shows the change between the last two readings in neutral muted colour —
+ * direction should not be interpreted as good or bad without vet advice.
+ *
+ * @param {{ label: string, value: number }[]} data
+ * @param {string} unit - Unit string including any leading space (e.g. ' kg').
+ * @returns {React.ReactElement | null}
+ */
+function renderDelta(data, unit) {
+  if (data.length < 2) return null;
+  const prev = data[data.length - 2].value;
+  const curr = data[data.length - 1].value;
+  const diff = curr - prev;
+  if (diff === 0) return null;
+  const arrow     = diff > 0 ? '↑' : '↓';
+  const sign      = diff > 0 ? '+' : '';
+  const formatted = Number(diff.toFixed(1));
+  return (
+    <Text style={deltaTextStyle}>
+      {arrow} {sign}{formatted}{unit} since last visit
+    </Text>
+  );
+}
+
+// Defined outside StyleSheet.create so renderDelta (a module-level function)
+// can reference it without accessing the component's styles object.
+const deltaTextStyle = {
+  fontSize: 10,
+  color: COLORS.textMuted,
+  marginTop: 2,
+  letterSpacing: 0.3,
+};
+
+// ---------------------------------------------------------------------------
 
 export default function PetHistoryScreen({ route, navigation }) {
   const { petId, petName } = route.params;
@@ -587,7 +639,7 @@ export default function PetHistoryScreen({ route, navigation }) {
     return Array.from(rxMap.values()).sort((a, b) => b.count - a.count);
   }, [history]);
 
-  // T3.93: Derive chart-ready arrays for each vital sign.
+  // T3.93 / T4.113: Derive chart-ready arrays for all 7 vital signs.
   // History is newest-first from Firestore — reverse for left-to-right time axis.
   // T3.133: Resolve amendments once per record so amended vitals appear in trends.
   const vitalsChartData = useMemo(() => {
@@ -600,20 +652,31 @@ export default function PetHistoryScreen({ route, navigation }) {
         .filter(d => !isNaN(d.value));
     return {
       weight: extract('weight'),
-      temp: extract('temp'),
-      hr: extract('hr'),
+      temp:   extract('temp'),
+      hr:     extract('hr'),
+      rr:     extract('rr'),
+      crt:    extract('crt'),
+      bcs:    extract('bcs'),
+      pain:   extract('pain'),
     };
   }, [history]);
+
+  // T4.113: Pet species for species-normal reference bands.
+  // petDoc is fetched in a one-shot useEffect above. Defaults to 'Canine' while
+  // the doc is loading or if species is absent — canine is the safe fallback.
+  const petSpecies = petDoc?.species || 'Canine';
 
   // T3.93: Collapsible state for the vitals trends card.
   const [trendsExpanded, setTrendsExpanded] = useState(false);
   // T3.97: Collapsible state for the prescription frequency card.
   const [rxFreqExpanded, setRxFreqExpanded] = useState(false);
+  // T4.113: Zoom modal state — tracks which vital key is currently expanded.
+  const [vitalsZoom, setVitalsZoom] = useState({ open: false, key: null });
 
   const listHeader = useMemo(() => {
-    const hasTrends = vitalsChartData.weight.length >= 2 ||
-      vitalsChartData.temp.length >= 2 ||
-      vitalsChartData.hr.length >= 2;
+    // T4.113: Card shows when any vital has at least 1 reading (was >= 2).
+    // SparkLine handles the 1-point graceful fallback internally.
+    const hasTrends = Object.values(vitalsChartData).some(arr => arr.length >= 1);
     const hasRx = prescriptionFrequency.length > 0;
     if (!hasTrends && !hasRx) return null;
     return (
@@ -631,26 +694,35 @@ export default function PetHistoryScreen({ route, navigation }) {
                 color={COLORS.accent}
               />
             </TouchableOpacity>
+
+            {/* T4.113: All 7 vitals rendered via config map — replaces 3 hardcoded blocks */}
             {trendsExpanded && (
               <View style={styles.trendsBody}>
-                {vitalsChartData.weight.length >= 2 && (
-                  <View style={styles.trendRow}>
-                    <Text style={styles.trendLabel}>WEIGHT</Text>
-                    <SparkLine data={vitalsChartData.weight} lineColor={COLORS.info} unit="kg" />
-                  </View>
-                )}
-                {vitalsChartData.temp.length >= 2 && (
-                  <View style={styles.trendRow}>
-                    <Text style={styles.trendLabel}>TEMPERATURE</Text>
-                    <SparkLine data={vitalsChartData.temp} lineColor={COLORS.danger} unit="°C" />
-                  </View>
-                )}
-                {vitalsChartData.hr.length >= 2 && (
-                  <View style={styles.trendRow}>
-                    <Text style={styles.trendLabel}>HEART RATE</Text>
-                    <SparkLine data={vitalsChartData.hr} lineColor={COLORS.success} unit="bpm" />
-                  </View>
-                )}
+                {Object.entries(VITALS_CONFIG).map(([key, cfg]) => {
+                  const chartData = vitalsChartData[key];
+                  if (!chartData || chartData.length < 1) return null;
+                  const range = cfg.refKey
+                    ? getNormalRange(cfg.refKey, petSpecies)
+                    : null;
+                  return (
+                    <TouchableOpacity
+                      key={key}
+                      style={styles.trendRow}
+                      onPress={() => setVitalsZoom({ open: true, key })}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.trendLabel}>{cfg.label.toUpperCase()}</Text>
+                      <SparkLine
+                        data={chartData}
+                        lineColor={cfg.color}
+                        unit={cfg.unit}
+                        normalRange={range}
+                        showDateLabels
+                      />
+                      {renderDelta(chartData, ` ${cfg.unit}`)}
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             )}
           </View>
@@ -691,7 +763,7 @@ export default function PetHistoryScreen({ route, navigation }) {
         )}
       </View>
     );
-  }, [vitalsChartData, trendsExpanded, prescriptionFrequency, rxFreqExpanded]);
+  }, [vitalsChartData, trendsExpanded, prescriptionFrequency, rxFreqExpanded, petSpecies]);
 
   /** Generates the vaccination passport PDF and opens the OS share sheet. */
   const handleDownloadPassport = async () => {
@@ -1541,6 +1613,22 @@ export default function PetHistoryScreen({ route, navigation }) {
         workerUrl={workerUrl}
         userId={auth.currentUser?.uid || 'anonymous'}
       />
+
+      {/* T4.113: Vitals zoom modal — slide-up full-width chart for the tapped vital */}
+      <VitalsZoomModal
+        visible={vitalsZoom.open}
+        onClose={() => setVitalsZoom({ open: false, key: null })}
+        vitalLabel={vitalsZoom.key ? VITALS_CONFIG[vitalsZoom.key].label : ''}
+        data={vitalsZoom.key ? vitalsChartData[vitalsZoom.key] : []}
+        unit={vitalsZoom.key ? VITALS_CONFIG[vitalsZoom.key].unit : ''}
+        lineColor={vitalsZoom.key ? VITALS_CONFIG[vitalsZoom.key].color : COLORS.info}
+        normalRange={
+          vitalsZoom.key && VITALS_CONFIG[vitalsZoom.key]?.refKey
+            ? getNormalRange(VITALS_CONFIG[vitalsZoom.key].refKey, petSpecies)
+            : null
+        }
+        petName={petName}
+      />
     </SafeAreaView>
   );
 }
@@ -2374,6 +2462,13 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     textTransform: 'uppercase',
     marginBottom: 4,
+  },
+  // T4.113: Delta annotation below each sparkline
+  deltaText: {
+    fontSize: 10,
+    color: COLORS.textMuted,
+    marginTop: 2,
+    letterSpacing: 0.3,
   },
 
   // T3.97: Prescription Frequency collapsible card

@@ -479,7 +479,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
              
              const newDocRef = doc(collection(db, "appointments")); 
              // T3.70: Destructure `notes` out so it does not leak onto the new structured doc.
-             const { id, jsScheduled, jsArrived, jsStarted, jsCompleted, queueNumber, ticketPrefix, timeArrived, timeStarted, timeCompleted, isTriaged: oldIsTriaged, notes: _legacyNotes, signedOffAt: _oldSignedOffAt, ...preservedData } = patient;
+             const { id, jsScheduled, jsArrived, jsStarted, jsCompleted, queueNumber, ticketPrefix, timeArrived, timeStarted, timeCompleted, isTriaged: oldIsTriaged, notes: _legacyNotes, signedOffAt: _oldSignedOffAt, statusHistory: _oldHistory, forensicSeal: _oldSeal, processedAt: _oldProcessedAt, auditReason: _oldAuditReason, auditReasons: _oldAuditReasons, rescheduledBy: _oldRescheduledBy, accumulatedWaitMins: _oldAccum, assignedVetId: _oldAssignedVetId, ...preservedData } = patient;
              
              // T2.102: Attach deposit if one was collected during EOD wizard.
              const depositEntry = depositDataMap[patient.id];
@@ -499,6 +499,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                 systemChips: [...existingChips.filter(c => c !== 'CARRY-OVER'), 'CARRY-OVER'],
                 processedBy: staffSignature,
                 assignedVet: action === 'hospitalize' ? (patient.assignedVet || "Unassigned") : "Unassigned",
+                assignedVetId: null,
                 ...(depositEntry ? {
                     depositPaid: depositEntry.amount,
                     depositMethod: depositEntry.method,

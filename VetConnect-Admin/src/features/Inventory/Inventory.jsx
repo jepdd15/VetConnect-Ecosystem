@@ -40,6 +40,7 @@ import InventoryLogModal from './modals/InventoryLogModal';
 import ConfirmDeleteModal from './modals/ConfirmDeleteModal';
 import ExpiredDisposalModal from './modals/ExpiredDisposalModal';
 import GlobalActivityLog from './components/GlobalActivityLog';
+import InventoryCategoryManager from './components/InventoryCategoryManager';
 
 // Helper for Capitlizing Category strings
 export const formatCategory = (str) => {
@@ -520,6 +521,7 @@ export default function Inventory() {
         >
           <Tab label="Inventory Table" />
           <Tab label="Activity Log" icon={<span style={{ fontSize: '0.85rem' }}>🕑</span>} iconPosition="start" />
+          <Tab label="Categories" icon={<InventoryIcon sx={{ fontSize: '0.95rem' }} />} iconPosition="start" />
         </Tabs>
       </Box>
 
@@ -542,6 +544,9 @@ export default function Inventory() {
 
       {/* GLOBAL ACTIVITY LOG */}
       {activeTab === 1 && <GlobalActivityLog />}
+
+      {/* INVENTORY CATEGORIES */}
+      {activeTab === 2 && <InventoryCategoryManager />}
       </Box>
 
       {/* MODALS */}

@@ -7,7 +7,6 @@ import {
   LinearProgress, CircularProgress, Tooltip,
 } from '@mui/material';
 import Grid from '@mui/material/Grid'; // MUI v6 Standard
-import { styled } from '@mui/material/styles';
 
 import { doc, setDoc, Timestamp, collection, onSnapshot, addDoc, deleteDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
@@ -21,10 +20,6 @@ import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import DomainIcon from '@mui/icons-material/Domain';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import CircleIcon from '@mui/icons-material/Circle';
-import InventoryIcon from '@mui/icons-material/Inventory';
-import SortIcon from '@mui/icons-material/Sort'; 
-import MedicationIcon from '@mui/icons-material/Medication';
-import MedicationLiquidIcon from '@mui/icons-material/MedicationLiquid';
 import BlockIcon from '@mui/icons-material/Block';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import FlagIcon from '@mui/icons-material/Flag';
@@ -57,6 +52,7 @@ import { migrateExistingConsents } from '../utils/consentMigration';
 // Design Tokens
 import { FONT, TYPE, COLORS } from '../theme/designTokens';
 import { useUser } from '../context/UserContext';
+import MedicinePillSwitch from '../components/MedicinePillSwitch';
 
 // Expanded, Neutral Brand Colors for the Color Picker
 const COLOR_PALETTE =[
@@ -77,44 +73,6 @@ const COLOR_PALETTE =[
   { label: 'Espresso Brown', value: '#4E342E' },
 ];
 
-// 💊 THE BE-SPOKE MEDICINE PILL SWITCH
-const MedicinePillSwitch = styled(Switch)(({ theme }) => ({
-  width: 62, height: 34, padding: 7,
-  '& .MuiSwitch-switchBase': {
-    margin: 1, padding: 0,
-    transform: 'translateX(6px)',
-    '&.Mui-checked': {
-      color: '#fff',
-      transform: 'translateX(22px)',
-      '& .MuiSwitch-thumb:before': {
-        background: 'linear-gradient(180deg, #D32F2F 50%, #FFFFFF 50%)', // Red/White Pill
-      },
-      '& + .MuiSwitch-track': {
-        opacity: 1,
-        backgroundColor: '#D32F2F20',
-        border: '2px solid #D32F2F',
-      },
-    },
-  },
-  '& .MuiSwitch-thumb': {
-    backgroundColor: '#fff',
-    width: 32, height: 32,
-    '&:before': {
-      content: "''",
-      position: 'absolute',
-      width: '100%', height: '100%',
-      left: 0, top: 0,
-      background: 'linear-gradient(180deg, #9E9E9E 50%, #E0E0E0 50%)',
-      borderRadius: '50%',
-    },
-  },
-  '& .MuiSwitch-track': {
-    opacity: 1,
-    backgroundColor: '#00000010',
-    borderRadius: 20,
-    border: '2px solid #9E9E9E',
-  },
-}));
 
 export default function Settings() {
   const { profile, isAdmin } = useUser();
@@ -153,12 +111,6 @@ export default function Settings() {
   const [newDepartmentColor, setNewDepartmentColor] = useState('#1565C0'); // Valid default
   const [deptSearch, setDeptSearch] = useState('');
   const[deptSort, setDeptSort] = useState('asc'); // THE FIX: Sort state for Departments
-
-  const [invCategories, setInvCategories] = useState([]);
-  const [newInvCatName, setNewInvCatName] = useState('');
-  const [newInvCatIsMedicine, setNewInvCatIsMedicine] = useState(false); // 🧪 NEW: The Medicine Toggle
-  const[invCatSearch, setInvCatSearch] = useState('');
-  const [invCatSort, setInvCatSort] = useState('asc'); // THE FIX: Sort state for Inventory
 
   // --- CLOSED DATES STATE ---
   const [newClosedDate, setNewClosedDate] = useState('');
@@ -308,13 +260,7 @@ export default function Settings() {
       setDepartments(depts);
     });
 
-    // 3. Fetch Inventory Categories
-    const unsubInvCats = onSnapshot(collection(db, "inventory_categories"), (snapshot) => {
-      const cats = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      setInvCategories(cats);
-    });
-
-    // 4. One-shot fetch for department usage counts (services + staff) —
+    // 3. One-shot fetch for department usage counts (services + staff) —
     //    real-time updates are unnecessary here; refreshUsageCounts() re-fetches after mutations
     const fetchUsageCounts = async () => {
       const [servicesSnap, staffSnap] = await Promise.all([
@@ -372,7 +318,7 @@ export default function Settings() {
       setNotifTemplates(merged);
     });
 
-    return () => { unsubSettings(); unsubDepts(); unsubInvCats(); unsubVaxCatalog(); unsubLlm(); unsubFaqs(); unsubNotifTemplates(); };
+    return () => { unsubSettings(); unsubDepts(); unsubVaxCatalog(); unsubLlm(); unsubFaqs(); unsubNotifTemplates(); };
   },[]);
 
   // --- NAVIGATION GUARD: Warn on unsaved changes to form fields ---
@@ -611,51 +557,7 @@ export default function Settings() {
     }
   };
 
-  // --- INVENTORY CATEGORY CRUD ---
-  const handleAddInvCategory = async () => {
-    if (!newInvCatName.trim()) return setToast({ open: true, message: 'Category name is required.', severity: 'warning' });
-    const isDuplicate = invCategories.some(d => d.name.toLowerCase() === newInvCatName.trim().toLowerCase());
-    if (isDuplicate) return setToast({ open: true, message: 'Category already exists!', severity: 'error' });
-    try {
-        await addDoc(collection(db, "inventory_categories"), {
-            name: newInvCatName.trim(),
-            isMedicine: newInvCatIsMedicine
-        });
-        await logSettingsEvent('CREATE', 'inventory_category', newInvCatName.trim(), { isMedicine: newInvCatIsMedicine });
-        setNewInvCatName('');
-        setNewInvCatIsMedicine(false);
-        setToast({ open: true, message: 'Category Added.', severity: 'success' });
-    } catch (e) { setToast({ open: true, message: e.message, severity: 'error' }); }
-  };
-
-  const handleDeleteInvCategory = async (id, name) => {
-    // T2.31: Default categories cannot be deleted — protected both here and in Firestore rules
-    if (id.startsWith('default_')) {
-      return setToast({ open: true, message: `"${name}" is a system default category and cannot be deleted.`, severity: 'warning' });
-    }
-    // Usage shield: block delete if active inventory items reference this category
-    try {
-      const invSnap = await getDocs(collection(db, "inventory"));
-      const itemCount = invSnap.docs.filter(d => {
-        const data = d.data();
-        return !data.isArchived && data.category?.toLowerCase() === name.toLowerCase();
-      }).length;
-
-      if (itemCount > 0) {
-        return setToast({
-          open: true,
-          message: `Category In Use: ${itemCount} inventory item${itemCount > 1 ? 's' : ''} assigned to "${name}". Re-assign or archive them first.`,
-          severity: 'error'
-        });
-      }
-
-      setConfirmDelete({ open: true, type: 'category', id, name });
-    } catch (e) {
-      setToast({ open: true, message: e.message, severity: 'error' });
-    }
-  };
-
-  // --- CONFIRM DELETE HANDLER (used by MUI dialog for dept + category deletes) ---
+  // --- CONFIRM DELETE HANDLER (departments only — categories moved to InventoryCategoryManager) ---
   const handleConfirmDelete = async () => {
     const { type, id, name } = confirmDelete;
     setConfirmDelete({ open: false, type: '', id: '', name: '' });
@@ -665,10 +567,6 @@ export default function Settings() {
         await logSettingsEvent('DELETE', 'department', name);
         await refreshUsageCounts();
         setToast({ open: true, message: 'Department Deleted.', severity: 'success' });
-      } else if (type === 'category') {
-        await deleteDoc(doc(db, "inventory_categories", id));
-        await logSettingsEvent('DELETE', 'inventory_category', name);
-        setToast({ open: true, message: 'Category Deleted.', severity: 'success' });
       }
     } catch (e) {
       setToast({ open: true, message: e.message, severity: 'error' });
@@ -1681,104 +1579,6 @@ export default function Settings() {
                 })}
                 {departments.filter(d => d.name.toLowerCase().includes(deptSearch.toLowerCase())).length === 0 && (<Typography variant="body2" color="textSecondary" sx={{ width: '100%', textAlign: 'center', mt: 4, fontStyle: 'italic' }}>No departments match your search.</Typography>)}
               </Box>
-            </Box>
-          </Paper>
-        </Grid>
-
-        {/* PILLAR 5: INVENTORY CATEGORIES */}
-        <Grid size={{ xs: 12, lg: 6 }}>
-          <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
-              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
-                <InventoryIcon /> Inventory Categories
-              </Typography>
-            </Box>
-            <Box sx={{ p: 3, bgcolor: COLORS.cardBg, flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
-              
-              {/* THE FIX: Fixed minHeight enforces bottom alignment! */}
-              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 2.5, minHeight: 40 }}>
-                Manage the taxonomy of your pharmacy and retail shop. These categories organize your search filters and financial reports.
-              </Typography>
-              
-              <Stack direction="row" spacing={2} sx={{ mb: 4, alignItems: 'center' }}>
-                <TextField 
-                  label="New Category Name" size="small" value={newInvCatName} 
-                  onChange={(e) => setNewInvCatName(e.target.value)} 
-                  sx={{ flexGrow: 1, bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
-                  inputProps={{ spellCheck: 'false', style: { fontWeight: 900 } }}
-                />
-                
-                {/* 💊 THE PILL TOGGLE UI */}
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 0.5, bgcolor: 'white', border: `1px solid ${COLORS.accent}33`, borderRadius: 0 }}>
-                    <Typography variant="caption" sx={{ fontWeight: 900, color: newInvCatIsMedicine ? COLORS.dangerHover : '#757575', fontSize: '0.65rem' }}>
-                        {newInvCatIsMedicine ? "MEDICINE" : "RETAIL"}
-                    </Typography>
-                    <MedicinePillSwitch 
-                        checked={newInvCatIsMedicine}
-                        onChange={(e) => setNewInvCatIsMedicine(e.target.checked)}
-                    />
-                </Box>
-
-                <Button 
-                  variant="contained" 
-                  onClick={handleAddInvCategory} 
-                  startIcon={<AddCircleOutlineIcon/>}
-                  sx={{ 
-                      bgcolor: COLORS.accent, fontWeight: 900, px: 4, py: 1, 
-                      borderRadius: 0, border: `2px solid ${COLORS.brand}`,
-                      boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
-                      '&:hover': { bgcolor: COLORS.brand }
-                  }}
-                >
-                  Add
-                </Button>
-              </Stack>
-
-              {/* THE FIX: Added Sort Dropdown next to Quick Find */}
-              <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-                <TextField 
-                  placeholder="🔍 Quick find category..." size="small" fullWidth
-                  value={invCatSearch} onChange={(e) => setInvCatSearch(e.target.value)}
-                  sx={{ bgcolor: 'rgba(255,255,255,0.9)', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, borderColor: COLORS.borderInput } }}
-                  inputProps={{ style: { fontWeight: 900 } }}
-                />
-                <FormControl size="small" sx={{ width: 140, bgcolor: 'rgba(255,255,255,0.9)' }}>
-                  <Select
-                    value={invCatSort} onChange={e => setInvCatSort(e.target.value)}
-                    displayEmpty sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.borderInput}` }, fontWeight: 900, color: '#555' }}
-                  >
-                    <MenuItem value="asc">A - Z</MenuItem>
-                    <MenuItem value="desc">Z - A</MenuItem>
-                  </Select>
-                </FormControl>
-              </Box>
-
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, p: 2.5, bgcolor: 'rgba(250,250,250,0.8)', borderRadius: 0, border: '1px inset rgba(0,0,0,0.1)', flexGrow: 1, height: 180, overflowY: 'auto', alignContent: 'flex-start' }}>
-                {/* THE FIX: Sorts the array dynamically before mapping! */}
-                {[...invCategories]
-                  .sort((a, b) => invCatSort === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name))
-                  .filter(c => c.name.toLowerCase().includes(invCatSearch.toLowerCase()))
-                  .map(cat => (
-                  <Chip 
-                    key={cat.id} 
-                    label={cat.name} 
-                    icon={cat.isMedicine ? <MedicationIcon sx={{ fontSize: '1rem !important', color: `${COLORS.danger} !important` }} /> : null}
-                    onDelete={cat.id.startsWith('default_') ? undefined : () => handleDeleteInvCategory(cat.id, cat.name)}
-                    sx={{ 
-                      fontWeight: 900, 
-                      bgcolor: 'white', 
-                      borderRadius: 0,
-                      border: cat.isMedicine ? `2px solid ${COLORS.danger}` : '1px solid #ccc',
-                      fontSize: '0.75rem', py: 2.2,
-                      '& .MuiChip-label': { color: cat.isMedicine ? COLORS.danger : 'inherit' }
-                    }}
-                  />
-                ))}
-                {invCategories.filter(c => c.name.toLowerCase().includes(invCatSearch.toLowerCase())).length === 0 && (
-                  <Typography variant="body2" color="textSecondary" sx={{ width: '100%', textAlign: 'center', mt: 4, fontStyle: 'italic' }}>No categories match your search.</Typography>
-                )}
-              </Box>
-
             </Box>
           </Paper>
         </Grid>
@@ -3535,8 +3335,7 @@ export default function Settings() {
         </DialogTitle>
         <DialogContent>
           <Typography>
-            Are you sure you want to delete the{' '}
-            {confirmDelete.type === 'department' ? 'department' : 'category'}{' '}
+            Are you sure you want to delete the department{' '}
             <strong>"{confirmDelete.name}"</strong>?
           </Typography>
         </DialogContent>

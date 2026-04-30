@@ -154,6 +154,21 @@ export const SoapQuadrant = React.memo(function SoapQuadrant({ id, label, childr
 });
 
 /**
+ * T3.136: Per-field vitals validation limits.
+ * - clamp: true  => value is silently clamped into [min, max] on every keystroke (fixed scoring scales).
+ * - clamp: false => value triggers a soft warning + sign-off block when outside [min, max] (measurements).
+ * CRT (objCRT) is intentionally absent — it uses non-numeric clinical notation like "<2".
+ */
+const VITALS_LIMITS = {
+  objWeight:  { min: 0.1, max: 200,  clamp: false, unit: 'kg',  label: 'Weight' },
+  objTemp:    { min: 35,  max: 43,   clamp: false, unit: '°C',  label: 'Temp' },
+  objHR:      { min: 10,  max: 350,  clamp: false, unit: 'bpm', label: 'HR' },
+  objRR:      { min: 5,   max: 100,  clamp: false, unit: 'rpm', label: 'RR' },
+  bcs:        { min: 1,   max: 9,    clamp: true,  unit: '',    label: 'BCS' },
+  painScale:  { min: 0,   max: 10,   clamp: true,  unit: '',    label: 'Pain' },
+};
+
+/**
  * VitalsGrid — compact grid of numeric vital-sign inputs with triage colouring.
  *
  * @prop {object}   soapData               - Current SOAP field values
@@ -164,13 +179,13 @@ export const SoapQuadrant = React.memo(function SoapQuadrant({ id, label, childr
  */
 export const VitalsGrid = React.memo(function VitalsGrid({ soapData, updateSoap, getTriageLevel, renderHistoricalLabel, compact = false }) {
   const vitalsFields = [
-    { label: 'WT (kg)',     value: soapData.objWeight,  field: 'objWeight',  icon: '\u2696\uFE0F', status: 'normal' },
-    { label: 'TEMP (\u00B0C)', value: soapData.objTemp, field: 'objTemp',    icon: '\uD83C\uDF21\uFE0F', status: getTriageLevel('temp', soapData.objTemp) },
-    { label: 'HR (bpm)',    value: soapData.objHR,      field: 'objHR',      icon: '\u2764\uFE0F', status: getTriageLevel('hr', soapData.objHR) },
-    { label: 'RR (rpm)',    value: soapData.objRR,      field: 'objRR',      icon: '\uD83E\uDEC1', status: getTriageLevel('rr', soapData.objRR) },
-    { label: 'CRT (sec)',   value: soapData.objCRT,     field: 'objCRT',     icon: '\u23F1\uFE0F', status: getTriageLevel('crt', soapData.objCRT) },
-    { label: 'BCS (1-9)',   value: soapData.bcs,        field: 'bcs',        icon: '\uD83D\uDC3E', status: 'normal' },
-    { label: 'PAIN (0-10)', value: soapData.painScale,  field: 'painScale',  icon: '\uD83E\uDE79', status: getTriageLevel('pain', soapData.painScale) },
+    { label: 'WT (kg)',     value: soapData.objWeight,  field: 'objWeight',  icon: '\u2696\uFE0F', status: 'normal',                                        numeric: true },
+    { label: 'TEMP (\u00B0C)', value: soapData.objTemp, field: 'objTemp',    icon: '\uD83C\uDF21\uFE0F', status: getTriageLevel('temp', soapData.objTemp), numeric: true },
+    { label: 'HR (bpm)',    value: soapData.objHR,      field: 'objHR',      icon: '\u2764\uFE0F', status: getTriageLevel('hr', soapData.objHR),             numeric: true },
+    { label: 'RR (rpm)',    value: soapData.objRR,      field: 'objRR',      icon: '\uD83E\uDEC1', status: getTriageLevel('rr', soapData.objRR),             numeric: true },
+    { label: 'CRT (sec)',   value: soapData.objCRT,     field: 'objCRT',     icon: '\u23F1\uFE0F', status: getTriageLevel('crt', soapData.objCRT),           numeric: false },
+    { label: 'BCS (1-9)',   value: soapData.bcs,        field: 'bcs',        icon: '\uD83D\uDC3E', status: 'normal',                                        numeric: true },
+    { label: 'PAIN (0-10)', value: soapData.painScale,  field: 'painScale',  icon: '\uD83E\uDE79', status: getTriageLevel('pain', soapData.painScale),       numeric: true },
   ];
 
   const triageColor = (status) =>
@@ -182,6 +197,16 @@ export const VitalsGrid = React.memo(function VitalsGrid({ soapData, updateSoap,
     status === 'critical' ? '2px solid #D32F2F' :
     status === 'warning'  ? '2px solid #FF8F00' :
     '2px solid rgba(0,0,0,0.1)';
+
+  // Step 3A.1: Returns true for clamp:false fields whose value is outside [min, max].
+  // CRT is absent from VITALS_LIMITS so it always returns false here.
+  const isOutOfRange = (field, value) => {
+    const limits = VITALS_LIMITS[field];
+    if (!limits || limits.clamp || value === '' || value == null) return false;
+    const num = parseFloat(value);
+    if (isNaN(num)) return false;
+    return num < limits.min || num > limits.max;
+  };
 
   return (
     <Box sx={{ bgcolor: '#FAFAF9', p: compact ? 1.5 : 2, border: '1px solid rgba(0,0,0,0.06)', mb: compact ? 1 : 2, flexShrink: 0 }}>
@@ -198,8 +223,26 @@ export const VitalsGrid = React.memo(function VitalsGrid({ soapData, updateSoap,
             <InputBase
               size="small"
               value={v.value}
-              onChange={(e) => updateSoap(v.field, e.target.value)}
-              inputProps={{ 'aria-label': v.label }}
+              onChange={(e) => {
+                // Step 2.2: Clamp fixed-scale fields (BCS, Pain) on every keystroke.
+                // Measurement fields (Weight, Temp, HR, RR) pass through unchanged.
+                let val = e.target.value;
+                const limits = VITALS_LIMITS[v.field];
+                if (limits?.clamp && val !== '') {
+                  const num = parseFloat(val);
+                  if (!isNaN(num)) val = String(Math.min(Math.max(num, limits.min), limits.max));
+                }
+                updateSoap(v.field, val);
+              }}
+              // Step 1.3: Block e/E/+/- on numeric fields (browsers allow these in type="number")
+              onKeyDown={v.numeric ? (e) => {
+                if (['e', 'E', '+', '-'].includes(e.key)) e.preventDefault();
+              } : undefined}
+              // Step 1.2: Conditionally apply numeric keyboard attributes; CRT stays type="text"
+              inputProps={{
+                'aria-label': v.label,
+                ...(v.numeric && { type: 'number', inputMode: 'decimal', step: 'any' }),
+              }}
               className={v.status === 'critical' ? 'glow-critical' : v.status === 'warning' ? 'glow-warning' : ''}
               sx={{
                 width: '100%',
@@ -212,6 +255,22 @@ export const VitalsGrid = React.memo(function VitalsGrid({ soapData, updateSoap,
               }}
             />
             {renderHistoricalLabel(v.field)}
+            {/* Step 3A.2: Soft warning for measurement vitals outside physical limits */}
+            {isOutOfRange(v.field, v.value) && (
+              <Typography
+                variant="caption"
+                sx={{
+                  color: COLORS.warning,
+                  fontSize: '0.5rem',
+                  fontWeight: 700,
+                  mt: 0.25,
+                  display: 'block',
+                  lineHeight: 1.2,
+                }}
+              >
+                Outside expected range ({VITALS_LIMITS[v.field].min}–{VITALS_LIMITS[v.field].max} {VITALS_LIMITS[v.field].unit})
+              </Typography>
+            )}
           </Grid>
         ))}
       </Grid>
@@ -1386,6 +1445,30 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         showToast("Subjective, Assessment, and Plan are required for legal medical documentation.", "error");
         return;
     }
+
+    // T3.136 Layer 3B: Block sign-off when measurement vitals exceed physical limits.
+    // BCS and Pain are excluded (clamp:true — they are always within range after Layer 2).
+    // CRT is excluded (absent from VITALS_LIMITS — it uses clinical text notation).
+    // Empty vitals are allowed — vets may intentionally skip fields.
+    const outOfRangeVitals = Object.entries(VITALS_LIMITS)
+      .filter(([, cfg]) => !cfg.clamp)
+      .filter(([field, cfg]) => {
+        const val = soapData[field];
+        if (val === '' || val == null) return false;
+        const num = parseFloat(val);
+        if (isNaN(num)) return false;
+        return num < cfg.min || num > cfg.max;
+      })
+      .map(([, cfg]) => `${cfg.label} (${cfg.min}–${cfg.max} ${cfg.unit})`);
+
+    if (outOfRangeVitals.length > 0) {
+      showToast(
+        `Vitals out of valid range: ${outOfRangeVitals.join(', ')}. Please correct before signing off.`,
+        'error'
+      );
+      return;
+    }
+
     if (treatmentCart.length === 0) {
         if (!window.confirm("Services & Items is empty. This will create a consult-only record with no billable items.\n\nProceed?")) return;
     }

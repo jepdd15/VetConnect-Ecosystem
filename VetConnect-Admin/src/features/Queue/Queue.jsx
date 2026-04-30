@@ -479,7 +479,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
              
              const newDocRef = doc(collection(db, "appointments")); 
              // T3.70: Destructure `notes` out so it does not leak onto the new structured doc.
-             const { id, jsScheduled, jsArrived, jsStarted, jsCompleted, queueNumber, ticketPrefix, timeArrived, timeStarted, timeCompleted, isTriaged: oldIsTriaged, notes: _legacyNotes, ...preservedData } = patient;
+             const { id, jsScheduled, jsArrived, jsStarted, jsCompleted, queueNumber, ticketPrefix, timeArrived, timeStarted, timeCompleted, isTriaged: oldIsTriaged, notes: _legacyNotes, signedOffAt: _oldSignedOffAt, ...preservedData } = patient;
              
              // T2.102: Attach deposit if one was collected during EOD wizard.
              const depositEntry = depositDataMap[patient.id];
@@ -1110,6 +1110,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           accumulatedWaitMins: _oldAccum,
           assignedVet: _oldAssignedVet,
           assignedVetId: _oldAssignedVetId,
+          signedOffAt: _oldSignedOffAt,
           ...preservedData
         } = freshData;
 

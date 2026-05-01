@@ -12,7 +12,7 @@ import {
   where,
   writeBatch,
 } from "firebase/firestore";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -42,76 +42,112 @@ const RegisterScreen = ({ navigation }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  /**
-   * After successful registration, check whether an active consent policy
-   * exists. If it does, send the new user to ConsentScreen before the
-   * dashboard. If not (system not yet configured), go straight to the
-   * dashboard for graceful backward compatibility.
-   */
-  const navigateAfterRegistration = async () => {
-    try {
-      const policySnap = await getDoc(doc(db, 'clinic_settings', 'consent_policy'));
+  // --- NEW: Expanded registration fields ---
+  const [address, setAddress] = useState('');
+  const [city, setCity] = useState('');
+  const [emergencyName, setEmergencyName] = useState('');
+  const [emergencyPhone, setEmergencyPhone] = useState('');
+  const [emergencyRelation, setEmergencyRelation] = useState('');
+  const [dpaConsent, setDpaConsent] = useState(false);
+  const [allowPromos, setAllowPromos] = useState(false);
 
-      if (!policySnap.exists() || !policySnap.data()?.activeVersion) {
-        // Consent system not configured — proceed to dashboard as before
-        navigation.replace('ClientDashboard');
-        return;
+  // --- NEW: Active DPA policy (fetched on mount) ---
+  const [dpaPolicy, setDpaPolicy] = useState(null);
+  const [dpaLoading, setDpaLoading] = useState(true);
+  const [showFullPolicy, setShowFullPolicy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchDpaPolicy() {
+      try {
+        const policySnap = await getDoc(doc(db, 'clinic_settings', 'consent_policy'));
+        if (!policySnap.exists() || !policySnap.data()?.activeVersion) {
+          if (!cancelled) setDpaLoading(false);
+          return;
+        }
+        const dpaQuery = query(
+          collection(db, 'consent_versions'),
+          where('type', '==', 'dpa'),
+          where('status', '==', 'active'),
+          limit(1),
+        );
+        const dpaSnap = await getDocs(dpaQuery);
+        if (!dpaSnap.empty && !cancelled) {
+          const d = dpaSnap.docs[0];
+          setDpaPolicy({
+            versionNumber: d.data().versionNumber,
+            versionDocId:  d.id,
+            title:         d.data().title,
+            bodyText:      d.data().bodyText,
+            summary:       d.data().summary ?? null,
+          });
+        }
+      } catch (err) {
+        console.warn('[RegisterScreen] Failed to fetch DPA policy:', err.message);
+      } finally {
+        if (!cancelled) setDpaLoading(false);
       }
-
-      // Fetch the active DPA policy document for its text and metadata
-      const dpaQuery = query(
-        collection(db, 'consent_versions'),
-        where('type', '==', 'dpa'),
-        where('status', '==', 'active'),
-        limit(1),
-      );
-      const dpaSnap = await getDocs(dpaQuery);
-
-      if (dpaSnap.empty) {
-        // Policy version record missing — degrade gracefully
-        navigation.replace('ClientDashboard');
-        return;
-      }
-
-      const policyDoc = dpaSnap.docs[0];
-      const policyData = policyDoc.data();
-
-      navigation.replace('Consent', {
-        consentType:        'dpa',
-        versionNumber:      policyData.versionNumber,
-        versionDocId:       policyDoc.id,
-        policyText:         policyData.bodyText,
-        policyTitle:        policyData.title,
-        isPostRegistration: true,
-        previousVersion:    null,
-        summary:            policyData.summary ?? null,
-      });
-    } catch {
-      // On any Firestore read error, fall back to dashboard — do not block user
-      navigation.replace('ClientDashboard');
     }
+    fetchDpaPolicy();
+    return () => { cancelled = true; };
+  }, []);
+
+  // DPA consent is now collected during registration via checkbox.
+  // If the user consented (dpaPolicy existed and checkbox was checked),
+  // their consentVersion matches activeVersion, so the ClientDashboard
+  // consent gate (useConsentGate) will not fire.
+  //
+  // If no DPA policy is configured (dpaPolicy is null), the consent gate
+  // also won't fire (it checks for activeVersion existence).
+  //
+  // Re-consent for version updates is handled by useConsentGate on
+  // ClientDashboard, not here.
+  const navigateAfterRegistration = () => {
+    navigation.replace('ClientDashboard');
   };
 
   const handleRegister = async () => {
+    // --- Basic required fields ---
     if (!fullName.trim() || !email.trim() || !password || !phone.trim()) {
-      Alert.alert("Missing Info", "Please fill in all fields.");
+      Alert.alert('Missing Info', 'Please fill in all required fields.');
       return;
     }
 
-    // THE FIX: Strict Phone Validation to ensure Shadow Profile merges work!
+    if (!address.trim() || !city.trim()) {
+      Alert.alert('Missing Info', 'Please provide your address and city.');
+      return;
+    }
+
+    if (!emergencyName.trim() || !emergencyPhone.trim()) {
+      Alert.alert('Missing Info', 'Please provide an emergency contact name and phone number.');
+      return;
+    }
+
+    // --- Phone validations ---
     if (!isValidPHPhone(phone)) {
       Alert.alert(
-        "Invalid Number",
-        "Mobile number must be a valid Philippine number starting with 09 (e.g., 09123456789).",
+        'Invalid Number',
+        'Mobile number must be a valid Philippine number starting with 09 (e.g., 09123456789).',
+      );
+      return;
+    }
+
+    if (!isValidPHPhone(emergencyPhone)) {
+      Alert.alert(
+        'Invalid Number',
+        'Emergency contact phone must be a valid Philippine number starting with 09 (e.g., 09123456789).',
       );
       return;
     }
 
     if (password.length < 6) {
-      Alert.alert(
-        "Weak Password",
-        "Password must be at least 6 characters long.",
-      );
+      Alert.alert('Weak Password', 'Password must be at least 6 characters long.');
+      return;
+    }
+
+    // --- DPA consent required when policy exists ---
+    if (dpaPolicy && !dpaConsent) {
+      Alert.alert('Consent Required', 'Please agree to the Data Privacy Policy to create your account.');
       return;
     }
 
@@ -144,17 +180,33 @@ const RegisterScreen = ({ navigation }) => {
 
           const guestData = guestDoc.data();
           const newUserRef = doc(db, "users", uid);
+          const now = Timestamp.now();
           batch.set(newUserRef, {
             ...guestData,
             uid: uid,
             fullName: fullName.trim(),
             email: email.trim().toLowerCase(),
             phone: phone.trim(),
+            address: address.trim(),
+            city: city.trim(),
+            emergencyContacts: [{
+              name: emergencyName.trim(),
+              phone: emergencyPhone.trim(),
+              relation: emergencyRelation.trim() || '',
+            }],
+            emergencyName: emergencyName.trim(),
+            emergencyPhone: emergencyPhone.trim(),
             role: "pet_owner",
             accountStatus: "claimed",
-            profileComplete: false,
+            profileComplete: true,
             mergedFromGuest: true,
-            createdAt: guestData.createdAt || Timestamp.now(),
+            allowPromos,
+            ...(dpaPolicy ? {
+              consentVersion: dpaPolicy.versionNumber,
+              consentGrantedAt: now,
+              dpaConsent: true,
+            } : {}),
+            createdAt: guestData.createdAt || now,
           });
 
           batch.delete(doc(db, "users", guestId));
@@ -189,19 +241,78 @@ const RegisterScreen = ({ navigation }) => {
           });
 
           await batch.commit();
+
+          // Write consent_records audit entry for guest merge path (outside batch
+          // to preserve the Auth rollback pattern — a consent_records failure
+          // after a successful user doc write is an audit gap, not a user blocker)
+          if (dpaPolicy) {
+            const consentRecordRef = doc(
+              collection(db, 'users', uid, 'consent_records'),
+            );
+            await setDoc(consentRecordRef, {
+              consentType: 'dpa',
+              versionNumber: dpaPolicy.versionNumber,
+              versionDocId: dpaPolicy.versionDocId,
+              action: 'granted',
+              signatureType: 'checkbox',
+              signatureData: null,
+              grantedAt: now,
+              grantedVia: 'registration',
+              deviceInfo: 'mobile',
+              adminNote: null,
+            });
+          }
+
           console.log("Account successfully merged from walk-in guest!");
         } else {
           // STANDARD REGISTRATION
+          const now = Timestamp.now();
+
           await setDoc(doc(db, "users", uid), {
             uid: uid,
             fullName: fullName.trim(),
             email: email.trim().toLowerCase(),
             phone: phone.trim(),
+            address: address.trim(),
+            city: city.trim(),
+            emergencyContacts: [{
+              name: emergencyName.trim(),
+              phone: emergencyPhone.trim(),
+              relation: emergencyRelation.trim() || '',
+            }],
+            emergencyName: emergencyName.trim(),
+            emergencyPhone: emergencyPhone.trim(),
             role: "pet_owner",
             accountStatus: "active",
-            profileComplete: false,
-            createdAt: Timestamp.now(),
+            profileComplete: true,
+            allowPromos,
+            ...(dpaPolicy ? {
+              consentVersion: dpaPolicy.versionNumber,
+              consentGrantedAt: now,
+              dpaConsent: true,
+            } : {}),
+            createdAt: now,
           });
+
+          // Write consent_records audit entry — separate from the user doc write
+          // to preserve the existing Auth rollback pattern
+          if (dpaPolicy) {
+            const consentRecordRef = doc(
+              collection(db, 'users', uid, 'consent_records'),
+            );
+            await setDoc(consentRecordRef, {
+              consentType: 'dpa',
+              versionNumber: dpaPolicy.versionNumber,
+              versionDocId: dpaPolicy.versionDocId,
+              action: 'granted',
+              signatureType: 'checkbox',
+              signatureData: null,
+              grantedAt: now,
+              grantedVia: 'registration',
+              deviceInfo: 'mobile',
+              adminNote: null,
+            });
+          }
         }
       } catch (firestoreError) {
         // Auth account exists but Firestore profile failed — roll back Auth
@@ -218,7 +329,7 @@ const RegisterScreen = ({ navigation }) => {
       }
 
       Alert.alert("Welcome!", "Your account has been created successfully.");
-      await navigateAfterRegistration();
+      navigateAfterRegistration();
     } catch (error) {
       let errorMessage = error.message;
       if (error.code === "auth/email-already-in-use")
@@ -258,89 +369,209 @@ const RegisterScreen = ({ navigation }) => {
           <View style={styles.formContainer}>
             <View style={styles.formShadow} />
             <View style={styles.formBox}>
-            <Text style={styles.label}>Full Name</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. Juan Dela Cruz"
-              placeholderTextColor="#999"
-              value={fullName}
-              onChangeText={setFullName}
-            />
+              {/* ====== SECTION: ACCOUNT ====== */}
+              <Text style={styles.sectionLabel}>ACCOUNT</Text>
 
-            <Text style={styles.label}>Phone Number</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="09xxxxxxxxx"
-              placeholderTextColor="#999"
-              keyboardType="phone-pad"
-              maxLength={11}
-              value={phone}
-              onChangeText={setPhone}
-            />
-
-            <Text style={styles.label}>Email Address</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="juan@example.com"
-              placeholderTextColor="#999"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              value={email}
-              onChangeText={setEmail}
-            />
-
-            <Text style={styles.label}>Password</Text>
-            <View style={styles.passwordContainer}>
+              <Text style={styles.label}>Full Name *</Text>
               <TextInput
-                style={styles.passwordInput}
-                placeholder="Min. 6 characters"
+                style={styles.input}
+                placeholder="e.g. Juan Dela Cruz"
                 placeholderTextColor="#999"
-                secureTextEntry={!showPassword}
-                value={password}
-                onChangeText={setPassword}
+                value={fullName}
+                onChangeText={setFullName}
               />
+
+              <Text style={styles.label}>Phone Number *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="09xxxxxxxxx"
+                placeholderTextColor="#999"
+                keyboardType="phone-pad"
+                maxLength={11}
+                value={phone}
+                onChangeText={setPhone}
+              />
+
+              <Text style={styles.label}>Email Address *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="juan@example.com"
+                placeholderTextColor="#999"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                value={email}
+                onChangeText={setEmail}
+              />
+
+              <Text style={styles.label}>Password *</Text>
+              <View style={styles.passwordContainer}>
+                <TextInput
+                  style={styles.passwordInput}
+                  placeholder="Min. 6 characters"
+                  placeholderTextColor="#999"
+                  secureTextEntry={!showPassword}
+                  value={password}
+                  onChangeText={setPassword}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                  style={styles.eyeIcon}
+                >
+                  <MaterialIcons
+                    name={showPassword ? "visibility" : "visibility-off"}
+                    size={22}
+                    color="#3ABEF9"
+                  />
+                </TouchableOpacity>
+              </View>
+
+              {/* ====== SECTION: CONTACT & ADDRESS ====== */}
+              <View style={styles.sectionDivider} />
+              <Text style={styles.sectionLabel}>CONTACT & ADDRESS</Text>
+
+              <Text style={styles.label}>Address *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. 123 Main St, Brgy. Poblacion"
+                placeholderTextColor="#999"
+                value={address}
+                onChangeText={setAddress}
+              />
+
+              <Text style={styles.label}>City / Municipality *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. Dagupan City"
+                placeholderTextColor="#999"
+                value={city}
+                onChangeText={setCity}
+              />
+
+              {/* ====== SECTION: EMERGENCY CONTACT ====== */}
+              <View style={styles.sectionDivider} />
+              <Text style={styles.sectionLabel}>EMERGENCY CONTACT</Text>
+
+              <Text style={styles.label}>Contact Name *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. Maria Clara"
+                placeholderTextColor="#999"
+                value={emergencyName}
+                onChangeText={setEmergencyName}
+              />
+
+              <View style={styles.emergencyRow}>
+                <View style={styles.emergencyCol}>
+                  <Text style={styles.label}>Phone *</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="09xxxxxxxxx"
+                    placeholderTextColor="#999"
+                    keyboardType="phone-pad"
+                    maxLength={11}
+                    value={emergencyPhone}
+                    onChangeText={setEmergencyPhone}
+                  />
+                </View>
+                <View style={styles.emergencyCol}>
+                  <Text style={styles.label}>Relation</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. Spouse"
+                    placeholderTextColor="#999"
+                    value={emergencyRelation}
+                    onChangeText={setEmergencyRelation}
+                  />
+                </View>
+              </View>
+
+              {/* ====== SECTION: LEGAL ====== */}
+              <View style={styles.sectionDivider} />
+              <Text style={styles.sectionLabel}>LEGAL</Text>
+
+              {/* DPA Consent Checkbox */}
+              {dpaLoading ? (
+                <ActivityIndicator size="small" color="#3ABEF9" style={{ marginVertical: 10 }} />
+              ) : dpaPolicy ? (
+                <View>
+                  <Text style={styles.policyTitle}>{dpaPolicy.title}</Text>
+                  <Text style={styles.policyPreview}>
+                    {showFullPolicy
+                      ? dpaPolicy.bodyText
+                      : (dpaPolicy.summary || (dpaPolicy.bodyText || '').substring(0, 200) + '...')}
+                  </Text>
+                  <TouchableOpacity onPress={() => setShowFullPolicy(!showFullPolicy)}>
+                    <Text style={styles.viewPolicyLink}>
+                      {showFullPolicy ? 'HIDE FULL POLICY' : 'VIEW FULL POLICY'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.checkboxRow}
+                    onPress={() => setDpaConsent(!dpaConsent)}
+                  >
+                    <MaterialIcons
+                      name={dpaConsent ? 'check-box' : 'check-box-outline-blank'}
+                      size={24}
+                      color={dpaConsent ? '#3ABEF9' : '#999'}
+                    />
+                    <Text style={styles.checkboxText}>
+                      I have read and agree to the Data Privacy Policy *
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <Text style={styles.policyNote}>
+                  Data Privacy Policy not yet configured. You can proceed without consent.
+                </Text>
+              )}
+
+              {/* Promo Opt-In Checkbox */}
               <TouchableOpacity
-                onPress={() => setShowPassword(!showPassword)}
-                style={styles.eyeIcon}
+                style={[styles.checkboxRow, { marginTop: 10 }]}
+                onPress={() => setAllowPromos(!allowPromos)}
               >
                 <MaterialIcons
-                  name={showPassword ? "visibility" : "visibility-off"}
-                  size={22}
-                  color="#3ABEF9"
+                  name={allowPromos ? 'check-box' : 'check-box-outline-blank'}
+                  size={24}
+                  color={allowPromos ? '#3ABEF9' : '#999'}
                 />
+                <Text style={styles.checkboxText}>
+                  I agree to receive SMS or Emails regarding clinic promos and announcements.
+                </Text>
               </TouchableOpacity>
-            </View>
 
-            {loading ? (
-              <ActivityIndicator
-                size="large"
-                color="#3ABEF9"
-                style={{ marginVertical: 20 }}
-              />
-            ) : (
-              <View style={styles.buttonContainer}>
-                <View style={styles.buttonShadow} />
-                <Pressable
-                  onPress={handleRegister}
-                  style={({ pressed }) => [
-                    styles.button,
-                    pressed && styles.buttonPressed,
-                  ]}
-                >
-                  <Text style={styles.buttonText}>SIGN UP</Text>
-                </Pressable>
-              </View>
-            )}
+              {/* ====== SIGN UP BUTTON ====== */}
+              {loading ? (
+                <ActivityIndicator
+                  size="large"
+                  color="#3ABEF9"
+                  style={{ marginVertical: 20 }}
+                />
+              ) : (
+                <View style={styles.buttonContainer}>
+                  <View style={styles.buttonShadow} />
+                  <Pressable
+                    onPress={handleRegister}
+                    style={({ pressed }) => [
+                      styles.button,
+                      pressed && styles.buttonPressed,
+                    ]}
+                  >
+                    <Text style={styles.buttonText}>SIGN UP</Text>
+                  </Pressable>
+                </View>
+              )}
 
-            <TouchableOpacity
-              onPress={() => navigation.goBack()}
-              style={{ marginTop: 15, padding: 10 }}
-            >
-              <Text style={styles.linkText}>
-                ALREADY HAVE AN ACCOUNT?{" "}
-                <Text style={styles.linkBold}>LOGIN</Text>
-              </Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => navigation.goBack()}
+                style={{ marginTop: 15, padding: 10 }}
+              >
+                <Text style={styles.linkText}>
+                  ALREADY HAVE AN ACCOUNT?{" "}
+                  <Text style={styles.linkBold}>LOGIN</Text>
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
         </ScrollView>
@@ -480,6 +711,71 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_900Black",
     color: "#3ABEF9",
     textDecorationLine: "underline",
+  },
+
+  // --- NEW: Section & Legal styles ---
+  sectionLabel: {
+    fontWeight: '900',
+    color: '#5D4037',
+    fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 2,
+    marginBottom: 12,
+    marginTop: 5,
+  },
+  sectionDivider: {
+    height: 2,
+    backgroundColor: '#E0E0E0',
+    marginVertical: 18,
+  },
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 8,
+    paddingVertical: 4,
+  },
+  checkboxText: {
+    flex: 1,
+    marginLeft: 10,
+    fontSize: 13,
+    color: '#3E2723',
+    fontWeight: '700',
+    lineHeight: 20,
+  },
+  policyTitle: {
+    fontWeight: '900',
+    fontSize: 14,
+    color: '#3E2723',
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  policyPreview: {
+    fontSize: 12,
+    color: '#5D4037',
+    lineHeight: 18,
+    marginBottom: 8,
+  },
+  viewPolicyLink: {
+    fontSize: 12,
+    color: '#3ABEF9',
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    textDecorationLine: 'underline',
+    marginBottom: 12,
+  },
+  policyNote: {
+    fontSize: 12,
+    color: '#999',
+    fontStyle: 'italic',
+    marginBottom: 10,
+  },
+  emergencyRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  emergencyCol: {
+    flex: 1,
   },
 });
 

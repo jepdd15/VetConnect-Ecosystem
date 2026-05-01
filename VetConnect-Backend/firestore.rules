@@ -280,6 +280,19 @@ service cloud.firestore {
       allow delete: if isStaff();
     }
 
+    // ─── APPOINTMENT REMINDER QUEUE (pre-computed push notification queue) ───
+    // Public read/create/update: the Cloudflare Worker Cron reads and writes
+    // via Firestore REST API using only the web API key (no Firebase Auth JWT).
+    // Deletes are restricted to staff — cleanup is performed by the admin app.
+    // The collection contains no sensitive PII (pet names, appointment dates only).
+    // Malicious writes are safe: they are idempotent and overwritten on next
+    // appointment confirmation.
+    match /appointment_reminder_queue/{appointmentId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if isStaff();
+    }
+
     // ─── CONSENT RECORDS (per-user sub-collection) ────────────────
     // User can read their own. Staff can read all. Staff can create (admin records consent on behalf).
     // User can create their own (mobile consent grant/withdrawal).

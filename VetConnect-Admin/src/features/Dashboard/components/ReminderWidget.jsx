@@ -16,14 +16,18 @@ import VaccinesIcon from '@mui/icons-material/Vaccines';
 import SendIcon from '@mui/icons-material/Send';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
+import { useUser } from '../../../context/UserContext';
 import {
-  sendAppointmentReminders,
   countTomorrowAppointments,
 } from '../../../utils/sendAppointmentReminders';
 import {
   countVaccineReminderQueue,
   sendVaccineReminders,
 } from '../../../utils/vaccineReminderQueue';
+import {
+  sendAppointmentRemindersFromQueue,
+  countAppointmentReminderQueue,
+} from '../../../utils/appointmentReminderQueue';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -40,14 +44,16 @@ function getTomorrowLabel() {
  * @param {{ clinicSettings: object }} props
  */
 export default function ReminderWidget({ clinicSettings }) {
+  const { profile }      = useUser();
   const isEnabled        = clinicSettings.enableAppointmentReminders !== false;
   const isVaccineEnabled = clinicSettings.enableVaccineReminders !== false;
 
   // ── Appointment reminder state ─────────────────────────────────────────────
-  const [count, setCount]     = useState(null);
-  const [sending, setSending] = useState(false);
-  const [result, setResult]   = useState(null);
-  const [toast, setToast]     = useState({ open: false, message: '', severity: 'success' });
+  const [count, setCount]         = useState(null);
+  const [sending, setSending]     = useState(false);
+  const [result, setResult]       = useState(null);
+  const [toast, setToast]         = useState({ open: false, message: '', severity: 'success' });
+  const [queueCount, setQueueCount] = useState(null);
 
   // ── Vaccine reminder state ─────────────────────────────────────────────────
   const [vaccineCount, setVaccineCount]     = useState(null);
@@ -60,6 +66,14 @@ export default function ReminderWidget({ clinicSettings }) {
     countTomorrowAppointments()
       .then(setCount)
       .catch(() => setCount(0));
+  }, [isEnabled]);
+
+  // Fetch appointment reminder queue count — shows total across all stages
+  useEffect(() => {
+    if (!isEnabled) return;
+    countAppointmentReminderQueue()
+      .then(setQueueCount)
+      .catch(() => setQueueCount(0));
   }, [isEnabled]);
 
   // Fetch vaccine reminder queue count on mount — only when feature is enabled
@@ -78,7 +92,8 @@ export default function ReminderWidget({ clinicSettings }) {
     setSending(true);
     setResult(null);
     try {
-      const res = await sendAppointmentReminders();
+      const staffName = profile?.fullName || 'Staff';
+      const res = await sendAppointmentRemindersFromQueue(clinicSettings, staffName);
       setResult(res);
 
       if (res.error) {
@@ -90,9 +105,11 @@ export default function ReminderWidget({ clinicSettings }) {
           message: `Sent ${res.sent} reminder${plural}. ${res.skipped} skipped, ${res.noToken} without token.`,
           severity: 'success',
         });
+        // Update count to reflect actionable remainder (no token + failed)
+        setQueueCount(res.noToken + (res.failed || 0));
       }
 
-      // Refresh count — some appointments are now marked reminderSentAt
+      // Refresh tomorrow count — unchanged by queue sends, but keeps display fresh
       countTomorrowAppointments().then(setCount).catch(() => {});
     } catch (err) {
       setToast({
@@ -138,7 +155,7 @@ export default function ReminderWidget({ clinicSettings }) {
   };
 
   const tomorrowLabel   = getTomorrowLabel();
-  const isSendDisabled  = sending || count === null || count === 0;
+  const isSendDisabled  = sending || (count === null && queueCount === null) || (!queueCount && !count);
   const sendLabel       = sending ? 'SENDING...' : result ? 'SEND AGAIN' : 'SEND REMINDERS';
 
   return (
@@ -168,8 +185,8 @@ export default function ReminderWidget({ clinicSettings }) {
             {count === null
               ? 'Loading...'
               : count === 0
-                ? 'No confirmed appointments tomorrow.'
-                : `${count} confirmed appointment${count !== 1 ? 's' : ''} tomorrow.`}
+                ? `No confirmed appointments tomorrow.${queueCount ? ` ${queueCount} in reminder queue.` : ''}`
+                : `${count} confirmed appointment${count !== 1 ? 's' : ''} tomorrow.${queueCount ? ` ${queueCount} total in queue.` : ''}`}
           </Typography>
         </Box>
 

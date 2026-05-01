@@ -64,6 +64,18 @@ export const DEFAULT_TEMPLATES = {
     title: 'Appointment Tomorrow',
     body: "{petName}'s appointment is tomorrow at {time}. See you then!",
   },
+  'appointment-upcoming': {
+    title: 'Upcoming Appointment',
+    body: "{petName} has an appointment in {days} days at Starbarks. We look forward to seeing you!",
+  },
+  'appointment-tomorrow': {
+    title: 'Appointment Tomorrow!',
+    body: "Tomorrow! {petName}'s appointment is scheduled. Please arrive 10 minutes early for check-in.",
+  },
+  'appointment-today': {
+    title: "Today's Appointment",
+    body: "Today is the day! {petName}'s appointment is today. Please arrive 10 minutes early. See you soon!",
+  },
   'vaccine-due': {
     title: 'Vaccination Reminder',
     body: "Time for {petName}'s checkup! Their {vaccineName} vaccine is due in {days} days. Book a visit to keep them protected!",
@@ -95,7 +107,7 @@ export const TEMPLATE_GROUPS = [
   {
     label: 'REMINDERS',
     description: 'Sent the day before a scheduled appointment.',
-    keys: ['reminder', 'vaccine-due', 'vaccine-overdue'],
+    keys: ['reminder', 'appointment-upcoming', 'appointment-tomorrow', 'appointment-today', 'vaccine-due', 'vaccine-overdue'],
   },
 ];
 
@@ -114,9 +126,12 @@ export const STATUS_LABELS = {
   'no-show':       'No-Show',
   'carried-over':  'Carried Over',
   confined:        'Confined / Admitted',
-  reminder:          'Appointment Reminder',
-  'vaccine-due':     'Vaccine Due Reminder',
-  'vaccine-overdue': 'Vaccine Overdue Alert',
+  reminder:              'Appointment Reminder',
+  'appointment-upcoming':  'Upcoming Appointment Reminder',
+  'appointment-tomorrow':  'Tomorrow Appointment Reminder',
+  'appointment-today':     'Today Appointment Reminder',
+  'vaccine-due':         'Vaccine Due Reminder',
+  'vaccine-overdue':     'Vaccine Overdue Alert',
 };
 
 // ─── Status Chip Colors ─────────────────────────────────────────────────────
@@ -134,9 +149,12 @@ export const STATUS_CHIP_COLORS = {
   'no-show':      { bg: '#EFEBE9', text: '#5D4037',       border: '#BCAAA4' },
   'carried-over': { bg: '#EFEBE9', text: '#5D4037',       border: '#BCAAA4' },
   confined:       { bg: '#FEF2F2', text: '#C62828',       border: '#EF9A9A' },
-  reminder:          { bg: '#E3F2FD', text: '#1565C0',      border: '#90CAF9' },
-  'vaccine-due':     { bg: '#FFF7ED', text: '#E65100',      border: '#FDBA74' },
-  'vaccine-overdue': { bg: '#FEF2F2', text: COLORS.danger,  border: '#FCA5A5' },
+  reminder:              { bg: '#E3F2FD', text: '#1565C0',      border: '#90CAF9' },
+  'appointment-upcoming':  { bg: '#E3F2FD', text: '#1565C0',  border: '#90CAF9' },
+  'appointment-tomorrow':  { bg: '#FFF7ED', text: '#E65100',  border: '#FDBA74' },
+  'appointment-today':     { bg: '#F0FDF4', text: '#2E7D32',  border: '#86EFAC' },
+  'vaccine-due':         { bg: '#FFF7ED', text: '#E65100',    border: '#FDBA74' },
+  'vaccine-overdue':     { bg: '#FEF2F2', text: COLORS.danger, border: '#FCA5A5' },
 };
 
 // ─── Placeholder Reference ──────────────────────────────────────────────────
@@ -149,5 +167,5 @@ export const PLACEHOLDER_REFERENCE = [
   { token: '{date}',         description: 'Appointment date (available for custom templates)' },
   { token: '{time}',         description: 'Scheduled appointment time (e.g., "2:00 PM")' },
   { token: '{vaccineName}', description: 'Vaccine name (e.g., "Rabies") — vaccine reminders only' },
-  { token: '{days}',        description: 'Days until due or days overdue — vaccine reminders only' },
+  { token: '{days}',        description: 'Days until due, days overdue, or days until appointment — reminders only' },
 ];

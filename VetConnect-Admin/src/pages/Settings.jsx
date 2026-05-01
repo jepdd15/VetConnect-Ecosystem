@@ -491,7 +491,8 @@ export default function Settings() {
           'maxCages', 'autoNoShowMins', 'noShowLinkWindowDays', 'trafficModerate', 'trafficHigh',
           'workingDays', 'clinicPhone', 'dashboardAlerts', 'dashboardGoals',
           'clinicLat', 'clinicLng', 'geofenceRadiusM', 'enableAppointmentReminders',
-          'enableVaccineReminders', 'vaccineReminderWindowDays', 'vaccineReminderCooldownDays'];
+          'enableVaccineReminders', 'vaccineReminderWindowDays', 'vaccineReminderCooldownDays',
+          'enableAutoAppointmentReminders', 'appointmentReminderHeadsUpDays'];
         const changedFields = {};
         tracked.forEach(key => {
           if (JSON.stringify(sanitizedSettings[key]) !== JSON.stringify(lastSavedSettings[key])) {
@@ -2977,6 +2978,50 @@ export default function Settings() {
                     </Box>
                   }
                 />
+              </Box>
+
+              {/* Automated Appointment Reminders (T4.126) */}
+              <Box sx={{ mb: 3, p: 2, bgcolor: COLORS.cream, border: `2px solid ${COLORS.accent}22`, borderRadius: 0 }}>
+                <FormControlLabel
+                  control={
+                    <MedicinePillSwitch
+                      checked={settings.enableAutoAppointmentReminders === true}
+                      onChange={(e) => handleChange('enableAutoAppointmentReminders', e.target.checked)}
+                    />
+                  }
+                  label={
+                    <Box>
+                      <Typography sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.accent, fontSize: '0.85rem' }}>
+                        Enable Automated Appointment Reminders (Cron)
+                      </Typography>
+                      <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary, fontSize: '0.75rem' }}>
+                        When enabled, the Cloudflare Worker sends 3-stage reminders automatically at 7 AM daily:
+                        heads-up (configurable days before), tomorrow, and same-day. The manual "Send Reminders"
+                        button continues to work independently.
+                      </Typography>
+                    </Box>
+                  }
+                />
+
+                {settings.enableAutoAppointmentReminders === true && (
+                  <Box sx={{ mt: 2 }}>
+                    <TextField
+                      type="number"
+                      label="Heads-Up Reminder (days before appointment)"
+                      value={settings.appointmentReminderHeadsUpDays ?? 3}
+                      onChange={(e) => {
+                        const v = parseInt(e.target.value) || 3;
+                        handleChange('appointmentReminderHeadsUpDays', Math.max(2, Math.min(14, v)));
+                      }}
+                      inputProps={{ min: 2, max: 14 }}
+                      size="small"
+                      helperText="How many days before the appointment to send the first reminder (2-14)"
+                      sx={{ width: 320, '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+                      InputLabelProps={{ sx: { fontFamily: FONT, fontSize: '0.8rem' } }}
+                      FormHelperTextProps={{ sx: { fontFamily: FONT, fontSize: '0.65rem' } }}
+                    />
+                  </Box>
+                )}
               </Box>
 
               {/* Vaccine Reminders config (T3.55) */}

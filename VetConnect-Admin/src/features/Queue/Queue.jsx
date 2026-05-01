@@ -38,6 +38,11 @@ import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 // 🧬 PHASE 6 COMPONENTS
 import { calculatePulseMetrics, getSmartShiftDate, makePulseEventId, createPulseEvent } from '../../utils/pulseUtils';
 import { sendPushNotification } from '../../utils/sendPushNotification';
+import {
+  writeAppointmentQueueDoc,
+  removeAppointmentQueueDoc,
+  updateAppointmentQueueDate,
+} from '../../utils/appointmentReminderQueue';
 import { COLORS, FONT } from '../../theme/designTokens';
 import { HIGH_STAKES_STATUSES, ACTIVE_STATUSES, normalizeStatus, TERMINAL_STATUSES } from '../../utils/statusConstants';
 import { getLocalDateStr } from '../../utils/dateUtils';
@@ -366,8 +371,12 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       }
       defaultTargetDate.setHours(openH, openM, 0, 0); 
 
-      leftoverPatients.forEach((patient) => { 
-        const oldRef = doc(db, "appointments", patient.id); 
+      // T4.126: Track new clone doc IDs so we can write queue docs after batch.commit()
+      // Structure: { [oldPatientId]: { newId, date, patient } }
+      const cloneIdMap = {};
+
+      leftoverPatients.forEach((patient) => {
+        const oldRef = doc(db, "appointments", patient.id);
         const currentStatus = (freshStatuses[patient.id] || patient.status || 'unknown').toLowerCase();
         
         // Skip records already resolved remotely while wizard was open
@@ -518,6 +527,8 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                    }
                 ]
              });
+             // T4.126: Record clone mapping for post-commit queue writes
+             cloneIdMap[patient.id] = { newId: newDocRef.id, date: manualDate, patient };
            }
         } else {
           // TERMINAL AUDIT (Cancel or No-Show)
@@ -570,6 +581,33 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           visitGroupId: patient.visitGroupId,
           sentBy: profile?.fullName || 'Staff',
         });
+      });
+
+      // T4.126: Appointment reminder queue cleanup for EOD — fire-and-forget, never blocks EOD
+      leftoverPatients.forEach((patient) => {
+        const currentStatus = (patient.status || 'unknown').toLowerCase();
+        // Skip records that were already resolved before the batch (guard matches forEach above)
+        if (['completed', 'cancelled', 'no-show', 'carried-over'].includes(currentStatus)) return;
+
+        const action = patientResolutions[patient.id] || (patient.status === 'pending' ? 'defer' : 'cancel');
+
+        if (['cancel', 'no-show'].includes(action)) {
+          // Terminal — remove the old record from the queue
+          removeAppointmentQueueDoc(patient.id).catch(() => {});
+        } else if (['reschedule', 'carryover', 'carry-over', 'defer', 'confined', 'hospitalize'].includes(action)) {
+          // Carry-over — old record is sealed; write queue doc for the new clone if it exists
+          removeAppointmentQueueDoc(patient.id).catch(() => {});
+          const cloneEntry = cloneIdMap[patient.id];
+          if (cloneEntry) {
+            writeAppointmentQueueDoc({
+              id:            cloneEntry.newId,
+              petName:       cloneEntry.patient.petName,
+              ownerName:     cloneEntry.patient.ownerName,
+              ownerId:       cloneEntry.patient.ownerId,
+              scheduledDate: Timestamp.fromDate(cloneEntry.date),
+            }).catch(() => {});
+          }
+        }
       });
 
       setOpenEndDay(false);
@@ -1061,6 +1099,13 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           sentBy: profile?.fullName || 'Staff',
         });
 
+        // T4.126: Update appointment reminder queue with new date — fire-and-forget
+        updateAppointmentQueueDate(
+          selectedRow.id,
+          Timestamp.fromDate(updatedSchDate),
+          selectedRow,
+        ).catch(() => {});
+
       } else {
         // === BRANCH 2: FULL CLINICAL CARRY-OVER (active patients) ===
         // Replicates EOD carry-over pattern: old record is sealed and terminated;
@@ -1191,6 +1236,16 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           customBody: `${selectedRow.petName || 'Your pet'}'s visit has been rescheduled to ${updatedSchDate.toLocaleDateString()}. Your progress is preserved.`,
           sentBy: profile?.fullName || 'Staff',
         });
+
+        // T4.126: Remove old record from queue; add clone — fire-and-forget
+        removeAppointmentQueueDoc(selectedRow.id).catch(() => {});
+        writeAppointmentQueueDoc({
+          id:            newDocRef.id,
+          petName:       selectedRow.petName,
+          ownerName:     selectedRow.ownerName,
+          ownerId:       selectedRow.ownerId,
+          scheduledDate: Timestamp.fromDate(updatedSchDate),
+        }).catch(() => {});
       }
 
       setOpenReschedule(false);

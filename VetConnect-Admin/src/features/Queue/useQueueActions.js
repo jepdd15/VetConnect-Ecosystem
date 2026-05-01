@@ -5,6 +5,7 @@ import { calculatePulseMetrics, makePulseEventId, createPulseEvent } from '../..
 import { STATUS, validateTransition, TERMINAL_STATUSES } from '../../utils/statusConstants';
 import { getLocalDateStr } from '../../utils/dateUtils';
 import { sendPushNotification } from '../../utils/sendPushNotification';
+import { writeAppointmentQueueDoc, removeAppointmentQueueDoc, updateAppointmentQueueDate } from '../../utils/appointmentReminderQueue';
 
 export function useQueueActions() {
   const { profile } = useUser();
@@ -115,6 +116,20 @@ export function useQueueActions() {
       visitGroupId: row.visitGroupId,
       sentBy: staffSignature,
     });
+
+    // T4.126: Appointment reminder queue management — fire-and-forget
+    if (newStatus === STATUS.CONFIRMED) {
+      writeAppointmentQueueDoc({
+        id:            row.id,
+        petName:       row.petName,
+        ownerName:     row.ownerName,
+        ownerId:       row.ownerId,
+        scheduledDate: row.scheduledDate,
+      }).catch(() => {});
+    }
+    if (['cancelled', 'no-show', 'completed'].includes(newStatus)) {
+      removeAppointmentQueueDoc(row.id).catch(() => {});
+    }
   };
 
   // 2. THE SMART UNDO
@@ -258,6 +273,9 @@ export function useQueueActions() {
       visitGroupId: row.visitGroupId,
       sentBy: staffSignature,
     });
+
+    // T4.126: Remove from appointment reminder queue on no-show — fire-and-forget
+    removeAppointmentQueueDoc(row.id).catch(() => {});
   };
 
   const rejectAppointment = async (id, reason, currentServices = [], isForensic = false, settings, rowData) => {
@@ -315,6 +333,9 @@ export function useQueueActions() {
       visitGroupId: rowData.visitGroupId,
       sentBy: staffSignature,
     });
+
+    // T4.126: Remove from appointment reminder queue on cancel — fire-and-forget
+    removeAppointmentQueueDoc(id).catch(() => {});
   };
 
   // 3. THE NEW "CODE BLUE" EMERGENCY ENGINE (Free-Tier Safe)
@@ -450,6 +471,7 @@ export function useQueueActions() {
             forensicSeal
         });
     });
+    updateAppointmentQueueDate(row.id, Timestamp.fromDate(new Date(newDate)), row).catch(() => {});
   };
 
   return { changeStatus, revertStatus, markNoShow, rejectAppointment, quickAdmitER, deferAppointment, rescheduleAppointment }; // Exported!

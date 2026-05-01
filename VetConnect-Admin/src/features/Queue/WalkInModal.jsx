@@ -669,8 +669,8 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
             {/* New pet genome form */}
             {isNew && (
               <Box sx={{ mb: 1.5 }}>
-                <Typography variant="overline" sx={{ fontWeight: 900, color: '#5D4037', letterSpacing: 1, fontSize: '0.65rem', display: 'block', mb: 1.5 }}>
-                  {walkInType === 'guest' ? 'GUEST PATIENT GENOME' : 'NEW PATIENT DNA LOG'}
+                <Typography variant="overline" sx={{ fontWeight: 900, color: '#5D4037', letterSpacing: 1, fontSize: '0.7rem', display: 'block', mb: 1.5 }}>
+                  {walkInType === 'guest' ? 'PET INFORMATION' : 'NEW PET DETAILS'}
                 </Typography>
                 <Grid container spacing={2}>
                   <Grid size={{ xs: 12, md: 4 }}>
@@ -856,10 +856,10 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
               </Box>
             )}
 
-            {/* Per-pet visit logistics: services + triage notes */}
-            <Box sx={{ borderTop: isNew ? '1px dashed #D7CCC8' : 'none', pt: isNew ? 1.5 : 0 }}>
-              <Typography variant="overline" sx={{ fontWeight: 900, color: '#5D4037', letterSpacing: 1, fontSize: '0.65rem', display: 'block', mb: 1.2 }}>
-                VISIT LOGISTICS
+            {/* Per-pet services & notes */}
+            <Box sx={{ borderTop: isNew ? '1px dashed #D7CCC8' : 'none', pt: isNew ? 2 : 0 }}>
+              <Typography variant="overline" sx={{ fontWeight: 900, color: '#5D4037', letterSpacing: 1, fontSize: '0.7rem', display: 'block', mb: 0.5 }}>
+                SERVICES & NOTES
               </Typography>
               <Autocomplete
                 multiple
@@ -954,7 +954,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
         Register Walk-In Patient{petEntries.length > 1 && ` (${petEntries.length} PETS)`}
       </DialogTitle>
 
-      <DialogContent dividers sx={{ p: 2, bgcolor: '#F5F5F5', minHeight: '520px', display: 'flex', flexDirection: 'column' }}>
+      <DialogContent dividers sx={{ p: 2, bgcolor: '#F5F5F5', display: 'flex', flexDirection: 'column' }}>
         {errorMsg && (
           <Alert severity="error" sx={{ mb: 2, fontWeight: 900, borderRadius: 0, border: '2px solid #D32F2F', py: 0.5 }}>
             {errorMsg}
@@ -989,8 +989,8 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
         </Box>
 
         {/* Owner identity section */}
-        <Paper elevation={0} sx={{ p: 2, mb: 2, border: '1px solid #D7CCC8', borderRadius: 0, bgcolor: '#FFF' }}>
-          <Typography variant="overline" sx={{ fontWeight: 900, color: '#5D4037', letterSpacing: 1, fontSize: '0.65rem', display: 'block', mb: 1 }}>
+        <Paper elevation={0} sx={{ p: 2, mb: 2.5, border: '1px solid #D7CCC8', borderRadius: 0, bgcolor: '#FFF' }}>
+          <Typography variant="overline" sx={{ fontWeight: 900, color: '#5D4037', letterSpacing: 1, fontSize: '0.7rem', display: 'block', mb: 1 }}>
             OWNER IDENTITY
           </Typography>
 
@@ -1057,30 +1057,43 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
           </Alert>
         )}
 
-        {/* Pet entry cards */}
-        {petEntries.map((entry, index) => renderPetEntryForm(entry, index))}
+        {/* Pet entry cards — hidden for existing-client mode until a client is selected */}
+        {walkInType === 'existing' && !selectedClient ? (
+          <Typography sx={{
+            textAlign: 'center',
+            color: '#9E9E9E',
+            fontWeight: 800,
+            fontSize: '0.85rem',
+            py: 4,
+            fontStyle: 'italic',
+          }}>
+            Select a client above to continue
+          </Typography>
+        ) : (
+          <>
+            {petEntries.map((entry, index) => renderPetEntryForm(entry, index))}
 
-        {/* ADD ANOTHER PET button */}
-        {(walkInType === 'existing' ? selectedClient : true) && (
-          <Button
-            variant="outlined"
-            startIcon={<AddIcon />}
-            onClick={addPetEntry}
-            sx={{
-              mb: 2,
-              fontWeight: 900,
-              color: '#5D4037',
-              borderColor: '#5D4037',
-              borderRadius: 0,
-              borderStyle: 'dashed',
-              letterSpacing: 1,
-              fontSize: '0.8rem',
-              width: '100%',
-              '&:hover': { bgcolor: '#FFF8E1', borderColor: '#3E2723', borderStyle: 'solid' },
-            }}
-          >
-            ADD ANOTHER PET
-          </Button>
+            {/* ADD ANOTHER PET button */}
+            <Button
+              variant="outlined"
+              startIcon={<AddIcon />}
+              onClick={addPetEntry}
+              sx={{
+                mb: 2,
+                fontWeight: 900,
+                color: '#5D4037',
+                borderColor: '#5D4037',
+                borderRadius: 0,
+                borderStyle: 'dashed',
+                letterSpacing: 1,
+                fontSize: '0.8rem',
+                width: '100%',
+                '&:hover': { bgcolor: '#FFF8E1', borderColor: '#3E2723', borderStyle: 'solid' },
+              }}
+            >
+              ADD ANOTHER PET
+            </Button>
+          </>
         )}
       </DialogContent>
 
@@ -1122,7 +1135,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
             ? "CLICK TO CONFIRM ENTRY"
             : petEntries.length > 1
             ? `ADD ${petEntries.length} PETS TO QUEUE`
-            : "OFFICIALLY ADD TO QUEUE"
+            : "ADD TO QUEUE"
           }
         </Button>
       </DialogActions>

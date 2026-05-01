@@ -75,6 +75,7 @@ const ClientDashboard = ({ navigation }) => {
     needsConsent,
     needsWaiver,
     activeDpaPolicy,
+    activeWaiverPolicy,
   } = useConsentGate(userId);
 
   // PULSE ANIMATION FOR ALERTS
@@ -657,13 +658,27 @@ const ClientDashboard = ({ navigation }) => {
         <View style={styles.waiverBannerContainer}>
           <TouchableOpacity
             style={styles.waiverBanner}
-            onPress={() => navigation.navigate('UserProfile')}
+            onPress={() => {
+              if (activeWaiverPolicy) {
+                navigation.navigate('Consent', {
+                  consentType:        'waiver',
+                  versionNumber:      activeWaiverPolicy.versionNumber,
+                  versionDocId:       activeWaiverPolicy.versionDocId,
+                  policyText:         activeWaiverPolicy.bodyText,
+                  policyTitle:        activeWaiverPolicy.title,
+                  isPostRegistration: false,
+                  summary:            activeWaiverPolicy.summary,
+                });
+              } else {
+                navigation.navigate('UserProfile');
+              }
+            }}
             activeOpacity={0.8}
           >
             <View style={{ flex: 1 }}>
               <Text style={styles.waiverBannerTitle}>WAIVER REQUIRED</Text>
               <Text style={styles.waiverBannerMsg}>
-                Please complete your liability waiver in your profile settings.
+                Tap to review and sign your liability waiver.
               </Text>
             </View>
             <TouchableOpacity

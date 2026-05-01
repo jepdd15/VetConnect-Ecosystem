@@ -143,6 +143,59 @@ export default function UserProfileScreen({ navigation, route }) {
     fetchProfile();
   }, []);
 
+  // Re-fetch waiver state when the user navigates back from ConsentScreen.
+  // The profile fetch above runs once on mount; this ensures waiverVersion and
+  // waiverGrantedAt reflect any signature the user just completed.
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', async () => {
+      if (!auth.currentUser) return;
+      try {
+        const snap = await getDoc(doc(db, 'users', auth.currentUser.uid));
+        if (snap.exists()) {
+          const data = snap.data();
+          setWaiverVersion(data.waiverVersion ?? null);
+          setWaiverGrantedAt(data.waiverGrantedAt ?? null);
+          // Also refresh DPA fields in case the user signed both on the same return
+          setConsentVersion(data.consentVersion ?? null);
+          setConsentGrantedAt(data.consentGrantedAt ?? null);
+        }
+      } catch (err) {
+        console.warn('[UserProfileScreen] Focus refresh error:', err.message);
+      }
+    });
+    return unsubscribe;
+  }, [navigation]);
+
+  const navigateToWaiverScreen = async () => {
+    try {
+      const waiverQ = query(
+        collection(db, 'consent_versions'),
+        where('type', '==', 'waiver'),
+        where('status', '==', 'active'),
+        limit(1),
+      );
+      const waiverSnap = await getDocs(waiverQ);
+      if (waiverSnap.empty) {
+        Alert.alert('Not Available', 'No liability waiver policy is currently configured.');
+        return;
+      }
+      const d = waiverSnap.docs[0];
+      navigation.navigate('Consent', {
+        consentType:        'waiver',
+        versionNumber:      d.data().versionNumber,
+        versionDocId:       d.id,
+        policyText:         d.data().bodyText,
+        policyTitle:        d.data().title,
+        isPostRegistration: false,
+        previousVersion:    waiverVersion,
+        summary:            d.data().summary ?? null,
+      });
+    } catch (err) {
+      console.warn('[UserProfileScreen] Failed to load waiver policy:', err.message);
+      Alert.alert('Error', 'Could not load waiver policy. Please check your connection and try again.');
+    }
+  };
+
   async function navigateToConsentScreen() {
     try {
       const policySnap = await getDoc(doc(db, 'clinic_settings', 'consent_policy'));
@@ -859,17 +912,22 @@ export default function UserProfileScreen({ navigation, route }) {
                 </View>
               </View>
             ) : (
-              <View style={styles.consentStatusRow}>
-                <MaterialIcons name="check-box-outline-blank" size={24} color={COLORS.muted} />
+              <TouchableOpacity
+                style={styles.consentStatusRow}
+                onPress={navigateToWaiverScreen}
+              >
+                <MaterialIcons name="check-box-outline-blank" size={24} color={COLORS.accent} />
                 <View style={{ flex: 1, marginLeft: 10 }}>
                   <Text style={styles.checkboxTitle}>Liability Waiver</Text>
                   <Text style={styles.checkboxDesc}>
-                    I acknowledge the inherent risks of veterinary procedures and agree to
-                    hold Starbarks Vet Clinic harmless for complications arising from
-                    standard treatment protocols. Physical signature on file at clinic.
+                    Tap to review and sign the liability waiver digitally.
+                  </Text>
+                  <Text style={{ fontSize: 12, color: COLORS.accent, fontWeight: '900',
+                    textTransform: 'uppercase', marginTop: 4 }}>
+                    SIGN NOW ➔
                   </Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             )}
 
             <View style={styles.divider} />

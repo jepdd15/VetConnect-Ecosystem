@@ -31,6 +31,7 @@ import { resolveDepartmentForRecord } from '../utils/resolveDepartmentForRecord'
 import { COLORS } from '../theme/mobileTokens';
 import SparkLine from '../components/SparkLine';
 import VitalsZoomModal from '../components/VitalsZoomModal';
+import LabZoomModal from '../components/LabZoomModal';
 import PetHistoryAISheet from '../components/PetHistoryAISheet';
 import VaccinationStatusCard from '../components/VaccinationStatusCard';
 import { buildPetOwnerPrompt } from '../utils/buildPetOwnerPrompt';
@@ -696,6 +697,80 @@ export default function PetHistoryScreen({ route, navigation }) {
     return { activeRx: active, historicalRx: historical };
   }, [history, petDoc?.pinnedMedications]);
 
+  // T4.123: Aggregated lab results — latest per test with trend context.
+  // Mirrors admin PatientDashboard aggregatedLabResults useMemo.
+  // Walk records oldest → newest so the final Map entry per test = most recent.
+  const { labSummary, labTimeline, labUniqueTests } = useMemo(() => {
+    const testMap = new Map(); // testName -> latest entry with previous context
+    const sortedHistory = [...(history || [])].sort((a, b) => {
+      const aMs = a.date?.seconds ? a.date.seconds * 1000 : 0;
+      const bMs = b.date?.seconds ? b.date.seconds * 1000 : 0;
+      return aMs - bMs;
+    });
+    const timelineEntries = [];
+
+    sortedHistory.forEach(r => {
+      const ms = r.date?.seconds ? r.date.seconds * 1000 : 0;
+      const dateStr = ms
+        ? new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        : '';
+      (r.labResults || []).forEach(lab => {
+        if (!lab.testName) return;
+        const numericResult = parseFloat(lab.result);
+        // Timeline entry (for zoom modal)
+        timelineEntries.push({
+          testName: lab.testName,
+          result: lab.result,
+          numericResult: isNaN(numericResult) ? null : numericResult,
+          status: lab.status || 'normal',
+          unit: lab.unit || '',
+          referenceRange: lab.referenceRange || null,
+          resultType: lab.resultType || (isNaN(numericResult) ? 'descriptive' : 'numeric'),
+          date: dateStr,
+          ms,
+        });
+        // Summary aggregation (latest per test)
+        const existing = testMap.get(lab.testName);
+        if (existing) {
+          testMap.set(lab.testName, {
+            testName: lab.testName,
+            result: lab.result,
+            numericResult: isNaN(numericResult) ? null : numericResult,
+            status: lab.status || 'normal',
+            date: dateStr,
+            previousResult: existing.result,
+            previousNumeric: existing.numericResult,
+            previousDate: existing.date,
+            referenceRange: lab.referenceRange || existing.referenceRange || null,
+            unit: lab.unit || existing.unit || '',
+            resultType: lab.resultType || existing.resultType || null,
+            count: existing.count + 1,
+          });
+        } else {
+          testMap.set(lab.testName, {
+            testName: lab.testName,
+            result: lab.result,
+            numericResult: isNaN(numericResult) ? null : numericResult,
+            status: lab.status || 'normal',
+            date: dateStr,
+            previousResult: null,
+            previousNumeric: null,
+            previousDate: null,
+            referenceRange: lab.referenceRange || null,
+            unit: lab.unit || '',
+            resultType: lab.resultType || null,
+            count: 1,
+          });
+        }
+      });
+    });
+
+    const summary = Array.from(testMap.values());
+    const timeline = timelineEntries.sort((a, b) => b.ms - a.ms); // newest first
+    const uniqueTests = [...new Set(timeline.map(e => e.testName))].sort();
+    return { labSummary: summary, labTimeline: timeline, labUniqueTests: uniqueTests };
+  }, [history]);
+
   // T3.93 / T4.113: Derive chart-ready arrays for all 7 vital signs.
   // History is newest-first from Firestore — reverse for left-to-right time axis.
   // T3.133: Resolve amendments once per record so amended vitals appear in trends.
@@ -730,6 +805,9 @@ export default function PetHistoryScreen({ route, navigation }) {
   const [showHistoricalRx, setShowHistoricalRx] = useState(false);
   // T4.113: Zoom modal state — tracks which vital key is currently expanded.
   const [vitalsZoom, setVitalsZoom] = useState({ open: false, key: null });
+  // T4.123: Lab results summary card — collapsible + zoom modal state.
+  const [labExpanded, setLabExpanded] = useState(false);
+  const [labZoom, setLabZoom] = useState({ open: false, testName: null });
 
   // T4.118: Vaccination status derived from history + vaccine catalog + species.
   // buildVaccinationStatus also performs keyword-fallback against legacy SOAP records.
@@ -766,7 +844,8 @@ export default function PetHistoryScreen({ route, navigation }) {
     // T4.118: Show the header whenever there are species-relevant catalog vaccines
     // OR the pet already has vaccine records (even if catalog is still loading).
     const hasVaxStatus = vaccinationStatuses.length > 0 || vaccineRecords.length > 0;
-    if (!hasTrends && !hasRx && !hasVaxStatus) return null;
+    const hasLabs = labSummary.length > 0;
+    if (!hasTrends && !hasRx && !hasVaxStatus && !hasLabs) return null;
     return (
       <View>
         {hasTrends && (
@@ -926,12 +1005,94 @@ export default function PetHistoryScreen({ route, navigation }) {
             )}
           </View>
         )}
+        {/* T4.123: Aggregated lab results summary — collapsible, one row per unique test */}
+        {hasLabs && (
+          <View style={styles.labSummaryCard}>
+            <TouchableOpacity
+              style={styles.labSummaryHeader}
+              onPress={() => setLabExpanded(prev => !prev)}
+            >
+              <Text style={styles.labSummaryTitle}>
+                YOUR PET'S TEST RESULTS ({labSummary.length})
+              </Text>
+              <MaterialIcons
+                name={labExpanded ? 'expand-less' : 'expand-more'}
+                size={20}
+                color={COLORS.accent}
+              />
+            </TouchableOpacity>
+            {labExpanded && (
+              <View style={styles.labSummaryBody}>
+                {labSummary.map((lab, i) => {
+                  const statusKey = (lab.status || 'normal').toLowerCase();
+                  const statusColor =
+                    statusKey === 'critical' ? COLORS.danger :
+                    statusKey === 'abnormal' ? COLORS.warning :
+                    COLORS.success;
+                  const statusBg =
+                    statusKey === 'critical' ? '#FFEBEE' :
+                    statusKey === 'abnormal' ? '#FFF3E0' :
+                    '#E8F5E9';
+                  // Amendment 1: positive-negative tests show NEGATIVE/POSITIVE/CRITICAL
+                  const chipLabel = lab.resultType === 'positive-negative'
+                    ? (statusKey === 'normal' ? 'NEGATIVE' : statusKey === 'critical' ? 'CRITICAL' : 'POSITIVE')
+                    : statusKey.toUpperCase();
+
+                  // Trend arrow — only for numeric results with a previous numeric value
+                  let trendArrow = '';
+                  if (lab.numericResult != null && lab.previousNumeric != null) {
+                    const diff = lab.numericResult - lab.previousNumeric;
+                    if (diff > 0) trendArrow = ' ↑';
+                    else if (diff < 0) trendArrow = ' ↓';
+                    else trendArrow = ' →';
+                  }
+
+                  // Species-resolved reference range display
+                  const refDisplay = (() => {
+                    const range = lab.referenceRange;
+                    if (!range) return null;
+                    const speciesKey = petSpecies.toLowerCase().includes('cat') ? 'feline' : 'canine';
+                    const resolved = range[speciesKey] || range;
+                    if (Array.isArray(resolved) && resolved.length === 2) {
+                      return `ref: ${resolved[0]} – ${resolved[1]}${lab.unit ? ` ${lab.unit}` : ''}`;
+                    }
+                    return null;
+                  })();
+
+                  return (
+                    <TouchableOpacity
+                      key={i}
+                      style={styles.labSummaryRow}
+                      onPress={() => setLabZoom({ open: true, testName: lab.testName })}
+                      activeOpacity={0.7}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.labSummaryTestName}>{lab.testName}</Text>
+                        <Text style={styles.labSummaryResult}>
+                          {lab.result}{lab.unit ? ` ${lab.unit}` : ''}{trendArrow}
+                          {lab.previousResult ? ` from ${lab.previousResult}` : ''}
+                        </Text>
+                        {refDisplay && (
+                          <Text style={styles.labSummaryRef}>{refDisplay}</Text>
+                        )}
+                        <Text style={styles.labSummaryDate}>{lab.date}</Text>
+                      </View>
+                      <Text style={[styles.labSummaryStatusPill, { color: statusColor, backgroundColor: statusBg }]}>
+                        {chipLabel}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+        )}
       </View>
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vitalsChartData, trendsExpanded, activeRx, historicalRx, showHistoricalRx, rxExpanded,
       petSpecies, vaccinationStatuses, vaccineCompleteness, vaccineRecords, vaccineCatalog,
-      clinicName]);
+      clinicName, labSummary, labExpanded]);
 
   useEffect(() => {
     const q = query(
@@ -1800,6 +1961,16 @@ export default function PetHistoryScreen({ route, navigation }) {
         }
         petName={petName}
       />
+      {/* T4.123: Lab results zoom modal — test selector + SparkLine chart + chronological list */}
+      <LabZoomModal
+        visible={labZoom.open}
+        onClose={() => setLabZoom({ open: false, testName: null })}
+        petName={petName}
+        petSpecies={petSpecies}
+        initialTest={labZoom.testName}
+        timeline={labTimeline}
+        uniqueTests={labUniqueTests}
+      />
     </SafeAreaView>
   );
 }
@@ -2331,6 +2502,73 @@ const styles = StyleSheet.create({
     borderRadius: 0,
     overflow: "hidden",
     textTransform: "uppercase",
+  },
+
+  // T4.123: Lab summary card (collapsible, same pattern as trendsCard / rxFreqCard)
+  labSummaryCard: {
+    marginBottom: 20,
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    borderRadius: 0,
+  },
+  labSummaryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 14,
+  },
+  labSummaryTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: COLORS.accent,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  labSummaryBody: {
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+    padding: 14,
+    gap: 10,
+  },
+  labSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E3F2FD',
+    padding: 10,
+    borderRadius: 0,
+    borderWidth: 1,
+    borderColor: '#BBDEFB',
+  },
+  labSummaryTestName: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: COLORS.brand,
+  },
+  labSummaryResult: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    marginTop: 1,
+  },
+  labSummaryRef: {
+    fontSize: 10,
+    color: '#9E9E9E',
+    marginTop: 1,
+  },
+  labSummaryDate: {
+    fontSize: 10,
+    color: '#BDBDBD',
+    marginTop: 2,
+  },
+  labSummaryStatusPill: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 0,
+    overflow: 'hidden',
+    textTransform: 'uppercase',
   },
 
   // T3.81: Service chips

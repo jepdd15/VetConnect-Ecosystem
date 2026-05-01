@@ -11,12 +11,16 @@ import {
   query,
   where,
 } from "firebase/firestore";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
+  Dimensions,
   FlatList,
+  Image,
   Linking,
+  Modal,
   SafeAreaView,
   StyleSheet,
   Text,
@@ -24,6 +28,13 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
+import {
+  GestureHandlerRootView,
+  PanGestureHandler,
+  PinchGestureHandler,
+  State,
+  TapGestureHandler,
+} from 'react-native-gesture-handler';
 import { auth, db } from "../../firebaseConfig";
 import { useClinicContact } from "../hooks/useClinicContact";
 import { safeDate, formatDisplayDate } from "../utils/helpers";
@@ -808,6 +819,16 @@ export default function PetHistoryScreen({ route, navigation }) {
   // T4.123: Lab results summary card — collapsible + zoom modal state.
   const [labExpanded, setLabExpanded] = useState(false);
   const [labZoom, setLabZoom] = useState({ open: false, testName: null });
+  // T4.124: Full-screen image lightbox state.
+  const [lightbox, setLightbox] = useState({ open: false, url: null });
+
+  // T4.124: Animated values for lightbox pinch-to-zoom and pan gesture tracking.
+  const lightboxScale = useRef(new Animated.Value(1)).current;
+  const lightboxTranslateX = useRef(new Animated.Value(0)).current;
+  const lightboxTranslateY = useRef(new Animated.Value(0)).current;
+  const lastScale = useRef(1);
+  const lastTranslateX = useRef(0);
+  const lastTranslateY = useRef(0);
 
   // T4.118: Vaccination status derived from history + vaccine catalog + species.
   // buildVaccinationStatus also performs keyword-fallback against legacy SOAP records.
@@ -1245,6 +1266,68 @@ export default function PetHistoryScreen({ route, navigation }) {
     );
   };
 
+  // T4.124: Resets all animated values and closes the lightbox.
+  const closeLightbox = () => {
+    setLightbox({ open: false, url: null });
+    lightboxScale.setValue(1);
+    lightboxTranslateX.setValue(0);
+    lightboxTranslateX.setOffset(0);
+    lightboxTranslateY.setValue(0);
+    lightboxTranslateY.setOffset(0);
+    lastScale.current = 1;
+    lastTranslateX.current = 0;
+    lastTranslateY.current = 0;
+  };
+
+  // T4.124: Pinch gesture — offset-based to prevent snap-to-1x on second pinch.
+  const onPinchEvent = ({ nativeEvent }) => {
+    const newScale = Math.min(4, Math.max(1, lastScale.current * nativeEvent.scale));
+    lightboxScale.setValue(newScale);
+  };
+
+  const onPinchStateChange = (event) => {
+    if (event.nativeEvent.oldState === State.ACTIVE) {
+      lastScale.current = Math.min(4, Math.max(1, lastScale.current * event.nativeEvent.scale));
+      lightboxScale.setValue(lastScale.current);
+    }
+  };
+
+  // T4.124: Double-tap toggles between 1x and 2.5x zoom.
+  const onDoubleTap = (event) => {
+    if (event.nativeEvent.state === State.ACTIVE) {
+      if (lastScale.current > 1) {
+        lastScale.current = 1;
+        lastTranslateX.current = 0;
+        lastTranslateY.current = 0;
+        Animated.parallel([
+          Animated.spring(lightboxScale, { toValue: 1, useNativeDriver: true }),
+          Animated.spring(lightboxTranslateX, { toValue: 0, useNativeDriver: true }),
+          Animated.spring(lightboxTranslateY, { toValue: 0, useNativeDriver: true }),
+        ]).start();
+      } else {
+        lastScale.current = 2.5;
+        Animated.spring(lightboxScale, { toValue: 2.5, useNativeDriver: true }).start();
+      }
+    }
+  };
+
+  // T4.124: Pan gesture — accumulates offset so next drag starts from current position.
+  const onPanEvent = Animated.event(
+    [{ nativeEvent: { translationX: lightboxTranslateX, translationY: lightboxTranslateY } }],
+    { useNativeDriver: true },
+  );
+
+  const onPanStateChange = (event) => {
+    if (event.nativeEvent.oldState === State.ACTIVE) {
+      lastTranslateX.current += event.nativeEvent.translationX;
+      lastTranslateY.current += event.nativeEvent.translationY;
+      lightboxTranslateX.setOffset(lastTranslateX.current);
+      lightboxTranslateX.setValue(0);
+      lightboxTranslateY.setOffset(lastTranslateY.current);
+      lightboxTranslateY.setValue(0);
+    }
+  };
+
   const getStatusColors = (status) => {
     if (!status) return { bg: "#E8F5E9", border: "#A5D6A7", text: "#2E7D32" };
     const s = status.toLowerCase();
@@ -1518,18 +1601,66 @@ export default function PetHistoryScreen({ route, navigation }) {
                     📎 Documents & Photos:
                   </Text>
                   <View style={styles.attachmentList}>
-                    {visibleAttachments.map((file, idx) => (
-                      <TouchableOpacity
-                        key={idx}
-                        style={styles.attachmentChip}
-                        onPress={() => handleOpenAttachment(file.url || file)}
-                      >
-                        <Text style={styles.attachmentChipText}>
-                          {file.mimeType?.startsWith('image/') ? '📷' : '📄'}{' '}
-                          {file.label || file.name || `Attachment ${idx + 1}`}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
+                    {visibleAttachments.map((file, idx) => {
+                      const isImage = file.mimeType?.startsWith('image/');
+                      const uploadDate = file.uploadedAt
+                        ? (file.uploadedAt.toDate
+                            ? file.uploadedAt.toDate()
+                            : new Date(file.uploadedAt))
+                        : null;
+                      if (isImage) {
+                        return (
+                          <TouchableOpacity
+                            key={idx}
+                            style={styles.attachmentChip}
+                            onPress={() => setLightbox({ open: true, url: file.url })}
+                          >
+                            <Image
+                              source={{ uri: file.url }}
+                              style={styles.attachmentThumbnail}
+                              resizeMode="cover"
+                            />
+                            <View style={{ flex: 1, marginLeft: 8 }}>
+                              <Text style={styles.attachmentChipText}>
+                                {file.label || file.fileName || `Photo ${idx + 1}`}
+                              </Text>
+                              {uploadDate && (
+                                <Text style={styles.attachmentDate}>
+                                  {uploadDate.toLocaleDateString('en-US', {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    year: 'numeric',
+                                  })}
+                                </Text>
+                              )}
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      }
+                      return (
+                        <TouchableOpacity
+                          key={idx}
+                          style={styles.attachmentChip}
+                          onPress={() => handleOpenAttachment(file.url || file)}
+                        >
+                          <Text style={styles.attachmentPdfIcon}>📄</Text>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.attachmentChipText}>
+                              {file.label || file.fileName || `Document ${idx + 1}`}
+                            </Text>
+                            {uploadDate && (
+                              <Text style={styles.attachmentDate}>
+                                {uploadDate.toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric',
+                                })}
+                              </Text>
+                            )}
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
                 </View>
               );
@@ -1971,6 +2102,56 @@ export default function PetHistoryScreen({ route, navigation }) {
         timeline={labTimeline}
         uniqueTests={labUniqueTests}
       />
+
+      {/* T4.124: Full-screen image lightbox — pinch-to-zoom, double-tap to toggle, pan when zoomed */}
+      <Modal
+        visible={lightbox.open}
+        transparent
+        animationType="fade"
+        onRequestClose={closeLightbox}
+      >
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <View style={styles.lightboxOverlay}>
+            <TouchableOpacity
+              style={styles.lightboxClose}
+              onPress={closeLightbox}
+            >
+              <MaterialIcons name="close" size={28} color="#FFF" />
+            </TouchableOpacity>
+            <PinchGestureHandler
+              onGestureEvent={onPinchEvent}
+              onHandlerStateChange={onPinchStateChange}
+            >
+              <Animated.View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                <TapGestureHandler numberOfTaps={2} onHandlerStateChange={onDoubleTap}>
+                  <Animated.View>
+                    <PanGestureHandler
+                      onGestureEvent={onPanEvent}
+                      onHandlerStateChange={onPanStateChange}
+                      minDist={10}
+                    >
+                      <Animated.Image
+                        source={{ uri: lightbox.url }}
+                        style={[
+                          styles.lightboxImage,
+                          {
+                            transform: [
+                              { scale: lightboxScale },
+                              { translateX: lightboxTranslateX },
+                              { translateY: lightboxTranslateY },
+                            ],
+                          },
+                        ]}
+                        resizeMode="contain"
+                      />
+                    </PanGestureHandler>
+                  </Animated.View>
+                </TapGestureHandler>
+              </Animated.View>
+            </PinchGestureHandler>
+          </View>
+        </GestureHandlerRootView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -2174,8 +2355,10 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     textTransform: "uppercase",
   },
-  attachmentList: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  attachmentList: { flexDirection: "column", gap: 8 },
   attachmentChip: {
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: "#E3F2FD",
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -2184,6 +2367,34 @@ const styles = StyleSheet.create({
     borderColor: "#90CAF9",
   },
   attachmentChipText: { color: COLORS.info, fontSize: 12, fontWeight: "bold" },
+  attachmentThumbnail: {
+    width: 40,
+    height: 40,
+    borderRadius: 0,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  attachmentPdfIcon: { fontSize: 24, marginRight: 8 },
+  attachmentDate: { fontSize: 10, color: '#9E9E9E', marginTop: 1 },
+
+  lightboxOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  lightboxClose: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    zIndex: 10,
+    padding: 8,
+    borderRadius: 0,
+  },
+  lightboxImage: {
+    width: Dimensions.get('window').width,
+    height: Dimensions.get('window').height * 0.7,
+  },
 
   reminderBanner: {
     flexDirection: "row",

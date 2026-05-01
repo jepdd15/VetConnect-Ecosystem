@@ -32,9 +32,18 @@ import {
   Pets as PetsIcon,
   Psychology as PsychologyIcon,
   Vaccines as VaccinesIcon,
+  // T4.121: File attachment icons
+  AttachFile as AttachFileIcon,
+  PhotoCamera as PhotoCameraIcon,
+  PictureAsPdf as PictureAsPdfIcon,
+  Delete as DeleteIcon,
+  Visibility as VisibilityIcon,
+  VisibilityOff as VisibilityOffIcon,
 } from '@mui/icons-material';
 import { doc, collection, Timestamp, addDoc, updateDoc, getDoc, query, where, orderBy, getDocs, arrayUnion, writeBatch, runTransaction, setDoc } from 'firebase/firestore';
-import { db, auth } from '../firebaseConfig';
+import { db, auth, storage } from '../firebaseConfig';
+// T4.121: File attachment upload utility
+import { uploadAttachment } from '../utils/uploadAttachment';
 import { useInventory } from '../features/Inventory/hooks/useInventory';
 import { calculatePulseMetrics, makePulseEventId, createPulseEvent } from '../utils/pulseUtils';
 import { createDefaultExam, examToText } from '../utils/examUtils';
@@ -524,8 +533,20 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   );
 
   // T4.120: Lab results — extended shape includes catalog-derived fields
-  // { testName, result, status, notes, unit, referenceRange, catalogTestId, resultType }
+  // { testName, result, status, notes, unit, referenceRange, catalogTestId, resultType, attachmentUrl }
   const [labResults, setLabResults] = useState([]);
+
+  // T4.121: General SOAP attachments — pending (pre-upload) File objects with metadata.
+  // Shape: { file: File, label: string, type: string, clientVisible: boolean,
+  //          preview: string|null, uploading: boolean }
+  // This list is upload-queued at sign-off; it does NOT hold already-saved URLs.
+  const [soapAttachments, setSoapAttachments] = useState([]);
+
+  // T4.121 Amendment 1: Already-uploaded attachment metadata from the sealed medical record.
+  // Populated by hydrating from the medical_records document when the workspace opens
+  // for a signed-off appointment. Different shape from soapAttachments (has url, no file).
+  // Sealed-view JSX reads this — NOT patient.attachments (patient is the appointment doc).
+  const [savedAttachments, setSavedAttachments] = useState([]);
 
   // T4.120: Custom lab test dialog state
   const [addCustomLabOpen, setAddCustomLabOpen] = useState(false);
@@ -548,10 +569,24 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   const treatmentCartRef = useRef(treatmentCart);
   const isRecordLockedRef = useRef(isRecordLocked);
   const hasReleasedRef = useRef(false);
+  // T4.121: Hidden file input ref for the general SOAP attachment picker
+  const fileInputRef = useRef(null);
 
   // Keep refs in sync so the unmount cleanup always sees the latest values
   useEffect(() => { treatmentCartRef.current = treatmentCart; }, [treatmentCart]);
   useEffect(() => { isRecordLockedRef.current = isRecordLocked; }, [isRecordLocked]);
+  const soapAttachmentsRef = useRef(soapAttachments);
+  useEffect(() => { soapAttachmentsRef.current = soapAttachments; }, [soapAttachments]);
+
+  // T4.121: Revoke all pending attachment preview URLs on unmount to prevent memory leaks.
+  // Uses ref so the cleanup always sees the latest array, not the empty mount-time capture.
+  useEffect(() => {
+    return () => {
+      soapAttachmentsRef.current.forEach(att => {
+        if (att.preview) URL.revokeObjectURL(att.preview);
+      });
+    };
+  }, []);
 
   // On unmount: release all product reservations if the record was never signed off.
   // This prevents the `reserved` counter from being permanently inflated when the vet
@@ -645,6 +680,31 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           const completedFromDb = new Set();
           if (patient.signedOffAt) completedFromDb.add('medical');
           setLockedServices(completedFromDb);
+
+          // T4.121 Amendment 1: Reset pending/saved attachment state on patient change.
+          // soapAttachments are pending File objects for the next sign-off — always clear.
+          // savedAttachments are from the sealed record — fetched below if signed off.
+          setSoapAttachments([]);
+          setSavedAttachments([]);
+
+          // T4.121 Amendment 1: Hydrate savedAttachments from the sealed medical record.
+          // patient is the APPOINTMENT doc — it has no attachments field. The attachments
+          // live on the medical_records doc, so we query by appointmentId when signed off.
+          if (patient.signedOffAt) {
+            try {
+              const recordQuery = query(
+                collection(db, 'medical_records'),
+                where('appointmentId', '==', patient.id),
+              );
+              const recordSnap = await getDocs(recordQuery);
+              if (!recordSnap.empty && !cancelled) {
+                const rec = recordSnap.docs[0].data();
+                setSavedAttachments(rec.attachments || []);
+              }
+            } catch (e) {
+              console.warn('[ClinicalWorkspace] Failed to load saved attachments:', e.message);
+            }
+          }
 
           // --- A3: DRAFT SOAP RECOVERY — gate recent drafts behind explicit user intent ---
           // A draft that was saved in the last 24 hours while the appointment is in an
@@ -1669,6 +1729,30 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
 
       // 1. MEDICAL RECORD — batch.set on a pre-created ref (atomic, no orphan risk)
       const recordRef = doc(collection(db, "medical_records"));
+
+      // T4.121: Upload pending SOAP attachments before the batch commit so we have
+      // real download URLs to persist. Failures are NON-BLOCKING — a failed upload
+      // is logged and skipped; the record still saves without that attachment.
+      const uploadedAttachments = [];
+      for (const att of soapAttachments) {
+        try {
+          const result = await uploadAttachment({
+            file: att.file,
+            petId: patient.petId || 'WALK_IN_PET',
+            recordId: recordRef.id,
+            label: att.label,
+            uploadedBy: vetName,
+          });
+          uploadedAttachments.push({
+            ...result,
+            type: att.type,
+            clientVisible: att.clientVisible,
+          });
+        } catch (uploadErr) {
+          console.error('[ClinicalWorkspace.handleSaveConsult] Attachment upload failed (non-blocking):', uploadErr.message);
+        }
+      }
+
       batch.set(recordRef, {
         appointmentId: patient.id,
         petId: patient.petId || "WALK_IN_PET",
@@ -1796,8 +1880,11 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 referenceRange: l.referenceRange || null,
                 catalogTestId: l.catalogTestId || null,
                 resultType: l.resultType || 'descriptive',
+                attachmentUrl: l.attachmentUrl || null,
             }))
         } : {}),
+        // T4.121: General SOAP attachments — written only when at least one upload succeeded.
+        ...(uploadedAttachments.length > 0 ? { attachments: uploadedAttachments } : {}),
       });
 
       // NOTE: The orphaned `transactions` collection write has been removed (Issue #5).
@@ -1958,6 +2045,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       setIsRecordLocked(true);
       setLoading(false);
       setIsDirty(false);
+      // T4.121: Clear pending attachments — they have been uploaded and persisted.
+      setSoapAttachments([]);
       onClose();
       alert(`✅ ENCOUNTER FINALIZED!\n\nClinical record signed by ${vetName}.\nPatient moved to ${hasDrugsInCart ? 'PHARMACY' : 'CHECKOUT'}.\nTotal: ₱${visitTotal.toLocaleString()}`);
     } catch (error) {
@@ -2126,6 +2215,106 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     }
   };
 
+
+  // --- T4.121: File Attachment Handlers ---
+
+  /** Allowed MIME types for the file picker guard. */
+  const ATTACHMENT_ALLOWED_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
+  const ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024;
+
+  /**
+   * Handles the hidden file input change event for general SOAP attachments.
+   * Validates type and size client-side, generates a preview URL for images,
+   * and appends the entry to the pending soapAttachments list.
+   * Upload is deferred to handleSaveConsult (batch with the medical record write).
+   */
+  const handleAttachFile = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!ATTACHMENT_ALLOWED_TYPES.includes(file.type)) {
+      showToast('Only JPEG, PNG, and PDF files are accepted.', 'error');
+      event.target.value = '';
+      return;
+    }
+
+    if (file.size > ATTACHMENT_MAX_BYTES) {
+      showToast('File must be under 5 MB.', 'error');
+      event.target.value = '';
+      return;
+    }
+
+    const preview = file.type.startsWith('image/') ? URL.createObjectURL(file) : null;
+
+    setSoapAttachments(prev => [
+      ...prev,
+      { file, label: file.name, type: 'other', clientVisible: false, preview, uploading: false },
+    ]);
+
+    // Reset so the same file can be re-selected if removed and re-added
+    event.target.value = '';
+  };
+
+  /**
+   * Removes a pending SOAP attachment by index.
+   * Revokes the preview URL to free browser memory.
+   */
+  const handleRemoveAttachment = (index) => {
+    setSoapAttachments(prev => {
+      const att = prev[index];
+      if (att?.preview) URL.revokeObjectURL(att.preview);
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  /**
+   * Handles per-lab-test file attachment. Unlike SOAP attachments, lab attachments
+   * are uploaded eagerly (before sign-off) because the lab result row needs the URL
+   * to display the "View attachment" link immediately.
+   *
+   * Uses patient.id as the recordId path segment — the permanent recordRef.id is
+   * created at sign-off, but for lab attachments the appointment ID is a safe proxy
+   * since lab test files are uniquely stamped with Date.now().
+   */
+  const handleLabAttach = async (event, labIndex) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!ATTACHMENT_ALLOWED_TYPES.includes(file.type)) {
+      showToast('Only JPEG, PNG, and PDF files are accepted.', 'error');
+      event.target.value = '';
+      return;
+    }
+
+    if (file.size > ATTACHMENT_MAX_BYTES) {
+      showToast('File must be under 5 MB.', 'error');
+      event.target.value = '';
+      return;
+    }
+
+    event.target.value = '';
+
+    try {
+      const result = await uploadAttachment({
+        file,
+        petId: patient.petId || 'WALK_IN_PET',
+        recordId: patient.id,
+        label: file.name,
+        uploadedBy: auth.currentUser?.displayName || 'Clinician',
+      });
+
+      setLabResults(prev => {
+        const updated = [...prev];
+        updated[labIndex] = { ...updated[labIndex], attachmentUrl: result.url };
+        return updated;
+      });
+
+      showToast('Lab attachment uploaded.', 'success');
+    } catch (err) {
+      console.error('[ClinicalWorkspace.handleLabAttach]:', err.message);
+      showToast('Lab attachment failed: ' + err.message, 'error');
+    }
+  };
 
   // --- Phase 3: Group Navigation Handlers ---
 
@@ -2406,7 +2595,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         variant="text"
         onClick={() => setLabResults(prev => [
           ...prev,
-          { testName: '', result: '', status: 'normal', notes: '', unit: '', referenceRange: null, catalogTestId: null, resultType: 'descriptive', _resolvedRange: null },
+          { testName: '', result: '', status: 'normal', notes: '', unit: '', referenceRange: null, catalogTestId: null, resultType: 'descriptive', _resolvedRange: null, attachmentUrl: null },
         ])}
         sx={{ fontWeight: 900, fontSize: '0.65rem', textTransform: 'uppercase', color: COLORS.medical, mb: 1 }}
       >
@@ -2589,6 +2778,54 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                   alignSelf: 'center',
                 }}
               />
+            </Box>
+
+            {/* T4.121: Row 3 — Per-lab-test file attachment */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+              {lab.attachmentUrl ? (
+                <>
+                  <Typography
+                    component="a"
+                    href={lab.attachmentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    sx={{ fontSize: '0.7rem', color: COLORS.medical, textDecoration: 'underline', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 0.3 }}
+                  >
+                    <AttachFileIcon sx={{ fontSize: 12 }} />
+                    View attachment
+                  </Typography>
+                  <IconButton
+                    size="small"
+                    onClick={() => {
+                      const updated = [...labResults];
+                      updated[idx] = { ...updated[idx], attachmentUrl: null };
+                      setLabResults(updated);
+                    }}
+                    sx={{ color: COLORS.danger, p: 0.25 }}
+                  >
+                    <CloseIcon sx={{ fontSize: 12 }} />
+                  </IconButton>
+                </>
+              ) : (
+                <>
+                  <IconButton
+                    size="small"
+                    component="label"
+                    sx={{ color: COLORS.textMuted, p: 0.25, '&:hover': { color: COLORS.medical } }}
+                  >
+                    <PhotoCameraIcon sx={{ fontSize: 14 }} />
+                    <input
+                      type="file"
+                      hidden
+                      accept="image/jpeg,image/png,application/pdf"
+                      onChange={(e) => handleLabAttach(e, idx)}
+                    />
+                  </IconButton>
+                  <Typography sx={{ fontSize: '0.6rem', color: COLORS.textMuted }}>
+                    Attach file
+                  </Typography>
+                </>
+              )}
             </Box>
           </Box>
         );
@@ -3554,6 +3791,155 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 )}
             </Stack>
           </Box>
+
+          {/* T4.121: General SOAP Attachments — editable when unlocked, read-only when sealed */}
+
+          {/* Editable attachment list — hidden from view after sign-off */}
+          {!isRecordLocked && !lockedServices.has('medical') && (
+            <Paper sx={{ ...glassStyle, p: 2, mx: 3, mb: 2 }}>
+              <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <AttachFileIcon sx={{ fontSize: 14 }} />
+                ATTACHMENTS ({soapAttachments.length})
+              </Typography>
+
+              <Stack spacing={1}>
+                {soapAttachments.map((att, idx) => (
+                  <Box
+                    key={idx}
+                    sx={{ display: 'flex', gap: 1, alignItems: 'center', p: 1, bgcolor: COLORS.formBg, border: `1px solid ${COLORS.borderLight}` }}
+                  >
+                    {/* Thumbnail for images; PDF icon for documents */}
+                    {att.preview ? (
+                      <Box
+                        component="img"
+                        src={att.preview}
+                        sx={{ width: 48, height: 48, objectFit: 'cover', border: `1px solid ${COLORS.borderLight}`, flexShrink: 0 }}
+                      />
+                    ) : (
+                      <PictureAsPdfIcon sx={{ fontSize: 40, color: COLORS.danger, flexShrink: 0 }} />
+                    )}
+
+                    {/* Editable label */}
+                    <TextField
+                      size="small"
+                      value={att.label}
+                      onChange={(e) => {
+                        const updated = [...soapAttachments];
+                        updated[idx] = { ...updated[idx], label: e.target.value };
+                        setSoapAttachments(updated);
+                      }}
+                      placeholder="Label (e.g., Wound photo left ear)"
+                      sx={{ flex: 2, '& .MuiOutlinedInput-root': { borderRadius: 0, fontSize: '0.8rem' } }}
+                    />
+
+                    {/* Type classification dropdown */}
+                    <TextField
+                      size="small"
+                      select
+                      value={att.type}
+                      onChange={(e) => {
+                        const updated = [...soapAttachments];
+                        updated[idx] = { ...updated[idx], type: e.target.value };
+                        setSoapAttachments(updated);
+                      }}
+                      sx={{ width: 140, '& .MuiOutlinedInput-root': { borderRadius: 0, fontSize: '0.8rem' } }}
+                    >
+                      <MenuItem value="lab-report">Lab Report</MenuItem>
+                      <MenuItem value="clinical-photo">Clinical Photo</MenuItem>
+                      <MenuItem value="referral">Referral</MenuItem>
+                      <MenuItem value="other">Other</MenuItem>
+                    </TextField>
+
+                    {/* Client visibility toggle — default OFF (patient safety invariant) */}
+                    <Tooltip title={att.clientVisible ? 'Visible to pet owner' : 'Hidden from pet owner'}>
+                      <IconButton
+                        size="small"
+                        onClick={() => {
+                          const updated = [...soapAttachments];
+                          updated[idx] = { ...updated[idx], clientVisible: !updated[idx].clientVisible };
+                          setSoapAttachments(updated);
+                        }}
+                        sx={{ color: att.clientVisible ? COLORS.success : COLORS.textMuted }}
+                      >
+                        {att.clientVisible
+                          ? <VisibilityIcon sx={{ fontSize: 18 }} />
+                          : <VisibilityOffIcon sx={{ fontSize: 18 }} />
+                        }
+                      </IconButton>
+                    </Tooltip>
+
+                    {/* Remove attachment */}
+                    <IconButton
+                      size="small"
+                      onClick={() => handleRemoveAttachment(idx)}
+                      sx={{ color: COLORS.danger }}
+                    >
+                      <DeleteIcon sx={{ fontSize: 18 }} />
+                    </IconButton>
+                  </Box>
+                ))}
+              </Stack>
+
+              <Button
+                size="small"
+                variant="text"
+                onClick={() => fileInputRef.current?.click()}
+                startIcon={<AttachFileIcon />}
+                sx={{ mt: 1, fontWeight: 900, fontSize: '0.65rem', textTransform: 'uppercase', color: COLORS.medical }}
+              >
+                + Attach File
+              </Button>
+              {/* Hidden file input — opened programmatically via fileInputRef */}
+              <input
+                type="file"
+                ref={fileInputRef}
+                style={{ display: 'none' }}
+                accept="image/jpeg,image/png,application/pdf"
+                onChange={handleAttachFile}
+              />
+            </Paper>
+          )}
+
+          {/* Read-only sealed attachment display.
+              Amendment 1: reads savedAttachments (from medical_records doc),
+              NOT patient.attachments (patient is the appointment doc — has no attachments). */}
+          {(isRecordLocked || lockedServices.has('medical')) && savedAttachments.length > 0 && (
+            <Paper sx={{ ...glassStyle, p: 2, mx: 3, mb: 2 }}>
+              <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <AttachFileIcon sx={{ fontSize: 14 }} />
+                ATTACHMENTS ({savedAttachments.length})
+              </Typography>
+              <Stack spacing={0.5}>
+                {savedAttachments.map((file, i) => (
+                  <Typography
+                    key={i}
+                    component="a"
+                    href={file.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    sx={{
+                      fontFamily: FONT, ...TYPE.body, color: COLORS.medical,
+                      textDecoration: 'underline', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: 0.5,
+                    }}
+                  >
+                    {file.mimeType?.startsWith('image/')
+                      ? <PhotoCameraIcon sx={{ fontSize: 14 }} />
+                      : <PictureAsPdfIcon sx={{ fontSize: 14 }} />
+                    }
+                    {file.label || file.fileName || `Attachment ${i + 1}`}
+                    {file.clientVisible && (
+                      <Chip
+                        label="Shared"
+                        size="small"
+                        sx={{ height: 16, fontSize: '0.5rem', fontWeight: 900, borderRadius: 0, bgcolor: '#E8F5E9', color: COLORS.success, ml: 0.5 }}
+                      />
+                    )}
+                  </Typography>
+                ))}
+              </Stack>
+            </Paper>
+          )}
 
           {/* Pinned bottom: sign-off / sealed section */}
           <Box sx={{ flexShrink: 0, p: 3, pt: 2, borderTop: `1px solid ${COLORS.borderLight}`, borderRadius: 0 }}>

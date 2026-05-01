@@ -1234,26 +1234,35 @@ export default function PetHistoryScreen({ route, navigation }) {
               </View>
             )}
 
-            {item.attachments && item.attachments.length > 0 && (
-              <View style={styles.attachmentBox}>
-                <Text style={styles.attachmentTitle}>
-                  📎 Lab Results & Files:
-                </Text>
-                <View style={styles.attachmentList}>
-                  {item.attachments.map((file, idx) => (
-                    <TouchableOpacity
-                      key={idx}
-                      style={styles.attachmentChip}
-                      onPress={() => handleOpenAttachment(file.url || file)}
-                    >
-                      <Text style={styles.attachmentChipText}>
-                        📄 {file.name || `Attachment ${idx + 1}`}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+            {(() => {
+              // Safety invariant: pet owners only see attachments explicitly
+              // shared by the vet. Strict === true check — undefined and false
+              // must both be excluded.
+              const visibleAttachments = (item.attachments || []).filter(
+                a => a.clientVisible === true
+              );
+              return visibleAttachments.length > 0 && (
+                <View style={styles.attachmentBox}>
+                  <Text style={styles.attachmentTitle}>
+                    📎 Documents & Photos:
+                  </Text>
+                  <View style={styles.attachmentList}>
+                    {visibleAttachments.map((file, idx) => (
+                      <TouchableOpacity
+                        key={idx}
+                        style={styles.attachmentChip}
+                        onPress={() => handleOpenAttachment(file.url || file)}
+                      >
+                        <Text style={styles.attachmentChipText}>
+                          {file.mimeType?.startsWith('image/') ? '📷' : '📄'}{' '}
+                          {file.label || file.name || `Attachment ${idx + 1}`}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
                 </View>
-              </View>
-            )}
+              );
+            })()}
 
             {/* DISCHARGE SUMMARY — polished as "Going-Home Instructions" */}
             {item.dischargeSummary && (() => {
@@ -1889,7 +1898,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#E3F2FD",
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 20,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: "#90CAF9",
   },

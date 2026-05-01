@@ -193,6 +193,32 @@ function renderDischargeSection(dischargeSummary) {
 }
 
 /**
+ * Renders the attachments section for print output.
+ * Attachment labels are rendered as clickable links. Client-visible
+ * attachments are flagged so recipients know the file was shared with the owner.
+ *
+ * All dynamic values go through esc() to prevent XSS in the printed document.
+ *
+ * @param {Array} attachments
+ * @returns {string} HTML string
+ */
+function renderAttachmentsSection(attachments) {
+  if (!attachments?.length) return '';
+  const items = attachments.map(att => {
+    const icon = att.mimeType?.startsWith('image/') ? '📷' : '📄';
+    const shared = att.clientVisible ? ' <span style="color:#2E7D32; font-size:10px;">[Shared with owner]</span>' : '';
+    return `<li style="margin-bottom:4px;">
+      ${icon} <a href="${esc(att.url || (typeof att === 'string' ? att : ''))}" target="_blank" rel="noopener noreferrer" style="color:#1565C0;">${esc(att.label || att.fileName || 'Attachment')}</a>
+      <span style="color:#999; font-size:11px;"> (${esc(att.type || 'other')})</span>${shared}
+    </li>`;
+  }).join('');
+  return `
+    <h2>Attachments</h2>
+    <ul style="list-style:none; padding-left:0;">${items}</ul>
+  `;
+}
+
+/**
  * Generates a complete HTML string for a printable clinical visit summary.
  *
  * The returned string is a self-contained HTML document — pass it directly
@@ -299,6 +325,7 @@ export function generateVisitSummaryHTML({ record, pet, owner, clinicName, clini
   ${renderVaccineSection(rec.vaccineData)}
   ${renderLabResultsSection(rec.labResults)}
   ${renderDischargeSection(rec.dischargeSummary)}
+  ${renderAttachmentsSection(rec.attachments)}
 
   <div class="footer">
     Generated on ${now} &nbsp;|&nbsp; ${esc(clinicName || 'Veterinary Clinic')} &nbsp;|&nbsp; This is a system-generated document.

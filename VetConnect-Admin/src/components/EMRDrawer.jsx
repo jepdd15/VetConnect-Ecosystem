@@ -3,7 +3,7 @@ import {
   Drawer, Box, Typography, IconButton, Chip, Divider,
   Collapse, Stack, Paper,
 } from '@mui/material';
-import { Close as CloseIcon, ExpandMore as ExpandMoreIcon } from '@mui/icons-material';
+import { Close as CloseIcon, ExpandMore as ExpandMoreIcon, PictureAsPdf as PictureAsPdfIcon } from '@mui/icons-material';
 import { FONT, COLORS } from '../theme/designTokens';
 import { resolveVitals } from '../utils/resolveVitals';
 import { resolveObjectiveText, hasExamData } from '../utils/examUtils';
@@ -369,6 +369,44 @@ const RecordCard = ({ record }) => {
                             size="small"
                             sx={{ height: 16, fontSize: '0.5rem', fontWeight: 900, borderRadius: 0, bgcolor: sc.bgcolor, color: sc.color, flexShrink: 0 }}
                           />
+                        )}
+                      </Box>
+                    );
+                  })}
+                </Stack>
+              </SectionBlock>
+            )}
+
+            {/* Attachments — T4.121 Day 2 */}
+            {record.attachments?.length > 0 && (
+              <SectionBlock label={`Attachments (${record.attachments.length})`}>
+                <Stack spacing={0.5}>
+                  {record.attachments.map((file, i) => {
+                    const isImage = file.mimeType?.startsWith('image/');
+                    return (
+                      <Box
+                        key={i}
+                        component="a"
+                        href={file.url || file}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        sx={{
+                          display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 0.5,
+                          bgcolor: COLORS.kpiBlueBg, border: `1px solid ${COLORS.kpiBlueBorder}`,
+                          textDecoration: 'none', cursor: 'pointer',
+                          '&:hover': { bgcolor: COLORS.borderLight },
+                        }}
+                      >
+                        {isImage ? (
+                          <Box component="img" src={file.url || file} sx={{ width: 28, height: 28, objectFit: 'cover', border: `1px solid ${COLORS.border}`, flexShrink: 0 }} />
+                        ) : (
+                          <PictureAsPdfIcon sx={{ fontSize: 22, color: COLORS.danger, flexShrink: 0 }} />
+                        )}
+                        <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, color: COLORS.medical, fontFamily: FONT, flex: 1 }}>
+                          {file.label || file.fileName || `Attachment ${i + 1}`}
+                        </Typography>
+                        {file.clientVisible && (
+                          <Chip label="Shared" size="small" sx={{ height: 14, fontSize: '0.45rem', fontWeight: 900, borderRadius: 0, bgcolor: '#E8F5E9', color: COLORS.success }} />
                         )}
                       </Box>
                     );

@@ -39,7 +39,7 @@ import { COLORS } from '../theme/mobileTokens';
  */
 export default function SparkLine({
   data,
-  width = Dimensions.get('window').width - 80,
+  width = Dimensions.get('window').width - 120,
   height = 60,
   lineColor = COLORS.accent,
   fillColor = 'transparent',

@@ -240,10 +240,11 @@ service cloud.firestore {
     }
 
     // ─── CONSENT VERSIONS (RA 10173 informed consent) ─────────────
-    // Everyone reads (mobile ConsentScreen).
+    // Public read — registration form needs DPA policy before authentication.
+    // Policy text is not sensitive (equivalent to a Terms of Service page).
     // Only admin can write (Settings Pillar 10).
     match /consent_versions/{versionId} {
-      allow read: if isAuth();
+      allow read: if true;
       allow write: if isAdmin();
     }
 

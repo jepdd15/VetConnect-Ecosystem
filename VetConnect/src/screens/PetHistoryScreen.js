@@ -466,6 +466,17 @@ const VITALS_CONFIG = {
 };
 
 /**
+ * Fixed Y-axis domains for vitals that have a canonical bounded scale.
+ * Vitals not listed here use auto-domain (derived from the actual data range).
+ * These values match the scoring systems used in clinical practice.
+ */
+const VITAL_Y_DOMAINS = {
+  pain: { min: 0, max: 10 },
+  bcs:  { min: 1, max: 9  },
+  crt:  { min: 0, max: 5  },
+};
+
+/**
  * Renders a delta annotation for a vitals sparkline data array.
  * Shows the change between the last two readings in neutral muted colour —
  * direction should not be interpreted as good or bad without vet advice.
@@ -2111,6 +2122,7 @@ export default function PetHistoryScreen({ route, navigation }) {
             ? getNormalRange(VITALS_CONFIG[vitalsZoom.key].refKey, petSpecies)
             : null
         }
+        yDomain={vitalsZoom.key ? (VITAL_Y_DOMAINS[vitalsZoom.key] ?? null) : null}
         petName={petName}
       />
       {/* T4.123: Lab results zoom modal — test selector + SparkLine chart + chronological list */}

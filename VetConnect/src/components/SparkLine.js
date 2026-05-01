@@ -16,7 +16,7 @@
  * />
  */
 
-import { Text, View } from 'react-native';
+import { Dimensions, Text, View } from 'react-native';
 import { Circle, Path, Rect, Svg } from 'react-native-svg';
 import { clamp, valueToY } from '../utils/chartHelpers';
 import { COLORS } from '../theme/mobileTokens';
@@ -27,7 +27,7 @@ import { COLORS } from '../theme/mobileTokens';
 
 /**
  * @param {{ label: string, value: number }[]} data           - Ordered data points (oldest → newest left-to-right).
- * @param {number}  [width=200]                                - SVG canvas width in px.
+ * @param {number}  [width]                                    - SVG canvas width in px. Defaults to window width minus 80px card padding.
  * @param {number}  [height=60]                                - SVG canvas height in px.
  * @param {string}  [lineColor]                                - Stroke colour for the line and dots. Defaults to COLORS.accent.
  * @param {string}  [fillColor='transparent']                  - Optional area fill colour below the line.
@@ -39,7 +39,7 @@ import { COLORS } from '../theme/mobileTokens';
  */
 export default function SparkLine({
   data,
-  width = 200,
+  width = Dimensions.get('window').width - 80,
   height = 60,
   lineColor = COLORS.accent,
   fillColor = 'transparent',
@@ -74,8 +74,8 @@ export default function SparkLine({
   }
 
   const values = validPoints.map((d) => parseFloat(d.value));
-  const rawMin = Math.min(...values);
-  const rawMax = Math.max(...values);
+  const rawMin = Math.min(...values, normalRange?.low ?? Infinity);
+  const rawMax = Math.max(...values, normalRange?.high ?? -Infinity);
 
   // Add 10 % padding to the Y axis so extreme points are never flush with edges.
   const padding = (rawMax - rawMin) * 0.1 || 1; // fallback 1 unit when all values identical

@@ -28,7 +28,7 @@ import { valueToY } from '../utils/chartHelpers';
 // ---------------------------------------------------------------------------
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
-const CHART_MARGIN = { top: 20, right: 16, bottom: 40, left: 48 };
+const CHART_MARGIN = { top: 20, right: 48, bottom: 40, left: 48 };
 const CHART_WIDTH  = SCREEN_WIDTH - 32 - CHART_MARGIN.left - CHART_MARGIN.right;
 const CHART_HEIGHT = 260;
 const SVG_WIDTH    = CHART_WIDTH + CHART_MARGIN.left + CHART_MARGIN.right;
@@ -41,13 +41,15 @@ const SVG_HEIGHT   = CHART_HEIGHT + CHART_MARGIN.top  + CHART_MARGIN.bottom;
 /**
  * @param {boolean}  visible      - Controls Modal visibility.
  * @param {function} onClose      - Called when user closes the modal.
- * @param {string}   vitalKey     - Identifier for the vital (e.g. 'weight').
  * @param {string}   vitalLabel   - Human-readable vital name (e.g. 'Weight Trend').
  * @param {{ label: string, value: number }[]} data - Ordered chart data (oldest → newest).
  * @param {string}   unit         - Unit suffix (e.g. 'kg', '°C').
  * @param {string}   lineColor    - Stroke colour for the line and dots.
  * @param {{ low: number, high: number } | null} normalRange - Species-normal band, or null.
  * @param {string}   petName      - Displayed below the vital label in the header.
+ * @param {{ min: number, max: number } | null} yDomain - Optional fixed Y-axis domain. When
+ *   provided, overrides auto-domain derived from data (e.g. pain score always 0–10). A 10%
+ *   padding is still added so dots at the edges aren't clipped.
  */
 export default function VitalsZoomModal({
   visible,
@@ -58,6 +60,7 @@ export default function VitalsZoomModal({
   lineColor,
   normalRange,
   petName,
+  yDomain = null,
 }) {
   const [tooltip, setTooltip] = useState(null); // { x, y, value, label }
 
@@ -70,12 +73,24 @@ export default function VitalsZoomModal({
 
   if (validPoints.length === 0) return null;
 
-  const values   = validPoints.map((d) => parseFloat(d.value));
-  const rawMin   = Math.min(...values);
-  const rawMax   = Math.max(...values);
-  const padding  = (rawMax - rawMin) * 0.1 || 1;
-  const paddedMin = rawMin - padding;
-  const paddedMax = rawMax + padding;
+  const values = validPoints.map((d) => parseFloat(d.value));
+
+  // Determine base Y domain: use caller-supplied fixed domain when present so
+  // vitals like pain (0–10) or BCS (1–9) always render on their canonical scale.
+  // Otherwise auto-derive from data, expanding to include the normal-range band
+  // so the green band is never clipped when it falls outside the data range.
+  const yMin = yDomain
+    ? yDomain.min
+    : Math.min(...values, normalRange?.low ?? Infinity);
+  const yMax = yDomain
+    ? yDomain.max
+    : Math.max(...values, normalRange?.high ?? -Infinity);
+
+  // Add 10 % padding so dots at domain edges are never flush against the chart
+  // border. Falls back to ±1 when domain is a single value (all readings equal).
+  const yPadding   = yDomain ? 0.5 : ((yMax - yMin) * 0.1 || 1);
+  const paddedMin  = yMin - yPadding;
+  const paddedMax  = yMax + yPadding;
 
   // Map data points to pixel coordinates within the chart area.
   const chartPoints = validPoints.map((d, i) => ({

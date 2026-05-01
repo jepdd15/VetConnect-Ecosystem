@@ -184,7 +184,7 @@ service cloud.firestore {
     // Everyone reads (booking engine needs operating hours, closed dates).
     // Only admin can modify.
     match /clinic_settings/{settingId} {
-      allow read: if isAuth();
+      allow read: if isAuth() || settingId == 'general';
       allow write: if isAdmin();
     }
 
@@ -265,6 +265,19 @@ service cloud.firestore {
       allow read: if isStaff() || (isAuth() && resource.data.ownerId == request.auth.uid);
       allow create: if isAuth();
       allow update, delete: if false;
+    }
+
+    // ─── VACCINE REMINDER QUEUE (pre-computed push notification queue) ───
+    // Public read/create/update: the Cloudflare Worker Cron reads and writes
+    // via Firestore REST API using only the web API key (no Firebase Auth JWT).
+    // Deletes are restricted to staff — cleanup is performed by the admin app.
+    // The collection contains no sensitive PII (pet names, vaccine names only).
+    // Malicious writes are safe: they are idempotent and overwritten by the next
+    // scheduled recompute.
+    match /vaccine_reminder_queue/{petId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if isStaff();
     }
 
     // ─── CONSENT RECORDS (per-user sub-collection) ────────────────

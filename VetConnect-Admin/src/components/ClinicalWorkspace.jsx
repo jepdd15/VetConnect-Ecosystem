@@ -39,6 +39,7 @@ import { useClinicSettings } from '../hooks/useClinicSettings';
 import { useUser } from '../context/UserContext';
 import { chatWithHistory, buildUserMessage, DEFAULT_CLINICAL_SYSTEM_PROMPT } from '../utils/llmService';
 import { sendPushNotification } from '../utils/sendPushNotification';
+import { computeSinglePetVaccineReminder } from '../utils/vaccineReminderQueue';
 
 // Design Tokens
 import { FONT, TYPE, COLORS } from '../theme/designTokens';
@@ -1897,6 +1898,24 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         appointmentId: patient.id,
         visitGroupId: patient.visitGroupId,
         sentBy: vetName,
+      });
+
+      // T3.55: Fire-and-forget vaccine reminder queue update — recalculates
+      // this pet's due/overdue vaccine status after sign-off. The queue doc is
+      // written within seconds of consult completion, keeping the reminder queue
+      // fresh without waiting for the next weekly full recompute.
+      // This call MUST NOT block sign-off — errors are swallowed completely.
+      computeSinglePetVaccineReminder(
+        patient.petId,
+        {
+          petName:    patient.petName,
+          petSpecies: patient.petSpecies || '',
+          ownerName:  patient.ownerName || 'Walk-In Client',
+          ownerId:    patient.ownerId   || '',
+        },
+        clinicSettings,
+      ).catch((err) => {
+        console.error('[ClinicalWorkspace] Vaccine queue update failed (non-blocking):', err?.message);
       });
 
       // Set ref SYNCHRONOUSLY so unmount cleanup sees it immediately, before React

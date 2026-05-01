@@ -490,7 +490,8 @@ export default function Settings() {
           'minSlotInterval', 'advanceNoticeMins', 'maxFutureBookingDays', 'maxPetsPerBooking',
           'maxCages', 'autoNoShowMins', 'noShowLinkWindowDays', 'trafficModerate', 'trafficHigh',
           'workingDays', 'clinicPhone', 'dashboardAlerts', 'dashboardGoals',
-          'clinicLat', 'clinicLng', 'geofenceRadiusM', 'enableAppointmentReminders'];
+          'clinicLat', 'clinicLng', 'geofenceRadiusM', 'enableAppointmentReminders',
+          'enableVaccineReminders', 'vaccineReminderWindowDays', 'vaccineReminderCooldownDays'];
         const changedFields = {};
         tracked.forEach(key => {
           if (JSON.stringify(sanitizedSettings[key]) !== JSON.stringify(lastSavedSettings[key])) {
@@ -2976,6 +2977,54 @@ export default function Settings() {
                     </Box>
                   }
                 />
+              </Box>
+
+              {/* Vaccine Reminders config (T3.55) */}
+              <Box sx={{ mb: 3, p: 2, bgcolor: COLORS.cream, border: `2px solid ${COLORS.accent}22`, borderRadius: 0 }}>
+                <FormControlLabel
+                  control={
+                    <MedicinePillSwitch
+                      checked={settings.enableVaccineReminders !== false}
+                      onChange={(e) => handleChange('enableVaccineReminders', e.target.checked)}
+                    />
+                  }
+                  label={
+                    <Box>
+                      <Typography sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.accent, fontSize: '0.85rem' }}>
+                        Enable Vaccine Reminders
+                      </Typography>
+                      <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary, fontSize: '0.75rem' }}>
+                        When enabled, automated push notifications are sent daily at 9 AM to pet owners with
+                        due or overdue vaccinations. A manual "Send Now" button also appears on the Dashboard.
+                      </Typography>
+                    </Box>
+                  }
+                />
+
+                {settings.enableVaccineReminders !== false && (
+                  <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
+                    <TextField
+                      type="number"
+                      label="Reminder Window (days before due)"
+                      value={settings.vaccineReminderWindowDays ?? 30}
+                      onChange={(e) => handleChange('vaccineReminderWindowDays', parseInt(e.target.value) || 30)}
+                      inputProps={{ min: 7, max: 90 }}
+                      size="small"
+                      sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+                      InputLabelProps={{ sx: { fontFamily: FONT, fontSize: '0.8rem' } }}
+                    />
+                    <TextField
+                      type="number"
+                      label="Cooldown Period (days between sends)"
+                      value={settings.vaccineReminderCooldownDays ?? 7}
+                      onChange={(e) => handleChange('vaccineReminderCooldownDays', parseInt(e.target.value) || 7)}
+                      inputProps={{ min: 1, max: 30 }}
+                      size="small"
+                      sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+                      InputLabelProps={{ sx: { fontFamily: FONT, fontSize: '0.8rem' } }}
+                    />
+                  </Box>
+                )}
               </Box>
 
               {/* Placeholder reference guide */}

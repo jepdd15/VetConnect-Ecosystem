@@ -64,6 +64,14 @@ export const DEFAULT_TEMPLATES = {
     title: 'Appointment Tomorrow',
     body: "{petName}'s appointment is tomorrow at {time}. See you then!",
   },
+  'vaccine-due': {
+    title: 'Vaccination Reminder',
+    body: "Time for {petName}'s checkup! Their {vaccineName} vaccine is due in {days} days. Book a visit to keep them protected!",
+  },
+  'vaccine-overdue': {
+    title: 'Overdue Vaccination Alert',
+    body: "⚠ {petName}'s {vaccineName} vaccine is overdue by {days} days. Please book as soon as possible to keep them protected.",
+  },
 };
 
 // ─── Template Groups ────────────────────────────────────────────────────────
@@ -87,7 +95,7 @@ export const TEMPLATE_GROUPS = [
   {
     label: 'REMINDERS',
     description: 'Sent the day before a scheduled appointment.',
-    keys: ['reminder'],
+    keys: ['reminder', 'vaccine-due', 'vaccine-overdue'],
   },
 ];
 
@@ -106,7 +114,9 @@ export const STATUS_LABELS = {
   'no-show':       'No-Show',
   'carried-over':  'Carried Over',
   confined:        'Confined / Admitted',
-  reminder:        'Appointment Reminder',
+  reminder:          'Appointment Reminder',
+  'vaccine-due':     'Vaccine Due Reminder',
+  'vaccine-overdue': 'Vaccine Overdue Alert',
 };
 
 // ─── Status Chip Colors ─────────────────────────────────────────────────────
@@ -124,7 +134,9 @@ export const STATUS_CHIP_COLORS = {
   'no-show':      { bg: '#EFEBE9', text: '#5D4037',       border: '#BCAAA4' },
   'carried-over': { bg: '#EFEBE9', text: '#5D4037',       border: '#BCAAA4' },
   confined:       { bg: '#FEF2F2', text: '#C62828',       border: '#EF9A9A' },
-  reminder:       { bg: '#E3F2FD', text: '#1565C0',       border: '#90CAF9' },
+  reminder:          { bg: '#E3F2FD', text: '#1565C0',      border: '#90CAF9' },
+  'vaccine-due':     { bg: '#FFF7ED', text: '#E65100',      border: '#FDBA74' },
+  'vaccine-overdue': { bg: '#FEF2F2', text: COLORS.danger,  border: '#FCA5A5' },
 };
 
 // ─── Placeholder Reference ──────────────────────────────────────────────────
@@ -136,4 +148,6 @@ export const PLACEHOLDER_REFERENCE = [
   { token: '{amount}',       description: 'Total bill amount (completed only)' },
   { token: '{date}',         description: 'Appointment date (available for custom templates)' },
   { token: '{time}',         description: 'Scheduled appointment time (e.g., "2:00 PM")' },
+  { token: '{vaccineName}', description: 'Vaccine name (e.g., "Rabies") — vaccine reminders only' },
+  { token: '{days}',        description: 'Days until due or days overdue — vaccine reminders only' },
 ];

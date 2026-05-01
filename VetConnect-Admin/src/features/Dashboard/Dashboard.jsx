@@ -46,6 +46,9 @@ import { generateReportHTML, generateFullReportHTML } from './utils/generateRepo
 import { openPrintWindow } from '../../utils/printUtils';
 import AlertStrip from './components/AlertStrip';
 import ReminderWidget from './components/ReminderWidget';
+import { computeFullVaccineReminderQueue } from '../../utils/vaccineReminderQueue';
+import { doc, updateDoc, Timestamp } from 'firebase/firestore';
+import { db } from '../../firebaseConfig';
 
 // ── Tab registry ─────────────────────────────────────────────────
 // defaultPeriod is the period the hook uses when that tab is active.
@@ -170,6 +173,37 @@ export default function Dashboard() {
       if (interactionTimeout.current) clearTimeout(interactionTimeout.current);
     };
   }, []);
+
+  // T3.55: Weekly vaccine reminder queue recompute — runs once on the first
+  // Dashboard mount of each week. Uses clinic_settings.lastVaccineQueueRecomputeAt
+  // to determine if a recompute is needed. Fire-and-forget: never blocks render.
+  useEffect(() => {
+    if (data.loading) return;
+    if (clinicSettings.enableVaccineReminders === false) return;
+
+    const lastRecompute = clinicSettings.lastVaccineQueueRecomputeAt;
+    const lastMs = lastRecompute?.toDate
+      ? lastRecompute.toDate().getTime()
+      : (lastRecompute?.seconds ? lastRecompute.seconds * 1000 : 0);
+
+    const daysSinceRecompute = (Date.now() - lastMs) / 86400000;
+    if (daysSinceRecompute < 7) return; // Already recomputed this week
+
+    computeFullVaccineReminderQueue(clinicSettings)
+      .then(({ processed, queued, removed }) => {
+        console.info(
+          `[Dashboard] Vaccine queue recomputed: ${processed} pets processed, ` +
+          `${queued} queued, ${removed} removed.`,
+        );
+        updateDoc(doc(db, 'clinic_settings', 'general'), {
+          lastVaccineQueueRecomputeAt: Timestamp.now(),
+        }).catch(() => {});
+      })
+      .catch((err) => {
+        console.error('[Dashboard] Vaccine queue recompute failed:', err?.message);
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.loading, clinicSettings.enableVaccineReminders, clinicSettings.lastVaccineQueueRecomputeAt]);
 
   // Day 4: Insight engine — compute once per data/settings change
   const insights = useMemo(

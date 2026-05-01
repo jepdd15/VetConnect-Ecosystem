@@ -36,6 +36,7 @@ import {
   TapGestureHandler,
 } from 'react-native-gesture-handler';
 import { auth, db } from "../../firebaseConfig";
+import { useNetwork } from "../context/NetworkContext";
 import { useClinicContact } from "../hooks/useClinicContact";
 import { safeDate, formatDisplayDate } from "../utils/helpers";
 import { resolveDepartmentForRecord } from '../utils/resolveDepartmentForRecord';
@@ -512,6 +513,7 @@ export default function PetHistoryScreen({ route, navigation }) {
   // T4.107: Departments — one-shot fetch for dynamic filter chips
   const [departments, setDepartments] = useState([]);
   const { clinicPhone, clinicName } = useClinicContact();
+  const { isConnected } = useNetwork();
 
   // T4.97: AI Pet History Assistant — pet doc, worker URL, and sheet visibility
   const [petDoc, setPetDoc]               = useState(null);
@@ -1122,28 +1124,35 @@ export default function PetHistoryScreen({ route, navigation }) {
       orderBy("date", "desc"),
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const records = [];
-      snapshot.forEach((docSnap) => {
-        const data = docSnap.data();
-        // THE ARCHITECTURAL FIX: We no longer do N+1 Queries!
-        // We expect 'prescriptions' and 'serviceType' to live natively on this document.
-        records.push({
-          id: docSnap.id,
-          ...data,
-          prescriptions: (data.dispensedProducts || data.prescriptions || []).map(({ price, cost, unitPrice, ...rx }) => rx),
-          dischargeSummary: data.dischargeSummary ? {
-            ...data.dischargeSummary,
-            medications: (data.dischargeSummary.medications || []).map(({ price, cost, unitPrice, ...m }) => m),
-          } : undefined,
-          serviceType:
-            data.serviceType ||
-            (data.recordType === "grooming" ? "Grooming" : "Clinical Visit"),
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const records = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          // THE ARCHITECTURAL FIX: We no longer do N+1 Queries!
+          // We expect 'prescriptions' and 'serviceType' to live natively on this document.
+          records.push({
+            id: docSnap.id,
+            ...data,
+            prescriptions: (data.dispensedProducts || data.prescriptions || []).map(({ price, cost, unitPrice, ...rx }) => rx),
+            dischargeSummary: data.dischargeSummary ? {
+              ...data.dischargeSummary,
+              medications: (data.dischargeSummary.medications || []).map(({ price, cost, unitPrice, ...m }) => m),
+            } : undefined,
+            serviceType:
+              data.serviceType ||
+              (data.recordType === "grooming" ? "Grooming" : "Clinical Visit"),
+          });
         });
-      });
-      setHistory(records);
-      setLoading(false);
-    });
+        setHistory(records);
+        setLoading(false);
+      },
+      (error) => {
+        console.warn("[PetHistoryScreen] Records listener error:", error.message);
+        setLoading(false);
+      },
+    );
 
     return () => unsubscribe();
   }, [petId]);
@@ -2026,11 +2035,23 @@ export default function PetHistoryScreen({ route, navigation }) {
 
       <View style={styles.container}>
         {loading ? (
-          <ActivityIndicator
-            size="large"
-            color={COLORS.accent}
-            style={{ marginTop: 50 }}
-          />
+          !isConnected ? (
+            <View style={{ alignItems: 'center', marginTop: 60 }}>
+              <MaterialIcons name="wifi-off" size={48} color={COLORS.textMuted} />
+              <Text style={{ fontSize: 16, fontWeight: '900', color: COLORS.brand, letterSpacing: 1, textTransform: 'uppercase', marginTop: 12 }}>
+                NO INTERNET CONNECTION
+              </Text>
+              <Text style={{ fontSize: 13, color: COLORS.textMuted, marginTop: 6, textAlign: 'center', paddingHorizontal: 40 }}>
+                Connect to the internet to load medical records.
+              </Text>
+            </View>
+          ) : (
+            <ActivityIndicator
+              size="large"
+              color={COLORS.accent}
+              style={{ marginTop: 50 }}
+            />
+          )
         ) : (
           <FlatList
             data={filteredHistory}

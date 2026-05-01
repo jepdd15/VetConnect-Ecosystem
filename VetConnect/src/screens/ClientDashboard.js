@@ -17,6 +17,8 @@ import {
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
+  Alert,
+  Animated,
   Platform,
   Pressable,
   ScrollView,
@@ -24,13 +26,13 @@ import {
   Text,
   TouchableOpacity,
   View,
-  Animated,
 } from "react-native";
 import { auth, db } from "../../firebaseConfig";
 import { getClientStatusLabel } from "../utils/statusLabels";
 import { safeDate, getLocalDateStr } from "../utils/helpers";
 import { COLORS, FONTS } from "../theme/mobileTokens";
 import { useConsentGate } from "../hooks/useConsentGate";
+import { useNetwork } from "../context/NetworkContext";
 
 // --- PUSH NOTIFICATION IMPORTS ---
 import Constants from "expo-constants";
@@ -66,6 +68,7 @@ const ClientDashboard = ({ navigation }) => {
   // flag instead of forcing a re-fetch on focus.
   const [consentCompleted, setConsentCompleted] = useState(false);
   const [waiverBannerVisible, setWaiverBannerVisible] = useState(true);
+  const { isConnected } = useNetwork();
   const userId = auth.currentUser?.uid ?? null;
   const {
     loading: consentLoading,
@@ -82,6 +85,19 @@ const ClientDashboard = ({ navigation }) => {
         Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
       ])
     ).start();
+  }, []);
+
+  // Loading timeout safety net — prevents infinite spinners if all listeners fail.
+  // The active appointments listener (line ~256) sets setLoading(false) on both success
+  // and error, but this 10s fallback guards against any edge case.
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setLoading((prev) => {
+        if (prev) console.warn("[ClientDashboard] Loading timeout — forcing false");
+        return false;
+      });
+    }, 10000);
+    return () => clearTimeout(timeout);
   }, []);
 
   // ======================================================================
@@ -225,9 +241,15 @@ const ClientDashboard = ({ navigation }) => {
   // ======================================================================
   useEffect(() => {
     if (!auth.currentUser) return;
-    const unsubProfile = onSnapshot(doc(db, "users", auth.currentUser.uid), (doc) => {
-      if (doc.exists()) setUserProfile(doc.data());
-    });
+    const unsubProfile = onSnapshot(
+      doc(db, "users", auth.currentUser.uid),
+      (docSnap) => {
+        if (docSnap.exists()) setUserProfile(docSnap.data());
+      },
+      (error) => {
+        console.warn("[ClientDashboard] Profile listener error:", error.message);
+      },
+    );
     return () => unsubProfile();
   }, []);
 
@@ -308,14 +330,20 @@ const ClientDashboard = ({ navigation }) => {
       where("scheduledDateStr", "==", todayStr)
     );
 
-    const unsubQueue = onSnapshot(q, (snap) => {
-      let ahead = 0;
-      snap.forEach(d => {
-        const data = d.data();
-        if (data.queueNumber < arrivedAppt.queueNumber && d.id !== arrivedAppt.id) ahead++;
-      });
-      setQueueAhead(ahead);
-    });
+    const unsubQueue = onSnapshot(
+      q,
+      (snap) => {
+        let ahead = 0;
+        snap.forEach(d => {
+          const data = d.data();
+          if (data.queueNumber < arrivedAppt.queueNumber && d.id !== arrivedAppt.id) ahead++;
+        });
+        setQueueAhead(ahead);
+      },
+      (error) => {
+        console.warn("[ClientDashboard] Queue ahead listener error:", error.message);
+      },
+    );
 
     return () => unsubQueue();
   }, [activeAppointments]);
@@ -373,7 +401,9 @@ const ClientDashboard = ({ navigation }) => {
       where('ownerId', '==', auth.currentUser.uid),
     );
 
-    const unsubPets = onSnapshot(petsQuery, async (petsSnap) => {
+    const unsubPets = onSnapshot(
+      petsQuery,
+      async (petsSnap) => {
       const alerts = [];
       const now = new Date();
       const thirtyDaysFromNow = new Date(now);
@@ -437,7 +467,11 @@ const ClientDashboard = ({ navigation }) => {
       }
 
       if (mounted) setVaccineAlerts(alerts);
-    });
+      },
+      (error) => {
+        console.warn("[ClientDashboard] Vaccine alerts listener error:", error.message);
+      },
+    );
 
     return () => {
       mounted = false;
@@ -446,8 +480,21 @@ const ClientDashboard = ({ navigation }) => {
   }, []);
 
   const handleLogout = () => {
-    auth.signOut();
-    navigation.replace("Login");
+    Alert.alert(
+      "Log Out",
+      "Are you sure you want to log out?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Log Out",
+          style: "destructive",
+          onPress: () => {
+            auth.signOut();
+            navigation.replace("Login");
+          },
+        },
+      ],
+    );
   };
 
   // Writes confirmedByClient to the appointment document from the dashboard card.
@@ -681,6 +728,23 @@ const ClientDashboard = ({ navigation }) => {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* --- LOADING / OFFLINE STATE --- */}
+      {loading && (
+        <View style={styles.loadingContainer}>
+          {!isConnected ? (
+            <>
+              <MaterialIcons name="wifi-off" size={48} color={COLORS.muted} />
+              <Text style={styles.offlineTitle}>NO INTERNET CONNECTION</Text>
+              <Text style={styles.offlineMsg}>
+                Connect to the internet to load your dashboard.
+              </Text>
+            </>
+          ) : (
+            <Text style={styles.offlineMsg}>Loading your dashboard...</Text>
+          )}
+        </View>
+      )}
 
       {/* --- ACTIVE STATUS FEED --- */}
       {!loading && activeAppointments.length > 0 && (
@@ -1131,6 +1195,29 @@ const styles = StyleSheet.create({
   queueProgressBar: { height: 10, backgroundColor: 'rgba(0,0,0,0.1)', borderWidth: 2, borderColor: '#3E2723', overflow: 'hidden', marginBottom: 5 },
   queueProgressFill: { height: '100%' },
   queueAheadText: { fontSize: 12, fontWeight: '900' },
+
+  // LOADING / OFFLINE STATE
+  loadingContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  offlineTitle: {
+    fontFamily: 'Inter_900Black',
+    fontSize: 16,
+    color: COLORS.brand,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginTop: 12,
+  },
+  offlineMsg: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    color: COLORS.textMuted,
+    marginTop: 6,
+    textAlign: 'center',
+    paddingHorizontal: 40,
+  },
 });
 
 export default ClientDashboard;

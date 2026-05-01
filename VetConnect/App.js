@@ -3,7 +3,11 @@
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
 import * as SplashScreen from "expo-splash-screen";
+import { onAuthStateChanged } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 import { useCallback, useEffect, useState } from "react";
+import { auth, db } from "./firebaseConfig";
+import { NetworkProvider } from "./src/context/NetworkContext";
 import {
   useFonts,
   Inter_400Regular,
@@ -53,20 +57,59 @@ export default function App() {
     Inter_900Black,
   });
 
+  const [authResolved, setAuthResolved] = useState(false);
+  const [initialRoute, setInitialRoute] = useState("Login");
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        try {
+          const userSnap = await getDoc(doc(db, "users", user.uid));
+          if (userSnap.exists()) {
+            const data = userSnap.data();
+            if (data.disabled === true) {
+              await auth.signOut();
+              setInitialRoute("Login");
+            } else {
+              const staffRoles = ["admin", "staff", "veterinarian", "groomer"];
+              if (staffRoles.includes(data.role) || staffRoles.includes(data.accessLevel)) {
+                setInitialRoute("StaffDashboard");
+              } else {
+                setInitialRoute("ClientDashboard");
+              }
+            }
+          } else {
+            await auth.signOut();
+            setInitialRoute("Login");
+          }
+        } catch {
+          // Offline + no cached user doc: route to dashboard since auth token is valid
+          setInitialRoute("ClientDashboard");
+        }
+      } else {
+        setInitialRoute("Login");
+      }
+      setAuthResolved(true);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
   const onLayoutRootView = useCallback(async () => {
     if (fontsLoaded) {
       await SplashScreen.hideAsync();
     }
   }, [fontsLoaded]);
 
-  if (!fontsLoaded) {
-    return null;
+  if (!fontsLoaded || !authResolved) {
+    return null; // SplashScreen.preventAutoHideAsync() keeps native splash visible
   }
 
   return (
+    <NetworkProvider>
     <NavigationContainer onReady={onLayoutRootView}>
       <Stack.Navigator
-        initialRouteName="Login"
+        initialRouteName={initialRoute}
         screenOptions={{
           headerStyle: { backgroundColor: "#3E2723", borderBottomWidth: 0, elevation: 0, shadowOpacity: 0 }, // Coffee Brown Header
           headerTintColor: "#FAF9F7", // Cream text
@@ -213,5 +256,6 @@ export default function App() {
         />
       </Stack.Navigator>
     </NavigationContainer>
+    </NetworkProvider>
   );
 }

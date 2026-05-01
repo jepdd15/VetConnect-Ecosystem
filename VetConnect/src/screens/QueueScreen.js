@@ -18,6 +18,7 @@ import {
 } from "react-native";
 import { auth, db } from "../../firebaseConfig";
 import { COLORS, FONTS, TYPE, SPACING } from "../theme/mobileTokens";
+import { useNetwork } from "../context/NetworkContext";
 import { getClientStatusLabel, isActiveStatus } from "../utils/statusLabels";
 
 /**
@@ -43,13 +44,22 @@ export default function QueueScreen() {
   const [countdown, setCountdown] = useState(null);
   const [avgWaitMins, setAvgWaitMins] = useState(null);
   const [lateSent, setLateSent] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
   const prevAheadRef = useRef(null);
+  const { isConnected } = useNetwork();
 
   // 1. Listen to Global Queue (Now Serving)
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, "queue", "daily_queue"), (d) => {
-      if (d.exists()) setQueueData(d.data());
-    });
+    const unsub = onSnapshot(
+      doc(db, "queue", "daily_queue"),
+      (d) => {
+        if (d.exists()) setQueueData(d.data());
+        setLastUpdated(new Date());
+      },
+      (error) => {
+        console.warn("[QueueScreen] Queue data error:", error.message);
+      },
+    );
     return () => unsub();
   }, []);
 
@@ -79,18 +89,24 @@ export default function QueueScreen() {
         ]),
       );
 
-      unsubFirestore = onSnapshot(q, (snapshot) => {
-        if (!snapshot.empty) {
-          const sortedDocs = snapshot.docs
-            .map((d) => ({ id: d.id, ...d.data() }))
-            .sort((a, b) => (a.queueNumber || 999) - (b.queueNumber || 999));
-          setMyTicket(sortedDocs[0]);
-          setAllTickets(sortedDocs);
-        } else {
-          setMyTicket(null);
-          setAllTickets([]);
-        }
-      });
+      unsubFirestore = onSnapshot(
+        q,
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const sortedDocs = snapshot.docs
+              .map((d) => ({ id: d.id, ...d.data() }))
+              .sort((a, b) => (a.queueNumber || 999) - (b.queueNumber || 999));
+            setMyTicket(sortedDocs[0]);
+            setAllTickets(sortedDocs);
+          } else {
+            setMyTicket(null);
+            setAllTickets([]);
+          }
+        },
+        (error) => {
+          console.warn("[QueueScreen] My ticket error:", error.message);
+        },
+      );
     });
 
     return () => {
@@ -115,20 +131,26 @@ export default function QueueScreen() {
       where("scheduledDate", "<", endOfDay),
     );
 
-    const unsubLobby = onSnapshot(qLobby, (snapshot) => {
-      // Strip to calculation-only fields -- no PII leaves this callback
-      setLobbyPatients(
-        snapshot.docs.map((d) => {
-          const data = d.data();
-          return {
-            queueNumber: data.queueNumber ?? null,
-            serviceDuration: data.serviceDuration ?? null,
-            serviceType: data.serviceType ?? null,
-            priority: data.priority ?? null,
-          };
-        })
-      );
-    });
+    const unsubLobby = onSnapshot(
+      qLobby,
+      (snapshot) => {
+        // Strip to calculation-only fields -- no PII leaves this callback
+        setLobbyPatients(
+          snapshot.docs.map((d) => {
+            const data = d.data();
+            return {
+              queueNumber: data.queueNumber ?? null,
+              serviceDuration: data.serviceDuration ?? null,
+              serviceType: data.serviceType ?? null,
+              priority: data.priority ?? null,
+            };
+          })
+        );
+      },
+      (error) => {
+        console.warn("[QueueScreen] Lobby error:", error.message);
+      },
+    );
     return () => unsubLobby();
   }, []);
 
@@ -299,6 +321,13 @@ export default function QueueScreen() {
           </Text>
         </View>
       </View>
+
+      {/* Offline staleness indicator — only visible when offline and data has been loaded */}
+      {!isConnected && lastUpdated && (
+        <Text style={styles.staleNote}>
+          LAST UPDATED: {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </Text>
+      )}
 
       {/* --- PERSONAL DISPLAY --- */}
       {myTicket ? (
@@ -812,5 +841,16 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
     marginTop: 5,
     paddingHorizontal: 20,
+  },
+
+  // Offline staleness indicator — shown below the Now Serving circle when offline
+  staleNote: {
+    fontFamily: FONTS.regular,
+    fontSize: 11,
+    color: COLORS.muted,
+    textAlign: 'center',
+    marginTop: 4,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
 });

@@ -48,6 +48,7 @@ import { useClinicContact } from "../hooks/useClinicContact";
 import { formatFirestoreTime, formatDisplayDate, getLocalDateStr } from '../utils/helpers';
 import { COLORS } from '../theme/mobileTokens';
 import { buildCaseChains } from '../utils/buildCaseChains';
+import { useNetwork } from "../context/NetworkContext";
 
 const ICONS = {
   Consultation: "🩺",
@@ -88,6 +89,7 @@ const ClientAppointments = ({ navigation }) => {
   const [parentRecords, setParentRecords] = useState({});
 
   const { clinicPhone, clinicAddress } = useClinicContact();
+  const { isConnected } = useNetwork();
 
   const [queueAhead, setQueueAhead] = useState(null);
 
@@ -146,29 +148,36 @@ const ClientAppointments = ({ navigation }) => {
       orderBy("createdAt", "desc"),
     );
 
-    const unsub = onSnapshot(q, (snapshot) => {
-      const list = [];
-      snapshot.forEach((docSnap) => {
-        list.push({ id: docSnap.id, ...docSnap.data() });
-      });
-      setAppointments(list);
-      setLoading(false);
+    const unsub = onSnapshot(
+      q,
+      (snapshot) => {
+        const list = [];
+        snapshot.forEach((docSnap) => {
+          list.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        setAppointments(list);
+        setLoading(false);
 
-      // Only re-fetch sales/parent records when the relevant ID sets change
-      const completedKey = list.filter(a => a.status === 'completed').map(a => a.id).sort().join(',');
-      const parentKey = list
-        .filter(a => a.isFollowUp && a.status === 'pending' && a.parentRecordId)
-        .map(a => a.parentRecordId).sort().join(',');
+        // Only re-fetch sales/parent records when the relevant ID sets change
+        const completedKey = list.filter(a => a.status === 'completed').map(a => a.id).sort().join(',');
+        const parentKey = list
+          .filter(a => a.isFollowUp && a.status === 'pending' && a.parentRecordId)
+          .map(a => a.parentRecordId).sort().join(',');
 
-      if (completedKey !== prevCompletedIdsRef.current) {
-        prevCompletedIdsRef.current = completedKey;
-        fetchSalesForCompleted(list);
-      }
-      if (parentKey !== prevParentIdsRef.current) {
-        prevParentIdsRef.current = parentKey;
-        fetchParentRecords(list);
-      }
-    });
+        if (completedKey !== prevCompletedIdsRef.current) {
+          prevCompletedIdsRef.current = completedKey;
+          fetchSalesForCompleted(list);
+        }
+        if (parentKey !== prevParentIdsRef.current) {
+          prevParentIdsRef.current = parentKey;
+          fetchParentRecords(list);
+        }
+      },
+      (error) => {
+        console.warn("[ClientAppointments] Listener error:", error.message);
+        setLoading(false);
+      },
+    );
     return () => unsub();
   }, []);
 
@@ -191,14 +200,20 @@ const ClientAppointments = ({ navigation }) => {
       where("scheduledDateStr", "==", todayStr)
     );
 
-    const unsubQueue = onSnapshot(q, (snap) => {
-      let ahead = 0;
-      snap.forEach(d => {
-        const data = d.data();
-        if (data.queueNumber < activeArrivedQueueNum && d.id !== activeArrivedId) ahead++;
-      });
-      setQueueAhead(ahead);
-    });
+    const unsubQueue = onSnapshot(
+      q,
+      (snap) => {
+        let ahead = 0;
+        snap.forEach(d => {
+          const data = d.data();
+          if (data.queueNumber < activeArrivedQueueNum && d.id !== activeArrivedId) ahead++;
+        });
+        setQueueAhead(ahead);
+      },
+      (error) => {
+        console.warn("[ClientAppointments] Queue ahead error:", error.message);
+      },
+    );
 
     return () => unsubQueue();
   }, [activeArrivedId, activeArrivedQueueNum]);
@@ -1166,21 +1181,33 @@ const ClientAppointments = ({ navigation }) => {
           contentContainerStyle={{ paddingBottom: 20 }}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Text style={{ fontSize: 40 }}>📭</Text>
-              <Text style={styles.empty}>
-                No {tab} records match your filters.
-              </Text>
-              <TouchableOpacity
-                style={{ marginTop: 15, padding: 10 }}
-                onPress={() => {
-                  setSelectedPetFilter("All Pets");
-                  setSelectedServiceFilter("All Services");
-                }}
-              >
-                <Text style={{ color: COLORS.accent, fontWeight: "bold" }}>
-                  Clear Filters
-                </Text>
-              </TouchableOpacity>
+              {!isConnected ? (
+                <>
+                  <Text style={{ fontSize: 40 }}>📡</Text>
+                  <Text style={styles.empty}>OFFLINE</Text>
+                  <Text style={{ color: COLORS.accent, fontSize: 13, textAlign: 'center', marginTop: 6 }}>
+                    Your bookings will appear when you reconnect.
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={{ fontSize: 40 }}>📭</Text>
+                  <Text style={styles.empty}>
+                    No {tab} records match your filters.
+                  </Text>
+                  <TouchableOpacity
+                    style={{ marginTop: 15, padding: 10 }}
+                    onPress={() => {
+                      setSelectedPetFilter("All Pets");
+                      setSelectedServiceFilter("All Services");
+                    }}
+                  >
+                    <Text style={{ color: COLORS.accent, fontWeight: "bold" }}>
+                      Clear Filters
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
           }
         />

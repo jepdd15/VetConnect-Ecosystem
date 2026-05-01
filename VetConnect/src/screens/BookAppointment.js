@@ -34,6 +34,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context"; // <-- THE F
 import { useBookingEngine } from "../hooks/useBookingEngine";
 import { formatDisplayDate, formatDisplayTime, getLocalDateStr, resolveTieredPrice } from '../utils/helpers';
 import { COLORS } from '../theme/mobileTokens';
+import { useNetwork } from "../context/NetworkContext";
 
 export default function BookAppointment({ navigation, route }) {
   const insets = useSafeAreaInsets();
@@ -87,6 +88,8 @@ export default function BookAppointment({ navigation, route }) {
   // --- NO-SHOW DETECTION ---
   // Populated after pet selection. Shown as an informational warning banner.
   const [noShowInfo, setNoShowInfo] = useState(null);
+
+  const { isConnected } = useNetwork();
 
   // THE FIX: Destructuring clinicSettings from the hook!
   const {
@@ -589,6 +592,14 @@ export default function BookAppointment({ navigation, route }) {
 
   // --- THE FATAL FLAW FIX: JIT CONCURRENCY CHECK (Now Multi-Service Aware!) ---
   const submitBooking = async () => {
+    if (!isConnected) {
+      Alert.alert(
+        "No Internet Connection",
+        "Booking requires an active internet connection. Please check your network and try again.",
+      );
+      return;
+    }
+
     setLoading(true);
     try {
       const [hours, minutes] = selectedSlot.split(":");
@@ -1565,6 +1576,7 @@ export default function BookAppointment({ navigation, route }) {
             style={[
               styles.nextBtn,
               (loading ||
+                (!isConnected && step === 4 && !rescheduleMode) ||
                 (step === 1 && selectedPets.length === 0) ||
                 (step === 2 && selectedServices.length === 0) ||
                 (step === 3 && !selectedSlot) ||
@@ -1574,6 +1586,7 @@ export default function BookAppointment({ navigation, route }) {
             onPress={handleNext}
             disabled={
               loading ||
+              (!isConnected && step === 4 && !rescheduleMode) ||
               (rescheduleMode && step === 4 && rescheduleReason.trim() === '')
             }
           >
@@ -1584,13 +1597,16 @@ export default function BookAppointment({ navigation, route }) {
                 style={[
                   styles.nextBtnText,
                   (loading ||
+                    (!isConnected && step === 4 && !rescheduleMode) ||
                     (step === 1 && selectedPets.length === 0) ||
                     (step === 2 && selectedServices.length === 0) ||
                     (step === 3 && !selectedSlot) ||
                     (rescheduleMode && step === 4 && rescheduleReason.trim() === '')) && { color: "#9E9E9E" },
                 ]}
               >
-                {getButtonText()}
+                {!isConnected && step === 4 && !rescheduleMode
+                  ? "OFFLINE — CONNECT TO BOOK"
+                  : getButtonText()}
               </Text>
             )}
           </TouchableOpacity>

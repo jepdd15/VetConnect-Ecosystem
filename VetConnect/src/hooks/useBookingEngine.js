@@ -46,22 +46,35 @@ export function useBookingEngine(date, selectedServices = [], selectedPets) {
       collection(db, "pets"),
       where("ownerId", "==", auth.currentUser.uid),
     );
-    const unsubscribePets = onSnapshot(qPets, (snapshot) => {
-      const activePets = snapshot.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .filter((p) => p.status !== "archived");
-      setPets(activePets);
-    });
+    const unsubscribePets = onSnapshot(
+      qPets,
+      (snapshot) => {
+        const activePets = snapshot.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .filter((p) => p.status !== "archived");
+        setPets(activePets);
+      },
+      (error) => {
+        console.warn("[useBookingEngine] Pets listener error:", error.message);
+        setFetching(false);
+      },
+    );
 
     // B. T2.5: Real-Time Listener for Clinic Settings
     // Replaces the one-shot getDoc so setting changes (closed dates, hours, etc.)
     // reflect immediately without remounting the screen.
     const settingsRef = doc(db, "clinic_settings", "general");
-    const unsubscribeSettings = onSnapshot(settingsRef, (snap) => {
-      if (snap.exists()) {
-        setClinicSettings((prev) => ({ ...prev, ...snap.data() }));
-      }
-    });
+    const unsubscribeSettings = onSnapshot(
+      settingsRef,
+      (snap) => {
+        if (snap.exists()) {
+          setClinicSettings((prev) => ({ ...prev, ...snap.data() }));
+        }
+      },
+      (error) => {
+        console.warn("[useBookingEngine] Settings listener error:", error.message);
+      },
+    );
 
     // C. Fetch Remaining Ecosystem (Services, Staff) — one-shot reads are fine here
     const fetchEcosystem = async () => {
@@ -100,8 +113,8 @@ export function useBookingEngine(date, selectedServices = [], selectedPets) {
         // Save the math to our new state variable
         setDepartmentCapacity(deptCounts);
         setFetching(false);
-      } catch (err) {
-        console.error(err);
+      } catch (error) {
+        console.warn("[useBookingEngine] fetchEcosystem error:", error.message);
         setFetching(false);
       }
     };
@@ -147,8 +160,8 @@ export function useBookingEngine(date, selectedServices = [], selectedPets) {
       if (total < modLimit) setBusynessLevel("low");
       else if (total < highLimit) setBusynessLevel("moderate");
       else setBusynessLevel("high");
-    } catch (e) {
-      console.log(e);
+    } catch (error) {
+      console.warn("[useBookingEngine] fetchSlots error:", error.message);
     }
   };
 
@@ -180,9 +193,16 @@ export function useBookingEngine(date, selectedServices = [], selectedPets) {
         where("scheduledDate", "<=", Timestamp.fromDate(endOfDay)),
         where("status", "in", ["pending", "confirmed"]),
       );
-      const snap = await getDocs(q);
-      if (!cancelled) {
-        setDayAppointments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      try {
+        const snap = await getDocs(q);
+        if (!cancelled) {
+          setDayAppointments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        }
+      } catch (error) {
+        console.warn("[useBookingEngine] slot availability error:", error.message);
+        if (!cancelled) {
+          setDayAppointments([]);
+        }
       }
     };
     fetchDayAppts();

@@ -504,7 +504,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                 caseDay: (patient.caseDay || 1) + 1,
                 // T3.70: Structured notes propagation — legacy `notes` excluded via destructure above.
                 clientNotes: carryClientNotes,
-                staffNotes: `${triagePrefix} ${carryStaffNotes}`,
+                staffNotes: carryStaffNotes,
                 systemChips: [...existingChips.filter(c => c !== 'CARRY-OVER'), 'CARRY-OVER'],
                 processedBy: staffSignature,
                 assignedVet: action === 'hospitalize' ? (patient.assignedVet || "Unassigned") : "Unassigned",
@@ -1195,7 +1195,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           queueNumber: null,
           ticketPrefix: null,
           clientNotes: carryClientNotes,
-          staffNotes: `${triagePrefix} ${carryStaffNotes}`,
+          staffNotes: carryStaffNotes,
           systemChips: [...existingChips.filter(c => c !== 'CARRY-OVER'), 'CARRY-OVER'],
           assignedVet: 'Unassigned',
           assignedVetId: null,

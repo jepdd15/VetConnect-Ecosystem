@@ -633,27 +633,68 @@ export default function PetHistoryScreen({ route, navigation }) {
     return result;
   }, [history, activeFilter, searchText, departments]);
 
-  // T3.97: Aggregate prescription frequency across all history records.
-  // Sorted descending by count so the most-prescribed medications appear first.
-  const prescriptionFrequency = useMemo(() => {
+  // T4.122: Active/historical prescription split — matches admin PatientDashboard pattern.
+  // Active = prescribed in last 90 days OR pinned by the vet. Historical = older, not pinned.
+  // Read-only: pet owners cannot pin/unpin (that's a vet action on the admin dashboard).
+  const { activeRx, historicalRx } = useMemo(() => {
     const rxMap = new Map();
-    (history || []).forEach(r => {
-      (r.dispensedProducts || r.prescriptions || []).filter(rx => rx.isDrug).forEach(rx => {
+    const sortedHistory = [...(history || [])].sort((a, b) => {
+      const aMs = a.date?.seconds ? a.date.seconds * 1000 : 0;
+      const bMs = b.date?.seconds ? b.date.seconds * 1000 : 0;
+      return aMs - bMs; // oldest first so lastDate = final write
+    });
+    sortedHistory.forEach(r => {
+      (r.dispensedProducts || r.prescriptions || []).forEach(rx => {
         if (!rx.name) return;
+        if (!rx.isDrug && !rx.isMedicine) return;
+        const ms = r.date?.seconds ? r.date.seconds * 1000 : 0;
+        const dateStr = ms
+          ? new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+          : '';
+        const shortDate = ms
+          ? new Date(ms).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+          : '';
         const existing = rxMap.get(rx.name);
         if (existing) {
           existing.count += 1;
+          existing.lastDate = dateStr;
+          existing.lastRawMs = ms;
+          existing.lastShort = shortDate;
+          existing.lastInstructions = rx.instructions || existing.lastInstructions;
         } else {
           rxMap.set(rx.name, {
             name: rx.name,
             count: 1,
+            lastDate: dateStr,
+            firstDate: dateStr,
+            firstShort: shortDate,
+            lastShort: shortDate,
+            lastRawMs: ms,
             lastInstructions: rx.instructions || '',
           });
         }
       });
     });
-    return Array.from(rxMap.values()).sort((a, b) => b.count - a.count);
-  }, [history]);
+
+    const all = Array.from(rxMap.values()).sort((a, b) => b.count - a.count);
+    const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const pinned = petDoc?.pinnedMedications || [];
+
+    const active = [];
+    const historical = [];
+    all.forEach(rx => {
+      const isRecent = (now - rx.lastRawMs) <= NINETY_DAYS_MS;
+      const isPinned = pinned.includes(rx.name);
+      if (isRecent || isPinned) {
+        active.push({ ...rx, isPinned });
+      } else {
+        historical.push({ ...rx, isPinned: false });
+      }
+    });
+
+    return { activeRx: active, historicalRx: historical };
+  }, [history, petDoc?.pinnedMedications]);
 
   // T3.93 / T4.113: Derive chart-ready arrays for all 7 vital signs.
   // History is newest-first from Firestore — reverse for left-to-right time axis.
@@ -684,8 +725,9 @@ export default function PetHistoryScreen({ route, navigation }) {
 
   // T3.93: Collapsible state for the vitals trends card.
   const [trendsExpanded, setTrendsExpanded] = useState(false);
-  // T3.97: Collapsible state for the prescription frequency card.
-  const [rxFreqExpanded, setRxFreqExpanded] = useState(false);
+  // T4.122: Collapsible state for the medications card (active/historical split).
+  const [rxExpanded, setRxExpanded] = useState(false);
+  const [showHistoricalRx, setShowHistoricalRx] = useState(false);
   // T4.113: Zoom modal state — tracks which vital key is currently expanded.
   const [vitalsZoom, setVitalsZoom] = useState({ open: false, key: null });
 
@@ -720,7 +762,7 @@ export default function PetHistoryScreen({ route, navigation }) {
     // T4.113: Card shows when any vital has at least 1 reading (was >= 2).
     // SparkLine handles the 1-point graceful fallback internally.
     const hasTrends = Object.values(vitalsChartData).some(arr => arr.length >= 1);
-    const hasRx = prescriptionFrequency.length > 0;
+    const hasRx = activeRx.length > 0 || historicalRx.length > 0;
     // T4.118: Show the header whenever there are species-relevant catalog vaccines
     // OR the pet already has vaccine records (even if catalog is still loading).
     const hasVaxStatus = vaccinationStatuses.length > 0 || vaccineRecords.length > 0;
@@ -791,41 +833,105 @@ export default function PetHistoryScreen({ route, navigation }) {
           <View style={styles.rxFreqCard}>
             <TouchableOpacity
               style={styles.rxFreqHeader}
-              onPress={() => setRxFreqExpanded(prev => !prev)}
+              onPress={() => setRxExpanded(prev => !prev)}
             >
               <Text style={styles.rxFreqTitle}>
-                Frequently Prescribed ({prescriptionFrequency.length})
+                YOUR PET'S MEDICATIONS ({activeRx.length + historicalRx.length})
               </Text>
               <MaterialIcons
-                name={rxFreqExpanded ? 'expand-less' : 'expand-more'}
+                name={rxExpanded ? 'expand-less' : 'expand-more'}
                 size={20}
                 color={COLORS.accent}
               />
             </TouchableOpacity>
-            {rxFreqExpanded && (
+            {rxExpanded && (
               <View style={styles.rxFreqBody}>
-                {prescriptionFrequency.slice(0, 10).map((rx, i) => (
-                  <View key={i} style={styles.rxFreqRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.rxFreqName}>{rx.name}</Text>
-                      {rx.lastInstructions ? (
-                        <Text style={styles.rxFreqSig}>{rx.lastInstructions}</Text>
-                      ) : null}
-                    </View>
-                    <View style={styles.rxFreqCountBadge}>
-                      <Text style={styles.rxFreqCountText}>{rx.count}x</Text>
-                    </View>
+                {/* Active Medications */}
+                {activeRx.length > 0 && (
+                  <View>
+                    <Text style={styles.rxSectionLabel}>ACTIVE MEDICATIONS</Text>
+                    {activeRx.map((rx, i) => (
+                      <View key={i} style={styles.rxFreqRow}>
+                        <View style={{ flex: 1 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <Text style={styles.rxFreqName}>{rx.name}</Text>
+                            {rx.isPinned && (
+                              <Text style={{ fontSize: 11, color: COLORS.warning }}>📌</Text>
+                            )}
+                          </View>
+                          {rx.lastInstructions ? (
+                            <Text style={styles.rxFreqSig}>{rx.lastInstructions}</Text>
+                          ) : null}
+                          <Text style={styles.rxTenure}>
+                            {rx.firstShort !== rx.lastShort
+                              ? `${rx.firstShort} → ${rx.lastShort}`
+                              : rx.lastDate}
+                          </Text>
+                          {rx.isPinned && (
+                            <Text style={styles.rxPinnedNote}>
+                              Ongoing — last prescribed {Math.round((Date.now() - rx.lastRawMs) / 86400000)}d ago
+                            </Text>
+                          )}
+                        </View>
+                        <View style={styles.rxFreqCountBadge}>
+                          <Text style={styles.rxFreqCountText}>{rx.count}x</Text>
+                        </View>
+                      </View>
+                    ))}
                   </View>
-                ))}
+                )}
+
+                {activeRx.length === 0 && (
+                  <Text style={styles.rxEmptyText}>No active medications</Text>
+                )}
+
+                {/* Historical Medications — collapsed by default */}
+                {historicalRx.length > 0 && (
+                  <View style={styles.rxHistoricalSection}>
+                    <TouchableOpacity
+                      style={styles.rxHistoricalToggle}
+                      onPress={() => setShowHistoricalRx(prev => !prev)}
+                    >
+                      <Text style={styles.rxHistoricalToggleText}>
+                        {showHistoricalRx ? 'Hide' : 'Show'} {historicalRx.length} older
+                      </Text>
+                      <MaterialIcons
+                        name={showHistoricalRx ? 'expand-less' : 'expand-more'}
+                        size={16}
+                        color={COLORS.textMuted}
+                      />
+                    </TouchableOpacity>
+                    {showHistoricalRx && (
+                      <View style={{ gap: 10, marginTop: 8 }}>
+                        {historicalRx.map((rx, i) => (
+                          <View key={i} style={[styles.rxFreqRow, { opacity: 0.65 }]}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.rxFreqName}>{rx.name}</Text>
+                              <Text style={styles.rxTenure}>
+                                {rx.firstShort !== rx.lastShort
+                                  ? `${rx.firstShort} → ${rx.lastShort}`
+                                  : rx.lastDate}
+                              </Text>
+                            </View>
+                            <View style={[styles.rxFreqCountBadge, styles.rxHistoricalBadge]}>
+                              <Text style={[styles.rxFreqCountText, { color: COLORS.textMuted }]}>{rx.count}x</Text>
+                            </View>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                )}
               </View>
             )}
           </View>
         )}
       </View>
     );
-  }, [vitalsChartData, trendsExpanded, prescriptionFrequency, rxFreqExpanded, petSpecies,
-      vaccinationStatuses, vaccineCompleteness, vaccineRecords, vaccineCatalog,
-      handleDownloadPassport]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vitalsChartData, trendsExpanded, activeRx, historicalRx, showHistoricalRx, rxExpanded,
+      petSpecies, vaccinationStatuses, vaccineCompleteness, vaccineRecords, vaccineCatalog,
+      clinicName]);
 
   useEffect(() => {
     const q = query(
@@ -911,12 +1017,12 @@ export default function PetHistoryScreen({ route, navigation }) {
       rxHtml = [
         medications.length > 0
           ? `<h3>Prescribed Medications</h3><ul>${medications.map((rx) =>
-              `<li><b>${esc(rx.name)}</b>: ${esc(rx.instructions || "Use as directed")}</li>`
+              `<li><b>${esc(rx.name)}${rx.qty ? ` x${esc(rx.qty)}` : ''}</b>: ${esc(rx.instructions || "Use as directed")}</li>`
             ).join("")}</ul>`
           : '',
         nonDrugItems.length > 0
-          ? `<h3>Other Items Dispensed</h3><ul>${nonDrugItems.map((rx) =>
-              `<li><b>${esc(rx.name)}</b>: ${esc(rx.instructions || "Use as directed")}</li>`
+          ? `<h3>Other Items</h3><ul>${nonDrugItems.map((rx) =>
+              `<li><b>${esc(rx.name)}${rx.qty ? ` x${esc(rx.qty)}` : ''}</b>: ${esc(rx.instructions || "Use as directed")}</li>`
             ).join("")}</ul>`
           : '',
       ].join('');
@@ -1206,26 +1312,30 @@ export default function PetHistoryScreen({ route, navigation }) {
               </View>
             )}
 
-            {item.prescriptions?.filter(rx => rx.isDrug).length > 0 && (
+            {item.prescriptions?.filter(rx => rx.isDrug || rx.isMedicine).length > 0 && (
               <View style={styles.rxBox}>
-                <Text style={styles.rxTitle}>💊 Medications:</Text>
-                {item.prescriptions.filter(rx => rx.isDrug).map((rx, idx) => (
+                <Text style={styles.rxTitle}>💊 PRESCRIBED MEDICATIONS</Text>
+                {item.prescriptions.filter(rx => rx.isDrug || rx.isMedicine).map((rx, idx) => (
                   <View key={idx} style={styles.rxItem}>
-                    <Text style={styles.rxName}>• {rx.name}</Text>
+                    <Text style={styles.rxName}>
+                      • {rx.name}{rx.qty ? ` x${rx.qty}` : ''}
+                    </Text>
                     <Text style={styles.rxSig}>
-                      Sig: {rx.instructions || "Use as directed"}
+                      {rx.instructions || "Use as directed"}
                     </Text>
                   </View>
                 ))}
               </View>
             )}
 
-            {item.prescriptions?.filter(rx => !rx.isDrug).length > 0 && (
+            {item.prescriptions?.filter(rx => !rx.isDrug && !rx.isMedicine).length > 0 && (
               <View style={styles.rxBox}>
-                <Text style={styles.rxTitle}>🛍️ Items Dispensed:</Text>
-                {item.prescriptions.filter(rx => !rx.isDrug).map((rx, idx) => (
+                <Text style={styles.rxTitle}>📦 OTHER ITEMS</Text>
+                {item.prescriptions.filter(rx => !rx.isDrug && !rx.isMedicine).map((rx, idx) => (
                   <View key={idx} style={styles.rxItem}>
-                    <Text style={styles.rxName}>• {rx.name}</Text>
+                    <Text style={styles.rxName}>
+                      • {rx.name}{rx.qty ? ` x${rx.qty}` : ''}
+                    </Text>
                     <Text style={styles.rxSig}>
                       {rx.instructions || ""}
                     </Text>
@@ -1863,7 +1973,7 @@ const styles = StyleSheet.create({
   rxBox: {
     backgroundColor: "#FFF3E0",
     padding: 15,
-    borderRadius: 12,
+    borderRadius: 0,
     marginBottom: 15,
     borderWidth: 1,
     borderColor: "#FFE0B2",
@@ -2557,5 +2667,52 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '900',
     color: COLORS.warning,
+  },
+  rxSectionLabel: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 8,
+  },
+  rxTenure: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    marginTop: 2,
+  },
+  rxPinnedNote: {
+    fontSize: 10,
+    color: COLORS.textMuted,
+    fontStyle: 'italic',
+    marginTop: 1,
+  },
+  rxEmptyText: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: 8,
+  },
+  rxHistoricalSection: {
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+  },
+  rxHistoricalToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  rxHistoricalToggleText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+    textTransform: 'uppercase',
+  },
+  rxHistoricalBadge: {
+    backgroundColor: '#F5F5F5',
+    borderColor: '#E0E0E0',
   },
 });

@@ -158,7 +158,12 @@ export default function NotificationHistory({ navigation }) {
   useEffect(() => {
     const filtered = activeFilter === 'all'
       ? notifications
-      : notifications.filter((n) => n.type === activeFilter);
+      : notifications.filter((n) => {
+          if (activeFilter === 'reminder') {
+            return n.type === 'reminder' || n.type === 'vaccine-reminder' || n.type === 'appointment-reminder';
+          }
+          return n.type === activeFilter;
+        });
     setFilteredSections(groupByDate(filtered));
   }, [notifications, activeFilter]);
 

@@ -16,15 +16,17 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Box, Typography, Paper, Chip, TextField, InputAdornment,
   FormControl, Select, MenuItem, IconButton, Tooltip, Button,
-  Dialog, DialogTitle, DialogContent, DialogActions,
+  Dialog, DialogTitle, DialogContent, DialogActions, Snackbar, Alert,
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import {
   collection, query, where, orderBy, limit, startAfter,
-  getDocs, Timestamp,
+  getDocs, Timestamp, updateDoc, doc,
 } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { useNavigate } from 'react-router-dom';
+import { useUser } from '../context/UserContext';
+import { DEFAULT_TEMPLATES } from '../utils/notificationTemplateConstants';
 
 // Icons
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
@@ -325,17 +327,20 @@ function LogDetailDialog({ log, onClose, onViewPatient }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function NotificationLogs() {
   const navigate = useNavigate();
+  const { isAdmin } = useUser();
 
-  const [logs, setLogs]           = useState([]);
-  const [loading, setLoading]     = useState(false);
-  const [filterType, setFilterType] = useState('all');
-  const [searchText, setSearchText] = useState('');
-  const [startDate, setStartDate] = useState(todayStr());
-  const [endDate, setEndDate]     = useState(todayStr());
-  const [lastDoc, setLastDoc]     = useState(null);
-  const [hasMore, setHasMore]     = useState(false);
-  const [detailLog, setDetailLog] = useState(null);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [logs, setLogs]                   = useState([]);
+  const [loading, setLoading]             = useState(false);
+  const [filterType, setFilterType]       = useState('all');
+  const [searchText, setSearchText]       = useState('');
+  const [startDate, setStartDate]         = useState(todayStr());
+  const [endDate, setEndDate]             = useState(todayStr());
+  const [lastDoc, setLastDoc]             = useState(null);
+  const [hasMore, setHasMore]             = useState(false);
+  const [detailLog, setDetailLog]         = useState(null);
+  const [refreshKey, setRefreshKey]       = useState(0);
+  const [isBackfilling, setIsBackfilling] = useState(false);
+  const [snackbar, setSnackbar]           = useState({ open: false, message: '', severity: 'success' });
 
   // ── Fetch (server-side date range, cursor pagination) ─────────────────────
   const fetchLogs = useCallback(async (append = false) => {
@@ -423,6 +428,78 @@ export default function NotificationLogs() {
   const handleViewPatient = (ownerId) => {
     setDetailLog(null);
     navigate(`/patients/${ownerId}`);
+  };
+
+  // ── Backfill: patch null title/body entries using DEFAULT_TEMPLATES ─────────
+  const handleBackfillMissingText = async () => {
+    setIsBackfilling(true);
+    try {
+      // Fetch all notification_log docs where title is null or empty.
+      // Firestore does not support "OR" across two field conditions in one query,
+      // so we run two queries and deduplicate by doc ID.
+      const [nullSnap, emptySnap] = await Promise.all([
+        getDocs(query(collection(db, 'notification_log'), where('title', '==', null), where('type', '==', 'status'))),
+        getDocs(query(collection(db, 'notification_log'), where('title', '==', ''), where('type', '==', 'status'))),
+      ]);
+
+      // Merge and deduplicate
+      const seen = new Set();
+      const candidates = [];
+      for (const snap of [nullSnap, emptySnap]) {
+        for (const d of snap.docs) {
+          if (!seen.has(d.id)) {
+            seen.add(d.id);
+            candidates.push(d);
+          }
+        }
+      }
+
+      if (candidates.length === 0) {
+        setSnackbar({ open: true, message: 'All entries already have text.', severity: 'info' });
+        return;
+      }
+
+      const interpolate = (str, data) =>
+        str.replace(/\{(\w+)\}/g, (match, key) =>
+          data[key] !== undefined ? String(data[key]) : match,
+        );
+
+      let updated = 0;
+      await Promise.all(
+        candidates.map(async (d) => {
+          const data = d.data();
+          // Skip docs that already have both fields populated (idempotent guard)
+          if (data.title && data.body) return;
+
+          const tpl = data.status ? DEFAULT_TEMPLATES[data.status] : null;
+          if (!tpl) return; // Unknown status — cannot backfill
+
+          const interpolationData = {
+            petName:      data.petName      || 'your pet',
+            vetName:      data.vetName      || '',
+            ticketNumber: data.ticketNumber || '',
+            amount:       data.amount       || '',
+            date:         '',
+            days:         '',
+            vaccineName:  '',
+          };
+
+          await updateDoc(doc(db, 'notification_log', d.id), {
+            title: interpolate(tpl.title, interpolationData),
+            body:  interpolate(tpl.body,  interpolationData),
+          });
+          updated++;
+        }),
+      );
+
+      setSnackbar({ open: true, message: `${updated} ${updated === 1 ? 'entry' : 'entries'} updated.`, severity: 'success' });
+      setRefreshKey((k) => k + 1); // Reload the visible log to reflect patches
+    } catch (err) {
+      console.error('[NotificationLogs.handleBackfillMissingText]:', err.message);
+      setSnackbar({ open: true, message: 'Backfill failed. Check console for details.', severity: 'error' });
+    } finally {
+      setIsBackfilling(false);
+    }
   };
 
   const columns = useMemo(() => buildColumns(setDetailLog), []);
@@ -520,6 +597,8 @@ export default function NotificationLogs() {
             <MenuItem value="status" sx={{ fontFamily: FONT }}>Status</MenuItem>
             <MenuItem value="custom" sx={{ fontFamily: FONT }}>Custom</MenuItem>
             <MenuItem value="reminder" sx={{ fontFamily: FONT }}>Reminder</MenuItem>
+            <MenuItem value="vaccine-reminder" sx={{ fontFamily: FONT }}>Vaccine Reminder</MenuItem>
+            <MenuItem value="appointment-reminder" sx={{ fontFamily: FONT }}>Appointment Reminder</MenuItem>
           </Select>
         </FormControl>
 
@@ -537,6 +616,33 @@ export default function NotificationLogs() {
             <RefreshIcon />
           </IconButton>
         </Tooltip>
+
+        {/* Backfill button — admin only */}
+        {isAdmin && (
+          <Tooltip title="Patch log entries that are missing notification text using default templates">
+            <span>
+              <Button
+                onClick={handleBackfillMissingText}
+                disabled={isBackfilling}
+                size="small"
+                variant="outlined"
+                sx={{
+                  fontFamily: FONT,
+                  fontWeight: 700,
+                  fontSize: '0.75rem',
+                  borderRadius: 0,
+                  borderColor: COLORS.warning,
+                  color: COLORS.warning,
+                  whiteSpace: 'nowrap',
+                  '&:hover': { bgcolor: COLORS.kpiOrangeBg, borderColor: COLORS.warning },
+                  '&.Mui-disabled': { opacity: 0.5 },
+                }}
+              >
+                {isBackfilling ? 'Fixing...' : 'Fix Missing Text'}
+              </Button>
+            </span>
+          </Tooltip>
+        )}
 
         {/* Row count */}
         <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textMuted, ml: 'auto' }}>
@@ -625,6 +731,23 @@ export default function NotificationLogs() {
         onClose={() => setDetailLog(null)}
         onViewPatient={handleViewPatient}
       />
+
+      {/* ── Backfill feedback ─────────────────────────────────────────── */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
+          severity={snackbar.severity}
+          variant="filled"
+          sx={{ fontFamily: FONT, fontWeight: 700, borderRadius: 0 }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

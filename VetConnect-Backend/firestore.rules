@@ -260,11 +260,13 @@ service cloud.firestore {
     // ─── NOTIFICATION LOG (push notification audit trail) ──────────
     // Staff read for the Notification Logs admin page.
     // Any auth creates (all staff roles trigger pushes).
-    // No updates or deletes — append-only audit trail.
+    // Admin can update to backfill null title/body entries (T3.138).
+    // No deletes — append-only audit trail.
     match /notification_log/{logId} {
       allow read: if isStaff() || (isAuth() && resource.data.ownerId == request.auth.uid);
       allow create: if isAuth();
-      allow update, delete: if false;
+      allow update: if isAdmin();
+      allow delete: if false;
     }
 
     // ─── VACCINE REMINDER QUEUE (pre-computed push notification queue) ───

@@ -7,6 +7,7 @@
  */
 import { doc, getDoc, getDocs, collection, addDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
+import { DEFAULT_TEMPLATES } from './notificationTemplateConstants';
 
 // ─── Module-level caches ─────────────────────────────────────────────────────
 const tokenCache     = new Map(); // ownerId → expoPushToken | null
@@ -98,6 +99,50 @@ async function getCustomTemplate(status) {
   return tpl ? { customTitle: tpl.title, customBody: tpl.body } : null;
 }
 
+// ─── Template resolver for notification_log ─────────────────────────────────
+/**
+ * Resolves the human-readable title and body that should be stored in the
+ * notification_log document. Resolution order:
+ *   1. Explicit overrides provided by the caller (customTitle / customBody)
+ *   2. Admin-customised Firestore template for the status (already applied to
+ *      finalTitle / finalBody by the time this is called)
+ *   3. DEFAULT_TEMPLATES[status] — the same defaults the Worker would use
+ *   4. null — leaves the log entry blank (Worker generated, unknown template)
+ *
+ * Placeholders like {petName} are interpolated with the available data object.
+ * Unknown placeholders are left as-is so the log record remains truthful.
+ *
+ * @param {string|null} resolvedTitle - Title already resolved from Firestore or caller
+ * @param {string|null} resolvedBody  - Body already resolved from Firestore or caller
+ * @param {string}      status        - Appointment / notification status key
+ * @param {object}      data          - Interpolation data: petName, vetName, ticketNumber, etc.
+ * @returns {{ logTitle: string|null, logBody: string|null }}
+ */
+function resolveTemplateForLog(resolvedTitle, resolvedBody, status, data) {
+  const interpolate = (str) =>
+    str.replace(/\{(\w+)\}/g, (match, key) =>
+      data[key] !== undefined ? String(data[key]) : match,
+    );
+
+  // If the dispatch layer already resolved a title+body (custom template or
+  // explicit override), just interpolate and use it.
+  if (resolvedTitle && resolvedBody) {
+    return { logTitle: interpolate(resolvedTitle), logBody: interpolate(resolvedBody) };
+  }
+
+  // Fall back to DEFAULT_TEMPLATES so the log always has readable text.
+  const defaultTpl = status ? DEFAULT_TEMPLATES[status] : null;
+  if (defaultTpl) {
+    return {
+      logTitle: interpolate(defaultTpl.title),
+      logBody:  interpolate(defaultTpl.body),
+    };
+  }
+
+  // Status not in DEFAULT_TEMPLATES (e.g. a future status key) — log null.
+  return { logTitle: resolvedTitle || null, logBody: resolvedBody || null };
+}
+
 // ─── Main push function ──────────────────────────────────────────────────────
 /**
  * Sends a push notification to the pet owner via the Cloudflare Worker.
@@ -178,14 +223,24 @@ async function _dispatchPush({ ownerId, status, petName, vetName, ticketNumber, 
     }),
   });
 
-  // T4.95: Fire-and-forget notification log — never blocks or throws
+  // T4.95 / T3.138: Resolve title+body for the audit log entry.
+  // resolveTemplateForLog fills in DEFAULT_TEMPLATES when the Worker would
+  // have generated the text client-side — ensuring the log is never null.
+  const interpolationData = {
+    petName:      petName      || 'your pet',
+    vetName:      vetName      || '',
+    ticketNumber: ticketNumber || '',
+  };
+  const { logTitle, logBody } = resolveTemplateForLog(finalTitle, finalBody, status, interpolationData);
+
+  // Fire-and-forget notification log — never blocks or throws
   addDoc(collection(db, 'notification_log'), {
     ownerId,
     ownerName:     ownerNameCache.get(ownerId) || null,
     status:        status || null,
     petName:       petName || null,
-    title:         finalTitle || null,
-    body:          finalBody || null,
+    title:         logTitle,
+    body:          logBody,
     appointmentId: appointmentId || null,
     sentAt:        Timestamp.now(),
     sentBy:        sentBy || 'System',

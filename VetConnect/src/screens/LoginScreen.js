@@ -5,6 +5,7 @@ import { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -168,6 +169,8 @@ const LoginScreen = ({ navigation }) => {
   );
 };
 
+const SCREEN_WIDTH = Dimensions.get('window').width;
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFF8E1" },
   scrollContent: {
@@ -201,11 +204,11 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: "Inter_900Black",
-    fontSize: 48,
+    fontSize: Math.min(48, SCREEN_WIDTH * 0.115),
     color: "#3E2723",
     textTransform: "uppercase",
     letterSpacing: -1,
-    lineHeight: 48,
+    lineHeight: Math.min(48, SCREEN_WIDTH * 0.115),
   },
   subtitle: {
     fontSize: 15,

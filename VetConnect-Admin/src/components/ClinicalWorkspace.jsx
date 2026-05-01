@@ -518,6 +518,10 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
 
   // T4.120: Lab test catalog — singleton Firestore-backed hook, same pattern as useVaccineCatalog
   const labCatalog = useLabTestCatalog();
+  const labCatalogWithSentinel = useMemo(
+    () => [...labCatalog, CUSTOM_TEST_SENTINEL],
+    [labCatalog],
+  );
 
   // T4.120: Lab results — extended shape includes catalog-derived fields
   // { testName, result, status, notes, unit, referenceRange, catalogTestId, resultType }
@@ -2394,11 +2398,6 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     }
     return key.toUpperCase();
   };
-
-  const labCatalogWithSentinel = useMemo(
-    () => [...labCatalog, CUSTOM_TEST_SENTINEL],
-    [labCatalog],
-  );
 
   const labResultsJSX = (
     <Box sx={{ mb: 2, flexShrink: 0 }}>

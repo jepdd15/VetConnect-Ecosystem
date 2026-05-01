@@ -3674,6 +3674,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 onMarkAllNormal={() => applyTemplate('wnl')}
                 disabled={lockedServices.has('medical')}
               />
+              {labResultsJSX}
             </>
           )}
 

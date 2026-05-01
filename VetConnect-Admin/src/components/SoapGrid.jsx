@@ -75,7 +75,7 @@ export default function SoapGrid({
     <Grid container spacing={0} sx={{ flex: 1, minHeight: 0, overflow: 'hidden', bgcolor: '#FFF' }}>
 
       {/* S - SUBJECTIVE (top-left) */}
-      <Grid size={{ xs: 12, md: 6 }} sx={{ height: { xs: 'auto', md: '50%' }, borderRight: { md: '1px solid #F0F0F0' }, borderBottom: '1px solid #F0F0F0' }}>
+      <Grid size={{ xs: 12, md: 6 }} sx={{ height: { xs: 'auto', md: '50%' }, overflow: { md: 'hidden' }, borderRight: { md: '1px solid #F0F0F0' }, borderBottom: '1px solid #F0F0F0' }}>
         <SoapQuadrant id="subjective" label="S - SUBJECTIVE (HISTORY & CLIENT REPORT)" onZoomField={setFullscreenField}>
 
           {/* T3.70: Read-only intake context box — shown above the vet's Subjective field */}
@@ -120,7 +120,7 @@ export default function SoapGrid({
       </Grid>
 
       {/* A - ASSESSMENT (top-right) — swapped from bottom-left (T4.109) */}
-      <Grid size={{ xs: 12, md: 6 }} sx={{ height: { xs: 'auto', md: '50%' }, borderBottom: '1px solid #F0F0F0' }}>
+      <Grid size={{ xs: 12, md: 6 }} sx={{ height: { xs: 'auto', md: '50%' }, overflow: { md: 'hidden' }, borderBottom: '1px solid #F0F0F0' }}>
         <SoapQuadrant id="assessment" label="A - ASSESSMENT (DIAGNOSIS & PROGNOSIS)" onZoomField={setFullscreenField}>
           <DiagnosticBridge
             soapData={soapData}
@@ -145,7 +145,7 @@ export default function SoapGrid({
       </Grid>
 
       {/* O - OBJECTIVE (bottom-left) — swapped from top-right (T4.109) */}
-      <Grid size={{ xs: 12, md: 6 }} sx={{ height: { xs: 'auto', md: '50%' }, borderRight: { md: '1px solid #F0F0F0' }, borderTop: { xs: '1px solid #F0F0F0', md: 'none' } }}>
+      <Grid size={{ xs: 12, md: 6 }} sx={{ height: { xs: 'auto', md: '50%' }, overflow: { md: 'hidden' }, borderRight: { md: '1px solid #F0F0F0' }, borderTop: { xs: '1px solid #F0F0F0', md: 'none' } }}>
         <SoapQuadrant id="objectiveNotes" label="O - OBJECTIVE (EXAM & VITALS)" onZoomField={setFullscreenField}>
           <VitalsGrid soapData={soapData} updateSoap={updateSoap} getTriageLevel={getTriageLevel} renderHistoricalLabel={renderHistoricalLabel} compact />
           <PhysicalExamChecklist
@@ -161,7 +161,7 @@ export default function SoapGrid({
       </Grid>
 
       {/* P - PLAN (bottom-right) */}
-      <Grid size={{ xs: 12, md: 6 }} sx={{ height: { xs: 'auto', md: '50%' }, borderTop: { xs: '1px solid #F0F0F0', md: 'none' } }}>
+      <Grid size={{ xs: 12, md: 6 }} sx={{ height: { xs: 'auto', md: '50%' }, overflow: { md: 'hidden' }, borderTop: { xs: '1px solid #F0F0F0', md: 'none' } }}>
         <SoapQuadrant id="plan" label="P - PLAN (TREATMENT & RECHECKS)" onZoomField={setFullscreenField}>
           {/* T4.117: Vaccine shortcut — species-filtered Autocomplete of vaccine-category
               inventory products. Selecting a product delegates to handleAddRx in

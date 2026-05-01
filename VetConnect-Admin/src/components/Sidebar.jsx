@@ -1,5 +1,7 @@
-import React from 'react';
-import { Drawer, List, ListItemButton, ListItemIcon, ListItemText, Box, Typography, Divider, Button, Badge } from '@mui/material';
+import React, { useState } from 'react';
+import { Drawer, List, ListItemButton, ListItemIcon, ListItemText, Box, Typography, Divider, Button, Badge, IconButton } from '@mui/material';
+import { useMediaQuery, useTheme } from '@mui/material';
+import MenuIcon from '@mui/icons-material/Menu';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 // Design Tokens
@@ -47,95 +49,125 @@ const menuItems =[
 export default function Sidebar({ onLogout, lowStockCount = 0 }) {
   const navigate = useNavigate();
   const location = useLocation();
-  
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const [mobileOpen, setMobileOpen] = useState(false);
+
   // SECURE HOOK: Checks if the logged-in user has an 'admin' token in the database
-  const { isAdmin } = useUser(); 
+  const { isAdmin } = useUser();
 
   // THE FIX: The array filter. If it requires admin and they aren't one, slice it out of the array!
   const visibleMenuItems = menuItems.filter(item => !item.adminOnly || isAdmin);
 
+  const handleNavClick = (path) => {
+    navigate(path);
+    if (isMobile) setMobileOpen(false);
+  };
+
   return (
-    <Drawer
-      variant="permanent"
-      sx={{
-        width: drawerWidth,
-        flexShrink: 0,
-        [`& .MuiDrawer-paper`]: { 
-          width: drawerWidth, 
-          boxSizing: 'border-box',
-          backgroundColor: COLORS.brand, 
-          color: 'white',
-          display: 'flex',
-          flexDirection: 'column'
-        },
-      }}
-    >
-      <Box sx={{ p: 3, display: 'flex', alignItems: 'center', gap: 1.5, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-        <PetsIcon sx={{ color: COLORS.cta }} />
-        <Typography variant="h6" sx={{ fontFamily: FONT, fontWeight: 'bold' }}>VetConnect</Typography>
-      </Box>
+    <>
+      {isMobile && !mobileOpen && (
+        <IconButton
+          onClick={() => setMobileOpen(true)}
+          sx={{
+            position: 'fixed',
+            top: 12,
+            left: 12,
+            zIndex: theme.zIndex.drawer + 1,
+            bgcolor: COLORS.brand,
+            color: 'white',
+            borderRadius: 0,
+            '&:hover': { bgcolor: COLORS.accent },
+          }}
+        >
+          <MenuIcon />
+        </IconButton>
+      )}
+      <Drawer
+        variant={isMobile ? 'temporary' : 'permanent'}
+        open={isMobile ? mobileOpen : true}
+        onClose={isMobile ? () => setMobileOpen(false) : undefined}
+        {...(isMobile && { ModalProps: { keepMounted: true } })}
+        sx={{
+          width: isMobile ? 0 : drawerWidth,
+          flexShrink: 0,
+          '& .MuiDrawer-paper': {
+            width: drawerWidth,
+            boxSizing: 'border-box',
+            backgroundColor: COLORS.brand,
+            color: 'white',
+            display: 'flex',
+            flexDirection: 'column',
+          },
+        }}
+      >
+        <Box sx={{ p: 3, display: 'flex', alignItems: 'center', gap: 1.5, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          <PetsIcon sx={{ color: COLORS.cta }} />
+          <Typography variant="h6" sx={{ fontFamily: FONT, fontWeight: 'bold' }}>VetConnect</Typography>
+        </Box>
 
-      <List sx={{ flexGrow: 1, mt: 2 }}>
-        {/* Render ONLY the modules they have permission to see */}
-        {visibleMenuItems.map((item) => (
-          <ListItemButton
-            key={item.path} // Unique Key!
-            onClick={() => navigate(item.path)}
-            sx={{
-              backgroundColor: location.pathname === item.path ? 'rgba(255,255,255,0.15)' : 'transparent',
-              '&:hover': { backgroundColor: 'rgba(255,255,255,0.08)' },
-              mx: 2,
-              mb: 1,
-              borderRadius: 0
-            }}
+        <List sx={{ flexGrow: 1, mt: 2 }}>
+          {/* Render ONLY the modules they have permission to see */}
+          {visibleMenuItems.map((item) => (
+            <ListItemButton
+              key={item.path}
+              onClick={() => handleNavClick(item.path)}
+              sx={{
+                backgroundColor: (item.path === '/' ? location.pathname === '/' : location.pathname.startsWith(item.path)) ? 'rgba(255,255,255,0.15)' : 'transparent',
+                '&:hover': { backgroundColor: 'rgba(255,255,255,0.08)' },
+                mx: 2,
+                mb: 1,
+                borderRadius: 0,
+              }}
+            >
+              <ListItemIcon sx={{ color: COLORS.timelineRail }}>
+                {item.name === 'Inventory' && lowStockCount > 0 ? (
+                  <Badge
+                    badgeContent={lowStockCount}
+                    color="error"
+                    max={99}
+                    sx={{ '& .MuiBadge-badge': { fontWeight: 900, fontSize: '0.65rem' } }}
+                  >
+                    {item.icon}
+                  </Badge>
+                ) : (
+                  item.icon
+                )}
+              </ListItemIcon>
+              <ListItemText primary={item.name} primaryTypographyProps={{ fontFamily: FONT, fontWeight: '600' }} />
+            </ListItemButton>
+          ))}
+        </List>
+
+        <Divider sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
+
+        {/* LOBBY MONITOR — opens fullscreen in new tab */}
+        <Box sx={{ px: 3, pt: 2 }}>
+          <Button
+            fullWidth
+            variant="outlined"
+            startIcon={<TvIcon />}
+            onClick={() => window.open('/monitor', '_blank')}
+            sx={{ fontWeight: 'bold', py: 1, borderRadius: 0, color: COLORS.amber, borderColor: COLORS.amber, '&:hover': { bgcolor: 'rgba(255,152,0,0.1)', borderColor: COLORS.amber } }}
           >
-            <ListItemIcon sx={{ color: COLORS.timelineRail }}>
-              {item.name === 'Inventory' && lowStockCount > 0 ? (
-                <Badge
-                  badgeContent={lowStockCount}
-                  color="error"
-                  max={99}
-                  sx={{ '& .MuiBadge-badge': { fontWeight: 900, fontSize: '0.65rem' } }}
-                >
-                  {item.icon}
-                </Badge>
-              ) : (
-                item.icon
-              )}
-            </ListItemIcon>
-            <ListItemText primary={item.name} primaryTypographyProps={{ fontFamily: FONT, fontWeight: '600' }} />
-          </ListItemButton>
-        ))}
-      </List>
+            Lobby Monitor
+          </Button>
+        </Box>
 
-      <Divider sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
-
-      {/* LOBBY MONITOR — opens fullscreen in new tab */}
-      <Box sx={{ px: 3, pt: 2 }}>
-        <Button
-          fullWidth
-          variant="outlined"
-          startIcon={<TvIcon />}
-          onClick={() => window.open('/monitor', '_blank')}
-          sx={{ fontWeight: 'bold', py: 1, borderRadius: 0, color: COLORS.amber, borderColor: COLORS.amber, '&:hover': { bgcolor: 'rgba(255,152,0,0.1)', borderColor: COLORS.amber } }}
-        >
-          Lobby Monitor
-        </Button>
-      </Box>
-
-      {/* THE LOGOUT BUTTON */}
-      <Box sx={{ p: 3 }}>
-        <Button 
-          fullWidth 
-          variant="contained" 
-          color="error" 
-          startIcon={<LogoutIcon />}
-          onClick={onLogout} 
-          sx={{ fontWeight: 'bold', py: 1.2, borderRadius: 0 }}
-        >
-          Logout
-        </Button>
-      </Box>
-    </Drawer>
+        {/* THE LOGOUT BUTTON */}
+        <Box sx={{ p: 3 }}>
+          <Button
+            fullWidth
+            variant="contained"
+            color="error"
+            startIcon={<LogoutIcon />}
+            onClick={onLogout}
+            sx={{ fontWeight: 'bold', py: 1.2, borderRadius: 0 }}
+          >
+            Logout
+          </Button>
+        </Box>
+      </Drawer>
+    </>
   );
 }

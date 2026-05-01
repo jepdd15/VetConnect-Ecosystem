@@ -50,6 +50,9 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
       const hasSpecificAllergies = petAllergies.trim().length > 0 && petAllergies.toUpperCase() !== 'NONE';
       const petAge = calculateAgeString(p.row.petBirthdate, p.row.isAgeExact);
 
+      const groupSize  = p.row._visitGroupSize  || 0;
+      const groupIndex = p.row._visitGroupIndex || 0;
+
       const PassportCard = (
         <Box sx={{ p: 1, minWidth: 220 }}>
             <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1.5, display: 'block', mb: 1, opacity: 0.8 }}>
@@ -58,7 +61,34 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
             <Typography variant="h6" sx={{ fontWeight: '1000', color: '#1A1A1A', mb: 2, fontSize: '1.2rem', lineHeight: 1 }}>
                 {p.row.petName?.toUpperCase()}
             </Typography>
-            
+
+            {/* STATUS BADGES: group position, self check-in, client confirmed */}
+            {(p.row.selfCheckedIn || p.row.confirmedByClient || groupSize > 1) && (
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1.5, pb: 1.5, borderBottom: `1px solid ${COLORS.borderLight}` }}>
+                {groupSize > 1 && (
+                  <Chip
+                    label={`GROUP ${groupIndex + 1}/${groupSize}`}
+                    size="small"
+                    sx={{ height: 18, fontSize: '0.6rem', fontWeight: 900, bgcolor: COLORS.brand, color: 'white', borderRadius: 0 }}
+                  />
+                )}
+                {p.row.selfCheckedIn && (
+                  <Chip
+                    label="SELF CHECK-IN"
+                    size="small"
+                    sx={{ height: 18, fontSize: '0.6rem', fontWeight: 900, bgcolor: '#E8F5E9', color: COLORS.success, border: `1px solid ${COLORS.success}`, borderRadius: 0 }}
+                  />
+                )}
+                {p.row.confirmedByClient && (
+                  <Chip
+                    label="CLIENT CONFIRMED"
+                    size="small"
+                    sx={{ height: 18, fontSize: '0.6rem', fontWeight: 900, bgcolor: '#E8F5E9', color: COLORS.success, border: `1px solid ${COLORS.success}`, borderRadius: 0 }}
+                  />
+                )}
+              </Box>
+            )}
+
             <Stack spacing={1.2}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5 }}>SPECIES</Typography>
@@ -126,8 +156,6 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
       );
       
       // ── VISIT GROUP DISPLAY HELPERS ──────────────────────────────
-      const groupSize  = p.row._visitGroupSize  || 0;
-      const groupIndex = p.row._visitGroupIndex || 0;
       const isInGroup  = groupSize > 1;
       const isGroupHeader = p.row.isGroupHeader === true;
       // Non-header group members share the queue number — dim the ticket anchor
@@ -193,60 +221,10 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                   onMouseLeave={actions.handleHoverEnd}
                   sx={{ display: 'flex', flexDirection: 'column', width: '100%', cursor: 'zoom-in', gap: 0 }}
               >
-                  {/* LINE 1: THE PATIENT HERO + SELF CHECK-IN BADGE + GROUP POSITION */}
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
-                    <Typography sx={{ fontSize: '1.25rem', fontWeight: '1000', color: '#1A1A1A', lineHeight: 1.1, letterSpacing: '-0.02rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                        {p.row.petName}
-                    </Typography>
-                    {/* Group position badge: (1/3), (2/3), etc. */}
-                    {isInGroup && (
-                      <Box sx={{
-                        bgcolor: '#3E2723',
-                        color: 'white',
-                        px: 0.7,
-                        py: 0.15,
-                        borderRadius: 0,
-                        flexShrink: 0,
-                        lineHeight: 1,
-                      }}>
-                        <Typography sx={{ fontSize: '0.6rem', fontWeight: '900', lineHeight: 1 }}>
-                          {groupIndex + 1}/{groupSize}
-                        </Typography>
-                      </Box>
-                    )}
-                    {p.row.selfCheckedIn && (
-                      <Chip
-                        label="SELF"
-                        size="small"
-                        sx={{
-                          fontSize: '0.55rem',
-                          height: 16,
-                          fontWeight: '1000',
-                          bgcolor: '#E8F5E9',
-                          color: '#2E7D32',
-                          border: '1px solid #2E7D32',
-                          borderRadius: 0,
-                          flexShrink: 0,
-                        }}
-                      />
-                    )}
-                    {p.row.confirmedByClient && (
-                      <Chip
-                        label="CLIENT CONFIRMED"
-                        size="small"
-                        sx={{
-                          fontSize: '0.55rem',
-                          height: 16,
-                          fontWeight: '1000',
-                          bgcolor: '#E8F5E9',
-                          color: '#2E7D32',
-                          border: '1px solid #2E7D32',
-                          borderRadius: 0,
-                          flexShrink: 0,
-                        }}
-                      />
-                    )}
-                  </Box>
+                  {/* LINE 1: THE PATIENT HERO */}
+                  <Typography sx={{ fontSize: '1.25rem', fontWeight: '1000', color: '#1A1A1A', lineHeight: 1.1, letterSpacing: '-0.02rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {p.row.petName}
+                  </Typography>
 
                   {/* LINE 2: THE SEMANTIC ANCHOR (SPECIES * BREED) */}
                   <Typography variant="caption" sx={{ color: '#795548', fontWeight: '900', fontSize: '0.75rem', textTransform: 'uppercase', lineHeight: 1.3, letterSpacing: '0.02rem' }}>

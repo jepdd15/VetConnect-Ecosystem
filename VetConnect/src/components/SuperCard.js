@@ -10,7 +10,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Animated, Linking, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { COLORS } from '../theme/mobileTokens';
+import { MaterialIcons } from "@expo/vector-icons";
+import { COLORS, SHADOW } from '../theme/mobileTokens';
 import { getClientStatusColor, getClientStatusIcon, getClientStatusLabel } from "../utils/statusLabels";
 import { formatFirestoreTime } from '../utils/helpers';
 import { buildVisitTimeline } from '../utils/buildVisitTimeline';
@@ -49,12 +50,15 @@ export default function SuperCard({ appointment, clinicPhone = '', clinicAddress
   const pulseAnim = useRef(new Animated.Value(0.4)).current;
 
   const [timelineCollapsed, setTimelineCollapsed] = useState(true);
+  // Default expanded so first-time users see the full card immediately.
+  const [superCardExpanded, setSuperCardExpanded] = useState(true);
 
   useEffect(() => {
     if (!appointment) return;
 
     pulseAnim.setValue(0.4); // Reset to initial opacity on appointment change
     setTimelineCollapsed(true); // Reset timeline collapse when appointment changes
+    setSuperCardExpanded(true); // Reset card expand state on appointment change
 
     const loop = Animated.loop(
       Animated.sequence([
@@ -107,159 +111,216 @@ export default function SuperCard({ appointment, clinicPhone = '', clinicAddress
     formatFirestoreTime(appointment.timeArrived);
 
   return (
-    <View style={[styles.wrapper, { borderLeftColor: statusColors.color }]}>
-      {/* Row 1 — Pet avatar + name + species */}
-      <View style={styles.petRow}>
+    <View style={styles.shadowContainer}>
+      <View style={SHADOW.card} />
+      <View style={[styles.wrapper, { borderLeftColor: statusColors.color }]}>
+      {/* ── MINI HEADER — always visible, tappable to expand/collapse ── */}
+      <TouchableOpacity
+        activeOpacity={0.8}
+        onPress={() => setSuperCardExpanded(prev => !prev)}
+        style={styles.superCardMiniHeader}
+      >
+        {/* Left: pet avatar */}
         <View style={[styles.avatar, { borderColor: statusColors.color }]}>
           <Text style={styles.avatarEmoji}>{speciesEmoji}</Text>
         </View>
-        <View style={styles.petInfo}>
-          <Text style={styles.petName}>{appointment.petName || 'Your Pet'}</Text>
-          {appointment.petSpecies ? (
-            <Text style={styles.petBreed}>{appointment.petSpecies}</Text>
-          ) : null}
+
+        {/* Centre: pet name + service type */}
+        <View style={styles.miniHeaderInfo}>
+          <Text style={styles.petName} numberOfLines={1}>
+            {appointment.petName || 'Your Pet'}
+          </Text>
           {(appointment.serviceType || appointment.primaryService) ? (
-            <Text style={styles.serviceType}>
+            <Text style={styles.serviceType} numberOfLines={1}>
               {appointment.serviceType || appointment.primaryService}
             </Text>
           ) : null}
         </View>
-      </View>
 
-      {/* Row 2 — Status pill with pulsing dot */}
-      <View style={styles.statusRow}>
-        <Animated.View style={[styles.pulseDot, { backgroundColor: statusColors.color, opacity: pulseAnim }]} />
-        <Text style={[styles.statusPill, { color: statusColors.color, backgroundColor: statusColors.backgroundColor }]}>
-          {statusIcon} {statusLabel.toUpperCase()}
-        </Text>
-      </View>
+        {/* Right: status pill + ticket + chevron */}
+        <View style={styles.miniHeaderRight}>
+          <View style={styles.statusRow}>
+            <Animated.View style={[styles.pulseDot, { backgroundColor: statusColors.color, opacity: pulseAnim }]} />
+            <View style={[styles.statusPillWrap, { backgroundColor: statusColors.backgroundColor }]}>
+              <Text style={[styles.statusPillText, { color: statusColors.color }]}>
+                {statusIcon} {statusLabel.toUpperCase()}
+              </Text>
+            </View>
+          </View>
+          {ticketLabel ? (
+            <Text style={styles.ticketMini}>🎫 {ticketLabel}</Text>
+          ) : null}
+        </View>
 
-      {/* Row 3 — Ticket number */}
-      {ticketLabel ? (
-        <Text style={styles.infoLine}>🎫 Ticket: {ticketLabel}</Text>
-      ) : null}
+        <MaterialIcons
+          name={superCardExpanded ? 'expand-less' : 'expand-more'}
+          size={22}
+          color={COLORS.accentLight}
+          style={styles.chevron}
+        />
+      </TouchableOpacity>
 
-      {/* Row 4 — Assigned vet */}
-      {hasAssignedVet ? (
-        <Text style={styles.infoLine}>👨‍⚕️ {appointment.assignedVet}</Text>
-      ) : null}
+      {/* ── COLLAPSIBLE BODY — hidden when user collapses the card ── */}
+      {superCardExpanded && (
+        <View style={styles.superCardBody}>
+          {/* Assigned vet */}
+          {hasAssignedVet ? (
+            <Text style={styles.infoLine}>👨‍⚕️ {appointment.assignedVet}</Text>
+          ) : null}
 
-      {/* Row 5 — Time started / arrived */}
-      {startedTime ? (
-        <Text style={styles.infoLine}>🕐 Started at {startedTime}</Text>
-      ) : null}
+          {/* Time started / arrived */}
+          {startedTime ? (
+            <Text style={styles.infoLine}>🕐 Started at {startedTime}</Text>
+          ) : null}
 
-      {/* Row 6 — Queue-ahead (only shown when patient has arrived status) */}
-      {queueAhead != null && (
-        <Text style={styles.infoLine}>
-          {queueAhead === 0 ? "You're next in line!" : `${queueAhead} pet${queueAhead !== 1 ? 's' : ''} ahead of you`}
-        </Text>
-      )}
+          {/* Queue-ahead count (arrived status only) */}
+          {queueAhead != null && (
+            <Text style={styles.infoLine}>
+              {queueAhead === 0
+                ? "You're next in line!"
+                : `${queueAhead} pet${queueAhead !== 1 ? 's' : ''} ahead of you`}
+            </Text>
+          )}
 
-      {/* Row 6.5 — Live wait/consult metrics */}
-      <WaitTimeMetrics
-        appointment={appointment}
-        isActive={true}
-        avgWaitMins={avgWaitMins}
-      />
-
-      {/* Row 7 — Visit timeline (collapsed by default; only shown when pulse data exists) */}
-      {timelineEvents.length > 0 && (
-        <View style={styles.timelineSection}>
-          <VisitTimeline
-            events={timelineEvents}
+          {/* Live wait/consult metrics */}
+          <WaitTimeMetrics
+            appointment={appointment}
             isActive={true}
-            collapsed={timelineCollapsed}
-            onToggle={() => setTimelineCollapsed((prev) => !prev)}
-            assignedVet={appointment.assignedVet}
+            avgWaitMins={avgWaitMins}
           />
+
+          {/* Visit timeline (only when pulse data exists) */}
+          {timelineEvents.length > 0 && (
+            <View style={styles.timelineSection}>
+              <VisitTimeline
+                events={timelineEvents}
+                isActive={true}
+                collapsed={timelineCollapsed}
+                onToggle={() => setTimelineCollapsed(prev => !prev)}
+                assignedVet={appointment.assignedVet}
+              />
+            </View>
+          )}
+
+          {/* CTAs */}
+          <View style={styles.ctaRow}>
+            <TouchableOpacity
+              style={[styles.ctaBtn, !clinicPhone && styles.ctaBtnDisabled]}
+              onPress={async () => {
+                if (!clinicPhone) return;
+                try {
+                  await Linking.openURL(`tel:${clinicPhone}`);
+                } catch (error) {
+                  console.error('[SuperCard.handleCallClinic]:', error.message);
+                }
+              }}
+              disabled={!clinicPhone}
+            >
+              <Text style={styles.ctaBtnText}>📞 Call Clinic</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.ctaBtn, styles.ctaBtnSecondary]}
+              onPress={() => handleDirections(clinicAddress)}
+            >
+              <Text style={[styles.ctaBtnText, styles.ctaBtnSecondaryText]}>🗺️ Directions</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
-
-      {/* Row 8 — CTAs */}
-      <View style={styles.ctaRow}>
-        <TouchableOpacity
-          style={[styles.ctaBtn, !clinicPhone && styles.ctaBtnDisabled]}
-          onPress={async () => {
-            if (!clinicPhone) return;
-            try {
-              await Linking.openURL(`tel:${clinicPhone}`);
-            } catch (error) {
-              console.error('[SuperCard.handleCallClinic]:', error.message);
-            }
-          }}
-          disabled={!clinicPhone}
-        >
-          <Text style={styles.ctaBtnText}>📞 Call Clinic</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.ctaBtn, styles.ctaBtnSecondary]} onPress={() => handleDirections(clinicAddress)}>
-          <Text style={[styles.ctaBtnText, styles.ctaBtnSecondaryText]}>🗺️ Directions</Text>
-        </TouchableOpacity>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  shadowContainer: {
+    position: 'relative',
+    marginBottom: 20,
+  },
   wrapper: {
     backgroundColor: COLORS.white,
-    borderRadius: 16,
+    borderRadius: 0,
     borderLeftWidth: 4,
-    padding: 16,
-    marginBottom: 20,
-    elevation: 6,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowOffset: { width: 0, height: 3 },
-    shadowRadius: 8,
+    overflow: 'hidden',
+    zIndex: 1,
   },
 
-  petRow: {
+  // ── Mini header — always rendered, tappable ──────────────────────
+  superCardMiniHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    gap: 8,
   },
+
+  miniHeaderInfo: {
+    flex: 1,
+  },
+
+  miniHeaderRight: {
+    alignItems: 'flex-end',
+  },
+
+  chevron: {
+    marginLeft: 2,
+  },
+
+  ticketMini: {
+    fontSize: 11,
+    color: COLORS.accentLight,
+    marginTop: 3,
+  },
+
+  // ── Collapsible body — hidden when collapsed ─────────────────────
+  superCardBody: {
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+    paddingTop: 10,
+  },
+
   avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 44,
+    height: 44,
+    borderRadius: 0,
     borderWidth: 2,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: COLORS.cream,
-    marginRight: 12,
+    flexShrink: 0,
   },
-  avatarEmoji: { fontSize: 26 },
-  petInfo: { flex: 1 },
-  petName: { fontSize: 16, fontWeight: 'bold', color: COLORS.accent },
-  petBreed: { fontSize: 13, color: COLORS.textMuted, marginTop: 2 },
+  avatarEmoji: { fontSize: 22 },
+  petName: { fontSize: 15, fontWeight: 'bold', color: COLORS.accent },
   serviceType: {
-    fontSize: 12,
+    fontSize: 11,
     color: COLORS.accentLight,
     fontWeight: 'bold',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginTop: 2,
+    marginTop: 1,
   },
 
   statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
   },
   pulseDot: {
     width: 8,
     height: 8,
-    borderRadius: 4,
-    marginRight: 8,
+    borderRadius: 0,
+    marginRight: 6,
   },
-  statusPill: {
-    fontSize: 11,
-    fontWeight: 'bold',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
+  statusPillWrap: {
+    borderRadius: 0,
     overflow: 'hidden',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  statusPillText: {
+    fontSize: 10,
+    fontWeight: 'bold',
     letterSpacing: 0.5,
   },
 
@@ -286,7 +347,7 @@ const styles = StyleSheet.create({
   ctaBtn: {
     flex: 1,
     backgroundColor: COLORS.accent,
-    borderRadius: 8,
+    borderRadius: 0,
     paddingVertical: 10,
     alignItems: 'center',
   },

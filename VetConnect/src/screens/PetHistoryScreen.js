@@ -1072,8 +1072,9 @@ export default function PetHistoryScreen({ route, navigation }) {
                     ? (statusKey === 'normal' ? 'NEGATIVE' : statusKey === 'critical' ? 'CRITICAL' : 'POSITIVE')
                     : statusKey.toUpperCase();
 
-                  // Trend arrow — only for numeric results with a previous numeric value
-                  let trendArrow = '';
+                  // Trend arrow — only for numeric results with a previous numeric value.
+                  // null (not '') so the JSX expression renders nothing when there is no trend.
+                  let trendArrow = null;
                   if (lab.numericResult != null && lab.previousNumeric != null) {
                     const diff = lab.numericResult - lab.previousNumeric;
                     if (diff > 0) trendArrow = ' ↑';
@@ -1103,8 +1104,8 @@ export default function PetHistoryScreen({ route, navigation }) {
                       <View style={{ flex: 1 }}>
                         <Text style={styles.labSummaryTestName}>{lab.testName}</Text>
                         <Text style={styles.labSummaryResult}>
-                          {lab.result}{lab.unit ? ` ${lab.unit}` : ''}{trendArrow}
-                          {lab.previousResult ? ` from ${lab.previousResult}` : ''}
+                          {lab.result}{lab.unit ? ` ${lab.unit}` : null}{trendArrow}
+                          {lab.previousResult ? ` from ${lab.previousResult}` : null}
                         </Text>
                         {refDisplay && (
                           <Text style={styles.labSummaryRef}>{refDisplay}</Text>

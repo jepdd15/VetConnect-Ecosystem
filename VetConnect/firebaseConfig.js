@@ -3,8 +3,7 @@ import { initializeApp } from "firebase/app";
 import { getReactNativePersistence, initializeAuth } from "firebase/auth";
 import {
   initializeFirestore,
-  persistentLocalCache,
-  persistentSingleTabManager,
+  memoryLocalCache,
 } from "firebase/firestore";
 // CHANGE 2: Import AsyncStorage
 import ReactNativeAsyncStorage from "@react-native-async-storage/async-storage";
@@ -28,9 +27,7 @@ const auth = initializeAuth(app, {
 });
 
 const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({
-    tabManager: persistentSingleTabManager({ forceOwnership: true }),
-  }),
+  localCache: memoryLocalCache(),
 });
 
 export { auth, db };

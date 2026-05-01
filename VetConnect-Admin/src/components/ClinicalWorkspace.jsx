@@ -3746,7 +3746,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             AI panel is always visible, no close button (variant='column'). */}
         <Box sx={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'row', bgcolor: '#FFF' }}>
           {/* Left ~70%: SOAP Grid */}
-          <Box sx={{ flex: 7, minWidth: 0, overflow: 'hidden' }}>
+          <Box sx={{ flex: 7, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             {/* T3.70: God-View also receives intake context for the read-only context box */}
             {(() => {
               const rawClientNotes = patient?.clientNotes || (!patient?.staffNotes ? patient?.notes : '') || '';

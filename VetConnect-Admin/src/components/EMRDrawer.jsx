@@ -306,18 +306,73 @@ const RecordCard = ({ record }) => {
             {hasLabResults && (
               <SectionBlock label={`Lab Results (${record.labResults.length})`}>
                 <Stack spacing={0.5}>
-                  {record.labResults.map((lab, i) => (
-                    <Box key={i} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 1.5, py: 0.75, bgcolor: COLORS.kpiBlueBg, border: `1px solid ${COLORS.kpiBlueBorder}` }}>
-                      <Box>
-                        <Typography sx={{ fontSize: '0.72rem', fontWeight: 800, color: COLORS.brand, fontFamily: FONT }}>{lab.testName}</Typography>
-                        {lab.result && <Typography sx={{ fontSize: '0.65rem', color: COLORS.textSecondary }}>{lab.result}</Typography>}
-                        {lab.notes && <Typography sx={{ fontSize: '0.6rem', color: COLORS.textMuted, fontStyle: 'italic' }}>{lab.notes}</Typography>}
+                  {record.labResults.map((lab, i) => {
+                    const statusKey = (lab.status || 'normal').toLowerCase();
+                    const statusColors = {
+                      normal:   { bgcolor: '#E8F5E9', color: COLORS.success },
+                      abnormal: { bgcolor: COLORS.warningSurface, color: COLORS.warning },
+                      critical: { bgcolor: COLORS.dangerSurface, color: COLORS.danger },
+                    };
+                    const sc = statusColors[statusKey] || statusColors.normal;
+
+                    // Amendment 1: derive display label from resultType for positive-negative tests
+                    const chipLabel = lab.resultType === 'positive-negative'
+                      ? (statusKey === 'normal' ? 'NEGATIVE' : statusKey === 'critical' ? 'CRITICAL' : 'POSITIVE')
+                      : (lab.status || 'normal').toUpperCase();
+
+                    // Reference range display — species not available in EMRDrawer, show both
+                    const renderRefRange = () => {
+                      const range = lab.referenceRange || null;
+                      if (!range) return null;
+                      if (typeof range === 'object' && !Array.isArray(range)) {
+                        const parts = [];
+                        if (range.canine) parts.push(`Dog: ${range.canine[0]}–${range.canine[1]}`);
+                        if (range.feline) parts.push(`Cat: ${range.feline[0]}–${range.feline[1]}`);
+                        if (!parts.length) return null;
+                        return (
+                          <Typography sx={{ fontSize: '0.55rem', color: COLORS.textMuted, fontFamily: FONT }}>
+                            Ref: {parts.join(' | ')}
+                          </Typography>
+                        );
+                      }
+                      if (Array.isArray(range) && range.length === 2) {
+                        return (
+                          <Typography sx={{ fontSize: '0.55rem', color: COLORS.textMuted, fontFamily: FONT }}>
+                            Ref: {range[0]}–{range[1]}
+                          </Typography>
+                        );
+                      }
+                      return null;
+                    };
+
+                    return (
+                      <Box key={i} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', px: 1.5, py: 0.75, bgcolor: COLORS.kpiBlueBg, border: `1px solid ${COLORS.kpiBlueBorder}` }}>
+                        <Box>
+                          <Typography sx={{ fontSize: '0.72rem', fontWeight: 800, color: COLORS.brand, fontFamily: FONT }}>
+                            {lab.testName}
+                          </Typography>
+                          {lab.result && (
+                            <Typography sx={{ fontSize: '0.65rem', color: COLORS.textSecondary }}>
+                              {lab.result}{lab.unit ? ` ${lab.unit}` : ''}
+                            </Typography>
+                          )}
+                          {renderRefRange()}
+                          {lab.notes && (
+                            <Typography sx={{ fontSize: '0.6rem', color: COLORS.textMuted, fontStyle: 'italic' }}>
+                              {lab.notes}
+                            </Typography>
+                          )}
+                        </Box>
+                        {lab.status && (
+                          <Chip
+                            label={chipLabel}
+                            size="small"
+                            sx={{ height: 16, fontSize: '0.5rem', fontWeight: 900, borderRadius: 0, bgcolor: sc.bgcolor, color: sc.color, flexShrink: 0 }}
+                          />
+                        )}
                       </Box>
-                      {lab.status && (
-                        <Chip label={lab.status.toUpperCase()} size="small" sx={{ height: 16, fontSize: '0.5rem', fontWeight: 900, borderRadius: 0 }} />
-                      )}
-                    </Box>
-                  ))}
+                    );
+                  })}
                 </Stack>
               </SectionBlock>
             )}

@@ -1411,14 +1411,39 @@ export default function PetHistoryScreen({ route, navigation }) {
                     statusKey === 'critical' ? '#FFEBEE' :
                     statusKey === 'abnormal' ? '#FFF3E0' :
                     '#E8F5E9';
+
+                  // Amendment 1: derive display label from resultType for positive-negative tests
+                  const chipLabel = lab.resultType === 'positive-negative'
+                    ? (statusKey === 'normal' ? 'NEGATIVE' : statusKey === 'critical' ? 'CRITICAL' : 'POSITIVE')
+                    : statusKey.toUpperCase();
+
+                  // Species-resolved reference range — petSpecies is available in component scope
+                  const refRangeNode = (() => {
+                    const range = lab.referenceRange || null;
+                    if (!range) return null;
+                    const speciesKey = petSpecies.toLowerCase().includes('cat') ? 'feline' : 'canine';
+                    const resolved = range[speciesKey] || range;
+                    if (Array.isArray(resolved) && resolved.length === 2) {
+                      return (
+                        <Text style={styles.labRefRange}>
+                          {`Ref: ${resolved[0]} – ${resolved[1]}${lab.unit ? ` ${lab.unit}` : ''}`}
+                        </Text>
+                      );
+                    }
+                    return null;
+                  })();
+
                   return (
                     <View key={i} style={styles.labRow}>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.labTestName}>{lab.testName}</Text>
-                        <Text style={styles.labResult}>{lab.result}</Text>
+                        <Text style={styles.labResult}>
+                          {lab.result}{lab.unit ? ` ${lab.unit}` : ''}
+                        </Text>
+                        {refRangeNode}
                       </View>
                       <Text style={[styles.labStatusPill, { color: statusColor, backgroundColor: statusBg }]}>
-                        {statusKey.toUpperCase()}
+                        {chipLabel}
                       </Text>
                     </View>
                   );
@@ -2142,7 +2167,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     padding: 14,
     backgroundColor: "#E3F2FD",
-    borderRadius: 16,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: "#BBDEFB",
   },
@@ -2158,7 +2183,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "white",
     padding: 10,
-    borderRadius: 10,
+    borderRadius: 0,
     marginBottom: 6,
     borderWidth: 1,
     borderColor: "#E0E0E0",
@@ -2173,13 +2198,18 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
     marginTop: 1,
   },
+  labRefRange: {
+    fontSize: 10,
+    color: '#9E9E9E',
+    marginTop: 1,
+  },
   labStatusPill: {
     fontSize: 10,
     fontWeight: "900",
     letterSpacing: 0.5,
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 8,
+    borderRadius: 0,
     overflow: "hidden",
     textTransform: "uppercase",
   },

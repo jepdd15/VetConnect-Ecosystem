@@ -3,6 +3,9 @@ import './ClinicalWorkspace.css';
 import { resolveTieredPrice } from '../utils/resolveTieredPrice';
 // T4.117: buildVaccineKeywords import removed — detection is now category-based
 import { useVaccineCatalog } from '../hooks/useVaccineCatalog';
+// T4.120: Lab test catalog hook + constants
+import { useLabTestCatalog } from '../hooks/useLabTestCatalog';
+import { LAB_CATEGORIES, LAB_STATUSES } from '../utils/labTestConstants';
 import { ZEN_PLACEHOLDERS } from '../utils/soapConstants';
 import {
   Dialog, Slide, AppBar, Toolbar, IconButton, Typography, Button,
@@ -30,7 +33,7 @@ import {
   Psychology as PsychologyIcon,
   Vaccines as VaccinesIcon,
 } from '@mui/icons-material';
-import { doc, collection, Timestamp, addDoc, updateDoc, getDoc, query, where, orderBy, getDocs, arrayUnion, writeBatch, runTransaction } from 'firebase/firestore';
+import { doc, collection, Timestamp, addDoc, updateDoc, getDoc, query, where, orderBy, getDocs, arrayUnion, writeBatch, runTransaction, setDoc } from 'firebase/firestore';
 import { db, auth } from '../firebaseConfig';
 import { useInventory } from '../features/Inventory/hooks/useInventory';
 import { calculatePulseMetrics, makePulseEventId, createPulseEvent } from '../utils/pulseUtils';
@@ -449,6 +452,8 @@ const KNOWLEDGE_BASE = [
 
 // ZEN_PLACEHOLDERS imported from shared constants — see src/utils/soapConstants.js
 
+const CUSTOM_TEST_SENTINEL = { id: '__custom__', name: '+ Add Custom Test', category: '__action__' };
+
 export default function ClinicalWorkspace({ open, onClose, patient, inventoryList, servicesList, departments, vetsList, groupAppointments = [], onSwitchPatient }) {
   const clinicSettings = useClinicSettings();
   const vaccineCatalog = useVaccineCatalog();
@@ -511,8 +516,20 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   // pendingSwitchTarget holds the appointment row the vet clicked; the dialog prompts Save/Discard/Cancel.
   const [pendingSwitchTarget, setPendingSwitchTarget] = useState(null);
 
-  // C3: Lab results — array of { testName, result, status, notes }
+  // T4.120: Lab test catalog — singleton Firestore-backed hook, same pattern as useVaccineCatalog
+  const labCatalog = useLabTestCatalog();
+
+  // T4.120: Lab results — extended shape includes catalog-derived fields
+  // { testName, result, status, notes, unit, referenceRange, catalogTestId, resultType }
   const [labResults, setLabResults] = useState([]);
+
+  // T4.120: Custom lab test dialog state
+  const [addCustomLabOpen, setAddCustomLabOpen] = useState(false);
+  const [customLabPendingIdx, setCustomLabPendingIdx] = useState(null);
+  const [customLabForm, setCustomLabForm] = useState({
+    name: '', category: 'Other', unit: '', resultType: 'numeric',
+    canineLow: '', canineHigh: '', felineLow: '', felineHigh: '',
+  });
 
   const [treatmentCart, setTreatmentCart] = useState([]);
   const [serviceAttribution, setServiceAttribution] = useState({});
@@ -688,6 +705,12 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
               recheckIn: draft.recheckIn || '1 Week',
               nextVisit: draft.nextVisit || '',
             });
+            setLabResults((draft.labResults || []).map(l => ({
+              testName: l.testName || '', result: l.result || '',
+              status: l.status || 'normal', notes: l.notes || '',
+              unit: l.unit || '', referenceRange: l.referenceRange ?? null,
+              catalogTestId: l.catalogTestId ?? null, resultType: l.resultType || 'descriptive',
+            })));
           } else {
             // No draft: initialize fresh defaults.
             setDraftBannerState(null);
@@ -1757,11 +1780,18 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         // C3: Lab results — only written when at least one row has been added.
         // Empty testName rows are filtered to avoid noise.
         ...(labResults.length > 0 ? {
+            // T4.120: Extended lab write — includes catalog-derived metadata.
+            // Amendment 1: status is already mapped at the form level (positive→'abnormal',
+            // negative→'normal') so no additional transformation needed here.
             labResults: labResults.filter(l => l.testName).map(l => ({
                 testName: l.testName,
                 result: l.result,
                 status: l.status,
                 notes: l.notes || '',
+                unit: l.unit || '',
+                referenceRange: l.referenceRange || null,
+                catalogTestId: l.catalogTestId || null,
+                resultType: l.resultType || 'descriptive',
             }))
         } : {}),
       });
@@ -1977,6 +2007,13 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             recheckIn: soapData.recheckIn,
             patientStatus: soapData.patientStatus,
             nextVisit: soapData.nextVisit,
+            labResults: labResults.filter(l => l.testName).map(l => ({
+              testName: l.testName, result: l.result, status: l.status,
+              notes: l.notes || '', unit: l.unit || '',
+              referenceRange: l.referenceRange || null,
+              catalogTestId: l.catalogTestId || null,
+              resultType: l.resultType || 'descriptive',
+            })),
           },
           encounterItems: treatmentCart.map(({ _showInstructions, ...rest }) => rest),
           encounterItemsVersion: Timestamp.now(),
@@ -2032,6 +2069,12 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       recheckIn: d.recheckIn || '1 Week',
       nextVisit: d.nextVisit || '',
     });
+    setLabResults((d.labResults || []).map(l => ({
+      testName: l.testName || '', result: l.result || '',
+      status: l.status || 'normal', notes: l.notes || '',
+      unit: l.unit || '', referenceRange: l.referenceRange ?? null,
+      catalogTestId: l.catalogTestId ?? null, resultType: l.resultType || 'descriptive',
+    })));
     setIsDirty(false);
     setDraftBannerState(null);
     showToast("Draft restored. Continue editing.", "success");
@@ -2248,47 +2291,407 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     </Box>
   );
 
+  /**
+   * T4.120: Persists a new custom lab test to Firestore (clinic_settings/lab_test_catalog)
+   * then auto-selects it in the pending row. The useLabTestCatalog singleton listener
+   * picks up the change in real-time so the test becomes available in all future dropdowns.
+   */
+  const handleSaveCustomLabTest = async () => {
+    const { name, category, unit, resultType, canineLow, canineHigh, felineLow, felineHigh } = customLabForm;
+    if (!name.trim()) {
+      showToast('Test name is required.', 'error');
+      return;
+    }
+
+    const hasRanges = canineLow !== '' && canineHigh !== '' && felineLow !== '' && felineHigh !== '';
+    const newTest = {
+      id: `custom-${Date.now()}`,
+      name: name.trim(),
+      category: category || 'Other',
+      unit: unit.trim(),
+      resultType,
+      referenceRange: hasRanges
+        ? { canine: [parseFloat(canineLow), parseFloat(canineHigh)], feline: [parseFloat(felineLow), parseFloat(felineHigh)] }
+        : null,
+    };
+
+    try {
+      await setDoc(
+        doc(db, 'clinic_settings', 'lab_test_catalog'),
+        { tests: arrayUnion(newTest) },
+        { merge: true },
+      );
+
+      // Auto-select the new test in the pending row
+      if (customLabPendingIdx !== null) {
+        const speciesKey = (patient?.petSpecies || '').toLowerCase().includes('cat') ? 'feline' : 'canine';
+        const resolvedRange = newTest.referenceRange?.[speciesKey] || null;
+        setLabResults(prev => {
+          const updated = [...prev];
+          updated[customLabPendingIdx] = {
+            ...updated[customLabPendingIdx],
+            testName: newTest.name,
+            unit: newTest.unit,
+            referenceRange: newTest.referenceRange,
+            resultType: newTest.resultType,
+            catalogTestId: newTest.id,
+            _resolvedRange: resolvedRange,
+          };
+          return updated;
+        });
+      }
+
+      setAddCustomLabOpen(false);
+      setCustomLabPendingIdx(null);
+      setCustomLabForm({ name: '', category: 'Other', unit: '', resultType: 'numeric', canineLow: '', canineHigh: '', felineLow: '', felineHigh: '' });
+      showToast(`"${newTest.name}" added to lab catalog.`, 'success');
+    } catch (err) {
+      console.error('[ClinicalWorkspace.handleSaveCustomLabTest]:', err.message);
+      showToast('Failed to save custom test. Check your connection.', 'error');
+    }
+  };
+
+  /**
+   * T4.120: Auto-computes a result status from the numeric value and species-specific
+   * reference range. Vet can always override manually via the status dropdown.
+   *
+   * For positive-negative tests: regex match on result text (Amendment 1).
+   * For numeric tests: deviation from reference range bounds.
+   * For descriptive tests: no auto-compute — returns current status unchanged.
+   */
+  const computeAutoStatus = (resultValue, resultType, resolvedRange, currentStatus) => {
+    if (resultType === 'positive-negative') {
+      if (/positive/i.test(resultValue)) return 'abnormal';
+      if (/negative/i.test(resultValue)) return 'normal';
+      return currentStatus || 'normal';
+    }
+
+    if (resultType === 'numeric' && Array.isArray(resolvedRange) && resolvedRange.length === 2) {
+      const num = parseFloat(resultValue);
+      if (isNaN(num)) return currentStatus || 'normal';
+      const [low, high] = resolvedRange;
+      // Heuristic: 30% deviation from reference range. Vet can override.
+      if (num < low * 0.7 || num > high * 1.3) return 'critical';
+      if (num < low || num > high) return 'abnormal';
+      return 'normal';
+    }
+
+    return currentStatus || 'normal';
+  };
+
+  /**
+   * T4.120: Derives the display label for the status chip based on resultType.
+   * For positive-negative tests, 'abnormal' renders as POSITIVE and 'normal'
+   * renders as NEGATIVE — preserving the 3-value status contract while showing
+   * clinically meaningful labels to the vet. (Amendment 1)
+   */
+  const getStatusChipLabel = (status, resultType) => {
+    const key = (status || 'normal').toLowerCase();
+    if (resultType === 'positive-negative') {
+      if (key === 'normal') return 'NEGATIVE';
+      if (key === 'critical') return 'CRITICAL';
+      return 'POSITIVE';
+    }
+    return key.toUpperCase();
+  };
+
+  const labCatalogWithSentinel = useMemo(
+    () => [...labCatalog, CUSTOM_TEST_SENTINEL],
+    [labCatalog],
+  );
+
   const labResultsJSX = (
     <Box sx={{ mb: 2, flexShrink: 0 }}>
-      <Button size="small" variant="text"
-        onClick={() => setLabResults(prev => [...prev, { testName: '', result: '', status: 'normal', notes: '' }])}
-        sx={{ fontWeight: 900, fontSize: '0.65rem', textTransform: 'uppercase', color: '#1565C0', mb: 1 }}>
+      <Button
+        size="small"
+        variant="text"
+        onClick={() => setLabResults(prev => [
+          ...prev,
+          { testName: '', result: '', status: 'normal', notes: '', unit: '', referenceRange: null, catalogTestId: null, resultType: 'descriptive', _resolvedRange: null },
+        ])}
+        sx={{ fontWeight: 900, fontSize: '0.65rem', textTransform: 'uppercase', color: COLORS.medical, mb: 1 }}
+      >
         + Add Lab Result
       </Button>
-      {labResults.map((lab, idx) => (
-        <Box key={idx} sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}>
-          <TextField size="small" placeholder="Test Name" value={lab.testName}
-            onChange={(e) => {
-              const updated = [...labResults];
-              updated[idx] = { ...updated[idx], testName: e.target.value };
-              setLabResults(updated);
-            }}
-            sx={{ flex: 2, bgcolor: 'white' }} />
-          <TextField size="small" placeholder="Result" value={lab.result}
-            onChange={(e) => {
-              const updated = [...labResults];
-              updated[idx] = { ...updated[idx], result: e.target.value };
-              setLabResults(updated);
-            }}
-            sx={{ flex: 2, bgcolor: 'white' }} />
-          <TextField size="small" select value={lab.status}
-            onChange={(e) => {
-              const updated = [...labResults];
-              updated[idx] = { ...updated[idx], status: e.target.value };
-              setLabResults(updated);
-            }}
-            sx={{ flex: 1, bgcolor: 'white' }}>
-            <MenuItem value="normal">Normal</MenuItem>
-            <MenuItem value="abnormal">Abnormal</MenuItem>
-            <MenuItem value="critical">Critical</MenuItem>
-          </TextField>
-          <IconButton size="small"
-            onClick={() => setLabResults(prev => prev.filter((_, i) => i !== idx))}
-            sx={{ color: '#D32F2F' }}>
-            <CloseIcon sx={{ fontSize: 14 }} />
-          </IconButton>
-        </Box>
-      ))}
+
+      {labResults.map((lab, idx) => {
+        const speciesKey = (patient?.petSpecies || '').toLowerCase().includes('cat') ? 'feline' : 'canine';
+        // Resolve species-specific reference range for display; fall back to the cached _resolvedRange
+        const resolvedRange = lab.referenceRange?.[speciesKey]
+          || (Array.isArray(lab.referenceRange) ? lab.referenceRange : null)
+          || lab._resolvedRange
+          || null;
+
+        const statusKey = (lab.status || 'normal').toLowerCase();
+        const statusChipColor = statusKey === 'critical' ? COLORS.danger : statusKey === 'abnormal' ? COLORS.warning : COLORS.success;
+        const statusChipBg   = statusKey === 'critical' ? COLORS.dangerSurface : statusKey === 'abnormal' ? COLORS.warningSurface : '#E8F5E9';
+
+        return (
+          <Box key={idx} sx={{ mb: 1.5, p: 1, bgcolor: '#FAFAFA', border: `1px solid ${COLORS.borderLight}` }}>
+            {/* Row 1: Autocomplete + Delete */}
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 0.75 }}>
+              <Autocomplete
+                size="small"
+                options={labCatalogWithSentinel}
+                groupBy={(opt) => opt.category === '__action__' ? '' : opt.category}
+                getOptionLabel={(opt) => opt.name || opt.testName || ''}
+                value={lab.catalogTestId ? (labCatalog.find(c => c.id === lab.catalogTestId) || null) : null}
+                filterOptions={(opts, state) => {
+                  // Always include the sentinel; filter the rest by the input value
+                  const q = state.inputValue.toLowerCase();
+                  const filtered = opts.filter(o => o.id === '__custom__' || o.name.toLowerCase().includes(q));
+                  return filtered;
+                }}
+                onChange={(_, selected) => {
+                  if (!selected) return;
+
+                  if (selected.id === '__custom__') {
+                    // Open the Add Custom Test dialog, targeting this row
+                    setCustomLabPendingIdx(idx);
+                    setAddCustomLabOpen(true);
+                    return;
+                  }
+
+                  const specKey = (patient?.petSpecies || '').toLowerCase().includes('cat') ? 'feline' : 'canine';
+                  const rRange = selected.referenceRange?.[specKey]
+                    || (Array.isArray(selected.referenceRange) ? selected.referenceRange : null)
+                    || null;
+
+                  const updated = [...labResults];
+                  updated[idx] = {
+                    ...updated[idx],
+                    testName: selected.name,
+                    unit: selected.unit || '',
+                    referenceRange: selected.referenceRange || null,
+                    resultType: selected.resultType || 'descriptive',
+                    catalogTestId: selected.id,
+                    _resolvedRange: rRange,
+                    // Re-compute status if there's already a result value
+                    status: updated[idx].result
+                      ? computeAutoStatus(updated[idx].result, selected.resultType, rRange, updated[idx].status)
+                      : updated[idx].status,
+                  };
+                  setLabResults(updated);
+                }}
+                renderOption={(props, option) => {
+                  const isAction = option.id === '__custom__';
+                  return (
+                    <Box component="li" {...props}>
+                      <Typography sx={{
+                        fontFamily: FONT,
+                        fontSize: '0.8rem',
+                        fontWeight: isAction ? 900 : 500,
+                        color: isAction ? COLORS.medical : COLORS.brand,
+                        fontStyle: isAction ? 'normal' : 'inherit',
+                      }}>
+                        {option.name}
+                      </Typography>
+                    </Box>
+                  );
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    placeholder="Search test…"
+                    size="small"
+                    sx={{
+                      flex: 3,
+                      '& .MuiOutlinedInput-root': { borderRadius: 0, bgcolor: 'white', fontSize: '0.8rem' },
+                    }}
+                  />
+                )}
+                noOptionsText="No matching tests"
+                sx={{ flex: 3 }}
+                clearOnBlur={false}
+                blurOnSelect
+              />
+
+              {/* Unit — read-only, shown inline */}
+              {lab.unit && (
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, minWidth: 40, flexShrink: 0 }}>
+                  {lab.unit}
+                </Typography>
+              )}
+
+              <IconButton
+                size="small"
+                onClick={() => setLabResults(prev => prev.filter((_, i) => i !== idx))}
+                sx={{ color: COLORS.danger, flexShrink: 0 }}
+              >
+                <CloseIcon sx={{ fontSize: 14 }} />
+              </IconButton>
+            </Box>
+
+            {/* Row 2: Result + Status */}
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+              <Box sx={{ flex: 2 }}>
+                <TextField
+                  size="small"
+                  fullWidth
+                  placeholder="Result"
+                  value={lab.result}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const updated = [...labResults];
+                    updated[idx] = {
+                      ...updated[idx],
+                      result: val,
+                      // Auto-compute status from the new result value
+                      status: computeAutoStatus(val, updated[idx].resultType, resolvedRange, updated[idx].status),
+                    };
+                    setLabResults(updated);
+                  }}
+                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0, bgcolor: 'white', fontSize: '0.8rem' } }}
+                />
+                {/* Reference range helper — only for numeric tests with a resolved range */}
+                {lab.resultType === 'numeric' && Array.isArray(resolvedRange) && (
+                  <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, mt: 0.25 }}>
+                    Ref: {resolvedRange[0]} – {resolvedRange[1]}{lab.unit ? ` ${lab.unit}` : ''}
+                  </Typography>
+                )}
+              </Box>
+
+              <TextField
+                size="small"
+                select
+                value={lab.status}
+                onChange={(e) => {
+                  const updated = [...labResults];
+                  updated[idx] = { ...updated[idx], status: e.target.value };
+                  setLabResults(updated);
+                }}
+                sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: 0, bgcolor: 'white', fontSize: '0.8rem' } }}
+              >
+                {/* Amendment 1: positive-negative tests show Positive/Negative labels
+                    but store 'abnormal'/'normal' values — matching the 3-value contract
+                    all downstream consumers depend on. Critical is not shown because
+                    qualitative results have no meaningful critical distinction. */}
+                {lab.resultType === 'positive-negative' ? [
+                  <MenuItem key="pos" value="abnormal">Positive</MenuItem>,
+                  <MenuItem key="neg" value="normal">Negative</MenuItem>,
+                ] : LAB_STATUSES.map(s => (
+                  <MenuItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</MenuItem>
+                ))}
+              </TextField>
+
+              {/* Status chip — visual quick-scan indicator */}
+              <Chip
+                label={getStatusChipLabel(lab.status, lab.resultType)}
+                size="small"
+                sx={{
+                  fontFamily: FONT,
+                  fontSize: '0.6rem',
+                  fontWeight: 900,
+                  height: 22,
+                  borderRadius: 0,
+                  bgcolor: statusChipBg,
+                  color: statusChipColor,
+                  flexShrink: 0,
+                  alignSelf: 'center',
+                }}
+              />
+            </Box>
+          </Box>
+        );
+      })}
+
+      {/* T4.120: Add Custom Lab Test Dialog */}
+      <Dialog
+        open={addCustomLabOpen}
+        onClose={() => { setAddCustomLabOpen(false); setCustomLabPendingIdx(null); }}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.border}` } }}
+      >
+        <DialogTitle sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.95rem', color: COLORS.brand, borderBottom: `1px solid ${COLORS.borderLight}` }}>
+          Add Custom Lab Test
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          <Stack spacing={1.5}>
+            <TextField
+              label="Test Name"
+              fullWidth
+              required
+              size="small"
+              value={customLabForm.name}
+              onChange={(e) => setCustomLabForm(prev => ({ ...prev, name: e.target.value }))}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+            />
+            <TextField
+              label="Category"
+              select
+              fullWidth
+              size="small"
+              value={customLabForm.category}
+              onChange={(e) => setCustomLabForm(prev => ({ ...prev, category: e.target.value }))}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+            >
+              {LAB_CATEGORIES.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+            </TextField>
+            <TextField
+              label="Unit (e.g. mg/dL)"
+              fullWidth
+              size="small"
+              value={customLabForm.unit}
+              onChange={(e) => setCustomLabForm(prev => ({ ...prev, unit: e.target.value }))}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+            />
+            <TextField
+              label="Result Type"
+              select
+              fullWidth
+              size="small"
+              value={customLabForm.resultType}
+              onChange={(e) => setCustomLabForm(prev => ({ ...prev, resultType: e.target.value }))}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+            >
+              <MenuItem value="numeric">Numeric</MenuItem>
+              <MenuItem value="positive-negative">Positive / Negative</MenuItem>
+              <MenuItem value="descriptive">Descriptive</MenuItem>
+            </TextField>
+            <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.textMuted, display: 'block' }}>
+              Reference Ranges (optional — leave blank if not applicable)
+            </Typography>
+            <Grid container spacing={1}>
+              <Grid size={{ xs: 6 }}>
+                <TextField label="Canine Low" type="number" size="small" fullWidth value={customLabForm.canineLow}
+                  onChange={(e) => setCustomLabForm(prev => ({ ...prev, canineLow: e.target.value }))}
+                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }} />
+              </Grid>
+              <Grid size={{ xs: 6 }}>
+                <TextField label="Canine High" type="number" size="small" fullWidth value={customLabForm.canineHigh}
+                  onChange={(e) => setCustomLabForm(prev => ({ ...prev, canineHigh: e.target.value }))}
+                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }} />
+              </Grid>
+              <Grid size={{ xs: 6 }}>
+                <TextField label="Feline Low" type="number" size="small" fullWidth value={customLabForm.felineLow}
+                  onChange={(e) => setCustomLabForm(prev => ({ ...prev, felineLow: e.target.value }))}
+                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }} />
+              </Grid>
+              <Grid size={{ xs: 6 }}>
+                <TextField label="Feline High" type="number" size="small" fullWidth value={customLabForm.felineHigh}
+                  onChange={(e) => setCustomLabForm(prev => ({ ...prev, felineHigh: e.target.value }))}
+                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }} />
+              </Grid>
+            </Grid>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 2.5, pb: 2, borderTop: `1px solid ${COLORS.borderLight}` }}>
+          <Button
+            onClick={() => { setAddCustomLabOpen(false); setCustomLabPendingIdx(null); }}
+            sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textSecondary, borderRadius: 0 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleSaveCustomLabTest}
+            sx={{ fontFamily: FONT, fontWeight: 900, borderRadius: 0, bgcolor: COLORS.medical, '&:hover': { bgcolor: COLORS.brand } }}
+          >
+            Save & Select
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 

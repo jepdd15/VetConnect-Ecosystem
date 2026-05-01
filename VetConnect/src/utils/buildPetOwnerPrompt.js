@@ -179,11 +179,31 @@ export function buildPetOwnerPrompt({ pet, records, vaccinations }) {
         });
       }
 
-      // Lab results
+      // Lab results — includes unit and reference range for richer AI context
       if (r.labResults?.length > 0) {
         lines.push('Lab Results:');
         r.labResults.forEach(lab => {
-          lines.push(`  - ${lab.testName}: ${lab.result} (${lab.status || 'normal'})`);
+          let line = `  - ${lab.testName}: ${lab.result}`;
+          if (lab.unit) line += ` ${lab.unit}`;
+          if (lab.referenceRange) {
+            const range = lab.referenceRange;
+            if (Array.isArray(range) && range.length === 2) {
+              line += ` (ref: ${range[0]}-${range[1]})`;
+            } else if (typeof range === 'object') {
+              const speciesKey = (pet?.species || '').toLowerCase().includes('cat') ? 'feline' : 'canine';
+              const resolved = range[speciesKey];
+              if (Array.isArray(resolved)) {
+                line += ` (ref: ${resolved[0]}-${resolved[1]})`;
+              } else {
+                const parts = [];
+                if (range.canine) parts.push(`Dog: ${range.canine[0]}-${range.canine[1]}`);
+                if (range.feline) parts.push(`Cat: ${range.feline[0]}-${range.feline[1]}`);
+                if (parts.length) line += ` (ref: ${parts.join(', ')})`;
+              }
+            }
+          }
+          line += ` (${lab.status || 'normal'})`;
+          lines.push(line);
         });
       }
 

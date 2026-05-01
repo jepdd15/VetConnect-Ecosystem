@@ -104,11 +104,23 @@ export function buildPetHistoryPrompt({ pet, owner, records, vaccinations }) {
         lines.push(`- Medications: ${drugList}`);
       }
 
-      // Lab results — handles both array and legacy string forms
+      // Lab results — handles both array and legacy string forms.
+      // Includes unit and species-resolved reference range for richer AI context.
       if (Array.isArray(r.labResults) && r.labResults.length > 0) {
-        const labList = r.labResults.map(l =>
-          `${l.testName}: ${l.result}${l.status && l.status !== 'normal' ? ` [${l.status}]` : ''}`
-        ).join('; ');
+        const speciesKey = (pet?.species || '').toLowerCase().includes('cat') ? 'feline' : 'canine';
+        const labList = r.labResults.map(l => {
+          let parts = `${l.testName}: ${l.result}`;
+          if (l.unit) parts += ` ${l.unit}`;
+          if (l.referenceRange) {
+            // Prefer species-specific range; fall back to array or skip if neither resolves
+            const range = l.referenceRange?.[speciesKey] || l.referenceRange;
+            if (Array.isArray(range) && range.length === 2) {
+              parts += ` (ref: ${range[0]}-${range[1]})`;
+            }
+          }
+          if (l.status && l.status !== 'normal') parts += ` [${l.status}]`;
+          return parts;
+        }).join('; ');
         lines.push(`- Lab Results: ${labList}`);
       } else if (typeof r.labResults === 'string' && r.labResults.trim()) {
         lines.push(`- Lab Results: ${r.labResults}`);

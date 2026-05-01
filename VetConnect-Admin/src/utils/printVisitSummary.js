@@ -108,21 +108,48 @@ function renderVaccineSection(vaccineData) {
 }
 
 /**
+ * Resolves a lab reference range to a display string for print output.
+ * Handles species-keyed objects, legacy arrays, and null gracefully.
+ *
+ * @param {object|Array|null} range - referenceRange value from the record
+ * @returns {string} Display string or '—'
+ */
+function resolveRefRangeForPrint(range) {
+  if (!range) return '—';
+  if (typeof range === 'object' && !Array.isArray(range)) {
+    const parts = [];
+    if (range.canine) parts.push(`Dog: ${range.canine[0]}–${range.canine[1]}`);
+    if (range.feline) parts.push(`Cat: ${range.feline[0]}–${range.feline[1]}`);
+    return parts.length ? parts.join(' / ') : '—';
+  }
+  if (Array.isArray(range) && range.length === 2) {
+    return `${range[0]}–${range[1]}`;
+  }
+  return '—';
+}
+
+/**
  * Renders the lab results table, only when lab results exist.
+ * 5-column layout: Test | Result (with unit) | Ref. Range | Status | Notes
  *
  * @param {Array} labResults
  * @returns {string} HTML string
  */
 function renderLabResultsSection(labResults) {
   if (!labResults?.length) return '';
-  const rows = labResults.map(lr => `
-    <tr>
-      <td>${esc(lr.testName || '—')}</td>
-      <td>${esc(lr.result || '—')}</td>
-      <td>${esc(lr.status || '—')}</td>
-      <td>${esc(lr.notes || '—')}</td>
-    </tr>
-  `).join('');
+  const rows = labResults.map(lr => {
+    const resultWithUnit = `${esc(lr.result || '—')}${lr.unit ? ' ' + esc(lr.unit) : ''}`;
+    const refDisplay = resolveRefRangeForPrint(lr.referenceRange || null);
+    return `
+      <tr>
+        <td>${esc(lr.testName || '—')}</td>
+        <td>${resultWithUnit}</td>
+        <td>${esc(refDisplay)}</td>
+        <td>${esc(lr.status || '—')}</td>
+        <td>${esc(lr.notes || '—')}</td>
+      </tr>
+    `;
+  }).join('');
   return `
     <h2>Lab Results</h2>
     <table>
@@ -130,6 +157,7 @@ function renderLabResultsSection(labResults) {
         <tr>
           <th>Test</th>
           <th>Result</th>
+          <th>Ref. Range</th>
           <th>Status</th>
           <th>Notes</th>
         </tr>

@@ -226,6 +226,10 @@ export default function PatientDashboard() {
   const [rxZoomFilter, setRxZoomFilter] = useState('All');
   const [rxZoomSearch, setRxZoomSearch] = useState('');
 
+  // T4.120: Lab results zoom dialog
+  const [labZoom, setLabZoom] = useState(false);
+  const [labZoomFilter, setLabZoomFilter] = useState('All');
+
   // T4.116: Other Pets widget — collapsed by default
   const [siblingExpanded, setSiblingExpanded] = useState(false);
 
@@ -442,9 +446,10 @@ export default function PatientDashboard() {
         if ((r.dispensedProducts || r.prescriptions)?.some(rx => rx.name?.toLowerCase().includes(q))) return true;
 
         // T2.462: Lab results — handle both string and array shapes
+        // T4.120: Also search lr.unit so "mg/dL" queries find matching records
         if (typeof r.labResults === 'string' && r.labResults.toLowerCase().includes(q)) return true;
         if (Array.isArray(r.labResults) && r.labResults.some(lr =>
-          (lr.testName || lr.name || lr.result || '').toLowerCase().includes(q)
+          (lr.testName || lr.name || lr.result || lr.unit || '').toLowerCase().includes(q)
         )) return true;
 
         // T2.462: Vaccine data
@@ -609,6 +614,7 @@ export default function PatientDashboard() {
             previousDate: existing.date,
             referenceRange: lab.referenceRange || existing.referenceRange || null,
             unit: lab.unit || existing.unit || null,
+            resultType: lab.resultType || existing.resultType || null,
           });
         } else {
           testMap.set(lab.testName, {
@@ -620,12 +626,49 @@ export default function PatientDashboard() {
             previousDate: null,
             referenceRange: lab.referenceRange || null,
             unit: lab.unit || null,
+            resultType: lab.resultType || null,
           });
         }
       });
     });
     return Array.from(testMap.values());
   }, [history]);
+
+  // T4.120: Full chronological lab timeline for zoom modal — all tests, newest first.
+  const labTimeline = useMemo(() => {
+    const entries = [];
+    (history || []).forEach(rec => {
+      const ms = rec.date?.seconds ? rec.date.seconds * 1000 : 0;
+      const dateStr = ms
+        ? new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        : '—';
+      (rec.labResults || []).forEach(lab => {
+        if (!lab.testName) return;
+        const numericResult = parseFloat(lab.result);
+        entries.push({
+          testName: lab.testName,
+          result: lab.result,
+          numericResult: isNaN(numericResult) ? null : numericResult,
+          status: lab.status || 'normal',
+          unit: lab.unit || '',
+          referenceRange: lab.referenceRange || null,
+          resultType: lab.resultType || (isNaN(numericResult) ? 'descriptive' : 'numeric'),
+          notes: lab.notes || '',
+          date: dateStr,
+          ms,
+          vet: rec.vetName || rec.attendingVet || '—',
+          catalogTestId: lab.catalogTestId || null,
+        });
+      });
+    });
+    return entries.sort((a, b) => b.ms - a.ms); // newest first
+  }, [history]);
+
+  // T4.120: Unique test names for zoom filter chips
+  const labUniqueTests = useMemo(() => {
+    const set = new Set(labTimeline.map(e => e.testName));
+    return Array.from(set).sort();
+  }, [labTimeline]);
 
   // Vaccination tracker — uses live Firestore catalog (vaccineCatalog) for canonical vaccine list.
   // Primary: match vaccineAdministrations[].vaccineName via resolveVaccineFromName (id-based match).
@@ -1445,15 +1488,42 @@ export default function PatientDashboard() {
                                       critical: { bgcolor: COLORS.dangerSurface, color: COLORS.danger },
                                     };
                                     const lc = labChipColors[labStatus] || labChipColors.normal;
+                                    // T4.120 Amendment 1: display POSITIVE/NEGATIVE for positive-negative tests
+                                    const chipLabel = lab.resultType === 'positive-negative'
+                                      ? (labStatus === 'normal' ? 'NEGATIVE' : labStatus === 'critical' ? 'CRITICAL' : 'POSITIVE')
+                                      : (lab.status || 'normal').toUpperCase();
                                     return (
                                       <Box key={i}>
                                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                           <Box sx={{ flex: 1, minWidth: 0, mr: 1 }}>
                                             <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.textPrimary }}>{lab.testName}</Typography>
-                                            <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.textSecondary }}>{lab.result}</Typography>
+                                            {/* T4.120: Show unit after result value */}
+                                            <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.textSecondary }}>
+                                              {lab.result}{lab.unit ? ` ${lab.unit}` : ''}
+                                            </Typography>
+                                            {/* T4.120: Reference range — species-resolved, gracefully degrades on legacy records */}
+                                            {lab.referenceRange && (() => {
+                                              const speciesKey = (pet?.species || '').toLowerCase().includes('cat') ? 'feline' : 'canine';
+                                              const range = lab.referenceRange?.[speciesKey] || lab.referenceRange;
+                                              if (Array.isArray(range)) {
+                                                return (
+                                                  <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted }}>
+                                                    Ref: {range[0]} – {range[1]}{lab.unit ? ` ${lab.unit}` : ''}
+                                                  </Typography>
+                                                );
+                                              }
+                                              if (typeof range === 'string') {
+                                                return (
+                                                  <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted }}>
+                                                    Ref: {range}
+                                                  </Typography>
+                                                );
+                                              }
+                                              return null;
+                                            })()}
                                           </Box>
                                           <Chip
-                                            label={(lab.status || 'normal').toUpperCase()}
+                                            label={chipLabel}
                                             size="small"
                                             sx={{
                                               fontFamily: FONT,
@@ -2316,20 +2386,28 @@ export default function PatientDashboard() {
           </Widget>
 
 
-          {/* T2.459: Lab Results Aggregation — only renders when pet has lab data */}
+          {/* T2.459 / T4.120: Lab Results Aggregation — only renders when pet has lab data */}
           {aggregatedLabResults.length > 0 && (
-            <Widget title={`Lab Results (${aggregatedLabResults.length})`} icon={<AssignmentIcon sx={{ fontSize: 14, color: COLORS.medical }} />}>
+            <Widget
+              title={`Lab Results (${aggregatedLabResults.length})`}
+              icon={<ScienceIcon sx={{ fontSize: 14, color: COLORS.medical }} />}
+              onExpand={labTimeline.length > 0 ? () => setLabZoom(true) : undefined}
+            >
               <Stack spacing={1}>
                 {aggregatedLabResults.map((lab, i) => {
                   const statusKey = (lab.status || 'normal').toLowerCase();
                   const statusColor = statusKey === 'critical' ? COLORS.danger : statusKey === 'abnormal' ? COLORS.warning : COLORS.success;
                   const statusBg = statusKey === 'critical' ? COLORS.dangerSurface : statusKey === 'abnormal' ? COLORS.warningSurface : '#E8F5E9';
+                  // T4.120 Amendment 1: SNAP/positive-negative tests display POSITIVE/NEGATIVE, not ABNORMAL/NORMAL
+                  const chipLabel = lab.resultType === 'positive-negative'
+                    ? (statusKey === 'normal' ? 'NEGATIVE' : statusKey === 'critical' ? 'CRITICAL' : 'POSITIVE')
+                    : statusKey.toUpperCase();
                   return (
                     <Box key={i} sx={{ py: 0.75, borderBottom: i < aggregatedLabResults.length - 1 ? `1px solid ${COLORS.borderLight}` : 'none' }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', fontWeight: 700, color: COLORS.textPrimary }}>{lab.testName}</Typography>
                         <Chip
-                          label={statusKey.toUpperCase()}
+                          label={chipLabel}
                           size="small"
                           sx={{ fontFamily: FONT, fontSize: '0.6rem', fontWeight: 800, height: 18, bgcolor: statusBg, color: statusColor, border: `1px solid ${statusColor}` }}
                         />
@@ -2338,11 +2416,16 @@ export default function PatientDashboard() {
                         <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', fontWeight: 800, color: statusColor }}>
                           {lab.result}{lab.unit ? ` ${lab.unit}` : ''}
                         </Typography>
-                        {lab.referenceRange && (
-                          <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted }}>
-                            (ref: {lab.referenceRange})
-                          </Typography>
-                        )}
+                        {lab.referenceRange && (() => {
+                          const speciesKey = (pet?.species || '').toLowerCase().includes('cat') ? 'feline' : 'canine';
+                          const range = lab.referenceRange?.[speciesKey] ?? lab.referenceRange;
+                          const display = Array.isArray(range)
+                            ? `${range[0]} – ${range[1]}${lab.unit ? ` ${lab.unit}` : ''}`
+                            : typeof range === 'string' ? range : null;
+                          return display
+                            ? <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted }}>(ref: {display})</Typography>
+                            : null;
+                        })()}
                       </Box>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.25 }}>
                         <Typography sx={{ fontFamily: FONT, fontSize: '0.68rem', color: COLORS.textMuted }}>{lab.date}</Typography>
@@ -2776,6 +2859,185 @@ export default function PatientDashboard() {
         <DialogActions sx={{ px: 2.5, pb: 2, borderTop: `1px solid ${COLORS.borderLight}` }}>
           <Button
             onClick={() => { setRxZoom(false); setRxZoomFilter('All'); setRxZoomSearch(''); }}
+            sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textSecondary, borderRadius: 0 }}
+          >
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* T4.120: Lab Results Zoom Dialog — test trend charting + chronological timeline */}
+      <Dialog
+        open={labZoom}
+        onClose={() => { setLabZoom(false); setLabZoomFilter('All'); }}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.border}` } }}
+      >
+        <DialogTitle sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '1rem', color: COLORS.brand, borderBottom: `2px solid ${COLORS.border}`, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <ScienceIcon sx={{ fontSize: 18 }} /> Lab Results History{pet?.name ? ` — ${pet.name}` : ''}
+        </DialogTitle>
+        <DialogContent sx={{ py: 2, px: 3 }}>
+          {/* Filter chips — "All" + one per unique test name */}
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 2, alignItems: 'center' }}>
+            <Chip
+              label="All"
+              size="small"
+              onClick={() => setLabZoomFilter('All')}
+              sx={{
+                fontFamily: FONT, fontSize: '0.7rem',
+                fontWeight: labZoomFilter === 'All' ? 800 : 500,
+                bgcolor: labZoomFilter === 'All' ? COLORS.brand : COLORS.formBg,
+                color: labZoomFilter === 'All' ? COLORS.cardBg : COLORS.textSecondary,
+                border: `1px solid ${labZoomFilter === 'All' ? COLORS.brand : COLORS.borderLight}`,
+                borderRadius: 0, cursor: 'pointer',
+              }}
+            />
+            {labUniqueTests.map(name => (
+              <Chip
+                key={name}
+                label={name}
+                size="small"
+                onClick={() => setLabZoomFilter(name)}
+                sx={{
+                  fontFamily: FONT, fontSize: '0.7rem',
+                  fontWeight: labZoomFilter === name ? 800 : 500,
+                  bgcolor: labZoomFilter === name ? COLORS.medical : COLORS.formBg,
+                  color: labZoomFilter === name ? COLORS.cardBg : COLORS.medical,
+                  border: `1px solid ${labZoomFilter === name ? COLORS.medical : COLORS.kpiBlueBorder}`,
+                  borderRadius: 0, cursor: 'pointer',
+                }}
+              />
+            ))}
+          </Box>
+
+          {/* SparkLine chart — shown only when a single numeric test is selected with ≥ 2 data points */}
+          {labZoomFilter !== 'All' && (() => {
+            const filtered = labTimeline.filter(e => e.testName === labZoomFilter);
+            const numericPoints = filtered
+              .filter(e => e.numericResult !== null)
+              .sort((a, b) => a.ms - b.ms); // oldest to newest for chart
+            if (numericPoints.length >= 2) {
+              // Resolve reference range from the most recent entry that has one
+              const latestRef = filtered.find(e => e.referenceRange);
+              const speciesKey = (pet?.species || '').toLowerCase().includes('cat') ? 'feline' : 'canine';
+              const refRange = latestRef?.referenceRange?.[speciesKey]
+                || (Array.isArray(latestRef?.referenceRange) ? latestRef.referenceRange : null);
+              const unit = numericPoints[0]?.unit || '';
+              return (
+                <Box sx={{ width: '100%', mb: 2 }}>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={numericPoints} margin={{ top: 10, right: 30, left: 10, bottom: 10 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
+                      <XAxis
+                        dataKey="ms"
+                        type="number"
+                        scale="time"
+                        domain={['dataMin', 'dataMax']}
+                        tickFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        tick={{ fontSize: 11, fontFamily: FONT }}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 11, fontFamily: FONT }}
+                        domain={['dataMin - 1', 'dataMax + 1']}
+                      />
+                      <RechartsTooltip
+                        contentStyle={{ fontSize: 12, fontFamily: FONT, borderRadius: 0, border: `1px solid ${COLORS.border}` }}
+                        formatter={(value) => [`${value} ${unit}`, labZoomFilter]}
+                        labelFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                      />
+                      {/* Reference range band: two green dashed lines at low/high */}
+                      {Array.isArray(refRange) && refRange.length === 2 && (
+                        <>
+                          <ReferenceLine y={refRange[0]} stroke="#66BB6A" strokeDasharray="4 4"
+                            label={{ value: 'Low', fill: '#66BB6A', fontSize: 10, position: 'right' }} />
+                          <ReferenceLine y={refRange[1]} stroke="#66BB6A" strokeDasharray="4 4"
+                            label={{ value: 'High', fill: '#66BB6A', fontSize: 10, position: 'right' }} />
+                        </>
+                      )}
+                      <Line
+                        type="monotone"
+                        dataKey="numericResult"
+                        stroke={COLORS.medical}
+                        strokeWidth={2.5}
+                        dot={{ r: 4, fill: COLORS.medical }}
+                        activeDot={{ r: 7 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </Box>
+              );
+            }
+            return null; // non-numeric or < 2 points — falls through to timeline below
+          })()}
+
+          {/* Chronological timeline — always shown */}
+          <Stack spacing={1} sx={{ maxHeight: 450, overflow: 'auto' }}>
+            {labTimeline
+              .filter(e => labZoomFilter === 'All' || e.testName === labZoomFilter)
+              .map((e, i) => {
+                const statusKey = (e.status || 'normal').toLowerCase();
+                const statusColor = statusKey === 'critical' ? COLORS.danger : statusKey === 'abnormal' ? COLORS.warning : COLORS.success;
+                // T4.120 Amendment 1: display POSITIVE/NEGATIVE for positive-negative resultType tests
+                const statusLabel = e.resultType === 'positive-negative'
+                  ? (statusKey === 'normal' ? 'NEGATIVE' : statusKey === 'critical' ? 'CRITICAL' : 'POSITIVE')
+                  : statusKey.toUpperCase();
+                return (
+                  <Box key={i} sx={{ display: 'flex', gap: 2, py: 0.75, borderBottom: `1px solid ${COLORS.borderLight}` }}>
+                    <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, minWidth: 100, flexShrink: 0 }}>
+                      {e.date}
+                    </Typography>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.medical }}>{e.testName}</Typography>
+                        <Chip
+                          label={statusLabel}
+                          size="small"
+                          sx={{
+                            fontFamily: FONT, fontSize: '0.6rem', fontWeight: 800, height: 16, borderRadius: 0,
+                            bgcolor: statusKey === 'critical' ? COLORS.dangerSurface : statusKey === 'abnormal' ? COLORS.warningSurface : '#E8F5E9',
+                            color: statusColor,
+                          }}
+                        />
+                      </Box>
+                      <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', color: statusColor, fontWeight: 700 }}>
+                        {e.result}{e.unit ? ` ${e.unit}` : ''}
+                      </Typography>
+                      {e.referenceRange && (() => {
+                        const speciesKey = (pet?.species || '').toLowerCase().includes('cat') ? 'feline' : 'canine';
+                        const range = e.referenceRange?.[speciesKey] || e.referenceRange;
+                        if (Array.isArray(range)) {
+                          return (
+                            <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted }}>
+                              Ref: {range[0]} – {range[1]}{e.unit ? ` ${e.unit}` : ''}
+                            </Typography>
+                          );
+                        }
+                        return null;
+                      })()}
+                      {e.notes && (
+                        <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', color: COLORS.textMuted, fontStyle: 'italic' }}>
+                          {e.notes}
+                        </Typography>
+                      )}
+                    </Box>
+                    <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', color: COLORS.textMuted, flexShrink: 0 }}>
+                      {e.vet}
+                    </Typography>
+                  </Box>
+                );
+              })
+            }
+            {labTimeline.filter(e => labZoomFilter === 'All' || e.testName === labZoomFilter).length === 0 && (
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', color: COLORS.textMuted, fontStyle: 'italic', textAlign: 'center', py: 4 }}>
+                No lab results recorded
+              </Typography>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 2.5, pb: 2, borderTop: `1px solid ${COLORS.borderLight}` }}>
+          <Button
+            onClick={() => { setLabZoom(false); setLabZoomFilter('All'); }}
             sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textSecondary, borderRadius: 0 }}
           >
             Close

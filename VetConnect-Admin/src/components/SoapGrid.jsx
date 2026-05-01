@@ -23,10 +23,12 @@ import PhysicalExamChecklist from './PhysicalExamChecklist';
  * @prop {Component}   VitalsGrid
  * @prop {Component}   DiagnosticBridge
  *
+ * Objective quadrant extras:
+ * @prop {ReactNode}   [labResultsNode]         - T4.120: moved from Plan to Objective (diagnostic findings)
+ *
  * Plan quadrant extras (optional — God-View omits these):
  * @prop {boolean}     [showVaccineForm=false]
  * @prop {ReactNode}   [vaccineFormNode]
- * @prop {ReactNode}   [labResultsNode]
  * @prop {boolean}     [showDraftSave=false]
  * @prop {ReactNode}   [draftSaveNode]
  * @prop {ReactNode}   [followUpNode]
@@ -152,6 +154,9 @@ export default function SoapGrid({
             onMarkAllNormal={onMarkAllNormal}
             disabled={disabled}
           />
+          {/* T4.120: Lab results moved to Objective — diagnostic findings belong here,
+              not in Plan. Decision 6 from the lab redesign architecture review. */}
+          {labResultsNode}
         </SoapQuadrant>
       </Grid>
 
@@ -215,7 +220,6 @@ export default function SoapGrid({
             />
           )}
           {showVaccineForm && vaccineFormNode}
-          {labResultsNode}
           <TextField
             multiline fullWidth variant="standard"
             placeholder={ZEN_PLACEHOLDERS.plan}

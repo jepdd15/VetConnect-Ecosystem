@@ -1924,33 +1924,33 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         {/* LEFT SIDE: Title & Shift Toggle */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap', flexGrow: 1 }}>
           <Box>
-            <Typography variant="h4" sx={{ fontWeight: '900', color: '#5D4037', textShadow: '0px 1px 2px rgba(255,255,255,0.8)', lineHeight: 1.1 }}>
-              Patient Queue
+            <Typography variant="h4" sx={{ fontWeight: 1000, color: COLORS.brand, lineHeight: 1.1, textTransform: 'uppercase', letterSpacing: 1 }}>
+              QUEUE
             </Typography>
-            <Typography variant="caption" sx={{ fontWeight: '1000', color: isTomorrowView ? '#1976D2' : '#5D4037', letterSpacing: 1 }}>
-              {isTomorrowView ? '🚀 NEXT-DAY PREVIEW' : '🩺 ACTIVE CLINICAL SHIFT'}
+            <Typography variant="caption" sx={{ fontWeight: 800, color: isTomorrowView ? COLORS.info : COLORS.textMuted, letterSpacing: 1, textTransform: 'uppercase' }}>
+              {isTomorrowView ? 'NEXT-DAY PREVIEW' : 'ACTIVE CLINICAL SHIFT'}
             </Typography>
           </Box>
 
-          <Box sx={{ display: 'flex', alignItems: 'center', bgcolor: '#EFEBE9', borderRadius: '12px', border: '2px solid #5D4037', p: 0.5, boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)' }}>
-             <Button 
-                onClick={() => setIsTomorrowView(false)} 
-                sx={{ 
-                    fontWeight: '900', color: !isTomorrowView ? '#FFF' : '#5D4037',
-                    bgcolor: !isTomorrowView ? '#5D4037' : 'transparent',
-                    '&:hover': { bgcolor: !isTomorrowView ? '#3E2723' : 'rgba(0,0,0,0.04)' },
-                    borderRadius: '8px', px: 2
+          <Box sx={{ display: 'flex', alignItems: 'center', bgcolor: COLORS.panelBg, borderRadius: 0, border: `2px solid ${COLORS.accent}`, p: 0.5, boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)' }}>
+             <Button
+                onClick={() => setIsTomorrowView(false)}
+                sx={{
+                    fontWeight: '900', color: !isTomorrowView ? '#FFF' : COLORS.accent,
+                    bgcolor: !isTomorrowView ? COLORS.accent : 'transparent',
+                    '&:hover': { bgcolor: !isTomorrowView ? COLORS.brand : 'rgba(0,0,0,0.04)' },
+                    borderRadius: 0, px: 2
                 }}
              >
                 TODAY
              </Button>
-             <Button 
-                onClick={() => setIsTomorrowView(true)} 
-                sx={{ 
-                    fontWeight: '900', color: isTomorrowView ? '#FFF' : '#5D4037',
-                    bgcolor: isTomorrowView ? '#1976D2' : 'transparent',
+             <Button
+                onClick={() => setIsTomorrowView(true)}
+                sx={{
+                    fontWeight: '900', color: isTomorrowView ? '#FFF' : COLORS.accent,
+                    bgcolor: isTomorrowView ? COLORS.info : 'transparent',
                     '&:hover': { bgcolor: isTomorrowView ? '#1565C0' : 'rgba(0,0,0,0.04)' },
-                    borderRadius: '8px', px: 2
+                    borderRadius: 0, px: 2
                 }}
              >
                 TOMORROW
@@ -1968,14 +1968,15 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
           {/* T3.10d — Global patient search */}
           <TextField
+            variant="outlined"
             size="small"
-            placeholder="Search patient, owner, phone..."
+            placeholder="Search patients..."
             value={queueSearchText}
             onChange={(e) => setQueueSearchText(e.target.value)}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <SearchIcon sx={{ fontSize: 18, color: '#5D4037' }} />
+                  <SearchIcon sx={{ fontSize: 18, color: COLORS.textMuted }} />
                 </InputAdornment>
               ),
               ...(queueSearchText && {
@@ -1989,15 +1990,15 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
               }),
             }}
             sx={{
-              width: 280,
+              flex: 1, maxWidth: 350, minWidth: 180,
               '& .MuiOutlinedInput-root': {
                 fontWeight: 900,
                 fontSize: '0.85rem',
                 bgcolor: '#FFF',
                 borderRadius: 0,
-                '& fieldset': { borderColor: '#D7CCC8', borderWidth: 2 },
-                '&:hover fieldset': { borderColor: '#5D4037' },
-                '&.Mui-focused fieldset': { borderColor: '#5D4037' },
+                '& fieldset': { borderColor: COLORS.border, borderWidth: 2 },
+                '&:hover fieldset': { borderColor: COLORS.accent },
+                '&.Mui-focused fieldset': { borderColor: COLORS.accent },
               },
             }}
           />
@@ -2042,10 +2043,10 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                 placement="bottom"
              >
                <Box>
-                 <Button 
-                    variant="contained" color="error" 
-                    onClick={() => initiateResetDay(false)} 
-                    sx={(isClosingTime && isToday) ? {animation: 'pulse 1.5s infinite', fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.5} : { fontWeight: '900', boxShadow: 3, letterSpacing: 0.5, textTransform: 'uppercase' }}
+                 <Button
+                    variant="contained" color="error"
+                    onClick={() => initiateResetDay(false)}
+                    sx={(isClosingTime && isToday) ? {animation: 'pulse 1.5s infinite', fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.5, borderRadius: 0} : { fontWeight: '900', boxShadow: 3, letterSpacing: 0.5, textTransform: 'uppercase', borderRadius: 0 }}
                  >
                     CLEAR AND RESET QUEUE
                  </Button>
@@ -2054,9 +2055,9 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
            )}
 
            {isToday && !isTomorrowView && (
-             <Button 
-                variant="contained" startIcon={<PersonAddIcon />} 
-                sx={{ bgcolor: '#FF9800', fontWeight: '900', boxShadow: '0 4px 15px rgba(255, 152, 0, 0.4)', textTransform: 'uppercase', letterSpacing: 0.5, px: 3 }} 
+             <Button
+                variant="contained" startIcon={<PersonAddIcon />}
+                sx={{ bgcolor: COLORS.sky, fontWeight: '900', boxShadow: '4px 4px 0px rgba(58, 190, 249, 0.15)', textTransform: 'uppercase', letterSpacing: 0.5, px: 3, borderRadius: 0, border: `2px solid ${COLORS.skyHover}`, '&:hover': { bgcolor: COLORS.skyHover } }}
                 onClick={() => setOpenWalkIn(true)}
              >
                 Add Walk-In

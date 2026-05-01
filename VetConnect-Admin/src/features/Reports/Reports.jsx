@@ -177,30 +177,24 @@ export default function Reports() {
         p: 2.5,
         px: 4,
         display: 'flex',
+        flexWrap: 'wrap',
         justifyContent: 'space-between',
-        alignItems: 'flex-start',
+        alignItems: 'center',
         gap: 2,
       }}>
-        {/* Title + clinic name */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
-          <AssessmentIcon sx={{ color: COLORS.accent, fontSize: 28 }} />
-          <Box>
-            <Typography sx={{
-              fontFamily: FONT,
-              fontWeight: 900,
-              color: COLORS.accent,
-              textTransform: 'uppercase',
-              letterSpacing: 1,
-              fontSize: '1.5rem',
-              lineHeight: 1,
-            }}>
-              Forensic Reports
-            </Typography>
-            <Typography sx={{ fontFamily: FONT, ...TYPE.tiny, color: COLORS.textMuted, mt: 0.25 }}>
-              {clinicSettings.clinicName || 'Starbarks Veterinary Clinic'}
-            </Typography>
-          </Box>
-        </Box>
+        {/* Title */}
+        <Typography sx={{
+          fontFamily: FONT,
+          fontWeight: 1000,
+          color: COLORS.brand,
+          textTransform: 'uppercase',
+          letterSpacing: 1,
+          fontSize: '1.5rem',
+          lineHeight: 1,
+          flexShrink: 0,
+        }}>
+          Reports
+        </Typography>
 
         {/* Right side: date picker + actions row */}
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>

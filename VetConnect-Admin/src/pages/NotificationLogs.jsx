@@ -513,8 +513,7 @@ export default function NotificationLogs() {
         elevation={0}
         sx={{
           display: 'flex',
-          alignItems: 'center',
-          flexWrap: 'wrap',
+          flexDirection: 'column',
           gap: 1.5,
           px: 3,
           py: 2,
@@ -524,130 +523,132 @@ export default function NotificationLogs() {
           flexShrink: 0,
         }}
       >
-        {/* Page title */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 1 }}>
-          <NotificationsActiveIcon sx={{ color: COLORS.medical, fontSize: 22 }} />
-          <Typography sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '1rem', color: COLORS.brand, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-            Notification Logs
+        {/* Row 1: Title + record count */}
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
+          <Typography sx={{ fontFamily: FONT, fontWeight: 1000, fontSize: '1.5rem', color: COLORS.brand, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+            Notifications
+          </Typography>
+          <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textMuted, ml: 'auto' }}>
+            {filteredLogs.length} of {logs.length} entries
           </Typography>
         </Box>
 
-        {/* Search */}
-        <TextField
-          size="small"
-          placeholder="Search recipient, pet, title..."
-          value={searchText}
-          onChange={(e) => setSearchText(e.target.value)}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon sx={{ fontSize: 16, color: COLORS.textMuted }} />
-              </InputAdornment>
-            ),
-          }}
-          sx={{
-            width: 240,
-            '& .MuiOutlinedInput-root': {
-              fontFamily: FONT,
-              fontSize: '0.85rem',
-              borderRadius: 0,
-              bgcolor: COLORS.formBg,
-              '& fieldset': { borderColor: COLORS.borderInput },
-            },
-          }}
-        />
-
-        {/* Start date */}
-        <TextField
-          size="small"
-          type="date"
-          label="From"
-          value={startDate}
-          onChange={(e) => setStartDate(e.target.value)}
-          InputLabelProps={{ shrink: true }}
-          sx={{
-            width: 155,
-            '& .MuiOutlinedInput-root': { fontFamily: FONT, fontSize: '0.85rem', borderRadius: 0, bgcolor: COLORS.formBg },
-          }}
-        />
-
-        {/* End date */}
-        <TextField
-          size="small"
-          type="date"
-          label="To"
-          value={endDate}
-          onChange={(e) => setEndDate(e.target.value)}
-          InputLabelProps={{ shrink: true }}
-          sx={{
-            width: 155,
-            '& .MuiOutlinedInput-root': { fontFamily: FONT, fontSize: '0.85rem', borderRadius: 0, bgcolor: COLORS.formBg },
-          }}
-        />
-
-        {/* Type filter */}
-        <FormControl size="small" sx={{ minWidth: 140 }}>
-          <Select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-            displayEmpty
-            sx={{ fontFamily: FONT, fontSize: '0.85rem', borderRadius: 0, bgcolor: COLORS.formBg }}
-          >
-            <MenuItem value="all" sx={{ fontFamily: FONT }}>All Types</MenuItem>
-            <MenuItem value="status" sx={{ fontFamily: FONT }}>Status</MenuItem>
-            <MenuItem value="custom" sx={{ fontFamily: FONT }}>Custom</MenuItem>
-            <MenuItem value="reminder" sx={{ fontFamily: FONT }}>Reminder</MenuItem>
-            <MenuItem value="vaccine-reminder" sx={{ fontFamily: FONT }}>Vaccine Reminder</MenuItem>
-            <MenuItem value="appointment-reminder" sx={{ fontFamily: FONT }}>Appointment Reminder</MenuItem>
-          </Select>
-        </FormControl>
-
-        {/* Refresh */}
-        <Tooltip title="Refresh">
-          <IconButton
-            onClick={() => {
-              setSearchText('');
-              setFilterType('all');
-              setRefreshKey((k) => k + 1);
+        {/* Row 2: Search + filters + actions */}
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
+          {/* Search */}
+          <TextField
+            size="small"
+            placeholder="Search notifications..."
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon sx={{ fontSize: 16, color: COLORS.textMuted }} />
+                </InputAdornment>
+              ),
             }}
-            disabled={loading}
-            sx={{ color: COLORS.medical }}
-          >
-            <RefreshIcon />
-          </IconButton>
-        </Tooltip>
+            sx={{
+              flex: 1, maxWidth: 350, minWidth: 180,
+              '& .MuiOutlinedInput-root': {
+                fontFamily: FONT,
+                fontSize: '0.85rem',
+                borderRadius: 0,
+                bgcolor: COLORS.formBg,
+                '& fieldset': { borderColor: COLORS.borderInput },
+              },
+            }}
+          />
 
-        {/* Backfill button — admin only */}
-        {isAdmin && (
-          <Tooltip title="Patch log entries that are missing notification text using default templates">
-            <span>
-              <Button
-                onClick={handleBackfillMissingText}
-                disabled={isBackfilling}
-                size="small"
-                variant="outlined"
-                sx={{
-                  fontFamily: FONT,
-                  fontWeight: 700,
-                  fontSize: '0.75rem',
-                  borderRadius: 0,
-                  borderColor: COLORS.warning,
-                  color: COLORS.warning,
-                  whiteSpace: 'nowrap',
-                  '&:hover': { bgcolor: COLORS.kpiOrangeBg, borderColor: COLORS.warning },
-                  '&.Mui-disabled': { opacity: 0.5 },
-                }}
-              >
-                {isBackfilling ? 'Fixing...' : 'Fix Missing Text'}
-              </Button>
-            </span>
+          {/* Start date */}
+          <TextField
+            variant="outlined"
+            size="small"
+            type="date"
+            label="From"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            sx={{
+              width: 155,
+              '& .MuiOutlinedInput-root': { fontFamily: FONT, fontSize: '0.85rem', borderRadius: 0, bgcolor: COLORS.formBg },
+            }}
+          />
+
+          {/* End date */}
+          <TextField
+            variant="outlined"
+            size="small"
+            type="date"
+            label="To"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            sx={{
+              width: 155,
+              '& .MuiOutlinedInput-root': { fontFamily: FONT, fontSize: '0.85rem', borderRadius: 0, bgcolor: COLORS.formBg },
+            }}
+          />
+
+          {/* Type filter */}
+          <FormControl size="small" sx={{ minWidth: 140 }}>
+            <Select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              displayEmpty
+              sx={{ fontFamily: FONT, fontSize: '0.85rem', borderRadius: 0, bgcolor: COLORS.formBg }}
+            >
+              <MenuItem value="all" sx={{ fontFamily: FONT }}>All Types</MenuItem>
+              <MenuItem value="status" sx={{ fontFamily: FONT }}>Status</MenuItem>
+              <MenuItem value="custom" sx={{ fontFamily: FONT }}>Custom</MenuItem>
+              <MenuItem value="reminder" sx={{ fontFamily: FONT }}>Reminder</MenuItem>
+              <MenuItem value="vaccine-reminder" sx={{ fontFamily: FONT }}>Vaccine Reminder</MenuItem>
+              <MenuItem value="appointment-reminder" sx={{ fontFamily: FONT }}>Appointment Reminder</MenuItem>
+            </Select>
+          </FormControl>
+
+          {/* Refresh */}
+          <Tooltip title="Refresh">
+            <IconButton
+              onClick={() => {
+                setSearchText('');
+                setFilterType('all');
+                setRefreshKey((k) => k + 1);
+              }}
+              disabled={loading}
+              sx={{ color: COLORS.medical }}
+            >
+              <RefreshIcon />
+            </IconButton>
           </Tooltip>
-        )}
 
-        {/* Row count */}
-        <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textMuted, ml: 'auto' }}>
-          {filteredLogs.length} of {logs.length} entries
-        </Typography>
+          {/* Backfill button — admin only */}
+          {isAdmin && (
+            <Tooltip title="Patch log entries that are missing notification text using default templates">
+              <span>
+                <Button
+                  onClick={handleBackfillMissingText}
+                  disabled={isBackfilling}
+                  size="small"
+                  variant="outlined"
+                  sx={{
+                    fontFamily: FONT,
+                    fontWeight: 700,
+                    fontSize: '0.75rem',
+                    borderRadius: 0,
+                    borderColor: COLORS.warning,
+                    color: COLORS.warning,
+                    whiteSpace: 'nowrap',
+                    '&:hover': { bgcolor: COLORS.kpiOrangeBg, borderColor: COLORS.warning },
+                    '&.Mui-disabled': { opacity: 0.5 },
+                  }}
+                >
+                  {isBackfilling ? 'Fixing...' : 'Fix Missing Text'}
+                </Button>
+              </span>
+            </Tooltip>
+          )}
+        </Box>
       </Paper>
 
       {/* ── DataGrid ──────────────────────────────────────────────────── */}

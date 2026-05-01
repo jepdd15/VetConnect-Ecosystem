@@ -24,7 +24,6 @@ import AutorenewIcon from '@mui/icons-material/Autorenew';
 import PauseCircleIcon from '@mui/icons-material/PauseCircle';
 import CompareArrowsIcon from '@mui/icons-material/CompareArrows';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
-import DashboardIcon from '@mui/icons-material/Dashboard';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import BuildIcon from '@mui/icons-material/Build';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
@@ -241,27 +240,21 @@ export default function Dashboard() {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: 1,
       }}>
         {/* Title */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <DashboardIcon sx={{ color: COLORS.accent, fontSize: 28 }} />
-          <Box>
-            <Typography sx={{
-              fontFamily: FONT,
-              fontWeight: TYPE.label.fontWeight,
-              color: COLORS.accent,
-              textTransform: 'uppercase',
-              letterSpacing: 1,
-              fontSize: '1.5rem',
-              lineHeight: 1,
-            }}>
-              Dashboard
-            </Typography>
-            <Typography sx={{ fontFamily: FONT, ...TYPE.tiny, color: COLORS.textMuted, mt: 0.25 }}>
-              {clinicSettings.clinicName || 'Starbarks Veterinary Clinic'}
-            </Typography>
-          </Box>
-        </Box>
+        <Typography sx={{
+          fontFamily: FONT,
+          fontWeight: 1000,
+          color: COLORS.brand,
+          textTransform: 'uppercase',
+          letterSpacing: 1,
+          fontSize: '1.5rem',
+          lineHeight: 1,
+        }}>
+          Dashboard
+        </Typography>
 
         {/* Period selector + Export buttons + Auto-refresh toggle */}
         <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>

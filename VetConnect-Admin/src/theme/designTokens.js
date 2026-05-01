@@ -48,6 +48,8 @@ export const COLORS = {
   warning:  '#E65100',     // Orange — low stock, busy, warnings
   danger:   '#D32F2F',     // Red — out of stock, admin badge, errors
   info:     '#1565C0',     // Blue — informational
+  sky:      '#3ABEF9',     // Sky Blue — unified primary action color
+  skyHover: '#2196F3',     // Sky Blue hover/border — darker variant
 
   // Data-viz accents (KPI cards use these for backgrounds)
   kpiBlueBg:   '#EFF6FF',   kpiBlueBorder:   '#93C5FD',  // Total items / info

@@ -667,49 +667,55 @@ export default function Records() {
       {/* 1. COMMAND STRIP HEADER */}
       <Box sx={{ flexShrink: 0, mb: 0 }}>
         <Paper elevation={0} sx={{ 
-          p: 2.5, px: 4, display: 'flex', flexWrap: 'nowrap', gap: 3, alignItems: 'center',
+          p: 2.5, px: 4, display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center',
           bgcolor: '#FFF8E1', borderBottom: '2px solid #5D4037', borderTop: 'none', borderLeft: 'none', borderRight: 'none', borderRadius: 0
         }}>
-          <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: '1000', color: '#5D4037', textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0, mr: 1, fontSize: '1.5rem', lineHeight: 1 }}>
-            Visit Ledger
+          <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 1000, color: COLORS.brand, textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0, mr: 1, fontSize: '1.5rem', lineHeight: 1 }}>
+            RECORDS
           </Typography>
 
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ bgcolor: 'rgba(93, 64, 55, 0.05)', border: '2px solid #5D403733', px: 1, py: 0.5 }}>
-            <TextField
-              variant="standard" size="small" placeholder={`SEARCH BY ${searchMode.toUpperCase().replace('NAME', '')}...`}
-              value={searchText} onChange={(e) => setSearchText(e.target.value)}
-              InputProps={{
-                startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" sx={{color: '#5D4037', opacity: 0.6}}/></InputAdornment>,
-                endAdornment: searchText ? (
-                  <InputAdornment position="end">
-                    <IconButton size="small" onClick={() => setSearchText('')}>
-                      <CloseIcon sx={{ fontSize: 14 }} />
-                    </IconButton>
-                  </InputAdornment>
-                ) : null,
-                disableUnderline: true,
-                style: { color: '#3E2723', fontWeight: '1000', fontSize: '0.85rem', fontFamily: 'Inter' }
-              }}
-              sx={{ width: 180 }}
-            />
-            <Divider orientation="vertical" flexItem sx={{ mx: 1, height: 20, borderColor: '#5D403733' }} />
-            <ToggleButtonGroup
-              value={searchMode}
-              exclusive
-              onChange={(e, next) => next && setSearchMode(next)}
-              size="small"
-              sx={{ 
-                '& .MuiToggleButton-root': { 
-                  border: 'none', px: 1, py: 0, color: '#A1887F',
-                  '&.Mui-selected': { bgcolor: 'transparent', color: '#5D4037' }
-                } 
-              }}
-            >
-              <ToggleButton value="petName"><Tooltip title="Pet Name"><PetsIcon sx={{ fontSize: 16 }} /></Tooltip></ToggleButton>
-              <ToggleButton value="ownerName"><Tooltip title="Owner Name"><PersonIcon sx={{ fontSize: 16 }} /></Tooltip></ToggleButton>
-              <ToggleButton value="phone"><Tooltip title="Phone Number"><PhoneIcon sx={{ fontSize: 16 }} /></Tooltip></ToggleButton>
-            </ToggleButtonGroup>
-          </Stack>
+          <TextField
+            variant="outlined" size="small"
+            placeholder="Search records..."
+            value={searchText} onChange={(e) => setSearchText(e.target.value)}
+            InputProps={{
+              startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" sx={{ color: COLORS.textMuted }} /></InputAdornment>,
+              endAdornment: searchText ? (
+                <InputAdornment position="end">
+                  <IconButton size="small" onClick={() => setSearchText('')}>
+                    <CloseIcon sx={{ fontSize: 14 }} />
+                  </IconButton>
+                </InputAdornment>
+              ) : null,
+              style: { color: COLORS.textPrimary, fontWeight: '1000', fontSize: '0.85rem', fontFamily: 'Inter' }
+            }}
+            sx={{
+              flex: 1, maxWidth: 350, minWidth: 180,
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 0, bgcolor: COLORS.formBg,
+                '& fieldset': { borderColor: COLORS.border },
+                '&:hover fieldset': { borderColor: COLORS.accent },
+                '&.Mui-focused fieldset': { borderColor: COLORS.accent },
+              },
+            }}
+          />
+
+          <ToggleButtonGroup
+            value={searchMode}
+            exclusive
+            onChange={(e, next) => next && setSearchMode(next)}
+            size="small"
+            sx={{
+              '& .MuiToggleButton-root': {
+                borderRadius: 0, px: 1, py: 0.5, color: COLORS.textMuted, border: `1px solid ${COLORS.border}`,
+                '&.Mui-selected': { bgcolor: COLORS.panelBg, color: COLORS.accent }
+              }
+            }}
+          >
+            <ToggleButton value="petName"><Tooltip title="Pet Name"><PetsIcon sx={{ fontSize: 16 }} /></Tooltip></ToggleButton>
+            <ToggleButton value="ownerName"><Tooltip title="Owner Name"><PersonIcon sx={{ fontSize: 16 }} /></Tooltip></ToggleButton>
+            <ToggleButton value="phone"><Tooltip title="Phone Number"><PhoneIcon sx={{ fontSize: 16 }} /></Tooltip></ToggleButton>
+          </ToggleButtonGroup>
 
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
             <Typography sx={{ fontWeight: '1000', fontSize: '0.65rem', color: '#A1887F' }}>FILTER ERA:</Typography>

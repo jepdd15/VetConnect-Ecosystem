@@ -329,24 +329,32 @@ export default function Inventory() {
           p: 2.5, px: 4, display: 'flex', flexWrap: 'wrap', gap: 2.5, alignItems: 'center',
           bgcolor: COLORS.cream, borderBottom: `2px solid ${COLORS.accent}`, borderRadius: 0, boxShadow: 'none'
         }}>
-          <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.accent, textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0, mr: 1, fontSize: '1.5rem', lineHeight: 1 }}>
-            Inventory Command Center
+          <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 1000, color: COLORS.brand, textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0, mr: 1, fontSize: '1.5rem', lineHeight: 1 }}>
+            Inventory
           </Typography>
 
           {/* T2.164: Filter controls only apply to the Inventory Table tab — hide them on Activity Log */}
           {activeTab === 0 && (<>
           {/* Search */}
           <TextField
-            variant="standard"
-            placeholder="SEARCH ITEMS..."
+            variant="outlined"
+            size="small"
+            placeholder="Search items..."
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
             InputProps={{
-              startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: COLORS.accent, opacity: 0.6, ml: 1 }} /></InputAdornment>,
-              disableUnderline: true,
-              style: { color: COLORS.brand, fontWeight: 'bold', fontSize: '0.9rem' },
+              startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: COLORS.textMuted }} /></InputAdornment>,
+              style: { color: COLORS.textPrimary, fontWeight: 'bold', fontSize: '0.9rem' },
             }}
-            sx={{ width: 220, flexShrink: 0, bgcolor: 'rgba(93, 64, 55, 0.05)', border: `1px solid ${COLORS.accent}33`, borderRadius: 0, px: 1.5, py: 0.5 }}
+            sx={{
+              flex: 1, maxWidth: 350, minWidth: 180, flexShrink: 0,
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 0, bgcolor: COLORS.formBg,
+                '& fieldset': { borderColor: COLORS.border },
+                '&:hover fieldset': { borderColor: COLORS.accent },
+                '&.Mui-focused fieldset': { borderColor: COLORS.accent },
+              },
+            }}
           />
 
           {/* Category dropdown */}
@@ -480,7 +488,7 @@ export default function Inventory() {
           <Button
             variant="contained"
             startIcon={<AddIcon />}
-            sx={{ bgcolor: COLORS.danger, fontFamily: FONT, fontWeight: 900, boxShadow: '4px 4px 0px rgba(211, 47, 47, 0.1)', textTransform: 'uppercase', letterSpacing: 1, px: 3, py: 1, borderRadius: 0, border: `2px solid ${COLORS.dangerHover}`, '&:hover': { bgcolor: COLORS.dangerHover } }}
+            sx={{ bgcolor: COLORS.sky, fontFamily: FONT, fontWeight: 900, boxShadow: '4px 4px 0px rgba(58, 190, 249, 0.15)', textTransform: 'uppercase', letterSpacing: 1, px: 3, py: 1, borderRadius: 0, border: `2px solid ${COLORS.skyHover}`, '&:hover': { bgcolor: COLORS.skyHover } }}
             onClick={() => { setSelectedItem(null); setOpenForm(true); }}
           >
             Add Item

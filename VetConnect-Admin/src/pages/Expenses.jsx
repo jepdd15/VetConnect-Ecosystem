@@ -252,25 +252,23 @@ export default function Expenses() {
         p: 2.5,
         px: 4,
         display: 'flex',
+        flexWrap: 'wrap',
+        gap: 1,
         justifyContent: 'space-between',
         alignItems: 'center',
         mb: 0
       }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5 }}>
-          <Box>
-            <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: TYPE.label.fontWeight, color: COLORS.accent, textTransform: 'uppercase', letterSpacing: 1, fontSize: '1.5rem', lineHeight: 1, mr: 1 }}>
-              Operational Expenses
-            </Typography>
-          </Box>
-        </Box>
+        <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 1000, color: COLORS.brand, textTransform: 'uppercase', letterSpacing: 1, fontSize: '1.5rem', lineHeight: 1 }}>
+          Expenses
+        </Typography>
         <Button
-          variant="contained" color="error" startIcon={<AddIcon />}
+          variant="contained" startIcon={<AddIcon />}
           onClick={() => setOpen(true)}
           sx={{
               fontWeight: TYPE.label.fontWeight, px: 4, py: 1.2, borderRadius: 0,
-              bgcolor: COLORS.danger, border: `2px solid ${COLORS.ctaHover}`,
-              boxShadow: `4px 4px 0px ${COLORS.danger}`,
-              '&:hover': { bgcolor: COLORS.ctaHover, boxShadow: `2px 2px 0px ${COLORS.danger}` },
+              bgcolor: COLORS.sky, border: `2px solid ${COLORS.skyHover}`,
+              boxShadow: `4px 4px 0px rgba(58, 190, 249, 0.15)`,
+              '&:hover': { bgcolor: COLORS.skyHover, boxShadow: `2px 2px 0px rgba(58, 190, 249, 0.15)` },
               fontFamily: FONT,
           }}
         >

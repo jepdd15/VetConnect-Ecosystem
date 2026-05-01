@@ -12,7 +12,6 @@ import { doc, setDoc, Timestamp, collection, onSnapshot, addDoc, deleteDoc, getD
 import { db } from '../firebaseConfig';
 
 // Icons
-import SettingsSuggestIcon from '@mui/icons-material/SettingsSuggest';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import SaveIcon from '@mui/icons-material/Save';
@@ -1088,10 +1087,10 @@ export default function Settings() {
       {/* 1. BOXED FORENSIC HEADER */}
       <Box sx={{ flexShrink: 0, mb: 4 }}>
         <Paper sx={{ 
-          ...forensicHeaderStyle, p: 2.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+          ...forensicHeaderStyle, p: 2.5, display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: 'space-between', alignItems: 'center'
         }}>
-          <Typography variant="h4" sx={{ fontWeight: 900, color: COLORS.accent, display: 'flex', alignItems: 'center', gap: 1.5, textTransform: 'uppercase', letterSpacing: 0.5, fontSize: '1.5rem' }}>
-            <SettingsSuggestIcon fontSize="large" /> Clinic Configuration
+          <Typography variant="h4" sx={{ fontWeight: 1000, color: COLORS.brand, textTransform: 'uppercase', letterSpacing: 0.5, fontSize: '1.5rem' }}>
+            Settings
           </Typography>
           <Button 
             variant="contained" color="success" size="large" startIcon={<SaveIcon />} 

@@ -92,25 +92,33 @@ export default function Staff() {
       {/* 1. BOXED FORENSIC HEADER */}
       <Box sx={{ flexShrink: 0 }}>
         <Paper sx={{
-          p: 2.5, px: 4, display: 'flex', flexWrap: 'nowrap', gap: 2.5, alignItems: 'center',
+          p: 2.5, px: 4, display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center',
           bgcolor: COLORS.cream, border: 'none', borderBottom: `2px solid ${COLORS.accent}`, borderRadius: 0, boxShadow: 'none', width: '100%'
         }}>
-          <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.accent, whiteSpace: 'nowrap', textTransform: 'uppercase', flexShrink: 0, mr: 1, letterSpacing: 1, fontSize: '1.5rem', lineHeight: 1 }}>
-            Staff Registry
+          <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 1000, color: COLORS.brand, whiteSpace: 'nowrap', textTransform: 'uppercase', flexShrink: 0, mr: 1, letterSpacing: 1, fontSize: '1.5rem', lineHeight: 1 }}>
+            Staff
           </Typography>
 
           {/* Search */}
           <TextField
-            variant="standard"
-            placeholder="SEARCH STAFF NAME..."
+            variant="outlined"
+            size="small"
+            placeholder="Search staff..."
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
             InputProps={{
-              startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: COLORS.accent, opacity: 0.6, ml: 1 }} /></InputAdornment>,
-              disableUnderline: true,
-              style: { color: COLORS.brand, fontWeight: 'bold', fontFamily: FONT, fontSize: '0.9rem' },
+              startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: COLORS.textMuted }} /></InputAdornment>,
+              style: { color: COLORS.textPrimary, fontWeight: 'bold', fontFamily: FONT, fontSize: '0.9rem' },
             }}
-            sx={{ width: 220, flexShrink: 0, bgcolor: 'rgba(93, 64, 55, 0.05)', border: `1px solid ${COLORS.accent}33`, borderRadius: 0, px: 1.5, py: 0.5 }}
+            sx={{
+              flex: 1, maxWidth: 350, minWidth: 180, flexShrink: 0,
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 0, bgcolor: COLORS.formBg,
+                '& fieldset': { borderColor: COLORS.border },
+                '&:hover fieldset': { borderColor: COLORS.accent },
+                '&.Mui-focused fieldset': { borderColor: COLORS.accent },
+              },
+            }}
           />
 
           {/* Filters grouped */}
@@ -141,7 +149,7 @@ export default function Staff() {
 
           <Button
             variant="contained" startIcon={<PersonAddIcon />}
-            sx={{ bgcolor: COLORS.danger, fontFamily: FONT, fontWeight: 900, boxShadow: '4px 4px 0px rgba(211, 47, 47, 0.1)', textTransform: 'uppercase', letterSpacing: 1, px: 3, py: 1, borderRadius: 0, border: `2px solid ${COLORS.dangerHover}`, '&:hover': { bgcolor: COLORS.dangerHover } }}
+            sx={{ bgcolor: COLORS.sky, fontFamily: FONT, fontWeight: 900, boxShadow: '4px 4px 0px rgba(58, 190, 249, 0.15)', textTransform: 'uppercase', letterSpacing: 1, px: 3, py: 1, borderRadius: 0, border: `2px solid ${COLORS.skyHover}`, '&:hover': { bgcolor: COLORS.skyHover } }}
             onClick={() => { setSelectedItem(null); setOpen(true); }}
           >
             Authorize Staff

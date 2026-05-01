@@ -385,27 +385,37 @@ export default function Sales() {
       {/* 1. FULL-BLEED COMMAND STRIP header */}
       <Box sx={{ flexShrink: 0, mb: 0 }}>
         <Paper elevation={0} sx={{
-          p: 2.5, px: 4, display: 'flex', flexWrap: 'nowrap', gap: 2.5, alignItems: 'center',
+          p: 2.5, px: 4, display: 'flex', flexDirection: 'column', gap: 1.5,
           bgcolor: COLORS.cream, borderBottom: `2px solid ${COLORS.accent}`, borderTop: 'none', borderLeft: 'none', borderRight: 'none', borderRadius: 0
         }}>
-          <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 800, color: COLORS.accent, textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0, mr: 1, fontSize: '1.5rem', lineHeight: 1 }}>
-            Transaction Ledger
-          </Typography>
+          {/* Row 1: Title + print icon */}
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
+            <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 1000, color: COLORS.brand, textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0, mr: 1, fontSize: '1.5rem', lineHeight: 1 }}>
+              Transactions
+            </Typography>
+            <Box sx={{ flexGrow: 1 }} />
+            <Tooltip title="Print Detailed Report">
+              <IconButton onClick={handlePrintReport} disabled={loading} sx={{ bgcolor: COLORS.cardBg, border: `1px solid ${COLORS.accent}33`, color: COLORS.accent }}>
+                <PrintIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Box>
 
-          {/* Search */}
-          <TextField
-            variant="standard" size="small" placeholder="SEARCH LEDGER..."
-            value={searchText} onChange={(e) => setSearchText(e.target.value)}
-            InputProps={{
-              startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" sx={{ color: COLORS.accent, opacity: 0.6 }} /></InputAdornment>,
-              disableUnderline: true,
-              style: { color: COLORS.brand, fontWeight: 800, fontSize: '0.85rem', fontFamily: 'Inter' }
-            }}
-            sx={{ width: 220, bgcolor: `${COLORS.accent}0D`, border: `2px solid ${COLORS.accent}33`, borderRadius: 0, px: 2, py: 0.5, flexShrink: 0 }}
-          />
+          {/* Row 2: Search + filters */}
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
+            {/* Search */}
+            <TextField
+              variant="outlined" size="small" placeholder="Search transactions..."
+              value={searchText} onChange={(e) => setSearchText(e.target.value)}
+              InputProps={{
+                startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" sx={{ color: COLORS.textMuted }} /></InputAdornment>,
+              }}
+              sx={{
+                flex: 1, maxWidth: 350, minWidth: 180,
+                '& .MuiOutlinedInput-root': { borderRadius: 0, bgcolor: COLORS.formBg, '& fieldset': { borderColor: COLORS.border }, '&:hover fieldset': { borderColor: COLORS.accent }, '&.Mui-focused fieldset': { borderColor: COLORS.accent } },
+              }}
+            />
 
-          {/* Controls Grouped */}
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
             <TextField
               type="date" size="small"
               value={filterDate}
@@ -452,14 +462,6 @@ export default function Sales() {
                 </Select>
             </FormControl>
           </Box>
-
-          <Box sx={{ flexGrow: 1 }} />
-
-          <Tooltip title="Print Detailed Report">
-            <IconButton onClick={handlePrintReport} disabled={loading} sx={{ bgcolor: COLORS.cardBg, border: `1px solid ${COLORS.accent}33`, color: COLORS.accent }}>
-              <PrintIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
         </Paper>
       </Box>
 

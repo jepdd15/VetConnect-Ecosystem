@@ -83,23 +83,28 @@ export default function Services() {
         flexWrap: 'wrap', gap: 2.5, flexShrink: 0,
       }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5, flexWrap: 'wrap', flexGrow: 1 }}>
-          <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.accent, textTransform: 'uppercase', letterSpacing: 1, mr: 1, fontSize: '1.5rem', lineHeight: 1 }}>
+          <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 1000, color: COLORS.brand, textTransform: 'uppercase', letterSpacing: 1, mr: 1, fontSize: '1.5rem', lineHeight: 1 }}>
             Services
           </Typography>
 
           {tab === 0 && (
             <>
-              <Box sx={{ display: 'flex', alignItems: 'center', bgcolor: COLORS.panelBg, borderRadius: 0, border: `2px solid ${COLORS.accent}`, p: 0.5 }}>
-                <TextField
-                  variant="standard" placeholder="SEARCH SERVICES..." value={searchText}
-                  onChange={(e) => setSearchText(e.target.value)}
-                  InputProps={{
-                    startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: 'rgba(255,255,255,0.8)', ml: 1 }} /></InputAdornment>,
-                    disableUnderline: true, style: { color: 'white', fontWeight: 'bold', textTransform: 'uppercase' },
-                  }}
-                  sx={{ width: 260, bgcolor: COLORS.accent, borderRadius: 0, px: 2, py: 0.5, '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.6)', opacity: 1 } }}
-                />
-              </Box>
+              <TextField
+                variant="outlined" size="small" placeholder="Search services..." value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                InputProps={{
+                  startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: COLORS.textMuted }} /></InputAdornment>,
+                }}
+                sx={{
+                  flex: 1, maxWidth: 350, minWidth: 180,
+                  '& .MuiOutlinedInput-root': {
+                    borderRadius: 0, bgcolor: COLORS.formBg,
+                    '& fieldset': { borderColor: COLORS.border },
+                    '&:hover fieldset': { borderColor: COLORS.accent },
+                    '&.Mui-focused fieldset': { borderColor: COLORS.accent },
+                  },
+                }}
+              />
 
               <FormControl size="small" sx={{ width: 180, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 0 }}>
                 <Select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} displayEmpty sx={{ '& fieldset': { border: 'none' }, fontWeight: 'bold' }}>
@@ -146,7 +151,7 @@ export default function Services() {
         {tab === 0 && !showArchived && (
           <Button
             variant="contained" startIcon={<AddIcon />}
-            sx={{ bgcolor: COLORS.amber, fontWeight: 900, boxShadow: '0 4px 15px rgba(255, 152, 0, 0.4)', textTransform: 'uppercase', letterSpacing: 0.5, px: 3, whiteSpace: 'nowrap' }}
+            sx={{ bgcolor: COLORS.sky, fontWeight: 900, boxShadow: '4px 4px 0px rgba(58, 190, 249, 0.15)', textTransform: 'uppercase', letterSpacing: 0.5, px: 3, whiteSpace: 'nowrap', borderRadius: 0, border: `2px solid ${COLORS.skyHover}`, '&:hover': { bgcolor: COLORS.skyHover } }}
             onClick={() => { setSelectedItem(null); setOpen(true); }}
           >
             New Service

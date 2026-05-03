@@ -98,7 +98,7 @@ const LoginScreen = ({ navigation }) => {
       Alert.alert(
         'Email Sent',
         'A password reset link has been sent to your email address.',
-        [{ text: 'OK', onPress: () => setForgotOpen(false) }],
+        [{ text: 'OK', onPress: () => { setForgotOpen(false); setResetEmail(''); } }],
       );
     } catch (error) {
       let msg = 'Something went wrong. Please try again.';
@@ -212,7 +212,7 @@ const LoginScreen = ({ navigation }) => {
         visible={forgotOpen}
         transparent
         animationType="fade"
-        onRequestClose={() => setForgotOpen(false)}
+        onRequestClose={() => { setForgotOpen(false); setResetEmail(''); }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
@@ -233,7 +233,7 @@ const LoginScreen = ({ navigation }) => {
 
             <View style={styles.modalActions}>
               <TouchableOpacity
-                onPress={() => setForgotOpen(false)}
+                onPress={() => { setForgotOpen(false); setResetEmail(''); }}
                 style={styles.modalCancelButton}
               >
                 <Text style={styles.modalCancelText}>CANCEL</Text>

@@ -335,9 +335,12 @@ const ClientDashboard = ({ navigation }) => {
       q,
       (snap) => {
         let ahead = 0;
+        // T4.134: filter to the same department lane — other departments don't share staff
+        const myDept = arrivedAppt.serviceCategory || null;
         snap.forEach(d => {
           const data = d.data();
-          if (data.queueNumber < arrivedAppt.queueNumber && d.id !== arrivedAppt.id) ahead++;
+          if (myDept && data.serviceCategory && data.serviceCategory !== myDept) return;
+          if (data.queueNumber != null && data.queueNumber < arrivedAppt.queueNumber && d.id !== arrivedAppt.id) ahead++;
         });
         setQueueAhead(ahead);
       },
@@ -639,8 +642,11 @@ const ClientDashboard = ({ navigation }) => {
                     backgroundColor: '#3ABEF9'
                   }]} />
                 </View>
+                {/* T4.134: department-filtered count with dept name */}
                 <Text style={[styles.queueAheadText, { color: '#3ABEF9' }]}>
-                  {queueAhead === 0 ? "YOU'RE NEXT IN LINE! 🎉" : `${queueAhead} PETS AHEAD OF YOU`}
+                  {queueAhead === 0
+                    ? "YOU'RE NEXT IN LINE!"
+                    : `${queueAhead} PETS AHEAD IN ${(appt.serviceCategory || 'QUEUE').toUpperCase()}`}
                 </Text>
               </View>
             )}

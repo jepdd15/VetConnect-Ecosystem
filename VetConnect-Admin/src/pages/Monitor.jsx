@@ -17,8 +17,23 @@ export default function Monitor() {
   const [currentTicket, setCurrentTicket] = useState(null);
   const [upcomingTickets, setUpcomingTickets] = useState([]);
   const [listenerError, setListenerError] = useState(null);
+  const [departments, setDepartments] = useState([]);   // T4.134: department color config
   const fetchSeqRef = useRef(0);
   const clinicSettings = useClinicSettings();
+
+  // One-shot fetch for department colors — T4.134 Phase 7.1
+  // Department config is static enough that a real-time listener isn't needed here.
+  useEffect(() => {
+    const fetchDepts = async () => {
+      try {
+        const snap = await getDocs(collection(db, 'departments'));
+        setDepartments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch {
+        // Department colors are cosmetic — fail silently rather than break the display
+      }
+    };
+    fetchDepts();
+  }, []);
 
   // Listen to the queue counter; drives all downstream fetches
   useEffect(() => {
@@ -156,6 +171,21 @@ export default function Monitor() {
     String(queueData.currentServing || 0).padStart(3, '0'),
   ].join('');
 
+  /**
+   * Resolves the Firestore department color for a given serviceCategory string.
+   * Case-insensitive. Falls back to COLORS.textMuted when the department is not
+   * found or the departments list hasn't loaded yet.
+   * @param {string} serviceCategory
+   * @returns {string} hex color
+   */
+  const getDeptColor = (serviceCategory) => {
+    if (!serviceCategory || !departments.length) return COLORS.textMuted;
+    const match = departments.find(
+      d => d.name?.toLowerCase() === serviceCategory.toLowerCase()
+    );
+    return match?.color || COLORS.textMuted;
+  };
+
   return (
     <Box sx={{
       height: '100vh',
@@ -204,9 +234,32 @@ export default function Monitor() {
             {currentTicket ? (
               <>
                 {/* Service name — walk-ins use primaryService, pre-booked use serviceType */}
-                <Typography sx={{ mt: 2, mb: 2, fontWeight: 'bold', color: textColor, fontSize: '3rem' }}>
+                <Typography sx={{ mt: 2, mb: 1, fontWeight: 'bold', color: textColor, fontSize: '3rem' }}>
                   {currentTicket.primaryService || currentTicket.serviceType || 'General Visit'}
                 </Typography>
+
+                {/* Department badge — T4.134 Phase 7.3 */}
+                {currentTicket.serviceCategory && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+                    <Box sx={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: '50%',
+                      bgcolor: getDeptColor(currentTicket.serviceCategory),
+                      border: `2px solid ${COLORS.brand}`,
+                      flexShrink: 0,
+                    }} />
+                    <Typography sx={{
+                      fontSize: '2rem',
+                      fontWeight: 900,
+                      color: COLORS.textSecondary,
+                      textTransform: 'uppercase',
+                      letterSpacing: 2,
+                    }}>
+                      {currentTicket.serviceCategory}
+                    </Typography>
+                  </Box>
+                )}
 
                 {/* Ticket type chip — 2-tier: EMERGENCY (red) or WALK-IN / APPOINTMENT (neutral) */}
                 <Chip
@@ -250,39 +303,102 @@ export default function Monitor() {
 
       </Card>
 
-      {/* UPCOMING QUEUE PREVIEW — next 1-3 arrived tickets */}
-      {isServing && upcomingTickets.length > 0 && (
-        <Box sx={{ display: 'flex', gap: 3, mt: 3 }}>
-          {upcomingTickets.map((ticket, i) => (
-            <Box
-              key={ticket.id}
-              sx={{
-                bgcolor: COLORS.cardBg,
-                border: `2px solid ${COLORS.brand}`,
-                boxShadow: `4px 4px 0px ${COLORS.brand}`,
-                borderRadius: 0,
-                px: 4,
-                py: 2,
-                textAlign: 'center',
-                minWidth: 160,
-                // Fade further cards slightly to visually convey distance in queue
-                opacity: 1 - (i * 0.15),
-              }}
-            >
-              <Typography sx={{ fontSize: '0.9rem', fontWeight: 800, color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                {i === 0 ? 'UP NEXT' : `+${i + 1}`}
-              </Typography>
-              <Typography sx={{ fontSize: '2.5rem', fontWeight: 'bold', color: COLORS.ctaHover }}>
-                {ticket.ticketPrefix ? `${ticket.ticketPrefix}-` : ''}
-                {String(ticket.queueNumber).padStart(3, '0')}
-              </Typography>
-              <Typography sx={{ fontSize: '1rem', fontWeight: 600, color: COLORS.textSecondary }}>
-                {ticket.primaryService || ticket.serviceType || 'General Visit'}
-              </Typography>
-            </Box>
-          ))}
-        </Box>
-      )}
+      {/* UPCOMING QUEUE PREVIEW — next 1-3 arrived tickets, grouped by department — T4.134 Phase 7.5 */}
+      {isServing && upcomingTickets.length > 0 && (() => {
+        // Group upcoming tickets by department for multi-lane clarity
+        const byDept = {};
+        upcomingTickets.forEach(t => {
+          const dept = t.serviceCategory || 'General';
+          if (!byDept[dept]) byDept[dept] = [];
+          byDept[dept].push(t);
+        });
+        const deptKeys = Object.keys(byDept);
+
+        return (
+          <Box sx={{ display: 'flex', gap: 3, mt: 3, flexWrap: 'wrap', justifyContent: 'center' }}>
+            {deptKeys.map(dept => (
+              <Box key={dept} sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+
+                {/* Department lane header — only rendered when multiple departments are present */}
+                {deptKeys.length > 1 && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Box sx={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: '50%',
+                      bgcolor: getDeptColor(dept),
+                      border: `1.5px solid ${COLORS.brand}`,
+                    }} />
+                    <Typography sx={{
+                      fontSize: '1rem',
+                      fontWeight: 900,
+                      color: COLORS.textMuted,
+                      textTransform: 'uppercase',
+                      letterSpacing: 1,
+                    }}>
+                      {dept}
+                    </Typography>
+                  </Box>
+                )}
+
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                  {byDept[dept].map((ticket, i) => (
+                    <Box
+                      key={ticket.id}
+                      sx={{
+                        bgcolor: COLORS.cardBg,
+                        border: `2px solid ${getDeptColor(dept)}`,
+                        boxShadow: `4px 4px 0px ${COLORS.brand}`,
+                        borderRadius: 0,
+                        px: 4,
+                        py: 2,
+                        textAlign: 'center',
+                        minWidth: 160,
+                        // Fade further cards slightly to convey distance in queue
+                        opacity: 1 - (i * 0.15),
+                      }}
+                    >
+                      <Typography sx={{ fontSize: '0.9rem', fontWeight: 800, color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                        {i === 0 ? 'UP NEXT' : `+${i + 1}`}
+                      </Typography>
+                      <Typography sx={{ fontSize: '2.5rem', fontWeight: 'bold', color: COLORS.ctaHover }}>
+                        {ticket.ticketPrefix ? `${ticket.ticketPrefix}-` : ''}
+                        {String(ticket.queueNumber).padStart(3, '0')}
+                      </Typography>
+                      <Typography sx={{ fontSize: '1rem', fontWeight: 600, color: COLORS.textSecondary }}>
+                        {ticket.primaryService || ticket.serviceType || 'General Visit'}
+                      </Typography>
+
+                      {/* Department dot — T4.134 Phase 7.4 */}
+                      {ticket.serviceCategory && (
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.8, mt: 0.5 }}>
+                          <Box sx={{
+                            width: 10,
+                            height: 10,
+                            borderRadius: '50%',
+                            bgcolor: getDeptColor(ticket.serviceCategory),
+                            border: `1.5px solid ${COLORS.brand}`,
+                          }} />
+                          <Typography sx={{
+                            fontSize: '0.85rem',
+                            fontWeight: 800,
+                            color: COLORS.textMuted,
+                            textTransform: 'uppercase',
+                            letterSpacing: 1,
+                          }}>
+                            {ticket.serviceCategory}
+                          </Typography>
+                        </Box>
+                      )}
+                    </Box>
+                  ))}
+                </Box>
+
+              </Box>
+            ))}
+          </Box>
+        );
+      })()}
 
       {/* FOOTER — clinic name from settings */}
       <Typography sx={{ color: COLORS.textMuted, mt: 4, fontSize: '1.5rem', fontWeight: 600 }}>

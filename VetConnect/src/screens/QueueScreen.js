@@ -22,6 +22,20 @@ import { useNetwork } from "../context/NetworkContext";
 import { getClientStatusLabel, isActiveStatus } from "../utils/statusLabels";
 
 /**
+ * Breadcrumb stages shown on QueueScreen. Each maps an appointment status
+ * to a client-friendly label. Derived from buildVisitTimeline.js CLIENT_LABEL_MAP.
+ * The order represents the typical happy-path clinic visit flow.
+ */
+const BREADCRUMB_STAGES = [
+  { status: 'confirmed',  label: 'Confirmed' },
+  { status: 'arrived',    label: 'Checked in' },
+  { status: 'in-consult', label: 'With the vet' },
+  { status: 'dispensing', label: 'Pharmacy' },
+  { status: 'billing',    label: 'Checkout' },
+  { status: 'completed',  label: 'Done' },
+];
+
+/**
  * Formats a queue ticket as {PREFIX}-{NUMBER} with zero-padded 3-digit number.
  * Matches the canonical format used in SuperCard.js.
  * @param {string|null} prefix
@@ -43,6 +57,8 @@ export default function QueueScreen() {
   const [turnAlert, setTurnAlert] = useState(false);
   const [countdown, setCountdown] = useState(null);
   const [avgWaitMins, setAvgWaitMins] = useState(null);
+  const [deptAvgConsultMins, setDeptAvgConsultMins] = useState({});  // T4.134: per-dept avg consult durations
+  const [departments, setDepartments] = useState([]);                 // T4.134: department color/name config
   const [lateSent, setLateSent] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
   const prevAheadRef = useRef(null);
@@ -142,6 +158,7 @@ export default function QueueScreen() {
               queueNumber: data.queueNumber ?? null,
               serviceDuration: data.serviceDuration ?? null,
               serviceType: data.serviceType ?? null,
+              serviceCategory: data.serviceCategory ?? null,   // T4.134: department lane filtering
               priority: data.priority ?? null,
             };
           })
@@ -154,64 +171,98 @@ export default function QueueScreen() {
     return () => unsubLobby();
   }, []);
 
-  // 4. Fetch historical average wait time (one-shot) -- T2.488
+  // 4. Fetch per-department avg consult duration (one-shot) — T4.134 (absorbs T4.6 + T2.488)
   useEffect(() => {
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-    const q = query(
-      collection(db, "appointments"),
-      where("status", "==", "completed"),
-      where("scheduledDate", ">=", sevenDaysAgo),
-      limit(100),
-    );
-
     const fetchAvg = async () => {
       try {
+        const now = new Date();
+        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const q = query(
+          collection(db, "appointments"),
+          where("status", "==", "completed"),
+          where("scheduledDate", ">=", startOfDay),
+          limit(200),
+        );
         const snapshot = await getDocs(q);
-        let totalMins = 0;
-        let count = 0;
+
+        // Group completed consult durations by department
+        const deptBuckets = {};
+        let globalTotal = 0;
+        let globalCount = 0;
 
         snapshot.docs.forEach((d) => {
           const data = d.data();
-          const arrived = data.timeArrived?.toDate?.();
-          const consultStart = data.timeConsultStarted?.toDate?.();
-          if (arrived && consultStart && consultStart > arrived) {
-            totalMins += (consultStart - arrived) / 60000;
-            count++;
+          const started = data.timeStarted?.toDate?.();
+          const completed = data.timeCompleted?.toDate?.();
+          if (started && completed && completed > started) {
+            const mins = (completed - started) / 60000;
+            const dept = data.serviceCategory || "General";
+            if (!deptBuckets[dept]) deptBuckets[dept] = { total: 0, count: 0 };
+            deptBuckets[dept].total += mins;
+            deptBuckets[dept].count++;
+            globalTotal += mins;
+            globalCount++;
           }
         });
 
-        if (count > 0) {
-          setAvgWaitMins(Math.round(totalMins / count));
-        }
+        const result = {};
+        Object.entries(deptBuckets).forEach(([dept, bucket]) => {
+          result[dept] = Math.round(bucket.total / bucket.count);
+        });
+
+        // __global is the fallback for departments with no data today
+        const globalAvg = globalCount > 0 ? Math.round(globalTotal / globalCount) : null;
+        result.__global = globalAvg;
+
+        setDeptAvgConsultMins(result);
+        // Backward compat: keep avgWaitMins for the "Clinic average" fallback line
+        setAvgWaitMins(globalAvg);
       } catch {
-        // Silently fail -- average is supplementary info
+        // Silently fail — average is supplementary info
       }
     };
 
     fetchAvg();
   }, []);
 
-  // Derived: people ahead + estimated wait + per-service breakdown (memoized) -- T2.349 + T2.350 + T2.352 + T3.59
-  const { peopleAhead, estWaitTimeMins, serviceBreakdown } = useMemo(() => {
-    if (!myTicket?.queueNumber) return { peopleAhead: 0, estWaitTimeMins: 0, serviceBreakdown: [] };
+  // 4.5 Fetch departments collection (one-shot) — T4.134: department colors + lane labels
+  useEffect(() => {
+    const fetchDepts = async () => {
+      try {
+        const snap = await getDocs(collection(db, "departments"));
+        setDepartments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch {
+        // Department colors are cosmetic — fail silently
+      }
+    };
+    fetchDepts();
+  }, []);
+
+  // Derived: people ahead + estimated wait + per-service breakdown (memoized)
+  // T2.349 + T2.350 + T2.352 + T3.59 + T4.134 (dept-filtered counts + per-dept avg wait)
+  const { peopleAhead, estWaitTimeMins, serviceBreakdown, myDepartment } = useMemo(() => {
+    if (!myTicket?.queueNumber) {
+      return { peopleAhead: 0, estWaitTimeMins: 0, serviceBreakdown: [], myDepartment: null };
+    }
+
+    // T4.134: the client's department lane — filters who counts as "ahead"
+    const myDept = myTicket?.serviceCategory || null;
 
     const ahead = lobbyPatients.filter((p) => {
+      // T4.134: skip patients in a different department — they don't share staff
+      if (myDept && p.serviceCategory && p.serviceCategory !== myDept) return false;
       if (p.priority === "high" && myTicket.priority !== "high") return true;
       if (p.queueNumber && p.queueNumber < myTicket.queueNumber) return true;
       return false;
     });
 
+    // T4.134: use per-department avg consult duration for wait estimate
     let waitMins = 0;
     ahead.forEach((p) => {
-      if (p.priority === "high" && p.serviceDuration) {
-        waitMins += parseInt(p.serviceDuration, 10) || 60;
-      } else if (p.serviceDuration) {
-        waitMins += parseInt(p.serviceDuration, 10) || 30;
-      } else {
-        waitMins += 30;
-      }
+      const pDept = p.serviceCategory || myDept || "General";
+      const pAvg = deptAvgConsultMins[pDept] || deptAvgConsultMins.__global || 30;
+      // Prefer declared service duration; fall back to dept historical average
+      waitMins += parseInt(p.serviceDuration, 10) || pAvg;
     });
 
     // T3.59: Group ahead patients by serviceType for breakdown display
@@ -220,16 +271,17 @@ export default function QueueScreen() {
       const type = p.serviceType || "Other";
       if (!typeMap[type]) typeMap[type] = { count: 0, totalMins: 0 };
       typeMap[type].count += 1;
-      const dur = parseInt(p.serviceDuration, 10) || 30;
-      typeMap[type].totalMins += dur;
+      const pDept = p.serviceCategory || myDept || "General";
+      const pAvg = deptAvgConsultMins[pDept] || deptAvgConsultMins.__global || 30;
+      typeMap[type].totalMins += parseInt(p.serviceDuration, 10) || pAvg;
     });
 
     const breakdown = Object.entries(typeMap)
       .map(([serviceType, data]) => ({ serviceType, count: data.count, totalMins: data.totalMins }))
       .sort((a, b) => b.count - a.count);
 
-    return { peopleAhead: ahead.length, estWaitTimeMins: waitMins, serviceBreakdown: breakdown };
-  }, [myTicket, lobbyPatients]);
+    return { peopleAhead: ahead.length, estWaitTimeMins: waitMins, serviceBreakdown: breakdown, myDepartment: myDept };
+  }, [myTicket, lobbyPatients, deptAvgConsultMins]);
 
   // 5. Vibrate + banner when it's the user's turn -- T2.487
   useEffect(() => {
@@ -294,6 +346,12 @@ export default function QueueScreen() {
     queueData.currentServing,
   );
 
+  // T4.134: resolve department color from Firestore departments collection
+  const myDeptObj = departments.find(
+    d => d.name?.toLowerCase() === (myTicket?.serviceCategory || '').toLowerCase()
+  );
+  const deptColor = myDeptObj?.color || COLORS.sky;
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.header}>Clinic Queue Monitor</Text>
@@ -353,6 +411,16 @@ export default function QueueScreen() {
                 {formatTicket(myTicket.ticketPrefix, myTicket.queueNumber)}
               </Text>
 
+              {/* T4.134: department lane label — tells the owner which queue they are in */}
+              {myDepartment && (
+                <View style={styles.deptLaneBox}>
+                  <View style={[styles.deptDot, { backgroundColor: deptColor }]} />
+                  <Text style={styles.deptLaneText}>
+                    YOUR QUEUE: {myDepartment.toUpperCase()}
+                  </Text>
+                </View>
+              )}
+
               {/* Position progress bar -- T2.484 */}
               {myTicket.queueNumber != null && lobbyPatients.length > 0 && (
                 <View style={styles.progressContainer}>
@@ -375,6 +443,70 @@ export default function QueueScreen() {
                 </View>
               )}
 
+              {/* Status breadcrumb — T4.134, Phase 5 */}
+              {myTicket.status && (() => {
+                // on-hold and confined both occur during the consult phase;
+                // map them to in-consult so the breadcrumb highlights correctly
+                const breadcrumbStatus = ['on-hold', 'confined'].includes(myTicket.status)
+                  ? 'in-consult'
+                  : myTicket.status;
+                const currentIdx = BREADCRUMB_STAGES.findIndex(s => s.status === breadcrumbStatus);
+                if (currentIdx < 0) return null;
+
+                // Lead-in line to current dot is green (optimistic: patient reached this stage).
+                // Trailing line from current dot is gray (stage not yet completed).
+                return (
+                  <>
+                    <View style={styles.breadcrumbContainer}>
+                      {BREADCRUMB_STAGES.map((stage, idx) => {
+                        const isPast    = idx < currentIdx;
+                        const isCurrent = idx === currentIdx;
+                        const isLast    = idx === BREADCRUMB_STAGES.length - 1;
+
+                        return (
+                          <View key={stage.status} style={styles.breadcrumbStep}>
+                            <View style={styles.breadcrumbDotRow}>
+                              {idx > 0 && (
+                                <View style={[
+                                  styles.breadcrumbLine,
+                                  (isPast || isCurrent) ? styles.breadcrumbLineActive : styles.breadcrumbLineInactive,
+                                ]} />
+                              )}
+                              <View style={[
+                                styles.breadcrumbDot,
+                                isPast    && { backgroundColor: COLORS.success },
+                                isCurrent && { backgroundColor: COLORS.sky },
+                                !isPast && !isCurrent && { backgroundColor: COLORS.borderLight },
+                              ]} />
+                              {!isLast && (
+                                <View style={[
+                                  styles.breadcrumbLine,
+                                  isPast ? styles.breadcrumbLineActive : styles.breadcrumbLineInactive,
+                                ]} />
+                              )}
+                            </View>
+                            <Text style={[
+                              styles.breadcrumbLabel,
+                              isPast    && { color: COLORS.success },
+                              isCurrent && { color: COLORS.sky, fontWeight: '900' },
+                            ]} numberOfLines={1}>
+                              {stage.label}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+
+                    {/* Sub-state annotation for on-hold / confined */}
+                    {(myTicket.status === 'on-hold' || myTicket.status === 'confined') && (
+                      <Text style={styles.breadcrumbNote}>
+                        {myTicket.status === 'on-hold' ? 'Currently on hold' : 'Admitted to clinic'}
+                      </Text>
+                    )}
+                  </>
+                );
+              })()}
+
               <View style={styles.infoBox}>
                 {/* T2.354: use isActiveStatus for a nuanced turn check */}
                 {peopleAhead <= 0 && (isActiveStatus(myTicket.status) || myTicket.status === "confirmed") ? (
@@ -387,13 +519,34 @@ export default function QueueScreen() {
                 ) : (
                   <View style={{ alignItems: "center" }}>
                     <Text style={styles.waitingText}>Please Wait...</Text>
-                    <Text style={styles.subText}>
-                      There are{" "}
-                      <Text style={{ fontWeight: "bold", color: COLORS.accent }}>
-                        {peopleAhead} patient(s)
-                      </Text>{" "}
-                      ahead of you.
-                    </Text>
+                    {/* T4.134: department-filtered ahead count + explainer (Phase 6) */}
+                    <View style={styles.aheadRow}>
+                      <Text style={styles.subText}>
+                        There are{" "}
+                        <Text style={{ fontWeight: "bold", color: COLORS.accent }}>
+                          {peopleAhead} patient(s)
+                        </Text>{" "}
+                        ahead of you{myDepartment ? ` in ${myDepartment}` : ""}.
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.infoButton}
+                        onPress={() =>
+                          Alert.alert(
+                            "How the Queue Works",
+                            "Pets may be seen in a different order based on the type of service. " +
+                            "Grooming, veterinary consultations, and vaccinations are handled by " +
+                            "different staff at the same time.\n\n" +
+                            "Your position shows how many pets are ahead of you for the same type " +
+                            "of service. A lower ticket number in another department does not " +
+                            "affect your wait.",
+                            [{ text: "Got it" }]
+                          )
+                        }
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <Text style={styles.infoIcon}>i</Text>
+                      </TouchableOpacity>
+                    </View>
 
                     {/* Live countdown estimate -- T2.485 */}
                     <View style={styles.estBox}>
@@ -406,7 +559,10 @@ export default function QueueScreen() {
                     {/* T3.59: Per-service-type breakdown — only shown when 2+ distinct types are ahead */}
                     {serviceBreakdown.length > 1 && (
                       <View style={styles.breakdownBox}>
-                        <Text style={styles.breakdownLabel}>By Service Type:</Text>
+                        {/* T4.134: show dept name when known */}
+                        <Text style={styles.breakdownLabel}>
+                          {myDepartment ? `Ahead in ${myDepartment}:` : "By Service Type:"}
+                        </Text>
                         {serviceBreakdown.map((item, idx) => (
                           <View key={item.serviceType} style={[styles.breakdownRow, idx === serviceBreakdown.length - 1 && { borderBottomWidth: 0 }]}>
                             <Text style={styles.breakdownService} numberOfLines={1}>
@@ -423,12 +579,16 @@ export default function QueueScreen() {
                       </View>
                     )}
 
-                    {/* Historical average -- T2.488 */}
-                    {avgWaitMins != null && (
+                    {/* T4.134: department-specific avg, falling back to clinic-wide (absorbs T2.488) */}
+                    {myDepartment && deptAvgConsultMins[myDepartment] ? (
                       <Text style={styles.avgWaitText}>
-                        Clinic average: ~{avgWaitMins} min wait (last 7 days)
+                        Avg {myDepartment.toLowerCase()} visit: ~{deptAvgConsultMins[myDepartment]} min (today)
                       </Text>
-                    )}
+                    ) : avgWaitMins != null ? (
+                      <Text style={styles.avgWaitText}>
+                        Clinic average: ~{avgWaitMins} min wait (today)
+                      </Text>
+                    ) : null}
                   </View>
                 )}
               </View>
@@ -852,5 +1012,112 @@ const styles = StyleSheet.create({
     marginTop: 4,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
+  },
+
+  // T4.134: Department lane label — shown below ticket number
+  deptLaneBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 8,
+    marginBottom: 4,
+    gap: 8,
+  },
+  // borderRadius: 6 is a deliberate exception — circular dept indicator dot
+  deptDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+  },
+  deptLaneText: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: COLORS.accent,
+    textTransform: "uppercase",
+    letterSpacing: 1.5,
+  },
+
+  // T4.134 Phase 5 — Status breadcrumb
+  breadcrumbContainer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "flex-start",
+    width: "100%",
+    marginTop: 16,
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
+  breadcrumbStep: {
+    flex: 1,
+    alignItems: "center",
+  },
+  breadcrumbDotRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    height: 16,
+    width: "100%",
+    justifyContent: "center",
+  },
+  // borderRadius: 6 is a deliberate exception — circular stage indicator dot
+  breadcrumbDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+  },
+  breadcrumbLine: {
+    flex: 1,
+    height: 2,
+  },
+  breadcrumbLineActive: {
+    backgroundColor: COLORS.success,
+  },
+  breadcrumbLineInactive: {
+    backgroundColor: COLORS.borderLight,
+  },
+  breadcrumbLabel: {
+    fontSize: 9,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginTop: 4,
+    textAlign: "center",
+    color: COLORS.muted,
+  },
+  breadcrumbNote: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.warning,
+    textAlign: "center",
+    marginTop: 2,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+
+  // T4.134 Phase 6 — "Why was I skipped?" info button
+  aheadRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  // borderRadius: 11 is a deliberate exception — circular info button
+  infoButton: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: COLORS.sky,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  infoIcon: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: COLORS.sky,
+    lineHeight: 15,
   },
 });

@@ -46,6 +46,12 @@ const TYPE_CHIP_CONFIG = {
   reminder: { label: 'REMINDER', bg: COLORS.kpiOrangeBg, color: COLORS.warning,  border: COLORS.warning },
 };
 
+const CHANNEL_CHIP_CONFIG = {
+  push:  { label: 'PUSH',  bg: COLORS.chipBlueBg,  color: COLORS.medical,  border: COLORS.medical },
+  email: { label: 'EMAIL', bg: COLORS.kpiGreenBg,  color: COLORS.success,  border: COLORS.success },
+  sms:   { label: 'SMS',   bg: COLORS.kpiOrangeBg, color: COLORS.warning,  border: COLORS.warning },
+};
+
 /** Returns today's date as YYYY-MM-DD using the local clock. */
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -109,6 +115,33 @@ const buildColumns = (onRowClick) => [
     sortable: false,
     renderCell: ({ row }) => {
       const cfg = TYPE_CHIP_CONFIG[row.type] || { label: (row.type || '?').toUpperCase(), bg: COLORS.panelBg, color: COLORS.textSecondary, border: COLORS.border };
+      return (
+        <Chip
+          label={cfg.label}
+          size="small"
+          sx={{
+            fontFamily: FONT,
+            fontWeight: 800,
+            fontSize: '0.65rem',
+            letterSpacing: '0.06em',
+            bgcolor: cfg.bg,
+            color: cfg.color,
+            border: `1px solid ${cfg.border}`,
+            borderRadius: 0,
+            height: 22,
+          }}
+        />
+      );
+    },
+  },
+  {
+    field: 'channel',
+    headerName: 'CHANNEL',
+    width: 90,
+    sortable: false,
+    renderCell: ({ row }) => {
+      const ch  = row.channel || 'push';
+      const cfg = CHANNEL_CHIP_CONFIG[ch] || { label: ch.toUpperCase(), bg: COLORS.panelBg, color: COLORS.textSecondary, border: COLORS.border };
       return (
         <Chip
           label={cfg.label}
@@ -241,12 +274,11 @@ function LogDetailDialog({ log, onClose, onViewPatient }) {
       <DialogContent sx={{ pt: 3, pb: 1 }}>
         {/* Metadata grid */}
         {[
-          { label: 'SENT AT',    value: `${date} at ${time}` },
-          { label: 'SENT BY',    value: log.sentBy || '—' },
-          { label: 'RECIPIENT',  value: log.ownerName || '—' },
-          { label: 'PET',        value: log.petName || '—' },
-          { label: 'STATUS',     value: log.status || '—' },
-          { label: 'CHANNEL',    value: log.channel || 'push' },
+          { label: 'SENT AT',   value: `${date} at ${time}` },
+          { label: 'SENT BY',   value: log.sentBy || '—' },
+          { label: 'RECIPIENT', value: log.ownerName || '—' },
+          { label: 'PET',       value: log.petName || '—' },
+          { label: 'STATUS',    value: log.status || '—' },
         ].map(({ label, value }) => (
           <Box key={label} sx={{ display: 'flex', gap: 2, mb: 1.5, alignItems: 'flex-start' }}>
             <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, minWidth: 90, mt: 0.1 }}>
@@ -257,6 +289,34 @@ function LogDetailDialog({ log, onClose, onViewPatient }) {
             </Typography>
           </Box>
         ))}
+
+        {/* Channel row — rendered as a colored chip */}
+        {(() => {
+          const ch  = log.channel || 'push';
+          const chCfg = CHANNEL_CHIP_CONFIG[ch] || { label: ch.toUpperCase(), bg: COLORS.panelBg, color: COLORS.textSecondary, border: COLORS.border };
+          return (
+            <Box sx={{ display: 'flex', gap: 2, mb: 1.5, alignItems: 'center' }}>
+              <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, minWidth: 90 }}>
+                CHANNEL
+              </Typography>
+              <Chip
+                label={chCfg.label}
+                size="small"
+                sx={{
+                  fontFamily: FONT,
+                  fontWeight: 800,
+                  fontSize: '0.65rem',
+                  letterSpacing: '0.06em',
+                  bgcolor: chCfg.bg,
+                  color: chCfg.color,
+                  border: `1px solid ${chCfg.border}`,
+                  borderRadius: 0,
+                  height: 22,
+                }}
+              />
+            </Box>
+          );
+        })()}
 
         {/* Title */}
         <Box sx={{ mt: 2, mb: 1 }}>
@@ -332,6 +392,7 @@ export default function NotificationLogs() {
   const [logs, setLogs]                   = useState([]);
   const [loading, setLoading]             = useState(false);
   const [filterType, setFilterType]       = useState('all');
+  const [filterChannel, setFilterChannel] = useState('all');
   const [searchText, setSearchText]       = useState('');
   const [startDate, setStartDate]         = useState(todayStr());
   const [endDate, setEndDate]             = useState(todayStr());
@@ -414,16 +475,17 @@ export default function NotificationLogs() {
   // ── Client-side filtering (type + search) ─────────────────────────────────
   const filteredLogs = useMemo(() => {
     return logs.filter((log) => {
-      const matchType = filterType === 'all' || log.type === filterType;
+      const matchType    = filterType === 'all' || log.type === filterType;
+      const matchChannel = filterChannel === 'all' || (log.channel || 'push') === filterChannel;
       const q = searchText.toLowerCase();
       const matchSearch = !q
         || (log.ownerName || '').toLowerCase().includes(q)
         || (log.petName   || '').toLowerCase().includes(q)
         || (log.title     || '').toLowerCase().includes(q)
         || (log.sentBy    || '').toLowerCase().includes(q);
-      return matchType && matchSearch;
+      return matchType && matchChannel && matchSearch;
     });
-  }, [logs, filterType, searchText]);
+  }, [logs, filterType, filterChannel, searchText]);
 
   const handleViewPatient = (ownerId) => {
     setDetailLog(null);
@@ -607,12 +669,28 @@ export default function NotificationLogs() {
             </Select>
           </FormControl>
 
+          {/* Channel filter */}
+          <FormControl size="small" sx={{ minWidth: 120 }}>
+            <Select
+              value={filterChannel}
+              onChange={(e) => setFilterChannel(e.target.value)}
+              displayEmpty
+              sx={{ fontFamily: FONT, fontSize: '0.85rem', borderRadius: 0, bgcolor: COLORS.formBg }}
+            >
+              <MenuItem value="all" sx={{ fontFamily: FONT }}>All Channels</MenuItem>
+              <MenuItem value="push" sx={{ fontFamily: FONT }}>Push</MenuItem>
+              <MenuItem value="email" sx={{ fontFamily: FONT }}>Email</MenuItem>
+              <MenuItem value="sms" sx={{ fontFamily: FONT }}>SMS</MenuItem>
+            </Select>
+          </FormControl>
+
           {/* Refresh */}
           <Tooltip title="Refresh">
             <IconButton
               onClick={() => {
                 setSearchText('');
                 setFilterType('all');
+                setFilterChannel('all');
                 setRefreshKey((k) => k + 1);
               }}
               disabled={loading}

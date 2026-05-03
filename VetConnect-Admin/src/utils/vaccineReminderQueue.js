@@ -20,6 +20,8 @@
  *   ownerName: string,
  *   ownerId: string,
  *   pushToken: string | null,
+ *   ownerEmail: string,          // T4.135 — for email channel in Cron handler
+ *   ownerPhone: string,          // T4.135 — populated but not used for vaccine SMS
  *   vaccines: [{ name, status, daysUntilDue }],
  *   updatedAt: Timestamp,
  *   lastReminderSentAt: Timestamp | null,
@@ -30,7 +32,7 @@ import {
   query, where, Timestamp,
 } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
-import { resolvePushToken, getWorkerUrl } from './sendPushNotification';
+import { resolvePushToken, getWorkerUrl, getCachedOwnerEmail, getCachedOwnerPhone } from './sendPushNotification';
 import { DEFAULT_TEMPLATES } from './notificationTemplateConstants';
 import { DEFAULT_VACCINE_CATALOG } from '../hooks/useVaccineCatalog';
 
@@ -222,8 +224,11 @@ async function writeQueueDoc(petId, petData, vaccines) {
     return;
   }
 
-  // Resolve the owner's push token for notification delivery
-  const pushToken = await resolvePushToken(petData.ownerId);
+  // Resolve the owner's push token for notification delivery.
+  // getCachedOwnerEmail/Phone are populated as a side-effect of resolvePushToken.
+  const pushToken  = await resolvePushToken(petData.ownerId);
+  const ownerEmail = getCachedOwnerEmail(petData.ownerId) || '';
+  const ownerPhone = getCachedOwnerPhone(petData.ownerId) || '';
 
   // Read existing doc to preserve lastReminderSentAt — ensures cooldown logic
   // works correctly even after a full recompute wipes and rewrites the doc.
@@ -242,6 +247,8 @@ async function writeQueueDoc(petId, petData, vaccines) {
     ownerName:         petData.ownerName  || '',
     ownerId:           petData.ownerId    || '',
     pushToken,
+    ownerEmail,
+    ownerPhone,
     vaccines,
     updatedAt:         Timestamp.now(),
     lastReminderSentAt,

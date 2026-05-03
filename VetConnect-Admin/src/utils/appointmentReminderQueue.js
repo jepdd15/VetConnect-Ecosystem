@@ -11,6 +11,8 @@
  *   ownerName: string,
  *   ownerId: string,
  *   pushToken: string | null,
+ *   ownerEmail: string,            // T4.135 — for email channel in Cron handler
+ *   ownerPhone: string,            // T4.135 — for SMS on tomorrow/today stages only
  *   scheduledDate: Timestamp,
  *   scheduledTime: string,         // e.g. "2:00 PM"
  *   remindersSent: {
@@ -26,7 +28,7 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
-import { resolvePushToken, getWorkerUrl } from './sendPushNotification';
+import { resolvePushToken, getWorkerUrl, getCachedOwnerEmail, getCachedOwnerPhone } from './sendPushNotification';
 import { DEFAULT_TEMPLATES } from './notificationTemplateConstants';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -111,7 +113,10 @@ export async function writeAppointmentQueueDoc(appointment) {
   if (!appointment?.id) return;
   if (isWalkIn(appointment.ownerId)) return;
 
+  // getCachedOwnerEmail/Phone are populated as a side-effect of resolvePushToken.
   const pushToken    = await resolvePushToken(appointment.ownerId);
+  const ownerEmail   = getCachedOwnerEmail(appointment.ownerId) || '';
+  const ownerPhone   = getCachedOwnerPhone(appointment.ownerId) || '';
   const schDate      = toDate(appointment.scheduledDate);
   const scheduledTime = formatTime(schDate);
 
@@ -131,6 +136,8 @@ export async function writeAppointmentQueueDoc(appointment) {
     ownerName:      appointment.ownerName  || '',
     ownerId:        appointment.ownerId,
     pushToken,
+    ownerEmail,
+    ownerPhone,
     scheduledDate:  appointment.scheduledDate instanceof Timestamp
       ? appointment.scheduledDate
       : Timestamp.fromDate(schDate),
@@ -175,8 +182,11 @@ export async function updateAppointmentQueueDate(appointmentId, newScheduledDate
   const ownerId = appointment?.ownerId;
   if (isWalkIn(ownerId)) return;
 
-  const pushToken = await resolvePushToken(ownerId);
-  const schDate   = toDate(newScheduledDate);
+  // getCachedOwnerEmail/Phone are populated as a side-effect of resolvePushToken.
+  const pushToken  = await resolvePushToken(ownerId);
+  const ownerEmail = getCachedOwnerEmail(ownerId) || '';
+  const ownerPhone = getCachedOwnerPhone(ownerId) || '';
+  const schDate    = toDate(newScheduledDate);
   const scheduledTime = formatTime(schDate);
 
   await setDoc(doc(db, 'appointment_reminder_queue', appointmentId), {
@@ -185,6 +195,8 @@ export async function updateAppointmentQueueDate(appointmentId, newScheduledDate
     ownerName:     appointment.ownerName || '',
     ownerId,
     pushToken,
+    ownerEmail,
+    ownerPhone,
     scheduledDate: newScheduledDate instanceof Timestamp
       ? newScheduledDate
       : Timestamp.fromDate(schDate),

@@ -9,7 +9,8 @@ import SendIcon from '@mui/icons-material/Send';
 import { addDoc, collection, Timestamp } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { FONT, TYPE, COLORS } from '../theme/designTokens';
-import { resolvePushToken, getWorkerUrl } from '../utils/sendPushNotification';
+import { resolvePushToken, getWorkerUrl, getCachedOwnerEmail } from '../utils/sendPushNotification';
+import { buildEmailHtml } from '../utils/notificationTemplateConstants';
 import { useUser } from '../context/UserContext';
 
 /**
@@ -62,16 +63,6 @@ export default function SendNotificationDialog({
         getWorkerUrl(),
       ]);
 
-      if (!pushToken) {
-        setSnack({
-          open: true,
-          message: 'This client has not enabled push notifications.',
-          severity: 'warning',
-        });
-        setSending(false);
-        return;
-      }
-
       if (!workerUrl) {
         setSnack({
           open: true,
@@ -82,45 +73,86 @@ export default function SendNotificationDialog({
         return;
       }
 
-      const endpoint = workerUrl.replace(/\/+$/, '') + '/push/custom';
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pushToken,
-          title: title.trim(),
-          body: body.trim(),
-        }),
-      });
+      const baseEndpoint = workerUrl.replace(/\/+$/, '');
+      let pushSent = false;
 
-      if (!res.ok) {
-        const errText = await res.text().catch(() => 'Unknown error');
-        throw new Error(errText);
+      // Channel 1: Push — only when the client has a push token
+      if (pushToken) {
+        const res = await fetch(baseEndpoint + '/push/custom', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            pushToken,
+            title: title.trim(),
+            body: body.trim(),
+          }),
+        });
+
+        if (!res.ok) {
+          const errText = await res.text().catch(() => 'Unknown error');
+          throw new Error(errText);
+        }
+        pushSent = true;
+
+        // T4.95: Fire-and-forget push notification log
+        addDoc(collection(db, 'notification_log'), {
+          ownerId,
+          ownerName:     recipientName || null,
+          status:        null,
+          petName:       petName || null,
+          title:         title.trim(),
+          body:          body.trim(),
+          appointmentId: null,
+          sentAt:        Timestamp.now(),
+          sentBy:        profile?.fullName || 'Staff',
+          channel:       'push',
+          type:          'custom',
+        }).catch(() => {});
       }
 
+      // Channel 2: Email — independent of push; fires even when pushToken is null
+      // SMS is not sent for custom notifications — they are not in SMS_CRITICAL_STATUSES.
+      const ownerEmail = getCachedOwnerEmail(ownerId);
+      if (ownerEmail) {
+        fetch(baseEndpoint + '/email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to:      ownerEmail,
+            subject: title.trim(),
+            html:    buildEmailHtml(title.trim(), body.trim()),
+          }),
+        }).then(() => {
+          addDoc(collection(db, 'notification_log'), {
+            ownerId,
+            ownerName:     recipientName || null,
+            status:        null,
+            petName:       petName || null,
+            title:         title.trim(),
+            body:          body.trim(),
+            appointmentId: null,
+            sentAt:        Timestamp.now(),
+            sentBy:        profile?.fullName || 'Staff',
+            channel:       'email',
+            type:          'custom',
+          }).catch(() => {});
+        }).catch((err) => {
+          console.error('[SendNotificationDialog] Email copy failed:', err?.message);
+        });
+      }
+
+      const channelsSent = [pushSent && 'push', ownerEmail && 'email'].filter(Boolean).join(' + ') || 'none';
       setSnack({
         open: true,
-        message: `Notification sent to ${recipientName || 'client'}.`,
-        severity: 'success',
+        message: pushSent
+          ? `Notification sent to ${recipientName || 'client'} (${channelsSent}).`
+          : ownerEmail
+            ? `Push unavailable — email sent to ${recipientName || 'client'}.`
+            : 'This client has no push token or email on file.',
+        severity: pushSent || ownerEmail ? 'success' : 'warning',
       });
 
-      // Notify the parent for any context-specific audit work (e.g., clinicalPulse write).
       if (onSent) onSent({ title: title.trim(), body: body.trim() });
-
-      // T4.95: Fire-and-forget notification log
-      addDoc(collection(db, 'notification_log'), {
-        ownerId:       ownerId,
-        ownerName:     recipientName || null,
-        status:        null,
-        petName:       petName || null,
-        title:         title.trim(),
-        body:          body.trim(),
-        appointmentId: null,
-        sentAt:        Timestamp.now(),
-        sentBy:        profile?.fullName || 'Staff',
-        channel:       'push',
-        type:          'custom',
-      }).catch(() => {});
 
       // Brief delay so the Snackbar is visible before the dialog dismisses.
       setTimeout(() => {

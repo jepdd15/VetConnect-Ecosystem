@@ -38,7 +38,7 @@ import {
   DEFAULT_TEMPLATES, TEMPLATE_GROUPS, STATUS_LABELS,
   STATUS_CHIP_COLORS, PLACEHOLDER_REFERENCE,
 } from '../utils/notificationTemplateConstants';
-import { invalidateTemplateCache } from '../utils/sendPushNotification';
+import { invalidateTemplateCache, invalidateChannelSettingsCache } from '../utils/sendPushNotification';
 import { testLlmConnection, DEFAULT_CLINICAL_SYSTEM_PROMPT } from '../utils/llmService';
 import { useConsentPolicy } from '../hooks/useConsentPolicy';
 import { CONSENT_TYPES } from '../utils/consentConstants';
@@ -981,6 +981,7 @@ export default function Settings() {
 
       await Promise.all(ops);
       invalidateTemplateCache();
+      invalidateChannelSettingsCache();
       await logSettingsEvent('UPDATE', 'notification_templates', 'bulk_save', { customCount });
       setToast({ open: true, message: 'Notification templates saved.', severity: 'success' });
     } catch (e) {
@@ -2544,6 +2545,56 @@ export default function Settings() {
                     />
                   </Box>
                 )}
+              </Box>
+
+              {/* Email Notifications toggle (T4.135) */}
+              <Box sx={{ mb: 3, p: 2, bgcolor: COLORS.cream, border: `2px solid ${COLORS.accent}22`, borderRadius: 0 }}>
+                <FormControlLabel
+                  control={
+                    <MedicinePillSwitch
+                      checked={settings.enableEmailNotifications !== false}
+                      onChange={(e) => handleChange('enableEmailNotifications', e.target.checked)}
+                    />
+                  }
+                  label={
+                    <Box>
+                      <Typography sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.accent, fontSize: '0.85rem' }}>
+                        Enable Email Notifications
+                      </Typography>
+                      <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary, fontSize: '0.75rem' }}>
+                        When enabled, an email copy of every push notification is sent to the pet owner's
+                        registered email address. Uses Resend API (free tier: 100 emails/day).
+                        API key is configured in the Cloudflare Worker environment — not stored here.
+                      </Typography>
+                    </Box>
+                  }
+                />
+              </Box>
+
+              {/* SMS Notifications toggle (T4.135) */}
+              <Box sx={{ mb: 3, p: 2, bgcolor: COLORS.cream, border: `2px solid ${COLORS.accent}22`, borderRadius: 0 }}>
+                <FormControlLabel
+                  control={
+                    <MedicinePillSwitch
+                      checked={settings.enableSmsNotifications === true}
+                      onChange={(e) => handleChange('enableSmsNotifications', e.target.checked)}
+                    />
+                  }
+                  label={
+                    <Box>
+                      <Typography sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.accent, fontSize: '0.85rem' }}>
+                        Enable SMS Notifications (Selective)
+                      </Typography>
+                      <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary, fontSize: '0.75rem' }}>
+                        When enabled, SMS messages are sent for critical notifications only:
+                        appointment confirmation, tomorrow reminder, and same-day reminder.
+                        Uses Semaphore API (PH gateway, ~P0.40/SMS). API key is configured
+                        in the Cloudflare Worker environment. Disabled by default — enable
+                        only after configuring the SEMAPHORE_API_KEY in the Worker dashboard.
+                      </Typography>
+                    </Box>
+                  }
+                />
               </Box>
 
               {/* Placeholder reference guide */}

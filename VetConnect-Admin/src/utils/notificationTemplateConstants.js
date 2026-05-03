@@ -169,3 +169,68 @@ export const PLACEHOLDER_REFERENCE = [
   { token: '{vaccineName}', description: 'Vaccine name (e.g., "Rabies") — vaccine reminders only' },
   { token: '{days}',        description: 'Days until due, days overdue, or days until appointment — reminders only' },
 ];
+
+// ── SMS-Eligible Statuses ──────────────────────────────────────────────────
+// Only these statuses trigger SMS delivery (cost control).
+export const SMS_CRITICAL_STATUSES = new Set([
+  'confirmed',
+  'appointment-tomorrow',
+  'appointment-today',
+]);
+
+// ── SMS Templates ──────────────────────────────────────────────────────────
+// Max 160 characters per message to avoid multi-part SMS charges.
+// Placeholders: {petName} only — SMS must be ultra-concise.
+export const SMS_TEMPLATES = {
+  confirmed:              "{petName}'s appointment confirmed. See you at Starbarks!",
+  'appointment-tomorrow': "Reminder: {petName}'s appointment is tomorrow. Arrive 10 min early.",
+  'appointment-today':    "Today! {petName}'s appointment is today. See you soon at Starbarks!",
+};
+
+// ── Email HTML Wrapper ─────────────────────────────────────────────────────
+/**
+ * Wraps a notification title + body in a simple HTML email template.
+ * Inline styles only — no CSS framework. Compatible with all major email clients.
+ * XSS-safe: all dynamic values are HTML-entity-escaped before insertion.
+ *
+ * @param {string} title      - Email subject / header text
+ * @param {string} body       - Notification body text
+ * @param {string} clinicName - Clinic display name (default: Starbarks Veterinary Clinic)
+ * @returns {string} Complete HTML document string
+ */
+export function buildEmailHtml(title, body, clinicName = 'Starbarks Veterinary Clinic') {
+  const esc = (str) => String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background-color:#F5F0EB;font-family:Arial,Helvetica,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:24px auto;background:#FFFFFF;border:2px solid #3E2723;">
+    <tr>
+      <td style="background:#3E2723;padding:18px 24px;">
+        <h1 style="margin:0;color:#FFF8E1;font-size:18px;font-weight:900;letter-spacing:0.04em;">
+          ${esc(clinicName)}
+        </h1>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:28px 24px 12px;">
+        <h2 style="margin:0 0 12px;color:#3E2723;font-size:16px;font-weight:800;">
+          ${esc(title)}
+        </h2>
+        <p style="margin:0;color:#5D4037;font-size:14px;line-height:1.6;">
+          ${esc(body).replace(/\n/g, '<br>')}
+        </p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:20px 24px;border-top:1px solid #E0D6CC;">
+        <p style="margin:0;color:#A1887F;font-size:11px;line-height:1.5;">
+          This is an automated message from ${esc(clinicName)}.<br>
+          Please do not reply to this email.
+        </p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}

@@ -7,12 +7,15 @@
  */
 import { doc, getDoc, getDocs, collection, addDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
-import { DEFAULT_TEMPLATES } from './notificationTemplateConstants';
+import { DEFAULT_TEMPLATES, SMS_CRITICAL_STATUSES, SMS_TEMPLATES, buildEmailHtml } from './notificationTemplateConstants';
 
 // ─── Module-level caches ─────────────────────────────────────────────────────
-const tokenCache     = new Map(); // ownerId → expoPushToken | null
-const ownerNameCache = new Map(); // ownerId → displayName | null
-let cachedWorkerUrl = undefined; // undefined = not fetched, null = fetched but empty, string = ready
+const tokenCache      = new Map(); // ownerId → expoPushToken | null
+const ownerNameCache  = new Map(); // ownerId → displayName | null
+const ownerEmailCache = new Map(); // ownerId → email | null
+const ownerPhoneCache = new Map(); // ownerId → phone | null
+let cachedWorkerUrl      = undefined; // undefined = not fetched, null = fetched but empty, string = ready
+let cachedChannelSettings = undefined; // undefined = not loaded, object = loaded
 
 // ─── Token resolver ──────────────────────────────────────────────────────────
 /**
@@ -31,11 +34,26 @@ export async function resolvePushToken(ownerId) {
     tokenCache.set(ownerId, token);
     // T4.95: Cache owner name while we have the doc — zero extra reads
     ownerNameCache.set(ownerId, data.fullName || data.name || null);
+    // T4.135: Cache email + phone from the same read — zero extra Firestore ops
+    ownerEmailCache.set(ownerId, data.email || null);
+    ownerPhoneCache.set(ownerId, data.phone || null);
     return token;
   } catch {
     tokenCache.set(ownerId, null);
+    ownerEmailCache.set(ownerId, null);
+    ownerPhoneCache.set(ownerId, null);
     return null;
   }
+}
+
+/** Returns the cached email for a given ownerId, or null if not yet resolved. */
+export function getCachedOwnerEmail(ownerId) {
+  return ownerEmailCache.get(ownerId) || null;
+}
+
+/** Returns the cached phone for a given ownerId, or null if not yet resolved. */
+export function getCachedOwnerPhone(ownerId) {
+  return ownerPhoneCache.get(ownerId) || null;
 }
 
 // ─── Worker URL resolver ─────────────────────────────────────────────────────
@@ -54,6 +72,33 @@ export async function getWorkerUrl() {
     cachedWorkerUrl = null;
     return null;
   }
+}
+
+// ─── Channel settings resolver ──────────────────────────────────────────────
+/**
+ * Reads enableEmailNotifications and enableSmsNotifications from
+ * clinic_settings/general. Caches for the page session.
+ * Defaults: email=true, sms=false (admin must opt-in to SMS).
+ */
+async function getChannelSettings() {
+  if (cachedChannelSettings !== undefined) return cachedChannelSettings;
+
+  try {
+    const snap = await getDoc(doc(db, 'clinic_settings', 'general'));
+    const data = snap.exists() ? snap.data() : {};
+    cachedChannelSettings = {
+      emailEnabled: data.enableEmailNotifications !== false, // default true
+      smsEnabled:   data.enableSmsNotifications === true,    // default false
+    };
+  } catch {
+    cachedChannelSettings = { emailEnabled: true, smsEnabled: false };
+  }
+  return cachedChannelSettings;
+}
+
+/** Forces a re-read of channel settings on the next notification send (call from Settings save handler). */
+export function invalidateChannelSettingsCache() {
+  cachedChannelSettings = undefined;
 }
 
 // ─── Notification template cache ────────────────────────────────────────────
@@ -186,15 +231,16 @@ export function sendPushNotification({
 
 // ─── Internal dispatch (async, never exposed) ────────────────────────────────
 async function _dispatchPush({ ownerId, status, petName, vetName, ticketNumber, appointmentId, visitGroupId, customTitle, customBody, sentBy }) {
-  const [pushToken, workerUrl] = await Promise.all([
+  const [pushToken, workerUrl, channelSettings] = await Promise.all([
     resolvePushToken(ownerId),
     getWorkerUrl(),
+    getChannelSettings(),
   ]);
 
-  if (!pushToken || !workerUrl) return; // Silent exit — not configured or no token
+  if (!workerUrl) return; // Worker not configured — cannot send anything
 
   // Auto-resolve admin-customized template if the caller did not provide explicit overrides.
-  // The 4 call sites that pass customTitle/customBody (revert, reschedule, carry-over) still take priority.
+  // The call sites that pass customTitle/customBody (revert, reschedule, carry-over) still take priority.
   let finalTitle = customTitle;
   let finalBody = customBody;
   if (!finalTitle && !finalBody && status) {
@@ -205,27 +251,7 @@ async function _dispatchPush({ ownerId, status, petName, vetName, ticketNumber, 
     }
   }
 
-  const endpoint = workerUrl.replace(/\/+$/, '') + '/push';
-
-  await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      pushToken,
-      status,
-      petName: petName || 'your pet',
-      vetName: vetName || '',
-      ticketNumber: ticketNumber || '',
-      appointmentId: appointmentId || '',
-      visitGroupId: visitGroupId || '',
-      ...(finalTitle ? { customTitle: finalTitle } : {}),
-      ...(finalBody ? { customBody: finalBody } : {}),
-    }),
-  });
-
-  // T4.95 / T3.138: Resolve title+body for the audit log entry.
-  // resolveTemplateForLog fills in DEFAULT_TEMPLATES when the Worker would
-  // have generated the text client-side — ensuring the log is never null.
+  // Resolve interpolated title+body for logging — shared by all channels
   const interpolationData = {
     petName:      petName      || 'your pet',
     vetName:      vetName      || '',
@@ -233,10 +259,15 @@ async function _dispatchPush({ ownerId, status, petName, vetName, ticketNumber, 
   };
   const { logTitle, logBody } = resolveTemplateForLog(finalTitle, finalBody, status, interpolationData);
 
-  // Fire-and-forget notification log — never blocks or throws
-  addDoc(collection(db, 'notification_log'), {
+  const baseEndpoint = workerUrl.replace(/\/+$/, '');
+  const ownerName  = ownerNameCache.get(ownerId) || null;
+  const ownerEmail = getCachedOwnerEmail(ownerId);
+  const ownerPhone = getCachedOwnerPhone(ownerId);
+
+  // Shared log fields — each channel stamps its own `channel` value
+  const baseLogFields = {
     ownerId,
-    ownerName:     ownerNameCache.get(ownerId) || null,
+    ownerName,
     status:        status || null,
     petName:       petName || null,
     title:         logTitle,
@@ -244,7 +275,96 @@ async function _dispatchPush({ ownerId, status, petName, vetName, ticketNumber, 
     appointmentId: appointmentId || null,
     sentAt:        Timestamp.now(),
     sentBy:        sentBy || 'System',
-    channel:       'push',
     type:          'status',
-  }).catch(() => {});
+  };
+
+  // ── Channel 1: Push ──────────────────────────────────────────────────────
+  // Skipped silently when pushToken is null — covers walk-ins without the app
+  // installed, users who revoked notification permissions, and legacy accounts
+  // registered before push tokens were collected.
+  // Edge cases: (a) no token but has email → email still fires below; (c) no
+  // token/email/phone → all 3 blocks fail silently, no crash; (g) walk-in guest
+  // with no token but with phone + critical status → push skipped, SMS fires.
+  if (pushToken) {
+    fetch(baseEndpoint + '/push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pushToken,
+        status,
+        petName: petName || 'your pet',
+        vetName: vetName || '',
+        ticketNumber: ticketNumber || '',
+        appointmentId: appointmentId || '',
+        visitGroupId: visitGroupId || '',
+        ...(finalTitle ? { customTitle: finalTitle } : {}),
+        ...(finalBody  ? { customBody:  finalBody  } : {}),
+      }),
+    }).then(() => {
+      addDoc(collection(db, 'notification_log'), { ...baseLogFields, channel: 'push' }).catch(() => {});
+    }).catch((err) => {
+      console.error('[_dispatchPush] Push failed:', err?.message);
+    });
+  }
+
+  // ── Channel 2: Email ─────────────────────────────────────────────────────
+  // Independent of push — fires for ALL statuses when the toggle is on and the
+  // owner has an email address. Each guard condition is independent:
+  //   channelSettings.emailEnabled — false when admin toggled off (edge case (d))
+  //   ownerEmail                   — null for walk-ins with no email (edge cases (a), (g))
+  //   logTitle && logBody          — null for unknown future status keys
+  // Edge cases: (a) no token but has email → email fires; (d) toggle off → skipped;
+  // (g) walk-in no email → skipped; (c) no email at all → guard fails silently.
+  if (channelSettings.emailEnabled && ownerEmail && logTitle && logBody) {
+    fetch(baseEndpoint + '/email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to:      ownerEmail,
+        subject: logTitle,
+        html:    buildEmailHtml(logTitle, logBody),
+      }),
+    }).then(() => {
+      addDoc(collection(db, 'notification_log'), { ...baseLogFields, channel: 'email' }).catch(() => {});
+    }).catch((err) => {
+      console.error('[_dispatchPush] Email failed:', err?.message);
+    });
+  }
+
+  // ── Channel 3: SMS (critical statuses only) ──────────────────────────────
+  // Independent of push and email — fires only when ALL guards pass:
+  //   channelSettings.smsEnabled       — admin must explicitly opt-in (default false)
+  //                                      (edge case (e): toggle off → skipped)
+  //   ownerPhone                        — null for non-PH or unregistered users
+  //   /^09\d{9}$/.test(ownerPhone)     — validates PH mobile format; rejects landlines
+  //   SMS_CRITICAL_STATUSES.has(status) — only confirmed, appointment-tomorrow,
+  //                                       appointment-today qualify (edge case (f))
+  // Edge cases: (b) no token/email but has phone + critical → SMS fires; (e) toggle
+  // off → skipped; (f) non-critical status (e.g. 'dispensing') → Set.has() false →
+  // skipped; (g) walk-in guest with phone + critical → push skipped, email skipped
+  // (no email), SMS fires.
+  if (channelSettings.smsEnabled && ownerPhone && /^09\d{9}$/.test(ownerPhone) && SMS_CRITICAL_STATUSES.has(status)) {
+    const smsTemplate = SMS_TEMPLATES[status];
+    if (smsTemplate) {
+      const interpolate = (str) =>
+        str.replace(/\{(\w+)\}/g, (match, key) =>
+          interpolationData[key] !== undefined ? String(interpolationData[key]) : match,
+        );
+      const smsMessage = interpolate(smsTemplate);
+
+      fetch(baseEndpoint + '/sms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: ownerPhone, message: smsMessage }),
+      }).then(() => {
+        addDoc(collection(db, 'notification_log'), {
+          ...baseLogFields,
+          body:    smsMessage, // SMS body is the short interpolated text, not the full push body
+          channel: 'sms',
+        }).catch(() => {});
+      }).catch((err) => {
+        console.error('[_dispatchPush] SMS failed:', err?.message);
+      });
+    }
+  }
 }

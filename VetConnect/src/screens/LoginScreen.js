@@ -1,5 +1,5 @@
 import { MaterialIcons } from "@expo/vector-icons";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { sendPasswordResetEmail, signInWithEmailAndPassword } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { useState } from "react";
 import {
@@ -8,6 +8,7 @@ import {
   Dimensions,
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -27,6 +28,9 @@ const LoginScreen = ({ navigation }) => {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetSending, setResetSending] = useState(false);
 
   const handleLogin = async () => {
     if (email.trim() === "" || password === "") {
@@ -78,6 +82,34 @@ const LoginScreen = ({ navigation }) => {
       Alert.alert("Login Failed", msg);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (resetEmail.trim() === '') {
+      Alert.alert('Required', 'Please enter your email address.');
+      return;
+    }
+
+    setResetSending(true);
+
+    try {
+      await sendPasswordResetEmail(auth, resetEmail.trim());
+      Alert.alert(
+        'Email Sent',
+        'A password reset link has been sent to your email address.',
+        [{ text: 'OK', onPress: () => setForgotOpen(false) }],
+      );
+    } catch (error) {
+      let msg = 'Something went wrong. Please try again.';
+      if (error.code === 'auth/user-not-found') {
+        msg = 'No account found with that email address.';
+      } else if (error.code === 'auth/invalid-email') {
+        msg = 'Please enter a valid email address.';
+      }
+      Alert.alert('Reset Failed', msg);
+    } finally {
+      setResetSending(false);
     }
   };
 
@@ -134,6 +166,16 @@ const LoginScreen = ({ navigation }) => {
               </TouchableOpacity>
             </View>
 
+            <TouchableOpacity
+              onPress={() => {
+                setResetEmail(email);
+                setForgotOpen(true);
+              }}
+              style={styles.forgotLink}
+            >
+              <Text style={styles.forgotLinkText}>Forgot Password?</Text>
+            </TouchableOpacity>
+
             {loading ? (
               <ActivityIndicator
                 size="large"
@@ -165,6 +207,54 @@ const LoginScreen = ({ navigation }) => {
           </View>
         </ScrollView>
       </TouchableWithoutFeedback>
+
+      <Modal
+        visible={forgotOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setForgotOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Reset Password</Text>
+            <Text style={styles.modalDescription}>
+              Enter your email address and we'll send you a link to reset your password.
+            </Text>
+
+            <TextInput
+              placeholder="juan@example.com"
+              placeholderTextColor="#999"
+              value={resetEmail}
+              onChangeText={setResetEmail}
+              style={styles.modalInput}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                onPress={() => setForgotOpen(false)}
+                style={styles.modalCancelButton}
+              >
+                <Text style={styles.modalCancelText}>CANCEL</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={handleForgotPassword}
+                disabled={resetSending}
+                style={[
+                  styles.modalSendButton,
+                  resetSending && styles.modalSendButtonDisabled,
+                ]}
+              >
+                <Text style={styles.modalSendText}>
+                  {resetSending ? 'SENDING...' : 'SEND RESET LINK'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 };
@@ -310,6 +400,90 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textTransform: "uppercase",
     textDecorationLine: "underline",
+  },
+
+  forgotLink: {
+    alignSelf: "flex-end",
+    marginBottom: 15,
+    marginTop: -5,
+  },
+  forgotLinkText: {
+    color: "#3ABEF9",
+    fontSize: 13,
+    fontWeight: "700",
+    textDecorationLine: "underline",
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    paddingHorizontal: 20,
+  },
+  modalCard: {
+    backgroundColor: "white",
+    borderRadius: 0,
+    borderWidth: 3,
+    borderColor: "#3E2723",
+    padding: 24,
+  },
+  modalTitle: {
+    fontWeight: "900",
+    fontSize: 18,
+    color: "#3E2723",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginBottom: 10,
+  },
+  modalDescription: {
+    fontSize: 14,
+    color: "#5D4037",
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  modalInput: {
+    borderWidth: 2,
+    borderColor: "#3E2723",
+    borderRadius: 0,
+    padding: 14,
+    fontSize: 15,
+    color: "#333",
+    marginBottom: 20,
+  },
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 10,
+  },
+  modalCancelButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderWidth: 2,
+    borderColor: "#3E2723",
+    borderRadius: 0,
+  },
+  modalCancelText: {
+    fontWeight: "900",
+    fontSize: 13,
+    color: "#3E2723",
+    letterSpacing: 0.5,
+  },
+  modalSendButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    backgroundColor: "#3ABEF9",
+    borderWidth: 2,
+    borderColor: "#3E2723",
+    borderRadius: 0,
+  },
+  modalSendButtonDisabled: {
+    opacity: 0.5,
+  },
+  modalSendText: {
+    fontWeight: "900",
+    fontSize: 13,
+    color: "#3E2723",
+    letterSpacing: 0.5,
   },
 });
 

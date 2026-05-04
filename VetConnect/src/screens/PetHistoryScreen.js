@@ -11,21 +11,25 @@ import {
   query,
   where,
 } from "firebase/firestore";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Animated,
   Dimensions,
   FlatList,
   Image,
+  LayoutAnimation,
   Linking,
   Modal,
+  Platform,
+  RefreshControl,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  UIManager,
   View
 } from "react-native";
 import {
@@ -40,7 +44,7 @@ import { useNetwork } from "../context/NetworkContext";
 import { useClinicContact } from "../hooks/useClinicContact";
 import { safeDate, formatDisplayDate } from "../utils/helpers";
 import { resolveDepartmentForRecord } from '../utils/resolveDepartmentForRecord';
-import { COLORS } from '../theme/mobileTokens';
+import { COLORS, SHADOW, SPACING } from '../theme/mobileTokens';
 import SparkLine from '../components/SparkLine';
 import VitalsZoomModal from '../components/VitalsZoomModal';
 import LabZoomModal from '../components/LabZoomModal';
@@ -50,6 +54,12 @@ import { buildPetOwnerPrompt } from '../utils/buildPetOwnerPrompt';
 import { resolveVitals } from '../utils/resolveVitals';
 import { getNormalRange } from '../utils/speciesVitalRanges';
 import { fetchVaccineCatalog, buildVaccinationStatus } from '../utils/vaccineHelpers';
+
+// ---------------------------------------------------------------------------
+// Enable LayoutAnimation on Android (required for Hermes/React Native)
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 // ---------------------------------------------------------------------------
 // VACCINATION PASSPORT — HTML TEMPLATE
@@ -516,6 +526,8 @@ export default function PetHistoryScreen({ route, navigation }) {
   const { petId, petName } = route.params;
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
+  // T4.155 Day 3: Pull-to-refresh — visual affordance (data auto-refreshes via onSnapshot)
+  const [refreshing, setRefreshing] = useState(false);
   // T3.95: Case-day metadata derived from appointment documents
   const [caseDayMap, setCaseDayMap] = useState({});
   // T3.94: Search and filter state
@@ -835,6 +847,131 @@ export default function PetHistoryScreen({ route, navigation }) {
   // T4.124: Full-screen image lightbox state.
   const [lightbox, setLightbox] = useState({ open: false, url: null });
 
+  // ---------------------------------------------------------------------------
+  // T4.155: Collapsible records — expand/collapse state management
+  // ---------------------------------------------------------------------------
+
+  const [expandedIds, setExpandedIds] = useState(new Set());
+  const [allExpanded, setAllExpanded] = useState(false);
+
+  // Auto-expand the latest record when filtered history first populates
+  useEffect(() => {
+    if (filteredHistory.length > 0 && expandedIds.size === 0 && !allExpanded) {
+      setExpandedIds(new Set([filteredHistory[0].id]));
+    }
+    // Intentional: only run when filteredHistory changes identity (new data loaded)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredHistory]);
+
+  const toggleRecord = useCallback((id) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleAll = useCallback(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    if (allExpanded) {
+      // Collapse all: keep only the latest record expanded
+      setExpandedIds(new Set(filteredHistory.length > 0 ? [filteredHistory[0].id] : []));
+      setAllExpanded(false);
+    } else {
+      setExpandedIds(new Set(filteredHistory.map(r => r.id)));
+      setAllExpanded(true);
+    }
+  }, [allExpanded, filteredHistory]);
+
+  // T4.155 Day 3: Pull-to-refresh handler.
+  // The onSnapshot listener already keeps data fresh. This provides the visual
+  // affordance users expect — spinner shows briefly then auto-dismisses.
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 1000);
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // T4.155: Month picker — horizontal chip strip above FlatList
+  // ---------------------------------------------------------------------------
+
+  const flatListRef = useRef(null);
+  const monthPickerRef = useRef(null);
+
+  // Derive unique months from filteredHistory (newest-first order preserved)
+  const months = useMemo(() => {
+    const seen = new Map();
+    filteredHistory.forEach((r, idx) => {
+      const d = r.date?.toDate ? r.date.toDate()
+        : r.date?.seconds ? new Date(r.date.seconds * 1000)
+        : null;
+      if (!d) return;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (!seen.has(key)) {
+        seen.set(key, {
+          key,
+          label: d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+          firstIndex: idx,
+        });
+      }
+    });
+    return Array.from(seen.values());
+  }, [filteredHistory]);
+
+  const [activeMonth, setActiveMonth] = useState('');
+
+  // Sync activeMonth to first month when months list changes
+  useEffect(() => {
+    if (months.length > 0 && !activeMonth) {
+      setActiveMonth(months[0].key);
+    }
+  }, [months, activeMonth]);
+
+  const scrollToMonth = useCallback((monthKey, firstIndex) => {
+    setActiveMonth(monthKey);
+    flatListRef.current?.scrollToIndex({
+      index: firstIndex,
+      animated: true,
+      viewOffset: 50,
+    });
+  }, []);
+
+  // Must be in useRef to prevent FlatList from remounting on re-render
+  const viewabilityConfig = useRef({ viewAreaCoveragePercentThreshold: 30 }).current;
+
+  const onViewableItemsChanged = useRef(({ viewableItems }) => {
+    if (!viewableItems || viewableItems.length === 0) return;
+    const firstVisible = viewableItems[0]?.item;
+    if (!firstVisible) return;
+    const d = firstVisible.date?.toDate ? firstVisible.date.toDate()
+      : firstVisible.date?.seconds ? new Date(firstVisible.date.seconds * 1000)
+      : null;
+    if (!d) return;
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    setActiveMonth(key);
+  }).current;
+
+  // T4.155: Expanded diagnoses state (per-record "show more diagnoses" toggle)
+  const [expandedDiagnoses, setExpandedDiagnoses] = useState(new Set());
+
+  const toggleDiagnoses = useCallback((recordId) => {
+    setExpandedDiagnoses(prev => {
+      const next = new Set(prev);
+      if (next.has(recordId)) {
+        next.delete(recordId);
+      } else {
+        next.add(recordId);
+      }
+      return next;
+    });
+  }, []);
+
+  // ---------------------------------------------------------------------------
   // T4.124: Animated values for lightbox pinch-to-zoom and pan gesture tracking.
   const lightboxScale = useRef(new Animated.Value(1)).current;
   const lightboxTranslateX = useRef(new Animated.Value(0)).current;
@@ -849,6 +986,26 @@ export default function PetHistoryScreen({ route, navigation }) {
     () => buildVaccinationStatus(history, vaccineCatalog, petSpecies),
     [history, vaccineCatalog, petSpecies],
   );
+
+  // ---------------------------------------------------------------------------
+  // T4.155 Day 2: Pet Health Snapshot strip — collapsible summary above header cards
+  const [snapshotCollapsed, setSnapshotCollapsed] = useState(false);
+
+  // Latest vitals from the most-recent record (history is newest-first)
+  const latestVitals = useMemo(() => {
+    if (!history.length) return null;
+    const rv = resolveVitals(history[0]);
+    if (!rv.weight && !rv.temp && !rv.hr) return null;
+    return rv;
+  }, [history]);
+
+  // Active medications from the most-recent record (drugs only, cap at 5)
+  const latestActiveMeds = useMemo(() => {
+    if (!history.length) return [];
+    const latest = history[0];
+    const products = latest.dispensedProducts || latest.prescriptions || [];
+    return products.filter(rx => rx.isDrug || rx.isMedicine).slice(0, 5);
+  }, [history]);
 
   /** Generates the vaccination passport PDF and opens the OS share sheet. */
   const handleDownloadPassport = async () => {
@@ -882,6 +1039,97 @@ export default function PetHistoryScreen({ route, navigation }) {
     if (!hasTrends && !hasRx && !hasVaxStatus && !hasLabs) return null;
     return (
       <View>
+        {/* T4.155 Day 2: Pet Health Snapshot — collapsible strip showing latest vitals, meds, vaccination % */}
+        {(latestVitals || latestActiveMeds.length > 0 || vaccineCompleteness) && (
+          <View style={styles.snapshotCard}>
+            <View style={styles.snapshotShadow} />
+            <View style={styles.snapshotInner}>
+              <TouchableOpacity
+                style={styles.snapshotHeader}
+                onPress={() => {
+                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                  setSnapshotCollapsed(prev => !prev);
+                }}
+              >
+                <Text style={styles.snapshotTitle}>PET HEALTH SNAPSHOT</Text>
+                <MaterialIcons
+                  name={snapshotCollapsed ? 'expand-more' : 'expand-less'}
+                  size={20}
+                  color={COLORS.accent}
+                />
+              </TouchableOpacity>
+
+              {!snapshotCollapsed && (
+                <View style={styles.snapshotBody}>
+                  {/* Section 1: Latest Vitals */}
+                  {latestVitals && (
+                    <View style={styles.snapshotSection}>
+                      <Text style={styles.snapshotSectionLabel}>LATEST VITALS</Text>
+                      <View style={styles.snapshotVitalsRow}>
+                        {latestVitals.weight != null && latestVitals.weight !== '' && (
+                          <View style={styles.snapshotVitalChip}>
+                            <Text style={styles.snapshotVitalLabel}>WEIGHT</Text>
+                            <Text style={styles.snapshotVitalValue}>{latestVitals.weight} kg</Text>
+                          </View>
+                        )}
+                        {latestVitals.temp != null && latestVitals.temp !== '' && (
+                          <View style={styles.snapshotVitalChip}>
+                            <Text style={styles.snapshotVitalLabel}>TEMP</Text>
+                            <Text style={styles.snapshotVitalValue}>{latestVitals.temp} °C</Text>
+                          </View>
+                        )}
+                        {latestVitals.hr != null && latestVitals.hr !== '' && (
+                          <View style={styles.snapshotVitalChip}>
+                            <Text style={styles.snapshotVitalLabel}>HR</Text>
+                            <Text style={styles.snapshotVitalValue}>{latestVitals.hr} bpm</Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Section 2: Active Medications */}
+                  <View style={styles.snapshotSection}>
+                    <Text style={styles.snapshotSectionLabel}>ACTIVE MEDICATIONS</Text>
+                    {latestActiveMeds.length > 0 ? (
+                      latestActiveMeds.map((med, i) => (
+                        <View key={i} style={styles.snapshotMedRow}>
+                          <Text style={styles.snapshotMedName}>{med.name}</Text>
+                          {med.instructions && (
+                            <Text style={styles.snapshotMedSig}>{med.instructions}</Text>
+                          )}
+                        </View>
+                      ))
+                    ) : (
+                      <Text style={styles.snapshotEmptyText}>No active medications</Text>
+                    )}
+                  </View>
+
+                  {/* Section 3: Vaccination Completeness */}
+                  {vaccineCompleteness && (
+                    <View style={styles.snapshotSection}>
+                      <Text style={styles.snapshotSectionLabel}>VACCINATION STATUS</Text>
+                      <View style={styles.snapshotVaxRow}>
+                        <Text style={styles.snapshotVaxText}>
+                          {vaccineCompleteness.administered}/{vaccineCompleteness.total} current ({vaccineCompleteness.percentage}%)
+                        </Text>
+                        <View style={styles.snapshotProgressTrack}>
+                          <View style={[styles.snapshotProgressFill, {
+                            width: `${vaccineCompleteness.percentage}%`,
+                            backgroundColor: vaccineCompleteness.percentage >= 75 ? COLORS.success
+                              : vaccineCompleteness.percentage >= 50 ? COLORS.warning
+                              : COLORS.danger,
+                          }]} />
+                        </View>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
         {hasTrends && (
           <View style={styles.trendsCard}>
             <TouchableOpacity
@@ -1127,7 +1375,8 @@ export default function PetHistoryScreen({ route, navigation }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vitalsChartData, trendsExpanded, activeRx, historicalRx, showHistoricalRx, rxExpanded,
       petSpecies, vaccinationStatuses, vaccineCompleteness, vaccineRecords, vaccineCatalog,
-      clinicName, labSummary, labExpanded]);
+      clinicName, labSummary, labExpanded,
+      snapshotCollapsed, latestVitals, latestActiveMeds]);
 
   useEffect(() => {
     const q = query(
@@ -1360,6 +1609,7 @@ export default function PetHistoryScreen({ route, navigation }) {
   };
 
   const renderRecord = ({ item, index }) => {
+    const isExpanded = allExpanded || expandedIds.has(item.id);
     const visitDate = formatDisplayDate(item.date);
     const isGrooming =
       item.recordType === "grooming" ||
@@ -1375,9 +1625,13 @@ export default function PetHistoryScreen({ route, navigation }) {
     const prevYear = prevDate?.getFullYear();
     const showYearHeader = index === 0 || recYear !== prevYear;
 
-    // Semantic Theme Colors
-    const themeColor = isGrooming ? "#9C27B0" : COLORS.info;
-    const themeBg = isGrooming ? "#F3E5F5" : "#E3F2FD";
+    // Semantic Theme Colors — tokens only, no inline hex
+    const themeColor = isGrooming ? COLORS.accentLight : COLORS.info;
+    const themeBg = COLORS.cream;
+
+    // Collapsed header: primary diagnosis label
+    const diagnosisLabel = item.diagnoses?.[0]?.name || item.diagnosis ||
+      (isGrooming ? 'Grooming' : 'Consultation');
 
     const coerceVital = (v) => {
       if (v == null) return '';
@@ -1407,7 +1661,7 @@ export default function PetHistoryScreen({ route, navigation }) {
 
     return (
       <>
-        {/* T3.96: Year section header — shown when year changes between consecutive records */}
+        {/* T3.96 / T4.155: Year section header — shown when year changes between consecutive records */}
         {showYearHeader && recYear && (
           <View style={styles.yearHeader}>
             <View style={styles.yearLine} />
@@ -1416,57 +1670,97 @@ export default function PetHistoryScreen({ route, navigation }) {
           </View>
         )}
         <View style={styles.timelineRow}>
-        <View style={styles.timelineGraphic}>
-          <View style={[styles.dot, { backgroundColor: themeColor }]} />
-          <View style={styles.line} />
-        </View>
-
-        <View style={styles.recordCard}>
-          <View style={styles.cardHeader}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.dateText, { color: themeColor }]}>
-                {visitDate}
-              </Text>
-              {/* T3.81: Per-service chips — falls back to [serviceType] for legacy records */}
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 2 }}>
-                {(item.serviceNames?.length > 0 ? item.serviceNames : [item.serviceType]).map((svcName, si) => (
-                  <View key={si} style={styles.serviceChip}>
-                    <Text style={[styles.serviceChipText, { color: themeColor }]}>{svcName}</Text>
-                  </View>
-                ))}
-                {/* T3.95: Case-day badge for multi-day cases */}
-                {caseDayMap[item.id] && (
-                  <View style={styles.caseDayBadge}>
-                    <Text style={styles.caseDayText}>Day {caseDayMap[item.id]}</Text>
-                  </View>
-                )}
-              </View>
-            </View>
-            <View style={styles.vetBadge}>
-              <MaterialIcons name="person" size={14} color={COLORS.accent} />
-              <Text style={styles.vetText}>
-                {item.vetName || "Clinic Staff"}
-              </Text>
-            </View>
+          {/* T4.155: Dot timeline left edge */}
+          <View style={styles.timelineGraphic}>
+            <TouchableOpacity
+              onPress={() => toggleRecord(item.id)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={styles.dotTouchable}
+            >
+              <View style={[styles.dot, isExpanded ? styles.dotActive : styles.dotDefault]} />
+            </TouchableOpacity>
+            <View style={styles.line} />
           </View>
 
-          <View style={styles.cardBody}>
+          {/* T4.155: Record card with collapsed header + expanded body */}
+          <View style={styles.recordCardWrapper}>
+            <View style={styles.recordCardShadow} />
+            <TouchableOpacity
+              style={styles.recordCard}
+              onPress={() => toggleRecord(item.id)}
+              activeOpacity={0.9}
+            >
+              {/* COLLAPSED HEADER — always visible */}
+              <View style={styles.collapsedHeader}>
+                <Text style={styles.collapsedDate}>{visitDate}</Text>
+                <Text style={styles.collapsedDiagnosis} numberOfLines={1}>
+                  {diagnosisLabel}
+                </Text>
+                {item.patientStatus && !isGrooming && (
+                  <View style={[
+                    styles.collapsedStatusPill,
+                    { backgroundColor: statusColors.bg, borderColor: statusColors.border },
+                  ]}>
+                    <Text style={[styles.collapsedStatusText, { color: statusColors.text }]}>
+                      {item.patientStatus.toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+                <Text style={styles.collapsedVet} numberOfLines={1}>
+                  {item.vetName || 'Staff'}
+                </Text>
+                <MaterialIcons
+                  name={isExpanded ? 'expand-less' : 'expand-more'}
+                  size={18}
+                  color={COLORS.accent}
+                />
+              </View>
+
+              {/* EXPANDED BODY — only when expanded */}
+              {isExpanded && (
+              <View style={styles.cardBody}>
+                {/* Service chips + vet badge in expanded view */}
+                <View style={styles.cardHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.dateText, { color: themeColor }]}>
+                      {visitDate}
+                    </Text>
+                    {/* T3.81: Per-service chips — falls back to [serviceType] for legacy records */}
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 2 }}>
+                      {(item.serviceNames?.length > 0 ? item.serviceNames : [item.serviceType]).map((svcName, si) => (
+                        <View key={si} style={styles.serviceChip}>
+                          <Text style={[styles.serviceChipText, { color: themeColor }]}>{svcName}</Text>
+                        </View>
+                      ))}
+                      {/* T3.95: Case-day badge for multi-day cases */}
+                      {caseDayMap[item.id] && (
+                        <View style={styles.caseDayBadge}>
+                          <Text style={styles.caseDayText}>Day {caseDayMap[item.id]}</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                  <View style={styles.vetBadge}>
+                    <MaterialIcons name="person" size={14} color={COLORS.accent} />
+                    <Text style={styles.vetText}>
+                      {item.vetName || "Clinic Staff"}
+                    </Text>
+                  </View>
+                </View>
             {/* T2.8 Path B: raw SOAP subjective/objective/plan hidden from client view.
                 Diagnosis is shown from the top-level field; instructions from dischargeSummary. */}
 
             {/* T3.70: Show intake context (client's own notes + triage summary) — safe to show to client */}
             {(item.intakeContext?.clientNotes || item.intakeContext?.staffNotes) && (
-              <View style={{ backgroundColor: '#FAF9F7', borderWidth: 1, borderColor: '#EDE7E0', padding: 12, marginBottom: 10 }}>
-                <Text style={{ fontWeight: '900', fontSize: 10, color: '#8D6E63', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 }}>
-                  INTAKE NOTES
-                </Text>
+              <View style={styles.intakeContextBox}>
+                <Text style={styles.intakeContextLabel}>INTAKE NOTES</Text>
                 {item.intakeContext.clientNotes ? (
-                  <Text style={{ fontSize: 13, color: COLORS.info, fontWeight: '700', marginBottom: 2 }}>
+                  <Text style={styles.intakeClientText}>
                     CLIENT: {item.intakeContext.clientNotes}
                   </Text>
                 ) : null}
                 {item.intakeContext.staffNotes ? (
-                  <Text style={{ fontSize: 13, color: COLORS.warning, fontWeight: '700' }}>
+                  <Text style={styles.intakeStaffText}>
                     STAFF TRIAGE: {item.intakeContext.staffNotes}
                   </Text>
                 ) : null}
@@ -1475,65 +1769,68 @@ export default function PetHistoryScreen({ route, navigation }) {
 
             <View style={styles.diagnosisContainer}>
               {item.patientStatus && !isGrooming && (
-                <View
-                  style={[
-                    styles.statusBadge,
-                    {
-                      backgroundColor: statusColors.bg,
-                      borderColor: statusColors.border,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[styles.statusText, { color: statusColors.text }]}
-                  >
+                <View style={[
+                  styles.statusBadge,
+                  { backgroundColor: statusColors.bg, borderColor: statusColors.border },
+                ]}>
+                  <Text style={[styles.statusText, { color: statusColors.text }]}>
                     {item.patientStatus.toUpperCase()}
                   </Text>
                 </View>
               )}
-              <Text
-                style={[
-                  styles.diagnosisText,
-                  { color: isGrooming ? "#7B1FA2" : "#3E2723" },
-                ]}
-              >
+              <Text style={[styles.diagnosisText, { color: isGrooming ? COLORS.accentLight : COLORS.brand }]}>
                 {item.diagnoses?.[0]?.name || item.diagnosis ||
                   (isGrooming ? "Grooming Services" : "Consultation")}
               </Text>
               {item.diagnoses?.[0]?.severity ? (
-                <View style={{
-                  backgroundColor: '#FFF3E0',
-                  paddingHorizontal: 8,
-                  paddingVertical: 2,
-                  marginTop: 4,
-                  borderRadius: 0,
-                }}>
-                  <Text style={{
-                    fontSize: 10,
-                    fontWeight: '900',
-                    color: '#E65100',
-                    textTransform: 'uppercase',
-                  }}>
+                <View style={styles.severityPill}>
+                  <Text style={styles.severityPillText}>
                     {item.diagnoses[0].severity}
                   </Text>
                 </View>
               ) : null}
-              {item.diagnoses?.length > 1 ? (
-                <Text style={{
-                  fontSize: 10,
-                  fontWeight: '700',
-                  color: '#9E9E9E',
-                  marginTop: 2,
-                }}>
-                  +{item.diagnoses.length - 1} more {item.diagnoses.length === 2 ? 'diagnosis' : 'diagnoses'}
-                </Text>
+              {/* T4.155 Day 2: Gap 2 — per-diagnosis notes for the primary diagnosis */}
+              {item.diagnoses?.[0]?.notes ? (
+                <Text style={styles.diagnosisNotes}>{item.diagnoses[0].notes}</Text>
               ) : null}
+              {/* T4.155: Tappable "+N more diagnoses" that expands inline */}
+              {item.diagnoses?.length > 1 ? (
+                <TouchableOpacity onPress={() => toggleDiagnoses(item.id)}>
+                  <Text style={styles.diagnosesToggle}>
+                    {expandedDiagnoses.has(item.id)
+                      ? 'Show less'
+                      : `+${item.diagnoses.length - 1} more ${item.diagnoses.length === 2 ? 'diagnosis' : 'diagnoses'}`}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+              {/* Additional diagnoses revealed when expanded */}
+              {expandedDiagnoses.has(item.id) && item.diagnoses?.slice(1).map((dx, i) => (
+                <View key={i} style={styles.extraDiagnosisRow}>
+                  <Text style={styles.extraDiagnosisName}>{dx.name}</Text>
+                  {dx.severity && (
+                    <View style={styles.extraDiagnosisSeverity}>
+                      <Text style={styles.extraDiagnosisSeverityText}>{dx.severity}</Text>
+                    </View>
+                  )}
+                  {dx.notes && (
+                    <Text style={styles.diagnosisNotes}>{dx.notes}</Text>
+                  )}
+                </View>
+              ))}
             </View>
+
+            {/* T4.155 Day 2: Gap 1 — soap.prognosis, shown for non-grooming records when prognosis is set */}
+            {item.soap?.prognosis && !isGrooming && (
+              <View style={styles.prognosisRow}>
+                <Text style={styles.prognosisLabel}>PROGNOSIS</Text>
+                <Text style={styles.prognosisText}>{item.soap.prognosis}</Text>
+              </View>
+            )}
 
             {/* T3.89 + T4.141: SOAP Assessment — shown when no discharge summary exists */}
             {!item.dischargeSummary && !!(item.assessmentNotes || (item.soap?.assessment && item.soap.assessment !== item.diagnosis)) && (
               <View style={styles.assessmentBox}>
-                <Text style={styles.assessmentLabel}>CLINICAL ASSESSMENT</Text>
+                <Text style={styles.assessmentLabel}>VET&apos;S NOTES</Text>
                 <Text style={styles.assessmentText}>{item.assessmentNotes || item.soap?.assessment}</Text>
               </View>
             )}
@@ -1607,11 +1904,11 @@ export default function PetHistoryScreen({ route, navigation }) {
 
             {item.prescriptions?.filter(rx => rx.isDrug || rx.isMedicine).length > 0 && (
               <View style={styles.rxBox}>
-                <Text style={styles.rxTitle}>💊 PRESCRIBED MEDICATIONS</Text>
+                <Text style={styles.rxTitle}>PRESCRIBED MEDICATIONS</Text>
                 {item.prescriptions.filter(rx => rx.isDrug || rx.isMedicine).map((rx, idx) => (
                   <View key={idx} style={styles.rxItem}>
                     <Text style={styles.rxName}>
-                      • {rx.name}{rx.qty ? ` x${rx.qty}` : ''}
+                      {rx.name}{rx.qty ? ` x${rx.qty}` : ''}
                     </Text>
                     <Text style={styles.rxSig}>
                       {rx.instructions || "Use as directed"}
@@ -1623,11 +1920,11 @@ export default function PetHistoryScreen({ route, navigation }) {
 
             {item.prescriptions?.filter(rx => !rx.isDrug && !rx.isMedicine).length > 0 && (
               <View style={styles.rxBox}>
-                <Text style={styles.rxTitle}>📦 OTHER ITEMS</Text>
+                <Text style={styles.rxTitle}>OTHER ITEMS</Text>
                 {item.prescriptions.filter(rx => !rx.isDrug && !rx.isMedicine).map((rx, idx) => (
                   <View key={idx} style={styles.rxItem}>
                     <Text style={styles.rxName}>
-                      • {rx.name}{rx.qty ? ` x${rx.qty}` : ''}
+                      {rx.name}{rx.qty ? ` x${rx.qty}` : ''}
                     </Text>
                     <Text style={styles.rxSig}>
                       {rx.instructions || ""}
@@ -1647,7 +1944,7 @@ export default function PetHistoryScreen({ route, navigation }) {
               return visibleAttachments.length > 0 && (
                 <View style={styles.attachmentBox}>
                   <Text style={styles.attachmentTitle}>
-                    📎 Documents & Photos:
+                    Documents &amp; Photos
                   </Text>
                   <View style={styles.attachmentList}>
                     {visibleAttachments.map((file, idx) => {
@@ -1692,7 +1989,7 @@ export default function PetHistoryScreen({ route, navigation }) {
                           style={styles.attachmentChip}
                           onPress={() => handleOpenAttachment(file.url || file)}
                         >
-                          <Text style={styles.attachmentPdfIcon}>📄</Text>
+                          <MaterialIcons name="description" size={24} color={COLORS.info} style={{ marginRight: 8 }} />
                           <View style={{ flex: 1 }}>
                             <Text style={styles.attachmentChipText}>
                               {file.label || file.fileName || `Document ${idx + 1}`}
@@ -1742,15 +2039,14 @@ export default function PetHistoryScreen({ route, navigation }) {
                   </View>
 
                   {ds.diagnosis && (
-                    <View style={styles.dischargeTldrBlock}>
-                      <Text style={styles.dischargeTldrLabel}>TL;DR</Text>
-                      <Text style={styles.dischargeTldrText}>{ds.diagnosis}</Text>
+                    <View style={styles.dischargeDiagnosisBlock}>
+                      <Text style={styles.dischargeDiagnosisText}>{ds.diagnosis}</Text>
                     </View>
                   )}
 
                   {doThisItems.length > 0 && (
                     <View style={styles.dischargeSection}>
-                      <Text style={styles.dischargeSectionLabel}>✓ Do this</Text>
+                      <Text style={styles.dischargeSectionLabel}>DO THIS</Text>
                       {doThisItems.map((line, i) => (
                         <Text key={i} style={styles.dischargeBullet}>• {line}</Text>
                       ))}
@@ -1759,7 +2055,7 @@ export default function PetHistoryScreen({ route, navigation }) {
 
                   {ds.medications && ds.medications.length > 0 && (
                     <View style={styles.dischargeSection}>
-                      <Text style={styles.dischargeSectionLabel}>💊 Medications</Text>
+                      <Text style={styles.dischargeSectionLabel}>MEDICATIONS</Text>
                       {ds.medications.map((med, i) => (
                         <View key={i} style={styles.dischargeMedRow}>
                           <Text style={styles.dischargeMedName}>{med.name}</Text>
@@ -1771,9 +2067,17 @@ export default function PetHistoryScreen({ route, navigation }) {
                     </View>
                   )}
 
+                  {/* T4.155 Day 2: Gap 4 — recheck interval from ClinicalWorkspace discharge form */}
+                  {ds.recheckIn && (
+                    <View style={styles.dischargeRecheckRow}>
+                      <MaterialIcons name="replay" size={14} color={COLORS.accent} />
+                      <Text style={styles.dischargeRecheckText}>Recheck in: {ds.recheckIn}</Text>
+                    </View>
+                  )}
+
                   {nextVisitStr && (
                     <View style={styles.dischargeNextVisit}>
-                      <Text style={styles.dischargeNextVisitIcon}>📅</Text>
+                      <MaterialIcons name="event" size={14} color={COLORS.warning} />
                       <Text style={styles.dischargeNextVisitText}>
                         Follow up <Text style={styles.dischargeNextVisitDate}>{nextVisitStr}</Text>
                       </Text>
@@ -1781,14 +2085,15 @@ export default function PetHistoryScreen({ route, navigation }) {
                   )}
 
                   <TouchableOpacity
-                    style={[styles.dischargeCallBtn, !clinicPhone && { backgroundColor: '#BDBDBD' }]}
+                    style={[styles.dischargeCallBtn, !clinicPhone && styles.dischargeCallBtnDisabled]}
                     onPress={() => {
                       if (!clinicPhone) return;
                       Linking.openURL(`tel:${clinicPhone}`);
                     }}
                     disabled={!clinicPhone}
                   >
-                    <Text style={styles.dischargeCallBtnText}>📞 Call us</Text>
+                    <MaterialIcons name="phone" size={14} color={COLORS.white} />
+                    <Text style={styles.dischargeCallBtnText}>Call Us</Text>
                   </TouchableOpacity>
 
                   {nextVisitDate && (
@@ -1817,9 +2122,9 @@ export default function PetHistoryScreen({ route, navigation }) {
             {/* VACCINATION RECORD — supports multi-vaccine via vaccineAdministrations[] with legacy fallback */}
             {(item.vaccineAdministrations?.length > 0 || item.vaccineData) && (
               <View style={styles.vaccineCard}>
-                <Text style={styles.vaccineHeader}>💉 VACCINATION RECORD</Text>
+                <Text style={styles.vaccineHeader}>VACCINATION RECORD</Text>
                 {(item.vaccineAdministrations || (item.vaccineData ? [item.vaccineData] : [])).map((vax, vIdx) => (
-                  <View key={vIdx} style={vIdx > 0 ? { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#C8E6C9' } : undefined}>
+                  <View key={vIdx} style={vIdx > 0 ? styles.vaccineEntryDivider : undefined}>
                     <Text style={styles.vaccineName}>{vax.vaccineName}</Text>
                     <View style={styles.vaccineGrid}>
                       {vax.manufacturer && (
@@ -1849,7 +2154,7 @@ export default function PetHistoryScreen({ route, navigation }) {
                     </View>
                     {vax.dueDate && (
                       <View style={styles.vaccineDueBanner}>
-                        <Text style={styles.vaccineDueText}>⏰ Next dose due {vax.dueDate}</Text>
+                        <Text style={styles.vaccineDueText}>Next dose due {vax.dueDate}</Text>
                       </View>
                     )}
                   </View>
@@ -1860,7 +2165,7 @@ export default function PetHistoryScreen({ route, navigation }) {
             {/* LAB RESULTS */}
             {item.labResults?.length > 0 && (
               <View style={styles.labCard}>
-                <Text style={styles.labHeader}>🔬 LAB RESULTS</Text>
+                <Text style={styles.labHeader}>LAB RESULTS</Text>
                 {item.labResults.map((lab, i) => {
                   const statusKey = (lab.status || 'normal').toLowerCase();
                   const statusColor =
@@ -1901,6 +2206,22 @@ export default function PetHistoryScreen({ route, navigation }) {
                           {lab.result}{lab.unit ? ` ${lab.unit}` : ''}
                         </Text>
                         {refRangeNode}
+                        {/* T4.155 Day 2: Gap 5 — lab notes */}
+                        {lab.notes ? (
+                          <Text style={styles.labNotes}>{lab.notes}</Text>
+                        ) : null}
+                        {/* T4.155 Day 2: Gap 6 — lab attachment URL */}
+                        {lab.attachmentUrl ? (
+                          <TouchableOpacity
+                            style={styles.labAttachmentLink}
+                            onPress={() => Linking.openURL(lab.attachmentUrl).catch(() =>
+                              Alert.alert('Error', 'Cannot open this attachment.')
+                            )}
+                          >
+                            <MaterialIcons name="attach-file" size={12} color={COLORS.sky} />
+                            <Text style={styles.labAttachmentText}>View attachment</Text>
+                          </TouchableOpacity>
+                        ) : null}
                       </View>
                       <Text style={[styles.labStatusPill, { color: statusColor, backgroundColor: statusBg }]}>
                         {chipLabel}
@@ -1989,29 +2310,31 @@ export default function PetHistoryScreen({ route, navigation }) {
                   })}
               </View>
             )}
-          </View>
 
-          {item.nextVisit && (
-            <View style={styles.reminderBanner}>
-              <MaterialIcons name="event" size={16} color={COLORS.danger} />
-              <Text style={styles.reminderText}>
-                NEXT VISIT DUE:{" "}
-                {safeDate(item.nextVisit, { month: "long", day: "numeric", year: "numeric" }, "an upcoming date")}
-              </Text>
+            {item.nextVisit && (
+              <View style={styles.reminderBanner}>
+                <MaterialIcons name="event" size={16} color={COLORS.danger} />
+                <Text style={styles.reminderText}>
+                  NEXT VISIT DUE:{" "}
+                  {safeDate(item.nextVisit, { month: "long", day: "numeric", year: "numeric" }, "an upcoming date")}
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.cardFooter}>
+              <TouchableOpacity
+                style={styles.pdfBtn}
+                onPress={() => generatePDF(item)}
+              >
+                <MaterialIcons name="picture-as-pdf" size={18} color={COLORS.accent} />
+                <Text style={styles.pdfBtnText}>Download Visit Summary</Text>
+              </TouchableOpacity>
             </View>
-          )}
-
-          <View style={styles.cardFooter}>
-            <TouchableOpacity
-              style={styles.pdfBtn}
-              onPress={() => generatePDF(item)}
-            >
-              <MaterialIcons name="picture-as-pdf" size={18} color={COLORS.accent} />
-              <Text style={styles.pdfBtnText}>Download Visit Summary</Text>
-            </TouchableOpacity>
           </View>
+          )}
+        </TouchableOpacity>
         </View>
-      </View>
+        </View>
       </>
     );
   };
@@ -2048,7 +2371,29 @@ export default function PetHistoryScreen({ route, navigation }) {
               </TouchableOpacity>
             )}
           </View>
-          <View style={styles.filterChipRow}>
+          {/* T4.155: Record count badge + expand/collapse all toggle */}
+          <View style={styles.searchActionsRow}>
+            <Text style={styles.recordCountBadge}>
+              {filteredHistory.length} RECORD{filteredHistory.length !== 1 ? 'S' : ''}
+            </Text>
+            <TouchableOpacity style={styles.expandAllBtn} onPress={toggleAll}>
+              <MaterialIcons
+                name={allExpanded ? 'unfold-less' : 'unfold-more'}
+                size={16}
+                color={COLORS.accent}
+              />
+              <Text style={styles.expandAllText}>
+                {allExpanded ? 'COLLAPSE ALL' : 'EXPAND ALL'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.filterChipRow}
+            contentContainerStyle={{ gap: 8 }}
+          >
             {filterOptions.map(opt => {
               const isActive = activeFilter === opt;
               const deptColor = opt !== 'All' && opt !== 'Vaccination'
@@ -2069,47 +2414,104 @@ export default function PetHistoryScreen({ route, navigation }) {
                 </TouchableOpacity>
               );
             })}
-          </View>
+          </ScrollView>
         </View>
       )}
 
       <View style={styles.container}>
         {loading ? (
           !isConnected ? (
-            <View style={{ alignItems: 'center', marginTop: 60 }}>
+            <View style={styles.offlineContainer}>
               <MaterialIcons name="wifi-off" size={48} color={COLORS.textMuted} />
-              <Text style={{ fontSize: 16, fontWeight: '900', color: COLORS.brand, letterSpacing: 1, textTransform: 'uppercase', marginTop: 12 }}>
-                NO INTERNET CONNECTION
-              </Text>
-              <Text style={{ fontSize: 13, color: COLORS.textMuted, marginTop: 6, textAlign: 'center', paddingHorizontal: 40 }}>
+              <Text style={styles.offlineTitle}>NO INTERNET CONNECTION</Text>
+              <Text style={styles.offlineSub}>
                 Connect to the internet to load medical records.
               </Text>
             </View>
           ) : (
-            <ActivityIndicator
-              size="large"
-              color={COLORS.accent}
-              style={{ marginTop: 50 }}
-            />
+            /* T4.155 Day 3: Loading skeleton — mimics 4 collapsed record cards */
+            <View style={styles.skeletonContainer}>
+              {[0, 1, 2, 3].map(i => (
+                <View key={i} style={styles.skeletonRow}>
+                  <View style={styles.skeletonDot} />
+                  <View style={styles.skeletonCard}>
+                    <View style={styles.skeletonLine1} />
+                    <View style={styles.skeletonLine2} />
+                  </View>
+                </View>
+              ))}
+            </View>
           )
         ) : (
-          <FlatList
-            data={filteredHistory}
-            keyExtractor={(item) => item.id}
-            renderItem={renderRecord}
-            contentContainerStyle={{ padding: 20, paddingBottom: 150 }}
-            ListHeaderComponent={listHeader}
-            ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <Text style={{ fontSize: 60, marginBottom: 10 }}>📂</Text>
-                <Text style={styles.emptyText}>No medical records found.</Text>
-                <Text style={styles.emptySub}>
-                  Visit summaries and lab results will appear here after a
-                  consultation.
-                </Text>
-              </View>
-            }
-          />
+          <>
+            {/* T4.155: Month picker horizontal strip — only when 2+ months present */}
+            {months.length > 1 && (
+              <ScrollView
+                ref={monthPickerRef}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.monthPickerStrip}
+                contentContainerStyle={styles.monthPickerContent}
+              >
+                {months.map(m => (
+                  <TouchableOpacity
+                    key={m.key}
+                    style={[
+                      styles.monthChip,
+                      activeMonth === m.key && styles.monthChipActive,
+                    ]}
+                    onPress={() => scrollToMonth(m.key, m.firstIndex)}
+                  >
+                    <Text style={[
+                      styles.monthChipText,
+                      activeMonth === m.key && styles.monthChipTextActive,
+                    ]}>
+                      {m.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+
+            <FlatList
+              ref={flatListRef}
+              data={filteredHistory}
+              keyExtractor={(item) => item.id}
+              renderItem={renderRecord}
+              contentContainerStyle={{ padding: 20, paddingBottom: 150 }}
+              ListHeaderComponent={listHeader}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={onRefresh}
+                  tintColor={COLORS.sky}
+                  colors={[COLORS.sky]}
+                />
+              }
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <MaterialIcons name="folder-open" size={48} color={COLORS.textMuted} />
+                  <Text style={styles.emptyText}>NO MEDICAL RECORDS</Text>
+                  <Text style={styles.emptySub}>
+                    Visit summaries and lab results will appear here after a
+                    consultation.
+                  </Text>
+                </View>
+              }
+              onViewableItemsChanged={onViewableItemsChanged}
+              viewabilityConfig={viewabilityConfig}
+              onScrollToIndexFailed={(info) => {
+                flatListRef.current?.scrollToOffset({
+                  offset: info.averageItemLength * info.index,
+                  animated: true,
+                });
+              }}
+              initialNumToRender={15}
+              maxToRenderPerBatch={10}
+              windowSize={7}
+              removeClippedSubviews={Platform.OS === 'android'}
+            />
+          </>
         )}
       </View>
 
@@ -2220,8 +2622,9 @@ export default function PetHistoryScreen({ route, navigation }) {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: COLORS.cream },
-  container: { flex: 1, backgroundColor: "#FAFAFA" },
+  container: { flex: 1, backgroundColor: COLORS.cream },
 
+  // --- Header ---
   headerBox: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -2229,118 +2632,216 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.cream,
     paddingVertical: 15,
     paddingHorizontal: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E0E0E0",
-    elevation: 2,
+    borderBottomWidth: 2,
+    borderBottomColor: COLORS.border,
   },
   backBtn: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 0,
     backgroundColor: COLORS.white,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
+    borderWidth: 2,
+    borderColor: COLORS.border,
   },
   headerTitle: {
     color: COLORS.brand,
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "900",
     letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
 
-  timelineRow: { flexDirection: "row", marginBottom: 25 },
-  timelineGraphic: { width: 30, alignItems: "center" },
-  dot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+  // --- Offline state ---
+  offlineContainer: {
+    alignItems: 'center',
+    marginTop: 60,
+    paddingHorizontal: 40,
+  },
+  offlineTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: COLORS.brand,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginTop: 12,
+  },
+  offlineSub: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+    marginTop: 6,
+    textAlign: 'center',
+  },
+
+  // --- T4.155: Timeline row + dot timeline ---
+  timelineRow: { flexDirection: "row", marginBottom: 16 },
+  timelineGraphic: { width: 20, alignItems: "center" },
+  dotTouchable: { zIndex: 2, marginTop: 18 },
+  dot: { zIndex: 2 },
+  dotDefault: {
+    width: 8,
+    height: 8,
+    backgroundColor: COLORS.sky,
+    borderRadius: 4,  // Exception: dots are circles by convention
+  },
+  dotActive: {
+    width: 12,
+    height: 12,
+    backgroundColor: COLORS.white,
     borderWidth: 3,
-    borderColor: COLORS.white,
-    zIndex: 2,
-    marginTop: 15,
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
+    borderColor: COLORS.sky,
+    borderRadius: 6,  // Exception: dots are circles
   },
   line: {
     position: "absolute",
-    top: 25,
-    bottom: -25,
-    width: 2,
-    backgroundColor: "#E0E0E0",
+    top: 0,
+    bottom: -16,
+    left: 9,
+    width: 3,
+    backgroundColor: COLORS.sky,
     zIndex: 1,
   },
 
-  recordCard: {
+  // --- T4.155: Record card with neubrutalist offset shadow ---
+  recordCardWrapper: {
     flex: 1,
-    backgroundColor: "rgba(255,255,255,0.9)",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.05)",
-    elevation: 3,
+    position: 'relative',
+    marginLeft: 8,
+  },
+  recordCardShadow: {
+    ...SHADOW.record,
+  },
+  recordCard: {
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    borderRadius: 0,
     overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
+  },
+
+  // --- T4.155: Collapsed header row ---
+  collapsedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minHeight: 50,
+    gap: 6,
+  },
+  collapsedDate: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.textMuted,
+    letterSpacing: 0.5,
+    minWidth: 55,
+  },
+  collapsedDiagnosis: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.brand,
+  },
+  collapsedStatusPill: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderRadius: 0,
+  },
+  collapsedStatusText: {
+    fontSize: 9,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  collapsedVet: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+    maxWidth: 65,
   },
 
   cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    backgroundColor: "#F5F5F5",
-    paddingHorizontal: 15,
-    paddingVertical: 12,
+    backgroundColor: COLORS.cream,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: "#EEEEEE",
+    borderBottomColor: COLORS.borderLight,
   },
-  dateText: { fontWeight: "900", fontSize: 16, marginBottom: 2 },
+  dateText: { fontWeight: "900", fontSize: 14, marginBottom: 2, color: COLORS.accent },
   serviceText: {
     fontSize: 12,
-    color: COLORS.muted,
+    color: COLORS.textMuted,
     fontWeight: "bold",
     textTransform: "uppercase",
   },
   vetBadge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#EFEBE9",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
+    backgroundColor: COLORS.cream,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 0,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
   },
   vetText: {
-    fontSize: 12,
+    fontSize: 11,
     color: COLORS.accent,
     fontWeight: "bold",
     marginLeft: 4,
   },
 
-  cardBody: { padding: 15 },
+  cardBody: { padding: 12 },
 
+  // --- Intake context ---
+  intakeContextBox: {
+    backgroundColor: COLORS.cream,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    padding: 12,
+    marginBottom: 10,
+    borderRadius: 0,
+  },
+  intakeContextLabel: {
+    fontWeight: '900',
+    fontSize: 10,
+    color: COLORS.textMuted,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  intakeClientText: {
+    fontSize: 13,
+    color: COLORS.info,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  intakeStaffText: {
+    fontSize: 13,
+    color: COLORS.warning,
+    fontWeight: '700',
+  },
+
+  // --- Diagnosis container ---
   diagnosisContainer: {
     flexDirection: "column",
     alignItems: "flex-start",
-    marginBottom: 15,
+    marginBottom: 12,
   },
   diagnosisText: {
     fontSize: 18,
     fontWeight: "900",
-    marginTop: 5,
+    marginTop: 4,
     lineHeight: 24,
   },
   statusBadge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 6,
+    borderRadius: 0,
     borderWidth: 1,
   },
   statusText: {
@@ -2349,16 +2850,95 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
+  severityPill: {
+    backgroundColor: COLORS.cream,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginTop: 4,
+    borderRadius: 0,
+    borderWidth: 1,
+    borderColor: COLORS.warning,
+  },
+  severityPillText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: COLORS.warning,
+    textTransform: 'uppercase',
+  },
 
+  // T4.155: Diagnoses expansion
+  diagnosesToggle: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.sky,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: 4,
+  },
+  extraDiagnosisRow: {
+    marginTop: 6,
+    paddingLeft: 8,
+    borderLeftWidth: 2,
+    borderLeftColor: COLORS.borderLight,
+  },
+  extraDiagnosisName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.brand,
+  },
+  extraDiagnosisSeverity: {
+    backgroundColor: COLORS.cream,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginTop: 2,
+    borderRadius: 0,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: COLORS.warning,
+  },
+  extraDiagnosisSeverityText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: COLORS.warning,
+    textTransform: 'uppercase',
+  },
+  diagnosisNotes: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
+
+  // T4.155 Day 2: Gap 1 — soap.prognosis display
+  prognosisRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  prognosisLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: COLORS.textMuted,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  prognosisText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.brand,
+  },
+
+  // --- Vitals ---
   vitalsBox: {
     flexDirection: "row",
     flexWrap: "wrap",
-    backgroundColor: "#FAFAFA",
-    borderRadius: 12,
+    backgroundColor: COLORS.cream,
+    borderRadius: 0,
     padding: 12,
-    marginBottom: 15,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#EEEEEE",
+    borderColor: COLORS.borderLight,
     gap: 8,
   },
   vitalItem: { alignItems: "center", minWidth: 60 },
@@ -2367,66 +2947,73 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
     fontWeight: "900",
     marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  vitalValue: { fontSize: 15, color: COLORS.textPrimary, fontWeight: "800" },
+  vitalValue: { fontSize: 15, color: COLORS.brand, fontWeight: "900" },
 
   planBox: {
-    padding: 15,
-    borderRadius: 12,
+    padding: 12,
+    borderRadius: 0,
     borderLeftWidth: 4,
-    marginBottom: 15,
+    marginBottom: 12,
   },
   planLabel: {
     fontSize: 11,
     fontWeight: "900",
     marginBottom: 6,
     letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
   planText: { fontSize: 14, color: COLORS.textPrimary, lineHeight: 22, fontWeight: "500" },
 
   rxBox: {
-    backgroundColor: "#FFF3E0",
-    padding: 15,
+    backgroundColor: COLORS.cream,
+    padding: 12,
     borderRadius: 0,
-    marginBottom: 15,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#FFE0B2",
+    borderColor: COLORS.borderLight,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.warning,
   },
   rxTitle: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "900",
     color: COLORS.warning,
     marginBottom: 8,
     textTransform: "uppercase",
+    letterSpacing: 1,
   },
   rxItem: { marginBottom: 8 },
-  rxName: { fontSize: 15, fontWeight: "800", color: COLORS.brand },
+  rxName: { fontSize: 14, fontWeight: "900", color: COLORS.brand },
   rxSig: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
+    fontSize: 12,
+    color: COLORS.textMuted,
     fontStyle: "italic",
-    marginLeft: 10,
+    marginLeft: 8,
     marginTop: 2,
   },
 
   attachmentBox: { marginBottom: 10 },
   attachmentTitle: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "900",
-    color: COLORS.info,
+    color: COLORS.accent,
     marginBottom: 8,
     textTransform: "uppercase",
+    letterSpacing: 1,
   },
   attachmentList: { flexDirection: "column", gap: 8 },
   attachmentChip: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#E3F2FD",
+    backgroundColor: COLORS.cream,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 0,
     borderWidth: 1,
-    borderColor: "#90CAF9",
+    borderColor: COLORS.borderLight,
   },
   attachmentChipText: { color: COLORS.info, fontSize: 12, fontWeight: "bold" },
   attachmentThumbnail: {
@@ -2434,10 +3021,9 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 0,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: COLORS.borderLight,
   },
-  attachmentPdfIcon: { fontSize: 24, marginRight: 8 },
-  attachmentDate: { fontSize: 10, color: '#9E9E9E', marginTop: 1 },
+  attachmentDate: { fontSize: 10, color: COLORS.textMuted, marginTop: 1 },
 
   lightboxOverlay: {
     flex: 1,
@@ -2463,119 +3049,145 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    backgroundColor: "#FFEBEE",
+    backgroundColor: COLORS.cream,
     padding: 12,
     borderTopWidth: 1,
     borderBottomWidth: 1,
-    borderColor: "#FFCDD2",
+    borderColor: COLORS.danger,
   },
   reminderText: { color: COLORS.danger, fontWeight: "900", fontSize: 13 },
 
-  cardFooter: { padding: 15, backgroundColor: "#FAFAFA" },
+  cardFooter: { padding: 12, backgroundColor: COLORS.cream, borderTopWidth: 1, borderTopColor: COLORS.borderLight },
   pdfBtn: {
     flexDirection: "row",
     gap: 8,
     backgroundColor: COLORS.white,
-    paddingVertical: 14,
-    borderRadius: 12,
+    paddingVertical: 12,
+    borderRadius: 0,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
+    borderWidth: 2,
+    borderColor: COLORS.border,
   },
-  pdfBtnText: { color: COLORS.accent, fontWeight: "900", fontSize: 14 },
+  pdfBtnText: { color: COLORS.accent, fontWeight: "900", fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.5 },
 
   emptyContainer: {
     alignItems: "center",
-    marginTop: 100,
+    marginTop: 80,
     paddingHorizontal: 40,
+    gap: 12,
   },
   emptyText: {
-    color: COLORS.accent,
+    color: COLORS.brand,
     fontWeight: "900",
-    fontSize: 22,
+    fontSize: 18,
     textAlign: "center",
+    textTransform: 'uppercase',
+    letterSpacing: 2,
   },
   emptySub: {
     color: COLORS.textMuted,
-    fontStyle: "italic",
-    fontSize: 15,
+    fontSize: 13,
     textAlign: "center",
-    marginTop: 10,
-    lineHeight: 22,
+    lineHeight: 20,
+  },
+
+  // --- T4.155 Day 3: Loading skeleton ---
+  skeletonContainer: {
+    padding: 20,
+    gap: 16,
+  },
+  skeletonRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  skeletonDot: {
+    width: 8,
+    height: 8,
+    backgroundColor: COLORS.borderLight,
+    borderRadius: 4,
+    marginTop: 18,
+  },
+  skeletonCard: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.borderLight,
+    borderRadius: 0,
+    padding: 14,
+    gap: 8,
+  },
+  skeletonLine1: {
+    height: 12,
+    backgroundColor: COLORS.borderLight,
+    borderRadius: 0,
+    width: '70%',
+  },
+  skeletonLine2: {
+    height: 10,
+    backgroundColor: COLORS.borderLight,
+    borderRadius: 0,
+    width: '40%',
   },
 
   // --- Discharge card (B4) ---
   dischargeCard: {
-    marginTop: 14,
-    padding: 16,
-    backgroundColor: "#F1F8E9",
-    borderRadius: 16,
+    marginTop: 12,
+    padding: 14,
+    backgroundColor: COLORS.cream,
+    borderRadius: 0,
     borderWidth: 1,
-    borderColor: "#C5E1A5",
-    shadowColor: "#2E7D32",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
+    borderColor: COLORS.success,
+    borderLeftWidth: 3,
   },
   dischargeHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 10,
   },
   dischargeHeader: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "900",
     color: COLORS.success,
     letterSpacing: 1.2,
+    textTransform: 'uppercase',
   },
   dischargeStatusPill: {
     fontSize: 10,
-    fontWeight: "800",
-    color: "#1B5E20",
-    backgroundColor: "#DCEDC8",
+    fontWeight: "900",
+    color: COLORS.success,
+    backgroundColor: COLORS.cream,
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 10,
+    borderRadius: 0,
     textTransform: "uppercase",
     letterSpacing: 0.5,
-    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: COLORS.success,
   },
-  dischargeTldrBlock: {
-    marginBottom: 12,
+  dischargeDiagnosisBlock: {
+    marginBottom: 10,
     paddingLeft: 10,
     borderLeftWidth: 3,
     borderLeftColor: COLORS.accent,
   },
-  dischargeTldrLabel: {
-    fontSize: 10,
-    fontWeight: "900",
-    color: COLORS.accent,
-    letterSpacing: 1,
-    marginBottom: 2,
-  },
-  dischargeTldrText: {
+  dischargeDiagnosisText: {
     fontSize: 15,
     color: COLORS.brand,
-    fontWeight: "600",
+    fontWeight: '900',
     lineHeight: 20,
   },
   dischargeSection: {
-    marginBottom: 12,
+    marginBottom: 10,
   },
   dischargeSectionLabel: {
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: "900",
-    color: COLORS.success,
+    color: COLORS.textMuted,
     marginBottom: 6,
-    letterSpacing: 0.5,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
   dischargeBullet: {
     fontSize: 14,
@@ -2585,16 +3197,16 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   dischargeMedRow: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 10,
+    backgroundColor: COLORS.white,
+    borderRadius: 0,
     padding: 10,
     marginBottom: 6,
     borderWidth: 1,
-    borderColor: "#E0E0E0",
+    borderColor: COLORS.borderLight,
   },
   dischargeMedName: {
     fontSize: 14,
-    fontWeight: "800",
+    fontWeight: "900",
     color: COLORS.brand,
   },
   dischargeMedMeta: {
@@ -2606,16 +3218,13 @@ const styles = StyleSheet.create({
   dischargeNextVisit: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFF3E0",
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 12,
+    backgroundColor: COLORS.cream,
+    padding: 10,
+    borderRadius: 0,
+    marginBottom: 10,
     borderWidth: 1,
-    borderColor: "#FFCC80",
-  },
-  dischargeNextVisitIcon: {
-    fontSize: 18,
-    marginRight: 8,
+    borderColor: COLORS.warning,
+    gap: 6,
   },
   dischargeNextVisitText: {
     fontSize: 13,
@@ -2627,32 +3236,43 @@ const styles = StyleSheet.create({
     color: COLORS.warning,
   },
   dischargeCallBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
     backgroundColor: COLORS.accent,
     paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: "center",
+    borderRadius: 0,
     marginBottom: 8,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+  },
+  dischargeCallBtnDisabled: {
+    backgroundColor: COLORS.borderLight,
+    borderColor: COLORS.borderLight,
   },
   dischargeCallBtnText: {
     color: COLORS.white,
     fontWeight: "900",
-    fontSize: 14,
+    fontSize: 13,
     letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
   dischargeFollowUpBtn: {
-    backgroundColor: "#FFF3E0",
+    backgroundColor: COLORS.cream,
     paddingVertical: 12,
-    borderRadius: 12,
+    borderRadius: 0,
     alignItems: "center",
     marginBottom: 8,
-    borderWidth: 1,
-    borderColor: "#FFCC80",
+    borderWidth: 2,
+    borderColor: COLORS.warning,
   },
   dischargeFollowUpBtnText: {
     color: COLORS.warning,
     fontWeight: "900",
-    fontSize: 14,
+    fontSize: 13,
     letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
   dischargeSignature: {
     fontSize: 11,
@@ -2661,15 +3281,41 @@ const styles = StyleSheet.create({
     textAlign: "right",
     marginTop: 4,
   },
+  // T4.155 Day 2: Gap 4 — recheck interval
+  dischargeRecheckRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: COLORS.cream,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    borderRadius: 0,
+  },
+  dischargeRecheckText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.accent,
+  },
 
   // --- Vaccine card (B4) ---
   vaccineCard: {
     marginTop: 12,
-    padding: 14,
+    padding: 12,
     backgroundColor: COLORS.cream,
-    borderRadius: 16,
+    borderRadius: 0,
     borderWidth: 1,
-    borderColor: "#FFE0B2",
+    borderColor: COLORS.borderLight,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.warning,
+  },
+  vaccineEntryDivider: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
   },
   vaccineHeader: {
     fontSize: 11,
@@ -2677,26 +3323,27 @@ const styles = StyleSheet.create({
     color: COLORS.warning,
     letterSpacing: 1.2,
     marginBottom: 6,
+    textTransform: 'uppercase',
   },
   vaccineName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "900",
     color: COLORS.brand,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   vaccineGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   vaccineCell: {
-    backgroundColor: "white",
-    borderRadius: 8,
+    backgroundColor: COLORS.white,
+    borderRadius: 0,
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderWidth: 1,
-    borderColor: "#EEEEEE",
+    borderColor: COLORS.borderLight,
     minWidth: 70,
   },
   vaccineCellLabel: {
@@ -2705,6 +3352,7 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: 0.5,
     marginBottom: 1,
+    textTransform: 'uppercase',
   },
   vaccineCellValue: {
     fontSize: 12,
@@ -2712,27 +3360,31 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   vaccineDueBanner: {
-    backgroundColor: "#FFEBEE",
+    backgroundColor: COLORS.cream,
     padding: 8,
-    borderRadius: 10,
+    borderRadius: 0,
     borderWidth: 1,
-    borderColor: "#FFCDD2",
+    borderColor: COLORS.danger,
   },
   vaccineDueText: {
     fontSize: 12,
     color: COLORS.danger,
-    fontWeight: "800",
+    fontWeight: "900",
     textAlign: "center",
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
 
   // --- Lab results card (B4) ---
   labCard: {
     marginTop: 12,
-    padding: 14,
-    backgroundColor: "#E3F2FD",
+    padding: 12,
+    backgroundColor: COLORS.cream,
     borderRadius: 0,
     borderWidth: 1,
-    borderColor: "#BBDEFB",
+    borderColor: COLORS.borderLight,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.info,
   },
   labHeader: {
     fontSize: 11,
@@ -2740,20 +3392,21 @@ const styles = StyleSheet.create({
     color: COLORS.info,
     letterSpacing: 1.2,
     marginBottom: 10,
+    textTransform: 'uppercase',
   },
   labRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "white",
+    backgroundColor: COLORS.white,
     padding: 10,
     borderRadius: 0,
     marginBottom: 6,
     borderWidth: 1,
-    borderColor: "#E0E0E0",
+    borderColor: COLORS.borderLight,
   },
   labTestName: {
     fontSize: 13,
-    fontWeight: "800",
+    fontWeight: "900",
     color: COLORS.brand,
   },
   labResult: {
@@ -2763,7 +3416,7 @@ const styles = StyleSheet.create({
   },
   labRefRange: {
     fontSize: 10,
-    color: '#9E9E9E',
+    color: COLORS.textMuted,
     marginTop: 1,
   },
   labStatusPill: {
@@ -2775,6 +3428,28 @@ const styles = StyleSheet.create({
     borderRadius: 0,
     overflow: "hidden",
     textTransform: "uppercase",
+  },
+  // T4.155 Day 2: Gap 5 — lab notes
+  labNotes: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
+  // T4.155 Day 2: Gap 6 — lab attachment link
+  labAttachmentLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 3,
+  },
+  labAttachmentText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.sky,
+    textDecorationLine: 'underline',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
 
   // T4.123: Lab summary card (collapsible, same pattern as trendsCard / rxFreqCard)
@@ -2800,22 +3475,22 @@ const styles = StyleSheet.create({
   },
   labSummaryBody: {
     borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
+    borderTopColor: COLORS.borderLight,
     padding: 14,
     gap: 10,
   },
   labSummaryRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#E3F2FD',
+    backgroundColor: COLORS.cream,
     padding: 10,
     borderRadius: 0,
     borderWidth: 1,
-    borderColor: '#BBDEFB',
+    borderColor: COLORS.borderLight,
   },
   labSummaryTestName: {
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: '900',
     color: COLORS.brand,
   },
   labSummaryResult: {
@@ -2825,12 +3500,12 @@ const styles = StyleSheet.create({
   },
   labSummaryRef: {
     fontSize: 10,
-    color: '#9E9E9E',
+    color: COLORS.textMuted,
     marginTop: 1,
   },
   labSummaryDate: {
     fontSize: 10,
-    color: '#BDBDBD',
+    color: COLORS.textMuted,
     marginTop: 2,
   },
   labSummaryStatusPill: {
@@ -2846,11 +3521,11 @@ const styles = StyleSheet.create({
 
   // T3.81: Service chips
   serviceChip: {
-    backgroundColor: '#F5F5F5',
+    backgroundColor: COLORS.cream,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: COLORS.borderLight,
     borderRadius: 0,
   },
   serviceChipText: {
@@ -2862,7 +3537,7 @@ const styles = StyleSheet.create({
 
   // T3.95: Case-day badge
   caseDayBadge: {
-    backgroundColor: '#FFF3E0',
+    backgroundColor: COLORS.cream,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderWidth: 1,
@@ -2880,11 +3555,13 @@ const styles = StyleSheet.create({
   // T3.89: SOAP Assessment block
   assessmentBox: {
     padding: 12,
-    backgroundColor: '#E8F5E9',
+    backgroundColor: COLORS.cream,
     borderLeftWidth: 3,
     borderLeftColor: COLORS.success,
-    marginBottom: 15,
+    marginBottom: 12,
     borderRadius: 0,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
   },
   assessmentLabel: {
     fontSize: 10,
@@ -2907,7 +3584,9 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.cream,
     borderRadius: 0,
     borderWidth: 1,
-    borderColor: '#FFE0B2',
+    borderColor: COLORS.borderLight,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.warning,
   },
   amendmentHeader: {
     fontSize: 11,
@@ -2959,7 +3638,9 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 6,
     padding: 8,
-    backgroundColor: '#FFF3E0',
+    backgroundColor: COLORS.cream,
+    borderWidth: 1,
+    borderColor: COLORS.warning,
     borderRadius: 0,
   },
   amendVitalChip: {
@@ -3029,8 +3710,8 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 8,
     backgroundColor: COLORS.cream,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
+    borderBottomWidth: 2,
+    borderBottomColor: COLORS.border,
   },
   searchInputWrapper: {
     flexDirection: 'row',
@@ -3050,9 +3731,75 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     padding: 0,
   },
-  filterChipRow: {
+  // T4.155: Search actions row (record count + expand/collapse all)
+  searchActionsRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  recordCountBadge: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.textMuted,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  expandAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    borderRadius: 0,
+    backgroundColor: COLORS.white,
+  },
+  expandAllText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: COLORS.accent,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+
+  // T4.155: Month picker horizontal strip
+  monthPickerStrip: {
+    backgroundColor: COLORS.cream,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+    paddingVertical: 8,
+  },
+  monthPickerContent: {
+    paddingHorizontal: SPACING.screenPadding,
     gap: 8,
+  },
+  monthChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderWidth: 2,
+    borderColor: COLORS.borderLight,
+    borderRadius: 0,
+    backgroundColor: COLORS.white,
+  },
+  monthChipActive: {
+    backgroundColor: COLORS.sky,
+    borderColor: COLORS.brand,
+  },
+  monthChipText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: COLORS.accent,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  monthChipTextActive: {
+    color: COLORS.brand,
+  },
+
+  filterChipRow: {
+    paddingBottom: 4,
   },
   filterChip: {
     paddingHorizontal: 12,
@@ -3100,7 +3847,7 @@ const styles = StyleSheet.create({
   },
   trendsBody: {
     borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
+    borderTopColor: COLORS.borderLight,
     padding: 14,
     gap: 16,
   },
@@ -3146,7 +3893,7 @@ const styles = StyleSheet.create({
   },
   rxFreqBody: {
     borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
+    borderTopColor: COLORS.borderLight,
     padding: 14,
     gap: 10,
   },
@@ -3167,11 +3914,11 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   rxFreqCountBadge: {
-    backgroundColor: '#FFF3E0',
+    backgroundColor: COLORS.cream,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderWidth: 1,
-    borderColor: '#FFE0B2',
+    borderColor: COLORS.warning,
     borderRadius: 0,
   },
   rxFreqCountText: {
@@ -3209,7 +3956,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
+    borderTopColor: COLORS.borderLight,
   },
   rxHistoricalToggle: {
     flexDirection: 'row',
@@ -3223,7 +3970,118 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   rxHistoricalBadge: {
-    backgroundColor: '#F5F5F5',
-    borderColor: '#E0E0E0',
+    backgroundColor: COLORS.cream,
+    borderColor: COLORS.borderLight,
+  },
+
+  // T4.155 Day 2: Pet Health Snapshot strip
+  snapshotCard: {
+    marginBottom: 16,
+    position: 'relative',
+  },
+  snapshotShadow: {
+    ...SHADOW.card,
+  },
+  snapshotInner: {
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    borderRadius: 0,
+  },
+  snapshotHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 14,
+  },
+  snapshotTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: COLORS.accent,
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
+  },
+  snapshotBody: {
+    padding: 14,
+    paddingTop: 0,
+    gap: 14,
+  },
+  snapshotSection: {
+    gap: 6,
+  },
+  snapshotSectionLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: COLORS.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  snapshotVitalsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  snapshotVitalChip: {
+    backgroundColor: COLORS.cream,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    borderRadius: 0,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    alignItems: 'center',
+  },
+  snapshotVitalLabel: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: COLORS.textMuted,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  snapshotVitalValue: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: COLORS.brand,
+    marginTop: 2,
+  },
+  snapshotMedRow: {
+    paddingLeft: 8,
+    borderLeftWidth: 2,
+    borderLeftColor: COLORS.sky,
+    paddingVertical: 2,
+  },
+  snapshotMedName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.brand,
+  },
+  snapshotMedSig: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    fontStyle: 'italic',
+  },
+  snapshotEmptyText: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    fontStyle: 'italic',
+  },
+  snapshotVaxRow: {
+    gap: 4,
+  },
+  snapshotVaxText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  snapshotProgressTrack: {
+    height: 6,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 0,
+    overflow: 'hidden',
+  },
+  snapshotProgressFill: {
+    height: 6,
+    borderRadius: 0,
   },
 });

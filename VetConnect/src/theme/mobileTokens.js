@@ -168,6 +168,15 @@ export const SHADOW = {
     bottom: -4,
     backgroundColor: COLORS.brand,
   },
+  /** Record card shadow: +3px offset, brand espresso */
+  record: {
+    position: 'absolute',
+    top: 3,
+    left: 3,
+    right: -3,
+    bottom: -3,
+    backgroundColor: COLORS.brand,
+  },
   /** Icon container shadow: +6px offset */
   icon: {
     position: 'absolute',

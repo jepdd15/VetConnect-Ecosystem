@@ -1498,10 +1498,27 @@ export default function PatientDashboard() {
                                     ))}
                                   </Box>
                                 )}
+                                {/* T4.155 Day 3: Gap 2 — per-diagnosis notes as italic subtitles */}
+                                {rec.diagnoses?.some(dx => dx.notes) && (
+                                  <Stack spacing={0.25} sx={{ pl: 1.5, borderLeft: `2px solid ${COLORS.borderLight}`, mt: 0.5, mb: 0.5 }}>
+                                    {rec.diagnoses.filter(dx => dx.notes).map((dx, i) => (
+                                      <Typography key={i} sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, fontStyle: 'italic' }}>
+                                        {dx.name}: {dx.notes}
+                                      </Typography>
+                                    ))}
+                                  </Stack>
+                                )}
                                 {(rec.assessmentNotes || (!rec.diagnoses?.length && rec.soap?.assessment)) && (
                                   <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.textPrimary, whiteSpace: 'pre-wrap', pl: 1.5, borderLeft: `2px solid ${COLORS.success}` }}>
                                     {rec.assessmentNotes || rec.soap?.assessment}
                                   </Typography>
+                                )}
+                                {/* T4.155 Day 3: Gap 1 — soap.prognosis shown below assessment */}
+                                {rec.soap?.prognosis && (
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.75 }}>
+                                    <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted }}>Prognosis:</Typography>
+                                    <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.textPrimary }}>{rec.soap.prognosis}</Typography>
+                                  </Box>
                                 )}
                               </Box>
                             )}
@@ -1560,6 +1577,18 @@ export default function PatientDashboard() {
                                     Signed by {rec.dischargeSummary.vetName}
                                   </Typography>
                                 )}
+                              </Box>
+                            )}
+                            {/* T4.155 Day 3: Gap 7 — nextVisit fallback when dischargeSummary is absent */}
+                            {!rec.dischargeSummary && rec.nextVisit && (
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, p: 1, bgcolor: COLORS.warningSurface, border: `1px solid ${COLORS.peach}`, borderRadius: 0 }}>
+                                <CalendarMonthIcon sx={{ fontSize: 14, color: COLORS.warning }} />
+                                <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.warning, fontWeight: 700 }}>
+                                  Follow-up:{' '}
+                                  {rec.nextVisit?.toDate
+                                    ? rec.nextVisit.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                                    : rec.nextVisit}
+                                </Typography>
                               </Box>
                             )}
                             {/* T3.84: Lab results */}

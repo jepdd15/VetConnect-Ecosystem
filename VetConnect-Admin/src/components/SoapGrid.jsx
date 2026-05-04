@@ -2,6 +2,7 @@ import React from 'react';
 import { Grid, TextField, Box, Typography, Autocomplete, Chip } from '@mui/material';
 import { FONT, COLORS } from '../theme/designTokens';
 import { ZEN_PLACEHOLDERS } from '../utils/soapConstants';
+import { SEVERITY_SCALES } from '../utils/diagnosisConstants';
 import PhysicalExamChecklist from './PhysicalExamChecklist';
 
 /**
@@ -49,6 +50,11 @@ import PhysicalExamChecklist from './PhysicalExamChecklist';
  * @prop {function}    [onResetAndAskAI]        - Clears conversation and re-analyzes
  * @prop {function}    [onToggleAIPanel]        - (open: boolean) => void — toggles the AI drawer
  * @prop {boolean}     [isAIPanelOpen=false]    - Whether the AI side panel is currently visible
+ *
+ * T4.141 — Structured Diagnosis props:
+ * @prop {Array}       [diagnosisCatalog=[]]        - Full merged catalog from useDiagnosisCatalog()
+ * @prop {string}      [patientSpecies='']           - 'dog', 'cat', etc. — used for species filtering
+ * @prop {function}    [onAddCustomDiagnosis]        - () => void — opens the custom diagnosis dialog
  */
 export default function SoapGrid({
   soapData, updateSoap, setFullscreenField,
@@ -67,6 +73,10 @@ export default function SoapGrid({
   onToggleAIPanel, isAIPanelOpen = false,
   onMarkAllNormal,
   disabled = false,
+  // T4.141: Structured diagnosis props
+  diagnosisCatalog = [],
+  patientSpecies = '',
+  onAddCustomDiagnosis,
 }) {
   const textFieldSx = { flex: 1, '& .MuiInputBase-root': { height: '100%', alignItems: 'flex-start' } };
   const inputPropsSx = { disableUnderline: true, sx: { fontFamily: FONT, fontSize: '1.25rem', color: COLORS.brand, lineHeight: 1.6 } };
@@ -120,7 +130,8 @@ export default function SoapGrid({
       </Grid>
 
       {/* A - ASSESSMENT (top-right) — swapped from bottom-left (T4.109) */}
-      <Grid size={{ xs: 12, md: 6 }} sx={{ height: { xs: 'auto', md: '50%' }, overflow: { md: 'hidden' }, borderBottom: '1px solid #F0F0F0' }}>
+      {/* T4.141: overflow changed from 'hidden' to 'auto' so the structured diagnosis form is not clipped */}
+      <Grid size={{ xs: 12, md: 6 }} sx={{ height: { xs: 'auto', md: '50%' }, overflow: { md: 'auto' }, borderBottom: '1px solid #F0F0F0' }}>
         <SoapQuadrant id="assessment" label="A - ASSESSMENT (DIAGNOSIS & PROGNOSIS)" onZoomField={setFullscreenField}>
           <DiagnosticBridge
             soapData={soapData}
@@ -133,14 +144,163 @@ export default function SoapGrid({
             onToggleAIPanel={onToggleAIPanel}
             isAIPanelOpen={isAIPanelOpen}
           />
-          <TextField
-            multiline fullWidth variant="standard"
-            placeholder={ZEN_PLACEHOLDERS.assessment}
-            value={soapData.assessment || ''}
-            onChange={(e) => updateSoap('assessment', e.target.value)}
-            sx={textFieldSx}
-            InputProps={{ disableUnderline: true, sx: { fontFamily: FONT, fontSize: '1.25rem', color: COLORS.success, fontWeight: 900, lineHeight: 1.6 } }}
-          />
+
+          {/* T4.141: Structured diagnosis form — species-filtered Autocomplete + severity selectors */}
+          {(() => {
+            const speciesKey = (patientSpecies || '').toLowerCase().includes('cat') ? 'cat' : 'dog';
+            const filteredCatalog = diagnosisCatalog.filter(
+              (d) => !d.species || d.species.length === 0 || d.species.includes(speciesKey),
+            );
+            const catalogWithSentinel = [
+              ...filteredCatalog,
+              { id: '__custom__', name: '+ Add Custom Diagnosis', category: '__action__' },
+            ];
+
+            return (
+              <>
+                {/* Existing diagnoses rendered as removable chips */}
+                {(soapData.diagnoses || []).length > 0 && (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1 }}>
+                    {(soapData.diagnoses || []).map((dx, idx) => (
+                      <Chip
+                        key={dx.catalogId || idx}
+                        label={`${dx.name}${dx.severity ? ` — ${dx.severity}` : ''}`}
+                        onDelete={disabled ? undefined : () => {
+                          const updated = [...(soapData.diagnoses || [])];
+                          updated.splice(idx, 1);
+                          updateSoap('diagnoses', updated);
+                        }}
+                        size="small"
+                        sx={{
+                          fontFamily: FONT, fontWeight: 900, fontSize: '0.7rem',
+                          bgcolor: dx.severity ? COLORS.warningSurface : '#E8F5E9',
+                          color: dx.severity ? COLORS.warning : COLORS.success,
+                          borderRadius: 0,
+                          '& .MuiChip-deleteIcon': { color: COLORS.textMuted },
+                        }}
+                      />
+                    ))}
+                  </Box>
+                )}
+
+                {/* Autocomplete — Add Diagnosis */}
+                {!disabled && (
+                  <Autocomplete
+                    size="small"
+                    options={catalogWithSentinel}
+                    groupBy={(opt) => (opt.category === '__action__' ? '' : opt.category)}
+                    getOptionLabel={(opt) => opt.name || ''}
+                    value={null}
+                    filterOptions={(opts, state) => {
+                      const q = state.inputValue.toLowerCase();
+                      return opts.filter(
+                        (o) => o.id === '__custom__' || (o.name || '').toLowerCase().includes(q),
+                      );
+                    }}
+                    onChange={(_, selected) => {
+                      if (!selected) return;
+                      if (selected.id === '__custom__') {
+                        onAddCustomDiagnosis?.();
+                        return;
+                      }
+                      // Prevent duplicate entries by catalogId
+                      if ((soapData.diagnoses || []).some((d) => d.catalogId === selected.id)) return;
+                      updateSoap('diagnoses', [
+                        ...(soapData.diagnoses || []),
+                        {
+                          name: selected.name,
+                          catalogId: selected.id,
+                          category: selected.category,
+                          severity: null,
+                          notes: '',
+                        },
+                      ]);
+                    }}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        variant="standard"
+                        placeholder={
+                          (soapData.diagnoses || []).length > 0
+                            ? 'Add another diagnosis...'
+                            : 'Search diagnosis catalog...'
+                        }
+                        InputProps={{
+                          ...params.InputProps,
+                          disableUnderline: true,
+                          sx: { fontFamily: FONT, fontSize: '0.85rem', color: COLORS.success },
+                        }}
+                      />
+                    )}
+                    sx={{ mb: 1 }}
+                    clearOnBlur
+                    blurOnSelect
+                    selectOnFocus
+                  />
+                )}
+
+                {/* Per-diagnosis severity selectors — only for hasSeverity entries */}
+                {(soapData.diagnoses || []).map((dx, idx) => {
+                  const catalogEntry = diagnosisCatalog.find((c) => c.id === dx.catalogId);
+                  if (!catalogEntry?.hasSeverity || !catalogEntry?.severityScale) return null;
+                  const scaleOptions = SEVERITY_SCALES[catalogEntry.severityScale] || [];
+                  if (scaleOptions.length === 0) return null;
+                  return (
+                    <Box key={`sev-${dx.catalogId || idx}`} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                      <Typography sx={{
+                        fontFamily: FONT, fontSize: '0.65rem', fontWeight: 900,
+                        color: COLORS.textMuted, minWidth: 100, textTransform: 'uppercase',
+                      }}>
+                        {dx.name.length > 20 ? `${dx.name.slice(0, 20)}…` : dx.name}
+                      </Typography>
+                      <Autocomplete
+                        size="small"
+                        options={scaleOptions}
+                        getOptionLabel={(opt) => opt.label || opt.value || ''}
+                        value={scaleOptions.find((s) => s.value === dx.severity) || null}
+                        onChange={(_, sel) => {
+                          if (disabled) return;
+                          const updated = [...(soapData.diagnoses || [])];
+                          updated[idx] = { ...updated[idx], severity: sel?.value || null };
+                          updateSoap('diagnoses', updated);
+                        }}
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            variant="standard"
+                            placeholder="Select severity / stage..."
+                            InputProps={{
+                              ...params.InputProps,
+                              disableUnderline: true,
+                              sx: { fontFamily: FONT, fontSize: '0.75rem' },
+                            }}
+                          />
+                        )}
+                        sx={{ flex: 1, maxWidth: 300 }}
+                        clearOnBlur
+                        blurOnSelect
+                        disabled={disabled}
+                      />
+                    </Box>
+                  );
+                })}
+
+                {/* Free-text Assessment Notes — replaces the legacy single TextField */}
+                <TextField
+                  multiline fullWidth variant="standard"
+                  placeholder={ZEN_PLACEHOLDERS.assessment}
+                  value={soapData.assessmentNotes || ''}
+                  onChange={(e) => updateSoap('assessmentNotes', e.target.value)}
+                  sx={textFieldSx}
+                  InputProps={{
+                    disableUnderline: true,
+                    sx: { fontFamily: FONT, fontSize: '1.1rem', color: COLORS.success, fontWeight: 700, lineHeight: 1.6 },
+                  }}
+                  disabled={disabled}
+                />
+              </>
+            );
+          })()}
         </SoapQuadrant>
       </Grid>
 

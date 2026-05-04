@@ -156,9 +156,11 @@ export function buildPetOwnerPrompt({ pet, records, vaccinations }) {
         if (vitalParts.length > 0) lines.push(`Vitals: ${vitalParts.join(' | ')}`);
       }
 
-      // Diagnosis — from top-level field or SOAP assessment ONLY (never soap.subjective/objectiveNotes/plan)
-      const diagnosis = r.diagnosis || r.soap?.assessment;
-      if (diagnosis) lines.push(`Diagnosis / Assessment: ${diagnosis}`);
+      // Diagnosis — structured catalog entries (T4.141) with severity, or legacy fallback
+      const diagnosisText = r.diagnoses?.length > 0
+        ? r.diagnoses.map(d => d.severity ? `${d.name} (${d.severity})` : d.name).join(', ')
+        : (r.diagnosis || r.soap?.assessment);
+      if (diagnosisText) lines.push(`Diagnosis / Assessment: ${diagnosisText}`);
       if (r.patientStatus) lines.push(`Patient Status: ${r.patientStatus}`);
 
       // Medications with instructions (drug items only, with instructions)

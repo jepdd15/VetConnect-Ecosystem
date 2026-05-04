@@ -647,7 +647,7 @@ export default function PetHistoryScreen({ route, navigation }) {
     if (searchText.trim()) {
       const q = searchText.toLowerCase().trim();
       result = result.filter(r =>
-        (r.diagnosis || '').toLowerCase().includes(q) ||
+        (r.diagnoses?.map(d => d.name).join(' ') || r.diagnosis || '').toLowerCase().includes(q) ||
         (r.serviceType || '').toLowerCase().includes(q) ||
         (r.vetName || '').toLowerCase().includes(q) ||
         (r.treatment || '').toLowerCase().includes(q) ||
@@ -1497,16 +1497,44 @@ export default function PetHistoryScreen({ route, navigation }) {
                   { color: isGrooming ? "#7B1FA2" : "#3E2723" },
                 ]}
               >
-                {item.diagnosis ||
+                {item.diagnoses?.[0]?.name || item.diagnosis ||
                   (isGrooming ? "Grooming Services" : "Consultation")}
               </Text>
+              {item.diagnoses?.[0]?.severity ? (
+                <View style={{
+                  backgroundColor: '#FFF3E0',
+                  paddingHorizontal: 8,
+                  paddingVertical: 2,
+                  marginTop: 4,
+                  borderRadius: 0,
+                }}>
+                  <Text style={{
+                    fontSize: 10,
+                    fontWeight: '900',
+                    color: '#E65100',
+                    textTransform: 'uppercase',
+                  }}>
+                    {item.diagnoses[0].severity}
+                  </Text>
+                </View>
+              ) : null}
+              {item.diagnoses?.length > 1 ? (
+                <Text style={{
+                  fontSize: 10,
+                  fontWeight: '700',
+                  color: '#9E9E9E',
+                  marginTop: 2,
+                }}>
+                  +{item.diagnoses.length - 1} more {item.diagnoses.length === 2 ? 'diagnosis' : 'diagnoses'}
+                </Text>
+              ) : null}
             </View>
 
-            {/* T3.89: SOAP Assessment — shown when no discharge summary exists and assessment differs from diagnosis */}
-            {!item.dischargeSummary && item.soap?.assessment && item.soap.assessment !== item.diagnosis && (
+            {/* T3.89 + T4.141: SOAP Assessment — shown when no discharge summary exists */}
+            {!item.dischargeSummary && !!(item.assessmentNotes || (item.soap?.assessment && item.soap.assessment !== item.diagnosis)) && (
               <View style={styles.assessmentBox}>
                 <Text style={styles.assessmentLabel}>CLINICAL ASSESSMENT</Text>
-                <Text style={styles.assessmentText}>{item.soap.assessment}</Text>
+                <Text style={styles.assessmentText}>{item.assessmentNotes || item.soap?.assessment}</Text>
               </View>
             )}
 

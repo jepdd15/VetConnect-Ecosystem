@@ -85,11 +85,21 @@ export function buildPetHistoryPrompt({ pet, owner, records, vaccinations }) {
       if (r.soap?.subjective)    lines.push(`- S: ${r.soap.subjective}`);
       const objText = resolveObjectiveText(r);
       if (objText) lines.push(`- O: ${objText}`);
-      if (r.soap?.assessment)    lines.push(`- A: ${r.soap.assessment}`);
+      // Structured diagnoses (T4.141) — list all with severity; fall back to legacy SOAP/string
+      if (r.diagnoses?.length > 0) {
+        const dxList = r.diagnoses.map(d => d.severity ? `${d.name} (${d.severity})` : d.name).join(', ');
+        lines.push(`- A (Diagnoses): ${dxList}`);
+        if (r.assessmentNotes) lines.push(`- A (Notes): ${r.assessmentNotes}`);
+      } else if (r.soap?.assessment) {
+        lines.push(`- A: ${r.soap.assessment}`);
+        if (r.assessmentNotes) lines.push(`- A (Notes): ${r.assessmentNotes}`);
+      } else if (r.diagnosis) {
+        lines.push(`- Diagnosis: ${r.diagnosis}`);
+        if (r.assessmentNotes) lines.push(`- A (Notes): ${r.assessmentNotes}`);
+      }
       if (r.soap?.plan)          lines.push(`- P: ${r.soap.plan}`);
 
-      // Legacy plain fields (only if SOAP fields absent)
-      if (!r.soap?.assessment && r.diagnosis) lines.push(`- Diagnosis: ${r.diagnosis}`);
+      // Legacy plain fields (only if SOAP plan absent)
       if (!r.soap?.plan && r.treatment)        lines.push(`- Treatment: ${r.treatment}`);
 
       // Medications / prescriptions

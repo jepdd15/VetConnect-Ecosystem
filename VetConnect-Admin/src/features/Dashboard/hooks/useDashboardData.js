@@ -1016,18 +1016,31 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
     // T2.289: Records signed this period — simple count
     const recordsSigned = medicalRecords.length;
 
-    // T2.290: Top 5 diagnoses — group by diagnosis field, take top 5
+    // T2.290 + T4.141: Top 5 diagnoses — structured catalogId grouping, legacy string fallback
     const diagnosisMap = {};
     medicalRecords.forEach(r => {
-      const diag = (r.diagnosis || 'Unspecified').trim();
-      if (diag && diag !== 'Clinical Visit') {
-        diagnosisMap[diag] = (diagnosisMap[diag] || 0) + 1;
+      if (r.diagnoses?.length > 0) {
+        // Structured records: count each diagnosis entry by catalogId (or name if custom)
+        r.diagnoses.forEach(dx => {
+          const key = dx.catalogId || dx.name || 'Unspecified';
+          const displayName = dx.name || 'Unspecified';
+          if (displayName === 'Clinical Visit') return;
+          if (!diagnosisMap[key]) diagnosisMap[key] = { diagnosis: displayName, count: 0 };
+          diagnosisMap[key].count += 1;
+        });
+      } else {
+        // Legacy records: fall back to the diagnosis string field
+        const diag = (r.diagnosis || 'Unspecified').trim();
+        if (diag && diag !== 'Clinical Visit') {
+          const key = diag; // no catalogId available for legacy records
+          if (!diagnosisMap[key]) diagnosisMap[key] = { diagnosis: diag, count: 0 };
+          diagnosisMap[key].count += 1;
+        }
       }
     });
-    const topDiagnoses = Object.entries(diagnosisMap)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 5)
-      .map(([diagnosis, count]) => ({ diagnosis, count }));
+    const topDiagnoses = Object.values(diagnosisMap)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
 
     // T2.291: Vaccine administration by type
     // Structured data in `vaccineAdministrations` array (preferred),

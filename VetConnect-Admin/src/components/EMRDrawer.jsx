@@ -90,13 +90,13 @@ const VitalsRow = ({ vitals }) => {
 const RecordCard = ({ record }) => {
   const [expanded, setExpanded] = useState(false);
 
-  const diagnosis = record.assessment || record.diagnosis || 'No diagnosis recorded';
+  const diagnosis = record.diagnoses?.[0]?.name || record.assessment || record.diagnosis || 'No diagnosis recorded';
   const vetName = record.vetName || 'Unknown';
   const serviceType = record.serviceType || record.primaryService || '';
   const recordDate = formatDate(record.createdAt || record.date);
   const status = record.status || 'completed';
 
-  const hasSoap = record.subjective || hasExamData(record.objectiveExam) || record.objectiveNotes || record.soap?.objectiveNotes || record.soap?.objective || record.assessment || record.plan;
+  const hasSoap = record.subjective || hasExamData(record.objectiveExam) || record.objectiveNotes || record.soap?.objectiveNotes || record.soap?.objective || record.diagnoses?.length > 0 || record.assessment || record.plan;
   const rv = resolveVitals(record);
   const hasVitals = rv.weight || rv.temp || rv.hr || rv.rr || rv.crt || rv.bcs || (rv.pain != null && rv.pain !== '')
     || record.objWeight || record.objTemp || record.objHR || record.objRR || record.objCRT || record.bcs || (record.painScale != null);
@@ -191,10 +191,22 @@ const RecordCard = ({ record }) => {
                       </Box>
                     ) : null;
                   })()}
-                  {record.assessment && (
+                  {(record.diagnoses?.length > 0 || record.assessment) && (
                     <Box>
                       <Typography sx={{ fontSize: '0.58rem', fontWeight: 900, color: COLORS.success, textTransform: 'uppercase', mb: 0.25 }}>A — Assessment</Typography>
-                      <SoapText value={record.assessment} />
+                      {record.diagnoses?.length > 0 && (
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.3, mb: 0.5 }}>
+                          {record.diagnoses.map((dx, i) => (
+                            <Chip key={dx.catalogId || i} label={`${dx.name}${dx.severity ? ` — ${dx.severity}` : ''}`} size="small"
+                              sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.55rem', borderRadius: 0,
+                                bgcolor: dx.severity ? COLORS.warningSurface : '#E8F5E9',
+                                color: dx.severity ? COLORS.warning : COLORS.success }} />
+                          ))}
+                        </Box>
+                      )}
+                      {(record.assessmentNotes || (!record.diagnoses?.length && record.assessment)) && (
+                        <SoapText value={record.assessmentNotes || record.assessment} />
+                      )}
                     </Box>
                   )}
                   {record.plan && (

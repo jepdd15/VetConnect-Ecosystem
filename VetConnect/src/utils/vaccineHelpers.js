@@ -127,7 +127,8 @@ export async function fetchVaccineCatalog() {
       return vaccineProducts.map(mapProductToCatalogEntry);
     }
   } catch (err) {
-    console.warn('[vaccineHelpers] catalog fetch failed, using defaults:', err.message);
+    // Inventory is staff-only — mobile clients use the default vaccine catalog
+    if (__DEV__) console.debug('[vaccineHelpers] Using default catalog (expected for mobile clients)');
   }
   return DEFAULT_VACCINE_CATALOG;
 }

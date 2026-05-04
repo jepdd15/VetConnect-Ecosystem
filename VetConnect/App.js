@@ -107,7 +107,7 @@ export default function App() {
 
   return (
     <NetworkProvider>
-    <NavigationContainer onReady={onLayoutRootView}>
+    <NavigationContainer onReady={onLayoutRootView} onUnhandledAction={() => {}}>
       <Stack.Navigator
         initialRouteName={initialRoute}
         screenOptions={{

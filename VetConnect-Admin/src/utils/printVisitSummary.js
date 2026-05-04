@@ -290,7 +290,11 @@ export function generateVisitSummaryHTML({ record, pet, owner, clinicName, clini
     <div><span class="label">Service:</span> <span class="value" style="text-transform:capitalize">${esc(rec.serviceType || rec.recordType || '—')}</span></div>
     <div></div>
     <div><span class="label">Attending Vet:</span> <span class="value">${esc(rec.vetName || '—')}</span></div>
-    <div><span class="label">Diagnosis:</span> <span class="value">${esc(rec.diagnosis || '—')}</span></div>
+    <div><span class="label">Diagnosis:</span> <span class="value">${esc(
+      rec.diagnoses?.length > 0
+        ? rec.diagnoses.map(d => d.severity ? `${d.name} (${d.severity})` : d.name).join('; ')
+        : (rec.diagnosis || '—')
+    )}</span></div>
     <div></div>
   </div>
 
@@ -310,7 +314,11 @@ export function generateVisitSummaryHTML({ record, pet, owner, clinicName, clini
       </tr>
       <tr>
         <td><strong>Assessment</strong></td>
-        <td style="white-space:pre-wrap">${esc(soap.assessment || rec.diagnosis || '—')}</td>
+        <td style="white-space:pre-wrap">${esc(
+          rec.diagnoses?.length > 0
+            ? rec.diagnoses.map(d => d.severity ? `${d.name} (${d.severity})` : d.name).join('; ') + (rec.assessmentNotes ? '\n\n' + rec.assessmentNotes : '')
+            : (soap.assessment || rec.diagnosis || '—')
+        )}</td>
       </tr>
       <tr>
         <td><strong>Plan</strong></td>

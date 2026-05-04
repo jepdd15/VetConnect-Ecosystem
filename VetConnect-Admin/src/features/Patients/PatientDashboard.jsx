@@ -437,6 +437,7 @@ export default function PatientDashboard() {
       f = f.filter(r => {
         // Core SOAP fields
         const textFields = [
+          r.diagnoses?.map(d => d.name).join(' '),
           r.diagnosis, r.vetName, r.treatment,
           r.soap?.subjective, resolveObjectiveText(r),
           r.soap?.assessment, r.soap?.plan,
@@ -923,7 +924,7 @@ export default function PatientDashboard() {
       groups[groups.length - 1].records.push({
         index: i,
         dateLabel: d ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—',
-        diagnosis: r.diagnosis || 'Clinical Visit',
+        diagnosis: r.diagnoses?.[0]?.name || r.diagnosis || 'Clinical Visit',
         recordType: r.recordType || 'medical',
       });
     });
@@ -1325,7 +1326,7 @@ export default function PatientDashboard() {
                         </Typography>
                       </Box>
                     ))}
-                    <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.textPrimary, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{rec.diagnosis || 'Clinical Visit'}</Typography>
+                    <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.textPrimary, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{rec.diagnoses?.[0]?.name || rec.diagnosis || 'Clinical Visit'}</Typography>
                     {/* T2.457: Case-day badge for multi-day cases */}
                     {caseDayMap[rec.id] && (
                       <Chip
@@ -1409,11 +1410,25 @@ export default function PatientDashboard() {
                               <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.5 }}>Objective</Typography>
                               <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: hasO ? COLORS.textPrimary : COLORS.textMuted, whiteSpace: 'pre-wrap', pl: 1.5, borderLeft: `2px solid ${COLORS.borderLight}`, fontStyle: hasO ? 'normal' : 'italic' }}>{hasO ? resolveObjectiveText(rec) : '—'}</Typography>
                             </Box>
-                            {/* T3.87: Assessment — the A in SOAP */}
-                            {rec.soap?.assessment && (
+                            {/* T3.87 / T4.141: Assessment — structured diagnoses + free-text notes */}
+                            {(rec.diagnoses?.length > 0 || rec.soap?.assessment) && (
                               <Box>
                                 <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.5 }}>Assessment</Typography>
-                                <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.textPrimary, whiteSpace: 'pre-wrap', pl: 1.5, borderLeft: `2px solid ${COLORS.success}` }}>{rec.soap.assessment}</Typography>
+                                {rec.diagnoses?.length > 0 && (
+                                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 0.5, pl: 1.5, borderLeft: `2px solid ${COLORS.success}` }}>
+                                    {rec.diagnoses.map((dx, i) => (
+                                      <Chip key={dx.catalogId || i} label={`${dx.name}${dx.severity ? ` — ${dx.severity}` : ''}`} size="small"
+                                        sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.65rem', borderRadius: 0,
+                                          bgcolor: dx.severity ? COLORS.warningSurface : '#E8F5E9',
+                                          color: dx.severity ? COLORS.warning : COLORS.success }} />
+                                    ))}
+                                  </Box>
+                                )}
+                                {(rec.assessmentNotes || (!rec.diagnoses?.length && rec.soap?.assessment)) && (
+                                  <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.textPrimary, whiteSpace: 'pre-wrap', pl: 1.5, borderLeft: `2px solid ${COLORS.success}` }}>
+                                    {rec.assessmentNotes || rec.soap?.assessment}
+                                  </Typography>
+                                )}
                               </Box>
                             )}
                             <Box sx={{ bgcolor: COLORS.planBg, py: 1, px: 1.5, borderRadius: 0, borderLeft: `3px solid ${COLORS.planBorder}` }}>

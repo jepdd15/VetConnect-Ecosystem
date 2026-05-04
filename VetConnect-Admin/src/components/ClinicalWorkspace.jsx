@@ -6,6 +6,9 @@ import { useVaccineCatalog } from '../hooks/useVaccineCatalog';
 // T4.120: Lab test catalog hook + constants
 import { useLabTestCatalog } from '../hooks/useLabTestCatalog';
 import { LAB_CATEGORIES, LAB_STATUSES } from '../utils/labTestConstants';
+// T4.141: Diagnosis catalog hook + constants
+import { useDiagnosisCatalog } from '../hooks/useDiagnosisCatalog';
+import { DIAGNOSIS_CATEGORIES } from '../utils/diagnosisConstants';
 import { ZEN_PLACEHOLDERS } from '../utils/soapConstants';
 import {
   Dialog, Slide, AppBar, Toolbar, IconButton, Typography, Button,
@@ -489,7 +492,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   const [soapData, setSoapData] = useState({
     subjective: '', objWeight: '', objTemp: '', objHR: '', objRR: '', objCRT: '', bcs: 5, painScale: 0,
     objectiveNotes: '', objectiveExam: createDefaultExam(),
-    assessment: '', prognosis: 'Good', plan: '', recheckIn: '1 Week', patientStatus: 'Stable', nextVisit: ''
+    // T4.141: assessment replaced with structured diagnoses[] + free-text assessmentNotes
+    diagnoses: [], assessmentNotes: '',
+    prognosis: 'Good', plan: '', recheckIn: '1 Week', patientStatus: 'Stable', nextVisit: ''
   });
   const [isRecordLocked, setIsRecordLocked] = useState(false);
   const [ownerSignature, setOwnerSignature] = useState(null);
@@ -527,6 +532,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
 
   // T4.120: Lab test catalog — singleton Firestore-backed hook, same pattern as useVaccineCatalog
   const labCatalog = useLabTestCatalog();
+  // T4.141: Diagnosis catalog — singleton hook, called unconditionally before any early returns
+  const diagnosisCatalog = useDiagnosisCatalog();
   const labCatalogWithSentinel = useMemo(
     () => [...labCatalog, CUSTOM_TEST_SENTINEL],
     [labCatalog],
@@ -555,6 +562,11 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     name: '', category: 'Other', unit: '', resultType: 'numeric',
     canineLow: '', canineHigh: '', felineLow: '', felineHigh: '',
   });
+
+  // T4.141: Custom diagnosis dialog state
+  const [addCustomDxOpen, setAddCustomDxOpen] = useState(false);
+  const [customDxName, setCustomDxName] = useState('');
+  const [customDxCategory, setCustomDxCategory] = useState('Dermatology');
 
   const [treatmentCart, setTreatmentCart] = useState([]);
   const [serviceAttribution, setServiceAttribution] = useState({});
@@ -728,7 +740,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             objWeight: '', objTemp: '', objHR: '', objRR: '', objCRT: '2',
             bcs: 5, painScale: 0,
             objectiveNotes: '', objectiveExam: createDefaultExam(),
-            assessment: '', prognosis: 'Good', recheckIn: '1 Week',
+            // T4.141: structured diagnosis fields replace the legacy assessment string
+            diagnoses: [], assessmentNotes: '',
+            prognosis: 'Good', recheckIn: '1 Week',
             patientStatus: 'Stable', plan: '', nextVisit: '',
           };
 
@@ -762,7 +776,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
               painScale: draft.painScale ?? 0,
               objectiveNotes: draft.objectiveNotes || '',
               objectiveExam: draft.objectiveExam || createDefaultExam(),
-              assessment: draft.assessment || '',
+              // T4.141: dual-read — new fields first, fall back to legacy assessment string
+              diagnoses: draft.diagnoses || [],
+              assessmentNotes: draft.assessmentNotes || draft.assessment || '',
               prognosis: draft.prognosis || 'Good',
               patientStatus: draft.patientStatus || 'Stable',
               plan: draft.plan || '',
@@ -1607,8 +1623,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         return alert("This clinical record has already been signed off. No duplicate records can be created.");
     }
 
-    if (!soapData.subjective?.trim() || !soapData.assessment?.trim() || !soapData.plan?.trim()) {
-        showToast("Subjective, Assessment, and Plan are required for legal medical documentation.", "error");
+    // T4.141: Assessment is now a structured diagnoses array — require at least one entry
+    if (!soapData.subjective?.trim() || (soapData.diagnoses || []).length === 0 || !soapData.plan?.trim()) {
+        showToast("Subjective, at least one Diagnosis, and Plan are required for legal medical documentation.", "error");
         return;
     }
 
@@ -1764,14 +1781,22 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         signedBy: { uid: vetUid, name: vetName },
         date: commitTimestamp,
         recordType: 'medical',
-        diagnosis: soapData.assessment || "Clinical Visit",
+        diagnosis: (soapData.diagnoses || [])[0]?.name || "Clinical Visit",
+        diagnoses: (soapData.diagnoses || []).filter(d => d.name).map(d => ({
+            name: d.name,
+            catalogId: d.catalogId || null,
+            category: d.category || '',
+            severity: d.severity || null,
+            notes: d.notes || '',
+        })),
+        assessmentNotes: soapData.assessmentNotes || '',
         treatment: soapData.plan,
         objectiveExam: soapData.objectiveExam,
         soap: {
             subjective: soapData.subjective,
             objective: examToText(soapData.objectiveExam) || soapData.objectiveNotes || '',
             objectiveNotes: examToText(soapData.objectiveExam) || soapData.objectiveNotes || '',
-            assessment: soapData.assessment,
+            assessment: soapData.assessmentNotes || '',
             prognosis: soapData.prognosis,
             plan: soapData.plan,
             recheckIn: soapData.recheckIn
@@ -1820,7 +1845,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             patientName: patient.petName,
             ownerName: patient.ownerName || 'Walk-In Client',
             visitDate: commitTimestamp,
-            diagnosis: soapData.assessment || 'Clinical Visit',
+            diagnosis: (soapData.diagnoses || [])[0]?.name || 'Clinical Visit',
             instructions: soapData.plan || '',
             medications: treatmentCart
                 .filter(item => item.isDrug)
@@ -1987,11 +2012,11 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
               scheduledDate: Timestamp.fromDate(followUpDate),
               scheduledDateStr: `${followUpDate.getFullYear()}-${String(followUpDate.getMonth() + 1).padStart(2, '0')}-${String(followUpDate.getDate()).padStart(2, '0')}`,
               createdAt: commitTimestamp,
-              notes: `Follow-up from visit on ${new Date().toLocaleDateString()}. Diagnosis: ${soapData.assessment || 'N/A'}. Recheck: ${soapData.recheckIn || 'N/A'}.`,
+              notes: `Follow-up from visit on ${new Date().toLocaleDateString()}. Diagnosis: ${(soapData.diagnoses || [])[0]?.name || 'N/A'}. Recheck: ${soapData.recheckIn || 'N/A'}.`,
               isFollowUp: true,
               parentAppointmentId: patient.id,
               parentRecordId: recordRef.id,
-              parentDiagnosis: soapData.assessment || 'N/A',
+              parentDiagnosis: (soapData.diagnoses || [])[0]?.name || 'N/A',
               parentServiceType: patient.services?.[0]?.name || patient.primaryService || patient.serviceType || 'Clinical Visit',
               source: 'clinical_workspace',
               caseDay: 1,
@@ -2094,7 +2119,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             objCRT: soapData.objCRT,
             bcs: soapData.bcs,
             painScale: soapData.painScale,
-            assessment: soapData.assessment,
+            // T4.141: write structured diagnoses instead of legacy assessment string
+            diagnoses: soapData.diagnoses || [],
+            assessmentNotes: soapData.assessmentNotes || '',
             prognosis: soapData.prognosis,
             plan: soapData.plan,
             recheckIn: soapData.recheckIn,
@@ -2155,7 +2182,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       painScale: d.painScale ?? 0,
       objectiveNotes: d.objectiveNotes || '',
       objectiveExam: d.objectiveExam || createDefaultExam(),
-      assessment: d.assessment || '',
+      // T4.141: dual-read — new fields first, fall back to legacy assessment string
+      diagnoses: d.diagnoses || [],
+      assessmentNotes: d.assessmentNotes || d.assessment || '',
       prognosis: d.prognosis || 'Good',
       patientStatus: d.patientStatus || 'Stable',
       plan: d.plan || '',
@@ -2545,6 +2574,60 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   };
 
   /**
+   * T4.141: Persists a new custom diagnosis to Firestore (clinic_settings/diagnosis_catalog)
+   * then immediately adds it to the current soapData.diagnoses array so the vet does not
+   * need to search for it again. The useDiagnosisCatalog singleton listener picks up the
+   * change in real-time so the diagnosis appears in future Autocomplete dropdowns.
+   */
+  const handleSaveCustomDiagnosis = async () => {
+    if (!customDxName.trim()) {
+      showToast('Diagnosis name is required.', 'error');
+      return;
+    }
+    if (!customDxCategory) {
+      showToast('Category is required.', 'error');
+      return;
+    }
+
+    const newDx = {
+      id: `custom-${Date.now()}`,
+      name: customDxName.trim(),
+      category: customDxCategory,
+      species: ['dog', 'cat'],
+      hasSeverity: false,
+      severityScale: null,
+    };
+
+    try {
+      await setDoc(
+        doc(db, 'clinic_settings', 'diagnosis_catalog'),
+        { tests: arrayUnion(newDx) },
+        { merge: true },
+      );
+
+      // Immediately add to the current SOAP form
+      updateSoap('diagnoses', [
+        ...(soapData.diagnoses || []),
+        {
+          name: newDx.name,
+          catalogId: newDx.id,
+          category: newDx.category,
+          severity: null,
+          notes: '',
+        },
+      ]);
+
+      setAddCustomDxOpen(false);
+      setCustomDxName('');
+      setCustomDxCategory('Dermatology');
+      showToast(`"${newDx.name}" added to diagnosis catalog.`, 'success');
+    } catch (err) {
+      console.error('[ClinicalWorkspace.handleSaveCustomDiagnosis]:', err.message);
+      showToast('Failed to save custom diagnosis. Check your connection.', 'error');
+    }
+  };
+
+  /**
    * T4.120: Auto-computes a result status from the numeric value and species-specific
    * reference range. Vet can always override manually via the status dropdown.
    *
@@ -2925,6 +3008,64 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             sx={{ fontFamily: FONT, fontWeight: 900, borderRadius: 0, bgcolor: COLORS.medical, '&:hover': { bgcolor: COLORS.brand } }}
           >
             Save & Select
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* T4.141: Add Custom Diagnosis Dialog */}
+      <Dialog
+        open={addCustomDxOpen}
+        onClose={() => { setAddCustomDxOpen(false); setCustomDxName(''); setCustomDxCategory('Dermatology'); }}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.border}` } }}
+      >
+        <DialogTitle sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.95rem', color: COLORS.brand, borderBottom: `1px solid ${COLORS.borderLight}` }}>
+          Add Custom Diagnosis
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          <Stack spacing={1.5}>
+            <TextField
+              label="Diagnosis Name"
+              fullWidth
+              required
+              size="small"
+              value={customDxName}
+              onChange={(e) => setCustomDxName(e.target.value)}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+              autoFocus
+            />
+            <TextField
+              label="Category"
+              select
+              fullWidth
+              size="small"
+              value={customDxCategory}
+              onChange={(e) => setCustomDxCategory(e.target.value)}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+            >
+              {DIAGNOSIS_CATEGORIES.map((c) => (
+                <MenuItem key={c} value={c}>{c}</MenuItem>
+              ))}
+            </TextField>
+            <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.textMuted, display: 'block' }}>
+              Custom diagnoses are saved permanently to the clinic catalog and will appear in future Autocomplete searches.
+            </Typography>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 2.5, pb: 2, borderTop: `1px solid ${COLORS.borderLight}` }}>
+          <Button
+            onClick={() => { setAddCustomDxOpen(false); setCustomDxName(''); setCustomDxCategory('Dermatology'); }}
+            sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textSecondary, borderRadius: 0 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleSaveCustomDiagnosis}
+            sx={{ fontFamily: FONT, fontWeight: 900, borderRadius: 0, bgcolor: COLORS.success, '&:hover': { bgcolor: COLORS.brand } }}
+          >
+            Add & Select
           </Button>
         </DialogActions>
       </Dialog>
@@ -3535,6 +3676,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 isAIPanelOpen={isAIDrawerOpen}
                 onMarkAllNormal={() => applyTemplate('wnl')}
                 disabled={lockedServices.has('medical')}
+                diagnosisCatalog={diagnosisCatalog}
+                patientSpecies={patient?.petSpecies || ''}
+                onAddCustomDiagnosis={() => setAddCustomDxOpen(true)}
               />
             );
           })()}
@@ -4177,6 +4321,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                   isAIPanelOpen={true}
                   onMarkAllNormal={() => applyTemplate('wnl')}
                   disabled={lockedServices.has('medical')}
+                  diagnosisCatalog={diagnosisCatalog}
+                  patientSpecies={patient?.petSpecies || ''}
+                  onAddCustomDiagnosis={() => setAddCustomDxOpen(true)}
                 />
               );
             })()}

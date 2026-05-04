@@ -80,6 +80,12 @@ export default function EodSummary({ totals, filterMethod, setFilterMethod }) {
                         (₱{totals.totalDeposits.toFixed(2)} via prior deposits)
                     </Typography>
                 )}
+                {/* T4.149: Custom discount total — visible when non-zero for management oversight */}
+                {totals.totalCustomDiscounts > 0 && (
+                    <Typography variant="caption" sx={{ fontWeight: 800, color: filterMethod.includes('All') ? `${COLORS.cream}80` : COLORS.amber, fontSize: '0.55rem' }}>
+                        (₱{totals.totalCustomDiscounts.toFixed(2)} custom discounts)
+                    </Typography>
+                )}
                 {totals.refunds > 0 && <Typography variant="caption" color={filterMethod.includes('All') ? "white" : "error"} sx={{ fontWeight: 800 }}>REFUNDS TODAY: ₱{totals.refunds.toFixed(2)}</Typography>}
             </Paper>
         </Grid>

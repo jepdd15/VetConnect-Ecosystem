@@ -91,6 +91,8 @@ export function useSalesData(filterDate, currentUser) {
   const eodTotals = useMemo(() => {
       let cash = 0, gcash = 0, card = 0, bank = 0;
       let totalBilled = 0, totalCollected = 0, totalDeposits = 0, totalDiscounts = 0, refunds = 0;
+      // T4.149: Track custom discounts separately from SC/PWD discounts for management oversight.
+      let totalCustomDiscounts = 0;
       sales.forEach(sale => {
           if (sale.status === 'refunded') {
               refunds += sale.total;
@@ -100,15 +102,16 @@ export function useSalesData(filterDate, currentUser) {
               const collected = sale.total - deposit;
               totalBilled += sale.total;
               totalDeposits += deposit;
-              totalDiscounts += discount;
+              if (sale.hasScPwdDiscount) totalDiscounts += discount;
               totalCollected += collected;
+              totalCustomDiscounts += parseFloat(sale.customDiscountTotal || 0);
               if (sale.paymentMethod === 'Cash') cash += collected;
               else if (sale.paymentMethod?.includes('GCash')) gcash += collected;
               else if (sale.paymentMethod === 'Card') card += collected;
               else if (sale.paymentMethod === 'Bank Transfer') bank += collected;
           }
       });
-      return { cash, gcash, card, bank, totalBilled, totalCollected, totalDeposits, totalDiscounts, refunds };
+      return { cash, gcash, card, bank, totalBilled, totalCollected, totalDeposits, totalDiscounts, totalCustomDiscounts, refunds };
   },[sales]);
 
   // THE FIX: Moved the complex transaction logic here!

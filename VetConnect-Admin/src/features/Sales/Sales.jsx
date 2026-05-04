@@ -160,7 +160,7 @@ export default function Sales() {
             <p style="margin: 0; font-size: 12px; color: #666;">${clinicSettings.clinicAddress} | Official Receipt</p>
           </div>
           <div class="details">
-            <p><strong>Receipt #:</strong> ${sale.id.slice(0, 8).toUpperCase()}</p>
+            <p><strong>Receipt #:</strong> ${sale.receiptNumber || sale.id.slice(0, 8).toUpperCase()}</p>
             <p><strong>Date:</strong> ${receiptDate}</p>
             <p><strong>Patient:</strong> ${sale.petName} (${sale.ownerName || 'Walk-In'})</p>
             <p><strong>Cashier:</strong> ${sale.cashier || 'System'}</p>
@@ -172,9 +172,15 @@ export default function Sales() {
           <div class="totals">
             <div class="total-row"><span>Subtotal:</span><span>P${parseFloat(sale.subtotal || 0).toFixed(2)}</span></div>
             ${sale.hasScPwdDiscount && parseFloat(sale.discount || 0) > 0 ? `<div class="total-row" style="color: #D32F2F;"><span>SC/PWD Discount (20%):</span><span>- P${parseFloat(sale.discount).toFixed(2)}</span></div>` : ''}
+            ${!sale.hasScPwdDiscount && parseFloat(sale.itemDiscountsTotal || 0) > 0 ? `<div class="total-row" style="color: #E65100;"><span>Item Discounts:</span><span>- P${parseFloat(sale.itemDiscountsTotal).toFixed(2)}</span></div>` : ''}
+            ${!sale.hasScPwdDiscount && parseFloat(sale.billDiscountAmount || 0) > 0 ? `<div class="total-row" style="color: #E65100;"><span>Bill Discount (${sale.billDiscountReason || 'Custom'}):</span><span>- P${parseFloat(sale.billDiscountAmount).toFixed(2)}</span></div>` : ''}
             <div class="total-row"><span>Less Deposit:</span><span>- P${parseFloat(sale.depositPaid || 0).toFixed(2)}</span></div>
-            <div class="total-row grand-total"><span>BALANCE PAID:</span><span>P${parseFloat(sale.total || 0).toFixed(2)}</span></div>
+            <div class="total-row grand-total"><span>BALANCE PAID:</span><span>P${(parseFloat(sale.total || 0) - parseFloat(sale.depositPaid || 0)).toFixed(2)}</span></div>
             <div class="total-row" style="margin-top:5px; font-size:12px; color:#555;"><span>Payment Method:</span><span>${sale.paymentMethod || 'Cash'}</span></div>
+            ${sale.paymentMethod === 'Cash' && sale.amountTendered ? `
+              <div class="total-row" style="font-size:12px; color:#555;"><span>Tendered:</span><span>P${parseFloat(sale.amountTendered).toFixed(2)}</span></div>
+              <div class="total-row" style="font-size:12px; color:#555; font-weight:bold;"><span>Change:</span><span>P${parseFloat(sale.changeDue || 0).toFixed(2)}</span></div>
+            ` : ''}
           </div>
           <div class="footer">
             <p>Thank you for trusting ${clinicSettings.clinicName} with your pet's health!</p>
@@ -239,6 +245,7 @@ export default function Sales() {
               <tr><td>Total Billed</td><td class="amount">P${eodTotals.totalBilled.toFixed(2)}</td></tr>
               <tr><td>Prior Deposits Applied</td><td class="amount">P${eodTotals.totalDeposits.toFixed(2)}</td></tr>
               <tr><td>SC/PWD Discounts Given</td><td class="amount">P${eodTotals.totalDiscounts.toFixed(2)}</td></tr>
+              ${eodTotals.totalCustomDiscounts > 0 ? `<tr><td>Custom Discounts Given</td><td class="amount">P${eodTotals.totalCustomDiscounts.toFixed(2)}</td></tr>` : ''}
               ${eodTotals.refunds > 0 ? `<tr class="refund"><td>Refunds</td><td class="amount">- P${eodTotals.refunds.toFixed(2)}</td></tr>` : ''}
               <tr class="total-row"><td>Net Collected Today</td><td class="amount">P${(eodTotals.totalCollected - eodTotals.refunds).toFixed(2)}</td></tr>
             </tbody>
@@ -284,7 +291,7 @@ export default function Sales() {
       field: 'id', headerName: 'Receipt #', width: 130, sortable: false, disableColumnMenu: true,
       renderCell: (p) => (
         <Box sx={{ display: 'flex', alignItems: 'center', height: '100%' }}>
-            <Typography variant="caption" sx={{ fontFamily: 'monospace', fontWeight: 800, color: COLORS.medical, bgcolor: COLORS.chipBlueBg, px: 1.2, py: 0.5, borderRadius: 0, border: `1px solid ${COLORS.medical}`, letterSpacing: 0.5 }}>{p.value.slice(0, 8).toUpperCase()}</Typography>
+            <Typography variant="caption" sx={{ fontFamily: 'monospace', fontWeight: 800, color: COLORS.medical, bgcolor: COLORS.chipBlueBg, px: 1.2, py: 0.5, borderRadius: 0, border: `1px solid ${COLORS.medical}`, letterSpacing: 0.5 }}>{p.row.receiptNumber || p.value.slice(0, 8).toUpperCase()}</Typography>
         </Box>
       )
     },
@@ -566,7 +573,7 @@ export default function Sales() {
             Voiding will mark the transaction as invalid, restore inventory stock for all sold products, and revert the appointment to the billing stage.
           </Alert>
           <Typography sx={{ fontFamily: FONT, fontSize: '0.9rem', color: COLORS.textPrimary }}>
-            <strong>Receipt:</strong> #{(voidTarget?.id || '').slice(0, 8).toUpperCase()}<br />
+            <strong>Receipt:</strong> {voidTarget?.receiptNumber || `#${(voidTarget?.id || '').slice(0, 8).toUpperCase()}`}<br />
             <strong>Amount:</strong> ₱{voidTarget?.total?.toFixed(2)}<br />
             <strong>Client:</strong> {voidTarget?.ownerName || 'Walk-In'}
           </Typography>

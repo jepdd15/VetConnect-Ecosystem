@@ -10,8 +10,7 @@ service cloud.firestore {
     // Uses get() which costs one document read per rule evaluation.
     // On Spark plan this has no billing impact; on Blaze, budget accordingly.
     function getUserRole() {
-      let userRef = /databases/$(database)/documents/users/$(request.auth.uid);
-      return exists(userRef) ? get(userRef).data : {};
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
     // role is the canonical field. accessLevel is NOT checked — a disabled user
@@ -276,6 +275,13 @@ service cloud.firestore {
       allow create: if isAuth();
       allow update: if isAdmin();
       allow delete: if false;
+    }
+
+    // ─── COUNTERS (atomic sequential IDs) ─────────────────────────────
+    // Staff can read+write for atomic increment inside runTransaction.
+    // Used for: receipt_sequence (sequential BIR-compliant receipt numbers).
+    match /counters/{counterId} {
+      allow read, write: if isStaff();
     }
 
     // ─── VACCINE REMINDER QUEUE (pre-computed push notification queue) ───

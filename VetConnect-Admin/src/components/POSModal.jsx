@@ -5,7 +5,7 @@ import {
   Chip, IconButton, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, FormControl, InputLabel, Select,
   FormControlLabel, Switch, Alert, Divider, ListSubheader, InputAdornment, Tooltip,
-  ToggleButtonGroup, ToggleButton,
+  ToggleButtonGroup, ToggleButton, Popover,
 } from '@mui/material';
 
 // --- ALL REQUIRED ICONS ---
@@ -28,6 +28,16 @@ import { resolveTieredPrice } from '../utils/resolveTieredPrice';
 import { makePulseEventId } from '../utils/pulseUtils';
 import { sendPushNotification } from '../utils/sendPushNotification';
 
+// T4.149: Mandatory reason options for custom bill discounts — enforces audit accountability.
+const DISCOUNT_REASONS = [
+  'Loyalty',
+  'First Visit',
+  'Promo',
+  'Vet Discretion',
+  'Clinic Error',
+  'Other',
+];
+
 export default function POSModal({ open, onClose, patient, inventoryList, servicesList, groupAppointments = [] }) {
   const { profile } = useUser();
   const clinicSettings = useClinicSettings();
@@ -38,6 +48,22 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
   const[hasScId, setHasScId] = useState(false);
   const [loading, setLoading] = useState(false);
   const [depositAmount, setDepositAmount] = useState('');
+
+  // T4.148: Cash change calculation — tendered amount entered by cashier.
+  const [amountTendered, setAmountTendered] = useState('');
+
+  // T4.149: Custom discount system.
+  // Per-item discounts stored as an object keyed by cart index: { type: '%' | '₱', value: number }
+  const [itemDiscounts, setItemDiscounts] = useState({});
+  // Transaction-level bill discount
+  const [billDiscountType, setBillDiscountType] = useState('%');    // '%' or '₱'
+  const [billDiscountValue, setBillDiscountValue] = useState('');
+  const [billDiscountReason, setBillDiscountReason] = useState('');
+  // Per-item discount popover state
+  const [discountAnchorEl, setDiscountAnchorEl] = useState(null);
+  const [discountEditIndex, setDiscountEditIndex] = useState(null);
+  const [editDiscType, setEditDiscType] = useState('%');
+  const [editDiscValue, setEditDiscValue] = useState('');
 
   // Phase 4 — Consolidated billing mode: 'individual' bills the active patient only;
   // 'group' merges items from all sibling appointments into a single cart.
@@ -157,6 +183,8 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
 
         setCart(initialCart); setSelectedItemVal(''); setPaymentMethod('Cash'); setBarcodeInput('');
         setDepositAmount(patient.depositPaid ? patient.depositPaid.toString() : '');
+        setAmountTendered('');
+        setItemDiscounts({}); setBillDiscountType('%'); setBillDiscountValue(''); setBillDiscountReason('');
 
         let foundId = false;
         try {
@@ -171,6 +199,11 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
     initPOS();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[open, patient, servicesList, inventoryList]);
+
+  // T4.148: Clear tendered amount when switching to a non-Cash payment method.
+  useEffect(() => {
+    if (paymentMethod !== 'Cash') setAmountTendered('');
+  }, [paymentMethod]);
 
   /**
    * Rebuilds the cart when the billing mode toggle changes.
@@ -193,6 +226,8 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
       setCart(buildCartForAppointment(patient, null));
       setDepositAmount(patient.depositPaid ? patient.depositPaid.toString() : '');
     }
+    // Reset all custom discounts when billing mode changes — indices are no longer valid.
+    setItemDiscounts({}); setBillDiscountType('%'); setBillDiscountValue(''); setBillDiscountReason('');
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [billingMode]);
 
@@ -266,34 +301,100 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
     setCart(newCart);
   };
 
-  const removeFromCart = (index) => { 
+  const removeFromCart = (index) => {
     const item = cart[index];
     if (item.isBase) return;
-    if (item.isPrescribed && !window.confirm(`⚠️ WARNING: The Veterinarian explicitly prescribed [${item.name}]. Are you sure you want to remove it?`)) return;
-    const newCart = [...cart]; newCart.splice(index, 1); setCart(newCart); 
+    if (item.isPrescribed && !window.confirm(`WARNING: The Veterinarian explicitly prescribed [${item.name}]. Are you sure you want to remove it?`)) return;
+    const newCart = [...cart]; newCart.splice(index, 1); setCart(newCart);
+    // T4.149: Re-index item discounts — shift indices above the removed item down by 1.
+    setItemDiscounts(prev => {
+      const next = {};
+      Object.entries(prev).forEach(([k, v]) => {
+        const i = parseInt(k);
+        if (i < index) next[i] = v;
+        else if (i > index) next[i - 1] = v;
+        // i === index is the removed item — discard its discount
+      });
+      return next;
+    });
   };
 
   // --- 3. BIR-COMPLIANT FINANCIAL MATH ---
+  /**
+   * Two-layer discount engine:
+   * 1. SC/PWD (government-mandated, 20% VAT-exempt) — exclusive with custom discounts.
+   * 2. Custom per-item + bill discount (clinic-discretionary) — exclusive with SC/PWD.
+   * Order of operations: per-item discounts → subtotal → bill discount → deposit → balance.
+   */
   const calculateFinancials = () => {
-    let subtotal = 0; let vatExemptTotal = 0; let discountAmount = 0;
-    cart.forEach(item => {
-      const itemTotal = item.price * item.qty;
-      subtotal += itemTotal;
+    let subtotal = 0;
+    let vatExemptTotal = 0;
+    let scPwdDiscount = 0;
+    let totalItemDiscounts = 0;
+
+    cart.forEach((item, idx) => {
+      const lineTotal = item.price * item.qty;
+
       if (applyScPwd && item.isDiscountable) {
-        const itemVatExempt = itemTotal / 1.12;
+        // SC/PWD path — no custom discounts allowed on the same transaction.
+        const itemVatExempt = lineTotal / 1.12;
         vatExemptTotal += itemVatExempt;
-        discountAmount += itemVatExempt * 0.20;
+        scPwdDiscount += itemVatExempt * 0.20;
+        subtotal += lineTotal;
+      } else {
+        // Custom per-item discount path (ignored when SC/PWD is active).
+        const disc = itemDiscounts[idx];
+        if (!applyScPwd && disc && disc.value > 0) {
+          const itemDisc = disc.type === '%'
+            ? lineTotal * (Math.min(disc.value, 100) / 100)
+            : Math.min(disc.value, lineTotal);
+          totalItemDiscounts += itemDisc;
+        }
+        subtotal += lineTotal;
       }
     });
-    const finalTotal = subtotal - discountAmount; 
+
+    // Transaction-level bill discount — only when SC/PWD is off.
+    let billDisc = 0;
+    const afterItems = subtotal - (applyScPwd ? scPwdDiscount : totalItemDiscounts);
+    if (!applyScPwd && billDiscountValue) {
+      const val = parseFloat(billDiscountValue) || 0;
+      billDisc = billDiscountType === '%'
+        ? afterItems * (Math.min(val, 100) / 100)
+        : Math.min(val, afterItems);
+    }
+
+    const totalDiscount = applyScPwd ? scPwdDiscount : (totalItemDiscounts + billDisc);
+    const finalTotal = subtotal - totalDiscount;
     const deposit = parseFloat(depositAmount) || 0;
     const balanceDue = Math.max(0, finalTotal - deposit);
-    return { subtotal: subtotal.toFixed(2), vatExempt: applyScPwd && discountAmount > 0 ? vatExemptTotal.toFixed(2) : "0.00", discount: discountAmount.toFixed(2), total: finalTotal.toFixed(2), deposit: deposit.toFixed(2), balanceDue: balanceDue.toFixed(2) };
+
+    return {
+      subtotal: subtotal.toFixed(2),
+      vatExempt: applyScPwd && scPwdDiscount > 0 ? vatExemptTotal.toFixed(2) : '0.00',
+      discount: totalDiscount.toFixed(2),
+      scPwdDiscount: scPwdDiscount.toFixed(2),
+      itemDiscounts: totalItemDiscounts.toFixed(2),
+      billDiscount: billDisc.toFixed(2),
+      afterItemDiscounts: (subtotal - totalItemDiscounts).toFixed(2),
+      total: finalTotal.toFixed(2),
+      deposit: deposit.toFixed(2),
+      balanceDue: balanceDue.toFixed(2),
+    };
   };
   const financials = calculateFinancials();
 
+  // T4.148: Derived cash change values — no extra state, computed from financials.
+  const parsedTendered = parseFloat(amountTendered) || 0;
+  const changeDue = paymentMethod === 'Cash'
+    ? Math.max(0, parsedTendered - parseFloat(financials.balanceDue))
+    : 0;
+  const isCashInsufficient = paymentMethod === 'Cash'
+    && amountTendered !== ''
+    && parsedTendered < parseFloat(financials.balanceDue);
+
   // --- 4. PDF RECEIPT GENERATOR ---
-  const generateReceiptHTML = (transactionId) => {
+  const generateReceiptHTML = (transactionId, receiptNumber) => {
     const today = new Date().toLocaleString();
 
     // In GROUP mode, render items grouped by pet name with sub-headers.
@@ -360,7 +461,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
           </div>
 
           <div class="details">
-            <p><strong>Receipt #:</strong> ${transactionId.slice(0, 8).toUpperCase()}</p>
+            <p><strong>Receipt #:</strong> ${receiptNumber || transactionId.slice(0, 8).toUpperCase()}</p>
             <p><strong>Date:</strong> ${today}</p>
             <p><strong>Patient:</strong> ${patientLabel}</p>
             <p><strong>Cashier:</strong> ${profile?.fullName || 'POS Cashier'}</p>
@@ -378,9 +479,19 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
               <div class="total-row"><span>VAT Exempt (Eligible):</span><span>P${financials.vatExempt}</span></div>
               <div class="total-row" style="color: #D32F2F;"><span>SC/PWD Discount (20%):</span><span>- P${financials.discount}</span></div>
             ` : ''}
+            ${!applyScPwd && parseFloat(financials.itemDiscounts) > 0 ? `
+              <div class="total-row" style="color: #E65100;"><span>Item Discounts:</span><span>- P${financials.itemDiscounts}</span></div>
+            ` : ''}
+            ${!applyScPwd && parseFloat(financials.billDiscount) > 0 ? `
+              <div class="total-row" style="color: #E65100;"><span>Bill Discount (${billDiscountReason || 'Custom'}):</span><span>- P${financials.billDiscount}</span></div>
+            ` : ''}
             <div class="total-row"><span>Less Deposit:</span><span>- P${financials.deposit}</span></div>
             <div class="total-row grand-total"><span>BALANCE PAID:</span><span>P${financials.balanceDue}</span></div>
             <div class="total-row" style="margin-top:5px; font-size:12px; color:#555;"><span>Payment Method:</span><span>${paymentMethod}</span></div>
+            ${paymentMethod === 'Cash' && parsedTendered > 0 ? `
+              <div class="total-row" style="font-size:12px; color:#555;"><span>Tendered:</span><span>P${parsedTendered.toFixed(2)}</span></div>
+              <div class="total-row" style="font-size:12px; color:#555; font-weight:bold;"><span>Change:</span><span>P${changeDue.toFixed(2)}</span></div>
+            ` : ''}
           </div>
 
           <div class="footer">
@@ -511,6 +622,9 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
       const isGroupBill = billingMode === 'group' && isGroupVisit;
       const checkoutCorrelationId = `CHK-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
+      // T4.153: Hoisted receipt number — assigned inside the transaction, read outside for receipt HTML.
+      let checkoutReceiptNumber = '';
+
       const transactionId = await runTransaction(db, async (transaction) => {
         const patientLabel = isGroupBill
           ? `${patient.ownerName || 'Walk-In'} (Group Visit)`
@@ -529,6 +643,54 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
 
         // --- SALES DOCUMENT ---
         const saleRef = doc(collection(db, "sales"));
+
+        // T4.153: Atomic receipt number — read + increment inside this transaction to guarantee
+        // no two concurrent checkouts can receive the same sequential number.
+        const counterRef = doc(db, 'counters', 'receipt_sequence');
+        const counterSnap = await transaction.get(counterRef);
+        let nextSeq;
+        if (!counterSnap.exists()) {
+          // First-ever receipt — bootstrap the counter document.
+          nextSeq = 1;
+          transaction.set(counterRef, { value: 1 });
+        } else {
+          nextSeq = (counterSnap.data().value || 0) + 1;
+          transaction.update(counterRef, { value: nextSeq });
+        }
+        const today = new Date();
+        const dateStr = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
+        const receiptNumber = `OR-${dateStr}-${String(nextSeq).padStart(4, '0')}`;
+        checkoutReceiptNumber = receiptNumber;
+
+        // T4.149: Compute custom discount audit fields (captured from financials at checkout time).
+        const customDiscountAuditFields = {
+          customDiscountTotal: applyScPwd ? 0 : parseFloat(financials.itemDiscounts) + parseFloat(financials.billDiscount),
+          itemDiscountsTotal: applyScPwd ? 0 : parseFloat(financials.itemDiscounts),
+          billDiscountAmount: applyScPwd ? 0 : parseFloat(financials.billDiscount),
+          billDiscountType: !applyScPwd && parseFloat(billDiscountValue) > 0 ? billDiscountType : null,
+          billDiscountValue: !applyScPwd && parseFloat(billDiscountValue) > 0 ? parseFloat(billDiscountValue) : null,
+          billDiscountReason: !applyScPwd && billDiscountReason ? billDiscountReason : null,
+          itemDiscountDetails: !applyScPwd && Object.keys(itemDiscounts).length > 0
+            ? Object.entries(itemDiscounts).map(([idx, d]) => ({
+                itemIndex: parseInt(idx),
+                itemName: cart[parseInt(idx)]?.name || 'Unknown',
+                type: d.type,
+                value: d.value,
+                savedAmount: d.type === '%'
+                  ? (cart[parseInt(idx)]?.price * cart[parseInt(idx)]?.qty * Math.min(d.value, 100) / 100)
+                  : Math.min(d.value, (cart[parseInt(idx)]?.price || 0) * (cart[parseInt(idx)]?.qty || 1)),
+              }))
+            : [],
+          discountedBy: (!applyScPwd && (parseFloat(billDiscountValue) > 0 || Object.keys(itemDiscounts).length > 0))
+            ? (profile?.fullName || 'POS Cashier')
+            : null,
+        };
+
+        // T4.148: Tendered/change audit fields.
+        const cashAuditFields = {
+          amountTendered: paymentMethod === 'Cash' && amountTendered !== '' ? parsedTendered : null,
+          changeDue: paymentMethod === 'Cash' && amountTendered !== '' ? changeDue : null,
+        };
 
         if (isGroupBill) {
           // GROUP MODE: Build per-pet breakdown for the sale document.
@@ -550,6 +712,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
           });
 
           transaction.set(saleRef, {
+            receiptNumber,
             checkoutCorrelationId,
             visitGroupId: patient.visitGroupId,
             billingMode: 'group',
@@ -576,6 +739,8 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             prescribedItemCount: cart.filter(i => i.isPrescribed).length,
             cashierAddedItemCount: cart.filter(i => i.addedBy === 'cashier').length,
             hasUnprescribedAdditions: cart.some(i => i.addedBy === 'cashier'),
+            ...cashAuditFields,
+            ...customDiscountAuditFields,
           });
 
           // Update ALL appointment docs in the group to 'completed'.
@@ -607,6 +772,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         } else {
           // INDIVIDUAL MODE: existing behavior unchanged.
           transaction.set(saleRef, {
+            receiptNumber,
             checkoutCorrelationId,
             appointmentId: patient.id,
             ownerId: patient.ownerId || null,
@@ -631,6 +797,8 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             prescribedItemCount: cart.filter(i => i.isPrescribed).length,
             cashierAddedItemCount: cart.filter(i => i.addedBy === 'cashier').length,
             hasUnprescribedAdditions: cart.some(i => i.addedBy === 'cashier'),
+            ...cashAuditFields,
+            ...customDiscountAuditFields,
           });
 
           const apptRef = doc(db, "appointments", patient.id);
@@ -689,10 +857,10 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         });
       }
 
+      const receiptContent = generateReceiptHTML(transactionId, checkoutReceiptNumber);
       onClose();
 
       if (window.confirm(`Transaction Complete! Collected: ₱${financials.balanceDue}\n\nWould you like to print the Official Receipt?`)) {
-        const receiptContent = generateReceiptHTML(transactionId);
         const printWindow = window.open('', '_blank', 'width=800,height=600');
         if (printWindow) {
           printWindow.document.write(receiptContent);
@@ -830,6 +998,16 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
                         {item.isAutoBundled && <Typography variant="caption" color="textSecondary" fontWeight="bold" display="block">Auto-Bundled Supply</Typography>}
                         {item.isExternalRx && <Typography variant="caption" color="secondary" fontWeight="bold" display="block"><DescriptionIcon fontSize="inherit"/> Ext Rx: {item.externalVet}</Typography>}
                         {!item.isDiscountable && <Typography variant="caption" color="error" fontWeight="bold" display="block">No SC/PWD Applied</Typography>}
+                        {/* T4.149: Per-item discount chip — shows saved amount inline */}
+                        {itemDiscounts[index] && !applyScPwd && (
+                          <Typography variant="caption" fontWeight="bold" display="block" sx={{ color: COLORS.amber }}>
+                            Disc: {itemDiscounts[index].type === '%' ? `${itemDiscounts[index].value}%` : `₱${itemDiscounts[index].value}`}
+                            {' '}(-₱{(itemDiscounts[index].type === '%'
+                              ? (item.price * item.qty * Math.min(itemDiscounts[index].value, 100) / 100)
+                              : Math.min(itemDiscounts[index].value, item.price * item.qty)
+                            ).toFixed(2)})
+                          </Typography>
+                        )}
                       </TableCell>
                       <TableCell align="center">
                         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -841,6 +1019,34 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
                       <TableCell align="right">₱{item.price}</TableCell>
                       <TableCell align="right" sx={{ fontWeight: '900' }}>₱{(item.price * item.qty).toFixed(2)}</TableCell>
                       <TableCell align="center">
+                        {/* T4.149: Per-item discount button — opens amber Popover for % or ₱ discount */}
+                        {!item.isBase && !applyScPwd && (
+                          <Tooltip title="Item Discount">
+                            <IconButton
+                              size="small"
+                              onClick={(e) => {
+                                const existing = itemDiscounts[index];
+                                setEditDiscType(existing?.type || '%');
+                                setEditDiscValue(existing?.value?.toString() || '');
+                                setDiscountEditIndex(index);
+                                setDiscountAnchorEl(e.currentTarget);
+                              }}
+                              sx={{
+                                border: `1px solid ${itemDiscounts[index] ? COLORS.amber : COLORS.border}`,
+                                borderRadius: 0,
+                                color: itemDiscounts[index] ? COLORS.amber : COLORS.textMuted,
+                                bgcolor: itemDiscounts[index] ? COLORS.warningSurface : 'transparent',
+                                mr: 0.5,
+                                fontSize: '0.6rem',
+                                fontWeight: 900,
+                                width: 28,
+                                height: 28,
+                              }}
+                            >
+                              %
+                            </IconButton>
+                          </Tooltip>
+                        )}
                         {!item.isBase && ( <IconButton color="error" size="small" onClick={() => removeFromCart(index)}><RemoveCircleIcon fontSize="small"/></IconButton> )}
                       </TableCell>
                     </TableRow>
@@ -855,14 +1061,62 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
              <Paper variant="outlined" sx={{ p: 2, bgcolor: COLORS.cardBg, borderRadius: 0 }}>
                 <Typography variant="subtitle2" fontWeight="900" color="textSecondary" gutterBottom>DISCOUNTS (RA 9994)</Typography>
                 {hasScId && <Alert severity="info" icon={false} sx={{ py: 0, px: 1, mb: 1, '& .MuiAlert-message': { p: 0.5, fontSize: '0.75rem', fontWeight: 'bold' } }}>Verified Senior/PWD ID found.</Alert>}
-                <FormControlLabel control={<Switch checked={applyScPwd} onChange={(e) => setApplyScPwd(e.target.checked)} color="secondary" />} label={<Typography variant="body2" fontWeight="bold">Apply 20% SC/PWD</Typography>} />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={applyScPwd}
+                      onChange={(e) => {
+                        setApplyScPwd(e.target.checked);
+                        // T4.149: Clear all custom discounts when enabling SC/PWD — they are mutually exclusive.
+                        if (e.target.checked) {
+                          setItemDiscounts({});
+                          setBillDiscountValue('');
+                          setBillDiscountReason('');
+                        }
+                      }}
+                      color="secondary"
+                      // T4.149: Disable SC/PWD switch when any custom discount is active.
+                      disabled={Object.keys(itemDiscounts).length > 0 || parseFloat(billDiscountValue) > 0}
+                    />
+                  }
+                  label={<Typography variant="body2" fontWeight="bold">Apply 20% SC/PWD</Typography>}
+                />
+                {(Object.keys(itemDiscounts).length > 0 || parseFloat(billDiscountValue) > 0) && (
+                  <Typography variant="caption" color="error" fontWeight="bold" display="block" sx={{ mt: 0.5 }}>
+                    Disabled — custom discount is active. Remove custom discounts first.
+                  </Typography>
+                )}
                 <Typography variant="caption" color="textSecondary" display="block" sx={{ mt: 0.5 }}>Applies strictly to eligible medical services & medicines.</Typography>
              </Paper>
 
              <Paper variant="outlined" sx={{ p: 2.5, bgcolor: COLORS.warningSurface, border: `1px solid ${COLORS.peach}`, borderRadius: 0 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}><Typography variant="body2" color="textSecondary" fontWeight="bold">Subtotal:</Typography><Typography variant="body2" fontWeight="bold">₱{financials.subtotal}</Typography></Box>
                 {applyScPwd && parseFloat(financials.discount) > 0 && (
-                  <><Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}><Typography variant="body2" color="textSecondary" fontWeight="bold">Eligible VAT Exempt:</Typography><Typography variant="body2" fontWeight="bold">₱{financials.vatExempt}</Typography></Box><Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}><Typography variant="body2" color="error" fontWeight="bold">SC/PWD Discount:</Typography><Typography variant="body2" color="error" fontWeight="bold">- ₱{financials.discount}</Typography></Box></>
+                  <>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}><Typography variant="body2" color="textSecondary" fontWeight="bold">Eligible VAT Exempt:</Typography><Typography variant="body2" fontWeight="bold">₱{financials.vatExempt}</Typography></Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}><Typography variant="body2" color="error" fontWeight="bold">SC/PWD Discount:</Typography><Typography variant="body2" color="error" fontWeight="bold">- ₱{financials.discount}</Typography></Box>
+                  </>
+                )}
+                {/* T4.149: Custom discount stacking preview */}
+                {!applyScPwd && parseFloat(financials.itemDiscounts) > 0 && (
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography variant="body2" sx={{ color: COLORS.amber }} fontWeight="bold">Item Discounts:</Typography>
+                    <Typography variant="body2" sx={{ color: COLORS.amber }} fontWeight="bold">- ₱{financials.itemDiscounts}</Typography>
+                  </Box>
+                )}
+                {!applyScPwd && parseFloat(financials.itemDiscounts) > 0 && (
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography variant="body2" color="textSecondary" fontWeight="bold">After Items:</Typography>
+                    <Typography variant="body2" fontWeight="bold">₱{financials.afterItemDiscounts}</Typography>
+                  </Box>
+                )}
+                {!applyScPwd && parseFloat(financials.billDiscount) > 0 && (
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography variant="body2" sx={{ color: COLORS.warning }} fontWeight="bold">
+                      Bill Discount ({billDiscountType === '%' ? `${billDiscountValue}%` : `₱${billDiscountValue}`}):
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: COLORS.warning }} fontWeight="bold">- ₱{financials.billDiscount}</Typography>
+                  </Box>
                 )}
                 <Divider sx={{ my: 1.5 }} />
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', mb: 2 }}><Typography variant="body1" fontWeight="900" color={COLORS.brand}>GRAND TOTAL:</Typography><Typography variant="h5" fontWeight="900" color={COLORS.brand}>₱{financials.total}</Typography></Box>
@@ -871,25 +1125,184 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}><Typography variant="h6" fontWeight="900" color={COLORS.brand}>BALANCE DUE:</Typography><Typography variant="h4" fontWeight="900" color={COLORS.success}>₱{financials.balanceDue}</Typography></Box>
              </Paper>
 
+             {/* T4.149: Bill Discount — transaction-level custom discount with mandatory reason */}
+             {!applyScPwd && (
+               <Paper variant="outlined" sx={{ p: 2, bgcolor: COLORS.warningSurface, border: `2px solid ${COLORS.amber}`, borderRadius: 0 }}>
+                 <Typography variant="subtitle2" fontWeight={900} sx={{ color: COLORS.warning, mb: 1, textTransform: 'uppercase', letterSpacing: 0.5, fontSize: '0.75rem' }}>
+                   BILL DISCOUNT
+                 </Typography>
+                 <Box sx={{ display: 'flex', gap: 1, mb: 1.5 }}>
+                   <ToggleButtonGroup
+                     value={billDiscountType}
+                     exclusive
+                     onChange={(_, v) => { if (v) setBillDiscountType(v); }}
+                     size="small"
+                     sx={{ '& .MuiToggleButton-root': { borderRadius: 0, fontWeight: 900, border: `2px solid ${COLORS.amber}`, px: 1.5 } }}
+                   >
+                     <ToggleButton value="%" sx={{ '&.Mui-selected': { bgcolor: COLORS.amber, color: '#fff' } }}>%</ToggleButton>
+                     <ToggleButton value="₱" sx={{ '&.Mui-selected': { bgcolor: COLORS.amber, color: '#fff' } }}>₱</ToggleButton>
+                   </ToggleButtonGroup>
+                   <TextField
+                     fullWidth size="small" type="number"
+                     placeholder={billDiscountType === '%' ? 'e.g. 10' : 'e.g. 100'}
+                     value={billDiscountValue}
+                     onChange={(e) => {
+                       const v = e.target.value;
+                       if (v === '' || parseFloat(v) >= 0) setBillDiscountValue(v);
+                     }}
+                     InputProps={{
+                       startAdornment: <InputAdornment position="start">{billDiscountType}</InputAdornment>,
+                       inputProps: { min: 0, max: billDiscountType === '%' ? 100 : undefined },
+                     }}
+                     sx={{ bgcolor: COLORS.cardBg }}
+                   />
+                 </Box>
+                 <FormControl fullWidth size="small" sx={{ bgcolor: COLORS.cardBg }}>
+                   <InputLabel>Reason (required)</InputLabel>
+                   <Select
+                     value={billDiscountReason}
+                     label="Reason (required)"
+                     onChange={(e) => setBillDiscountReason(e.target.value)}
+                   >
+                     {DISCOUNT_REASONS.map(r => (
+                       <MenuItem key={r} value={r}>{r}</MenuItem>
+                     ))}
+                   </Select>
+                 </FormControl>
+                 {parseFloat(billDiscountValue) > 0 && !billDiscountReason && (
+                   <Typography variant="caption" color="error" fontWeight="bold" display="block" sx={{ mt: 1 }}>
+                     A reason is required to apply a bill discount.
+                   </Typography>
+                 )}
+                 {Object.keys(itemDiscounts).length > 0 && parseFloat(billDiscountValue) > 0 && (
+                   <Chip
+                     label={`${Object.keys(itemDiscounts).length + 1} discounts applied`}
+                     size="small"
+                     sx={{ mt: 1, borderRadius: 0, bgcolor: COLORS.amber, color: '#fff', fontWeight: 900 }}
+                   />
+                 )}
+               </Paper>
+             )}
+
              <Paper variant="outlined" sx={{ p: 2, bgcolor: COLORS.cardBg, borderRadius: 0 }}>
                 <Typography variant="subtitle2" fontWeight="900" color="textSecondary" gutterBottom>PAYMENT METHOD</Typography>
                 <FormControl fullWidth size="small" sx={{ mt: 1 }}>
                   <Select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
-                    <MenuItem value="Cash">💵 Cash</MenuItem>
-                    <MenuItem value="GCash">📱 GCash / Maya</MenuItem>
-                    <MenuItem value="Card">💳 Credit / Debit Card</MenuItem>
-                    <MenuItem value="Bank Transfer">🏦 Bank Transfer</MenuItem>
+                    <MenuItem value="Cash">Cash</MenuItem>
+                    <MenuItem value="GCash">GCash / Maya</MenuItem>
+                    <MenuItem value="Card">Credit / Debit Card</MenuItem>
+                    <MenuItem value="Bank Transfer">Bank Transfer</MenuItem>
                   </Select>
                 </FormControl>
+                {/* T4.148: Amount Tendered + Change Due — visible only for Cash transactions */}
+                {paymentMethod === 'Cash' && (
+                  <Box sx={{ mt: 2 }}>
+                    <TextField
+                      fullWidth size="small" label="Amount Tendered"
+                      type="number"
+                      value={amountTendered}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === '' || parseFloat(v) >= 0) setAmountTendered(v);
+                      }}
+                      error={isCashInsufficient}
+                      helperText={isCashInsufficient ? 'Insufficient amount' : ''}
+                      InputProps={{
+                        startAdornment: <InputAdornment position="start">₱</InputAdornment>,
+                        inputProps: { min: 0 },
+                      }}
+                      sx={{ bgcolor: COLORS.cardBg, mb: 1.5 }}
+                    />
+                    {parsedTendered > 0 && !isCashInsufficient && (
+                      <Box sx={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        p: 1.5, bgcolor: COLORS.kpiGreenBg, border: `2px solid ${COLORS.success}`,
+                        borderRadius: 0,
+                      }}>
+                        <Typography variant="subtitle2" fontWeight={900} color={COLORS.success}>
+                          CHANGE DUE:
+                        </Typography>
+                        <Typography variant="h6" fontWeight={900} color={COLORS.success}>
+                          ₱{changeDue.toFixed(2)}
+                        </Typography>
+                      </Box>
+                    )}
+                  </Box>
+                )}
              </Paper>
           </Box>
           </Box>{/* closes the main content flex row */}
+
+          {/* T4.149: Per-item discount Popover */}
+          <Popover
+            open={Boolean(discountAnchorEl)}
+            anchorEl={discountAnchorEl}
+            onClose={() => { setDiscountAnchorEl(null); setDiscountEditIndex(null); }}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+            transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+            PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.amber}`, boxShadow: `4px 4px 0px ${COLORS.amber}33`, p: 2, width: 240 } }}
+          >
+            <Typography variant="subtitle2" fontWeight={900} sx={{ color: COLORS.warning, mb: 1.5, textTransform: 'uppercase', letterSpacing: 0.5, fontSize: '0.75rem' }}>
+              Item Discount
+            </Typography>
+            <ToggleButtonGroup
+              value={editDiscType}
+              exclusive
+              onChange={(_, v) => { if (v) setEditDiscType(v); }}
+              size="small"
+              fullWidth
+              sx={{ mb: 1.5, '& .MuiToggleButton-root': { borderRadius: 0, fontWeight: 900, border: `2px solid ${COLORS.amber}` } }}
+            >
+              <ToggleButton value="%" sx={{ '&.Mui-selected': { bgcolor: COLORS.amber, color: '#fff' } }}>%</ToggleButton>
+              <ToggleButton value="₱" sx={{ '&.Mui-selected': { bgcolor: COLORS.amber, color: '#fff' } }}>₱</ToggleButton>
+            </ToggleButtonGroup>
+            <TextField
+              fullWidth size="small" type="number" autoFocus
+              placeholder={editDiscType === '%' ? 'e.g. 10' : 'e.g. 50'}
+              value={editDiscValue}
+              onChange={(e) => setEditDiscValue(e.target.value)}
+              InputProps={{
+                startAdornment: <InputAdornment position="start">{editDiscType}</InputAdornment>,
+                inputProps: { min: 0, max: editDiscType === '%' ? 100 : undefined },
+              }}
+              sx={{ mb: 1.5, bgcolor: COLORS.cardBg }}
+            />
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button
+                fullWidth variant="contained" size="small"
+                onClick={() => {
+                  const val = parseFloat(editDiscValue) || 0;
+                  if (val > 0) {
+                    setItemDiscounts(prev => ({ ...prev, [discountEditIndex]: { type: editDiscType, value: val } }));
+                  } else {
+                    setItemDiscounts(prev => { const next = { ...prev }; delete next[discountEditIndex]; return next; });
+                  }
+                  setDiscountAnchorEl(null);
+                  setDiscountEditIndex(null);
+                }}
+                sx={{ bgcolor: COLORS.amber, fontWeight: 900, borderRadius: 0, '&:hover': { bgcolor: COLORS.warning } }}
+              >
+                Apply
+              </Button>
+              <Button
+                size="small"
+                onClick={() => {
+                  setItemDiscounts(prev => { const next = { ...prev }; delete next[discountEditIndex]; return next; });
+                  setDiscountAnchorEl(null);
+                  setDiscountEditIndex(null);
+                }}
+                sx={{ color: COLORS.textMuted, fontWeight: 900, borderRadius: 0 }}
+              >
+                Clear
+              </Button>
+            </Box>
+          </Popover>
         </DialogContent>
         <DialogActions sx={{ p: 2.5, bgcolor: COLORS.panelBg, display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${COLORS.timelineRail}` }}>
           <Button onClick={onClose} sx={{ color: COLORS.accent, fontWeight: 'bold', px: 3 }}>Cancel</Button>
           <Box sx={{ display: 'flex', gap: 2 }}>
               <Button onClick={handleSaveDraft} disabled={loading} variant="outlined" color="primary" startIcon={<SaveIcon />}>Save Invoice Draft</Button>
-              <Button onClick={handleCheckout} disabled={loading} variant="contained" color="success" size="large" startIcon={<PaidIcon />} sx={{ px: 4, fontWeight: '900', boxShadow: 3 }}>
+              <Button onClick={handleCheckout} disabled={loading || isCashInsufficient || (parseFloat(billDiscountValue) > 0 && !billDiscountReason)} variant="contained" color="success" size="large" startIcon={<PaidIcon />} sx={{ px: 4, fontWeight: '900', boxShadow: 3 }}>
                  {loading ? "Processing..." : `Settle Balance (₱${financials.balanceDue})`}
               </Button>
           </Box>

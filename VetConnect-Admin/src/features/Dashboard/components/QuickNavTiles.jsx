@@ -14,8 +14,8 @@ const NAV_ITEMS = [
   { label: 'Queue',     path: '/queue',     icon: <PeopleAltIcon />,    color: COLORS.medical },
   { label: 'Patients',  path: '/patients',  icon: <PetsIcon />,         color: COLORS.accent },
   { label: 'Inventory', path: '/inventory', icon: <StoreIcon />,        color: COLORS.success },
-  { label: 'Sales',     path: '/sales',     icon: <ReceiptLongIcon />,  color: COLORS.warning, adminOnly: true },
-  { label: 'Expenses',  path: '/expenses',  icon: <MoneyOffIcon />,     color: COLORS.danger,  adminOnly: true },
+  { label: 'Sales',     path: '/sales',     icon: <ReceiptLongIcon />,  color: COLORS.warning },
+  { label: 'Expenses',  path: '/expenses',  icon: <MoneyOffIcon />,     color: COLORS.danger },
 ];
 
 /**
@@ -31,7 +31,7 @@ export default function QuickNavTiles() {
   const navigate = useNavigate();
   const { isAdmin } = useUser();
 
-  const visibleItems = NAV_ITEMS.filter(item => !item.adminOnly || isAdmin);
+  const visibleItems = NAV_ITEMS;
 
   return (
     <Box sx={{

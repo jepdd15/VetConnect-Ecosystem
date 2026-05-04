@@ -35,7 +35,9 @@ export const UserProvider = ({ children }) => {
     return () => unsubscribe(); // Cleanup auth listener
   }, []);
 
-  const isAdmin = profile?.accessLevel === 'admin' || profile?.role === 'admin';
+  // T4.154: All authenticated staff have full access — isAdmin is true for any staff profile.
+  const STAFF_ROLES = ['admin', 'staff', 'veterinarian', 'groomer'];
+  const isAdmin = !!profile && STAFF_ROLES.includes(profile.role || profile.accessLevel);
 
   return (
     <UserContext.Provider value={{ user, profile, isAdmin, loading }}>

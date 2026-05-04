@@ -57,7 +57,7 @@ export default function StaffTable({ data, getWorkload, onEdit, onDelete, depart
     {
       field: 'departments', headerName: 'Assigned Departments', flex: 2.5, minWidth: 280,
       renderCell: (p) => {
-        const deps = p.value || [];
+        const deps = Array.isArray(p.value) ? p.value : [];
         if (deps.length === 0) return <Typography variant="caption" fontStyle="italic">No departments assigned</Typography>;
         return (
           <Box sx={{ display: 'flex', gap: 0.8, flexWrap: 'wrap', alignItems: 'center', py: 1 }}>

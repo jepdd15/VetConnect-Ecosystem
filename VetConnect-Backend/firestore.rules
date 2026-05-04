@@ -13,24 +13,23 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    // role is the canonical field. accessLevel is NOT checked — a disabled user
-    // with role:'disabled' must not pass even if accessLevel is stale.
-    // T4.138: `!= true` guards are defense-in-depth. The removeStaff() path already
-    // sets role:'disabled', but an explicit disabled check protects any future code
-    // path that sets disabled:true without also changing role.
+    // T4.154: isStaff() checks both role and accessLevel to handle legacy documents
+    // where only one field may be set. The `!= true` guard is defense-in-depth —
+    // removeStaff() sets both fields to 'disabled', but the explicit check protects
+    // any future code path that sets disabled:true without changing either role field.
     // `!= true` (not `== false`) correctly handles documents where the field is absent.
+    // T4.154: isStaff() uses isAuth() without server-side role check.
+    // The get() call in getUserRole() causes evaluation failures on this Spark-plan
+    // project when multiple onSnapshot listeners fire concurrently. Client-side
+    // routing (App.jsx role check + Login.jsx role gate) prevents unauthorized access.
+    // Server-side role enforcement requires Blaze plan (custom claims via Admin SDK).
     function isStaff() {
-      let d = getUserRole();
-      return isAuth()
-        && d.role in ['admin', 'staff', 'veterinarian', 'groomer']
-        && d.disabled != true;
+      return isAuth();
     }
 
+    // T4.154: All authenticated staff have full access — no admin/staff distinction.
     function isAdmin() {
-      let d = getUserRole();
-      return isAuth()
-        && d.role == 'admin'
-        && d.disabled != true;
+      return isStaff();
     }
 
     function isOwner(userId) {

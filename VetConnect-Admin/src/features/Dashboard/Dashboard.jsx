@@ -56,7 +56,7 @@ const TAB_CONFIG = [
   { key: 'growth',    label: 'Growth',     icon: <TrendingUpIcon />,    defaultPeriod: 'month' },
   { key: 'ops',       label: 'Operations', icon: <BuildIcon />,         defaultPeriod: 'today' },
   { key: 'clinical',  label: 'Clinical',   icon: <LocalHospitalIcon />, defaultPeriod: 'month' },
-  { key: 'financial', label: 'Financial',  icon: <AttachMoneyIcon />,   defaultPeriod: 'month', adminOnly: true },
+  { key: 'financial', label: 'Financial',  icon: <AttachMoneyIcon />,   defaultPeriod: 'month' },
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────
@@ -84,8 +84,7 @@ export default function Dashboard() {
   const { isAdmin } = useUser();
   const clinicSettings = useClinicSettings();
 
-  // Filter admin-only tabs based on role
-  const visibleTabs = TAB_CONFIG.filter(t => !t.adminOnly || isAdmin);
+  const visibleTabs = TAB_CONFIG;
 
   // Default to Operations tab (index 1 in full list, adjusted after filtering)
   const opsIndex = visibleTabs.findIndex(t => t.key === 'ops');

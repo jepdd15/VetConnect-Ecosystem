@@ -77,15 +77,9 @@ const MainLayout = ({ children, onLogout }) => {
 // Allowed staff roles — must match Login.jsx allowedRoles
 const STAFF_ROLES = ['admin', 'staff', 'veterinarian', 'groomer'];
 
-/** Route guard: wraps admin-only routes, redirects non-admins to "/" */
-const AdminRoute = ({ children }) => {
-  const { isAdmin } = useUser();
-  return isAdmin ? children : <Navigate to="/" replace />;
-};
-
 // --- THE SECURE APP SHELL ---
 function AppShell() {
-  const { user, profile, isAdmin, loading } = useUser();
+  const { user, profile, loading } = useUser();
 
   // T4.137 — Password change dialog state
   const [currentPw, setCurrentPw] = React.useState('');
@@ -344,12 +338,12 @@ function AppShell() {
                   <Route path="/patients/:id" element={<PatientDashboard />} />
                   <Route path="/services" element={<Services />} />
                   <Route path="/inventory" element={<Inventory />} />
-                  <Route path="/staff" element={<AdminRoute><Staff /></AdminRoute>} />
-                  <Route path="/sales" element={<AdminRoute><Sales /></AdminRoute>} />
-                  <Route path="/expenses" element={<AdminRoute><Expenses /></AdminRoute>} />
+                  <Route path="/staff" element={<Staff />} />
+                  <Route path="/sales" element={<Sales />} />
+                  <Route path="/expenses" element={<Expenses />} />
                   <Route path="/monitor" element={<Monitor />} />
-                  <Route path="/settings" element={<AdminRoute><Settings /></AdminRoute>} />
-                  <Route path="/reports" element={<AdminRoute><Reports /></AdminRoute>} />
+                  <Route path="/settings" element={<Settings />} />
+                  <Route path="/reports" element={<Reports />} />
                   <Route path="/notification-logs" element={<NotificationLogs />} />
                   {/* Fallback for unknown internal routes */}
                   <Route path="*" element={<Navigate to="/" replace />} />

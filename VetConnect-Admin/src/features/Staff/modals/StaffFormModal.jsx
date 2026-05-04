@@ -7,7 +7,6 @@ import {
 } from '@mui/material';
 
 import { useNavigate } from 'react-router-dom';
-import { useUser } from '../../../context/UserContext';
 import { isValidPHPhone } from '../../../utils/phoneValidation';
 import { COLORS, FONT } from '../../../theme/designTokens';
 
@@ -23,7 +22,6 @@ import DeleteIcon from '@mui/icons-material/Delete';
 
 export default function StaffFormModal({ open, onClose, item, dynamicDepartments, onSave }) {
 
-  const { isAdmin } = useUser();
   const navigate = useNavigate();
   const isEditing = !!item;
 
@@ -33,8 +31,8 @@ export default function StaffFormModal({ open, onClose, item, dynamicDepartments
     email:       item?.email || '',
     phone:       item?.phone || '',
     prcLicense:  item?.prcLicense || '',
-    // Section 2: Access & Scheduling
-    accessLevel: item?.accessLevel || (item?.role === 'admin' ? 'admin' : 'staff'),
+    // Section 2: Access & Scheduling (T4.154: accessLevel always defaults to 'staff')
+    accessLevel: item?.accessLevel || 'staff',
     departments: item?.departments || [],
     // Section 3: HR & Emergency (all optional)
     address:          item?.address || '',
@@ -212,23 +210,7 @@ export default function StaffFormModal({ open, onClose, item, dynamicDepartments
             </Typography>
             <Paper elevation={0} sx={{ p: 3, bgcolor: COLORS.panelBg, border: `2px solid ${COLORS.accent}`, borderRadius: 0 }}>
               <Grid container spacing={2}>
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <FormControl fullWidth size="small" sx={sxField}>
-                    <InputLabel>System Access *</InputLabel>
-                    <Select value={formData.accessLevel} label="System Access *" onChange={setField('accessLevel')}>
-                      <MenuItem value="staff">Clinical Staff</MenuItem>
-                      <MenuItem value="admin" sx={{ color: COLORS.danger, fontWeight: 'bold' }}>Clinic Administrator</MenuItem>
-                    </Select>
-                    <FormHelperText sx={{ color: formData.accessLevel === 'admin' ? COLORS.danger : COLORS.accent, fontWeight: 'bold', fontStyle: 'italic', mt: 1, lineHeight: 1.4 }}>
-                      {formData.accessLevel === 'admin'
-                        ? "HIGHEST AUTHORITY LEVEL. Grants absolute control over laboratory configuration, staff authorization, financial operational rules, and clinic-wide system settings. Intended for Practice Owners or Senior Management."
-                        : "OPERATIONAL-LEVEL ACCESS. Authorized for frontline clinical workflows, including patient management, real-time triage, and forensic medical documentation. Access to system configuration is restricted."
-                      }
-                    </FormHelperText>
-                  </FormControl>
-                </Grid>
-
-                <Grid size={{ xs: 12, md: 6 }}>
+                <Grid size={{ xs: 12 }}>
                   <FormControl fullWidth size="small" sx={sxField} error={!!errors.departments}>
                     <InputLabel>Assigned Departments *</InputLabel>
                     <Select
@@ -263,15 +245,13 @@ export default function StaffFormModal({ open, onClose, item, dynamicDepartments
                     )}
                   </FormControl>
 
-                  {isAdmin && (
-                    <Typography
-                      variant="caption"
-                      onClick={() => { onClose(); navigate('/settings'); }}
-                      sx={{ color: COLORS.accentWarm, fontWeight: 'bold', cursor: 'pointer', mt: 1, display: 'flex', alignItems: 'center', gap: 0.5, '&:hover': { textDecoration: 'underline' } }}
-                    >
-                      <OpenInNewIcon sx={{ fontSize: 14 }} /> Manage Departments in Settings
-                    </Typography>
-                  )}
+                  <Typography
+                    variant="caption"
+                    onClick={() => { onClose(); navigate('/settings'); }}
+                    sx={{ color: COLORS.accentWarm, fontWeight: 'bold', cursor: 'pointer', mt: 1, display: 'flex', alignItems: 'center', gap: 0.5, '&:hover': { textDecoration: 'underline' } }}
+                  >
+                    <OpenInNewIcon sx={{ fontSize: 14 }} /> Manage Departments in Settings
+                  </Typography>
                 </Grid>
               </Grid>
             </Paper>

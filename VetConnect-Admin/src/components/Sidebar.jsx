@@ -7,9 +7,6 @@ import { useNavigate, useLocation } from 'react-router-dom';
 // Design Tokens
 import { FONT, COLORS } from '../theme/designTokens';
 
-// THE FIX: Import the Context to check roles!
-import { useUser } from '../context/UserContext'; 
-
 // Icons
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import QueueIcon from '@mui/icons-material/PeopleAlt'; 
@@ -28,21 +25,19 @@ import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 
 const drawerWidth = 260;
 
-// THE FIX: Mapped to "name" and "path" with explicit "adminOnly" security flags!
-const menuItems =[
+// T4.154: All menu items are visible to all authenticated staff — no role gating.
+const menuItems = [
   { name: 'Dashboard', icon: <DashboardIcon />, path: '/' },
   { name: 'Patient Queue', icon: <QueueIcon />, path: '/queue' },
   { name: 'All Records', icon: <HistoryIcon />, path: '/records' },
   { name: 'Patients (CRM)', icon: <PetsIcon />, path: '/patients' },
   { name: 'Services', icon: <MedicalServicesIcon />, path: '/services' },
   { name: 'Inventory', icon: <InventoryIcon />, path: '/inventory' },
-  
-  // RESTRICTED MODULES
-  { name: 'Staff', icon: <StaffIcon />, path: '/staff', adminOnly: true },
-  { name: 'Transactions', icon: <TransactionIcon />, path: '/sales', adminOnly: true },
-  { name: 'Expenses', icon: <ExpenseIcon />, path: '/expenses', adminOnly: true },
-  { name: 'Settings', icon: <SettingsIcon />, path: '/settings', adminOnly: true },
-  { name: 'Forensic Reports', icon: <AssessmentIcon />, path: '/reports', adminOnly: true },
+  { name: 'Staff', icon: <StaffIcon />, path: '/staff' },
+  { name: 'Transactions', icon: <TransactionIcon />, path: '/sales' },
+  { name: 'Expenses', icon: <ExpenseIcon />, path: '/expenses' },
+  { name: 'Settings', icon: <SettingsIcon />, path: '/settings' },
+  { name: 'Forensic Reports', icon: <AssessmentIcon />, path: '/reports' },
   { name: 'Notification Logs', icon: <NotificationsActiveIcon />, path: '/notification-logs' },
 ];
 
@@ -53,11 +48,8 @@ export default function Sidebar({ onLogout, lowStockCount = 0 }) {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  // SECURE HOOK: Checks if the logged-in user has an 'admin' token in the database
-  const { isAdmin } = useUser();
-
-  // THE FIX: The array filter. If it requires admin and they aren't one, slice it out of the array!
-  const visibleMenuItems = menuItems.filter(item => !item.adminOnly || isAdmin);
+  // T4.154: All staff see all menu items — no filtering needed.
+  const visibleMenuItems = menuItems;
 
   const handleNavClick = (path) => {
     navigate(path);

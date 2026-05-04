@@ -62,7 +62,6 @@ import SoapGrid from './SoapGrid';
 import PhysicalExamChecklist from './PhysicalExamChecklist';
 import ClinicalAIPanel from './ClinicalAIPanel';
 import EMRDrawer from './EMRDrawer';
-import { ServiceProgressCard } from './ServiceProgressCard';
 import AmendmentDialog from './AmendmentDialog';
 
 const Transition = React.forwardRef(function Transition(props, ref) {
@@ -1402,6 +1401,28 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     setTreatmentCart(prev => [...prev, itemObj]);
     setIsDirty(true);
 
+    // T4.127: Mid-consult service registration — push to appointment's services[]
+    // so handleToggleServiceProgress, clinicalPulse events, and serviceStartedAt/
+    // serviceCompletedAt timestamps work for ad-hoc service additions.
+    if (itemObj.type === 'service') {
+      setServiceProgress(prev => ({ ...prev, [itemObj.id]: 'pending' }));
+      try {
+        await updateDoc(doc(db, "appointments", patient.id), {
+          services: arrayUnion({
+            id: itemObj.id,
+            name: itemObj.name,
+            price: itemObj.price,
+            addedDuringConsult: true,
+          }),
+        });
+      } catch (e) {
+        console.error('[ClinicalWorkspace] Mid-consult service registration failed:', e);
+        // Non-blocking: service still appears in treatmentCart, just won't have
+        // full progress tracking. Show warning toast.
+        showToast('Service added to cart but progress tracking may be limited.', 'warning');
+      }
+    }
+
     // T4.117: If this is a vaccine-category product, auto-fill the vaccine form
     // from vaccineConfig defaults + FIFO batch data. Replaces the old keyword-based
     // detection (vaccineKeywords.some(kw => name.includes(kw))).
@@ -1533,10 +1554,18 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
 
     try {
       const now = Timestamp.now();
-      const newServices = (patient.services || []).map(s => ({
+      // T4.127: Merge mid-consult services from treatmentCart into patient.services before mapping.
+      // Without this, arrayUnion-added services get silently dropped when we write the full array.
+      const existingIds = new Set((patient.services || []).map(s => s.id));
+      const mergedServices = [
+        ...(patient.services || []),
+        ...treatmentCart
+          .filter(item => item.type === 'service' && !existingIds.has(item.id))
+          .map(item => ({ id: item.id, name: item.name, price: item.price, addedDuringConsult: true })),
+      ];
+      const newServices = mergedServices.map(s => ({
         ...s,
         serviceStatus: s.id === svcId ? next : (serviceProgress[s.id] ?? s.serviceStatus ?? 'pending'),
-        // T2.107: Record precise timestamps when a service starts and completes.
         ...(s.id === svcId && next === 'in-progress' ? { serviceStartedAt: now } : {}),
         ...(s.id === svcId && next === 'completed' ? { serviceCompletedAt: now } : {}),
       }));
@@ -3742,197 +3771,207 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                         />
                     )}
 
-                    <Stack spacing={2} sx={{ mt: 1 }}>
-                        {treatmentCart.map((rx, idx) => (
-                            <Box key={idx} sx={{ bgcolor: 'white', p: 2, borderRadius: 2, border: `1px solid ${COLORS.borderLight}` }}>
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                                    <Typography sx={{ fontWeight: 1000, fontSize: '0.85rem', color: COLORS.brand }}>{rx.name}</Typography>
-                                    <IconButton size="small" onClick={()=>handleRemoveRx(idx)}><CloseIcon sx={{ fontSize: 14, color: '#D32F2F' }}/></IconButton>
+                    {/* ═══ T4.127: SERVICES PANEL ═══ */}
+                    {(() => {
+                      const serviceItems = treatmentCart.filter(rx => rx.type === 'service');
+                      if (serviceItems.length === 0) return null;
+                      return (
+                        <Paper sx={{ p: 2, borderRadius: 0, border: `2px solid ${COLORS.sky}`, bgcolor: '#F8FCFF', mt: 1 }}>
+                          <Typography sx={{ fontWeight: 1000, fontSize: '0.75rem', color: COLORS.sky, letterSpacing: '0.08em', mb: 1.5 }}>
+                            SERVICES ({serviceItems.length})
+                          </Typography>
+                          <Stack spacing={1}>
+                            {serviceItems.map((rx) => {
+                              const cartIdx = treatmentCart.indexOf(rx);
+                              const status = serviceProgress[rx.id] || 'pending';
+                              const progressColors = {
+                                pending: { bg: '#9E9E9E', label: 'PENDING' },
+                                'in-progress': { bg: COLORS.warning, label: 'IN PROGRESS' },
+                                completed: { bg: COLORS.success, label: 'COMPLETED' },
+                              };
+                              const pc = progressColors[status] || progressColors.pending;
+                              const isToggleable = !isRecordLocked && status !== 'completed';
+
+                              return (
+                                <Box
+                                  key={rx.id || cartIdx}
+                                  sx={{
+                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                    p: 1.5, bgcolor: 'white', border: `1px solid ${COLORS.borderLight}`, borderRadius: 0,
+                                  }}
+                                >
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1, minWidth: 0 }}>
+                                    {!isRecordLocked && !rx.isBase && (
+                                      <IconButton size="small" onClick={() => handleRemoveRx(cartIdx)} sx={{ p: 0.25 }}>
+                                        <CloseIcon sx={{ fontSize: 12, color: COLORS.danger }} />
+                                      </IconButton>
+                                    )}
+                                    <Typography sx={{ fontWeight: 900, fontSize: '0.8rem', color: COLORS.brand, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                      {rx.name}
+                                    </Typography>
+                                  </Box>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
+                                    <Typography sx={{ fontWeight: 900, fontSize: '0.8rem', color: COLORS.brand }}>
+                                      ₱{(rx.price * rx.qty).toLocaleString()}
+                                    </Typography>
+                                    <Chip
+                                      label={pc.label}
+                                      size="small"
+                                      onClick={() => isToggleable && handleToggleServiceProgress(rx.id)}
+                                      sx={{
+                                        bgcolor: pc.bg, color: '#FFF', fontWeight: 900, fontSize: '0.6rem',
+                                        height: 22, borderRadius: 0, cursor: isToggleable ? 'pointer' : 'default',
+                                        '&:hover': isToggleable ? { opacity: 0.85 } : {},
+                                      }}
+                                    />
+                                  </Box>
                                 </Box>
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#F5F5F5', borderRadius: 1.5, px: 0.5 }}>
-                                        <IconButton size="small" onClick={() => handleUpdateQty(idx, -1)} sx={{ p: 0.5 }}><ContentCutIcon sx={{ fontSize: 14, rotate: '90deg' }} /></IconButton>
-                                        <Typography sx={{ fontWeight: 1000, fontSize: '0.85rem' }}>{rx.qty}</Typography>
-                                        <IconButton size="small" onClick={() => handleUpdateQty(idx, 1)} sx={{ p: 0.5 }}><AddCircleIcon sx={{ fontSize: 14, color: COLORS.brand }} /></IconButton>
+                              );
+                            })}
+                          </Stack>
+                          {/* Per-panel subtotal */}
+                          <Box sx={{ mt: 1.5, pt: 1, borderTop: `1px solid ${COLORS.borderLight}`, display: 'flex', justifyContent: 'space-between' }}>
+                            <Typography sx={{ fontWeight: 800, fontSize: '0.7rem', color: COLORS.textMuted, textTransform: 'uppercase' }}>Services</Typography>
+                            <Typography sx={{ fontWeight: 900, fontSize: '0.85rem', color: COLORS.brand }}>
+                              ₱{serviceItems.reduce((sum, rx) => sum + (rx.price * rx.qty), 0).toLocaleString()}
+                            </Typography>
+                          </Box>
+                        </Paper>
+                      );
+                    })()}
+
+                    {/* ═══ T4.127: ITEMS & MEDICATIONS PANEL ═══ */}
+                    {(() => {
+                      const productItems = treatmentCart.filter(rx => rx.type === 'product');
+                      if (productItems.length === 0) return null;
+                      return (
+                        <Paper sx={{ p: 2, borderRadius: 0, border: `2px solid ${COLORS.accent}`, bgcolor: '#FBF9F7', mt: 1 }}>
+                          <Typography sx={{ fontWeight: 1000, fontSize: '0.75rem', color: COLORS.accent, letterSpacing: '0.08em', mb: 1.5 }}>
+                            ITEMS & MEDICATIONS ({productItems.length})
+                          </Typography>
+                          <Stack spacing={2}>
+                            {productItems.map((rx) => {
+                              const cartIdx = treatmentCart.indexOf(rx);
+                              return (
+                                <Box key={rx.id || cartIdx} sx={{ bgcolor: 'white', p: 2, borderRadius: 0, border: `1px solid ${COLORS.borderLight}` }}>
+                                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                                    <Typography sx={{ fontWeight: 1000, fontSize: '0.85rem', color: COLORS.brand }}>{rx.name}</Typography>
+                                    {!isRecordLocked && (
+                                      <IconButton size="small" onClick={() => handleRemoveRx(cartIdx)}>
+                                        <CloseIcon sx={{ fontSize: 14, color: '#D32F2F' }} />
+                                      </IconButton>
+                                    )}
+                                  </Box>
+                                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#F5F5F5', borderRadius: 0, px: 0.5 }}>
+                                      <IconButton size="small" onClick={() => handleUpdateQty(cartIdx, -1)} sx={{ p: 0.5 }}>
+                                        <ContentCutIcon sx={{ fontSize: 14, rotate: '90deg' }} />
+                                      </IconButton>
+                                      <Typography sx={{ fontWeight: 1000, fontSize: '0.85rem' }}>{rx.qty}</Typography>
+                                      <IconButton size="small" onClick={() => handleUpdateQty(cartIdx, 1)} sx={{ p: 0.5 }}>
+                                        <AddCircleIcon sx={{ fontSize: 14, color: COLORS.brand }} />
+                                      </IconButton>
                                     </Box>
                                     <Typography sx={{ fontWeight: 1000, fontSize: '0.9rem', color: COLORS.brand }}>₱{(rx.price * rx.qty).toLocaleString()}</Typography>
-                                </Box>
+                                  </Box>
 
-                                {/* Step 1 (T3.110): Always-visible dosing instructions for drug items.
-                                    Clinical safety: every prescription must have explicit instructions
-                                    before the record is signed off — "Use as directed" is inadequate. */}
-                                {rx.isDrug && (
+                                  {/* Drug instructions (always visible) — clinical safety: every prescription
+                                      must have explicit dosing before sign-off. */}
+                                  {rx.isDrug && (
                                     <TextField
-                                        size="small"
-                                        fullWidth
-                                        multiline
-                                        minRows={1}
-                                        maxRows={3}
-                                        placeholder="e.g., 1 tab twice daily for 7 days"
-                                        value={rx.instructions || ''}
-                                        onChange={(e) => handleUpdateRxSig(idx, e.target.value)}
-                                        disabled={isRecordLocked}
+                                      size="small" fullWidth multiline minRows={1} maxRows={3}
+                                      placeholder="e.g., 1 tab twice daily for 7 days"
+                                      value={rx.instructions || ''}
+                                      onChange={(e) => handleUpdateRxSig(cartIdx, e.target.value)}
+                                      disabled={isRecordLocked}
+                                      sx={{
+                                        mt: 1,
+                                        '& .MuiInputBase-root': {
+                                          fontSize: '0.75rem', fontWeight: 700, fontFamily: FONT,
+                                          borderRadius: 0, bgcolor: COLORS.rxBg, border: `1px solid ${COLORS.rxBorder}`,
+                                        },
+                                        '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
+                                      }}
+                                      InputProps={{
+                                        startAdornment: <MedicationIcon sx={{ fontSize: 14, color: COLORS.rxText, mr: 0.5, mt: 0.25 }} />,
+                                      }}
+                                    />
+                                  )}
+
+                                  {/* Non-drug collapsible instructions — collapsed by default to keep
+                                      sidebar compact for items that don't need dosing notes. */}
+                                  {!rx.isDrug && (
+                                    <>
+                                      <Typography
+                                        onClick={() => !isRecordLocked && handleUpdateRxField(cartIdx, '_showInstructions', !rx._showInstructions)}
                                         sx={{
-                                            mt: 1,
+                                          mt: 0.75, fontSize: '0.65rem', fontWeight: 800,
+                                          color: rx.instructions ? COLORS.rxText : COLORS.textMuted,
+                                          cursor: isRecordLocked ? 'default' : 'pointer',
+                                          fontFamily: FONT, letterSpacing: '0.05em', textTransform: 'uppercase',
+                                          '&:hover': !isRecordLocked ? { color: COLORS.accent } : {},
+                                        }}
+                                      >
+                                        {rx._showInstructions ? 'HIDE INSTRUCTIONS' : (rx.instructions ? `INSTRUCTIONS: ${rx.instructions}` : '+ ADD INSTRUCTIONS')}
+                                      </Typography>
+                                      <Collapse in={!!rx._showInstructions}>
+                                        <TextField
+                                          size="small" fullWidth
+                                          placeholder="Optional usage notes"
+                                          value={rx.instructions || ''}
+                                          onChange={(e) => handleUpdateRxSig(cartIdx, e.target.value)}
+                                          disabled={isRecordLocked}
+                                          sx={{
+                                            mt: 0.5,
                                             '& .MuiInputBase-root': {
-                                                fontSize: '0.75rem',
-                                                fontWeight: 700,
-                                                fontFamily: FONT,
-                                                borderRadius: 0,
-                                                bgcolor: COLORS.rxBg,
-                                                border: `1px solid ${COLORS.rxBorder}`,
+                                              fontSize: '0.75rem', fontWeight: 700, fontFamily: FONT,
+                                              borderRadius: 0, bgcolor: COLORS.formBg, border: `1px solid ${COLORS.borderLight}`,
                                             },
                                             '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
-                                        }}
-                                        InputProps={{
-                                            startAdornment: (
-                                                <MedicationIcon sx={{ fontSize: 14, color: COLORS.rxText, mr: 0.5, mt: 0.25 }} />
-                                            ),
-                                        }}
-                                    />
-                                )}
-
-                                {/* Step 2 (T3.110): Collapsible instructions for non-drug items.
-                                    Collapsed by default to keep sidebar compact — most non-drug
-                                    items (shampoos, collars, etc.) don't need dosing notes. */}
-                                {!rx.isDrug && (
-                                    <>
-                                        <Typography
-                                            onClick={() => !isRecordLocked && handleUpdateRxField(idx, '_showInstructions', !rx._showInstructions)}
-                                            sx={{
-                                                mt: 0.75,
-                                                fontSize: '0.65rem',
-                                                fontWeight: 800,
-                                                color: rx.instructions ? COLORS.rxText : COLORS.textMuted,
-                                                cursor: isRecordLocked ? 'default' : 'pointer',
-                                                fontFamily: FONT,
-                                                letterSpacing: '0.05em',
-                                                textTransform: 'uppercase',
-                                                '&:hover': !isRecordLocked ? { color: COLORS.accent } : {},
-                                            }}
-                                        >
-                                            {rx._showInstructions
-                                                ? 'HIDE INSTRUCTIONS'
-                                                : (rx.instructions ? `INSTRUCTIONS: ${rx.instructions}` : '+ ADD INSTRUCTIONS')}
-                                        </Typography>
-                                        <Collapse in={!!rx._showInstructions}>
-                                            <TextField
-                                                size="small"
-                                                fullWidth
-                                                placeholder="Optional usage notes"
-                                                value={rx.instructions || ''}
-                                                onChange={(e) => handleUpdateRxSig(idx, e.target.value)}
-                                                disabled={isRecordLocked}
-                                                sx={{
-                                                    mt: 0.5,
-                                                    '& .MuiInputBase-root': {
-                                                        fontSize: '0.75rem',
-                                                        fontWeight: 700,
-                                                        fontFamily: FONT,
-                                                        borderRadius: 0,
-                                                        bgcolor: COLORS.formBg,
-                                                        border: `1px solid ${COLORS.borderLight}`,
-                                                    },
-                                                    '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
-                                                }}
-                                            />
-                                        </Collapse>
+                                          }}
+                                        />
+                                      </Collapse>
                                     </>
-                                )}
+                                  )}
 
-                                {/* T4.117: No-stock-deduction audit badge — shown when a
-                                    zero-stock vaccine was added (client-supplied scenario).
-                                    The flag is persisted to the medical record on sign-off. */}
-                                {rx.noStockDeduction && (
+                                  {/* T4.117: No-stock-deduction audit badge — client-supplied vaccine scenario. */}
+                                  {rx.noStockDeduction && (
                                     <Alert
-                                        severity="warning"
-                                        sx={{
-                                            py: 0, px: 1, mt: 0.5,
-                                            fontSize: '0.6rem', fontWeight: 700,
-                                            borderRadius: 0,
-                                            '& .MuiAlert-icon': { fontSize: 14 },
-                                        }}
+                                      severity="warning"
+                                      sx={{ py: 0, px: 1, mt: 0.5, fontSize: '0.6rem', fontWeight: 700, borderRadius: 0, '& .MuiAlert-icon': { fontSize: 14 } }}
                                     >
-                                        No stock deduction — client-supplied vaccine
+                                      No stock deduction — client-supplied vaccine
                                     </Alert>
-                                )}
+                                  )}
 
-                                {rx.isBase && (() => {
-                                    const dept = rx.department || 'General';
-                                    const deptObj = (departments || []).find(d => d.name === dept);
-                                    const deptColor = deptObj?.color || '#616161';
-                                    const allStaff = vetsList || [];
-                                    const matched = allStaff.filter(v => v.departments?.includes(dept));
-                                    const others = allStaff.filter(v => !v.departments?.includes(dept));
-
-                                    return (
-                                        <TextField
-                                            size="small" select fullWidth
-                                            value={serviceAttribution[rx.id]?.staffId || ''}
-                                            onChange={(e) => {
-                                                const vet = allStaff.find(v => v.id === e.target.value);
-                                                setServiceAttribution(prev => ({
-                                                    ...prev,
-                                                    [rx.id]: { staffId: e.target.value, staffName: vet?.fullName || (e.target.value === '' ? 'Unassigned' : 'Unknown') },
-                                                }));
-                                            }}
-                                            sx={{ mt: 1, '& .MuiInputBase-root': { fontSize: '0.72rem', fontWeight: 800 } }}
-                                            label="Performed By"
-                                        >
-                                            <MenuItem value="" sx={{ fontSize: '0.8rem', fontStyle: 'italic', color: COLORS.textMuted }}>
-                                                — Unassigned —
-                                            </MenuItem>
-                                            {matched.map(v => (
-                                                <MenuItem key={v.id} value={v.id} sx={{ fontSize: '0.8rem' }}>
-                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, width: '100%' }}>
-                                                        <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: deptColor, flexShrink: 0 }} />
-                                                        <span style={{ fontWeight: 700 }}>{v.fullName}</span>
-                                                    </Box>
-                                                </MenuItem>
-                                            ))}
-                                            {others.length > 0 && (
-                                                <ListSubheader
-                                                    sx={{
-                                                        fontSize: '0.65rem', fontWeight: 900, letterSpacing: 1,
-                                                        textTransform: 'uppercase', color: COLORS.textMuted,
-                                                        lineHeight: '28px', bgcolor: COLORS.formBg,
-                                                    }}
-                                                >
-                                                    Other Staff
-                                                </ListSubheader>
-                                            )}
-                                            {others.map(v => (
-                                                <MenuItem key={v.id} value={v.id} sx={{ fontSize: '0.8rem', color: COLORS.textMuted, fontStyle: 'italic' }}>
-                                                    {v.fullName}
-                                                </MenuItem>
-                                            ))}
-                                        </TextField>
-                                    );
-                                })()}
-                            </Box>
-                        ))}
-                    </Stack>
-                    
-                    {/* DYNAMIC TOTAL CALCULATOR */}
-                    {treatmentCart.length > 0 && (
-                        <Box sx={{ mt: 3, pt: 2, borderTop: `2px solid ${COLORS.borderLight}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <Typography sx={{ fontWeight: 1000, color: COLORS.textMuted, fontSize: '0.75rem', textTransform: 'uppercase' }}>Subtotal</Typography>
-                            <Typography sx={{ fontWeight: 1000, color: COLORS.brand, fontSize: '1.2rem' }}>
-                                ₱{treatmentCart.reduce((sum, item) => sum + (item.price * item.qty), 0).toLocaleString()}
+                                </Box>
+                              );
+                            })}
+                          </Stack>
+                          {/* Per-panel subtotal */}
+                          <Box sx={{ mt: 2, pt: 1.5, borderTop: `1px solid ${COLORS.borderLight}`, display: 'flex', justifyContent: 'space-between' }}>
+                            <Typography sx={{ fontWeight: 800, fontSize: '0.7rem', color: COLORS.textMuted, textTransform: 'uppercase' }}>Items</Typography>
+                            <Typography sx={{ fontWeight: 900, fontSize: '0.85rem', color: COLORS.brand }}>
+                              ₱{productItems.reduce((sum, rx) => sum + (rx.price * rx.qty), 0).toLocaleString()}
                             </Typography>
-                        </Box>
+                          </Box>
+                        </Paper>
+                      );
+                    })()}
+
+                    {/* T4.127: GRAND TOTAL — spans both panels */}
+                    {treatmentCart.length > 0 && (
+                      <Box sx={{ pt: 2, borderTop: `3px solid ${COLORS.brand}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography sx={{ fontWeight: 1000, color: COLORS.brand, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          TOTAL
+                        </Typography>
+                        <Typography sx={{ fontWeight: 1000, color: COLORS.brand, fontSize: '1.3rem' }}>
+                          ₱{treatmentCart.reduce((sum, item) => sum + (item.price * item.qty), 0).toLocaleString()}
+                        </Typography>
+                      </Box>
                     )}
                 </Paper>
 
-                {/* T2.97: Per-Service Progress — rendered via shared ServiceProgressCard */}
-                {!isRecordLocked && (
-                    <ServiceProgressCard
-                        services={patient?.services || []}
-                        serviceProgress={serviceProgress}
-                        onToggle={handleToggleServiceProgress}
-                        sx={{ ...glassStyle }}
-                    />
-                )}
             </Stack>
           </Box>
 

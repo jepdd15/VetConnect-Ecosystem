@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { collection, query, orderBy, onSnapshot, where, Timestamp, doc, runTransaction, arrayUnion } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, where, Timestamp, doc, runTransaction, arrayUnion, setDoc, updateDoc, increment } from 'firebase/firestore';
 import { makePulseEventId } from '../../../utils/pulseUtils';
 import { db } from '../../../firebaseConfig';
 
@@ -7,6 +7,8 @@ export function useSalesData(filterDate, currentUser) {
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // T4.151: EOD close status for the current filterDate.
+  const [closingData, setClosingData] = useState(null);
 
   useEffect(() => {
     setLoading(true);
@@ -85,7 +87,16 @@ export function useSalesData(filterDate, currentUser) {
       merge();
     });
 
-    return () => { unsub1(); unsub2(); };
+    // Query 3: Daily closing status for this date (T4.151).
+    const closingRef = doc(db, 'daily_closings', filterDate);
+    const unsub3 = onSnapshot(closingRef, (snapshot) => {
+      setClosingData(snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null);
+    }, (err) => {
+      console.error('[useSalesData] Closing status fetch error:', err);
+      // Non-fatal — closingData stays null (treated as "day open")
+    });
+
+    return () => { unsub1(); unsub2(); unsub3(); };
   }, [filterDate]);
 
   const eodTotals = useMemo(() => {
@@ -93,9 +104,14 @@ export function useSalesData(filterDate, currentUser) {
       let totalBilled = 0, totalCollected = 0, totalDeposits = 0, totalDiscounts = 0, refunds = 0;
       // T4.149: Track custom discounts separately from SC/PWD discounts for management oversight.
       let totalCustomDiscounts = 0;
+      // T4.151: Track voided transactions for Z-report.
+      let voidCount = 0, voidAmount = 0;
       sales.forEach(sale => {
           if (sale.status === 'refunded') {
               refunds += sale.total;
+          } else if (sale.status === 'voided') {
+              voidCount++;
+              voidAmount += parseFloat(sale.total) || 0;
           } else {
               const deposit = parseFloat(sale.depositPaid) || 0;
               const discount = parseFloat(sale.discount) || 0;
@@ -124,7 +140,7 @@ export function useSalesData(filterDate, currentUser) {
               }
           }
       });
-      return { cash, gcash, card, bank, totalBilled, totalCollected, totalDeposits, totalDiscounts, totalCustomDiscounts, refunds };
+      return { cash, gcash, card, bank, totalBilled, totalCollected, totalDeposits, totalDiscounts, totalCustomDiscounts, refunds, voidCount, voidAmount };
   },[sales]);
 
   // THE FIX: Moved the complex transaction logic here!
@@ -312,5 +328,66 @@ export function useSalesData(filterDate, currentUser) {
     });
   };
 
-  return { sales, loading, error, eodTotals, processRefundTransaction, voidTransaction };
+  // T4.151: Derive isDayClosed — true when a closing doc exists AND hasn't been reopened.
+  const isDayClosed = closingData !== null && !closingData.reopenedAt;
+
+  /**
+   * Freezes the day's financial totals into a daily_closings/{filterDate} doc.
+   * Uses setDoc so the call is idempotent if the admin retries after a transient error.
+   * @param {object} staffProfile - The current user's profile (must have `id`).
+   */
+  const closeDay = async (staffProfile) => {
+    if (!staffProfile?.id) throw new Error('Staff profile required to close day.');
+
+    const closingRef = doc(db, 'daily_closings', filterDate);
+    const voidedSales = sales.filter(s => s.status === 'voided');
+    const closingVoidCount = voidedSales.length;
+    const closingVoidAmount = voidedSales.reduce((sum, s) => sum + (parseFloat(s.total) || 0), 0);
+
+    await setDoc(closingRef, {
+      closedAt: Timestamp.now(),
+      closedBy: staffProfile.id,
+      closedByName: staffProfile.fullName || 'Admin',
+      transactionCount: sales.filter(s => !s._crossDayRefund).length,
+      grossRevenue: eodTotals.totalBilled,
+      netRevenue: eodTotals.totalCollected - eodTotals.refunds,
+      refunds: eodTotals.refunds,
+      voids: closingVoidCount,
+      voidAmount: closingVoidAmount,
+      cashTotal: eodTotals.cash,
+      gcashTotal: eodTotals.gcash,
+      cardTotal: eodTotals.card,
+      bankTotal: eodTotals.bank,
+      scPwdDiscounts: eodTotals.totalDiscounts,
+      customDiscounts: eodTotals.totalCustomDiscounts,
+      depositTotal: eodTotals.totalDeposits,
+      reopenedAt: null,
+      reopenedBy: null,
+      reopenedByName: null,
+      reopenReason: null,
+      postCloseCount: 0,
+      postCloseTotal: 0,
+    });
+  };
+
+  /**
+   * Stamps reopenedAt and audit reason on the existing closing doc.
+   * The original frozen totals remain as a historical record.
+   * @param {object} staffProfile - The current user's profile.
+   * @param {string} reason - Mandatory audit reason for the reopen.
+   */
+  const reopenDay = async (staffProfile, reason) => {
+    if (!staffProfile?.id) throw new Error('Staff profile required to reopen day.');
+    if (!reason || reason.trim().length === 0) throw new Error('Audit reason required.');
+
+    const closingRef = doc(db, 'daily_closings', filterDate);
+    await updateDoc(closingRef, {
+      reopenedAt: Timestamp.now(),
+      reopenedBy: staffProfile.id,
+      reopenedByName: staffProfile.fullName || 'Admin',
+      reopenReason: reason.trim(),
+    });
+  };
+
+  return { sales, loading, error, eodTotals, processRefundTransaction, voidTransaction, isDayClosed, closingData, closeDay, reopenDay };
 }

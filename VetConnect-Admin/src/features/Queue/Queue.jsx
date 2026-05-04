@@ -18,7 +18,8 @@ import { useUser } from '../../context/UserContext'; // THE SIGNATURE HOOK
 
 // 2. SHARED COMPONENTS
 import ClinicalWorkspace from '../../components/ClinicalWorkspace';
-import POSModal from '../../components/POSModal'; 
+import POSModal from '../../components/POSModal';
+import { useClosingStatus } from '../Sales/hooks/useClosingStatus';
 
 // 3. FEATURE COMPONENTS
 import WalkInModal from './WalkInModal';
@@ -79,16 +80,20 @@ const BREED_DATA = {
 
 export default function Queue() {
   const [rows, setRows] = useState([]);
-  const [vets, setVets] = useState([]); 
-  const [inventoryList, setInventoryList] = useState([]); 
-  const [inventoryCategories, setInventoryCategories] = useState([]); // 💊 TAXONOMY SYNC
-  const [servicesList, setServicesList] = useState([]); 
+  const [vets, setVets] = useState([]);
+  const [inventoryList, setInventoryList] = useState([]);
+  const [inventoryCategories, setInventoryCategories] = useState([]); // TAXONOMY SYNC
+  const [servicesList, setServicesList] = useState([]);
   const [departments, setDepartments] = useState([]);
   const clinicSettings = useClinicSettings(); // Shared singleton — no local listener needed
-  const [tabValue, setTabValue] = useState(0); 
+  const [tabValue, setTabValue] = useState(0);
   const[filterDate, setFilterDate] = useState(getLocalDateStr());
   const[isTomorrowView, setIsTomorrowView] = useState(false);
   const[currentTime, setCurrentTime] = useState(new Date());
+
+  // T4.151: EOD close status — passed to POSModal so it can tag post-close sales.
+  const todayStr = new Date().toISOString().split('T')[0];
+  const { isDayClosed, closingData } = useClosingStatus(todayStr);
   
   const { user, profile, isAdmin } = useUser(); // Forensic Attribution
   const { changeStatus, revertStatus, markNoShow, rejectAppointment, quickAdmitER, deferAppointment } = useQueueActions();
@@ -2266,6 +2271,8 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
             ? rows.filter(r => r.visitGroupId === selectedRow.visitGroupId)
             : []
         }
+        isDayClosed={isDayClosed}
+        closingData={closingData}
       />
       <DispensingVerificationDialog
         open={openDispenseVerify}

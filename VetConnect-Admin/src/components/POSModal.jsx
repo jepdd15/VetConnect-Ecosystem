@@ -12,6 +12,7 @@ import {
 import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
 import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
 import PaidIcon from '@mui/icons-material/Paid';
+import PrintIcon from '@mui/icons-material/Print';
 import SaveIcon from '@mui/icons-material/Save';
 import MedicationIcon from '@mui/icons-material/Medication';
 import DescriptionIcon from '@mui/icons-material/Description';
@@ -27,6 +28,7 @@ import { useClinicSettings } from '../hooks/useClinicSettings';
 import { resolveTieredPrice } from '../utils/resolveTieredPrice';
 import { makePulseEventId } from '../utils/pulseUtils';
 import { sendPushNotification } from '../utils/sendPushNotification';
+import { printViaIframe, downloadHtmlAsFile, emailReceiptToOwner } from '../utils/receiptUtils';
 
 // T4.149: Mandatory reason options for custom bill discounts — enforces audit accountability.
 const DISCOUNT_REASONS = [
@@ -38,7 +40,7 @@ const DISCOUNT_REASONS = [
   'Other',
 ];
 
-export default function POSModal({ open, onClose, patient, inventoryList, servicesList, groupAppointments = [] }) {
+export default function POSModal({ open, onClose, patient, inventoryList, servicesList, groupAppointments = [], isDayClosed = false, closingData = null }) {
   const { profile } = useUser();
   const clinicSettings = useClinicSettings();
   const [cart, setCart] = useState([]);
@@ -75,6 +77,12 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
   const[pendingRxItem, setPendingRxItem] = useState(null);
   const [extVetName, setExtVetName] = useState('');
   const [extClinicName, setExtClinicName] = useState('');
+
+  // T4.151/T4.152: Checkout success overlay state — replaces window.confirm.
+  // { receiptHTML: string, total: string } when checkout completes, null otherwise.
+  const [checkoutSuccess, setCheckoutSuccess] = useState(null);
+  const [checkoutError, setCheckoutError] = useState('');
+  const [emailFeedback, setEmailFeedback] = useState('');
 
   /** Whether the group billing toggle should be shown. */
   const isGroupVisit = groupAppointments.length > 1;
@@ -233,6 +241,8 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         setPaymentTenders([{ method: 'Cash', amount: '', amountTendered: '' }]);
         setDepositAmount(patient.depositPaid ? patient.depositPaid.toString() : '');
         setItemDiscounts({}); setBillDiscountType('%'); setBillDiscountValue(''); setBillDiscountReason('');
+        // T4.151/T4.152: Reset success overlay state on every modal open.
+        setCheckoutSuccess(null); setCheckoutError(''); setEmailFeedback('');
 
         let foundId = false;
         try {
@@ -824,6 +834,8 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             hasUnprescribedAdditions: cart.some(i => i.addedBy === 'cashier'),
             ...cashAuditFields,
             ...customDiscountAuditFields,
+            // T4.151: Tag post-close sales for audit visibility.
+            ...(isDayClosed ? { postClose: true, dayClosedAt: closingData?.closedAt || null } : {}),
           });
 
           // Update ALL appointment docs in the group to 'completed'.
@@ -890,6 +902,8 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             hasUnprescribedAdditions: cart.some(i => i.addedBy === 'cashier'),
             ...cashAuditFields,
             ...customDiscountAuditFields,
+            // T4.151: Tag post-close sales for audit visibility.
+            ...(isDayClosed ? { postClose: true, dayClosedAt: closingData?.closedAt || null } : {}),
           });
 
           const apptRef = doc(db, "appointments", patient.id);
@@ -949,29 +963,56 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
       }
 
       const receiptContent = generateReceiptHTML(transactionId, checkoutReceiptNumber);
-      onClose();
 
-      if (window.confirm(`Transaction Complete! Collected: ₱${financials.balanceDue}\n\nWould you like to print the Official Receipt?`)) {
-        const printWindow = window.open('', '_blank', 'width=800,height=600');
-        if (printWindow) {
-          printWindow.document.write(receiptContent);
-          printWindow.document.close();
-          printWindow.focus();
-          setTimeout(() => { printWindow.print(); printWindow.close(); }, 250);
-        } else {
-          alert("Pop-up blocked!\n\nPlease allow pop-ups for VetConnect in your browser, then try printing again from the Transactions tab.");
-        }
+      // T4.151: If day is closed, increment post-close counters on the closing doc.
+      // Fire-and-forget — never blocks checkout completion.
+      if (isDayClosed && closingData?.id) {
+        updateDoc(doc(db, 'daily_closings', closingData.id), {
+          postCloseCount: increment(1),
+          postCloseTotal: increment(parseFloat(financials.total) || 0),
+        }).catch(() => {});
       }
+
+      // T4.152: Show success overlay instead of window.confirm.
+      // The overlay provides Print / Download / Email actions. onClose() fires when user dismisses.
+      setCheckoutSuccess({ receiptHTML: receiptContent, total: financials.balanceDue, receiptNumber: checkoutReceiptNumber });
     } catch (error) {
-      alert("Checkout Failed: " + error.message);
+      console.error('[POSModal.handleCheckout]:', error);
+      setCheckoutSuccess(null);
+      setCheckoutError(`Checkout failed: ${error.message}`);
     } finally {
       setLoading(false);
     }
   };
 
+  // T4.152: Receipt delivery handlers — wired to the checkout success overlay.
+
+  const handlePrintReceipt = (html) => {
+    printViaIframe(html);
+  };
+
+  const handleDownloadReceipt = (html) => {
+    // Extract receipt number from the HTML for a meaningful filename.
+    const match = html.match(/Receipt #:<\/strong>\s*([^<]+)/);
+    const receiptNum = match?.[1]?.trim() || 'receipt';
+    downloadHtmlAsFile(html, `${receiptNum}.html`);
+  };
+
+  const handleEmailReceipt = async (html) => {
+    const match = html.match(/Receipt #:<\/strong>\s*([^<]+)/);
+    const receiptNum = match?.[1]?.trim() || '';
+    const result = await emailReceiptToOwner({
+      html,
+      ownerId: patient?.ownerId,
+      receiptNumber: receiptNum,
+      clinicName: clinicSettings.clinicName,
+    });
+    setEmailFeedback(result.message);
+  };
+
   return (
     <>
-      <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
+      <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth sx={{ '& .MuiDialog-paper': { position: 'relative' } }}>
         <DialogTitle sx={{ bgcolor: COLORS.success, color: COLORS.cardBg, fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 2 }}>
           <Typography variant="h6" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <PaidIcon />
@@ -982,7 +1023,78 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
           <Chip label={patient?.ownerName || 'Walk-In'} sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white', fontWeight: 'bold' }} />
         </DialogTitle>
         
-        <DialogContent dividers sx={{ bgcolor: COLORS.surfaceHover, display: 'flex', flexDirection: 'column', gap: 0, p: 0 }}>
+        <DialogContent dividers sx={{ bgcolor: COLORS.surfaceHover, display: 'flex', flexDirection: 'column', gap: 0, p: 0, position: 'relative' }}>
+
+          {/* T4.151: Post-close warning banner — shown when the day has been closed */}
+          {isDayClosed && (
+            <Alert
+              severity="warning"
+              sx={{
+                mx: 3, mt: 2, borderRadius: 0,
+                border: `2px solid ${COLORS.amber}`,
+                fontWeight: 800,
+                bgcolor: COLORS.warningSurface,
+              }}
+            >
+              Day was closed at{' '}
+              {closingData?.closedAt?.toDate?.()
+                ? closingData.closedAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                : 'unknown time'}
+              . This transaction will be flagged as post-close.
+            </Alert>
+          )}
+
+          {/* T4.152: Checkout success overlay — replaces window.confirm.
+              Rendered above all content. User picks a receipt action then closes. */}
+          {checkoutSuccess && (
+            <Box sx={{
+              position: 'absolute', inset: 0, bgcolor: 'rgba(255,255,255,0.97)',
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              justifyContent: 'center', zIndex: 10, gap: 3, p: 4,
+            }}>
+              <Typography variant="h4" sx={{ fontWeight: 900, color: COLORS.success, fontFamily: FONT, textTransform: 'uppercase', letterSpacing: 1 }}>
+                TRANSACTION COMPLETE
+              </Typography>
+              <Typography variant="h5" sx={{ fontWeight: 900, color: COLORS.brand, fontFamily: FONT }}>
+                Collected: ₱{checkoutSuccess.total}
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
+                <Button
+                  variant="contained"
+                  startIcon={<PrintIcon />}
+                  onClick={() => handlePrintReceipt(checkoutSuccess.receiptHTML)}
+                  sx={{ bgcolor: COLORS.sky, fontWeight: 900, borderRadius: 0, px: 3, '&:hover': { bgcolor: COLORS.skyHover || COLORS.sky } }}
+                >
+                  PRINT
+                </Button>
+                <Button
+                  variant="outlined"
+                  onClick={() => handleDownloadReceipt(checkoutSuccess.receiptHTML)}
+                  sx={{ fontWeight: 900, borderRadius: 0, px: 3, borderColor: COLORS.accent, color: COLORS.accent, borderWidth: 2 }}
+                >
+                  DOWNLOAD PDF
+                </Button>
+                <Button
+                  variant="outlined"
+                  onClick={() => handleEmailReceipt(checkoutSuccess.receiptHTML)}
+                  sx={{ fontWeight: 900, borderRadius: 0, px: 3, borderColor: COLORS.success, color: COLORS.success, borderWidth: 2 }}
+                >
+                  EMAIL RECEIPT
+                </Button>
+              </Box>
+              {emailFeedback && (
+                <Typography variant="body2" sx={{ mt: 1, fontWeight: 700, color: emailFeedback.includes('emailed') ? COLORS.success : COLORS.warning }}>
+                  {emailFeedback}
+                </Typography>
+              )}
+              <Button
+                onClick={() => { setCheckoutSuccess(null); onClose(); }}
+                sx={{ mt: 2, fontWeight: 800, color: COLORS.textMuted, fontFamily: FONT }}
+              >
+                CLOSE
+              </Button>
+            </Box>
+          )}
 
           {/* Phase 4 — Group billing mode toggle.
               Only shown when this appointment belongs to a visit group (2+ members).
@@ -1481,11 +1593,18 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         </DialogContent>
         <DialogActions sx={{ p: 2.5, bgcolor: COLORS.panelBg, display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${COLORS.timelineRail}` }}>
           <Button onClick={onClose} sx={{ color: COLORS.accent, fontWeight: 'bold', px: 3 }}>Cancel</Button>
-          <Box sx={{ display: 'flex', gap: 2 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
+            {checkoutError && (
+              <Alert severity="error" onClose={() => setCheckoutError('')} sx={{ borderRadius: 0, fontWeight: 700, width: '100%' }}>
+                {checkoutError}
+              </Alert>
+            )}
+            <Box sx={{ display: 'flex', gap: 2 }}>
               <Button onClick={handleSaveDraft} disabled={loading} variant="outlined" color="primary" startIcon={<SaveIcon />}>Save Invoice Draft</Button>
               <Button onClick={handleCheckout} disabled={loading || remaining > 0.005 || anyCashInsufficient || (parseFloat(billDiscountValue) > 0 && !billDiscountReason)} variant="contained" color="success" size="large" startIcon={<PaidIcon />} sx={{ px: 4, fontWeight: '900', boxShadow: 3 }}>
                  {loading ? "Processing..." : `Settle Balance (₱${financials.balanceDue})`}
               </Button>
+            </Box>
           </Box>
         </DialogActions>
       </Dialog>

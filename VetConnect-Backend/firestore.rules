@@ -284,6 +284,15 @@ service cloud.firestore {
       allow read, write: if isStaff();
     }
 
+    // ─── DAILY CLOSINGS (EOD close-out Z-reports) ─────────────────────
+    // Staff can read (view close status). Only admin can write (close/reopen).
+    // Deletions are never allowed — closings are permanent audit trail.
+    match /daily_closings/{dateId} {
+      allow read: if isStaff();
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+
     // ─── VACCINE REMINDER QUEUE (pre-computed push notification queue) ───
     // Public read/create/update: the Cloudflare Worker Cron reads and writes
     // via Firestore REST API using only the web API key (no Firebase Auth JWT).

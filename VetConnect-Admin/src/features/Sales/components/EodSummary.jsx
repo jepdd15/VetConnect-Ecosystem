@@ -3,7 +3,7 @@ import { Paper, Typography } from '@mui/material';
 import Grid from '@mui/material/Grid'; // THE FIX: Standard MUI Grid, NO Grid2!
 import { COLORS } from '../../../theme/designTokens';
 
-export default function EodSummary({ totals, filterMethod, setFilterMethod }) {
+export default function EodSummary({ totals, filterMethod, setFilterMethod, isDayClosed = false, closingData = null }) {
   const handleToggle = (method) => {
     if (method === 'All') {
       setFilterMethod(['All']);
@@ -46,6 +46,32 @@ export default function EodSummary({ totals, filterMethod, setFilterMethod }) {
 
   return (
     <Grid container spacing={2}>
+      {/* T4.151: Day-closed status bar — shown when the day has been formally closed */}
+      {isDayClosed && (
+        <Grid size={{ xs: 12 }}>
+          <Paper sx={{
+            p: 1.5, borderRadius: 0, bgcolor: COLORS.warningSurface,
+            border: `2px solid ${COLORS.amber}`, display: 'flex', alignItems: 'center', gap: 1.5,
+            flexWrap: 'wrap',
+          }}>
+            <Typography variant="caption" sx={{ fontWeight: 900, color: COLORS.warning, fontSize: '0.7rem', letterSpacing: 0.5 }}>
+              DAY CLOSED at{' '}
+              {closingData?.closedAt?.toDate?.()?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || 'N/A'}
+              {' '}by {closingData?.closedByName || 'N/A'}
+            </Typography>
+            {(closingData?.postCloseCount || 0) > 0 && (
+              <Typography variant="caption" sx={{ fontWeight: 900, color: COLORS.danger, fontSize: '0.65rem' }}>
+                | {closingData.postCloseCount} post-close txn(s) (₱{(closingData.postCloseTotal || 0).toFixed(2)})
+              </Typography>
+            )}
+            {closingData?.reopenedAt && (
+              <Typography variant="caption" sx={{ fontWeight: 900, color: COLORS.success, fontSize: '0.65rem' }}>
+                | REOPENED by {closingData.reopenedByName || 'N/A'}
+              </Typography>
+            )}
+          </Paper>
+        </Grid>
+      )}
         <Grid size={{ xs: 6, md: 3 }} onClick={() => handleToggle('Cash')}>
             <Paper sx={{ ...forensicTile('Cash'), borderLeft: filterMethod.includes('Cash') ? `12px solid ${COLORS.success}` : `6px solid ${COLORS.success}` }}>
                 <Typography variant="caption" sx={{ fontWeight: 800, color: filterMethod.includes('Cash') ? COLORS.cream : COLORS.textMuted, fontSize: '0.65rem', letterSpacing: 0.5 }}>CASH IN DRAWER</Typography>

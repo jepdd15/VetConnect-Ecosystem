@@ -8,6 +8,7 @@ import {
 } from '@mui/material';
 import { useSalesData } from './hooks/useSalesData';
 import EodSummary from './components/EodSummary';
+import { printViaIframe, downloadHtmlAsFile, emailReceiptToOwner } from '../../utils/receiptUtils';
 
 // Icons
 import SettingsBackupRestoreIcon from '@mui/icons-material/SettingsBackupRestore';
@@ -25,13 +26,13 @@ import { useUser } from '../../context/UserContext';
 import { useClinicSettings } from '../../hooks/useClinicSettings';
 
 export default function Sales() {
-  const { profile } = useUser();
+  const { profile, isAdmin } = useUser();
   const clinicSettings = useClinicSettings();
   const location = useLocation();
   const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
 
-  // THE BRAIN: Hook handles all database fetching, refund and void transactions
-  const { sales, loading, error: salesError, eodTotals, processRefundTransaction, voidTransaction } = useSalesData(filterDate, profile);
+  // THE BRAIN: Hook handles all database fetching, refund, void, and EOD close-out.
+  const { sales, loading, error: salesError, eodTotals, processRefundTransaction, voidTransaction, isDayClosed, closingData, closeDay, reopenDay } = useSalesData(filterDate, profile);
 
   // --- UI STATES ---
   const [searchText, setSearchText] = useState('');
@@ -55,6 +56,17 @@ export default function Sales() {
   // T2.104: Void transaction state
   const [openVoid, setOpenVoid] = useState(false);
   const [voidTarget, setVoidTarget] = useState(null);
+
+  // T4.151: EOD close-out state
+  const [openCloseDay, setOpenCloseDay] = useState(false);
+  const [openReopenDay, setOpenReopenDay] = useState(false);
+  const [reopenReason, setReopenReason] = useState('');
+  const [openZReport, setOpenZReport] = useState(false);
+  const [closeDayLoading, setCloseDayLoading] = useState(false);
+
+  // T4.152: Reprint 3-button dialog state
+  const [reprintSale, setReprintSale] = useState(null);
+  const [reprintFeedback, setReprintFeedback] = useState('');
 
   // --- SORTING & FILTERING ENGINE ---
   const handleRequestSort = (property) => {
@@ -119,6 +131,37 @@ export default function Sales() {
     }
   };
 
+  // T4.151: Close Day handler — freezes current financial totals into a Z-report.
+  const handleCloseDay = async () => {
+    setCloseDayLoading(true);
+    try {
+      await closeDay(profile);
+      setOpenCloseDay(false);
+      setToast({ open: true, message: 'Day closed successfully. Z-report frozen.', severity: 'success' });
+    } catch (error) {
+      console.error('[Sales.handleCloseDay]:', error);
+      setToast({ open: true, message: 'Close day failed: ' + error.message, severity: 'error' });
+    } finally {
+      setCloseDayLoading(false);
+    }
+  };
+
+  // T4.151: Reopen Day handler — stamps audit metadata, preserves original frozen totals.
+  const handleReopenDay = async () => {
+    setCloseDayLoading(true);
+    try {
+      await reopenDay(profile, reopenReason);
+      setOpenReopenDay(false);
+      setReopenReason('');
+      setToast({ open: true, message: 'Day reopened. Post-close flagging deactivated.', severity: 'info' });
+    } catch (error) {
+      console.error('[Sales.handleReopenDay]:', error);
+      setToast({ open: true, message: 'Reopen failed: ' + error.message, severity: 'error' });
+    } finally {
+      setCloseDayLoading(false);
+    }
+  };
+
   const executeRefund = async () => {
     try {
       await processRefundTransaction(selectedSale, restock);
@@ -130,9 +173,13 @@ export default function Sales() {
     }
   };
 
-  const handleReprint = (sale) => {
+  /**
+   * Generates the reprint receipt HTML for a given sale.
+   * Extracted from the original handleReprint — returns HTML string instead of opening a window.
+   */
+  const generateReprintHTML = (sale) => {
     const receiptDate = sale.jsDate ? sale.jsDate.toLocaleString() : new Date().toLocaleString();
-    let itemsHTML = (sale.items ||[]).map(item => `
+    const itemsHTML = (sale.items || []).map(item => `
       <tr>
         <td style="padding: 8px; border-bottom: 1px solid #ddd;">${item.name} ${item.isDiscountable ? '' : '<span style="color:red; font-size:10px;">(No SC/PWD)</span>'}</td>
         <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: center;">${item.qty}</td>
@@ -141,7 +188,28 @@ export default function Sales() {
       </tr>
     `).join('');
 
-    const receiptContent = `
+    const tenderSection = (() => {
+      if (sale.paymentTenders && sale.paymentTenders.length > 0) {
+        const headerLabel = sale.paymentTenders.length > 1 ? 'Split' : sale.paymentMethod || 'Cash';
+        const tenderLines = sale.paymentTenders.map(t => {
+          const amt = parseFloat(t.amount) || 0;
+          let line = `<div class="total-row" style="font-size:12px; color:#555;"><span>${t.method}:</span><span>P${amt.toFixed(2)}</span></div>`;
+          if (t.method === 'Cash' && t.amountTendered) {
+            line += `<div class="total-row" style="font-size:11px; color:#888; margin-left:10px;"><span>&nbsp;&nbsp;Tendered:</span><span>P${parseFloat(t.amountTendered).toFixed(2)}</span></div>`;
+            line += `<div class="total-row" style="font-size:11px; color:#888; font-weight:bold; margin-left:10px;"><span>&nbsp;&nbsp;Change:</span><span>P${parseFloat(t.changeDue || 0).toFixed(2)}</span></div>`;
+          }
+          return line;
+        }).join('');
+        return `<div class="total-row" style="margin-top:5px; font-size:12px; color:#555; font-weight:bold;"><span>Payment:</span><span>${headerLabel}</span></div>${tenderLines}`;
+      }
+      return `<div class="total-row" style="margin-top:5px; font-size:12px; color:#555;"><span>Payment Method:</span><span>${sale.paymentMethod || 'Cash'}</span></div>
+        ${sale.paymentMethod === 'Cash' && sale.amountTendered ? `
+          <div class="total-row" style="font-size:12px; color:#555;"><span>Tendered:</span><span>P${parseFloat(sale.amountTendered).toFixed(2)}</span></div>
+          <div class="total-row" style="font-size:12px; color:#555; font-weight:bold;"><span>Change:</span><span>P${parseFloat(sale.changeDue || 0).toFixed(2)}</span></div>
+        ` : ''}`;
+    })();
+
+    return `
       <html>
         <head>
           <style>
@@ -167,7 +235,7 @@ export default function Sales() {
           <div class="details">
             <p><strong>Receipt #:</strong> ${sale.receiptNumber || sale.id.slice(0, 8).toUpperCase()}</p>
             <p><strong>Date:</strong> ${receiptDate}</p>
-            <p><strong>Patient:</strong> ${sale.petName} (${sale.ownerName || 'Walk-In'})</p>
+            <p><strong>Patient:</strong> ${sale.petName || sale.petNames || 'N/A'} (${sale.ownerName || 'Walk-In'})</p>
             <p><strong>Cashier:</strong> ${sale.cashier || 'System'}</p>
           </div>
           <table>
@@ -181,28 +249,7 @@ export default function Sales() {
             ${!sale.hasScPwdDiscount && parseFloat(sale.billDiscountAmount || 0) > 0 ? `<div class="total-row" style="color: #E65100;"><span>Bill Discount (${sale.billDiscountReason || 'Custom'}):</span><span>- P${parseFloat(sale.billDiscountAmount).toFixed(2)}</span></div>` : ''}
             <div class="total-row"><span>Less Deposit:</span><span>- P${parseFloat(sale.depositPaid || 0).toFixed(2)}</span></div>
             <div class="total-row grand-total"><span>BALANCE PAID:</span><span>P${(parseFloat(sale.total || 0) - parseFloat(sale.depositPaid || 0)).toFixed(2)}</span></div>
-            ${(() => {
-              // T4.150: Multi-tender reprint support with legacy fallback.
-              if (sale.paymentTenders && sale.paymentTenders.length > 0) {
-                const headerLabel = sale.paymentTenders.length > 1 ? 'Split' : sale.paymentMethod || 'Cash';
-                const tenderLines = sale.paymentTenders.map(t => {
-                  const amt = parseFloat(t.amount) || 0;
-                  let line = `<div class="total-row" style="font-size:12px; color:#555;"><span>${t.method}:</span><span>P${amt.toFixed(2)}</span></div>`;
-                  if (t.method === 'Cash' && t.amountTendered) {
-                    line += `<div class="total-row" style="font-size:11px; color:#888; margin-left:10px;"><span>&nbsp;&nbsp;Tendered:</span><span>P${parseFloat(t.amountTendered).toFixed(2)}</span></div>`;
-                    line += `<div class="total-row" style="font-size:11px; color:#888; font-weight:bold; margin-left:10px;"><span>&nbsp;&nbsp;Change:</span><span>P${parseFloat(t.changeDue || 0).toFixed(2)}</span></div>`;
-                  }
-                  return line;
-                }).join('');
-                return `<div class="total-row" style="margin-top:5px; font-size:12px; color:#555; font-weight:bold;"><span>Payment:</span><span>${headerLabel}</span></div>${tenderLines}`;
-              }
-              // Legacy: single paymentMethod
-              return `<div class="total-row" style="margin-top:5px; font-size:12px; color:#555;"><span>Payment Method:</span><span>${sale.paymentMethod || 'Cash'}</span></div>
-                ${sale.paymentMethod === 'Cash' && sale.amountTendered ? `
-                  <div class="total-row" style="font-size:12px; color:#555;"><span>Tendered:</span><span>P${parseFloat(sale.amountTendered).toFixed(2)}</span></div>
-                  <div class="total-row" style="font-size:12px; color:#555; font-weight:bold;"><span>Change:</span><span>P${parseFloat(sale.changeDue || 0).toFixed(2)}</span></div>
-                ` : ''}`;
-            })()}
+            ${tenderSection}
           </div>
           <div class="footer">
             <p>Thank you for trusting ${clinicSettings.clinicName} with your pet's health!</p>
@@ -211,15 +258,12 @@ export default function Sales() {
         </body>
       </html>
     `;
-    const printWindow = window.open('', '_blank', 'width=800,height=600');
-    if (printWindow) {
-        printWindow.document.write(receiptContent);
-        printWindow.document.close();
-        printWindow.focus();
-        setTimeout(() => { printWindow.print(); printWindow.close(); }, 250);
-    } else {
-        setToast({ open: true, message: 'Pop-up blocked. Please allow pop-ups to print receipts.', severity: 'warning' });
-    }
+  };
+
+  // T4.152: Opens the 3-button reprint dialog instead of directly printing.
+  const handleReprint = (sale) => {
+    setReprintSale(sale);
+    setReprintFeedback('');
   };
 
   const handlePrintReport = () => {
@@ -289,13 +333,101 @@ export default function Sales() {
         </body>
       </html>
     `;
-    const printWindow = window.open('', '_blank', 'width=800,height=600');
-    if (printWindow) {
-      printWindow.document.write(reportContent);
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => { printWindow.print(); printWindow.close(); }, 250);
-    }
+    // T4.152: Use iframe printing instead of window.open to avoid pop-up blockers.
+    printViaIframe(reportContent);
+  };
+
+  /**
+   * Generates the Z-Report HTML document from the frozen closing data.
+   * Follows the same styling conventions as handlePrintReport.
+   */
+  const generateZReportHTML = () => {
+    const cd = closingData;
+    if (!cd) return '';
+    const closedTime = cd.closedAt?.toDate?.()
+      ? cd.closedAt.toDate().toLocaleString('en-PH')
+      : 'N/A';
+    const reportDate = new Date(filterDate).toLocaleDateString('en-PH', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    });
+    const postCloseSales = sales.filter(s => s.postClose);
+    const postCloseRevenue = postCloseSales.reduce((sum, s) => sum + (parseFloat(s.total) || 0), 0);
+
+    return `<html>
+      <head><style>
+        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #333; max-width: 700px; margin: 0 auto; padding: 30px; }
+        h1 { color: #5D4037; font-size: 22px; border-bottom: 3px solid #5D4037; padding-bottom: 10px; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 2px; }
+        h2 { color: #5D4037; font-size: 14px; margin-top: 25px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #D7CCC8; padding-bottom: 5px; }
+        .date { color: #8D6E63; font-size: 13px; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+        th, td { padding: 8px 12px; text-align: left; font-size: 13px; }
+        th { background: #F5F0EB; font-weight: 700; border-bottom: 2px solid #5D4037; }
+        td { border-bottom: 1px solid #E0D6CC; }
+        .amount { text-align: right; font-weight: 700; }
+        .total-row td { font-weight: 800; font-size: 15px; border-top: 2px solid #5D4037; }
+        .refund { color: #D32F2F; }
+        .warning { color: #E65100; }
+        .footer { text-align: center; margin-top: 40px; font-size: 11px; color: #A1887F; border-top: 1px solid #E0D6CC; padding-top: 10px; }
+        .z-badge { text-align: center; font-weight: 900; font-size: 18px; border: 3px solid #5D4037; padding: 8px; margin-bottom: 20px; letter-spacing: 3px; color: #5D4037; }
+        .close-info { background: #F5F0EB; padding: 12px; margin-bottom: 20px; border-left: 4px solid #5D4037; }
+        .post-close { background: #FFF3E0; padding: 12px; margin-bottom: 20px; border-left: 4px solid #E65100; }
+        .signature { margin-top: 60px; display: flex; justify-content: space-between; }
+        .sig-line { border-top: 1px solid #333; width: 200px; text-align: center; padding-top: 5px; font-size: 12px; }
+      </style></head>
+      <body>
+        <div class="z-badge">Z-REPORT (END OF DAY)</div>
+        <h1>${clinicSettings.clinicName || 'VetConnect Clinic'}</h1>
+        <p class="date">${reportDate}</p>
+
+        <div class="close-info">
+          <strong>Closed by:</strong> ${cd.closedByName || 'N/A'}<br/>
+          <strong>Closed at:</strong> ${closedTime}
+          ${cd.reopenedAt ? `<br/><strong style="color:#E65100;">Reopened by:</strong> ${cd.reopenedByName || 'N/A'} — ${cd.reopenReason || 'No reason'}` : ''}
+        </div>
+
+        ${postCloseSales.length > 0 ? `
+          <div class="post-close">
+            <strong class="warning">Post-Close Activity:</strong> ${postCloseSales.length} transaction(s) totaling P${postCloseRevenue.toFixed(2)} recorded after day was closed.
+          </div>
+        ` : ''}
+
+        <h2>Revenue Summary</h2>
+        <table>
+          <tbody>
+            <tr><td>Total Transactions</td><td class="amount">${cd.transactionCount}</td></tr>
+            <tr><td>Gross Revenue (Total Billed)</td><td class="amount">P${(cd.grossRevenue || 0).toFixed(2)}</td></tr>
+            <tr><td>Prior Deposits Applied</td><td class="amount">P${(cd.depositTotal || 0).toFixed(2)}</td></tr>
+            <tr><td>SC/PWD Discounts</td><td class="amount">P${(cd.scPwdDiscounts || 0).toFixed(2)}</td></tr>
+            ${(cd.customDiscounts || 0) > 0 ? `<tr><td>Custom Discounts</td><td class="amount warning">P${(cd.customDiscounts || 0).toFixed(2)}</td></tr>` : ''}
+            ${(cd.refunds || 0) > 0 ? `<tr class="refund"><td>Refunds</td><td class="amount">- P${(cd.refunds || 0).toFixed(2)}</td></tr>` : ''}
+            ${(cd.voids || 0) > 0 ? `<tr class="refund"><td>Voided Transactions (${cd.voids})</td><td class="amount">P${(cd.voidAmount || 0).toFixed(2)}</td></tr>` : ''}
+            <tr class="total-row"><td>Net Revenue Collected</td><td class="amount">P${(cd.netRevenue || 0).toFixed(2)}</td></tr>
+          </tbody>
+        </table>
+
+        <h2>Payment Method Breakdown</h2>
+        <table>
+          <thead><tr><th>Method</th><th class="amount">Collected</th></tr></thead>
+          <tbody>
+            <tr><td>Cash</td><td class="amount">P${(cd.cashTotal || 0).toFixed(2)}</td></tr>
+            <tr><td>GCash / Maya</td><td class="amount">P${(cd.gcashTotal || 0).toFixed(2)}</td></tr>
+            <tr><td>Card</td><td class="amount">P${(cd.cardTotal || 0).toFixed(2)}</td></tr>
+            <tr><td>Bank Transfer</td><td class="amount">P${(cd.bankTotal || 0).toFixed(2)}</td></tr>
+            <tr class="total-row"><td>Total Collected</td><td class="amount">P${((cd.cashTotal || 0) + (cd.gcashTotal || 0) + (cd.cardTotal || 0) + (cd.bankTotal || 0)).toFixed(2)}</td></tr>
+          </tbody>
+        </table>
+
+        <div class="signature">
+          <div class="sig-line">Prepared by: ${cd.closedByName || '_______________'}</div>
+          <div class="sig-line">Verified by: _______________</div>
+        </div>
+
+        <div class="footer">
+          <p>Generated on ${new Date().toLocaleString('en-PH')} | ${clinicSettings.clinicName || 'VetConnect'}</p>
+          <p>This is a system-generated Z-Report. Retain for BIR compliance.</p>
+        </div>
+      </body>
+    </html>`;
   };
 
   const columns = [
@@ -388,6 +520,18 @@ export default function Sales() {
                         sold {p.row.jsDate?.toLocaleDateString()}
                     </Typography>
                 )}
+                {/* T4.151: Post-close transaction badge */}
+                {p.row.postClose && (
+                    <Chip
+                        label="AFTER CLOSE"
+                        size="small"
+                        sx={{
+                            borderRadius: 0, fontWeight: 900, fontSize: '0.55rem',
+                            bgcolor: COLORS.warningSurface, color: COLORS.warning,
+                            border: `1px solid ${COLORS.amber}`, height: 18,
+                        }}
+                    />
+                )}
             </Box>
           );
       }
@@ -436,6 +580,54 @@ export default function Sales() {
               Transactions
             </Typography>
             <Box sx={{ flexGrow: 1 }} />
+
+            {/* T4.151: EOD close-out controls (admin only) */}
+            {isAdmin && !isDayClosed && (
+              <Button
+                variant="contained"
+                size="small"
+                onClick={() => setOpenCloseDay(true)}
+                disabled={loading || sales.length === 0}
+                sx={{
+                  bgcolor: COLORS.danger, fontWeight: 900, borderRadius: 0, px: 2,
+                  border: `2px solid ${COLORS.dangerHover}`,
+                  boxShadow: `3px 3px 0px ${COLORS.danger}33`,
+                  '&:hover': { bgcolor: COLORS.dangerHover, boxShadow: `1px 1px 0px ${COLORS.danger}33` },
+                  textTransform: 'uppercase', letterSpacing: 0.5, fontSize: '0.75rem',
+                }}
+              >
+                CLOSE DAY
+              </Button>
+            )}
+            {isDayClosed && (
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => setOpenZReport(true)}
+                sx={{
+                  fontWeight: 900, borderRadius: 0, px: 2,
+                  borderColor: COLORS.success, color: COLORS.success, borderWidth: 2,
+                  textTransform: 'uppercase', letterSpacing: 0.5, fontSize: '0.75rem',
+                }}
+              >
+                VIEW Z-REPORT
+              </Button>
+            )}
+            {isDayClosed && isAdmin && (
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => setOpenReopenDay(true)}
+                sx={{
+                  fontWeight: 900, borderRadius: 0, px: 2,
+                  borderColor: COLORS.warning, color: COLORS.warning, borderWidth: 2,
+                  textTransform: 'uppercase', letterSpacing: 0.5, fontSize: '0.75rem',
+                }}
+              >
+                REOPEN DAY
+              </Button>
+            )}
+
             <Tooltip title="Print Detailed Report">
               <IconButton onClick={handlePrintReport} disabled={loading} sx={{ bgcolor: COLORS.cardBg, border: `1px solid ${COLORS.accent}33`, color: COLORS.accent }}>
                 <PrintIcon fontSize="small" />
@@ -513,7 +705,7 @@ export default function Sales() {
           p: 2, px: 4, bgcolor: COLORS.cardBg, borderBottom: `2px solid ${COLORS.accent}`,
           borderTop: 'none', borderLeft: 'none', borderRight: 'none', borderRadius: 0
         }}>
-          <EodSummary totals={eodTotals} filterMethod={filterMethod} setFilterMethod={setFilterMethod} />
+          <EodSummary totals={eodTotals} filterMethod={filterMethod} setFilterMethod={setFilterMethod} isDayClosed={isDayClosed} closingData={closingData} />
         </Box>
       </Box>
 
@@ -622,6 +814,182 @@ export default function Sales() {
           >
             VOID TRANSACTION
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* T4.151: CLOSE DAY CONFIRMATION DIALOG */}
+      <Dialog open={openCloseDay} onClose={() => setOpenCloseDay(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.danger}`, boxShadow: `8px 8px 0px ${COLORS.danger}1A` } }}>
+        <DialogTitle sx={{ bgcolor: COLORS.dangerSurface, color: COLORS.danger, fontWeight: 800, py: 2, borderBottom: `2px solid ${COLORS.danger}`, textTransform: 'uppercase', letterSpacing: 1, fontSize: '1rem' }}>
+          Close Day — Freeze Totals
+        </DialogTitle>
+        <DialogContent sx={{ p: 4, bgcolor: COLORS.cardBg }}>
+          <Alert severity="warning" sx={{ mb: 3, fontWeight: 800, border: `2px solid ${COLORS.warning}`, borderRadius: 0, bgcolor: COLORS.warningSurface }}>
+            This will freeze today's totals into a Z-report. New transactions will be flagged as post-close.
+          </Alert>
+          <Paper variant="outlined" sx={{ p: 2.5, bgcolor: COLORS.formBg, borderRadius: 0, border: `2px dashed ${COLORS.border}` }}>
+            <Typography variant="caption" sx={{ fontWeight: 800, color: COLORS.accent, display: 'block', mb: 1.5, borderBottom: `1px solid ${COLORS.border}`, pb: 1, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Summary Preview
+            </Typography>
+            <Typography variant="body2" sx={{ fontWeight: 700, mb: 0.5 }}>Transactions: {sales.length}</Typography>
+            <Typography variant="body2" sx={{ fontWeight: 700, mb: 0.5 }}>Total Collected: ₱{eodTotals.totalCollected.toFixed(2)}</Typography>
+            <Typography variant="body2" sx={{ fontWeight: 700, mb: 0.5 }}>Refunds: ₱{eodTotals.refunds.toFixed(2)}</Typography>
+            <Typography variant="body2" sx={{ fontWeight: 700, mb: 0.5 }}>Net: ₱{(eodTotals.totalCollected - eodTotals.refunds).toFixed(2)}</Typography>
+            <Typography variant="body2" sx={{ fontWeight: 700 }}>
+              Cash: ₱{eodTotals.cash.toFixed(2)} | GCash: ₱{eodTotals.gcash.toFixed(2)} | Card: ₱{eodTotals.card.toFixed(2)} | Bank: ₱{eodTotals.bank.toFixed(2)}
+            </Typography>
+          </Paper>
+        </DialogContent>
+        <DialogActions sx={{ p: 3, borderTop: `2px solid ${COLORS.danger}`, bgcolor: COLORS.dangerSurface, justifyContent: 'space-between' }}>
+          <Button onClick={() => setOpenCloseDay(false)} sx={{ fontWeight: 800, color: COLORS.textSecondary, px: 3, fontFamily: FONT }}>CANCEL</Button>
+          <Button
+            onClick={handleCloseDay} variant="contained" disabled={closeDayLoading}
+            sx={{
+              fontWeight: 800, px: 4, py: 1.5, borderRadius: 0,
+              bgcolor: COLORS.danger, border: `2px solid ${COLORS.dangerHover}`,
+              boxShadow: `4px 4px 0px ${COLORS.danger}33`,
+              '&:hover': { bgcolor: COLORS.dangerHover, boxShadow: `2px 2px 0px ${COLORS.danger}33` },
+              fontFamily: FONT,
+            }}
+          >
+            {closeDayLoading ? 'CLOSING...' : 'CONFIRM CLOSE DAY'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* T4.151: REOPEN DAY DIALOG */}
+      <Dialog
+        open={openReopenDay}
+        onClose={() => { setOpenReopenDay(false); setReopenReason(''); }}
+        maxWidth="sm" fullWidth
+        PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.warning}` } }}
+      >
+        <DialogTitle sx={{ bgcolor: COLORS.warningSurface, color: COLORS.warning, fontWeight: 800, py: 2, borderBottom: `2px solid ${COLORS.warning}`, textTransform: 'uppercase', letterSpacing: 1, fontSize: '1rem' }}>
+          Reopen Closed Day
+        </DialogTitle>
+        <DialogContent sx={{ p: 4, bgcolor: COLORS.cardBg }}>
+          <Alert severity="info" sx={{ mb: 3, fontWeight: 800, borderRadius: 0 }}>
+            Reopening will deactivate post-close flagging. The original Z-report totals are preserved.
+          </Alert>
+          <Typography variant="body2" sx={{ fontWeight: 700, mb: 2 }}>
+            Closed by {closingData?.closedByName || 'N/A'} at{' '}
+            {closingData?.closedAt?.toDate?.()?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || 'N/A'}
+          </Typography>
+          <TextField
+            fullWidth
+            label="Reason for reopening (required)"
+            placeholder="e.g. Missed a walk-in transaction before close"
+            value={reopenReason}
+            onChange={(e) => setReopenReason(e.target.value)}
+            multiline
+            rows={2}
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ p: 3, borderTop: `2px solid ${COLORS.warning}`, bgcolor: COLORS.warningSurface, justifyContent: 'space-between' }}>
+          <Button onClick={() => { setOpenReopenDay(false); setReopenReason(''); }} sx={{ fontWeight: 800, color: COLORS.textSecondary, px: 3, fontFamily: FONT }}>CANCEL</Button>
+          <Button
+            onClick={handleReopenDay} variant="contained" disabled={closeDayLoading || !reopenReason.trim()}
+            sx={{
+              fontWeight: 800, px: 4, py: 1.5, borderRadius: 0,
+              bgcolor: COLORS.warning, border: `2px solid ${COLORS.ctaHover}`,
+              '&:hover': { bgcolor: COLORS.ctaHover },
+              fontFamily: FONT,
+            }}
+          >
+            {closeDayLoading ? 'REOPENING...' : 'REOPEN DAY'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* T4.151: Z-REPORT VIEW DIALOG */}
+      <Dialog
+        open={openZReport}
+        onClose={() => setOpenZReport(false)}
+        maxWidth="md" fullWidth
+        PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.brand}`, boxShadow: `8px 8px 0px ${COLORS.brand}1A` } }}
+      >
+        <DialogTitle sx={{
+          bgcolor: COLORS.cream, color: COLORS.brand, fontWeight: 800, py: 2,
+          borderBottom: `2px solid ${COLORS.brand}`, textTransform: 'uppercase', letterSpacing: 1,
+          fontSize: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}>
+          Z-Report — {filterDate}
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button
+              variant="contained" size="small"
+              startIcon={<PrintIcon />}
+              onClick={() => printViaIframe(generateZReportHTML())}
+              sx={{ bgcolor: COLORS.sky, fontWeight: 900, borderRadius: 0, '&:hover': { bgcolor: COLORS.skyHover || COLORS.sky } }}
+            >
+              PRINT
+            </Button>
+            <Button
+              variant="outlined" size="small"
+              onClick={() => downloadHtmlAsFile(generateZReportHTML(), `Z-Report-${filterDate}.html`)}
+              sx={{ fontWeight: 900, borderRadius: 0, borderColor: COLORS.accent, color: COLORS.accent, borderWidth: 2 }}
+            >
+              DOWNLOAD
+            </Button>
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ p: 0, bgcolor: COLORS.cardBg }}>
+          <Box sx={{ p: 3 }} dangerouslySetInnerHTML={{ __html: generateZReportHTML() }} />
+        </DialogContent>
+        <DialogActions sx={{ p: 2, borderTop: `2px solid ${COLORS.border}` }}>
+          <Button onClick={() => setOpenZReport(false)} sx={{ fontWeight: 800, color: COLORS.textSecondary, fontFamily: FONT }}>CLOSE</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* T4.152: REPRINT DIALOG — 3-button receipt actions */}
+      <Dialog
+        open={!!reprintSale}
+        onClose={() => { setReprintSale(null); setReprintFeedback(''); }}
+        maxWidth="xs" fullWidth
+        PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.medical}` } }}
+      >
+        <DialogTitle sx={{ bgcolor: COLORS.chipBlueBg, color: COLORS.medical, fontWeight: 800, py: 2, borderBottom: `2px solid ${COLORS.medical}`, textTransform: 'uppercase', letterSpacing: 1, fontSize: '0.9rem' }}>
+          Reprint Receipt — {reprintSale?.receiptNumber || reprintSale?.id?.slice(0, 8).toUpperCase()}
+        </DialogTitle>
+        <DialogContent sx={{ p: 3, bgcolor: COLORS.cardBg, display: 'flex', flexDirection: 'column', gap: 2, pt: 3 }}>
+          <Button
+            fullWidth variant="contained"
+            startIcon={<PrintIcon />}
+            onClick={() => printViaIframe(generateReprintHTML(reprintSale))}
+            sx={{ bgcolor: COLORS.sky, fontWeight: 900, borderRadius: 0, py: 1.5, '&:hover': { bgcolor: COLORS.skyHover || COLORS.sky } }}
+          >
+            PRINT RECEIPT
+          </Button>
+          <Button
+            fullWidth variant="outlined"
+            onClick={() => downloadHtmlAsFile(generateReprintHTML(reprintSale), `reprint-${reprintSale?.receiptNumber || 'receipt'}.html`)}
+            sx={{ fontWeight: 900, borderRadius: 0, py: 1.5, borderColor: COLORS.accent, color: COLORS.accent, borderWidth: 2 }}
+          >
+            DOWNLOAD FILE
+          </Button>
+          <Button
+            fullWidth variant="outlined"
+            onClick={async () => {
+              const html = generateReprintHTML(reprintSale);
+              const result = await emailReceiptToOwner({
+                html,
+                ownerId: reprintSale?.ownerId,
+                receiptNumber: reprintSale?.receiptNumber || reprintSale?.id?.slice(0, 8),
+                clinicName: clinicSettings.clinicName,
+              });
+              setReprintFeedback(result.message);
+            }}
+            sx={{ fontWeight: 900, borderRadius: 0, py: 1.5, borderColor: COLORS.success, color: COLORS.success, borderWidth: 2 }}
+          >
+            EMAIL RECEIPT
+          </Button>
+          {reprintFeedback && (
+            <Typography variant="body2" sx={{ fontWeight: 700, color: reprintFeedback.includes('emailed') ? COLORS.success : COLORS.warning, textAlign: 'center' }}>
+              {reprintFeedback}
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2, borderTop: `2px solid ${COLORS.border}` }}>
+          <Button onClick={() => { setReprintSale(null); setReprintFeedback(''); }} sx={{ fontWeight: 800, color: COLORS.textSecondary, fontFamily: FONT }}>CLOSE</Button>
         </DialogActions>
       </Dialog>
 

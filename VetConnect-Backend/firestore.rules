@@ -16,14 +16,22 @@ service cloud.firestore {
 
     // role is the canonical field. accessLevel is NOT checked — a disabled user
     // with role:'disabled' must not pass even if accessLevel is stale.
+    // T4.138: `!= true` guards are defense-in-depth. The removeStaff() path already
+    // sets role:'disabled', but an explicit disabled check protects any future code
+    // path that sets disabled:true without also changing role.
+    // `!= true` (not `== false`) correctly handles documents where the field is absent.
     function isStaff() {
+      let d = getUserRole();
       return isAuth()
-        && getUserRole().role in ['admin', 'staff', 'veterinarian', 'groomer'];
+        && d.role in ['admin', 'staff', 'veterinarian', 'groomer']
+        && d.disabled != true;
     }
 
     function isAdmin() {
+      let d = getUserRole();
       return isAuth()
-        && getUserRole().role == 'admin';
+        && d.role == 'admin'
+        && d.disabled != true;
     }
 
     function isOwner(userId) {

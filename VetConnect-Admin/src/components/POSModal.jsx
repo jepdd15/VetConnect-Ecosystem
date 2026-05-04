@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Box, Typography, Paper, Button, TextField, MenuItem,
@@ -43,14 +43,15 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
   const clinicSettings = useClinicSettings();
   const [cart, setCart] = useState([]);
   const[selectedItemVal, setSelectedItemVal] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('Cash');
+  // T4.150: Multi-tender state — array of { method, amount, amountTendered }.
+  // Default: one Cash tender for the full balance. Replaces single paymentMethod + amountTendered.
+  const [paymentTenders, setPaymentTenders] = useState([
+    { method: 'Cash', amount: '', amountTendered: '' }
+  ]);
   const [applyScPwd, setApplyScPwd] = useState(false);
   const[hasScId, setHasScId] = useState(false);
   const [loading, setLoading] = useState(false);
   const [depositAmount, setDepositAmount] = useState('');
-
-  // T4.148: Cash change calculation — tendered amount entered by cashier.
-  const [amountTendered, setAmountTendered] = useState('');
 
   // T4.149: Custom discount system.
   // Per-item discounts stored as an object keyed by cart index: { type: '%' | '₱', value: number }
@@ -77,6 +78,53 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
 
   /** Whether the group billing toggle should be shown. */
   const isGroupVisit = groupAppointments.length > 1;
+
+  // T4.150: Derive the legacy paymentMethod (largest tender by amount) for backward compat.
+  const primaryPaymentMethod = useMemo(() => {
+    if (paymentTenders.length === 0) return 'Cash';
+    if (paymentTenders.length === 1) return paymentTenders[0].method;
+    const sorted = [...paymentTenders].sort((a, b) =>
+      (parseFloat(b.amount) || 0) - (parseFloat(a.amount) || 0)
+    );
+    return sorted[0].method;
+  }, [paymentTenders]);
+
+  // T4.150: Tender CRUD helpers.
+  const updateTender = (index, field, value) => {
+    const currentBalance = parseFloat(financials?.balanceDue) || 0;
+    setPaymentTenders(prev => {
+      const next = [...prev];
+      if (field === 'method' && value !== 'Cash') {
+        next[index] = { ...next[index], [field]: value, amountTendered: '' };
+      } else {
+        next[index] = { ...next[index], [field]: value };
+      }
+
+      if (field === 'amount' && next.length > 1 && index !== next.length - 1) {
+        const otherSum = next.reduce((sum, t, i) =>
+          i === next.length - 1 ? sum : sum + (parseFloat(t.amount) || 0), 0
+        );
+        const leftover = Math.max(0, currentBalance - otherSum);
+        next[next.length - 1] = {
+          ...next[next.length - 1],
+          amount: leftover > 0 ? leftover.toFixed(2) : '',
+        };
+      }
+      return next;
+    });
+  };
+
+  const addTender = () => {
+    // Pick first unused method, defaulting to GCash.
+    const usedMethods = new Set(paymentTenders.map(t => t.method));
+    const available = ['GCash', 'Cash', 'Card', 'Bank Transfer'].find(m => !usedMethods.has(m)) || 'GCash';
+    setPaymentTenders(prev => [...prev, { method: available, amount: '', amountTendered: '' }]);
+  };
+
+  const removeTender = (index) => {
+    if (paymentTenders.length <= 1) return; // Minimum 1 row
+    setPaymentTenders(prev => prev.filter((_, i) => i !== index));
+  };
 
   // --- 1. INITIALIZATION & AUTO-BUNDLE ENGINE ---
 
@@ -181,9 +229,9 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         // Build individual cart (used immediately and also when user switches to individual mode)
         const initialCart = buildCartForAppointment(patient, null);
 
-        setCart(initialCart); setSelectedItemVal(''); setPaymentMethod('Cash'); setBarcodeInput('');
+        setCart(initialCart); setSelectedItemVal(''); setBarcodeInput('');
+        setPaymentTenders([{ method: 'Cash', amount: '', amountTendered: '' }]);
         setDepositAmount(patient.depositPaid ? patient.depositPaid.toString() : '');
-        setAmountTendered('');
         setItemDiscounts({}); setBillDiscountType('%'); setBillDiscountValue(''); setBillDiscountReason('');
 
         let foundId = false;
@@ -199,11 +247,6 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
     initPOS();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[open, patient, servicesList, inventoryList]);
-
-  // T4.148: Clear tendered amount when switching to a non-Cash payment method.
-  useEffect(() => {
-    if (paymentMethod !== 'Cash') setAmountTendered('');
-  }, [paymentMethod]);
 
   /**
    * Rebuilds the cart when the billing mode toggle changes.
@@ -384,14 +427,34 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
   };
   const financials = calculateFinancials();
 
-  // T4.148: Derived cash change values — no extra state, computed from financials.
-  const parsedTendered = parseFloat(amountTendered) || 0;
-  const changeDue = paymentMethod === 'Cash'
-    ? Math.max(0, parsedTendered - parseFloat(financials.balanceDue))
-    : 0;
-  const isCashInsufficient = paymentMethod === 'Cash'
-    && amountTendered !== ''
-    && parsedTendered < parseFloat(financials.balanceDue);
+  // T4.150: Multi-tender derived values.
+  // Total amount allocated across all tender rows.
+  // Empty amount on a single-tender row means "full balance" — zero extra clicks for the 90% case.
+  const balanceDueNum = parseFloat(financials.balanceDue) || 0;
+  const totalTendered = useMemo(() =>
+    paymentTenders.reduce((sum, t) => {
+      const amt = parseFloat(t.amount);
+      if (isNaN(amt) && paymentTenders.length === 1) return sum + balanceDueNum;
+      return sum + (amt || 0);
+    }, 0),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [paymentTenders, balanceDueNum]);
+  const remaining = Math.max(0, balanceDueNum - totalTendered);
+
+  // Per-Cash-tender insufficiency: true if any Cash tender has amountTendered < its amount.
+  const anyCashInsufficient = paymentTenders.some(t =>
+    t.method === 'Cash'
+    && t.amountTendered !== ''
+    && (parseFloat(t.amountTendered) || 0) < (parseFloat(t.amount) || balanceDueNum)
+  );
+
+  // Helper: compute change due for a single Cash tender row.
+  const getChangeDue = (tender) => {
+    if (tender.method !== 'Cash') return 0;
+    const tendered = parseFloat(tender.amountTendered) || 0;
+    const amt = parseFloat(tender.amount) || balanceDueNum;
+    return Math.max(0, tendered - amt);
+  };
 
   // --- 4. PDF RECEIPT GENERATOR ---
   const generateReceiptHTML = (transactionId, receiptNumber) => {
@@ -487,11 +550,20 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             ` : ''}
             <div class="total-row"><span>Less Deposit:</span><span>- P${financials.deposit}</span></div>
             <div class="total-row grand-total"><span>BALANCE PAID:</span><span>P${financials.balanceDue}</span></div>
-            <div class="total-row" style="margin-top:5px; font-size:12px; color:#555;"><span>Payment Method:</span><span>${paymentMethod}</span></div>
-            ${paymentMethod === 'Cash' && parsedTendered > 0 ? `
-              <div class="total-row" style="font-size:12px; color:#555;"><span>Tendered:</span><span>P${parsedTendered.toFixed(2)}</span></div>
-              <div class="total-row" style="font-size:12px; color:#555; font-weight:bold;"><span>Change:</span><span>P${changeDue.toFixed(2)}</span></div>
-            ` : ''}
+            <div class="total-row" style="margin-top:5px; font-size:12px; color:#555; font-weight:bold;"><span>Payment:</span><span>${paymentTenders.length > 1 ? 'Split' : primaryPaymentMethod}</span></div>
+            ${(() => {
+              return paymentTenders.map(t => {
+                const amt = parseFloat(t.amount) || balanceDueNum;
+                let line = `<div class="total-row" style="font-size:12px; color:#555;"><span>${t.method}:</span><span>P${amt.toFixed(2)}</span></div>`;
+                if (t.method === 'Cash' && t.amountTendered && parseFloat(t.amountTendered) > 0) {
+                  const tendered = parseFloat(t.amountTendered);
+                  const change = Math.max(0, tendered - amt);
+                  line += `<div class="total-row" style="font-size:11px; color:#888; margin-left:10px;"><span>&nbsp;&nbsp;Tendered:</span><span>P${tendered.toFixed(2)}</span></div>`;
+                  line += `<div class="total-row" style="font-size:11px; color:#888; font-weight:bold; margin-left:10px;"><span>&nbsp;&nbsp;Change:</span><span>P${change.toFixed(2)}</span></div>`;
+                }
+                return line;
+              }).join('');
+            })()}
           </div>
 
           <div class="footer">
@@ -686,10 +758,13 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             : null,
         };
 
-        // T4.148: Tendered/change audit fields.
+        // T4.150: Cash audit fields — aggregate across all Cash tenders for backward compat.
+        const cashTenders = paymentTenders.filter(t => t.method === 'Cash' && t.amountTendered !== '');
+        const totalCashTendered = cashTenders.reduce((s, t) => s + (parseFloat(t.amountTendered) || 0), 0);
+        const totalCashChange = cashTenders.reduce((s, t) => s + getChangeDue(t), 0);
         const cashAuditFields = {
-          amountTendered: paymentMethod === 'Cash' && amountTendered !== '' ? parsedTendered : null,
-          changeDue: paymentMethod === 'Cash' && amountTendered !== '' ? changeDue : null,
+          amountTendered: cashTenders.length > 0 ? totalCashTendered : null,
+          changeDue: cashTenders.length > 0 ? totalCashChange : null,
         };
 
         if (isGroupBill) {
@@ -730,7 +805,15 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             discount: parseFloat(financials.discount),
             depositPaid: parseFloat(financials.deposit),
             total: parseFloat(financials.total),
-            paymentMethod,
+            paymentMethod: primaryPaymentMethod,  // Legacy compat: largest tender
+            paymentTenders: paymentTenders.map(t => ({
+              method: t.method,
+              amount: parseFloat(t.amount) || (paymentTenders.length === 1 ? balanceDueNum : 0),
+              ...(t.method === 'Cash' && t.amountTendered ? {
+                amountTendered: parseFloat(t.amountTendered),
+                changeDue: getChangeDue(t),
+              } : {}),
+            })),
             hasScPwdDiscount: applyScPwd,
             date: Timestamp.now(),
             cashier: profile?.fullName || 'POS Cashier',
@@ -765,7 +848,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
                 timestamp: Timestamp.now(),
                 staffId: profile?.id || 'pos_system',
                 staffName: profile?.fullName || 'POS Cashier',
-                note: `Group checkout: ₱${apptBreakdown?.subtotal?.toFixed(2) || '0.00'} (subtotal) via ${paymentMethod}`,
+                note: `Group checkout: ₱${apptBreakdown?.subtotal?.toFixed(2) || '0.00'} (subtotal) via ${paymentTenders.length > 1 ? 'split (' + paymentTenders.map(t => t.method).join('+') + ')' : primaryPaymentMethod}`,
               }),
             });
           }
@@ -787,7 +870,15 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             discount: parseFloat(financials.discount),
             depositPaid: parseFloat(financials.deposit),
             total: parseFloat(financials.total),
-            paymentMethod,
+            paymentMethod: primaryPaymentMethod,  // Legacy compat: largest tender
+            paymentTenders: paymentTenders.map(t => ({
+              method: t.method,
+              amount: parseFloat(t.amount) || (paymentTenders.length === 1 ? balanceDueNum : 0),
+              ...(t.method === 'Cash' && t.amountTendered ? {
+                amountTendered: parseFloat(t.amountTendered),
+                changeDue: getChangeDue(t),
+              } : {}),
+            })),
             hasScPwdDiscount: applyScPwd,
             date: Timestamp.now(),
             cashier: profile?.fullName || 'POS Cashier',
@@ -815,7 +906,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
               timestamp: Timestamp.now(),
               staffId: profile?.id || 'pos_system',
               staffName: profile?.fullName || 'POS Cashier',
-              note: `Checkout: ₱${financials.total} via ${paymentMethod}`,
+              note: `Checkout: ₱${financials.total} via ${paymentTenders.length > 1 ? 'split (' + paymentTenders.map(t => t.method).join('+') + ')' : primaryPaymentMethod}`,
             }),
           });
         }
@@ -1184,51 +1275,141 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
                </Paper>
              )}
 
+             {/* T4.150: Multi-tender payment section — sequential-add pattern */}
              <Paper variant="outlined" sx={{ p: 2, bgcolor: COLORS.cardBg, borderRadius: 0 }}>
-                <Typography variant="subtitle2" fontWeight="900" color="textSecondary" gutterBottom>PAYMENT METHOD</Typography>
-                <FormControl fullWidth size="small" sx={{ mt: 1 }}>
-                  <Select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
-                    <MenuItem value="Cash">Cash</MenuItem>
-                    <MenuItem value="GCash">GCash / Maya</MenuItem>
-                    <MenuItem value="Card">Credit / Debit Card</MenuItem>
-                    <MenuItem value="Bank Transfer">Bank Transfer</MenuItem>
-                  </Select>
-                </FormControl>
-                {/* T4.148: Amount Tendered + Change Due — visible only for Cash transactions */}
-                {paymentMethod === 'Cash' && (
-                  <Box sx={{ mt: 2 }}>
-                    <TextField
-                      fullWidth size="small" label="Amount Tendered"
-                      type="number"
-                      value={amountTendered}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (v === '' || parseFloat(v) >= 0) setAmountTendered(v);
-                      }}
-                      error={isCashInsufficient}
-                      helperText={isCashInsufficient ? 'Insufficient amount' : ''}
-                      InputProps={{
-                        startAdornment: <InputAdornment position="start">₱</InputAdornment>,
-                        inputProps: { min: 0 },
-                      }}
-                      sx={{ bgcolor: COLORS.cardBg, mb: 1.5 }}
-                    />
-                    {parsedTendered > 0 && !isCashInsufficient && (
-                      <Box sx={{
-                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                        p: 1.5, bgcolor: COLORS.kpiGreenBg, border: `2px solid ${COLORS.success}`,
-                        borderRadius: 0,
-                      }}>
-                        <Typography variant="subtitle2" fontWeight={900} color={COLORS.success}>
-                          CHANGE DUE:
-                        </Typography>
-                        <Typography variant="h6" fontWeight={900} color={COLORS.success}>
-                          ₱{changeDue.toFixed(2)}
-                        </Typography>
-                      </Box>
-                    )}
-                  </Box>
-                )}
+               <Typography variant="subtitle2" fontWeight="900" color="textSecondary" gutterBottom>
+                 PAYMENT METHOD
+               </Typography>
+
+               {paymentTenders.map((tender, idx) => (
+                 <Box key={idx} sx={{
+                   display: 'flex', flexDirection: 'column', gap: 1, mb: 1.5,
+                   p: 1.5, border: `2px solid ${COLORS.border}`, borderRadius: 0,
+                   bgcolor: COLORS.formBg || COLORS.surfaceHover,
+                   ...(paymentTenders.length > 1 ? { boxShadow: `3px 3px 0px ${COLORS.accent}1A` } : {}),
+                 }}>
+                   {/* Row: Method dropdown + Amount + Remove */}
+                   <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                     <FormControl size="small" sx={{ minWidth: 140 }}>
+                       <Select
+                         value={tender.method}
+                         onChange={(e) => updateTender(idx, 'method', e.target.value)}
+                         sx={{ borderRadius: 0, fontWeight: 900, fontSize: '0.8rem' }}
+                       >
+                         <MenuItem value="Cash">Cash</MenuItem>
+                         <MenuItem value="GCash">GCash / Maya</MenuItem>
+                         <MenuItem value="Card">Credit / Debit Card</MenuItem>
+                         <MenuItem value="Bank Transfer">Bank Transfer</MenuItem>
+                       </Select>
+                     </FormControl>
+                     <TextField
+                       size="small" type="number" fullWidth
+                       placeholder={balanceDueNum.toFixed(2)}
+                       value={tender.amount}
+                       onChange={(e) => {
+                         const v = e.target.value;
+                         if (v === '' || parseFloat(v) >= 0) updateTender(idx, 'amount', v);
+                       }}
+                       InputProps={{
+                         startAdornment: <InputAdornment position="start">₱</InputAdornment>,
+                         inputProps: { min: 0 },
+                       }}
+                       sx={{ bgcolor: COLORS.cardBg, borderRadius: 0 }}
+                     />
+                     {paymentTenders.length > 1 && (
+                       <IconButton
+                         size="small"
+                         onClick={() => removeTender(idx)}
+                         sx={{ color: COLORS.danger, border: `1px solid ${COLORS.danger}4D`, borderRadius: 0 }}
+                       >
+                         <RemoveCircleIcon fontSize="small" />
+                       </IconButton>
+                     )}
+                   </Box>
+
+                   {/* Cash-specific: Amount Tendered + Change Due */}
+                   {tender.method === 'Cash' && (
+                     <Box sx={{ mt: 0.5 }}>
+                       <TextField
+                         fullWidth size="small" label="Amount Tendered"
+                         type="number"
+                         value={tender.amountTendered}
+                         onChange={(e) => {
+                           const v = e.target.value;
+                           if (v === '' || parseFloat(v) >= 0) updateTender(idx, 'amountTendered', v);
+                         }}
+                         error={
+                           tender.amountTendered !== ''
+                           && (parseFloat(tender.amountTendered) || 0) < (parseFloat(tender.amount) || balanceDueNum)
+                         }
+                         helperText={
+                           tender.amountTendered !== ''
+                           && (parseFloat(tender.amountTendered) || 0) < (parseFloat(tender.amount) || balanceDueNum)
+                             ? 'Insufficient amount'
+                             : ''
+                         }
+                         InputProps={{
+                           startAdornment: <InputAdornment position="start">₱</InputAdornment>,
+                           inputProps: { min: 0 },
+                         }}
+                         sx={{ bgcolor: COLORS.cardBg, mb: 1, borderRadius: 0 }}
+                       />
+                       {(parseFloat(tender.amountTendered) || 0) > 0
+                         && (parseFloat(tender.amountTendered) || 0) >= (parseFloat(tender.amount) || balanceDueNum) && (
+                         <Box sx={{
+                           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                           p: 1.5, bgcolor: COLORS.kpiGreenBg, border: `2px solid ${COLORS.success}`,
+                           borderRadius: 0,
+                         }}>
+                           <Typography variant="subtitle2" fontWeight={900} color={COLORS.success}>
+                             CHANGE DUE:
+                           </Typography>
+                           <Typography variant="h6" fontWeight={900} color={COLORS.success}>
+                             ₱{getChangeDue(tender).toFixed(2)}
+                           </Typography>
+                         </Box>
+                       )}
+                     </Box>
+                   )}
+                 </Box>
+               ))}
+
+               {/* Add Payment Method button — shown when fewer than 4 tenders */}
+               {paymentTenders.length < 4 && (
+                 <Button
+                   fullWidth
+                   variant="outlined"
+                   size="small"
+                   onClick={addTender}
+                   sx={{
+                     mt: 0.5, borderRadius: 0, fontWeight: 900,
+                     color: COLORS.sky, borderColor: COLORS.sky,
+                     borderStyle: 'dashed', borderWidth: 2,
+                     '&:hover': { borderColor: COLORS.skyHover || COLORS.sky, bgcolor: COLORS.chipBlueBg },
+                   }}
+                 >
+                   + ADD PAYMENT METHOD
+                 </Button>
+               )}
+
+               {/* Remaining balance indicator */}
+               <Box sx={{
+                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                 mt: 1.5, p: 1.5, borderRadius: 0,
+                 bgcolor: remaining > 0.005 ? COLORS.kpiOrangeBg : COLORS.kpiGreenBg,
+                 border: `2px solid ${remaining > 0.005 ? COLORS.warning : COLORS.success}`,
+               }}>
+                 <Typography variant="subtitle2" fontWeight={900}
+                   color={remaining > 0.005 ? COLORS.warning : COLORS.success}
+                 >
+                   {remaining > 0.005 ? 'REMAINING:' : 'FULLY COVERED'}
+                 </Typography>
+                 <Typography variant="h6" fontWeight={900}
+                   color={remaining > 0.005 ? COLORS.warning : COLORS.success}
+                 >
+                   ₱{remaining.toFixed(2)}
+                 </Typography>
+               </Box>
              </Paper>
           </Box>
           </Box>{/* closes the main content flex row */}
@@ -1302,7 +1483,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
           <Button onClick={onClose} sx={{ color: COLORS.accent, fontWeight: 'bold', px: 3 }}>Cancel</Button>
           <Box sx={{ display: 'flex', gap: 2 }}>
               <Button onClick={handleSaveDraft} disabled={loading} variant="outlined" color="primary" startIcon={<SaveIcon />}>Save Invoice Draft</Button>
-              <Button onClick={handleCheckout} disabled={loading || isCashInsufficient || (parseFloat(billDiscountValue) > 0 && !billDiscountReason)} variant="contained" color="success" size="large" startIcon={<PaidIcon />} sx={{ px: 4, fontWeight: '900', boxShadow: 3 }}>
+              <Button onClick={handleCheckout} disabled={loading || remaining > 0.005 || anyCashInsufficient || (parseFloat(billDiscountValue) > 0 && !billDiscountReason)} variant="contained" color="success" size="large" startIcon={<PaidIcon />} sx={{ px: 4, fontWeight: '900', boxShadow: 3 }}>
                  {loading ? "Processing..." : `Settle Balance (₱${financials.balanceDue})`}
               </Button>
           </Box>

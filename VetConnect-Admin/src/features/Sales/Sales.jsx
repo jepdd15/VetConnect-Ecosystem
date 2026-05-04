@@ -68,8 +68,13 @@ export default function Sales() {
       const matchSearch = (s.petName || '').toLowerCase().includes(searchText.toLowerCase()) || 
                           (s.ownerName || '').toLowerCase().includes(searchText.toLowerCase()) ||
                           s.id.toLowerCase().includes(searchText.toLowerCase());
-      const matchMethod = filterMethod.includes('All') || filterMethod.includes(s.paymentMethod) ||
-                          (filterMethod.includes('Card') && s.paymentMethod === 'Bank Transfer');
+      // T4.150: Match method filter against paymentTenders[] (with legacy fallback).
+      const saleMethods = s.paymentTenders && s.paymentTenders.length > 0
+        ? s.paymentTenders.map(t => t.method)
+        : [s.paymentMethod];
+      const matchMethod = filterMethod.includes('All')
+        || saleMethods.some(m => filterMethod.includes(m))
+        || (filterMethod.includes('Card') && saleMethods.includes('Bank Transfer'));
       const matchStatus = filterStatus === 'All' || (filterStatus === 'Paid' ? s.status !== 'refunded' : filterStatus === 'refunded' ? s.status === 'refunded' : true);
       return matchSearch && matchMethod && matchStatus;
     });
@@ -176,11 +181,28 @@ export default function Sales() {
             ${!sale.hasScPwdDiscount && parseFloat(sale.billDiscountAmount || 0) > 0 ? `<div class="total-row" style="color: #E65100;"><span>Bill Discount (${sale.billDiscountReason || 'Custom'}):</span><span>- P${parseFloat(sale.billDiscountAmount).toFixed(2)}</span></div>` : ''}
             <div class="total-row"><span>Less Deposit:</span><span>- P${parseFloat(sale.depositPaid || 0).toFixed(2)}</span></div>
             <div class="total-row grand-total"><span>BALANCE PAID:</span><span>P${(parseFloat(sale.total || 0) - parseFloat(sale.depositPaid || 0)).toFixed(2)}</span></div>
-            <div class="total-row" style="margin-top:5px; font-size:12px; color:#555;"><span>Payment Method:</span><span>${sale.paymentMethod || 'Cash'}</span></div>
-            ${sale.paymentMethod === 'Cash' && sale.amountTendered ? `
-              <div class="total-row" style="font-size:12px; color:#555;"><span>Tendered:</span><span>P${parseFloat(sale.amountTendered).toFixed(2)}</span></div>
-              <div class="total-row" style="font-size:12px; color:#555; font-weight:bold;"><span>Change:</span><span>P${parseFloat(sale.changeDue || 0).toFixed(2)}</span></div>
-            ` : ''}
+            ${(() => {
+              // T4.150: Multi-tender reprint support with legacy fallback.
+              if (sale.paymentTenders && sale.paymentTenders.length > 0) {
+                const headerLabel = sale.paymentTenders.length > 1 ? 'Split' : sale.paymentMethod || 'Cash';
+                const tenderLines = sale.paymentTenders.map(t => {
+                  const amt = parseFloat(t.amount) || 0;
+                  let line = `<div class="total-row" style="font-size:12px; color:#555;"><span>${t.method}:</span><span>P${amt.toFixed(2)}</span></div>`;
+                  if (t.method === 'Cash' && t.amountTendered) {
+                    line += `<div class="total-row" style="font-size:11px; color:#888; margin-left:10px;"><span>&nbsp;&nbsp;Tendered:</span><span>P${parseFloat(t.amountTendered).toFixed(2)}</span></div>`;
+                    line += `<div class="total-row" style="font-size:11px; color:#888; font-weight:bold; margin-left:10px;"><span>&nbsp;&nbsp;Change:</span><span>P${parseFloat(t.changeDue || 0).toFixed(2)}</span></div>`;
+                  }
+                  return line;
+                }).join('');
+                return `<div class="total-row" style="margin-top:5px; font-size:12px; color:#555; font-weight:bold;"><span>Payment:</span><span>${headerLabel}</span></div>${tenderLines}`;
+              }
+              // Legacy: single paymentMethod
+              return `<div class="total-row" style="margin-top:5px; font-size:12px; color:#555;"><span>Payment Method:</span><span>${sale.paymentMethod || 'Cash'}</span></div>
+                ${sale.paymentMethod === 'Cash' && sale.amountTendered ? `
+                  <div class="total-row" style="font-size:12px; color:#555;"><span>Tendered:</span><span>P${parseFloat(sale.amountTendered).toFixed(2)}</span></div>
+                  <div class="total-row" style="font-size:12px; color:#555; font-weight:bold;"><span>Change:</span><span>P${parseFloat(sale.changeDue || 0).toFixed(2)}</span></div>
+                ` : ''}`;
+            })()}
           </div>
           <div class="footer">
             <p>Thank you for trusting ${clinicSettings.clinicName} with your pet's health!</p>
@@ -315,18 +337,31 @@ export default function Sales() {
         </Box>
       ) 
     },
-    { 
-      field: 'paymentMethod', headerName: 'Method', width: 130, sortable: false, disableColumnMenu: true,
+    {
+      field: 'paymentMethod', headerName: 'Method', width: 140, sortable: false, disableColumnMenu: true,
       renderCell: (p) => {
-        let icon; let color;
-        if (p.value === 'Cash') { icon = <AccountBalanceWalletIcon fontSize="small" />; color = COLORS.success; }
-        else if (p.value?.includes('GCash')) { icon = <PhoneIphoneIcon fontSize="small" />; color = COLORS.medical; }
-        else if (p.value === 'Card') { icon = <CreditCardIcon fontSize="small" />; color = COLORS.amber; }
-        else { icon = <AccountBalanceIcon fontSize="small" />; color = COLORS.grooming; }
+        // T4.150: Show primary method chip + "Split" badge for multi-tender sales.
+        const tenders = p.row.paymentTenders;
+        const isSplit = tenders && tenders.length > 1;
+        const displayMethod = p.row.paymentMethod || p.value || 'Cash';
+
+        const getMethodStyle = (method) => {
+          if (method === 'Cash') return { icon: <AccountBalanceWalletIcon fontSize="small" />, color: COLORS.success };
+          if (method?.includes('GCash')) return { icon: <PhoneIphoneIcon fontSize="small" />, color: COLORS.medical };
+          if (method === 'Card') return { icon: <CreditCardIcon fontSize="small" />, color: COLORS.amber };
+          return { icon: <AccountBalanceIcon fontSize="small" />, color: COLORS.grooming };
+        };
+
+        const { icon, color } = getMethodStyle(displayMethod);
         return (
-            <Box sx={{ display: 'flex', alignItems: 'center', height: '100%' }}>
-                <Chip icon={icon} label={p.value} size="small" sx={{ borderRadius: 0, bgcolor: COLORS.cardBg, color: color, border: `2px solid ${color}`, fontWeight: 900, '& .MuiChip-icon': { color: color } }} />
-            </Box>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', height: '100%', gap: 0.3 }}>
+            <Chip icon={icon} label={displayMethod} size="small" sx={{ borderRadius: 0, bgcolor: COLORS.cardBg, color: color, border: `2px solid ${color}`, fontWeight: 900, '& .MuiChip-icon': { color: color } }} />
+            {isSplit && (
+              <Typography variant="caption" sx={{ fontSize: '0.6rem', fontWeight: 900, color: COLORS.sky, letterSpacing: 0.3 }}>
+                SPLIT ({tenders.length} methods)
+              </Typography>
+            )}
+          </Box>
         );
       }
     },

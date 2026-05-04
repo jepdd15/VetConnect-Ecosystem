@@ -105,10 +105,23 @@ export function useSalesData(filterDate, currentUser) {
               if (sale.hasScPwdDiscount) totalDiscounts += discount;
               totalCollected += collected;
               totalCustomDiscounts += parseFloat(sale.customDiscountTotal || 0);
-              if (sale.paymentMethod === 'Cash') cash += collected;
-              else if (sale.paymentMethod?.includes('GCash')) gcash += collected;
-              else if (sale.paymentMethod === 'Card') card += collected;
-              else if (sale.paymentMethod === 'Bank Transfer') bank += collected;
+              // T4.150: Distribute collected amount across tenders.
+              // New sales have paymentTenders[]; legacy sales have only paymentMethod.
+              if (sale.paymentTenders && sale.paymentTenders.length > 0) {
+                sale.paymentTenders.forEach(t => {
+                  const tenderAmt = parseFloat(t.amount) || 0;
+                  if (t.method === 'Cash') cash += tenderAmt;
+                  else if (t.method?.includes('GCash')) gcash += tenderAmt;
+                  else if (t.method === 'Card') card += tenderAmt;
+                  else if (t.method === 'Bank Transfer') bank += tenderAmt;
+                });
+              } else {
+                // Legacy fallback: single paymentMethod
+                if (sale.paymentMethod === 'Cash') cash += collected;
+                else if (sale.paymentMethod?.includes('GCash')) gcash += collected;
+                else if (sale.paymentMethod === 'Card') card += collected;
+                else if (sale.paymentMethod === 'Bank Transfer') bank += collected;
+              }
           }
       });
       return { cash, gcash, card, bank, totalBilled, totalCollected, totalDeposits, totalDiscounts, totalCustomDiscounts, refunds };

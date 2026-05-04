@@ -5,7 +5,7 @@
 
 ---
 
-## Status (updated 2026-04-29)
+## Status (updated 2026-04-30)
 
 **Phase 2 COMPLETE AND VERIFIED.** 501 tasks audited — 496 PASS, 6 minor PARTIAL, 0 FAIL.
 
@@ -71,7 +71,73 @@
 
 **Firestore rules deployed:** notification_templates (staff read, admin write) + notification_log (staff read, auth create, append-only).
 
-**Next:** thesis (10 tasks, ~15-25 hrs) → Phase 3 Optional → Phase 4 S-Tier remaining (~60 tasks, ~120 hrs)
+**Additional (late session 2026-04-29):**
+- T4.107: Dynamic department-based record filters (resolveDepartmentForRecord utility + admin + mobile)
+- T4.108: normalizeMarkdownTables utility for AI table rendering (Rule 6 for merged header+delimiter)
+- T4.109: SOAP quadrant swap [S|A / O|P] + multi-turn AI via chatWithHistory replacing single-shot callClinicalReasoning
+- T4.110: ClinicalAIPanel extracted — collapsible drawer (default view, z-index 1400) + persistent third column (God View flex:7/3). DiagnosticBridge slimmed to buttons-only. No-tables system prompt added.
+- Layout fixes: DraggableKPIGrid ResizeObserver width, m:-4 hack removal, Inventory pagination, Services Activity Log full-bleed
+- Mobile fixes: SimpleMarkdown Text wrapping, chatbot navbar clearance, ClientDashboard cleanup
+- Tasks formalized: T4.98-T4.106 (queue centralization, timestamp validation, RBAC, My Bookings offline/pagination/error/animation/accessibility/pull-to-refresh)
+- APK built + admin deployed to Firebase Hosting
+
+**Session 2026-04-30 (T3.128-T3.137, T4.111-T4.118):**
+- Clinical workspace: department-filtered staff assignment (T4.111), carry-over signedOffAt bug fix (T3.128), EOD parity (T3.130), sign-off requires Subjective (T3.131)
+- Vitals: resolveVitals amendment-aware utility (T3.132-T3.133), admin zoom dialog + time-proportional axis + delta annotations (T4.112), 3-layer input validation (T3.136), mobile 7-vital S-push with zoom modal (T4.113)
+- Structured physical exam: PhysicalExamChecklist 10 body systems + dental/hydration/MM, examUtils dual-read, Zen zoom parity, sticky header (T4.115)
+- EMRDrawer fixes: z-index 1400 + dischargeSummary crash (T3.129)
+- AI: error message surfacing (T3.134), retry logic + graceful degradation UI (T3.135), dead callClinicalReasoning removed
+- Prescriptions: active/historical split + pin toggle + zoom modal + RX drug/non-drug split + qty fix + widget cleanup + back-nav fix (T4.116)
+- Vaccine restructure: vaccineConfig schema, category-based detection, Plan quadrant Autocomplete, noStockDeduction override, Settings migration button, useVaccineCatalog rewrite (T4.117) — 3-day build
+- Mobile vaccination status: completeness bar, overdue alerts, per-vaccine cards with tap-to-expand history, passport button absorbed (T4.118)
+- Inventory categories moved from Settings to Inventory third tab (T3.137)
+- Tasks formalized: T4.119-T4.125 (notification history, lab redesign, file attachments, mobile parity ×3, CRM redesign), T3.55 updated (Cloudflare Cron vaccine reminders)
+- ~650 DONE / ~166 TODO. ~824 total tasks.
+
+**Session 2026-05-01 (T4.119, T3.55, T4.126, T3.138) — continued from Apr 30:**
+- Mobile Notification History: bell icon + unread badge + SectionList + type filters + infinite scroll (T4.119)
+- Automated vaccine reminders: pre-computed queue, sign-off piggyback, weekly recompute, Worker Cron 7AM Manila (T3.55)
+- Automated 3-stage appointment reminders: configurable heads-up + fixed tomorrow + fixed today, Worker Cron handler (T4.126)
+- Notification log fix: client-side template resolution + backfill button + type filter parity (T3.138)
+- Cloudflare Worker: FIREBASE_API_KEY env var, Cron Trigger 0 23 * * *, handleVaccineReminders + handleAppointmentReminders via Promise.allSettled
+- Firestore rules deployed: notification_log (owner reads + admin update), vaccine_reminder_queue (public), appointment_reminder_queue (public), clinic_settings/general (public read), notification_log composite index (ownerId + sentAt)
+- 30 discovered gaps documented in memory (pending decision rounds)
+- ~655 DONE / ~157 TODO. ~826 total tasks.
+
+**Cloudflare Worker state (updated 2026-05-01):**
+- URL: https://cool-fire-2d53.jepdd15.workers.dev
+- Model: claude-haiku-4-5-20251001
+- Endpoints: POST / (AI), POST /push (template), POST /push/custom (free-text)
+- Cron: 0 23 * * * UTC (7 AM Manila) — runs handleVaccineReminders + handleAppointmentReminders
+- Env vars: ANTHROPIC_API_KEY + FIREBASE_API_KEY
+- 17 templates total (12 status + 2 vaccine + 3 appointment)
+- Worker source NOT in repo
+
+**Session 2026-05-01 to 2026-05-04 (T4.120-T4.141):**
+- Lab results redesign: 78-test catalog, useLabTestCatalog, Autocomplete form, zoom modal with SparkLine, 8 consumer updates, Amendment 1 pos/neg mapping (T4.120, 3-day)
+- File attachments: uploadAttachment utility, CW UI, per-lab-test + general SOAP, clientVisible toggle, storage.rules — Blaze-gated (T4.121, 2-day)
+- Mobile parity: prescriptions active/historical + qty (T4.122), lab summary + LabZoomModal (T4.123), attachment viewer + lightbox (T4.124)
+- Offline support: Firestore memoryLocalCache, onAuthStateChanged auth routing, NetworkContext + offline banner, 14 error callbacks, offline-aware UI states. Absorbs T4.101 + T4.130 (T4.74)
+- Registration expansion: DPA checkbox consent + address + city + emergency contact + promo (T4.128)
+- Liability waiver: digital signing via ConsentScreen with consentType:'waiver', valid under RA 8792 (T4.129)
+- Queue transparency: 6 approaches — dept-filtered count, per-dept time estimate (absorbs T4.6), dept lane header, breadcrumb, explainer, Monitor badges (T4.134, 2-day)
+- Page header unification: COLORS.sky token, 2-word titles, Sky Blue primary actions, outlined search, 2-row flexWrap across 12 pages (T4.133, 2-day)
+- Multi-channel notifications: push → email (Resend) → SMS (Semaphore) cascade, Worker /email + /sms endpoints, Settings toggles, NotificationLogs channel column (T4.135, 3-day)
+- Booking engine Professional tier: petServiceMap per-pet services, weight-resolved pricing, cumulative capacity, parallel dept scheduling (T4.139, 3-day)
+- Fixes: God View quadrant sizing, Zen lab parity, hooks order crash, VitalsZoomModal, SparkLine width, responsive titles, SuperCard collapse, WalkInModal layout, consent_versions rule, Firestore memoryLocalCache, sidebar responsive, triage text cleanup
+- Tasks formalized: T4.127, T4.136-T4.141, T1.11
+- ~669 DONE / ~155 TODO. ~842 total tasks.
+
+**Cloudflare Worker state (updated 2026-05-04):**
+- URL: https://cool-fire-2d53.jepdd15.workers.dev
+- Model: claude-haiku-4-5-20251001
+- Endpoints: POST / (AI), POST /push (template), POST /push/custom (free-text), POST /email (Resend relay), POST /sms (Semaphore relay)
+- Cron: 0 23 * * * UTC (7 AM Manila) — runs handleVaccineReminders + handleAppointmentReminders (push + email + SMS)
+- Env vars: ANTHROPIC_API_KEY + FIREBASE_API_KEY + RESEND_API_KEY + RESEND_FROM_EMAIL + SEMAPHORE_API_KEY + SEMAPHORE_SENDER_NAME
+- 15 push templates + 3 SMS templates + email HTML wrapper
+- Worker source in repo: VetConnect-Backend/cloudflare-worker/worker.js (739 lines)
+
+**Next:** T4.140 (queue validation parity, 4 hrs) → T4.125 (CRM redesign, 10-12 hrs) → T4.141 (structured diagnosis, 10-12 hrs) → T4.127 (CW sidebar split, 3-4 hrs) → T4.136-T4.138 (admin auth hardening, ~2.5 hrs) → T1.11 (thesis legal paragraph) → thesis
 
 ---
 
@@ -81,14 +147,24 @@ Paste this prompt at the start of a new session:
 
 ```
 Read these files in this order:
-1. IMPLEMENTATION_GUIDE.md — module sequence (primary workflow), cross-reference table
-2. handoff.json (section: session_2026_04_21_supplement) — latest context
+1. IMPLEMENTATION_GUIDE.md — current status section + module sequence
+2. handoff.json (section: advisory_session_2026_05_01_to_05_04) — latest context
 3. MASTER_TASKLIST.md — task registry with IDs, priorities, dependencies, status
 
 The full VetConnect codebase has been audited across 5+ sessions — every source
 file has been deep-dived. Do NOT re-scan any code. All findings are in the
 deep-dive files at the repo root. Use the "Task-to-Source Cross-Reference" table
 in IMPLEMENTATION_GUIDE.md to find the backing file for any task.
+
+Context: This is a continuation of the 2026-05-01/05-04 advisory/implementation session.
+~669 DONE, ~155 TODO. Build passes. 322 tests passing.
+Cloudflare Worker URL: https://cool-fire-2d53.jepdd15.workers.dev
+Cloudflare Worker model: claude-haiku-4-5-20251001
+Cloudflare Worker Cron: 0 23 * * * UTC (7 AM Manila daily)
+Cloudflare Worker handlers: handleVaccineReminders + handleAppointmentReminders (push + email + SMS)
+Cloudflare Worker env vars: ANTHROPIC_API_KEY + FIREBASE_API_KEY + RESEND_API_KEY + RESEND_FROM_EMAIL + SEMAPHORE_API_KEY + SEMAPHORE_SENDER_NAME
+Cloudflare Worker endpoints: POST / (AI), /push, /push/custom, /email (Resend), /sms (Semaphore)
+Cloudflare Worker reference copy: VetConnect-Backend/cloudflare-worker/worker.js (739 lines)
 
 I want to work on [MODULE NAME]. Follow the module workflow:
 1. LOOK UP: Find the module in the "Module Sequence" table. Read the listed

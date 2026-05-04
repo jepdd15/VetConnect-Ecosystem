@@ -89,6 +89,25 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
               </Box>
             )}
 
+            {/* T4.147: Outstanding balance badge — shown for completed appointments with partial payment */}
+            {p.row.status === 'completed' && (p.row.balanceRemaining || 0) > 0 && (
+              <Box sx={{ mb: 1.5, pb: 1.5, borderBottom: `1px solid ${COLORS.borderLight}` }}>
+                <Chip
+                  label={`BALANCE DUE: ₱${(p.row.balanceRemaining || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
+                  size="small"
+                  sx={{
+                    height: 20,
+                    fontSize: '0.62rem',
+                    fontWeight: 900,
+                    borderRadius: 0,
+                    bgcolor: COLORS.warningSurface,
+                    color: COLORS.warning,
+                    border: `1px solid ${COLORS.warning}`,
+                  }}
+                />
+              </Box>
+            )}
+
             <Stack spacing={1.2}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5 }}>SPECIES</Typography>

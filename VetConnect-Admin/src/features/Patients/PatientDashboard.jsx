@@ -199,6 +199,10 @@ export default function PatientDashboard() {
   const [deptsList, setDeptsList] = useState([]);
   // T2.129: Generic error snackbar
   const [errorSnack, setErrorSnack] = useState('');
+  // T4.147: Generic success snackbar (snooze confirmation, etc.)
+  const [successSnack, setSuccessSnack] = useState('');
+  // T4.147: Mark as Settled dialog target — the sale object to settle
+  const [settleTarget, setSettleTarget] = useState(null);
 
 
   // T3.101: Vaccine exemption dialog
@@ -826,19 +830,89 @@ export default function PatientDashboard() {
   const toggleYear = (year) => setCollapsedYears(p => { const n = new Set(p); n.has(year) ? n.delete(year) : n.add(year); return n; });
 
   // T2.101: Record a partial payment against an outstanding sale balance.
+  // T4.147: Also syncs hasOutstandingBalance on the owner doc after payment.
   const handleRecordPayment = async () => {
     const amount = parseFloat(recordPaymentAmount);
     if (!recordPaymentTarget || isNaN(amount) || amount <= 0) return;
     try {
       const newBalance = Math.max(0, (recordPaymentTarget.balanceRemaining || 0) - amount);
       await updateDoc(doc(db, 'sales', recordPaymentTarget.id), { balanceRemaining: newBalance });
-      setOwnerSales(prev => prev.map(s => s.id === recordPaymentTarget.id ? { ...s, balanceRemaining: newBalance } : s));
+      let updatedSales;
+      setOwnerSales(prev => {
+        updatedSales = prev.map(s =>
+          s.id === recordPaymentTarget.id ? { ...s, balanceRemaining: newBalance } : s
+        );
+        return updatedSales;
+      });
       setRecordPaymentOpen(false);
       setRecordPaymentTarget(null);
       setRecordPaymentAmount('');
+
+      if (owner?.id && updatedSales) {
+        const remainingDebt = updatedSales
+          .filter(s => s.status !== 'refunded' && s.status !== 'voided')
+          .reduce((sum, s) => sum + (s.balanceRemaining || 0), 0);
+        updateDoc(doc(db, 'users', owner.id), {
+          hasOutstandingBalance: remainingDebt > 0,
+        }).catch(() => {});
+      }
     } catch (e) {
       console.error('[PatientDashboard.handleRecordPayment]:', e.message);
       setErrorSnack('Failed to record payment: ' + e.message);
+    }
+  };
+
+  // T4.147: Mark a sale as settled externally (off-POS payment — GCash, bank transfer, etc.).
+  // Writes an audit trail so the forensic ledger distinguishes POS vs. external settlements.
+  const handleMarkSettled = async () => {
+    if (!settleTarget) return;
+    try {
+      const staffName = profile
+        ? `${profile.firstName || ''} ${profile.lastName || ''}`.trim() || profile.fullName || 'Staff'
+        : 'Staff';
+      await updateDoc(doc(db, 'sales', settleTarget.id), {
+        balanceRemaining: 0,
+        settledExternally: true,
+        settledBy: staffName,
+        settledAt: Timestamp.now(),
+      });
+      let updatedSales;
+      setOwnerSales(prev => {
+        updatedSales = prev.map(s =>
+          s.id === settleTarget.id ? { ...s, balanceRemaining: 0, settledExternally: true, settledBy: staffName, settledAt: new Date() } : s
+        );
+        return updatedSales;
+      });
+      setSettleTarget(null);
+
+      if (owner?.id && updatedSales) {
+        const remainingDebt = updatedSales
+          .filter(s => s.status !== 'refunded' && s.status !== 'voided')
+          .reduce((sum, s) => sum + (s.balanceRemaining || 0), 0);
+        updateDoc(doc(db, 'users', owner.id), {
+          hasOutstandingBalance: remainingDebt > 0,
+        }).catch(() => {});
+      }
+    } catch (e) {
+      console.error('[PatientDashboard.handleMarkSettled]:', e.message);
+      setErrorSnack('Failed to mark as settled: ' + e.message);
+    }
+  };
+
+  // T4.147: Snooze automated balance reminders for this client.
+  // The Cloudflare Worker checks balanceReminderSnoozedUntil before sending.
+  const handleSnoozeReminders = async (daysFromNow) => {
+    if (!owner?.id) return;
+    try {
+      const snoozedUntil = new Date();
+      snoozedUntil.setDate(snoozedUntil.getDate() + daysFromNow);
+      await updateDoc(doc(db, 'users', owner.id), {
+        balanceReminderSnoozedUntil: Timestamp.fromDate(snoozedUntil),
+      });
+      setSuccessSnack(`Reminders snoozed for ${daysFromNow} day${daysFromNow !== 1 ? 's' : ''}.`);
+    } catch (e) {
+      console.error('[PatientDashboard.handleSnoozeReminders]:', e.message);
+      setErrorSnack('Failed to snooze reminders: ' + e.message);
     }
   };
 
@@ -2503,6 +2577,23 @@ export default function PatientDashboard() {
           {/* T2.101: Billing Ledger — outstanding balances from sales */}
           {ownerSales.filter(s => (s.balanceRemaining || 0) > 0 && s.status !== 'refunded' && s.status !== 'voided').length > 0 && (
             <Widget title="Outstanding Balance" icon={<ScaleIcon sx={{ fontSize: 14, color: COLORS.danger }} />}>
+              {/* T4.147: Snooze reminders dropdown — writes balanceReminderSnoozedUntil to user doc */}
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', mb: 1 }}>
+                <FormControl size="small" sx={{ minWidth: 160 }}>
+                  <Select
+                    displayEmpty
+                    value=""
+                    onChange={(e) => handleSnoozeReminders(Number(e.target.value))}
+                    sx={{ fontFamily: FONT, fontSize: '0.7rem', fontWeight: 700, borderRadius: 0, height: 28 }}
+                    renderValue={() => 'Snooze Reminders'}
+                  >
+                    <MenuItem value={7} sx={{ fontFamily: FONT, fontSize: '0.75rem' }}>1 Week</MenuItem>
+                    <MenuItem value={14} sx={{ fontFamily: FONT, fontSize: '0.75rem' }}>2 Weeks</MenuItem>
+                    <MenuItem value={30} sx={{ fontFamily: FONT, fontSize: '0.75rem' }}>1 Month</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+
               <Stack spacing={0.75}>
                 {ownerSales.filter(s => (s.balanceRemaining || 0) > 0 && s.status !== 'refunded' && s.status !== 'voided').map((sale, i) => {
                   const saleDateStr = sale.date?.toDate ? sale.date.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
@@ -2512,15 +2603,27 @@ export default function PatientDashboard() {
                         <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', fontWeight: 700, color: COLORS.textPrimary }}>{saleDateStr}</Typography>
                         <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', color: COLORS.danger, fontWeight: 700 }}>₱{(sale.balanceRemaining || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} remaining</Typography>
                       </Box>
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        disabled={isErased}
-                        onClick={() => { setRecordPaymentTarget(sale); setRecordPaymentAmount(''); setRecordPaymentOpen(true); }}
-                        sx={{ fontFamily: FONT, fontSize: '0.62rem', fontWeight: 800, borderRadius: 0, color: COLORS.success, borderColor: '#A5D6A7', textTransform: 'none', py: 0.25, px: 1 }}
-                      >
-                        Record Payment
-                      </Button>
+                      <Box sx={{ display: 'flex', gap: 0.5 }}>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          disabled={isErased}
+                          onClick={() => { setRecordPaymentTarget(sale); setRecordPaymentAmount(''); setRecordPaymentOpen(true); }}
+                          sx={{ fontFamily: FONT, fontSize: '0.62rem', fontWeight: 800, borderRadius: 0, color: COLORS.success, borderColor: '#A5D6A7', textTransform: 'none', py: 0.25, px: 1 }}
+                        >
+                          Record Payment
+                        </Button>
+                        {/* T4.147: Mark Settled — for off-POS payments (GCash, bank transfer) */}
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          disabled={isErased}
+                          onClick={() => setSettleTarget(sale)}
+                          sx={{ fontFamily: FONT, fontSize: '0.62rem', fontWeight: 800, borderRadius: 0, color: COLORS.warning, borderColor: COLORS.warning, textTransform: 'none', py: 0.25, px: 1 }}
+                        >
+                          Mark Settled
+                        </Button>
+                      </Box>
                     </Box>
                   );
                 })}
@@ -2605,6 +2708,31 @@ export default function PatientDashboard() {
             sx={{ fontFamily: FONT, fontWeight: 900, bgcolor: COLORS.success, borderRadius: 0, '&:hover': { bgcolor: '#1B5E20' } }}
           >
             Save Payment
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* T4.147: Mark as Settled Confirmation Dialog */}
+      <Dialog open={!!settleTarget} onClose={() => setSettleTarget(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 0 } }}>
+        <DialogTitle sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.95rem', color: COLORS.warning, borderBottom: `2px solid ${COLORS.border}` }}>
+          Mark as Settled
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', color: COLORS.textSecondary }}>
+            Mark <strong>₱{(settleTarget?.balanceRemaining || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong> as settled?
+            This records that payment was received outside the POS system (e.g. GCash, bank transfer).
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 2.5, pb: 2 }}>
+          <Button onClick={() => setSettleTarget(null)} sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textSecondary, borderRadius: 0 }}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleMarkSettled}
+            variant="contained"
+            sx={{ fontFamily: FONT, fontWeight: 900, borderRadius: 0, bgcolor: COLORS.warning, '&:hover': { bgcolor: COLORS.danger } }}
+          >
+            Confirm Settled
           </Button>
         </DialogActions>
       </Dialog>
@@ -2694,6 +2822,18 @@ export default function PatientDashboard() {
       >
         <Alert onClose={() => setErrorSnack('')} severity="error" variant="filled" sx={{ fontFamily: FONT, width: '100%' }}>
           {errorSnack}
+        </Alert>
+      </Snackbar>
+
+      {/* T4.147: Generic success snackbar — snooze confirmations, etc. */}
+      <Snackbar
+        open={!!successSnack}
+        autoHideDuration={4000}
+        onClose={() => setSuccessSnack('')}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setSuccessSnack('')} severity="success" variant="filled" sx={{ fontFamily: FONT, width: '100%', borderRadius: 0 }}>
+          {successSnack}
         </Alert>
       </Snackbar>
 

@@ -91,6 +91,10 @@ export default function BookAppointment({ navigation, route }) {
   // Populated after pet selection. Shown as an informational warning banner.
   const [noShowInfo, setNoShowInfo] = useState(null);
 
+  // T4.147: Outstanding balance from previous completed visits.
+  // One-shot query on mount — balance is unlikely to change while booking.
+  const [outstandingBalance, setOutstandingBalance] = useState(0);
+
   const { isConnected } = useNetwork();
 
   // Derive a flat unique list of all services selected across all pets.
@@ -223,6 +227,29 @@ export default function BookAppointment({ navigation, route }) {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rescheduleMode, selectedPets.length, petServiceMap]);
+
+  // T4.147: Check for outstanding balance from previous visits on mount.
+  // Uses getDocs (one-shot) — the balance won't change while the user is actively booking.
+  useEffect(() => {
+    if (!auth.currentUser) return;
+    (async () => {
+      try {
+        const q = query(
+          collection(db, 'appointments'),
+          where('ownerId', '==', auth.currentUser.uid),
+          where('status', '==', 'completed'),
+        );
+        const snap = await getDocs(q);
+        const total = snap.docs.reduce((sum, d) => {
+          const bal = d.data().balanceRemaining || 0;
+          return sum + (bal > 0 ? bal : 0);
+        }, 0);
+        setOutstandingBalance(total);
+      } catch (err) {
+        console.warn('[BookAppointment] Balance check failed:', err.message);
+      }
+    })();
+  }, []);
 
   // Configured no-show lookback window — falls back to 30 days if Firestore hasn't loaded yet.
   const noShowWindowDays = clinicSettings?.noShowLinkWindowDays || 30;
@@ -1783,6 +1810,31 @@ export default function BookAppointment({ navigation, route }) {
           />
         </View>
       </View>
+
+      {/* T4.147: Outstanding balance warning — non-blocking. Hidden in reschedule mode. */}
+      {outstandingBalance > 0 && !rescheduleMode && (
+        <View style={{
+          backgroundColor: '#FFF3E0',
+          borderBottomWidth: 2,
+          borderBottomColor: COLORS.brand,
+          paddingHorizontal: 16,
+          paddingVertical: 10,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 8,
+        }}>
+          <Text style={{ fontSize: 16 }}>💸</Text>
+          <Text style={{
+            flex: 1,
+            fontFamily: 'Inter_700Bold',
+            fontSize: 12,
+            color: COLORS.brand,
+            letterSpacing: 0.3,
+          }}>
+            You have ₱{outstandingBalance.toLocaleString()} outstanding from a previous visit. Please settle at your next visit.
+          </Text>
+        </View>
+      )}
 
       {/* DYNAMIC BODY */}
       <View style={styles.bodyContainer}>

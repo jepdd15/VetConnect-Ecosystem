@@ -93,6 +93,11 @@ const DEFAULT_TEMPLATES = {
     title: "Today's Appointment",
     body: "Today is the day! {petName}'s appointment is today. Please arrive 10 minutes early. See you soon!",
   },
+  // T4.147: Balance reminder template (also registered in BALANCE_TEMPLATES below)
+  'balance-reminder': {
+    title: 'Outstanding Balance Reminder',
+    body: 'You have ₱{amount} outstanding from a previous visit. Please settle at your next visit or contact us.',
+  },
 };
 
 function interpolateTemplate(template, data) {
@@ -372,6 +377,14 @@ const VACCINE_TEMPLATES = {
   'vaccine-overdue': {
     title: 'Overdue Vaccination Alert',
     body: "⚠ {petName}'s {vaccineName} vaccine is overdue by {days} days. Please book as soon as possible to keep them protected.",
+  },
+};
+
+// T4.147: Balance reminder templates — amount is interpolated at send time.
+const BALANCE_TEMPLATES = {
+  'balance-reminder': {
+    title: 'Outstanding Balance Reminder',
+    body: 'You have ₱{amount} outstanding from a previous visit. Please settle at your next visit or contact us for payment options.',
   },
 };
 
@@ -695,6 +708,274 @@ async function handleAppointmentReminders(env) {
   console.log(`[ApptReminders] Done: ${sent} sent, ${skipped} skipped, ${failed} failed`);
 }
 
+// ── T4.147: Automated Balance Reminders ──────────────────────────────────────
+//
+// Queries the sales collection for unpaid balances, groups by owner name,
+// respects per-client snooze (balanceReminderSnoozedUntil on user doc),
+// and enforces a configurable send interval (balanceReminderIntervalDays).
+// Sends push + email. SMS is omitted (balance reminders are non-critical).
+//
+// Known limitation (T2.112): sales docs lack ownerId — owner lookup uses
+// fullName string match. Risk of name collision is low at clinic scale.
+
+async function handleBalanceReminders(env) {
+  const PROJECT_ID = env.FIREBASE_PROJECT_ID || 'starbarks-vetconnect-f6443';
+  const API_KEY = env.FIREBASE_API_KEY;
+  const BASE = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
+
+  // 1. Read clinic settings to check master toggle and interval.
+  const settingsRes = await fetch(`${BASE}/clinic_settings/general?key=${API_KEY}`);
+  if (!settingsRes.ok) {
+    console.log('[BalanceReminders] Failed to read settings:', settingsRes.status);
+    return;
+  }
+  const settings = (await settingsRes.json()).fields || {};
+
+  // Intentional: balance reminders default ON (opt-out). Set enableBalanceReminders:false in clinic_settings to disable.
+  if (settings.enableBalanceReminders?.booleanValue === false) {
+    console.log('[BalanceReminders] Disabled. Skipping.');
+    return;
+  }
+
+  const emailEnabled = settings.enableEmailNotifications?.booleanValue !== false;
+  const intervalDays = parseInt(settings.balanceReminderIntervalDays?.integerValue || '7');
+  const intervalMs = intervalDays * 86400000;
+
+  // 2. Query sales. Firestore REST does not support > 0 numeric filter via URL,
+  // so we fetch with a status NOT_IN filter (excludes refunded/voided) and
+  // check balanceRemaining client-side. Fall back to fetching all if NOT_IN fails.
+  let salesResults;
+  try {
+    const salesQueryBody = {
+      structuredQuery: {
+        from: [{ collectionId: 'sales' }],
+        where: {
+          compositeFilter: {
+            op: 'AND',
+            filters: [
+              {
+                fieldFilter: {
+                  field: { fieldPath: 'status' },
+                  op: 'NOT_IN',
+                  value: {
+                    arrayValue: {
+                      values: [
+                        { stringValue: 'refunded' },
+                        { stringValue: 'voided' },
+                      ],
+                    },
+                  },
+                },
+              },
+            ],
+          },
+        },
+        limit: 500,
+      },
+    };
+
+    const salesRes = await fetch(`${BASE}:runQuery?key=${API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(salesQueryBody),
+    });
+
+    if (!salesRes.ok) {
+      console.log('[BalanceReminders] Sales query failed:', salesRes.status);
+      return;
+    }
+    salesResults = await salesRes.json();
+  } catch (err) {
+    console.log('[BalanceReminders] Sales query error:', err.message);
+    return;
+  }
+
+  // 3. Filter to sales with balanceRemaining > 0 and group by ownerName.
+  // Map: ownerName -> { total, ownerName, saleCount }
+  const ownerBalances = new Map();
+
+  for (const result of salesResults) {
+    if (!result.document) continue;
+    const f = result.document.fields || {};
+
+    // Skip refunded/voided defensively (NOT_IN filter may have missed edge cases)
+    const status = f.status?.stringValue || '';
+    if (status === 'refunded' || status === 'voided') continue;
+
+    const balanceRemaining = parseFloat(
+      f.balanceRemaining?.doubleValue ?? f.balanceRemaining?.integerValue ?? '0'
+    );
+    if (balanceRemaining <= 0) continue;
+
+    const ownerName = f.ownerName?.stringValue || '';
+    if (!ownerName || ownerName === 'Walk-In') continue;
+
+    const existing = ownerBalances.get(ownerName) || { total: 0, ownerName, saleCount: 0 };
+    existing.total += balanceRemaining;
+    existing.saleCount += 1;
+    ownerBalances.set(ownerName, existing);
+  }
+
+  if (ownerBalances.size === 0) {
+    console.log('[BalanceReminders] No outstanding balances. Skipping.');
+    return;
+  }
+
+  // 4. For each debtor, look up their user doc for push token, email, snooze, and cooldown.
+  let sent = 0, skipped = 0, failed = 0, snoozed = 0;
+
+  for (const [ownerName, data] of ownerBalances) {
+    // Query user by fullName (imperfect — T2.112 limitation, but acceptable at clinic scale)
+    const userQueryBody = {
+      structuredQuery: {
+        from: [{ collectionId: 'users' }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath: 'fullName' },
+            op: 'EQUAL',
+            value: { stringValue: ownerName },
+          },
+        },
+        limit: 1,
+      },
+    };
+
+    let userFields, userDocPath;
+    try {
+      const userRes = await fetch(`${BASE}:runQuery?key=${API_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(userQueryBody),
+      });
+      const userResults = await userRes.json();
+      if (!userResults[0]?.document) { skipped++; continue; }
+      userFields = userResults[0].document.fields || {};
+      userDocPath = userResults[0].document.name;
+    } catch {
+      skipped++;
+      continue;
+    }
+
+    // Check snooze: skip if snoozedUntil is in the future
+    const snoozedUntil = userFields.balanceReminderSnoozedUntil?.timestampValue;
+    if (snoozedUntil && new Date(snoozedUntil).getTime() > Date.now()) {
+      snoozed++;
+      continue;
+    }
+
+    // Check send interval cooldown
+    const lastSent = userFields.lastBalanceReminderSentAt?.timestampValue;
+    if (lastSent && (Date.now() - new Date(lastSent).getTime()) < intervalMs) {
+      skipped++;
+      continue;
+    }
+
+    const pushToken = userFields.expoPushToken?.stringValue;
+    const ownerId = userDocPath.split('/').pop();
+    const ownerEmail = userFields.email?.stringValue;
+
+    const template = BALANCE_TEMPLATES['balance-reminder'];
+    const amount = data.total.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    const title = template.title;
+    const body = template.body.replace(/\{amount\}/g, amount);
+
+    // Push notification (primary channel)
+    let pushOk = false;
+    if (pushToken) {
+      try {
+        const pushRes = await fetch('https://exp.host/--/api/v2/push/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: pushToken,
+            title,
+            body,
+            sound: 'default',
+            data: { type: 'balance-reminder' },
+          }),
+        });
+        if (!pushRes.ok) {
+          console.error(`[BalanceReminders] Expo error for ${ownerName}:`, pushRes.status);
+          failed++;
+        } else {
+          fetch(`${BASE}/notification_log?key=${API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fields: {
+                ownerId: { stringValue: ownerId },
+                ownerName: { stringValue: ownerName },
+                status: { stringValue: 'balance-reminder' },
+                title: { stringValue: title },
+                body: { stringValue: body },
+                sentAt: { timestampValue: new Date().toISOString() },
+                sentBy: { stringValue: 'System (Balance Cron)' },
+                channel: { stringValue: 'push' },
+                type: { stringValue: 'balance-reminder' },
+              },
+            }),
+          }).catch(() => {});
+          pushOk = true;
+          sent++;
+        }
+      } catch (err) {
+        console.error(`[BalanceReminders] Push failed for ${ownerName}:`, err.message);
+        failed++;
+      }
+    }
+
+    // Email fallback (fire-and-forget — does not block loop iteration)
+    let emailAttempted = false;
+    if (emailEnabled && ownerEmail && env.RESEND_API_KEY) {
+      emailAttempted = true;
+      fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${env.RESEND_API_KEY}`,
+        },
+        body: JSON.stringify({
+          from: env.RESEND_FROM_EMAIL || 'VetConnect <noreply@starbarks.vet>',
+          to: [ownerEmail],
+          subject: title,
+          html: buildWorkerEmailHtml(title, body),
+        }),
+      }).then(() => {
+        fetch(`${BASE}/notification_log?key=${API_KEY}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fields: {
+              ownerId: { stringValue: ownerId },
+              ownerName: { stringValue: ownerName },
+              status: { stringValue: 'balance-reminder' },
+              title: { stringValue: title },
+              body: { stringValue: body },
+              sentAt: { timestampValue: new Date().toISOString() },
+              sentBy: { stringValue: 'System (Balance Cron)' },
+              channel: { stringValue: 'email' },
+              type: { stringValue: 'balance-reminder' },
+            },
+          }),
+        }).catch(() => {});
+      }).catch(() => {});
+    }
+
+    // Update cooldown timestamp after any successful send attempt (push or email)
+    if (pushOk || emailAttempted) {
+      await fetch(`${userDocPath}?key=${API_KEY}&updateMask.fieldPaths=lastBalanceReminderSentAt`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fields: { lastBalanceReminderSentAt: { timestampValue: new Date().toISOString() } },
+        }),
+      }).catch(() => {});
+    }
+  }
+
+  console.log(`[BalanceReminders] ${sent} sent, ${skipped} skipped, ${snoozed} snoozed, ${failed} failed.`);
+}
+
 // ─── MAIN FETCH HANDLER ──────────────────────────────────────────────────────
 
 export default {
@@ -732,6 +1013,7 @@ export default {
       Promise.allSettled([
         handleVaccineReminders(env),
         handleAppointmentReminders(env),
+        handleBalanceReminders(env),
       ])
     );
   },

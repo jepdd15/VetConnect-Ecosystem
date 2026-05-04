@@ -658,6 +658,13 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         return saleRef.id;
       });
 
+      // T4.147: Set hasOutstandingBalance flag on the owner doc when a partial payment is recorded.
+      // Fire-and-forget — advisory only, never used for financial calculations.
+      const checkoutBalance = parseFloat(financials.balanceDue || 0);
+      if (checkoutBalance > 0 && patient.ownerId && patient.ownerId !== 'WALK_IN_USER' && !String(patient.ownerId).includes('GUEST_')) {
+        updateDoc(doc(db, 'users', patient.ownerId), { hasOutstandingBalance: true }).catch(() => {});
+      }
+
       // T4.90: Push notification — checkout complete
       const posCashierName = profile?.fullName || 'POS Cashier';
       if (billingMode === 'group' && isGroupVisit) {

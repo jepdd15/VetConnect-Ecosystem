@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Paper, List, ListItem, ListItemIcon, ListItemText, Avatar, TextField, InputAdornment, Button, Typography, ListItemButton } from '@mui/material';
+import { Box, Chip, Paper, List, ListItem, ListItemIcon, ListItemText, Avatar, TextField, InputAdornment, Button, Typography, ListItemButton } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 
@@ -35,6 +35,24 @@ const PatientDirectory = React.memo(function PatientDirectory({ owners, selected
                           <Typography fontFamily={FONT} fontWeight="bold" color={selectedId === owner.id ? COLORS.textPrimary : COLORS.textSecondary} noWrap>{owner.fullName}</Typography>
                           {owner.clientTag === 'VIP' && <Typography variant="caption">🌟</Typography>}
                           {owner.clientTag === 'Bad Payer' && <Typography variant="caption">⚠️</Typography>}
+                          {/* T4.147: Denormalized outstanding balance indicator — zero extra queries */}
+                          {owner.hasOutstandingBalance === true && (
+                            <Chip
+                              label="₱"
+                              size="small"
+                              sx={{
+                                height: 16,
+                                width: 20,
+                                fontSize: '0.55rem',
+                                fontWeight: 900,
+                                borderRadius: 0,
+                                p: 0,
+                                bgcolor: COLORS.warningSurface,
+                                color: COLORS.warning,
+                                border: `1px solid ${COLORS.warning}`,
+                              }}
+                            />
+                          )}
                       </Box>
                   }
                   secondary={<Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.textMuted }}>{owner.phone}</Typography>}

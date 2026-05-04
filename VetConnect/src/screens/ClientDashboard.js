@@ -61,6 +61,9 @@ const ClientDashboard = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [pulseAnim] = useState(new Animated.Value(1));
   const [unreadCount, setUnreadCount] = useState(0);
+  // T4.147: Computed outstanding balance from completed appointments.
+  // Replaces the dead userProfile.outstandingBalance counter (T2.101 stopped updating it).
+  const [computedBalance, setComputedBalance] = useState(0);
 
   // --- CONSENT GATE STATE ---
   // consentCompleted prevents re-triggering the gate after the user returns
@@ -252,6 +255,32 @@ const ClientDashboard = ({ navigation }) => {
       },
     );
     return () => unsubProfile();
+  }, []);
+
+  // ======================================================================
+  // 1.6 COMPUTED OUTSTANDING BALANCE (T4.147)
+  // Replaces the dead userProfile.outstandingBalance counter that T2.101
+  // stopped updating. Queries completed appointments with balanceRemaining > 0
+  // so the banner stays live — settling a balance from the admin side
+  // instantly clears the banner for the client.
+  // ======================================================================
+  useEffect(() => {
+    if (!auth.currentUser) return;
+    const q = query(
+      collection(db, 'appointments'),
+      where('ownerId', '==', auth.currentUser.uid),
+      where('status', '==', 'completed'),
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      const total = snap.docs.reduce((sum, d) => {
+        const bal = d.data().balanceRemaining || 0;
+        return sum + (bal > 0 ? bal : 0);
+      }, 0);
+      setComputedBalance(total);
+    }, (err) => {
+      console.warn('[ClientDashboard] Balance listener error:', err.message);
+    });
+    return () => unsub();
   }, []);
 
   // ======================================================================
@@ -699,14 +728,15 @@ const ClientDashboard = ({ navigation }) => {
       )}
 
       {/* BALANCE ALERT BANNER (NEOBRUTALIST REDESIGN) */}
-      {userProfile?.outstandingBalance > 0 && (
+      {/* T4.147: computedBalance replaces the dead userProfile.outstandingBalance counter */}
+      {computedBalance > 0 && (
         <Animated.View style={[styles.balanceContainer, { transform: [{ scale: pulseAnim }] }]}>
           <View style={styles.balanceShadow} />
           <View style={styles.balanceBox}>
             <Text style={styles.balanceIcon}>💸</Text>
             <View style={{ flex: 1 }}>
               <Text style={styles.balanceTitle}>OUTSTANDING BALANCE</Text>
-              <Text style={styles.balanceMsg}>₱{userProfile.outstandingBalance.toLocaleString()} — SETTLE AT COUNTER</Text>
+              <Text style={styles.balanceMsg}>₱{computedBalance.toLocaleString()} — SETTLE AT COUNTER</Text>
             </View>
             <TouchableOpacity onPress={() => navigation.navigate("UserProfile")} style={styles.balanceActionButton}>
               <Text style={styles.balanceActionText}>VIEW ➔</Text>

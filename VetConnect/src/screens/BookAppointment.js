@@ -64,7 +64,9 @@ export default function BookAppointment({ navigation, route }) {
 
   // --- DATA STATES ---
   const [selectedPets, setSelectedPets] = useState([]);
-  const [selectedServices, setSelectedServices] = useState([]); // THE FIX: Moving to Array for Bundles!
+  // Per-pet service map: { [petId]: Service[] }
+  // Each pet has its own independent service selection.
+  const [petServiceMap, setPetServiceMap] = useState({});
   const [notes, setNotes] = useState("");
   const [date, setDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -91,6 +93,22 @@ export default function BookAppointment({ navigation, route }) {
 
   const { isConnected } = useNetwork();
 
+  // Derive a flat unique list of all services selected across all pets.
+  // Used by useBookingEngine for slot generation and by the blocked-dept check.
+  const allSelectedServices = useMemo(() => {
+    const seen = new Set();
+    const result = [];
+    Object.values(petServiceMap).forEach(services => {
+      services.forEach(s => {
+        if (!seen.has(s.id)) {
+          seen.add(s.id);
+          result.push(s);
+        }
+      });
+    });
+    return result;
+  }, [petServiceMap]);
+
   // THE FIX: Destructuring clinicSettings from the hook!
   const {
     pets,
@@ -101,7 +119,7 @@ export default function BookAppointment({ navigation, route }) {
     loadingSlots,
     clinicSettings,
     departmentCapacity, // THE FIX: Essential for the final submitBooking calculation!
-  } = useBookingEngine(date, selectedServices, selectedPets); // Passing the array to the brain!
+  } = useBookingEngine(date, petServiceMap, selectedPets); // Passing the per-pet map to the brain!
   
   // THE FIX: High performance searching for large pet lists!
   const filteredPets = useMemo(() => {
@@ -114,27 +132,37 @@ export default function BookAppointment({ navigation, route }) {
   useEffect(() => {
     if (prefillPetId && pets.length > 0 && selectedPets.length === 0) {
       const match = pets.find(p => p.id === prefillPetId);
-      if (match) setSelectedPets([match]);
+      if (match) {
+        setSelectedPets([match]);
+        setPetServiceMap(prev => ({ ...prev, [match.id]: [] }));
+      }
     }
   }, [prefillPetId, pets]);
 
-  // Pre-select the service when navigating via Re-Book. Matches by serviceType
-  // string (stored on the appointment) or by service name as a fallback.
+  // Pre-select the service for the prefilled pet. Matches by serviceType string
+  // (stored on the appointment) or by service name as a fallback.
   useEffect(() => {
-    if (prefillServiceType && services.length > 0 && selectedServices.length === 0) {
+    if (prefillServiceType && prefillPetId && services.length > 0) {
+      // Guard: only apply once — if the pet already has services, skip
+      const existing = petServiceMap[prefillPetId] || [];
+      if (existing.length > 0) return;
       const match = services.find(
         s => s.serviceType === prefillServiceType || s.name === prefillServiceType,
       );
-      if (match) setSelectedServices([match]);
+      if (match) {
+        setPetServiceMap(prev => ({ ...prev, [prefillPetId]: [match] }));
+      }
     }
-  }, [prefillServiceType, services]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillServiceType, prefillPetId, services]);
 
   // When arriving from a follow-up deep-link, jump directly to the slot picker (step 3)
   // once both pet and service have been pre-selected by the two effects above.
   // The dependency gate ensures we don't skip to step 3 with an empty service slot.
   useEffect(() => {
     if (prefillApplied.current) return;
-    if (prefillDate && !fetching && selectedPets.length > 0 && selectedServices.length > 0) {
+    const hasAnyServices = Object.values(petServiceMap).some(arr => arr.length > 0);
+    if (prefillDate && !fetching && selectedPets.length > 0 && hasAnyServices) {
       const parsed = new Date(prefillDate);
       if (!isNaN(parsed.getTime())) {
         setDate(parsed);
@@ -143,7 +171,7 @@ export default function BookAppointment({ navigation, route }) {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prefillDate, fetching, selectedPets.length, selectedServices.length]);
+  }, [prefillDate, fetching, selectedPets.length, petServiceMap]);
 
   // Reschedule mode: seed pet and services from the appointment object passed via navigation params.
   // Runs only when the pet/service lists have loaded from Firestore.
@@ -151,19 +179,27 @@ export default function BookAppointment({ navigation, route }) {
     if (!rescheduleMode || !rescheduleAppointment) return;
     if (pets.length > 0 && selectedPets.length === 0) {
       const match = pets.find(p => p.id === rescheduleAppointment.petId);
-      if (match) setSelectedPets([match]);
+      if (match) {
+        setSelectedPets([match]);
+        setPetServiceMap(prev => ({ ...prev, [match.id]: [] }));
+      }
     }
-    if (services.length > 0 && selectedServices.length === 0) {
+    if (services.length > 0 && rescheduleAppointment.petId) {
+      // Guard: only seed once — if the pet already has services, skip
+      const existing = petServiceMap[rescheduleAppointment.petId] || [];
+      if (existing.length > 0) return;
       const apptServices = rescheduleAppointment.services || [];
       const matched = apptServices
         .map(as => services.find(s => s.id === as.id || s.name === as.name))
         .filter(Boolean);
       if (matched.length > 0) {
-        setSelectedServices(matched);
+        setPetServiceMap(prev => ({ ...prev, [rescheduleAppointment.petId]: matched }));
       } else {
         // Fallback: match by serviceType string stored on the appointment
         const fallback = services.find(s => s.name === rescheduleAppointment.serviceType);
-        if (fallback) setSelectedServices([fallback]);
+        if (fallback) {
+          setPetServiceMap(prev => ({ ...prev, [rescheduleAppointment.petId]: [fallback] }));
+        }
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -173,7 +209,8 @@ export default function BookAppointment({ navigation, route }) {
   // the appointment's existing date and jump straight to the slot picker (Step 3).
   useEffect(() => {
     if (!rescheduleMode || rescheduleApplied.current) return;
-    if (selectedPets.length > 0 && selectedServices.length > 0) {
+    const hasAnyServices = Object.values(petServiceMap).some(arr => arr.length > 0);
+    if (selectedPets.length > 0 && hasAnyServices) {
       const rawDate = rescheduleAppointment?.scheduledDate;
       const existingDate = typeof rawDate?.toDate === 'function'
         ? rawDate.toDate()
@@ -185,7 +222,7 @@ export default function BookAppointment({ navigation, route }) {
       rescheduleApplied.current = true;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rescheduleMode, selectedPets.length, selectedServices.length]);
+  }, [rescheduleMode, selectedPets.length, petServiceMap]);
 
   // Configured no-show lookback window — falls back to 30 days if Firestore hasn't loaded yet.
   const noShowWindowDays = clinicSettings?.noShowLinkWindowDays || 30;
@@ -421,10 +458,15 @@ export default function BookAppointment({ navigation, route }) {
   // --- HANDLERS ---
   const togglePetSelection = (pet) => {
     if (selectedPets.find((p) => p.id === pet.id)) {
-      // Unselect
+      // Unselect — remove pet and its services from the map
       setSelectedPets(selectedPets.filter((p) => p.id !== pet.id));
+      setPetServiceMap(prev => {
+        const next = { ...prev };
+        delete next[pet.id];
+        return next;
+      });
     } else {
-      // THE FIX: Enforce the Web Admin's Dynamic Capacity Rule!
+      // Enforce the Web Admin's Dynamic Capacity Rule
       const maxAllowed = clinicSettings?.maxPetsPerBooking || 3;
       if (selectedPets.length >= maxAllowed) {
         Alert.alert(
@@ -433,20 +475,43 @@ export default function BookAppointment({ navigation, route }) {
         );
         return;
       }
-      // Select
+      // Select — initialize empty service list for this pet
       setSelectedPets([...selectedPets, pet]);
+      setPetServiceMap(prev => ({ ...prev, [pet.id]: [] }));
     }
-    // Always reset downstream choices to prevent conflicting biological filters
-    setSelectedServices([]);
     setSelectedSlot(null);
   };
 
-  const toggleServiceSelection = (srv) => {
-    if (selectedServices.find(s => s.id === srv.id)) {
-        setSelectedServices(selectedServices.filter(s => s.id !== srv.id));
-    } else {
-        setSelectedServices([...selectedServices, srv]);
-    }
+  const toggleServiceForPet = (petId, srv) => {
+    setPetServiceMap(prev => {
+      const petServices = prev[petId] || [];
+      const exists = petServices.find(s => s.id === srv.id);
+      return {
+        ...prev,
+        [petId]: exists
+          ? petServices.filter(s => s.id !== srv.id)
+          : [...petServices, srv],
+      };
+    });
+    setSelectedSlot(null);
+  };
+
+  // Convenience: apply one service to ALL selected pets at once.
+  // If every pet already has it → remove from all; otherwise → add to any that don't.
+  const toggleServiceForAllPets = (srv) => {
+    setPetServiceMap(prev => {
+      const next = { ...prev };
+      const allHave = selectedPets.every(p => (next[p.id] || []).some(s => s.id === srv.id));
+      selectedPets.forEach(p => {
+        const petServices = next[p.id] || [];
+        if (allHave) {
+          next[p.id] = petServices.filter(s => s.id !== srv.id);
+        } else if (!petServices.some(s => s.id === srv.id)) {
+          next[p.id] = [...petServices, srv];
+        }
+      });
+      return next;
+    });
     setSelectedSlot(null);
   };
 
@@ -499,16 +564,21 @@ export default function BookAppointment({ navigation, route }) {
       );
       const filteredDocs = checkSnap.docs.filter(d => !excludeIds.has(d.id));
 
+      // T4.139: Parallel department JIT check (matches slot generator model)
       const allGroupServices = rescheduleGroup
         ? rescheduleGroup.flatMap(a => a.services || [])
         : (rescheduleAppointment.services || []);
-      let serviceOffset = 0;
-      for (const svc of allGroupServices) {
+      const reschDeptGroups = {};
+      allGroupServices.forEach(svc => {
+        const dept = (svc.department || "General").toLowerCase();
         const dur = parseInt(String(svc.duration).replace(/[^0-9]/g, "")) || 30;
         const buff = parseInt(String(svc.buffer).replace(/[^0-9]/g, "")) || 0;
-        const svcStart = new Date(newDateTime.getTime() + serviceOffset * 60000);
-        const svcEnd = new Date(svcStart.getTime() + (dur + buff) * 60000);
-        const requiredDept = (svc.department || "General").toLowerCase();
+        reschDeptGroups[dept] = Math.max(reschDeptGroups[dept] || 0, (dur + buff));
+      });
+
+      for (const [dept, duration] of Object.entries(reschDeptGroups)) {
+        const svcStart = newDateTime;
+        const svcEnd = new Date(newDateTime.getTime() + duration * 60000);
 
         const competing = filteredDocs.filter(d => {
           const data = d.data();
@@ -518,7 +588,7 @@ export default function BookAppointment({ navigation, route }) {
           } else {
             deptsInAppt.add((data.department || data.serviceCategory || "General").toLowerCase());
           }
-          return deptsInAppt.has(requiredDept);
+          return deptsInAppt.has(dept);
         });
 
         let overlaps = 0;
@@ -528,18 +598,18 @@ export default function BookAppointment({ navigation, route }) {
           if (svcStart < e && svcEnd > s) overlaps++;
         });
 
-        const capacity = departmentCapacity[requiredDept] || 1;
+        const capacity = departmentCapacity[dept] || 1;
         if (overlaps >= capacity) {
+          const deptDisplay = dept.charAt(0).toUpperCase() + dept.slice(1);
           Alert.alert(
             "Slot Taken",
-            `Another client just booked a ${svc.department || "General"} specialist during this window. Please select another time.`,
+            `Another client just booked a ${deptDisplay} specialist during this window. Please select another time.`,
           );
           setStep(3);
           setSelectedSlot(null);
           setLoading(false);
           return;
         }
-        serviceOffset += (dur + buff);
       }
 
       const newDateStr = getLocalDateStr(newDateTime);
@@ -615,23 +685,32 @@ export default function BookAppointment({ navigation, route }) {
         return;
       }
 
-      // --- CALCULATE BUNDLE PARAMETERS ---
-      let bundleTotalMinutes = 0;
-      let bundleTotalBuffer = 0; // T2.84: track total buffer for serviceBuffer field
-
-      // Pre-compute durations once (weight-independent)
-      const serviceDurations = selectedServices.map(s => {
-        const dur = parseInt(String(s.duration).replace(/[^0-9]/g, "")) || 30;
-        const buff = parseInt(String(s.bufferTime).replace(/[^0-9]/g, "")) || 0;
-        bundleTotalMinutes += (dur + buff);
-        bundleTotalBuffer += buff; // T2.84
-        return { dur, buff };
+      // --- CALCULATE BUNDLE PARAMETERS (parallel model) ---
+      // maxParallelDuration: the largest per-pet parallel duration, used as the stagger
+      // offset between pets. Parallel duration = max(dept durations) for a given pet,
+      // because all departments start simultaneously (not sequentially).
+      let maxParallelDuration = 0;
+      selectedPets.forEach(pet => {
+        const petDeptGroups = {};
+        (petServiceMap[pet.id] || []).forEach(s => {
+          const dept = (s.department || s.category || "General").toLowerCase();
+          const dur = parseInt(String(s.duration).replace(/[^0-9]/g, "")) || 30;
+          const buff = parseInt(String(s.bufferTime).replace(/[^0-9]/g, "")) || 0;
+          petDeptGroups[dept] = (petDeptGroups[dept] || 0) + (dur + buff);
+        });
+        const petParallel = Object.keys(petDeptGroups).length > 0
+          ? Math.max(...Object.values(petDeptGroups))
+          : 0;
+        if (petParallel > maxParallelDuration) maxParallelDuration = petParallel;
       });
 
-      // T2.79: Build per-pet mapped services with individual tiered pricing
-      const buildMappedServices = (petWeight) => {
+      // T2.79: Build per-pet mapped services with individual tiered pricing.
+      // Accepts the pet's own service list so each Firestore document is independent.
+      const buildMappedServices = (petWeight, petServices) => {
         let petBundlePrice = 0;
-        const mapped = selectedServices.map((s, i) => {
+        const mapped = petServices.map(s => {
+          const dur = parseInt(String(s.duration).replace(/[^0-9]/g, "")) || 30;
+          const buff = parseInt(String(s.bufferTime).replace(/[^0-9]/g, "")) || 0;
           const price = resolveTieredPrice(s, petWeight);
           petBundlePrice += price;
           return {
@@ -643,8 +722,8 @@ export default function BookAppointment({ navigation, route }) {
             workflowType: (s.department === "Grooming" || s.category === "Grooming") ? "AESTHETIC" : "MEDICAL",
             staffId: null,
             staffName: "Unassigned",
-            duration: serviceDurations[i].dur,
-            buffer: serviceDurations[i].buff,
+            duration: dur,
+            buffer: buff,
           };
         });
         return { mapped, petBundlePrice };
@@ -665,13 +744,23 @@ export default function BookAppointment({ navigation, route }) {
         ),
       );
 
-      // Use null weight for JIT check — department/duration are weight-independent
-      const { mapped: jitServices } = buildMappedServices(null);
-      let serviceOffset = 0;
-      for (const svc of jitServices) {
-        const svcStart = new Date(baseDateTime.getTime() + serviceOffset * 60000);
-        const svcEnd = new Date(svcStart.getTime() + (svc.duration + svc.buffer) * 60000);
-        const requiredDept = svc.department.toLowerCase();
+      // JIT pre-flight: parallel model matches the slot generator's logic.
+      // Group all services by department across all pets, taking the max duration per dept
+      // (same dept from different pets is handled via virtual overlaps below).
+      // All departments start at baseDateTime (parallel, not sequential).
+      const jitDeptGroups = {}; // dept -> maxDuration across all services in that dept
+      selectedPets.forEach(pet => {
+        (petServiceMap[pet.id] || []).forEach(s => {
+          const dept = (s.department || s.category || "General").toLowerCase();
+          const dur = parseInt(String(s.duration).replace(/[^0-9]/g, "")) || 30;
+          const buff = parseInt(String(s.bufferTime).replace(/[^0-9]/g, "")) || 0;
+          jitDeptGroups[dept] = Math.max(jitDeptGroups[dept] || 0, (dur + buff));
+        });
+      });
+
+      for (const [dept, duration] of Object.entries(jitDeptGroups)) {
+        const svcStart = baseDateTime;
+        const svcEnd = new Date(svcStart.getTime() + duration * 60000);
 
         const competing = checkSnap.docs.filter(d => {
           const data = d.data();
@@ -681,7 +770,7 @@ export default function BookAppointment({ navigation, route }) {
           } else {
             deptsInAppt.add((data.department || data.serviceCategory || "General").toLowerCase());
           }
-          return deptsInAppt.has(requiredDept);
+          return deptsInAppt.has(dept);
         });
 
         let currentOverlaps = 0;
@@ -691,12 +780,44 @@ export default function BookAppointment({ navigation, route }) {
           if (svcStart < e && svcEnd > s) currentOverlaps++;
         });
 
-        const capacity = departmentCapacity[requiredDept] || 1;
-        if (currentOverlaps >= capacity) {
-          Alert.alert("Slot Taken", `Another client just booked a ${svc.department} specialist during this window. Please select another time.`);
+        // For multi-pet: count virtual overlaps from staggered pets in this booking group
+        // that also need this department. Uses time-based window check (Option A) rather
+        // than the flat (petsNeedingDept - 1) conservative estimate, because staggered
+        // pets with non-overlapping windows should NOT count as virtual overlaps.
+        // Pet i starts at baseDateTime + i * maxParallelDuration. A virtual overlap only
+        // occurs when pet i's dept window [petStart, petStart+deptDur) intersects [svcStart, svcEnd).
+        let virtualOverlaps = 0;
+        const petsNeedingDept = selectedPets.filter(p =>
+          (petServiceMap[p.id] || []).some(s =>
+            (s.department || s.category || "General").toLowerCase() === dept
+          )
+        );
+        petsNeedingDept.forEach((pet, petIdx) => {
+          if (petIdx === 0) return; // first pet is the reference window (svcStart..svcEnd)
+          const originalIdx = selectedPets.findIndex(p => p.id === pet.id);
+          const petStart = new Date(baseDateTime.getTime() + originalIdx * maxParallelDuration * 60000);
+          const petDeptDuration = (petServiceMap[pet.id] || [])
+            .filter(s => (s.department || s.category || "General").toLowerCase() === dept)
+            .reduce((sum, s) => {
+              const dur = parseInt(String(s.duration).replace(/[^0-9]/g, "")) || 30;
+              const buff = parseInt(String(s.bufferTime).replace(/[^0-9]/g, "")) || 0;
+              return sum + dur + buff;
+            }, 0);
+          const petEnd = new Date(petStart.getTime() + petDeptDuration * 60000);
+          if (petStart < svcEnd && petEnd > svcStart) {
+            virtualOverlaps++;
+          }
+        });
+
+        const capacity = departmentCapacity[dept] || 1;
+        if ((currentOverlaps + virtualOverlaps) >= capacity) {
+          const deptDisplay = dept.charAt(0).toUpperCase() + dept.slice(1);
+          Alert.alert(
+            "Slot Taken",
+            `Another client just booked a ${deptDisplay} specialist during this window. Please select another time.`,
+          );
           setStep(3); setSelectedSlot(null); setLoading(false); return;
         }
-        serviceOffset += (svc.duration + svc.buffer);
       }
 
       // T2.78: Generate visitGroupId once for multi-pet bookings
@@ -706,13 +827,41 @@ export default function BookAppointment({ navigation, route }) {
 
       // T2.87: Use runTransaction for atomic writes + retry-on-contention
       await runTransaction(db, async (transaction) => {
+        const bookingTimestamp = Date.now();
         selectedPets.forEach((pet, index) => {
           // T2.23: Weight resolution order: lastVitals (most recent clinical) > weight > lastWeight
           const petWeight = pet.lastVitals?.weight ?? pet.weight ?? pet.lastWeight ?? null;
           const petWeightNum = petWeight != null ? parseFloat(petWeight) : null;
-          const { mapped: petMappedServices, petBundlePrice } = buildMappedServices(petWeightNum);
-          const petDateTime = new Date(baseDateTime.getTime() + index * bundleTotalMinutes * 60000);
-          const qrData = `VC-${auth.currentUser.uid.slice(0, 5)}-${Date.now()}-${index}`;
+          const petServices = petServiceMap[pet.id] || [];
+          if (petServices.length === 0) {
+            throw new Error(`No services selected for ${pet.name}. Please go back and try again.`);
+          }
+          const { mapped: petMappedServices, petBundlePrice } = buildMappedServices(petWeightNum, petServices);
+
+          // Per-pet parallel duration: max across departments (departments run simultaneously).
+          // This is what the slot generator uses, so it must match here.
+          const petDeptGroups = {};
+          petServices.forEach(s => {
+            const dept = (s.department || s.category || "General").toLowerCase();
+            const dur = parseInt(String(s.duration).replace(/[^0-9]/g, "")) || 30;
+            const buff = parseInt(String(s.bufferTime).replace(/[^0-9]/g, "")) || 0;
+            petDeptGroups[dept] = (petDeptGroups[dept] || 0) + (dur + buff);
+          });
+          const petServiceDuration = Object.keys(petDeptGroups).length > 0
+            ? Math.max(...Object.values(petDeptGroups))
+            : 0;
+          // Buffer is the max buffer across the dept with the longest duration
+          const longestDept = Object.entries(petDeptGroups).reduce(
+            (best, [dept, dur]) => dur > best.dur ? { dept, dur } : best,
+            { dept: null, dur: 0 }
+          );
+          const petServiceBuffer = petServices
+            .filter(s => (s.department || s.category || "General").toLowerCase() === longestDept.dept)
+            .reduce((sum, s) => sum + (parseInt(String(s.bufferTime).replace(/[^0-9]/g, "")) || 0), 0);
+
+          // Stagger: each pet starts after the previous pet's parallel window closes
+          const petDateTime = new Date(baseDateTime.getTime() + index * maxParallelDuration * 60000);
+          const qrData = `VC-${auth.currentUser.uid.slice(0, 5)}-${bookingTimestamp}-${index}`;
           const newApptRef = doc(collection(db, "appointments"));
 
           transaction.set(newApptRef, {
@@ -736,8 +885,8 @@ export default function BookAppointment({ navigation, route }) {
             primaryService: petMappedServices[0].name,
             serviceType: petMappedServices[0].name,
             serviceCategory: petMappedServices[0].department,
-            serviceDuration: bundleTotalMinutes,
-            serviceBuffer: bundleTotalBuffer, // T2.84: enables accurate busyness calculation
+            serviceDuration: petServiceDuration, // per-pet duration, not global max
+            serviceBuffer: petServiceBuffer, // T2.84: enables accurate busyness calculation
             servicePrice: petBundlePrice, // T2.79: per-pet tiered price
 
             status: "pending",
@@ -804,12 +953,16 @@ export default function BookAppointment({ navigation, route }) {
     }
   };
 
+  // True when every selected pet has at least one service chosen.
+  const allPetsHaveServices = selectedPets.length > 0 &&
+    selectedPets.every(p => (petServiceMap[p.id] || []).length > 0);
+
   // --- WIZARD NAVIGATION LOGIC ---
   const handleNext = () => {
     if (step === 1 && selectedPets.length === 0)
       return Alert.alert("Required", "Please select at least one pet.");
-    if (step === 2 && selectedServices.length === 0)
-      return Alert.alert("Required", "Please select a service.");
+    if (step === 2 && !allPetsHaveServices)
+      return Alert.alert("Required", "Please select at least one service for each pet.");
     if (step === 3 && !selectedSlot)
       return Alert.alert("Required", "Please select a time slot.");
     if (step === 4) {
@@ -856,7 +1009,7 @@ export default function BookAppointment({ navigation, route }) {
       if (step === 4) return "Confirm Reschedule";
     }
     if (step === 1 && selectedPets.length === 0) return "1. Select a Pet";
-    if (step === 2 && selectedServices.length === 0) return "2. Select Service(s)";
+    if (step === 2 && !allPetsHaveServices) return "2. Select Service(s)";
     if (step === 3 && !selectedSlot) return "3. Select a Time";
     if (step === 4)
       return `Book ${selectedPets.length} Appointment${selectedPets.length > 1 ? "s" : ""}`;
@@ -934,126 +1087,208 @@ export default function BookAppointment({ navigation, route }) {
     </View>
   );
 
-  // --- STEP 2 RENDER: SERVICES (NOW HIGH-PERFORMANCE FLATLIST!) ---
+  // --- STEP 2 RENDER: SERVICES ---
+  // CASE A (single pet): same flat service list as before.
+  // CASE B (multi-pet): Apply-to-All section + per-pet service sections.
   const renderStep2 = () => {
+    const petId0 = selectedPets.length === 1 ? selectedPets[0].id : null;
+    const petServices0 = petId0 ? (petServiceMap[petId0] || []) : [];
+
+    // Shared header controls reused by both cases
+    const renderServiceControls = () => (
+      <View>
+        {/* SEARCH HUB */}
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search for a service..."
+          placeholderTextColor="#aaa"
+          value={serviceSearch}
+          onChangeText={setServiceSearch}
+        />
+        {/* TRIGGER FOR DEPARTMENT EXPLORER */}
+        <TouchableOpacity
+          style={styles.deptTriggerBtn}
+          onPress={() => setIsDeptModalVisible(true)}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={{ fontSize: 18, marginRight: 8 }}>🏷️</Text>
+            <View>
+              <Text style={styles.deptTriggerLabel}>Filter by Department</Text>
+              <Text style={styles.deptTriggerSub}>Currently: {selectedDepartment}</Text>
+            </View>
+          </View>
+          <Text style={styles.deptTriggerArrow}>❯</Text>
+        </TouchableOpacity>
+      </View>
+    );
+
+    // Render a single service row — used by both CASE A and per-pet sections
+    const renderServiceRow = (s, isSelected, onToggle) => (
+      <TouchableOpacity
+        key={s.id}
+        style={[styles.serviceRow, isSelected && styles.selectedServiceRow]}
+        onPress={() => onToggle(s)}
+      >
+        <View style={{ flex: 1 }}>
+          <Text style={styles.serviceName}>{s.name}</Text>
+          <Text style={styles.serviceDuration}>⏱️ {s.duration} mins</Text>
+        </View>
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={styles.servicePrice}>₱{s.price}</Text>
+          {isSelected && (
+            <View style={[styles.checkBadge, { position: 'relative', top: 5, right: 0 }]}>
+              <Text style={{ color: 'white', fontSize: 10, fontWeight: '900' }}>✓</Text>
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
+    );
+
+    // CASE A: Single pet — flat list, zero visual change from before
+    if (selectedPets.length === 1) {
+      return (
+        <View style={styles.stepContainer}>
+          <FlatList
+            data={displayedServices}
+            keyExtractor={(item) => item.id}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 150 }}
+            ListEmptyComponent={
+              <Text style={styles.emptyText}>No services found matching your criteria.</Text>
+            }
+            ListHeaderComponent={
+              <View>
+                <Text style={styles.stepHeader}>What do they need?</Text>
+                <Text style={styles.subText}>
+                  You can select multiple services to bundle them into one visit.
+                </Text>
+                {renderServiceControls()}
+                {/* Bundle pill strip */}
+                {petServices0.length > 0 && (
+                  <View style={styles.bundleBox}>
+                    <Text style={styles.bundleTitle}>
+                      Selected Bundle ({petServices0.length}):
+                    </Text>
+                    <View style={styles.bundleScrollContainer}>
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.bundlePillScroll}
+                      >
+                        {petServices0.map((s) => (
+                          <TouchableOpacity
+                            key={s.id}
+                            style={styles.bundlePill}
+                            onPress={() => toggleServiceForPet(petId0, s)}
+                          >
+                            <Text style={styles.bundlePillText}>{s.name}</Text>
+                            <Text style={styles.bundlePillRemove}>✕</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  </View>
+                )}
+              </View>
+            }
+            renderItem={({ item: s }) => {
+              const isSelected = petServices0.some(serv => serv.id === s.id);
+              return renderServiceRow(s, isSelected, (srv) => toggleServiceForPet(petId0, srv));
+            }}
+          />
+        </View>
+      );
+    }
+
+    // CASE B: Multiple pets
+    // Species-universal services (compatible with ALL selected pets) for Apply-to-All section
+    const universalServices = services.filter(s =>
+      !s.targetSpecies || s.targetSpecies === 'Universal'
+    );
+    const filteredUniversal = universalServices.filter(s => {
+      if (selectedDepartment !== 'All' && (s.department || s.category) !== selectedDepartment) return false;
+      if (serviceSearch && !s.name.toLowerCase().includes(serviceSearch.toLowerCase())) return false;
+      return true;
+    });
+
     return (
       <View style={styles.stepContainer}>
-        <FlatList
-          data={displayedServices}
-          keyExtractor={(item) => item.id}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 150 }}
-          ListEmptyComponent={
-            <Text style={styles.emptyText}>
-              No services found matching your criteria.
-            </Text>
-          }
-          ListHeaderComponent={
-            <View>
-              <Text style={styles.stepHeader}>What do they need?</Text>
-              <Text style={styles.subText}>
-                You can select multiple services to bundle them into one visit.
-              </Text>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 150 }}>
+          <Text style={styles.stepHeader}>What do they need?</Text>
+          <Text style={styles.subText}>
+            Select services for each pet, or tap "Apply to All" for services all pets share.
+          </Text>
 
-              {/* T2.82: Mixed-species warning */}
-              {selectedPets.length > 1 && new Set(selectedPets.map(p =>
-                p.species === "Dog" || p.species === "Canine" ? "Canine" : "Feline"
-              )).size > 1 && (
-                <View style={[styles.warningBox, { marginBottom: 12 }]}>
-                  <Text style={styles.warningText}>
-                    You selected mixed species — only services compatible with both dogs and cats are shown.
-                  </Text>
-                </View>
-              )}
+          {renderServiceControls()}
 
-              {/* SEARCH HUB */}
-              <TextInput
-                style={styles.searchInput}
-                placeholder="🔍 Search for a service..."
-                placeholderTextColor="#aaa"
-                value={serviceSearch}
-                onChangeText={setServiceSearch}
-              />
-
-               {/* TRIGGER FOR DEPARTMENT EXPLORER */}
-              <TouchableOpacity 
-                  style={styles.deptTriggerBtn}
-                  onPress={() => setIsDeptModalVisible(true)}
-              >
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Text style={{ fontSize: 18, marginRight: 8 }}>🏷️</Text>
-                    <View>
-                        <Text style={styles.deptTriggerLabel}>Filter by Department</Text>
-                        <Text style={styles.deptTriggerSub}>Currently: {selectedDepartment}</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.deptTriggerArrow}>❯</Text>
-              </TouchableOpacity>
-
-              {/* THE OPTIMIZED BUNDLE BOX */}
-              {selectedServices.length > 0 && (
-                <View style={styles.bundleBox}>
-                  <Text style={styles.bundleTitle}>
-                    Selected Bundle ({selectedServices.length}):
-                  </Text>
-                  <View style={styles.bundleScrollContainer}>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.bundlePillScroll}
-                    >
-                      {selectedServices.map((s) => (
-                        <TouchableOpacity
-                          key={s.id}
-                          style={styles.bundlePill}
-                          onPress={() => toggleServiceSelection(s)}
-                        >
-                          <Text style={styles.bundlePillText}>{s.name}</Text>
-                          <Text style={styles.bundlePillRemove}>✕</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-                </View>
-              )}
+          {/* APPLY TO ALL section — universal services only */}
+          {filteredUniversal.length > 0 && (
+            <View style={[styles.bundleBox, { marginBottom: 20 }]}>
+              <Text style={styles.bundleTitle}>Apply to All Pets:</Text>
+              {filteredUniversal.map(s => {
+                const allHave = selectedPets.every(p => (petServiceMap[p.id] || []).some(ps => ps.id === s.id));
+                return renderServiceRow(s, allHave, toggleServiceForAllPets);
+              })}
             </View>
-          }
-          renderItem={({ item: s }) => {
-            const isSelected = selectedServices.some((serv) => serv.id === s.id);
-            return (
-              <TouchableOpacity
-                key={s.id}
-                style={[
-                  styles.serviceRow,
-                  isSelected && styles.selectedServiceRow,
-                ]}
-                onPress={() => toggleServiceSelection(s)}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.serviceName}>{s.name}</Text>
-                  <Text style={styles.serviceDuration}>⏱️ {s.duration} mins</Text>
-                </View>
-                <View style={{ alignItems: "flex-end" }}>
-                  <Text style={styles.servicePrice}>₱{s.price}</Text>
-                  {isSelected && (
-                    <View
-                      style={[
-                        styles.checkBadge,
-                        { position: "relative", top: 5, right: 0 },
-                      ]}
-                    >
-                      <Text
-                        style={{ color: "white", fontSize: 10, fontWeight: "900" }}
-                      >
-                        ✓
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              </TouchableOpacity>
+          )}
+
+          {/* Per-pet service sections */}
+          {selectedPets.map(pet => {
+            const speciesKey = pet.species === 'Dog' || pet.species === 'Canine' ? 'Canine' : 'Feline';
+            const petCompatibleServices = services.filter(s =>
+              (!s.targetSpecies || s.targetSpecies === 'Universal' || s.targetSpecies === speciesKey) &&
+              (selectedDepartment === 'All' || (s.department || s.category) === selectedDepartment) &&
+              (!serviceSearch || s.name.toLowerCase().includes(serviceSearch.toLowerCase()))
             );
-          }}
-        />
+            const currentPetServices = petServiceMap[pet.id] || [];
+
+            return (
+              <View key={pet.id} style={[styles.summaryBox, { marginBottom: 16 }]}>
+                {/* Pet header */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+                  <Text style={{ fontSize: 22, marginRight: 8 }}>
+                    {pet.species === 'Canine' || pet.species === 'Dog' ? '🐶' : '🐱'}
+                  </Text>
+                  <View>
+                    <Text style={{ fontSize: 16, fontWeight: '900', color: '#3E2723' }}>{pet.name}</Text>
+                    <Text style={{ fontSize: 11, color: '#8D6E63', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      {speciesKey} • {currentPetServices.length} service{currentPetServices.length !== 1 ? 's' : ''} selected
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Selected services chip strip */}
+                {currentPetServices.length > 0 && (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ gap: 6, paddingBottom: 10 }}
+                  >
+                    {currentPetServices.map(s => (
+                      <TouchableOpacity
+                        key={s.id}
+                        style={styles.bundlePill}
+                        onPress={() => toggleServiceForPet(pet.id, s)}
+                      >
+                        <Text style={styles.bundlePillText}>{s.name}</Text>
+                        <Text style={styles.bundlePillRemove}>✕</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                )}
+
+                {/* Species-filtered service rows for this pet */}
+                {petCompatibleServices.map(s => {
+                  const isSelected = currentPetServices.some(ps => ps.id === s.id);
+                  return renderServiceRow(s, isSelected, (srv) => toggleServiceForPet(pet.id, srv));
+                })}
+                {petCompatibleServices.length === 0 && (
+                  <Text style={styles.emptyText}>No matching services for {pet.name}.</Text>
+                )}
+              </View>
+            );
+          })}
+        </ScrollView>
       </View>
     );
   };
@@ -1064,8 +1299,8 @@ export default function BookAppointment({ navigation, route }) {
     const futureSlots = availableSlots.filter((s) => s.status !== "PAST");
 
     // T2.85: Identify if any required department has zero staff capacity
-    const blockedDept = selectedServices.length > 0
-      ? selectedServices.find(s => {
+    const blockedDept = allSelectedServices.length > 0
+      ? allSelectedServices.find(s => {
           const dept = (s.department || s.category || "General").toLowerCase();
           return !departmentCapacity[dept] || departmentCapacity[dept] === 0;
         })
@@ -1078,7 +1313,7 @@ export default function BookAppointment({ navigation, route }) {
     );
     
     // --- SCHEDULING INTELLIGENCE MATH ---
-    const totalBundleDuration = selectedServices.reduce((sum, s) => {
+    const totalBundleDuration = allSelectedServices.reduce((sum, s) => {
         const d = parseInt(String(s.duration).replace(/[^0-9]/g, "")) || 30;
         const b = parseInt(String(s.bufferTime).replace(/[^0-9]/g, "")) || 0;
         return sum + d + b;
@@ -1154,7 +1389,7 @@ export default function BookAppointment({ navigation, route }) {
           />
         )}
 
-        {selectedServices.length === 0 || selectedPets.length === 0 ? (
+        {allSelectedServices.length === 0 || selectedPets.length === 0 ? (
           <Text style={styles.subtlePrompt}>
             🕒 Select a service to see available time slots.
           </Text>
@@ -1431,19 +1666,25 @@ export default function BookAppointment({ navigation, route }) {
     if (rescheduleMode) return renderRescheduleConfirm();
 
     // RESILIENT HINTS (Safety check stays for surgery warnings)
-    const hasSurgery = selectedServices.some(s =>
+    const hasSurgery = allSelectedServices.some(s =>
         (s.department || s.category || '').toLowerCase().includes('surg') ||
         (s.name || '').toLowerCase().includes('surg')
     );
-    
+
     // MAXIMUM RESILIENCE: Use generic labels that work for ANY visit type
     const notesTitle = "Comments / Special Instructions";
     const notesPlaceholder = "e.g. Symptoms, special requests, or notes for the clinical staff...";
 
     // Helper for Title Case
-
-    // Helper for Title Case
     const toTitleCase = (str) => str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
+
+    // Compute grand total using weight-resolved prices per pet
+    const grandTotal = selectedPets.reduce((total, pet) => {
+      const petWeight = parseFloat(pet.lastVitals?.weight ?? pet.weight ?? pet.lastWeight) || null;
+      return total + (petServiceMap[pet.id] || []).reduce(
+        (sum, s) => sum + resolveTieredPrice(s, petWeight), 0
+      );
+    }, 0);
 
     return (
       <KeyboardAvoidingView
@@ -1455,7 +1696,7 @@ export default function BookAppointment({ navigation, route }) {
 
             <View style={styles.summaryBox}>
                 <Text style={styles.summaryTitle}>Booking Summary</Text>
-                
+
                 <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#5D4037', marginBottom: 8 }}>🐾 Patient(s):</Text>
                 <View style={styles.summaryPetsContainer}>
                     {selectedPets.map(p => (
@@ -1465,13 +1706,30 @@ export default function BookAppointment({ navigation, route }) {
                     ))}
                 </View>
 
-                {/* SCROLLABLE SERVICE LIST (Scalability Fix) */}
+                {/* Per-pet price breakdown */}
                 <Text style={{ fontWeight: 'bold', fontSize: 13, color: '#5D4037', marginTop: 15, marginBottom: 4 }}>Selected Services:</Text>
                 <View style={styles.summaryServiceScroll}>
                     <ScrollView nestedScrollEnabled={true}>
-                        {selectedServices.map(s => (
-                            <Text key={s.id} style={{ fontSize: 13, color: '#5D4037', marginBottom: 4 }}>• {toTitleCase(s.name)} (₱{s.price})</Text>
-                        ))}
+                        {selectedPets.map(pet => {
+                            const petWeight = parseFloat(pet.lastVitals?.weight ?? pet.weight ?? pet.lastWeight) || null;
+                            const petSvcs = petServiceMap[pet.id] || [];
+                            const petSubtotal = petSvcs.reduce((sum, s) => sum + resolveTieredPrice(s, petWeight), 0);
+                            return (
+                                <View key={pet.id} style={{ marginBottom: 8 }}>
+                                    <Text style={{ fontSize: 13, fontWeight: '800', color: '#3E2723' }}>
+                                        {pet.name}{petWeight ? ` (${petWeight}kg)` : ''}:
+                                    </Text>
+                                    {petSvcs.map(s => (
+                                        <Text key={s.id} style={{ fontSize: 13, color: '#5D4037', marginLeft: 12 }}>
+                                            {'•'} {toTitleCase(s.name)} ({'₱'}{resolveTieredPrice(s, petWeight)})
+                                        </Text>
+                                    ))}
+                                    <Text style={{ fontSize: 12, color: '#8D6E63', marginLeft: 12 }}>
+                                        Subtotal: {'₱'}{petSubtotal}
+                                    </Text>
+                                </View>
+                            );
+                        })}
                     </ScrollView>
                 </View>
 
@@ -1479,10 +1737,7 @@ export default function BookAppointment({ navigation, route }) {
                     🕒 Time: {formatDisplayDate(date)} at {selectedSlot}
                 </Text>
                 <Text style={styles.summaryTotalBig}>
-                    Est. Total: ₱{selectedServices.reduce((sum, s) => sum + (parseFloat(s.price) || 0), 0) * selectedPets.length}
-                </Text>
-                <Text style={{ fontSize: 12, color: '#8D6E63', fontStyle: 'italic', textAlign: 'center' }}>
-                    Final price adjusted per pet&apos;s weight at checkout
+                    Est. Total: {'₱'}{grandTotal.toLocaleString()}
                 </Text>
             </View>
 
@@ -1578,7 +1833,7 @@ export default function BookAppointment({ navigation, route }) {
               (loading ||
                 (!isConnected && step === 4 && !rescheduleMode) ||
                 (step === 1 && selectedPets.length === 0) ||
-                (step === 2 && selectedServices.length === 0) ||
+                (step === 2 && !allPetsHaveServices) ||
                 (step === 3 && !selectedSlot) ||
                 (rescheduleMode && step === 4 && rescheduleReason.trim() === '')) &&
                 styles.disabledNextBtn,
@@ -1599,7 +1854,7 @@ export default function BookAppointment({ navigation, route }) {
                   (loading ||
                     (!isConnected && step === 4 && !rescheduleMode) ||
                     (step === 1 && selectedPets.length === 0) ||
-                    (step === 2 && selectedServices.length === 0) ||
+                    (step === 2 && !allPetsHaveServices) ||
                     (step === 3 && !selectedSlot) ||
                     (rescheduleMode && step === 4 && rescheduleReason.trim() === '')) && { color: "#9E9E9E" },
                 ]}

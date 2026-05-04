@@ -124,9 +124,13 @@ export function useSalesData(filterDate, currentUser) {
         const apptRef = doc(db, "appointments", selectedSale.appointmentId);
         const apptDoc = await transaction.get(apptRef);
         if (apptDoc.exists()) {
+          const apptData = apptDoc.data();
           transaction.update(apptRef, {
             status: 'billing',
             balanceRemaining: parseFloat(selectedSale.total) || 0,
+            // Preserve full status chain with array spread — arrayUnion silently deduplicates,
+            // which corrupts the revert chain when status cycles (e.g., billing → completed → billing).
+            statusHistory: [...(apptData.statusHistory || []), apptData.status || 'completed'],
             clinicalPulse: arrayUnion({
               eventId: makePulseEventId('refund'),
               type: 'TRANSACTION_REFUNDED',
@@ -206,14 +210,42 @@ export function useSalesData(filterDate, currentUser) {
   const voidTransaction = async (sale) => {
     if (!sale) throw new Error("No sale provided.");
     await runTransaction(db, async (transaction) => {
-      // 1. Restock each sold product
+      // 1. Restock each sold product — batch-aware, matching the refund path (T4.144)
       for (const item of (sale.items || []).filter(i => i.type === 'product')) {
         const itemRef = doc(db, "inventory", item.id);
         const itemDoc = await transaction.get(itemRef);
         if (!itemDoc.exists()) continue;
         const data = itemDoc.data();
         const newStock = (data.stock || 0) + item.qty;
-        transaction.update(itemRef, { stock: newStock });
+        const batches = [...(data.batches || [])];
+
+        // Determine whether this product is batch-tracked. Flat-stock products
+        // (collars, leashes, etc.) have no batches and no batchSource. Treating them
+        // as batch-tracked would permanently convert them to batch-managed inventory.
+        const isBatchTracked = batches.length > 0 || (item.batchSource && item.batchSource.length > 0);
+
+        if (isBatchTracked) {
+          if (item.batchSource && item.batchSource.length > 0) {
+            // Restore to the original batches captured at sale time (T2.147)
+            for (const src of item.batchSource) {
+              const existing = batches.find(b => b.batchNumber === src.batchNumber);
+              if (existing) {
+                existing.qty += src.qtyFromBatch;
+              } else {
+                batches.push({ batchNumber: src.batchNumber, expiryDate: src.expiryDate, qty: src.qtyFromBatch, dateAdded: new Date().toISOString() });
+              }
+            }
+          } else {
+            // Legacy batch-tracked sales without batchSource — create recovery batch
+            const nextYear = new Date(); nextYear.setFullYear(nextYear.getFullYear() + 1);
+            batches.push({ batchNumber: `RET-${sale.id.slice(0, 4)}`, expiryDate: nextYear.toISOString().split('T')[0], qty: item.qty, dateAdded: new Date().toISOString() });
+          }
+          transaction.update(itemRef, { stock: newStock, batches });
+        } else {
+          // Flat-stock product — increment count only, no batch creation
+          transaction.update(itemRef, { stock: newStock });
+        }
+
         const logRef = doc(collection(db, "inventory_logs"));
         transaction.set(logRef, {
           itemId: item.id,
@@ -223,6 +255,7 @@ export function useSalesData(filterDate, currentUser) {
           reason: `Void reversal from sale ${sale.id}`,
           oldStock: data.stock,
           newStock,
+          batchInfo: 'Voided Sale',
           userName: currentUser?.fullName || 'Unknown Staff',
           userId: currentUser?.id || null,
           timestamp: Timestamp.now(),
@@ -239,9 +272,14 @@ export function useSalesData(filterDate, currentUser) {
         const apptRef = doc(db, "appointments", sale.appointmentId);
         const apptDoc = await transaction.get(apptRef);
         if (apptDoc.exists()) {
+          const apptData = apptDoc.data();
           transaction.update(apptRef, {
             status: 'billing',
             timeCompleted: null,
+            balanceRemaining: parseFloat(sale.total) || 0,
+            // Preserve full status chain with array spread — arrayUnion silently deduplicates,
+            // which corrupts the revert chain when status cycles (e.g., billing → completed → billing).
+            statusHistory: [...(apptData.statusHistory || []), apptData.status || 'completed'],
             clinicalPulse: arrayUnion({
               eventId: makePulseEventId('void'),
               type: 'TRANSACTION_VOIDED',

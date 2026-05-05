@@ -155,6 +155,7 @@ const RegisterScreen = ({ navigation }) => {
     Keyboard.dismiss();
 
     try {
+
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         email.trim(),
@@ -162,16 +163,19 @@ const RegisterScreen = ({ navigation }) => {
       );
       const uid = userCredential.user.uid;
 
+
       // ====================================================================
       // 🤖 THE THICK-CLIENT RECONCILIATION ENGINE
       // ====================================================================
       try {
+
         const guestQuery = query(
           collection(db, "users"),
           where("phone", "==", phone.trim()),
           where("accountStatus", "==", "unclaimed_guest"),
         );
         const guestSnap = await getDocs(guestQuery);
+
 
         if (!guestSnap.empty) {
           const guestDoc = guestSnap.docs[0];
@@ -268,6 +272,7 @@ const RegisterScreen = ({ navigation }) => {
           // STANDARD REGISTRATION
           const now = Timestamp.now();
 
+
           await setDoc(doc(db, "users", uid), {
             uid: uid,
             fullName: fullName.trim(),
@@ -294,9 +299,11 @@ const RegisterScreen = ({ navigation }) => {
             createdAt: now,
           });
 
+
           // Write consent_records audit entry — separate from the user doc write
           // to preserve the existing Auth rollback pattern
           if (dpaPolicy) {
+
             const consentRecordRef = doc(
               collection(db, 'users', uid, 'consent_records'),
             );
@@ -312,6 +319,7 @@ const RegisterScreen = ({ navigation }) => {
               deviceInfo: 'mobile',
               adminNote: null,
             });
+
           }
         }
       } catch (firestoreError) {

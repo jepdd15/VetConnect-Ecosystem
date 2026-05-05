@@ -190,7 +190,7 @@ service cloud.firestore {
     // Everyone reads (booking engine needs operating hours, closed dates).
     // Only admin can modify.
     match /clinic_settings/{settingId} {
-      allow read: if isAuth() || settingId == 'general';
+      allow read: if isAuth() || settingId == 'general' || settingId == 'consent_policy';
       allow write: if isAdmin();
     }
 

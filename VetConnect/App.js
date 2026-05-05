@@ -79,8 +79,11 @@ export default function App() {
               }
             }
           } else {
-            await auth.signOut();
-            setInitialRoute("Login");
+            // User doc doesn't exist yet — this happens during registration
+            // when onAuthStateChanged fires before the registration flow
+            // finishes writing the user doc. Route to ClientDashboard and let
+            // the registration complete rather than signing out mid-flow.
+            setInitialRoute("ClientDashboard");
           }
         } catch {
           // Offline + no cached user doc: route to dashboard since auth token is valid

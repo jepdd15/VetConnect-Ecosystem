@@ -38,10 +38,6 @@ import PhysicalExamChecklist from './PhysicalExamChecklist';
  * @prop {Array}       [vaccineProducts=[]]           - T4.117: species-filtered vaccine inventory products
  * @prop {function}    [onAddVaccineProduct]          - T4.117: (product) => void — adds vaccine to cart
  *
- * Intake context (T3.70 — read-only, shown above Subjective field):
- * @prop {string}      [intakeClientNotes='']         - Client's booking notes from the appointment doc
- * @prop {string}      [intakeStaffNotes='']          - Staff triage/walk-in notes from the appointment doc
- *
  * LLM Clinical Reasoning props (T4.110 — button-level only; display panels moved to ClinicalAIPanel):
  * @prop {boolean}     [llmEnabled=false]      - Whether the LLM feature is active
  * @prop {boolean}     [llmLoading=false]       - Whether an LLM call is in-flight
@@ -67,7 +63,6 @@ export default function SoapGrid({
   followUpNode = null,
   canToggleVaccine = false, onManualVaccineToggle,
   vaccineProducts = [], onAddVaccineProduct,
-  intakeClientNotes = '', intakeStaffNotes = '',
   llmEnabled = false, llmLoading = false, llmMessages = [],
   onAskAI, onResetAndAskAI,
   onToggleAIPanel, isAIPanelOpen = false,
@@ -87,36 +82,6 @@ export default function SoapGrid({
       {/* S - SUBJECTIVE (top-left) */}
       <Grid size={{ xs: 12, md: 6 }} sx={{ height: { xs: 'auto', md: '50%' }, overflow: { md: 'hidden' }, borderRight: { md: '1px solid #F0F0F0' }, borderBottom: '1px solid #F0F0F0' }}>
         <SoapQuadrant id="subjective" label="S - SUBJECTIVE (HISTORY & CLIENT REPORT)" onZoomField={setFullscreenField}>
-
-          {/* T3.70: Read-only intake context box — shown above the vet's Subjective field */}
-          {(intakeClientNotes || intakeStaffNotes) && (
-            <Box sx={{
-              bgcolor: COLORS.formBg,
-              border: `1px solid ${COLORS.borderLight}`,
-              borderRadius: 0,
-              p: 1.5,
-              mb: 1,
-              maxHeight: 120,
-              overflowY: 'auto',
-            }}>
-              <Typography variant="overline" sx={{
-                fontWeight: 900, color: COLORS.textMuted, fontSize: '0.55rem',
-                letterSpacing: 1.5, display: 'block', mb: 0.5,
-              }}>
-                INTAKE CONTEXT (READ-ONLY)
-              </Typography>
-              {intakeClientNotes && (
-                <Typography sx={{ fontSize: '0.85rem', color: COLORS.medical, fontWeight: 700, mb: 0.5, lineHeight: 1.4 }}>
-                  <strong>CLIENT:</strong> {intakeClientNotes}
-                </Typography>
-              )}
-              {intakeStaffNotes && (
-                <Typography sx={{ fontSize: '0.85rem', color: COLORS.warning, fontWeight: 700, lineHeight: 1.4 }}>
-                  <strong>STAFF TRIAGE:</strong> {intakeStaffNotes}
-                </Typography>
-              )}
-            </Box>
-          )}
 
           <TextField
             multiline fullWidth variant="standard"

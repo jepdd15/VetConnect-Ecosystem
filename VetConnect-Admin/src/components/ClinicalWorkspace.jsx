@@ -489,7 +489,18 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   const [overdueVaccineCount, setOverdueVaccineCount] = useState(0);
 
   const [soapData, setSoapData] = useState({
-    subjective: '', objWeight: '', objTemp: '', objHR: '', objRR: '', objCRT: '', bcs: 5, painScale: 0,
+    // T4.158: Auto-populate subjective from intake notes on first open (no draft).
+    subjective: (() => {
+      const client = patient?.clientNotes || (!patient?.staffNotes ? patient?.notes : '') || '';
+      const filtered = (client === 'Walk-in client' || client.includes('QUICK ADMIT')) ? '' : client;
+      const staff = patient?.staffNotes || '';
+      if (!filtered && !staff) return '';
+      return [
+        filtered ? `Owner: ${filtered}` : '',
+        staff ? `Staff: ${staff}` : '',
+      ].filter(Boolean).join('\n');
+    })(),
+    objWeight: '', objTemp: '', objHR: '', objRR: '', objCRT: '', bcs: 5, painScale: 0,
     objectiveNotes: '', objectiveExam: createDefaultExam(),
     // T4.141: assessment replaced with structured diagnoses[] + free-text assessmentNotes
     diagnoses: [], assessmentNotes: '',
@@ -733,9 +744,18 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           const isEligibleStatus = ['arrived', 'in-consult'].includes(patient.status);
 
           const freshDefaults = {
-            // T3.70: Subjective starts empty — intake context is shown in the read-only
-            // context box above this field (via intakeClientNotes/intakeStaffNotes props).
-            subjective: '',
+            // T4.158: Auto-populate subjective from intake notes so the vet has a starting
+            // point. Filtered to exclude walk-in placeholders. Draft resume bypasses this.
+            subjective: (() => {
+              const client = patient?.clientNotes || (!patient?.staffNotes ? patient?.notes : '') || '';
+              const filtered = (client === 'Walk-in client' || client.includes('QUICK ADMIT')) ? '' : client;
+              const staff = patient?.staffNotes || '';
+              if (!filtered && !staff) return '';
+              return [
+                filtered ? `Owner: ${filtered}` : '',
+                staff ? `Staff: ${staff}` : '',
+              ].filter(Boolean).join('\n');
+            })(),
             objWeight: '', objTemp: '', objHR: '', objRR: '', objCRT: '2',
             bcs: 5, painScale: 0,
             objectiveNotes: '', objectiveExam: createDefaultExam(),
@@ -3677,56 +3697,43 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           )}
 
           {/* --- 2x2 SOAP GRID (fills remaining space) --- */}
-          {/* T3.70: Compute intake notes with dual-read fallback for legacy appointments */}
-          {(() => {
-            const rawClientNotes = patient?.clientNotes || (!patient?.staffNotes ? patient?.notes : '') || '';
-            const filteredClientNotes = (
-              rawClientNotes === 'Walk-in client' ||
-              rawClientNotes.includes('QUICK ADMIT')
-            ) ? '' : rawClientNotes;
-            const intakeStaffNotes = patient?.staffNotes || '';
-
-            return (
-              <SoapGrid
-                soapData={soapData}
-                updateSoap={updateSoap}
-                setFullscreenField={setFullscreenField}
-                getTriageLevel={getTriageLevel}
-                renderHistoricalLabel={renderHistoricalLabel}
-                runAssistiveDiagnosis={runAssistiveDiagnosis}
-                assistiveText={assistiveText}
-                diagnosticOpen={diagnosticOpen}
-                setDiagnosticOpen={setDiagnosticOpen}
-                SoapQuadrant={SoapQuadrant}
-                VitalsGrid={VitalsGrid}
-                DiagnosticBridge={DiagnosticBridge}
-                showVaccineForm={showVaccineForm}
-                vaccineFormNode={vaccineFormJSX}
-                labResultsNode={labResultsJSX}
-                showDraftSave={!lockedServices.has('medical')}
-                draftSaveNode={draftSaveJSX}
-                followUpNode={followUpJSX}
-                canToggleVaccine={!showVaccineForm && !isRecordLocked}
-                onManualVaccineToggle={() => setManualVaccineOverride(true)}
-                vaccineProducts={vaccineProducts}
-                onAddVaccineProduct={handleAddVaccineProduct}
-                intakeClientNotes={filteredClientNotes}
-                intakeStaffNotes={intakeStaffNotes}
-                llmEnabled={llmConfig.enabled && !!llmConfig.workerUrl}
-                llmLoading={llmLoading}
-                llmMessages={llmMessages}
-                onAskAI={runLlmDiagnosis}
-                onResetAndAskAI={handleResetAndAskAI}
-                onToggleAIPanel={handleToggleAIPanel}
-                isAIPanelOpen={isAIDrawerOpen}
-                onMarkAllNormal={() => applyTemplate('wnl')}
-                disabled={lockedServices.has('medical')}
-                diagnosisCatalog={diagnosisCatalog}
-                patientSpecies={patient?.petSpecies || ''}
-                onAddCustomDiagnosis={() => setAddCustomDxOpen(true)}
-              />
-            );
-          })()}
+          {/* T4.158: Intake notes removed from SoapGrid — subjective is now pre-populated instead */}
+          <SoapGrid
+            soapData={soapData}
+            updateSoap={updateSoap}
+            setFullscreenField={setFullscreenField}
+            getTriageLevel={getTriageLevel}
+            renderHistoricalLabel={renderHistoricalLabel}
+            runAssistiveDiagnosis={runAssistiveDiagnosis}
+            assistiveText={assistiveText}
+            diagnosticOpen={diagnosticOpen}
+            setDiagnosticOpen={setDiagnosticOpen}
+            SoapQuadrant={SoapQuadrant}
+            VitalsGrid={VitalsGrid}
+            DiagnosticBridge={DiagnosticBridge}
+            showVaccineForm={showVaccineForm}
+            vaccineFormNode={vaccineFormJSX}
+            labResultsNode={labResultsJSX}
+            showDraftSave={!lockedServices.has('medical')}
+            draftSaveNode={draftSaveJSX}
+            followUpNode={followUpJSX}
+            canToggleVaccine={!showVaccineForm && !isRecordLocked}
+            onManualVaccineToggle={() => setManualVaccineOverride(true)}
+            vaccineProducts={vaccineProducts}
+            onAddVaccineProduct={handleAddVaccineProduct}
+            llmEnabled={llmConfig.enabled && !!llmConfig.workerUrl}
+            llmLoading={llmLoading}
+            llmMessages={llmMessages}
+            onAskAI={runLlmDiagnosis}
+            onResetAndAskAI={handleResetAndAskAI}
+            onToggleAIPanel={handleToggleAIPanel}
+            isAIPanelOpen={isAIDrawerOpen}
+            onMarkAllNormal={() => applyTemplate('wnl')}
+            disabled={lockedServices.has('medical')}
+            diagnosisCatalog={diagnosisCatalog}
+            patientSpecies={patient?.petSpecies || ''}
+            onAddCustomDiagnosis={() => setAddCustomDxOpen(true)}
+          />
         </Box>
 
         {/* === SIDEBAR (RIGHT) === */}
@@ -4332,56 +4339,43 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         <Box sx={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'row', bgcolor: '#FFF' }}>
           {/* Left ~70%: SOAP Grid */}
           <Box sx={{ flex: 7, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            {/* T3.70: God-View also receives intake context for the read-only context box */}
-            {(() => {
-              const rawClientNotes = patient?.clientNotes || (!patient?.staffNotes ? patient?.notes : '') || '';
-              const filteredClientNotes = (
-                rawClientNotes === 'Walk-in client' ||
-                rawClientNotes.includes('QUICK ADMIT')
-              ) ? '' : rawClientNotes;
-              const intakeStaffNotes = patient?.staffNotes || '';
-
-              return (
-                <SoapGrid
-                  soapData={soapData}
-                  updateSoap={updateSoap}
-                  setFullscreenField={setFullscreenField}
-                  getTriageLevel={getTriageLevel}
-                  renderHistoricalLabel={renderHistoricalLabel}
-                  runAssistiveDiagnosis={runAssistiveDiagnosis}
-                  assistiveText={assistiveText}
-                  diagnosticOpen={diagnosticOpen}
-                  setDiagnosticOpen={setDiagnosticOpen}
-                  SoapQuadrant={SoapQuadrant}
-                  VitalsGrid={VitalsGrid}
-                  DiagnosticBridge={DiagnosticBridge}
-                  showVaccineForm={showVaccineForm}
-                  vaccineFormNode={vaccineFormJSX}
-                  labResultsNode={labResultsJSX}
-                  showDraftSave={!lockedServices.has('medical')}
-                  draftSaveNode={draftSaveJSX}
-                  followUpNode={followUpJSX}
-                  canToggleVaccine={!showVaccineForm && !isRecordLocked}
-                  onManualVaccineToggle={() => setManualVaccineOverride(true)}
-                  vaccineProducts={vaccineProducts}
-                  onAddVaccineProduct={handleAddVaccineProduct}
-                  intakeClientNotes={filteredClientNotes}
-                  intakeStaffNotes={intakeStaffNotes}
-                  llmEnabled={llmConfig.enabled && !!llmConfig.workerUrl}
-                  llmLoading={llmLoading}
-                  llmMessages={llmMessages}
-                  onAskAI={runLlmDiagnosis}
-                  onResetAndAskAI={handleResetAndAskAI}
-                  onToggleAIPanel={() => {}}
-                  isAIPanelOpen={true}
-                  onMarkAllNormal={() => applyTemplate('wnl')}
-                  disabled={lockedServices.has('medical')}
-                  diagnosisCatalog={diagnosisCatalog}
-                  patientSpecies={patient?.petSpecies || ''}
-                  onAddCustomDiagnosis={() => setAddCustomDxOpen(true)}
-                />
-              );
-            })()}
+            {/* T4.158: Intake notes removed — subjective is now pre-populated from patient notes */}
+            <SoapGrid
+              soapData={soapData}
+              updateSoap={updateSoap}
+              setFullscreenField={setFullscreenField}
+              getTriageLevel={getTriageLevel}
+              renderHistoricalLabel={renderHistoricalLabel}
+              runAssistiveDiagnosis={runAssistiveDiagnosis}
+              assistiveText={assistiveText}
+              diagnosticOpen={diagnosticOpen}
+              setDiagnosticOpen={setDiagnosticOpen}
+              SoapQuadrant={SoapQuadrant}
+              VitalsGrid={VitalsGrid}
+              DiagnosticBridge={DiagnosticBridge}
+              showVaccineForm={showVaccineForm}
+              vaccineFormNode={vaccineFormJSX}
+              labResultsNode={labResultsJSX}
+              showDraftSave={!lockedServices.has('medical')}
+              draftSaveNode={draftSaveJSX}
+              followUpNode={followUpJSX}
+              canToggleVaccine={!showVaccineForm && !isRecordLocked}
+              onManualVaccineToggle={() => setManualVaccineOverride(true)}
+              vaccineProducts={vaccineProducts}
+              onAddVaccineProduct={handleAddVaccineProduct}
+              llmEnabled={llmConfig.enabled && !!llmConfig.workerUrl}
+              llmLoading={llmLoading}
+              llmMessages={llmMessages}
+              onAskAI={runLlmDiagnosis}
+              onResetAndAskAI={handleResetAndAskAI}
+              onToggleAIPanel={() => {}}
+              isAIPanelOpen={true}
+              onMarkAllNormal={() => applyTemplate('wnl')}
+              disabled={lockedServices.has('medical')}
+              diagnosisCatalog={diagnosisCatalog}
+              patientSpecies={patient?.petSpecies || ''}
+              onAddCustomDiagnosis={() => setAddCustomDxOpen(true)}
+            />
           </Box>
 
           {/* Right ~30%: Persistent AI Panel — always visible, no close button */}

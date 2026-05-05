@@ -95,7 +95,7 @@ export default function Settings() {
     openHour: 8, closeHour: 17,
     lunchEnabled: true, lunchStart: 12, lunchEnd: 13,
     minSlotInterval: 30, advanceNoticeMins: 120, maxFutureBookingDays: 30, maxPetsPerBooking: 3,
-    maxCages: 5, autoNoShowMins: 30, noShowLinkWindowDays: 30, trafficModerate: 6, trafficHigh: 13,
+    autoNoShowMins: 30, noShowLinkWindowDays: 30, trafficModerate: 6, trafficHigh: 13,
     clinicPhone: '',
     workingDays: [1, 2, 3, 4, 5, 6, 0], // [0:Sun, 1:Mon... 6:Sat]
     clinicLat: 16.0389, clinicLng: 120.3977, geofenceRadiusM: 150,
@@ -234,7 +234,6 @@ export default function Settings() {
           maxPetsPerBooking: parseInt(data.maxPetsPerBooking) || 3,
           trafficModerate: parseInt(data.trafficModerate) || 5,
           trafficHigh: parseInt(data.trafficHigh) || 10,
-          maxCages: parseInt(data.maxCages) || 5,
           advanceNoticeHours: parseInt(data.advanceNoticeHours) || 2,
           maxFutureBookingDays: parseInt(data.maxFutureBookingDays) || 30,
           autoNoShowMins: parseInt(data.autoNoShowMins) || 30,
@@ -306,7 +305,7 @@ export default function Settings() {
     if (!lastSavedSettings) return false;
     const tracked = ['openHour', 'closeHour', 'lunchEnabled', 'lunchStart', 'lunchEnd',
       'minSlotInterval', 'advanceNoticeMins', 'maxFutureBookingDays', 'maxPetsPerBooking',
-      'maxCages', 'autoNoShowMins', 'noShowLinkWindowDays', 'trafficModerate', 'trafficHigh',
+      'autoNoShowMins', 'noShowLinkWindowDays', 'trafficModerate', 'trafficHigh',
       'workingDays', 'clinicPhone', 'dashboardAlerts', 'dashboardGoals',
       'clinicLat', 'clinicLng', 'geofenceRadiusM'];
     return tracked.some(key => JSON.stringify(settings[key]) !== JSON.stringify(lastSavedSettings[key]));
@@ -380,10 +379,6 @@ export default function Settings() {
     if (isNaN(modThresh) || isNaN(highThresh) || modThresh >= highThresh) {
       return "Moderate Traffic threshold must be less than High Traffic threshold.";
     }
-    const cages = parseInt(settings.maxCages);
-    if (isNaN(cages) || cages < 0) {
-      return "Max Confinement Cages cannot be negative.";
-    }
     const notice = parseInt(settings.advanceNoticeMins);
     if (isNaN(notice) || notice < 0) {
       return "Advance Notice Buffer cannot be negative.";
@@ -431,7 +426,6 @@ export default function Settings() {
         advanceNoticeMins: parseInt(settings.advanceNoticeMins) || 120,
         maxFutureBookingDays: parseInt(settings.maxFutureBookingDays) || 30,
         maxPetsPerBooking: parseInt(settings.maxPetsPerBooking) || 3,
-        maxCages: parseInt(settings.maxCages) || 5,
         autoNoShowMins: parseInt(settings.autoNoShowMins) || 30,
         noShowLinkWindowDays: parseInt(settings.noShowLinkWindowDays) || 30,
         trafficModerate: parseInt(settings.trafficModerate) || 6,
@@ -455,7 +449,7 @@ export default function Settings() {
       if (lastSavedSettings) {
         const tracked = ['openHour', 'closeHour', 'lunchEnabled', 'lunchStart', 'lunchEnd',
           'minSlotInterval', 'advanceNoticeMins', 'maxFutureBookingDays', 'maxPetsPerBooking',
-          'maxCages', 'autoNoShowMins', 'noShowLinkWindowDays', 'trafficModerate', 'trafficHigh',
+          'autoNoShowMins', 'noShowLinkWindowDays', 'trafficModerate', 'trafficHigh',
           'workingDays', 'clinicPhone', 'dashboardAlerts', 'dashboardGoals',
           'clinicLat', 'clinicLng', 'geofenceRadiusM', 'enableAppointmentReminders',
           'enableVaccineReminders', 'vaccineReminderWindowDays', 'vaccineReminderCooldownDays',
@@ -1322,7 +1316,6 @@ export default function Settings() {
             <Box sx={{ p: 3, flexGrow: 1, bgcolor: COLORS.cardBg }}>
               <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 3 }}>Controls physical clinic limits and algorithmic traffic warnings.</Typography>
               <Grid container spacing={2.5}>
-                <Grid size={{ xs: 12 }}><TextField fullWidth label="Max Confinement Cages" type="number" value={settings.maxCages} onChange={(e) => handleChange('maxCages', e.target.value)} InputProps={{ endAdornment: <InputAdornment position="end" sx={{ fontWeight: 900 }}>Cages</InputAdornment> }} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 900 } }} helperText="Blocks admission" /></Grid>
                 <Grid size={{ xs: 12 }}><Divider sx={{ my: 1 }} /></Grid>
                 <Grid size={{ xs: 12 }}><TextField fullWidth label="Auto-No-Show Trigger" type="number" value={settings.autoNoShowMins} onChange={(e) => handleChange('autoNoShowMins', e.target.value)} InputProps={{ endAdornment: <InputAdornment position="end" sx={{ fontWeight: 900 }}>Mins Late</InputAdornment> }} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 900 } }} helperText="Mins late before Queue displays No-Show button." /></Grid>
                 <Grid size={{ xs: 12 }}>

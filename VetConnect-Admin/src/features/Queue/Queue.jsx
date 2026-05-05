@@ -878,8 +878,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         }
       }
 
-      const confinedCount = rows.filter(r => r.status === 'confined').length; 
-      await changeStatus(row, newStatus, confinedCount, clinicSettings.maxCages || 5, clinicSettings);
+      await changeStatus(row, newStatus, clinicSettings);
     } catch (e) { 
       alert(e.message); 
     } 

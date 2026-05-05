@@ -7,7 +7,6 @@ import { db } from '../firebaseConfig';
  * or while the first snapshot is still in-flight.
  */
 const DEFAULT_SETTINGS = {
-  maxCages: 5,
   closeHour: 17,
   openHour: 8,
   workingDays: [0, 1, 2, 3, 4, 5, 6],

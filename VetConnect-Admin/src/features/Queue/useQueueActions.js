@@ -12,14 +12,10 @@ export function useQueueActions() {
   const staffSignature = profile?.fullName || 'System/Admin';
   
   // 1. FORWARD STATUS CHANGE (NOW ATOMIC TRANSACTIONS!)
-  const changeStatus = async (row, newStatus, currentConfinedCount, maxCages = 5, settings = {}) => {
+  const changeStatus = async (row, newStatus, settings = {}) => {
     const transition = validateTransition(row.status, newStatus);
     if (!transition.valid) {
       throw new Error(`❌ INVALID TRANSITION\n${transition.reason}`);
-    }
-
-    if (newStatus === STATUS.CONFINED && currentConfinedCount >= maxCages) {
-      throw new Error(`❌ ADMISSION BLOCKED\nAll ${maxCages} cages are currently occupied.`);
     }
 
     await runTransaction(db, async (transaction) => {

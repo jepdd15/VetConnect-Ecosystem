@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { resolveTieredPrice } from '../../utils/resolveTieredPrice';
-import { normalizePhone } from '../../utils/phoneValidation';
-import { COLORS } from '../../theme/designTokens';
+import { normalizePhone, isValidPHPhone } from '../../utils/phoneValidation';
+import { COLORS, FONT } from '../../theme/designTokens';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, TextField, MenuItem, Box, Typography,
   FormControl, InputLabel, Select, RadioGroup, FormControlLabel, Radio,
-  Autocomplete, Alert, CircularProgress, Paper, Divider, Switch, Chip, Stack,
-  ToggleButton, ToggleButtonGroup, Checkbox, List, ListItem, ListItemButton,
-  ListItemText, ListItemAvatar, Avatar, Collapse, IconButton, Snackbar,
+  Autocomplete, Alert, CircularProgress, Paper, Switch, Chip, Stack,
+  ToggleButton, ToggleButtonGroup, Collapse, Snackbar,
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
 
@@ -17,11 +16,6 @@ import WarningIcon from '@mui/icons-material/Warning';
 import CircleIcon from '@mui/icons-material/Circle';
 import DirectionsWalkIcon from '@mui/icons-material/DirectionsWalk';
 import CakeIcon from '@mui/icons-material/Cake';
-import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
-import PetsIcon from '@mui/icons-material/Pets';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 
 import { collection, doc, runTransaction, Timestamp, query, where, getDocs } from 'firebase/firestore';
 import { makePulseEventId } from '../../utils/pulseUtils';
@@ -30,6 +24,26 @@ import { useUser } from '../../context/UserContext';
 import { detectNoShows } from '../../utils/noShowDetection';
 import { useClinicSettings } from '../../hooks/useClinicSettings';
 import { sendPushNotification } from '../../utils/sendPushNotification';
+
+const sxField = {
+  bgcolor: COLORS.cardBg,
+  '& .MuiOutlinedInput-root': {
+    borderRadius: 0,
+    '& fieldset': { border: `2px solid ${COLORS.accent}` },
+    '&:hover fieldset': { borderColor: COLORS.brand },
+    '&.Mui-focused fieldset': { borderColor: COLORS.accent, borderWidth: '3px' },
+  },
+  '& .MuiInputLabel-root': { color: COLORS.accent, fontWeight: 'bold' },
+};
+
+const sxSelect = {
+  fontWeight: 900,
+  fontSize: '0.85rem',
+  borderRadius: 0,
+  '& .MuiOutlinedInput-notchedOutline': { border: `2px solid ${COLORS.accent}` },
+  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: COLORS.brand },
+  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: COLORS.accent, borderWidth: '3px' },
+};
 
 // --- BLANK PET TEMPLATE ---
 const BLANK_PET_DATA = () => ({
@@ -77,9 +91,6 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
 
   // No-show detection map: { petId -> noShowInfo }
   const [noShowMap, setNoShowMap] = useState({});
-
-  // --- PH PHONE VALIDATION ENGINE ---
-  const isValidPHPhone = (number) => /^09\d{9}$/.test(number.trim());
 
   useEffect(() => {
     if (open && clients.length === 0) {
@@ -174,18 +185,6 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
     });
   };
 
-  const addPetEntry = () => {
-    setPetEntries(prev => [...prev, BLANK_PET_DATA()]);
-  };
-
-  const removePetEntry = (index) => {
-    setPetEntries(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const toggleEntryExpand = (index) => {
-    updateEntry(index, { expanded: !petEntries[index].expanded });
-  };
-
   const handleClose = () => {
     setErrorMsg('');
     setWalkInType('existing');
@@ -222,15 +221,16 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
 
   // --- APPOINTMENT PAYLOAD BUILDER: Pure function, no side effects ---
   const buildAppointmentPayload = ({
-    ownerId, ownerName, petId, petName, petSpecies, petBreed, petGender, petColor,
+    ownerId, ownerName, ownerPhone, petId, petName, petSpecies, petBreed, petGender, petColor,
     petIsNeutered, petBirthdate, isAgeExact, petWeight, petAllergies,
     mappedServices, triageNotes, isEmergency, queueNumber, noShowData,
     visitGroupId, groupSize, groupIndex,
   }) => {
     const primaryDept = mappedServices[0]?.department || 'General';
     const resolvedWeight = petWeight || null;
+    const now = Timestamp.now();
     return {
-      ownerId, ownerName, petId, petName, petSpecies,
+      ownerId, ownerName, ownerPhone, petId, petName, petSpecies,
       petBreed: petBreed || 'Mixed Breed',
       petGender,
       petColor,
@@ -244,12 +244,13 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
       serviceCategory: primaryDept,
       status: 'arrived',
       caseDay: 1,
+      statusHistory: [],
       queueNumber,
       ticketPrefix: isEmergency ? 'E' : 'W',
       priority: isEmergency ? 'high' : 'normal',
-      scheduledDate: Timestamp.now(),
-      createdAt: Timestamp.now(),
-      timeArrived: Timestamp.now(),
+      scheduledDate: now,
+      createdAt: now,
+      timeArrived: now,
       staffNotes: triageNotes,
       systemChips: [
         ...(isEmergency ? ['EMERGENCY'] : []),
@@ -269,7 +270,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
           eventId: makePulseEventId('walkin'),
           type: 'INCEPTION',
           toStatus: 'arrived',
-          timestamp: Timestamp.now(),
+          timestamp: now,
           staffId: profile?.id || 'system_walkin',
           staffName: staffSignature,
           note: `Physical Intake [WT: ${resolvedWeight || 'N/A'}kg]:${isEmergency ? ' URGENT ER' : ''} ${triageNotes}${visitGroupId ? ` [Group ${groupIndex + 1}/${groupSize}]` : ''}`,
@@ -315,6 +316,9 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
 
         let finalOwnerId, finalOwnerName, finalOwnerPhone;
 
+        // Shared timestamp for all writes within this transaction
+        const txNow = Timestamp.now();
+
         if (walkInType === 'guest') {
           const phoneKey = `GUEST_PH_${guestPhone.trim()}`;
           const newUserRef = doc(db, "users", phoneKey);
@@ -334,7 +338,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
             email: guestEmail || null,
             role: 'pet_owner',
             accountStatus: 'unclaimed_guest',
-            createdAt: Timestamp.now(),
+            createdAt: txNow,
           });
           finalOwnerId = newUserRef.id;
           finalOwnerName = guestName || 'Guest Client';
@@ -378,7 +382,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
               petAllergies: resolvedAllergies,
               dob: finalDOB,
               isAgeExact: finalIsAgeExact,
-              createdAt: Timestamp.now(),
+              createdAt: txNow,
               status: 'active',
             };
             const weightVal = parseFloat(entry.weight);
@@ -443,6 +447,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
           const appointmentPayload = buildAppointmentPayload({
             ownerId: finalOwnerId,
             ownerName: finalOwnerName,
+            ownerPhone: finalOwnerPhone,
             petId,
             petName,
             petSpecies,
@@ -505,460 +510,244 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
   const renderPetEntryForm = (entry, index) => {
     const isNew = walkInType === 'guest' || entry.isNewPet;
     const noShowData = noShowMap[entry.selectedPet?.id];
-    const isMultiPet = petEntries.length > 1;
-
-    // Fix 7 — Estimated total for selected services
-    const estimatedTotal = entry.selectedServices.reduce((sum, svcName) => {
-      const s = servicesList?.find(item => item.name === svcName);
-      return sum + (resolveTieredPrice(s, parseFloat(entry.weight) || null) || 0);
-    }, 0);
 
     return (
-      <Paper
-        key={index}
-        elevation={0}
-        sx={{
-          mb: 2,
-          // Fix 4 — COLORS tokens instead of inline hex
-          border: isMultiPet ? `2px solid ${COLORS.accent}` : `1px solid ${COLORS.borderLight}`,
-          borderRadius: 0,
-          bgcolor: 'white',
-          overflow: 'hidden',
-        }}
-      >
-        {/* Card header — only shown for multi-pet entries */}
-        {isMultiPet && (
-          <Box
-            sx={{
-              bgcolor: COLORS.accent,
-              px: 2,
-              py: 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-            }}
-          >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <PetsIcon sx={{ color: 'white', fontSize: 18 }} />
-              <Typography sx={{ fontWeight: 900, color: 'white', fontSize: '0.8rem', letterSpacing: 1 }}>
-                PET {index + 1} OF {petEntries.length}
+      <Collapse key={index} in={entry.expanded !== false} timeout="auto">
+        <Box>
+          {/* Existing client pet selection */}
+          {walkInType === 'existing' && (
+            <Stack spacing={1.5} sx={{ mb: 1.5 }}>
+              {fetchingPets ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 1 }}>
+                  <CircularProgress size={24} sx={{ color: COLORS.accent }} />
+                </Box>
+              ) : selectedClient ? (
+                <>
+                  <FormControl fullWidth size="small" variant="outlined">
+                    <InputLabel sx={{ fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' }}>SELECT PET IDENTITY</InputLabel>
+                    <Select
+                      value={entry.selectedPet || ''}
+                      onChange={(e) => updateEntry(index, { selectedPet: e.target.value, isNewPet: false })}
+                      disabled={entry.isNewPet}
+                      label="SELECT PET IDENTITY"
+                      sx={sxSelect}
+                    >
+                      {clientPets.map(p => (
+                        <MenuItem key={p.id} value={p} sx={{ fontWeight: 800, fontSize: '0.85rem' }}>
+                          {(p.species === 'Dog' || p.species === 'Canine') ? 'DOG' : 'CAT'} — {p.name?.toUpperCase()}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        size="small"
+                        checked={entry.isNewPet}
+                        onChange={(e) => updateEntry(index, { isNewPet: e.target.checked, selectedPet: null })}
+                      />
+                    }
+                    label={<Typography sx={{ fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' }}>REGISTER NEW PET</Typography>}
+                  />
+
+                </>
+              ) : null}
+            </Stack>
+          )}
+
+          {/* No-show warning for this pet */}
+          {noShowData && noShowData.count > 0 && (
+            <Alert
+              severity="warning"
+              icon={<WarningIcon fontSize="small" />}
+              sx={{ mb: 1.5, fontWeight: 900, borderRadius: 0, border: `2px solid ${COLORS.warning}`, py: 0.5, fontSize: '0.8rem' }}
+            >
+              <Typography sx={{ fontWeight: 900, fontSize: '0.8rem' }}>
+                NO-SHOW HISTORY: {noShowData.count} no-show{noShowData.count > 1 ? 's' : ''} in the last {noShowWindowDays} days.
               </Typography>
-              {entry.selectedPet && (
-                <Chip
-                  label={entry.selectedPet.name?.toUpperCase()}
-                  size="small"
-                  sx={{ bgcolor: COLORS.cream, color: COLORS.accent, fontWeight: 900, fontSize: '0.65rem', borderRadius: 0 }}
+            </Alert>
+          )}
+
+          {/* New pet genome form */}
+          {isNew && (
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField size="small" label="PET NAME" variant="outlined" fullWidth
+                  value={entry.name}
+                  onChange={e => updateEntry(index, { name: e.target.value })}
+                  inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
+                  sx={sxField}
                 />
-              )}
-            </Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-              <IconButton size="small" onClick={() => toggleEntryExpand(index)} sx={{ color: 'white' }}>
-                {entry.expanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
-              </IconButton>
-              {index > 0 && (
-                <IconButton
-                  size="small"
-                  onClick={() => removePetEntry(index)}
-                  sx={{ color: COLORS.dangerSurface, '&:hover': { color: COLORS.danger } }}
-                >
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
-              )}
-            </Box>
-          </Box>
-        )}
-
-        {/* Fix 10 — Single-pet visual "PET INFORMATION" header */}
-        {!isMultiPet && (
-          <Box sx={{ px: 2, pt: 1.5 }}>
-            <Typography sx={{ fontWeight: 900, fontSize: '0.7rem', color: COLORS.accent, letterSpacing: 1, textTransform: 'uppercase' }}>
-              PET INFORMATION
-            </Typography>
-          </Box>
-        )}
-
-        <Collapse in={entry.expanded !== false} timeout="auto">
-          <Box sx={{ p: 2 }}>
-            {/* Existing client pet selection */}
-            {walkInType === 'existing' && (
-              <Stack spacing={1.5} sx={{ mb: 1.5 }}>
-                {fetchingPets ? (
-                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 1 }}>
-                    <CircularProgress size={24} sx={{ color: COLORS.accent }} />
+              </Grid>
+              <Grid size={{ xs: 12, md: 2.5 }}>
+                <FormControl fullWidth size="small" variant="outlined">
+                  <InputLabel sx={{ fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' }}>SPECIES</InputLabel>
+                  <Select label="SPECIES" value={entry.species}
+                    onChange={e => updateEntry(index, { species: e.target.value })}
+                    sx={sxSelect}>
+                    <MenuItem value="Canine" sx={{ fontWeight: 800, fontSize: '0.85rem' }}>CANINE</MenuItem>
+                    <MenuItem value="Feline" sx={{ fontWeight: 800, fontSize: '0.85rem' }}>FELINE</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 12, md: 2.5 }}>
+                <TextField size="small" label="WEIGHT (KG)" variant="outlined" fullWidth type="number"
+                  inputProps={{ step: '0.1', min: '0', style: { fontWeight: 900, color: COLORS.success, fontSize: '0.85rem' } }}
+                  value={entry.weight}
+                  onChange={e => updateEntry(index, { weight: e.target.value })}
+                  sx={sxField}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 3 }}>
+                <TextField size="small" label="BREED / LINEAGE" variant="outlined" fullWidth
+                  value={entry.breed}
+                  onChange={e => updateEntry(index, { breed: e.target.value })}
+                  inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
+                  sx={sxField}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 3 }}>
+                <TextField size="small" label="COLOR / MARKINGS" variant="outlined" fullWidth
+                  value={entry.color}
+                  onChange={e => updateEntry(index, { color: e.target.value })}
+                  inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
+                  sx={sxField}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 9 }}>
+                <Box sx={{ p: 1, border: `1px dashed ${COLORS.borderLight}`, bgcolor: 'transparent' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 1 }}>
+                    <CakeIcon sx={{ fontSize: 18, color: COLORS.accentWarm }} />
+                    <Typography sx={{ fontWeight: 900, fontSize: '0.75rem', color: COLORS.accent }}>BIRTHDATE / AGE MODE</Typography>
+                    <ToggleButtonGroup
+                      size="small"
+                      value={entry.dobMode}
+                      exclusive
+                      onChange={(_, val) => val && updateEntry(index, { dobMode: val })}
+                      sx={{ ml: 'auto', height: 26 }}
+                    >
+                      <ToggleButton value="exact" sx={{ fontSize: '0.65rem', fontWeight: 900, px: 2, borderRadius: 0 }}>EXACT</ToggleButton>
+                      <ToggleButton value="approximate" sx={{ fontSize: '0.65rem', fontWeight: 900, px: 2, borderRadius: 0 }}>ESTIMATE</ToggleButton>
+                      <ToggleButton value="unknown" sx={{ fontSize: '0.65rem', fontWeight: 900, px: 2, borderRadius: 0 }}>UNKNOWN</ToggleButton>
+                    </ToggleButtonGroup>
                   </Box>
-                ) : selectedClient ? (
-                  <>
-                    <FormControl fullWidth size="small" variant="outlined">
-                      <InputLabel sx={{ fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' }}>SELECT PET IDENTITY</InputLabel>
-                      <Select
-                        value={entry.selectedPet || ''}
-                        onChange={(e) => updateEntry(index, { selectedPet: e.target.value, isNewPet: false })}
-                        disabled={entry.isNewPet}
-                        label="SELECT PET IDENTITY"
-                        sx={{ fontWeight: 900, fontSize: '0.85rem', borderRadius: 0 }}
-                      >
-                        {clientPets
-                          .filter(p => {
-                            // Prevent duplicate pet selection across entries
-                            const selectedElsewhere = petEntries
-                              .filter((_, i) => i !== index)
-                              .map(e => e.selectedPet?.id)
-                              .filter(Boolean);
-                            return !selectedElsewhere.includes(p.id);
-                          })
-                          .map(p => (
-                            <MenuItem key={p.id} value={p} sx={{ fontWeight: 800, fontSize: '0.85rem' }}>
-                              {(p.species === 'Dog' || p.species === 'Canine') ? 'DOG' : 'CAT'} — {p.name?.toUpperCase()}
-                            </MenuItem>
-                          ))}
-                      </Select>
-                    </FormControl>
-
-                    <FormControlLabel
-                      control={
-                        <Switch
-                          size="small"
-                          checked={entry.isNewPet}
-                          onChange={(e) => updateEntry(index, { isNewPet: e.target.checked, selectedPet: null })}
-                        />
-                      }
-                      label={<Typography sx={{ fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' }}>REGISTER NEW PET</Typography>}
-                    />
-
-                    {entry.selectedPet && !entry.isNewPet && (
-                      // Fix 2 — flexWrap so color field doesn't overflow on small screens
-                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                        {/* Fix 3 — Remove fullWidth, use flex: 1 instead */}
-                        <TextField
-                          label="ARRIVAL WEIGHT (KG)"
-                          size="small"
-                          variant="outlined"
-                          type="number"
-                          inputProps={{ step: '0.1', min: '0', style: { fontWeight: 900, fontSize: '1rem', color: COLORS.success } }}
-                          InputLabelProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' } }}
-                          value={entry.weight}
-                          onChange={e => updateEntry(index, { weight: e.target.value })}
-                          helperText={entry.selectedPet.lastWeight ? `LAST WEIGHT: ${entry.selectedPet.lastWeight} KG` : 'NO PREVIOUS WEIGHT'}
-                          FormHelperTextProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.7rem' } }}
-                          sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
-                        />
-                        <TextField
-                          label="COLOR / MARKINGS"
-                          size="small"
-                          variant="outlined"
-                          sx={{ flex: 1.5, '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
-                          inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
-                          InputLabelProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' } }}
-                          value={entry.color || entry.selectedPet.color || ''}
-                          onChange={e => updateEntry(index, { color: e.target.value })}
-                          helperText="VERIFY IDENTITY"
-                          FormHelperTextProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.7rem' } }}
-                        />
-                      </Box>
-                    )}
-                  </>
-                ) : null}
-              </Stack>
-            )}
-
-            {/* No-show warning for this pet */}
-            {noShowData && noShowData.count > 0 && (
-              <Alert
-                severity="warning"
-                icon={<WarningIcon fontSize="small" />}
-                sx={{ mb: 1.5, fontWeight: 900, borderRadius: 0, border: `2px solid ${COLORS.warning}`, py: 0.5, fontSize: '0.8rem' }}
-              >
-                <Typography sx={{ fontWeight: 900, fontSize: '0.8rem' }}>
-                  NO-SHOW HISTORY: {noShowData.count} no-show{noShowData.count > 1 ? 's' : ''} in the last {noShowWindowDays} days.
-                </Typography>
-              </Alert>
-            )}
-
-            {/* New pet genome form */}
-            {isNew && (
-              <Box sx={{ mb: 1.5 }}>
-                <Typography variant="overline" sx={{ fontWeight: 900, color: COLORS.accent, letterSpacing: 1, fontSize: '0.7rem', display: 'block', mb: 1.5 }}>
-                  {walkInType === 'guest' ? 'PET INFORMATION' : 'NEW PET DETAILS'}
-                </Typography>
-                <Grid container spacing={2}>
-                  <Grid size={{ xs: 12, md: 4 }}>
-                    <TextField size="small" label="PET NAME" variant="outlined" fullWidth
-                      value={entry.name}
-                      onChange={e => updateEntry(index, { name: e.target.value })}
-                      InputLabelProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' } }}
+                  {entry.dobMode === 'exact' && (
+                    <TextField size="small" type="date" label="PET BIRTHDAY" variant="outlined" fullWidth
+                      InputLabelProps={{ shrink: true }}
                       inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
-                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+                      value={entry.dob}
+                      onChange={e => updateEntry(index, { dob: e.target.value })}
+                      sx={sxField}
                     />
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 2.5 }}>
-                    <FormControl fullWidth size="small" variant="outlined">
-                      <InputLabel sx={{ fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' }}>SPECIES</InputLabel>
-                      <Select label="SPECIES" value={entry.species}
-                        onChange={e => updateEntry(index, { species: e.target.value })}
-                        sx={{ fontWeight: 900, fontSize: '0.85rem', borderRadius: 0 }}>
-                        <MenuItem value="Canine" sx={{ fontWeight: 800, fontSize: '0.85rem' }}>CANINE</MenuItem>
-                        <MenuItem value="Feline" sx={{ fontWeight: 800, fontSize: '0.85rem' }}>FELINE</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 2.5 }}>
-                    <TextField size="small" label="WEIGHT (KG)" variant="outlined" fullWidth type="number"
-                      inputProps={{ step: '0.1', min: '0', style: { fontWeight: 900, color: COLORS.success, fontSize: '0.85rem' } }}
-                      InputLabelProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' } }}
-                      value={entry.weight}
-                      onChange={e => updateEntry(index, { weight: e.target.value })}
-                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
-                    />
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 3 }}>
-                    <TextField size="small" label="BREED / LINEAGE" variant="outlined" fullWidth
-                      value={entry.breed}
-                      onChange={e => updateEntry(index, { breed: e.target.value })}
-                      InputLabelProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' } }}
-                      inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
-                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
-                    />
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 3 }}>
-                    <TextField size="small" label="COLOR / MARKINGS" variant="outlined" fullWidth
-                      value={entry.color}
-                      onChange={e => updateEntry(index, { color: e.target.value })}
-                      InputLabelProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' } }}
-                      inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
-                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
-                    />
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 9 }}>
-                    {/* Fix 11 — Dashed border, transparent bg, reduced padding */}
-                    <Box sx={{ p: 1, border: `1px dashed ${COLORS.borderLight}`, bgcolor: 'transparent' }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 1 }}>
-                        <CakeIcon sx={{ fontSize: 18, color: COLORS.accentWarm }} />
-                        <Typography sx={{ fontWeight: 900, fontSize: '0.75rem', color: COLORS.accent }}>BIRTHDATE / AGE MODE</Typography>
-                        <ToggleButtonGroup
-                          size="small"
-                          value={entry.dobMode}
-                          exclusive
-                          onChange={(_, val) => val && updateEntry(index, { dobMode: val })}
-                          sx={{ ml: 'auto', height: 26 }}
-                        >
-                          <ToggleButton value="exact" sx={{ fontSize: '0.65rem', fontWeight: 900, px: 2, borderRadius: 0 }}>EXACT</ToggleButton>
-                          <ToggleButton value="approximate" sx={{ fontSize: '0.65rem', fontWeight: 900, px: 2, borderRadius: 0 }}>ESTIMATE</ToggleButton>
-                          <ToggleButton value="unknown" sx={{ fontSize: '0.65rem', fontWeight: 900, px: 2, borderRadius: 0 }}>UNKNOWN</ToggleButton>
-                        </ToggleButtonGroup>
-                      </Box>
-                      {entry.dobMode === 'exact' && (
-                        <TextField size="small" type="date" label="PET BIRTHDAY" variant="outlined" fullWidth
-                          InputLabelProps={{ shrink: true, sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' } }}
-                          inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
-                          value={entry.dob}
-                          onChange={e => updateEntry(index, { dob: e.target.value })}
-                          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
-                        />
-                      )}
-                      {entry.dobMode === 'approximate' && (
-                        <Box sx={{ display: 'flex', gap: 1 }}>
-                          <TextField size="small" label="YEARS" type="number" fullWidth
-                            value={entry.estYears}
-                            onChange={e => updateEntry(index, { estYears: e.target.value })}
-                            InputLabelProps={{ sx: { fontWeight: 900, fontSize: '0.75rem' } }}
-                            inputProps={{ style: { fontWeight: 900 } }}
-                            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
-                          />
-                          <TextField size="small" label="MONTHS" type="number" fullWidth
-                            value={entry.estMonths}
-                            onChange={e => updateEntry(index, { estMonths: e.target.value })}
-                            InputLabelProps={{ sx: { fontWeight: 900, fontSize: '0.75rem' } }}
-                            inputProps={{ style: { fontWeight: 900 } }}
-                            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
-                          />
-                        </Box>
-                      )}
-                      {entry.dobMode === 'unknown' && (
-                        <Typography variant="caption" sx={{ color: COLORS.accentWarm, fontStyle: 'italic', fontWeight: 800 }}>
-                          Age will be determined by the veterinarian during the physical exam.
-                        </Typography>
-                      )}
+                  )}
+                  {entry.dobMode === 'approximate' && (
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      <TextField size="small" label="YEARS" type="number" fullWidth
+                        value={entry.estYears}
+                        onChange={e => updateEntry(index, { estYears: e.target.value })}
+                        inputProps={{ style: { fontWeight: 900 } }}
+                        sx={sxField}
+                      />
+                      <TextField size="small" label="MONTHS" type="number" fullWidth
+                        value={entry.estMonths}
+                        onChange={e => updateEntry(index, { estMonths: e.target.value })}
+                        inputProps={{ style: { fontWeight: 900 } }}
+                        sx={sxField}
+                      />
                     </Box>
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 2.5 }}>
-                    <FormControl fullWidth size="small" variant="outlined">
-                      <InputLabel sx={{ fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' }}>GENDER</InputLabel>
-                      <Select label="GENDER" value={entry.gender}
-                        onChange={e => updateEntry(index, { gender: e.target.value })}
-                        sx={{ fontWeight: 900, fontSize: '0.85rem', borderRadius: 0 }}>
-                        <MenuItem value="Male" sx={{ fontWeight: 800, fontSize: '0.85rem' }}>MALE</MenuItem>
-                        <MenuItem value="Female" sx={{ fontWeight: 800, fontSize: '0.85rem' }}>FEMALE</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 3.5 }}>
-                    <TextField size="small" label="MICROCHIP ID" variant="outlined" fullWidth
-                      value={entry.microchip}
-                      onChange={e => updateEntry(index, { microchip: e.target.value })}
-                      InputLabelProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' } }}
-                      inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
-                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+                  )}
+                  {entry.dobMode === 'unknown' && (
+                    <Typography variant="caption" sx={{ color: COLORS.accentWarm, fontStyle: 'italic', fontWeight: 800 }}>
+                      Age will be determined by the veterinarian during the physical exam.
+                    </Typography>
+                  )}
+                </Box>
+              </Grid>
+              <Grid size={{ xs: 12, md: 2.5 }}>
+                <FormControl fullWidth size="small" variant="outlined">
+                  <InputLabel sx={{ fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' }}>GENDER</InputLabel>
+                  <Select label="GENDER" value={entry.gender}
+                    onChange={e => updateEntry(index, { gender: e.target.value })}
+                    sx={sxSelect}>
+                    <MenuItem value="Male" sx={{ fontWeight: 800, fontSize: '0.85rem' }}>MALE</MenuItem>
+                    <MenuItem value="Female" sx={{ fontWeight: 800, fontSize: '0.85rem' }}>FEMALE</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 12, md: 3.5 }}>
+                <TextField size="small" label="MICROCHIP ID" variant="outlined" fullWidth
+                  value={entry.microchip}
+                  onChange={e => updateEntry(index, { microchip: e.target.value })}
+                  inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
+                  sx={sxField}
+                />
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <Box sx={{ p: 1, border: '1.2px solid', borderColor: entry.showAllergyInput ? COLORS.danger : COLORS.borderInput, bgcolor: 'transparent' }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: entry.showAllergyInput ? 1.5 : 0 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <WarningIcon sx={{ color: entry.showAllergyInput ? COLORS.danger : COLORS.border, fontSize: 18 }} />
+                      <Typography sx={{ fontWeight: 900, fontSize: '0.78rem', color: entry.showAllergyInput ? COLORS.danger : COLORS.textMuted }}>
+                        RECORD MEDICAL ALLERGIES?
+                      </Typography>
+                    </Box>
+                    <Switch size="small" color="error" checked={entry.showAllergyInput}
+                      onChange={e => updateEntry(index, { showAllergyInput: e.target.checked, allergyArray: e.target.checked ? entry.allergyArray : [] })}
                     />
-                  </Grid>
-                  <Grid size={{ xs: 12 }}>
-                    {/* Fix 12 — Allergy section: compact padding, smaller toggle label */}
-                    <Box sx={{ p: 1, border: '1.2px solid', borderColor: entry.showAllergyInput ? COLORS.danger : COLORS.borderInput, bgcolor: 'transparent' }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: entry.showAllergyInput ? 1.5 : 0 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <WarningIcon sx={{ color: entry.showAllergyInput ? COLORS.danger : COLORS.border, fontSize: 18 }} />
-                          <Typography sx={{ fontWeight: 900, fontSize: '0.78rem', color: entry.showAllergyInput ? COLORS.danger : COLORS.textMuted }}>
-                            RECORD MEDICAL ALLERGIES?
-                          </Typography>
-                        </Box>
-                        <Switch size="small" color="error" checked={entry.showAllergyInput}
-                          onChange={e => updateEntry(index, { showAllergyInput: e.target.checked, allergyArray: e.target.checked ? entry.allergyArray : [] })}
-                        />
+                  </Box>
+                  {entry.showAllergyInput && (
+                    <>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1.5 }}>
+                        {entry.allergyArray.map((allergy, ai) => (
+                          <Chip key={ai} label={allergy.toUpperCase()}
+                            onDelete={() => updateEntry(index, { allergyArray: entry.allergyArray.filter((_, i) => i !== ai) })}
+                            sx={{ bgcolor: COLORS.danger, color: 'white', fontWeight: 900, fontSize: '0.7rem', borderRadius: 0, '& .MuiChip-deleteIcon': { color: 'white!important', opacity: 0.8 } }}
+                          />
+                        ))}
+                        {entry.allergyArray.length === 0 && (
+                          <Typography variant="caption" sx={{ color: COLORS.danger, fontStyle: 'italic', fontWeight: 800 }}>No allergens added yet...</Typography>
+                        )}
                       </Box>
-                      {entry.showAllergyInput && (
-                        <>
-                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1.5 }}>
-                            {entry.allergyArray.map((allergy, ai) => (
-                              <Chip key={ai} label={allergy.toUpperCase()}
-                                onDelete={() => updateEntry(index, { allergyArray: entry.allergyArray.filter((_, i) => i !== ai) })}
-                                sx={{ bgcolor: COLORS.danger, color: 'white', fontWeight: 900, fontSize: '0.7rem', borderRadius: 0, '& .MuiChip-deleteIcon': { color: 'white!important', opacity: 0.8 } }}
-                              />
-                            ))}
-                            {entry.allergyArray.length === 0 && (
-                              <Typography variant="caption" sx={{ color: COLORS.danger, fontStyle: 'italic', fontWeight: 800 }}>No allergens added yet...</Typography>
-                            )}
-                          </Box>
-                          <Box sx={{ display: 'flex', gap: 1 }}>
-                            <TextField fullWidth size="small" placeholder="Type allergy (e.g. Peanuts, Chicken)"
-                              value={entry.currentAllergyInput}
-                              onChange={e => updateEntry(index, { currentAllergyInput: e.target.value })}
-                              onKeyDown={e => {
-                                if (e.key === 'Enter' && entry.currentAllergyInput.trim()) {
-                                  e.preventDefault();
-                                  updateEntry(index, {
-                                    allergyArray: [...entry.allergyArray, entry.currentAllergyInput.trim()],
-                                    currentAllergyInput: '',
-                                  });
-                                }
-                              }}
-                              inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
-                              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
-                            />
-                            <Button variant="contained" color="error"
-                              disabled={!entry.currentAllergyInput.trim()}
-                              onClick={() => updateEntry(index, {
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        <TextField fullWidth size="small" placeholder="Type allergy (e.g. Peanuts, Chicken)"
+                          value={entry.currentAllergyInput}
+                          onChange={e => updateEntry(index, { currentAllergyInput: e.target.value })}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' && entry.currentAllergyInput.trim()) {
+                              e.preventDefault();
+                              updateEntry(index, {
                                 allergyArray: [...entry.allergyArray, entry.currentAllergyInput.trim()],
                                 currentAllergyInput: '',
-                              })}
-                              sx={{ fontWeight: 900, minWidth: 40, borderRadius: 0 }}
-                            >+</Button>
-                          </Box>
-                        </>
-                      )}
-                    </Box>
-                  </Grid>
-                  <Grid size={{ xs: 12 }}>
-                    <FormControlLabel
-                      control={<Switch size="small" checked={entry.isNeutered} onChange={e => updateEntry(index, { isNeutered: e.target.checked })} color="success" />}
-                      label={<Typography sx={{ fontWeight: 900, fontSize: '0.75rem', color: COLORS.accent }}>SPAYED / NEUTERED</Typography>}
-                    />
-                  </Grid>
-                </Grid>
-              </Box>
-            )}
-
-            {/* Per-pet services & notes */}
-            <Box sx={{ borderTop: isNew ? `1px dashed ${COLORS.borderLight}` : 'none', pt: isNew ? 2 : 0 }}>
-              <Typography variant="overline" sx={{ fontWeight: 900, color: COLORS.accent, letterSpacing: 1, fontSize: '0.7rem', display: 'block', mb: 0.5 }}>
-                SERVICES & NOTES
-              </Typography>
-              {/* Fix 6 — groupBy department, sorted by department then name */}
-              <Autocomplete
-                multiple
-                options={[...(servicesList || [])]
-                  .filter(s => s.isWalkIn !== false)
-                  .sort((a, b) => {
-                    const deptA = (a.department || a.category || 'General').toUpperCase();
-                    const deptB = (b.department || b.category || 'General').toUpperCase();
-                    if (deptA !== deptB) return deptA.localeCompare(deptB);
-                    return (a.name || '').localeCompare(b.name || '');
-                  })
-                }
-                groupBy={(option) => (option.department || option.category || 'General').toUpperCase()}
-                getOptionLabel={(option) => option.name?.toUpperCase() || ''}
-                value={servicesList?.filter(s => entry.selectedServices.includes(s.name)) || []}
-                onChange={(_, newValue) => updateEntry(index, { selectedServices: newValue.map(v => v.name) })}
-                renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    size="small"
-                    variant="outlined"
-                    label="SEARCH & SELECT SERVICES"
-                    InputLabelProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' } }}
-                    inputProps={{ ...params.inputProps, style: { fontWeight: 900, fontSize: '0.85rem' } }}
-                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
-                  />
-                )}
-                renderOption={(props, option) => {
-                  const { key, ...optionProps } = props;
-                  const deptName = option.department || option.category || 'General';
-                  const deptObj = (departments || []).find(d => d.name === deptName);
-                  const badgeColor = deptObj ? deptObj.color : '#616161';
-                  return (
-                    <li key={key} {...optionProps} style={{ fontWeight: 800, fontSize: '0.85rem' }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                        <CircleIcon sx={{ color: badgeColor, fontSize: 14 }} />
-                        <Typography variant="caption" sx={{ fontWeight: 900 }}>
-                          {option.name?.toUpperCase()} ({option.price?.toLocaleString('en-PH', { style: 'currency', currency: 'PHP' })})
-                        </Typography>
-                      </Box>
-                    </li>
-                  );
-                }}
-                renderTags={(selected, getTagProps) => (
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {selected.map((option, i) => {
-                      const { key, ...tagProps } = getTagProps({ index: i });
-                      const deptName = option.department || option.category || 'General';
-                      const deptObj = (departments || []).find(d => d.name === deptName);
-                      const badgeColor = deptObj ? deptObj.color : '#616161';
-                      return (
-                        <Chip key={key} {...tagProps} label={option.name?.toUpperCase()} size="small"
-                          sx={{ bgcolor: badgeColor, color: 'white', fontWeight: 900, fontSize: '0.6rem', height: '20px', borderRadius: 0 }}
+                              });
+                            }
+                          }}
+                          inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
+                          sx={sxField}
                         />
-                      );
-                    })}
-                  </Box>
-                )}
-                sx={{ mb: 1 }}
-              />
-
-              {/* Fix 7 — Price summary below services */}
-              {entry.selectedServices.length > 0 && (
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1, p: 1, bgcolor: COLORS.cream, border: `1px solid ${COLORS.borderLight}`, borderRadius: 0 }}>
-                  <Typography sx={{ fontWeight: 900, fontSize: '0.75rem', color: COLORS.textMuted, textTransform: 'uppercase' }}>Estimated Total</Typography>
-                  <Typography sx={{ fontWeight: 900, fontSize: '0.85rem', color: COLORS.brand }}>
-                    ₱{estimatedTotal.toLocaleString()}
-                  </Typography>
+                        <Button variant="contained" color="error"
+                          disabled={!entry.currentAllergyInput.trim()}
+                          onClick={() => updateEntry(index, {
+                            allergyArray: [...entry.allergyArray, entry.currentAllergyInput.trim()],
+                            currentAllergyInput: '',
+                          })}
+                          sx={{ fontWeight: 900, minWidth: 40, borderRadius: 0 }}
+                        >+</Button>
+                      </Box>
+                    </>
+                  )}
                 </Box>
-              )}
-
-              <TextField
-                label="TRIAGE NOTES / CHIEF COMPLAINT"
-                multiline
-                rows={2}
-                fullWidth
-                size="small"
-                variant="outlined"
-                value={entry.triageNotes}
-                onChange={e => updateEntry(index, { triageNotes: e.target.value })}
-                InputLabelProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' } }}
-                inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
-                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
-              />
-            </Box>
-          </Box>
-        </Collapse>
-      </Paper>
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <FormControlLabel
+                  control={<Switch size="small" checked={entry.isNeutered} onChange={e => updateEntry(index, { isNeutered: e.target.checked })} color="success" />}
+                  label={<Typography sx={{ fontWeight: 900, fontSize: '0.75rem', color: COLORS.accent }}>SPAYED / NEUTERED</Typography>}
+                />
+              </Grid>
+            </Grid>
+          )}
+        </Box>
+      </Collapse>
     );
   };
 
@@ -968,207 +757,290 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
 
   return (
     <>
-      {/* Fix 1 — Dialog scroll with PaperProps maxHeight */}
       <Dialog
         open={open}
         onClose={handleClose}
         maxWidth="md"
         fullWidth
-        PaperProps={{ sx: { maxHeight: '90vh', borderRadius: 0 } }}
+        PaperProps={{
+          sx: {
+            borderRadius: 0,
+            border: `2px solid ${COLORS.accent}`,
+            backgroundColor: COLORS.cardBg,
+            boxShadow: '8px 8px 0px rgba(93, 64, 55, 0.1)',
+            maxHeight: '90vh',
+          },
+        }}
       >
         <DialogTitle sx={{
-          bgcolor: COLORS.accent,
-          color: 'white',
+          bgcolor: COLORS.cream,
+          color: COLORS.brand,
           fontWeight: 900,
           textTransform: 'uppercase',
-          letterSpacing: 1.2,
+          letterSpacing: 1,
           fontSize: '1.1rem',
           display: 'flex',
           alignItems: 'center',
           gap: 1.5,
-          p: 2,
-          borderBottom: '2px solid rgba(0,0,0,0.1)',
+          py: 2,
+          borderBottom: `2px solid ${COLORS.accent}`,
+          fontFamily: FONT,
         }}>
-          <DirectionsWalkIcon sx={{ fontSize: 24 }} />
-          Register Walk-In Patient{petEntries.length > 1 && ` (${petEntries.length} PETS)`}
+          <DirectionsWalkIcon sx={{ color: COLORS.accent, fontSize: 24 }} />
+          Register Walk-In Patient
         </DialogTitle>
 
-        {/* Fix 5 — DialogContent background to COLORS.cream instead of #F5F5F5 */}
-        <DialogContent dividers sx={{ p: 2, bgcolor: COLORS.cream, display: 'flex', flexDirection: 'column' }}>
-          {errorMsg && (
-            <Alert severity="error" sx={{ mb: 2, fontWeight: 900, borderRadius: 0, border: `2px solid ${COLORS.danger}`, py: 0.5 }}>
-              {errorMsg}
-            </Alert>
-          )}
-
-          {/* Walk-in type selector */}
-          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
-            <RadioGroup
-              row
-              value={walkInType}
-              onChange={(e) => {
-                setWalkInType(e.target.value);
-                setErrorMsg('');
-                setGuestName(''); setGuestPhone(''); setGuestEmail('');
-                setSelectedClient(null);
-                setPetEntries([BLANK_PET_DATA()]);
-                setShowConfirmQueue(false);
-              }}
-            >
-              <FormControlLabel
-                value="existing"
-                control={<Radio size="small" sx={{ color: COLORS.accent, '&.Mui-checked': { color: COLORS.accent } }} />}
-                label={<Typography sx={{ fontWeight: 900, fontSize: '0.8rem' }}>EXISTING CLIENT</Typography>}
-              />
-              <FormControlLabel
-                value="guest"
-                control={<Radio size="small" sx={{ color: COLORS.accent, '&.Mui-checked': { color: COLORS.accent } }} />}
-                label={<Typography sx={{ fontWeight: 900, fontSize: '0.8rem' }}>GUEST / NEW CLIENT</Typography>}
-              />
-            </RadioGroup>
-          </Box>
-
-          {/* Owner identity section */}
-          <Paper elevation={0} sx={{ p: 2, mb: 2.5, border: `1px solid ${COLORS.borderLight}`, borderRadius: 0, bgcolor: 'white' }}>
-            <Typography variant="overline" sx={{ fontWeight: 900, color: COLORS.accent, letterSpacing: 1, fontSize: '0.7rem', display: 'block', mb: 1 }}>
-              OWNER IDENTITY
-            </Typography>
-
-            {walkInType === 'existing' ? (
-              <Autocomplete
-                options={clients}
-                getOptionLabel={(option) => `${option.fullName?.toUpperCase()} (${option.phone || 'NO PHONE'})`}
-                value={selectedClient}
-                onChange={(_, v) => setSelectedClient(v)}
-                renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    size="small"
-                    variant="outlined"
-                    label="SEARCH CLIENT DATABASE..."
-                    fullWidth
-                    inputProps={{ ...params.inputProps, style: { fontWeight: 900, fontSize: '0.85rem' } }}
-                    InputLabelProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' } }}
-                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
-                  />
-                )}
-              />
-            ) : (
-              <Grid container spacing={2}>
-                <Grid size={{ xs: 12, md: 5 }}>
-                  <TextField size="small" label="OWNER FULL NAME" variant="outlined" fullWidth
-                    value={guestName} onChange={e => setGuestName(e.target.value)}
-                    InputLabelProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' } }}
-                    inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
-                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
-                  />
-                </Grid>
-                <Grid size={{ xs: 12, md: 4 }}>
-                  <TextField size="small" label="CONTACT PHONE" variant="outlined" fullWidth
-                    value={guestPhone} onChange={e => setGuestPhone(e.target.value)}
-                    // Fix 9 — More descriptive, friendlier helper text
-                    helperText="Must start with 09 (e.g., 09123456789)"
-                    FormHelperTextProps={{ sx: { fontWeight: 900, fontSize: '0.7rem' } }}
-                    InputLabelProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' } }}
-                    inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
-                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
-                  />
-                </Grid>
-                <Grid size={{ xs: 12, md: 3 }}>
-                  <TextField size="small" label="EMAIL (OPTIONAL)" variant="outlined" fullWidth
-                    value={guestEmail} onChange={e => setGuestEmail(e.target.value)}
-                    InputLabelProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' } }}
-                    inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
-                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
-                  />
-                </Grid>
-              </Grid>
+        <DialogContent sx={{ p: 0, bgcolor: COLORS.formBg, overflowY: 'auto' }}>
+          <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {errorMsg && (
+              <Alert severity="error" sx={{ fontWeight: 900, borderRadius: 0, border: `2px solid ${COLORS.danger}`, py: 0.5 }}>
+                {errorMsg}
+              </Alert>
             )}
-          </Paper>
 
-          {/* Multi-pet group indicator */}
-          {petEntries.length > 1 && (
-            <Alert
-              severity="info"
-              sx={{ mb: 2, fontWeight: 900, borderRadius: 0, border: `2px solid ${COLORS.medical}`, py: 0.5, bgcolor: COLORS.chipBlueBg }}
-            >
-              <Typography sx={{ fontWeight: 900, fontSize: '0.8rem', color: COLORS.medical }}>
-                MULTI-PET VISIT — {petEntries.length} pets will share one queue number and one visit group ID.
-              </Typography>
-            </Alert>
-          )}
-
-          {/* Pet entry cards — hidden for existing-client mode until a client is selected */}
-          {walkInType === 'existing' && !selectedClient ? (
-            <Typography sx={{
-              textAlign: 'center',
-              color: COLORS.textMuted,
-              fontWeight: 800,
-              fontSize: '0.85rem',
-              py: 4,
-              fontStyle: 'italic',
-            }}>
-              Select a client above to continue
-            </Typography>
-          ) : (
-            <>
-              {petEntries.map((entry, index) => renderPetEntryForm(entry, index))}
-
-              {/* ADD ANOTHER PET button */}
-              <Button
-                variant="outlined"
-                startIcon={<AddIcon />}
-                onClick={addPetEntry}
-                sx={{
-                  mb: 2,
-                  fontWeight: 900,
-                  color: COLORS.accent,
-                  borderColor: COLORS.accent,
-                  borderRadius: 0,
-                  borderStyle: 'dashed',
-                  letterSpacing: 1,
-                  fontSize: '0.8rem',
-                  width: '100%',
-                  '&:hover': { bgcolor: COLORS.cream, borderColor: COLORS.brand, borderStyle: 'solid' },
+            {/* Walk-in type toggle */}
+            <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+              <RadioGroup
+                row
+                value={walkInType}
+                onChange={(e) => {
+                  setWalkInType(e.target.value);
+                  setErrorMsg('');
+                  setGuestName(''); setGuestPhone(''); setGuestEmail('');
+                  setSelectedClient(null);
+                  setPetEntries([BLANK_PET_DATA()]);
+                  setShowConfirmQueue(false);
                 }}
               >
-                ADD ANOTHER PET
-              </Button>
-            </>
-          )}
+                <FormControlLabel
+                  value="existing"
+                  control={<Radio size="small" sx={{ color: COLORS.accent, '&.Mui-checked': { color: COLORS.accent } }} />}
+                  label={<Typography sx={{ fontWeight: 900, fontSize: '0.8rem' }}>EXISTING CLIENT</Typography>}
+                />
+                <FormControlLabel
+                  value="guest"
+                  control={<Radio size="small" sx={{ color: COLORS.accent, '&.Mui-checked': { color: COLORS.accent } }} />}
+                  label={<Typography sx={{ fontWeight: 900, fontSize: '0.8rem' }}>GUEST / NEW CLIENT</Typography>}
+                />
+              </RadioGroup>
+            </Box>
+
+            {/* ── Section 1: Owner Identity ── */}
+            <Box>
+              <Typography variant="overline" sx={{ color: COLORS.accent, fontWeight: 900, mb: 1, display: 'block', letterSpacing: 1 }}>
+                1. OWNER IDENTITY
+              </Typography>
+              <Paper elevation={0} sx={{ p: 3, borderRadius: 0, border: `2px solid ${COLORS.accent}`, bgcolor: COLORS.cardBg }}>
+                {walkInType === 'existing' ? (
+                  <Autocomplete
+                    options={clients}
+                    getOptionLabel={(option) => `${option.fullName?.toUpperCase()} (${option.phone || 'NO PHONE'})`}
+                    value={selectedClient}
+                    onChange={(_, v) => setSelectedClient(v)}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        size="small"
+                        variant="outlined"
+                        label="SEARCH CLIENT DATABASE..."
+                        fullWidth
+                        inputProps={{ ...params.inputProps, style: { fontWeight: 900, fontSize: '0.85rem' } }}
+                        sx={sxField}
+                      />
+                    )}
+                  />
+                ) : (
+                  <Grid container spacing={2}>
+                    <Grid size={{ xs: 12, md: 5 }}>
+                      <TextField size="small" label="OWNER FULL NAME" variant="outlined" fullWidth
+                        value={guestName} onChange={e => setGuestName(e.target.value)}
+                        inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
+                        sx={sxField}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, md: 4 }}>
+                      <TextField size="small" label="CONTACT PHONE" variant="outlined" fullWidth
+                        value={guestPhone} onChange={e => setGuestPhone(e.target.value)}
+                        helperText="Must start with 09 (e.g., 09123456789)"
+                        FormHelperTextProps={{ sx: { fontWeight: 900, fontSize: '0.7rem' } }}
+                        inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
+                        sx={sxField}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, md: 3 }}>
+                      <TextField size="small" label="EMAIL (OPTIONAL)" variant="outlined" fullWidth
+                        value={guestEmail} onChange={e => setGuestEmail(e.target.value)}
+                        inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
+                        sx={sxField}
+                      />
+                    </Grid>
+                  </Grid>
+                )}
+              </Paper>
+            </Box>
+
+            {/* ── Section 2: Pet Details ── */}
+            <Box>
+              <Typography variant="overline" sx={{ color: COLORS.accent, fontWeight: 900, mb: 1, display: 'block', letterSpacing: 1 }}>
+                2. PET DETAILS
+              </Typography>
+
+              {walkInType === 'existing' && !selectedClient ? (
+                <Typography sx={{
+                  textAlign: 'center',
+                  color: COLORS.textMuted,
+                  fontWeight: 800,
+                  fontSize: '0.85rem',
+                  py: 4,
+                  fontStyle: 'italic',
+                }}>
+                  Select a client above to continue
+                </Typography>
+              ) : (
+                renderPetEntryForm(petEntries[0], 0)
+              )}
+            </Box>
+
+            {/* ── Section 3: Clinical Intake ── */}
+            <Box>
+              <Typography variant="overline" sx={{ color: COLORS.accent, fontWeight: 900, mb: 1, display: 'block', letterSpacing: 1 }}>
+                3. CLINICAL INTAKE
+              </Typography>
+              <Paper elevation={0} sx={{ p: 3, borderRadius: 0, border: `2px solid ${COLORS.accent}`, bgcolor: COLORS.cardBg }}>
+                <Autocomplete
+                  multiple
+                  options={[...(servicesList || [])]
+                    .filter(s => s.isWalkIn !== false)
+                    .sort((a, b) => {
+                      const deptA = (a.department || a.category || 'General').toUpperCase();
+                      const deptB = (b.department || b.category || 'General').toUpperCase();
+                      if (deptA !== deptB) return deptA.localeCompare(deptB);
+                      return (a.name || '').localeCompare(b.name || '');
+                    })
+                  }
+                  groupBy={(option) => (option.department || option.category || 'General').toUpperCase()}
+                  getOptionLabel={(option) => option.name?.toUpperCase() || ''}
+                  value={servicesList?.filter(s => petEntries[0].selectedServices.includes(s.name)) || []}
+                  onChange={(_, newValue) => updateEntry(0, { selectedServices: newValue.map(v => v.name) })}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      size="small"
+                      variant="outlined"
+                      label="SEARCH & SELECT SERVICES"
+                      inputProps={{ ...params.inputProps, style: { fontWeight: 900, fontSize: '0.85rem' } }}
+                      sx={sxField}
+                    />
+                  )}
+                  renderOption={(props, option) => {
+                    const { key, ...optionProps } = props;
+                    const deptName = option.department || option.category || 'General';
+                    const deptObj = (departments || []).find(d => d.name === deptName);
+                    const badgeColor = deptObj ? deptObj.color : COLORS.textMuted;
+                    return (
+                      <li key={key} {...optionProps} style={{ fontWeight: 800, fontSize: '0.85rem' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                          <CircleIcon sx={{ color: badgeColor, fontSize: 14 }} />
+                          <Typography variant="caption" sx={{ fontWeight: 900 }}>
+                            {option.name?.toUpperCase()} ({option.price?.toLocaleString('en-PH', { style: 'currency', currency: 'PHP' })})
+                          </Typography>
+                        </Box>
+                      </li>
+                    );
+                  }}
+                  renderTags={(selected, getTagProps) => (
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                      {selected.map((option, i) => {
+                        const { key, ...tagProps } = getTagProps({ index: i });
+                        const deptName = option.department || option.category || 'General';
+                        const deptObj = (departments || []).find(d => d.name === deptName);
+                        const badgeColor = deptObj ? deptObj.color : COLORS.textMuted;
+                        return (
+                          <Chip key={key} {...tagProps} label={option.name?.toUpperCase()} size="small"
+                            sx={{ bgcolor: badgeColor, color: 'white', fontWeight: 900, fontSize: '0.6rem', height: '20px', borderRadius: 0 }}
+                          />
+                        );
+                      })}
+                    </Box>
+                  )}
+                  sx={{ mb: 1 }}
+                />
+
+                {petEntries[0].selectedServices.length > 0 && (
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, p: 1, bgcolor: COLORS.cream, border: `1px solid ${COLORS.borderLight}`, borderRadius: 0 }}>
+                    <Typography sx={{ fontWeight: 900, fontSize: '0.75rem', color: COLORS.textMuted, textTransform: 'uppercase' }}>Estimated Total</Typography>
+                    <Typography sx={{ fontWeight: 900, fontSize: '0.85rem', color: COLORS.brand }}>
+                      ₱{petEntries[0].selectedServices.reduce((sum, svcName) => {
+                        const s = servicesList?.find(item => item.name === svcName);
+                        return sum + (resolveTieredPrice(s, parseFloat(petEntries[0].weight) || null) || 0);
+                      }, 0).toLocaleString()}
+                    </Typography>
+                  </Box>
+                )}
+
+                <TextField
+                  label="TRIAGE NOTES / CHIEF COMPLAINT"
+                  multiline
+                  rows={3}
+                  fullWidth
+                  size="small"
+                  variant="outlined"
+                  value={petEntries[0].triageNotes}
+                  onChange={e => updateEntry(0, { triageNotes: e.target.value })}
+                  inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
+                  sx={sxField}
+                />
+              </Paper>
+            </Box>
+          </Box>
         </DialogContent>
 
-        <DialogActions sx={{ p: 2, bgcolor: 'white', borderTop: `1px solid ${COLORS.borderLight}`, display: 'flex', justifyContent: 'space-between' }}>
-          {/* Fix 8 — Discard is now a simple close, no double-click confirm */}
+        <DialogActions sx={{
+          p: 2.5,
+          bgcolor: COLORS.cream,
+          borderTop: `2px solid ${COLORS.accent}`,
+          display: 'flex',
+          justifyContent: 'space-between',
+        }}>
           <Button
             onClick={handleDiscardClick}
-            variant="text"
             sx={{
               fontWeight: 900,
-              color: COLORS.textMuted,
-              letterSpacing: 1,
-              fontSize: '0.75rem',
+              color: COLORS.accent,
+              px: 3,
+              border: `2px solid ${COLORS.accent}`,
               borderRadius: 0,
-              '&:hover': { bgcolor: 'rgba(0,0,0,0.04)' },
+              fontFamily: FONT,
+              letterSpacing: 1,
+              fontSize: '0.8rem',
+              '&:hover': { bgcolor: 'rgba(93, 64, 55, 0.05)' },
             }}
           >
-            DISCARD REGISTRATION
+            CANCEL
           </Button>
-          {/* Fix 8 — "ADD TO QUEUE" opens confirm dialog instead of double-click pattern */}
           <Button
             onClick={() => setShowConfirmQueue(true)}
             variant="contained"
             disabled={loading}
             sx={{
               px: 4,
-              py: 1,
+              py: 1.2,
               fontWeight: 900,
               borderRadius: 0,
-              bgcolor: hasEmergencyService ? COLORS.danger : COLORS.accent,
-              letterSpacing: 1.2,
+              fontFamily: FONT,
+              letterSpacing: 1,
               fontSize: '0.85rem',
-              '&:hover': { bgcolor: hasEmergencyService ? COLORS.dangerHover : COLORS.brand },
-              boxShadow: '0 4px 12px rgba(93, 64, 55, 0.2)',
+              bgcolor: hasEmergencyService ? COLORS.danger : COLORS.cta,
+              border: `2px solid ${hasEmergencyService ? COLORS.dangerHover : COLORS.ctaHover}`,
+              boxShadow: hasEmergencyService
+                ? '4px 4px 0px rgba(211,47,47,0.2)'
+                : '4px 4px 0px rgba(216,67,21,0.2)',
+              '&:hover': {
+                bgcolor: hasEmergencyService ? COLORS.dangerHover : COLORS.ctaHover,
+                boxShadow: hasEmergencyService
+                  ? '2px 2px 0px rgba(211,47,47,0.2)'
+                  : '2px 2px 0px rgba(216,67,21,0.2)',
+              },
             }}
           >
             {loading
@@ -1181,19 +1053,34 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
         </DialogActions>
       </Dialog>
 
-      {/* Fix 8 — MUI confirmation dialog replaces double-click pattern */}
       <Dialog
         open={showConfirmQueue}
         onClose={() => setShowConfirmQueue(false)}
         maxWidth="xs"
         fullWidth
-        PaperProps={{ sx: { borderRadius: 0 } }}
+        PaperProps={{
+          sx: {
+            borderRadius: 0,
+            border: `2px solid ${COLORS.accent}`,
+            backgroundColor: COLORS.cardBg,
+            boxShadow: '8px 8px 0px rgba(93, 64, 55, 0.1)',
+          },
+        }}
       >
-        <DialogTitle sx={{ fontWeight: 900, fontSize: '1rem', bgcolor: COLORS.accent, color: 'white', letterSpacing: 1 }}>
+        <DialogTitle sx={{
+          bgcolor: COLORS.cream,
+          color: COLORS.brand,
+          fontWeight: 900,
+          fontSize: '1rem',
+          letterSpacing: 1,
+          textTransform: 'uppercase',
+          borderBottom: `2px solid ${COLORS.accent}`,
+          fontFamily: FONT,
+        }}>
           CONFIRM WALK-IN REGISTRATION
         </DialogTitle>
-        <DialogContent sx={{ pt: 2, pb: 1 }}>
-          <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: COLORS.brand, mt: 1 }}>
+        <DialogContent sx={{ pt: 3, pb: 2, bgcolor: COLORS.formBg }}>
+          <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: COLORS.brand }}>
             {petEntries.length > 1
               ? `Add ${petEntries.length} pets to the queue with a shared ticket?`
               : 'Add this patient to the queue?'
@@ -1203,10 +1090,19 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
             This action will create a new queue entry and cannot be undone from this form.
           </Typography>
         </DialogContent>
-        <DialogActions sx={{ p: 2, borderTop: `1px solid ${COLORS.borderLight}` }}>
+        <DialogActions sx={{ p: 2.5, bgcolor: COLORS.cream, borderTop: `2px solid ${COLORS.accent}` }}>
           <Button
             onClick={() => setShowConfirmQueue(false)}
-            sx={{ fontWeight: 900, color: COLORS.textMuted, borderRadius: 0, fontSize: '0.8rem' }}
+            sx={{
+              fontWeight: 900,
+              color: COLORS.accent,
+              border: `2px solid ${COLORS.accent}`,
+              borderRadius: 0,
+              fontFamily: FONT,
+              px: 3,
+              fontSize: '0.8rem',
+              '&:hover': { bgcolor: 'rgba(93, 64, 55, 0.05)' },
+            }}
           >
             CANCEL
           </Button>
@@ -1217,10 +1113,22 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
             sx={{
               fontWeight: 900,
               borderRadius: 0,
-              bgcolor: hasEmergencyService ? COLORS.danger : COLORS.accent,
-              '&:hover': { bgcolor: hasEmergencyService ? COLORS.dangerHover : COLORS.brand },
-              fontSize: '0.8rem',
+              fontFamily: FONT,
               letterSpacing: 1,
+              fontSize: '0.8rem',
+              px: 4,
+              py: 1,
+              bgcolor: hasEmergencyService ? COLORS.danger : COLORS.cta,
+              border: `2px solid ${hasEmergencyService ? COLORS.dangerHover : COLORS.ctaHover}`,
+              boxShadow: hasEmergencyService
+                ? '4px 4px 0px rgba(211,47,47,0.2)'
+                : '4px 4px 0px rgba(216,67,21,0.2)',
+              '&:hover': {
+                bgcolor: hasEmergencyService ? COLORS.dangerHover : COLORS.ctaHover,
+                boxShadow: hasEmergencyService
+                  ? '2px 2px 0px rgba(211,47,47,0.2)'
+                  : '2px 2px 0px rgba(216,67,21,0.2)',
+              },
             }}
           >
             {loading ? 'PROCESSING...' : 'CONFIRM & ADD TO QUEUE'}

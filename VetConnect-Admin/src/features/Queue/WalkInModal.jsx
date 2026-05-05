@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { resolveTieredPrice } from '../../utils/resolveTieredPrice';
 import { normalizePhone } from '../../utils/phoneValidation';
+import { COLORS } from '../../theme/designTokens';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, TextField, MenuItem, Box, Typography,
   FormControl, InputLabel, Select, RadioGroup, FormControlLabel, Radio,
   Autocomplete, Alert, CircularProgress, Paper, Divider, Switch, Chip, Stack,
   ToggleButton, ToggleButtonGroup, Checkbox, List, ListItem, ListItemButton,
-  ListItemText, ListItemAvatar, Avatar, Collapse, IconButton
+  ListItemText, ListItemAvatar, Avatar, Collapse, IconButton, Snackbar,
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
 
@@ -49,13 +50,13 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
   const noShowWindowDays = clinicSettings.noShowLinkWindowDays || 30;
 
   const [loading, setLoading] = useState(false);
-  const [confirmDiscard, setConfirmDiscard] = useState(false);
-  const [confirmSubmit, setConfirmSubmit] = useState(false);
+  // Fix 8 — Replace double-click confirm patterns with a proper MUI Dialog
+  const [showConfirmQueue, setShowConfirmQueue] = useState(false);
   const [walkInType, setWalkInType] = useState('existing');
 
   // --- EXISTING CLIENT STATES ---
   const [clients, setClients] = useState([]);
-  const[selectedClient, setSelectedClient] = useState(null);
+  const [selectedClient, setSelectedClient] = useState(null);
   const [clientPets, setClientPets] = useState([]);
   const [fetchingPets, setFetchingPets] = useState(false);
 
@@ -71,9 +72,12 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
 
   const [errorMsg, setErrorMsg] = useState('');
 
+  // Fix 13 — Replace alert() with Snackbar toast
+  const [successToast, setSuccessToast] = useState('');
+
   // No-show detection map: { petId -> noShowInfo }
   const [noShowMap, setNoShowMap] = useState({});
-  
+
   // --- PH PHONE VALIDATION ENGINE ---
   const isValidPHPhone = (number) => /^09\d{9}$/.test(number.trim());
 
@@ -191,8 +195,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
     setGuestEmail('');
     setPetEntries([BLANK_PET_DATA()]);
     setNoShowMap({});
-    setConfirmDiscard(false);
-    setConfirmSubmit(false);
+    setShowConfirmQueue(false);
     onClose();
   };
 
@@ -277,6 +280,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
 
   const handleSubmit = async () => {
     setErrorMsg('');
+    setShowConfirmQueue(false);
 
     // --- VALIDATION ---
     if (walkInType === 'guest') {
@@ -479,7 +483,8 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
       });
 
       const count = petEntries.length;
-      alert(count > 1
+      // Fix 13 — Show Snackbar instead of browser alert()
+      setSuccessToast(count > 1
         ? `${count} patients successfully added to queue with shared ticket.`
         : `Patient successfully added to queue.`
       );
@@ -491,23 +496,9 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
     }
   };
 
-
+  // Fix 8 — Discard is now a simple close, no double-click pattern
   const handleDiscardClick = () => {
-    if (!confirmDiscard) {
-      setConfirmDiscard(true);
-      setTimeout(() => setConfirmDiscard(false), 3000);
-    } else {
-      handleClose();
-    }
-  };
-
-  const handleQueueClick = () => {
-     if (!confirmSubmit) {
-        setConfirmSubmit(true);
-        setTimeout(() => setConfirmSubmit(false), 3000);
-     } else {
-        handleSubmit();
-     }
+    handleClose();
   };
 
   // --- PET ENTRY FORM: Renders the per-pet section (existing select or new pet genome) ---
@@ -516,15 +507,22 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
     const noShowData = noShowMap[entry.selectedPet?.id];
     const isMultiPet = petEntries.length > 1;
 
+    // Fix 7 — Estimated total for selected services
+    const estimatedTotal = entry.selectedServices.reduce((sum, svcName) => {
+      const s = servicesList?.find(item => item.name === svcName);
+      return sum + (resolveTieredPrice(s, parseFloat(entry.weight) || null) || 0);
+    }, 0);
+
     return (
       <Paper
         key={index}
         elevation={0}
         sx={{
           mb: 2,
-          border: isMultiPet ? '2px solid #5D4037' : '1px solid #D7CCC8',
+          // Fix 4 — COLORS tokens instead of inline hex
+          border: isMultiPet ? `2px solid ${COLORS.accent}` : `1px solid ${COLORS.borderLight}`,
           borderRadius: 0,
-          bgcolor: '#FFF',
+          bgcolor: 'white',
           overflow: 'hidden',
         }}
       >
@@ -532,7 +530,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
         {isMultiPet && (
           <Box
             sx={{
-              bgcolor: '#5D4037',
+              bgcolor: COLORS.accent,
               px: 2,
               py: 1,
               display: 'flex',
@@ -549,7 +547,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
                 <Chip
                   label={entry.selectedPet.name?.toUpperCase()}
                   size="small"
-                  sx={{ bgcolor: '#FFF8E1', color: '#5D4037', fontWeight: 900, fontSize: '0.65rem', borderRadius: 0 }}
+                  sx={{ bgcolor: COLORS.cream, color: COLORS.accent, fontWeight: 900, fontSize: '0.65rem', borderRadius: 0 }}
                 />
               )}
             </Box>
@@ -561,12 +559,21 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
                 <IconButton
                   size="small"
                   onClick={() => removePetEntry(index)}
-                  sx={{ color: '#FFCDD2', '&:hover': { color: '#F44336' } }}
+                  sx={{ color: COLORS.dangerSurface, '&:hover': { color: COLORS.danger } }}
                 >
                   <DeleteIcon fontSize="small" />
                 </IconButton>
               )}
             </Box>
+          </Box>
+        )}
+
+        {/* Fix 10 — Single-pet visual "PET INFORMATION" header */}
+        {!isMultiPet && (
+          <Box sx={{ px: 2, pt: 1.5 }}>
+            <Typography sx={{ fontWeight: 900, fontSize: '0.7rem', color: COLORS.accent, letterSpacing: 1, textTransform: 'uppercase' }}>
+              PET INFORMATION
+            </Typography>
           </Box>
         )}
 
@@ -577,12 +584,12 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
               <Stack spacing={1.5} sx={{ mb: 1.5 }}>
                 {fetchingPets ? (
                   <Box sx={{ display: 'flex', justifyContent: 'center', py: 1 }}>
-                    <CircularProgress size={24} sx={{ color: '#5D4037' }} />
+                    <CircularProgress size={24} sx={{ color: COLORS.accent }} />
                   </Box>
                 ) : selectedClient ? (
                   <>
                     <FormControl fullWidth size="small" variant="outlined">
-                      <InputLabel sx={{ fontWeight: 900, color: '#5D4037', fontSize: '0.8rem' }}>SELECT PET IDENTITY</InputLabel>
+                      <InputLabel sx={{ fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' }}>SELECT PET IDENTITY</InputLabel>
                       <Select
                         value={entry.selectedPet || ''}
                         onChange={(e) => updateEntry(index, { selectedPet: e.target.value, isNewPet: false })}
@@ -615,24 +622,25 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
                           onChange={(e) => updateEntry(index, { isNewPet: e.target.checked, selectedPet: null })}
                         />
                       }
-                      label={<Typography sx={{ fontWeight: 900, color: '#5D4037', fontSize: '0.8rem' }}>REGISTER NEW PET</Typography>}
+                      label={<Typography sx={{ fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' }}>REGISTER NEW PET</Typography>}
                     />
 
                     {entry.selectedPet && !entry.isNewPet && (
-                      <Box sx={{ display: 'flex', gap: 1 }}>
+                      // Fix 2 — flexWrap so color field doesn't overflow on small screens
+                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                        {/* Fix 3 — Remove fullWidth, use flex: 1 instead */}
                         <TextField
                           label="ARRIVAL WEIGHT (KG)"
                           size="small"
                           variant="outlined"
                           type="number"
-                          inputProps={{ step: '0.1', min: '0', style: { fontWeight: 900, fontSize: '1rem', color: '#1B5E20' } }}
-                          InputLabelProps={{ sx: { fontWeight: 900, color: '#5D4037', fontSize: '0.8rem' } }}
+                          inputProps={{ step: '0.1', min: '0', style: { fontWeight: 900, fontSize: '1rem', color: COLORS.success } }}
+                          InputLabelProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' } }}
                           value={entry.weight}
                           onChange={e => updateEntry(index, { weight: e.target.value })}
                           helperText={entry.selectedPet.lastWeight ? `LAST WEIGHT: ${entry.selectedPet.lastWeight} KG` : 'NO PREVIOUS WEIGHT'}
-                          FormHelperTextProps={{ sx: { fontWeight: 900, color: '#5D4037', fontSize: '0.7rem' } }}
-                          fullWidth
-                          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+                          FormHelperTextProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.7rem' } }}
+                          sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
                         />
                         <TextField
                           label="COLOR / MARKINGS"
@@ -640,11 +648,11 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
                           variant="outlined"
                           sx={{ flex: 1.5, '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
                           inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
-                          InputLabelProps={{ sx: { fontWeight: 900, color: '#5D4037', fontSize: '0.8rem' } }}
+                          InputLabelProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' } }}
                           value={entry.color || entry.selectedPet.color || ''}
                           onChange={e => updateEntry(index, { color: e.target.value })}
                           helperText="VERIFY IDENTITY"
-                          FormHelperTextProps={{ sx: { fontWeight: 900, color: '#5D4037', fontSize: '0.7rem' } }}
+                          FormHelperTextProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.7rem' } }}
                         />
                       </Box>
                     )}
@@ -658,7 +666,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
               <Alert
                 severity="warning"
                 icon={<WarningIcon fontSize="small" />}
-                sx={{ mb: 1.5, fontWeight: 900, borderRadius: 0, border: '2px solid #F57C00', py: 0.5, fontSize: '0.8rem' }}
+                sx={{ mb: 1.5, fontWeight: 900, borderRadius: 0, border: `2px solid ${COLORS.warning}`, py: 0.5, fontSize: '0.8rem' }}
               >
                 <Typography sx={{ fontWeight: 900, fontSize: '0.8rem' }}>
                   NO-SHOW HISTORY: {noShowData.count} no-show{noShowData.count > 1 ? 's' : ''} in the last {noShowWindowDays} days.
@@ -669,7 +677,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
             {/* New pet genome form */}
             {isNew && (
               <Box sx={{ mb: 1.5 }}>
-                <Typography variant="overline" sx={{ fontWeight: 900, color: '#5D4037', letterSpacing: 1, fontSize: '0.7rem', display: 'block', mb: 1.5 }}>
+                <Typography variant="overline" sx={{ fontWeight: 900, color: COLORS.accent, letterSpacing: 1, fontSize: '0.7rem', display: 'block', mb: 1.5 }}>
                   {walkInType === 'guest' ? 'PET INFORMATION' : 'NEW PET DETAILS'}
                 </Typography>
                 <Grid container spacing={2}>
@@ -677,14 +685,14 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
                     <TextField size="small" label="PET NAME" variant="outlined" fullWidth
                       value={entry.name}
                       onChange={e => updateEntry(index, { name: e.target.value })}
-                      InputLabelProps={{ sx: { fontWeight: 900, color: '#5D4037', fontSize: '0.8rem' } }}
+                      InputLabelProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' } }}
                       inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
                       sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
                     />
                   </Grid>
                   <Grid size={{ xs: 12, md: 2.5 }}>
                     <FormControl fullWidth size="small" variant="outlined">
-                      <InputLabel sx={{ fontWeight: 900, color: '#5D4037', fontSize: '0.8rem' }}>SPECIES</InputLabel>
+                      <InputLabel sx={{ fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' }}>SPECIES</InputLabel>
                       <Select label="SPECIES" value={entry.species}
                         onChange={e => updateEntry(index, { species: e.target.value })}
                         sx={{ fontWeight: 900, fontSize: '0.85rem', borderRadius: 0 }}>
@@ -695,8 +703,8 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
                   </Grid>
                   <Grid size={{ xs: 12, md: 2.5 }}>
                     <TextField size="small" label="WEIGHT (KG)" variant="outlined" fullWidth type="number"
-                      inputProps={{ step: '0.1', min: '0', style: { fontWeight: 900, color: '#1B5E20', fontSize: '0.85rem' } }}
-                      InputLabelProps={{ sx: { fontWeight: 900, color: '#5D4037', fontSize: '0.8rem' } }}
+                      inputProps={{ step: '0.1', min: '0', style: { fontWeight: 900, color: COLORS.success, fontSize: '0.85rem' } }}
+                      InputLabelProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' } }}
                       value={entry.weight}
                       onChange={e => updateEntry(index, { weight: e.target.value })}
                       sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
@@ -706,7 +714,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
                     <TextField size="small" label="BREED / LINEAGE" variant="outlined" fullWidth
                       value={entry.breed}
                       onChange={e => updateEntry(index, { breed: e.target.value })}
-                      InputLabelProps={{ sx: { fontWeight: 900, color: '#5D4037', fontSize: '0.8rem' } }}
+                      InputLabelProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' } }}
                       inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
                       sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
                     />
@@ -715,16 +723,17 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
                     <TextField size="small" label="COLOR / MARKINGS" variant="outlined" fullWidth
                       value={entry.color}
                       onChange={e => updateEntry(index, { color: e.target.value })}
-                      InputLabelProps={{ sx: { fontWeight: 900, color: '#5D4037', fontSize: '0.8rem' } }}
+                      InputLabelProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' } }}
                       inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
                       sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
                     />
                   </Grid>
                   <Grid size={{ xs: 12, md: 9 }}>
-                    <Box sx={{ p: 1.5, border: '1px solid #D7CCC8', bgcolor: '#FAFAFA' }}>
+                    {/* Fix 11 — Dashed border, transparent bg, reduced padding */}
+                    <Box sx={{ p: 1, border: `1px dashed ${COLORS.borderLight}`, bgcolor: 'transparent' }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 1 }}>
-                        <CakeIcon sx={{ fontSize: 18, color: '#8B4513' }} />
-                        <Typography sx={{ fontWeight: 900, fontSize: '0.75rem', color: '#5D4037' }}>BIRTHDATE / AGE MODE</Typography>
+                        <CakeIcon sx={{ fontSize: 18, color: COLORS.accentWarm }} />
+                        <Typography sx={{ fontWeight: 900, fontSize: '0.75rem', color: COLORS.accent }}>BIRTHDATE / AGE MODE</Typography>
                         <ToggleButtonGroup
                           size="small"
                           value={entry.dobMode}
@@ -739,7 +748,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
                       </Box>
                       {entry.dobMode === 'exact' && (
                         <TextField size="small" type="date" label="PET BIRTHDAY" variant="outlined" fullWidth
-                          InputLabelProps={{ shrink: true, sx: { fontWeight: 900, color: '#5D4037', fontSize: '0.8rem' } }}
+                          InputLabelProps={{ shrink: true, sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' } }}
                           inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
                           value={entry.dob}
                           onChange={e => updateEntry(index, { dob: e.target.value })}
@@ -765,7 +774,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
                         </Box>
                       )}
                       {entry.dobMode === 'unknown' && (
-                        <Typography variant="caption" sx={{ color: '#8B4513', fontStyle: 'italic', fontWeight: 800 }}>
+                        <Typography variant="caption" sx={{ color: COLORS.accentWarm, fontStyle: 'italic', fontWeight: 800 }}>
                           Age will be determined by the veterinarian during the physical exam.
                         </Typography>
                       )}
@@ -773,7 +782,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
                   </Grid>
                   <Grid size={{ xs: 12, md: 2.5 }}>
                     <FormControl fullWidth size="small" variant="outlined">
-                      <InputLabel sx={{ fontWeight: 900, color: '#5D4037', fontSize: '0.8rem' }}>GENDER</InputLabel>
+                      <InputLabel sx={{ fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' }}>GENDER</InputLabel>
                       <Select label="GENDER" value={entry.gender}
                         onChange={e => updateEntry(index, { gender: e.target.value })}
                         sx={{ fontWeight: 900, fontSize: '0.85rem', borderRadius: 0 }}>
@@ -786,17 +795,18 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
                     <TextField size="small" label="MICROCHIP ID" variant="outlined" fullWidth
                       value={entry.microchip}
                       onChange={e => updateEntry(index, { microchip: e.target.value })}
-                      InputLabelProps={{ sx: { fontWeight: 900, color: '#5D4037', fontSize: '0.8rem' } }}
+                      InputLabelProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' } }}
                       inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
                       sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
                     />
                   </Grid>
                   <Grid size={{ xs: 12 }}>
-                    <Box sx={{ p: 1.5, border: '1.2px solid', borderColor: entry.showAllergyInput ? '#D32F2F' : '#E0E0E0', bgcolor: '#FAFAFA' }}>
+                    {/* Fix 12 — Allergy section: compact padding, smaller toggle label */}
+                    <Box sx={{ p: 1, border: '1.2px solid', borderColor: entry.showAllergyInput ? COLORS.danger : COLORS.borderInput, bgcolor: 'transparent' }}>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: entry.showAllergyInput ? 1.5 : 0 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <WarningIcon sx={{ color: entry.showAllergyInput ? '#D32F2F' : '#BDBDBD', fontSize: 20 }} />
-                          <Typography sx={{ fontWeight: 900, fontSize: '0.85rem', color: entry.showAllergyInput ? '#D32F2F' : '#757575' }}>
+                          <WarningIcon sx={{ color: entry.showAllergyInput ? COLORS.danger : COLORS.border, fontSize: 18 }} />
+                          <Typography sx={{ fontWeight: 900, fontSize: '0.78rem', color: entry.showAllergyInput ? COLORS.danger : COLORS.textMuted }}>
                             RECORD MEDICAL ALLERGIES?
                           </Typography>
                         </Box>
@@ -810,11 +820,11 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
                             {entry.allergyArray.map((allergy, ai) => (
                               <Chip key={ai} label={allergy.toUpperCase()}
                                 onDelete={() => updateEntry(index, { allergyArray: entry.allergyArray.filter((_, i) => i !== ai) })}
-                                sx={{ bgcolor: '#D32F2F', color: 'white', fontWeight: 900, fontSize: '0.7rem', borderRadius: 0, '& .MuiChip-deleteIcon': { color: 'white!important', opacity: 0.8 } }}
+                                sx={{ bgcolor: COLORS.danger, color: 'white', fontWeight: 900, fontSize: '0.7rem', borderRadius: 0, '& .MuiChip-deleteIcon': { color: 'white!important', opacity: 0.8 } }}
                               />
                             ))}
                             {entry.allergyArray.length === 0 && (
-                              <Typography variant="caption" sx={{ color: '#D32F2F', fontStyle: 'italic', fontWeight: 800 }}>No allergens added yet...</Typography>
+                              <Typography variant="caption" sx={{ color: COLORS.danger, fontStyle: 'italic', fontWeight: 800 }}>No allergens added yet...</Typography>
                             )}
                           </Box>
                           <Box sx={{ display: 'flex', gap: 1 }}>
@@ -849,7 +859,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
                   <Grid size={{ xs: 12 }}>
                     <FormControlLabel
                       control={<Switch size="small" checked={entry.isNeutered} onChange={e => updateEntry(index, { isNeutered: e.target.checked })} color="success" />}
-                      label={<Typography sx={{ fontWeight: 900, fontSize: '0.75rem', color: '#5D4037' }}>SPAYED / NEUTERED</Typography>}
+                      label={<Typography sx={{ fontWeight: 900, fontSize: '0.75rem', color: COLORS.accent }}>SPAYED / NEUTERED</Typography>}
                     />
                   </Grid>
                 </Grid>
@@ -857,13 +867,23 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
             )}
 
             {/* Per-pet services & notes */}
-            <Box sx={{ borderTop: isNew ? '1px dashed #D7CCC8' : 'none', pt: isNew ? 2 : 0 }}>
-              <Typography variant="overline" sx={{ fontWeight: 900, color: '#5D4037', letterSpacing: 1, fontSize: '0.7rem', display: 'block', mb: 0.5 }}>
+            <Box sx={{ borderTop: isNew ? `1px dashed ${COLORS.borderLight}` : 'none', pt: isNew ? 2 : 0 }}>
+              <Typography variant="overline" sx={{ fontWeight: 900, color: COLORS.accent, letterSpacing: 1, fontSize: '0.7rem', display: 'block', mb: 0.5 }}>
                 SERVICES & NOTES
               </Typography>
+              {/* Fix 6 — groupBy department, sorted by department then name */}
               <Autocomplete
                 multiple
-                options={[...(servicesList || [])].filter(s => s.isWalkIn !== false).sort((a, b) => (a.name || '').localeCompare(b.name || ''))}
+                options={[...(servicesList || [])]
+                  .filter(s => s.isWalkIn !== false)
+                  .sort((a, b) => {
+                    const deptA = (a.department || a.category || 'General').toUpperCase();
+                    const deptB = (b.department || b.category || 'General').toUpperCase();
+                    if (deptA !== deptB) return deptA.localeCompare(deptB);
+                    return (a.name || '').localeCompare(b.name || '');
+                  })
+                }
+                groupBy={(option) => (option.department || option.category || 'General').toUpperCase()}
                 getOptionLabel={(option) => option.name?.toUpperCase() || ''}
                 value={servicesList?.filter(s => entry.selectedServices.includes(s.name)) || []}
                 onChange={(_, newValue) => updateEntry(index, { selectedServices: newValue.map(v => v.name) })}
@@ -873,7 +893,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
                     size="small"
                     variant="outlined"
                     label="SEARCH & SELECT SERVICES"
-                    InputLabelProps={{ sx: { fontWeight: 900, color: '#5D4037', fontSize: '0.8rem' } }}
+                    InputLabelProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' } }}
                     inputProps={{ ...params.inputProps, style: { fontWeight: 900, fontSize: '0.85rem' } }}
                     sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
                   />
@@ -909,8 +929,19 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
                     })}
                   </Box>
                 )}
-                sx={{ mb: 1.5 }}
+                sx={{ mb: 1 }}
               />
+
+              {/* Fix 7 — Price summary below services */}
+              {entry.selectedServices.length > 0 && (
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1, p: 1, bgcolor: COLORS.cream, border: `1px solid ${COLORS.borderLight}`, borderRadius: 0 }}>
+                  <Typography sx={{ fontWeight: 900, fontSize: '0.75rem', color: COLORS.textMuted, textTransform: 'uppercase' }}>Estimated Total</Typography>
+                  <Typography sx={{ fontWeight: 900, fontSize: '0.85rem', color: COLORS.brand }}>
+                    ₱{estimatedTotal.toLocaleString()}
+                  </Typography>
+                </Box>
+              )}
+
               <TextField
                 label="TRIAGE NOTES / CHIEF COMPLAINT"
                 multiline
@@ -920,7 +951,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
                 variant="outlined"
                 value={entry.triageNotes}
                 onChange={e => updateEntry(index, { triageNotes: e.target.value })}
-                InputLabelProps={{ sx: { fontWeight: 900, color: '#5D4037', fontSize: '0.8rem' } }}
+                InputLabelProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' } }}
                 inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
                 sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
               />
@@ -936,209 +967,275 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
   );
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
-      <DialogTitle sx={{
-        bgcolor: '#5D4037',
-        color: 'white',
-        fontWeight: 900,
-        textTransform: 'uppercase',
-        letterSpacing: 1.2,
-        fontSize: '1.1rem',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 1.5,
-        p: 2,
-        borderBottom: '2px solid rgba(0,0,0,0.1)',
-      }}>
-        <DirectionsWalkIcon sx={{ fontSize: 24 }} />
-        Register Walk-In Patient{petEntries.length > 1 && ` (${petEntries.length} PETS)`}
-      </DialogTitle>
+    <>
+      {/* Fix 1 — Dialog scroll with PaperProps maxHeight */}
+      <Dialog
+        open={open}
+        onClose={handleClose}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: { maxHeight: '90vh', borderRadius: 0 } }}
+      >
+        <DialogTitle sx={{
+          bgcolor: COLORS.accent,
+          color: 'white',
+          fontWeight: 900,
+          textTransform: 'uppercase',
+          letterSpacing: 1.2,
+          fontSize: '1.1rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1.5,
+          p: 2,
+          borderBottom: '2px solid rgba(0,0,0,0.1)',
+        }}>
+          <DirectionsWalkIcon sx={{ fontSize: 24 }} />
+          Register Walk-In Patient{petEntries.length > 1 && ` (${petEntries.length} PETS)`}
+        </DialogTitle>
 
-      <DialogContent dividers sx={{ p: 2, bgcolor: '#F5F5F5', display: 'flex', flexDirection: 'column' }}>
-        {errorMsg && (
-          <Alert severity="error" sx={{ mb: 2, fontWeight: 900, borderRadius: 0, border: '2px solid #D32F2F', py: 0.5 }}>
-            {errorMsg}
-          </Alert>
-        )}
-
-        {/* Walk-in type selector */}
-        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
-          <RadioGroup
-            row
-            value={walkInType}
-            onChange={(e) => {
-              setWalkInType(e.target.value);
-              setErrorMsg('');
-              setGuestName(''); setGuestPhone(''); setGuestEmail('');
-              setSelectedClient(null);
-              setPetEntries([BLANK_PET_DATA()]);
-              setConfirmDiscard(false); setConfirmSubmit(false);
-            }}
-          >
-            <FormControlLabel
-              value="existing"
-              control={<Radio size="small" sx={{ color: '#5D4037', '&.Mui-checked': { color: '#5D4037' } }} />}
-              label={<Typography sx={{ fontWeight: 900, fontSize: '0.8rem' }}>EXISTING CLIENT</Typography>}
-            />
-            <FormControlLabel
-              value="guest"
-              control={<Radio size="small" sx={{ color: '#5D4037', '&.Mui-checked': { color: '#5D4037' } }} />}
-              label={<Typography sx={{ fontWeight: 900, fontSize: '0.8rem' }}>GUEST / NEW CLIENT</Typography>}
-            />
-          </RadioGroup>
-        </Box>
-
-        {/* Owner identity section */}
-        <Paper elevation={0} sx={{ p: 2, mb: 2.5, border: '1px solid #D7CCC8', borderRadius: 0, bgcolor: '#FFF' }}>
-          <Typography variant="overline" sx={{ fontWeight: 900, color: '#5D4037', letterSpacing: 1, fontSize: '0.7rem', display: 'block', mb: 1 }}>
-            OWNER IDENTITY
-          </Typography>
-
-          {walkInType === 'existing' ? (
-            <Autocomplete
-              options={clients}
-              getOptionLabel={(option) => `${option.fullName?.toUpperCase()} (${option.phone || 'NO PHONE'})`}
-              value={selectedClient}
-              onChange={(_, v) => setSelectedClient(v)}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  size="small"
-                  variant="outlined"
-                  label="SEARCH CLIENT DATABASE..."
-                  fullWidth
-                  inputProps={{ ...params.inputProps, style: { fontWeight: 900, fontSize: '0.85rem' } }}
-                  InputLabelProps={{ sx: { fontWeight: 900, color: '#5D4037', fontSize: '0.8rem' } }}
-                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
-                />
-              )}
-            />
-          ) : (
-            <Grid container spacing={2}>
-              <Grid size={{ xs: 12, md: 5 }}>
-                <TextField size="small" label="OWNER FULL NAME" variant="outlined" fullWidth
-                  value={guestName} onChange={e => setGuestName(e.target.value)}
-                  InputLabelProps={{ sx: { fontWeight: 900, color: '#5D4037', fontSize: '0.8rem' } }}
-                  inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
-                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
-                />
-              </Grid>
-              <Grid size={{ xs: 12, md: 4 }}>
-                <TextField size="small" label="CONTACT PHONE" variant="outlined" fullWidth
-                  value={guestPhone} onChange={e => setGuestPhone(e.target.value)}
-                  helperText="MUST START WITH 09"
-                  FormHelperTextProps={{ sx: { fontWeight: 900, fontSize: '0.7rem' } }}
-                  InputLabelProps={{ sx: { fontWeight: 900, color: '#5D4037', fontSize: '0.8rem' } }}
-                  inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
-                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
-                />
-              </Grid>
-              <Grid size={{ xs: 12, md: 3 }}>
-                <TextField size="small" label="EMAIL (OPTIONAL)" variant="outlined" fullWidth
-                  value={guestEmail} onChange={e => setGuestEmail(e.target.value)}
-                  InputLabelProps={{ sx: { fontWeight: 900, color: '#5D4037', fontSize: '0.8rem' } }}
-                  inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
-                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
-                />
-              </Grid>
-            </Grid>
+        {/* Fix 5 — DialogContent background to COLORS.cream instead of #F5F5F5 */}
+        <DialogContent dividers sx={{ p: 2, bgcolor: COLORS.cream, display: 'flex', flexDirection: 'column' }}>
+          {errorMsg && (
+            <Alert severity="error" sx={{ mb: 2, fontWeight: 900, borderRadius: 0, border: `2px solid ${COLORS.danger}`, py: 0.5 }}>
+              {errorMsg}
+            </Alert>
           )}
-        </Paper>
 
-        {/* Multi-pet group indicator */}
-        {petEntries.length > 1 && (
-          <Alert
-            severity="info"
-            sx={{ mb: 2, fontWeight: 900, borderRadius: 0, border: '2px solid #1565C0', py: 0.5, bgcolor: '#E3F2FD' }}
-          >
-            <Typography sx={{ fontWeight: 900, fontSize: '0.8rem', color: '#1565C0' }}>
-              MULTI-PET VISIT — {petEntries.length} pets will share one queue number and one visit group ID.
-            </Typography>
-          </Alert>
-        )}
-
-        {/* Pet entry cards — hidden for existing-client mode until a client is selected */}
-        {walkInType === 'existing' && !selectedClient ? (
-          <Typography sx={{
-            textAlign: 'center',
-            color: '#9E9E9E',
-            fontWeight: 800,
-            fontSize: '0.85rem',
-            py: 4,
-            fontStyle: 'italic',
-          }}>
-            Select a client above to continue
-          </Typography>
-        ) : (
-          <>
-            {petEntries.map((entry, index) => renderPetEntryForm(entry, index))}
-
-            {/* ADD ANOTHER PET button */}
-            <Button
-              variant="outlined"
-              startIcon={<AddIcon />}
-              onClick={addPetEntry}
-              sx={{
-                mb: 2,
-                fontWeight: 900,
-                color: '#5D4037',
-                borderColor: '#5D4037',
-                borderRadius: 0,
-                borderStyle: 'dashed',
-                letterSpacing: 1,
-                fontSize: '0.8rem',
-                width: '100%',
-                '&:hover': { bgcolor: '#FFF8E1', borderColor: '#3E2723', borderStyle: 'solid' },
+          {/* Walk-in type selector */}
+          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+            <RadioGroup
+              row
+              value={walkInType}
+              onChange={(e) => {
+                setWalkInType(e.target.value);
+                setErrorMsg('');
+                setGuestName(''); setGuestPhone(''); setGuestEmail('');
+                setSelectedClient(null);
+                setPetEntries([BLANK_PET_DATA()]);
+                setShowConfirmQueue(false);
               }}
             >
-              ADD ANOTHER PET
-            </Button>
-          </>
-        )}
-      </DialogContent>
+              <FormControlLabel
+                value="existing"
+                control={<Radio size="small" sx={{ color: COLORS.accent, '&.Mui-checked': { color: COLORS.accent } }} />}
+                label={<Typography sx={{ fontWeight: 900, fontSize: '0.8rem' }}>EXISTING CLIENT</Typography>}
+              />
+              <FormControlLabel
+                value="guest"
+                control={<Radio size="small" sx={{ color: COLORS.accent, '&.Mui-checked': { color: COLORS.accent } }} />}
+                label={<Typography sx={{ fontWeight: 900, fontSize: '0.8rem' }}>GUEST / NEW CLIENT</Typography>}
+              />
+            </RadioGroup>
+          </Box>
 
-      <DialogActions sx={{ p: 2, bgcolor: '#FFF', borderTop: '1px solid #D7CCC8', display: 'flex', justifyContent: 'space-between' }}>
-        <Button
-          onClick={handleDiscardClick}
-          variant={confirmDiscard ? "contained" : "text"}
-          sx={{
-            fontWeight: 900,
-            color: confirmDiscard ? 'white' : '#9E9E9E',
-            letterSpacing: 1,
-            fontSize: '0.75rem',
-            borderRadius: 0,
-            bgcolor: confirmDiscard ? '#D32F2F' : 'transparent',
-            '&:hover': { bgcolor: confirmDiscard ? '#B71C1C' : 'rgba(0,0,0,0.04)' },
-          }}
-        >
-          {confirmDiscard ? "CONFIRM DISCARD?" : "DISCARD REGISTRATION"}
-        </Button>
-        <Button
-          onClick={handleQueueClick}
-          variant="contained"
-          disabled={loading}
-          sx={{
-            px: 4,
-            py: 1,
-            fontWeight: 900,
-            borderRadius: 0,
-            bgcolor: confirmSubmit ? '#E65100' : (hasEmergencyService ? '#D32F2F' : '#5D4037'),
-            letterSpacing: 1.2,
-            fontSize: '0.85rem',
-            '&:hover': { bgcolor: confirmSubmit ? '#BF360C' : (hasEmergencyService ? '#B71C1C' : '#3E2723') },
-            boxShadow: '0 4px 12px rgba(93, 64, 55, 0.2)',
-          }}
-        >
-          {loading
-            ? "PROCESSING..."
-            : confirmSubmit
-            ? "CLICK TO CONFIRM ENTRY"
-            : petEntries.length > 1
-            ? `ADD ${petEntries.length} PETS TO QUEUE`
-            : "ADD TO QUEUE"
-          }
-        </Button>
-      </DialogActions>
-    </Dialog>
+          {/* Owner identity section */}
+          <Paper elevation={0} sx={{ p: 2, mb: 2.5, border: `1px solid ${COLORS.borderLight}`, borderRadius: 0, bgcolor: 'white' }}>
+            <Typography variant="overline" sx={{ fontWeight: 900, color: COLORS.accent, letterSpacing: 1, fontSize: '0.7rem', display: 'block', mb: 1 }}>
+              OWNER IDENTITY
+            </Typography>
+
+            {walkInType === 'existing' ? (
+              <Autocomplete
+                options={clients}
+                getOptionLabel={(option) => `${option.fullName?.toUpperCase()} (${option.phone || 'NO PHONE'})`}
+                value={selectedClient}
+                onChange={(_, v) => setSelectedClient(v)}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    size="small"
+                    variant="outlined"
+                    label="SEARCH CLIENT DATABASE..."
+                    fullWidth
+                    inputProps={{ ...params.inputProps, style: { fontWeight: 900, fontSize: '0.85rem' } }}
+                    InputLabelProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' } }}
+                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+                  />
+                )}
+              />
+            ) : (
+              <Grid container spacing={2}>
+                <Grid size={{ xs: 12, md: 5 }}>
+                  <TextField size="small" label="OWNER FULL NAME" variant="outlined" fullWidth
+                    value={guestName} onChange={e => setGuestName(e.target.value)}
+                    InputLabelProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' } }}
+                    inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
+                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+                  />
+                </Grid>
+                <Grid size={{ xs: 12, md: 4 }}>
+                  <TextField size="small" label="CONTACT PHONE" variant="outlined" fullWidth
+                    value={guestPhone} onChange={e => setGuestPhone(e.target.value)}
+                    // Fix 9 — More descriptive, friendlier helper text
+                    helperText="Must start with 09 (e.g., 09123456789)"
+                    FormHelperTextProps={{ sx: { fontWeight: 900, fontSize: '0.7rem' } }}
+                    InputLabelProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' } }}
+                    inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
+                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+                  />
+                </Grid>
+                <Grid size={{ xs: 12, md: 3 }}>
+                  <TextField size="small" label="EMAIL (OPTIONAL)" variant="outlined" fullWidth
+                    value={guestEmail} onChange={e => setGuestEmail(e.target.value)}
+                    InputLabelProps={{ sx: { fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' } }}
+                    inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
+                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+                  />
+                </Grid>
+              </Grid>
+            )}
+          </Paper>
+
+          {/* Multi-pet group indicator */}
+          {petEntries.length > 1 && (
+            <Alert
+              severity="info"
+              sx={{ mb: 2, fontWeight: 900, borderRadius: 0, border: `2px solid ${COLORS.medical}`, py: 0.5, bgcolor: COLORS.chipBlueBg }}
+            >
+              <Typography sx={{ fontWeight: 900, fontSize: '0.8rem', color: COLORS.medical }}>
+                MULTI-PET VISIT — {petEntries.length} pets will share one queue number and one visit group ID.
+              </Typography>
+            </Alert>
+          )}
+
+          {/* Pet entry cards — hidden for existing-client mode until a client is selected */}
+          {walkInType === 'existing' && !selectedClient ? (
+            <Typography sx={{
+              textAlign: 'center',
+              color: COLORS.textMuted,
+              fontWeight: 800,
+              fontSize: '0.85rem',
+              py: 4,
+              fontStyle: 'italic',
+            }}>
+              Select a client above to continue
+            </Typography>
+          ) : (
+            <>
+              {petEntries.map((entry, index) => renderPetEntryForm(entry, index))}
+
+              {/* ADD ANOTHER PET button */}
+              <Button
+                variant="outlined"
+                startIcon={<AddIcon />}
+                onClick={addPetEntry}
+                sx={{
+                  mb: 2,
+                  fontWeight: 900,
+                  color: COLORS.accent,
+                  borderColor: COLORS.accent,
+                  borderRadius: 0,
+                  borderStyle: 'dashed',
+                  letterSpacing: 1,
+                  fontSize: '0.8rem',
+                  width: '100%',
+                  '&:hover': { bgcolor: COLORS.cream, borderColor: COLORS.brand, borderStyle: 'solid' },
+                }}
+              >
+                ADD ANOTHER PET
+              </Button>
+            </>
+          )}
+        </DialogContent>
+
+        <DialogActions sx={{ p: 2, bgcolor: 'white', borderTop: `1px solid ${COLORS.borderLight}`, display: 'flex', justifyContent: 'space-between' }}>
+          {/* Fix 8 — Discard is now a simple close, no double-click confirm */}
+          <Button
+            onClick={handleDiscardClick}
+            variant="text"
+            sx={{
+              fontWeight: 900,
+              color: COLORS.textMuted,
+              letterSpacing: 1,
+              fontSize: '0.75rem',
+              borderRadius: 0,
+              '&:hover': { bgcolor: 'rgba(0,0,0,0.04)' },
+            }}
+          >
+            DISCARD REGISTRATION
+          </Button>
+          {/* Fix 8 — "ADD TO QUEUE" opens confirm dialog instead of double-click pattern */}
+          <Button
+            onClick={() => setShowConfirmQueue(true)}
+            variant="contained"
+            disabled={loading}
+            sx={{
+              px: 4,
+              py: 1,
+              fontWeight: 900,
+              borderRadius: 0,
+              bgcolor: hasEmergencyService ? COLORS.danger : COLORS.accent,
+              letterSpacing: 1.2,
+              fontSize: '0.85rem',
+              '&:hover': { bgcolor: hasEmergencyService ? COLORS.dangerHover : COLORS.brand },
+              boxShadow: '0 4px 12px rgba(93, 64, 55, 0.2)',
+            }}
+          >
+            {loading
+              ? "PROCESSING..."
+              : petEntries.length > 1
+              ? `ADD ${petEntries.length} PETS TO QUEUE`
+              : "ADD TO QUEUE"
+            }
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Fix 8 — MUI confirmation dialog replaces double-click pattern */}
+      <Dialog
+        open={showConfirmQueue}
+        onClose={() => setShowConfirmQueue(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 0 } }}
+      >
+        <DialogTitle sx={{ fontWeight: 900, fontSize: '1rem', bgcolor: COLORS.accent, color: 'white', letterSpacing: 1 }}>
+          CONFIRM WALK-IN REGISTRATION
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2, pb: 1 }}>
+          <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: COLORS.brand, mt: 1 }}>
+            {petEntries.length > 1
+              ? `Add ${petEntries.length} pets to the queue with a shared ticket?`
+              : 'Add this patient to the queue?'
+            }
+          </Typography>
+          <Typography sx={{ fontSize: '0.8rem', color: COLORS.textMuted, mt: 0.5 }}>
+            This action will create a new queue entry and cannot be undone from this form.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, borderTop: `1px solid ${COLORS.borderLight}` }}>
+          <Button
+            onClick={() => setShowConfirmQueue(false)}
+            sx={{ fontWeight: 900, color: COLORS.textMuted, borderRadius: 0, fontSize: '0.8rem' }}
+          >
+            CANCEL
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            variant="contained"
+            disabled={loading}
+            sx={{
+              fontWeight: 900,
+              borderRadius: 0,
+              bgcolor: hasEmergencyService ? COLORS.danger : COLORS.accent,
+              '&:hover': { bgcolor: hasEmergencyService ? COLORS.dangerHover : COLORS.brand },
+              fontSize: '0.8rem',
+              letterSpacing: 1,
+            }}
+          >
+            {loading ? 'PROCESSING...' : 'CONFIRM & ADD TO QUEUE'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Fix 13 — Success toast replaces browser alert() */}
+      <Snackbar
+        open={Boolean(successToast)}
+        autoHideDuration={4000}
+        onClose={() => setSuccessToast('')}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        message={successToast}
+      />
+    </>
   );
 }

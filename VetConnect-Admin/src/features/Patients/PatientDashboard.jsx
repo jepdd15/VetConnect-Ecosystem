@@ -4,7 +4,7 @@ import {
   Box, Typography, Chip, Paper,
   Stack, Button, CircularProgress, Divider,
   IconButton, Avatar, TextField, InputAdornment,
-  FormControl, Select, MenuItem, Popover, Collapse, Tooltip,
+  FormControl, Select, MenuItem, Menu, Popover, Collapse, Tooltip,
   Snackbar, Alert,
   Dialog, DialogTitle, DialogContent, DialogActions,
 } from '@mui/material';
@@ -76,6 +76,7 @@ import { useClinicSettings } from '../../hooks/useClinicSettings';
 import { openPrintWindow, calculatePetAge } from '../../utils/printUtils';
 import { generateVisitSummaryHTML } from '../../utils/printVisitSummary';
 import { generateVaccinationRecordHTML } from '../../utils/printVaccinationRecord';
+import { generateInternalRecordHTML, generateCombinedPrintHTML } from '../../utils/printInternalRecord';
 
 // ── Vaccine Catalog & Helpers ────────────────────────────────────
 import { getVaccineAdministrations, resolveVaccineFromName } from '../../utils/vaccineConstants';
@@ -186,6 +187,8 @@ export default function PatientDashboard() {
   const [collapsedYears, setCollapsedYears] = useState(new Set());
   const [referralOpen, setReferralOpen] = useState(false);
   const [printBlockedToast, setPrintBlockedToast] = useState(false);
+  const [printMenuAnchor, setPrintMenuAnchor] = useState(null);
+  const [printMenuRecord, setPrintMenuRecord] = useState(null);
   // T2.101: Owner sales for computed outstanding balance
   const [ownerSales, setOwnerSales] = useState([]);
   const [recordPaymentOpen, setRecordPaymentOpen] = useState(false);
@@ -243,6 +246,72 @@ export default function PatientDashboard() {
   const [llmConfig, setLlmConfig] = useState({ enabled: false, workerUrl: '' });
 
   const clinicSettings = useClinicSettings();
+
+  const buildStaffLookup = async (records) => {
+    const lookup = new Map();
+    const seen = new Set();
+    for (const r of records) {
+      const uid = r.vetId || r.signedBy?.uid;
+      const name = r.vetName;
+      const seenKey = uid || name;
+      if (!name || seen.has(seenKey)) continue;
+      seen.add(seenKey);
+      try {
+        if (uid) {
+          const staffDoc = await getDoc(doc(db, 'users', uid));
+          if (staffDoc.exists()) { lookup.set(name, staffDoc.data()); continue; }
+        }
+        const snap = await getDocs(query(collection(db, 'users'), where('fullName', '==', name)));
+        if (!snap.empty) lookup.set(name, snap.docs[0].data());
+      } catch { /* skip */ }
+    }
+    return lookup;
+  };
+
+  const handlePrint = async (mode) => {
+    const rec = printMenuRecord;
+    if (!rec) return;
+    setPrintMenuAnchor(null);
+    setPrintMenuRecord(null);
+
+    let vetStaff = null;
+    const vetUid = rec.vetId || rec.signedBy?.uid;
+    try {
+      if (vetUid) {
+        const staffDoc = await getDoc(doc(db, 'users', vetUid));
+        if (staffDoc.exists()) vetStaff = staffDoc.data();
+      } else if (rec.vetName) {
+        const snap = await getDocs(query(collection(db, 'users'), where('fullName', '==', rec.vetName)));
+        if (!snap.empty) vetStaff = snap.docs[0].data();
+      }
+    } catch { /* graceful fallback */ }
+
+    const pulseSummary = rec.clinicalPulse?.length
+      ? { events: rec.clinicalPulse }
+      : null;
+
+    const commonParams = {
+      record: rec,
+      pet,
+      owner,
+      clinicName: clinicSettings.clinicName,
+      clinicAddress: clinicSettings.clinicAddress,
+      clinicPhone: clinicSettings.clinicPhone,
+      clinicBAI: clinicSettings.baiRegistrationNumber,
+      vetStaff,
+      pulseSummary,
+    };
+
+    if (mode === 'client') {
+      openPrintWindow(generateVisitSummaryHTML(commonParams), () => setPrintBlockedToast(true));
+    } else if (mode === 'internal') {
+      openPrintWindow(generateInternalRecordHTML(commonParams), () => setPrintBlockedToast(true));
+    } else {
+      const clientHTML = generateVisitSummaryHTML(commonParams);
+      const internalHTML = generateInternalRecordHTML(commonParams);
+      openPrintWindow(generateCombinedPrintHTML(clientHTML, internalHTML), () => setPrintBlockedToast(true));
+    }
+  };
 
   // T2.458: Load services + departments for WalkInModal
   useEffect(() => {
@@ -2049,21 +2118,12 @@ export default function PatientDashboard() {
                           startIcon={<PrintIcon sx={{ fontSize: '14px !important' }} />}
                           onClick={(e) => {
                             e.stopPropagation();
-                            const html = generateVisitSummaryHTML({
-                              record: rec,
-                              pet,
-                              owner,
-                              clinicName: clinicSettings.clinicName,
-                              clinicAddress: clinicSettings.clinicAddress,
-                            });
-                            openPrintWindow(html, () => setPrintBlockedToast(true));
+                            setPrintMenuAnchor(e.currentTarget);
+                            setPrintMenuRecord(rec);
                           }}
-                          sx={{
-                            fontFamily: FONT, fontWeight: 700, fontSize: '0.75rem',
-                            textTransform: 'none', color: COLORS.accent,
-                          }}
+                          sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.75rem', textTransform: 'none', color: COLORS.accent }}
                         >
-                          Print Visit Summary
+                          Print ▾
                         </Button>
                       </Box>
                     </Box>
@@ -2516,13 +2576,17 @@ export default function PatientDashboard() {
                 size="small"
                 fullWidth
                 startIcon={<PrintIcon sx={{ fontSize: '14px !important' }} />}
-                onClick={() => {
+                onClick={async () => {
+                  const staffLookup = await buildStaffLookup(vaccineRecords);
                   const html = generateVaccinationRecordHTML({
                     pet,
                     owner,
                     vaccineRecords,
                     clinicName: clinicSettings.clinicName,
                     clinicAddress: clinicSettings.clinicAddress,
+                    clinicPhone: clinicSettings.clinicPhone,
+                    clinicBAI: clinicSettings.baiRegistrationNumber,
+                    staffLookup,
                   });
                   openPrintWindow(html, () => setPrintBlockedToast(true));
                 }}
@@ -2541,15 +2605,19 @@ export default function PatientDashboard() {
                 size="small"
                 fullWidth
                 startIcon={<PrintIcon sx={{ fontSize: '14px !important' }} />}
-                onClick={() => {
+                onClick={async () => {
+                  const staffLookup = await buildStaffLookup(vaccineRecords);
                   const html = generateVaccinationRecordHTML({
                     pet,
                     owner,
                     vaccineRecords,
                     clinicName: clinicSettings.clinicName,
                     clinicAddress: clinicSettings.clinicAddress,
+                    clinicPhone: clinicSettings.clinicPhone,
+                    clinicBAI: clinicSettings.baiRegistrationNumber,
                     mode: 'passport',
                     vaccineCatalog,
+                    staffLookup,
                   });
                   openPrintWindow(html, () => setPrintBlockedToast(true));
                 }}
@@ -2842,6 +2910,19 @@ export default function PatientDashboard() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Print mode dropdown — single instance, controlled by printMenuAnchor/printMenuRecord state */}
+      <Menu
+        anchorEl={printMenuAnchor}
+        open={Boolean(printMenuAnchor)}
+        onClose={() => { setPrintMenuAnchor(null); setPrintMenuRecord(null); }}
+        sx={{ '& .MuiPaper-root': { borderRadius: 0, border: `2px solid ${COLORS.accent}`, boxShadow: '4px 4px 0px rgba(93,64,55,0.1)' } }}
+      >
+        <MenuItem onClick={() => handlePrint('client')} sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.8rem' }}>Client Copy</MenuItem>
+        <MenuItem onClick={() => handlePrint('internal')} sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.8rem' }}>Internal Copy</MenuItem>
+        <Divider />
+        <MenuItem onClick={() => handlePrint('both')} sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.8rem' }}>Both (2 Pages)</MenuItem>
+      </Menu>
 
       {/* ── Popup-blocked warning ── */}
       <Snackbar

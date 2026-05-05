@@ -12,6 +12,7 @@ const STAFF_LABELS = {
   phone:          'Phone',
   accessLevel:    'Access Level',
   prcLicense:     'PRC License',
+  ptrNumber:      'PTR Number',
   address:        'Address',
   emergencyContacts: 'Emergency Registry',
 };
@@ -152,6 +153,7 @@ export function useStaffManager() {
       accessLevel: formData.accessLevel,
       departments: formData.departments || [],
       prcLicense: formData.prcLicense || '',
+      ptrNumber: formData.ptrNumber || '',
       address: formData.address || '',
       emergencyContacts: formData.emergencyContacts || [],
       updatedAt: serverTimestamp(),

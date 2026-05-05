@@ -37,7 +37,7 @@ import { ForensicMetricGrid } from '../Queue/ForensicMetricGrid';
 import { useAncestorChain } from './hooks/useAncestorChain';
 import { calculatePulseMetrics, makePulseEventId } from '../../utils/pulseUtils';
 import { TERMINAL_STATUSES } from '../../utils/statusConstants';
-import { query, collection, where, onSnapshot, arrayUnion, doc, updateDoc, Timestamp, writeBatch, getDocs } from 'firebase/firestore';
+import { query, collection, where, onSnapshot, arrayUnion, doc, updateDoc, Timestamp, writeBatch, getDocs, getDoc } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 import { useClinicSettings } from '../../hooks/useClinicSettings';
 import { useUser } from '../../context/UserContext';
@@ -379,18 +379,37 @@ export default function Records() {
     }
   };
 
-  const handlePrintVisit = (row) => {
+  const handlePrintVisit = async (row) => {
+    let vetStaff = null;
+    const vetUid = row.assignedVetId;
+    const vetName = row.assignedVetName;
+    try {
+      if (vetUid) {
+        const staffDoc = await getDoc(doc(db, 'users', vetUid));
+        if (staffDoc.exists()) vetStaff = staffDoc.data();
+      } else if (vetName) {
+        const snap = await getDocs(query(collection(db, 'users'), where('fullName', '==', vetName)));
+        if (!snap.empty) vetStaff = snap.docs[0].data();
+      }
+    } catch { /* graceful fallback */ }
+
     const services = (row.services || []).map(s => esc(s.name || (typeof s === 'string' ? s : '—'))).join(', ') || esc(row.primaryService) || '—';
     const pulse = (row.clinicalPulse || [])
       .map(p => `<tr><td>${esc(p.type)}</td><td>${esc(p.timestamp?.toDate ? p.timestamp.toDate().toLocaleString('en-PH') : '—')}</td><td>${esc(p.staffName || '—')}</td><td>${esc(p.note || '')}</td></tr>`)
       .join('');
     const clinicName = settings?.clinicName || 'VetConnect Clinic';
     const clinicAddress = settings?.clinicAddress || '';
+    const clinicPhone = settings?.clinicPhone || '';
+    const clinicBAI = settings?.baiRegistrationNumber || '';
+    const vetPRC = esc(vetStaff?.prcLicense || '');
+    const vetPTR = esc(vetStaff?.ptrNumber || '');
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Visit Summary</title><style>${PRINT_STYLES}</style></head><body>
       <div class="clinic-header">
         <p class="clinic-name">${esc(clinicName)}</p>
         ${clinicAddress ? `<p class="clinic-address">${esc(clinicAddress)}</p>` : ''}
+        ${clinicPhone ? `<p class="clinic-address">${esc(clinicPhone)}</p>` : ''}
+        ${clinicBAI ? `<p class="clinic-address">BAI Reg. No. ${esc(clinicBAI)}</p>` : ''}
         <p class="doc-title">Visit Summary</p>
       </div>
       <div class="info-grid">
@@ -403,6 +422,8 @@ export default function Records() {
         <div><span class="label">Created:</span> <span class="value">${esc(row.jsCreatedAt ? row.jsCreatedAt.toLocaleString('en-PH') : '—')}</span></div>
         <div><span class="label">Scheduled:</span> <span class="value">${esc(row.jsScheduled ? row.jsScheduled.toLocaleString('en-PH') : '—')}</span></div>
         <div><span class="label">Assigned Vet:</span> <span class="value">${esc(row.assignedVetName || '—')}</span></div>
+        ${vetPRC ? `<div><span class="label">PRC License:</span> <span class="value">${vetPRC}</span></div>` : ''}
+        ${vetPTR ? `<div><span class="label">PTR:</span> <span class="value">${vetPTR}</span></div>` : ''}
       </div>
       <h2>Services</h2>
       <p>${services}</p>
@@ -641,7 +662,7 @@ export default function Records() {
             </IconButton>
           </Tooltip>
           <Tooltip title="Print Visit Summary">
-            <IconButton size="small" onClick={() => handlePrintVisit(p.row)}
+            <IconButton size="small" onClick={async () => await handlePrintVisit(p.row)}
               sx={{ border: '1px solid #D7CCC8', color: COLORS.accent }}>
               <PrintIcon fontSize="small" />
             </IconButton>

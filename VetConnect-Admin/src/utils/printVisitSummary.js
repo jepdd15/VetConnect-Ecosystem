@@ -8,7 +8,7 @@ import { resolveObjectiveText } from './examUtils';
  * @param {object} vitals
  * @returns {string} HTML string
  */
-function renderVitalsSection(vitals) {
+export function renderVitalsSection(vitals) {
   if (!vitals || !(vitals.weight || vitals.temp || vitals.hr || vitals.rr || vitals.crt || vitals.bcs || vitals.pain)) {
     return '';
   }
@@ -48,7 +48,7 @@ function renderVitalsSection(vitals) {
  * @param {Array} dispensedProducts
  * @returns {string} HTML string
  */
-function renderPrescriptionsSection(dispensedProducts) {
+export function renderPrescriptionsSection(dispensedProducts) {
   if (!dispensedProducts?.length) return '';
   const rows = dispensedProducts.map((rx, i) => `
     <tr>
@@ -80,7 +80,7 @@ function renderPrescriptionsSection(dispensedProducts) {
  * @param {object} vaccineData
  * @returns {string} HTML string
  */
-function renderVaccineSection(vaccineData) {
+export function renderVaccineSection(vaccineData) {
   if (!vaccineData?.vaccineName) return '';
   return `
     <h2>Vaccine Administered</h2>
@@ -135,7 +135,7 @@ function resolveRefRangeForPrint(range) {
  * @param {Array} labResults
  * @returns {string} HTML string
  */
-function renderLabResultsSection(labResults) {
+export function renderLabResultsSection(labResults) {
   if (!labResults?.length) return '';
   const rows = labResults.map(lr => {
     const resultWithUnit = `${esc(lr.result || '—')}${lr.unit ? ' ' + esc(lr.unit) : ''}`;
@@ -173,7 +173,7 @@ function renderLabResultsSection(labResults) {
  * @param {object} dischargeSummary
  * @returns {string} HTML string
  */
-function renderDischargeSection(dischargeSummary) {
+export function renderDischargeSection(dischargeSummary) {
   if (!dischargeSummary) return '';
   const { instructions, nextVisit, recheckIn, patientStatus } = dischargeSummary;
   if (!(instructions || nextVisit || recheckIn || patientStatus)) return '';
@@ -202,7 +202,7 @@ function renderDischargeSection(dischargeSummary) {
  * @param {Array} attachments
  * @returns {string} HTML string
  */
-function renderAttachmentsSection(attachments) {
+export function renderAttachmentsSection(attachments) {
   if (!attachments?.length) return '';
   const items = attachments.map(att => {
     const icon = att.mimeType?.startsWith('image/') ? '📷' : '📄';
@@ -233,7 +233,7 @@ function renderAttachmentsSection(attachments) {
  * @param {string} params.clinicAddress  From useClinicSettings()
  * @returns {string} Full HTML document string
  */
-export function generateVisitSummaryHTML({ record, pet, owner, clinicName, clinicAddress }) {
+export function generateVisitSummaryHTML({ record, pet, owner, clinicName, clinicAddress, clinicPhone, clinicBAI, vetStaff }) {
   const rec = record || {};
   const soap = rec.soap || {};
 
@@ -249,10 +249,14 @@ export function generateVisitSummaryHTML({ record, pet, owner, clinicName, clini
   const weight = rvPrint.weight ? `${rvPrint.weight} kg` : (pet?.lastWeight ? `${pet.lastWeight} kg` : '—');
   const ownerName = esc(owner?.displayName || owner?.name || rec.ownerName || '—');
   const ownerPhone = esc(owner?.phone || owner?.contactNumber || '—');
+  const ownerAddress = esc([owner?.address, owner?.city].filter(Boolean).join(', ') || '');
   const rawAllergies = pet?.petAllergies || pet?.allergies;
   const allergies = (rawAllergies && !['None', 'None recorded', ''].includes(rawAllergies))
     ? `<strong style="color:#C62828;">${esc(rawAllergies)}</strong>`
     : 'None known';
+
+  const vetPRC = esc(vetStaff?.prcLicense || '');
+  const vetPTR = esc(vetStaff?.ptrNumber || '');
 
   const now = new Date().toLocaleString('en-PH', { dateStyle: 'long', timeStyle: 'short' });
 
@@ -268,6 +272,8 @@ export function generateVisitSummaryHTML({ record, pet, owner, clinicName, clini
   <div class="clinic-header">
     <p class="clinic-name">${esc(clinicName || 'Veterinary Clinic')}</p>
     <p class="clinic-address">${esc(clinicAddress || '')}</p>
+    ${clinicPhone ? `<p class="clinic-address">${esc(clinicPhone)}</p>` : ''}
+    ${clinicBAI ? `<p class="clinic-address">BAI Reg. No. ${esc(clinicBAI)}</p>` : ''}
     <p class="doc-title">Visit Summary</p>
   </div>
 
@@ -281,6 +287,7 @@ export function generateVisitSummaryHTML({ record, pet, owner, clinicName, clini
     <div><span class="label">Weight:</span> <span class="value">${weight}</span></div>
     <div><span class="label">Owner:</span> <span class="value">${ownerName}</span></div>
     <div><span class="label">Phone:</span> <span class="value">${ownerPhone}</span></div>
+    ${ownerAddress ? `<div><span class="label">Address:</span> <span class="value">${ownerAddress}</span></div>` : ''}
     <div><span class="label">Allergies:</span> <span class="value">${allergies}</span></div>
   </div>
 
@@ -290,6 +297,8 @@ export function generateVisitSummaryHTML({ record, pet, owner, clinicName, clini
     <div><span class="label">Service:</span> <span class="value" style="text-transform:capitalize">${esc(rec.serviceType || rec.recordType || '—')}</span></div>
     <div></div>
     <div><span class="label">Attending Vet:</span> <span class="value">${esc(rec.vetName || '—')}</span></div>
+    ${vetPRC ? `<div><span class="label">PRC License:</span> <span class="value">${vetPRC}</span></div>` : ''}
+    ${vetPTR ? `<div><span class="label">PTR:</span> <span class="value">${vetPTR}</span></div>` : ''}
     <div><span class="label">Diagnosis:</span> <span class="value">${esc(
       rec.diagnoses?.length > 0
         ? rec.diagnoses.map(d => d.severity ? `${d.name} (${d.severity})` : d.name).join('; ')
@@ -334,6 +343,17 @@ export function generateVisitSummaryHTML({ record, pet, owner, clinicName, clini
   ${renderLabResultsSection(rec.labResults)}
   ${renderDischargeSection(rec.dischargeSummary)}
   ${renderAttachmentsSection(rec.attachments)}
+
+  <div style="margin-top:40px; display:flex; gap:32px;">
+    <div style="flex:1;">
+      <div style="border-bottom:1.5px solid #3E2723; height:36px; margin-bottom:4px;"></div>
+      <p style="font-size:10px; color:#5D4037; margin:0;">Veterinarian Signature</p>
+    </div>
+    <div style="flex:1;">
+      <div style="border-bottom:1.5px solid #3E2723; height:36px; margin-bottom:4px;"></div>
+      <p style="font-size:10px; color:#5D4037; margin:0;">Date Signed</p>
+    </div>
+  </div>
 
   <div class="footer">
     Generated on ${now} &nbsp;|&nbsp; ${esc(clinicName || 'Veterinary Clinic')} &nbsp;|&nbsp; This is a system-generated document.

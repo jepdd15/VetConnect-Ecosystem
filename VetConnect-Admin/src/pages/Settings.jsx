@@ -97,6 +97,7 @@ export default function Settings() {
     minSlotInterval: 30, advanceNoticeMins: 120, maxFutureBookingDays: 30, maxPetsPerBooking: 3,
     autoNoShowMins: 30, noShowLinkWindowDays: 30, trafficModerate: 6, trafficHigh: 13,
     clinicPhone: '',
+    baiRegistrationNumber: '',
     workingDays: [1, 2, 3, 4, 5, 6, 0], // [0:Sun, 1:Mon... 6:Sat]
     clinicLat: 16.0389, clinicLng: 120.3977, geofenceRadiusM: 150,
   });
@@ -306,7 +307,7 @@ export default function Settings() {
     const tracked = ['openHour', 'closeHour', 'lunchEnabled', 'lunchStart', 'lunchEnd',
       'minSlotInterval', 'advanceNoticeMins', 'maxFutureBookingDays', 'maxPetsPerBooking',
       'autoNoShowMins', 'noShowLinkWindowDays', 'trafficModerate', 'trafficHigh',
-      'workingDays', 'clinicPhone', 'dashboardAlerts', 'dashboardGoals',
+      'workingDays', 'clinicPhone', 'baiRegistrationNumber', 'dashboardAlerts', 'dashboardGoals',
       'clinicLat', 'clinicLng', 'geofenceRadiusM'];
     return tracked.some(key => JSON.stringify(settings[key]) !== JSON.stringify(lastSavedSettings[key]));
   }, [settings, lastSavedSettings]);
@@ -450,7 +451,7 @@ export default function Settings() {
         const tracked = ['openHour', 'closeHour', 'lunchEnabled', 'lunchStart', 'lunchEnd',
           'minSlotInterval', 'advanceNoticeMins', 'maxFutureBookingDays', 'maxPetsPerBooking',
           'autoNoShowMins', 'noShowLinkWindowDays', 'trafficModerate', 'trafficHigh',
-          'workingDays', 'clinicPhone', 'dashboardAlerts', 'dashboardGoals',
+          'workingDays', 'clinicPhone', 'baiRegistrationNumber', 'dashboardAlerts', 'dashboardGoals',
           'clinicLat', 'clinicLng', 'geofenceRadiusM', 'enableAppointmentReminders',
           'enableVaccineReminders', 'vaccineReminderWindowDays', 'vaccineReminderCooldownDays',
           'enableAutoAppointmentReminders', 'appointmentReminderHeadsUpDays'];
@@ -1179,6 +1180,18 @@ export default function Settings() {
                     onChange={(e) => handleChange('clinicPhone', e.target.value)}
                     sx={{ bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 0, '& fieldset': { border: `2px solid ${COLORS.accent}33` } } }}
                     helperText="Shown to clients in the mobile app. Leave empty to hide the Call Clinic button."
+                  />
+                </Grid>
+
+                <Grid size={{ xs: 12 }}>
+                  <TextField
+                    fullWidth size="medium"
+                    label="BAI Registration Number"
+                    placeholder="Bureau of Animal Industry clinic registration"
+                    value={settings.baiRegistrationNumber || ''}
+                    onChange={(e) => handleChange('baiRegistrationNumber', e.target.value)}
+                    sx={{ bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 0, '& fieldset': { border: `2px solid ${COLORS.accent}33` } } }}
+                    helperText="Printed on vaccination records and official documents. Leave empty to omit."
                   />
                 </Grid>
 

@@ -31,6 +31,7 @@ export default function StaffFormModal({ open, onClose, item, dynamicDepartments
     email:       item?.email || '',
     phone:       item?.phone || '',
     prcLicense:  item?.prcLicense || '',
+    ptrNumber:   item?.ptrNumber || '',
     // Section 2: Access & Scheduling (T4.154: accessLevel always defaults to 'staff')
     accessLevel: item?.accessLevel || 'staff',
     departments: item?.departments || [],
@@ -185,7 +186,7 @@ export default function StaffFormModal({ open, onClose, item, dynamicDepartments
                     sx={sxField}
                   />
                 </Grid>
-                <Grid size={{ xs: 12, md: 4 }}>
+                <Grid size={{ xs: 12, md: 6 }}>
                   <TextField
                     label="PRC License"
                     fullWidth size="small"
@@ -193,6 +194,18 @@ export default function StaffFormModal({ open, onClose, item, dynamicDepartments
                     onChange={setField('prcLicense')}
                     placeholder="Optional"
                     helperText="Veterinarians only"
+                    inputProps={noExtensionProps}
+                    sx={sxField}
+                  />
+                </Grid>
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <TextField
+                    label="PTR Number"
+                    fullWidth size="small"
+                    value={formData.ptrNumber}
+                    onChange={setField('ptrNumber')}
+                    placeholder="Optional"
+                    helperText="Professional Tax Receipt — renewed annually"
                     inputProps={noExtensionProps}
                     sx={sxField}
                   />

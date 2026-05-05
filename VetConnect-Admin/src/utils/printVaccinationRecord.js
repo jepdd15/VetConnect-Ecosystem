@@ -192,7 +192,7 @@ const PASSPORT_STYLES = `
  *                                           for status derivation. Falls back to vaccineRecords.
  * @returns {string} Full HTML document string
  */
-export function generateVaccinationRecordHTML({ pet, owner, vaccineRecords, clinicName, clinicAddress, mode = 'record', vaccineCatalog }) {
+export function generateVaccinationRecordHTML({ pet, owner, vaccineRecords, clinicName, clinicAddress, mode = 'record', vaccineCatalog, clinicPhone, clinicBAI, staffLookup }) {
   const petName = esc(pet?.name || '—');
   const species = esc(pet?.species || '—');
   const breed = esc((pet?.breed && pet.breed !== 'Unknown Breed') ? pet.breed : '—');
@@ -214,6 +214,7 @@ export function generateVaccinationRecordHTML({ pet, owner, vaccineRecords, clin
 
   const ownerName = esc(owner?.displayName || owner?.name || '—');
   const ownerPhone = esc(owner?.phone || owner?.contactNumber || '—');
+  const ownerAddress = esc([owner?.address, owner?.city].filter(Boolean).join(', ') || '');
 
   const now = new Date().toLocaleString('en-PH', { dateStyle: 'long', timeStyle: 'short' });
 
@@ -221,6 +222,11 @@ export function generateVaccinationRecordHTML({ pet, owner, vaccineRecords, clin
   // flatMap so that multi-vaccine visits produce one row per administration.
   const historyRows = vaccineRecords.flatMap(r => {
     const admins = getVaccineAdministrations(r);
+    const vetDoc = staffLookup?.get(r.vetName) || null;
+    const hasLicense = vetDoc && (vetDoc.prcLicense || vetDoc.ptrNumber);
+    const vetLicenseCell = hasLicense
+      ? `${esc(r.vetName || '—')}<br/><span style="font-size:10px;color:#5D4037;">PRC: ${esc(vetDoc.prcLicense || '—')} / PTR: ${esc(vetDoc.ptrNumber || '—')}</span>`
+      : esc(r.vetName || '—');
     return admins.map(vd => `
       <tr>
         <td>${formatPrintDate(r.date)}</td>
@@ -229,7 +235,7 @@ export function generateVaccinationRecordHTML({ pet, owner, vaccineRecords, clin
         <td>${esc(vd.lotNumber || '—')}</td>
         <td>${esc(vd.routeOfAdmin || '—')}</td>
         <td>${esc(vd.siteOfInjection || '—')}</td>
-        <td>${esc(r.vetName || '—')}</td>
+        <td>${vetLicenseCell}</td>
         <td>${vd.dueDate ? formatPrintDate(vd.dueDate) : '—'}</td>
       </tr>
     `);
@@ -330,6 +336,13 @@ export function generateVaccinationRecordHTML({ pet, owner, vaccineRecords, clin
     const safeClinicName = esc(clinicName || 'Veterinary Clinic');
     const safeClinicAddress = esc(clinicAddress || '');
 
+    const lastVetName = vaccineRecords[vaccineRecords.length - 1]?.vetName || '';
+    const lastVetDoc = staffLookup?.get(lastVetName) || null;
+    const lastVetHasLicense = lastVetDoc && (lastVetDoc.prcLicense || lastVetDoc.ptrNumber);
+    const certVetLine = lastVetName
+      ? `${esc(lastVetName)}${lastVetHasLicense ? `<br/>PRC: ${esc(lastVetDoc.prcLicense || '—')} / PTR: ${esc(lastVetDoc.ptrNumber || '—')}` : ''}`
+      : '';
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -343,7 +356,9 @@ export function generateVaccinationRecordHTML({ pet, owner, vaccineRecords, clin
   <!-- ── Cover Section ───────────────────────────────────────── -->
   <div class="passport-cover">
     <p class="clinic-name" style="margin:0 0 2px;">${safeClinicName}</p>
-    ${safeClinicAddress ? `<p style="font-size:11px; color:#5D4037; margin:0 0 16px;">${safeClinicAddress}</p>` : ''}
+    ${safeClinicAddress ? `<p style="font-size:11px; color:#5D4037; margin:0 0 4px;">${safeClinicAddress}</p>` : ''}
+    ${clinicPhone ? `<p style="font-size:11px; color:#5D4037; margin:0 0 4px;">${esc(clinicPhone)}</p>` : ''}
+    ${clinicBAI ? `<p style="font-size:11px; color:#5D4037; margin:0 0 16px;">BAI Reg. No. ${esc(clinicBAI)}</p>` : ''}
     <p class="passport-title">Vaccination Passport</p>
     <p class="passport-subtitle">Official Veterinary Immunization Record</p>
     <div class="passport-pet-card">
@@ -352,6 +367,7 @@ export function generateVaccinationRecordHTML({ pet, owner, vaccineRecords, clin
       <div class="pet-detail">DOB: ${dobLabel} &nbsp;&middot;&nbsp; Weight: ${weightLabel}</div>
       <div class="pet-detail">Microchip: ${microchip}</div>
       <div class="pet-detail" style="margin-top:6px;">Owner: ${ownerName} &nbsp;&middot;&nbsp; ${ownerPhone}</div>
+      ${ownerAddress ? `<div class="pet-detail">${ownerAddress}</div>` : ''}
     </div>
     <p class="passport-generated">Document generated ${nowDateOnly}</p>
   </div>
@@ -395,7 +411,7 @@ export function generateVaccinationRecordHTML({ pet, owner, vaccineRecords, clin
         <p class="signature-label">Veterinarian Signature</p>
       </div>
       <div class="signature-cell">
-        <div class="signature-line"></div>
+        <div style="border-bottom:1.5px solid #3E2723; height:36px; margin-bottom:4px; font-size:11px; color:#3E2723; display:flex; align-items:flex-end; padding-bottom:2px;">${certVetLine}</div>
         <p class="signature-label">Veterinarian Name &amp; License No.</p>
       </div>
       <div class="signature-cell">
@@ -417,7 +433,7 @@ export function generateVaccinationRecordHTML({ pet, owner, vaccineRecords, clin
 </html>`;
   }
 
-  // ── Record mode (default) — UNCHANGED ──────────────────────────
+  // ── Record mode (default) ───────────────────────────────────
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -430,6 +446,8 @@ export function generateVaccinationRecordHTML({ pet, owner, vaccineRecords, clin
   <div class="clinic-header">
     <p class="clinic-name">${esc(clinicName || 'Veterinary Clinic')}</p>
     <p class="clinic-address">${esc(clinicAddress || '')}</p>
+    ${clinicPhone ? `<p class="clinic-address">${esc(clinicPhone)}</p>` : ''}
+    ${clinicBAI ? `<p class="clinic-address">BAI Reg. No. ${esc(clinicBAI)}</p>` : ''}
     <p class="doc-title">Vaccination Record</p>
   </div>
 
@@ -444,6 +462,7 @@ export function generateVaccinationRecordHTML({ pet, owner, vaccineRecords, clin
     <div><span class="label">Microchip:</span> <span class="value">${microchip}</span></div>
     <div><span class="label">Owner:</span> <span class="value">${ownerName}</span></div>
     <div><span class="label">Phone:</span> <span class="value">${ownerPhone}</span></div>
+    ${ownerAddress ? `<div><span class="label">Address:</span> <span class="value">${ownerAddress}</span></div>` : ''}
   </div>
 
   <h2>Vaccination History</h2>

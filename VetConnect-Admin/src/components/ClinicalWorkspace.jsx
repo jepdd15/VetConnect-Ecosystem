@@ -828,7 +828,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             const resolvedPrice = resolveTieredPrice(svcDef, patientWeight) || svc.price || 0;
             initialCart.push({
                 type: 'service', id: svc.id, name: svc.name,
-                price: resolvedPrice, qty: 1, isDrug: false, isBase: true,
+                price: resolvedPrice, qty: 1, isDrug: false, productClass: 'retail', isBase: true,
                 isDiscountable: svcDef?.isScPwdEligible !== false,
                 department: svc.department || svcDef?.department || 'General',
                 category: '', // Services don't carry inventory categories
@@ -859,6 +859,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                     type: 'product', id: linkedInv.id, name: linkedInv.itemName,
                     price: linkedInv.price, qty: 1,
                     isDrug: !!linkedInv.isMedicine,
+                    productClass: linkedInv.productClass || (linkedInv.isMedicine ? 'medicine' : 'retail'),
                     isBase: false, isAutoBundled: true, instructions: '',
                     category: (linkedInv.category || '').toLowerCase(), // T4.117: enables category-based detection
                 });
@@ -1370,7 +1371,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       }
     }
 
-    const isMedicine = !!item.isMedicine; // 🩺 THE FORENSIC FLAG
+    const resolvedPC = item.productClass || (item.isMedicine ? 'medicine' : 'retail');
 
     // Deduplicate: if item already in cart, increment qty instead of adding duplicate
     const existingIdx = treatmentCart.findIndex(rx => rx.id === item.id);
@@ -1391,7 +1392,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           ? (item.price || 0)
           : resolveTieredPrice(item, parseFloat(soapData.objWeight) || (patient?.petWeight ? parseFloat(patient.petWeight) : null)),
       qty: 1,
-      isDrug: isMedicine,
+      isDrug: resolvedPC === 'medicine',
+      productClass: resolvedPC,
       isDispensed: false, // Default to Clinic Admin
       // T4.117: Carry inventory category so category-based vaccine detection works
       category: itemCategory,
@@ -1405,7 +1407,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     // Step 4 (T3.110): Auto-populate instructions for drug items from sig defaults.
     // Gives the vet a readable starting point (e.g. "1 unit once daily for 1 day (SQ)")
     // that they can overwrite before signing off.
-    if (isMedicine) {
+    if (resolvedPC === 'medicine') {
       const s = itemObj.sig;
       const freqMap = {
         SID: 'once daily',
@@ -1661,7 +1663,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     handleAddRx(product);
   };
 
-  const hasDrugsInCart = treatmentCart.some(item => item.isDrug);
+  const hasDrugsInCart = treatmentCart.some(item =>
+    (item.productClass || (item.isDrug ? 'medicine' : 'retail')) === 'medicine'
+  );
   const nextRouteStatus = hasDrugsInCart ? "dispensing" : "billing";
   const saveBtnText = hasDrugsInCart ? "Sign & Send to Pharmacy" : "Sign & Send to Cashier";
 
@@ -1893,6 +1897,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 instructions: item.instructions || '',
                 price: item.price,
                 isDrug: !!item.isDrug,
+                productClass: item.productClass || (item.isDrug ? 'medicine' : 'retail'),
             })),
         serviceType: patient.services?.[0]?.name || patient.primaryService || patient.serviceType || 'Clinical Visit',
         serviceNames: (patient.services || []).filter(s => s.name).map(s => s.name),
@@ -1913,11 +1918,18 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             diagnosis: (soapData.diagnoses || [])[0]?.name || 'Clinical Visit',
             instructions: soapData.plan || '',
             medications: treatmentCart
-                .filter(item => item.isDrug)
+                .filter(item => (item.productClass || (item.isDrug ? 'medicine' : 'retail')) === 'medicine')
                 .map(item => ({
                     name: item.name,
                     qty: item.qty,
                     instructions: item.instructions || 'Use as directed',
+                })),
+            supplies: treatmentCart
+                .filter(item => (item.productClass || (item.isDrug ? 'medicine' : 'retail')) === 'medical_supply')
+                .map(item => ({
+                    name: item.name,
+                    qty: item.qty,
+                    instructions: item.instructions || '',
                 })),
             nextVisit: soapData.nextVisit || null,
             recheckIn: soapData.recheckIn || null,
@@ -3241,7 +3253,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
 
       // Mirror handleSaveConsult's nextRouteStatus: dispensing if any drug is in cart,
       // otherwise send straight to billing.
-      const hasDispensableItems = treatmentCart.some(item => item.isDrug);
+      const hasDispensableItems = treatmentCart.some(item =>
+        (item.productClass || (item.isDrug ? 'medicine' : 'retail')) === 'medicine'
+      );
       const nextStatus = hasDispensableItems ? 'dispensing' : 'billing';
 
       const rerouteEvent = createPulseEvent('STATUS_CHANGE', {
@@ -3900,7 +3914,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
 
                                   {/* Drug instructions (always visible) — clinical safety: every prescription
                                       must have explicit dosing before sign-off. */}
-                                  {rx.isDrug && (
+                                  {(rx.productClass || (rx.isDrug ? 'medicine' : 'retail')) === 'medicine' && (
                                     <TextField
                                       size="small" fullWidth multiline minRows={1} maxRows={3}
                                       placeholder="e.g., 1 tab twice daily for 7 days"
@@ -3923,7 +3937,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
 
                                   {/* Non-drug collapsible instructions — collapsed by default to keep
                                       sidebar compact for items that don't need dosing notes. */}
-                                  {!rx.isDrug && (
+                                  {(rx.productClass || (rx.isDrug ? 'medicine' : 'retail')) !== 'medicine' && (
                                     <>
                                       <Typography
                                         onClick={() => !isRecordLocked && handleUpdateRxField(cartIdx, '_showInstructions', !rx._showInstructions)}

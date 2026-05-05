@@ -294,7 +294,10 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
       // DISPENSE tab — Prescription Preview
       if (tabValue === 4) {
         const items = p.row.encounterItems || p.row.prescribedItems || [];
-        const drugs = items.filter(i => i.isDrug || i.isMedicine || (i.type === 'product' && i.isMedicine !== false));
+        const drugs = items.filter(i =>
+          (i.productClass || (i.isDrug ? 'medicine' : 'retail')) === 'medicine'
+          || (i.type === 'product' && !i.productClass && i.isMedicine === true)
+        );
         if (drugs.length === 0) {
           return <Typography variant="caption" sx={{ color: 'text.disabled', fontStyle: 'italic' }}>No prescribed items</Typography>;
         }

@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Button, MenuItem, Box, InputAdornment, Divider, Typography, Grid, Paper,
-  FormControlLabel, Switch, Chip, Stack, ToggleButton, ToggleButtonGroup
+  Chip, Stack, ToggleButton, ToggleButtonGroup
 } from '@mui/material';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import InsightsIcon from '@mui/icons-material/Insights';
@@ -13,6 +13,27 @@ import { db } from '../../../firebaseConfig';
 import MedicationIcon from '@mui/icons-material/Medication';
 import { formatCategory } from '../Inventory';
 import { FONT, COLORS } from '../../../theme/designTokens';
+
+const PRODUCT_CLASS_OPTIONS = [
+  {
+    value: 'medicine',
+    label: 'Medicine',
+    helper: 'Health product prescribed or recommended by the vet. Routes to dispensing for verification. Auto-generates dosing instructions. Appears in discharge medications.',
+    color: COLORS.danger,
+  },
+  {
+    value: 'medical_supply',
+    label: 'Medical Supply',
+    helper: 'Take-home clinical supply. Goes directly to billing. Appears in discharge as take-home supplies.',
+    color: '#757575',
+  },
+  {
+    value: 'retail',
+    label: 'Retail',
+    helper: 'Non-clinical product. Goes directly to billing. Does not appear on discharge summary.',
+    color: COLORS.textMuted,
+  },
+];
 
 export default function ProductFormModal({ open, onClose, item, onSave, categories, showToast }) {
   const isEditing = Boolean(item);
@@ -40,10 +61,7 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
   // T2.175: Allergen tags — stored as a string array on the product document.
   const [allergenTags, setAllergenTags] = useState(item?.allergenTags || []);
   const [allergenInput, setAllergenInput] = useState('');
-  // T2.167b: Per-item isMedicine override — null means "derive from category"
-  const [isMedicineOverride, setIsMedicineOverride] = useState(
-    item?.isMedicine !== undefined ? item.isMedicine : null
-  );
+  const [productClass, setProductClass] = useState(item?.productClass || null);
 
   // T4.117: Vaccine-specific configuration — only persisted when category === 'vaccine'
   const [vaccineConfig, setVaccineConfig] = useState({
@@ -60,8 +78,12 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
     if (errors[key]) setErrors(prev => ({ ...prev, [key]: undefined }));
   };
 
-  // T4.117: True when the selected category is 'vaccine' — drives conditional section visibility
   const isVaccineCategory = formData.category === 'vaccine';
+
+  const foundCat = categories.find(c => c.name === formData.category);
+  const resolvedProductClass = productClass !== null
+    ? productClass
+    : (foundCat?.productClass || (foundCat?.isMedicine ? 'medicine' : 'retail'));
 
   // ── Live Margin Calculator ──────────────────────────────────────────────
   const marginData = useMemo(() => {
@@ -87,7 +109,7 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
     if (formData.costPrice !== '' && (isNaN(Number(formData.costPrice)) || Number(formData.costPrice) < 0))
       newErrors.costPrice = 'Cost price cannot be negative.';
     if (!formData.unit.trim())
-      newErrors.unit = 'Unit of measure is required (e.g. Box, Vial, Bottle).';
+      newErrors.unit = 'Dispensing unit is required (e.g. Capsule, Vial, Bottle).';
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -112,8 +134,7 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
       allergenTags: allergenTags,
       // Only include opening stock for new products
       ...(!isEditing && { openingStock: Number(formData.openingStock) || 0 }),
-      // Pass override so Inventory.jsx can resolve final isMedicine value
-      ...(isMedicineOverride !== null && { isMedicineOverride }),
+      ...(productClass !== null && { productClassOverride: productClass }),
       // T4.117: Include vaccineConfig sub-object only for vaccine-category products
       ...(isVaccineCategory && {
         vaccineConfig: {
@@ -127,8 +148,6 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
     });
   };
 
-  // Keywords that indicate a category should be medicine-gated by default.
-  // The per-product isMedicineOverride field allows staff to correct mis-detections.
   const MEDICINE_KEYWORDS = [
     'antibiotic', 'vaccine', 'dewormer', 'antifungal', 'analgesic',
     'anti-inflammatory', 'sedative', 'anesthetic', 'steroid', 'supplement',
@@ -149,7 +168,11 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
         return;
       }
       const autoMedicine = MEDICINE_KEYWORDS.some(kw => lowerName.includes(kw));
-      await addDoc(collection(db, 'inventory_categories'), { name: lowerName, isMedicine: autoMedicine });
+      await addDoc(collection(db, 'inventory_categories'), {
+        name: lowerName,
+        isMedicine: autoMedicine,
+        productClass: autoMedicine ? 'medicine' : 'retail',
+      });
       setFormData(prev => ({ ...prev, category: lowerName }));
       setShowQuickAdd(false);
       setNewCatName('');
@@ -228,25 +251,34 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
                       if (e.target.value === 'ADD_NEW') setShowQuickAdd(true);
                       else {
                         setFormData(prev => ({ ...prev, category: e.target.value }));
-                        setIsMedicineOverride(null); // Reset override so it re-derives from new category
+                        setProductClass(null);
                       }
                     }}
                     error={!!errors.category}
                     helperText={
                       errors.category
-                      || ((categories.find(c => c.name === formData.category)?.isMedicine)
-                        ? "Medicine: Triggers pharmacy alerts."
-                        : "Retail: Standard checkout.")
+                      || (() => {
+                        const catPC = categories.find(c => c.name === formData.category)?.productClass;
+                        if (catPC === 'medicine') return 'Default: Medicine — routes to pharmacy.';
+                        if (catPC === 'medical_supply') return 'Default: Medical Supply — clinical take-home.';
+                        return 'Default: Retail — standard checkout.';
+                      })()
                     }
                     sx={sxField}
                   >
-                    {(categories || []).map(cat => (
-                      <MenuItem key={cat.name} value={cat.name} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        {formatCategory(cat.name)}
-                        {cat.isMedicine && <MedicationIcon sx={{ fontSize: 16, color: COLORS.danger, ml: 1 }} />}
-                        {cat.name === 'vaccine' && <VaccinesIcon sx={{ fontSize: 16, color: COLORS.success, ml: 0.5 }} />}
-                      </MenuItem>
-                    ))}
+                    {(categories || []).map(cat => {
+                      const pc = cat.productClass || (cat.isMedicine ? 'medicine' : 'retail');
+                      const dotColor = pc === 'medicine' ? COLORS.danger : pc === 'medical_supply' ? '#757575' : COLORS.textMuted;
+                      return (
+                        <MenuItem key={cat.name} value={cat.name} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          {formatCategory(cat.name)}
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, ml: 1 }}>
+                            <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: dotColor }} />
+                            {cat.name === 'vaccine' && <VaccinesIcon sx={{ fontSize: 16, color: COLORS.success, ml: 0.5 }} />}
+                          </Box>
+                        </MenuItem>
+                      );
+                    })}
                     <Divider />
                     <MenuItem value="ADD_NEW" sx={{ color: COLORS.cta, fontWeight: 'bold' }}>
                       <AddCircleIcon sx={{ mr: 1, fontSize: 18 }} /> Quick Add Category
@@ -262,40 +294,42 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
                 </Grid>
                 <Grid size={{ xs: 12, sm: 4 }}>
                   <TextField
-                    label="Unit of Measure" placeholder="e.g. Box, Bottle" required fullWidth
+                    label="Dispensing Unit" placeholder="e.g. Capsule, Tablet, Bottle" required fullWidth
                     value={formData.unit} onChange={set('unit')}
                     error={!!errors.unit} helperText={errors.unit || 'Required'}
                     sx={sxField}
                   />
                 </Grid>
-                <Grid size={{ xs: 12, sm: 4 }}>
-                  <TextField
-                    label="Dosage / Strength" placeholder="e.g. 50mg, 10ml" fullWidth
-                    value={formData.dosage} onChange={set('dosage')} sx={sxField}
-                  />
-                </Grid>
+                {resolvedProductClass === 'medicine' && (
+                  <Grid size={{ xs: 12, sm: 4 }}>
+                    <TextField
+                      label="Dosage / Strength" placeholder="e.g. 50mg, 10ml" fullWidth
+                      value={formData.dosage} onChange={set('dosage')} sx={sxField}
+                    />
+                  </Grid>
+                )}
 
-                {/* T2.167b: isMedicine override toggle — defaults to category flag, allows per-item override */}
                 <Grid size={{ xs: 12 }}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={
-                          isMedicineOverride !== null
-                            ? isMedicineOverride
-                            : (categories.find(c => c.name === formData.category)?.isMedicine || false)
-                        }
-                        onChange={(e) => setIsMedicineOverride(e.target.checked)}
-                        color="error"
-                        size="small"
-                      />
+                  <TextField
+                    select
+                    label="Product Classification"
+                    fullWidth
+                    value={resolvedProductClass}
+                    onChange={(e) => setProductClass(e.target.value)}
+                    helperText={
+                      PRODUCT_CLASS_OPTIONS.find(o => o.value === resolvedProductClass)?.helper || ''
                     }
-                    label={
-                      <Typography variant="body2" sx={{ fontWeight: 'bold', fontSize: '0.8rem', color: COLORS.accent }}>
-                        Requires pharmacy dispensing verification
-                      </Typography>
-                    }
-                  />
+                    sx={sxField}
+                  >
+                    {PRODUCT_CLASS_OPTIONS.map(opt => (
+                      <MenuItem key={opt.value} value={opt.value}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: opt.color }} />
+                          {opt.label}
+                        </Box>
+                      </MenuItem>
+                    ))}
+                  </TextField>
                 </Grid>
               </Grid>
             </Paper>
@@ -304,38 +338,40 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
           {/* ═══════════════════════════════════════════════════════════════
               SECTION 2: BATCH & TRACEABILITY
               ═══════════════════════════════════════════════════════════════ */}
-          <Box sx={{ mb: 4 }}>
-            <Typography variant="overline" fontWeight="900" display="block" mb={1} sx={{ color: COLORS.accent, letterSpacing: 1 }}>
-              2. BATCH &amp; TRACEABILITY
-            </Typography>
-            <Paper elevation={0} sx={{ p: 3, borderRadius: 0, border: `2px solid ${COLORS.accent}`, bgcolor: COLORS.cardBg }}>
-              <Grid container spacing={2}>
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <TextField
-                    label="Lot / Batch Number"
-                    placeholder="e.g. LOT-2025-0912"
-                    fullWidth
-                    value={formData.lotNumber}
-                    onChange={set('lotNumber')}
-                    sx={sxField}
-                    helperText="Found on the product’s packaging or CoA."
-                  />
+          {resolvedProductClass === 'medicine' && (
+            <Box sx={{ mb: 4 }}>
+              <Typography variant="overline" fontWeight="900" display="block" mb={1} sx={{ color: COLORS.accent, letterSpacing: 1 }}>
+                2. BATCH &amp; TRACEABILITY
+              </Typography>
+              <Paper elevation={0} sx={{ p: 3, borderRadius: 0, border: `2px solid ${COLORS.accent}`, bgcolor: COLORS.cardBg }}>
+                <Grid container spacing={2}>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      label="Lot / Batch Number"
+                      placeholder="e.g. LOT-2025-0912"
+                      fullWidth
+                      value={formData.lotNumber}
+                      onChange={set('lotNumber')}
+                      sx={sxField}
+                      helperText="Found on the product's packaging or CoA."
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      label="Expiry Date"
+                      type="date"
+                      fullWidth
+                      value={formData.expiryDate}
+                      onChange={set('expiryDate')}
+                      InputLabelProps={{ shrink: true }}
+                      sx={sxField}
+                      helperText="Required for medications and biologicals."
+                    />
+                  </Grid>
                 </Grid>
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <TextField
-                    label="Expiry Date"
-                    type="date"
-                    fullWidth
-                    value={formData.expiryDate}
-                    onChange={set('expiryDate')}
-                    InputLabelProps={{ shrink: true }}
-                    sx={sxField}
-                    helperText="Required for medications and biologicals."
-                  />
-                </Grid>
-              </Grid>
-            </Paper>
-          </Box>
+              </Paper>
+            </Box>
+          )}
 
           {/* ═══════════════════════════════════════════════════════════════
               SECTION 2b: ALLERGEN SAFETY TAGS (T2.175)

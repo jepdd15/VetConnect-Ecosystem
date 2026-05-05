@@ -122,13 +122,12 @@ export default function Inventory() {
         try {
           const batch = writeBatch(db);
           const defaultCategories = [
-            { name: 'medicine', isMedicine: true },
-            { name: 'vaccine', isMedicine: true },
-            { name: 'drug', isMedicine: true },
-            { name: 'food', isMedicine: false },
-            { name: 'supplies', isMedicine: false },
-            { name: 'accessories', isMedicine: false },
-            { name: 'lab', isMedicine: false }
+            { name: 'medicine',    isMedicine: true,  productClass: 'medicine' },
+            { name: 'vaccine',     isMedicine: true,  productClass: 'medicine' },
+            { name: 'food',        isMedicine: false, productClass: 'retail' },
+            { name: 'supplies',    isMedicine: false, productClass: 'medical_supply' },
+            { name: 'accessories', isMedicine: false, productClass: 'retail' },
+            { name: 'lab',         isMedicine: false, productClass: 'medical_supply' },
           ];
           defaultCategories.forEach((cat) => {
             // T2.173: Deterministic IDs prevent duplicate seeding from concurrent tabs
@@ -144,7 +143,11 @@ export default function Inventory() {
         list.forEach(c => {
           const name = c.name?.toLowerCase().trim();
           if (name && !catMap.has(name)) {
-            catMap.set(name, { name, isMedicine: !!c.isMedicine });
+            catMap.set(name, {
+              name,
+              isMedicine: !!c.isMedicine,
+              productClass: c.productClass || (c.isMedicine ? 'medicine' : 'retail'),
+            });
           }
         });
         const uniqueCats = Array.from(catMap.values());
@@ -249,13 +252,16 @@ export default function Inventory() {
   // --- HANDLERS ---
   const handleSaveForm = async (data) => {
     try {
-      // T2.167a: Derive isMedicine from category, allowing per-item override from the form toggle
       const catObj = invCategories.find(c => c.name === (data.category || '').toLowerCase().trim());
-      const derivedIsMedicine = catObj?.isMedicine || false;
+      const derivedProductClass = data.productClassOverride
+        || catObj?.productClass
+        || (catObj?.isMedicine ? 'medicine' : 'retail');
       const enrichedData = {
         ...data,
-        isMedicine: data.isMedicineOverride !== undefined ? data.isMedicineOverride : derivedIsMedicine,
+        productClass: derivedProductClass,
+        isMedicine: derivedProductClass === 'medicine',
       };
+      delete enrichedData.productClassOverride;
       delete enrichedData.isMedicineOverride;
 
       if (selectedItem) await updateItem(selectedItem.id, enrichedData, selectedItem);
@@ -527,7 +533,7 @@ export default function Inventory() {
       {activeTab === 1 && <GlobalActivityLog />}
 
       {/* INVENTORY CATEGORIES */}
-      {activeTab === 2 && <InventoryCategoryManager />}
+      {activeTab === 2 && <InventoryCategoryManager inventory={inventory} />}
       </Box>
 
       {/* MODALS */}

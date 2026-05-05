@@ -578,7 +578,8 @@ export default function PatientDashboard() {
     sortedHistory.forEach(r => {
       (r.dispensedProducts || r.prescriptions || []).forEach(rx => {
         if (!rx.name) return;
-        if (!rx.isDrug && !rx.isMedicine) return;
+        const pc = rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail');
+        if (pc !== 'medicine') return;
         const ms = r.date?.seconds ? r.date.seconds * 1000 : 0;
         const dateStr = ms
           ? new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -638,7 +639,8 @@ export default function PatientDashboard() {
         : '—';
       (rec.dispensedProducts || rec.prescriptions || []).forEach(rx => {
         if (!rx.name) return;
-        if (!rx.isDrug && !rx.isMedicine) return;
+        const pc = rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail');
+        if (pc !== 'medicine') return;
         entries.push({
           name: rx.name,
           date: dateStr,
@@ -1649,6 +1651,22 @@ export default function PatientDashboard() {
                                     ))}
                                   </Stack>
                                 )}
+                                {rec.dischargeSummary.supplies?.length > 0 && (
+                                  <Stack spacing={0.25} sx={{ mb: 0.75 }}>
+                                    <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.success, fontSize: '0.7rem' }}>
+                                      Take-Home Supplies
+                                    </Typography>
+                                    {rec.dischargeSummary.supplies.map((sup, i) => (
+                                      <Typography key={i} sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.textPrimary }}>
+                                        <Typography component="span" sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.textPrimary }}>
+                                          {sup.name}
+                                        </Typography>
+                                        {sup.qty ? ` x${sup.qty}` : ''}
+                                        {sup.instructions ? ` — ${sup.instructions}` : ''}
+                                      </Typography>
+                                    ))}
+                                  </Stack>
+                                )}
                                 {rec.dischargeSummary.nextVisit && (
                                   <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.danger, mb: 0.25 }}>
                                     Follow-up: {rec.dischargeSummary.nextVisit}
@@ -1785,17 +1803,19 @@ export default function PatientDashboard() {
                             )}
                             {hasRx && (() => {
                               const allRx = rec.dispensedProducts || rec.prescriptions || [];
-                              const drugs = allRx.filter(rx => rx.isDrug || rx.isMedicine);
-                              const nonDrugs = allRx.filter(rx => !rx.isDrug && !rx.isMedicine);
+                              const resolvePC = (rx) => rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail');
+                              const medicines = allRx.filter(rx => resolvePC(rx) === 'medicine');
+                              const supplies = allRx.filter(rx => resolvePC(rx) === 'medical_supply');
+                              const otherItems = allRx.filter(rx => resolvePC(rx) === 'retail');
                               return (
                                 <>
-                                  {drugs.length > 0 && (
+                                  {medicines.length > 0 && (
                                     <Box sx={{ bgcolor: COLORS.rxBg, py: 1, px: 1.5, borderRadius: 0, border: `1px solid ${COLORS.rxBorder}` }}>
                                       <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.rxText, mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
                                         <MedicationIcon sx={{ fontSize: 13 }}/> Rx
                                       </Typography>
                                       <Stack spacing={0.5}>
-                                        {drugs.map((rx, idx) => (
+                                        {medicines.map((rx, idx) => (
                                           <Box key={idx}>
                                             <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.rxText }}>
                                               {rx.name}{rx.qty ? ` x${rx.qty}` : ''}
@@ -1806,13 +1826,30 @@ export default function PatientDashboard() {
                                       </Stack>
                                     </Box>
                                   )}
-                                  {nonDrugs.length > 0 && (
-                                    <Box sx={{ bgcolor: COLORS.formBg, py: 1, px: 1.5, borderRadius: 0, border: `1px solid ${COLORS.borderLight}` }}>
-                                      <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                        <Inventory2Icon sx={{ fontSize: 13 }}/> Dispensed Products
+                                  {supplies.length > 0 && (
+                                    <Box sx={{ bgcolor: COLORS.kpiGreenBg, py: 1, px: 1.5, borderRadius: 0, border: `1px solid ${COLORS.success}33` }}>
+                                      <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.success, mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                        <Inventory2Icon sx={{ fontSize: 13 }}/> Take-Home Supplies
                                       </Typography>
                                       <Stack spacing={0.5}>
-                                        {nonDrugs.map((rx, idx) => (
+                                        {supplies.map((rx, idx) => (
+                                          <Box key={idx}>
+                                            <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.textPrimary }}>
+                                              {rx.name}{rx.qty ? ` x${rx.qty}` : ''}
+                                            </Typography>
+                                            {rx.instructions && <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', color: COLORS.textMuted }}>{rx.instructions}</Typography>}
+                                          </Box>
+                                        ))}
+                                      </Stack>
+                                    </Box>
+                                  )}
+                                  {otherItems.length > 0 && (
+                                    <Box sx={{ bgcolor: COLORS.formBg, py: 1, px: 1.5, borderRadius: 0, border: `1px solid ${COLORS.borderLight}` }}>
+                                      <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                        <Inventory2Icon sx={{ fontSize: 13 }}/> Other Items
+                                      </Typography>
+                                      <Stack spacing={0.5}>
+                                        {otherItems.map((rx, idx) => (
                                           <Box key={idx}>
                                             <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.textSecondary }}>
                                               {rx.name}{rx.qty ? ` x${rx.qty}` : ''}

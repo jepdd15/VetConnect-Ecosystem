@@ -1664,7 +1664,11 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       .filter(item => !item.isArchived)
       .map(item => {
         const catObj = inventoryCategories.find(c => c.name?.toLowerCase() === item.category?.toLowerCase());
-        return { ...item, isMedicine: catObj ? !!catObj.isMedicine : false };
+        return {
+          ...item,
+          isMedicine: catObj ? !!catObj.isMedicine : false,
+          productClass: catObj?.productClass || (catObj?.isMedicine ? 'medicine' : 'retail'),
+        };
       });
   }, [inventoryList, inventoryCategories]);
 

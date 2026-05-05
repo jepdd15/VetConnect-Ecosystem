@@ -355,7 +355,7 @@ export default function DispensingVerificationDialog({
                       >
                         {item.name}
                       </Typography>
-                      {item.isDrug && (
+                      {(item.productClass || (item.isDrug ? 'medicine' : 'retail')) === 'medicine' && (
                         <Chip label="Rx" size="small" color="warning"
                           sx={{ height: 18, fontSize: '0.6rem', fontWeight: 1000, borderRadius: 0 }} />
                       )}
@@ -477,11 +477,18 @@ export default function DispensingVerificationDialog({
                     <Typography fontWeight="1000" fontSize="1rem">
                       x{item.qty}
                     </Typography>
-                    {isProduct && (
-                      <Typography variant="caption" color="textSecondary" fontWeight="700" display="block">
-                        {item.isDrug ? 'DRUG' : 'PRODUCT'}
-                      </Typography>
-                    )}
+                    {isProduct && (() => {
+                      const pc = item.productClass || (item.isDrug ? 'medicine' : 'retail');
+                      const label = pc === 'medicine' ? 'MEDICINE' : pc === 'medical_supply' ? 'SUPPLY' : 'RETAIL';
+                      const color = pc === 'medicine' ? '#C62828' : pc === 'medical_supply' ? '#757575' : '#9E9E9E';
+                      return (
+                        <Chip
+                          label={label}
+                          size="small"
+                          sx={{ height: 18, fontSize: '0.6rem', fontWeight: 1000, borderRadius: 0, bgcolor: `${color}1A`, color, border: `1px solid ${color}33` }}
+                        />
+                      );
+                    })()}
                     {/* T3.37: Available stock annotation */}
                     {isProduct && invData && (
                       <Typography

@@ -683,7 +683,8 @@ export default function PetHistoryScreen({ route, navigation }) {
     sortedHistory.forEach(r => {
       (r.dispensedProducts || r.prescriptions || []).forEach(rx => {
         if (!rx.name) return;
-        if (!rx.isDrug && !rx.isMedicine) return;
+        const pc = rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail');
+        if (pc !== 'medicine') return;
         const ms = r.date?.seconds ? r.date.seconds * 1000 : 0;
         const dateStr = ms
           ? new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -1004,7 +1005,9 @@ export default function PetHistoryScreen({ route, navigation }) {
     if (!history.length) return [];
     const latest = history[0];
     const products = latest.dispensedProducts || latest.prescriptions || [];
-    return products.filter(rx => rx.isDrug || rx.isMedicine).slice(0, 5);
+    return products.filter(rx =>
+      (rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail')) === 'medicine'
+    ).slice(0, 5);
   }, [history]);
 
   /** Generates the vaccination passport PDF and opens the OS share sheet. */
@@ -1462,10 +1465,21 @@ export default function PetHistoryScreen({ route, navigation }) {
         ).join('')}</ul>`
       : '';
 
+    const dsSupplies = record.dischargeSummary?.supplies || [];
+    const suppliesHtmlFromDischarge = dsSupplies.length > 0
+      ? `<h3>Take-Home Supplies</h3><ul>${dsSupplies.map((sup) =>
+          `<li><b>${esc(sup.name)}</b> x${esc(sup.qty || 1)}${sup.instructions ? `: ${esc(sup.instructions)}` : ''}</li>`
+        ).join('')}</ul>`
+      : '';
+
     let rxHtml = '';
     if (record.prescriptions && record.prescriptions.length > 0 && !dsMeds.length) {
-      const medications = record.prescriptions.filter(rx => rx.isDrug);
-      const nonDrugItems = record.prescriptions.filter(rx => !rx.isDrug);
+      const medications = record.prescriptions.filter(rx =>
+        (rx.productClass || (rx.isDrug ? 'medicine' : 'retail')) === 'medicine'
+      );
+      const nonDrugItems = record.prescriptions.filter(rx =>
+        (rx.productClass || (rx.isDrug ? 'medicine' : 'retail')) !== 'medicine'
+      );
       rxHtml = [
         medications.length > 0
           ? `<h3>Prescribed Medications</h3><ul>${medications.map((rx) =>
@@ -1511,7 +1525,7 @@ export default function PetHistoryScreen({ route, navigation }) {
           ${dsDiagnosis ? `<h3>Diagnosis</h3><p>${esc(dsDiagnosis)}</p>` : ''}
           ${record.patientStatus ? `<p><b>Status:</b> ${esc(record.patientStatus)}</p>` : ''}
           ${hasDischarge && dsInstructions ? `<h3>Going-Home Instructions</h3><p>${esc(dsInstructions).replace(/\n/g, '<br/>')}</p>` : ''}
-          ${rxHtmlFromDischarge || rxHtml}
+          ${hasDischarge ? rxHtmlFromDischarge + suppliesHtmlFromDischarge : rxHtml}
           ${nextVisitStr ? `<h3 style="color: #D32F2F;">Next Follow-Up Due: ${esc(nextVisitStr)}</h3>` : ""}
           <hr style="margin-top: 50px;" />
           <p style="text-align: center; font-size: 12px; color: #888;">This is an electronically generated visit summary and does not require a physical signature.</p>
@@ -1920,10 +1934,14 @@ export default function PetHistoryScreen({ route, navigation }) {
               </View>
             )}
 
-            {item.prescriptions?.filter(rx => rx.isDrug || rx.isMedicine).length > 0 && (
+            {!item.dischargeSummary && item.prescriptions?.filter(rx =>
+              (rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail')) === 'medicine'
+            ).length > 0 && (
               <View style={styles.rxBox}>
                 <Text style={styles.rxTitle}>PRESCRIBED MEDICATIONS</Text>
-                {item.prescriptions.filter(rx => rx.isDrug || rx.isMedicine).map((rx, idx) => (
+                {item.prescriptions.filter(rx =>
+                  (rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail')) === 'medicine'
+                ).map((rx, idx) => (
                   <View key={idx} style={styles.rxItem}>
                     <Text style={styles.rxName}>
                       {rx.name}{rx.qty ? ` x${rx.qty}` : ''}
@@ -1936,10 +1954,16 @@ export default function PetHistoryScreen({ route, navigation }) {
               </View>
             )}
 
-            {item.prescriptions?.filter(rx => !rx.isDrug && !rx.isMedicine).length > 0 && (
+            {!item.dischargeSummary && item.prescriptions?.filter(rx => {
+              const pc = rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail');
+              return pc !== 'medicine';
+            }).length > 0 && (
               <View style={styles.rxBox}>
                 <Text style={styles.rxTitle}>OTHER ITEMS</Text>
-                {item.prescriptions.filter(rx => !rx.isDrug && !rx.isMedicine).map((rx, idx) => (
+                {item.prescriptions.filter(rx => {
+                  const pc = rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail');
+                  return pc !== 'medicine';
+                }).map((rx, idx) => (
                   <View key={idx} style={styles.rxItem}>
                     <Text style={styles.rxName}>
                       {rx.name}{rx.qty ? ` x${rx.qty}` : ''}
@@ -2079,6 +2103,20 @@ export default function PetHistoryScreen({ route, navigation }) {
                           <Text style={styles.dischargeMedName}>{med.name}</Text>
                           <Text style={styles.dischargeMedMeta}>
                             ×{med.qty || 1} — {med.instructions || 'Use as directed'}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {ds.supplies && ds.supplies.length > 0 && (
+                    <View style={styles.dischargeSection}>
+                      <Text style={styles.dischargeSectionLabel}>TAKE-HOME SUPPLIES</Text>
+                      {ds.supplies.map((sup, i) => (
+                        <View key={i} style={styles.dischargeMedRow}>
+                          <Text style={styles.dischargeMedName}>{sup.name}</Text>
+                          <Text style={styles.dischargeMedMeta}>
+                            x{sup.qty || 1}{sup.instructions ? ` — ${sup.instructions}` : ''}
                           </Text>
                         </View>
                       ))}

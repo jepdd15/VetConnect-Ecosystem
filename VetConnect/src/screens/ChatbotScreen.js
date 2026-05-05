@@ -698,8 +698,8 @@ export default function ChatbotScreen({ navigation }) {
 
       {/* Input area (T3.62, T3.67) */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
         {/* Rate limit feedback (T3.67) */}
         {isRateLimited && (

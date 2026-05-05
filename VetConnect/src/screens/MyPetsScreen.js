@@ -25,7 +25,7 @@ import {
   View
 } from "react-native";
 import { auth, db } from "../../firebaseConfig";
-import { COLORS } from '../theme/mobileTokens';
+import { COLORS, FONTS, SHADOW } from '../theme/mobileTokens';
 import { calculateAge } from '../utils/helpers';
 
 export default function MyPetsScreen({ navigation }) {
@@ -222,7 +222,10 @@ export default function MyPetsScreen({ navigation }) {
       healthStatusKey === "Needs Checkup" ? "Needs Initial Checkup" : "Up to Date";
 
     return (
-      <View style={styles.card}>
+      <View style={styles.cardWrapper}>
+        {/* Neubrutalist offset shadow layer — sits behind the card */}
+        <View style={styles.cardShadow} />
+        <View style={styles.card}>
         <View style={styles.cardHeader}>
           <View style={styles.identityBox}>
             <View style={styles.avatarBox}>
@@ -374,6 +377,7 @@ export default function MyPetsScreen({ navigation }) {
             <MaterialIcons name="assessment" size={20} color={COLORS.info} />
             <Text style={styles.chartBtnText}>View Chart</Text>
           </TouchableOpacity>
+        </View>
         </View>
       </View>
     );
@@ -540,39 +544,42 @@ export default function MyPetsScreen({ navigation }) {
         />
       )}
 
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => navigation.navigate("AddPet")}
-      >
-        <MaterialIcons name="add" size={24} color="white" />
-        <Text style={styles.fabText}>Add New Pet</Text>
-      </TouchableOpacity>
+      {/* FAB with neubrutalist shadow */}
+      <View style={styles.fabWrapper}>
+        <View style={styles.fabShadow} />
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={() => navigation.navigate("AddPet")}
+        >
+          <MaterialIcons name="add" size={24} color={COLORS.white} />
+          <Text style={styles.fabText}>Add New Pet</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  // ── Screen shell ────────────────────────────────────────────────
   container: { flex: 1, backgroundColor: COLORS.cream },
 
+  // ── Control bar (search + filters) ──────────────────────────────
   controlBar: {
     backgroundColor: COLORS.white,
     padding: 15,
     paddingTop: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E0E0E0",
-    elevation: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    borderBottomWidth: 2,
+    borderBottomColor: COLORS.border,
   },
+
+  // Search bar — neubrutalist: zero radius, thick espresso border
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F5F5F5",
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#EEEEEE",
+    backgroundColor: COLORS.inputBg,
+    borderRadius: 0,
+    borderWidth: 2,
+    borderColor: COLORS.accent,
     marginBottom: 15,
   },
   searchInput: {
@@ -583,102 +590,134 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     fontWeight: "600",
   },
+
   filterRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
   chipScroll: { flex: 1, marginRight: 10 },
+
+  // Filter chips — zero radius, outlined inactive / brand active
   chip: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: "#F5F5F5",
-    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: COLORS.white,
+    borderRadius: 0,
     marginRight: 8,
-    borderWidth: 1,
-    borderColor: "#EEEEEE",
+    borderWidth: 2,
+    borderColor: COLORS.accent,
   },
   chipActive: {
-    backgroundColor: COLORS.accent,
-    borderColor: COLORS.accent,
-    elevation: 2,
+    backgroundColor: COLORS.sky,
+    borderColor: COLORS.brand,
   },
-  chipText: { color: COLORS.muted, fontWeight: "900", fontSize: 13 },
+  chipText: {
+    color: COLORS.accent,
+    fontWeight: "900",
+    fontSize: 13,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
   chipTextActive: { color: COLORS.white },
   chipDivider: {
-    width: 1,
+    width: 2,
     height: 24,
-    backgroundColor: COLORS.borderLight,
+    backgroundColor: COLORS.border,
     marginHorizontal: 8,
     alignSelf: "center",
   },
+
+  // Sort button — zero radius, outlined
   sortBtn: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: "#EFEBE9",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
+    paddingVertical: 8,
+    backgroundColor: COLORS.white,
+    borderRadius: 0,
+    borderWidth: 2,
+    borderColor: COLORS.accent,
   },
   sortBtnText: {
     color: COLORS.accent,
     fontWeight: "900",
     fontSize: 13,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
     marginLeft: 4,
   },
 
-  card: {
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
-    borderRadius: 24,
+  // ── Pet card — neubrutalist with offset shadow ───────────────────
+  // cardWrapper provides the positioning context for the shadow layer
+  cardWrapper: {
     marginHorizontal: 15,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.05)",
-    elevation: 4,
+    marginBottom: 24,
+  },
+  // Offset shadow sibling — sits behind the card, brand espresso color
+  cardShadow: {
+    ...SHADOW.card,
+    backgroundColor: COLORS.brand,
+  },
+  card: {
+    backgroundColor: COLORS.white,
+    borderRadius: 0,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
     overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
   },
   cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
     padding: 18,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.05)",
+    borderBottomWidth: 2,
+    borderBottomColor: COLORS.borderLight,
   },
   identityBox: { flexDirection: "row", alignItems: "center" },
+
+  // Avatar — intentional circular exception per design spec
   avatarBox: {
     width: 54,
     height: 54,
     borderRadius: 27,
-    backgroundColor: "white",
+    backgroundColor: COLORS.cream,
     alignItems: "center",
     justifyContent: "center",
     marginRight: 15,
     borderWidth: 2,
-    borderColor: COLORS.borderLight,
-    elevation: 2,
+    borderColor: COLORS.brand,
   },
   avatarEmoji: { fontSize: 28 },
-  petName: { fontSize: 24, fontWeight: "900", color: COLORS.brand },
-  petBreed: { fontSize: 14, color: COLORS.textMuted, fontWeight: "600" },
 
-  actionRow: { flexDirection: "row", gap: 10 },
+  petName: {
+    fontSize: 22,
+    fontFamily: FONTS.black,
+    fontWeight: "900",
+    color: COLORS.brand,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  petBreed: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginTop: 2,
+  },
+
+  actionRow: { flexDirection: "row", gap: 8 },
   iconBtn: {
     padding: 10,
-    backgroundColor: "white",
-    borderRadius: 12,
-    elevation: 1,
-    borderWidth: 1,
-    borderColor: "#eee",
+    backgroundColor: COLORS.white,
+    borderRadius: 0,
+    borderWidth: 2,
+    borderColor: COLORS.borderLight,
     overflow: "hidden",
   },
 
+  // Health status banner — left accent bar, colored bg tint
   healthBanner: {
     flexDirection: "row",
     alignItems: "center",
@@ -686,16 +725,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     borderLeftWidth: 5,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.05)",
+    borderBottomColor: COLORS.borderLight,
   },
   healthText: {
     fontSize: 12,
     fontWeight: "900",
     marginLeft: 8,
-    letterSpacing: 0.5,
+    letterSpacing: 1,
     textTransform: "uppercase",
   },
 
+  // Demographics grid
   demoGrid: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -704,20 +744,32 @@ const styles = StyleSheet.create({
   },
   demoItem: { flex: 1 },
   demoLabel: {
-    fontSize: 11,
-    color: COLORS.muted,
+    fontSize: 10,
+    color: COLORS.textMuted,
     fontWeight: "900",
     marginBottom: 4,
-    letterSpacing: 0.5,
+    letterSpacing: 1,
     textTransform: "uppercase",
   },
-  demoValue: { fontSize: 13, color: COLORS.textPrimary, fontWeight: "900" },
+  demoValue: {
+    fontSize: 13,
+    color: COLORS.textPrimary,
+    fontWeight: "900",
+  },
 
+  // Allergy box
   alertBox: { flexDirection: "row", paddingHorizontal: 18, paddingBottom: 18 },
-  alertLabel: { fontSize: 12, color: COLORS.textMuted, fontWeight: "900" },
+  alertLabel: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
   alertValue: { fontSize: 12, color: COLORS.textPrimary, fontWeight: "800" },
   alertRed: { color: COLORS.danger },
 
+  // Microchip badge
   microchipBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -730,8 +782,10 @@ const styles = StyleSheet.create({
     color: COLORS.info,
     fontWeight: "800",
     letterSpacing: 0.5,
+    textTransform: "uppercase",
   },
 
+  // Vaccine status badge — left accent bar, zero radius
   vaccineBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -743,34 +797,57 @@ const styles = StyleSheet.create({
   vaccineBadgeText: {
     fontSize: 11,
     fontWeight: "900",
-    letterSpacing: 0.5,
+    letterSpacing: 1,
     textTransform: "uppercase",
   },
 
-  footerActions: { flexDirection: "row", padding: 18, paddingTop: 0, gap: 10 },
+  // ── Footer action buttons ────────────────────────────────────────
+  footerActions: {
+    flexDirection: "row",
+    padding: 18,
+    paddingTop: 12,
+    gap: 10,
+    borderTopWidth: 2,
+    borderTopColor: COLORS.borderLight,
+  },
   mainBtn: {
     flex: 1,
-    paddingVertical: 16,
-    borderRadius: 16,
+    paddingVertical: 14,
+    borderRadius: 0,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
-    elevation: 2,
     gap: 8,
+    borderWidth: 2,
   },
+
+  // Book Visit — sky blue fill, brand border
   bookBtn: {
     backgroundColor: COLORS.sky,
-    borderWidth: 1,
-    borderColor: "#0288D1",
+    borderColor: COLORS.brand,
   },
-  bookBtnText: { color: COLORS.white, fontWeight: "900", fontSize: 15 },
-  chartBtn: {
-    backgroundColor: "#E3F2FD",
-    borderWidth: 1,
-    borderColor: "#90CAF9",
+  bookBtnText: {
+    color: COLORS.white,
+    fontWeight: "900",
+    fontSize: 14,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
-  chartBtnText: { color: COLORS.info, fontWeight: "900", fontSize: 15 },
 
+  // View Chart — outlined sky blue
+  chartBtn: {
+    backgroundColor: COLORS.white,
+    borderColor: COLORS.sky,
+  },
+  chartBtnText: {
+    color: COLORS.sky,
+    fontWeight: "900",
+    fontSize: 14,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+
+  // ── Empty state ──────────────────────────────────────────────────
   emptyContainer: {
     alignItems: "center",
     marginTop: 80,
@@ -781,6 +858,8 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
     fontSize: 20,
     fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 1,
   },
   emptySub: {
     color: COLORS.textMuted,
@@ -790,22 +869,36 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
 
-  // THE FIX: Stronger Shadow for a true "Floating" feel!
-  fab: {
+  // ── FAB — neubrutalist: zero radius, offset shadow, sky bg ──────
+  fabWrapper: {
     position: "absolute",
     bottom: 30,
     right: 20,
-    backgroundColor: COLORS.accent,
-    paddingVertical: 18,
-    paddingHorizontal: 25,
-    borderRadius: 30,
-    elevation: 8,
-    shadowColor: COLORS.accent,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 5,
+  },
+  fabShadow: {
+    position: "absolute",
+    top: 5,
+    left: 5,
+    right: -5,
+    bottom: -5,
+    backgroundColor: COLORS.brand,
+  },
+  fab: {
+    backgroundColor: COLORS.sky,
+    paddingVertical: 16,
+    paddingHorizontal: 22,
+    borderRadius: 0,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
     flexDirection: "row",
     alignItems: "center",
   },
-  fabText: { color: COLORS.white, fontWeight: "900", fontSize: 16, marginLeft: 8 },
+  fabText: {
+    color: COLORS.white,
+    fontWeight: "900",
+    fontSize: 15,
+    marginLeft: 8,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
 });

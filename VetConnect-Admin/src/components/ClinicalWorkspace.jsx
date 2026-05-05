@@ -500,7 +500,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         staff ? `Staff: ${staff}` : '',
       ].filter(Boolean).join('\n');
     })(),
-    objWeight: '', objTemp: '', objHR: '', objRR: '', objCRT: '', bcs: 5, painScale: 0,
+    objWeight: '', objTemp: '', objHR: '', objRR: '', objCRT: '', bcs: '', painScale: '',
     objectiveNotes: '', objectiveExam: createDefaultExam(),
     // T4.141: assessment replaced with structured diagnoses[] + free-text assessmentNotes
     diagnoses: [], assessmentNotes: '',
@@ -757,8 +757,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 staff ? `Staff: ${staff}` : '',
               ].filter(Boolean).join('\n');
             })(),
-            objWeight: '', objTemp: '', objHR: '', objRR: '', objCRT: '2',
-            bcs: 5, painScale: 0,
+            objWeight: '', objTemp: '', objHR: '', objRR: '', objCRT: '',
+            bcs: '', painScale: '',
             objectiveNotes: '', objectiveExam: createDefaultExam(),
             // T4.141: structured diagnosis fields replace the legacy assessment string
             diagnoses: [], assessmentNotes: '',
@@ -791,9 +791,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
               objTemp: draft.objTemp || '',
               objHR: draft.objHR || '',
               objRR: draft.objRR || '',
-              objCRT: draft.objCRT || '2',
-              bcs: draft.bcs ?? 5,
-              painScale: draft.painScale ?? 0,
+              objCRT: draft.objCRT ?? '',
+              bcs: draft.bcs ?? '',
+              painScale: draft.painScale ?? '',
               objectiveNotes: draft.objectiveNotes || '',
               objectiveExam: draft.objectiveExam || createDefaultExam(),
               // T4.141: dual-read — new fields first, fall back to legacy assessment string
@@ -1082,18 +1082,10 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   const applyTemplate = (type) => {
     switch (type) {
       case 'wnl': {
-        // Populate species-appropriate vitals and reset structured exam to all-normal
-        const isDog = (patient?.petSpecies === 'Canine' || patient?.petSpecies === 'Dog');
         setSoapData(prev => ({
           ...prev,
-          objectiveExam: createDefaultExam(),   // All systems normal, dental 0, hydration normal, MM pink/moist
-          objectiveNotes: '',                   // Clear legacy general notes
-          objTemp: isDog ? '38.5' : '38.6',
-          objHR: isDog ? '100' : '140',
-          objRR: isDog ? '20' : '24',
-          objCRT: '<2',
-          bcs: 5,
-          painScale: 0,
+          objectiveExam: createDefaultExam(),
+          objectiveNotes: '',
         }));
         setIsDirty(true);
         break;
@@ -2249,9 +2241,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       objTemp: d.objTemp || '',
       objHR: d.objHR || '',
       objRR: d.objRR || '',
-      objCRT: d.objCRT || '2',
-      bcs: d.bcs ?? 5,
-      painScale: d.painScale ?? 0,
+      objCRT: d.objCRT ?? '',
+      bcs: d.bcs ?? '',
+      painScale: d.painScale ?? '',
       objectiveNotes: d.objectiveNotes || '',
       objectiveExam: d.objectiveExam || createDefaultExam(),
       // T4.141: dual-read — new fields first, fall back to legacy assessment string
@@ -3397,12 +3389,6 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 />
               </Tooltip>
             )}
-
-            {/* WNL Button */}
-            <Button size="small" variant="text" onClick={() => applyTemplate('wnl')}
-              sx={{ fontSize: '0.65rem', fontWeight: 800, color: COLORS.brand, minWidth: 'auto', px: 1 }}>
-              WNL
-            </Button>
 
             {/* God-View Button */}
             <Tooltip title="God-View (Fullscreen SOAP)">

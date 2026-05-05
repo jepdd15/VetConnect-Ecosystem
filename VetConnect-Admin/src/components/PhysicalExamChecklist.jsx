@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Box, Typography, Button, Stack,
   ToggleButton, ToggleButtonGroup,
   Select, MenuItem, TextField, Collapse,
+  Dialog, DialogTitle, DialogContent, DialogActions,
 } from '@mui/material';
 import { COLORS, FONT, TYPE } from '../theme/designTokens';
 import {
@@ -75,6 +76,8 @@ export default function PhysicalExamChecklist({
   onMarkAllNormal,
   disabled = false,
 }) {
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
   // Defensive fallback: if examData is missing or malformed, use defaults
   const exam = examData || createDefaultExam();
 
@@ -114,11 +117,11 @@ export default function PhysicalExamChecklist({
   return (
     <Box sx={{ overflowY: 'auto', flex: 1, minHeight: 0, pt: 0.5 }}>
 
-      {/* Mark All Normal — top-right anchor */}
+      {/* All Systems Normal — top-right anchor */}
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
         <Button
           size="small"
-          onClick={onMarkAllNormal}
+          onClick={() => setConfirmOpen(true)}
           disabled={disabled}
           sx={{
             borderRadius: 0,
@@ -135,7 +138,7 @@ export default function PhysicalExamChecklist({
             '&.Mui-disabled': { opacity: 0.4 },
           }}
         >
-          Mark All Normal
+          All Systems Normal
         </Button>
       </Box>
 
@@ -266,6 +269,71 @@ export default function PhysicalExamChecklist({
           }}
         />
       </Box>
+
+      <Dialog
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 0,
+            border: `2px solid ${COLORS.accent}`,
+            boxShadow: `8px 8px 0px ${COLORS.accent}`,
+          },
+        }}
+      >
+        <DialogTitle sx={{
+          bgcolor: COLORS.cream,
+          color: COLORS.brand,
+          fontWeight: 900,
+          fontFamily: FONT,
+          fontSize: '0.95rem',
+          textTransform: 'uppercase',
+          letterSpacing: 1,
+          borderBottom: `2px solid ${COLORS.accent}`,
+        }}>
+          Confirm All Systems Normal
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2.5, pb: 2, bgcolor: COLORS.formBg }}>
+          <Typography sx={{ fontSize: '0.85rem', color: COLORS.brand, fontWeight: 600 }}>
+            This will set all body systems to normal. Any existing exam findings will be overwritten.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, bgcolor: COLORS.cream, borderTop: `2px solid ${COLORS.accent}` }}>
+          <Button
+            onClick={() => setConfirmOpen(false)}
+            sx={{
+              fontWeight: 900,
+              color: COLORS.accent,
+              border: `2px solid ${COLORS.accent}`,
+              borderRadius: 0,
+              fontFamily: FONT,
+              px: 2.5,
+              fontSize: '0.75rem',
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={() => { onMarkAllNormal(); setConfirmOpen(false); }}
+            variant="contained"
+            sx={{
+              fontWeight: 900,
+              borderRadius: 0,
+              fontFamily: FONT,
+              px: 3,
+              fontSize: '0.75rem',
+              bgcolor: COLORS.cta,
+              border: `2px solid ${COLORS.ctaHover}`,
+              boxShadow: '4px 4px 0px rgba(216,67,21,0.2)',
+              '&:hover': { bgcolor: COLORS.ctaHover },
+            }}
+          >
+            Apply
+          </Button>
+        </DialogActions>
+      </Dialog>
 
     </Box>
   );

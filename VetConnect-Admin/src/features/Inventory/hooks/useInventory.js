@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, doc, addDoc, updateDoc, deleteDoc, increment, getDocs, writeBatch, serverTimestamp, runTransaction, deleteField } from 'firebase/firestore';
+import { collection, onSnapshot, doc, addDoc, updateDoc, deleteDoc, increment, serverTimestamp, runTransaction, deleteField } from 'firebase/firestore';
 import { db } from '../../../firebaseConfig';
 import { useUser } from '../../../context/UserContext';
 
@@ -279,64 +279,6 @@ export function useInventory() {
     });
   };
 
-  // SCRUB DATABASE
-  const scrubDatabase = async () => {
-    try {
-      const catsSnap = await getDocs(collection(db, "inventory_categories"));
-      const invSnap = await getDocs(collection(db, "inventory"));
-      const batch = writeBatch(db);
-      
-      const catMap = new Map(); // lowercase -> first seen ID
-      let modifications = 0;
-
-      const medicalKeywords = ['medicine', 'vaccine', 'drug', 'pharmaceutical', 'medication'];
-      
-      catsSnap.forEach(doc => {
-        const data = doc.data();
-        const name = data.name || '';
-        const lowerName = name.trim().toLowerCase();
-        const isMedicine = medicalKeywords.includes(lowerName);
-
-        if (!catMap.has(lowerName)) {
-           catMap.set(lowerName, doc.id);
-           
-           // Migration Logic: Fix name and/or add missing isMedicine flag
-           if (name !== lowerName || data.isMedicine === undefined) {
-             batch.update(doc.ref, { 
-               name: lowerName,
-               isMedicine: data.isMedicine ?? isMedicine // Default if missing
-             });
-             modifications++;
-           }
-        } else {
-           // Duplicate! Delete the orphaned duplicate category
-           batch.delete(doc.ref);
-           modifications++;
-        }
-      });
-
-      // Update all items to use lowercase
-      invSnap.forEach(doc => {
-        const cat = doc.data().category || '';
-        const lowerCat = cat.trim().toLowerCase();
-        if (cat !== lowerCat) {
-          batch.update(doc.ref, { category: lowerCat });
-          modifications++;
-        }
-      });
-
-      if (modifications > 0) {
-        await batch.commit();
-        await logEvent("SYSTEM", "Database Scrub", "ADJUSTED", 0, `Scrub normalized ${modifications} record(s): duplicates removed, category casing fixed`);
-        console.log(`Scrubbed ${modifications} duplicate/uppercase records!`);
-      }
-      return modifications;
-    } catch(e) {
-      console.error("Scrub error", e);
-      throw e;
-    }
-  };
-
   // DISPOSE EXPIRED BATCHES — bulk transactional disposal of all expired batch entries.
   // Accepts itemsToDispose array pre-validated by the confirmation modal.
   // Returns a summary array for the success toast.
@@ -394,5 +336,5 @@ export function useInventory() {
     return results;
   };
 
-  return { inventory, loading, createItem, updateItem, deleteItem: archiveItem, permanentlyDeleteItem: deleteItem, restoreItem, adjustStock, scrubDatabase, reserveStock, releaseStock, disposeExpiredBatches };
+  return { inventory, loading, createItem, updateItem, deleteItem: archiveItem, permanentlyDeleteItem: deleteItem, restoreItem, adjustStock, reserveStock, releaseStock, disposeExpiredBatches };
 }

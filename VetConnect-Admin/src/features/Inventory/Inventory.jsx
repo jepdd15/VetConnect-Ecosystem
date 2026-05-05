@@ -1,9 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   Box, Typography, Button, Paper, TextField, InputAdornment,
-  FormControl, Select, MenuItem, Switch, FormControlLabel,
-  Snackbar, Alert, IconButton, Tabs, Tab,
-  Dialog, DialogTitle, DialogContent, DialogActions
+  FormControl, Select, MenuItem,
+  Snackbar, Alert, IconButton, Tabs, Tab
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
 
@@ -17,8 +16,8 @@ import InventoryIcon from '@mui/icons-material/Inventory';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
-import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
+import ArchiveIcon from '@mui/icons-material/Archive';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import PrintIcon from '@mui/icons-material/Print';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
@@ -32,7 +31,6 @@ import { useInventory, findExpiredBatches } from './hooks/useInventory';
 import { printReorderList } from '../../utils/printReorderList';
 import { exportInventoryCSV } from '../../utils/exportInventoryCSV';
 import { printInventoryReport } from '../../utils/printInventoryReport';
-import { useUser } from '../../context/UserContext';
 import InventoryTable from './components/InventoryTable'; 
 import ProductFormModal from './modals/ProductFormModal';
 import StockAdjustModal from './modals/StockAdjustModal';
@@ -75,15 +73,12 @@ const KPICard = ({ title, value, icon, color, bgcolor, border, onClick, active }
 );
 
 export default function Inventory() {
-  const { inventory, loading, createItem, updateItem, deleteItem, restoreItem, adjustStock, scrubDatabase, disposeExpiredBatches } = useInventory();
-  const { isAdmin } = useUser();
+  const { inventory, loading, createItem, updateItem, deleteItem, restoreItem, adjustStock, disposeExpiredBatches } = useInventory();
 
   const [searchText, setSearchText] = useState('');
   const [filterCategory, setFilterCategory] = useState('All');
   const [stockFilter, setStockFilter] = useState(null); // null | 'low' | 'out'
   const [showArchived, setShowArchived] = useState(false);
-  const [openScrubConfirm, setOpenScrubConfirm] = useState(false);
-  
   const [invCategories, setInvCategories] = useState([]);
 
   const [openForm, setOpenForm] = useState(false);
@@ -111,7 +106,14 @@ export default function Inventory() {
   const expiredItems = useMemo(() => findExpiredBatches(inventory), [inventory]);
 
   // Toggle helper for KPI quick-filters
-  const toggleStockFilter = (value) => setStockFilter(prev => prev === value ? null : value);
+  const toggleStockFilter = (value) => {
+    setStockFilter(prev => prev === value ? null : value);
+    setShowArchived(false);
+  };
+  const toggleArchived = () => {
+    setShowArchived(prev => !prev);
+    setStockFilter(null);
+  };
 
   // --- REAL-TIME LISTENER FOR DYNAMIC CATEGORIES ---
   useEffect(() => {
@@ -194,7 +196,8 @@ export default function Inventory() {
       }
       if (isExpiring) expiringSoon++;
     });
-    return { totalItems: activeInventory.length, totalValue, outOfStock, lowStock, expiringSoon };
+    const archivedCount = inventory.filter(item => item.isArchived).length;
+    return { totalItems: activeInventory.length, totalValue, outOfStock, lowStock, expiringSoon, archivedCount };
   }, [inventory]);
 
   // --- MEMOIZED FILTER ENGINE ---
@@ -306,19 +309,6 @@ export default function Inventory() {
     }
   };
 
-  const handleScrubDB = async () => {
-    try {
-      const count = await scrubDatabase();
-      setOpenScrubConfirm(false);
-      const msg = count > 0
-        ? `Database cleaned: ${count} record(s) normalized.`
-        : 'Database is already clean. No changes needed.';
-      showToast(msg, "success");
-    } catch (e) {
-      setOpenScrubConfirm(false);
-      showToast("Scrub failed: " + e.message, "error");
-    }
-  };
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
@@ -365,19 +355,6 @@ export default function Inventory() {
             </Select>
           </FormControl>
 
-          {/* Low Stock toggle */}
-          <FormControlLabel
-            control={<Switch checked={stockFilter === 'low'} onChange={(e) => setStockFilter(e.target.checked ? 'low' : null)} color="error" size="small" />}
-            label={<Typography variant="body2" sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.65rem', textTransform: 'uppercase' }} color={stockFilter === 'low' ? 'error.main' : COLORS.accent}>Low Stock</Typography>}
-            sx={{ ml: 1, flexShrink: 0 }}
-          />
-
-          {/* Archived toggle */}
-          <FormControlLabel
-            control={<Switch checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} color="warning" size="small" />}
-            label={<Typography variant="body2" sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.65rem', textTransform: 'uppercase' }} color={showArchived ? COLORS.warning : COLORS.accent}>Archived</Typography>}
-            sx={{ ml: 1, flexShrink: 0 }}
-          />
 
           <Typography variant="body2" sx={{ fontFamily: FONT, color: COLORS.accent, fontWeight: 900, whiteSpace: 'nowrap', flexShrink: 0, fontStyle: 'italic', ml: 1 }}>
             {filteredItems.length} Records
@@ -494,11 +471,6 @@ export default function Inventory() {
             Add Item
           </Button>
 
-          {isAdmin && (
-          <IconButton size="small" onClick={() => setOpenScrubConfirm(true)} sx={{ color: COLORS.accent, bgcolor: 'transparent', border: `1px solid ${COLORS.accent}33`, ml: 1 }}>
-            <AutoFixHighIcon fontSize="small" />
-          </IconButton>
-          )}
         </Paper>
       </Box>
 
@@ -506,11 +478,12 @@ export default function Inventory() {
       <Box sx={{ flexShrink: 0, mb: 0 }}>
         <Paper sx={{ p: 0, px: 4, bgcolor: COLORS.tableHeaderBg, borderBottom: `2px solid ${COLORS.accent}`, borderRadius: 0, boxShadow: 'none' }}>
           <Grid container spacing={0} sx={{ '& > div:not(:last-child)': { borderRight: `1px solid ${COLORS.accent}1A` } }}>
-             <Grid size={{ xs: true }}><KPICard title="Total Value" value={`₱${kpis.totalValue.toLocaleString(undefined, {minimumFractionDigits: 2})}`} icon={<AttachMoneyIcon />} color={COLORS.success} /></Grid>
              <Grid size={{ xs: true }}><KPICard title="Active SKUs" value={kpis.totalItems} icon={<InventoryIcon />} color={COLORS.medical} /></Grid>
              <Grid size={{ xs: true }}><KPICard title="Expiring Soon" value={kpis.expiringSoon} icon={<EventBusyIcon />} color={COLORS.kpiPurpleText} onClick={() => toggleStockFilter('expiring')} active={stockFilter === 'expiring'} /></Grid>
              <Grid size={{ xs: true }}><KPICard title="Low Stock" value={kpis.lowStock} icon={<WarningAmberIcon />} color={COLORS.warning} onClick={() => toggleStockFilter('low')} active={stockFilter === 'low'} /></Grid>
              <Grid size={{ xs: true }}><KPICard title="Out of Stock" value={kpis.outOfStock} icon={<ErrorOutlineIcon />} color={COLORS.danger} onClick={() => toggleStockFilter('out')} active={stockFilter === 'out'} /></Grid>
+             <Grid size={{ xs: true }}><KPICard title="Archived" value={kpis.archivedCount} icon={<ArchiveIcon />} color={COLORS.warning} onClick={toggleArchived} active={showArchived} /></Grid>
+             <Grid size={{ xs: true }}><KPICard title="Total Value" value={`₱${kpis.totalValue.toLocaleString(undefined, {minimumFractionDigits: 2})}`} icon={<AttachMoneyIcon />} color={COLORS.success} /></Grid>
           </Grid>
         </Paper>
       </Box>
@@ -603,21 +576,6 @@ export default function Inventory() {
         onDispose={handleDispose}
       />
 
-      <Dialog open={openScrubConfirm} onClose={() => setOpenScrubConfirm(false)} maxWidth="xs" fullWidth
-        PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.accent}`, boxShadow: '8px 8px 0px rgba(93,64,55,0.1)' } }}>
-        <DialogTitle sx={{ bgcolor: COLORS.cream, color: COLORS.brand, fontWeight: 900, borderBottom: `2px solid ${COLORS.accent}`, fontFamily: FONT, textTransform: 'uppercase', letterSpacing: 1, fontSize: '1rem' }}>
-          CONFIRM DATABASE SCRUB
-        </DialogTitle>
-        <DialogContent sx={{ p: 3, bgcolor: COLORS.formBg }}>
-          <Typography variant="body2" sx={{ fontFamily: FONT, color: COLORS.accent }}>
-            This will normalize all category names to lowercase, remove duplicate categories, and update all inventory items to use normalized category names.
-          </Typography>
-        </DialogContent>
-        <DialogActions sx={{ p: 2, bgcolor: COLORS.cream, borderTop: `2px solid ${COLORS.accent}` }}>
-          <Button onClick={() => setOpenScrubConfirm(false)} sx={{ fontWeight: 900, color: COLORS.accent, borderRadius: 0, border: `2px solid ${COLORS.accent}`, fontFamily: FONT }}>CANCEL</Button>
-          <Button onClick={handleScrubDB} variant="contained" sx={{ bgcolor: COLORS.cta, fontWeight: 900, borderRadius: 0, border: `2px solid ${COLORS.ctaHover}`, boxShadow: '4px 4px 0px rgba(216,67,21,0.2)', fontFamily: FONT, '&:hover': { bgcolor: COLORS.ctaHover } }}>RUN SCRUB</Button>
-        </DialogActions>
-      </Dialog>
 
       <Snackbar open={toast.open} autoHideDuration={4000} onClose={()=>setToast({...toast, open: false})} anchorOrigin={{vertical: 'bottom', horizontal: 'center'}}>
         <Alert severity={toast.severity} sx={{ width: '100%', fontFamily: FONT, fontWeight: 'bold', boxShadow: 3 }}>{toast.message}</Alert>

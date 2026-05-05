@@ -2184,7 +2184,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             bcs: soapData.bcs,
             painScale: soapData.painScale,
             // T4.141: write structured diagnoses instead of legacy assessment string
-            diagnoses: soapData.diagnoses || [],
+            diagnoses: (soapData.diagnoses || []).map(({ _showNoteField, ...rest }) => rest),
             assessmentNotes: soapData.assessmentNotes || '',
             prognosis: soapData.prognosis,
             plan: soapData.plan,

@@ -160,3 +160,20 @@ export function resolveObjectiveText(record) {
 
   return null;
 }
+
+export function examSummaryLine(exam) {
+  if (!exam) return null;
+  const parts = [];
+  if (exam.dental?.grade != null) parts.push(`Dental: Grade ${exam.dental.grade}`);
+  if (exam.hydration?.status) {
+    const label = HYDRATION_OPTIONS.find(h => h.value === exam.hydration.status)?.label || exam.hydration.status;
+    parts.push(`Hydration: ${label}`);
+  }
+  if (exam.mucousMembranes?.status) {
+    const label = MEMBRANE_OPTIONS.find(m => m.value === exam.mucousMembranes.status)?.label || exam.mucousMembranes.status;
+    parts.push(`MM: ${label}`);
+  }
+  const abnormalCount = (exam.systems || []).filter(s => s.status === 'abnormal').length;
+  if (abnormalCount > 0) parts.push(`${abnormalCount} abnormal finding${abnormalCount > 1 ? 's' : ''}`);
+  return parts.length > 0 ? parts.join(' · ') : null;
+}

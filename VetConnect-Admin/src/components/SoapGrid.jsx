@@ -250,6 +250,61 @@ export default function SoapGrid({
                   );
                 })}
 
+                {/* T4.167: Per-diagnosis clinical notes — hidden by default, "add note" reveals */}
+                {(soapData.diagnoses || []).map((dx, idx) => {
+                  const hasNote = !!dx.notes;
+                  return (
+                    <Box key={`note-${dx.catalogId || idx}`} sx={{ mb: 0.5 }}>
+                      {!hasNote && !dx._showNoteField && (
+                        <Typography
+                          component="span"
+                          onClick={() => {
+                            if (disabled) return;
+                            const updated = [...(soapData.diagnoses || [])];
+                            updated[idx] = { ...updated[idx], _showNoteField: true };
+                            updateSoap('diagnoses', updated);
+                          }}
+                          sx={{
+                            fontFamily: FONT, fontSize: '0.65rem', fontWeight: 700,
+                            color: COLORS.accent, cursor: disabled ? 'default' : 'pointer',
+                            textTransform: 'uppercase', letterSpacing: '0.03em',
+                            '&:hover': { textDecoration: disabled ? 'none' : 'underline' },
+                          }}
+                        >
+                          + add note for {dx.name.length > 25 ? `${dx.name.slice(0, 25)}...` : dx.name}
+                        </Typography>
+                      )}
+                      {(hasNote || dx._showNoteField) && (
+                        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, pl: 1 }}>
+                          <Typography sx={{
+                            fontFamily: FONT, fontSize: '0.65rem', fontWeight: 900,
+                            color: COLORS.textMuted, minWidth: 100, textTransform: 'uppercase',
+                            pt: 0.5,
+                          }}>
+                            {dx.name.length > 20 ? `${dx.name.slice(0, 20)}...` : dx.name}
+                          </Typography>
+                          <TextField
+                            size="small" variant="standard" fullWidth
+                            placeholder="Clinical notes for this diagnosis..."
+                            value={dx.notes || ''}
+                            onChange={(e) => {
+                              if (disabled) return;
+                              const updated = [...(soapData.diagnoses || [])];
+                              updated[idx] = { ...updated[idx], notes: e.target.value };
+                              updateSoap('diagnoses', updated);
+                            }}
+                            InputProps={{
+                              disableUnderline: true,
+                              sx: { fontFamily: FONT, fontSize: '0.8rem', color: COLORS.textMuted, fontStyle: 'italic' },
+                            }}
+                            disabled={disabled}
+                          />
+                        </Box>
+                      )}
+                    </Box>
+                  );
+                })}
+
                 {/* Free-text Assessment Notes — replaces the legacy single TextField */}
                 <TextField
                   multiline fullWidth variant="standard"

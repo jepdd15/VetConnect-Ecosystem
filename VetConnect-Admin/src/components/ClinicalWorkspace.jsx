@@ -1652,10 +1652,26 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         return alert("This clinical record has already been signed off. No duplicate records can be created.");
     }
 
-    // T4.141: Assessment is now a structured diagnoses array — require at least one entry
-    if (!soapData.subjective?.trim() || (soapData.diagnoses || []).length === 0 || !soapData.plan?.trim()) {
-        showToast("Subjective, at least one Diagnosis, and Plan are required for legal medical documentation.", "error");
-        return;
+    // T4.159: Service-aware diagnosis validation.
+    // If ANY booked service requires a diagnosis, enforce the hard block.
+    // If ALL services mark diagnosis as optional, show a soft confirm instead.
+    const anyServiceRequiresDiagnosis = (patient.services || []).some(svc => {
+        const svcDef = (servicesList || []).find(s => s.id === svc.id);
+        return (svcDef?.requiresDiagnosis || 'required') === 'required';
+    });
+
+    if (anyServiceRequiresDiagnosis) {
+        if (!soapData.subjective?.trim() || (soapData.diagnoses || []).length === 0 || !soapData.plan?.trim()) {
+            showToast("Subjective, at least one Diagnosis, and Plan are required for legal medical documentation.", "error");
+            return;
+        }
+    } else {
+        const warnings = [];
+        if (!soapData.subjective?.trim()) warnings.push('No presenting complaint documented.');
+        if ((soapData.diagnoses || []).length === 0) warnings.push('No diagnosis entered.');
+        if (warnings.length > 0) {
+            if (!window.confirm(`${warnings.join(' ')}\n\nThis visit will be recorded without full clinical documentation. Proceed?`)) return;
+        }
     }
 
     // T3.136 Layer 3B: Block sign-off when measurement vitals exceed physical limits.

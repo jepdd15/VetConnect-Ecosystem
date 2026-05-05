@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem,
   Chip, Button, Box, Typography, Paper, InputAdornment, FormControlLabel,
-  Switch, FormControl, InputLabel, Select, Stack, Grid, IconButton, Divider
+  Switch, FormControl, InputLabel, Select, Stack, Grid, IconButton, Divider,
+  ListSubheader, Autocomplete,
 } from '@mui/material';
 
 import { useUser } from '../../../context/UserContext';
@@ -48,6 +49,8 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
     pricingTiers:     initTiers,
     // Discharge policy — controls whether Plan field is required at sign-off
     dischargePolicy: item?.dischargePolicy || 'optional',
+    // Diagnosis requirement — controls whether a diagnosis entry is mandatory at sign-off
+    requiresDiagnosis: item?.requiresDiagnosis || 'required',
     // SC/PWD eligibility — default true for backward compat (all existing services remain discountable)
     isScPwdEligible: item?.isScPwdEligible !== false,
   });
@@ -229,7 +232,7 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
                     label="Target Department"
                     onChange={(e) => setFormData({ ...formData, department: e.target.value })}
                   >
-                    <MenuItem value=""><em>None / General</em></MenuItem>
+                    <MenuItem value="" disabled><em>Select Department</em></MenuItem>
                     {(departments || []).map((dept) => (
                       <MenuItem key={dept.id} value={dept.name}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
@@ -240,14 +243,6 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
                     ))}
                   </Select>
                 </FormControl>
-              </Grid>
-              <Grid size={{ xs: 12, md: 6 }}>
-                <Paper sx={{ p: 2, bgcolor: '#F1F8E9', borderRadius: 0, border: `2px solid ${COLORS.accent}`, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', boxShadow: 'none' }}>
-                  <Typography variant="caption" sx={{ display: 'block', mb: 0.5, fontWeight: 900, color: COLORS.accent, textTransform: 'uppercase', letterSpacing: 1 }}>RESOURCE ROUTING</Typography>
-                  <Typography variant="body2" component="div" sx={{ lineHeight: 1.4, color: COLORS.brand, fontWeight: 'bold' }}>
-                    Mobile bookings route to staff in the <Chip label={formData.department || 'General'} size="small" sx={{ height: 20, fontSize: '0.65rem', fontWeight: 900, borderRadius: 0, border: `1px solid ${COLORS.accent}`, bgcolor: COLORS.chipBlueBg, color: COLORS.medical }} /> department.
-                  </Typography>
-                </Paper>
               </Grid>
             </Grid>
           </Paper>
@@ -344,20 +339,36 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
                   Auto-Deduct Inventory Bundle
                 </Typography>
                 <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 1 }}>
-                  <FormControl size="small" sx={{ ...sxField, minWidth: 240 }}>
-                    <InputLabel>Add Inventory Item</InputLabel>
-                    <Select
-                      value=""
-                      label="Add Inventory Item"
-                      onChange={(e) => addLinkedProduct(e.target.value)}
-                      displayEmpty
-                    >
-                      <MenuItem value=""><em>Select to add…</em></MenuItem>
-                      {availableToLink.map(i => (
-                        <MenuItem key={i.id} value={i.id}>{i.itemName}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+                  <Autocomplete
+                    size="small"
+                    sx={{ minWidth: 280 }}
+                    options={[...availableToLink].sort((a, b) => (a.category || 'Other').localeCompare(b.category || 'Other') || (a.itemName || '').localeCompare(b.itemName || ''))}
+                    getOptionLabel={(option) => option.itemName || ''}
+                    groupBy={(option) => (option.category || 'Other').toUpperCase()}
+                    value={null}
+                    onChange={(_, selected) => {
+                      if (selected) addLinkedProduct(selected.id);
+                    }}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Add Inventory Item"
+                        placeholder="Search to add…"
+                        sx={sxField}
+                      />
+                    )}
+                    renderGroup={(params) => (
+                      <li key={params.key}>
+                        <ListSubheader sx={{ bgcolor: COLORS.cream, color: COLORS.accent, fontWeight: 900, fontSize: '0.65rem', letterSpacing: 1, lineHeight: '28px' }}>
+                          {params.group}
+                        </ListSubheader>
+                        <ul style={{ padding: 0 }}>{params.children}</ul>
+                      </li>
+                    )}
+                    isOptionEqualToValue={(option, value) => option.id === value?.id}
+                    noOptionsText="All items already bundled"
+                    blurOnSelect
+                  />
                 </Box>
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, minHeight: 32 }}>
                   {formData.linkedProducts.length === 0 && (
@@ -383,7 +394,7 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
                 </Typography>
               </Grid>
 
-              <Grid size={{ xs: 12, md: 8 }}>
+              <Grid size={{ xs: 12 }}>
                 <TextField
                   label="SOP / Description / Clinic Instructions"
                   fullWidth multiline rows={3} size="small"
@@ -394,7 +405,7 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
                   inputProps={noExtensionProps}
                 />
               </Grid>
-              <Grid size={{ xs: 12, md: 4 }}>
+              <Grid size={{ xs: 12, md: 6 }}>
                 <FormControl fullWidth size="small" sx={{ ...sxField, mt: 1 }}>
                   <InputLabel>Discharge Policy</InputLabel>
                   <Select
@@ -406,6 +417,29 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
                     <MenuItem value="required">Required</MenuItem>
                   </Select>
                 </FormControl>
+                <Typography variant="caption" color="textSecondary" sx={{ mt: 0.5, display: 'block' }}>
+                  {formData.dischargePolicy === 'required'
+                    ? 'The vet MUST write discharge instructions (Plan field) before signing off this visit.'
+                    : 'The vet can sign off without discharge instructions — Plan field remains optional.'}
+                </Typography>
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <FormControl fullWidth size="small" sx={{ ...sxField, mt: 1 }}>
+                  <InputLabel>Diagnosis Requirement</InputLabel>
+                  <Select
+                    value={formData.requiresDiagnosis || 'required'}
+                    label="Diagnosis Requirement"
+                    onChange={(e) => setFormData({ ...formData, requiresDiagnosis: e.target.value })}
+                  >
+                    <MenuItem value="required">Required</MenuItem>
+                    <MenuItem value="optional">Optional</MenuItem>
+                  </Select>
+                </FormControl>
+                <Typography variant="caption" color="textSecondary" sx={{ mt: 0.5, display: 'block' }}>
+                  {formData.requiresDiagnosis === 'optional'
+                    ? 'The vet can sign off without a formal diagnosis — suitable for non-clinical services.'
+                    : 'The vet MUST enter at least one diagnosis before signing off this visit.'}
+                </Typography>
               </Grid>
               <Grid size={{ xs: 12 }}>
                 <FormControlLabel
@@ -432,26 +466,32 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
             </Grid>
           </Paper>
 
-          {/* ── Section 3: Operational Rules ── */}
-          <Typography variant="overline" sx={{ color: COLORS.accent, fontWeight: 900, display: 'block', mb: 1, letterSpacing: 1 }}>
-            3. OPERATIONAL RULES
-          </Typography>
-          <Paper sx={{ p: 2.5, bgcolor: COLORS.cardBg, borderRadius: 0, border: `2px solid ${COLORS.accent}`, boxShadow: 'none' }}>
-            <Stack direction="row" justifyContent="space-around" flexWrap="wrap" spacing={2}>
-              <FormControlLabel
-                control={<Switch checked={formData.isWalkIn} onChange={(e) => setFormData({ ...formData, isWalkIn: e.target.checked })} sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.accent }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: COLORS.accent } }} />}
-                label={<Typography variant="body2" sx={{ fontWeight: 900, color: COLORS.accent }}>ALLOW WALK-IN</Typography>}
-              />
-              <FormControlLabel
-                control={<Switch checked={formData.isInpatient} onChange={(e) => setFormData({ ...formData, isInpatient: e.target.checked })} sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.accent }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: COLORS.accent } }} />}
-                label={<Typography variant="body2" sx={{ fontWeight: 900, color: COLORS.accent }}>REQ. CONFINEMENT</Typography>}
-              />
-              <FormControlLabel
-                control={<Switch checked={formData.isEmergency} onChange={(e) => setFormData({ ...formData, isEmergency: e.target.checked })} sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.danger }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: COLORS.danger } }} />}
-                label={<Typography variant="body2" sx={{ fontWeight: 900, color: COLORS.danger }}>IS EMERGENCY</Typography>}
-              />
-            </Stack>
-          </Paper>
+          {/*
+            T4.160: Section 3 OPERATIONAL RULES hidden until isWalkIn / isInpatient / isEmergency
+            are wired into booking validation and queue routing. Fields remain in formData state
+            and in the save payload so Firestore values are preserved across edits.
+
+            ── Section 3: Operational Rules ──
+            <Typography variant="overline" sx={{ color: COLORS.accent, fontWeight: 900, display: 'block', mb: 1, letterSpacing: 1 }}>
+              3. OPERATIONAL RULES
+            </Typography>
+            <Paper sx={{ p: 2.5, bgcolor: COLORS.cardBg, borderRadius: 0, border: `2px solid ${COLORS.accent}`, boxShadow: 'none' }}>
+              <Stack direction="row" justifyContent="space-around" flexWrap="wrap" spacing={2}>
+                <FormControlLabel
+                  control={<Switch checked={formData.isWalkIn} onChange={(e) => setFormData({ ...formData, isWalkIn: e.target.checked })} sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.accent }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: COLORS.accent } }} />}
+                  label={<Typography variant="body2" sx={{ fontWeight: 900, color: COLORS.accent }}>ALLOW WALK-IN</Typography>}
+                />
+                <FormControlLabel
+                  control={<Switch checked={formData.isInpatient} onChange={(e) => setFormData({ ...formData, isInpatient: e.target.checked })} sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.accent }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: COLORS.accent } }} />}
+                  label={<Typography variant="body2" sx={{ fontWeight: 900, color: COLORS.accent }}>REQ. CONFINEMENT</Typography>}
+                />
+                <FormControlLabel
+                  control={<Switch checked={formData.isEmergency} onChange={(e) => setFormData({ ...formData, isEmergency: e.target.checked })} sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.danger }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: COLORS.danger } }} />}
+                  label={<Typography variant="body2" sx={{ fontWeight: 900, color: COLORS.danger }}>IS EMERGENCY</Typography>}
+                />
+              </Stack>
+            </Paper>
+          */}
 
         </Box>
       </DialogContent>

@@ -4,7 +4,7 @@ import {
   Snackbar, Alert, InputAdornment, TextField, Switch, FormControlLabel,
   Divider, Stack, Chip, ListItemText, ToggleButton, ToggleButtonGroup,
   Dialog, DialogTitle, DialogContent, DialogActions, IconButton,
-  LinearProgress, CircularProgress, Tooltip,
+  LinearProgress, CircularProgress, Tooltip, Tabs, Tab,
 } from '@mui/material';
 import Grid from '@mui/material/Grid'; // MUI v6 Standard
 
@@ -73,6 +73,7 @@ export default function Settings() {
   const { profile, isAdmin } = useUser();
   const [loading, setLoading] = useState(false);
   const[toast, setToast] = useState({ open: false, message: '', severity: 'success' });
+  const [activeTab, setActiveTab] = useState(0);
 
   // --- STYLING MACROS ---
   const forensicHeaderStyle = {
@@ -1108,9 +1109,36 @@ export default function Settings() {
         </Paper>
       </Box>
 
-      {/* THE FIX: Replaced old Grid syntax and removed the broken wrapper */}
+      {/* TAB NAV — T4.157 */}
+      <Tabs
+        value={activeTab}
+        onChange={(_, v) => setActiveTab(v)}
+        sx={{
+          borderBottom: `2px solid ${COLORS.accent}`,
+          mb: 3,
+          '& .MuiTab-root': {
+            fontFamily: FONT,
+            fontWeight: 900,
+            fontSize: '0.75rem',
+            textTransform: 'uppercase',
+            letterSpacing: 1,
+            minHeight: 48,
+          },
+          '& .Mui-selected': { color: COLORS.sky },
+          '& .MuiTabs-indicator': { backgroundColor: COLORS.sky, height: 3 },
+        }}
+      >
+        <Tab label="Clinic" />
+        <Tab label="Notifications" />
+        <Tab label="AI & Chatbot" />
+        <Tab label="Compliance" />
+        <Tab label="Dashboard" />
+      </Tabs>
+
+      {/* TAB 0 — CLINIC */}
+      {activeTab === 0 && (
       <Grid container spacing={4}>
-        
+
         {/* PILLAR 1: OPERATING HOURS */}
         <Grid size={{ xs: 12, lg: 4 }}>
           <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -1438,6 +1466,13 @@ export default function Settings() {
           </Paper>
         </Grid>
 
+      </Grid>
+      )} {/* end Tab 0 — Clinic */}
+
+      {/* TAB 4 — DASHBOARD */}
+      {activeTab === 4 && (
+      <Grid container spacing={4}>
+
         {/* PILLAR 6: DASHBOARD ALERT THRESHOLDS (T2.331) */}
         <Grid size={{ xs: 12, lg: 6 }}>
           <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -1574,6 +1609,13 @@ export default function Settings() {
             </Box>
           </Paper>
         </Grid>
+
+      </Grid>
+      )} {/* end Tab 4 — Dashboard */}
+
+      {/* TAB 3 — COMPLIANCE */}
+      {activeTab === 3 && (
+      <Grid container spacing={4}>
 
         {/* PILLAR 8: CLIENT SELF-CHECK-IN QR */}
         <Grid size={{ xs: 12, lg: 6 }}>
@@ -2016,6 +2058,13 @@ export default function Settings() {
           </Paper>
         </Grid>
 
+      </Grid>
+      )} {/* end Tab 3 — Compliance */}
+
+      {/* TAB 2 — AI & CHATBOT */}
+      {activeTab === 2 && (
+      <Grid container spacing={4}>
+
         {/* PILLAR 11: AI CLINICAL REASONING */}
         <Grid size={{ xs: 12 }}>
           <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden' }}>
@@ -2413,6 +2462,13 @@ export default function Settings() {
           </Paper>
         </Grid>
 
+      </Grid>
+      )} {/* end Tab 2 — AI & Chatbot */}
+
+      {/* TAB 1 — NOTIFICATIONS */}
+      {activeTab === 1 && (
+      <Grid container spacing={4}>
+
         {/* ── PILLAR 13: NOTIFICATION TEMPLATES ───────────────────────────── */}
         <Grid size={{ xs: 12 }}>
           <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden' }}>
@@ -2805,6 +2861,7 @@ export default function Settings() {
         </Grid>
 
       </Grid>
+      )} {/* end Tab 1 — Notifications */}
 
       {/* ── PILLAR 10 DIALOGS ────────────────────────────────────────────── */}
 

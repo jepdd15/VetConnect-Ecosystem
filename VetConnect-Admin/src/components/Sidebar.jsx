@@ -37,7 +37,7 @@ const menuItems = [
   { name: 'Transactions', icon: <TransactionIcon />, path: '/sales' },
   { name: 'Expenses', icon: <ExpenseIcon />, path: '/expenses' },
   { name: 'Settings', icon: <SettingsIcon />, path: '/settings' },
-  { name: 'Forensic Reports', icon: <AssessmentIcon />, path: '/reports' },
+  // { name: 'Forensic Reports', icon: <AssessmentIcon />, path: '/reports' },
   { name: 'Notification Logs', icon: <NotificationsActiveIcon />, path: '/notification-logs' },
 ];
 

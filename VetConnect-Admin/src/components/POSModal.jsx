@@ -621,53 +621,97 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
   // --- 5. ATOMIC CHECKOUT TRANSACTION ---
 
   /**
-   * Deducts inventory stock for all product items in the given cart array.
-   * Handles FIFO batch deduction and flat-stock deduction.
-   * Returns a `batchSourceMap` keyed by inventoryItem.id for sale record annotation.
-   * All writes are issued against the passed Firestore `transaction` object.
+   * Pure FIFO batch deduction — takes an immutable sorted batch array + qty,
+   * returns { newBatches, batchesUsed, batchSource } without mutating inputs.
+   * Assumes batches are already sorted by expiryDate (ascending) and filtered for unexpired.
    */
-  const deductInventoryInTransaction = async (transaction, cartItems, patientLabel) => {
-    const batchSourceMap = {};
+  const computeFifoBatchDeduction = (sortedBatches, qtyToDeduct) => {
+    const batchesUsed = [];
+    const batchSource = [];
+    let remainingToDeduct = qtyToDeduct;
+
+    const newBatches = sortedBatches.map(b => {
+      if (remainingToDeduct <= 0) return { ...b };
+      let amountTaken = 0;
+      const newQty = b.qty >= remainingToDeduct
+        ? (amountTaken = remainingToDeduct, b.qty - remainingToDeduct)
+        : (amountTaken = b.qty, 0);
+      remainingToDeduct -= amountTaken;
+      if (amountTaken > 0) {
+        batchesUsed.push(`${b.batchNumber} (-${amountTaken})`);
+        batchSource.push({ batchNumber: b.batchNumber, expiryDate: b.expiryDate, qtyFromBatch: amountTaken });
+      }
+      return { ...b, qty: newQty };
+    }).filter(b => b.qty > 0);
+
+    return { newBatches, batchesUsed, batchSource };
+  };
+
+  /**
+   * PHASE 1 — Read all inventory documents for product cart items.
+   * Returns Map<itemId, { ref: DocumentReference, data: DocumentData }>
+   * Zero writes issued. Safe to call before any transaction writes.
+   */
+  const readInventoryDocs = async (transaction, cartItems) => {
+    const inventoryMap = new Map();
     for (const item of cartItems) {
       if (item.type !== 'product') continue;
       const itemRef = doc(db, "inventory", item.id);
       const itemDoc = await transaction.get(itemRef);
       if (!itemDoc.exists()) throw new Error(`Product ${item.name} not found`);
-      const data = itemDoc.data();
-      let currentStock = data.stock || 0;
+      inventoryMap.set(item.id, { ref: itemRef, data: itemDoc.data() });
+    }
+    return inventoryMap;
+  };
+
+  /**
+   * PHASE 2 — Compute all inventory deduction payloads from collected data.
+   * Pure computation — zero Firestore reads or writes.
+   * Returns { updatePayloads, logEntries, batchSourceMap }
+   *
+   * updatePayloads: array of { ref, payload } for transaction.update()
+   * logEntries: array of { data } for transaction.set() on new inventory_logs docs
+   * batchSourceMap: { [itemId]: batchSource[] } for sale doc annotation
+   */
+  const computeInventoryDeductions = (cartItems, inventoryMap, patientLabel) => {
+    const updatePayloads = [];
+    const logEntries = [];
+    const batchSourceMap = {};
+
+    for (const item of cartItems) {
+      if (item.type !== 'product') continue;
+      const entry = inventoryMap.get(item.id);
+      if (!entry) throw new Error(`Product ${item.name} not found in inventory data`);
+      const { ref, data } = entry;
+
+      const currentStock = data.stock || 0;
       if (currentStock < item.qty) throw new Error(`Not enough stock for ${item.name}`);
 
-      let batches = data.batches || [];
       let batchesUsed = [];
       let batchSource = [];
+      let newBatches = null;
 
-      if (batches.length > 0) {
-        batches.sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
-        const today = new Date(); today.setHours(0, 0, 0, 0);
-        batches = batches.filter(b => new Date(b.expiryDate) >= today);
-        const sellableStock = batches.reduce((sum, b) => sum + b.qty, 0);
-        if (sellableStock < item.qty) throw new Error(`Not enough UNEXPIRED stock for ${item.name}.`);
+      if (data.batches && data.batches.length > 0) {
+        const sorted = [...data.batches].sort(
+          (a, b) => new Date(a.expiryDate) - new Date(b.expiryDate)
+        );
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const unexpired = sorted.filter(b => new Date(b.expiryDate) >= today);
+        const sellableStock = unexpired.reduce((sum, b) => sum + b.qty, 0);
+        if (sellableStock < item.qty) {
+          throw new Error(`Not enough UNEXPIRED stock for ${item.name}.`);
+        }
 
-        let remainingToDeduct = item.qty;
-        batches = batches.map(b => {
-          if (remainingToDeduct <= 0) return b;
-          let amountTaken = 0;
-          if (b.qty >= remainingToDeduct) {
-            amountTaken = remainingToDeduct; b.qty -= remainingToDeduct; remainingToDeduct = 0;
-          } else {
-            amountTaken = b.qty; remainingToDeduct -= b.qty; b.qty = 0;
-          }
-          if (amountTaken > 0) {
-            batchesUsed.push(`${b.batchNumber} (-${amountTaken})`);
-            batchSource.push({ batchNumber: b.batchNumber, expiryDate: b.expiryDate, qtyFromBatch: amountTaken });
-          }
-          return b;
-        });
-        batches = batches.filter(b => b.qty > 0);
+        const result = computeFifoBatchDeduction(unexpired, item.qty);
+        newBatches = result.newBatches;
+        batchesUsed = result.batchesUsed;
+        batchSource = result.batchSource;
         batchSourceMap[item.id] = batchSource;
       } else {
         if (data.expiryDate) {
-          const today = new Date(); today.setHours(0, 0, 0, 0);
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
           const expiry = new Date(data.expiryDate + 'T00:00:00');
           if (expiry < today) throw new Error(`${item.name} is EXPIRED and cannot be sold.`);
         }
@@ -679,23 +723,41 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         // T2.16: Unconditionally decrement reserved for all product sales.
         reserved: Math.max(0, (data.reserved || 0) - item.qty),
       };
-      if (data.batches && data.batches.length > 0) updatePayload.batches = batches;
-      transaction.update(itemRef, updatePayload);
+      if (data.batches && data.batches.length > 0) {
+        updatePayload.batches = newBatches;
+      }
+      updatePayloads.push({ ref, payload: updatePayload });
 
-      const logRef = doc(collection(db, "inventory_logs"));
       const externalNote = item.isExternalRx ? `[Ext Rx: ${item.externalVet}]` : '';
-      transaction.set(logRef, {
-        itemId: item.id,
-        itemName: item.name,
-        action: "SOLD",
-        amountChange: -(item.qty),
-        reason: `POS Sale to ${patientLabel}${externalNote ? ` ${externalNote}` : ''} | Old: ${currentStock} → New: ${currentStock - item.qty}${batchesUsed.length ? ` | FIFO: ${batchesUsed.join(', ')}` : ''}`,
-        userId: profile?.id || "pos_system",
-        userName: profile?.fullName || "POS System",
-        timestamp: Timestamp.now(),
+      logEntries.push({
+        data: {
+          itemId: item.id,
+          itemName: item.name,
+          action: "SOLD",
+          amountChange: -(item.qty),
+          reason: `POS Sale to ${patientLabel}${externalNote ? ` ${externalNote}` : ''} | Old: ${currentStock} → New: ${currentStock - item.qty}${batchesUsed.length ? ` | FIFO: ${batchesUsed.join(', ')}` : ''}`,
+          userId: profile?.id || "pos_system",
+          userName: profile?.fullName || "POS System",
+          timestamp: Timestamp.now(),
+        },
       });
     }
-    return batchSourceMap;
+
+    return { updatePayloads, logEntries, batchSourceMap };
+  };
+
+  /**
+   * PHASE 3 — Apply all inventory writes: stock updates + log entries.
+   * Must be called AFTER all transaction reads are complete.
+   */
+  const writeInventoryUpdates = (transaction, updatePayloads, logEntries) => {
+    for (const { ref, payload } of updatePayloads) {
+      transaction.update(ref, payload);
+    }
+    for (const entry of logEntries) {
+      const logRef = doc(collection(db, "inventory_logs"));
+      transaction.set(logRef, entry.data);
+    }
   };
 
   const handleCheckout = async () => {
@@ -712,7 +774,11 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
           ? `${patient.ownerName || 'Walk-In'} (Group Visit)`
           : patient.petName;
 
-        // Read fresh appointment docs upfront for statusHistory
+        // ==============================
+        // PHASE 1 — ALL READS (no writes)
+        // ==============================
+
+        // 1a. Appointment doc reads — needed for statusHistory in Phase 3 writes.
         const groupApptDocs = isGroupBill
           ? await Promise.all(groupAppointments.map(appt => transaction.get(doc(db, "appointments", appt.id))))
           : null;
@@ -720,31 +786,34 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
           ? await transaction.get(doc(db, "appointments", patient.id))
           : null;
 
-        // Deduct inventory stock for all cart products (shared helper)
-        const batchSourceMap = await deductInventoryInTransaction(transaction, cart, patientLabel);
+        // 1b. All inventory reads for product cart items.
+        const inventoryMap = await readInventoryDocs(transaction, cart);
 
-        // --- SALES DOCUMENT ---
-        const saleRef = doc(collection(db, "sales"));
-
-        // T4.153: Atomic receipt number — read + increment inside this transaction to guarantee
-        // no two concurrent checkouts can receive the same sequential number.
+        // 1c. Receipt counter read (T4.153: atomic sequential number — must be inside transaction).
         const counterRef = doc(db, 'counters', 'receipt_sequence');
         const counterSnap = await transaction.get(counterRef);
+
+        // ==============================
+        // PHASE 2 — ALL COMPUTATIONS (no Firestore)
+        // ==============================
+
+        // 2a. Compute inventory deductions from collected data.
+        const { updatePayloads, logEntries, batchSourceMap } =
+          computeInventoryDeductions(cart, inventoryMap, patientLabel);
+
+        // 2b. Compute receipt number from counter snapshot.
         let nextSeq;
         if (!counterSnap.exists()) {
-          // First-ever receipt — bootstrap the counter document.
           nextSeq = 1;
-          transaction.set(counterRef, { value: 1 });
         } else {
           nextSeq = (counterSnap.data().value || 0) + 1;
-          transaction.update(counterRef, { value: nextSeq });
         }
         const today = new Date();
         const dateStr = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
         const receiptNumber = `OR-${dateStr}-${String(nextSeq).padStart(4, '0')}`;
         checkoutReceiptNumber = receiptNumber;
 
-        // T4.149: Compute custom discount audit fields (captured from financials at checkout time).
+        // 2c. T4.149: Compute custom discount audit fields (captured from financials at checkout time).
         const customDiscountAuditFields = {
           customDiscountTotal: applyScPwd ? 0 : parseFloat(financials.itemDiscounts) + parseFloat(financials.billDiscount),
           itemDiscountsTotal: applyScPwd ? 0 : parseFloat(financials.itemDiscounts),
@@ -768,7 +837,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             : null,
         };
 
-        // T4.150: Cash audit fields — aggregate across all Cash tenders for backward compat.
+        // 2d. T4.150: Cash audit fields — aggregate across all Cash tenders for backward compat.
         const cashTenders = paymentTenders.filter(t => t.method === 'Cash' && t.amountTendered !== '');
         const totalCashTendered = cashTenders.reduce((s, t) => s + (parseFloat(t.amountTendered) || 0), 0);
         const totalCashChange = cashTenders.reduce((s, t) => s + getChangeDue(t), 0);
@@ -777,9 +846,13 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
           changeDue: cashTenders.length > 0 ? totalCashChange : null,
         };
 
+        // 2e. Assemble sale doc payload and appointment update payloads.
+        const saleRef = doc(collection(db, "sales"));
+        let salePayload;
+        let appointmentUpdateFn; // deferred write — called in Phase 3
+
         if (isGroupBill) {
           // GROUP MODE: Build per-pet breakdown for the sale document.
-          // Each appointment contributes its own items and subtotal.
           const perPetBreakdown = groupAppointments.map(appt => {
             const apptItems = cart.filter(ci => ci._sourceAppointmentId === appt.id);
             const apptSubtotal = apptItems.reduce((sum, ci) => sum + ci.price * ci.qty, 0);
@@ -796,7 +869,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             };
           });
 
-          transaction.set(saleRef, {
+          salePayload = {
             receiptNumber,
             checkoutCorrelationId,
             visitGroupId: patient.visitGroupId,
@@ -836,37 +909,38 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             ...customDiscountAuditFields,
             // T4.151: Tag post-close sales for audit visibility.
             ...(isDayClosed ? { postClose: true, dayClosedAt: closingData?.closedAt || null } : {}),
-          });
+          };
 
-          // Update ALL appointment docs in the group to 'completed'.
-          // Each appointment gets its own proportional share of the balance.
-          const breakdown = perPetBreakdown;
-          for (let i = 0; i < groupAppointments.length; i++) {
-            const appt = groupAppointments[i];
-            const freshApptData = groupApptDocs[i].data();
-            const apptBreakdown = breakdown.find(b => b.appointmentId === appt.id);
-            const apptRef = doc(db, "appointments", appt.id);
-            transaction.update(apptRef, {
-              checkoutCorrelationId,
-              status: 'completed',
-              statusHistory: [...(freshApptData.statusHistory || []), freshApptData.status || 'billing'],
-              timeCompleted: Timestamp.now(),
-              balanceRemaining: apptBreakdown
-                ? parseFloat(((apptBreakdown.subtotal / parseFloat(financials.total || 1)) * parseFloat(financials.balanceDue)).toFixed(2))
-                : 0,
-              clinicalPulse: arrayUnion({
-                eventId: makePulseEventId('checkout'),
-                type: 'CHECKOUT_COMPLETED',
-                timestamp: Timestamp.now(),
-                staffId: profile?.id || 'pos_system',
-                staffName: profile?.fullName || 'POS Cashier',
-                note: `Group checkout: ₱${apptBreakdown?.subtotal?.toFixed(2) || '0.00'} (subtotal) via ${paymentTenders.length > 1 ? 'split (' + paymentTenders.map(t => t.method).join('+') + ')' : primaryPaymentMethod}`,
-              }),
-            });
-          }
+          appointmentUpdateFn = (transaction) => {
+            for (let i = 0; i < groupAppointments.length; i++) {
+              const appt = groupAppointments[i];
+              const freshApptData = groupApptDocs[i].data();
+              const apptBreakdown = perPetBreakdown.find(b => b.appointmentId === appt.id);
+              const apptRef = doc(db, "appointments", appt.id);
+              transaction.update(apptRef, {
+                checkoutCorrelationId,
+                status: 'completed',
+                statusHistory: [...(freshApptData.statusHistory || []), freshApptData.status || 'billing'],
+                timeCompleted: Timestamp.now(),
+                balanceRemaining: apptBreakdown
+                  ? parseFloat(((apptBreakdown.subtotal / parseFloat(financials.total || 1)) * parseFloat(financials.balanceDue)).toFixed(2))
+                  : 0,
+                clinicalPulse: arrayUnion({
+                  eventId: makePulseEventId('checkout'),
+                  type: 'CHECKOUT_COMPLETED',
+                  timestamp: Timestamp.now(),
+                  staffId: profile?.id || 'pos_system',
+                  staffName: profile?.fullName || 'POS Cashier',
+                  note: `Group checkout: ₱${apptBreakdown?.subtotal?.toFixed(2) || '0.00'} (subtotal) via ${paymentTenders.length > 1 ? 'split (' + paymentTenders.map(t => t.method).join('+') + ')' : primaryPaymentMethod}`,
+                }),
+              });
+            }
+          };
         } else {
           // INDIVIDUAL MODE: existing behavior unchanged.
-          transaction.set(saleRef, {
+          const freshApptData = individualApptDoc.data();
+
+          salePayload = {
             receiptNumber,
             checkoutCorrelationId,
             appointmentId: patient.id,
@@ -904,26 +978,47 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             ...customDiscountAuditFields,
             // T4.151: Tag post-close sales for audit visibility.
             ...(isDayClosed ? { postClose: true, dayClosedAt: closingData?.closedAt || null } : {}),
-          });
+          };
 
-          const apptRef = doc(db, "appointments", patient.id);
-          const freshApptData = individualApptDoc.data();
-          transaction.update(apptRef, {
-            checkoutCorrelationId,
-            status: 'completed',
-            statusHistory: [...(freshApptData.statusHistory || []), freshApptData.status || 'billing'],
-            timeCompleted: Timestamp.now(),
-            balanceRemaining: parseFloat(financials.balanceDue),
-            clinicalPulse: arrayUnion({
-              eventId: makePulseEventId('checkout'),
-              type: 'CHECKOUT_COMPLETED',
-              timestamp: Timestamp.now(),
-              staffId: profile?.id || 'pos_system',
-              staffName: profile?.fullName || 'POS Cashier',
-              note: `Checkout: ₱${financials.total} via ${paymentTenders.length > 1 ? 'split (' + paymentTenders.map(t => t.method).join('+') + ')' : primaryPaymentMethod}`,
-            }),
-          });
+          appointmentUpdateFn = (transaction) => {
+            const apptRef = doc(db, "appointments", patient.id);
+            transaction.update(apptRef, {
+              checkoutCorrelationId,
+              status: 'completed',
+              statusHistory: [...(freshApptData.statusHistory || []), freshApptData.status || 'billing'],
+              timeCompleted: Timestamp.now(),
+              balanceRemaining: parseFloat(financials.balanceDue),
+              clinicalPulse: arrayUnion({
+                eventId: makePulseEventId('checkout'),
+                type: 'CHECKOUT_COMPLETED',
+                timestamp: Timestamp.now(),
+                staffId: profile?.id || 'pos_system',
+                staffName: profile?.fullName || 'POS Cashier',
+                note: `Checkout: ₱${financials.total} via ${paymentTenders.length > 1 ? 'split (' + paymentTenders.map(t => t.method).join('+') + ')' : primaryPaymentMethod}`,
+              }),
+            });
+          };
         }
+
+        // ==============================
+        // PHASE 3 — ALL WRITES
+        // ==============================
+
+        // 3a. Inventory stock deductions + audit logs.
+        writeInventoryUpdates(transaction, updatePayloads, logEntries);
+
+        // 3b. Receipt counter write (T4.153: first-ever receipt bootstraps the counter doc).
+        if (!counterSnap.exists()) {
+          transaction.set(counterRef, { value: 1 });
+        } else {
+          transaction.update(counterRef, { value: nextSeq });
+        }
+
+        // 3c. Sale document.
+        transaction.set(saleRef, salePayload);
+
+        // 3d. Appointment status updates (completed + clinicalPulse).
+        appointmentUpdateFn(transaction);
 
         // T2.101: outstandingBalance is now computed from sales (sum of balanceRemaining),
         // not a Firestore counter. This block intentionally removed.

@@ -1739,6 +1739,24 @@ export default function PetHistoryScreen({ route, navigation }) {
                         </View>
                       )}
                     </View>
+                    {/* serviceAttribution: which vet(s) performed each service */}
+                    {item.serviceAttribution?.length > 0 && (() => {
+                      const attrs = item.serviceAttribution.filter(a => a.staffName);
+                      if (attrs.length === 0) return null;
+                      const uniqueNames = [...new Set(attrs.map(a => a.staffName))];
+                      if (uniqueNames.length === 1) {
+                        return (
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: COLORS.textMuted, fontStyle: 'italic', marginTop: 2 }}>
+                            Performed by: {uniqueNames[0]}
+                          </Text>
+                        );
+                      }
+                      return attrs.map((a, ai) => (
+                        <Text key={ai} style={{ fontSize: 10, fontWeight: '700', color: COLORS.textMuted, fontStyle: 'italic', marginTop: ai === 0 ? 2 : 1 }}>
+                          by {a.staffName}
+                        </Text>
+                      ));
+                    })()}
                   </View>
                   <View style={styles.vetBadge}>
                     <MaterialIcons name="person" size={14} color={COLORS.accent} />

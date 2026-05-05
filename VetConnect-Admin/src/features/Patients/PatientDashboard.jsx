@@ -1400,6 +1400,24 @@ export default function PatientDashboard() {
                         </Typography>
                       </Box>
                     ))}
+                    {/* serviceAttribution: which vet(s) performed each service */}
+                    {rec.serviceAttribution?.length > 0 && (() => {
+                      const attrs = rec.serviceAttribution.filter(a => a.staffName);
+                      if (attrs.length === 0) return null;
+                      const uniqueNames = [...new Set(attrs.map(a => a.staffName))];
+                      if (uniqueNames.length === 1) {
+                        return (
+                          <Typography sx={{ fontFamily: FONT, fontSize: '0.55rem', fontWeight: 700, color: COLORS.textMuted, fontStyle: 'italic', whiteSpace: 'nowrap' }}>
+                            Performed by: {uniqueNames[0]}
+                          </Typography>
+                        );
+                      }
+                      return attrs.map((a, ai) => (
+                        <Typography key={ai} sx={{ fontFamily: FONT, fontSize: '0.55rem', fontWeight: 700, color: COLORS.textMuted, fontStyle: 'italic', whiteSpace: 'nowrap' }}>
+                          by {a.staffName}
+                        </Typography>
+                      ));
+                    })()}
                     <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.textPrimary, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{rec.diagnoses?.[0]?.name || rec.diagnosis || 'Clinical Visit'}</Typography>
                     {/* T2.457: Case-day badge for multi-day cases */}
                     {caseDayMap[rec.id] && (

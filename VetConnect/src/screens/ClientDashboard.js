@@ -33,6 +33,7 @@ import { safeDate, getLocalDateStr } from "../utils/helpers";
 import { COLORS, FONTS } from "../theme/mobileTokens";
 import { useConsentGate } from "../hooks/useConsentGate";
 import { useNetwork } from "../context/NetworkContext";
+import { useClientStats } from "../hooks/useClientStats";
 
 // --- PUSH NOTIFICATION IMPORTS ---
 import Constants from "expo-constants";
@@ -51,6 +52,32 @@ Notifications.setNotificationHandler({
   }),
 });
 
+// ─── KPI CARD ──────────────────────────────────────────────────────────────────
+// Neubrutalist stat card: solid offset shadow, thick border, zero borderRadius.
+// accent: 'danger' | 'success' | 'warning' | undefined (default = brand espresso)
+function KPICard({ label, value, subtitle, accent, small, wide }) {
+  const accentColor = accent === 'danger'  ? COLORS.danger
+    : accent === 'success' ? COLORS.success
+    : accent === 'warning' ? COLORS.warning
+    : COLORS.brand;
+
+  return (
+    <View style={[styles.kpiWrapper, wide && styles.kpiWrapperWide]}>
+      <View style={[styles.kpiShadow, { backgroundColor: accentColor }]} />
+      <View style={styles.kpiCard}>
+        <Text style={[
+          styles.kpiValue,
+          small && styles.kpiValueSmall,
+          accent && { color: accentColor },
+        ]}>
+          {value}
+        </Text>
+        <Text style={styles.kpiLabel}>{label}</Text>
+        {subtitle ? <Text style={styles.kpiSubtitle}>{subtitle}</Text> : null}
+      </View>
+    </View>
+  );
+}
 
 const ClientDashboard = ({ navigation }) => {
   const [activeAppointments, setActiveAppointments] = useState([]);
@@ -64,6 +91,12 @@ const ClientDashboard = ({ navigation }) => {
   // T4.147: Computed outstanding balance from completed appointments.
   // Replaces the dead userProfile.outstandingBalance counter (T2.101 stopped updating it).
   const [computedBalance, setComputedBalance] = useState(0);
+
+  // T4.156: Stats data — all-status appointments, raw pets, records by petId, sales.
+  const [allAppointments, setAllAppointments] = useState([]);
+  const [userPets, setUserPets] = useState([]);
+  const [petRecords, setPetRecords] = useState({}); // { [petId]: [...records] }
+  const [salesData, setSalesData] = useState([]);
 
   // --- CONSENT GATE STATE ---
   // consentCompleted prevents re-triggering the gate after the user returns
@@ -80,6 +113,15 @@ const ClientDashboard = ({ navigation }) => {
     activeDpaPolicy,
     activeWaiverPolicy,
   } = useConsentGate(userId);
+
+  // T4.156: Derive all stats from pre-fetched data — zero Firestore calls inside.
+  const { visitStats, petOverview, financialStats, monthlyVisitData } = useClientStats({
+    allAppointments,
+    userPets,
+    petRecords,
+    salesData,
+    vaccineAlerts,
+  });
 
   // PULSE ANIMATION FOR ALERTS
   useEffect(() => {
@@ -284,6 +326,61 @@ const ClientDashboard = ({ navigation }) => {
   }, []);
 
   // ======================================================================
+  // 1.7 ALL-STATUS APPOINTMENTS (T4.156 stats — lifetime visit counts)
+  // ======================================================================
+  useEffect(() => {
+    if (!auth.currentUser) return;
+    const q = query(
+      collection(db, 'appointments'),
+      where('ownerId', '==', auth.currentUser.uid),
+      orderBy('createdAt', 'desc'),
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      setAllAppointments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, (err) => {
+      console.warn('[ClientDashboard] All-appointments listener error:', err.message);
+    });
+    return () => unsub();
+  }, []);
+
+  // ======================================================================
+  // 1.8 SALES DATA — one-shot fetch for spending stats (T4.156)
+  // Uses the chunked 'in' pattern because Firestore limits 'in' to 10 values.
+  // ======================================================================
+  const completedIds = useMemo(
+    () => allAppointments.filter(a => a.status === 'completed').map(a => a.id),
+    [allAppointments]
+  );
+
+  useEffect(() => {
+    if (!auth.currentUser || completedIds.length === 0) { setSalesData([]); return; }
+    let cancelled = false;
+
+    const fetchSales = async () => {
+      const chunks = [];
+      for (let i = 0; i < completedIds.length; i += 10) {
+        chunks.push(completedIds.slice(i, i + 10));
+      }
+
+      try {
+        const results = [];
+        for (const chunk of chunks) {
+          const snap = await getDocs(
+            query(collection(db, 'sales'), where('appointmentId', 'in', chunk)),
+          );
+          snap.forEach(d => results.push({ id: d.id, ...d.data() }));
+        }
+        if (!cancelled) setSalesData(results);
+      } catch (err) {
+        console.warn('[ClientDashboard] Sales fetch error:', err.message);
+      }
+    };
+
+    fetchSales();
+    return () => { cancelled = true; };
+  }, [completedIds]);
+
+  // ======================================================================
   // 2. FETCH ACTIVE APPOINTMENTS (The Live Feed)
   // ======================================================================
   useEffect(() => {
@@ -442,12 +539,21 @@ const ClientDashboard = ({ navigation }) => {
       const thirtyDaysFromNow = new Date(now);
       thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
 
+      // T4.156: expose raw pets array for stats hook (piggyback on this listener)
+      const petsArr = petsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      // T4.156: collect medical records per pet for weight trend computation
+      const recordsByPet = {};
+
       for (const petDoc of petsSnap.docs) {
         const pet = { id: petDoc.id, ...petDoc.data() };
         try {
           const medSnap = await getDocs(
             query(collection(db, 'medical_records'), where('petId', '==', pet.id)),
           );
+
+          // T4.156: store raw records for stats
+          recordsByPet[pet.id] = medSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
           const dueDates = [];
           medSnap.docs.forEach((mDoc) => {
@@ -499,7 +605,12 @@ const ClientDashboard = ({ navigation }) => {
         }
       }
 
-      if (mounted) setVaccineAlerts(alerts);
+      if (mounted) {
+        setVaccineAlerts(alerts);
+        // T4.156: update stats inputs from the same fetch
+        setUserPets(petsArr);
+        setPetRecords(recordsByPet);
+      }
       },
       (error) => {
         console.warn("[ClientDashboard] Vaccine alerts listener error:", error.message);
@@ -976,6 +1087,122 @@ const ClientDashboard = ({ navigation }) => {
           </Pressable>
         </View>
       </View>
+
+      {/* ── STATS SECTION (T4.156) — rendered after data loads ─────────── */}
+      {!loading && allAppointments.length > 0 && (
+        <View style={styles.statsSection}>
+          <Text style={styles.statsSectionHeader}>YOUR STATS</Text>
+
+          {/* ── 2-COLUMN KPI GRID ─────────────────────────────────────── */}
+          <View style={styles.statsGrid}>
+            <KPICard label="TOTAL VISITS"  value={visitStats.totalVisits} />
+            <KPICard label="THIS YEAR"     value={visitStats.visitsThisYear} />
+            <KPICard label="LAST VISIT"    value={visitStats.lastVisitRelative} small />
+            <KPICard
+              label="NEXT VISIT"
+              value={visitStats.nextUpcomingCountdown ?? 'None scheduled'}
+              small
+            />
+            {visitStats.noShowCount > 0 && (
+              <KPICard label="NO-SHOWS" value={visitStats.noShowCount} accent="danger" />
+            )}
+            {visitStats.avgFrequency != null && (
+              <KPICard label="FREQUENCY" value={visitStats.avgFrequency} small />
+            )}
+            <KPICard
+              label="MY PETS"
+              value={petOverview.petCount}
+              subtitle={petOverview.petBreakdown || undefined}
+            />
+            {petOverview.vaccinationCompliance != null && (
+              <KPICard
+                label="VACCINES"
+                value={`${petOverview.vaccinationCompliance.pct}%`}
+                subtitle={`${petOverview.vaccinationCompliance.compliant}/${petOverview.vaccinationCompliance.total} up to date`}
+                accent={
+                  petOverview.vaccinationCompliance.pct >= 75 ? 'success'
+                  : petOverview.vaccinationCompliance.pct >= 50 ? 'warning'
+                  : 'danger'
+                }
+              />
+            )}
+            {financialStats.totalSpent > 0 && (
+              <KPICard
+                label="TOTAL SPENT"
+                value={`P${financialStats.totalSpent.toLocaleString()}`}
+                subtitle={`P${financialStats.avgPerVisit.toLocaleString()}/visit avg`}
+                wide
+              />
+            )}
+          </View>
+
+          {/* ── MINI BAR CHART: Visits per month, last 6 months ─────── */}
+          <View style={styles.chartContainer}>
+            <View style={styles.chartShadow} />
+            <View style={styles.chartBox}>
+              <Text style={styles.chartTitle}>VISITS PER MONTH</Text>
+              <View style={styles.chartBars}>
+                {monthlyVisitData.map(m => (
+                  <View key={m.key} style={styles.chartBarCol}>
+                    <View style={styles.chartBarTrack}>
+                      <View style={[styles.chartBarFill, { height: `${Math.max(m.pct, 4)}%` }]} />
+                    </View>
+                    <Text style={styles.chartBarLabel}>{m.label}</Text>
+                    {m.count > 0 && (
+                      <Text style={styles.chartBarCount}>{m.count}</Text>
+                    )}
+                  </View>
+                ))}
+              </View>
+            </View>
+          </View>
+
+          {/* ── WEIGHT TRENDS ─────────────────────────────────────────── */}
+          {petOverview.weightTrends.length > 0 && (
+            <View style={styles.trendsContainer}>
+              <Text style={styles.trendsTitle}>WEIGHT TRENDS</Text>
+              {petOverview.weightTrends.map(wt => (
+                <View key={wt.petName} style={styles.trendRow}>
+                  <Text style={styles.trendPetName}>{wt.petName}</Text>
+                  <Text style={styles.trendWeight}>{wt.weight} kg</Text>
+                  {wt.delta !== null && (
+                    <Text style={[
+                      styles.trendDelta,
+                      {
+                        color: wt.delta > 0 ? COLORS.success
+                          : wt.delta < 0 ? COLORS.danger
+                          : COLORS.textMuted,
+                      },
+                    ]}>
+                      {wt.delta > 0 ? `+${wt.delta.toFixed(1)}` : wt.delta.toFixed(1)} kg
+                    </Text>
+                  )}
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* ── URGENT VACCINE ALERT ─────────────────────────────────── */}
+          {petOverview.urgentAlert != null && (
+            <View style={styles.urgentAlertRow}>
+              <MaterialIcons name="warning" size={14} color={COLORS.danger} />
+              <Text style={styles.urgentAlertText}>{petOverview.urgentAlert}</Text>
+            </View>
+          )}
+
+          {/* ── AGE MILESTONES ────────────────────────────────────────── */}
+          {petOverview.ageMilestones.length > 0 && (
+            <View style={styles.milestoneContainer}>
+              {petOverview.ageMilestones.map(ms => (
+                <View key={ms.petName} style={styles.milestoneRow}>
+                  <MaterialIcons name="cake" size={14} color={COLORS.sky} />
+                  <Text style={styles.milestoneText}>{ms.message}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
     </ScrollView>
   );
 };
@@ -1192,7 +1419,6 @@ const styles = StyleSheet.create({
 
   // EMPTY STATE
   emptyStateContainer: {
-    marginBottom: 25,
     paddingVertical: 20,
     alignItems: 'center',
     marginBottom: 6,
@@ -1268,6 +1494,217 @@ const styles = StyleSheet.create({
     marginTop: 6,
     textAlign: 'center',
     paddingHorizontal: 40,
+  },
+
+  // ── STATS SECTION (T4.156) ────────────────────────────────────────────────
+  statsSection: {
+    marginTop: 10,
+    marginBottom: 30,
+  },
+  statsSectionHeader: {
+    fontFamily: FONTS.black,
+    fontSize: 13,
+    color: COLORS.accentLight,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+    marginBottom: 16,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+
+  // KPI CARD
+  kpiWrapper: {
+    width: '48%',
+    marginBottom: 14,
+    position: 'relative',
+  },
+  kpiWrapperWide: {
+    width: '100%',
+  },
+  kpiShadow: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    right: -4,
+    bottom: -4,
+    backgroundColor: COLORS.brand,
+  },
+  kpiCard: {
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    borderRadius: 0,
+    padding: 14,
+    minHeight: 80,
+    justifyContent: 'center',
+  },
+  kpiValue: {
+    fontFamily: FONTS.black,
+    fontSize: 28,
+    color: COLORS.brand,
+    lineHeight: 30,
+  },
+  kpiValueSmall: {
+    fontSize: 16,
+    lineHeight: 20,
+  },
+  kpiLabel: {
+    fontFamily: FONTS.bold,
+    fontSize: 11,
+    color: COLORS.accentLight,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginTop: 4,
+  },
+  kpiSubtitle: {
+    fontFamily: FONTS.regular,
+    fontSize: 11,
+    color: COLORS.textMuted,
+    marginTop: 2,
+  },
+
+  // MINI BAR CHART
+  chartContainer: {
+    position: 'relative',
+    marginBottom: 20,
+  },
+  chartShadow: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    right: -4,
+    bottom: -4,
+    backgroundColor: COLORS.brand,
+  },
+  chartBox: {
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    borderRadius: 0,
+    padding: 14,
+  },
+  chartTitle: {
+    fontFamily: FONTS.bold,
+    fontSize: 11,
+    color: COLORS.accentLight,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 12,
+  },
+  chartBars: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    height: 80,
+  },
+  chartBarCol: {
+    flex: 1,
+    alignItems: 'center',
+    marginHorizontal: 3,
+  },
+  chartBarTrack: {
+    width: '100%',
+    height: 60,
+    justifyContent: 'flex-end',
+  },
+  chartBarFill: {
+    width: '100%',
+    backgroundColor: COLORS.sky,
+    borderWidth: 1,
+    borderColor: COLORS.brand,
+    borderRadius: 0,
+    minHeight: 3,
+  },
+  chartBarLabel: {
+    fontFamily: FONTS.bold,
+    fontSize: 10,
+    color: COLORS.accentLight,
+    textTransform: 'uppercase',
+    marginTop: 4,
+  },
+  chartBarCount: {
+    fontFamily: FONTS.black,
+    fontSize: 10,
+    color: COLORS.brand,
+    position: 'absolute',
+    top: -2,
+  },
+
+  // WEIGHT TRENDS
+  trendsContainer: {
+    marginBottom: 16,
+  },
+  trendsTitle: {
+    fontFamily: FONTS.bold,
+    fontSize: 11,
+    color: COLORS.accentLight,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 8,
+  },
+  trendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+  },
+  trendPetName: {
+    fontFamily: FONTS.bold,
+    fontSize: 13,
+    color: COLORS.brand,
+    flex: 1,
+  },
+  trendWeight: {
+    fontFamily: FONTS.black,
+    fontSize: 14,
+    color: COLORS.brand,
+    marginRight: 8,
+  },
+  trendDelta: {
+    fontFamily: FONTS.bold,
+    fontSize: 12,
+  },
+
+  // URGENT VACCINE ALERT
+  urgentAlertRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    backgroundColor: COLORS.cream,
+    borderWidth: 1,
+    borderColor: COLORS.danger,
+    borderRadius: 0,
+  },
+  urgentAlertText: {
+    fontFamily: FONTS.bold,
+    fontSize: 12,
+    color: COLORS.danger,
+    flex: 1,
+  },
+
+  // AGE MILESTONES
+  milestoneContainer: {
+    marginBottom: 12,
+  },
+  milestoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+  },
+  milestoneText: {
+    fontFamily: FONTS.regular,
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    flex: 1,
   },
 });
 

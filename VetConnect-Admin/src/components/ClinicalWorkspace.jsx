@@ -672,6 +672,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   const isSavingRef = useRef(false);
 
   const [lockedServices, setLockedServices] = useState(new Set());
+  const [signOffConfirm, setSignOffConfirm] = useState(null);
 
   const glassStyle = {
     background: 'rgba(255, 255, 255, 0.65)',
@@ -1673,29 +1674,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     if (isSavingRef.current) return;
 
     if (lockedServices.has('medical')) {
-        return alert("This clinical record has already been signed off. No duplicate records can be created.");
-    }
-
-    // T4.159: Service-aware diagnosis validation.
-    // If ANY booked service requires a diagnosis, enforce the hard block.
-    // If ALL services mark diagnosis as optional, show a soft confirm instead.
-    const anyServiceRequiresDiagnosis = (patient.services || []).some(svc => {
-        const svcDef = (servicesList || []).find(s => s.id === svc.id);
-        return (svcDef?.requiresDiagnosis || 'required') === 'required';
-    });
-
-    if (anyServiceRequiresDiagnosis) {
-        if (!soapData.subjective?.trim() || (soapData.diagnoses || []).length === 0 || !soapData.plan?.trim()) {
-            showToast("Subjective, at least one Diagnosis, and Plan are required for legal medical documentation.", "error");
-            return;
-        }
-    } else {
-        const warnings = [];
-        if (!soapData.subjective?.trim()) warnings.push('No presenting complaint documented.');
-        if ((soapData.diagnoses || []).length === 0) warnings.push('No diagnosis entered.');
-        if (warnings.length > 0) {
-            if (!window.confirm(`${warnings.join(' ')}\n\nThis visit will be recorded without full clinical documentation. Proceed?`)) return;
-        }
+        showToast("This clinical record has already been signed off. No duplicate records can be created.", "error");
+        return;
     }
 
     // T3.136 Layer 3B: Block sign-off when measurement vitals exceed physical limits.
@@ -1721,38 +1701,10 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       return;
     }
 
-    if (treatmentCart.length === 0) {
-        if (!window.confirm("Services & Items is empty. This will create a consult-only record with no billable items.\n\nProceed?")) return;
-    }
-
-    // T2.96: Warn if not all services are marked completed
-    const incompleteServices = (patient.services || []).filter(svc => svc.id).filter(svc => {
-        const status = serviceProgress[svc.id] || 'pending';
-        return status !== 'completed';
-    });
-    if (incompleteServices.length > 0) {
-        const names = incompleteServices.map(s => s.name).join(', ');
-        if (!window.confirm(
-            `INCOMPLETE SERVICES\n\nThe following services have not been marked as completed:\n${names}\n\nProceed with sign-off anyway? The clinical record will be finalized regardless.`
-        )) {
-            return;
-        }
-    }
-
-    const dischargeRequired = treatmentCart
-        .filter(item => item.isBase && item.type === 'service')
-        .some(item => {
-            const svcDef = (servicesList || []).find(s => s.id === item.id);
-            return svcDef?.dischargePolicy === 'required';
-        });
-
-    if (dischargeRequired && soapData.plan.trim().length === 0) {
-        return alert("Discharge instructions (Plan field) are required for this visit. At least one booked service has a mandatory discharge policy.");
-    }
-
-    isSavingRef.current = true;
-    setLoading(true);
-    try {
+    const proceedWithSave = async () => {
+      isSavingRef.current = true;
+      setLoading(true);
+      try {
       const vetUid = auth.currentUser?.uid || "system";
       const vetName = auth.currentUser?.displayName || "Authorized Clinician";
       const visitTotal = treatmentCart.reduce((sum, item) => sum + (item.price * item.qty), 0);
@@ -2155,8 +2107,51 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         console.error('[ClinicalWorkspace.handleSaveConsult]:', error.message);
         isSavingRef.current = false;
         setLoading(false);
-        alert("🚨 Critical Save Error: " + error.message);
+        showToast("Critical Save Error: " + error.message, "error");
     }
+    };
+
+    if (treatmentCart.length === 0) {
+      setSignOffConfirm({
+        title: 'Empty Services & Items',
+        message: 'No services or items have been added to this visit.',
+        warnings: ['The medical record will be saved without any billable items.'],
+        onConfirm: () => { setSignOffConfirm(null); proceedWithSave(); },
+      });
+      return;
+    }
+
+    const incompleteServices = (patient.services || []).filter(svc => svc.id).filter(svc => {
+      const status = serviceProgress[svc.id] || 'pending';
+      return status !== 'completed';
+    });
+    if (incompleteServices.length > 0) {
+      setSignOffConfirm({
+        title: 'Incomplete Services',
+        message: `${incompleteServices.length} service(s) are not marked as completed:`,
+        warnings: incompleteServices.map(s => s.name),
+        onConfirm: () => { setSignOffConfirm(null); proceedWithSave(); },
+      });
+      return;
+    }
+
+    const emptyFields = [];
+    if (!soapData.diagnoses?.length || !soapData.diagnoses.some(d => d.name)) emptyFields.push('No diagnosis entered');
+    if (!soapData.plan?.trim()) emptyFields.push('No treatment plan documented');
+    if (!soapData.clientInstructions?.trim()) emptyFields.push('No client instructions / discharge notes');
+    if (!soapData.subjective?.trim()) emptyFields.push('No presenting complaint (Subjective)');
+
+    if (emptyFields.length > 0) {
+      setSignOffConfirm({
+        title: 'Documentation Check',
+        message: 'The following fields are empty. The vet makes the clinical judgment call.',
+        warnings: emptyFields,
+        onConfirm: () => { setSignOffConfirm(null); proceedWithSave(); },
+      });
+      return;
+    }
+
+    proceedWithSave();
   };
 
   /**
@@ -4547,6 +4542,89 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             {loading ? 'SAVING...' : 'SAVE & SWITCH'}
           </Button>
         </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(signOffConfirm)}
+        onClose={() => setSignOffConfirm(null)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 0,
+            border: `2px solid ${COLORS.accent}`,
+            boxShadow: `8px 8px 0px ${COLORS.accent}`,
+          },
+        }}
+      >
+        {signOffConfirm && (
+          <>
+            <DialogTitle sx={{
+              bgcolor: COLORS.cream,
+              color: COLORS.brand,
+              fontWeight: 900,
+              fontFamily: FONT,
+              fontSize: '1rem',
+              textTransform: 'uppercase',
+              letterSpacing: 1,
+              borderBottom: `2px solid ${COLORS.accent}`,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+            }}>
+              <WarningAmberIcon sx={{ color: '#ED6C02' }} />
+              {signOffConfirm.title}
+            </DialogTitle>
+            <DialogContent sx={{ pt: 2.5, pb: 2, bgcolor: COLORS.formBg }}>
+              <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: COLORS.brand, mb: 1.5 }}>
+                {signOffConfirm.message}
+              </Typography>
+              {signOffConfirm.warnings.length > 0 && (
+                <Box component="ul" sx={{ pl: 2.5, m: 0 }}>
+                  {signOffConfirm.warnings.map((w, i) => (
+                    <Typography component="li" key={i} sx={{ fontSize: '0.85rem', color: COLORS.accent, mb: 0.5, fontWeight: 600 }}>
+                      {w}
+                    </Typography>
+                  ))}
+                </Box>
+              )}
+            </DialogContent>
+            <DialogActions sx={{ p: 2, bgcolor: COLORS.cream, borderTop: `2px solid ${COLORS.accent}` }}>
+              <Button
+                onClick={signOffConfirm.onConfirm}
+                sx={{
+                  fontWeight: 900,
+                  color: COLORS.accent,
+                  border: `2px solid ${COLORS.accent}`,
+                  borderRadius: 0,
+                  fontFamily: FONT,
+                  px: 2.5,
+                  fontSize: '0.75rem',
+                  '&:hover': { bgcolor: 'rgba(93, 64, 55, 0.05)' },
+                }}
+              >
+                Sign Off Anyway
+              </Button>
+              <Button
+                onClick={() => setSignOffConfirm(null)}
+                variant="contained"
+                sx={{
+                  fontWeight: 900,
+                  borderRadius: 0,
+                  fontFamily: FONT,
+                  px: 3,
+                  fontSize: '0.75rem',
+                  bgcolor: COLORS.cta,
+                  border: `2px solid ${COLORS.ctaHover}`,
+                  boxShadow: '4px 4px 0px rgba(216,67,21,0.2)',
+                  '&:hover': { bgcolor: COLORS.ctaHover, boxShadow: '2px 2px 0px rgba(216,67,21,0.2)' },
+                }}
+              >
+                Go Back and Complete
+              </Button>
+            </DialogActions>
+          </>
+        )}
       </Dialog>
     </Dialog>
   );

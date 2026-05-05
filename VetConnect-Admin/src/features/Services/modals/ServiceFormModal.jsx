@@ -47,10 +47,6 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
     // Tiered pricing
     hasTieredPricing: item?.hasTieredPricing || false,
     pricingTiers:     initTiers,
-    // Discharge policy — controls whether Plan field is required at sign-off
-    dischargePolicy: item?.dischargePolicy || 'optional',
-    // Diagnosis requirement — controls whether a diagnosis entry is mandatory at sign-off
-    requiresDiagnosis: item?.requiresDiagnosis || 'required',
     // SC/PWD eligibility — default true for backward compat (all existing services remain discountable)
     isScPwdEligible: item?.isScPwdEligible !== false,
   });
@@ -404,42 +400,6 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
                   InputProps={{ startAdornment: <InputAdornment position="start"><DescriptionIcon fontSize="small" sx={{ color: COLORS.accent, mr: 1, mt: -4 }} /></InputAdornment> }}
                   inputProps={noExtensionProps}
                 />
-              </Grid>
-              <Grid size={{ xs: 12, md: 6 }}>
-                <FormControl fullWidth size="small" sx={{ ...sxField, mt: 1 }}>
-                  <InputLabel>Discharge Policy</InputLabel>
-                  <Select
-                    value={formData.dischargePolicy || 'optional'}
-                    label="Discharge Policy"
-                    onChange={(e) => setFormData({ ...formData, dischargePolicy: e.target.value })}
-                  >
-                    <MenuItem value="optional">Optional</MenuItem>
-                    <MenuItem value="required">Required</MenuItem>
-                  </Select>
-                </FormControl>
-                <Typography variant="caption" color="textSecondary" sx={{ mt: 0.5, display: 'block' }}>
-                  {formData.dischargePolicy === 'required'
-                    ? 'The vet MUST write discharge instructions (Plan field) before signing off this visit.'
-                    : 'The vet can sign off without discharge instructions — Plan field remains optional.'}
-                </Typography>
-              </Grid>
-              <Grid size={{ xs: 12, md: 6 }}>
-                <FormControl fullWidth size="small" sx={{ ...sxField, mt: 1 }}>
-                  <InputLabel>Diagnosis Requirement</InputLabel>
-                  <Select
-                    value={formData.requiresDiagnosis || 'required'}
-                    label="Diagnosis Requirement"
-                    onChange={(e) => setFormData({ ...formData, requiresDiagnosis: e.target.value })}
-                  >
-                    <MenuItem value="required">Required</MenuItem>
-                    <MenuItem value="optional">Optional</MenuItem>
-                  </Select>
-                </FormControl>
-                <Typography variant="caption" color="textSecondary" sx={{ mt: 0.5, display: 'block' }}>
-                  {formData.requiresDiagnosis === 'optional'
-                    ? 'The vet can sign off without a formal diagnosis — suitable for non-clinical services.'
-                    : 'The vet MUST enter at least one diagnosis before signing off this visit.'}
-                </Typography>
               </Grid>
               <Grid size={{ xs: 12 }}>
                 <FormControlLabel

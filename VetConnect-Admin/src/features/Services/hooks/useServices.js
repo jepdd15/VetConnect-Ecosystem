@@ -15,8 +15,6 @@ const FIELD_LABELS = {
   isWalkIn:     'Allow Walk-In',
   isInpatient:  'Req. Confinement',
   isEmergency:  'Is Emergency',
-  dischargePolicy:   'Discharge Policy',
-  requiresDiagnosis: 'Diagnosis Requirement',
   isScPwdEligible:   'SC/PWD Eligible',
 };
 const MONEY_FIELDS = new Set(['price']);
@@ -133,8 +131,6 @@ export function useServices() {
       linkedProduct: linkedProducts[0] || '', // backward compat
       hasTieredPricing: Boolean(formData.hasTieredPricing),
       pricingTiers:    formData.pricingTiers || [],
-      dischargePolicy:   formData.dischargePolicy   || 'optional',
-      requiresDiagnosis: formData.requiresDiagnosis || 'required',
       isScPwdEligible:   formData.isScPwdEligible !== false,
     };
 

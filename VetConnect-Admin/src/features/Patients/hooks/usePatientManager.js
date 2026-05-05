@@ -144,7 +144,7 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
     );
 
     const unsubSales = onSnapshot(
-      query(collection(db, "sales"), where("ownerName", "==", selectedClient.fullName)),
+      query(collection(db, "sales"), where("ownerId", "==", selectedClient.id)),
       (snap) => {
         const sales = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => b.date.seconds - a.date.seconds);
         // eslint-disable-next-line react-hooks/set-state-in-effect

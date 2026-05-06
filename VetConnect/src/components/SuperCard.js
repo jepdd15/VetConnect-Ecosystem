@@ -21,17 +21,17 @@ const getSpeciesEmoji = (species) => SPECIES_EMOJI[species] || '🐾';
 const getWhatsNext = (status, caseDay) => {
   switch (status) {
     case 'arrived':
-      return "Waiting to be seen by the veterinarian.";
+      return "You're checked in! A veterinarian will be with your pet shortly.";
     case 'in-consult':
-      return "Your pet is with the veterinarian. Next: pharmacy preparation.";
+      return "Your pet is being attended to right now. We'll update you on next steps when they're done.";
     case 'dispensing':
-      return "Medications are being prepared. Next: checkout.";
+      return "Almost done! Your pet's medications are being prepared. Next: checkout.";
     case 'billing':
-      return "Ready for checkout. Please proceed to the counter.";
+      return "Your pet is ready to go home! We're preparing your bill now.";
     case 'confined':
-      return `Hospitalized — your pet is being monitored.${caseDay > 1 ? ` Day ${caseDay} of care.` : ''}`;
+      return `Your pet is resting comfortably under our care.${caseDay > 1 ? ` Day ${caseDay} of care.` : ''} Call us anytime for updates.`;
     case 'on-hold':
-      return "Consultation paused. Your pet is resting.";
+      return "The vet has paused briefly — we'll resume shortly.";
     default:
       return null;
   }

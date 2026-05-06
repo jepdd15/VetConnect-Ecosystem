@@ -52,19 +52,19 @@ const getStageMessage = (status) => {
   switch (status) {
     case 'arrived':
     case 'confirmed':
-      return 'Please proceed to the consultation room.';
+      return "You're checked in! A veterinarian will be with your pet shortly.";
     case 'in-consult':
-      return 'Your pet is currently being examined.';
+      return "Your pet is being attended to right now. We'll update you on next steps when they're done.";
     case 'dispensing':
-      return 'Your medications are being prepared at the pharmacy.';
+      return "Almost done! Your pet's medications are being prepared. Next: checkout.";
     case 'billing':
-      return 'Please proceed to the cashier for checkout.';
+      return "Your pet is ready to go home! We're preparing your bill now.";
     case 'confined':
-      return 'Your pet is being monitored. Contact the clinic for updates.';
+      return 'Your pet is resting comfortably under our care. Call us anytime for updates.';
     case 'on-hold':
-      return 'Consultation paused — your pet is resting.';
+      return "The vet has paused briefly — we'll resume shortly.";
     default:
-      return 'Please proceed to the consultation room.';
+      return "Hang tight — we'll call your number soon.";
   }
 };
 

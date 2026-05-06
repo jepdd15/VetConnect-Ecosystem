@@ -1,141 +1,138 @@
-// Lobby TV display — shows the currently-serving queue ticket with status awareness,
-// upcoming queue preview, and full neubrutalism design token compliance.
-
-import React, { useEffect, useState, useRef } from 'react';
-import { Box, Typography, Card, Chip, CircularProgress, Fade } from '@mui/material';
-import { doc, onSnapshot, collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
+import React, { useEffect, useState } from 'react';
+import { Box, Typography, Paper, Chip, CircularProgress } from '@mui/material';
+import { doc, onSnapshot, collection, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 
 import PetsIcon from '@mui/icons-material/Pets';
 import CampaignIcon from '@mui/icons-material/Campaign';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
 
-import { COLORS } from '../theme/designTokens';
+import { COLORS, FONT } from '../theme/designTokens';
 import { useClinicSettings } from '../hooks/useClinicSettings';
 
+const AVG_CONSULT_MINUTES = 15;
+
+const getDeptColor = (serviceCategory, departments) => {
+  if (!serviceCategory || !departments.length) return COLORS.textMuted;
+  const match = departments.find(
+    d => d.name?.toLowerCase() === serviceCategory.toLowerCase()
+  );
+  return match?.color || COLORS.textMuted;
+};
+
+const formatTicket = (prefix, number) =>
+  `${prefix ? `${prefix}-` : ''}${String(number).padStart(3, '0')}`;
+
+const deriveTicketType = (ticketPrefix, ownerId) => {
+  if (ticketPrefix === 'E') return 'EMERGENCY';
+  if (
+    ticketPrefix === 'W' ||
+    ownerId === 'WALK_IN_USER' ||
+    String(ownerId || '').includes('GUEST_')
+  ) return 'WALK-IN';
+  return 'APPOINTMENT';
+};
+
+const getStartOfToday = () => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return Timestamp.fromDate(d);
+};
+
 export default function Monitor() {
-  const [queueData, setQueueData] = useState(null);
-  const [currentTicket, setCurrentTicket] = useState(null);
-  const [upcomingTickets, setUpcomingTickets] = useState([]);
+  const [queueData, setQueueData]       = useState(null);
+  const [activeServing, setActiveServing] = useState({});
+  const [arrivedList, setArrivedList]   = useState([]);
+  const [confirmedList, setConfirmedList] = useState([]);
+  const [departments, setDepartments]   = useState([]);
   const [listenerError, setListenerError] = useState(null);
-  const [departments, setDepartments] = useState([]);   // T4.134: department color config
-  const fetchSeqRef = useRef(0);
+  const [currentTime, setCurrentTime]   = useState(new Date());
+
   const clinicSettings = useClinicSettings();
 
-  // One-shot fetch for department colors — T4.134 Phase 7.1
-  // Department config is static enough that a real-time listener isn't needed here.
   useEffect(() => {
-    const fetchDepts = async () => {
-      try {
-        const snap = await getDocs(collection(db, 'departments'));
-        setDepartments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      } catch {
-        // Department colors are cosmetic — fail silently rather than break the display
-      }
-    };
-    fetchDepts();
+    const timer = setInterval(() => setCurrentTime(new Date()), 60000);
+    return () => clearInterval(timer);
   }, []);
 
-  // Listen to the queue counter; drives all downstream fetches
+  useEffect(() => {
+    const unsub = onSnapshot(
+      collection(db, 'departments'),
+      snap => setDepartments(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      () => {}
+    );
+    return () => unsub();
+  }, []);
+
   useEffect(() => {
     const unsub = onSnapshot(
       doc(db, 'queue', 'daily_queue'),
-      (docSnap) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          setQueueData(data);
-          fetchTicketDetails(data.currentServing);
-          fetchUpcoming(data.currentServing);
-        }
+      docSnap => {
+        if (docSnap.exists()) setQueueData(docSnap.data());
       },
-      (error) => {
+      error => {
         console.error('[Monitor] queue listener error:', error);
         setListenerError(error.message);
       }
     );
     return () => unsub();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
-  /**
-   * Fetch the appointment record for the currently-serving ticket number.
-   * Race-condition safe: a useRef sequence counter discards results from
-   * fetches that were superseded before they resolved.
-   */
-  const fetchTicketDetails = async (number) => {
-    const seq = ++fetchSeqRef.current;
+  useEffect(() => {
+    const startOfToday = getStartOfToday();
+    const q = query(
+      collection(db, 'appointments'),
+      where('scheduledDate', '>=', startOfToday)
+    );
 
-    if (!number) {
-      setCurrentTicket(null);
-      return;
-    }
+    const unsub = onSnapshot(
+      q,
+      snap => {
+        const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const activeStatuses = new Set(['in-consult', 'dispensing', 'billing', 'on-hold']);
 
-    try {
-      const q = query(
-        collection(db, 'appointments'),
-        where('queueNumber', '==', number)
-      );
-      const snap = await getDocs(q);
+        const active = all.filter(a => activeStatuses.has(a.status));
+        const arrived = all.filter(a => a.status === 'arrived');
+        const confirmed = all.filter(a => a.status === 'confirmed');
 
-      // Staleness guard: discard if a newer fetch was issued while this one resolved
-      if (seq !== fetchSeqRef.current) return;
+        const byDept = {};
+        active.forEach(appt => {
+          const dept = appt.serviceCategory || 'General';
+          if (!byDept[dept]) byDept[dept] = [];
+          byDept[dept].push(appt);
+        });
+        Object.keys(byDept).forEach(dept => {
+          byDept[dept].sort((a, b) => (a.queueNumber || 0) - (b.queueNumber || 0));
+        });
 
-      // Client-side date filter prevents cross-day queue number collisions
-      // (queue numbers reset nightly; old appointments retain their numbers)
-      const today = new Date().toISOString().slice(0, 10);
-      const match = snap.docs.find((d) => {
-        const scheduledDate = d.data().scheduledDate?.toDate?.();
-        return scheduledDate && scheduledDate.toISOString().slice(0, 10) === today;
-      });
-      setCurrentTicket(match ? match.data() : null);
-    } catch (error) {
-      console.error('[Monitor] ticket fetch error:', error);
-      if (seq === fetchSeqRef.current) setCurrentTicket(null);
-    }
-  };
+        setActiveServing(byDept);
+        setArrivedList(arrived.sort((a, b) => (a.queueNumber || 0) - (b.queueNumber || 0)));
+        setConfirmedList(confirmed.sort((a, b) => {
+          const aTime = a.scheduledDate?.toDate?.()?.getTime() || 0;
+          const bTime = b.scheduledDate?.toDate?.()?.getTime() || 0;
+          return aTime - bTime;
+        }));
+      },
+      error => {
+        console.error('[Monitor] appointments listener error:', error);
+      }
+    );
+    return () => unsub();
+  }, []);
 
-  /**
-   * Fetch the next 1-3 arrived appointments waiting in the queue.
-   * Advisory display only — not race-critical, errors don't affect main display.
-   * Requires a Firestore composite index on (status, queueNumber asc).
-   * If missing, Firestore will log an index creation URL in the console.
-   */
-  const fetchUpcoming = async (currentNum) => {
-    if (!currentNum) {
-      setUpcomingTickets([]);
-      return;
-    }
-
-    try {
-      const q = query(
-        collection(db, 'appointments'),
-        where('status', '==', 'arrived'),
-        where('queueNumber', '>', currentNum),
-        orderBy('queueNumber', 'asc'),
-        limit(3)
-      );
-      const snap = await getDocs(q);
-      const today = new Date().toISOString().slice(0, 10);
-      const filtered = snap.docs
-        .filter(d => {
-          const sd = d.data().scheduledDate?.toDate?.();
-          return sd && sd.toISOString().slice(0, 10) === today;
-        })
-        .map(d => ({ id: d.id, ...d.data() }));
-      setUpcomingTickets(filtered);
-    } catch (error) {
-      console.error('[Monitor] upcoming fetch error:', error);
-      setUpcomingTickets([]);
-    }
-  };
-
-  // ── Loading / error state ───────────────────────────────────────
   if (listenerError) {
     return (
       <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', bgcolor: COLORS.monitorBg, gap: 2 }}>
-        <Typography sx={{ color: COLORS.danger, fontSize: '2rem', fontWeight: 'bold' }}>Unable to connect</Typography>
-        <Typography sx={{ color: COLORS.textMuted, fontSize: '1.2rem' }}>{listenerError}</Typography>
+        <Typography sx={{ color: COLORS.danger, fontSize: '2rem', fontWeight: 'bold', fontFamily: FONT }}>
+          Unable to connect
+        </Typography>
+        <Typography sx={{ color: COLORS.textMuted, fontSize: '1.2rem', fontFamily: FONT }}>
+          {listenerError}
+        </Typography>
       </Box>
     );
   }
+
   if (!queueData) {
     return (
       <Box sx={{ height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', bgcolor: COLORS.monitorBg }}>
@@ -144,47 +141,18 @@ export default function Monitor() {
     );
   }
 
-  // ── Queue state derivation ─────────────────────────────────────
-  // If status is undefined (old queue doc without the field), isQueuePaused is false — intentional.
   const isQueuePaused = queueData.status === 'paused';
-  const isQueueIdle   = !queueData.currentServing;
+  const isQueueIdle   = Object.keys(activeServing).length === 0;
   const isServing     = !isQueuePaused && !isQueueIdle;
 
-  // ── Ticket semantics ───────────────────────────────────────────
-  // Emergency: any ticket with priority='high' OR ticketPrefix='E'
-  const isEmergency = currentTicket && (
-    currentTicket.priority === 'high' || currentTicket.ticketPrefix === 'E'
-  );
-  // Walk-in: ownerId is sentinel value or GUEST_ prefix, or prefix='W'
-  const isWalkIn = currentTicket && (
-    currentTicket.ownerId === 'WALK_IN_USER' ||
-    String(currentTicket.ownerId || '').includes('GUEST_') ||
-    currentTicket.ticketPrefix === 'W'
-  );
+  const currentHour   = currentTime.getHours();
+  const openHour      = clinicSettings.openHour  ?? 8;
+  const closeHour     = clinicSettings.closeHour ?? 17;
+  const isAfterHours  = currentHour >= closeHour || currentHour < openHour;
 
-  const bgColor   = isEmergency ? COLORS.dangerSurface : COLORS.cardBg;
-  const textColor = isEmergency ? COLORS.danger        : COLORS.textPrimary;
+  const formattedTime = currentTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 
-  // ── Formatted ticket number (prefix-dash-padded: W-005, E-003, A-007) ──
-  const ticketDisplay = [
-    queueData.currentPrefix ? `${queueData.currentPrefix}-` : '',
-    String(queueData.currentServing || 0).padStart(3, '0'),
-  ].join('');
-
-  /**
-   * Resolves the Firestore department color for a given serviceCategory string.
-   * Case-insensitive. Falls back to COLORS.textMuted when the department is not
-   * found or the departments list hasn't loaded yet.
-   * @param {string} serviceCategory
-   * @returns {string} hex color
-   */
-  const getDeptColor = (serviceCategory) => {
-    if (!serviceCategory || !departments.length) return COLORS.textMuted;
-    const match = departments.find(
-      d => d.name?.toLowerCase() === serviceCategory.toLowerCase()
-    );
-    return match?.color || COLORS.textMuted;
-  };
+  const activeDepts = Object.keys(activeServing);
 
   return (
     <Box sx={{
@@ -194,216 +162,236 @@ export default function Monitor() {
       p: 4,
       display: 'flex',
       flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
+      fontFamily: FONT,
+      overflow: 'hidden',
     }}>
 
-      {/* HEADER — state-aware title */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 4 }}>
-        <PetsIcon sx={{ fontSize: 60, color: COLORS.amber }} />
-        <Typography variant="h2" sx={{ color: 'white', fontWeight: 'bold', letterSpacing: 2 }}>
-          {isQueuePaused ? 'QUEUE PAUSED' : isServing ? 'NOW SERVING' : 'WELCOME'}
-        </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 4 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <PetsIcon sx={{ fontSize: 52, color: COLORS.amber }} />
+          <Typography sx={{ color: 'white', fontWeight: 900, fontSize: '2.8rem', letterSpacing: 3, textTransform: 'uppercase', fontFamily: FONT }}>
+            {isQueuePaused ? 'QUEUE PAUSED' : isServing ? 'NOW SERVING' : 'WELCOME'}
+          </Typography>
+        </Box>
+
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <AccessTimeIcon sx={{ color: COLORS.textMuted, fontSize: 28 }} />
+          <Typography sx={{ color: 'white', fontSize: '2rem', fontWeight: 700, fontFamily: FONT }}>
+            {formattedTime}
+          </Typography>
+        </Box>
       </Box>
 
-      {/* MAIN DISPLAY CARD */}
-      <Card sx={{
-        width: '80%',
-        maxHeight: '65%',
-        bgcolor: bgColor,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderRadius: 0,
-        border: `3px solid ${COLORS.brand}`,
-        boxShadow: `8px 8px 0px ${COLORS.brand}`,
-        py: 4,
-      }}>
+      {isAfterHours ? (
+        <Box sx={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 2,
+        }}>
+          <PetsIcon sx={{ fontSize: 100, color: COLORS.textMuted }} />
+          <Typography sx={{ color: 'white', fontSize: '3rem', fontWeight: 900, textAlign: 'center', fontFamily: FONT }}>
+            Clinic closed.
+          </Typography>
+          <Typography sx={{ color: COLORS.textMuted, fontSize: '2rem', fontFamily: FONT }}>
+            Opens tomorrow at {openHour}:00 AM
+          </Typography>
+        </Box>
+      ) : (
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-        {isServing ? (
-          <>
-            {/* TICKET NUMBER — fade-in on mount; key change remounts (no exit animation) */}
-            <Fade in={true} timeout={600} key={ticketDisplay}>
-              <Typography sx={{ fontSize: '12rem', fontWeight: 'bold', color: COLORS.ctaHover, lineHeight: 1 }}>
-                {ticketDisplay}
-              </Typography>
-            </Fade>
-
-            {/* TICKET METADATA */}
-            {currentTicket ? (
-              <>
-                {/* Service name — walk-ins use primaryService, pre-booked use serviceType */}
-                <Typography sx={{ mt: 2, mb: 1, fontWeight: 'bold', color: textColor, fontSize: '3rem' }}>
-                  {currentTicket.primaryService || currentTicket.serviceType || 'General Visit'}
-                </Typography>
-
-                {/* Department badge — T4.134 Phase 7.3 */}
-                {currentTicket.serviceCategory && (
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
-                    <Box sx={{
-                      width: 16,
-                      height: 16,
-                      borderRadius: '50%',
-                      bgcolor: getDeptColor(currentTicket.serviceCategory),
-                      border: `2px solid ${COLORS.brand}`,
-                      flexShrink: 0,
-                    }} />
-                    <Typography sx={{
-                      fontSize: '2rem',
-                      fontWeight: 900,
-                      color: COLORS.textSecondary,
-                      textTransform: 'uppercase',
-                      letterSpacing: 2,
-                    }}>
-                      {currentTicket.serviceCategory}
-                    </Typography>
-                  </Box>
-                )}
-
-                {/* Ticket type chip — 2-tier: EMERGENCY (red) or WALK-IN / APPOINTMENT (neutral) */}
-                <Chip
-                  label={isEmergency ? 'EMERGENCY' : (isWalkIn ? 'WALK-IN' : 'APPOINTMENT')}
-                  icon={isEmergency ? <CampaignIcon /> : <PetsIcon />}
-                  sx={{
-                    fontSize: '2rem',
-                    height: 70,
-                    px: 3,
-                    bgcolor: isEmergency ? COLORS.danger : COLORS.accent,
-                    color: 'white',
-                    fontWeight: 'bold',
-                    borderRadius: 0,
-                    '& .MuiChip-icon': { color: 'white', fontSize: '2rem' },
-                  }}
-                />
-
-                <Typography sx={{ mt: 4, color: COLORS.textSecondary, fontSize: '1.8rem' }}>
-                  Please proceed to Consultation Room
-                </Typography>
-              </>
-            ) : (
-              // Ticket number is set but metadata hasn't resolved yet
-              <Typography sx={{ color: COLORS.textMuted, fontSize: '2.5rem', mt: 2 }}>
-                Preparing ticket details...
-              </Typography>
-            )}
-          </>
-        ) : (
-          // Queue is paused or idle — show informational placeholder
-          <Box sx={{ textAlign: 'center', p: 6 }}>
-            <PetsIcon sx={{ fontSize: 120, color: COLORS.textMuted, mb: 2 }} />
-            <Typography sx={{ fontSize: '2.5rem', fontWeight: 'bold', color: COLORS.textPrimary }}>
-              {isQueuePaused ? 'Queue is temporarily paused' : 'Waiting for next patient'}
-            </Typography>
-            <Typography sx={{ fontSize: '1.5rem', color: COLORS.textSecondary, mt: 2 }}>
-              {isQueuePaused ? 'Service will resume shortly' : 'Please check in at the front desk'}
-            </Typography>
-          </Box>
-        )}
-
-      </Card>
-
-      {/* UPCOMING QUEUE PREVIEW — next 1-3 arrived tickets, grouped by department — T4.134 Phase 7.5 */}
-      {isServing && upcomingTickets.length > 0 && (() => {
-        // Group upcoming tickets by department for multi-lane clarity
-        const byDept = {};
-        upcomingTickets.forEach(t => {
-          const dept = t.serviceCategory || 'General';
-          if (!byDept[dept]) byDept[dept] = [];
-          byDept[dept].push(t);
-        });
-        const deptKeys = Object.keys(byDept);
-
-        return (
-          <Box sx={{ display: 'flex', gap: 3, mt: 3, flexWrap: 'wrap', justifyContent: 'center' }}>
-            {deptKeys.map(dept => (
-              <Box key={dept} sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-
-                {/* Department lane header — only rendered when multiple departments are present */}
-                {deptKeys.length > 1 && (
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Box sx={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: '50%',
-                      bgcolor: getDeptColor(dept),
-                      border: `1.5px solid ${COLORS.brand}`,
-                    }} />
-                    <Typography sx={{
-                      fontSize: '1rem',
-                      fontWeight: 900,
-                      color: COLORS.textMuted,
-                      textTransform: 'uppercase',
-                      letterSpacing: 1,
-                    }}>
-                      {dept}
-                    </Typography>
-                  </Box>
-                )}
-
-                <Box sx={{ display: 'flex', gap: 2 }}>
-                  {byDept[dept].map((ticket, i) => (
-                    <Box
-                      key={ticket.id}
+          {isServing ? (
+            <>
+              <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', mb: 3 }}>
+                {activeDepts.map(dept => {
+                  const appts = activeServing[dept];
+                  const deptColor = getDeptColor(dept, departments);
+                  return (
+                    <Paper
+                      key={dept}
                       sx={{
+                        flex: '1 1 300px',
+                        minWidth: 300,
                         bgcolor: COLORS.cardBg,
-                        border: `2px solid ${getDeptColor(dept)}`,
-                        boxShadow: `4px 4px 0px ${COLORS.brand}`,
                         borderRadius: 0,
-                        px: 4,
-                        py: 2,
-                        textAlign: 'center',
-                        minWidth: 160,
-                        // Fade further cards slightly to convey distance in queue
-                        opacity: 1 - (i * 0.15),
+                        border: `3px solid ${deptColor}`,
+                        boxShadow: `6px 6px 0px ${COLORS.brand}`,
+                        p: 3,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 2,
                       }}
                     >
-                      <Typography sx={{ fontSize: '0.9rem', fontWeight: 800, color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                        {i === 0 ? 'UP NEXT' : `+${i + 1}`}
-                      </Typography>
-                      <Typography sx={{ fontSize: '2.5rem', fontWeight: 'bold', color: COLORS.ctaHover }}>
-                        {ticket.ticketPrefix ? `${ticket.ticketPrefix}-` : ''}
-                        {String(ticket.queueNumber).padStart(3, '0')}
-                      </Typography>
-                      <Typography sx={{ fontSize: '1rem', fontWeight: 600, color: COLORS.textSecondary }}>
-                        {ticket.primaryService || ticket.serviceType || 'General Visit'}
-                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, borderBottom: `2px solid ${deptColor}`, pb: 1.5 }}>
+                        <Box sx={{
+                          width: 14,
+                          height: 14,
+                          bgcolor: deptColor,
+                          border: `2px solid ${COLORS.brand}`,
+                          flexShrink: 0,
+                        }} />
+                        <Typography sx={{ color: COLORS.textSecondary, fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', letterSpacing: 2, fontFamily: FONT }}>
+                          {dept}
+                        </Typography>
+                      </Box>
 
-                      {/* Department dot — T4.134 Phase 7.4 */}
-                      {ticket.serviceCategory && (
-                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.8, mt: 0.5 }}>
-                          <Box sx={{
-                            width: 10,
-                            height: 10,
-                            borderRadius: '50%',
-                            bgcolor: getDeptColor(ticket.serviceCategory),
-                            border: `1.5px solid ${COLORS.brand}`,
-                          }} />
-                          <Typography sx={{
-                            fontSize: '0.85rem',
-                            fontWeight: 800,
-                            color: COLORS.textMuted,
-                            textTransform: 'uppercase',
-                            letterSpacing: 1,
-                          }}>
-                            {ticket.serviceCategory}
-                          </Typography>
-                        </Box>
-                      )}
-                    </Box>
-                  ))}
-                </Box>
+                      {appts.map(appt => {
+                        const ticketType = deriveTicketType(appt.ticketPrefix, appt.ownerId);
+                        const isEmergency = ticketType === 'EMERGENCY';
+                        const services = Array.isArray(appt.services)
+                          ? appt.services.map(s => s.serviceName || s.serviceType || 'Service').join(', ')
+                          : (appt.primaryService || appt.serviceType || 'General Visit');
 
+                        return (
+                          <Box
+                            key={appt.id}
+                            sx={{
+                              bgcolor: isEmergency ? COLORS.dangerSurface : COLORS.surfaceAlt,
+                              border: `2px solid ${isEmergency ? COLORS.danger : COLORS.border}`,
+                              borderRadius: 0,
+                              p: 2,
+                            }}
+                          >
+                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                              <Typography sx={{
+                                fontSize: '4rem',
+                                fontWeight: 900,
+                                color: isEmergency ? COLORS.danger : COLORS.ctaHover,
+                                lineHeight: 1,
+                                fontFamily: FONT,
+                              }}>
+                                {formatTicket(appt.ticketPrefix, appt.queueNumber)}
+                              </Typography>
+                              <Chip
+                                label={ticketType}
+                                icon={isEmergency ? <CampaignIcon /> : <PetsIcon />}
+                                sx={{
+                                  bgcolor: isEmergency ? COLORS.danger : COLORS.accent,
+                                  color: 'white',
+                                  fontWeight: 800,
+                                  borderRadius: 0,
+                                  fontSize: '0.85rem',
+                                  '& .MuiChip-icon': { color: 'white' },
+                                }}
+                              />
+                            </Box>
+                            {appt.petName && (
+                              <Typography sx={{ color: COLORS.textPrimary, fontWeight: 700, fontSize: '1.4rem', fontFamily: FONT }}>
+                                {appt.petName}
+                              </Typography>
+                            )}
+                            <Typography sx={{ color: COLORS.textSecondary, fontSize: '1rem', fontFamily: FONT }}>
+                              {services}
+                            </Typography>
+                          </Box>
+                        );
+                      })}
+                    </Paper>
+                  );
+                })}
               </Box>
-            ))}
-          </Box>
-        );
-      })()}
 
-      {/* FOOTER — clinic name from settings */}
-      <Typography sx={{ color: COLORS.textMuted, mt: 4, fontSize: '1.5rem', fontWeight: 600 }}>
-        {clinicSettings.clinicName} &bull; Please wait for your number
-      </Typography>
+              {arrivedList.length > 0 && (
+                <Box sx={{ mb: 2 }}>
+                  <Typography sx={{ color: COLORS.textMuted, fontWeight: 800, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: 2, mb: 1.5, fontFamily: FONT }}>
+                    UP NEXT
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                    {arrivedList.slice(0, 5).map((appt, idx) => {
+                      const waitMinutes = (idx + 1) * AVG_CONSULT_MINUTES;
+                      return (
+                        <Paper
+                          key={appt.id}
+                          sx={{
+                            bgcolor: COLORS.cardBg,
+                            border: `2px solid ${getDeptColor(appt.serviceCategory, departments)}`,
+                            borderRadius: 0,
+                            boxShadow: `3px 3px 0px ${COLORS.brand}`,
+                            px: 2.5,
+                            py: 1.5,
+                            minWidth: 150,
+                            opacity: 1 - idx * 0.12,
+                          }}
+                        >
+                          <Typography sx={{ color: COLORS.textMuted, fontWeight: 800, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 1, fontFamily: FONT }}>
+                            {idx === 0 ? 'NEXT' : `#${idx + 2}`}
+                          </Typography>
+                          <Typography sx={{ color: COLORS.ctaHover, fontWeight: 900, fontSize: '2rem', fontFamily: FONT }}>
+                            {formatTicket(appt.ticketPrefix, appt.queueNumber)}
+                          </Typography>
+                          <Typography sx={{ color: COLORS.textMuted, fontSize: '0.8rem', fontFamily: FONT }}>
+                            ~{waitMinutes} min
+                          </Typography>
+                        </Paper>
+                      );
+                    })}
+                  </Box>
+                </Box>
+              )}
+
+              {confirmedList.length > 0 && (
+                <Box sx={{ mb: 2 }}>
+                  <Typography sx={{ color: COLORS.textMuted, fontWeight: 800, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: 2, mb: 1.5, fontFamily: FONT }}>
+                    EXPECTED
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                    {confirmedList.slice(0, 4).map(appt => {
+                      const scheduled = appt.scheduledDate?.toDate?.();
+                      const timeStr = scheduled
+                        ? scheduled.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+                        : null;
+                      return (
+                        <Typography key={appt.id} sx={{ color: COLORS.textMuted, fontSize: '1rem', fontFamily: FONT }}>
+                          {formatTicket(appt.ticketPrefix, appt.queueNumber)}
+                          {timeStr ? ` — ${timeStr}` : ''}
+                        </Typography>
+                      );
+                    })}
+                  </Box>
+                </Box>
+              )}
+
+              <Typography sx={{ color: 'white', fontSize: '1.2rem', fontFamily: FONT }}>
+                {arrivedList.length} patient{arrivedList.length !== 1 ? 's' : ''} waiting
+              </Typography>
+            </>
+          ) : (
+            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
+              <PetsIcon sx={{ fontSize: 120, color: COLORS.textMuted }} />
+              <Typography sx={{ fontSize: '2.5rem', fontWeight: 900, color: 'white', fontFamily: FONT }}>
+                {isQueuePaused ? 'Queue is temporarily paused' : 'Waiting for next patient'}
+              </Typography>
+              <Typography sx={{ fontSize: '1.5rem', color: COLORS.textMuted, fontFamily: FONT }}>
+                {isQueuePaused ? 'Service will resume shortly' : 'Please check in at the front desk'}
+              </Typography>
+            </Box>
+          )}
+        </Box>
+      )}
+
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, mt: 2, pt: 2, borderTop: `1px solid ${COLORS.accent}` }}>
+        <Typography sx={{ color: COLORS.textMuted, fontSize: '1.2rem', fontWeight: 600, fontFamily: FONT }}>
+          {clinicSettings.clinicName}
+        </Typography>
+        {clinicSettings.closeHour && (
+          <>
+            <Typography sx={{ color: COLORS.textMuted, fontSize: '1.2rem' }}>&bull;</Typography>
+            <Typography sx={{ color: COLORS.textMuted, fontSize: '1.2rem', fontFamily: FONT }}>
+              Open until {clinicSettings.closeHour > 12 ? clinicSettings.closeHour - 12 : clinicSettings.closeHour}:00 {clinicSettings.closeHour >= 12 ? 'PM' : 'AM'}
+            </Typography>
+          </>
+        )}
+        {clinicSettings.clinicPhone && (
+          <>
+            <Typography sx={{ color: COLORS.textMuted, fontSize: '1.2rem' }}>&bull;</Typography>
+            <Typography sx={{ color: COLORS.textMuted, fontSize: '1.2rem', fontFamily: FONT }}>
+              {clinicSettings.clinicPhone}
+            </Typography>
+          </>
+        )}
+      </Box>
 
     </Box>
   );

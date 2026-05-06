@@ -137,7 +137,73 @@
 - 15 push templates + 3 SMS templates + email HTML wrapper
 - Worker source in repo: VetConnect-Backend/cloudflare-worker/worker.js (739 lines)
 
-**Next:** T4.140 (queue validation parity, 4 hrs) → T4.125 (CRM redesign, 10-12 hrs) → T4.141 (structured diagnosis, 10-12 hrs) → T4.127 (CW sidebar split, 3-4 hrs) → T4.136-T4.138 (admin auth hardening, ~2.5 hrs) → T1.11 (thesis legal paragraph) → thesis
+**Session 2026-05-05 (T4.141-T4.168, T3.139, T4.13):**
+- Structured diagnosis system: 452-entry catalog, 10 severity scales, useDiagnosisCatalog hook, Autocomplete + severity selectors, dual-write (diagnoses[] + diagnosis string), 12 consumer files updated (T4.141, 3-day)
+- Auth hardening: force password change blocking dialog (T4.137), 3-layer staff revocation (T4.138), role simplification — isStaff()=isAuth() (T4.154, absorbs T4.81)
+- POS Professional upgrade: cash change (T4.148), custom discounts per-item + bill with mandatory reason (T4.149), split-tender sequential-add (T4.150), EOD close-out + Z-report (T4.151), receipt PDF + email (T4.152), sequential receipt OR-YYYYMMDD-NNNN (T4.153)
+- Refund/void fixes: statusHistory push (T4.143), batch restoration parity (T4.144), balanceRemaining reset (T4.145)
+- Partial payment follow-up: 7 capabilities — Queue badge, Mark as Settled, snooze, Patients badge, mobile banner fix, booking warning, Worker Cron handleBalanceReminders (T4.147, 2-day)
+- CW sidebar split: Services panel + Items panel, inline progress toggles, mid-consult service registration, ServiceProgressCard deleted (T4.127)
+- PetHistoryScreen full redesign: collapsible records, month picker + dot timeline, neubrutalism conversion, Pet Health Snapshot strip, 7 display gaps fixed, pull-to-refresh, loading skeleton (T4.155, 3-day)
+- ClientDashboard statistics: 13-stat KPI grid + mini bar chart, useClientStats hook (T4.156)
+- Carry-over data hygiene: encounterItems, encounterItemsVersion, finalTotal excluded from clone (T3.139)
+- Subjective auto-populate from intake notes + IntakeContext display removed (T4.158)
+- Service-driven SOAP validation (T4.159, then REVERTED by T4.164)
+- ServiceFormModal cleanup: RESOURCE ROUTING removed, inventory groupBy, OPERATIONAL RULES hidden, department placeholder (T4.160)
+- WalkInModal 13-fix cleanup: scroll, designTokens, groupBy, price summary, MUI Dialog confirm (T4.163)
+- Settings 5-tab layout (T4.157). Chatbot keyboard fix (T4.161). MyPetsScreen neubrutalism (T4.162).
+- Firestore rules: getUserRole() get() failure on Spark plan — isStaff()=isAuth() workaround
+- Tasks formalized: T4.142 (3-tier classification, 6-8 hrs), T4.146 (TOCTOU, 1.5 hrs), T4.164 (soft warnings, 1 hr), T4.165 (vitals cleanup, 30 min), T4.166 (mobile record redesign, 4-5 hrs), T4.167 (admin record redesign, 4-5 hrs), T4.13 (problem list, 4-5 hrs), T4.168 (POS transaction fix, 1.5-2 hrs)
+- ~695 DONE / ~184 TODO. ~871 total tasks.
+
+**Cloudflare Worker state (updated 2026-05-05):**
+- URL: https://cool-fire-2d53.jepdd15.workers.dev
+- Model: claude-haiku-4-5-20251001
+- Endpoints: POST / (AI), POST /push (template), POST /push/custom (free-text), POST /email (Resend relay), POST /sms (Semaphore relay)
+- Cron: 0 23 * * * UTC (7 AM Manila) — runs handleVaccineReminders + handleAppointmentReminders + handleBalanceReminders (push + email + SMS)
+- Env vars: ANTHROPIC_API_KEY + FIREBASE_API_KEY + RESEND_API_KEY + RESEND_FROM_EMAIL + SEMAPHORE_API_KEY + SEMAPHORE_SENDER_NAME
+- 15 push templates + 3 SMS templates + 1 balance-reminder + email HTML wrapper
+- Worker source in repo: VetConnect-Backend/cloudflare-worker/worker.js (~1020 lines)
+
+**Firestore rules state (updated 2026-05-05):**
+- isStaff() = isAuth() (getUserRole() get() fails on Spark plan — client-side role enforcement only)
+- isAdmin() = isStaff() (role distinction removed)
+- getUserRole() function kept but unused — available for future Blaze upgrade
+- counters collection added (receipt_sequence for sequential numbering)
+- daily_closings collection added (EOD Z-reports)
+
+**Session 2026-05-05/06 continued (T4.169-T4.188, advisory + fixes):**
+- WalkInModal UI rewrite: 3-section layout, design system parity, multi-pet UI removed, data parity fixes (ownerPhone, statusHistory, timestamps, isValidPHPhone) (T4.171 DONE)
+- Inventory: KPI clickable filters replacing toggles, scrubDatabase deleted, maxCages removed
+- Registration fix: App.js onAuthStateChanged race condition + Firestore rules consent_policy public read
+- Outstanding balance: query by ownerId replacing ownerName (name collision + drift fix)
+- 20 tasks formalized (T4.169-T4.188): reservation audit+cleanup, multi-pet removal, breed catalog, My Bookings (hardening + SuperCard + neubrutalism + card enrichment), QueueScreen + Monitor redesigns (D/M/c model), data parity, CW patient editing, Dashboard 4-tab redesign (TODAY/ANALYTICS/FINANCIAL/PERFORMANCE), Visit Log 3-tab redesign, standalone retail POS, EMRDrawer redesign, My Stats screen, Expenses upgrade, Philippine legal compliance
+- ~700 DONE / ~204 TODO. ~892 total tasks.
+
+**Firestore rules state (updated 2026-05-06):**
+- isStaff() = isAuth() (unchanged)
+- isAdmin() = isStaff() (unchanged)
+- clinic_settings read: isAuth() || settingId == 'general' || settingId == 'consent_policy' (consent_policy added for unauthenticated registration DPA fetch)
+- counters + daily_closings collections (unchanged)
+
+**Session 2026-05-06/07 (T4.168, T4.188, T4.142, T4.164, T4.165, T4.167, T4.184, T4.166, T4.172, T4.175, T4.178, T4.179, T4.183, T4.189, T4.176, T4.177 + 42 bugfixes):**
+- Phase A Foundation: T4.168 (POS transaction restructure, 3-phase read/compute/write), T4.188 (Philippine legal compliance, PRC/PTR/BAI, dual print Client/Internal/Both), T4.142 (3-tier product classification Medicine/Medical Supply/Retail, 20 changes across 10 files, 3-day build)
+- Phase B Admin Clinical: T4.164 (universal soft-warning dialog replacing per-service gates), T4.165 (vitals empty defaults + WNL cleanup), T4.167 (PatientDashboard record SOAP-order redesign, Assessment hero, per-dx notes input in SoapGrid, collapsible Objective), T4.184 (standalone retail POS, 3 entry points Queue+Sales+Sidebar, saleType field, customer nudge dialog)
+- Phase C Mobile: T4.166 (PetHistoryScreen redesign, diagnosis-first hero, department bottom sheet, year dropdown, DISCHARGE NOTES rename, header compaction)
+- Phase D Multi-pet removal: T4.172 (17 files, 241 refs removed, single-pet-per-appointment across entire ecosystem)
+- Phase D downstream: T4.175 (SuperCard redesign, 10 features, per-service progress, financial preview, case day swipe), T4.178 (QueueScreen redesign, per-dept Now Serving, multi-dept breakdown, two-row breadcrumb, Book Now CTA), T4.179 (Monitor redesign, multi-lane display, estimated wait, clock, after-hours)
+- Phase D continued: T4.183 (Visit Log 3-tab redesign, filter drawer merged into header, row-click audit, per-tab KPIs, date headers, case headers), T4.189 (Visit Log phase-aware action buttons, 4 modals wired, overflow menu, revert dialog), T4.176 (My Bookings neubrutalism, bottom sheet filters replacing chips, search bar), T4.177 (card content enrichment, shared AppointmentCardContent, structured sig UI, active med tracking, generateVisitPDF extraction)
+- 42 bugfixes: mobile balance source (appointments→sales), chatbot SimpleMarkdown, timeline events expanded, CaseDayCard pageWidth, EncounterSummary services/products split + dedup, POS Autocomplete with category grouping, BillingLedger 7-gap rewrite, Transactions KPI split (Bank Transfer pink) + date-aware labels + responsive columns, Staff page access level + live status removed, responsiveness (Queue/Records/Expenses/EOD/BillingLedger), useSalesData date guard, POSModal DOM nesting fix, StaffFormModal departments array guard, Dispensing Unit conditional, PetHistoryScreen header merged + medical record polish (section dividers/vet signature/diagnosis labels), MyPets filter consolidation + vaccine-catalog health status + vertical stack cards, warm status messages (QueueScreen+SuperCard), barcode UI removed, Visit Log case header service aggregation
+- ~717 DONE / ~189 TODO. ~906 total tasks.
+
+**Structured sig system (NEW — session 2026-05-07):**
+- ClinicalWorkspace: medicine items now have 5 structured sig fields (Dose, Unit, Frequency select, Days number, Route select) instead of free-text TextField
+- `sig` object persisted to `dispensedProducts` on medical_records (was missing before)
+- `buildInstructionsFromSig()` helper auto-generates readable instructions from structured fields
+- Mobile PetHistoryScreen: active medication tracking computes endDate from `sig.duration`, shows "X days remaining" with countdown
+- Fallback: records without sig.duration use 90-day window
+
+**Next:** T4.182 (Dashboard 4-tab redesign, 12-14 hrs, depends T4.142+T4.184) → T4.173 (Breed catalog, 1.5 hrs) → T4.180 (Data parity, 2.5-3 hrs) → T4.181 (CW patient editing, 2-3 hrs) → T4.174 (My Bookings hardening, 2.5 hrs) → T4.185 (EMR Drawer redesign, 3-4 hrs) → T4.186 (My Stats screen, 5-6 hrs) → T4.187 (Expenses upgrade, 4-5 hrs) → T4.169+T4.170 (Reservation audit+cleanup, 1.5 hrs) → T4.13 (Problem list, 4-5 hrs) → T4.146 (Booking TOCTOU fix, 1.5 hrs)
 
 ---
 
@@ -148,7 +214,7 @@ Paste this prompt at the start of a new session:
 ```
 Read these files in this order:
 1. IMPLEMENTATION_GUIDE.md — current status section + module sequence
-2. handoff.json (section: advisory_session_2026_05_01_to_05_04) — latest context
+2. handoff.json (section: advisory_session_2026_05_06_07) — latest context
 3. MASTER_TASKLIST.md — task registry with IDs, priorities, dependencies, status
 
 The full VetConnect codebase has been audited across 5+ sessions — every source
@@ -156,15 +222,15 @@ file has been deep-dived. Do NOT re-scan any code. All findings are in the
 deep-dive files at the repo root. Use the "Task-to-Source Cross-Reference" table
 in IMPLEMENTATION_GUIDE.md to find the backing file for any task.
 
-Context: This is a continuation of the 2026-05-01/05-04 advisory/implementation session.
-~669 DONE, ~155 TODO. Build passes. 322 tests passing.
+Context: This is a continuation of the 2026-05-06/07 advisory session.
+~717 DONE, ~189 TODO. Build passes. 322 tests passing.
 Cloudflare Worker URL: https://cool-fire-2d53.jepdd15.workers.dev
 Cloudflare Worker model: claude-haiku-4-5-20251001
 Cloudflare Worker Cron: 0 23 * * * UTC (7 AM Manila daily)
-Cloudflare Worker handlers: handleVaccineReminders + handleAppointmentReminders (push + email + SMS)
+Cloudflare Worker handlers: handleVaccineReminders + handleAppointmentReminders + handleBalanceReminders (push + email + SMS)
 Cloudflare Worker env vars: ANTHROPIC_API_KEY + FIREBASE_API_KEY + RESEND_API_KEY + RESEND_FROM_EMAIL + SEMAPHORE_API_KEY + SEMAPHORE_SENDER_NAME
 Cloudflare Worker endpoints: POST / (AI), /push, /push/custom, /email (Resend), /sms (Semaphore)
-Cloudflare Worker reference copy: VetConnect-Backend/cloudflare-worker/worker.js (739 lines)
+Cloudflare Worker reference copy: VetConnect-Backend/cloudflare-worker/worker.js (~1020 lines)
 
 I want to work on [MODULE NAME]. Follow the module workflow:
 1. LOOK UP: Find the module in the "Module Sequence" table. Read the listed

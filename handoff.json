@@ -3553,6 +3553,202 @@
         "WalkInModal already had per-pet services (petEntries[i].selectedServices) — booking engine mirrored this pattern.",
         "RA 8792 (E-Commerce Act) validates digital signatures for liability waivers, not RA 10173 (which only requires 'freely given, specific, informed' consent without prescribing mechanism)."
       ]
+    },
+    "advisory_session_2026_05_05": {
+      "date": "2026-05-05",
+      "role": "Advisory + implementation session. Structured diagnosis system, auth hardening, POS professional upgrade (6 tasks), role simplification, booking-to-payment loop audit, carry-over data hygiene, CW sidebar split, PetHistoryScreen full redesign, ClientDashboard statistics, medical record display parity, ServiceFormModal cleanup, WalkInModal cleanup, Settings tabbed layout, Subjective auto-populate, neubrutalism conversions (MyPets, chatbot keyboard fix). Major Firestore rules debugging (getUserRole get() failure on Spark plan). Extensive decision rounds on 3-tier product classification, POS features, medical record UI redesign, and structured problem list.",
+      "tasks_done_this_session": "T4.141 (3-day diagnosis system, 452 entries, 10 severity scales), T4.136 (marked DONE — already implemented), T4.137 (force password change blocking dialog), T4.138 (3-layer staff revocation), T4.143 (refund/void statusHistory push), T4.144 (void batch restoration), T4.145 (void balanceRemaining), T4.147 (2-day partial payment follow-up, 7 capabilities), T4.148 (POS cash change), T4.149 (POS custom discounts — per-item + bill), T4.150 (POS split-tender), T4.151 (POS EOD close-out + Z-report), T4.152 (POS receipt PDF + email), T4.153 (POS sequential receipt numbering), T4.154 (role simplification — isStaff()=isAuth()), T3.139 (carry-over data hygiene — encounterItems/finalTotal excluded), T4.127 (CW sidebar split — Services + Items panels), T4.155 (3-day PetHistoryScreen redesign — collapsible, month picker, dot timeline, neubrutalism, health snapshot, 7 display gaps), T4.156 (ClientDashboard 13-stat KPI grid + mini chart), T4.159 (service-driven SOAP validation — REVERTED by T4.164), T4.160 (ServiceFormModal cleanup), T4.161 (chatbot keyboard fix), T4.162 (MyPetsScreen neubrutalism), T4.157 (Settings 5-tab layout), T4.163 (WalkInModal 13-fix cleanup), T4.158 (Subjective auto-populate + IntakeContext removal), T4.81 (ABSORBED into T4.154). Plus: serviceAttribution display on both surfaces, StaffTable Array.isArray guard, ClientDashboard useMemo import fix, ServiceFormModal groupBy sort fix, Firestore rules getUserRole() regression fix, mobile RN Text guards, vaccine warning suppression, GO_BACK silencer.",
+      "total_done_after_session": "~695",
+      "tasks_formalized_not_built": [
+        "T4.142 — 3-tier product classification (Medicine/Medical Supply/Retail) + category manager redesign (6-8 hrs). 20 changes across 10 files. Locked: 3 tiers, dual-write productClass + isMedicine, conditional fields (Dispensing Unit/Dosage/Lot/Expiry visible for Medicine only), discharge split into Medications + Take-Home Supplies, mobile dedup.",
+        "T4.146 — Booking TOCTOU race fix — slot availability inside transaction (1.5 hrs)",
+        "T4.164 — Universal soft-warning dialog replacing per-service validation gates. Reverts T4.159. All SOAP fields optional with soft warnings. Only hard blocks: duplicate sign-off + impossible vitals (1 hr)",
+        "T4.165 — Vitals empty defaults (CRT/BCS/Pain no longer pre-filled) + WNL renamed 'All Systems Normal' (fills exam only, not vitals) + confirmation dialog. Remove WNL toolbar button (30 min)",
+        "T4.166 — Mobile PetHistoryScreen record content redesign. 15 changes: diagnosis-first hero, 'REASON FOR VISIT' (Subjective visible), department bottom sheet multi-select, year dropdown + month chips, global AI FAB, white record bg + cream full-width Discharge Notes section, 'GOING-HOME INSTRUCTIONS' renamed 'DISCHARGE NOTES' (4-5 hrs)",
+        "T4.167 — Admin PatientDashboard record view redesign. 13 changes: SOAP-order layout (S→O→A hero→P→Discharge Notes), per-diagnosis notes INPUT in SoapGrid, 'ASSESSMENT NOTES' label, collapsible Objective, 7-vital grid with 'not taken', PLAN label kept (not Treatment Notes), Plan green accent removed, cream full-width discharge section, Amendment in header, service chips overflow (4+ collapse), 'All Types' → 'All Departments' (4-5 hrs)",
+        "T4.13 — Structured problem list with 5 UI locations: CW widget (read-only context above SOAP), CW sign-off dialog (add/update/resolve), PatientDashboard (persistent active problems section), mobile snapshot (count), mobile record annotation. Sub-collection: pets/{petId}/problems/{problemId} (4-5 hrs)",
+        "T4.168 — POS checkout transaction restructure — fix read-after-write violation. Split deductInventoryInTransaction into read phase + compute phase + write phase. Receipt counter read also after writes (1.5-2 hrs)"
+      ],
+      "status_summary": "~695 DONE / ~184 TODO. POS at Professional tier (cash change, custom discounts, split-tender, sequential receipts, EOD Z-report, PDF/email receipt). Clinical workspace: 452-diagnosis catalog with severity scales, CW sidebar split (Services + Items panels), subjective auto-populate, service-driven validation (then reverted to universal soft warnings). Auth: force password change, 3-layer revocation, role simplification (all staff full access). Financial loop: refund/void fixed (statusHistory + batch restoration + balanceRemaining), partial payment follow-up (7 capabilities + Worker Cron). Display parity: PetHistoryScreen full redesign (neubrutalism, collapsible, timeline), ClientDashboard 13-stat KPI, MyPetsScreen neubrutalism, medical history display gaps fixed. Carry-over data hygiene (encounterItems excluded). Settings 5-tab layout. WalkInModal 13-fix cleanup.",
+      "cloudflare_worker_state": {
+        "url": "https://cool-fire-2d53.jepdd15.workers.dev",
+        "model": "claude-haiku-4-5-20251001",
+        "endpoints": "POST / (AI), POST /push (template), POST /push/custom (free-text), POST /email (Resend relay), POST /sms (Semaphore relay)",
+        "cron": "0 23 * * * UTC (7 AM Manila) — handleVaccineReminders + handleAppointmentReminders + handleBalanceReminders (push + email + SMS)",
+        "env_vars": "ANTHROPIC_API_KEY, FIREBASE_API_KEY, RESEND_API_KEY, RESEND_FROM_EMAIL, SEMAPHORE_API_KEY, SEMAPHORE_SENDER_NAME",
+        "templates": "15 push + 3 SMS + 1 balance-reminder + email HTML wrapper",
+        "worker_source": "VetConnect-Backend/cloudflare-worker/worker.js (reference copy, ~1020 lines)"
+      },
+      "key_decisions_locked": [
+        "3-tier product classification: Medicine (dispensing + auto-dosing + discharge meds) / Medical Supply (discharge Take-Home Supplies only) / Retail (no discharge). Replaces binary isMedicine. Dual-write productClass + isMedicine backward compat.",
+        "Discharge summary split: PLAN = internal clinical notes (staff-only). Client Instructions = new separate field for plain-language going-home instructions (pet-owner facing). Two audiences, two fields.",
+        "Rename 'Going-Home Instructions' → 'Discharge Notes' on both admin and mobile",
+        "Universal soft warnings: remove dischargePolicy + requiresDiagnosis per-service gates. Replace ALL hard blocks with one documentation-check dialog at sign-off listing empty fields. Vet decides. Only hard blocks: duplicate sign-off + impossible vitals.",
+        "Vitals: all 7 start empty. 'not taken' (not dashes) for missing. WNL button renamed 'All Systems Normal' — fills exam checklist only, NOT vitals.",
+        "Mobile medical record: diagnosis-first hero → Reason for Visit → Vitals → Discharge Notes. White record bg, cream full-width discharge section (no box borders). Subjective visible to pet owners as 'REASON FOR VISIT'. Global AI FAB (not per-record). Department filter via bottom sheet (multi-select). Year dropdown + month chips for date navigation.",
+        "Admin medical record: SOAP-order (S→O→A hero→P→Discharge Notes). Per-diagnosis notes input in SoapGrid. 'ASSESSMENT NOTES' label for free-text reasoning. Collapsible Objective. Amendment button in header. Service chips overflow at 4+. Cream full-width discharge section.",
+        "POS: cash change (tendered/change), custom discounts (per-item + bill, mandatory reason, SC/PWD mutual exclusion), split-tender (sequential add, dual-write paymentTenders[] + paymentMethod), EOD close-out (soft close + post-close flagging + Z-report), receipt PDF fallback + email, sequential receipt numbering (OR-YYYYMMDD-NNNN).",
+        "Role simplification: admin/staff distinction removed. isAdmin()=isStaff()=isAuth() in Firestore rules. AdminRoute deleted. Sidebar ungated. All staff see everything.",
+        "Carry-over data hygiene: encounterItems, encounterItemsVersion, finalTotal excluded from carry-over clone. serviceProgress + soapDraft preserved (booking data carries, consult output doesn't).",
+        "Inventory: 'Dispensing Unit' (renamed from 'Unit of Measure'), shown + required for Medicine only. Dosage/Strength shown for Medicine only. Lot Number/Expiry shown for Medicine only (all optional). Batch tracking opt-in based on data presence.",
+        "Structured problem list: pets/{petId}/problems sub-collection. 5 UI locations. Sign-off integration for add/update/resolve. Severity history tracking.",
+        "Firestore rules: getUserRole() get() call fails on Spark plan. isStaff()=isAuth() workaround. Server-side role enforcement requires Blaze (custom claims)."
+      ],
+      "notable_findings": [
+        "Firestore rules getUserRole() with get() causes evaluation failures on Spark plan when multiple onSnapshot listeners fire concurrently. The exists()+get() pattern from T4.138 reviewer made it worse. Fix: isStaff()=isAuth() — client-side role enforcement via Login.jsx + App.jsx.",
+        "The admin account (vet@starbarks.com) was created manually without going through the Staff module — missing departments field caused StaffTable crash (Array.isArray guard fix).",
+        "POSModal checkout runTransaction has read-after-write violation: deductInventoryInTransaction loops read→write per product, then receipt counter reads after all writes. Fails with 2+ products.",
+        "Booking-to-payment loop audit: 8 gaps found, 6 fixed (R1-R3 refund/void + L3 partial payment + carried over hygiene + display parity). 2 remaining: L1/L2 TOCTOU (T4.146), L5 fire-and-forget push (Blaze-gated).",
+        "POS assessment: Professional-grade architecture (atomic transactions, FIFO batch, group billing, Rx gate) but Intermediate cashier UX gaps fixed (cash change, custom discounts, split-tender, sequential receipts, EOD close-out, PDF receipt).",
+        "Staff system upgraded from Intermediate-Professional to Professional (force password change, 3-layer revocation, forgot password).",
+        "isMedicine binary system assessed as Intermediate — upgraded to 3-tier Professional classification (Medicine/Medical Supply/Retail) with conditional field visibility.",
+        "Medical record display audit found 7 gaps — all fixed in T4.155. serviceAttribution display added post-commit.",
+        "PetHistoryScreen Going-Home Instructions and standalone items section were redundant (medications shown twice). Fixed by making Discharge Notes the single source with Medications + Take-Home Supplies sections.",
+        "Subjective quadrant auto-populates from client/staff intake notes — separate IntakeContext display removed. Sign-off validation automatically passes.",
+        "WNL template pre-filled vitals with 'normal' values — false documentation. Fixed: vitals start empty, WNL fills exam checklist only.",
+        "Per-service validation gates (dischargePolicy, requiresDiagnosis) create admin setup burden. Replaced with universal soft-warning dialog — vet decides what's appropriate per visit."
+      ]
+    },
+    "advisory_session_2026_05_05_continued": {
+      "date": "2026-05-05 to 2026-05-06",
+      "role": "Advisory session continued. Comprehensive system assessment across inventory reservation, queuing model, My Bookings, SuperCard, QueueScreen, Monitor, Dashboard, Records, Expenses, EMR Drawer, pet owner stats, data parity, legal compliance. 20 new tasks formalized (T4.169-T4.188). 5 items committed (WalkInModal UI rewrite, Inventory KPI filters, maxCages removal, registration fix, outstanding balance query fix).",
+      "tasks_done_this_session": "T4.171 (WalkInModal UI rewrite — 3-section layout, design system parity, multi-pet UI removed, data parity fixes), Inventory KPI clickable filters replacing toggle switches + scrubDatabase removal, maxCages confinement limit removal, Registration fix (App.js onAuthStateChanged race condition + Firestore rules consent_policy public read), Outstanding balance query fix (ownerName → ownerId).",
+      "commits_this_session": [
+        "4e58953 — Inventory KPI clickable filters + scrubDatabase removal",
+        "9dd0097 — maxCages removal",
+        "27cba53 — WalkInModal UI rewrite (T4.171)",
+        "eeb5755 — Registration fix (App.js race + Firestore rules)",
+        "bbb01ea — Outstanding balance query fix (ownerId)"
+      ],
+      "total_done_after_session": "~700",
+      "tasks_formalized_not_built": [
+        "T4.169 — Reservation audit logging (20 min)",
+        "T4.170 — Stranded reservation cleanup, dual reconciliation (1-1.5 hrs, depends T4.169)",
+        "T4.172 — Remove multi-pet booking/visit support, 17 files 250 refs (6-8 hrs, depends T4.171)",
+        "T4.173 — Breed catalog 95 breeds, shared constants, Autocomplete (1.5 hrs, depends T4.171)",
+        "T4.174 — My Bookings hardening 7 fixes: pagination, offline, cancel confirm, dept queue, receipt label, pull-to-refresh, follow-up capacity (2.5 hrs)",
+        "T4.175 — SuperCard redesign: per-service progress, what's-next, encounter items, financial preview, case day swipe (4-5 hrs, depends T4.142)",
+        "T4.176 — My Bookings neubrutalism + bottom sheet filters + search bar (2-2.5 hrs, depends T4.172 + T4.166)",
+        "T4.177 — My Bookings card content enrichment: shared AppointmentCardContent, date-first cards, diagnosis, calendar export, PDF download, deep link, CaseDayCard parity (3.5-4 hrs, depends T4.142 + T4.176)",
+        "T4.178 — QueueScreen redesign: per-dept Now Serving, multi-dept breakdown, two-row breadcrumb, stage-aware messaging, elapsed counter, Book Now empty state (3.5-4 hrs, depends T4.172)",
+        "T4.179 — Lobby Monitor redesign: multi-lane D/M/c display, estimated wait on upcoming, clock, queue depth, after-hours, confirmed EXPECTED section (2-2.5 hrs, depends T4.172)",
+        "T4.180 — Data parity across 10 owner+pet surfaces: NewClientModal fields, admin DOB 3-mode, admin allergy tag array, weight field fix, Emergency Contacts label rename (2.5-3 hrs, depends T4.173)",
+        "T4.181 — ClinicalWorkspace patient info editing: inline pet identity corrections during consult, all fields editable, IDENTITY_EDIT pulse events (2-3 hrs, depends T4.173 + T4.180)",
+        "T4.182 — Dashboard complete redesign: 4 tabs TODAY/ANALYTICS/FINANCIAL/PERFORMANCE, delete drag-drop + quick nav, merge Growth+Clinical into Analytics, absorb Forensic Reports into Performance tab, add lab+vaccine+diagnosis stats, visualization upgrades (sparklines, donuts, heatmap), queue clear time, revenue forecast, conversion funnel, staff utilization (12-14 hrs, depends T4.142 + T4.184)",
+        "T4.183 — Visit Log redesign: rename from Records, 3 tabs Pending/Active/Completed, per-tab KPIs, date headers, row-click audit, action cleanup (3-4 hrs, depends T4.172)",
+        "T4.184 — Standalone retail POS: 3 entry points (Queue + Transactions + Sidebar), saleType field retail/clinical, customer nudge, products only (3-4 hrs, depends T4.142)",
+        "T4.185 — EMRDrawer redesign: search, filters, date section headers, responsive 35vw width, CW styling parity, active record highlight, Queue overflow menu access (3-4 hrs)",
+        "T4.186 — My Stats screen: per-pet health cards, preventive care timeline, spending breakdown, diagnosis history, relationship metrics, Book Now CTAs (5-6 hrs)",
+        "T4.187 — Expenses page upgrade: header consistency, date range, configurable categories + budgets, Repeat Last Month, export CSV+print (4-5 hrs)",
+        "T4.188 — Philippine veterinary legal compliance: PRC/PTR/BAI fields on printed records, dual print client/internal dropdown, BAI vaccination fields, staff profile additions (3-4 hrs, P1)"
+      ],
+      "key_decisions_locked": [
+        "Inventory reserved system: Professional with 2 holes (POSModal ignores reservations at checkout, no stranded cleanup). T4.169+T4.170 address.",
+        "maxCages setting removed — enforcement was incomplete (1 of 3 confine paths), cage capacity is physical reality.",
+        "scrubDatabase function deleted — dead code after UI button removal.",
+        "Inventory KPI cards are clickable filters replacing toggle switches. Archived as 6th KPI. Total Value moved to rightmost.",
+        "Multi-pet booking/visit: decided to remove entirely from ecosystem. Too complex for solo developer. Single-pet-per-booking. 17 files, 250 refs. T4.172.",
+        "Breed catalog: 95 breeds (62 dog + 33 cat), static constants file, freeSolo Autocomplete on admin, Modal picker on mobile. T4.173.",
+        "My Bookings filter chips replaced with bottom sheet pattern (T4.166 precedent) + search bar. Horizontal chips don't scale.",
+        "SuperCard 5 decisions: B (collapsed: name+status+queue), A (financial at billing+dispensing), skip vaccine nudge, Call Clinic only (Directions removed), A (encounter items names+qty). Case day swipe added.",
+        "CaseDayCard: keep swipe pager, make each page use shared AppointmentCardContent (identical to regular cards).",
+        "Upcoming cards: date+time as hero, remove emoji icons, status badge only when actionable (CONFIRM?/CONFIRMED), remove VISIT COMPLETE on history (redundant).",
+        "QueueScreen: D/M/c model — per-department Now Serving replacing single-lane circle, multi-dept breakdown with bottleneck headline, two-row breadcrumb wrap (3+3), stage-aware messaging, elapsed counter.",
+        "Monitor: multi-lane concurrent display matching D/M/c model, same architecture supports FIFO (1 dept) and multi-dept (N depts).",
+        "Dashboard: 4 tabs TODAY/ANALYTICS/FINANCIAL/PERFORMANCE. Drag-drop removed. Quick nav tiles removed. Growth+Clinical merged into Analytics. Forensic Reports absorbed into Performance. Lab+vaccine+diagnosis statistics added.",
+        "Visit Log: renamed from Records, 3 tabs (Pending/Active/Completed), ALL VISITS removed, Clinical+In-Patient merged into Active.",
+        "Standalone retail POS: C (customer optional with nudge), A (saleType field), A (products only, no services). 3 entry points.",
+        "EMRDrawer: B (date section headers, not dot timeline), B (responsive 35vw, min 400 max 650). Accessible from Queue overflow menu.",
+        "Data parity: B (skip owner dob/gender on registration), A (admin DOB 3-mode), A (admin allergy tag array). Emergency Contacts label rename.",
+        "CW patient editing: all fields editable (name, species, breed, DOB, sex, neutered, allergies, microchip).",
+        "Expenses: B (inline category management), B (Repeat Last Month manual trigger), B (per-category budget alongside categories).",
+        "Legal compliance: B (blank vet signature line, physical signing), B (update existing vaccination template with BAI fields), B (dual print dropdown: Client/Internal/Both).",
+        "My Stats screen: per-pet health cards, full diagnosis analytics. Graceful fallback if T4.13 not built.",
+        "Liability waiver: keep one-time (not per-booking).",
+        "Registration race condition: App.js onAuthStateChanged signed out user mid-registration when user doc didn't exist yet. Fixed: route to ClientDashboard instead of signing out.",
+        "Outstanding balance: query by ownerId not ownerName — prevents name collision and name-change drift."
+      ],
+      "dependency_chain": {
+        "phase_a_foundation": ["T4.168 (POS fix)", "T4.142 (3-tier classification)", "T4.188 (legal compliance, P1)"],
+        "phase_b_admin_clinical": ["T4.164 (soft warnings)", "T4.165 (vitals)", "T4.167 (admin record redesign)", "T4.184 (retail POS)"],
+        "phase_c_mobile_record": ["T4.166 (PetHistoryScreen redesign)"],
+        "phase_d_multipet_removal_downstream": ["T4.172 (remove multi-pet)", "T4.175 (SuperCard)", "T4.176 (neubrutalism)", "T4.177 (card enrichment)", "T4.178 (QueueScreen)", "T4.179 (Monitor)", "T4.183 (Visit Log)"],
+        "phase_e_dashboard": ["T4.182 (full dashboard redesign, needs T4.142 + T4.184)"],
+        "breed_data_parity_chain": ["T4.173 → T4.180 → T4.181"],
+        "independent_any_time": ["T4.169+T4.170 (reservation)", "T4.146 (TOCTOU)", "T4.13 (problem list)", "T4.174 (My Bookings hardening)", "T4.185 (EMRDrawer)", "T4.186 (My Stats)", "T4.187 (Expenses)"]
+      },
+      "bugs_fixed_this_session": [
+        "Registration infinite loading — App.js onAuthStateChanged race condition + Firestore rules consent_policy public read",
+        "Outstanding balance query matched by ownerName string instead of ownerId — name collisions and name-change drift",
+        "Firestore rules: consent_policy not readable by unauthenticated users (RegisterScreen DPA fetch failed)",
+        "Inventory page: stale dev server cache caused AutoFixHighIcon/openScrubConfirm/scrubDatabase ReferenceErrors after deletion"
+      ],
+      "assessments_performed": {
+        "inventory_reservation_system": "Professional with 2 holes — POSModal ignores reservations at checkout, no stranded reservation cleanup without Cloud Functions. T4.169+T4.170 address.",
+        "my_bookings_page": "Professional with 3 gaps pulling toward Intermediate — no pagination, no offline state, no cancel confirmation. T4.174 addresses 7 fixes.",
+        "supercard": "Professional with UX polish gaps — service name truncated, no per-service progress, no stage-aware messaging, no financial info, no department context. T4.175 addresses all.",
+        "queue_screen_mobile": "Professional with polish gaps — global Now Serving misrepresents D/M/c model, breadcrumb truncated, no pet name/services on ticket. T4.178 addresses all.",
+        "lobby_monitor": "Professional — solid real-time infrastructure but single-lane display for multi-lane queue. T4.179 addresses with multi-lane D/M/c display.",
+        "dashboard": "Professional — comprehensive KPIs + charts but 4-tab structure with blurry Growth/Clinical boundary, drag-drop complexity, missing lab/vaccine/diagnosis stats. T4.182 addresses with full redesign to 4 clean tabs.",
+        "records_page": "Professional with organizational gaps — 6 tabs with blurry boundaries, redundant ALL VISITS, jargon names, hidden audit popover. T4.183 addresses with 3-tab Visit Log redesign.",
+        "expenses_page": "Intermediate — single-day view, hardcoded categories, no budget tracking, no recurring support, header layout inconsistent. T4.187 addresses all.",
+        "emr_drawer": "Good content (SOAP, vitals, labs, vaccines, amendments) but missing search, filters, date anchoring, no Queue access. T4.185 addresses all.",
+        "client_dashboard_stats": "Intermediate — aggregate KPIs buried below fold, no per-pet granularity, no medications, no recheck countdowns. T4.186 addresses with dedicated My Stats screen.",
+        "walkin_modal": "Rewrote to design system parity (T4.171 DONE). 12 issues identified, data parity fixes included (ownerPhone, statusHistory, timestamps, shared isValidPHPhone).",
+        "data_parity_audit": "10 gaps across 10 data collection surfaces (5 owner + 5 pet). T4.180 addresses field consistency.",
+        "legal_compliance": "Not laughable but would fail BAI inspection — clinical documentation thorough but professional identification missing from printed records. ~3-4 hrs from compliance. T4.188 addresses."
+      }
+    },
+    "advisory_session_2026_05_06_07": {
+      "date": "2026-05-06 to 2026-05-07",
+      "role": "Massive implementation + advisory session. 16 tasks shipped from the Phase A→D dependency chain + T4.189 formalized and built. 42 cross-surface bugfixes discovered and applied during testing. Structured sig system introduced for medication tracking.",
+      "tasks_done_this_session": "T4.168 (POS transaction restructure), T4.188 (Philippine legal compliance), T4.142 (3-tier product classification, 3-day), T4.164 (universal soft-warning dialog), T4.165 (vitals empty defaults), T4.167 (PatientDashboard record redesign, 2-day), T4.184 (standalone retail POS, 2-day), T4.166 (PetHistoryScreen redesign, 2-day), T4.172 (remove multi-pet, 2-day, 17 files), T4.175 (SuperCard redesign, 2-day, 10 features), T4.178 (QueueScreen redesign, 2-day), T4.179 (Monitor redesign), T4.183 (Visit Log redesign, 2-day), T4.189 (Visit Log phase-aware actions, 2-day), T4.176 (My Bookings neubrutalism), T4.177 (card content enrichment, 2-day)",
+      "total_done_after_session": "~717",
+      "total_todo_after_session": "~189",
+      "key_architectural_changes": [
+        "Structured sig system: 5 fields (dose/unit/freq/days/route) on ClinicalWorkspace replacing free-text. sig persisted to dispensedProducts. Mobile computes medication endDate from sig.duration.",
+        "Mobile balance source unified: ClientDashboard + BookAppointment now read from sales collection (single source of truth), matching admin's computation. Appointments collection no longer used for balance.",
+        "AppointmentCardContent shared component: regular My Bookings cards and CaseDayCard swipe pages use identical rendering. generateVisitPDF extracted to shared util.",
+        "Visit Log phase-aware actions: full Queue workflow (Accept/Check In/Consult/Verify/Checkout/Revert) available on all records regardless of date. 4 modals wired (AssignStaffModal/ClinicalWorkspace/POSModal/DispensingVerificationDialog).",
+        "POS Autocomplete: flat product Select replaced with category-grouped Autocomplete with search-as-you-type and out-of-stock handling.",
+        "BillingLedger rewrite: 7 gaps fixed — authoritative balanceRemaining, receipt number, items column, payment method icons, refund visibility, correct status logic.",
+        "MyPetsScreen filter consolidation: 4 rows → 1 row (search + 3 bottom sheets). Health status now vaccine-catalog-based using buildVaccinationStatus.",
+        "Timeline events: INCEPTION, SERVICE_STARTED, SERVICE_COMPLETED, TRIAGE_DEFER, TRIAGE_RESCHEDULE, TRIAGE_CARRYOVER now shown to pet owners (4 internal events still excluded).",
+        "Responsiveness: Queue (timing 250→160, actions 320→240), Records (created 220→150, actions 280→220), EOD modal (1440→1280px), BillingLedger (all flex), Expenses (reduced fixed widths), Transactions (column rebalance + items preview)."
+      ],
+      "key_decisions_locked": [
+        "Mobile balance reads from sales collection, NOT appointments. Single source of truth.",
+        "Structured sig replaces free-text instructions for medicine items. sig.duration enables active medication tracking.",
+        "Dispensing Unit: required for Medicine, optional for Medical Supply + Retail.",
+        "EncounterSummary: services and products split into separate sections. Actions hidden when AppointmentCardContent renders its own.",
+        "Visit Log: filter drawer merged into header (4 inline Selects + date range + presets). All Methods dropdown removed — KPI tiles serve as filters.",
+        "Transactions: 5 KPIs (Cash green, GCash blue, Card amber, Bank Transfer pink, Collected brown). Date-aware labels (CASH IN DRAWER vs CASH, COLLECTED TODAY vs COLLECTED).",
+        "Staff page: access level column + filter removed. Live status column removed. All staff equal per T4.154.",
+        "PetHistoryScreen: navigation header hidden, single brown header bar. Timeline dot/bar removed. DO THIS label removed. Diagnosis shows singular/plural label with bullets.",
+        "MyPets: health status driven by vaccine catalog (buildVaccinationStatus), not crude last-visit check. 0/N administered = Needs Checkup.",
+        "Status messages: warm, service-agnostic text across QueueScreen + SuperCard. No 'proceed to consultation room' or 'proceed to cashier'.",
+        "Barcode scanning UI removed from POS (out of scope for capstone). SKU field kept on product form as data entry."
+      ],
+      "bugs_fixed_count": 42,
+      "bugs_fixed_highlights": [
+        "Mobile outstanding balance ₱2.8M ghost — appointments collection had stale balanceRemaining after admin settled via sales",
+        "useSalesData crash on cleared date picker — RangeError: Invalid time value",
+        "StaffFormModal crash on edit — departments field was string instead of array",
+        "POSModal h2/h6 DOM nesting — DialogTitle Typography component='span' fix",
+        "Records.jsx params.row undefined in DataGrid callbacks — optional chaining on 4 callbacks",
+        "Records.jsx stray ')}' literal rendering as visible text next to audit button",
+        "Records.jsx case header truncation — overflow:visible on case-header cells",
+        "CaseDayCard 4px pager drift — pageWidth -44 → -84 (accounts for container padding + outerWrapper margin + card border)",
+        "History card dark/washed appearance — removed opacity:0.85, changed cream→white bg",
+        "EncounterSummary products mixed with services under 'SERVICES PERFORMED' — split into two sections",
+        "Redundant View Full Record + Rebook buttons — hideActions prop on EncounterSummary",
+        "Duplicate medications display — hideNextSteps when AppointmentCardContent enrichment renders"
+      ],
+      "dependency_chain_remaining": {
+        "phase_e_dashboard": ["T4.182 (full dashboard redesign, needs T4.142 + T4.184 — both DONE)"],
+        "breed_data_parity_chain": ["T4.173 → T4.180 → T4.181"],
+        "independent_any_time": ["T4.174 (My Bookings hardening)", "T4.185 (EMRDrawer redesign)", "T4.186 (My Stats screen)", "T4.187 (Expenses upgrade)", "T4.169+T4.170 (Reservation audit+cleanup)", "T4.13 (Structured problem list)", "T4.146 (Booking TOCTOU fix)"]
+      }
     }
   }
 }

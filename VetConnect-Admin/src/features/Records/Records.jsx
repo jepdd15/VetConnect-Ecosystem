@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Box, Typography, Paper, TextField, InputAdornment, Chip, Stack, Tooltip,
   IconButton, Popover, Divider, Button, Dialog, DialogTitle, DialogContent, DialogActions,
-  Tabs, Tab, FormControl, InputLabel, Select, MenuItem,
+  Tabs, Tab, FormControl, InputLabel, Select, MenuItem, Menu, ListItemIcon, ListItemText,
   Snackbar, Alert
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
@@ -22,6 +22,17 @@ import LockIcon from '@mui/icons-material/Lock';
 import ShieldIcon from '@mui/icons-material/Shield';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import CloseIcon from '@mui/icons-material/Close';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import HowToRegIcon from '@mui/icons-material/HowToReg';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
+import PaidIcon from '@mui/icons-material/Paid';
+import UndoIcon from '@mui/icons-material/Undo';
+import FlagIcon from '@mui/icons-material/Flag';
+import EventIcon from '@mui/icons-material/Event';
+import PersonOffIcon from '@mui/icons-material/PersonOff';
+import PauseCircleIcon from '@mui/icons-material/PauseCircle';
+import PlayCircleFilledWhiteIcon from '@mui/icons-material/PlayCircleFilledWhite';
 import { ToggleButton, ToggleButtonGroup } from '@mui/material';
 
 // Design Tokens
@@ -34,19 +45,25 @@ import { ForensicMetricGrid } from '../Queue/ForensicMetricGrid';
 import { useAncestorChain } from './hooks/useAncestorChain';
 import { calculatePulseMetrics, makePulseEventId } from '../../utils/pulseUtils';
 import { TERMINAL_STATUSES } from '../../utils/statusConstants';
-import { query, collection, where, onSnapshot, arrayUnion, doc, updateDoc, Timestamp, writeBatch, getDocs, getDoc } from 'firebase/firestore';
+import { query, collection, where, onSnapshot, arrayUnion, doc, updateDoc, Timestamp, writeBatch, getDocs, getDoc, runTransaction } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 import { useClinicSettings } from '../../hooks/useClinicSettings';
 import { useUser } from '../../context/UserContext';
 import { useSavedFilters } from './hooks/useSavedFilters';
+import { useClosingStatus } from '../Sales/hooks/useClosingStatus';
+import { getLocalDateStr } from '../../utils/dateUtils';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import PrintIcon from '@mui/icons-material/Print';
 import { PRINT_STYLES, esc, openPrintWindow } from '../../utils/printUtils';
+import ClinicalWorkspace from '../../components/ClinicalWorkspace';
+import POSModal from '../../components/POSModal';
+import AssignStaffModal from '../Queue/AssignStaffModal';
+import DispensingVerificationDialog from '../Queue/DispensingVerificationDialog';
 
 export default function Records() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user } = useUser();
+  const { user, profile } = useUser();
 
   const [searchText, setSearchText] = useState('');
   const [dateRange, setDateRange] = useState({ start: null, end: null });
@@ -98,6 +115,18 @@ export default function Records() {
   // Reschedule undo
   const [lastReschedule, setLastReschedule] = useState(null);
 
+  const [actionRow, setActionRow] = useState(null);
+  const [openCW, setOpenCW] = useState(false);
+  const [openPOS, setOpenPOS] = useState(false);
+  const [openAssign, setOpenAssign] = useState(false);
+  const [openDispenseVerify, setOpenDispenseVerify] = useState(false);
+  const [dispenseRow, setDispenseRow] = useState(null);
+  const [menuAnchor, setMenuAnchor] = useState(null);
+  const [openRevert, setOpenRevert] = useState(false);
+  const [revertReason, setRevertReason] = useState('');
+  const [submittingAction, setSubmittingAction] = useState(false);
+  const [noShowDialog, setNoShowDialog] = useState({ open: false, reason: '' });
+
   // Bulk operations
   const [selectedRows, setSelectedRows] = useState([]);
   const [bulkReschedule, setBulkReschedule] = useState(false);
@@ -112,13 +141,16 @@ export default function Records() {
   const [showSavePreset, setShowSavePreset] = useState(false);
 
   const { records, loading } = useGlobalRecords(dateRange, searchText, 'petName', activeSilo, facets);
-  const { rescheduleAppointment, rejectAppointment } = useQueueActions();
+  const { changeStatus, revertStatus, markNoShow, rejectAppointment, rescheduleAppointment, deferAppointment } = useQueueActions();
   
   // --- 🧬 ANCESTOR CHAIN ENGINE ---
   const { ancestors, combinedPulse, combinedServices, loading: loadingAncestors } = useAncestorChain(activeAuditRow);
 
   // Clinic settings — shared singleton via useClinicSettings hook
   const settings = useClinicSettings();
+
+  const todayStr = getLocalDateStr();
+  const { isDayClosed, closingData } = useClosingStatus(todayStr);
 
   // Departments live in the `departments` Firestore collection, not on clinic_settings
   const [departments, setDepartments] = useState([]);
@@ -147,6 +179,36 @@ export default function Records() {
     );
     return () => unsubVets();
   }, []);
+
+  const [inventoryList, setInventoryList] = useState([]);
+  const [inventoryCategories, setInventoryCategories] = useState([]);
+  const [servicesList, setServicesList] = useState([]);
+
+  React.useEffect(() => {
+    const unsubInv = onSnapshot(collection(db, 'inventory'), (snap) =>
+      setInventoryList(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    );
+    const unsubCat = onSnapshot(collection(db, 'inventory_categories'), (snap) =>
+      setInventoryCategories(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    );
+    const unsubSvc = onSnapshot(collection(db, 'services'), (snap) =>
+      setServicesList(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(s => !s.isArchived))
+    );
+    return () => { unsubInv(); unsubCat(); unsubSvc(); };
+  }, []);
+
+  const joinedInventory = useMemo(() => {
+    return inventoryList
+      .filter(item => !item.isArchived)
+      .map(item => {
+        const catObj = inventoryCategories.find(c => c.name?.toLowerCase() === item.category?.toLowerCase());
+        return {
+          ...item,
+          isMedicine: catObj ? !!catObj.isMedicine : false,
+          productClass: catObj?.productClass || (catObj?.isMedicine ? 'medicine' : 'retail'),
+        };
+      });
+  }, [inventoryList, inventoryCategories]);
 
   // Compute Cumulative Metrics
   const cumulativeTotals = useMemo(() => {
@@ -419,6 +481,130 @@ export default function Records() {
     openPrintWindow(html, () => setToast({ open: true, message: 'Pop-up blocked — allow pop-ups for this site', severity: 'warning' }));
   };
 
+  const handleActionMenuOpen = (e, row) => {
+    e.stopPropagation();
+    setMenuAnchor(e.currentTarget);
+    setActionRow(row);
+  };
+  const handleActionMenuClose = () => { setMenuAnchor(null); };
+
+  const handleActionStatusChange = async (row, newStatus) => {
+    try {
+      await changeStatus(row, newStatus, settings);
+      setToast({ open: true, message: `Status changed to ${newStatus}`, severity: 'success' });
+    } catch (err) {
+      setToast({ open: true, message: err.message, severity: 'error' });
+    }
+  };
+
+  const handleActionOpenAssign = (row) => {
+    setActionRow(row);
+    setOpenAssign(true);
+  };
+
+  const handleActionOpenConsult = (row) => {
+    const allowed = ['in-consult', 'confined', 'on-hold'];
+    if (!allowed.includes(row?.status)) {
+      setToast({ open: true, message: `Cannot open workspace for status "${row?.status}"`, severity: 'warning' });
+      return;
+    }
+    setActionRow(row);
+    setOpenCW(true);
+  };
+
+  const handleActionOpenPOS = (row) => {
+    setActionRow(row);
+    setOpenPOS(true);
+  };
+
+  const handleActionOpenDispenseVerify = (row) => {
+    setDispenseRow(row);
+    setOpenDispenseVerify(true);
+  };
+
+  const handleActionDispenseVerified = async (dispensingData) => {
+    try {
+      await runTransaction(db, async (transaction) => {
+        const apptRef = doc(db, 'appointments', dispenseRow.id);
+        const apptDoc = await transaction.get(apptRef);
+        if (!apptDoc.exists()) throw new Error('Appointment not found.');
+        if (apptDoc.data().dispensingHold) throw new Error('Dispensing was placed on hold. Refresh and try again.');
+        const freshData = apptDoc.data();
+        transaction.update(apptRef, {
+          ...dispensingData,
+          status: 'billing',
+          timePaymentStarted: Timestamp.now(),
+          statusHistory: [...(freshData.statusHistory || []), dispenseRow.status || 'dispensing'],
+          clinicalPulse: arrayUnion({
+            eventId: makePulseEventId('status'),
+            type: 'STATUS_CHANGE',
+            from: 'dispensing',
+            to: 'billing',
+            timestamp: Timestamp.now(),
+            staffId: user?.uid || '',
+            staffName: profile?.fullName || user?.email || 'System',
+            note: 'Dispensing verified — advanced to billing (from Visit Log)',
+          }),
+        });
+      });
+      setOpenDispenseVerify(false);
+      setDispenseRow(null);
+      setToast({ open: true, message: 'Dispensing verified — moved to billing', severity: 'success' });
+    } catch (err) {
+      setToast({ open: true, message: err.message, severity: 'error' });
+    }
+  };
+
+  const handleActionRevertOpen = (row) => {
+    setActionRow(row);
+    setRevertReason('');
+    setOpenRevert(true);
+    handleActionMenuClose();
+  };
+
+  const handleActionRevertConfirm = async () => {
+    if (!revertReason.trim() || submittingAction) return;
+    setSubmittingAction(true);
+    try {
+      await revertStatus({ ...actionRow, revertReason });
+      setOpenRevert(false);
+      setToast({ open: true, message: 'Status reverted', severity: 'info' });
+    } catch (err) {
+      setToast({ open: true, message: err.message, severity: 'error' });
+    } finally {
+      setSubmittingAction(false);
+    }
+  };
+
+  const handleActionNoShowOpen = (row) => {
+    setActionRow(row);
+    setNoShowDialog({ open: true, reason: '' });
+    handleActionMenuClose();
+  };
+
+  const handleActionNoShowConfirm = async () => {
+    if (!noShowDialog.reason.trim() || submittingAction) return;
+    setSubmittingAction(true);
+    try {
+      await markNoShow(actionRow, noShowDialog.reason, settings);
+      setNoShowDialog({ open: false, reason: '' });
+      setToast({ open: true, message: 'Marked as no-show', severity: 'info' });
+    } catch (err) {
+      setToast({ open: true, message: err.message, severity: 'error' });
+    } finally {
+      setSubmittingAction(false);
+    }
+  };
+
+  const handleActionDefer = async (row) => {
+    try {
+      await deferAppointment(row.id, 'Deferred from Visit Log', profile?.fullName || user?.email || 'Staff', settings);
+      setToast({ open: true, message: 'Appointment deferred', severity: 'info' });
+    } catch (err) {
+      setToast({ open: true, message: err.message, severity: 'error' });
+    }
+  };
+
   const handleBulkReschedule = async () => {
     if (!bulkDate || !bulkReason.trim()) return;
     let successCount = 0;
@@ -625,25 +811,120 @@ export default function Records() {
        }
     },
     {
-      field: 'actions', headerName: 'Actions', width: 160, align: 'center', headerAlign: 'center',
+      field: 'actions', headerName: 'Actions', width: 280, align: 'center', headerAlign: 'center',
       renderCell: (p) => {
         if (p.row._isDateHeader) return null;
         if (p.row._isCaseHeader) return null;
+
+        const row = p.row;
+        const status = (row.status || '').toLowerCase();
+        const btnStyle = {
+          textTransform: 'uppercase', fontWeight: '1000', fontSize: '0.65rem',
+          height: 28, borderRadius: 0, letterSpacing: 0.5, px: 1.5,
+        };
+
+        let primaryButton = null;
+
+        if (status === 'pending') {
+          primaryButton = (
+            <>
+              <Button variant="contained" size="small"
+                startIcon={<CheckCircleIcon sx={{ fontSize: '12px !important' }} />}
+                sx={{ ...btnStyle, flex: 1, bgcolor: '#2E7D32' }}
+                onClick={(e) => { e.stopPropagation(); handleActionStatusChange(row, 'confirmed'); }}
+              >Accept</Button>
+              <Button variant="outlined" size="small"
+                sx={{ ...btnStyle, minWidth: 'auto', px: 1, color: COLORS.accent, borderColor: '#D7CCC8' }}
+                onClick={(e) => { e.stopPropagation(); handleActionDefer(row); }}
+              >Defer</Button>
+            </>
+          );
+        } else if (status === 'confirmed') {
+          primaryButton = (
+            <Button variant="contained" size="small"
+              startIcon={<HowToRegIcon sx={{ fontSize: '12px !important' }} />}
+              sx={{ ...btnStyle, flex: 1, bgcolor: row.caseDay > 1 ? '#E65100' : '#1976D2' }}
+              onClick={(e) => { e.stopPropagation(); handleActionOpenAssign(row); }}
+            >{row.caseDay > 1 ? 'RE-ARRIVE' : 'Check In'}</Button>
+          );
+        } else if (status === 'arrived') {
+          primaryButton = (
+            <Button variant="contained" size="small"
+              sx={{ ...btnStyle, flex: 1, bgcolor: row.caseDay > 1 ? '#E65100' : COLORS.accent }}
+              onClick={(e) => { e.stopPropagation(); handleActionStatusChange(row, 'in-consult'); }}
+            >{row.caseDay > 1 ? 'RESUME' : 'START CONSULT'}</Button>
+          );
+        } else if (['in-consult', 'confined', 'on-hold'].includes(status)) {
+          primaryButton = (
+            <Button variant="contained" size="small"
+              startIcon={<AutoFixHighIcon sx={{ fontSize: '12px !important' }} />}
+              sx={{ ...btnStyle, flex: 1, bgcolor: row.caseDay > 1 ? '#E65100' : '#006064' }}
+              onClick={(e) => { e.stopPropagation(); handleActionOpenConsult(row); }}
+            >{row.caseDay > 1 ? 'RESUME' : 'WORKSPACE'}</Button>
+          );
+        } else if (status === 'dispensing') {
+          const isHeld = !!row.dispensingHold;
+          primaryButton = isHeld ? (
+            <Chip label="ON HOLD" size="small"
+              sx={{ bgcolor: '#FF9800', color: 'white', fontWeight: 900, fontSize: '0.6rem', height: 20, borderRadius: 0 }}
+            />
+          ) : (
+            <Button variant="contained" size="small"
+              startIcon={<LocalHospitalIcon sx={{ fontSize: '12px !important' }} />}
+              sx={{ ...btnStyle, flex: 1, bgcolor: '#C62828' }}
+              onClick={(e) => { e.stopPropagation(); handleActionOpenDispenseVerify(row); }}
+            >VERIFY</Button>
+          );
+        } else if (status === 'billing') {
+          primaryButton = (
+            <Button variant="contained" size="small"
+              startIcon={<PaidIcon sx={{ fontSize: '12px !important' }} />}
+              sx={{ ...btnStyle, flex: 1, bgcolor: '#FF8F00' }}
+              onClick={(e) => { e.stopPropagation(); handleActionOpenPOS(row); }}
+            >CHECKOUT</Button>
+          );
+        } else if (TERMINAL_STATUSES.has(status)) {
+          primaryButton = row.statusHistory?.length > 0 ? (
+            <Button variant="outlined" size="small"
+              startIcon={<UndoIcon sx={{ fontSize: '12px !important' }} />}
+              sx={{ ...btnStyle, flex: 1, color: '#D32F2F', borderColor: '#D32F2F' }}
+              onClick={(e) => { e.stopPropagation(); handleActionRevertOpen(row); }}
+            >Revert</Button>
+          ) : null;
+        }
+
         return (
-          <Stack direction="row" spacing={0.5} sx={{ height: '100%', alignItems: 'center', justifyContent: 'center' }}>
+          <Stack direction="row" spacing={0.5} sx={{ height: '100%', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+            {primaryButton}
+            {!TERMINAL_STATUSES.has(status) && (
+              <IconButton size="small"
+                onClick={(e) => handleActionMenuOpen(e, row)}
+                sx={{ border: '1px solid rgba(0,0,0,0.1)', color: COLORS.accent, flexShrink: 0 }}
+              >
+                <MoreVertIcon fontSize="small" />
+              </IconButton>
+            )}
             <Tooltip title="Visit Audit">
-              <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleOpenAudit(e, p.row); }} sx={{ border: '1px solid #D7CCC8', color: COLORS.accent }}>
+              <IconButton size="small"
+                onClick={(e) => { e.stopPropagation(); handleOpenAudit(e, row); }}
+                sx={{ border: '1px solid #D7CCC8', color: COLORS.accent }}
+              >
                 <TimelineIcon fontSize="small" />
               </IconButton>
             </Tooltip>
             <Tooltip title="View in Patient CRM">
-              <IconButton size="small" onClick={() => navigate(`/patients/${p.row.petId}`, { state: { from: 'records' } })} sx={{ border: '1px solid #D7CCC8', color: COLORS.accent }}>
+              <IconButton size="small"
+                onClick={(e) => { e.stopPropagation(); navigate(`/patients/${row.petId}`, { state: { from: 'records' } }); }}
+                sx={{ border: '1px solid #D7CCC8', color: COLORS.accent }}
+              >
                 <PersonIcon fontSize="small" />
               </IconButton>
             </Tooltip>
             <Tooltip title="Print Visit Summary">
-              <IconButton size="small" onClick={async () => await handlePrintVisit(p.row)}
-                sx={{ border: '1px solid #D7CCC8', color: COLORS.accent }}>
+              <IconButton size="small"
+                onClick={async (e) => { e.stopPropagation(); await handlePrintVisit(row); }}
+                sx={{ border: '1px solid #D7CCC8', color: COLORS.accent }}
+              >
                 <PrintIcon fontSize="small" />
               </IconButton>
             </Tooltip>
@@ -1522,6 +1803,184 @@ export default function Records() {
         </Snackbar>
       )}
 
+      <Menu
+        anchorEl={menuAnchor}
+        open={Boolean(menuAnchor)}
+        onClose={handleActionMenuClose}
+        PaperProps={{
+          sx: {
+            border: `2px solid ${COLORS.accent}`,
+            boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.15)',
+            borderRadius: 0,
+            '& .MuiMenuItem-root': { fontWeight: '1000', py: 1.5, fontSize: '0.85rem' },
+          }
+        }}
+      >
+        {actionRow?.status === 'in-consult' && (
+          <MenuItem onClick={() => { handleActionStatusChange(actionRow, 'on-hold'); handleActionMenuClose(); }}>
+            <ListItemIcon><PauseCircleIcon fontSize="small" sx={{ color: '#FF9800' }} /></ListItemIcon>
+            <ListItemText primary="Put On Hold" sx={{ color: '#FF9800' }} />
+          </MenuItem>
+        )}
+        {actionRow?.status === 'on-hold' && (
+          <MenuItem onClick={() => { handleActionStatusChange(actionRow, 'in-consult'); handleActionMenuClose(); }}>
+            <ListItemIcon><PlayCircleFilledWhiteIcon fontSize="small" sx={{ color: '#2E7D32' }} /></ListItemIcon>
+            <ListItemText primary="Resume Consult" sx={{ color: '#2E7D32' }} />
+          </MenuItem>
+        )}
+        {actionRow?.status === 'confirmed' && (
+          <MenuItem onClick={() => handleActionNoShowOpen(actionRow)}>
+            <ListItemIcon><PersonOffIcon fontSize="small" /></ListItemIcon>
+            <ListItemText primary="Flag as No-Show" />
+          </MenuItem>
+        )}
+        {actionRow && !['pending'].includes(actionRow.status) && !TERMINAL_STATUSES.has(actionRow.status) && (
+          <MenuItem onClick={() => {
+            setActiveAuditRow(actionRow);
+            setRescheduleData({ newDate: '', reason: '' });
+            setOpenReschedule(true);
+            handleActionMenuClose();
+          }}>
+            <ListItemIcon><EventIcon fontSize="small" /></ListItemIcon>
+            <ListItemText primary="Reschedule" />
+          </MenuItem>
+        )}
+        {actionRow?.statusHistory?.length > 0 && (
+          <MenuItem onClick={() => handleActionRevertOpen(actionRow)}>
+            <ListItemIcon>
+              <UndoIcon fontSize="small" sx={{ color: TERMINAL_STATUSES.has(actionRow?.status) ? '#D32F2F' : '#E65100' }} />
+            </ListItemIcon>
+            <ListItemText
+              primary={TERMINAL_STATUSES.has(actionRow?.status) ? 'Revert Terminal State' : 'Revert Status (Undo)'}
+              sx={{ color: TERMINAL_STATUSES.has(actionRow?.status) ? '#D32F2F' : '#E65100' }}
+            />
+          </MenuItem>
+        )}
+        {actionRow && actionRow.status !== 'pending' && !TERMINAL_STATUSES.has(actionRow.status) && (
+          <>
+            <Divider />
+            <MenuItem onClick={() => {
+              setActiveAuditRow(actionRow);
+              handleCancelAppt();
+              handleActionMenuClose();
+            }} sx={{ color: '#D32F2F' }}>
+              <ListItemIcon><CancelIcon fontSize="small" sx={{ color: '#D32F2F' }} /></ListItemIcon>
+              <ListItemText primary="Cancel / Void Record" />
+            </MenuItem>
+          </>
+        )}
+      </Menu>
+
+      <Dialog
+        open={openRevert}
+        onClose={() => setOpenRevert(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 0, border: '4px solid #D32F2F' } }}
+      >
+        <DialogTitle sx={{ bgcolor: '#FFEBEE', color: '#D32F2F', fontWeight: '1000', borderBottom: '2px solid #D32F2F' }}>
+          REVERT STATUS
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3 }}>
+          <Typography variant="body2" sx={{ mb: 2, color: COLORS.accent }}>
+            Reverting <strong>{actionRow?.petName || '—'}</strong> from <strong>{actionRow?.status?.toUpperCase()}</strong> to its previous state.
+            This action is audited.
+          </Typography>
+          <TextField
+            fullWidth multiline rows={3} autoFocus
+            label="Reason for revert (required)"
+            placeholder="e.g., Billing error — need to re-verify dispensing"
+            value={revertReason}
+            onChange={(e) => setRevertReason(e.target.value)}
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0, fontWeight: 900, fontSize: '0.85rem' } }}
+          />
+          {!revertReason.trim() && (
+            <Typography variant="caption" sx={{ color: '#D32F2F', fontWeight: '1000', fontSize: '0.6rem', mt: 0.5, display: 'block' }}>
+              A forensic audit reason is mandatory for status reversals.
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2, bgcolor: '#FFEBEE', borderTop: '2px solid #D32F2F' }}>
+          <Button onClick={() => { setOpenRevert(false); setRevertReason(''); }} sx={{ fontWeight: '1000', color: '#757575' }}>Cancel</Button>
+          <Button
+            variant="contained"
+            disabled={!revertReason.trim() || submittingAction}
+            onClick={handleActionRevertConfirm}
+            sx={{ bgcolor: '#D32F2F', fontWeight: '1000', borderRadius: 0 }}
+          >
+            {submittingAction ? 'Reverting...' : 'Confirm Revert'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={noShowDialog.open}
+        onClose={() => setNoShowDialog({ open: false, reason: '' })}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 0, border: `4px solid ${COLORS.danger}` } }}
+      >
+        <DialogTitle sx={{ bgcolor: COLORS.dangerSurface, color: COLORS.danger, fontWeight: '1000', borderBottom: `2px solid ${COLORS.danger}` }}>
+          MARK AS NO-SHOW
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3 }}>
+          <Typography variant="body2" sx={{ mb: 2, fontWeight: 600 }}>
+            Flag <strong>{actionRow?.petName || '—'}</strong> as a no-show. A mandatory reason is required for audit compliance.
+          </Typography>
+          <TextField
+            fullWidth multiline rows={3} autoFocus
+            label="Reason (required)"
+            value={noShowDialog.reason}
+            onChange={(e) => setNoShowDialog(prev => ({ ...prev, reason: e.target.value }))}
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ p: 2, bgcolor: COLORS.dangerSurface, borderTop: `2px solid ${COLORS.danger}` }}>
+          <Button onClick={() => setNoShowDialog({ open: false, reason: '' })} sx={{ fontWeight: '1000', color: '#757575' }}>Cancel</Button>
+          <Button variant="contained" disabled={!noShowDialog.reason.trim() || submittingAction} onClick={handleActionNoShowConfirm}
+            sx={{ bgcolor: COLORS.danger, fontWeight: '1000', borderRadius: 0 }}>
+            Confirm No-Show
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <AssignStaffModal
+        open={openAssign}
+        onClose={() => { setOpenAssign(false); setActionRow(null); }}
+        patient={actionRow}
+      />
+
+      {openCW && actionRow && (
+        <ClinicalWorkspace
+          open={openCW}
+          onClose={() => { setOpenCW(false); setActionRow(null); }}
+          patient={actionRow}
+          inventoryList={joinedInventory}
+          servicesList={servicesList}
+          departments={departments}
+          vetsList={vets}
+        />
+      )}
+
+      <POSModal
+        open={openPOS}
+        onClose={() => { setOpenPOS(false); setActionRow(null); }}
+        patient={actionRow}
+        inventoryList={joinedInventory}
+        servicesList={servicesList}
+        isDayClosed={isDayClosed}
+        closingData={closingData}
+      />
+
+      <DispensingVerificationDialog
+        open={openDispenseVerify}
+        onClose={() => { setOpenDispenseVerify(false); setDispenseRow(null); }}
+        patient={dispenseRow}
+        onVerified={handleActionDispenseVerified}
+        staffProfile={profile}
+        clinicSettings={settings}
+        inventoryList={joinedInventory}
+      />
 
     </Box>
   );

@@ -532,7 +532,9 @@ export default function PetHistoryScreen({ route, navigation }) {
   const [caseDayMap, setCaseDayMap] = useState({});
   // T3.94: Search and filter state
   const [searchText, setSearchText] = useState('');
-  const [activeFilter, setActiveFilter] = useState('All');
+  const [activeFilters, setActiveFilters] = useState(new Set());
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [pendingFilters, setPendingFilters] = useState(new Set());
   // T4.107: Departments — one-shot fetch for dynamic filter chips
   const [departments, setDepartments] = useState([]);
   const { clinicPhone, clinicName } = useClinicContact();
@@ -574,13 +576,17 @@ export default function PetHistoryScreen({ route, navigation }) {
       .catch(err => console.warn('[PetHistoryScreen] departments fetch skipped:', err.message));
   }, []);
 
-  // T4.107: Defensive reset — if the active filter no longer exists in the
-  // updated options (e.g., after a successful departments fetch), fall back to All.
+  // T4.107: Defensive reset — if any active filters no longer exist in the
+  // updated options (e.g., after a successful departments fetch), clear them.
   useEffect(() => {
-    if (activeFilter !== 'All' && !filterOptions.includes(activeFilter)) {
-      setActiveFilter('All');
+    if (activeFilters.size > 0) {
+      const validOptions = new Set(filterOptions.filter(o => o !== 'All'));
+      const cleaned = new Set([...activeFilters].filter(f => validOptions.has(f)));
+      if (cleaned.size !== activeFilters.size) {
+        setActiveFilters(cleaned);
+      }
     }
-  }, [filterOptions, activeFilter]);
+  }, [filterOptions]);
 
   // T4.97: One-shot fetch for pet profile — provides species/breed/age/allergies to the AI prompt.
   // Falls back gracefully if the doc is missing; the AI just gets less context.
@@ -647,12 +653,11 @@ export default function PetHistoryScreen({ route, navigation }) {
   const filteredHistory = useMemo(() => {
     let result = history;
 
-    if (activeFilter !== 'All') {
+    if (activeFilters.size > 0) {
       result = result.filter(r => {
-        if (activeFilter === 'Vaccination') {
-          return r.vaccineAdministrations?.length > 0 || !!r.vaccineData;
-        }
-        return resolveDepartmentForRecord(r, departments) === activeFilter;
+        const dept = resolveDepartmentForRecord(r, departments);
+        const isVax = r.vaccineAdministrations?.length > 0 || !!r.vaccineData;
+        return activeFilters.has(dept) || (isVax && activeFilters.has('Vaccination'));
       });
     }
 
@@ -668,7 +673,19 @@ export default function PetHistoryScreen({ route, navigation }) {
     }
 
     return result;
-  }, [history, activeFilter, searchText, departments]);
+  }, [history, activeFilters, searchText, departments]);
+
+  const departmentCounts = useMemo(() => {
+    const counts = new Map();
+    history.forEach(r => {
+      const dept = resolveDepartmentForRecord(r, departments);
+      counts.set(dept, (counts.get(dept) || 0) + 1);
+      if (r.vaccineAdministrations?.length > 0 || r.vaccineData) {
+        counts.set('Vaccination', (counts.get('Vaccination') || 0) + 1);
+      }
+    });
+    return counts;
+  }, [history, departments]);
 
   // T4.122: Active/historical prescription split — matches admin PatientDashboard pattern.
   // Active = prescribed in last 90 days OR pinned by the vet. Historical = older, not pinned.
@@ -933,6 +950,30 @@ export default function PetHistoryScreen({ route, navigation }) {
     }
   }, [months, activeMonth]);
 
+  const years = useMemo(() => {
+    const yearSet = new Set();
+    months.forEach(m => yearSet.add(m.key.split('-')[0]));
+    return Array.from(yearSet).sort((a, b) => b - a);
+  }, [months]);
+
+  const [selectedYear, setSelectedYear] = useState('');
+  const selectedYearRef = useRef('');
+
+  useEffect(() => {
+    selectedYearRef.current = selectedYear;
+  }, [selectedYear]);
+
+  useEffect(() => {
+    if (years.length > 0 && !selectedYear) {
+      setSelectedYear(years[0]);
+    }
+  }, [years, selectedYear]);
+
+  const visibleMonths = useMemo(() => {
+    if (!selectedYear) return months;
+    return months.filter(m => m.key.startsWith(selectedYear));
+  }, [months, selectedYear]);
+
   const scrollToMonth = useCallback((monthKey, firstIndex) => {
     setActiveMonth(monthKey);
     flatListRef.current?.scrollToIndex({
@@ -955,22 +996,12 @@ export default function PetHistoryScreen({ route, navigation }) {
     if (!d) return;
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     setActiveMonth(key);
+    const yearPart = key.split('-')[0];
+    if (yearPart !== selectedYearRef.current) {
+      setSelectedYear(yearPart);
+    }
   }).current;
 
-  // T4.155: Expanded diagnoses state (per-record "show more diagnoses" toggle)
-  const [expandedDiagnoses, setExpandedDiagnoses] = useState(new Set());
-
-  const toggleDiagnoses = useCallback((recordId) => {
-    setExpandedDiagnoses(prev => {
-      const next = new Set(prev);
-      if (next.has(recordId)) {
-        next.delete(recordId);
-      } else {
-        next.add(recordId);
-      }
-      return next;
-    });
-  }, []);
 
   // ---------------------------------------------------------------------------
   // T4.124: Animated values for lightbox pinch-to-zoom and pan gesture tracking.
@@ -1524,7 +1555,7 @@ export default function PetHistoryScreen({ route, navigation }) {
           </p>` : ''}
           ${dsDiagnosis ? `<h3>Diagnosis</h3><p>${esc(dsDiagnosis)}</p>` : ''}
           ${record.patientStatus ? `<p><b>Status:</b> ${esc(record.patientStatus)}</p>` : ''}
-          ${hasDischarge && dsInstructions ? `<h3>Going-Home Instructions</h3><p>${esc(dsInstructions).replace(/\n/g, '<br/>')}</p>` : ''}
+          ${hasDischarge && dsInstructions ? `<h3>Discharge Notes</h3><p>${esc(dsInstructions).replace(/\n/g, '<br/>')}</p>` : ''}
           ${hasDischarge ? rxHtmlFromDischarge + suppliesHtmlFromDischarge : rxHtml}
           ${nextVisitStr ? `<h3 style="color: #D32F2F;">Next Follow-Up Due: ${esc(nextVisitStr)}</h3>` : ""}
           <hr style="margin-top: 50px;" />
@@ -1662,15 +1693,6 @@ export default function PetHistoryScreen({ route, navigation }) {
     const crtStr = coerceVital(rv.crt);
     const bcsStr = coerceVital(rv.bcs);
     const painStr = coerceVital(rv.pain);
-    const hasWeight = weightStr !== '';
-    const hasTemp = tempStr !== '';
-    const hasHR = hrStr !== '';
-    const hasRR = rrStr !== '';
-    const hasCRT = crtStr !== '';
-    const hasBCS = bcsStr !== '';
-    const hasPain = painStr !== '';
-    const hasVitals = hasWeight || hasTemp || hasHR || hasRR || hasCRT || hasBCS || hasPain;
-
     const statusColors = getStatusColors(item.patientStatus);
 
     return (
@@ -1707,19 +1729,6 @@ export default function PetHistoryScreen({ route, navigation }) {
               {/* COLLAPSED HEADER — always visible */}
               <View style={styles.collapsedHeader}>
                 <Text style={styles.collapsedDate}>{visitDate}</Text>
-                <Text style={styles.collapsedDiagnosis} numberOfLines={1}>
-                  {diagnosisLabel}
-                </Text>
-                {item.patientStatus && !isGrooming && (
-                  <View style={[
-                    styles.collapsedStatusPill,
-                    { backgroundColor: statusColors.bg, borderColor: statusColors.border },
-                  ]}>
-                    <Text style={[styles.collapsedStatusText, { color: statusColors.text }]}>
-                      {item.patientStatus.toUpperCase()}
-                    </Text>
-                  </View>
-                )}
                 <Text style={styles.collapsedVet} numberOfLines={1}>
                   {item.vetName || 'Staff'}
                 </Text>
@@ -1779,10 +1788,49 @@ export default function PetHistoryScreen({ route, navigation }) {
                     </Text>
                   </View>
                 </View>
-            {/* T2.8 Path B: raw SOAP subjective/objective/plan hidden from client view.
-                Diagnosis is shown from the top-level field; instructions from dischargeSummary. */}
+            {!isGrooming && (item.diagnoses?.length > 0 || item.diagnosis) && (
+              <View style={styles.diagnosisHero}>
+                {(item.diagnoses?.length > 0
+                  ? item.diagnoses
+                  : [{ name: item.diagnosis }]
+                ).map((dx, i) => (
+                  <View key={i} style={i > 0 ? { marginTop: 4 } : undefined}>
+                    <Text style={styles.diagnosisHeroText}>
+                      {dx.name}{dx.severity ? ` (${dx.severity.toUpperCase()})` : ''}
+                    </Text>
+                    {dx.notes ? (
+                      <Text style={styles.diagnosisHeroNotes}>{dx.notes}</Text>
+                    ) : null}
+                  </View>
+                ))}
+              </View>
+            )}
 
-            {/* T3.70: Show intake context (client's own notes + triage summary) — safe to show to client */}
+            {!isGrooming && (item.patientStatus || item.soap?.prognosis) && (
+              <View style={styles.statusPrognosisRow}>
+                {item.patientStatus && (
+                  <Text style={[styles.statusPrognosisText, { color: statusColors.text }]}>
+                    {item.patientStatus.toUpperCase()}
+                  </Text>
+                )}
+                {item.patientStatus && item.soap?.prognosis && (
+                  <Text style={styles.statusPrognosisDot}>{' · '}</Text>
+                )}
+                {item.soap?.prognosis && (
+                  <Text style={styles.statusPrognosisText}>
+                    PROGNOSIS: {item.soap.prognosis.toUpperCase()}
+                  </Text>
+                )}
+              </View>
+            )}
+
+            {!isGrooming && item.soap?.subjective && (
+              <View style={styles.reasonForVisitBox}>
+                <Text style={styles.reasonForVisitLabel}>REASON FOR VISIT</Text>
+                <Text style={styles.reasonForVisitText}>{item.soap.subjective}</Text>
+              </View>
+            )}
+
             {(item.intakeContext?.clientNotes || item.intakeContext?.staffNotes) && (
               <View style={styles.intakeContextBox}>
                 <Text style={styles.intakeContextLabel}>INTAKE NOTES</Text>
@@ -1799,67 +1847,6 @@ export default function PetHistoryScreen({ route, navigation }) {
               </View>
             )}
 
-            <View style={styles.diagnosisContainer}>
-              {item.patientStatus && !isGrooming && (
-                <View style={[
-                  styles.statusBadge,
-                  { backgroundColor: statusColors.bg, borderColor: statusColors.border },
-                ]}>
-                  <Text style={[styles.statusText, { color: statusColors.text }]}>
-                    {item.patientStatus.toUpperCase()}
-                  </Text>
-                </View>
-              )}
-              <Text style={[styles.diagnosisText, { color: isGrooming ? COLORS.accentLight : COLORS.brand }]}>
-                {item.diagnoses?.[0]?.name || item.diagnosis ||
-                  (isGrooming ? "Grooming Services" : "Consultation")}
-              </Text>
-              {item.diagnoses?.[0]?.severity ? (
-                <View style={styles.severityPill}>
-                  <Text style={styles.severityPillText}>
-                    {item.diagnoses[0].severity}
-                  </Text>
-                </View>
-              ) : null}
-              {/* T4.155 Day 2: Gap 2 — per-diagnosis notes for the primary diagnosis */}
-              {item.diagnoses?.[0]?.notes ? (
-                <Text style={styles.diagnosisNotes}>{item.diagnoses[0].notes}</Text>
-              ) : null}
-              {/* T4.155: Tappable "+N more diagnoses" that expands inline */}
-              {item.diagnoses?.length > 1 ? (
-                <TouchableOpacity onPress={() => toggleDiagnoses(item.id)}>
-                  <Text style={styles.diagnosesToggle}>
-                    {expandedDiagnoses.has(item.id)
-                      ? 'Show less'
-                      : `+${item.diagnoses.length - 1} more ${item.diagnoses.length === 2 ? 'diagnosis' : 'diagnoses'}`}
-                  </Text>
-                </TouchableOpacity>
-              ) : null}
-              {/* Additional diagnoses revealed when expanded */}
-              {expandedDiagnoses.has(item.id) && item.diagnoses?.slice(1).map((dx, i) => (
-                <View key={i} style={styles.extraDiagnosisRow}>
-                  <Text style={styles.extraDiagnosisName}>{dx.name}</Text>
-                  {dx.severity && (
-                    <View style={styles.extraDiagnosisSeverity}>
-                      <Text style={styles.extraDiagnosisSeverityText}>{dx.severity}</Text>
-                    </View>
-                  )}
-                  {dx.notes && (
-                    <Text style={styles.diagnosisNotes}>{dx.notes}</Text>
-                  )}
-                </View>
-              ))}
-            </View>
-
-            {/* T4.155 Day 2: Gap 1 — soap.prognosis, shown for non-grooming records when prognosis is set */}
-            {item.soap?.prognosis && !isGrooming && (
-              <View style={styles.prognosisRow}>
-                <Text style={styles.prognosisLabel}>PROGNOSIS</Text>
-                <Text style={styles.prognosisText}>{item.soap.prognosis}</Text>
-              </View>
-            )}
-
-            {/* T3.89 + T4.141: SOAP Assessment — shown when no discharge summary exists */}
             {!item.dischargeSummary && !!(item.assessmentNotes || (item.soap?.assessment && item.soap.assessment !== item.diagnosis)) && (
               <View style={styles.assessmentBox}>
                 <Text style={styles.assessmentLabel}>VET&apos;S NOTES</Text>
@@ -1867,51 +1854,26 @@ export default function PetHistoryScreen({ route, navigation }) {
               </View>
             )}
 
-            {!isGrooming && hasVitals && (
-              <View style={styles.vitalsBox}>
-                {hasWeight && (
-                  <View style={styles.vitalItem}>
-                    <Text style={styles.vitalLabel}>WEIGHT</Text>
-                    <Text style={styles.vitalValue}>{weightStr} kg</Text>
+            {!isGrooming && (
+              <View style={styles.vitalsGrid}>
+                {[
+                  { label: 'WEIGHT', value: weightStr, unit: 'kg' },
+                  { label: 'TEMP', value: tempStr, unit: '°C' },
+                  { label: 'HR', value: hrStr, unit: 'bpm' },
+                  { label: 'RR', value: rrStr, unit: 'br/min' },
+                  { label: 'CRT', value: crtStr, unit: 'sec' },
+                  { label: 'BCS', value: bcsStr, unit: '/9' },
+                  { label: 'PAIN', value: painStr, unit: '/10' },
+                ].map((v, i) => (
+                  <View key={i} style={styles.vitalsGridItem}>
+                    <Text style={styles.vitalsGridLabel}>{v.label}</Text>
+                    {v.value ? (
+                      <Text style={styles.vitalsGridValue}>{v.value} {v.unit}</Text>
+                    ) : (
+                      <Text style={styles.vitalsGridMissing}>not taken</Text>
+                    )}
                   </View>
-                )}
-                {hasTemp && (
-                  <View style={styles.vitalItem}>
-                    <Text style={styles.vitalLabel}>TEMP</Text>
-                    <Text style={styles.vitalValue}>{tempStr} °C</Text>
-                  </View>
-                )}
-                {hasHR && (
-                  <View style={styles.vitalItem}>
-                    <Text style={styles.vitalLabel}>HR</Text>
-                    <Text style={styles.vitalValue}>{hrStr} bpm</Text>
-                  </View>
-                )}
-                {/* T3.88: Extended vitals */}
-                {hasRR && (
-                  <View style={styles.vitalItem}>
-                    <Text style={styles.vitalLabel}>RR</Text>
-                    <Text style={styles.vitalValue}>{rrStr} br/min</Text>
-                  </View>
-                )}
-                {hasCRT && (
-                  <View style={styles.vitalItem}>
-                    <Text style={styles.vitalLabel}>CRT</Text>
-                    <Text style={styles.vitalValue}>{crtStr} sec</Text>
-                  </View>
-                )}
-                {hasBCS && (
-                  <View style={styles.vitalItem}>
-                    <Text style={styles.vitalLabel}>BCS</Text>
-                    <Text style={styles.vitalValue}>{bcsStr} /9</Text>
-                  </View>
-                )}
-                {hasPain && (
-                  <View style={styles.vitalItem}>
-                    <Text style={styles.vitalLabel}>PAIN</Text>
-                    <Text style={styles.vitalValue}>{painStr} /10</Text>
-                  </View>
-                )}
+                ))}
               </View>
             )}
 
@@ -2054,7 +2016,6 @@ export default function PetHistoryScreen({ route, navigation }) {
               );
             })()}
 
-            {/* DISCHARGE SUMMARY — polished as "Going-Home Instructions" */}
             {item.dischargeSummary && (() => {
               const ds = item.dischargeSummary;
               const doThisItems = (ds.instructions || '')
@@ -2074,17 +2035,12 @@ export default function PetHistoryScreen({ route, navigation }) {
               return (
                 <View style={styles.dischargeCard}>
                   <View style={styles.dischargeHeaderRow}>
-                    <Text style={styles.dischargeHeader}>GOING-HOME INSTRUCTIONS</Text>
+                    <MaterialIcons name="assignment" size={14} color={COLORS.accent} />
+                    <Text style={styles.dischargeHeader}>DISCHARGE NOTES</Text>
                     {ds.patientStatus && (
                       <Text style={styles.dischargeStatusPill}>{ds.patientStatus}</Text>
                     )}
                   </View>
-
-                  {ds.diagnosis && (
-                    <View style={styles.dischargeDiagnosisBlock}>
-                      <Text style={styles.dischargeDiagnosisText}>{ds.diagnosis}</Text>
-                    </View>
-                  )}
 
                   {doThisItems.length > 0 && (
                     <View style={styles.dischargeSection}>
@@ -2377,13 +2333,14 @@ export default function PetHistoryScreen({ route, navigation }) {
               </View>
             )}
 
-            <View style={styles.cardFooter}>
-              <TouchableOpacity
-                style={styles.pdfBtn}
-                onPress={() => generatePDF(item)}
-              >
-                <MaterialIcons name="picture-as-pdf" size={18} color={COLORS.accent} />
-                <Text style={styles.pdfBtnText}>Download Visit Summary</Text>
+            <View style={styles.actionsRow}>
+              <TouchableOpacity style={styles.actionBtn} onPress={() => generatePDF(item)}>
+                <MaterialIcons name="picture-as-pdf" size={16} color={COLORS.accent} />
+                <Text style={styles.actionBtnText}>Visit Summary</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.actionBtn} onPress={() => generatePDF(item)}>
+                <MaterialIcons name="share" size={16} color={COLORS.accent} />
+                <Text style={styles.actionBtnText}>Share</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -2404,8 +2361,10 @@ export default function PetHistoryScreen({ route, navigation }) {
         >
           <MaterialIcons name="arrow-back-ios" size={20} color={COLORS.accent} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{petName}&apos;s Chart</Text>
-        <View style={{ width: 40 }} /> {/* Spacer for centering */}
+        <Text style={styles.headerTitle}>{petName.toUpperCase()}&apos;S CHART</Text>
+        <Text style={styles.recordCountHeader}>
+          {filteredHistory.length} RECORD{filteredHistory.length !== 1 ? 'S' : ''}
+        </Text>
       </View>
 
       {/* T3.94: Search + filter bar — shown once records have loaded */}
@@ -2426,51 +2385,28 @@ export default function PetHistoryScreen({ route, navigation }) {
                 <MaterialIcons name="close" size={18} color={COLORS.textMuted} />
               </TouchableOpacity>
             )}
-          </View>
-          {/* T4.155: Record count badge + expand/collapse all toggle */}
-          <View style={styles.searchActionsRow}>
-            <Text style={styles.recordCountBadge}>
-              {filteredHistory.length} RECORD{filteredHistory.length !== 1 ? 'S' : ''}
-            </Text>
-            <TouchableOpacity style={styles.expandAllBtn} onPress={toggleAll}>
+            <View style={styles.searchDivider} />
+            <TouchableOpacity onPress={toggleAll} style={styles.expandToggleInSearch}>
               <MaterialIcons
                 name={allExpanded ? 'unfold-less' : 'unfold-more'}
-                size={16}
+                size={18}
                 color={COLORS.accent}
               />
-              <Text style={styles.expandAllText}>
-                {allExpanded ? 'COLLAPSE ALL' : 'EXPAND ALL'}
-              </Text>
+            </TouchableOpacity>
+            <View style={styles.searchDivider} />
+            <TouchableOpacity
+              style={styles.filterIconBtn}
+              onPress={() => { setPendingFilters(new Set(activeFilters)); setFilterSheetOpen(true); }}
+            >
+              <MaterialIcons name="filter-list" size={20} color={COLORS.accent} />
+              {activeFilters.size > 0 && (
+                <View style={styles.filterBadge}>
+                  <Text style={styles.filterBadgeText}>{activeFilters.size}</Text>
+                </View>
+              )}
             </TouchableOpacity>
           </View>
 
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.filterChipRow}
-            contentContainerStyle={{ gap: 8 }}
-          >
-            {filterOptions.map(opt => {
-              const isActive = activeFilter === opt;
-              const deptColor = opt !== 'All' && opt !== 'Vaccination'
-                ? departments.find(d => d.name === opt)?.color
-                : null;
-              return (
-                <TouchableOpacity
-                  key={opt}
-                  style={[
-                    styles.filterChip,
-                    isActive && [styles.filterChipActive, deptColor ? { backgroundColor: deptColor, borderColor: deptColor } : null],
-                  ]}
-                  onPress={() => setActiveFilter(opt)}
-                >
-                  <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
-                    {opt}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
         </View>
       )}
 
@@ -2502,31 +2438,52 @@ export default function PetHistoryScreen({ route, navigation }) {
           <>
             {/* T4.155: Month picker horizontal strip — only when 2+ months present */}
             {months.length > 1 && (
-              <ScrollView
-                ref={monthPickerRef}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.monthPickerStrip}
-                contentContainerStyle={styles.monthPickerContent}
-              >
-                {months.map(m => (
-                  <TouchableOpacity
-                    key={m.key}
-                    style={[
-                      styles.monthChip,
-                      activeMonth === m.key && styles.monthChipActive,
-                    ]}
-                    onPress={() => scrollToMonth(m.key, m.firstIndex)}
-                  >
-                    <Text style={[
-                      styles.monthChipText,
-                      activeMonth === m.key && styles.monthChipTextActive,
-                    ]}>
-                      {m.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+              <>
+                {years.length >= 2 && (
+                  <View style={styles.yearDropdownRow}>
+                    {years.map(y => (
+                      <TouchableOpacity
+                        key={y}
+                        style={[styles.yearChip, selectedYear === y && styles.yearChipActive]}
+                        onPress={() => {
+                          setSelectedYear(y);
+                          const firstVisible = months.find(m => m.key.startsWith(y));
+                          if (firstVisible) setActiveMonth(firstVisible.key);
+                        }}
+                      >
+                        <Text style={[styles.yearChipText, selectedYear === y && styles.yearChipTextActive]}>
+                          {y}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+                <ScrollView
+                  ref={monthPickerRef}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.monthPickerStrip}
+                  contentContainerStyle={styles.monthPickerContent}
+                >
+                  {visibleMonths.map(m => (
+                    <TouchableOpacity
+                      key={m.key}
+                      style={[
+                        styles.monthChip,
+                        activeMonth === m.key && styles.monthChipActive,
+                      ]}
+                      onPress={() => scrollToMonth(m.key, m.firstIndex)}
+                    >
+                      <Text style={[
+                        styles.monthChipText,
+                        activeMonth === m.key && styles.monthChipTextActive,
+                      ]}>
+                        {m.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </>
             )}
 
             <FlatList
@@ -2623,6 +2580,42 @@ export default function PetHistoryScreen({ route, navigation }) {
         uniqueTests={labUniqueTests}
       />
 
+      <Modal visible={filterSheetOpen} transparent animationType="slide" onRequestClose={() => setFilterSheetOpen(false)}>
+        <TouchableOpacity style={styles.filterOverlay} activeOpacity={1} onPress={() => setFilterSheetOpen(false)}>
+          <View style={styles.filterSheet} onStartShouldSetResponder={() => true}>
+            <View style={styles.filterSheetHandle} />
+            <Text style={styles.filterSheetTitle}>FILTER BY DEPARTMENT</Text>
+            <ScrollView style={styles.filterSheetScroll}>
+              {filterOptions.filter(o => o !== 'All').map(opt => {
+                const isChecked = pendingFilters.has(opt);
+                const count = departmentCounts.get(opt) || 0;
+                return (
+                  <TouchableOpacity key={opt} style={styles.filterSheetRow} onPress={() => {
+                    setPendingFilters(prev => {
+                      const next = new Set(prev);
+                      if (next.has(opt)) next.delete(opt); else next.add(opt);
+                      return next;
+                    });
+                  }}>
+                    <MaterialIcons name={isChecked ? 'check-box' : 'check-box-outline-blank'} size={22} color={isChecked ? COLORS.sky : COLORS.textMuted} />
+                    <Text style={styles.filterSheetLabel}>{opt}</Text>
+                    <Text style={styles.filterSheetCount}>({count})</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <View style={styles.filterSheetActions}>
+              <TouchableOpacity onPress={() => setPendingFilters(new Set())} style={styles.filterSheetClearBtn}>
+                <Text style={styles.filterSheetClearText}>CLEAR ALL</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => { setActiveFilters(new Set(pendingFilters)); setFilterSheetOpen(false); }} style={styles.filterSheetApplyBtn}>
+                <Text style={styles.filterSheetApplyText}>APPLY FILTER</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       {/* T4.124: Full-screen image lightbox — pinch-to-zoom, double-tap to toggle, pan when zoomed */}
       <Modal
         visible={lightbox.open}
@@ -2704,9 +2697,16 @@ const styles = StyleSheet.create({
   headerTitle: {
     color: COLORS.brand,
     fontSize: 18,
-    fontWeight: "900",
+    fontWeight: '900',
     letterSpacing: 0.5,
-    textTransform: 'uppercase',
+    flex: 1,
+    marginLeft: 12,
+  },
+  recordCountHeader: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.textMuted,
+    letterSpacing: 1,
   },
 
   // --- Offline state ---
@@ -2792,29 +2792,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     minWidth: 55,
   },
-  collapsedDiagnosis: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '700',
-    color: COLORS.brand,
-  },
-  collapsedStatusPill: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderWidth: 1,
-    borderRadius: 0,
-  },
-  collapsedStatusText: {
-    fontSize: 9,
-    fontWeight: '900',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
   collapsedVet: {
+    flex: 1,
     fontSize: 10,
     fontWeight: '700',
     color: COLORS.textMuted,
-    maxWidth: 65,
   },
 
   cardHeader: {
@@ -2882,131 +2864,92 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // --- Diagnosis container ---
-  diagnosisContainer: {
-    flexDirection: "column",
-    alignItems: "flex-start",
-    marginBottom: 12,
-  },
-  diagnosisText: {
-    fontSize: 18,
-    fontWeight: "900",
-    marginTop: 4,
-    lineHeight: 24,
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 0,
-    borderWidth: 1,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: "900",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  severityPill: {
-    backgroundColor: COLORS.cream,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    marginTop: 4,
-    borderRadius: 0,
-    borderWidth: 1,
-    borderColor: COLORS.warning,
-  },
-  severityPillText: {
-    fontSize: 10,
+  // --- Diagnosis hero ---
+  diagnosisHero: { marginBottom: 12 },
+  diagnosisHeroText: {
+    fontSize: 20,
     fontWeight: '900',
-    color: COLORS.warning,
-    textTransform: 'uppercase',
-  },
-
-  // T4.155: Diagnoses expansion
-  diagnosesToggle: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: COLORS.sky,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginTop: 4,
-  },
-  extraDiagnosisRow: {
-    marginTop: 6,
-    paddingLeft: 8,
-    borderLeftWidth: 2,
-    borderLeftColor: COLORS.borderLight,
-  },
-  extraDiagnosisName: {
-    fontSize: 14,
-    fontWeight: '700',
     color: COLORS.brand,
+    lineHeight: 26,
   },
-  extraDiagnosisSeverity: {
-    backgroundColor: COLORS.cream,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    marginTop: 2,
-    borderRadius: 0,
-    alignSelf: 'flex-start',
-    borderWidth: 1,
-    borderColor: COLORS.warning,
-  },
-  extraDiagnosisSeverityText: {
-    fontSize: 10,
-    fontWeight: '900',
-    color: COLORS.warning,
-    textTransform: 'uppercase',
-  },
-  diagnosisNotes: {
+  diagnosisHeroNotes: {
     fontSize: 12,
     color: COLORS.textMuted,
     fontStyle: 'italic',
     marginTop: 2,
   },
 
-  // T4.155 Day 2: Gap 1 — soap.prognosis display
-  prognosisRow: {
+  // --- Status + Prognosis merged line ---
+  statusPrognosisRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 10,
+    marginBottom: 12,
+    flexWrap: 'wrap',
   },
-  prognosisLabel: {
-    fontSize: 10,
+  statusPrognosisText: {
+    fontSize: 11,
     fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  statusPrognosisDot: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+  },
+
+  // --- Reason for visit ---
+  reasonForVisitBox: {
+    backgroundColor: COLORS.cream,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    padding: 12,
+    marginBottom: 12,
+    borderRadius: 0,
+  },
+  reasonForVisitLabel: {
+    fontWeight: '900',
+    fontSize: 10,
     color: COLORS.textMuted,
     letterSpacing: 1,
     textTransform: 'uppercase',
+    marginBottom: 4,
   },
-  prognosisText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: COLORS.brand,
+  reasonForVisitText: {
+    fontSize: 14,
+    color: COLORS.textPrimary,
+    lineHeight: 20,
   },
 
-  // --- Vitals ---
-  vitalsBox: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    backgroundColor: COLORS.cream,
-    borderRadius: 0,
-    padding: 12,
+  // --- Vitals grid ---
+  vitalsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
     marginBottom: 12,
+  },
+  vitalsGridItem: {
+    alignItems: 'center',
+    minWidth: 70,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
     borderWidth: 1,
     borderColor: COLORS.borderLight,
-    gap: 8,
+    borderRadius: 0,
+    backgroundColor: COLORS.cream,
   },
-  vitalItem: { alignItems: "center", minWidth: 60 },
-  vitalLabel: {
+  vitalsGridLabel: {
     fontSize: 10,
+    fontWeight: '900',
     color: COLORS.textMuted,
-    fontWeight: "900",
-    marginBottom: 4,
-    textTransform: 'uppercase',
     letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: 4,
   },
-  vitalValue: { fontSize: 15, color: COLORS.brand, fontWeight: "900" },
+  vitalsGridValue: { fontSize: 15, fontWeight: '900', color: COLORS.brand },
+  vitalsGridMissing: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    fontStyle: 'italic',
+  },
 
   planBox: {
     padding: 12,
@@ -3113,19 +3056,31 @@ const styles = StyleSheet.create({
   },
   reminderText: { color: COLORS.danger, fontWeight: "900", fontSize: 13 },
 
-  cardFooter: { padding: 12, backgroundColor: COLORS.cream, borderTopWidth: 1, borderTopColor: COLORS.borderLight },
-  pdfBtn: {
-    flexDirection: "row",
-    gap: 8,
-    backgroundColor: COLORS.white,
-    paddingVertical: 12,
-    borderRadius: 0,
-    alignItems: "center",
-    justifyContent: "center",
+  actionsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingTop: 12,
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+  },
+  actionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     borderWidth: 2,
     borderColor: COLORS.border,
+    borderRadius: 0,
+    backgroundColor: COLORS.white,
   },
-  pdfBtnText: { color: COLORS.accent, fontWeight: "900", fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.5 },
+  actionBtnText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.accent,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
 
   emptyContainer: {
     alignItems: "center",
@@ -3189,25 +3144,25 @@ const styles = StyleSheet.create({
   // --- Discharge card (B4) ---
   dischargeCard: {
     marginTop: 12,
-    padding: 14,
+    marginHorizontal: -12,
+    paddingHorizontal: 12,
+    paddingVertical: 14,
     backgroundColor: COLORS.cream,
     borderRadius: 0,
-    borderWidth: 1,
-    borderColor: COLORS.success,
-    borderLeftWidth: 3,
   },
   dischargeHeaderRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    gap: 6,
     marginBottom: 10,
   },
   dischargeHeader: {
     fontSize: 11,
     fontWeight: "900",
-    color: COLORS.success,
+    color: COLORS.accent,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
+    flex: 1,
   },
   dischargeStatusPill: {
     fontSize: 10,
@@ -3221,18 +3176,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     borderWidth: 1,
     borderColor: COLORS.success,
-  },
-  dischargeDiagnosisBlock: {
-    marginBottom: 10,
-    paddingLeft: 10,
-    borderLeftWidth: 3,
-    borderLeftColor: COLORS.accent,
-  },
-  dischargeDiagnosisText: {
-    fontSize: 15,
-    color: COLORS.brand,
-    fontWeight: '900',
-    lineHeight: 20,
   },
   dischargeSection: {
     marginBottom: 10,
@@ -3787,37 +3730,122 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     padding: 0,
   },
-  // T4.155: Search actions row (record count + expand/collapse all)
-  searchActionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
+  searchDivider: {
+    width: 1,
+    height: 18,
+    backgroundColor: COLORS.borderLight,
+    marginHorizontal: 4,
   },
-  recordCountBadge: {
-    fontSize: 11,
+  expandToggleInSearch: {
+    padding: 4,
+  },
+  filterIconBtn: {
+    padding: 4,
+    position: 'relative',
+  },
+  filterBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: COLORS.danger,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterBadgeText: {
+    fontSize: 9,
     fontWeight: '900',
-    color: COLORS.textMuted,
+    color: COLORS.white,
+  },
+  filterOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  filterSheet: {
+    backgroundColor: COLORS.cream,
+    borderTopWidth: 2,
+    borderTopColor: COLORS.border,
+    paddingBottom: 30,
+    maxHeight: '60%',
+  },
+  filterSheetHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: COLORS.borderLight,
+    alignSelf: 'center',
+    marginTop: 10,
+    marginBottom: 16,
+  },
+  filterSheetTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: COLORS.accent,
     letterSpacing: 1,
     textTransform: 'uppercase',
+    paddingHorizontal: 20,
+    marginBottom: 12,
   },
-  expandAllBtn: {
+  filterSheetScroll: {
+    paddingHorizontal: 20,
+  },
+  filterSheetRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    gap: 10,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+  },
+  filterSheetLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.brand,
+  },
+  filterSheetCount: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+  },
+  filterSheetActions: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+  filterSheetClearBtn: {
+    flex: 1,
+    paddingVertical: 12,
     borderWidth: 2,
     borderColor: COLORS.border,
     borderRadius: 0,
+    alignItems: 'center',
     backgroundColor: COLORS.white,
   },
-  expandAllText: {
-    fontSize: 10,
+  filterSheetClearText: {
+    fontSize: 11,
     fontWeight: '900',
     color: COLORS.accent,
-    letterSpacing: 0.5,
     textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  filterSheetApplyBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    backgroundColor: COLORS.sky,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    borderRadius: 0,
+    alignItems: 'center',
+  },
+  filterSheetApplyText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.cream,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
 
   // T4.155: Month picker horizontal strip
@@ -3854,29 +3882,32 @@ const styles = StyleSheet.create({
     color: COLORS.brand,
   },
 
-  filterChipRow: {
-    paddingBottom: 4,
+  yearDropdownRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: SPACING.screenPadding,
+    paddingVertical: 6,
+    backgroundColor: COLORS.cream,
   },
-  filterChip: {
-    paddingHorizontal: 12,
+  yearChip: {
+    paddingHorizontal: 14,
     paddingVertical: 6,
     borderWidth: 2,
     borderColor: COLORS.borderLight,
     borderRadius: 0,
     backgroundColor: COLORS.white,
   },
-  filterChipActive: {
+  yearChipActive: {
     backgroundColor: COLORS.accent,
     borderColor: COLORS.brand,
   },
-  filterChipText: {
-    fontSize: 11,
+  yearChipText: {
+    fontSize: 12,
     fontWeight: '900',
-    color: COLORS.textMuted,
-    textTransform: 'uppercase',
+    color: COLORS.accent,
     letterSpacing: 0.5,
   },
-  filterChipTextActive: {
+  yearChipTextActive: {
     color: COLORS.cream,
   },
 

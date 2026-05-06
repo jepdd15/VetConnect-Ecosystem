@@ -209,10 +209,10 @@ export function buildPetOwnerPrompt({ pet, records, vaccinations }) {
         });
       }
 
-      // Discharge summary — these are explicitly client-facing going-home instructions
+      // Discharge summary — client-facing discharge notes
       if (r.dischargeSummary) {
         const ds = r.dischargeSummary;
-        lines.push('Going-Home Instructions:');
+        lines.push('Discharge Notes:');
         if (ds.diagnosis) lines.push(`  Summary: ${ds.diagnosis}`);
         if (ds.instructions) lines.push(`  Instructions: ${ds.instructions}`);
         if (ds.medications?.length > 0) {

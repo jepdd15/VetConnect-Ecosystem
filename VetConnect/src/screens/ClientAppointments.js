@@ -25,9 +25,11 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { MaterialIcons } from '@expo/vector-icons';
 import QRCode from "react-native-qrcode-svg";
 import { auth, db } from "../../firebaseConfig";
 import { findFirstBookableDate } from "../hooks/useBookingEngine";
@@ -66,10 +68,14 @@ const ClientAppointments = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("upcoming");
 
-  // Filter States
-  const [selectedPetFilter, setSelectedPetFilter] = useState("All Pets");
-  const [selectedServiceFilter, setSelectedServiceFilter] =
-    useState("All Services");
+  // Search + bottom sheet filter state
+  const [searchText, setSearchText] = useState('');
+  const [petFilterOpen, setPetFilterOpen] = useState(false);
+  const [pendingPetFilters, setPendingPetFilters] = useState(new Set());
+  const [activePetFilters, setActivePetFilters] = useState(new Set());
+  const [serviceFilterOpen, setServiceFilterOpen] = useState(false);
+  const [pendingServiceFilters, setPendingServiceFilters] = useState(new Set());
+  const [activeServiceFilters, setActiveServiceFilters] = useState(new Set());
 
   // QR Modal
   const [showQR, setShowQR] = useState(false);
@@ -501,47 +507,61 @@ const ClientAppointments = ({ navigation }) => {
   };
 
   // --- DYNAMIC FILTER DATA GENERATION ---
-  const uniquePets = [
-    "All Pets",
-    ...new Set(appointments.map((a) => a.petName)),
-  ];
-  const uniqueServices = [
-    "All Services",
-    ...new Set(appointments.map((a) => a.serviceType)),
-  ];
+  const petCounts = useMemo(() => {
+    const counts = new Map();
+    appointments.forEach(a => {
+      const name = a.petName || 'Unknown';
+      counts.set(name, (counts.get(name) || 0) + 1);
+    });
+    return counts;
+  }, [appointments]);
+
+  const serviceCounts = useMemo(() => {
+    const counts = new Map();
+    appointments.forEach(a => {
+      const svc = a.serviceType || a.primaryService || 'Other';
+      counts.set(svc, (counts.get(svc) || 0) + 1);
+    });
+    return counts;
+  }, [appointments]);
 
   // --- FILTER LOGIC (MULTI-AXIS) ---
-  const filteredData = appointments.filter((item) => {
-    // 1. Tab Check
-    const isUpcomingTab = tab === "upcoming";
-    const isValidStatus = isUpcomingTab
-      ? [
-          "pending",
-          "confirmed",
-          "arrived",
-          "in-consult",
-          "billing",
-          "confined",
-          "dispensing",
-          "on-hold",
-        ].includes(item.status)
-      : (
-          ["completed", "cancelled", "no-show", "carried-over"].includes(item.status)
-          && item.auditReason !== 'client-dismissed-followup'
-          && item.auditReason !== 'client-booked-followup'
-        );
+  const filteredData = useMemo(() => {
+    return appointments.filter((item) => {
+      const isUpcomingTab = tab === 'upcoming';
+      const isValidStatus = isUpcomingTab
+        ? ['pending', 'confirmed', 'arrived', 'in-consult', 'billing', 'confined', 'dispensing', 'on-hold'].includes(item.status)
+        : (
+            ['completed', 'cancelled', 'no-show', 'carried-over'].includes(item.status)
+            && item.auditReason !== 'client-dismissed-followup'
+            && item.auditReason !== 'client-booked-followup'
+          );
+      if (!isValidStatus) return false;
 
-    // 2. Pet Check
-    const isPetMatch =
-      selectedPetFilter === "All Pets" || item.petName === selectedPetFilter;
+      if (activePetFilters.size > 0 && !activePetFilters.has(item.petName)) return false;
 
-    // 3. Service Check
-    const isServiceMatch =
-      selectedServiceFilter === "All Services" ||
-      item.serviceType === selectedServiceFilter;
+      if (activeServiceFilters.size > 0) {
+        const svc = item.serviceType || item.primaryService || 'Other';
+        if (!activeServiceFilters.has(svc)) return false;
+      }
 
-    return isValidStatus && isPetMatch && isServiceMatch;
-  });
+      if (searchText.trim()) {
+        const q = searchText.toLowerCase().trim();
+        const haystack = [
+          item.petName,
+          item.serviceType,
+          item.primaryService,
+          ...(item.services || []).map(s => s.name),
+          item.diagnosis,
+          item.assignedVet,
+          item.auditReason,
+        ].filter(Boolean).join(' ').toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+
+      return true;
+    });
+  }, [appointments, tab, activePetFilters, activeServiceFilters, searchText]);
 
   // Specialized render for follow-up ghost appointments (isFollowUp: true, status: 'pending').
   // Uses the parentRecords join for vet name and diagnosis — the ghost's own fields are not reliable
@@ -557,7 +577,9 @@ const ClientAppointments = ({ navigation }) => {
     const isWalkIn = !item.petId || item.petId === 'WALK_IN_PET';
 
     return (
-      <View key={item.id} style={styles.followUpCard}>
+      <View key={item.id} style={{ marginBottom: 20 }}>
+        <View style={styles.cardShadow} />
+        <View style={styles.followUpCard}>
         <View style={styles.followUpAccent} />
         <View style={{ flex: 1 }}>
           <Text style={styles.followUpRibbon}>FOLLOW-UP RECOMMENDED</Text>
@@ -582,6 +604,7 @@ const ClientAppointments = ({ navigation }) => {
               </Text>
             </TouchableOpacity>
           </View>
+        </View>
         </View>
       </View>
     );
@@ -611,7 +634,9 @@ const ClientAppointments = ({ navigation }) => {
     const isHistory = tab === "history";
 
     return (
-      <View style={[styles.card, isHistory && styles.historyCard]}>
+      <View style={styles.cardOuter}>
+        <View style={styles.cardShadow} />
+        <View style={[styles.card, isHistory && styles.historyCard]}>
         <View style={styles.row}>
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             <Text style={{ fontSize: 24, marginRight: 10 }}>{icon}</Text>
@@ -701,12 +726,12 @@ const ClientAppointments = ({ navigation }) => {
                   style={[
                     styles.btn,
                     {
-                      backgroundColor: "#FFEBEE",
-                      borderWidth: 1,
+                      backgroundColor: COLORS.dangerBg,
                       borderColor: COLORS.danger,
-                      marginRight: "auto",
+                      marginRight: 'auto',
                     },
                   ]}
+                  activeOpacity={0.8}
                   onPress={() =>
                     handleCancelAppointment(item.id, item.serviceType || item.primaryService)
                   }
@@ -797,6 +822,7 @@ const ClientAppointments = ({ navigation }) => {
           const clean = sanitizeCancelReason(raw);
           return clean ? <Text style={styles.reasonText}>{clean}</Text> : null;
         })()}
+        </View>
       </View>
     );
   };
@@ -859,61 +885,48 @@ const ClientAppointments = ({ navigation }) => {
         </TouchableOpacity>
       </View>
 
-      {/* --- DUAL-AXIS FILTERS --- */}
       {appointments.length > 0 && (
-        <View style={styles.filterSection}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.chipRow}
-          >
-            {uniquePets.map((pet) => (
-              <TouchableOpacity
-                key={`pet-${pet}`}
-                style={[
-                  styles.filterChip,
-                  selectedPetFilter === pet && styles.activeFilterChip,
-                ]}
-                onPress={() => setSelectedPetFilter(pet)}
-              >
-                <Text
-                  style={[
-                    styles.filterText,
-                    selectedPetFilter === pet && styles.activeFilterText,
-                  ]}
-                >
-                  {pet === "All Pets" ? "🐾 All Pets" : pet}
-                </Text>
+        <View style={styles.searchFilterBar}>
+          <View style={styles.searchInputWrapper}>
+            <MaterialIcons name="search" size={18} color={COLORS.textMuted} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search appointments..."
+              placeholderTextColor={COLORS.placeholder}
+              value={searchText}
+              onChangeText={setSearchText}
+              returnKeyType="search"
+            />
+            {searchText.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchText('')}>
+                <MaterialIcons name="close" size={18} color={COLORS.textMuted} />
               </TouchableOpacity>
-            ))}
-          </ScrollView>
+            )}
+          </View>
 
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.chipRow}
+          <TouchableOpacity
+            style={styles.filterIconBtn}
+            onPress={() => { setPendingPetFilters(new Set(activePetFilters)); setPetFilterOpen(true); }}
           >
-            {uniqueServices.map((service) => (
-              <TouchableOpacity
-                key={`srv-${service}`}
-                style={[
-                  styles.filterChip,
-                  selectedServiceFilter === service && styles.activeFilterChip,
-                ]}
-                onPress={() => setSelectedServiceFilter(service)}
-              >
-                <Text
-                  style={[
-                    styles.filterText,
-                    selectedServiceFilter === service &&
-                      styles.activeFilterText,
-                  ]}
-                >
-                  {service === "All Services" ? "📋 All Services" : service}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+            <Text style={styles.filterIconEmoji}>🐾</Text>
+            {activePetFilters.size > 0 && (
+              <View style={styles.filterBadge}>
+                <Text style={styles.filterBadgeText}>{activePetFilters.size}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.filterIconBtn}
+            onPress={() => { setPendingServiceFilters(new Set(activeServiceFilters)); setServiceFilterOpen(true); }}
+          >
+            <Text style={styles.filterIconEmoji}>📋</Text>
+            {activeServiceFilters.size > 0 && (
+              <View style={styles.filterBadge}>
+                <Text style={styles.filterBadgeText}>{activeServiceFilters.size}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
       )}
 
@@ -1012,8 +1025,9 @@ const ClientAppointments = ({ navigation }) => {
                   <TouchableOpacity
                     style={{ marginTop: 15, padding: 10 }}
                     onPress={() => {
-                      setSelectedPetFilter("All Pets");
-                      setSelectedServiceFilter("All Services");
+                      setSearchText('');
+                      setActivePetFilters(new Set());
+                      setActiveServiceFilters(new Set());
                     }}
                   >
                     <Text style={{ color: COLORS.accent, fontWeight: "bold" }}>
@@ -1026,6 +1040,78 @@ const ClientAppointments = ({ navigation }) => {
           }
         />
       )}
+
+      {/* PET FILTER BOTTOM SHEET */}
+      <Modal visible={petFilterOpen} transparent animationType="slide" onRequestClose={() => setPetFilterOpen(false)}>
+        <TouchableOpacity style={styles.filterOverlay} activeOpacity={1} onPress={() => setPetFilterOpen(false)}>
+          <View style={styles.filterSheet} onStartShouldSetResponder={() => true}>
+            <View style={styles.filterSheetHandle} />
+            <Text style={styles.filterSheetTitle}>FILTER BY PET</Text>
+            <ScrollView style={styles.filterSheetScroll}>
+              {[...petCounts.entries()].map(([pet, count]) => {
+                const isChecked = pendingPetFilters.has(pet);
+                return (
+                  <TouchableOpacity key={pet} style={styles.filterSheetRow} onPress={() => {
+                    setPendingPetFilters(prev => {
+                      const next = new Set(prev);
+                      if (next.has(pet)) next.delete(pet); else next.add(pet);
+                      return next;
+                    });
+                  }}>
+                    <MaterialIcons name={isChecked ? 'check-box' : 'check-box-outline-blank'} size={22} color={isChecked ? COLORS.sky : COLORS.textMuted} />
+                    <Text style={styles.filterSheetLabel}>{pet}</Text>
+                    <Text style={styles.filterSheetCount}>({count})</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <View style={styles.filterSheetActions}>
+              <TouchableOpacity onPress={() => setPendingPetFilters(new Set())} style={styles.filterSheetClearBtn}>
+                <Text style={styles.filterSheetClearText}>CLEAR ALL</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => { setActivePetFilters(new Set(pendingPetFilters)); setPetFilterOpen(false); }} style={styles.filterSheetApplyBtn}>
+                <Text style={styles.filterSheetApplyText}>APPLY FILTER</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* SERVICE FILTER BOTTOM SHEET */}
+      <Modal visible={serviceFilterOpen} transparent animationType="slide" onRequestClose={() => setServiceFilterOpen(false)}>
+        <TouchableOpacity style={styles.filterOverlay} activeOpacity={1} onPress={() => setServiceFilterOpen(false)}>
+          <View style={styles.filterSheet} onStartShouldSetResponder={() => true}>
+            <View style={styles.filterSheetHandle} />
+            <Text style={styles.filterSheetTitle}>FILTER BY SERVICE</Text>
+            <ScrollView style={styles.filterSheetScroll}>
+              {[...serviceCounts.entries()].map(([svc, count]) => {
+                const isChecked = pendingServiceFilters.has(svc);
+                return (
+                  <TouchableOpacity key={svc} style={styles.filterSheetRow} onPress={() => {
+                    setPendingServiceFilters(prev => {
+                      const next = new Set(prev);
+                      if (next.has(svc)) next.delete(svc); else next.add(svc);
+                      return next;
+                    });
+                  }}>
+                    <MaterialIcons name={isChecked ? 'check-box' : 'check-box-outline-blank'} size={22} color={isChecked ? COLORS.sky : COLORS.textMuted} />
+                    <Text style={styles.filterSheetLabel}>{svc}</Text>
+                    <Text style={styles.filterSheetCount}>({count})</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <View style={styles.filterSheetActions}>
+              <TouchableOpacity onPress={() => setPendingServiceFilters(new Set())} style={styles.filterSheetClearBtn}>
+                <Text style={styles.filterSheetClearText}>CLEAR ALL</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => { setActiveServiceFilters(new Set(pendingServiceFilters)); setServiceFilterOpen(false); }} style={styles.filterSheetApplyBtn}>
+                <Text style={styles.filterSheetApplyText}>APPLY FILTER</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* QR MODAL */}
       <Modal visible={showQR} transparent={true} animationType="fade">
@@ -1116,48 +1202,189 @@ const styles = StyleSheet.create({
   container: { flex: 1, padding: 20, backgroundColor: COLORS.cream },
 
   tabContainer: {
-    flexDirection: "row",
+    flexDirection: 'row',
     marginBottom: 10,
-    backgroundColor: "#EFEBE9",
-    borderRadius: 10,
-    padding: 4,
+    backgroundColor: COLORS.cream,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    borderRadius: 0,
+    padding: 0,
   },
-  tab: { flex: 1, paddingVertical: 10, alignItems: "center", borderRadius: 8 },
-  activeTab: { backgroundColor: COLORS.white, elevation: 2 },
-  tabText: { fontWeight: "bold", color: COLORS.accentLight },
-  activeTabText: { color: COLORS.accent },
+  tab: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 0 },
+  activeTab: { backgroundColor: COLORS.sky },
+  tabText: { fontWeight: '900', color: COLORS.accent, fontSize: 13, textTransform: 'uppercase', letterSpacing: 1 },
+  activeTabText: { color: COLORS.cream },
 
-  filterSection: { marginBottom: 15 },
-  chipRow: { flexDirection: "row", marginBottom: 8 },
-  filterChip: {
-    paddingHorizontal: 15,
+  searchFilterBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  searchInputWrapper: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    borderRadius: 0,
+    paddingHorizontal: 10,
     paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: "#EFEBE9",
-    marginRight: 10,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
+    gap: 6,
   },
-  activeFilterChip: { backgroundColor: COLORS.accent, borderColor: COLORS.accent },
-  filterText: { color: COLORS.accent, fontWeight: "600", fontSize: 13 },
-  activeFilterText: { color: COLORS.white },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: COLORS.textPrimary,
+    padding: 0,
+  },
+  filterIconBtn: {
+    width: 40,
+    height: 40,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    borderRadius: 0,
+    backgroundColor: COLORS.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  filterIconEmoji: {
+    fontSize: 18,
+  },
+  filterBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    backgroundColor: COLORS.sky,
+    borderRadius: 0,
+    minWidth: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.brand,
+  },
+  filterBadgeText: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: COLORS.cream,
+  },
+  filterOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  filterSheet: {
+    backgroundColor: COLORS.cream,
+    borderTopWidth: 2,
+    borderTopColor: COLORS.border,
+    paddingBottom: 30,
+    maxHeight: '60%',
+  },
+  filterSheetHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: COLORS.borderLight,
+    alignSelf: 'center',
+    marginTop: 10,
+    marginBottom: 16,
+  },
+  filterSheetTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: COLORS.accent,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    paddingHorizontal: 20,
+    marginBottom: 12,
+  },
+  filterSheetScroll: {
+    paddingHorizontal: 20,
+  },
+  filterSheetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+  },
+  filterSheetLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.brand,
+  },
+  filterSheetCount: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+  },
+  filterSheetActions: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+  filterSheetClearBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    borderRadius: 0,
+    alignItems: 'center',
+    backgroundColor: COLORS.white,
+  },
+  filterSheetClearText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.accent,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  filterSheetApplyBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    backgroundColor: COLORS.sky,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    borderRadius: 0,
+    alignItems: 'center',
+  },
+  filterSheetApplyText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.cream,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
 
+  cardOuter: {
+    marginBottom: 20,
+  },
+  cardShadow: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    right: -4,
+    bottom: -4,
+    backgroundColor: COLORS.brand,
+  },
   card: {
     backgroundColor: COLORS.white,
     padding: 15,
     borderRadius: 0,
-    marginBottom: 15,
-    elevation: 3,
-    borderWidth: 1,
-    borderColor: "#eee",
+    borderWidth: 2,
+    borderColor: COLORS.border,
   },
-  historyCard: { opacity: 0.9, backgroundColor: "#FAFAFA" },
+  historyCard: { opacity: 0.85, backgroundColor: COLORS.cream },
   row: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: 5,
   },
-  divider: { height: 1, backgroundColor: "#eee", marginVertical: 10 },
+  divider: { height: 1, backgroundColor: COLORS.borderLight, marginVertical: 10 },
   service: { fontSize: 16, fontWeight: "bold", color: COLORS.accent },
   pet: { fontSize: 14, color: COLORS.textSecondary },
   price: {
@@ -1168,12 +1395,12 @@ const styles = StyleSheet.create({
     textAlign: "right",
   },
   status: {
-    fontWeight: "bold",
+    fontWeight: 'bold',
     fontSize: 10,
     paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: 4,
-    overflow: "hidden",
+    borderRadius: 0,
+    overflow: 'hidden',
   },
   date: { fontSize: 13, color: COLORS.textMuted },
 
@@ -1184,21 +1411,20 @@ const styles = StyleSheet.create({
     gap: 10,
     alignItems: "center",
   },
-  btn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 0 },
+  btn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 0, borderWidth: 2, borderColor: COLORS.border },
   qrBtn: { backgroundColor: COLORS.brand },
   receiptBtn: {
-    backgroundColor: "#EFEBE9",
-    borderWidth: 1,
-    borderColor: "#ccc",
+    backgroundColor: COLORS.cream,
+    borderColor: COLORS.borderLight,
   },
-  rebookBtn: { borderWidth: 1, borderColor: COLORS.accent },
+  rebookBtn: { borderColor: COLORS.accent },
   btnText: { color: COLORS.white, fontWeight: "bold", fontSize: 12 },
   reasonText: {
     color: COLORS.danger,
     fontStyle: "italic",
     fontSize: 12,
     marginTop: 5,
-    backgroundColor: "#FFEBEE",
+    backgroundColor: COLORS.dangerBg,
     padding: 5,
     width: "100%",
   },
@@ -1219,11 +1445,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   modalContent: {
-    backgroundColor: "white",
+    backgroundColor: COLORS.white,
     padding: 30,
     borderRadius: 0,
-    alignItems: "center",
-    width: "85%",
+    alignItems: 'center',
+    width: '85%',
+    borderWidth: 2,
+    borderColor: COLORS.border,
   },
   modalTitle: {
     fontSize: 20,
@@ -1233,13 +1461,13 @@ const styles = StyleSheet.create({
   },
 
   receiptContent: {
-    backgroundColor: "#FFFAFA",
+    backgroundColor: COLORS.white,
     padding: 25,
     borderRadius: 0,
-    width: "90%",
-    borderStyle: "dashed",
+    width: '90%',
+    borderStyle: 'solid',
     borderWidth: 2,
-    borderColor: "#ccc",
+    borderColor: COLORS.border,
   },
   receiptHeader: {
     fontSize: 22,
@@ -1268,8 +1496,8 @@ const styles = StyleSheet.create({
     marginTop: 5,
     paddingVertical: 5,
     borderTopWidth: 1,
-    borderTopColor: '#FFCDD2',
-    backgroundColor: '#FFEBEE',
+    borderTopColor: COLORS.danger,
+    backgroundColor: COLORS.dangerBg,
     paddingHorizontal: 5,
   },
   receiptRefundLabel: {
@@ -1290,30 +1518,33 @@ const styles = StyleSheet.create({
   receiptTotalLabel: { fontSize: 18, fontWeight: "bold", color: COLORS.textPrimary },
   receiptTotalValue: { fontSize: 20, fontWeight: "bold", color: COLORS.success },
 
-  closeBtn: { marginTop: 20, padding: 10, alignSelf: "center" },
-  closeText: { color: COLORS.danger, fontWeight: "bold", fontSize: 16 },
+  closeBtn: {
+    marginTop: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    alignSelf: 'center',
+    borderWidth: 2,
+    borderColor: COLORS.danger,
+    borderRadius: 0,
+    backgroundColor: COLORS.white,
+  },
+  closeText: { color: COLORS.danger, fontWeight: '900', fontSize: 14, textTransform: 'uppercase', letterSpacing: 0.5 },
 
-  // --- Follow-up ghost card (B5) ---
+  // --- Follow-up ghost card ---
   followUpCard: {
     flexDirection: 'row',
-    backgroundColor: '#FFF3E0',
+    backgroundColor: COLORS.warningBg,
     borderRadius: 0,
     padding: 15,
-    marginBottom: 15,
-    elevation: 4,
-    shadowColor: COLORS.warning,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    borderWidth: 1,
-    borderColor: '#FFCC80',
+    borderWidth: 2,
+    borderColor: COLORS.warning,
     overflow: 'hidden',
   },
   followUpAccent: {
     width: 4,
     backgroundColor: COLORS.warning,
     marginRight: 12,
-    borderRadius: 2,
+    borderRadius: 0,
   },
   followUpRibbon: {
     fontSize: 10,
@@ -1372,14 +1603,14 @@ const styles = StyleSheet.create({
   timelineSection: {
     marginTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#eee',
+    borderTopColor: COLORS.borderLight,
     paddingTop: 8,
   },
 
   encounterSection: {
     marginTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#eee',
+    borderTopColor: COLORS.borderLight,
     paddingTop: 8,
   },
 
@@ -1396,22 +1627,19 @@ const styles = StyleSheet.create({
   },
 
   rescheduleBtn: {
-    borderWidth: 1,
     borderColor: COLORS.sky,
-    backgroundColor: '#E3F2FD',
+    backgroundColor: COLORS.infoBg,
     borderRadius: 0,
   },
 
   // --- Client attendance confirmation ---
   confirmBtn: {
-    borderWidth: 1,
     borderColor: COLORS.success,
-    backgroundColor: '#E8F5E9',
+    backgroundColor: COLORS.successBg,
     borderRadius: 0,
   },
   confirmedBadge: {
-    backgroundColor: '#E8F5E9',
-    borderWidth: 1,
+    backgroundColor: COLORS.successBg,
     borderColor: COLORS.success,
     borderRadius: 0,
     opacity: 0.8,

@@ -97,7 +97,7 @@ const CaseDayCard = ({ caseChain, isHistory, salesByAppt, onShowReceipt, onReboo
     }
   }, []);
 
-  const pageWidth = windowWidth - 40;
+  const pageWidth = windowWidth - 44;
 
   // Fixed-size pages allow the FlatList to skip layout measurement per item.
   const getItemLayout = useCallback((_data, index) => ({
@@ -355,7 +355,7 @@ const styles = StyleSheet.create({
 
   // ── Case header ────────────────────────────────────────────────────────
   caseHeader: {
-    backgroundColor: '#FFF3E0',
+    backgroundColor: COLORS.warningBg,
     paddingHorizontal: 16,
     paddingTop: 14,
     paddingBottom: 12,
@@ -386,7 +386,7 @@ const styles = StyleSheet.create({
   caseBadgeText: {
     fontWeight: '900',
     fontSize: 11,
-    color: '#FFFFFF',
+    color: COLORS.white,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
@@ -411,12 +411,7 @@ const styles = StyleSheet.create({
   },
 
   // ── Pager ──────────────────────────────────────────────────────────────
-  pager: {
-    // Height is determined by the content of the tallest day page,
-    // but we set a minimum so the pager has consistent visual weight.
-    // Increased from 160 → 180 to accommodate the collapsed timeline toggle row.
-    minHeight: 180,
-  },
+  pager: {},
 
   // ── Day page ───────────────────────────────────────────────────────────
   dayPage: {
@@ -424,9 +419,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     // Width is set dynamically via inline style (pageWidth)
   },
-  dayPageScroll: {
-    maxHeight: 400,
-  },
+  dayPageScroll: {},
   dayLabelRow: {
     flexDirection: 'row',
     alignItems: 'baseline',

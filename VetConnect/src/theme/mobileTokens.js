@@ -17,6 +17,10 @@ export const COLORS = {
   // Status
   success:     '#2E7D32',  // Green -- confirmed, available
   warning:     '#E65100',  // Orange -- pending, caution
+  warningBg:   '#FFF3E0',  // Light orange -- banners, case headers
+  dangerBg:    '#FFEBEE',  // Danger-tinted surface -- cancel, refund, reason
+  successBg:   '#E8F5E9',  // Success-tinted surface -- confirm
+  infoBg:      '#E3F2FD',  // Sky-tinted surface -- reschedule
   info:        '#1565C0',  // Blue -- informational badges
 
   // Surfaces

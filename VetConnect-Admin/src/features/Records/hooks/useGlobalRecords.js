@@ -18,13 +18,10 @@ export function useGlobalRecords(dateRange = { start: null, end: null }, searchQ
     let q;
     const appointmentsRef = collection(db, "appointments");
 
-    // 🧬 SILO DEFINITIONS — canonical status strings only
     const SILOS = {
-      'TRIAGE':     ['pending', 'confirmed'],
-      'CLINICAL':   ['arrived', 'in-consult', 'on-hold', 'dispensing', 'billing'],
-      'IN-PATIENT': ['confined'],
-      'ARCHIVE':    ['completed', 'carried-over'],
-      'VOIDED':     ['cancelled', 'no-show']
+      'PENDING':   ['pending', 'confirmed'],
+      'ACTIVE':    ['arrived', 'in-consult', 'on-hold', 'dispensing', 'billing', 'confined'],
+      'COMPLETED': ['completed', 'carried-over', 'cancelled', 'no-show'],
     };
 
     const statusFilter = SILOS[silo] || null;

@@ -30,7 +30,7 @@ const drawerWidth = 260;
 const menuItems = [
   { name: 'Dashboard', icon: <DashboardIcon />, path: '/' },
   { name: 'Patient Queue', icon: <QueueIcon />, path: '/queue' },
-  { name: 'All Records', icon: <HistoryIcon />, path: '/records' },
+  { name: 'Visit Log', icon: <HistoryIcon />, path: '/records' },
   { name: 'Patients (CRM)', icon: <PetsIcon />, path: '/patients' },
   { name: 'Services', icon: <MedicalServicesIcon />, path: '/services' },
   { name: 'Inventory', icon: <InventoryIcon />, path: '/inventory' },

@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Box, Typography, Paper, TextField, InputAdornment, Chip, Stack, Tooltip,
   IconButton, Popover, Divider, Button, Dialog, DialogTitle, DialogContent, DialogActions,
-  Tabs, Tab, Drawer, FormControl, InputLabel, Select, MenuItem, RadioGroup, FormControlLabel, Radio,
+  Tabs, Tab, FormControl, InputLabel, Select, MenuItem,
   Snackbar, Alert
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
@@ -11,19 +11,16 @@ import { DataGrid } from '@mui/x-data-grid';
 // Icons
 import SearchIcon from '@mui/icons-material/Search';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
-import HistoryIcon from '@mui/icons-material/History';
 import InfoIcon from '@mui/icons-material/Info';
 import TimelineIcon from '@mui/icons-material/Timeline';
 import EditCalendarIcon from '@mui/icons-material/EditCalendar';
 import CancelIcon from '@mui/icons-material/Cancel';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
-import PetsIcon from '@mui/icons-material/Pets';
 import PersonIcon from '@mui/icons-material/Person';
 import PhoneIcon from '@mui/icons-material/Phone';
 import LockIcon from '@mui/icons-material/Lock';
 import ShieldIcon from '@mui/icons-material/Shield';
 import FilterListIcon from '@mui/icons-material/FilterList';
-import TuneIcon from '@mui/icons-material/Tune';
 import CloseIcon from '@mui/icons-material/Close';
 import { ToggleButton, ToggleButtonGroup } from '@mui/material';
 
@@ -43,7 +40,6 @@ import { useClinicSettings } from '../../hooks/useClinicSettings';
 import { useUser } from '../../context/UserContext';
 import { useSavedFilters } from './hooks/useSavedFilters';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import PrintIcon from '@mui/icons-material/Print';
 import { PRINT_STYLES, esc, openPrintWindow } from '../../utils/printUtils';
 
@@ -55,15 +51,10 @@ export default function Records() {
   const [searchText, setSearchText] = useState('');
   const [dateRange, setDateRange] = useState({ start: null, end: null });
 
-  // UI State for Search Mode
-  const [searchMode, setSearchMode] = useState('petName'); // 'petName', 'ownerName', 'phone'
-
   // UI State for Silos
   const [activeTab, setActiveTab] = useState(0);
-  const SILO_MAP = ['GLOBAL', 'TRIAGE', 'CLINICAL', 'IN-PATIENT', 'ARCHIVE', 'VOIDED'];
+  const SILO_MAP = ['PENDING', 'ACTIVE', 'COMPLETED'];
 
-  // UI State for Filter Drawer
-  const [openDrawer, setOpenDrawer] = useState(false);
   const [facets, setFacets] = useState({
     assignedVetId: '',
     serviceCategory: '',
@@ -120,7 +111,7 @@ export default function Records() {
   const [presetName, setPresetName] = useState('');
   const [showSavePreset, setShowSavePreset] = useState(false);
 
-  const { records, loading } = useGlobalRecords(dateRange, searchText, searchMode, activeSilo, facets);
+  const { records, loading } = useGlobalRecords(dateRange, searchText, 'petName', activeSilo, facets);
   const { rescheduleAppointment, rejectAppointment } = useQueueActions();
   
   // --- 🧬 ANCESTOR CHAIN ENGINE ---
@@ -214,17 +205,61 @@ export default function Records() {
     const result = [];
     for (const [, visits] of groups) {
       visits.sort((a, b) => (a.jsCreatedAt || 0) - (b.jsCreatedAt || 0));
+      const firstVisit = visits[0];
+      const lastVisit = visits[visits.length - 1];
       visits.forEach((v, i) => {
+        const caseLabel = visits.length > 1
+          ? `${v.petName || 'Unknown'} — ${(v.services || []).map(s => s.name).join(', ') || v.serviceType || 'Visit'} — Day 1–${visits.length} — ${firstVisit.jsCreatedAt?.toLocaleDateString() || '?'} to ${lastVisit.jsCreatedAt?.toLocaleDateString() || '?'}`
+          : null;
         result.push({
           ...v,
           _caseGroupIndex: i + 1,
           _caseGroupSize: visits.length,
           _isCaseHeader: i === 0,
+          _caseLabel: i === 0 ? caseLabel : null,
         });
       });
     }
     return result;
   }, [viewMode, filteredRecords]);
+
+  // --- DATE-SECTION HEADERS (Task 9) ---
+  const displayRecords = useMemo(() => {
+    if (viewMode === 'case') return groupedRecords;
+
+    const result = [];
+    let lastDateStr = null;
+
+    groupedRecords.forEach(r => {
+      const dateStr = r.jsCreatedAt
+        ? r.jsCreatedAt.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()
+        : 'UNKNOWN DATE';
+
+      if (dateStr !== lastDateStr) {
+        result.push({
+          id: `date-header-${dateStr}-${r.id}`,
+          _isDateHeader: true,
+          _dateLabel: dateStr,
+          petName: '', ownerName: '', ownerPhone: '', status: '', services: [],
+          serviceType: '', assignedVetName: '', department: '',
+        });
+        lastDateStr = dateStr;
+      }
+      result.push(r);
+    });
+
+    return result;
+  }, [groupedRecords, viewMode]);
+
+  // --- PER-TAB KPI COUNTS (Task 7) ---
+  const tabStatusCounts = useMemo(() => {
+    const counts = {};
+    (filteredRecords || []).forEach(r => {
+      const s = (r.status || '').toLowerCase();
+      counts[s] = (counts[s] || 0) + 1;
+    });
+    return counts;
+  }, [filteredRecords]);
 
   // --- ACTIONS HANDLERS ---
   const handleOpenAudit = (event, row) => {
@@ -235,8 +270,6 @@ export default function Records() {
   const handleCloseAudit = () => {
     setAnchorEl(null);
     setActiveAuditRow(null);
-    setGroupSiblings([]);
-    setLoadingGroupSiblings(false);
   };
 
   const handleReschedule = async () => {
@@ -379,19 +412,11 @@ export default function Records() {
       ${pulse ? `<h2>Clinical Pulse (Audit Trail)</h2>
       <table><tr><th>Event</th><th>Time</th><th>Staff</th><th>Note</th></tr>${pulse}</table>` : ''}
       <div class="footer">
-        <p>Generated ${new Date().toLocaleString('en-PH', { dateStyle: 'long', timeStyle: 'short' })} — VetConnect Visit Ledger</p>
+        <p>Generated ${new Date().toLocaleString('en-PH', { dateStyle: 'long', timeStyle: 'short' })} — VetConnect Visit Log</p>
       </div>
     </body></html>`;
 
     openPrintWindow(html, () => setToast({ open: true, message: 'Pop-up blocked — allow pop-ups for this site', severity: 'warning' }));
-  };
-
-  const handleCopyId = (id) => {
-    navigator.clipboard.writeText(id).then(() => {
-      setToast({ open: true, message: `Copied: ${id.slice(0, 12)}...`, severity: 'success' });
-    }).catch(() => {
-      setToast({ open: true, message: 'Copy failed', severity: 'error' });
-    });
   };
 
   const handleBulkReschedule = async () => {
@@ -453,6 +478,14 @@ export default function Records() {
     {
       field: 'lineage', headerName: 'Case', width: 80, align: 'center', headerAlign: 'center',
       renderCell: (p) => {
+        if (p.row._isDateHeader) return null;
+        if (p.row._isCaseHeader && p.row._caseLabel) {
+          return (
+            <Typography sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.6rem', color: COLORS.accent, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              CASE: {p.row._caseGroupSize} DAYS
+            </Typography>
+          );
+        }
         const caseDay = p.row.caseDay || 1;
         const hasChain = p.row.originApptId || caseDay > 1;
         if (!hasChain && caseDay <= 1) return null;
@@ -472,44 +505,72 @@ export default function Records() {
     },
     {
       field: 'jsCreatedAt', headerName: 'Created', width: 220,
-      renderCell: (p) => (
-        <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%' }}>
-            <Typography variant="body2" sx={{ fontWeight: '1000', color: '#3E2723', lineHeight: 1.2 }}>
-                {p.value ? p.value.toLocaleDateString() : 'N/A'}
+      renderCell: (p) => {
+        if (p.row._isDateHeader) {
+          return (
+            <Typography sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.75rem', color: COLORS.accent, letterSpacing: 1 }}>
+              {p.row._dateLabel}
             </Typography>
-            <Typography variant="caption" sx={{ color: 'textSecondary', fontWeight: '900', fontSize: '0.65rem' }}>
-                LOGGED: {p.value ? p.value.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--'}
-            </Typography>
-        </Box>
-      )
+          );
+        }
+        if (p.row._isCaseHeader && p.row._caseLabel) {
+          return (
+            <Tooltip title={p.row._caseLabel} placement="top-start">
+              <Typography sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.8rem', color: COLORS.brand, overflow: 'visible', whiteSpace: 'nowrap', position: 'relative', zIndex: 1 }}>
+                {p.row._caseLabel}
+              </Typography>
+            </Tooltip>
+          );
+        }
+        return (
+          <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%' }}>
+              <Typography variant="body2" sx={{ fontWeight: '1000', color: '#3E2723', lineHeight: 1.2 }}>
+                  {p.value ? p.value.toLocaleDateString() : 'N/A'}
+              </Typography>
+              <Typography variant="caption" sx={{ color: 'textSecondary', fontWeight: '900', fontSize: '0.65rem' }}>
+                  LOGGED: {p.value ? p.value.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--'}
+              </Typography>
+          </Box>
+        );
+      }
     },
     {
       field: 'identity', headerName: 'Patient', flex: 1.2, minWidth: 250,
-      renderCell: (p) => (
-        <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%' }}>
-          <Typography sx={{ fontWeight: '1000', color: '#1A1A1A', lineHeight: 1.1 }}>
-            {p.row.petName?.toUpperCase()}
-          </Typography>
-          <Typography variant="caption" sx={{ color: '#795548', fontWeight: '900', fontSize: '0.65rem' }}>
-            {p.row.petSpecies} • {p.row.ownerName}
-          </Typography>
-        </Box>
-      )
+      renderCell: (p) => {
+        if (p.row._isDateHeader) return null;
+        if (p.row._isCaseHeader) return null;
+        return (
+          <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%' }}>
+            <Typography sx={{ fontWeight: '1000', color: '#1A1A1A', lineHeight: 1.1 }}>
+              {p.row.petName?.toUpperCase()}
+            </Typography>
+            <Typography variant="caption" sx={{ color: '#795548', fontWeight: '900', fontSize: '0.65rem' }}>
+              {p.row.petSpecies} • {p.row.ownerName}
+            </Typography>
+          </Box>
+        );
+      }
     },
     {
       field: 'jsScheduled', headerName: 'Scheduled', width: 180,
-      renderCell: (p) => (
-        <Box sx={{ display: 'flex', alignItems: 'center', height: '100%', gap: 1 }}>
-            <CalendarMonthIcon sx={{ fontSize: 16, color: COLORS.accentLight }} />
-            <Typography variant="body2" sx={{ fontWeight: '900', color: '#5D4037' }}>
-                {p.value ? p.value.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'ASAP'}
-            </Typography>
-        </Box>
-      )
+      renderCell: (p) => {
+        if (p.row._isDateHeader) return null;
+        if (p.row._isCaseHeader) return null;
+        return (
+          <Box sx={{ display: 'flex', alignItems: 'center', height: '100%', gap: 1 }}>
+              <CalendarMonthIcon sx={{ fontSize: 16, color: COLORS.accentLight }} />
+              <Typography variant="body2" sx={{ fontWeight: '900', color: '#5D4037' }}>
+                  {p.value ? p.value.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'ASAP'}
+              </Typography>
+          </Box>
+        );
+      }
     },
     {
       field: 'services', headerName: 'Services', flex: 1, minWidth: 200,
       renderCell: (p) => {
+        if (p.row._isDateHeader) return null;
+        if (p.row._isCaseHeader) return null;
         const services = p.value || [];
         return (
           <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', alignItems: 'center', height: '100%' }}>
@@ -524,9 +585,11 @@ export default function Records() {
     {
        field: 'status', headerName: 'Status', width: 150, align: 'center', headerAlign: 'center',
        renderCell: (p) => {
+         if (p.row._isDateHeader) return null;
+         if (p.row._isCaseHeader) return null;
          const s = String(p.value).toUpperCase();
          const isTerminal = TERMINAL_STATUSES.has(s.toLowerCase());
-         
+
          let color = '#757575';
          if (['COMPLETED', 'CARRIED-OVER'].includes(s)) color = COLORS.success;
          if (['CANCELLED', 'NO-SHOW'].includes(s)) color = COLORS.danger;
@@ -562,32 +625,31 @@ export default function Records() {
        }
     },
     {
-      field: 'actions', headerName: 'Actions', width: 210, align: 'center', headerAlign: 'center',
-      renderCell: (p) => (
-        <Stack direction="row" spacing={0.5} sx={{ height: '100%', alignItems: 'center', justifyContent: 'center' }}>
-          <Tooltip title="Visit Audit">
-            <IconButton size="small" onClick={(e) => handleOpenAudit(e, p.row)} sx={{ border: '1px solid #D7CCC8', color: COLORS.accent }}>
-              <TimelineIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="View File (CRM)">
-            <IconButton size="small" onClick={() => navigate(`/patients/${p.row.petId}`, { state: { from: 'records' } })} sx={{ border: '1px solid #D7CCC8', color: COLORS.accent }}>
-              <HistoryIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Copy Visit ID">
-            <IconButton size="small" onClick={() => handleCopyId(p.row.id)} sx={{ border: '1px solid #D7CCC8', color: COLORS.accent }}>
-              <ContentCopyIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Print Visit Summary">
-            <IconButton size="small" onClick={async () => await handlePrintVisit(p.row)}
-              sx={{ border: '1px solid #D7CCC8', color: COLORS.accent }}>
-              <PrintIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        </Stack>
-      )
+      field: 'actions', headerName: 'Actions', width: 160, align: 'center', headerAlign: 'center',
+      renderCell: (p) => {
+        if (p.row._isDateHeader) return null;
+        if (p.row._isCaseHeader) return null;
+        return (
+          <Stack direction="row" spacing={0.5} sx={{ height: '100%', alignItems: 'center', justifyContent: 'center' }}>
+            <Tooltip title="Visit Audit">
+              <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleOpenAudit(e, p.row); }} sx={{ border: '1px solid #D7CCC8', color: COLORS.accent }}>
+                <TimelineIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="View in Patient CRM">
+              <IconButton size="small" onClick={() => navigate(`/patients/${p.row.petId}`, { state: { from: 'records' } })} sx={{ border: '1px solid #D7CCC8', color: COLORS.accent }}>
+                <PersonIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Print Visit Summary">
+              <IconButton size="small" onClick={async () => await handlePrintVisit(p.row)}
+                sx={{ border: '1px solid #D7CCC8', color: COLORS.accent }}>
+                <PrintIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+        );
+      }
     }
   ];
 
@@ -611,12 +673,12 @@ export default function Records() {
           bgcolor: '#FFF8E1', borderBottom: '2px solid #5D4037', borderTop: 'none', borderLeft: 'none', borderRight: 'none', borderRadius: 0
         }}>
           <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 1000, color: COLORS.brand, textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0, mr: 1, fontSize: '1.5rem', lineHeight: 1 }}>
-            RECORDS
+            VISIT LOG
           </Typography>
 
           <TextField
             variant="outlined" size="small"
-            placeholder="Search records..."
+            placeholder="Search pet name..."
             value={searchText} onChange={(e) => setSearchText(e.target.value)}
             InputProps={{
               startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" sx={{ color: COLORS.textMuted }} /></InputAdornment>,
@@ -640,39 +702,106 @@ export default function Records() {
             }}
           />
 
-          <ToggleButtonGroup
-            value={searchMode}
-            exclusive
-            onChange={(e, next) => next && setSearchMode(next)}
-            size="small"
-            sx={{
-              '& .MuiToggleButton-root': {
-                borderRadius: 0, px: 1, py: 0.5, color: COLORS.textMuted, border: `1px solid ${COLORS.border}`,
-                '&.Mui-selected': { bgcolor: COLORS.panelBg, color: COLORS.accent }
-              }
-            }}
-          >
-            <ToggleButton value="petName"><Tooltip title="Pet Name"><PetsIcon sx={{ fontSize: 16 }} /></Tooltip></ToggleButton>
-            <ToggleButton value="ownerName"><Tooltip title="Owner Name"><PersonIcon sx={{ fontSize: 16 }} /></Tooltip></ToggleButton>
-            <ToggleButton value="phone"><Tooltip title="Phone Number"><PhoneIcon sx={{ fontSize: 16 }} /></Tooltip></ToggleButton>
-          </ToggleButtonGroup>
+          <Box sx={{ flexGrow: 1 }} />
 
+          <Stack direction="row" spacing={2} alignItems="center">
+            <ToggleButtonGroup
+              value={viewMode} exclusive
+              onChange={(e, v) => v && setViewMode(v)}
+              size="small"
+              sx={{ '& .MuiToggleButton-root': { borderRadius: 0, fontWeight: '1000', fontSize: '0.65rem', px: 1.5, border: '1px solid #D7CCC8' } }}
+            >
+              <ToggleButton value="visit">Visits</ToggleButton>
+              <ToggleButton value="case">Cases</ToggleButton>
+            </ToggleButtonGroup>
+
+              <Box sx={{ textAlign: 'right' }}>
+                  <Typography sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '1.2rem', lineHeight: 1 }}>{groupedRecords.length}</Typography>
+                  <Typography variant="caption" sx={{ fontWeight: '1000', opacity: 0.6, fontSize: '0.62rem', display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    {facets.petSpecies || ''} {activeSilo} VISITS
+                    {facets.serviceCategory ? ` • ${facets.serviceCategory}` : ''}
+                    {facets.assignedVetId ? ` • ${vets.find(v => v.id === facets.assignedVetId)?.fullName || 'VET'}` : ''}
+                  </Typography>
+              </Box>
+              <InfoIcon sx={{ color: '#5D4037', opacity: 0.2 }} />
+          </Stack>
+        </Paper>
+
+        {/* Row 2: Facet filters */}
+        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap', px: 4, pb: 1.5, pt: 1.5, bgcolor: '#FFF8E1', borderBottom: '1px solid #5D403733' }}>
+          <FormControl size="small" sx={{ minWidth: 150 }}>
+            <Select
+              value={facets.assignedVetId}
+              onChange={(e) => setFacets(prev => ({ ...prev, assignedVetId: e.target.value }))}
+              displayEmpty
+              sx={{ fontWeight: 800, fontSize: '0.75rem', color: COLORS.accent, bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33`, borderRadius: 0 }, borderRadius: 0 }}
+            >
+              <MenuItem value="">All Vets</MenuItem>
+              {vets.map(v => (
+                <MenuItem key={v.id} value={v.id}>{v.fullName || v.name}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          <FormControl size="small" sx={{ minWidth: 150 }}>
+            <Select
+              value={facets.serviceCategory}
+              onChange={(e) => setFacets(prev => ({ ...prev, serviceCategory: e.target.value }))}
+              displayEmpty
+              sx={{ fontWeight: 800, fontSize: '0.75rem', color: COLORS.accent, bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33`, borderRadius: 0 }, borderRadius: 0 }}
+            >
+              <MenuItem value="">All Departments</MenuItem>
+              {departments.map((d) => (
+                <MenuItem key={d.id} value={d.name}>{d.name}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          <FormControl size="small" sx={{ minWidth: 130 }}>
+            <Select
+              value={facets.petSpecies}
+              onChange={(e) => setFacets(prev => ({ ...prev, petSpecies: e.target.value }))}
+              displayEmpty
+              sx={{ fontWeight: 800, fontSize: '0.75rem', color: COLORS.accent, bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33`, borderRadius: 0 }, borderRadius: 0 }}
+            >
+              <MenuItem value="">All Species</MenuItem>
+              <MenuItem value="Canine">Canine</MenuItem>
+              <MenuItem value="Feline">Feline</MenuItem>
+              <MenuItem value="Bird">Bird</MenuItem>
+              <MenuItem value="Exotic">Exotic</MenuItem>
+            </Select>
+          </FormControl>
+
+          <FormControl size="small" sx={{ minWidth: 140 }}>
+            <Select
+              value={facets.origin}
+              onChange={(e) => setFacets(prev => ({ ...prev, origin: e.target.value }))}
+              displayEmpty
+              sx={{ fontWeight: 800, fontSize: '0.75rem', color: COLORS.accent, bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33`, borderRadius: 0 }, borderRadius: 0 }}
+            >
+              <MenuItem value="">All Origins</MenuItem>
+              <MenuItem value="ONLINE">Online Bookings</MenuItem>
+              <MenuItem value="WALK_IN">Walk-in / ER</MenuItem>
+            </Select>
+          </FormControl>
+
+          {/* Date range filter */}
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-            <Typography sx={{ fontWeight: '1000', fontSize: '0.65rem', color: '#A1887F' }}>FILTER ERA:</Typography>
+            <Typography sx={{ fontWeight: '1000', fontSize: '0.65rem', color: '#A1887F' }}>FILTER TIMELINE:</Typography>
             <TextField
               type="date" size="small"
               value={dateRange.start || ''}
               onChange={(e) => setDateRange(p => ({ ...p, start: e.target.value }))}
-              sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#5D403733', borderRadius: 0 }, width: 140 }}
+              sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#5D403733', borderRadius: 0 }, '& .MuiOutlinedInput-root': { borderRadius: 0 }, width: 130 }}
             />
             <Typography sx={{ fontWeight: '1000', color: '#5D4037' }}>→</Typography>
             <TextField
               type="date" size="small"
               value={dateRange.end || ''}
               onChange={(e) => setDateRange(p => ({ ...p, end: e.target.value }))}
-              sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#5D403733', borderRadius: 0 }, width: 140 }}
+              sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#5D403733', borderRadius: 0 }, '& .MuiOutlinedInput-root': { borderRadius: 0 }, width: 130 }}
             />
-            <Stack direction="row" spacing={0.5} sx={{ ml: 1 }}>
+            <Stack direction="row" spacing={0.5}>
               {[
                 { label: 'Today', range: () => { const d = new Date(); const s = d.toISOString().split('T')[0]; return { start: s, end: s }; } },
                 { label: '7d', range: () => { const e = new Date(); const s = new Date(); s.setDate(s.getDate() - 7); return { start: s.toISOString().split('T')[0], end: e.toISOString().split('T')[0] }; } },
@@ -697,91 +826,170 @@ export default function Records() {
             </Stack>
           </Box>
 
+          {Object.values(facets).some(v => v !== '') && (
+            <Chip
+              label="Clear Filters"
+              size="small"
+              onDelete={() => setFacets({ assignedVetId: '', serviceCategory: '', petSpecies: '', origin: '' })}
+              deleteIcon={<CloseIcon sx={{ fontSize: '12px !important' }} />}
+              onClick={() => setFacets({ assignedVetId: '', serviceCategory: '', petSpecies: '', origin: '' })}
+              sx={{ height: 22, fontSize: '0.6rem', fontWeight: 1000, borderRadius: 0, border: `1px solid ${COLORS.danger}`, color: COLORS.danger, bgcolor: 'white' }}
+            />
+          )}
+
           <Box sx={{ flexGrow: 1 }} />
 
-          <Stack direction="row" spacing={2} alignItems="center">
-            <ToggleButtonGroup
-              value={viewMode} exclusive
-              onChange={(e, v) => v && setViewMode(v)}
-              size="small"
-              sx={{ '& .MuiToggleButton-root': { borderRadius: 0, fontWeight: '1000', fontSize: '0.65rem', px: 1.5, border: '1px solid #D7CCC8' } }}
+          {/* Saved presets dropdown */}
+          {presets.length > 0 && (
+            <FormControl size="small" sx={{ minWidth: 160 }}>
+              <Select
+                value=""
+                onChange={(e) => {
+                  const preset = presets.find(p => p.id === e.target.value);
+                  if (!preset) return;
+                  const fs = preset.filterState;
+                  if (fs.activeSilo !== undefined) {
+                    const idx = SILO_MAP.indexOf(fs.activeSilo);
+                    setActiveTab(idx >= 0 ? idx : 0);
+                  }
+                  if (fs.facets) setFacets(fs.facets);
+                  if (fs.dateRange) setDateRange(fs.dateRange);
+                  if (fs.searchText) setSearchText(fs.searchText);
+                }}
+                displayEmpty
+                sx={{ fontWeight: 800, fontSize: '0.75rem', color: COLORS.accent, bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33`, borderRadius: 0 }, borderRadius: 0 }}
+              >
+                <MenuItem value="" disabled>Saved Presets</MenuItem>
+                {presets.map(p => (
+                  <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+
+          {/* Save current filters inline */}
+          {showSavePreset ? (
+            <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+              <TextField
+                size="small" placeholder="Preset name..."
+                value={presetName}
+                onChange={(e) => setPresetName(e.target.value)}
+                sx={{ width: 130, '& .MuiOutlinedInput-root': { borderRadius: 0, fontSize: '0.7rem' } }}
+              />
+              <Button
+                size="small" variant="contained"
+                disabled={!presetName.trim()}
+                onClick={async () => {
+                  await savePreset(presetName.trim(), {
+                    activeSilo: SILO_MAP[activeTab],
+                    facets,
+                    dateRange,
+                    searchText,
+                  });
+                  setPresetName('');
+                  setShowSavePreset(false);
+                }}
+                sx={{ bgcolor: COLORS.accent, borderRadius: 0, fontWeight: 1000, fontSize: '0.6rem', minWidth: 0, px: 1.5 }}
+              >
+                Save
+              </Button>
+              <IconButton size="small" onClick={() => setShowSavePreset(false)}>
+                <CloseIcon sx={{ fontSize: 14 }} />
+              </IconButton>
+            </Box>
+          ) : (
+            <Button
+              size="small" variant="outlined"
+              onClick={() => setShowSavePreset(true)}
+              sx={{ borderRadius: 0, fontWeight: 1000, fontSize: '0.6rem', borderColor: COLORS.accent, color: COLORS.accent, textTransform: 'none' }}
             >
-              <ToggleButton value="visit">Visits</ToggleButton>
-              <ToggleButton value="case">Cases</ToggleButton>
-            </ToggleButtonGroup>
-
-              <Tooltip title="Clinical Precision Filters">
-                <IconButton
-                  onClick={() => setOpenDrawer(true)}
-                  sx={{
-                    border: '2px solid #5D4037', borderRadius: 0,
-                    bgcolor: Object.values(facets).some(v => v !== '') ? '#5D4037' : 'transparent',
-                    color: Object.values(facets).some(v => v !== '') ? 'white' : '#5D4037'
-                  }}
-                >
-                  <TuneIcon />
-                </IconButton>
-              </Tooltip>
-
-              <Box sx={{ textAlign: 'right' }}>
-                  <Typography sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '1.2rem', lineHeight: 1 }}>{groupedRecords.length}</Typography>
-                  <Typography variant="caption" sx={{ fontWeight: '1000', opacity: 0.6, fontSize: '0.62rem', display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                    {facets.petSpecies || ''} {activeSilo.replace('GLOBAL', 'TOTAL').replace('_', ' ')} VISITS
-                    {facets.serviceCategory ? ` • ${facets.serviceCategory}` : ''}
-                    {facets.assignedVetId ? ` • ${vets.find(v => v.id === facets.assignedVetId)?.fullName || 'VET'}` : ''}
-                  </Typography>
-              </Box>
-              <InfoIcon sx={{ color: '#5D4037', opacity: 0.2 }} />
-          </Stack>
-        </Paper>
+              + Save Filters
+            </Button>
+          )}
+        </Box>
 
         {/* 1.1 SILO TABS (NEW) */}
         <Box sx={{ bgcolor: 'white', borderBottom: '2px solid #5D403733', px: 4 }}>
-           <Tabs 
-             value={activeTab} 
+           <Tabs
+             value={activeTab}
              onChange={(e, v) => setActiveTab(v)}
              variant="scrollable"
              scrollButtons="auto"
-             sx={{ 
+             sx={{
                minHeight: 45,
                '& .MuiTabs-indicator': { bgcolor: '#5D4037', height: 3 },
-               '& .MuiTab-root': { 
+               '& .MuiTab-root': {
                  fontFamily: 'Inter', fontWeight: '1000', fontSize: '0.65rem', color: '#A1887F', py: 1, minWidth: 100,
                  '&.Mui-selected': { color: '#5D4037' }
                }
              }}
            >
-              <Tab label="📜 ALL VISITS" />
-              <Tab label="⚡ TRIAGE" />
-              <Tab label="🏥 CLINICAL" />
-              <Tab label="🐾 IN-PATIENT" />
-              <Tab label="🛡️ ARCHIVE" />
-              <Tab label="🚫 VOIDED" />
+              <Tab label="PENDING" />
+              <Tab label="ACTIVE" />
+              <Tab label="COMPLETED" />
            </Tabs>
+        </Box>
+
+        {/* 1.2 PER-TAB KPI STRIP */}
+        <Box sx={{ px: 4, py: 0.75, bgcolor: COLORS.formBg, borderBottom: `1px solid ${COLORS.borderLight}`, display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
+          {activeTab === 0 && (
+            <>
+              <Chip label={`${tabStatusCounts['pending'] || 0} pending`} size="small" sx={{ height: 22, fontSize: '0.6rem', fontWeight: 1000, borderRadius: 0, bgcolor: COLORS.kpiOrangeBg, border: `1px solid ${COLORS.kpiOrangeBorder}`, color: COLORS.warning }} />
+              <Chip label={`${tabStatusCounts['confirmed'] || 0} confirmed`} size="small" sx={{ height: 22, fontSize: '0.6rem', fontWeight: 1000, borderRadius: 0, bgcolor: COLORS.kpiGreenBg, border: `1px solid ${COLORS.kpiGreenBorder}`, color: COLORS.success }} />
+            </>
+          )}
+          {activeTab === 1 && (
+            <>
+              <Chip label={`${tabStatusCounts['arrived'] || 0} arrived`} size="small" sx={{ height: 22, fontSize: '0.6rem', fontWeight: 1000, borderRadius: 0, bgcolor: COLORS.kpiBlueBg, border: `1px solid ${COLORS.kpiBlueBorder}`, color: COLORS.medical }} />
+              <Chip label={`${tabStatusCounts['in-consult'] || 0} in-consult`} size="small" sx={{ height: 22, fontSize: '0.6rem', fontWeight: 1000, borderRadius: 0, bgcolor: COLORS.kpiBlueBg, border: `1px solid ${COLORS.kpiBlueBorder}`, color: COLORS.medical }} />
+              <Chip label={`${tabStatusCounts['dispensing'] || 0} dispensing`} size="small" sx={{ height: 22, fontSize: '0.6rem', fontWeight: 1000, borderRadius: 0, bgcolor: COLORS.kpiPurpleBg, border: `1px solid ${COLORS.kpiPurpleBorder}`, color: COLORS.kpiPurpleText }} />
+              <Chip label={`${tabStatusCounts['billing'] || 0} billing`} size="small" sx={{ height: 22, fontSize: '0.6rem', fontWeight: 1000, borderRadius: 0, bgcolor: COLORS.kpiOrangeBg, border: `1px solid ${COLORS.kpiOrangeBorder}`, color: COLORS.warning }} />
+              <Chip label={`${tabStatusCounts['confined'] || 0} confined`} size="small" sx={{ height: 22, fontSize: '0.6rem', fontWeight: 1000, borderRadius: 0, bgcolor: COLORS.kpiRedBg, border: `1px solid ${COLORS.kpiRedBorder}`, color: COLORS.danger }} />
+              <Chip label={`${tabStatusCounts['on-hold'] || 0} on-hold`} size="small" sx={{ height: 22, fontSize: '0.6rem', fontWeight: 1000, borderRadius: 0, bgcolor: '#FFF8E1', border: `1px solid ${COLORS.accentLight}`, color: COLORS.accent }} />
+            </>
+          )}
+          {activeTab === 2 && (
+            <>
+              <Chip label={`${tabStatusCounts['completed'] || 0} completed`} size="small" sx={{ height: 22, fontSize: '0.6rem', fontWeight: 1000, borderRadius: 0, bgcolor: COLORS.kpiGreenBg, border: `1px solid ${COLORS.kpiGreenBorder}`, color: COLORS.success }} />
+              <Chip label={`${tabStatusCounts['carried-over'] || 0} carried-over`} size="small" sx={{ height: 22, fontSize: '0.6rem', fontWeight: 1000, borderRadius: 0, bgcolor: COLORS.kpiOrangeBg, border: `1px solid ${COLORS.kpiOrangeBorder}`, color: COLORS.warning }} />
+              <Chip label={`${tabStatusCounts['cancelled'] || 0} cancelled`} size="small" sx={{ height: 22, fontSize: '0.6rem', fontWeight: 1000, borderRadius: 0, bgcolor: COLORS.kpiRedBg, border: `1px solid ${COLORS.kpiRedBorder}`, color: COLORS.danger }} />
+              <Chip label={`${tabStatusCounts['no-show'] || 0} no-show`} size="small" sx={{ height: 22, fontSize: '0.6rem', fontWeight: 1000, borderRadius: 0, bgcolor: COLORS.kpiRedBg, border: `1px solid ${COLORS.kpiRedBorder}`, color: COLORS.danger }} />
+            </>
+          )}
         </Box>
       </Box>
 
       {/* 2. THE MASTER LEDGER GRID */}
       <Box sx={{ flexGrow: 1, minHeight: 0, width: '100%', overflow: 'hidden', bgcolor: 'white' }}>
         <DataGrid
-          loading={loading} rows={groupedRecords}
+          loading={loading} rows={displayRecords}
           columns={columns.map(c => ({
             ...c,
             headerClassName: 'forensic-header',
             headerName: (c.headerName || '').toUpperCase()
           }))}
-          disableRowSelectionOnClick rowHeight={70}
+          disableRowSelectionOnClick={activeTab !== 0}
+          rowHeight={70}
+          getRowHeight={(params) => params.row?._isDateHeader ? 32 : undefined}
           pageSizeOptions={[25, 50, 100]}
           initialState={{ pagination: { paginationModel: { pageSize: 50, page: 0 } } }}
-          checkboxSelection={activeTab === 1}
+          checkboxSelection={activeTab === 0}
           onRowSelectionModelChange={(newModel) => {
             const ids = newModel?.ids ? [...newModel.ids] : (Array.isArray(newModel) ? newModel : []);
-            setSelectedRows(ids);
+            setSelectedRows(ids.filter(id => !String(id).startsWith('date-header-')));
           }}
-          isRowSelectable={(params) => ['pending', 'confirmed'].includes(params.row.status?.toLowerCase?.())}
-          getRowClassName={(params) =>
-            viewMode === 'case' && !params.row._isCaseHeader ? 'case-continuation' : ''
-          }
+          isRowSelectable={(params) => !params.row?._isDateHeader && !params.row?._isCaseHeader && ['pending', 'confirmed'].includes(params.row?.status?.toLowerCase?.())}
+          onRowClick={(params, event) => {
+            if (activeTab === 0) return;
+            if (params.row?._isDateHeader || params.row?._isCaseHeader) return;
+            handleOpenAudit(event, params.row);
+          }}
+          getRowClassName={(params) => {
+            if (params.row?._isDateHeader) return 'date-header-row';
+            if (viewMode === 'case' && params.row?._isCaseHeader && params.row?._caseLabel) return 'case-header';
+            if (viewMode === 'case' && !params.row?._isCaseHeader) return 'case-continuation';
+            return '';
+          }}
           sx={{
             border: 'none',
             bgcolor: 'white',
@@ -802,30 +1010,44 @@ export default function Records() {
               fontFamily: 'Inter, sans-serif'
             },
             '& .MuiDataGrid-row:hover': { bgcolor: 'rgba(93, 64, 55, 0.04)' },
+            '& .date-header-row': {
+              bgcolor: '#FFF8E1 !important',
+              borderTop: `2px solid ${COLORS.accentLight}`,
+              pointerEvents: 'none',
+              '& .MuiDataGrid-cell': { borderBottom: 'none' },
+            },
+            '& .case-header': {
+              bgcolor: '#FFF8E1 !important',
+              borderTop: `2px solid ${COLORS.accent}`,
+              fontWeight: 1000,
+              '& .MuiDataGrid-cell': { overflow: 'visible !important' },
+            },
             ...(viewMode === 'case' ? {
               '& .case-continuation': {
                 bgcolor: 'rgba(93, 64, 55, 0.02)',
                 borderLeft: `3px solid ${COLORS.accentLight}`,
               }
             } : {}),
+            ...(activeTab !== 0 ? {
+              '& .MuiDataGrid-row': { cursor: 'pointer' },
+            } : {}),
           }}
         />
       </Box>
 
       {/* --- 🧬 FORENSIC AUDIT POPOVER --- */}
-      <Popover
+      <Dialog
         open={Boolean(anchorEl)}
-        anchorEl={anchorEl}
         onClose={handleCloseAudit}
-        anchorOrigin={{ vertical: 'center', horizontal: 'left' }}
-        transformOrigin={{ vertical: 'center', horizontal: 'right' }}
-        PaperProps={{ sx: { width: 380, borderRadius: 0, border: '2px solid #5D4037', p: 0, overflow: 'hidden', boxShadow: '10px 10px 0px rgba(93, 64, 55, 0.1)' } }}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 0, border: '2px solid #5D4037', p: 0, overflow: 'hidden', boxShadow: '10px 10px 0px rgba(93, 64, 55, 0.1)', maxHeight: '80vh' } }}
       >
         {activeAuditRow && (
           <Box>
             <Box sx={{ bgcolor: '#FFF8E1', p: 1.5, borderBottom: '1px solid #5D4037', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Typography sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: 1 }}>
-                <TimelineIcon fontSize="small" /> VISIT AUDIT: {activeAuditRow.id.slice(0, 8).toUpperCase()}
+                <TimelineIcon fontSize="small" /> {activeAuditRow.petName || 'Unknown'} — {(() => { const svcNames = (activeAuditRow.services || []).map(s => s.name).filter(Boolean); if (svcNames.length === 0) return activeAuditRow.serviceType || 'Visit'; if (svcNames.length <= 2) return svcNames.join(', '); return `${svcNames.slice(0, 2).join(', ')} +${svcNames.length - 2} more`; })()} ({activeAuditRow.id.slice(0, 8).toUpperCase()})
               </Typography>
               <Stack direction="row" spacing={1} alignItems="center">
                 {activeAuditRow.ownerPhone && (
@@ -1105,7 +1327,7 @@ export default function Records() {
             </Box>
           </Box>
         )}
-      </Popover>
+      </Dialog>
 
       {/* --- 🧬 RESCHEDULE MODAL --- */}
       <Dialog open={openReschedule} onClose={() => setOpenReschedule(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 0, border: '4px solid #5D4037' } }}>
@@ -1300,162 +1522,6 @@ export default function Records() {
         </Snackbar>
       )}
 
-      <Drawer
-        anchor="right"
-        open={openDrawer}
-        onClose={() => setOpenDrawer(false)}
-        PaperProps={{ sx: { width: 350, p: 3, bgcolor: '#FFF8E1', borderLeft: '3px solid #5D4037', borderRadius: 0 } }}
-      >
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '1.2rem', textTransform: 'uppercase', letterSpacing: 1 }}>
-            Filter Visits
-          </Typography>
-          <IconButton onClick={() => setOpenDrawer(false)}><CloseIcon /></IconButton>
-        </Box>
-
-        {/* SAVED PRESETS (T2.71) */}
-        <Box sx={{ mb: 3 }}>
-          <Typography sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '0.65rem', mb: 1, textTransform: 'uppercase' }}>
-            Saved Presets
-          </Typography>
-          {presets.length === 0 && (
-            <Typography variant="caption" sx={{ color: '#A1887F', fontStyle: 'italic' }}>No saved presets yet.</Typography>
-          )}
-          <Stack spacing={0.5}>
-            {presets.map(p => (
-              <Box key={p.id} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Button
-                  size="small" fullWidth variant="outlined"
-                  onClick={() => {
-                    const fs = p.filterState;
-                    if (fs.activeSilo !== undefined) setActiveTab(SILO_MAP.indexOf(fs.activeSilo));
-                    if (fs.facets) setFacets(fs.facets);
-                    if (fs.dateRange) setDateRange(fs.dateRange);
-                    if (fs.searchMode) setSearchMode(fs.searchMode);
-                    if (fs.searchText) setSearchText(fs.searchText);
-                    setOpenDrawer(false);
-                  }}
-                  sx={{ borderRadius: 0, fontWeight: '900', fontSize: '0.7rem', justifyContent: 'flex-start', textTransform: 'none', borderColor: '#D7CCC8' }}
-                >
-                  {p.name}
-                </Button>
-                <IconButton size="small" onClick={() => deletePreset(p.id)}>
-                  <CloseIcon sx={{ fontSize: 14 }} />
-                </IconButton>
-              </Box>
-            ))}
-          </Stack>
-          <Divider sx={{ my: 1.5 }} />
-          {showSavePreset ? (
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <TextField
-                size="small" placeholder="Preset name..."
-                value={presetName}
-                onChange={(e) => setPresetName(e.target.value)}
-                sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: 0, fontSize: '0.75rem' } }}
-              />
-              <Button
-                size="small" variant="contained"
-                disabled={!presetName.trim()}
-                onClick={async () => {
-                  await savePreset(presetName.trim(), {
-                    activeSilo: SILO_MAP[activeTab],
-                    facets,
-                    dateRange,
-                    searchMode,
-                    searchText,
-                  });
-                  setPresetName('');
-                  setShowSavePreset(false);
-                }}
-                sx={{ bgcolor: COLORS.accent, borderRadius: 0, fontWeight: '1000', fontSize: '0.65rem' }}
-              >
-                Save
-              </Button>
-            </Box>
-          ) : (
-            <Button
-              size="small" fullWidth variant="outlined"
-              onClick={() => setShowSavePreset(true)}
-              sx={{ borderRadius: 0, fontWeight: '1000', fontSize: '0.65rem', borderColor: COLORS.accent, color: COLORS.accent }}
-            >
-              + Save Current Filters
-            </Button>
-          )}
-        </Box>
-
-        <Stack spacing={4}>
-           <FormControl fullWidth variant="outlined">
-              <InputLabel sx={{ fontWeight: '1000', color: '#5D4037' }}>ASSIGNED VET</InputLabel>
-              <Select
-                value={facets.assignedVetId}
-                label="ASSIGNED VET"
-                onChange={(e) => setFacets(prev => ({ ...prev, assignedVetId: e.target.value }))}
-                sx={{ borderRadius: 0, bgcolor: 'white' }}
-              >
-                <MenuItem value=""><em>Any Veterinarian</em></MenuItem>
-                {vets.map(v => (
-                  <MenuItem key={v.id} value={v.id}>{v.fullName || v.name}</MenuItem>
-                ))}
-              </Select>
-           </FormControl>
-
-           <FormControl fullWidth variant="outlined">
-              <InputLabel sx={{ fontWeight: '1000', color: '#5D4037' }}>CLINICAL DEPT</InputLabel>
-              <Select
-                value={facets.serviceCategory}
-                label="CLINICAL DEPT"
-                onChange={(e) => setFacets(prev => ({ ...prev, serviceCategory: e.target.value }))}
-                sx={{ borderRadius: 0, bgcolor: 'white' }}
-              >
-                <MenuItem value=""><em>All Departments</em></MenuItem>
-                {departments.map((d) => (
-                  <MenuItem key={d.id} value={d.name}>{d.name}</MenuItem>
-                ))}
-              </Select>
-           </FormControl>
-
-           <FormControl fullWidth variant="outlined">
-              <InputLabel sx={{ fontWeight: '1000', color: '#5D4037' }}>PATIENT SPECIES</InputLabel>
-              <Select
-                value={facets.petSpecies}
-                label="PATIENT SPECIES"
-                onChange={(e) => setFacets(prev => ({ ...prev, petSpecies: e.target.value }))}
-                sx={{ borderRadius: 0, bgcolor: 'white' }}
-              >
-                <MenuItem value=""><em>All Species</em></MenuItem>
-                <MenuItem value="Canine">Canine</MenuItem>
-                <MenuItem value="Feline">Feline</MenuItem>
-                <MenuItem value="Bird">Bird</MenuItem>
-                <MenuItem value="Exotic">Exotic</MenuItem>
-              </Select>
-           </FormControl>
-
-           <Box>
-              <Typography sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '0.65rem', mb: 1, textTransform: 'uppercase' }}>
-                 Admission Origin
-              </Typography>
-              <RadioGroup
-                value={facets.origin}
-                onChange={(e) => setFacets(prev => ({ ...prev, origin: e.target.value }))}
-              >
-                <FormControlLabel value="" control={<Radio size="small" />} label={<Typography sx={{ fontWeight: '900', fontSize: '0.75rem' }}>Global Flow (All)</Typography>} />
-                <FormControlLabel value="ONLINE" control={<Radio size="small" />} label={<Typography sx={{ fontWeight: '900', fontSize: '0.75rem' }}>Online Bookings Only</Typography>} />
-                <FormControlLabel value="WALK_IN" control={<Radio size="small" />} label={<Typography sx={{ fontWeight: '900', fontSize: '0.75rem' }}>Walk-in / ER Only</Typography>} />
-              </RadioGroup>
-           </Box>
-
-           <Divider sx={{ my: 2 }} />
-
-           <Button 
-             fullWidth variant="outlined" 
-             onClick={() => setFacets({ assignedVetId: '', serviceCategory: '', petSpecies: '', origin: '' })}
-             sx={{ border: '2px solid #5D4037', color: '#5D4037', fontWeight: '1000', borderRadius: 0 }}
-           >
-              Clear All Facets
-           </Button>
-        </Stack>
-      </Drawer>
 
     </Box>
   );

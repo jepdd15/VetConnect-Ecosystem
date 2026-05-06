@@ -20,7 +20,6 @@ import ExpenseIcon from '@mui/icons-material/MoneyOff';
 import SettingsIcon from '@mui/icons-material/Settings';
 import LogoutIcon from '@mui/icons-material/Logout';
 import TvIcon from '@mui/icons-material/Tv';
-import AssessmentIcon from '@mui/icons-material/Assessment';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 
@@ -39,7 +38,6 @@ const menuItems = [
   { name: 'Quick Sale', icon: <ShoppingCartIcon />, path: '/sales', action: 'retailPOS' },
   { name: 'Expenses', icon: <ExpenseIcon />, path: '/expenses' },
   { name: 'Settings', icon: <SettingsIcon />, path: '/settings' },
-  // { name: 'Forensic Reports', icon: <AssessmentIcon />, path: '/reports' },
   { name: 'Notification Logs', icon: <NotificationsActiveIcon />, path: '/notification-logs' },
 ];
 

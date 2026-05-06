@@ -22,7 +22,6 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
     emergencyContacts: [],
     gender: null,
     seniorId: '',
-    clientTag: 'Regular',
     referralSource: '',
     referredBy: '',    // T2.136
     allowPromos: false,
@@ -210,7 +209,6 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
     const cleanClient = {
       ...client,
       dob: formatFirestoreDate(client.dob),
-      clientTag: client.clientTag || 'Regular',
       accountStanding: client.accountStanding || 'Good Standing',
       dpaConsent: client.dpaConsent || false,
       waiverSigned: client.waiverSigned || false,
@@ -257,7 +255,6 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
         govIdType: editForm.govIdType || null,
         govIdNumber: editForm.govIdNumber || null,
         seniorId: editForm.seniorId,
-        clientTag: editForm.clientTag,
         accountStanding: editForm.accountStanding || 'Good Standing',
         dpaConsent: derivedDpaConsent,
         waiverSigned: derivedWaiverSigned,

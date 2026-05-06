@@ -315,6 +315,44 @@ export function useForensicReportData() {
         byVetStaff.reduce((s, v) => s + v.totalConsultMins, 0) / 60 * 10,
       ) / 10;
 
+      // ── T4.182: Appointment conversion funnel ────────────────────
+      const totalDocs = docs.length;
+      const confirmedCount = docs.filter(a =>
+        ['confirmed', 'arrived', 'in-consult', 'dispensing', 'billing', 'completed',
+          'confined', 'on-hold', 'carried-over'].includes(a.status),
+      ).length;
+      const arrivedCount = docs.filter(a =>
+        ['arrived', 'in-consult', 'dispensing', 'billing', 'completed',
+          'confined', 'on-hold', 'carried-over'].includes(a.status),
+      ).length;
+      const completedCount = docs.filter(a => a.status === 'completed').length;
+
+      const conversionFunnel = [
+        { stage: 'Booked',    count: totalDocs,       rate: 100 },
+        { stage: 'Confirmed', count: confirmedCount,   rate: totalDocs > 0 ? Math.round((confirmedCount / totalDocs) * 100) : 0 },
+        { stage: 'Arrived',   count: arrivedCount,     rate: totalDocs > 0 ? Math.round((arrivedCount / totalDocs) * 100) : 0 },
+        { stage: 'Completed', count: completedCount,   rate: totalDocs > 0 ? Math.round((completedCount / totalDocs) * 100) : 0 },
+      ];
+
+      // ── T4.182: Staff utilization rate per vet ───────────────────
+      const operatingHours = (clinicSettings.closeHour || 17) - (clinicSettings.openHour || 8);
+      const dayMs = 86400000;
+      const workDays = clinicSettings.workingDays || [0, 1, 2, 3, 4, 5, 6];
+      let workingDayCount = 0;
+      for (let d = new Date(startDate); d <= endDate; d = new Date(d.getTime() + dayMs)) {
+        if (workDays.includes(d.getDay())) workingDayCount++;
+      }
+      const totalAvailableHours = operatingHours * Math.max(1, workingDayCount);
+
+      const staffUtilization = byVetStaff
+        .filter(v => v.vetName !== 'Unassigned')
+        .map(v => ({
+          vetName:         v.vetName,
+          consultHours:    parseFloat((v.totalConsultMins / 60).toFixed(1)),
+          availableHours:  totalAvailableHours,
+          utilizationRate: Math.min(100, Math.round((v.totalConsultMins / 60 / totalAvailableHours) * 100)),
+        }));
+
       setData({
         totalCount: docs.length,
         consult: {
@@ -347,6 +385,8 @@ export function useForensicReportData() {
           totalConsultHours,
           byVet: byVetStaff,
         },
+        conversionFunnel,
+        staffUtilization,
       });
     } catch (err) {
       console.error('[useForensicReportData.generate]:', err.message);
@@ -356,5 +396,16 @@ export function useForensicReportData() {
     }
   }, []);
 
-  return { generate, loading, error, data, truncated, truncatedEndDate };
+  /**
+   * Wrapper accepting Date objects instead of YYYY-MM-DD strings.
+   * Converts each Date to a Manila-timezone date string before calling generate.
+   * This bridges Dashboard's dateRange (Date objects) with the original string API.
+   */
+  const generateFromDates = useCallback((startDate, endDate, clinicSettings = {}) => {
+    if (!startDate || !endDate) return;
+    const fmt = (d) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+    return generate(fmt(startDate), fmt(endDate), clinicSettings);
+  }, [generate]);
+
+  return { generate, generateFromDates, loading, error, data, truncated, truncatedEndDate };
 }

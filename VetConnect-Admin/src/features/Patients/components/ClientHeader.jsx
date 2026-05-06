@@ -65,7 +65,6 @@ export default function ClientHeader({ client, balance, isEditing, onEdit, onCan
                   <Typography variant="h5" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.textPrimary, letterSpacing: -0.5, lineHeight: 1 }}>
                       {client.fullName}
                   </Typography>
-                  <Chip label={client.clientTag || 'Regular'} size="small" color={client.clientTag==='VIP'?'warning':client.clientTag==='Bad Payer'?'error':'default'} variant={client.clientTag==='Regular' ? 'outlined' : 'filled'} sx={{fontFamily: FONT, fontWeight: 'bold', height: 22, fontSize: '0.7rem'}} />
                   {client.seniorId && <Chip label="SC/PWD" size="small" sx={{fontFamily: FONT, fontWeight: 'bold', height: 22, fontSize: '0.7rem', bgcolor: COLORS.kpiPurpleBg, color: COLORS.grooming}} />}
                   {/* T2.136: Referral chip */}
                   {client.referredBy && (

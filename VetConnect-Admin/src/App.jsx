@@ -31,7 +31,6 @@ import Sales from './features/Sales/Sales';
 import Expenses from './pages/Expenses'; 
 import Monitor from './pages/Monitor';   
 import Settings from './pages/Settings';
-import Reports from './features/Reports/Reports';
 import NotificationLogs from './pages/NotificationLogs';
 
 // --- USER CONTEXT ---
@@ -343,7 +342,6 @@ function AppShell() {
                   <Route path="/expenses" element={<Expenses />} />
                   <Route path="/monitor" element={<Monitor />} />
                   <Route path="/settings" element={<Settings />} />
-                  <Route path="/reports" element={<Reports />} />
                   <Route path="/notification-logs" element={<NotificationLogs />} />
                   {/* Fallback for unknown internal routes */}
                   <Route path="*" element={<Navigate to="/" replace />} />

@@ -33,8 +33,6 @@ const PatientDirectory = React.memo(function PatientDirectory({ owners, selected
                   primary={
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                           <Typography fontFamily={FONT} fontWeight="bold" color={selectedId === owner.id ? COLORS.textPrimary : COLORS.textSecondary} noWrap>{owner.fullName}</Typography>
-                          {owner.clientTag === 'VIP' && <Typography variant="caption">🌟</Typography>}
-                          {owner.clientTag === 'Bad Payer' && <Typography variant="caption">⚠️</Typography>}
                           {/* T4.147: Denormalized outstanding balance indicator — zero extra queries */}
                           {owner.hasOutstandingBalance === true && (
                             <Chip

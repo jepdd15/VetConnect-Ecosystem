@@ -15,7 +15,6 @@ export default function NewClientModal({ open, onClose }) {
   const [form, setForm] = useState({
     fullName: '', phone: '', email: '',
     address: '', city: '',
-    clientTag: 'Regular',
     referredBy: '',  // T2.136
   });
   const [petForm, setPetForm] = useState({
@@ -66,7 +65,6 @@ export default function NewClientModal({ open, onClose }) {
         email: form.email.trim() || null,
         address: form.address.trim() || null,
         city: form.city.trim() || null,
-        clientTag: form.clientTag,
         referredBy: form.referredBy.trim() || null,  // T2.136
         role: 'pet_owner',
         accountStatus: 'admin_registered',   // no Firebase Auth account — guest-client pattern
@@ -116,21 +114,11 @@ export default function NewClientModal({ open, onClose }) {
             Client Information
           </Typography>
           <Grid container spacing={2}>
-            <Grid item xs={12} md={8}>
+            <Grid item xs={12}>
               <TextField autoFocus label="Full Name" fullWidth size="small" required
                 value={form.fullName} onChange={(e) => setForm({...form, fullName: e.target.value})}
                 error={!!error && !form.fullName.trim()} helperText={!form.fullName.trim() && error ? 'Required' : ''}
                 sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }} />
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <TextField select label="Client Tag" fullWidth size="small"
-                value={form.clientTag} onChange={(e) => setForm({...form, clientTag: e.target.value})}
-                sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }}>
-                <MenuItem value="Regular">Regular</MenuItem>
-                <MenuItem value="VIP">VIP</MenuItem>
-                <MenuItem value="New">New</MenuItem>
-                <MenuItem value="Rescue/Shelter">Rescue / Shelter</MenuItem>
-              </TextField>
             </Grid>
             <Grid item xs={12} md={6}>
               <TextField label="Phone Number" fullWidth size="small" required

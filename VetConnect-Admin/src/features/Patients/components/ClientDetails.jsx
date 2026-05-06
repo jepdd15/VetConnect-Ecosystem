@@ -306,12 +306,6 @@ export default function ClientDetails({ editForm, setEditForm, isEditing, calcul
       {/* SECTION: MARKETING & PREFERENCES */}
       <SectionHeader title="Marketing & Preferences" />
       <Grid container spacing={2}>
-         <DataField label="Client Tag" select value={editForm.clientTag} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, clientTag: val})}>
-             <MenuItem value="VIP">VIP</MenuItem>
-             <MenuItem value="Regular">Regular</MenuItem>
-             <MenuItem value="New">New</MenuItem>
-             <MenuItem value="Rescue/Shelter">Rescue / Shelter</MenuItem>
-         </DataField>
          <DataField label="Lead Source" select value={editForm.referralSource} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, referralSource: val})}>
              <MenuItem value="Walk-in">Walk-in</MenuItem>
              <MenuItem value="Google">Google / Search</MenuItem>

@@ -40,7 +40,7 @@ export function generateInsight(data, clinicSettings, isOpen) {
 /**
  * @typedef {object} InsightRule
  * @property {string} id        - Unique identifier for debugging (e.g., "ops-wait-alert")
- * @property {string} tab       - Which tab this rule belongs to (ops|clinical|financial|growth)
+ * @property {string} tab       - Which tab this rule belongs to (ops|analytics|financial)
  * @property {string} target    - KPICard title string this insight attaches to
  * @property {function} condition - (ctx) => boolean — should the rule fire?
  * @property {function} message   - (ctx) => string — the insight text to display
@@ -194,12 +194,12 @@ const RULES = [
     message: () => 'Queue clear — all patients served',
   },
 
-  // ── CLINICAL TAB RULES (8) ──────────────────────────────────────
+  // ── ANALYTICS TAB RULES — CLINICAL (8) ─────────────────────────
 
   // Rule 11: Record volume — vs prior period
   {
     id: 'clin-record-vol',
-    tab: 'clinical',
+    tab: 'analytics',
     target: 'RECORDS SIGNED',
     condition: ({ clinical, deltas }) =>
       clinical && clinical.recordsSigned > 0 && deltas?.recordsSigned != null,
@@ -214,7 +214,7 @@ const RULES = [
   // Rule 12: Vaccine trend — total vaccinations this period
   {
     id: 'clin-vaccine',
-    tab: 'clinical',
+    tab: 'analytics',
     target: 'VACCINATIONS',
     condition: ({ clinical }) =>
       clinical && clinical.totalVaccinations > 0 && clinical.vaccinesByType.length > 0,
@@ -227,7 +227,7 @@ const RULES = [
   // Rule 13: Follow-up gap — low compliance
   {
     id: 'clin-followup-gap',
-    tab: 'clinical',
+    tab: 'analytics',
     target: 'FOLLOW-UP COMPLIANCE',
     condition: ({ clinical }) =>
       clinical && clinical.recordsWithFollowUp > 0 && clinical.followUpComplianceRate < 50,
@@ -240,7 +240,7 @@ const RULES = [
   // Rule 14: Follow-up good — high compliance
   {
     id: 'clin-followup-good',
-    tab: 'clinical',
+    tab: 'analytics',
     target: 'FOLLOW-UP COMPLIANCE',
     condition: ({ clinical }) =>
       clinical && clinical.followUpComplianceRate >= 80,
@@ -251,7 +251,7 @@ const RULES = [
   // Priority below rule 11 (record volume delta takes precedence if data exists)
   {
     id: 'clin-diag-cluster',
-    tab: 'clinical',
+    tab: 'analytics',
     target: 'RECORDS SIGNED',
     condition: ({ clinical }) =>
       clinical && clinical.topDiagnoses.length > 0 && clinical.recordsSigned >= 5,
@@ -265,7 +265,7 @@ const RULES = [
   // Rule 16: Confinement alert — elevated rate
   {
     id: 'clin-confinement',
-    tab: 'clinical',
+    tab: 'analytics',
     target: 'CONFINEMENT RATE',
     condition: ({ clinical }) =>
       clinical && clinical.confinementRate > 10,
@@ -277,7 +277,7 @@ const RULES = [
   // Priority below rules 11 and 15 (fires only when no delta or diagnosis insight matched)
   {
     id: 'clin-vet-imbalance',
-    tab: 'clinical',
+    tab: 'analytics',
     target: 'RECORDS SIGNED',
     condition: ({ clinical }) => {
       if (!clinical || clinical.recordsPerVet.length < 2) return false;
@@ -296,7 +296,7 @@ const RULES = [
   // Priority below rule 16 (confinement alert is more directly actionable)
   {
     id: 'clin-vitals-anomaly',
-    tab: 'clinical',
+    tab: 'analytics',
     target: 'CONFINEMENT RATE',
     condition: ({ clinical }) => {
       if (!clinical || clinical.avgVitalsBySpecies.length === 0) return false;
@@ -423,12 +423,12 @@ const RULES = [
     },
   },
 
-  // ── GROWTH TAB RULES (5) ────────────────────────────────────────
+  // ── ANALYTICS TAB RULES — GROWTH (5) ───────────────────────────
 
   // Rule 26: Client acquisition — vs prior period
   {
     id: 'growth-acquisition',
-    tab: 'growth',
+    tab: 'analytics',
     target: 'NEW CLIENTS',
     condition: ({ growth, deltas }) =>
       growth && growth.newClientCount > 0 && deltas?.uniqueClients != null,
@@ -441,7 +441,7 @@ const RULES = [
   // Rule 27: Retention alert — below 40%
   {
     id: 'growth-retention-low',
-    tab: 'growth',
+    tab: 'analytics',
     target: 'CLIENT RETENTION',
     condition: ({ growth }) =>
       growth && growth.uniqueClientCount >= 5 && growth.retentionRate < 40,
@@ -453,7 +453,7 @@ const RULES = [
   // Priority below rule 27 — positive reinforcement only when truly healthy
   {
     id: 'growth-retention-good',
-    tab: 'growth',
+    tab: 'analytics',
     target: 'CLIENT RETENTION',
     condition: ({ growth }) =>
       growth && growth.retentionRate >= 60,
@@ -466,8 +466,8 @@ const RULES = [
   // silently discard this rule's output when both conditions fire simultaneously.
   {
     id: 'growth-peak',
-    tab: 'growth',
-    target: 'TOTAL APPOINTMENTS (GROWTH)',
+    tab: 'analytics',
+    target: 'TOTAL APPOINTMENTS (ANALYTICS)',
     condition: ({ growth }) => {
       if (!growth || growth.peakHours.length === 0) return false;
       return growth.peakHours.some(h => h.count > 0);
@@ -484,7 +484,7 @@ const RULES = [
   // Rule 30: Service concentration — top service dominance
   {
     id: 'growth-service-conc',
-    tab: 'growth',
+    tab: 'analytics',
     target: 'CLINIC UTILIZATION',
     condition: ({ growth }) => {
       if (!growth || growth.serviceRanking.length === 0 || growth.totalAppointments < 5) return false;
@@ -495,5 +495,73 @@ const RULES = [
       const pct = Math.round((top.count / growth.totalAppointments) * 100);
       return `${top.name} is ${pct}% of appointments`;
     },
+  },
+
+  // ── NEW ANALYTICS + FINANCIAL RULES (5) ─────────────────────────
+
+  // Rule 31: Lab abnormal rate spike
+  {
+    id: 'analytics-lab-abnormal-spike',
+    tab: 'analytics',
+    target: 'LAB TESTS ORDERED',
+    condition: ({ clinical }) => {
+      if (!clinical?.labStatusDistribution?.length) return false;
+      const abnormal = clinical.labStatusDistribution.find(s => s.name === 'Abnormal');
+      const total = clinical.labTestsOrdered;
+      return total > 5 && abnormal && (abnormal.value / total) > 0.3;
+    },
+    message: ({ clinical }) => {
+      const abnormal = clinical.labStatusDistribution.find(s => s.name === 'Abnormal');
+      const rate = Math.round((abnormal.value / clinical.labTestsOrdered) * 100);
+      return `${rate}% abnormal rate — above typical 15-20%. Review flagged tests.`;
+    },
+  },
+
+  // Rule 32: No-show weekday pattern
+  {
+    id: 'analytics-noshow-weekday',
+    tab: 'analytics',
+    target: 'NO-SHOW RATE',
+    condition: ({ clinical }) => {
+      if (!clinical?.noShowByWeekday) return false;
+      const max = Math.max(...clinical.noShowByWeekday.map(d => d.count));
+      return max >= 3;
+    },
+    message: ({ clinical }) => {
+      const sorted = [...clinical.noShowByWeekday].sort((a, b) => b.count - a.count);
+      return `${sorted[0].day} has the most no-shows (${sorted[0].count}). Consider overbooking.`;
+    },
+  },
+
+  // Rule 33: Collection rate drop
+  {
+    id: 'financial-collection-rate',
+    tab: 'financial',
+    target: 'COLLECTION RATE',
+    condition: ({ financial }) =>
+      financial && financial.collectionRate < 85 && financial.transactionCount > 5,
+    message: ({ financial }) =>
+      `Collection rate ${financial.collectionRate}% — below 85% target. Check outstanding balances.`,
+  },
+
+  // Rule 34: Amendment rate quality signal
+  {
+    id: 'analytics-amendment-rate',
+    tab: 'analytics',
+    target: 'AMENDMENT RATE',
+    condition: ({ clinical }) =>
+      clinical && clinical.amendmentRate > 15 && clinical.recordsSigned > 10,
+    message: ({ clinical }) =>
+      `${clinical.amendmentRate}% of records amended — above 15%. May indicate documentation quality issues.`,
+  },
+
+  // Rule 35: Revenue forecast available
+  {
+    id: 'financial-revenue-forecast',
+    tab: 'financial',
+    target: 'REVENUE FORECAST',
+    condition: ({ financial }) => financial && financial.upcomingRevenue > 0,
+    message: ({ financial }) =>
+      `₱${financial.upcomingRevenue.toLocaleString()} projected from ${financial.upcomingCount} upcoming appointments.`,
   },
 ];

@@ -367,6 +367,9 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
   // Day 6: Historical raw data for 6-month min/max/avg (one-shot on mount, T2.338)
   const [historicalData, setHistoricalData] = useState(null);
 
+  // T4.182: Vaccine reminder queue docs — one-shot fetch for compliance metrics
+  const [vaccineQueueDocs, setVaccineQueueDocs] = useState([]);
+
   // True until the first appointments snapshot resolves.
   const [appointmentsLoading, setAppointmentsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -701,6 +704,15 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
     fetchYearAgo();
   }, [period, benchmarkEnabled, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── T4.182: Vaccine reminder queue (one-shot fetch on mount) ─────
+  // The vaccine_reminder_queue collection has one doc per pet with
+  // pending/overdue vaccines. Fetched once — doesn't change with period.
+  useEffect(() => {
+    getDocs(collection(db, 'vaccine_reminder_queue'))
+      .then(snap => setVaccineQueueDocs(snap.docs.map(d => d.data())))
+      .catch(err => console.error('[useDashboardData] vaccineQueue fetch:', err.message));
+  }, []); // intentionally empty — one-shot on mount
+
   // ── Derived metrics: Operations tab (today only) ──────────────
   const ops = useMemo(() => {
     if (period !== 'today') return null;
@@ -772,6 +784,40 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
     const cancelledCount = statusCounts.cancelled;
     const emergencyCount = todayAppts.filter(a => a.priority === 'high').length;
 
+    // T4.182: Remaining appointments today (pending + confirmed, not yet arrived/completed)
+    const remainingAppointmentsToday = todayAppts.filter(a =>
+      a.status === 'pending' || a.status === 'confirmed'
+    ).length;
+    const remainingConfirmed = statusCounts.confirmed;
+    const remainingPending = statusCounts.pending;
+
+    // T4.182: Queue clear time estimate
+    // avg consult minutes × remaining patients ÷ active staff count
+    const activeStaff = Object.keys(staffWorkload).length ||
+      staffList.filter(s => !['pet_owner', 'client'].includes(s.role)).length || 1;
+    const effectiveAvgConsult = avgConsultMins > 0 ? avgConsultMins : 30;
+    const remainingPatients =
+      remainingAppointmentsToday +
+      statusCounts.arrived +
+      statusCounts['in-consult'] +
+      statusCounts.dispensing +
+      statusCounts.billing;
+    const estimatedMinutesRemaining = Math.round(
+      (effectiveAvgConsult * remainingPatients) / activeStaff
+    );
+    const queueClearTime = (() => {
+      const clearDate = new Date(now.getTime() + estimatedMinutesRemaining * 60000);
+      return clearDate.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true });
+    })();
+
+    // T4.182: Patient flow rate (completed ÷ hours since clinic open)
+    const openHour = 8;
+    const currentHour = now.getHours() + now.getMinutes() / 60;
+    const hoursSinceOpen = Math.max(1, currentHour - openHour);
+    const patientFlowRate = (statusCounts.completed > 0 && currentHour >= openHour)
+      ? parseFloat((statusCounts.completed / hoursSinceOpen).toFixed(1))
+      : 0;
+
     return {
       totalAppointments,
       statusCounts,
@@ -785,8 +831,14 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
       noShowCount,
       cancelledCount,
       emergencyCount,
+      remainingAppointmentsToday,
+      remainingConfirmed,
+      remainingPending,
+      queueClearTime,
+      estimatedMinutesRemaining,
+      patientFlowRate,
     };
-  }, [appointments, period]);
+  }, [appointments, period, staffList]);
 
   // ── Derived metrics: Growth tab ──────────────────────────────
   const growth = useMemo(() => {
@@ -799,6 +851,13 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
 
     // T2.308: Total active pets + species distribution (period-independent)
     const totalActivePets = pets.length;
+
+    // T4.182: New pets registered in period
+    const newPetsCount = pets.filter(p => {
+      if (!p.createdAt) return false;
+      const created = p.createdAt.toDate ? p.createdAt.toDate() : new Date(p.createdAt);
+      return created >= dateRange.startDate && created <= dateRange.endDate;
+    }).length;
     const speciesMap = {};
     pets.forEach(p => {
       const sp = (p.species || 'Unknown').trim();
@@ -897,6 +956,7 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
       totalActiveClients,
       clientTrend,
       totalActivePets,
+      newPetsCount,
       speciesDistribution: speciesMap,
       topBreeds,
       appointmentTrend,
@@ -911,7 +971,7 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
       uniqueClientCount: periodOwnerIds.size,
       totalAppointments: appointments.length,
     };
-  }, [appointments, clients, allClientIds, pets, period]);
+  }, [appointments, clients, allClientIds, pets, period, dateRange]);
 
   // ── Derived metrics: Financial tab ────────────────────────────
   const financial = useMemo(() => {
@@ -994,6 +1054,40 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
     const dailyExpenseRate = totalExpenses / daysInPeriod;
     const monthlyBurnRate = Math.round(dailyExpenseRate * 30);
 
+    // T4.182: Collection rate — totalCollected / totalBilled as %
+    const collectionRate = totalBilled > 0
+      ? Math.min(100, Math.round((totalCollected / totalBilled) * 100))
+      : 0;
+
+    // T4.182: Custom discount breakdown (SC/PWD vs custom)
+    const scPwdDiscountTotal = scPwdSales.reduce((sum, s) => sum + (parseFloat(s.discount) || 0), 0);
+    const customDiscountTotal = totalDiscounts - scPwdDiscountTotal;
+
+    // T4.182: Revenue per service type (top 10 by revenue)
+    const revenuePerService = {};
+    paidSales.forEach(s => {
+      (s.items || []).forEach(item => {
+        const svcName = item.serviceName || item.name || 'Unknown';
+        revenuePerService[svcName] = (revenuePerService[svcName] || 0) +
+          (parseFloat(item.price) || 0) * (item.qty || 1);
+      });
+    });
+    const revenueByService = Object.entries(revenuePerService)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 10)
+      .map(([name, amount]) => ({ name, amount: Math.round(amount) }));
+
+    // T4.182: Revenue forecast from pending + confirmed appointments
+    const upcomingRevenue = appointments
+      .filter(a => a.status === 'pending' || a.status === 'confirmed')
+      .reduce((sum, a) => sum + (parseFloat(a.servicePrice) || 0), 0);
+    const upcomingCount = appointments.filter(a =>
+      a.status === 'pending' || a.status === 'confirmed'
+    ).length;
+
+    // T4.182: Deposit total collected
+    const depositTotal = paidSales.reduce((sum, s) => sum + (parseFloat(s.deposit) || 0), 0);
+
     return {
       totalCollected,
       totalBilled,
@@ -1018,6 +1112,14 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
       retailRevenue,
       clinicalRevenue,
       retailTransactionCount,
+      // T4.182 new fields
+      collectionRate,
+      scPwdDiscountTotal,
+      customDiscountTotal,
+      revenueByService,
+      upcomingRevenue,
+      upcomingCount,
+      depositTotal,
     };
   }, [sales, expenses, appointments, period, dateRange]);
 
@@ -1166,6 +1268,145 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
       }))
       .sort((a, b) => b.sampleSize - a.sampleSize);
 
+    // ── T4.182: LAB STATISTICS ───────────────────────────────────────
+    const labTestsOrdered = medicalRecords.reduce((count, r) => {
+      return count + (r.labTests?.length || 0);
+    }, 0);
+
+    const labStatusMap = { normal: 0, abnormal: 0, critical: 0 };
+    const labTestMap = {};
+    const labCategoryMap = {};
+    const abnormalByTest = {};
+    medicalRecords.forEach(r => {
+      (r.labTests || []).forEach(lt => {
+        const status = (lt.result || lt.status || 'normal').toLowerCase();
+        if (status in labStatusMap) labStatusMap[status]++;
+        else labStatusMap.normal++;
+
+        const testName = lt.testName || lt.name || 'Unknown';
+        labTestMap[testName] = (labTestMap[testName] || 0) + 1;
+
+        const cat = lt.category || 'General';
+        labCategoryMap[cat] = (labCategoryMap[cat] || 0) + 1;
+
+        if (!abnormalByTest[testName]) abnormalByTest[testName] = { total: 0, abnormal: 0 };
+        abnormalByTest[testName].total++;
+        if (status === 'abnormal' || status === 'critical') abnormalByTest[testName].abnormal++;
+      });
+    });
+
+    const labStatusDistribution = [
+      { name: 'Normal',   value: labStatusMap.normal,   color: '#2E7D32' },
+      { name: 'Abnormal', value: labStatusMap.abnormal, color: '#FF9800' },
+      { name: 'Critical', value: labStatusMap.critical, color: '#D32F2F' },
+    ].filter(s => s.value > 0);
+
+    const topLabTests = Object.entries(labTestMap)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 10)
+      .map(([name, count]) => ({ name, count }));
+
+    const labTestsByCategory = Object.entries(labCategoryMap)
+      .sort(([, a], [, b]) => b - a)
+      .map(([name, count]) => ({ name, count }));
+
+    const abnormalRateByTest = Object.entries(abnormalByTest)
+      .filter(([, v]) => v.total >= 3)
+      .map(([name, v]) => ({
+        name,
+        rate: Math.round((v.abnormal / v.total) * 100),
+        total: v.total,
+      }))
+      .sort((a, b) => b.rate - a.rate)
+      .slice(0, 10);
+
+    // ── T4.182: VACCINE COMPLIANCE ──────────────────────────────────
+    // Placeholders — real values populated by the vaccineQueueDocs state
+    // set via a one-shot getDocs in the component (see Step 2.3 useEffect).
+    // complianceRate and overdueCount are computed at the bottom of this
+    // memo once vaccineQueueDocs is available.
+    const totalActivePetsCount = pets.filter(p => !p.isArchived).length || pets.length;
+
+    // ── T4.182: DIAGNOSIS ENHANCEMENTS ──────────────────────────────
+    const dxCategoryMap = {};
+    const dxSeverityMap = {};
+    const dxSpeciesMap = {};
+    medicalRecords.forEach(r => {
+      const species = apptSpeciesLookup[r.appointmentId] || 'Unknown';
+      (r.diagnoses || []).forEach(dx => {
+        const cat = dx.category || 'Uncategorized';
+        dxCategoryMap[cat] = (dxCategoryMap[cat] || 0) + 1;
+
+        const sev = dx.severity || 'unspecified';
+        dxSeverityMap[sev] = (dxSeverityMap[sev] || 0) + 1;
+
+        if (!dxSpeciesMap[species]) dxSpeciesMap[species] = {};
+        const dxName = dx.name || 'Unknown';
+        dxSpeciesMap[species][dxName] = (dxSpeciesMap[species][dxName] || 0) + 1;
+      });
+    });
+
+    const diagnosisByCategory = Object.entries(dxCategoryMap)
+      .sort(([, a], [, b]) => b - a)
+      .map(([name, count]) => ({ name, count }));
+
+    const severityDistribution = Object.entries(dxSeverityMap)
+      .map(([name, count]) => ({ name, count }));
+
+    const diagnosisBySpecies = Object.entries(dxSpeciesMap)
+      .map(([species, dxs]) => ({
+        species,
+        diagnoses: Object.entries(dxs)
+          .sort(([, a], [, b]) => b - a)
+          .slice(0, 5)
+          .map(([name, count]) => ({ name, count })),
+      }));
+
+    // ── T4.182: AMENDMENT RATE ──────────────────────────────────────
+    const amendmentCount = appointments.reduce((count, a) => {
+      return count + (a.clinicalPulse || []).filter(
+        e => e.type === 'CLINICAL_AMENDMENT'
+      ).length;
+    }, 0);
+    const amendmentRate = recordsSigned > 0
+      ? Math.round((amendmentCount / recordsSigned) * 100)
+      : 0;
+
+    // ── T4.182: NO-SHOW BY WEEKDAY ───────────────────────────────────
+    const noShowByWeekday = [
+      { day: 'Sun', count: 0 }, { day: 'Mon', count: 0 },
+      { day: 'Tue', count: 0 }, { day: 'Wed', count: 0 },
+      { day: 'Thu', count: 0 }, { day: 'Fri', count: 0 },
+      { day: 'Sat', count: 0 },
+    ];
+    appointments
+      .filter(a => a.status === 'no-show')
+      .forEach(a => {
+        if (a.scheduledDate) {
+          const d = a.scheduledDate.toDate ? a.scheduledDate.toDate() : new Date(a.scheduledDate);
+          noShowByWeekday[d.getDay()].count++;
+        }
+      });
+
+    // ── T4.182: CANCELLATION REASONS ────────────────────────────────
+    const reasonMap = {};
+    appointments
+      .filter(a => a.status === 'cancelled' || a.status === 'no-show')
+      .forEach(a => {
+        // Handle both auditReasons (array) and auditReason (string)
+        if (Array.isArray(a.auditReasons) && a.auditReasons.length > 0) {
+          a.auditReasons.forEach(r => {
+            const reason = (typeof r === 'string' ? r : r.reason) || 'No reason given';
+            reasonMap[reason] = (reasonMap[reason] || 0) + 1;
+          });
+        } else if (typeof a.auditReason === 'string' && a.auditReason) {
+          reasonMap[a.auditReason] = (reasonMap[a.auditReason] || 0) + 1;
+        }
+      });
+    const cancellationReasons = Object.entries(reasonMap)
+      .sort(([, a], [, b]) => b - a)
+      .map(([reason, count]) => ({ reason, count }));
+
     return {
       recordsSigned,
       topDiagnoses,
@@ -1181,8 +1422,51 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
       confinementRate,
       recordsPerVet,
       avgVitalsBySpecies,
+      // T4.182 new fields
+      labTestsOrdered,
+      labStatusDistribution,
+      topLabTests,
+      labTestsByCategory,
+      abnormalRateByTest,
+      complianceRate: 0,    // populated by vaccineQueueDocs effect below
+      overdueCount: 0,      // populated by vaccineQueueDocs effect below
+      petsWithOverdue: 0,   // populated by vaccineQueueDocs effect below
+      totalActivePetsCount,
+      diagnosisByCategory,
+      severityDistribution,
+      diagnosisBySpecies,
+      amendmentRate,
+      amendmentCount,
+      noShowByWeekday,
+      cancellationReasons,
     };
-  }, [medicalRecords, appointments]);
+  }, [medicalRecords, appointments, pets]);
+
+  // ── T4.182: Vaccine compliance from reminder queue ───────────────
+  // Computes overdueCount, petsWithOverdue, complianceRate from the
+  // one-shot vaccineQueueDocs fetch. Kept separate from the clinical
+  // useMemo so it reacts to vaccineQueueDocs changes without
+  // re-running all 200+ lines of clinical computation.
+  const vaccineCompliance = useMemo(() => {
+    const totalActivePetsCount = pets.filter(p => !p.isArchived).length || pets.length;
+    let overdueCount = 0;
+    let petsWithOverdue = 0;
+
+    vaccineQueueDocs.forEach(doc => {
+      const vaccines = doc.vaccines || [];
+      const hasOverdue = vaccines.some(v => v.status === 'overdue');
+      if (hasOverdue) petsWithOverdue++;
+      vaccines.forEach(v => {
+        if (v.status === 'overdue') overdueCount++;
+      });
+    });
+
+    const complianceRate = totalActivePetsCount > 0
+      ? Math.round(((totalActivePetsCount - petsWithOverdue) / totalActivePetsCount) * 100)
+      : 0;
+
+    return { overdueCount, petsWithOverdue, complianceRate };
+  }, [vaccineQueueDocs, pets]);
 
   // ── Derived: Historical min/max/avg per month (T2.338) ──────────
   const historical = useMemo(() => {
@@ -1365,16 +1649,26 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
     };
   }, [appointments, sales, expenses, medicalRecords, yearAgoData, benchmarkEnabled]);
 
+  const clinicalWithCompliance = useMemo(() => {
+    if (!clinical) return clinical;
+    return {
+      ...clinical,
+      complianceRate: vaccineCompliance.complianceRate,
+      overdueCount: vaccineCompliance.overdueCount,
+      petsWithOverdue: vaccineCompliance.petsWithOverdue,
+    };
+  }, [clinical, vaccineCompliance]);
+
   return {
     loading: appointmentsLoading,
     error,
     ops,
     growth,
     financial,
-    clinical,     // Day 3: Clinical tab metrics
-    deltas,       // Day 3: Period-over-period deltas
-    historical,   // Day 6: 6-month min/max/avg per metric (T2.338)
-    yearAgoDeltas, // T4.3: Year-over-year deltas (null when benchmarkEnabled is false)
+    clinical: clinicalWithCompliance,  // Day 3: Clinical tab metrics + T4.182 vaccine compliance
+    deltas,                            // Day 3: Period-over-period deltas
+    historical,                        // Day 6: 6-month min/max/avg per metric (T2.338)
+    yearAgoDeltas,                     // T4.3: Year-over-year deltas (null when benchmarkEnabled is false)
     queueData,
     appointments,
     staffList,

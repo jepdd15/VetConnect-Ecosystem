@@ -1,16 +1,15 @@
 /**
  * Dashboard — Main page component.
  *
- * Four-tab layout: Growth | Operations | Clinical | Financial
- * Financial is admin-only (filtered from visibleTabs for non-admins).
+ * Four-tab layout: Today | Analytics | Financial | Performance
  *
- * The Operations tab is hardcoded to the "Today" period and renders
+ * The Today tab is hardcoded to the "today" period and renders
  * real-time Firestore data via useDashboardData. Other tabs get a
- * PeriodSelector and will be implemented on Days 2–4.
+ * PeriodSelector. Performance tab auto-generates forensic data from
+ * the selected period via useForensicReportData.
  *
- * Layout pattern: 100vh flex column, header + tab bar fixed, content
- * scrolls, QuickNavTiles pinned at the bottom — mirrors Expenses.jsx
- * and Inventory.jsx.
+ * Layout pattern: 100vh flex column, header + tab bar fixed,
+ * content scrolls. No drag-drop — static MUI Grid throughout.
  */
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
@@ -23,23 +22,20 @@ import SummarizeIcon from '@mui/icons-material/Summarize';
 import AutorenewIcon from '@mui/icons-material/Autorenew';
 import PauseCircleIcon from '@mui/icons-material/PauseCircle';
 import CompareArrowsIcon from '@mui/icons-material/CompareArrows';
-import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import BuildIcon from '@mui/icons-material/Build';
-import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
+import AssessmentIcon from '@mui/icons-material/Assessment';
 
 import { FONT, TYPE, COLORS } from '../../theme/designTokens';
 import { useUser } from '../../context/UserContext';
 import { useClinicSettings } from '../../hooks/useClinicSettings';
 import { useDashboardData } from './hooks/useDashboardData';
-import { useDashboardPreferences } from './hooks/useDashboardPreferences';
 import PeriodSelector from './components/PeriodSelector';
-import QuickNavTiles from './components/QuickNavTiles';
-import OperationsTab from './components/OperationsTab';
-import GrowthTab from './components/GrowthTab';
+import TodayTab from './components/TodayTab';
+import AnalyticsTab from './components/AnalyticsTab';
 import FinancialTab from './components/FinancialTab';
-import ClinicalTab from './components/ClinicalTab';
+import PerformanceTab from './components/PerformanceTab';
 import { generateInsight } from './utils/generateInsight';
 import { generateReportHTML, generateFullReportHTML } from './utils/generateReportHTML';
 import { openPrintWindow } from '../../utils/printUtils';
@@ -51,12 +47,13 @@ import { db } from '../../firebaseConfig';
 
 // ── Tab registry ─────────────────────────────────────────────────
 // defaultPeriod is the period the hook uses when that tab is active.
-// Operations is always forced to 'today' regardless of this value.
+// Today tab is always forced to 'today' regardless of this value.
+// All tabs visible to all staff — T4.154 removed admin/staff distinction.
 const TAB_CONFIG = [
-  { key: 'growth',    label: 'Growth',     icon: <TrendingUpIcon />,    defaultPeriod: 'month' },
-  { key: 'ops',       label: 'Operations', icon: <BuildIcon />,         defaultPeriod: 'today' },
-  { key: 'clinical',  label: 'Clinical',   icon: <LocalHospitalIcon />, defaultPeriod: 'month' },
-  { key: 'financial', label: 'Financial',  icon: <AttachMoneyIcon />,   defaultPeriod: 'month' },
+  { key: 'today',       label: 'Today',       icon: <BuildIcon />,         defaultPeriod: 'today' },
+  { key: 'analytics',   label: 'Analytics',   icon: <TrendingUpIcon />,    defaultPeriod: 'month' },
+  { key: 'financial',   label: 'Financial',   icon: <AttachMoneyIcon />,   defaultPeriod: 'month' },
+  { key: 'performance', label: 'Performance', icon: <AssessmentIcon />,    defaultPeriod: 'month' },
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────
@@ -86,9 +83,9 @@ export default function Dashboard() {
 
   const visibleTabs = TAB_CONFIG;
 
-  // Default to Operations tab (index 1 in full list, adjusted after filtering)
-  const opsIndex = visibleTabs.findIndex(t => t.key === 'ops');
-  const [activeTab, setActiveTab] = useState(opsIndex >= 0 ? opsIndex : 0);
+  // Default to Today tab
+  const todayIndex = visibleTabs.findIndex(t => t.key === 'today');
+  const [activeTab, setActiveTab] = useState(todayIndex >= 0 ? todayIndex : 0);
 
   const currentTab = visibleTabs[activeTab] || visibleTabs[0];
 
@@ -102,8 +99,8 @@ export default function Dashboard() {
     if (nextTab) setPeriod(nextTab.defaultPeriod);
   };
 
-  // Operations is always "today" — override any stale period state
-  const effectivePeriod = currentTab.key === 'ops' ? 'today' : period;
+  // Today tab is always "today" — override any stale period state
+  const effectivePeriod = currentTab.key === 'today' ? 'today' : period;
 
   // ── T4.1: Auto-refresh state ────────────────────────────────────
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -116,11 +113,14 @@ export default function Dashboard() {
   // ── T4.3: Year-over-year benchmark toggle ───────────────────────
   const [benchmarkEnabled, setBenchmarkEnabled] = useState(false);
 
-  // ── T4.2: Per-user layout preferences ──────────────────────────
-  const { layouts, saveLayout, resetLayouts } = useDashboardPreferences();
-
-  // ── T4.4: Popup-blocked snackbar ───────────────────────────────
+  // ── T4.4: Popup-blocked snackbar ───────���───────────────────────
   const [popupBlockedOpen, setPopupBlockedOpen] = useState(false);
+
+  // ── T4.182: Performance data ref for export ────────────────────
+  const performanceDataRef = useRef(null);
+  const handlePerformanceDataReady = useCallback((reportData) => {
+    performanceDataRef.current = reportData;
+  }, []);
 
   const data = useDashboardData(effectivePeriod, refreshKey, benchmarkEnabled);
   const isOpen = computeClinicOpenStatus(clinicSettings);
@@ -210,13 +210,15 @@ export default function Dashboard() {
   );
 
   const handleExportReport = () => {
-    const html = generateReportHTML(currentTab.key, data, clinicSettings, effectivePeriod);
+    const exportData = { ...data, performanceData: performanceDataRef.current };
+    const html = generateReportHTML(currentTab.key, exportData, clinicSettings, effectivePeriod);
     openPrintWindow(html, () => setPopupBlockedOpen(true));
   };
 
   // T4.4: Export all visible tabs as a single combined print document.
   const handleExportAllTabs = () => {
-    const html = generateFullReportHTML(data, clinicSettings, period, isAdmin);
+    const exportData = { ...data, performanceData: performanceDataRef.current };
+    const html = generateFullReportHTML(exportData, clinicSettings, period);
     openPrintWindow(html, () => setPopupBlockedOpen(true));
   };
 
@@ -257,7 +259,7 @@ export default function Dashboard() {
 
         {/* Period selector + Export buttons + Auto-refresh toggle */}
         <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
-          {currentTab.key !== 'ops' && (
+          {currentTab.key !== 'today' && (
             <PeriodSelector value={effectivePeriod} onChange={setPeriod} />
           )}
 
@@ -347,34 +349,6 @@ export default function Dashboard() {
           >
             EXPORT ALL TABS
           </Button>
-
-          {/* T4.2: Reset draggable layout back to defaults */}
-          <Tooltip title="Reset KPI card positions to default" arrow>
-            <Button
-              onClick={resetLayouts}
-              startIcon={<RestartAltIcon />}
-              sx={{
-                fontFamily: FONT,
-                ...TYPE.label,
-                fontSize: '0.65rem',
-                color: COLORS.textSecondary,
-                bgcolor: COLORS.cardBg,
-                border: `2px solid ${COLORS.border}`,
-                borderRadius: 0,
-                px: 1.5,
-                py: 0.75,
-                boxShadow: `2px 2px 0px ${COLORS.border}`,
-                transition: 'transform 0.1s ease, box-shadow 0.1s ease',
-                '&:hover': {
-                  bgcolor: COLORS.surface,
-                  transform: 'translate(1px, 1px)',
-                  boxShadow: `1px 1px 0px ${COLORS.border}`,
-                },
-              }}
-            >
-              RESET LAYOUT
-            </Button>
-          </Tooltip>
 
           {/* T4.1: Auto-refresh toggle — spins when all three guards are active */}
           <Tooltip
@@ -476,13 +450,13 @@ export default function Dashboard() {
         </Tabs>
       </Box>
 
-      {/* ── ALERT STRIP (Operations tab only, T2.332) ────────── */}
-      {currentTab.key === 'ops' && !data.loading && (
+      {/* ── ALERT STRIP (Today tab only, T2.332) ────────── */}
+      {currentTab.key === 'today' && !data.loading && (
         <AlertStrip ops={data.ops} clinicSettings={clinicSettings} />
       )}
 
-      {/* ── REMINDER WIDGET (Operations tab only, T4.93) ─────── */}
-      {currentTab.key === 'ops' && !data.loading && (
+      {/* ── REMINDER WIDGET (Today tab only, T4.93) ─────── */}
+      {currentTab.key === 'today' && !data.loading && (
         <Box sx={{ px: 3, pt: 1.5 }}>
           <ReminderWidget clinicSettings={clinicSettings} />
         </Box>
@@ -504,35 +478,21 @@ export default function Dashboard() {
           </Box>
         ) : (
           <>
-            {currentTab.key === 'growth' && (
-              <GrowthTab
-                data={data}
-                clinicSettings={clinicSettings}
-                insights={insights}
-                yearAgoDeltas={data.yearAgoDeltas}
-                layout={layouts.growth}
-                onLayoutChange={(newLayout) => saveLayout('growth', newLayout)}
-              />
-            )}
-            {currentTab.key === 'ops' && (
-              <OperationsTab
+            {currentTab.key === 'today' && (
+              <TodayTab
                 data={data}
                 clinicSettings={clinicSettings}
                 isOpen={isOpen}
                 insights={insights}
                 yearAgoDeltas={data.yearAgoDeltas}
-                layout={layouts.ops}
-                onLayoutChange={(newLayout) => saveLayout('ops', newLayout)}
               />
             )}
-            {currentTab.key === 'clinical' && (
-              <ClinicalTab
+            {currentTab.key === 'analytics' && (
+              <AnalyticsTab
                 data={data}
-                insights={insights}
                 clinicSettings={clinicSettings}
+                insights={insights}
                 yearAgoDeltas={data.yearAgoDeltas}
-                layout={layouts.clinical}
-                onLayoutChange={(newLayout) => saveLayout('clinical', newLayout)}
               />
             )}
             {currentTab.key === 'financial' && (
@@ -541,16 +501,18 @@ export default function Dashboard() {
                 insights={insights}
                 clinicSettings={clinicSettings}
                 yearAgoDeltas={data.yearAgoDeltas}
-                layout={layouts.financial}
-                onLayoutChange={(newLayout) => saveLayout('financial', newLayout)}
+              />
+            )}
+            {currentTab.key === 'performance' && (
+              <PerformanceTab
+                data={data}
+                clinicSettings={clinicSettings}
+                onDataReady={handlePerformanceDataReady}
               />
             )}
           </>
         )}
       </Box>
-
-      {/* ── QUICK NAV (sticky bottom) ─────────────────────────── */}
-      <QuickNavTiles />
 
       {/* T4.4: Popup-blocked fallback — shown when window.open returns null */}
       <Snackbar

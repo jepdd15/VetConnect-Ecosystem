@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Typography, Tooltip } from '@mui/material';
-import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+import { LineChart, Line, ResponsiveContainer } from 'recharts';
 import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
 
 /**
@@ -20,6 +20,7 @@ import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
  * @param {number|null}         delta        - Period-over-period % change (null = no indicator)
  * @param {React.ReactNode}     insight      - Contextual insight text (Day 4 engine)
  * @param {number|null}         yearAgoDelta - T4.3 YoY % change (null = hide indicator)
+ * @param {Array<{value:number}>|null} sparkline - T4.182 optional trend sparkline (2+ points)
  */
 export default function KPICard({
   title,
@@ -35,6 +36,7 @@ export default function KPICard({
   goalValue = undefined,      // T2.337: raw numeric value when `value` is a formatted string
   historicalContext = undefined, // T2.339: { min, avg, max } for hover tooltip
   yearAgoDelta = undefined,   // T4.3: year-over-year % change (null = hide, undefined = not active)
+  sparkline = null,           // T4.182: optional Array<{ value: number }> for trend sparkline
 }) {
   const colorMap = {
     blue:    { bg: COLORS.kpiBlueBg,   border: COLORS.kpiBlueBorder,   text: COLORS.info },
@@ -66,8 +68,6 @@ export default function KPICard({
           transform: 'translate(2px, 2px)',
           boxShadow: `1px 1px 0px ${c.border}`,
         } : {},
-        // T4.2: Reveal the drag handle icon when the card is hovered
-        '&:hover .kpi-drag-handle-icon': { opacity: 0.6 },
         height: '100%',
       }}
     >
@@ -89,36 +89,14 @@ export default function KPICard({
       )}
 
       <Box sx={{ minWidth: 0 }}>
-        {/* T4.2: Title row acts as the drag handle — DragIndicatorIcon fades in on hover */}
-        <Box
-          className="kpi-drag-handle"
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 0.5,
-            cursor: 'grab',
-            '&:active': { cursor: 'grabbing' },
-          }}
-        >
-          <DragIndicatorIcon
-            className="kpi-drag-handle-icon"
-            sx={{
-              fontSize: 12,
-              color: COLORS.textMuted,
-              opacity: 0,
-              transition: 'opacity 0.2s',
-              flexShrink: 0,
-            }}
-          />
-          <Typography sx={{
-            fontFamily: FONT,
-            ...TYPE.label,
-            color: COLORS.textMuted,
-            fontSize: '0.65rem',
-          }}>
-            {title}
-          </Typography>
-        </Box>
+        <Typography sx={{
+          fontFamily: FONT,
+          ...TYPE.label,
+          color: COLORS.textMuted,
+          fontSize: '0.65rem',
+        }}>
+          {title}
+        </Typography>
 
         {/* Value + inline delta indicator — wrapped in Tooltip for historical context */}
         <Tooltip
@@ -203,6 +181,24 @@ export default function KPICard({
           }}>
             {subtitle}
           </Typography>
+        )}
+
+        {/* T4.182: Sparkline trend indicator */}
+        {sparkline && sparkline.length > 1 && (
+          <Box sx={{ width: 60, height: 20, mt: 0.5 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={sparkline}>
+                <Line
+                  type="monotone"
+                  dataKey="value"
+                  stroke={c.text}
+                  strokeWidth={1.5}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </Box>
         )}
 
         {/* Insight slot — contextual text from the Day 4 engine */}

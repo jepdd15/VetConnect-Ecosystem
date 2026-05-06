@@ -15,7 +15,7 @@ import { useNavigate } from 'react-router-dom';
 import { Box, Typography } from '@mui/material';
 import Grid from '@mui/material/Grid';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Line, ComposedChart,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Line, Area, ComposedChart,
   Tooltip as RechartsTooltip, ResponsiveContainer, Cell, Legend,
   ReferenceLine,
 } from 'recharts';
@@ -30,12 +30,16 @@ import ReceiptIcon from '@mui/icons-material/Receipt';
 import MoneyOffIcon from '@mui/icons-material/MoneyOff';
 import WarningIcon from '@mui/icons-material/Warning';
 import LocalFireDepartmentIcon from '@mui/icons-material/LocalFireDepartment';
+import PercentIcon from '@mui/icons-material/Percent';
+import ScheduleIcon from '@mui/icons-material/Schedule';
+import SavingsIcon from '@mui/icons-material/Savings';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
+import MedicalServicesIcon from '@mui/icons-material/MedicalServices';
 
 import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
 import KPICard from './KPICard';
 import HorizontalBar from './HorizontalBar';
-import DraggableKPIGrid from './DraggableKPIGrid';
-import { CHART_TOOLTIP_STYLE, CHART_TICK_STYLE, CHART_GRID_PROPS, PANEL_SX } from './chartConfig';
+import { CHART_COLORS, CHART_TOOLTIP_STYLE, CHART_TICK_STYLE, CHART_GRID_PROPS, PANEL_SX } from './chartConfig';
 import { buildDrillDown } from '../utils/drillDownConfig';
 import { annotateChartData } from '../utils/annotateChartData';
 
@@ -68,8 +72,6 @@ export default function FinancialTab({
   insights = {},
   clinicSettings = {},
   yearAgoDeltas = null,
-  layout,
-  onLayoutChange,
 }) {
   const navigate = useNavigate();
   const drillDown = buildDrillDown(navigate);
@@ -110,9 +112,9 @@ export default function FinancialTab({
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
 
-      {/* ROWS 1 + 6 + 7: DRAGGABLE KPI CARDS (T4.2) */}
-      <DraggableKPIGrid layout={layout} onLayoutChange={onLayoutChange}>
-        <div key="revenueCollected">
+      {/* ROW 1: PRIMARY KPI CARDS */}
+      <Grid container spacing={2}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <KPICard
             title="REVENUE COLLECTED"
             value={fmt(financial.totalCollected)}
@@ -126,9 +128,10 @@ export default function FinancialTab({
             goalValue={financial.totalCollected}
             historicalContext={hist.revenuePerMonth}
             yearAgoDelta={yearAgoDeltas?.revenue}
+            sparkline={financial.revenueTrend?.map(d => ({ value: d.amount }))}
           />
-        </div>
-        <div key="totalBilled">
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <KPICard
             title="TOTAL BILLED"
             value={fmt(financial.totalBilled)}
@@ -139,8 +142,8 @@ export default function FinancialTab({
             insight={insights['TOTAL BILLED']}
             yearAgoDelta={yearAgoDeltas?.revenue}
           />
-        </div>
-        <div key="totalExpenses">
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <KPICard
             title="TOTAL EXPENSES"
             value={fmt(financial.totalExpenses)}
@@ -150,8 +153,8 @@ export default function FinancialTab({
             insight={insights['TOTAL EXPENSES']}
             yearAgoDelta={yearAgoDeltas?.expenses}
           />
-        </div>
-        <div key="netMargin">
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <KPICard
             title="NET MARGIN"
             value={fmt(Math.abs(financial.netMargin))}
@@ -163,20 +166,24 @@ export default function FinancialTab({
             insight={insights['NET MARGIN']}
             yearAgoDelta={yearAgoDeltas?.netMargin}
           />
-        </div>
-        <div key="scPwdDiscounts">
+        </Grid>
+      </Grid>
+
+      {/* ROW 6: SECONDARY KPI CARDS */}
+      <Grid container spacing={2}>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
           <KPICard
-            title="SC/PWD DISCOUNTS"
+            title="TOTAL DISCOUNTS"
             value={fmt(financial.totalDiscounts)}
             icon={<DiscountIcon />}
             variant="purple"
-            subtitle={`${financial.scPwdCount} transactions (${financial.scPwdUsageRate}% usage)`}
+            subtitle={`${financial.scPwdCount} SC/PWD transactions (${financial.scPwdUsageRate}% usage)`}
             compact
             onClick={drillDown['SC/PWD DISCOUNTS']}
             insight={insights['SC/PWD DISCOUNTS']}
           />
-        </div>
-        <div key="avgTransaction">
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
           <KPICard
             title="AVG TRANSACTION"
             value={fmt(financial.avgTransactionValue)}
@@ -187,8 +194,8 @@ export default function FinancialTab({
             onClick={drillDown['AVG TRANSACTION']}
             insight={insights['AVG TRANSACTION']}
           />
-        </div>
-        <div key="monthlyBurnRate">
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
           <KPICard
             title="MONTHLY BURN RATE"
             value={fmt(financial.monthlyBurnRate)}
@@ -199,8 +206,12 @@ export default function FinancialTab({
             onClick={drillDown['MONTHLY BURN RATE']}
             insight={insights['MONTHLY BURN RATE']}
           />
-        </div>
-        <div key="refundRate">
+        </Grid>
+      </Grid>
+
+      {/* ROW 7: THIRD TIER KPI CARDS */}
+      <Grid container spacing={2}>
+        <Grid size={{ xs: 12, sm: 6, md: 6 }}>
           <KPICard
             title="REFUND RATE"
             value={`${financial.refundRate}%`}
@@ -210,8 +221,8 @@ export default function FinancialTab({
             onClick={drillDown['REFUND RATE']}
             insight={insights['REFUND RATE']}
           />
-        </div>
-        <div key="outstandingBalances">
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 6 }}>
           <KPICard
             title="OUTSTANDING BALANCES"
             value={fmt(financial.outstandingBalances)}
@@ -221,18 +232,152 @@ export default function FinancialTab({
             onClick={drillDown['OUTSTANDING BALANCES']}
             insight={insights['OUTSTANDING BALANCES']}
           />
-        </div>
-      </DraggableKPIGrid>
+        </Grid>
+      </Grid>
 
-      {/* ROW 2: REVENUE TREND (T2.301 + T2.341 annotations) */}
+      {/* ROW 8: T4.182 NEW KPIs — COLLECTION RATE + DISCOUNT SPLIT */}
+      <Grid container spacing={2}>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+          <KPICard
+            title="COLLECTION RATE"
+            value={`${financial.collectionRate ?? 0}%`}
+            icon={<PercentIcon />}
+            variant={
+              (financial.collectionRate ?? 0) >= 90 ? 'green'
+              : (financial.collectionRate ?? 0) >= 70 ? 'orange'
+              : 'red'
+            }
+            subtitle="collected vs billed"
+            onClick={drillDown['COLLECTION RATE']}
+            insight={insights['COLLECTION RATE']}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+          <KPICard
+            title="SC/PWD DISCOUNTS"
+            value={fmt(financial.scPwdDiscountTotal ?? 0)}
+            icon={<DiscountIcon />}
+            variant="purple"
+            subtitle={`${financial.scPwdCount} SC/PWD transactions`}
+            compact
+            onClick={drillDown['SC/PWD DISCOUNTS']}
+            insight={insights['SC/PWD DISCOUNTS']}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+          <KPICard
+            title="CUSTOM DISCOUNTS"
+            value={fmt(financial.customDiscountTotal ?? 0)}
+            icon={<DiscountIcon />}
+            variant="orange"
+            subtitle="non-SC/PWD discounts"
+            compact
+            onClick={drillDown['CUSTOM DISCOUNTS']}
+            insight={insights['CUSTOM DISCOUNTS']}
+          />
+        </Grid>
+      </Grid>
+
+      {/* ROW 9: T4.182 — REVENUE FORECAST + DEPOSIT + RETAIL/CLINICAL SPLIT */}
+      <Grid container spacing={2}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <KPICard
+            title="REVENUE FORECAST"
+            value={fmt(financial.upcomingRevenue ?? 0)}
+            icon={<ScheduleIcon />}
+            variant="blue"
+            subtitle={`${financial.upcomingCount ?? 0} upcoming appointments`}
+            onClick={drillDown['REVENUE FORECAST']}
+            insight={insights['REVENUE FORECAST']}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <KPICard
+            title="DEPOSITS COLLECTED"
+            value={fmt(financial.depositTotal ?? 0)}
+            icon={<SavingsIcon />}
+            variant="neutral"
+            subtitle="total deposits on paid sales"
+            compact
+            onClick={drillDown['DEPOSIT BREAKDOWN']}
+            insight={insights['DEPOSIT BREAKDOWN']}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <KPICard
+            title="RETAIL REVENUE"
+            value={fmt(financial.retailRevenue ?? 0)}
+            icon={<ShoppingCartIcon />}
+            variant="neutral"
+            subtitle={`${financial.retailTransactionCount} retail transactions`}
+            compact
+            onClick={drillDown['RETAIL REVENUE']}
+            insight={insights['RETAIL REVENUE']}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <KPICard
+            title="CLINICAL REVENUE"
+            value={fmt(financial.clinicalRevenue ?? 0)}
+            icon={<MedicalServicesIcon />}
+            variant="blue"
+            subtitle="from clinical services"
+            compact
+            onClick={drillDown['CLINICAL REVENUE']}
+            insight={insights['CLINICAL REVENUE']}
+          />
+        </Grid>
+      </Grid>
+
+      {/* ROW 10: T4.182 — REVENUE PER SERVICE */}
+      {(financial.revenueByService || []).length > 0 && (
+        <Box sx={PANEL_SX}>
+          <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.accent, mb: 1.5 }}>
+            REVENUE BY SERVICE TYPE
+          </Typography>
+          <Box sx={{ width: '100%', height: 220 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={financial.revenueByService}
+                layout="vertical"
+                margin={{ top: 5, right: 80, left: 120, bottom: 0 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  horizontal={false}
+                  vertical
+                  stroke={COLORS.borderLight}
+                />
+                <XAxis
+                  type="number"
+                  tick={CHART_TICK_STYLE}
+                  tickFormatter={(v) => `₱${(v / 1000).toFixed(0)}k`}
+                />
+                <YAxis type="category" dataKey="name" tick={CHART_TICK_STYLE} width={115} />
+                <RechartsTooltip
+                  contentStyle={CHART_TOOLTIP_STYLE}
+                  formatter={(value) => [fmt(value), 'Revenue']}
+                />
+                <Bar dataKey="amount" radius={0}>
+                  {(financial.revenueByService || []).map((_, i) => (
+                    <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </Box>
+        </Box>
+      )}
+
+      {/* ROW 2: REVENUE TREND (T4.182 — ComposedChart Area + Line) */}
       <Box sx={PANEL_SX}>
         <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.accent, mb: 1.5 }}>
           REVENUE TREND
         </Typography>
-        {revenueAnnotation.data.length > 0 ? (
+        {(financial.revenueTrend || []).length > 0 ? (
           <Box sx={{ width: '100%', height: 220 }}>
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={revenueAnnotation.data} margin={{ top: 5, right: 64, left: 10, bottom: 0 }}>
+              <ComposedChart data={financial.revenueTrend} margin={{ top: 5, right: 64, left: 10, bottom: 0 }}>
                 <CartesianGrid {...CHART_GRID_PROPS} />
                 <XAxis dataKey="label" tick={CHART_TICK_STYLE} />
                 <YAxis
@@ -243,35 +388,22 @@ export default function FinancialTab({
                   contentStyle={CHART_TOOLTIP_STYLE}
                   formatter={(value) => [fmt(value), 'Revenue']}
                 />
-                {revenueAnnotation.refLines.map(rl => (
-                  <ReferenceLine
-                    key={rl.label}
-                    y={rl.y}
-                    stroke={rl.color}
-                    strokeDasharray="4 4"
-                    strokeWidth={1.5}
-                    label={{
-                      value: `Avg: ₱${(rl.y / 1000).toFixed(0)}k`,
-                      position: 'right',
-                      style: { fontSize: 9, fontFamily: FONT, fill: rl.color, fontWeight: 700 },
-                    }}
-                  />
-                ))}
-                <Bar dataKey="amount" radius={0}>
-                  {revenueAnnotation.data.map((entry, i) => (
-                    <Cell
-                      key={i}
-                      fill={
-                        entry.annotation === 'peak'     ? COLORS.warning
-                        : entry.annotation === 'trough'   ? COLORS.danger
-                        : entry.annotation === 'aboveAvg' ? COLORS.success
-                        : entry.annotation === 'belowAvg' ? '#BDBDBD'
-                        : COLORS.success
-                      }
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
+                <Area
+                  type="monotone"
+                  dataKey="amount"
+                  fill={`${COLORS.info}20`}
+                  stroke="none"
+                  isAnimationActive={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="amount"
+                  stroke={COLORS.info}
+                  strokeWidth={2}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+              </ComposedChart>
             </ResponsiveContainer>
           </Box>
         ) : (

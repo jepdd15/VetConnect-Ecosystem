@@ -234,7 +234,7 @@ export default function Settings() {
           minSlotInterval: parseInt(data.minSlotInterval) || 30,
           trafficModerate: parseInt(data.trafficModerate) || 5,
           trafficHigh: parseInt(data.trafficHigh) || 10,
-          advanceNoticeHours: parseInt(data.advanceNoticeHours) || 2,
+          advanceNoticeMins: parseInt(data.advanceNoticeMins) || 120,
           maxFutureBookingDays: parseInt(data.maxFutureBookingDays) || 30,
           autoNoShowMins: parseInt(data.autoNoShowMins) || 30,
           noShowLinkWindowDays: parseInt(data.noShowLinkWindowDays) || 30,

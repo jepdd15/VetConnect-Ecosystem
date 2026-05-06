@@ -182,9 +182,11 @@ const ClientAppointments = ({ navigation }) => {
   }, []);
 
   // Real-time queue-ahead count for the active arrived appointment.
+  // Filtered to the same serviceCategory so cross-department patients don't inflate the count.
   const activeArrived = appointments.find(a => a.status === 'arrived');
   const activeArrivedId = activeArrived?.id ?? null;
   const activeArrivedQueueNum = activeArrived?.queueNumber ?? null;
+  const activeArrivedCategory = activeArrived?.serviceCategory || null;
 
   useEffect(() => {
     if (!activeArrivedId) {
@@ -193,6 +195,7 @@ const ClientAppointments = ({ navigation }) => {
     }
 
     const todayStr = activeArrived?.scheduledDateStr || getLocalDateStr();
+    const myCategory = activeArrivedCategory || 'General';
 
     const q = query(
       collection(db, "appointments"),
@@ -206,7 +209,8 @@ const ClientAppointments = ({ navigation }) => {
         let ahead = 0;
         snap.forEach(d => {
           const data = d.data();
-          if (data.queueNumber < activeArrivedQueueNum && d.id !== activeArrivedId) ahead++;
+          const sameCategory = (data.serviceCategory || 'General') === myCategory;
+          if (sameCategory && data.queueNumber < activeArrivedQueueNum && d.id !== activeArrivedId) ahead++;
         });
         setQueueAhead(ahead);
       },
@@ -216,7 +220,7 @@ const ClientAppointments = ({ navigation }) => {
     );
 
     return () => unsubQueue();
-  }, [activeArrivedId, activeArrivedQueueNum]);
+  }, [activeArrivedId, activeArrivedQueueNum, activeArrivedCategory]);
 
   // Batch-fetch sales docs for all completed appointments.
   // Chunked at 10 IDs per query (Firestore 'in' operator limit).
@@ -802,10 +806,34 @@ const ClientAppointments = ({ navigation }) => {
   // are rare enough that a single-card view is acceptable for this pass.
   const activeAppointment = appointments.find(a => isActiveStatus(a.status)) || null;
 
+  const [caseChainForSuperCard, setCaseChainForSuperCard] = useState([]);
+
+  useEffect(() => {
+    if (!activeAppointment || (activeAppointment.caseDay || 1) <= 1) {
+      setCaseChainForSuperCard([]);
+      return;
+    }
+    const { chains } = buildCaseChains(appointments);
+    for (const [, members] of chains) {
+      if (members.some(m => m.id === activeAppointment.id)) {
+        setCaseChainForSuperCard(members);
+        return;
+      }
+    }
+    setCaseChainForSuperCard([activeAppointment]);
+  }, [activeAppointment?.id, appointments]);
+
   return (
     <View style={styles.container}>
       {/* SUPER-CARD — pinned above tabs so it stays visible while switching tabs */}
-      <SuperCard appointment={activeAppointment} clinicPhone={clinicPhone} clinicAddress={clinicAddress} queueAhead={queueAhead} avgWaitMins={avgWaitMins} />
+      <SuperCard
+        appointment={activeAppointment}
+        clinicPhone={clinicPhone}
+        queueAhead={queueAhead}
+        avgWaitMins={avgWaitMins}
+        caseChain={caseChainForSuperCard}
+        salesByAppt={salesByAppt}
+      />
 
       {/* TABS */}
       <View style={styles.tabContainer}>

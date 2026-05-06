@@ -1,15 +1,5 @@
-// SuperCard — live status hero card pinned above the appointment list whenever
-// the patient has an active in-clinic appointment (arrived, in-consult, on-hold,
-// dispensing, billing, confined).
-//
-// Placement: rendered as a sibling ABOVE the tab row in ClientAppointments so it
-// remains visible while the user switches between Upcoming / History tabs.
-//
-// If `appointment` is null/undefined this component renders nothing — the caller
-// passes unconditionally and SuperCard decides whether to paint.
-
-import { useEffect, useRef, useState } from "react";
-import { Animated, Linking, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Animated, FlatList, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { COLORS, SHADOW } from '../theme/mobileTokens';
 import { getClientStatusColor, getClientStatusIcon, getClientStatusLabel } from "../utils/statusLabels";
@@ -17,6 +7,7 @@ import { formatFirestoreTime } from '../utils/helpers';
 import { buildVisitTimeline } from '../utils/buildVisitTimeline';
 import VisitTimeline from './VisitTimeline';
 import WaitTimeMetrics from './WaitTimeMetrics';
+import EncounterSummary from './EncounterSummary';
 
 const SPECIES_EMOJI = {
   Dog: '🐶',
@@ -27,38 +18,77 @@ const SPECIES_EMOJI = {
 
 const getSpeciesEmoji = (species) => SPECIES_EMOJI[species] || '🐾';
 
-const handleDirections = async (address) => {
-  const target = address || 'Starbarks Veterinary Clinic, Santa Barbara, Pangasinan';
-  const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(target)}`;
-  try {
-    await Linking.openURL(url);
-  } catch (error) {
-    console.error('[SuperCard.handleDirections]:', error.message);
+const getWhatsNext = (status, caseDay) => {
+  switch (status) {
+    case 'arrived':
+      return "Waiting to be seen by the veterinarian.";
+    case 'in-consult':
+      return "Your pet is with the veterinarian. Next: pharmacy preparation.";
+    case 'dispensing':
+      return "Medications are being prepared. Next: checkout.";
+    case 'billing':
+      return "Ready for checkout. Please proceed to the counter.";
+    case 'confined':
+      return `Hospitalized — your pet is being monitored.${caseDay > 1 ? ` Day ${caseDay} of care.` : ''}`;
+    case 'on-hold':
+      return "Consultation paused. Your pet is resting.";
+    default:
+      return null;
   }
 };
 
-/**
- * @param {{ appointment: object, clinicPhone: string, clinicAddress: string, queueAhead: number|null }} props
- * - `clinicPhone` — read from `clinic_settings/general.clinicPhone` by the parent.
- *   Falls back to a generic empty string; the Call button is only useful when
- *   the clinic has configured a real number.
- * - `clinicAddress` — read from `clinic_settings/general.clinicAddress` by the parent.
- *   Falls back to the correct Pangasinan address inside handleDirections.
- * - `queueAhead` — count of arrived appointments ahead of this one; null hides the row.
- */
-export default function SuperCard({ appointment, clinicPhone = '', clinicAddress = '', queueAhead = null, avgWaitMins = null }) {
+const formatServiceDuration = (svc) => {
+  if (svc.serviceStatus !== 'completed') return '';
+  const start = svc.serviceStartedAt;
+  const end = svc.serviceCompletedAt;
+  if (!start || !end) return '';
+  const startMs = typeof start.toDate === 'function' ? start.toDate().getTime() : new Date(start).getTime();
+  const endMs = typeof end.toDate === 'function' ? end.toDate().getTime() : new Date(end).getTime();
+  const mins = Math.round((endMs - startMs) / 60000);
+  if (!Number.isFinite(mins) || mins <= 0) return '';
+  return ` (${mins} min)`;
+};
+
+export default function SuperCard({
+  appointment,
+  clinicPhone = '',
+  queueAhead = null,
+  avgWaitMins = null,
+  caseChain = [],
+  salesByAppt = {},
+}) {
   const pulseAnim = useRef(new Animated.Value(0.4)).current;
+  const pagerRef = useRef(null);
+  const viewabilityConfig = useRef({ viewAreaCoveragePercentThreshold: 50 });
+  const { width: windowWidth } = useWindowDimensions();
 
   const [timelineCollapsed, setTimelineCollapsed] = useState(true);
-  // Default expanded so first-time users see the full card immediately.
   const [superCardExpanded, setSuperCardExpanded] = useState(true);
+  const [activePageIndex, setActivePageIndex] = useState(0);
+
+  const pageWidth = windowWidth - 28;
+
+  const onViewableItemsChanged = useCallback(({ viewableItems }) => {
+    if (viewableItems.length > 0) setActivePageIndex(viewableItems[0].index ?? 0);
+  }, []);
+
+  const getItemLayout = useCallback((_data, index) => ({
+    length: pageWidth,
+    offset: pageWidth * index,
+    index,
+  }), [pageWidth]);
+
+  const isMultiDay = caseChain.length > 1;
+  const activeDayIndex = isMultiDay && appointment
+    ? caseChain.findIndex(a => a.id === appointment.id)
+    : 0;
 
   useEffect(() => {
     if (!appointment) return;
 
-    pulseAnim.setValue(0.4); // Reset to initial opacity on appointment change
-    setTimelineCollapsed(true); // Reset timeline collapse when appointment changes
-    setSuperCardExpanded(true); // Reset card expand state on appointment change
+    pulseAnim.setValue(0.4);
+    setTimelineCollapsed(true);
+    setSuperCardExpanded(true);
 
     const loop = Animated.loop(
       Animated.sequence([
@@ -79,154 +109,343 @@ export default function SuperCard({ appointment, clinicPhone = '', clinicAddress
     return () => loop.stop();
   }, [appointment?.id]);
 
+  useEffect(() => {
+    if (isMultiDay && pagerRef.current && activeDayIndex > 0) {
+      pagerRef.current.scrollToIndex({ index: activeDayIndex, animated: false });
+    }
+  }, [isMultiDay, activeDayIndex]);
+
   if (!appointment) return null;
 
-  // Derive timeline events from the appointment's pulse history.
-  // An empty array (legacy appointments with no clinicalPulse) causes the
-  // timeline section to be gated out entirely — no UI noise for old records.
-  const timelineEvents = appointment.clinicalPulse
-    ? buildVisitTimeline(appointment.clinicalPulse, {
-        isActive: true,
-        assignedVet: appointment.assignedVet,
-        signedOffAt: null,
-      })
-    : [];
+  const clampedInitialIndex = Math.min(activeDayIndex >= 0 ? activeDayIndex : 0, Math.max(0, caseChain.length - 1));
 
   const statusColors = getClientStatusColor(appointment.status);
   const statusIcon = getClientStatusIcon(appointment.status);
   const statusLabel = getClientStatusLabel(appointment.status);
   const speciesEmoji = getSpeciesEmoji(appointment.petSpecies);
 
-  const ticketLabel =
-    appointment.ticketPrefix != null && appointment.queueNumber != null
-      ? `${appointment.ticketPrefix}-${String(appointment.queueNumber).padStart(3, '0')}`
+  const isEmergency = appointment.priority === 'high' ||
+    (appointment.systemChips || []).some(c => c.startsWith('EMERGENCY'));
+
+  const renderActiveDayBody = (dayAppt) => {
+    const daySvcStatus = dayAppt.status;
+    const dayServices = dayAppt.services || [];
+    const dayShowEncounterItems = daySvcStatus === 'dispensing' && (dayAppt.encounterItems || []).length > 0;
+    const dayShowFinancial = daySvcStatus === 'dispensing' || daySvcStatus === 'billing';
+    const dayEstimatedTotal = dayAppt.finalTotal ||
+      (dayAppt.encounterItems || []).reduce((sum, i) => sum + (Number(i.price) || 0) * (Number(i.qty) || 1), 0);
+    const dayDepositPaid = dayAppt.depositPaid || 0;
+    const dayBalanceDue = Math.max(0, dayEstimatedTotal - dayDepositPaid);
+    const dayPetAllergies = dayAppt.petAllergies || '';
+    const dayHasAllergies = dayPetAllergies.trim().length > 0 && dayPetAllergies.toUpperCase() !== 'NONE';
+    const dayWhatsNext = getWhatsNext(daySvcStatus, dayAppt.caseDay);
+    const dayTimeLabel = daySvcStatus === 'arrived' ? 'Checked in at'
+      : daySvcStatus === 'in-consult' ? 'Consult started at'
+      : daySvcStatus === 'dispensing' ? 'Pharmacy since'
+      : daySvcStatus === 'billing' ? 'At checkout since'
+      : 'Started at';
+    const dayStartedTime =
+      formatFirestoreTime(dayAppt.timeStarted) ||
+      formatFirestoreTime(dayAppt.timeArrived);
+    const dayHasAssignedVet = dayAppt.assignedVet && dayAppt.assignedVet !== 'Unassigned';
+    const dayTicketLabel = dayAppt.ticketPrefix != null && dayAppt.queueNumber != null
+      ? `${dayAppt.ticketPrefix}-${String(dayAppt.queueNumber).padStart(3, '0')}`
       : null;
+    const dayTimelineEvents = dayAppt.clinicalPulse
+      ? buildVisitTimeline(dayAppt.clinicalPulse, {
+          isActive: true,
+          assignedVet: dayAppt.assignedVet,
+          signedOffAt: null,
+        })
+      : [];
 
-  const hasAssignedVet =
-    appointment.assignedVet &&
-    appointment.assignedVet !== 'Unassigned';
+    return (
+      <View style={[styles.superCardBody, isMultiDay && { width: pageWidth }]}>
+        {(dayAppt.serviceType || dayAppt.primaryService) ? (
+          <Text style={styles.serviceTypeBody} numberOfLines={1}>
+            {dayAppt.serviceType || dayAppt.primaryService}
+          </Text>
+        ) : null}
+        {dayTicketLabel ? (
+          <Text style={styles.infoLine}>🎫 {dayTicketLabel}</Text>
+        ) : null}
+        {dayAppt.serviceCategory ? (
+          <Text style={styles.infoLine}>🏥 {dayAppt.serviceCategory}</Text>
+        ) : null}
+        {dayHasAssignedVet ? (
+          <Text style={styles.infoLine}>👨‍⚕️ {dayAppt.assignedVet}</Text>
+        ) : null}
+        {dayStartedTime ? (
+          <Text style={styles.infoLine}>🕐 {dayTimeLabel} {dayStartedTime}</Text>
+        ) : null}
+        {dayAppt.scheduledDate && dayAppt.timeArrived ? (
+          <Text style={styles.infoLineSmall}>
+            Appointment: {formatFirestoreTime(dayAppt.scheduledDate)} · Arrived: {formatFirestoreTime(dayAppt.timeArrived)}
+          </Text>
+        ) : null}
+        {dayAppt.petWeight ? (
+          <Text style={styles.infoLine}>⚖️ Weight: {dayAppt.petWeight} kg</Text>
+        ) : null}
+        {dayAppt.isFollowUp ? (
+          <Text style={styles.infoLineSmall}>🔄 Follow-up visit</Text>
+        ) : null}
+        {dayAppt.caseDay > 1 ? (
+          <Text style={styles.infoLine}>📅 Day {dayAppt.caseDay} of care</Text>
+        ) : null}
+        {dayHasAllergies ? (
+          <View style={styles.allergyBadge}>
+            <Text style={styles.allergyText}>⚠ Allergies: {dayPetAllergies}</Text>
+          </View>
+        ) : null}
+        {dayAppt.clientNotes ? (
+          <View style={styles.notesEcho}>
+            <Text style={styles.notesEchoText}>📝 You mentioned: "{dayAppt.clientNotes}"</Text>
+          </View>
+        ) : null}
+        {dayWhatsNext ? (
+          <View style={styles.whatsNextBox}>
+            <Text style={styles.whatsNextText}>{dayWhatsNext}</Text>
+          </View>
+        ) : null}
+        {dayServices.length > 0 && (
+          <View style={styles.serviceProgressSection}>
+            <Text style={styles.sectionLabel}>SERVICES</Text>
+            {dayServices.map((svc, i) => {
+              const svcStatus = svc.serviceStatus || 'pending';
+              const icon = svcStatus === 'completed' ? '✓' : svcStatus === 'in-progress' ? '⏳' : '○';
+              const durationStr = formatServiceDuration(svc);
+              const label = svcStatus === 'completed' ? `done${durationStr}` : svcStatus === 'in-progress' ? 'in progress' : 'waiting';
+              return (
+                <Text
+                  key={svc.id || i}
+                  style={[styles.serviceProgressLine, svcStatus === 'in-progress' && { color: COLORS.sky }]}
+                >
+                  {icon} {svc.name || 'Service'} — {label}
+                </Text>
+              );
+            })}
+          </View>
+        )}
+        {queueAhead != null && (
+          <Text style={styles.infoLine}>
+            {queueAhead === 0
+              ? "You're next in line!"
+              : `${queueAhead} pet${queueAhead !== 1 ? 's' : ''} ahead of you`}
+          </Text>
+        )}
+        {dayShowEncounterItems && (
+          <View style={styles.encounterSection}>
+            <Text style={styles.sectionLabel}>PREPARING FOR YOU</Text>
+            {(dayAppt.encounterItems || []).map((item, i) => {
+              const emoji = (item.productClass === 'medicine' || item.isDrug) ? '💊'
+                : item.productClass === 'medical_supply' ? '🩹'
+                : '📦';
+              return (
+                <Text key={i} style={styles.encounterLine}>
+                  {emoji} {item.name}{(item.qty ?? 1) > 1 ? ` x${item.qty}` : ''}
+                </Text>
+              );
+            })}
+          </View>
+        )}
+        {dayShowFinancial && dayEstimatedTotal > 0 && (
+          <View style={styles.financialSection}>
+            <Text style={styles.sectionLabel}>ESTIMATED COST</Text>
+            <Text style={styles.financialLine}>Estimated total: ₱{dayEstimatedTotal.toLocaleString()}</Text>
+            {dayDepositPaid > 0 && (
+              <Text style={styles.financialLine}>Deposit paid: ₱{dayDepositPaid.toLocaleString()}</Text>
+            )}
+            {dayDepositPaid > 0 && (
+              <Text style={[styles.financialLine, { fontWeight: 'bold', color: COLORS.warning }]}>
+                Balance due: ₱{dayBalanceDue.toLocaleString()}
+              </Text>
+            )}
+          </View>
+        )}
+        <WaitTimeMetrics
+          appointment={dayAppt}
+          isActive={true}
+          avgWaitMins={avgWaitMins}
+        />
+        {dayTimelineEvents.length > 0 && (
+          <View style={styles.timelineSection}>
+            <VisitTimeline
+              events={dayTimelineEvents}
+              isActive={true}
+              collapsed={timelineCollapsed}
+              onToggle={() => setTimelineCollapsed(prev => !prev)}
+              assignedVet={dayAppt.assignedVet}
+            />
+          </View>
+        )}
+        <TouchableOpacity
+          style={[styles.ctaBtn, !clinicPhone && styles.ctaBtnDisabled]}
+          onPress={async () => {
+            if (!clinicPhone) return;
+            try { await Linking.openURL(`tel:${clinicPhone}`); }
+            catch (error) { console.error('[SuperCard.handleCallClinic]:', error.message); }
+          }}
+          disabled={!clinicPhone}
+        >
+          <Text style={styles.ctaBtnText}>📞 Call Clinic</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
 
-  const startedTime =
-    formatFirestoreTime(appointment.timeStarted) ||
-    formatFirestoreTime(appointment.timeArrived);
+  const renderPastDayContent = (dayAppt, index) => {
+    const dayNum = dayAppt.caseDay || (index + 1);
+    const dayDate = formatFirestoreTime(dayAppt.scheduledDate) || '';
+    const dayStatusColors = getClientStatusColor(dayAppt.status);
+    const dayStatusLabel = getClientStatusLabel(dayAppt.status);
+    const dayStatusIcon = getClientStatusIcon(dayAppt.status);
+    const pastTimelineEvents = dayAppt.clinicalPulse
+      ? buildVisitTimeline(dayAppt.clinicalPulse, {
+          isActive: false,
+          assignedVet: dayAppt.assignedVet,
+          signedOffAt: dayAppt.signedOffAt,
+        })
+      : [];
+    const sale = salesByAppt[dayAppt.id];
+
+    return (
+      <ScrollView
+        style={{ width: pageWidth }}
+        nestedScrollEnabled
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.pastDayContent}>
+          <Text style={styles.pastDayLabel}>DAY {dayNum}</Text>
+          {dayDate ? <Text style={styles.pastDayDate}>{dayDate}</Text> : null}
+          <View style={[styles.pastDayStatusRow, { backgroundColor: dayStatusColors.backgroundColor }]}>
+            <Text style={[styles.pastDayStatus, { color: dayStatusColors.color }]}>
+              {dayStatusIcon} {dayStatusLabel.toUpperCase()}
+            </Text>
+          </View>
+          {pastTimelineEvents.length > 0 && (
+            <View style={styles.pastDayTimeline}>
+              <Text style={styles.sectionLabel}>TIMELINE</Text>
+              {pastTimelineEvents.slice(0, 5).map((evt, i) => (
+                <Text key={i} style={styles.pastTimelineEvent}>
+                  {evt.icon} {evt.label}
+                </Text>
+              ))}
+            </View>
+          )}
+          {dayAppt.encounterItems?.length > 0 && (
+            <EncounterSummary
+              appointment={dayAppt}
+              collapsed={true}
+              onToggle={() => {}}
+              onViewRecord={() => {}}
+              onRebook={() => {}}
+              salesTotal={sale?.total ?? null}
+              hideViewRecord={true}
+            />
+          )}
+          {sale && (
+            <Text style={styles.pastDayPaid}>
+              Paid: ₱{(sale.total || 0).toLocaleString()}
+            </Text>
+          )}
+        </View>
+      </ScrollView>
+    );
+  };
 
   return (
     <View style={styles.shadowContainer}>
       <View style={SHADOW.card} />
       <View style={[styles.wrapper, { borderLeftColor: statusColors.color }]}>
-      {/* ── MINI HEADER — always visible, tappable to expand/collapse ── */}
-      <TouchableOpacity
-        activeOpacity={0.8}
-        onPress={() => setSuperCardExpanded(prev => !prev)}
-        style={styles.superCardMiniHeader}
-      >
-        {/* Left: pet avatar */}
-        <View style={[styles.avatar, { borderColor: statusColors.color }]}>
-          <Text style={styles.avatarEmoji}>{speciesEmoji}</Text>
-        </View>
 
-        {/* Centre: pet name + service type */}
-        <View style={styles.miniHeaderInfo}>
-          <Text style={styles.petName} numberOfLines={1}>
-            {appointment.petName || 'Your Pet'}
-          </Text>
-          {(appointment.serviceType || appointment.primaryService) ? (
-            <Text style={styles.serviceType} numberOfLines={1}>
-              {appointment.serviceType || appointment.primaryService}
+        {/* ── MINI HEADER ── */}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => setSuperCardExpanded(prev => !prev)}
+          style={styles.superCardMiniHeader}
+        >
+          <View style={[styles.avatar, { borderColor: statusColors.color }]}>
+            <Text style={styles.avatarEmoji}>{speciesEmoji}</Text>
+          </View>
+
+          <View style={styles.miniHeaderInfo}>
+            <Text style={styles.petName} numberOfLines={1}>
+              {appointment.petName || 'Your Pet'}
             </Text>
-          ) : null}
-        </View>
-
-        {/* Right: status pill + ticket + chevron */}
-        <View style={styles.miniHeaderRight}>
-          <View style={styles.statusRow}>
-            <Animated.View style={[styles.pulseDot, { backgroundColor: statusColors.color, opacity: pulseAnim }]} />
-            <View style={[styles.statusPillWrap, { backgroundColor: statusColors.backgroundColor }]}>
-              <Text style={[styles.statusPillText, { color: statusColors.color }]}>
-                {statusIcon} {statusLabel.toUpperCase()}
+            {queueAhead != null && (
+              <Text style={styles.queuePositionMini}>
+                {queueAhead === 0 ? 'Next!' : `${queueAhead} ahead`}
               </Text>
-            </View>
+            )}
           </View>
-          {ticketLabel ? (
-            <Text style={styles.ticketMini}>🎫 {ticketLabel}</Text>
-          ) : null}
-        </View>
 
-        <MaterialIcons
-          name={superCardExpanded ? 'expand-less' : 'expand-more'}
-          size={22}
-          color={COLORS.accentLight}
-          style={styles.chevron}
-        />
-      </TouchableOpacity>
-
-      {/* ── COLLAPSIBLE BODY — hidden when user collapses the card ── */}
-      {superCardExpanded && (
-        <View style={styles.superCardBody}>
-          {/* Assigned vet */}
-          {hasAssignedVet ? (
-            <Text style={styles.infoLine}>👨‍⚕️ {appointment.assignedVet}</Text>
-          ) : null}
-
-          {/* Time started / arrived */}
-          {startedTime ? (
-            <Text style={styles.infoLine}>🕐 Started at {startedTime}</Text>
-          ) : null}
-
-          {/* Queue-ahead count (arrived status only) */}
-          {queueAhead != null && (
-            <Text style={styles.infoLine}>
-              {queueAhead === 0
-                ? "You're next in line!"
-                : `${queueAhead} pet${queueAhead !== 1 ? 's' : ''} ahead of you`}
-            </Text>
+          {isEmergency && (
+            <View style={styles.emergencyBadge}>
+              <Text style={styles.emergencyText}>🚨 EMERGENCY</Text>
+            </View>
           )}
 
-          {/* Live wait/consult metrics */}
-          <WaitTimeMetrics
-            appointment={appointment}
-            isActive={true}
-            avgWaitMins={avgWaitMins}
+          <View style={styles.miniHeaderRight}>
+            <View style={styles.statusRow}>
+              <Animated.View style={[styles.pulseDot, { backgroundColor: statusColors.color, opacity: pulseAnim }]} />
+              <View style={[styles.statusPillWrap, { backgroundColor: statusColors.backgroundColor }]}>
+                <Text style={[styles.statusPillText, { color: statusColors.color }]}>
+                  {statusIcon} {statusLabel.toUpperCase()}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <MaterialIcons
+            name={superCardExpanded ? 'expand-less' : 'expand-more'}
+            size={22}
+            color={COLORS.accentLight}
+            style={styles.chevron}
           />
+        </TouchableOpacity>
 
-          {/* Visit timeline (only when pulse data exists) */}
-          {timelineEvents.length > 0 && (
-            <View style={styles.timelineSection}>
-              <VisitTimeline
-                events={timelineEvents}
-                isActive={true}
-                collapsed={timelineCollapsed}
-                onToggle={() => setTimelineCollapsed(prev => !prev)}
-                assignedVet={appointment.assignedVet}
+        {/* ── COLLAPSIBLE BODY ── */}
+        {superCardExpanded && (
+          !isMultiDay ? (
+            renderActiveDayBody(appointment)
+          ) : (
+            <>
+              <View style={styles.caseHeaderBar}>
+                <Text style={styles.caseHeaderText}>CASE: {caseChain.length} DAYS</Text>
+              </View>
+              <FlatList
+                ref={pagerRef}
+                data={caseChain}
+                keyExtractor={(appt) => appt.id}
+                renderItem={({ item: dayAppt, index }) => (
+                  dayAppt.id === appointment.id
+                    ? renderActiveDayBody(dayAppt)
+                    : renderPastDayContent(dayAppt, index)
+                )}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                getItemLayout={getItemLayout}
+                onViewableItemsChanged={onViewableItemsChanged}
+                viewabilityConfig={viewabilityConfig.current}
+                initialScrollIndex={clampedInitialIndex}
+                onScrollToIndexFailed={() => {}}
               />
-            </View>
-          )}
-
-          {/* CTAs */}
-          <View style={styles.ctaRow}>
-            <TouchableOpacity
-              style={[styles.ctaBtn, !clinicPhone && styles.ctaBtnDisabled]}
-              onPress={async () => {
-                if (!clinicPhone) return;
-                try {
-                  await Linking.openURL(`tel:${clinicPhone}`);
-                } catch (error) {
-                  console.error('[SuperCard.handleCallClinic]:', error.message);
-                }
-              }}
-              disabled={!clinicPhone}
-            >
-              <Text style={styles.ctaBtnText}>📞 Call Clinic</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.ctaBtn, styles.ctaBtnSecondary]}
-              onPress={() => handleDirections(clinicAddress)}
-            >
-              <Text style={[styles.ctaBtnText, styles.ctaBtnSecondaryText]}>🗺️ Directions</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
+              <View style={styles.dotRow}>
+                {caseChain.map((c, i) => (
+                  <View
+                    key={c.id}
+                    style={[
+                      styles.dot,
+                      i === activePageIndex && styles.dotActive,
+                      c.id === appointment.id && styles.dotCurrent,
+                    ]}
+                  />
+                ))}
+              </View>
+            </>
+          )
+        )}
       </View>
     </View>
   );
@@ -245,7 +464,6 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
 
-  // ── Mini header — always rendered, tappable ──────────────────────
   superCardMiniHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -266,13 +484,27 @@ const styles = StyleSheet.create({
     marginLeft: 2,
   },
 
-  ticketMini: {
+  queuePositionMini: {
     fontSize: 11,
-    color: COLORS.accentLight,
+    color: COLORS.sky,
+    fontWeight: 'bold',
     marginTop: 3,
   },
 
-  // ── Collapsible body — hidden when collapsed ─────────────────────
+  emergencyBadge: {
+    backgroundColor: '#FFEBEE',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginRight: 4,
+  },
+  emergencyText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: COLORS.danger,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+
   superCardBody: {
     paddingHorizontal: 14,
     paddingBottom: 14,
@@ -293,13 +525,14 @@ const styles = StyleSheet.create({
   },
   avatarEmoji: { fontSize: 22 },
   petName: { fontSize: 15, fontWeight: 'bold', color: COLORS.accent },
-  serviceType: {
-    fontSize: 11,
+
+  serviceTypeBody: {
+    fontSize: 12,
     color: COLORS.accentLight,
     fontWeight: 'bold',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginTop: 1,
+    marginBottom: 4,
   },
 
   statusRow: {
@@ -330,6 +563,102 @@ const styles = StyleSheet.create({
     marginBottom: 5,
     paddingLeft: 4,
   },
+  infoLineSmall: {
+    fontSize: 11,
+    color: COLORS.accentLight,
+    marginBottom: 3,
+    paddingLeft: 4,
+    fontStyle: 'italic',
+  },
+
+  allergyBadge: {
+    backgroundColor: '#FFEBEE',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginBottom: 6,
+  },
+  allergyText: {
+    fontSize: 12,
+    color: COLORS.danger,
+    fontWeight: 'bold',
+  },
+
+  notesEcho: {
+    backgroundColor: '#FFF8E1',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    marginBottom: 6,
+  },
+  notesEchoText: {
+    fontSize: 12,
+    color: COLORS.accent,
+    fontStyle: 'italic',
+  },
+
+  whatsNextBox: {
+    backgroundColor: COLORS.cream,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.sky,
+  },
+  whatsNextText: {
+    fontSize: 13,
+    color: COLORS.accent,
+    fontWeight: '600',
+  },
+
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.accentLight,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+
+  serviceProgressSection: {
+    marginTop: 8,
+    marginBottom: 4,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+    paddingTop: 8,
+  },
+  serviceProgressLine: {
+    fontSize: 13,
+    color: COLORS.accent,
+    marginBottom: 3,
+    paddingLeft: 4,
+  },
+
+  encounterSection: {
+    marginTop: 6,
+    marginBottom: 4,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+    paddingTop: 8,
+  },
+  encounterLine: {
+    fontSize: 13,
+    color: COLORS.accent,
+    marginBottom: 3,
+    paddingLeft: 4,
+  },
+
+  financialSection: {
+    marginTop: 6,
+    marginBottom: 4,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+    paddingTop: 8,
+  },
+  financialLine: {
+    fontSize: 13,
+    color: COLORS.accent,
+    marginBottom: 3,
+    paddingLeft: 4,
+  },
 
   timelineSection: {
     marginTop: 8,
@@ -339,32 +668,99 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
 
-  ctaRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 12,
-  },
   ctaBtn: {
-    flex: 1,
     backgroundColor: COLORS.accent,
     borderRadius: 0,
     paddingVertical: 10,
     alignItems: 'center',
+    marginTop: 12,
   },
   ctaBtnText: {
     color: COLORS.white,
     fontWeight: 'bold',
     fontSize: 13,
   },
-  ctaBtnSecondary: {
-    backgroundColor: COLORS.white,
-    borderWidth: 1.5,
-    borderColor: COLORS.accent,
-  },
-  ctaBtnSecondaryText: {
-    color: COLORS.accent,
-  },
   ctaBtnDisabled: {
     backgroundColor: COLORS.muted,
+  },
+
+  caseHeaderBar: {
+    backgroundColor: '#FFF3E0',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+  },
+  caseHeaderText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.warning,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+
+  dotRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 8,
+    gap: 6,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.borderLight,
+  },
+  dotActive: {
+    backgroundColor: COLORS.sky,
+  },
+  dotCurrent: {
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+  },
+
+  pastDayContent: {
+    padding: 12,
+  },
+  pastDayLabel: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: COLORS.warning,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 2,
+  },
+  pastDayDate: {
+    fontSize: 12,
+    color: COLORS.accentLight,
+    marginBottom: 8,
+  },
+  pastDayStatusRow: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginBottom: 8,
+  },
+  pastDayStatus: {
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  pastDayTimeline: {
+    marginBottom: 8,
+  },
+  pastTimelineEvent: {
+    fontSize: 12,
+    color: COLORS.accentLight,
+    marginBottom: 3,
+    paddingLeft: 4,
+  },
+  pastDayPaid: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.success,
+    marginTop: 4,
   },
 });

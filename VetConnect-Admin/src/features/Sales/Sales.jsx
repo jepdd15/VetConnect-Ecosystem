@@ -129,8 +129,7 @@ export default function Sales() {
         ? s.paymentTenders.map(t => t.method)
         : [s.paymentMethod];
       const matchMethod = filterMethod.includes('All')
-        || saleMethods.some(m => filterMethod.includes(m))
-        || (filterMethod.includes('Card') && saleMethods.includes('Bank Transfer'));
+        || saleMethods.some(m => filterMethod.includes(m));
       const matchStatus = filterStatus === 'All' || (filterStatus === 'Paid' ? s.status !== 'refunded' : filterStatus === 'refunded' ? s.status === 'refunded' : true);
       const saleType = s.saleType || 'clinical';
       const matchType = filterType === 'All' || saleType === filterType;
@@ -478,7 +477,7 @@ export default function Sales() {
 
   const columns = [
     { 
-      field: 'jsDate', flex: 1.2, minWidth: 160, sortable: false, disableColumnMenu: true,
+      field: 'jsDate', width: 120, sortable: false, disableColumnMenu: true,
       renderHeader: () => (<TableSortLabel active={orderBy === 'jsDate'} direction={orderBy === 'jsDate' ? order : 'asc'} onClick={() => handleRequestSort('jsDate')} sx={{ fontWeight: 800, color: COLORS.accent, fontSize: '0.75rem' }}>DATE & TIME</TableSortLabel>),
       renderCell: (p) => (
         <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', py: 1 }}>
@@ -488,7 +487,7 @@ export default function Sales() {
       )
     },
     { 
-      field: 'id', headerName: 'Receipt #', width: 130, sortable: false, disableColumnMenu: true,
+      field: 'id', headerName: 'Receipt #', width: 160, sortable: false, disableColumnMenu: true,
       renderCell: (p) => (
         <Box sx={{ display: 'flex', alignItems: 'center', height: '100%' }}>
             <Typography variant="caption" sx={{ fontFamily: 'monospace', fontWeight: 800, color: COLORS.medical, bgcolor: COLORS.chipBlueBg, px: 1.2, py: 0.5, borderRadius: 0, border: `1px solid ${COLORS.medical}`, letterSpacing: 0.5 }}>{p.row.receiptNumber || p.value.slice(0, 8).toUpperCase()}</Typography>
@@ -496,31 +495,33 @@ export default function Sales() {
       )
     },
     {
-      field: 'saleType', headerName: 'TYPE', width: 100, align: 'center', headerAlign: 'center', sortable: false, disableColumnMenu: true,
+      field: 'saleType', headerName: 'TYPE', width: 90, align: 'center', headerAlign: 'center', sortable: false, disableColumnMenu: true,
       renderCell: (p) => {
         const type = p.value || 'clinical';
         const isRetail = type === 'retail';
         return (
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-            <Chip
-              label={isRetail ? 'RETAIL' : 'CLINICAL'}
-              size="small"
-              sx={{
-                borderRadius: 0,
-                fontWeight: 900,
-                fontSize: '0.6rem',
-                letterSpacing: 0.5,
-                bgcolor: isRetail ? COLORS.chipBlueBg : COLORS.kpiGreenBg,
-                color: isRetail ? COLORS.sky : COLORS.success,
-                border: `2px solid ${isRetail ? COLORS.sky : COLORS.success}`,
-              }}
-            />
-          </Box>
+          <Tooltip title={isRetail ? 'Standalone product sale without an appointment' : 'Checkout from a veterinary visit'} placement="top">
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+              <Chip
+                label={isRetail ? 'RETAIL' : 'CLINICAL'}
+                size="small"
+                sx={{
+                  borderRadius: 0,
+                  fontWeight: 900,
+                  fontSize: '0.6rem',
+                  letterSpacing: 0.5,
+                  bgcolor: isRetail ? COLORS.chipBlueBg : COLORS.kpiGreenBg,
+                  color: isRetail ? COLORS.sky : COLORS.success,
+                  border: `2px solid ${isRetail ? COLORS.sky : COLORS.success}`,
+                }}
+              />
+            </Box>
+          </Tooltip>
         );
       },
     },
     {
-      field: 'petName', flex: 1.5, minWidth: 200, sortable: false, disableColumnMenu: true,
+      field: 'petName', flex: 1, minWidth: 110, sortable: false, disableColumnMenu: true,
       renderHeader: () => (<TableSortLabel active={orderBy === 'petName'} direction={orderBy === 'petName' ? order : 'asc'} onClick={() => handleRequestSort('petName')} sx={{ fontWeight: 800, color: COLORS.accent, fontSize: '0.75rem' }}>PATIENT & OWNER</TableSortLabel>),
       renderCell: (p) => (
         <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', py: 1 }}>
@@ -530,17 +531,26 @@ export default function Sales() {
       )
     },
     { 
-      field: 'items', headerName: 'Items Purchased', flex: 1.5, minWidth: 250, sortable: false, disableColumnMenu: true,
-      renderCell: (p) => (
-        <Box sx={{ display: 'flex', alignItems: 'center', height: '100%', py: 1 }}>
-            <Typography variant="caption" sx={{ color: 'textSecondary', fontWeight: '900', fontSize: '0.65rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.3 }}>
-                {p.value ? p.value.map(i => `${i.qty}x ${i.name}`).join(', ') : 'N/A'}
-            </Typography>
-        </Box>
-      ) 
+      field: 'items', headerName: 'Items Purchased', flex: 1, minWidth: 120, sortable: false, disableColumnMenu: true,
+      renderCell: (p) => {
+        const items = p.value || [];
+        const fullText = items.map(i => `${i.qty}x ${i.name}`).join(', ') || 'N/A';
+        const previewText = items.length <= 3
+          ? fullText
+          : `${items.slice(0, 2).map(i => `${i.qty}x ${i.name}`).join(', ')} +${items.length - 2} more`;
+        return (
+          <Tooltip title={fullText} placement="top-start">
+            <Box sx={{ display: 'flex', alignItems: 'center', height: '100%', py: 1 }}>
+              <Typography variant="caption" sx={{ color: 'textSecondary', fontWeight: '900', fontSize: '0.65rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.3 }}>
+                {previewText}
+              </Typography>
+            </Box>
+          </Tooltip>
+        );
+      } 
     },
     {
-      field: 'paymentMethod', headerName: 'Method', width: 140, sortable: false, disableColumnMenu: true,
+      field: 'paymentMethod', headerName: 'Method', width: 120, sortable: false, disableColumnMenu: true,
       renderCell: (p) => {
         // T4.150: Show primary method chip + "Split" badge for multi-tender sales.
         const tenders = p.row.paymentTenders;
@@ -568,7 +578,7 @@ export default function Sales() {
       }
     },
     { 
-      field: 'total', width: 130, sortable: false, disableColumnMenu: true,
+      field: 'total', width: 110, sortable: false, disableColumnMenu: true,
       renderHeader: () => (<TableSortLabel active={orderBy === 'total'} direction={orderBy === 'total' ? order : 'asc'} onClick={() => handleRequestSort('total')} sx={{ fontWeight: 800, color: COLORS.accent, fontSize: '0.75rem' }}>TOTAL PAID</TableSortLabel>),
       renderCell: (p) => (
         <Box sx={{ display: 'flex', alignItems: 'center', height: '100%' }}>
@@ -579,7 +589,7 @@ export default function Sales() {
       )
     },
     { 
-      field: 'status', headerName: 'Status', width: 120, align: 'center', headerAlign: 'center', sortable: false, disableColumnMenu: true,
+      field: 'status', headerName: 'Status', width: 90, align: 'center', headerAlign: 'center', sortable: false, disableColumnMenu: true,
       renderCell: (p) => {
           const isRefunded = p.value === 'refunded';
           return (
@@ -607,7 +617,7 @@ export default function Sales() {
       }
     },
     {
-      field: 'actions', headerName: 'Actions', width: 100, align: 'center', headerAlign: 'center', sortable: false, disableColumnMenu: true,
+      field: 'actions', headerName: 'Actions', width: 130, align: 'center', headerAlign: 'center', sortable: false, disableColumnMenu: true,
       renderCell: (p) => (
         <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', alignItems: 'center', height: '100%' }}>
             <Tooltip title="Reprint Receipt">
@@ -744,34 +754,6 @@ export default function Sales() {
               }}
               sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33`, borderRadius: 0 }, minWidth: 170 }}
             />
-            <FormControl size="small" sx={{ minWidth: 160 }}>
-                <Select
-                    multiple
-                    value={filterMethod}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      // Logic: If 'All' was just added, clear others. If other added, remove 'All'.
-                      const lastSelected = val[val.length - 1];
-                      if (lastSelected === 'All') setFilterMethod(['All']);
-                      else {
-                        const filtered = val.filter(v => v !== 'All');
-                        setFilterMethod(filtered.length === 0 ? ['All'] : filtered);
-                      }
-                    }}
-                    renderValue={(selected) => {
-                      if (selected.includes('All')) return 'All Methods';
-                      return selected.join(', ');
-                    }}
-                    displayEmpty
-                    sx={{ fontWeight: 800, color: COLORS.accent, bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33`, borderRadius: 0 }, borderRadius: 0 }}
-                >
-                    <MenuItem value="All">All Methods (Reset)</MenuItem>
-                    <MenuItem value="Cash">Cash</MenuItem>
-                    <MenuItem value="GCash">GCash / Maya</MenuItem>
-                    <MenuItem value="Card">Card</MenuItem>
-                    <MenuItem value="Bank Transfer">Bank Transfer</MenuItem>
-                </Select>
-            </FormControl>
             <FormControl size="small" sx={{ minWidth: 130 }}>
                 <Select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} displayEmpty sx={{ fontWeight: 800, color: COLORS.accent, bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33` } }}>
                     <MenuItem value="All">All Statuses</MenuItem>
@@ -801,7 +783,7 @@ export default function Sales() {
           p: 2, px: 4, bgcolor: COLORS.cardBg, borderBottom: `2px solid ${COLORS.accent}`,
           borderTop: 'none', borderLeft: 'none', borderRight: 'none', borderRadius: 0
         }}>
-          <EodSummary totals={eodTotals} filterMethod={filterMethod} setFilterMethod={setFilterMethod} isDayClosed={isDayClosed} closingData={closingData} />
+          <EodSummary totals={eodTotals} filterMethod={filterMethod} setFilterMethod={setFilterMethod} isDayClosed={isDayClosed} closingData={closingData} filterDate={filterDate} />
         </Box>
       </Box>
 

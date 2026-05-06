@@ -509,7 +509,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
     }
   },
   { 
-    field: 'timing', headerName: 'Triage Clock', width: 250, align: 'center', headerAlign: 'center',
+    field: 'timing', headerName: 'Triage Clock', width: 160, align: 'center', headerAlign: 'center',
     resizable: false, sortable: false, disableColumnMenu: true,
     renderCell: (p) => {
       const resolveDate = (d) => {
@@ -675,7 +675,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
     }
   },
   {
-    field: 'actions', headerName: 'Command Action', width: 320, sortable: false, disableColumnMenu: true,
+    field: 'actions', headerName: 'Command Action', width: 240, sortable: false, disableColumnMenu: true,
     align: 'center', headerAlign: 'center', resizable: false,
     renderCell: (params) => {
         if (!isToday && !isTomorrow) {

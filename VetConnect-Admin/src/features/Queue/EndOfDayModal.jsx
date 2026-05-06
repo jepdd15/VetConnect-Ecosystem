@@ -1216,7 +1216,7 @@ const EndOfDayModal = React.memo(({
       `}</style>
 
             <Paper elevation={0} sx={{
-                width: '98%', maxWidth: '1440px', maxHeight: '94vh',
+                width: '98%', maxWidth: '1280px', maxHeight: '94vh',
                 display: 'flex', flexDirection: 'column',
                 borderRadius: 2, border: '2px solid #5D4037', overflow: 'hidden',
                 boxShadow: '0 32px 100px rgba(93, 64, 55, 0.45)',

@@ -484,7 +484,7 @@ export default function Inventory() {
       <Box sx={{ flexShrink: 0, mb: 0 }}>
         <Paper sx={{ p: 0, px: 4, bgcolor: COLORS.tableHeaderBg, borderBottom: `2px solid ${COLORS.accent}`, borderRadius: 0, boxShadow: 'none' }}>
           <Grid container spacing={0} sx={{ '& > div:not(:last-child)': { borderRight: `1px solid ${COLORS.accent}1A` } }}>
-             <Grid size={{ xs: true }}><KPICard title="Active SKUs" value={kpis.totalItems} icon={<InventoryIcon />} color={COLORS.medical} /></Grid>
+             <Grid size={{ xs: true }}><KPICard title="Active Products" value={kpis.totalItems} icon={<InventoryIcon />} color={COLORS.medical} /></Grid>
              <Grid size={{ xs: true }}><KPICard title="Expiring Soon" value={kpis.expiringSoon} icon={<EventBusyIcon />} color={COLORS.kpiPurpleText} onClick={() => toggleStockFilter('expiring')} active={stockFilter === 'expiring'} /></Grid>
              <Grid size={{ xs: true }}><KPICard title="Low Stock" value={kpis.lowStock} icon={<WarningAmberIcon />} color={COLORS.warning} onClick={() => toggleStockFilter('low')} active={stockFilter === 'low'} /></Grid>
              <Grid size={{ xs: true }}><KPICard title="Out of Stock" value={kpis.outOfStock} icon={<ErrorOutlineIcon />} color={COLORS.danger} onClick={() => toggleStockFilter('out')} active={stockFilter === 'out'} /></Grid>

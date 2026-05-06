@@ -6,9 +6,6 @@ import { COLORS, FONT } from '../../../theme/designTokens';
 // Icons
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
-import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
-import BadgeIcon from '@mui/icons-material/Badge';
-import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import PhoneIcon from '@mui/icons-material/Phone';
 
 export default function StaffTable({ data, getWorkload, onEdit, onDelete, departments, loading }) {
@@ -25,15 +22,14 @@ export default function StaffTable({ data, getWorkload, onEdit, onDelete, depart
       field: 'fullName', headerName: 'Staff Name', flex: 1.8,
       renderCell: (p) => {
         const cleanName = p.value ? p.value.replace(/^(Dr\.|Mr\.|Mrs\.|Ms\.)\s*/i, '') : '';
-        const isAdmin = p.row.accessLevel === 'admin' || p.row.role === 'admin';
         return (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, height: '100%' }}>
-            <Avatar sx={{ bgcolor: isAdmin ? COLORS.danger : COLORS.medical, width: 45, height: 45, fontWeight: '900', fontSize: '1.2rem', boxShadow: 1 }}>
+            <Avatar sx={{ bgcolor: COLORS.medical, width: 45, height: 45, fontWeight: '900', fontSize: '1.2rem', boxShadow: 1 }}>
               {(cleanName[0] || '?').toUpperCase()}
             </Avatar>
             <Box sx={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-              <Typography variant="body1" fontWeight="900" color={COLORS.brand} noWrap sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                {p.value} {isAdmin && <AdminPanelSettingsIcon sx={{fontSize: 16, color: COLORS.danger}}/>}
+              <Typography variant="body1" fontWeight="900" color={COLORS.brand} noWrap>
+                {p.value}
               </Typography>
               <Typography variant="caption" color="textSecondary" noWrap sx={{ mt: 0.2 }}>{p.row.email}</Typography>
 
@@ -45,13 +41,6 @@ export default function StaffTable({ data, getWorkload, onEdit, onDelete, depart
             </Box>
           </Box>
         );
-      }
-    },
-    {
-      field: 'accessLevel', headerName: 'System Access', flex: 0.8,
-      renderCell: (p) => {
-        const level = p.row.accessLevel || (p.row.role === 'admin' ? 'admin' : 'staff');
-        return <Chip icon={level === 'admin' ? <AdminPanelSettingsIcon/> : <BadgeIcon/>} label={level === 'admin' ? 'CLINIC ADMINISTRATOR' : 'CLINICAL STAFF'} color={level === 'admin' ? 'error' : 'default'} size="small" variant={level === 'admin' ? 'filled' : 'outlined'} sx={{fontWeight: 900, fontSize: '0.65rem'}}/>;
       }
     },
     {
@@ -82,30 +71,6 @@ export default function StaffTable({ data, getWorkload, onEdit, onDelete, depart
               );
             })}
           </Box>
-        );
-      }
-    },
-    {
-      field: 'workload', headerName: 'Live Status', flex: 0.8, align: 'center', headerAlign: 'center',
-      renderCell: (p) => {
-        const deps = p.row.departments || [];
-        if (deps.length === 0 && !['veterinarian', 'groomer'].includes(p.row.role)) {
-          return <Typography variant="caption" color="textSecondary" sx={{ fontStyle: 'italic' }}>N/A</Typography>;
-        }
-
-        const load = getWorkload(p.row.id);
-        const isBusy = load > 0;
-        return (
-          <Tooltip title={`${load} active patients assigned`}>
-            <Chip
-              icon={<LocalHospitalIcon fontSize="small"/>}
-              label={isBusy ? `${load} Active` : 'Available'}
-              size="small"
-              color={isBusy ? "warning" : "success"}
-              variant={isBusy ? "filled" : "outlined"}
-              sx={{ fontWeight: 'bold', fontSize: '0.7rem', height: 22 }}
-            />
-          </Tooltip>
         );
       }
     },

@@ -34,7 +34,7 @@ export default function StaffFormModal({ open, onClose, item, dynamicDepartments
     ptrNumber:   item?.ptrNumber || '',
     // Section 2: Access & Scheduling (T4.154: accessLevel always defaults to 'staff')
     accessLevel: item?.accessLevel || 'staff',
-    departments: item?.departments || [],
+    departments: Array.isArray(item?.departments) ? item.departments : [],
     // Section 3: HR & Emergency (all optional)
     address:          item?.address || '',
     emergencyContacts: item?.emergencyContacts || (
@@ -233,7 +233,7 @@ export default function StaffFormModal({ open, onClose, item, dynamicDepartments
                       input={<OutlinedInput label="Assigned Departments *" />}
                       renderValue={(selected) => (
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                          {selected.map((value) => {
+                          {(Array.isArray(selected) ? selected : []).map((value) => {
                             const deptObj = (dynamicDepartments || []).find(d => d.name === value);
                             const color = deptObj ? deptObj.color : '#616161';
                             return (

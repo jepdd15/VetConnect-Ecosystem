@@ -117,6 +117,33 @@ const calculateAge = (dob) => {
 };
 
 
+/**
+ * Derives a human-readable dosing instruction string from a structured sig object.
+ * Used both at cart-item creation time (auto-populate) and on every sig field edit,
+ * so the instructions string stays in sync with the structured fields at all times.
+ *
+ * @param {{ dose?: string, unit?: string, frequency?: string, duration?: string, route?: string }} sig
+ * @returns {string}
+ */
+const buildInstructionsFromSig = (sig) => {
+  if (!sig) return '';
+  const freqMap = {
+    SID: 'once daily',
+    BID: 'twice daily',
+    TID: 'three times daily',
+    QID: 'four times daily',
+    EOD: 'every other day',
+    PRN: 'as needed',
+  };
+  const dose = sig.dose || '1';
+  const unit = sig.unit || 'unit';
+  const freq = freqMap[sig.frequency] || sig.frequency || 'once daily';
+  const duration = sig.duration || '1';
+  const route = sig.route || '';
+  const routeStr = route ? ` (${route})` : '';
+  return `${dose} ${unit} ${freq} for ${duration} day${duration !== '1' ? 's' : ''}${routeStr}`;
+};
+
 // ---------------------------------------------------------------------------
 // Module-scope sub-components — defined here (not inside the parent function)
 // so React sees a stable function reference across renders and never unmounts
@@ -1394,16 +1421,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     // Gives the vet a readable starting point (e.g. "1 unit once daily for 1 day (SQ)")
     // that they can overwrite before signing off.
     if (resolvedPC === 'medicine') {
-      const s = itemObj.sig;
-      const freqMap = {
-        SID: 'once daily',
-        BID: 'twice daily',
-        TID: 'three times daily',
-        QID: 'four times daily',
-        EOD: 'every other day',
-        PRN: 'as needed',
-      };
-      itemObj.instructions = `${s.dose} ${s.unit} ${freqMap[s.frequency] || s.frequency} for ${s.duration} day${s.duration !== '1' ? 's' : ''} (${s.route})`;
+      itemObj.instructions = buildInstructionsFromSig(itemObj.sig);
     }
 
     setTreatmentCart(prev => [...prev, itemObj]);
@@ -1540,6 +1558,20 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   const handleUpdateRxSig = (index, text) => {
     const newCart = [...treatmentCart];
     newCart[index].instructions = text;
+    setTreatmentCart(newCart);
+    setIsDirty(true);
+  };
+
+  /**
+   * Updates a single sig field on a medicine cart item and auto-regenerates
+   * the instructions string so both remain in sync.
+   */
+  const handleUpdateSigField = (index, field, value) => {
+    const newCart = [...treatmentCart];
+    const item = newCart[index];
+    const newSig = { ...(item.sig || {}), [field]: value };
+    item.sig = newSig;
+    item.instructions = buildInstructionsFromSig(newSig);
     setTreatmentCart(newCart);
     setIsDirty(true);
   };
@@ -1830,6 +1862,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 name: item.name,
                 qty: item.qty,
                 instructions: item.instructions || '',
+                sig: item.sig || null,
                 price: item.price,
                 isDrug: !!item.isDrug,
                 productClass: item.productClass || (item.isDrug ? 'medicine' : 'retail'),
@@ -3710,27 +3743,70 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                                     <Typography sx={{ fontWeight: 1000, fontSize: '0.9rem', color: COLORS.brand }}>₱{(rx.price * rx.qty).toLocaleString()}</Typography>
                                   </Box>
 
-                                  {/* Drug instructions (always visible) — clinical safety: every prescription
-                                      must have explicit dosing before sign-off. */}
+                                  {/* Drug sig fields (always visible) — structured inputs replace the
+                                      free-text field so dose/frequency/duration/route are machine-readable
+                                      and the instructions string stays derived (never manually edited). */}
                                   {(rx.productClass || (rx.isDrug ? 'medicine' : 'retail')) === 'medicine' && (
-                                    <TextField
-                                      size="small" fullWidth multiline minRows={1} maxRows={3}
-                                      placeholder="e.g., 1 tab twice daily for 7 days"
-                                      value={rx.instructions || ''}
-                                      onChange={(e) => handleUpdateRxSig(cartIdx, e.target.value)}
-                                      disabled={isRecordLocked}
-                                      sx={{
-                                        mt: 1,
-                                        '& .MuiInputBase-root': {
-                                          fontSize: '0.75rem', fontWeight: 700, fontFamily: FONT,
-                                          borderRadius: 0, bgcolor: COLORS.rxBg, border: `1px solid ${COLORS.rxBorder}`,
-                                        },
-                                        '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
-                                      }}
-                                      InputProps={{
-                                        startAdornment: <MedicationIcon sx={{ fontSize: 14, color: COLORS.rxText, mr: 0.5, mt: 0.25 }} />,
-                                      }}
-                                    />
+                                    <Box sx={{ mt: 1, p: 1, bgcolor: COLORS.rxBg, border: `1px solid ${COLORS.rxBorder}`, borderRadius: 0 }}>
+                                      <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', alignItems: 'center' }}>
+                                        <TextField
+                                          size="small" label="Dose" placeholder="1"
+                                          value={rx.sig?.dose || ''}
+                                          onChange={(e) => handleUpdateSigField(cartIdx, 'dose', e.target.value)}
+                                          disabled={isRecordLocked}
+                                          sx={{ width: 60, '& .MuiInputBase-root': { borderRadius: 0, fontSize: '0.75rem', fontWeight: 700 } }}
+                                        />
+                                        <TextField
+                                          size="small" label="Unit" placeholder="Capsule"
+                                          value={rx.sig?.unit || rx.unit || ''}
+                                          onChange={(e) => handleUpdateSigField(cartIdx, 'unit', e.target.value)}
+                                          disabled={isRecordLocked}
+                                          sx={{ width: 80, '& .MuiInputBase-root': { borderRadius: 0, fontSize: '0.75rem', fontWeight: 700 } }}
+                                        />
+                                        <TextField
+                                          select size="small" label="Frequency"
+                                          value={rx.sig?.frequency || 'SID'}
+                                          onChange={(e) => handleUpdateSigField(cartIdx, 'frequency', e.target.value)}
+                                          disabled={isRecordLocked}
+                                          sx={{ width: 90, '& .MuiInputBase-root': { borderRadius: 0, fontSize: '0.75rem', fontWeight: 700 } }}
+                                        >
+                                          <MenuItem value="SID">SID (1×/day)</MenuItem>
+                                          <MenuItem value="BID">BID (2×/day)</MenuItem>
+                                          <MenuItem value="TID">TID (3×/day)</MenuItem>
+                                          <MenuItem value="QID">QID (4×/day)</MenuItem>
+                                          <MenuItem value="EOD">EOD (every other)</MenuItem>
+                                          <MenuItem value="PRN">PRN (as needed)</MenuItem>
+                                        </TextField>
+                                        <TextField
+                                          size="small" label="Days" placeholder="7" type="number"
+                                          value={rx.sig?.duration || ''}
+                                          onChange={(e) => handleUpdateSigField(cartIdx, 'duration', e.target.value)}
+                                          disabled={isRecordLocked}
+                                          sx={{ width: 60, '& .MuiInputBase-root': { borderRadius: 0, fontSize: '0.75rem', fontWeight: 700 } }}
+                                          inputProps={{ min: 1 }}
+                                        />
+                                        <TextField
+                                          select size="small" label="Route"
+                                          value={rx.sig?.route || 'PO'}
+                                          onChange={(e) => handleUpdateSigField(cartIdx, 'route', e.target.value)}
+                                          disabled={isRecordLocked}
+                                          sx={{ width: 80, '& .MuiInputBase-root': { borderRadius: 0, fontSize: '0.75rem', fontWeight: 700 } }}
+                                        >
+                                          <MenuItem value="PO">PO (oral)</MenuItem>
+                                          <MenuItem value="SQ">SQ (subcut)</MenuItem>
+                                          <MenuItem value="IM">IM (muscle)</MenuItem>
+                                          <MenuItem value="IV">IV (vein)</MenuItem>
+                                          <MenuItem value="TOP">Topical</MenuItem>
+                                          <MenuItem value="OPH">Ophthalmic</MenuItem>
+                                          <MenuItem value="OT">Otic (ear)</MenuItem>
+                                        </TextField>
+                                      </Box>
+                                      {/* Auto-generated instructions preview — read-only, derived from structured fields above */}
+                                      <Typography sx={{ mt: 0.75, fontSize: '0.7rem', fontWeight: 700, color: COLORS.rxText, fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                        <MedicationIcon sx={{ fontSize: 12 }} />
+                                        {buildInstructionsFromSig(rx.sig)}
+                                      </Typography>
+                                    </Box>
                                   )}
 
                                   {/* Non-drug collapsible instructions — collapsed by default to keep

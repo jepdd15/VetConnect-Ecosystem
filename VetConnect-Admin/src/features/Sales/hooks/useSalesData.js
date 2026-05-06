@@ -11,6 +11,10 @@ export function useSalesData(filterDate, currentUser) {
   const [closingData, setClosingData] = useState(null);
 
   useEffect(() => {
+    if (!filterDate || isNaN(new Date(filterDate).getTime())) {
+      setSales([]); setLoading(false); setClosingData(null);
+      return;
+    }
     setLoading(true);
     setError(null);
 

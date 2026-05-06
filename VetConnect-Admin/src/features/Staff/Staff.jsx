@@ -36,24 +36,15 @@ export default function Staff() {
 
   // FILTER STATES
   const [filterDept, setFilterDept] = useState('All');
-  const [filterStatus, setFilterStatus] = useState('All');
-  const [filterAccess, setFilterAccess] = useState('All');
 
   // --- MULTI-AXIAL FILTER ENGINE ---
   const filteredStaff = useMemo(() => {
     return staffList.filter(u => {
       const matchSearch = (u.fullName || '').toLowerCase().includes(searchText.toLowerCase());
       const matchDept = filterDept === 'All' || (u.departments || []).includes(filterDept);
-      const role = u.accessLevel || (u.role === 'admin' ? 'admin' : 'staff');
-      const matchAccess = filterAccess === 'All' || role.toLowerCase() === filterAccess.toLowerCase();
-      const load = activeAppointments.filter(a => a.assignedVetId === u.id).length;
-      const isBusy = load > 0;
-      let matchStatus = true;
-      if (filterStatus === 'Available') matchStatus = !isBusy;
-      if (filterStatus === 'Busy') matchStatus = isBusy;
-      return matchSearch && matchDept && matchAccess && matchStatus;
+      return matchSearch && matchDept;
     });
-  }, [staffList, searchText, filterDept, filterStatus, filterAccess, activeAppointments]);
+  }, [staffList, searchText, filterDept]);
 
   // --- HANDLERS ---
   const handleSave = async (formData) => {
@@ -128,17 +119,7 @@ export default function Staff() {
               {departments.map(d => <MenuItem key={d.id} value={d.name}>{d.name}</MenuItem>)}
             </TextField>
 
-            <TextField select size="small" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} sx={{ minWidth: 140, bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33` } }}>
-              <MenuItem value="All">All Statuses</MenuItem>
-              <MenuItem value="Available">Available</MenuItem>
-              <MenuItem value="Busy">Busy (Active)</MenuItem>
-            </TextField>
 
-            <TextField select size="small" value={filterAccess} onChange={(e) => setFilterAccess(e.target.value)} sx={{ minWidth: 170, bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33` } }}>
-              <MenuItem value="All">All Access Levels</MenuItem>
-              <MenuItem value="staff">Clinical Staff</MenuItem>
-              <MenuItem value="admin">Clinic Administrator</MenuItem>
-            </TextField>
           </Box>
 
           <Typography variant="body2" sx={{ fontFamily: FONT, color: COLORS.accent, fontWeight: 900, whiteSpace: 'nowrap', flexShrink: 0, fontStyle: 'italic', ml: 1 }}>

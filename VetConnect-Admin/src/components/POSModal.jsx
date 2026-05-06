@@ -16,7 +16,6 @@ import PrintIcon from '@mui/icons-material/Print';
 import SaveIcon from '@mui/icons-material/Save';
 import MedicationIcon from '@mui/icons-material/Medication';
 import DescriptionIcon from '@mui/icons-material/Description';
-import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
 import MedicalServicesIcon from '@mui/icons-material/MedicalServices';
 import PetsIcon from '@mui/icons-material/Pets';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
@@ -71,7 +70,6 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
   const [editDiscType, setEditDiscType] = useState('%');
   const [editDiscValue, setEditDiscValue] = useState('');
 
-  const [barcodeInput, setBarcodeInput] = useState('');
   const [openRxOverride, setOpenRxOverride] = useState(false);
   const[pendingRxItem, setPendingRxItem] = useState(null);
   const [extVetName, setExtVetName] = useState('');
@@ -231,8 +229,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
       if (open && patient) {
         const initialCart = buildCartForAppointment(patient);
 
-        setCart(initialCart); setSelectedItemVal(''); setBarcodeInput('');
-        setPaymentTenders([{ method: 'Cash', amount: '', amountTendered: '' }]);
+        setCart(initialCart); setSelectedItemVal('');        setPaymentTenders([{ method: 'Cash', amount: '', amountTendered: '' }]);
         setDepositAmount(patient.depositPaid ? patient.depositPaid.toString() : '');
         setItemDiscounts({}); setBillDiscountType('%'); setBillDiscountValue(''); setBillDiscountReason('');
         // T4.151/T4.152: Reset success overlay state on every modal open.
@@ -249,8 +246,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
       }
 
       if (open && isRetailMode) {
-        setCart([]); setSelectedItemVal(''); setBarcodeInput('');
-        setPaymentTenders([{ method: 'Cash', amount: '', amountTendered: '' }]);
+        setCart([]); setSelectedItemVal('');        setPaymentTenders([{ method: 'Cash', amount: '', amountTendered: '' }]);
         setDepositAmount('');
         setItemDiscounts({}); setBillDiscountType('%'); setBillDiscountValue(''); setBillDiscountReason('');
         setCheckoutSuccess(null); setCheckoutError(''); setEmailFeedback('');
@@ -302,17 +298,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
     setSelectedItemVal(''); 
   };
 
-  const handleBarcodeSubmit = (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      const code = barcodeInput.trim();
-      if (!code) return;
-      const foundItem = inventoryList.find(i => i.sku === code);
-      if (foundItem) processProductToCart(foundItem);
-      else alert(`Barcode [${code}] not found in inventory.`);
-      setBarcodeInput(''); 
-    }
-  };
+
 
   const handleExternalRxApprove = () => {
     if (!extVetName || !extClinicName) return alert("You must record the prescribing Vet and Clinic.");
@@ -1172,7 +1158,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
     <>
       <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth sx={{ '& .MuiDialog-paper': { position: 'relative' } }}>
         <DialogTitle sx={{ bgcolor: COLORS.success, color: COLORS.cardBg, fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 2 }}>
-          <Typography variant="h6" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography component="span" variant="h6" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             {isRetailMode ? <ShoppingCartIcon /> : <PaidIcon />}
             {isRetailMode ? 'Retail Sale' : `Checkout: ${patient?.petName}`}
           </Typography>
@@ -1262,42 +1248,82 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
           {/* LEFT: CART ITEMS */}
           <Box sx={{ flex: 2, display: 'flex', flexDirection: 'column' }}>
             
-            <Box sx={{ mb: 2 }}>
-              <TextField autoFocus fullWidth placeholder="Scan Barcode / SKU here..." value={barcodeInput} onChange={(e) => setBarcodeInput(e.target.value)} onKeyDown={handleBarcodeSubmit} InputProps={{ startAdornment: <InputAdornment position="start"><QrCodeScannerIcon color="primary" /></InputAdornment>, spellCheck: 'false' }} sx={{ bgcolor: COLORS.chipBlueBg, '& fieldset': { borderColor: '#90CAF9', borderWidth: 2 } }} />
-            </Box>
-
-            <Divider sx={{ mb: 2, fontWeight: 'bold', color: COLORS.textMuted }}>OR MANUAL ENTRY</Divider>
-
-            <Box sx={{ display: 'flex', gap: 1, mb: 3, alignItems: 'center' }}>
-              <FormControl fullWidth size="small" sx={{ bgcolor: 'white' }}>
-                  <InputLabel>{isRetailMode ? 'Add Product' : 'Select Item / Service'}</InputLabel>
-                  <Select value={selectedItemVal} label={isRetailMode ? 'Add Product' : 'Select Item / Service'} onChange={(e) => setSelectedItemVal(e.target.value)}>
-                      {!isRetailMode && (
-                        <>
-                          <ListSubheader sx={{fontWeight:'900', bgcolor:COLORS.panelBg}}>Clinic Services (Add-ons)</ListSubheader>
-                          {servicesList.filter(s => s.name !== patient?.serviceType).map((s) => (
-                            <MenuItem key={`service|${s.id}`} value={`service|${s.id}`}>
-                               <MedicalServicesIcon fontSize="small" sx={{mr:1, color:COLORS.medical}}/> {s.name} (+₱{s.price})
-                            </MenuItem>
-                          ))}
-                        </>
-                      )}
-                      <ListSubheader sx={{fontWeight:'900', bgcolor:COLORS.panelBg}}>Inventory Products</ListSubheader>
-                      {inventoryList.map((item) => (
-                        <MenuItem key={`product|${item.id}`} value={`product|${item.id}`} disabled={item.stock < 1}>
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
-                            <span>
-                              <MedicationIcon fontSize="small" sx={{mr:1, color:COLORS.accentWarm, verticalAlign:'middle'}}/>
-                              {item.itemName} 
-                              {item.isRxOnly && <Typography component="span" color="error" variant="caption" sx={{ ml: 1, fontWeight: 'bold' }}>(Rx Only)</Typography>}
-                            </span>
-                            <Box><Chip label={`Stock: ${item.stock}`} size="small" color={item.stock < 5 ? "error" : "default"} sx={{mr:1}}/><b>₱{item.price}</b></Box>
-                          </Box>
-                        </MenuItem>
-                      ))}
-                  </Select>
-              </FormControl>
-              <Button variant="contained" onClick={handleDropdownAdd} startIcon={<AddShoppingCartIcon />} sx={{ bgcolor: COLORS.success, height: 40, fontWeight: 'bold' }}>Add</Button>
+            <Box sx={{ mb: 3 }}>
+              <Autocomplete
+                size="small"
+                options={[
+                  ...(!isRetailMode ? servicesList.filter(s => s.name !== patient?.serviceType).map(s => ({ ...s, _type: 'service', _category: 'Clinic Services', _label: s.name, _stock: null, _price: s.price })) : []),
+                  ...inventoryList
+                    .sort((a, b) => {
+                      if ((a.stock > 0) !== (b.stock > 0)) return b.stock > 0 ? 1 : -1;
+                      return (a.category || '').localeCompare(b.category || '');
+                    })
+                    .map(item => ({
+                      ...item,
+                      _type: 'product',
+                      _category: (item.category || 'Other').charAt(0).toUpperCase() + (item.category || 'other').slice(1),
+                      _label: item.itemName,
+                      _stock: item.stock,
+                      _price: item.price,
+                    })),
+                ]}
+                groupBy={(opt) => opt._category}
+                getOptionLabel={(opt) => opt._label || ''}
+                getOptionDisabled={(opt) => opt._type === 'product' && (opt._stock ?? 0) < 1}
+                onChange={(_, opt) => {
+                  if (!opt) return;
+                  if (opt._type === 'product') {
+                    const p = inventoryList.find(i => i.id === opt.id);
+                    if (p) processProductToCart(p);
+                  } else if (opt._type === 'service') {
+                    const s = servicesList.find(i => i.id === opt.id);
+                    if (s) pushToCartArray({ type: 'service', id: s.id, name: s.name, price: s.price, qty: 1, isDiscountable: s.isScPwdEligible !== false });
+                  }
+                }}
+                value={null}
+                blurOnSelect
+                renderOption={(props, opt) => (
+                  <li {...props} key={`${opt._type}|${opt.id}`}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', opacity: opt._type === 'product' && (opt._stock ?? 0) < 1 ? 0.4 : 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        {opt._type === 'service'
+                          ? <MedicalServicesIcon fontSize="small" sx={{ color: COLORS.medical }} />
+                          : <MedicationIcon fontSize="small" sx={{ color: COLORS.accentWarm }} />
+                        }
+                        <Typography sx={{ fontWeight: 700, fontSize: '0.85rem' }}>{opt._label}</Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        {opt._type === 'product' && (
+                          <Chip
+                            label={`Stock: ${opt._stock ?? 0}`}
+                            size="small"
+                            sx={{ height: 20, fontSize: '0.65rem', fontWeight: 900, borderRadius: 0, bgcolor: (opt._stock ?? 0) < 1 ? '#FFEBEE' : (opt._stock ?? 0) < 5 ? '#FFF3E0' : '#E8F5E9', color: (opt._stock ?? 0) < 1 ? COLORS.danger : (opt._stock ?? 0) < 5 ? COLORS.warning : COLORS.success }}
+                          />
+                        )}
+                        <Typography sx={{ fontWeight: 900, fontSize: '0.85rem', minWidth: 60, textAlign: 'right' }}>₱{opt._price}</Typography>
+                      </Box>
+                    </Box>
+                  </li>
+                )}
+                renderGroup={(params) => (
+                  <li key={params.key}>
+                    <Typography sx={{ fontWeight: 1000, fontSize: '0.7rem', color: COLORS.accent, bgcolor: COLORS.panelBg, px: 2, py: 0.75, textTransform: 'uppercase', letterSpacing: 1 }}>
+                      {params.group}
+                    </Typography>
+                    <ul style={{ padding: 0 }}>{params.children}</ul>
+                  </li>
+                )}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label={isRetailMode ? 'Add Product' : 'Add Item / Service'}
+                    placeholder="Search by name..."
+                    sx={{ bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+                  />
+                )}
+                sx={{ '& .MuiAutocomplete-listbox': { maxHeight: 350 } }}
+                noOptionsText="No matching items"
+              />
             </Box>
 
             {/* CART TABLE */}

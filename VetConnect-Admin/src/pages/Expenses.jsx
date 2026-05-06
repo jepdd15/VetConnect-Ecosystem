@@ -180,25 +180,25 @@ export default function Expenses() {
 
   const columns = [
     {
-      field: 'displayDate', headerName: 'DATE LOGGED', width: 220,
+      field: 'displayDate', headerName: 'DATE LOGGED', width: 160,
       renderCell: (p) => (
         <Typography variant="body2" sx={{ fontWeight: TYPE.label.fontWeight, color: COLORS.brand }}>{p.value}</Typography>
       )
     },
     {
-      field: 'category', headerName: 'CATEGORY', width: 180,
+      field: 'category', headerName: 'CATEGORY', width: 140,
       renderCell: (p) => (
         <Chip label={p.value} size="small" sx={{ borderRadius: 0, bgcolor: COLORS.cream, color: COLORS.accent, border: `1px solid ${COLORS.accent}`, fontWeight: TYPE.label.fontWeight, textTransform: 'uppercase', fontSize: '0.65rem' }} />
       )
     },
     {
-      field: 'description', headerName: 'DESCRIPTION', flex: 1,
+      field: 'description', headerName: 'DESCRIPTION', flex: 1, minWidth: 120,
       renderCell: (p) => (
         <Typography variant="body2" sx={{ fontWeight: TYPE.bodyBold.fontWeight, color: COLORS.accent }}>{p.value}</Typography>
       )
     },
     {
-      field: 'amount', headerName: 'AMOUNT', width: 180, align: 'right', headerAlign: 'right',
+      field: 'amount', headerName: 'AMOUNT', width: 140, align: 'right', headerAlign: 'right',
       renderCell: (p) => (
         <Typography sx={{ fontWeight: TYPE.label.fontWeight, color: COLORS.danger, fontSize: '1.1rem', letterSpacing: 0.5 }}>
           - ₱{p.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -206,7 +206,7 @@ export default function Expenses() {
       )
     },
     {
-      field: 'actions', headerName: '', width: 130, align: 'center', sortable: false,
+      field: 'actions', headerName: '', width: 100, align: 'center', sortable: false,
       renderCell: (p) => (
         <Box sx={{ display: 'flex', gap: 0.5 }}>
           <IconButton

@@ -108,8 +108,8 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
       newErrors.price = 'A valid retail price is required.';
     if (formData.costPrice !== '' && (isNaN(Number(formData.costPrice)) || Number(formData.costPrice) < 0))
       newErrors.costPrice = 'Cost price cannot be negative.';
-    if (!formData.unit.trim())
-      newErrors.unit = 'Dispensing unit is required (e.g. Capsule, Vial, Bottle).';
+    if (resolvedProductClass === 'medicine' && !formData.unit.trim())
+      newErrors.unit = 'Dispensing unit is required for medicines (e.g. Capsule, Vial, Bottle).';
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -294,9 +294,9 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
                 </Grid>
                 <Grid size={{ xs: 12, sm: 4 }}>
                   <TextField
-                    label="Dispensing Unit" placeholder="e.g. Capsule, Tablet, Bottle" required fullWidth
+                    label="Dispensing Unit" placeholder="e.g. Capsule, Tablet, Bottle" required={resolvedProductClass === 'medicine'} fullWidth
                     value={formData.unit} onChange={set('unit')}
-                    error={!!errors.unit} helperText={errors.unit || 'Required'}
+                    error={!!errors.unit} helperText={errors.unit || (resolvedProductClass === 'medicine' ? 'Required for medicines' : 'Optional')}
                     sx={sxField}
                   />
                 </Grid>

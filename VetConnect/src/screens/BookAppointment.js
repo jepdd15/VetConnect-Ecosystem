@@ -201,20 +201,21 @@ export default function BookAppointment({ navigation, route }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rescheduleMode, selectedPet, selectedServices.length]);
 
-  // T4.147: Check for outstanding balance from previous visits on mount.
-  // Uses getDocs (one-shot) — the balance won't change while the user is actively booking.
+  // Outstanding balance — reads from SALES collection (single source of truth).
+  // Matches admin's computation in usePatientManager.js + ClientDashboard.js.
   useEffect(() => {
     if (!auth.currentUser) return;
     (async () => {
       try {
         const q = query(
-          collection(db, 'appointments'),
+          collection(db, 'sales'),
           where('ownerId', '==', auth.currentUser.uid),
-          where('status', '==', 'completed'),
         );
         const snap = await getDocs(q);
         const total = snap.docs.reduce((sum, d) => {
-          const bal = d.data().balanceRemaining || 0;
+          const data = d.data();
+          if (data.status === 'refunded' || data.status === 'voided') return sum;
+          const bal = data.balanceRemaining || 0;
           return sum + (bal > 0 ? bal : 0);
         }, 0);
         setOutstandingBalance(total);

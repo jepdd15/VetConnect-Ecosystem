@@ -199,7 +199,7 @@ export default function App() {
         <Stack.Screen
           name="PetHistory"
           component={PetHistoryScreen}
-          options={{ title: "Medical Records" }}
+          options={{ headerShown: false }}
         />
 
         {/* --- STAFF FEATURES --- */}

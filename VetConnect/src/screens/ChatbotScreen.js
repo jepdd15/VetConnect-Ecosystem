@@ -24,6 +24,7 @@ import { db } from "../../firebaseConfig";
 import { COLORS, FONTS } from '../theme/mobileTokens';
 import { useClinicContact } from '../hooks/useClinicContact';
 import { getLocalDateStr, formatHour } from '../utils/helpers';
+import SimpleMarkdown from '../components/SimpleMarkdown';
 import {
   sendChatMessage,
   DEFAULT_CHATBOT_SYSTEM_PROMPT,
@@ -629,14 +630,13 @@ export default function ChatbotScreen({ navigation }) {
                   msg.isError && styles.errorBubble,
                 ]}
               >
-                <Text
-                  style={[
-                    styles.messageText,
-                    msg.type === "user" ? styles.userText : styles.botText,
-                  ]}
-                >
-                  {msg.text}
-                </Text>
+                {msg.type === 'user' ? (
+                  <Text style={[styles.messageText, styles.userText]}>
+                    {msg.text}
+                  </Text>
+                ) : (
+                  <SimpleMarkdown text={msg.text} />
+                )}
                 {msg.actionButton && (
                   <TouchableOpacity
                     style={[styles.actionBtn, { backgroundColor: msg.actionButton.color }]}

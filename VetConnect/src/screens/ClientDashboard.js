@@ -300,22 +300,21 @@ const ClientDashboard = ({ navigation }) => {
   }, []);
 
   // ======================================================================
-  // 1.6 COMPUTED OUTSTANDING BALANCE (T4.147)
-  // Replaces the dead userProfile.outstandingBalance counter that T2.101
-  // stopped updating. Queries completed appointments with balanceRemaining > 0
-  // so the banner stays live — settling a balance from the admin side
-  // instantly clears the banner for the client.
-  // ======================================================================
+  // 1.6 COMPUTED OUTSTANDING BALANCE — reads from SALES collection (single source of truth)
+  // Matches admin's computation in usePatientManager.js (line 155-159).
+  // The sales collection is authoritative for financial data — admin "Mark as Settled"
+  // updates sales docs, and this listener picks up the change instantly.
   useEffect(() => {
     if (!auth.currentUser) return;
     const q = query(
-      collection(db, 'appointments'),
+      collection(db, 'sales'),
       where('ownerId', '==', auth.currentUser.uid),
-      where('status', '==', 'completed'),
     );
     const unsub = onSnapshot(q, (snap) => {
       const total = snap.docs.reduce((sum, d) => {
-        const bal = d.data().balanceRemaining || 0;
+        const data = d.data();
+        if (data.status === 'refunded' || data.status === 'voided') return sum;
+        const bal = data.balanceRemaining || 0;
         return sum + (bal > 0 ? bal : 0);
       }, 0);
       setComputedBalance(total);
@@ -849,9 +848,6 @@ const ClientDashboard = ({ navigation }) => {
               <Text style={styles.balanceTitle}>OUTSTANDING BALANCE</Text>
               <Text style={styles.balanceMsg}>₱{computedBalance.toLocaleString()} — SETTLE AT COUNTER</Text>
             </View>
-            <TouchableOpacity onPress={() => navigation.navigate("UserProfile")} style={styles.balanceActionButton}>
-              <Text style={styles.balanceActionText}>VIEW ➔</Text>
-            </TouchableOpacity>
           </View>
         </Animated.View>
       )}

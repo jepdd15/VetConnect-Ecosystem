@@ -16,6 +16,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -27,6 +28,19 @@ import {
 import { auth, db } from "../../firebaseConfig";
 import { COLORS, FONTS, SHADOW } from '../theme/mobileTokens';
 import { calculateAge } from '../utils/helpers';
+import { fetchVaccineCatalog, buildVaccinationStatus } from '../utils/vaccineHelpers';
+
+// Sort option definitions — single source of truth for labels and sort logic keys
+const SORT_OPTIONS = [
+  { key: 'az',          label: 'Name (A → Z)',       shortLabel: 'A-Z'    },
+  { key: 'za',          label: 'Name (Z → A)',       shortLabel: 'Z-A'    },
+  { key: 'newest',      label: 'Newest First',       shortLabel: 'New'    },
+  { key: 'oldest',      label: 'Oldest First',       shortLabel: 'Old'    },
+  { key: 'ageYoung',    label: 'Age (Youngest)',     shortLabel: 'Young'  },
+  { key: 'ageOld',      label: 'Age (Oldest)',       shortLabel: 'Old'    },
+  { key: 'visitRecent', label: 'Last Visit (Recent)','shortLabel': 'Recent'},
+  { key: 'visitOldest', label: 'Last Visit (Oldest)','shortLabel': 'Visit' },
+];
 
 export default function MyPetsScreen({ navigation }) {
   const [pets, setPets] = useState([]);
@@ -37,6 +51,16 @@ export default function MyPetsScreen({ navigation }) {
   const [genderFilter, setGenderFilter] = useState("All");
   const [healthFilter, setHealthFilter] = useState("All");
   const [sortOrder, setSortOrder] = useState("az");
+
+  // Bottom sheet open/close state
+  const [vaccineCatalog, setVaccineCatalog] = useState([]);
+  const [speciesSheetOpen, setSpeciesSheetOpen] = useState(false);
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [sortSheetOpen, setSortSheetOpen] = useState(false);
+
+  useEffect(() => {
+    fetchVaccineCatalog().then(setVaccineCatalog).catch(() => {});
+  }, []);
 
   useEffect(() => {
     // T2.377: Guard against auth null during navigation transitions
@@ -69,15 +93,17 @@ export default function MyPetsScreen({ navigation }) {
               petData.lastVisit = medicalRecord.data().date;
             }
 
+            petData._medicalRecords = medSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
             const dueDates = [];
             medSnap.docs.forEach((vDoc) => {
               const vData = vDoc.data();
               if (vData.vaccineAdministrations?.length > 0) {
                 vData.vaccineAdministrations.forEach((vax) => {
-                  if (vax.dueDate) dueDates.push(vax.dueDate);
+                  if (vax.dueDate) dueDates.push({ name: vax.vaccineName || vax.name || 'Vaccine', dueDate: vax.dueDate });
                 });
               } else if (vData.vaccineData?.dueDate) {
-                dueDates.push(vData.vaccineData.dueDate);
+                dueDates.push({ name: vData.vaccineData.vaccineName || vData.vaccineData.name || 'Vaccine', dueDate: vData.vaccineData.dueDate });
               }
             });
             petData.vaccineDueDates = dueDates;
@@ -120,14 +146,29 @@ export default function MyPetsScreen({ navigation }) {
   };
 
   const getHealthStatus = (item) => {
-    if (!item.lastVisit) return "Needs Checkup";
+    if (vaccineCatalog.length > 0 && item._medicalRecords) {
+      const { completeness } = buildVaccinationStatus(item._medicalRecords, vaccineCatalog, item.species);
+      if (completeness) {
+        if (completeness.administered === 0) return 'Needs Checkup';
+        if (completeness.percentage === 100) return 'Up to Date';
+        const vaxResult = getVaccineStatus(item);
+        if (vaxResult?.status === 'Overdue') return 'Overdue';
+        if (vaxResult?.status === 'Due Soon') return 'Due Soon';
+        return 'Up to Date';
+      }
+    }
+    const vaxResult = getVaccineStatus(item);
+    if (vaxResult?.status === 'Overdue') return 'Overdue';
+    if (vaxResult?.status === 'Due Soon') return 'Due Soon';
+    if (vaxResult?.status === 'Current') return 'Up to Date';
+    if (!item.lastVisit) return 'Needs Checkup';
     const lastVisitDate = item.lastVisit?.toDate
       ? item.lastVisit.toDate()
       : new Date(item.lastVisit?.seconds ? item.lastVisit.seconds * 1000 : item.lastVisit);
     const daysSinceVisit = (new Date() - lastVisitDate) / (1000 * 60 * 60 * 24);
-    if (isNaN(daysSinceVisit)) return "Needs Checkup";
-    if (daysSinceVisit > 365) return "Overdue";
-    return "Up to Date";
+    if (isNaN(daysSinceVisit)) return 'Needs Checkup';
+    if (daysSinceVisit > 365) return 'Needs Checkup';
+    return 'Up to Date';
   };
 
   const getVaccineStatus = (item) => {
@@ -138,20 +179,58 @@ export default function MyPetsScreen({ navigation }) {
     const thirtyDaysFromNow = new Date(now);
     thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
 
-    let hasOverdue = false;
-    let hasDueSoon = false;
+    const overdueNames = [];
+    const dueSoonNames = [];
 
-    dueDates.forEach((d) => {
-      const dueDate = typeof d === "string" ? new Date(d) : d?.toDate ? d.toDate() : d?.seconds ? new Date(d.seconds * 1000) : new Date(d);
+    dueDates.forEach((entry) => {
+      const raw = entry?.dueDate || entry;
+      const name = entry?.name || 'Vaccine';
+      const dueDate = typeof raw === "string" ? new Date(raw) : raw?.toDate ? raw.toDate() : raw?.seconds ? new Date(raw.seconds * 1000) : new Date(raw);
       if (isNaN(dueDate.getTime())) return;
-      if (dueDate < now) hasOverdue = true;
-      else if (dueDate < thirtyDaysFromNow) hasDueSoon = true;
+      if (dueDate < now) overdueNames.push(name);
+      else if (dueDate < thirtyDaysFromNow) dueSoonNames.push(name);
     });
 
-    if (hasOverdue) return "Overdue";
-    if (hasDueSoon) return "Due Soon";
-    return "Current";
+    if (overdueNames.length > 0) return { status: "Overdue", names: overdueNames };
+    if (dueSoonNames.length > 0) return { status: "Due Soon", names: dueSoonNames };
+    return { status: "Current", names: [] };
   };
+
+  // ── Count helpers for bottom sheet option lists ─────────────────
+
+  /** Counts per species value (from unarchived pets). */
+  const speciesCounts = useMemo(() => {
+    const activePets = pets.filter(p => p.status !== "archived");
+    const counts = { All: activePets.length, Canine: 0, Feline: 0 };
+    activePets.forEach(p => {
+      if (p.species === 'Dog' || p.species === 'Canine') counts.Canine++;
+      if (p.species === 'Cat' || p.species === 'Feline') counts.Feline++;
+    });
+    return counts;
+  }, [pets]);
+
+  /** Counts per gender value (from unarchived pets). */
+  const genderCounts = useMemo(() => {
+    const activePets = pets.filter(p => p.status !== "archived");
+    const counts = { All: activePets.length, Male: 0, Female: 0 };
+    activePets.forEach(p => {
+      const g = (p.gender || '').toLowerCase();
+      if (g === 'male') counts.Male++;
+      if (g === 'female') counts.Female++;
+    });
+    return counts;
+  }, [pets]);
+
+  /** Counts per health status value (from unarchived pets). */
+  const healthCounts = useMemo(() => {
+    const activePets = pets.filter(p => p.status !== "archived");
+    const counts = { All: activePets.length, 'Up to Date': 0, 'Due Soon': 0, Overdue: 0, 'Needs Checkup': 0 };
+    activePets.forEach(p => {
+      const status = getHealthStatus(p);
+      if (counts[status] != null) counts[status]++;
+    });
+    return counts;
+  }, [pets]);
 
   const processedPets = useMemo(() => {
     let result = [...pets].filter((p) => p.status !== "archived");
@@ -186,21 +265,39 @@ export default function MyPetsScreen({ navigation }) {
         return status === healthFilter;
       });
     }
+
+    // ── Sort (expanded to 8 directions) ──────────────────────────
     if (sortOrder === "az") {
       result.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    } else if (sortOrder === "za") {
+      result.sort((a, b) => (b.name || "").localeCompare(a.name || ""));
     } else if (sortOrder === "newest") {
       result.sort((a, b) => {
         const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
         const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
         return timeB - timeA;
       });
-    } else if (sortOrder === "age") {
+    } else if (sortOrder === "oldest") {
+      result.sort((a, b) => {
+        const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+        const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+        return timeA - timeB;
+      });
+    } else if (sortOrder === "ageYoung") {
+      // Youngest = most recent DOB (highest timestamp)
       result.sort((a, b) => {
         const dobA = a.dob?.toMillis ? a.dob.toMillis() : a.dob ? new Date(a.dob).getTime() : 0;
         const dobB = b.dob?.toMillis ? b.dob.toMillis() : b.dob ? new Date(b.dob).getTime() : 0;
         return dobB - dobA;
       });
-    } else if (sortOrder === "lastVisit") {
+    } else if (sortOrder === "ageOld") {
+      // Oldest = earliest DOB (lowest timestamp)
+      result.sort((a, b) => {
+        const dobA = a.dob?.toMillis ? a.dob.toMillis() : a.dob ? new Date(a.dob).getTime() : 0;
+        const dobB = b.dob?.toMillis ? b.dob.toMillis() : b.dob ? new Date(b.dob).getTime() : 0;
+        return dobA - dobB;
+      });
+    } else if (sortOrder === "visitRecent") {
       result.sort((a, b) => {
         const visitA = a.lastVisit?.toMillis ? a.lastVisit.toMillis() :
           a.lastVisit?.seconds ? a.lastVisit.seconds * 1000 : 0;
@@ -208,18 +305,33 @@ export default function MyPetsScreen({ navigation }) {
           b.lastVisit?.seconds ? b.lastVisit.seconds * 1000 : 0;
         return visitB - visitA;
       });
+    } else if (sortOrder === "visitOldest") {
+      result.sort((a, b) => {
+        const visitA = a.lastVisit?.toMillis ? a.lastVisit.toMillis() :
+          a.lastVisit?.seconds ? a.lastVisit.seconds * 1000 : 0;
+        const visitB = b.lastVisit?.toMillis ? b.lastVisit.toMillis() :
+          b.lastVisit?.seconds ? b.lastVisit.seconds * 1000 : 0;
+        return visitA - visitB;
+      });
     }
+
     return result;
   }, [pets, searchText, speciesFilter, genderFilter, healthFilter, sortOrder]);
+
+  // Badge counts for the filter icon buttons
+  const activeFilterCount = (genderFilter !== "All" ? 1 : 0) + (healthFilter !== "All" ? 1 : 0);
+  const currentSortOption = SORT_OPTIONS.find(o => o.key === sortOrder) || SORT_OPTIONS[0];
 
   const renderPetCard = ({ item }) => {
     const healthStatusKey = getHealthStatus(item);
     const healthColor =
       healthStatusKey === "Overdue" ? COLORS.danger :
-      healthStatusKey === "Needs Checkup" ? COLORS.warning : COLORS.success;
+      healthStatusKey === "Due Soon" ? COLORS.warning :
+      healthStatusKey === "Needs Checkup" ? COLORS.textMuted : COLORS.success;
     const healthStatus =
-      healthStatusKey === "Overdue" ? "Overdue for Annual Exam" :
-      healthStatusKey === "Needs Checkup" ? "Needs Initial Checkup" : "Up to Date";
+      healthStatusKey === "Overdue" ? "Vaccines Overdue" :
+      healthStatusKey === "Due Soon" ? "Vaccines Due Soon" :
+      healthStatusKey === "Needs Checkup" ? "No Vaccine Records" : "Up to Date";
 
     return (
       <View style={styles.cardWrapper}>
@@ -235,9 +347,9 @@ export default function MyPetsScreen({ navigation }) {
                   : "🐱"}
               </Text>
             </View>
-            <View>
-              <Text style={styles.petName}>{item.name}</Text>
-              <Text style={styles.petBreed}>{item.breed || item.species}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.petName} numberOfLines={1}>{item.name}</Text>
+              <Text style={styles.petBreed} numberOfLines={1}>{item.breed || item.species}</Text>
             </View>
           </View>
 
@@ -269,7 +381,7 @@ export default function MyPetsScreen({ navigation }) {
           ]}
         >
           <MaterialIcons
-            name={healthStatusKey === "Up to Date" ? "verified" : "warning-amber"}
+            name={healthStatusKey === "Up to Date" ? "verified" : healthStatusKey === "Needs Checkup" ? "help-outline" : "warning-amber"}
             size={16}
             color={healthColor}
           />
@@ -278,54 +390,35 @@ export default function MyPetsScreen({ navigation }) {
           </Text>
         </View>
 
-        <View style={styles.demoGrid}>
-          <View style={styles.demoItem}>
-            <Text style={styles.demoLabel}>GENDER</Text>
-            <Text style={styles.demoValue}>{item.gender || "N/A"}</Text>
+        <View style={styles.infoStack}>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Gender</Text>
+            <Text style={styles.infoValue}>{item.gender || "Not set"}{item.isNeutered ? " · Desexed" : ""}</Text>
           </View>
-          <View style={styles.demoItem}>
-            <Text style={styles.demoLabel}>AGE</Text>
-            <Text style={styles.demoValue}>{calculateAge(item.dob)}</Text>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Age</Text>
+            <Text style={styles.infoValue}>{calculateAge(item.dob)}</Text>
           </View>
-          <View style={styles.demoItem}>
-            <Text style={styles.demoLabel}>WEIGHT</Text>
-            <Text style={styles.demoValue}>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Weight</Text>
+            <Text style={styles.infoValue}>
               {(() => {
                 const w = item.lastVitals?.weight ?? item.weight ?? item.lastWeight;
-                return w != null ? `${w} kg` : "N/A";
+                return w != null ? `${w} kg` : "Not recorded";
               })()}
             </Text>
           </View>
-          <View style={styles.demoItem}>
-            <Text style={styles.demoLabel}>STATUS</Text>
-            <Text
-              style={[
-                styles.demoValue,
-                { color: item.isNeutered ? COLORS.success : COLORS.accent },
-              ]}
-            >
-              {item.isNeutered ? "Desexed" : "Intact"}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.alertBox}>
-          <Text style={styles.alertLabel}>ALLERGIES: </Text>
-          <Text
-            style={[
-              styles.alertValue,
-              (item.petAllergies || item.allergies) &&
-              (item.petAllergies || item.allergies) !== "None" &&
-              (item.petAllergies || item.allergies).trim() !== ""
-                ? styles.alertRed
-                : null,
-            ]}
-          >
-            {(() => {
-              const val = item.petAllergies || item.allergies;
-              return val && val.trim() !== "" ? val : "None reported";
-            })()}
-          </Text>
+          {(() => {
+            const val = item.petAllergies || item.allergies;
+            const hasAllergies = val && val.trim() !== "" && val !== "None";
+            if (!hasAllergies) return null;
+            return (
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Allergies</Text>
+                <Text style={[styles.infoValue, { color: COLORS.danger, fontWeight: '900' }]}>{val}</Text>
+              </View>
+            );
+          })()}
         </View>
 
         {item.microchipId && (
@@ -336,21 +429,31 @@ export default function MyPetsScreen({ navigation }) {
         )}
 
         {(() => {
-          const vaxStatus = getVaccineStatus(item);
-          if (!vaxStatus) return null;
+          const vaxResult = getVaccineStatus(item);
+          if (!vaxResult) return null;
+          const { status: vaxStatus, names: vaxNames } = vaxResult;
           const vaxColor =
             vaxStatus === "Overdue" ? COLORS.danger :
             vaxStatus === "Due Soon" ? COLORS.warning : COLORS.success;
           const vaxIcon =
             vaxStatus === "Overdue" ? "warning-amber" :
             vaxStatus === "Due Soon" ? "schedule" : "verified";
+          const vaxLabel =
+            vaxStatus === "Overdue" ? "VACCINES OVERDUE" :
+            vaxStatus === "Due Soon" ? "VACCINES DUE SOON" : "VACCINES CURRENT";
           return (
             <View style={[styles.vaccineBadge, { backgroundColor: `${vaxColor}1A`, borderLeftColor: vaxColor }]}>
               <MaterialIcons name={vaxIcon} size={14} color={vaxColor} />
-              <Text style={[styles.vaccineBadgeText, { color: vaxColor }]}>
-                {vaxStatus === "Overdue" ? "VACCINES OVERDUE" :
-                 vaxStatus === "Due Soon" ? "VACCINES DUE SOON" : "VACCINES CURRENT"}
-              </Text>
+              <View>
+                <Text style={[styles.vaccineBadgeText, { color: vaxColor }]}>{vaxLabel}</Text>
+                {vaxNames.length > 0 && (
+                  <Text style={[styles.vaccineBadgeDetail, { color: vaxColor }]}>
+                    {vaxNames.length <= 3
+                      ? vaxNames.join(', ')
+                      : `${vaxNames.slice(0, 2).join(', ')} +${vaxNames.length - 2} more`}
+                  </Text>
+                )}
+              </View>
             </View>
           );
         })()}
@@ -385,131 +488,59 @@ export default function MyPetsScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
+      {/* ── Compact search + filter row (replaces 4 rows) ─────────── */}
       <View style={styles.controlBar}>
-        <View style={styles.searchContainer}>
-          <MaterialIcons
-            name="search"
-            size={22}
-            color={COLORS.textMuted}
-            style={{ marginLeft: 15 }}
-          />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search name or breed..."
-            placeholderTextColor={COLORS.textMuted}
-            value={searchText}
-            onChangeText={setSearchText}
-          />
-        </View>
-
-        <View style={styles.filterRow}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.chipScroll}
-          >
-            <TouchableOpacity
-              style={[
-                styles.chip,
-                speciesFilter === "All" && styles.chipActive,
-              ]}
-              onPress={() => setSpeciesFilter("All")}
-            >
-              <Text
-                style={[
-                  styles.chipText,
-                  speciesFilter === "All" && styles.chipTextActive,
-                ]}
-              >
-                All Pets
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.chip,
-                speciesFilter === "Canine" && styles.chipActive,
-              ]}
-              onPress={() => setSpeciesFilter("Canine")}
-            >
-              <Text
-                style={[
-                  styles.chipText,
-                  speciesFilter === "Canine" && styles.chipTextActive,
-                ]}
-              >
-                🐶 Dogs
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.chip,
-                speciesFilter === "Feline" && styles.chipActive,
-              ]}
-              onPress={() => setSpeciesFilter("Feline")}
-            >
-              <Text
-                style={[
-                  styles.chipText,
-                  speciesFilter === "Feline" && styles.chipTextActive,
-                ]}
-              >
-                🐱 Cats
-              </Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </View>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.chipScroll, { marginTop: 8 }]}>
-          {["All", "Male", "Female"].map((g) => (
-            <TouchableOpacity
-              key={g}
-              style={[styles.chip, genderFilter === g && styles.chipActive]}
-              onPress={() => setGenderFilter(g)}
-            >
-              <Text style={[styles.chipText, genderFilter === g && styles.chipTextActive]}>
-                {g === "All" ? "Any Sex" : g}
-              </Text>
-            </TouchableOpacity>
-          ))}
-          <View style={styles.chipDivider} />
-          {["All", "Up to Date", "Overdue", "Needs Checkup"].map((h) => (
-            <TouchableOpacity
-              key={h}
-              style={[styles.chip, healthFilter === h && styles.chipActive]}
-              onPress={() => setHealthFilter(h)}
-            >
-              <Text style={[styles.chipText, healthFilter === h && styles.chipTextActive]}>
-                {h === "All" ? "Any Status" : h}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        <View style={styles.filterRow}>
-          <View style={{ flex: 1 }} />
-          <TouchableOpacity
-            style={styles.sortBtn}
-            onPress={() =>
-              setSortOrder((prev) => {
-                const cycle = ["az", "newest", "age", "lastVisit"];
-                return cycle[(cycle.indexOf(prev) + 1) % cycle.length];
-              })
-            }
-          >
+        <View style={styles.searchFilterRow}>
+          {/* Search bar — flex:1 so it fills remaining width */}
+          <View style={styles.searchContainer}>
             <MaterialIcons
-              name={
-                sortOrder === "az" ? "sort-by-alpha" :
-                sortOrder === "newest" ? "update" :
-                sortOrder === "age" ? "cake" : "event"
-              }
-              size={18}
-              color={COLORS.accent}
+              name="search"
+              size={22}
+              color={COLORS.textMuted}
+              style={{ marginLeft: 15 }}
             />
-            <Text style={styles.sortBtnText}>
-              {sortOrder === "az" ? " A-Z" :
-               sortOrder === "newest" ? " New" :
-               sortOrder === "age" ? " Age" : " Visit"}
-            </Text>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search..."
+              placeholderTextColor={COLORS.textMuted}
+              value={searchText}
+              onChangeText={setSearchText}
+            />
+          </View>
+
+          {/* Species filter button — badge when not "All" */}
+          <TouchableOpacity
+            style={styles.filterIconBtn}
+            onPress={() => setSpeciesSheetOpen(true)}
+          >
+            <Text style={{ fontSize: 18 }}>🐾</Text>
+            {speciesFilter !== "All" && (
+              <View style={styles.filterBadge}>
+                <Text style={styles.filterBadgeText}>1</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          {/* Gender + Health combined filter button — badge with active count */}
+          <TouchableOpacity
+            style={styles.filterIconBtn}
+            onPress={() => setFilterSheetOpen(true)}
+          >
+            <MaterialIcons name="tune" size={18} color={COLORS.accent} />
+            {activeFilterCount > 0 && (
+              <View style={styles.filterBadge}>
+                <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          {/* Sort button — shows current sort's short label */}
+          <TouchableOpacity
+            style={styles.sortIconBtn}
+            onPress={() => setSortSheetOpen(true)}
+          >
+            <MaterialIcons name="swap-vert" size={16} color={COLORS.accent} />
+            <Text style={styles.sortIconText}>{currentSortOption.shortLabel}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -555,6 +586,186 @@ export default function MyPetsScreen({ navigation }) {
           <Text style={styles.fabText}>Add New Pet</Text>
         </TouchableOpacity>
       </View>
+
+      {/* ── SPECIES FILTER BOTTOM SHEET ─────────────────────────────── */}
+      <Modal
+        visible={speciesSheetOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSpeciesSheetOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.filterOverlay}
+          activeOpacity={1}
+          onPress={() => setSpeciesSheetOpen(false)}
+        >
+          <View style={styles.filterSheet} onStartShouldSetResponder={() => true}>
+            <View style={styles.filterSheetHandle} />
+            <Text style={styles.filterSheetTitle}>FILTER BY SPECIES</Text>
+
+            {[
+              { value: 'All',    label: 'All Pets', emoji: '🐾' },
+              { value: 'Canine', label: 'Dogs',     emoji: '🐶' },
+              { value: 'Feline', label: 'Cats',     emoji: '🐱' },
+            ].map(({ value, label, emoji }) => {
+              const isSelected = speciesFilter === value;
+              return (
+                <TouchableOpacity
+                  key={value}
+                  style={styles.filterSheetRow}
+                  onPress={() => {
+                    setSpeciesFilter(value);
+                    setSpeciesSheetOpen(false);
+                  }}
+                >
+                  <MaterialIcons
+                    name={isSelected ? 'radio-button-checked' : 'radio-button-unchecked'}
+                    size={22}
+                    color={isSelected ? COLORS.sky : COLORS.textMuted}
+                  />
+                  <Text style={styles.filterSheetEmoji}>{emoji}</Text>
+                  <Text style={[styles.filterSheetLabel, isSelected && styles.filterSheetLabelActive]}>
+                    {label}
+                  </Text>
+                  <Text style={styles.filterSheetCount}>({speciesCounts[value] ?? 0})</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* ── GENDER + HEALTH COMBINED FILTER BOTTOM SHEET ────────────── */}
+      <Modal
+        visible={filterSheetOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setFilterSheetOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.filterOverlay}
+          activeOpacity={1}
+          onPress={() => setFilterSheetOpen(false)}
+        >
+          <View style={styles.filterSheet} onStartShouldSetResponder={() => true}>
+            <View style={styles.filterSheetHandle} />
+            <Text style={styles.filterSheetTitle}>FILTER PETS</Text>
+
+            <ScrollView style={styles.filterSheetScroll}>
+              {/* Gender section */}
+              <Text style={styles.filterSheetSection}>GENDER</Text>
+              {[
+                { value: 'All',    label: 'Any' },
+                { value: 'Male',   label: 'Male' },
+                { value: 'Female', label: 'Female' },
+              ].map(({ value, label }) => {
+                const isSelected = genderFilter === value;
+                return (
+                  <TouchableOpacity
+                    key={value}
+                    style={styles.filterSheetRow}
+                    onPress={() => setGenderFilter(value)}
+                  >
+                    <MaterialIcons
+                      name={isSelected ? 'radio-button-checked' : 'radio-button-unchecked'}
+                      size={22}
+                      color={isSelected ? COLORS.sky : COLORS.textMuted}
+                    />
+                    <Text style={[styles.filterSheetLabel, isSelected && styles.filterSheetLabelActive]}>
+                      {label}
+                    </Text>
+                    <Text style={styles.filterSheetCount}>({genderCounts[value] ?? 0})</Text>
+                  </TouchableOpacity>
+                );
+              })}
+
+              {/* Health Status section */}
+              <Text style={[styles.filterSheetSection, { marginTop: 16 }]}>VACCINE STATUS</Text>
+              {[
+                { value: 'All',           label: 'Any' },
+                { value: 'Up to Date',    label: 'Up to Date' },
+                { value: 'Due Soon',      label: 'Due Soon' },
+                { value: 'Overdue',       label: 'Overdue' },
+                { value: 'Needs Checkup', label: 'Needs Checkup' },
+              ].map(({ value, label }) => {
+                const isSelected = healthFilter === value;
+                return (
+                  <TouchableOpacity
+                    key={value}
+                    style={styles.filterSheetRow}
+                    onPress={() => setHealthFilter(value)}
+                  >
+                    <MaterialIcons
+                      name={isSelected ? 'radio-button-checked' : 'radio-button-unchecked'}
+                      size={22}
+                      color={isSelected ? COLORS.sky : COLORS.textMuted}
+                    />
+                    <Text style={[styles.filterSheetLabel, isSelected && styles.filterSheetLabelActive]}>
+                      {label}
+                    </Text>
+                    <Text style={styles.filterSheetCount}>({healthCounts[value] ?? 0})</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            {/* CLEAR ALL resets both gender and health, but does not close the sheet */}
+            <View style={styles.filterSheetActions}>
+              <TouchableOpacity
+                style={styles.filterSheetClearBtn}
+                onPress={() => {
+                  setGenderFilter("All");
+                  setHealthFilter("All");
+                }}
+              >
+                <Text style={styles.filterSheetClearText}>CLEAR ALL</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* ── SORT BOTTOM SHEET ────────────────────────────────────────── */}
+      <Modal
+        visible={sortSheetOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSortSheetOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.filterOverlay}
+          activeOpacity={1}
+          onPress={() => setSortSheetOpen(false)}
+        >
+          <View style={styles.filterSheet} onStartShouldSetResponder={() => true}>
+            <View style={styles.filterSheetHandle} />
+            <Text style={styles.filterSheetTitle}>SORT BY</Text>
+
+            {SORT_OPTIONS.map(({ key, label }) => {
+              const isSelected = sortOrder === key;
+              return (
+                <TouchableOpacity
+                  key={key}
+                  style={styles.filterSheetRow}
+                  onPress={() => {
+                    setSortOrder(key);
+                    setSortSheetOpen(false);
+                  }}
+                >
+                  <MaterialIcons
+                    name={isSelected ? 'radio-button-checked' : 'radio-button-unchecked'}
+                    size={22}
+                    color={isSelected ? COLORS.sky : COLORS.textMuted}
+                  />
+                  <Text style={[styles.filterSheetLabel, isSelected && styles.filterSheetLabelActive]}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -563,89 +774,181 @@ const styles = StyleSheet.create({
   // ── Screen shell ────────────────────────────────────────────────
   container: { flex: 1, backgroundColor: COLORS.cream },
 
-  // ── Control bar (search + filters) ──────────────────────────────
+  // ── Control bar (search + filter icon buttons) ──────────────────
   controlBar: {
     backgroundColor: COLORS.white,
     padding: 15,
-    paddingTop: 15,
     borderBottomWidth: 2,
     borderBottomColor: COLORS.border,
   },
 
-  // Search bar — neubrutalist: zero radius, thick espresso border
+  // Single compact row: [search flex:1] [🐾] [⚙] [↕ A-Z]
+  searchFilterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+
+  // Search bar — flex:1, zero radius, thick espresso border
   searchContainer: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: COLORS.inputBg,
     borderRadius: 0,
     borderWidth: 2,
     borderColor: COLORS.accent,
-    marginBottom: 15,
+    height: 44,
   },
   searchInput: {
     flex: 1,
     paddingHorizontal: 10,
-    paddingVertical: 12,
-    fontSize: 16,
+    paddingVertical: 10,
+    fontSize: 15,
     color: COLORS.textPrimary,
     fontWeight: "600",
   },
 
-  filterRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  chipScroll: { flex: 1, marginRight: 10 },
-
-  // Filter chips — zero radius, outlined inactive / brand active
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    backgroundColor: COLORS.white,
-    borderRadius: 0,
-    marginRight: 8,
+  // Square icon filter buttons
+  filterIconBtn: {
+    width: 44,
+    height: 44,
     borderWidth: 2,
-    borderColor: COLORS.accent,
+    borderColor: COLORS.border,
+    borderRadius: 0,
+    backgroundColor: COLORS.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
   },
-  chipActive: {
+
+  // Badge on filter buttons — sky blue, neubrutalist (zero radius)
+  filterBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
     backgroundColor: COLORS.sky,
+    borderRadius: 0,
+    minWidth: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
     borderColor: COLORS.brand,
   },
-  chipText: {
-    color: COLORS.accent,
-    fontWeight: "900",
-    fontSize: 13,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  chipTextActive: { color: COLORS.white },
-  chipDivider: {
-    width: 2,
-    height: 24,
-    backgroundColor: COLORS.border,
-    marginHorizontal: 8,
-    alignSelf: "center",
+  filterBadgeText: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: COLORS.cream,
   },
 
-  // Sort button — zero radius, outlined
-  sortBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: COLORS.white,
-    borderRadius: 0,
+  // Sort button — shows swap icon + short label text
+  sortIconBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    height: 44,
+    paddingHorizontal: 10,
     borderWidth: 2,
-    borderColor: COLORS.accent,
+    borderColor: COLORS.border,
+    borderRadius: 0,
+    backgroundColor: COLORS.white,
   },
-  sortBtnText: {
+  sortIconText: {
+    fontSize: 11,
+    fontWeight: '900',
     color: COLORS.accent,
-    fontWeight: "900",
-    fontSize: 13,
+    textTransform: 'uppercase',
+  },
+
+  // ── Bottom sheet chrome ──────────────────────────────────────────
+  filterOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  filterSheet: {
+    backgroundColor: COLORS.cream,
+    borderTopWidth: 2,
+    borderTopColor: COLORS.border,
+    paddingBottom: 30,
+    maxHeight: '65%',
+  },
+  filterSheetHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: COLORS.borderLight,
+    alignSelf: 'center',
+    marginTop: 10,
+    marginBottom: 16,
+  },
+  filterSheetTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: COLORS.accent,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    paddingHorizontal: 20,
+    marginBottom: 8,
+  },
+  // Section sub-header inside combined filter sheet
+  filterSheetSection: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: COLORS.textMuted,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    paddingHorizontal: 20,
+    marginBottom: 4,
+    marginTop: 4,
+  },
+  filterSheetScroll: {
+    paddingHorizontal: 0,
+  },
+  filterSheetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+  },
+  filterSheetEmoji: {
+    fontSize: 16,
+  },
+  filterSheetLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.accent,
+  },
+  filterSheetLabelActive: {
+    color: COLORS.brand,
+    fontWeight: '900',
+  },
+  filterSheetCount: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+  },
+  filterSheetActions: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+  filterSheetClearBtn: {
+    paddingVertical: 12,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    borderRadius: 0,
+    alignItems: 'center',
+    backgroundColor: COLORS.white,
+  },
+  filterSheetClearText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.accent,
+    textTransform: 'uppercase',
     letterSpacing: 0.5,
-    textTransform: "uppercase",
-    marginLeft: 4,
   },
 
   // ── Pet card — neubrutalist with offset shadow ───────────────────
@@ -674,7 +977,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 2,
     borderBottomColor: COLORS.borderLight,
   },
-  identityBox: { flexDirection: "row", alignItems: "center" },
+  identityBox: { flexDirection: "row", alignItems: "center", flex: 1 },
 
   // Avatar — intentional circular exception per design spec
   avatarBox: {
@@ -724,8 +1027,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 18,
     borderLeftWidth: 5,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
+    marginBottom: 10,
   },
   healthText: {
     fontSize: 12,
@@ -736,38 +1038,26 @@ const styles = StyleSheet.create({
   },
 
   // Demographics grid
-  demoGrid: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    padding: 18,
-    paddingBottom: 10,
+  infoStack: {
+    paddingHorizontal: 18,
+    paddingBottom: 12,
+    gap: 6,
   },
-  demoItem: { flex: 1 },
-  demoLabel: {
-    fontSize: 10,
-    color: COLORS.textMuted,
-    fontWeight: "900",
-    marginBottom: 4,
-    letterSpacing: 1,
-    textTransform: "uppercase",
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  demoValue: {
-    fontSize: 13,
-    color: COLORS.textPrimary,
-    fontWeight: "900",
-  },
-
-  // Allergy box
-  alertBox: { flexDirection: "row", paddingHorizontal: 18, paddingBottom: 18 },
-  alertLabel: {
+  infoLabel: {
     fontSize: 12,
     color: COLORS.textMuted,
-    fontWeight: "900",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
+    fontWeight: '700',
   },
-  alertValue: { fontSize: 12, color: COLORS.textPrimary, fontWeight: "800" },
-  alertRed: { color: COLORS.danger },
+  infoValue: {
+    fontSize: 13,
+    color: COLORS.textPrimary,
+    fontWeight: '900',
+  },
 
   // Microchip badge
   microchipBadge: {
@@ -799,6 +1089,11 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: 1,
     textTransform: "uppercase",
+  },
+  vaccineBadgeDetail: {
+    fontSize: 10,
+    fontWeight: '700',
+    marginTop: 2,
   },
 
   // ── Footer action buttons ────────────────────────────────────────

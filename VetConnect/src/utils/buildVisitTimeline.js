@@ -57,14 +57,8 @@ const TERMINAL_STATUSES = new Set(['completed', 'cancelled', 'no-show', 'carried
  * Event types that are never shown to the client — internal workflow noise.
  */
 const EXCLUDED_TYPES = new Set([
-  'INCEPTION',
-  'TRIAGE_DEFER',
-  'TRIAGE_CARRYOVER',
-  'TRIAGE_RESCHEDULE',
   'DRAFT_SAVED',
   'DRAFT_RESUMED',
-  'SERVICE_STARTED',
-  'SERVICE_COMPLETED',
   'DISPENSING_FLAGGED',
   'FLAG_RESOLVED',
 ]);

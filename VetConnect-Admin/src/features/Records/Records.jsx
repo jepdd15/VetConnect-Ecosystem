@@ -270,8 +270,10 @@ export default function Records() {
       const firstVisit = visits[0];
       const lastVisit = visits[visits.length - 1];
       visits.forEach((v, i) => {
+        const allCaseServices = [...new Set(visits.flatMap(vis => (vis.services || []).map(s => s.name)).filter(Boolean))].join(', ')
+          || v.serviceType || 'Visit';
         const caseLabel = visits.length > 1
-          ? `${v.petName || 'Unknown'} — ${(v.services || []).map(s => s.name).join(', ') || v.serviceType || 'Visit'} — Day 1–${visits.length} — ${firstVisit.jsCreatedAt?.toLocaleDateString() || '?'} to ${lastVisit.jsCreatedAt?.toLocaleDateString() || '?'}`
+          ? `${v.petName || 'Unknown'} — ${allCaseServices} — Day 1–${visits.length} — ${firstVisit.jsCreatedAt?.toLocaleDateString() || '?'} to ${lastVisit.jsCreatedAt?.toLocaleDateString() || '?'}`
           : null;
         result.push({
           ...v,
@@ -690,7 +692,7 @@ export default function Records() {
       }
     },
     {
-      field: 'jsCreatedAt', headerName: 'Created', width: 220,
+      field: 'jsCreatedAt', headerName: 'Created', width: 150,
       renderCell: (p) => {
         if (p.row._isDateHeader) {
           return (
@@ -811,7 +813,7 @@ export default function Records() {
        }
     },
     {
-      field: 'actions', headerName: 'Actions', width: 280, align: 'center', headerAlign: 'center',
+      field: 'actions', headerName: 'Actions', width: 220, align: 'center', headerAlign: 'center',
       renderCell: (p) => {
         if (p.row._isDateHeader) return null;
         if (p.row._isCaseHeader) return null;

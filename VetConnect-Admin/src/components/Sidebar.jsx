@@ -22,6 +22,7 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import TvIcon from '@mui/icons-material/Tv';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 
 const drawerWidth = 260;
 
@@ -35,6 +36,7 @@ const menuItems = [
   { name: 'Inventory', icon: <InventoryIcon />, path: '/inventory' },
   { name: 'Staff', icon: <StaffIcon />, path: '/staff' },
   { name: 'Transactions', icon: <TransactionIcon />, path: '/sales' },
+  { name: 'Quick Sale', icon: <ShoppingCartIcon />, path: '/sales', action: 'retailPOS' },
   { name: 'Expenses', icon: <ExpenseIcon />, path: '/expenses' },
   { name: 'Settings', icon: <SettingsIcon />, path: '/settings' },
   // { name: 'Forensic Reports', icon: <AssessmentIcon />, path: '/reports' },
@@ -51,8 +53,12 @@ export default function Sidebar({ onLogout, lowStockCount = 0 }) {
   // T4.154: All staff see all menu items — no filtering needed.
   const visibleMenuItems = menuItems;
 
-  const handleNavClick = (path) => {
-    navigate(path);
+  const handleNavClick = (path, action) => {
+    if (action === 'retailPOS') {
+      navigate('/sales', { state: { openRetailPOS: true } });
+    } else {
+      navigate(path);
+    }
     if (isMobile) setMobileOpen(false);
   };
 
@@ -102,10 +108,10 @@ export default function Sidebar({ onLogout, lowStockCount = 0 }) {
           {/* Render ONLY the modules they have permission to see */}
           {visibleMenuItems.map((item) => (
             <ListItemButton
-              key={item.path}
-              onClick={() => handleNavClick(item.path)}
+              key={item.action ? `${item.path}-${item.action}` : item.path}
+              onClick={() => handleNavClick(item.path, item.action)}
               sx={{
-                backgroundColor: (item.path === '/' ? location.pathname === '/' : location.pathname.startsWith(item.path)) ? 'rgba(255,255,255,0.15)' : 'transparent',
+                backgroundColor: !item.action && (item.path === '/' ? location.pathname === '/' : location.pathname.startsWith(item.path)) ? 'rgba(255,255,255,0.15)' : 'transparent',
                 '&:hover': { backgroundColor: 'rgba(255,255,255,0.08)' },
                 mx: 2,
                 mb: 1,

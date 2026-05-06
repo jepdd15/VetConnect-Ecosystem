@@ -919,6 +919,13 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
     const paidSales = sales.filter(s => s.status !== 'refunded' && s.status !== 'voided');
     const refundedSales = sales.filter(s => s.status === 'refunded');
 
+    // T4.184: Retail vs clinical revenue split
+    const retailSales = paidSales.filter(s => s.saleType === 'retail');
+    const clinicalSales = paidSales.filter(s => s.saleType !== 'retail');
+    const retailRevenue = retailSales.reduce((sum, s) => sum + (parseFloat(s.total) || 0), 0);
+    const clinicalRevenue = clinicalSales.reduce((sum, s) => sum + (parseFloat(s.total) || 0), 0);
+    const retailTransactionCount = retailSales.length;
+
     // T2.230: Revenue collected (sum of total) and billed (sum of subtotal)
     const totalCollected = paidSales.reduce((sum, s) => sum + (parseFloat(s.total) || 0), 0);
     const totalBilled = paidSales.reduce((sum, s) => sum + (parseFloat(s.subtotal) || 0), 0);
@@ -1008,6 +1015,9 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
       revByDept,
       monthlyBurnRate,
       dailyExpenseRate: Math.round(dailyExpenseRate),
+      retailRevenue,
+      clinicalRevenue,
+      retailTransactionCount,
     };
   }, [sales, expenses, appointments, period, dateRange]);
 

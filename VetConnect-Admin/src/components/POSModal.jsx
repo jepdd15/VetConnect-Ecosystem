@@ -5,7 +5,7 @@ import {
   Chip, IconButton, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, FormControl, InputLabel, Select,
   FormControlLabel, Switch, Alert, Divider, ListSubheader, InputAdornment, Tooltip,
-  ToggleButtonGroup, ToggleButton, Popover,
+  ToggleButtonGroup, ToggleButton, Popover, Autocomplete,
 } from '@mui/material';
 
 // --- ALL REQUIRED ICONS ---
@@ -19,8 +19,10 @@ import DescriptionIcon from '@mui/icons-material/Description';
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
 import MedicalServicesIcon from '@mui/icons-material/MedicalServices';
 import PetsIcon from '@mui/icons-material/Pets';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
+import PersonSearchIcon from '@mui/icons-material/PersonSearch';
 
-import { doc, getDoc, collection, runTransaction, Timestamp, updateDoc, increment, arrayUnion } from 'firebase/firestore';
+import { doc, getDoc, collection, runTransaction, Timestamp, updateDoc, increment, arrayUnion, getDocs, query, where } from 'firebase/firestore';
 import { COLORS, FONT } from '../theme/designTokens';
 import { db } from '../firebaseConfig';
 import { useUser } from '../context/UserContext';
@@ -41,6 +43,7 @@ const DISCOUNT_REASONS = [
 ];
 
 export default function POSModal({ open, onClose, patient, inventoryList, servicesList, groupAppointments = [], isDayClosed = false, closingData = null }) {
+  const isRetailMode = !patient;
   const { profile } = useUser();
   const clinicSettings = useClinicSettings();
   const [cart, setCart] = useState([]);
@@ -83,6 +86,11 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
   const [checkoutSuccess, setCheckoutSuccess] = useState(null);
   const [checkoutError, setCheckoutError] = useState('');
   const [emailFeedback, setEmailFeedback] = useState('');
+
+  const [showCustomerNudge, setShowCustomerNudge] = useState(false);
+  const [linkedClient, setLinkedClient] = useState(null);
+  const [clientOptions, setClientOptions] = useState([]);
+  const [clientSearchLoading, setClientSearchLoading] = useState(false);
 
   /** Whether the group billing toggle should be shown. */
   const isGroupVisit = groupAppointments.length > 1;
@@ -252,6 +260,17 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             }
         } catch (e) { console.error(e); }
         setHasScId(foundId); setApplyScPwd(foundId);
+      }
+
+      if (open && isRetailMode) {
+        setCart([]); setSelectedItemVal(''); setBarcodeInput('');
+        setPaymentTenders([{ method: 'Cash', amount: '', amountTendered: '' }]);
+        setDepositAmount('');
+        setItemDiscounts({}); setBillDiscountType('%'); setBillDiscountValue(''); setBillDiscountReason('');
+        setCheckoutSuccess(null); setCheckoutError(''); setEmailFeedback('');
+        setHasScId(false); setApplyScPwd(false);
+        setBillingMode('individual');
+        setLinkedClient(null); setShowCustomerNudge(false);
       }
     };
     initPOS();
@@ -585,6 +604,89 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
     `;
   };
 
+  const generateRetailReceiptHTML = (transactionId, receiptNumber, clientInfo) => {
+    const today = new Date().toLocaleString();
+    const itemsHTML = cart.map(item => `
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${item.name}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: center;">${item.qty}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">P${item.price.toFixed(2)}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">P${(item.price * item.qty).toFixed(2)}</td>
+      </tr>
+    `).join('');
+
+    const customerLabel = clientInfo?.fullName
+      ? `${clientInfo.fullName}${clientInfo.phone ? ` (${clientInfo.phone})` : ''}`
+      : 'Counter Sale (Walk-In)';
+
+    return `
+      <html>
+        <head>
+          <style>
+            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #333; line-height: 1.6; }
+            .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #8B4513; padding-bottom: 10px; }
+            .clinic-name { font-size: 24px; font-weight: bold; color: #5D4037; margin: 0; }
+            .details { margin-bottom: 20px; font-size: 14px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+            th { background-color: #f5f5f5; padding: 10px; text-align: left; font-size: 14px; border-bottom: 2px solid #ddd; }
+            .totals { width: 50%; float: right; border-top: 2px solid #8B4513; padding-top: 10px; }
+            .total-row { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 14px; }
+            .grand-total { font-weight: bold; font-size: 18px; margin-top: 10px; border-top: 1px dashed #ccc; padding-top: 10px; }
+            .footer { clear: both; text-align: center; margin-top: 50px; font-size: 12px; color: #777; }
+            .retail-badge { text-align: center; font-weight: bold; border: 2px solid #3ABEF9; padding: 5px; margin-bottom: 15px; color: #3ABEF9; letter-spacing: 2px; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="retail-badge">RETAIL SALE</div>
+          <div class="header">
+            <p class="clinic-name">${clinicSettings.clinicName}</p>
+            <p style="margin: 0; font-size: 12px; color: #666;">${clinicSettings.clinicAddress} | Official Receipt</p>
+          </div>
+          <div class="details">
+            <p><strong>Receipt #:</strong> ${receiptNumber || transactionId.slice(0, 8).toUpperCase()}</p>
+            <p><strong>Date:</strong> ${today}</p>
+            <p><strong>Customer:</strong> ${customerLabel}</p>
+            <p><strong>Cashier:</strong> ${profile?.fullName || 'POS Cashier'}</p>
+          </div>
+          <table>
+            <thead><tr><th>Description</th><th style="text-align:center;">Qty</th><th style="text-align:right;">Price</th><th style="text-align:right;">Amount</th></tr></thead>
+            <tbody>${itemsHTML}</tbody>
+          </table>
+          <div class="totals">
+            <div class="total-row"><span>Subtotal:</span><span>P${financials.subtotal}</span></div>
+            ${applyScPwd && parseFloat(financials.discount) > 0 ? `
+              <div class="total-row"><span>VAT Exempt (Eligible):</span><span>P${financials.vatExempt}</span></div>
+              <div class="total-row" style="color: #D32F2F;"><span>SC/PWD Discount (20%):</span><span>- P${financials.discount}</span></div>
+            ` : ''}
+            ${!applyScPwd && parseFloat(financials.itemDiscounts) > 0 ? `
+              <div class="total-row" style="color: #E65100;"><span>Item Discounts:</span><span>- P${financials.itemDiscounts}</span></div>
+            ` : ''}
+            ${!applyScPwd && parseFloat(financials.billDiscount) > 0 ? `
+              <div class="total-row" style="color: #E65100;"><span>Bill Discount (${billDiscountReason || 'Custom'}):</span><span>- P${financials.billDiscount}</span></div>
+            ` : ''}
+            <div class="total-row grand-total"><span>TOTAL PAID:</span><span>P${financials.balanceDue}</span></div>
+            <div class="total-row" style="margin-top:5px; font-size:12px; color:#555; font-weight:bold;"><span>Payment:</span><span>${paymentTenders.length > 1 ? 'Split' : primaryPaymentMethod}</span></div>
+            ${paymentTenders.map(t => {
+              const amt = parseFloat(t.amount) || balanceDueNum;
+              let line = `<div class="total-row" style="font-size:12px; color:#555;"><span>${t.method}:</span><span>P${amt.toFixed(2)}</span></div>`;
+              if (t.method === 'Cash' && t.amountTendered && parseFloat(t.amountTendered) > 0) {
+                const tendered = parseFloat(t.amountTendered);
+                const change = Math.max(0, tendered - amt);
+                line += `<div class="total-row" style="font-size:11px; color:#888; margin-left:10px;"><span>&nbsp;&nbsp;Tendered:</span><span>P${tendered.toFixed(2)}</span></div>`;
+                line += `<div class="total-row" style="font-size:11px; color:#888; font-weight:bold; margin-left:10px;"><span>&nbsp;&nbsp;Change:</span><span>P${change.toFixed(2)}</span></div>`;
+              }
+              return line;
+            }).join('')}
+          </div>
+          <div class="footer">
+            <p>Thank you for your purchase at ${clinicSettings.clinicName}!</p>
+            <p>This document is a system-generated receipt.</p>
+          </div>
+        </body>
+      </html>
+    `;
+  };
+
   const handleSaveDraft = async () => {
     setLoading(true);
     try {
@@ -760,6 +862,28 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
     }
   };
 
+  const searchClients = async (searchText) => {
+    if (!searchText || searchText.length < 2) { setClientOptions([]); return; }
+    setClientSearchLoading(true);
+    try {
+      const q = query(collection(db, 'users'), where('role', 'in', ['client', 'pet_owner']));
+      const snap = await getDocs(q);
+      const results = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(u =>
+          (u.fullName || '').toLowerCase().includes(searchText.toLowerCase()) ||
+          (u.phone || '').includes(searchText)
+        )
+        .slice(0, 10);
+      setClientOptions(results);
+    } catch (e) {
+      console.error('[POSModal] Client search error:', e);
+      setClientOptions([]);
+    } finally {
+      setClientSearchLoading(false);
+    }
+  };
+
   const handleCheckout = async () => {
     setLoading(true);
     try {
@@ -870,6 +994,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
           });
 
           salePayload = {
+            saleType: 'clinical',
             receiptNumber,
             checkoutCorrelationId,
             visitGroupId: patient.visitGroupId,
@@ -941,6 +1066,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
           const freshApptData = individualApptDoc.data();
 
           salePayload = {
+            saleType: 'clinical',
             receiptNumber,
             checkoutCorrelationId,
             appointmentId: patient.id,
@@ -1080,6 +1206,126 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
     }
   };
 
+  const handleRetailCheckout = async (clientInfo) => {
+    setLoading(true);
+    try {
+      let checkoutReceiptNumber = '';
+
+      const transactionId = await runTransaction(db, async (transaction) => {
+        const patientLabel = clientInfo?.fullName || 'Counter Sale';
+
+        const inventoryMap = await readInventoryDocs(transaction, cart);
+        const counterRef = doc(db, 'counters', 'receipt_sequence');
+        const counterSnap = await transaction.get(counterRef);
+
+        const { updatePayloads, logEntries, batchSourceMap } =
+          computeInventoryDeductions(cart, inventoryMap, patientLabel);
+
+        let nextSeq;
+        if (!counterSnap.exists()) { nextSeq = 1; }
+        else { nextSeq = (counterSnap.data().value || 0) + 1; }
+        const today = new Date();
+        const dateStr = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
+        const receiptNumber = `OR-${dateStr}-${String(nextSeq).padStart(4, '0')}`;
+        checkoutReceiptNumber = receiptNumber;
+
+        const customDiscountAuditFields = {
+          customDiscountTotal: applyScPwd ? 0 : parseFloat(financials.itemDiscounts) + parseFloat(financials.billDiscount),
+          itemDiscountsTotal: applyScPwd ? 0 : parseFloat(financials.itemDiscounts),
+          billDiscountAmount: applyScPwd ? 0 : parseFloat(financials.billDiscount),
+          billDiscountType: !applyScPwd && parseFloat(billDiscountValue) > 0 ? billDiscountType : null,
+          billDiscountValue: !applyScPwd && parseFloat(billDiscountValue) > 0 ? parseFloat(billDiscountValue) : null,
+          billDiscountReason: !applyScPwd && billDiscountReason ? billDiscountReason : null,
+          itemDiscountDetails: !applyScPwd && Object.keys(itemDiscounts).length > 0
+            ? Object.entries(itemDiscounts).map(([idx, d]) => ({
+                itemIndex: parseInt(idx),
+                itemName: cart[parseInt(idx)]?.name || 'Unknown',
+                type: d.type,
+                value: d.value,
+                savedAmount: d.type === '%'
+                  ? (cart[parseInt(idx)]?.price * cart[parseInt(idx)]?.qty * Math.min(d.value, 100) / 100)
+                  : Math.min(d.value, (cart[parseInt(idx)]?.price || 0) * (cart[parseInt(idx)]?.qty || 1)),
+              }))
+            : [],
+          discountedBy: (!applyScPwd && (parseFloat(billDiscountValue) > 0 || Object.keys(itemDiscounts).length > 0))
+            ? (profile?.fullName || 'POS Cashier')
+            : null,
+        };
+
+        const cashTenders = paymentTenders.filter(t => t.method === 'Cash' && t.amountTendered !== '');
+        const totalCashTendered = cashTenders.reduce((s, t) => s + (parseFloat(t.amountTendered) || 0), 0);
+        const totalCashChange = cashTenders.reduce((s, t) => s + getChangeDue(t), 0);
+        const cashAuditFields = {
+          amountTendered: cashTenders.length > 0 ? totalCashTendered : null,
+          changeDue: cashTenders.length > 0 ? totalCashChange : null,
+        };
+
+        const saleRef = doc(collection(db, 'sales'));
+        const salePayload = {
+          saleType: 'retail',
+          receiptNumber,
+          appointmentId: null,
+          ownerId: clientInfo?.id || null,
+          ownerName: clientInfo?.fullName || 'Counter Sale',
+          petName: null,
+          petId: null,
+          items: cart.map(ci =>
+            ci.type === 'product' && batchSourceMap[ci.id]
+              ? { ...ci, batchSource: batchSourceMap[ci.id] }
+              : ci
+          ),
+          subtotal: parseFloat(financials.subtotal),
+          discount: parseFloat(financials.discount),
+          depositPaid: parseFloat(financials.deposit),
+          total: parseFloat(financials.total),
+          paymentMethod: primaryPaymentMethod,
+          paymentTenders: paymentTenders.map(t => ({
+            method: t.method,
+            amount: parseFloat(t.amount) || (paymentTenders.length === 1 ? balanceDueNum : 0),
+            ...(t.method === 'Cash' && t.amountTendered ? {
+              amountTendered: parseFloat(t.amountTendered),
+              changeDue: getChangeDue(t),
+            } : {}),
+          })),
+          hasScPwdDiscount: applyScPwd,
+          date: Timestamp.now(),
+          cashier: profile?.fullName || 'POS Cashier',
+          cashierId: profile?.id || null,
+          status: 'paid',
+          prescribedItemCount: 0,
+          cashierAddedItemCount: cart.length,
+          hasUnprescribedAdditions: true,
+          ...cashAuditFields,
+          ...customDiscountAuditFields,
+          ...(isDayClosed ? { postClose: true, dayClosedAt: closingData?.closedAt || null } : {}),
+        };
+
+        writeInventoryUpdates(transaction, updatePayloads, logEntries);
+        if (!counterSnap.exists()) { transaction.set(counterRef, { value: 1 }); }
+        else { transaction.update(counterRef, { value: nextSeq }); }
+        transaction.set(saleRef, salePayload);
+
+        return saleRef.id;
+      });
+
+      if (isDayClosed && closingData?.id) {
+        updateDoc(doc(db, 'daily_closings', closingData.id), {
+          postCloseCount: increment(1),
+          postCloseTotal: increment(parseFloat(financials.total) || 0),
+        }).catch(() => {});
+      }
+
+      const receiptContent = generateRetailReceiptHTML(transactionId, checkoutReceiptNumber, clientInfo);
+      setCheckoutSuccess({ receiptHTML: receiptContent, total: financials.balanceDue, receiptNumber: checkoutReceiptNumber });
+    } catch (error) {
+      console.error('[POSModal.handleRetailCheckout]:', error);
+      setCheckoutSuccess(null);
+      setCheckoutError(`Checkout failed: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // T4.152: Receipt delivery handlers — wired to the checkout success overlay.
 
   const handlePrintReceipt = (html) => {
@@ -1110,12 +1356,19 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
       <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth sx={{ '& .MuiDialog-paper': { position: 'relative' } }}>
         <DialogTitle sx={{ bgcolor: COLORS.success, color: COLORS.cardBg, fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 2 }}>
           <Typography variant="h6" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <PaidIcon />
-            {billingMode === 'group' && isGroupVisit
-              ? `Group Bill — ${patient?.ownerName || 'Walk-In'} (${groupAppointments.length} pets)`
-              : `Checkout: ${patient?.petName}`}
+            {isRetailMode ? <ShoppingCartIcon /> : <PaidIcon />}
+            {isRetailMode
+              ? 'Retail Sale'
+              : billingMode === 'group' && isGroupVisit
+                ? `Group Bill — ${patient?.ownerName || 'Walk-In'} (${groupAppointments.length} pets)`
+                : `Checkout: ${patient?.petName}`}
           </Typography>
-          <Chip label={patient?.ownerName || 'Walk-In'} sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white', fontWeight: 'bold' }} />
+          {!isRetailMode && (
+            <Chip label={patient?.ownerName || 'Walk-In'} sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white', fontWeight: 'bold' }} />
+          )}
+          {isRetailMode && linkedClient && (
+            <Chip label={linkedClient.fullName} sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white', fontWeight: 'bold' }} />
+          )}
         </DialogTitle>
         
         <DialogContent dividers sx={{ bgcolor: COLORS.surfaceHover, display: 'flex', flexDirection: 'column', gap: 0, p: 0, position: 'relative' }}>
@@ -1194,7 +1447,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
           {/* Phase 4 — Group billing mode toggle.
               Only shown when this appointment belongs to a visit group (2+ members).
               Switching modes rebuilds the cart from the groupAppointments array. */}
-          {isGroupVisit && (
+          {!isRetailMode && isGroupVisit && (
             <Box sx={{
               display: 'flex',
               alignItems: 'center',
@@ -1252,14 +1505,18 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
 
             <Box sx={{ display: 'flex', gap: 1, mb: 3, alignItems: 'center' }}>
               <FormControl fullWidth size="small" sx={{ bgcolor: 'white' }}>
-                  <InputLabel>Select Item / Service</InputLabel>
-                  <Select value={selectedItemVal} label="Select Item / Service" onChange={(e) => setSelectedItemVal(e.target.value)}>
-                      <ListSubheader sx={{fontWeight:'900', bgcolor:COLORS.panelBg}}>Clinic Services (Add-ons)</ListSubheader>
-                      {servicesList.filter(s => s.name !== patient?.serviceType).map((s) => (
-                        <MenuItem key={`service|${s.id}`} value={`service|${s.id}`}>
-                           <MedicalServicesIcon fontSize="small" sx={{mr:1, color:COLORS.medical}}/> {s.name} (+₱{s.price})
-                        </MenuItem>
-                      ))}
+                  <InputLabel>{isRetailMode ? 'Add Product' : 'Select Item / Service'}</InputLabel>
+                  <Select value={selectedItemVal} label={isRetailMode ? 'Add Product' : 'Select Item / Service'} onChange={(e) => setSelectedItemVal(e.target.value)}>
+                      {!isRetailMode && (
+                        <>
+                          <ListSubheader sx={{fontWeight:'900', bgcolor:COLORS.panelBg}}>Clinic Services (Add-ons)</ListSubheader>
+                          {servicesList.filter(s => s.name !== patient?.serviceType).map((s) => (
+                            <MenuItem key={`service|${s.id}`} value={`service|${s.id}`}>
+                               <MedicalServicesIcon fontSize="small" sx={{mr:1, color:COLORS.medical}}/> {s.name} (+₱{s.price})
+                            </MenuItem>
+                          ))}
+                        </>
+                      )}
                       <ListSubheader sx={{fontWeight:'900', bgcolor:COLORS.panelBg}}>Inventory Products</ListSubheader>
                       {inventoryList.map((item) => (
                         <MenuItem key={`product|${item.id}`} value={`product|${item.id}`} disabled={item.stock < 1}>
@@ -1695,9 +1952,19 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
               </Alert>
             )}
             <Box sx={{ display: 'flex', gap: 2 }}>
-              <Button onClick={handleSaveDraft} disabled={loading} variant="outlined" color="primary" startIcon={<SaveIcon />}>Save Invoice Draft</Button>
-              <Button onClick={handleCheckout} disabled={loading || remaining > 0.005 || anyCashInsufficient || (parseFloat(billDiscountValue) > 0 && !billDiscountReason)} variant="contained" color="success" size="large" startIcon={<PaidIcon />} sx={{ px: 4, fontWeight: '900', boxShadow: 3 }}>
-                 {loading ? "Processing..." : `Settle Balance (₱${financials.balanceDue})`}
+              <Button onClick={handleSaveDraft} disabled={loading || isRetailMode} variant="outlined" color="primary" startIcon={<SaveIcon />}>Save Invoice Draft</Button>
+              <Button
+                onClick={() => {
+                  if (isRetailMode) {
+                    setShowCustomerNudge(true);
+                  } else {
+                    handleCheckout();
+                  }
+                }}
+                disabled={loading || remaining > 0.005 || anyCashInsufficient || (parseFloat(billDiscountValue) > 0 && !billDiscountReason)}
+                variant="contained" color="success" size="large" startIcon={<PaidIcon />} sx={{ px: 4, fontWeight: '900', boxShadow: 3 }}
+              >
+                {loading ? "Processing..." : `Settle Balance (₱${financials.balanceDue})`}
               </Button>
             </Box>
           </Box>
@@ -1722,6 +1989,82 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         <DialogActions sx={{ p: 2 }}>
           <Button onClick={() => setOpenRxOverride(false)} sx={{ color: COLORS.textSecondary, fontWeight: 'bold' }}>Cancel Sale</Button>
           <Button onClick={handleExternalRxApprove} variant="contained" color="error" sx={{ fontWeight: 'bold' }}>Authorize & Add to Cart</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={showCustomerNudge}
+        onClose={() => {}}
+        maxWidth="sm" fullWidth
+        PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.sky}`, boxShadow: `8px 8px 0px ${COLORS.sky}1A` } }}
+      >
+        <DialogTitle sx={{
+          bgcolor: COLORS.chipBlueBg, color: COLORS.brand, fontWeight: 900,
+          display: 'flex', alignItems: 'center', gap: 1.5, py: 2,
+          borderBottom: `2px solid ${COLORS.sky}`,
+          textTransform: 'uppercase', letterSpacing: 1, fontSize: '0.95rem',
+        }}>
+          <PersonSearchIcon /> Link to Client Account?
+        </DialogTitle>
+        <DialogContent sx={{ p: 3, bgcolor: COLORS.cardBg }}>
+          <Typography variant="body2" sx={{ mb: 2, color: COLORS.textSecondary, fontWeight: 700 }}>
+            Link this sale to a client for purchase history tracking, or skip for an anonymous counter sale.
+          </Typography>
+          <Autocomplete
+            options={clientOptions}
+            getOptionLabel={(opt) => `${opt.fullName || 'Unknown'} — ${opt.phone || 'No phone'}`}
+            loading={clientSearchLoading}
+            onInputChange={(_, val) => searchClients(val)}
+            onChange={(_, val) => setLinkedClient(val)}
+            value={linkedClient}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Search client by name or phone"
+                placeholder="e.g. Juan Dela Cruz or 09..."
+                fullWidth
+                sx={{ bgcolor: COLORS.formBg }}
+              />
+            )}
+            noOptionsText="No clients found"
+            sx={{ mb: 2 }}
+          />
+          {linkedClient && (
+            <Alert severity="success" sx={{ borderRadius: 0, fontWeight: 800, border: `2px solid ${COLORS.success}` }}>
+              Linking sale to: <strong>{linkedClient.fullName}</strong> ({linkedClient.phone || 'No phone'})
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2.5, bgcolor: COLORS.panelBg, display: 'flex', justifyContent: 'space-between', borderTop: `2px solid ${COLORS.border}` }}>
+          <Button
+            onClick={() => {
+              setLinkedClient(null);
+              setShowCustomerNudge(false);
+              handleRetailCheckout(null);
+            }}
+            sx={{
+              fontWeight: 900, borderRadius: 0, px: 3,
+              color: COLORS.textMuted, border: `2px solid ${COLORS.border}`,
+              textTransform: 'uppercase', letterSpacing: 0.5,
+            }}
+          >
+            SKIP — COUNTER SALE
+          </Button>
+          <Button
+            variant="contained"
+            disabled={!linkedClient}
+            onClick={() => {
+              setShowCustomerNudge(false);
+              handleRetailCheckout(linkedClient);
+            }}
+            sx={{
+              bgcolor: COLORS.sky, fontWeight: 900, borderRadius: 0, px: 4,
+              '&:hover': { bgcolor: COLORS.skyHover || COLORS.sky },
+              textTransform: 'uppercase', letterSpacing: 0.5,
+            }}
+          >
+            LINK CLIENT
+          </Button>
         </DialogActions>
       </Dialog>
     </>

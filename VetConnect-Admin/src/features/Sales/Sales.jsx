@@ -1,5 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '../../firebaseConfig';
 import { DataGrid } from '@mui/x-data-grid';
 import {
   Box, Typography, Paper, Chip, IconButton, Tooltip, Snackbar,
@@ -9,6 +11,7 @@ import {
 import { useSalesData } from './hooks/useSalesData';
 import EodSummary from './components/EodSummary';
 import { printViaIframe, downloadHtmlAsFile, emailReceiptToOwner } from '../../utils/receiptUtils';
+import POSModal from '../../components/POSModal';
 
 // Icons
 import SettingsBackupRestoreIcon from '@mui/icons-material/SettingsBackupRestore';
@@ -19,6 +22,7 @@ import PhoneIphoneIcon from '@mui/icons-material/PhoneIphone';
 import CreditCardIcon from '@mui/icons-material/CreditCard';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 
 // Design Tokens
 import { FONT, COLORS } from '../../theme/designTokens';
@@ -34,16 +38,56 @@ export default function Sales() {
   // THE BRAIN: Hook handles all database fetching, refund, void, and EOD close-out.
   const { sales, loading, error: salesError, eodTotals, processRefundTransaction, voidTransaction, isDayClosed, closingData, closeDay, reopenDay } = useSalesData(filterDate, profile);
 
+  // T4.184: Retail POS state
+  const [openRetailPOS, setOpenRetailPOS] = useState(false);
+  const [inventoryList, setInventoryList] = useState([]);
+  const [inventoryCategories, setInventoryCategories] = useState([]);
+  const [servicesList, setServicesList] = useState([]);
+
+  useEffect(() => {
+    const unsubInv = onSnapshot(collection(db, 'inventory'), (snap) =>
+      setInventoryList(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    );
+    const unsubCat = onSnapshot(collection(db, 'inventory_categories'), (snap) =>
+      setInventoryCategories(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    );
+    const unsubSvc = onSnapshot(collection(db, 'services'), (snap) =>
+      setServicesList(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(s => !s.isArchived))
+    );
+    return () => { unsubInv(); unsubCat(); unsubSvc(); };
+  }, []);
+
+  const joinedInventory = useMemo(() => {
+    return inventoryList
+      .filter(item => !item.isArchived)
+      .map(item => {
+        const catObj = inventoryCategories.find(c => c.name?.toLowerCase() === item.category?.toLowerCase());
+        return {
+          ...item,
+          isMedicine: catObj ? !!catObj.isMedicine : false,
+          productClass: catObj?.productClass || (catObj?.isMedicine ? 'medicine' : 'retail'),
+        };
+      });
+  }, [inventoryList, inventoryCategories]);
+
   // --- UI STATES ---
   const [searchText, setSearchText] = useState('');
   const [filterMethod, setFilterMethod] = useState(['All']);
   const [filterStatus, setFilterStatus] = useState('All');
+  const [filterType, setFilterType] = useState('All');
 
   useEffect(() => {
     const df = location.state?.dashboardFilter;
     if (!df) return;
     if (df.status === 'refunded') setFilterStatus('refunded');
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (location.state?.openRetailPOS) {
+      setOpenRetailPOS(true);
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
 
   // --- NATIVE SORTING STATES ---
   const [order, setOrder] = useState('desc');
@@ -88,7 +132,9 @@ export default function Sales() {
         || saleMethods.some(m => filterMethod.includes(m))
         || (filterMethod.includes('Card') && saleMethods.includes('Bank Transfer'));
       const matchStatus = filterStatus === 'All' || (filterStatus === 'Paid' ? s.status !== 'refunded' : filterStatus === 'refunded' ? s.status === 'refunded' : true);
-      return matchSearch && matchMethod && matchStatus;
+      const saleType = s.saleType || 'clinical';
+      const matchType = filterType === 'All' || saleType === filterType;
+      return matchSearch && matchMethod && matchStatus && matchType;
     });
 
     list.sort((a, b) => {
@@ -112,7 +158,7 @@ export default function Sales() {
     });
 
     return list;
-  }, [sales, searchText, filterMethod, filterStatus, order, orderBy]);
+  }, [sales, searchText, filterMethod, filterStatus, filterType, order, orderBy]);
 
   const handleOpenRefund = (sale) => {
     setSelectedSale(sale); setRestock(true); setOpenRefund(true);
@@ -449,7 +495,31 @@ export default function Sales() {
         </Box>
       )
     },
-    { 
+    {
+      field: 'saleType', headerName: 'TYPE', width: 100, align: 'center', headerAlign: 'center', sortable: false, disableColumnMenu: true,
+      renderCell: (p) => {
+        const type = p.value || 'clinical';
+        const isRetail = type === 'retail';
+        return (
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+            <Chip
+              label={isRetail ? 'RETAIL' : 'CLINICAL'}
+              size="small"
+              sx={{
+                borderRadius: 0,
+                fontWeight: 900,
+                fontSize: '0.6rem',
+                letterSpacing: 0.5,
+                bgcolor: isRetail ? COLORS.chipBlueBg : COLORS.kpiGreenBg,
+                color: isRetail ? COLORS.sky : COLORS.success,
+                border: `2px solid ${isRetail ? COLORS.sky : COLORS.success}`,
+              }}
+            />
+          </Box>
+        );
+      },
+    },
+    {
       field: 'petName', flex: 1.5, minWidth: 200, sortable: false, disableColumnMenu: true,
       renderHeader: () => (<TableSortLabel active={orderBy === 'petName'} direction={orderBy === 'petName' ? order : 'asc'} onClick={() => handleRequestSort('petName')} sx={{ fontWeight: 800, color: COLORS.accent, fontSize: '0.75rem' }}>PATIENT & OWNER</TableSortLabel>),
       renderCell: (p) => (
@@ -579,6 +649,20 @@ export default function Sales() {
             <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 1000, color: COLORS.brand, textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0, mr: 1, fontSize: '1.5rem', lineHeight: 1 }}>
               Transactions
             </Typography>
+            <Button
+              variant="contained"
+              startIcon={<ShoppingCartIcon />}
+              onClick={() => setOpenRetailPOS(true)}
+              sx={{
+                bgcolor: COLORS.sky, fontWeight: 900, borderRadius: 0, px: 3,
+                border: `2px solid ${COLORS.sky}`,
+                boxShadow: `3px 3px 0px ${COLORS.sky}33`,
+                textTransform: 'uppercase', letterSpacing: 0.5, fontSize: '0.75rem',
+                '&:hover': { bgcolor: COLORS.skyHover || '#2196F3', boxShadow: `1px 1px 0px ${COLORS.sky}33` },
+              }}
+            >
+              NEW SALE
+            </Button>
             <Box sx={{ flexGrow: 1 }} />
 
             {/* T4.151: EOD close-out controls (admin only) */}
@@ -694,6 +778,18 @@ export default function Sales() {
                     <MenuItem value="Paid">Paid</MenuItem>
                     <MenuItem value="refunded">Refunded</MenuItem>
                 </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ minWidth: 140 }}>
+              <Select
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+                displayEmpty
+                sx={{ fontWeight: 800, color: COLORS.accent, bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33`, borderRadius: 0 }, borderRadius: 0 }}
+              >
+                <MenuItem value="All">All Types</MenuItem>
+                <MenuItem value="retail">Retail Only</MenuItem>
+                <MenuItem value="clinical">Clinical Only</MenuItem>
+              </Select>
             </FormControl>
           </Box>
         </Paper>
@@ -999,6 +1095,16 @@ export default function Sales() {
           {toast.message}
         </Alert>
       </Snackbar>
+
+      <POSModal
+        open={openRetailPOS}
+        onClose={() => setOpenRetailPOS(false)}
+        patient={null}
+        inventoryList={joinedInventory}
+        servicesList={servicesList}
+        isDayClosed={isDayClosed}
+        closingData={closingData}
+      />
     </Box>
   );
 }

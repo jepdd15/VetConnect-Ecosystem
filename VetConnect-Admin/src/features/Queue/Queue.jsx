@@ -28,11 +28,12 @@ import EndOfDayModal from './EndOfDayModal';
 import DispensingVerificationDialog from './DispensingVerificationDialog';
 
 // --- ICONS ---
-import PersonAddIcon from '@mui/icons-material/PersonAdd'; 
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import EditIcon from '@mui/icons-material/Edit';
 import EventIcon from '@mui/icons-material/Event';
 import HistoryIcon from '@mui/icons-material/History';
 import PersonOffIcon from '@mui/icons-material/PersonOff';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew'; 
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos'; 
 
@@ -190,6 +191,7 @@ export default function Queue() {
 
   const [openConsult, setOpenConsult] = useState(false);
   const[openPOS, setOpenPOS] = useState(false);
+  const [openRetailPOS, setOpenRetailPOS] = useState(false);
   const [openDispenseVerify, setOpenDispenseVerify] = useState(false);
   const [dispenseRow, setDispenseRow] = useState(null);
 
@@ -2074,6 +2076,21 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                 Add Walk-In
              </Button>
            )}
+           {isToday && !isTomorrowView && (
+             <Button
+               variant="outlined"
+               startIcon={<ShoppingCartIcon />}
+               sx={{
+                 borderColor: COLORS.sky, color: COLORS.sky, fontWeight: '900',
+                 textTransform: 'uppercase', letterSpacing: 0.5, px: 3, borderRadius: 0,
+                 borderWidth: 2,
+                 '&:hover': { bgcolor: COLORS.chipBlueBg, borderColor: COLORS.skyHover || COLORS.sky },
+               }}
+               onClick={() => setOpenRetailPOS(true)}
+             >
+               RETAIL SALE
+             </Button>
+           )}
         </Box>
       </Paper>
       </Box>
@@ -2277,6 +2294,15 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
             ? rows.filter(r => r.visitGroupId === selectedRow.visitGroupId)
             : []
         }
+        isDayClosed={isDayClosed}
+        closingData={closingData}
+      />
+      <POSModal
+        open={openRetailPOS}
+        onClose={() => setOpenRetailPOS(false)}
+        patient={null}
+        inventoryList={joinedInventory}
+        servicesList={servicesList}
         isDayClosed={isDayClosed}
         closingData={closingData}
       />

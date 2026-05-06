@@ -79,9 +79,8 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
   const [guestPhone, setGuestPhone] = useState('');
   const [guestEmail, setGuestEmail] = useState('');
 
-  // --- MULTI-PET ENTRIES ---
+  // --- PET ENTRIES ---
   // Each entry represents one pet being registered in this walk-in.
-  // Single-pet walk-ins use petEntries[0] only (no visitGroupId).
   const [petEntries, setPetEntries] = useState([BLANK_PET_DATA()]);
 
   const [errorMsg, setErrorMsg] = useState('');
@@ -224,7 +223,6 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
     ownerId, ownerName, ownerPhone, petId, petName, petSpecies, petBreed, petGender, petColor,
     petIsNeutered, petBirthdate, isAgeExact, petWeight, petAllergies,
     mappedServices, triageNotes, isEmergency, queueNumber, noShowData,
-    visitGroupId, groupSize, groupIndex,
   }) => {
     const primaryDept = mappedServices[0]?.department || 'General';
     const resolvedWeight = petWeight || null;
@@ -255,12 +253,9 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
       systemChips: [
         ...(isEmergency ? ['EMERGENCY'] : []),
         ...(noShowData?.count > 0 ? [`NO-SHOW-HISTORY:${noShowData.count}`] : []),
-        ...(visitGroupId ? [`GROUP-BOOKING:${groupIndex + 1}/${groupSize}`] : []),
       ],
       assignedVetId: null,
       assignedVet: 'Unassigned',
-      // visitGroupId fields — only present for multi-pet walk-ins
-      ...(visitGroupId ? { visitGroupId, groupSize, groupIndex } : {}),
       ...(noShowData?.count > 0 ? {
         rebookedFromId: noShowData.mostRecent?.id || null,
         noShowCount: noShowData.count,
@@ -273,7 +268,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
           timestamp: now,
           staffId: profile?.id || 'system_walkin',
           staffName: staffSignature,
-          note: `Physical Intake [WT: ${resolvedWeight || 'N/A'}kg]:${isEmergency ? ' URGENT ER' : ''} ${triageNotes}${visitGroupId ? ` [Group ${groupIndex + 1}/${groupSize}]` : ''}`,
+          note: `Physical Intake [WT: ${resolvedWeight || 'N/A'}kg]:${isEmergency ? ' URGENT ER' : ''} ${triageNotes}`,
         },
       ],
     };
@@ -348,12 +343,6 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
           finalOwnerName = selectedClient.fullName || selectedClient.displayName || 'Existing Client';
           finalOwnerPhone = selectedClient.phone || 'No Contact';
         }
-
-        // Determine visitGroupId: only set for multi-pet walk-ins
-        const isMultiPet = petEntries.length > 1;
-        const visitGroupId = isMultiPet
-          ? `VG-${finalOwnerId.slice(0, 5)}-${Date.now()}`
-          : null;
 
         // Increment the queue counter once (shared number)
         transaction.set(queueRef, { lastNumberIssued: sharedNumber }, { merge: true });
@@ -464,9 +453,6 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
             isEmergency,
             queueNumber: sharedNumber,
             noShowData,
-            visitGroupId,
-            groupSize: petEntries.length,
-            groupIndex: i,
           });
 
           const newApptRef = doc(collection(db, "appointments"));

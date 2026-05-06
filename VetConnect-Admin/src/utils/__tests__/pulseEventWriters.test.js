@@ -345,16 +345,16 @@ describe('Phase 3D: Walk-in INCEPTION (W21)', () => {
     expect(event.note).not.toContain('URGENT');
   });
 
-  it('3D.5 buildWalkInInceptionEvent with group → note contains group index and size', () => {
+  it('3D.5 buildWalkInInceptionEvent → note contains triage notes', () => {
     const event = buildWalkInInceptionEvent({
       staffId: STAFF_ID, staffName: STAFF_NAME, weight: 4, isEmergency: false,
-      triageNotes: 'Itching', visitGroupId: 'vg-001', groupIndex: 0, groupSize: 3,
+      triageNotes: 'Itching',
     });
-    expect(event.note).toContain('Group');
-    expect(event.note).toContain('1/3');
+    expect(event.note).toContain('Itching');
+    expect(event.note).not.toContain('Group');
   });
 
-  it('3D.6 buildWalkInInceptionEvent without group → note does NOT contain "Group"', () => {
+  it('3D.6 buildWalkInInceptionEvent → note does NOT contain "Group"', () => {
     const event = buildWalkInInceptionEvent({ staffId: STAFF_ID, staffName: STAFF_NAME, weight: 5, isEmergency: false, triageNotes: 'Coughing' });
     expect(event.note).not.toContain('Group');
   });

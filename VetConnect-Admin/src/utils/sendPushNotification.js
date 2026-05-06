@@ -200,7 +200,6 @@ function resolveTemplateForLog(resolvedTitle, resolvedBody, status, data) {
  * @param {string} [params.vetName] - Vet/staff name for template interpolation
  * @param {string|number} [params.ticketNumber] - Queue ticket number
  * @param {string} [params.appointmentId] - Appointment doc ID
- * @param {string} [params.visitGroupId] - Multi-pet visit group ID
  * @param {string} [params.customTitle] - Override title (from notification_templates)
  * @param {string} [params.customBody] - Override body (from notification_templates)
  * @param {string} [params.sentBy] - Staff display name for audit logging (T4.95)
@@ -212,7 +211,6 @@ export function sendPushNotification({
   vetName,
   ticketNumber,
   appointmentId,
-  visitGroupId,
   customTitle,
   customBody,
   sentBy,
@@ -223,14 +221,14 @@ export function sendPushNotification({
   // Internal async work — fire and forget
   _dispatchPush({
     ownerId, status, petName, vetName, ticketNumber,
-    appointmentId, visitGroupId, customTitle, customBody, sentBy,
+    appointmentId, customTitle, customBody, sentBy,
   }).catch((err) => {
     console.error('[sendPushNotification] Silent failure:', err?.message || err);
   });
 }
 
 // ─── Internal dispatch (async, never exposed) ────────────────────────────────
-async function _dispatchPush({ ownerId, status, petName, vetName, ticketNumber, appointmentId, visitGroupId, customTitle, customBody, sentBy }) {
+async function _dispatchPush({ ownerId, status, petName, vetName, ticketNumber, appointmentId, customTitle, customBody, sentBy }) {
   const [pushToken, workerUrl, channelSettings] = await Promise.all([
     resolvePushToken(ownerId),
     getWorkerUrl(),
@@ -296,7 +294,6 @@ async function _dispatchPush({ ownerId, status, petName, vetName, ticketNumber, 
         vetName: vetName || '',
         ticketNumber: ticketNumber || '',
         appointmentId: appointmentId || '',
-        visitGroupId: visitGroupId || '',
         ...(finalTitle ? { customTitle: finalTitle } : {}),
         ...(finalBody  ? { customBody:  finalBody  } : {}),
       }),

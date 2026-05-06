@@ -50,9 +50,6 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
       const hasSpecificAllergies = petAllergies.trim().length > 0 && petAllergies.toUpperCase() !== 'NONE';
       const petAge = calculateAgeString(p.row.petBirthdate, p.row.isAgeExact);
 
-      const groupSize  = p.row._visitGroupSize  || 0;
-      const groupIndex = p.row._visitGroupIndex || 0;
-
       const PassportCard = (
         <Box sx={{ p: 1, minWidth: 220 }}>
             <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1.5, display: 'block', mb: 1, opacity: 0.8 }}>
@@ -62,16 +59,9 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                 {p.row.petName?.toUpperCase()}
             </Typography>
 
-            {/* STATUS BADGES: group position, self check-in, client confirmed */}
-            {(p.row.selfCheckedIn || p.row.confirmedByClient || groupSize > 1) && (
+            {/* STATUS BADGES: self check-in, client confirmed */}
+            {(p.row.selfCheckedIn || p.row.confirmedByClient) && (
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1.5, pb: 1.5, borderBottom: `1px solid ${COLORS.borderLight}` }}>
-                {groupSize > 1 && (
-                  <Chip
-                    label={`GROUP ${groupIndex + 1}/${groupSize}`}
-                    size="small"
-                    sx={{ height: 18, fontSize: '0.6rem', fontWeight: 900, bgcolor: COLORS.brand, color: 'white', borderRadius: 0 }}
-                  />
-                )}
                 {p.row.selfCheckedIn && (
                   <Chip
                     label="SELF CHECK-IN"
@@ -174,60 +164,26 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
         </Box>
       );
       
-      // ── VISIT GROUP DISPLAY HELPERS ──────────────────────────────
-      const isInGroup  = groupSize > 1;
-      const isGroupHeader = p.row.isGroupHeader === true;
-      // Non-header group members share the queue number — dim the ticket anchor
-      const isDimTicket = isInGroup && !isGroupHeader && p.row.queueNumber;
-
       return (
         <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%', py: 0.5, px: 0.5, overflow: 'hidden', height: '100%', justifyContent: 'center' }}>
 
-          {/* ── MULTI-PET VISIT HEADER CHIP (group header row only) ── */}
-          {isGroupHeader && (
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
-              <Box sx={{
-                bgcolor: '#3ABEF9',
-                color: '#1A1A1A',
-                px: 1,
-                py: 0.2,
-                borderRadius: 0,
-                border: '1.5px solid #1A1A1A',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 0.5,
-              }}>
-                <Typography sx={{ fontSize: '0.6rem', fontWeight: '900', letterSpacing: '0.08em', lineHeight: 1 }}>
-                  MULTI-PET VISIT ({groupSize})
-                </Typography>
-              </Box>
-            </Box>
-          )}
-
           <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', overflow: 'hidden' }}>
-            {/* THE TICKET ANCHOR (DYNAMIC) */}
+            {/* THE TICKET ANCHOR */}
             <Box sx={{
                 width: 56, height: 56, borderRadius: 0, mr: 2, flexShrink: 0,
-                bgcolor: p.row.queueNumber ? (isDimTicket ? '#F5F5F5' : '#FFF3E0') : '#F5F5F5',
-                border: '2px solid', borderColor: p.row.queueNumber ? (isDimTicket ? '#E0E0E0' : '#FFB74D') : '#EEEEEE',
+                bgcolor: p.row.queueNumber ? '#FFF3E0' : '#F5F5F5',
+                border: '2px solid', borderColor: p.row.queueNumber ? '#FFB74D' : '#EEEEEE',
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                opacity: isDimTicket ? 0.45 : 1,
-                boxShadow: isDimTicket ? 'none' : '0 2px 8px rgba(0,0,0,0.04)',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
             }}>
               {p.row.queueNumber ? (
                 <>
-                  <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: '900', color: isDimTicket ? '#9E9E9E' : '#E65100', lineHeight: 1 }}>
+                  <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: '900', color: '#E65100', lineHeight: 1 }}>
                     {p.row.ticketPrefix || 'TKT'}
                   </Typography>
-                  <Typography variant="h6" sx={{ fontWeight: '900', color: isDimTicket ? '#9E9E9E' : '#D32F2F', lineHeight: 1, fontSize: '1.4rem' }}>
+                  <Typography variant="h6" sx={{ fontWeight: '900', color: '#D32F2F', lineHeight: 1, fontSize: '1.4rem' }}>
                     {p.row.queueNumber}
                   </Typography>
-                  {/* Position indicator for non-header group members */}
-                  {isDimTicket && (
-                    <Typography sx={{ fontSize: '0.55rem', fontWeight: '900', color: '#9E9E9E', lineHeight: 1 }}>
-                      {groupIndex + 1}/{groupSize}
-                    </Typography>
-                  )}
                 </>
               ) : (
                   <LocalHospitalIcon sx={{ fontSize: 24, color: '#BDBDBD', opacity: 0.8 }} />
@@ -366,7 +322,6 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
         if (tag === 'EMERGENCY') return { bg: COLORS.kpiRedBg, border: COLORS.danger, color: COLORS.danger };
         if (tag === 'CARRY-OVER') return { bg: COLORS.kpiOrangeBg, border: COLORS.warning, color: COLORS.warning };
         if (tag.startsWith('NO-SHOW')) return { bg: COLORS.kpiOrangeBg, border: COLORS.warning, color: COLORS.warning };
-        if (tag.startsWith('GROUP-BOOKING')) return { bg: COLORS.chipBlueBg, border: COLORS.medical, color: COLORS.medical };
         if (tag === 'QUICK-ADMIT') return { bg: COLORS.kpiRedBg, border: COLORS.danger, color: COLORS.danger };
         if (tag === 'DEFERRED') return { bg: COLORS.kpiOrangeBg, border: COLORS.warning, color: COLORS.warning };
         return { bg: COLORS.cream, border: COLORS.border, color: COLORS.accent };

@@ -399,9 +399,6 @@ export const buildWalkInInceptionEvent = ({
   weight,
   isEmergency,
   triageNotes,
-  visitGroupId,
-  groupIndex,
-  groupSize,
 }) => ({
   eventId: makePulseEventId('walkin'),
   type: 'INCEPTION',
@@ -409,19 +406,14 @@ export const buildWalkInInceptionEvent = ({
   timestamp: Timestamp.now(),
   staffId: staffId || 'system_walkin',
   staffName,
-  note: `Physical Intake [WT: ${weight || 'N/A'}kg]:${isEmergency ? ' URGENT ER' : ''} ${triageNotes || ''}${
-    visitGroupId ? ` [Group ${groupIndex + 1}/${groupSize}]` : ''
-  }`,
+  note: `Physical Intake [WT: ${weight || 'N/A'}kg]:${isEmergency ? ' URGENT ER' : ''} ${triageNotes || ''}`,
 });
 
 // ── AssignStaffModal.jsx BUILDERS ────────────────────────────────────────────
 
 /**
  * W22a: Primary appointment check-in.
- * Source: AssignStaffModal.jsx → check-in transaction → line ~212
- *
- * Note: Production note for group is `1/${siblingAppointments.length + 1}`,
- * which maps to `1/${siblingCount + 1}` with siblingCount = siblingAppointments.length.
+ * Source: AssignStaffModal.jsx → check-in transaction
  */
 export const buildCheckInEvent = ({
   staffId,
@@ -444,10 +436,7 @@ export const buildCheckInEvent = ({
 
 /**
  * W22b: Sibling check-in within a group visit.
- * Source: AssignStaffModal.jsx → sibling loop → line ~243
- *
- * Note: Production note is `(${i + 2}/${siblingAppointments.length + 1})`,
- * which maps to `(${siblingIndex + 2}/${siblingCount + 1})`.
+ * Source: AssignStaffModal.jsx → sibling loop
  */
 export const buildSiblingCheckInEvent = ({
   staffId,

@@ -4,7 +4,7 @@
 //   - Static QR only (prefix check, no token validation)
 //   - GPS geofence is graceful: permission-denied or GPS failure still allows check-in
 //   - Ticket prefix from booking origin, not check-in method
-//   - Multi-pet visit groups share one queue number (Option C)
+//   - Each appointment gets its own individual queue number
 
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Location from 'expo-location';
@@ -125,10 +125,7 @@ async function checkGeofence(clinicLat, clinicLng, radiusM) {
 
 /**
  * Atomic Firestore transaction that transitions all confirmed appointments for
- * the current user (today) to 'arrived', issuing queue numbers.
- *
- * Visit groups (same visitGroupId) share one queue number.
- * Ungrouped appointments each get their own number.
+ * the current user (today) to 'arrived', issuing individual queue numbers.
  *
  * @returns {Promise<Array>} resolved appointment data (with updated queueNumber, ticketPrefix)
  */
@@ -151,19 +148,6 @@ async function batchArrive() {
 
   const appts = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-  // Separate into visit groups (shared ticket) and ungrouped (individual tickets).
-  const groups = new Map();   // visitGroupId -> appt[]
-  const ungrouped = [];
-
-  appts.forEach((a) => {
-    if (a.visitGroupId) {
-      if (!groups.has(a.visitGroupId)) groups.set(a.visitGroupId, []);
-      groups.get(a.visitGroupId).push(a);
-    } else {
-      ungrouped.push(a);
-    }
-  });
-
   let arrivedResults = [];
 
   await runTransaction(db, async (transaction) => {
@@ -172,53 +156,41 @@ async function batchArrive() {
     let lastNum = queueDoc.exists() ? (queueDoc.data().lastNumberIssued || 0) : 0;
     const localResults = [];
 
-    const arriveGroup = (apptList) => {
+    appts.forEach((a) => {
       lastNum += 1;
-      const sharedNum = lastNum;
+      const prefix = getTicketPrefix(a);
+      const apptRef = doc(db, 'appointments', a.id);
 
-      apptList.forEach((a) => {
-        const prefix = getTicketPrefix(a);
-        const apptRef = doc(db, 'appointments', a.id);
-
-        transaction.update(apptRef, {
-          status: 'arrived',
-          queueNumber: sharedNum,
-          ticketPrefix: prefix,
-          timeArrived: Timestamp.now(),
-          arrivedBy: 'Self Check-In',
-          selfCheckedIn: true,
-          clinicalPulse: arrayUnion({
-            eventId: `pulse_STATUS_CHANGE_${Date.now()}_${Math.random().toString(36).substr(2, 7)}`,
-            type: 'STATUS_CHANGE',
-            fromStatus: 'confirmed',
-            toStatus: 'arrived',
-            timestamp: Timestamp.now(),
-            staffId: auth.currentUser.uid,
-            staffName: 'Self Check-In',
-            note: 'Client self-check-in via clinic QR',
-          }),
-        });
-
-        if (a.petId) {
-          transaction.update(doc(db, 'pets', a.petId), {
-            lastVisit: Timestamp.now(),
-          });
-        }
-
-        localResults.push({
-          id: a.id,
-          petName: a.petName || 'Your Pet',
-          queueNumber: sharedNum,
-          ticketPrefix: prefix,
-        });
+      transaction.update(apptRef, {
+        status: 'arrived',
+        queueNumber: lastNum,
+        ticketPrefix: prefix,
+        timeArrived: Timestamp.now(),
+        arrivedBy: 'Self Check-In',
+        selfCheckedIn: true,
+        clinicalPulse: arrayUnion({
+          eventId: `pulse_STATUS_CHANGE_${Date.now()}_${Math.random().toString(36).substr(2, 7)}`,
+          type: 'STATUS_CHANGE',
+          fromStatus: 'confirmed',
+          toStatus: 'arrived',
+          timestamp: Timestamp.now(),
+          staffId: auth.currentUser.uid,
+          staffName: 'Self Check-In',
+          note: 'Client self-check-in via clinic QR',
+        }),
       });
-    };
 
-    for (const [, groupAppts] of groups) {
-      arriveGroup(groupAppts);
-    }
+      if (a.petId) {
+        transaction.update(doc(db, 'pets', a.petId), { lastVisit: Timestamp.now() });
+      }
 
-    ungrouped.forEach((a) => arriveGroup([a]));
+      localResults.push({
+        id: a.id,
+        petName: a.petName || 'Your Pet',
+        queueNumber: lastNum,
+        ticketPrefix: prefix,
+      });
+    });
 
     transaction.update(queueRef, { lastNumberIssued: lastNum });
     arrivedResults = localResults;

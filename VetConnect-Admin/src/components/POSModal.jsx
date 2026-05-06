@@ -42,7 +42,7 @@ const DISCOUNT_REASONS = [
   'Other',
 ];
 
-export default function POSModal({ open, onClose, patient, inventoryList, servicesList, groupAppointments = [], isDayClosed = false, closingData = null }) {
+export default function POSModal({ open, onClose, patient, inventoryList, servicesList, isDayClosed = false, closingData = null }) {
   const isRetailMode = !patient;
   const { profile } = useUser();
   const clinicSettings = useClinicSettings();
@@ -71,10 +71,6 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
   const [editDiscType, setEditDiscType] = useState('%');
   const [editDiscValue, setEditDiscValue] = useState('');
 
-  // Phase 4 — Consolidated billing mode: 'individual' bills the active patient only;
-  // 'group' merges items from all sibling appointments into a single cart.
-  const [billingMode, setBillingMode] = useState('individual');
-
   const [barcodeInput, setBarcodeInput] = useState('');
   const [openRxOverride, setOpenRxOverride] = useState(false);
   const[pendingRxItem, setPendingRxItem] = useState(null);
@@ -91,9 +87,6 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
   const [linkedClient, setLinkedClient] = useState(null);
   const [clientOptions, setClientOptions] = useState([]);
   const [clientSearchLoading, setClientSearchLoading] = useState(false);
-
-  /** Whether the group billing toggle should be shown. */
-  const isGroupVisit = groupAppointments.length > 1;
 
   // T4.150: Derive the legacy paymentMethod (largest tender by amount) for backward compat.
   const primaryPaymentMethod = useMemo(() => {
@@ -145,16 +138,13 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
   // --- 1. INITIALIZATION & AUTO-BUNDLE ENGINE ---
 
   /**
-   * Builds the cart items for a single appointment, prefixing each item's name
-   * with `[petName]` when building a group cart so the cashier can see which
-   * pet each line item belongs to.
+   * Builds the cart items for an appointment.
    *
    * @param {object} appt - The appointment row (from rows state, already in memory).
-   * @param {string|null} petPrefix - If non-null, prepended to each item name as "[petPrefix] ".
    * @returns {Array} Array of cart item objects.
    */
-  const buildCartForAppointment = (appt, petPrefix = null) => {
-    const prefix = petPrefix ? `[${petPrefix}] ` : '';
+  const buildCartForAppointment = (appt) => {
+    const prefix = '';
     const items = [];
 
     const apptItems = appt.encounterItems || appt.prescribedItems;
@@ -239,11 +229,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
   useEffect(() => {
     const initPOS = async () => {
       if (open && patient) {
-        // Reset billing mode: default to 'individual' each time the modal opens.
-        setBillingMode('individual');
-
-        // Build individual cart (used immediately and also when user switches to individual mode)
-        const initialCart = buildCartForAppointment(patient, null);
+        const initialCart = buildCartForAppointment(patient);
 
         setCart(initialCart); setSelectedItemVal(''); setBarcodeInput('');
         setPaymentTenders([{ method: 'Cash', amount: '', amountTendered: '' }]);
@@ -269,39 +255,12 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         setItemDiscounts({}); setBillDiscountType('%'); setBillDiscountValue(''); setBillDiscountReason('');
         setCheckoutSuccess(null); setCheckoutError(''); setEmailFeedback('');
         setHasScId(false); setApplyScPwd(false);
-        setBillingMode('individual');
         setLinkedClient(null); setShowCustomerNudge(false);
       }
     };
     initPOS();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[open, patient, servicesList, inventoryList]);
-
-  /**
-   * Rebuilds the cart when the billing mode toggle changes.
-   * GROUP mode: merges items from ALL group appointments with pet-name prefixes.
-   * INDIVIDUAL mode: cart contains only the active patient's items (no prefix).
-   */
-  useEffect(() => {
-    if (!open || !patient) return;
-    if (billingMode === 'group' && isGroupVisit) {
-      const merged = [];
-      let totalDeposit = 0;
-      groupAppointments.forEach(appt => {
-        totalDeposit += parseFloat(appt.depositPaid || 0);
-        merged.push(...buildCartForAppointment(appt, appt.petName || 'Pet'));
-      });
-      setCart(merged);
-      setDepositAmount(totalDeposit > 0 ? totalDeposit.toString() : '');
-    } else {
-      // Rebuild individual cart from the active patient
-      setCart(buildCartForAppointment(patient, null));
-      setDepositAmount(patient.depositPaid ? patient.depositPaid.toString() : '');
-    }
-    // Reset all custom discounts when billing mode changes — indices are no longer valid.
-    setItemDiscounts({}); setBillDiscountType('%'); setBillDiscountValue(''); setBillDiscountReason('');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [billingMode]);
 
   // --- 2. THE RX COMPLIANCE ENGINE ---
   const processProductToCart = (p) => {
@@ -489,46 +448,16 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
   const generateReceiptHTML = (transactionId, receiptNumber) => {
     const today = new Date().toLocaleString();
 
-    // In GROUP mode, render items grouped by pet name with sub-headers.
-    let itemsHTML;
-    if (billingMode === 'group' && isGroupVisit) {
-      // Group cart items by their source pet
-      const petGroups = {};
-      cart.forEach(item => {
-        const key = item._sourcePetName || patient.petName || 'Unknown';
-        if (!petGroups[key]) petGroups[key] = [];
-        petGroups[key].push(item);
-      });
+    const itemsHTML = cart.map(item => `
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${item.name} ${item.isDiscountable ? '' : '<span style="color:red; font-size:10px;">(No SC/PWD)</span>'}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: center;">${item.qty}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">P${item.price.toFixed(2)}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">P${(item.price * item.qty).toFixed(2)}</td>
+      </tr>
+    `).join('');
 
-      itemsHTML = Object.entries(petGroups).map(([petName, items]) => `
-        <tr>
-          <td colspan="4" style="padding: 10px 8px 4px; background: #f0ede8; font-weight: bold; font-size: 13px; border-bottom: 1px solid #ccc;">
-            ${petName.toUpperCase()}
-          </td>
-        </tr>
-        ${items.map(item => `
-          <tr>
-            <td style="padding: 8px 8px 8px 20px; border-bottom: 1px solid #ddd;">${item.name} ${item.isDiscountable ? '' : '<span style="color:red; font-size:10px;">(No SC/PWD)</span>'}</td>
-            <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: center;">${item.qty}</td>
-            <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">P${item.price.toFixed(2)}</td>
-            <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">P${(item.price * item.qty).toFixed(2)}</td>
-          </tr>
-        `).join('')}
-      `).join('');
-    } else {
-      itemsHTML = cart.map(item => `
-        <tr>
-          <td style="padding: 8px; border-bottom: 1px solid #ddd;">${item.name} ${item.isDiscountable ? '' : '<span style="color:red; font-size:10px;">(No SC/PWD)</span>'}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: center;">${item.qty}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">P${item.price.toFixed(2)}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">P${(item.price * item.qty).toFixed(2)}</td>
-        </tr>
-      `).join('');
-    }
-
-    const patientLabel = billingMode === 'group' && isGroupVisit
-      ? `${patient.ownerName || 'Walk-In'} — Multi-Pet Visit (${groupAppointments.length} pets)`
-      : `${patient.petName} (${patient.ownerName || 'Walk-In'})`;
+    const patientLabel = `${patient.petName} (${patient.ownerName || 'Walk-In'})`;
 
     return `
       <html>
@@ -557,7 +486,6 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             <p><strong>Date:</strong> ${today}</p>
             <p><strong>Patient:</strong> ${patientLabel}</p>
             <p><strong>Cashier:</strong> ${profile?.fullName || 'POS Cashier'}</p>
-            ${billingMode === 'group' && isGroupVisit ? `<p><strong>Visit Group:</strong> ${patient.visitGroupId || 'N/A'}</p>` : ''}
           </div>
 
           <table>
@@ -887,28 +815,18 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
   const handleCheckout = async () => {
     setLoading(true);
     try {
-      const isGroupBill = billingMode === 'group' && isGroupVisit;
       const checkoutCorrelationId = `CHK-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
       // T4.153: Hoisted receipt number — assigned inside the transaction, read outside for receipt HTML.
       let checkoutReceiptNumber = '';
 
       const transactionId = await runTransaction(db, async (transaction) => {
-        const patientLabel = isGroupBill
-          ? `${patient.ownerName || 'Walk-In'} (Group Visit)`
-          : patient.petName;
-
         // ==============================
         // PHASE 1 — ALL READS (no writes)
         // ==============================
 
-        // 1a. Appointment doc reads — needed for statusHistory in Phase 3 writes.
-        const groupApptDocs = isGroupBill
-          ? await Promise.all(groupAppointments.map(appt => transaction.get(doc(db, "appointments", appt.id))))
-          : null;
-        const individualApptDoc = !isGroupBill
-          ? await transaction.get(doc(db, "appointments", patient.id))
-          : null;
+        // 1a. Appointment doc read — needed for statusHistory in Phase 3 writes.
+        const individualApptDoc = await transaction.get(doc(db, "appointments", patient.id));
 
         // 1b. All inventory reads for product cart items.
         const inventoryMap = await readInventoryDocs(transaction, cart);
@@ -975,94 +893,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         let salePayload;
         let appointmentUpdateFn; // deferred write — called in Phase 3
 
-        if (isGroupBill) {
-          // GROUP MODE: Build per-pet breakdown for the sale document.
-          const perPetBreakdown = groupAppointments.map(appt => {
-            const apptItems = cart.filter(ci => ci._sourceAppointmentId === appt.id);
-            const apptSubtotal = apptItems.reduce((sum, ci) => sum + ci.price * ci.qty, 0);
-            return {
-              petId: appt.petId || null,
-              petName: appt.petName || 'Unknown',
-              appointmentId: appt.id,
-              items: apptItems.map(ci =>
-                ci.type === 'product' && batchSourceMap[ci.id]
-                  ? { ...ci, batchSource: batchSourceMap[ci.id] }
-                  : ci
-              ),
-              subtotal: parseFloat(apptSubtotal.toFixed(2)),
-            };
-          });
-
-          salePayload = {
-            saleType: 'clinical',
-            receiptNumber,
-            checkoutCorrelationId,
-            visitGroupId: patient.visitGroupId,
-            billingMode: 'group',
-            perPetBreakdown,
-            appointmentId: patient.id, // primary/initiating appointment
-            ownerId: patient.ownerId || null,
-            ownerName: patient.ownerName || 'Walk-In',
-            petNames: groupAppointments.map(a => a.petName).join(', '),
-            items: cart.map(ci =>
-              ci.type === 'product' && batchSourceMap[ci.id]
-                ? { ...ci, batchSource: batchSourceMap[ci.id] }
-                : ci
-            ),
-            subtotal: parseFloat(financials.subtotal),
-            discount: parseFloat(financials.discount),
-            depositPaid: parseFloat(financials.deposit),
-            total: parseFloat(financials.total),
-            paymentMethod: primaryPaymentMethod,  // Legacy compat: largest tender
-            paymentTenders: paymentTenders.map(t => ({
-              method: t.method,
-              amount: parseFloat(t.amount) || (paymentTenders.length === 1 ? balanceDueNum : 0),
-              ...(t.method === 'Cash' && t.amountTendered ? {
-                amountTendered: parseFloat(t.amountTendered),
-                changeDue: getChangeDue(t),
-              } : {}),
-            })),
-            hasScPwdDiscount: applyScPwd,
-            date: Timestamp.now(),
-            cashier: profile?.fullName || 'POS Cashier',
-            cashierId: profile?.id || null,
-            status: 'paid',
-            prescribedItemCount: cart.filter(i => i.isPrescribed).length,
-            cashierAddedItemCount: cart.filter(i => i.addedBy === 'cashier').length,
-            hasUnprescribedAdditions: cart.some(i => i.addedBy === 'cashier'),
-            ...cashAuditFields,
-            ...customDiscountAuditFields,
-            // T4.151: Tag post-close sales for audit visibility.
-            ...(isDayClosed ? { postClose: true, dayClosedAt: closingData?.closedAt || null } : {}),
-          };
-
-          appointmentUpdateFn = (transaction) => {
-            for (let i = 0; i < groupAppointments.length; i++) {
-              const appt = groupAppointments[i];
-              const freshApptData = groupApptDocs[i].data();
-              const apptBreakdown = perPetBreakdown.find(b => b.appointmentId === appt.id);
-              const apptRef = doc(db, "appointments", appt.id);
-              transaction.update(apptRef, {
-                checkoutCorrelationId,
-                status: 'completed',
-                statusHistory: [...(freshApptData.statusHistory || []), freshApptData.status || 'billing'],
-                timeCompleted: Timestamp.now(),
-                balanceRemaining: apptBreakdown
-                  ? parseFloat(((apptBreakdown.subtotal / parseFloat(financials.total || 1)) * parseFloat(financials.balanceDue)).toFixed(2))
-                  : 0,
-                clinicalPulse: arrayUnion({
-                  eventId: makePulseEventId('checkout'),
-                  type: 'CHECKOUT_COMPLETED',
-                  timestamp: Timestamp.now(),
-                  staffId: profile?.id || 'pos_system',
-                  staffName: profile?.fullName || 'POS Cashier',
-                  note: `Group checkout: ₱${apptBreakdown?.subtotal?.toFixed(2) || '0.00'} (subtotal) via ${paymentTenders.length > 1 ? 'split (' + paymentTenders.map(t => t.method).join('+') + ')' : primaryPaymentMethod}`,
-                }),
-              });
-            }
-          };
-        } else {
-          // INDIVIDUAL MODE: existing behavior unchanged.
+        {
           const freshApptData = individualApptDoc.data();
 
           salePayload = {
@@ -1161,27 +992,13 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
 
       // T4.90: Push notification — checkout complete
       const posCashierName = profile?.fullName || 'POS Cashier';
-      if (billingMode === 'group' && isGroupVisit) {
-        groupAppointments.forEach((appt) => {
-          sendPushNotification({
-            ownerId: appt.ownerId || patient.ownerId,
-            status: 'completed',
-            petName: appt.petName,
-            appointmentId: appt.id,
-            visitGroupId: patient.visitGroupId,
-            sentBy: posCashierName,
-          });
-        });
-      } else {
-        sendPushNotification({
-          ownerId: patient.ownerId,
-          status: 'completed',
-          petName: patient.petName,
-          appointmentId: patient.id,
-          visitGroupId: patient.visitGroupId,
-          sentBy: posCashierName,
-        });
-      }
+      sendPushNotification({
+        ownerId: patient.ownerId,
+        status: 'completed',
+        petName: patient.petName,
+        appointmentId: patient.id,
+        sentBy: posCashierName,
+      });
 
       const receiptContent = generateReceiptHTML(transactionId, checkoutReceiptNumber);
 
@@ -1357,11 +1174,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         <DialogTitle sx={{ bgcolor: COLORS.success, color: COLORS.cardBg, fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 2 }}>
           <Typography variant="h6" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             {isRetailMode ? <ShoppingCartIcon /> : <PaidIcon />}
-            {isRetailMode
-              ? 'Retail Sale'
-              : billingMode === 'group' && isGroupVisit
-                ? `Group Bill — ${patient?.ownerName || 'Walk-In'} (${groupAppointments.length} pets)`
-                : `Checkout: ${patient?.petName}`}
+            {isRetailMode ? 'Retail Sale' : `Checkout: ${patient?.petName}`}
           </Typography>
           {!isRetailMode && (
             <Chip label={patient?.ownerName || 'Walk-In'} sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white', fontWeight: 'bold' }} />
@@ -1441,54 +1254,6 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
               >
                 CLOSE
               </Button>
-            </Box>
-          )}
-
-          {/* Phase 4 — Group billing mode toggle.
-              Only shown when this appointment belongs to a visit group (2+ members).
-              Switching modes rebuilds the cart from the groupAppointments array. */}
-          {!isRetailMode && isGroupVisit && (
-            <Box sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 2,
-              px: 3,
-              py: 1.25,
-              bgcolor: COLORS.kpiOrangeBg || '#FFF3E0',
-              borderBottom: `2px solid ${COLORS.brand}`,
-              flexShrink: 0,
-            }}>
-              <PetsIcon sx={{ fontSize: 18, color: COLORS.brand }} />
-              <Typography sx={{
-                fontFamily: 'monospace', fontSize: '0.78rem', fontWeight: 900,
-                color: COLORS.brand, textTransform: 'uppercase', letterSpacing: 0.8,
-              }}>
-                Multi-Pet Visit — {groupAppointments.length} pets
-              </Typography>
-              <ToggleButtonGroup
-                value={billingMode}
-                exclusive
-                onChange={(_, val) => { if (val) setBillingMode(val); }}
-                size="small"
-                sx={{ ml: 'auto', '& .MuiToggleButton-root': { borderRadius: 0, fontWeight: 900, fontSize: '0.7rem', px: 1.5, border: `2px solid ${COLORS.brand}` } }}
-              >
-                <ToggleButton
-                  value="individual"
-                  sx={{
-                    '&.Mui-selected': { bgcolor: COLORS.brand, color: '#fff', '&:hover': { bgcolor: COLORS.brand } },
-                  }}
-                >
-                  INDIVIDUAL BILL
-                </ToggleButton>
-                <ToggleButton
-                  value="group"
-                  sx={{
-                    '&.Mui-selected': { bgcolor: COLORS.accent, color: '#fff', '&:hover': { bgcolor: COLORS.accent } },
-                  }}
-                >
-                  GROUP BILL
-                </ToggleButton>
-              </ToggleButtonGroup>
             </Box>
           )}
 

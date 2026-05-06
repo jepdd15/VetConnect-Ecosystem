@@ -94,7 +94,7 @@ export default function Settings() {
   const [settings, setSettings] = useState({
     openHour: 8, closeHour: 17,
     lunchEnabled: true, lunchStart: 12, lunchEnd: 13,
-    minSlotInterval: 30, advanceNoticeMins: 120, maxFutureBookingDays: 30, maxPetsPerBooking: 3,
+    minSlotInterval: 30, advanceNoticeMins: 120, maxFutureBookingDays: 30,
     autoNoShowMins: 30, noShowLinkWindowDays: 30, trafficModerate: 6, trafficHigh: 13,
     clinicPhone: '',
     baiRegistrationNumber: '',
@@ -232,7 +232,6 @@ export default function Settings() {
         setLastSavedSettings(prev => prev === null ? {
           ...data,
           minSlotInterval: parseInt(data.minSlotInterval) || 30,
-          maxPetsPerBooking: parseInt(data.maxPetsPerBooking) || 3,
           trafficModerate: parseInt(data.trafficModerate) || 5,
           trafficHigh: parseInt(data.trafficHigh) || 10,
           advanceNoticeHours: parseInt(data.advanceNoticeHours) || 2,
@@ -305,7 +304,7 @@ export default function Settings() {
   const hasUnsavedChanges = React.useMemo(() => {
     if (!lastSavedSettings) return false;
     const tracked = ['openHour', 'closeHour', 'lunchEnabled', 'lunchStart', 'lunchEnd',
-      'minSlotInterval', 'advanceNoticeMins', 'maxFutureBookingDays', 'maxPetsPerBooking',
+      'minSlotInterval', 'advanceNoticeMins', 'maxFutureBookingDays',
       'autoNoShowMins', 'noShowLinkWindowDays', 'trafficModerate', 'trafficHigh',
       'workingDays', 'clinicPhone', 'baiRegistrationNumber', 'dashboardAlerts', 'dashboardGoals',
       'clinicLat', 'clinicLng', 'geofenceRadiusM'];
@@ -371,10 +370,6 @@ export default function Settings() {
     if (!slot || slot <= 0) {
       return "Base Slot Interval must be greater than 0.";
     }
-    const maxPets = parseInt(settings.maxPetsPerBooking);
-    if (!maxPets || maxPets < 1 || maxPets > 10) {
-      return "Max Pets per Booking must be between 1 and 10.";
-    }
     const modThresh = parseInt(settings.trafficModerate);
     const highThresh = parseInt(settings.trafficHigh);
     if (isNaN(modThresh) || isNaN(highThresh) || modThresh >= highThresh) {
@@ -426,7 +421,6 @@ export default function Settings() {
         minSlotInterval: parseInt(settings.minSlotInterval) || 30,
         advanceNoticeMins: parseInt(settings.advanceNoticeMins) || 120,
         maxFutureBookingDays: parseInt(settings.maxFutureBookingDays) || 30,
-        maxPetsPerBooking: parseInt(settings.maxPetsPerBooking) || 3,
         autoNoShowMins: parseInt(settings.autoNoShowMins) || 30,
         noShowLinkWindowDays: parseInt(settings.noShowLinkWindowDays) || 30,
         trafficModerate: parseInt(settings.trafficModerate) || 6,
@@ -449,7 +443,7 @@ export default function Settings() {
       // Field-level diff for audit trail
       if (lastSavedSettings) {
         const tracked = ['openHour', 'closeHour', 'lunchEnabled', 'lunchStart', 'lunchEnd',
-          'minSlotInterval', 'advanceNoticeMins', 'maxFutureBookingDays', 'maxPetsPerBooking',
+          'minSlotInterval', 'advanceNoticeMins', 'maxFutureBookingDays',
           'autoNoShowMins', 'noShowLinkWindowDays', 'trafficModerate', 'trafficHigh',
           'workingDays', 'clinicPhone', 'baiRegistrationNumber', 'dashboardAlerts', 'dashboardGoals',
           'clinicLat', 'clinicLng', 'geofenceRadiusM', 'enableAppointmentReminders',
@@ -1311,8 +1305,7 @@ export default function Settings() {
               <Grid container spacing={2.5}>
                 <Grid size={{ xs: 12 }}><FormControl fullWidth size="medium" sx={{ bgcolor: 'white' }}><InputLabel sx={{ fontWeight: 900 }}>Base Slot Interval</InputLabel><Select value={settings.minSlotInterval} label="Base Slot Interval" onChange={(e) => handleChange('minSlotInterval', e.target.value)} sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `2px solid ${COLORS.accent}33` }, fontWeight: 900 }}><MenuItem value={15}>15 Minutes</MenuItem><MenuItem value={30}>30 Minutes</MenuItem><MenuItem value={45}>45 Minutes</MenuItem><MenuItem value={60}>60 Minutes</MenuItem></Select></FormControl></Grid>
                 <Grid size={{ xs: 12 }}><FormControl fullWidth size="medium" sx={{ bgcolor: 'white' }}><InputLabel sx={{ fontWeight: 900 }}>Advance Notice Buffer</InputLabel><Select value={settings.advanceNoticeMins} label="Advance Notice Buffer" onChange={(e) => handleChange('advanceNoticeMins', e.target.value)} sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `2px solid ${COLORS.accent}33` }, fontWeight: 900 }}><MenuItem value={0}>0 Mins (Allow immediate walk-ins)</MenuItem><MenuItem value={30}>30 Minutes</MenuItem><MenuItem value={60}>1 Hour</MenuItem><MenuItem value={120}>2 Hours</MenuItem><MenuItem value={1440}>24 Hours (Next-day only)</MenuItem></Select></FormControl></Grid>
-                <Grid size={{ xs: 6 }}><TextField fullWidth label="Future Limit" type="number" value={settings.maxFutureBookingDays} onChange={(e) => handleChange('maxFutureBookingDays', e.target.value)} InputProps={{ endAdornment: <InputAdornment position="end">Days</InputAdornment> }} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 900 } }} /></Grid>
-                <Grid size={{ xs: 6 }}><TextField fullWidth label="Max Pets" type="number" value={settings.maxPetsPerBooking} onChange={(e) => handleChange('maxPetsPerBooking', e.target.value)} InputProps={{ endAdornment: <InputAdornment position="end">Pets</InputAdornment> }} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 900 } }} helperText="Per booking" /></Grid>
+                <Grid size={{ xs: 12 }}><TextField fullWidth label="Future Limit" type="number" value={settings.maxFutureBookingDays} onChange={(e) => handleChange('maxFutureBookingDays', e.target.value)} InputProps={{ endAdornment: <InputAdornment position="end">Days</InputAdornment> }} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 900 } }} /></Grid>
               </Grid>
             </Box>
           </Paper>

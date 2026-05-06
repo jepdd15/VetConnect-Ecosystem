@@ -988,49 +988,9 @@ const EndOfDayModal = React.memo(({
 
     const currentSiloPatients = activeTab === 0 ? siloOnline : activeTab === 1 ? siloScheduled : siloActive;
 
-    // --- PHASE 6: VISIT GROUP AWARENESS ---
-    // Groups currentSiloPatients by visitGroupId. Ungrouped patients (no visitGroupId) are standalone.
-    // Returns an array of either { type: 'standalone', patient } or { type: 'group', visitGroupId, patients[] }.
     const groupedSiloItems = React.useMemo(() => {
-        const grouped = new Map(); // visitGroupId -> patient[]
-        const standalone = [];
-
-        currentSiloPatients.forEach(p => {
-            if (p.visitGroupId) {
-                if (!grouped.has(p.visitGroupId)) grouped.set(p.visitGroupId, []);
-                grouped.get(p.visitGroupId).push(p);
-            } else {
-                standalone.push({ type: 'standalone', patient: p });
-            }
-        });
-
-        const result = [];
-        for (const [visitGroupId, patients] of grouped) {
-            // Sort by groupIndex so pet 1 always leads
-            const sorted = [...patients].sort((a, b) => (a.groupIndex || 0) - (b.groupIndex || 0));
-            result.push({ type: 'group', visitGroupId, patients: sorted });
-        }
-        standalone.forEach(s => result.push(s));
-        return result;
+        return currentSiloPatients.map(p => ({ type: 'standalone', patient: p }));
     }, [currentSiloPatients]);
-
-    // Per-pet override state: { [patientId]: boolean }
-    // When true, the patient's resolution card is shown individually despite being in a group.
-    const [groupOverrides, setGroupOverrides] = React.useState({});
-
-    const toggleGroupOverride = React.useCallback((patientId) => {
-        setGroupOverrides(prev => ({ ...prev, [patientId]: !prev[patientId] }));
-    }, []);
-
-    // Reset overrides on tab change
-    React.useEffect(() => {
-        setGroupOverrides({});
-    }, [activeTab]);
-
-    // Apply a resolution to every patient in a group atomically
-    const handleGroupResolution = React.useCallback((patients, resolution) => {
-        patients.forEach(p => onResolutionChange(p.id, resolution));
-    }, [onResolutionChange]);
 
     // --- 🛰️ THE LIVE HUD SYNC (STALE DATA GUARD) ---
     useEffect(() => {
@@ -1505,206 +1465,45 @@ const EndOfDayModal = React.memo(({
                     </Box>
                 )}
 
-                {/* CONTENT AREA: SILO-SPECIFIC LIST (PHASE 6: visit-group-aware) */}
+                {/* CONTENT AREA: SILO-SPECIFIC LIST */}
                 <Box sx={{ flex: 1, overflowY: 'auto', p: 3, bgcolor: '#F5F5F5' }}>
                     <Stack spacing={3}>
                         {groupedSiloItems.map((item) => {
-                            // --- STANDALONE PATIENT (no visitGroupId) ---
-                            if (item.type === 'standalone') {
-                                const patient = item.patient;
-                                return (
-                                    <AuditPatientCard
-                                        key={patient.id}
-                                        patient={patient}
-                                        tabMode={activeTab}
-                                        resolution={
-                                            patient.status === 'confined'
-                                                ? 'confined'
-                                                : patientResolutions[patient.id]
-                                                ?? (activeTab === 2 && ['in-consult', 'on-hold'].includes((patient.status || '').toLowerCase())
-                                                    ? 'hospitalize'
-                                                    : undefined)
-                                        }
-                                        targetDate={targetDates[patient.id]}
-                                        targetTime={targetTimes[patient.id]}
-                                        auditReason={auditReasons[patient.id]}
-                                        realTimeStatus={realTimeStatuses[patient.id]}
-                                        ancestorData={ancestorData[patient.id]}
-                                        loadingHistory={loadingHistory[patient.id]}
-                                        historyMessage={historyMessage[patient.id]}
-                                        departments={departments}
-                                        settings={settings}
-                                        onResolutionChange={onResolutionChange}
-                                        onAuditReasonChange={onAuditReasonChange}
-                                        onFetchHistory={handleFetchHistory}
-                                        onClearHistory={handleClearHistory}
-                                        onGenderOpen={handleGenderOpen}
-                                        CARD_HEIGHT={CARD_HEIGHT}
-                                        depositAmount={depositAmounts[patient.id]}
-                                        depositMethod={depositMethods[patient.id]}
-                                        onDepositChange={handleDepositChange}
-                                        isClosedDay={isClosedDay}
-                                        getDatePickerStyle={getDatePickerStyle}
-                                    />
-                                );
-                            }
-
-                            // --- VISIT GROUP CARD ---
-                            const { visitGroupId, patients } = item;
-                            const allRes = patients.map(p => patientResolutions[p.id]);
-                            const groupResolution = allRes.every(r => r === allRes[0]) ? allRes[0] : '';
-
+                            const patient = item.patient;
                             return (
-                                <Paper
-                                    key={visitGroupId}
-                                    elevation={0}
-                                    sx={{ border: '2px solid #1565C0', borderRadius: 0, overflow: 'hidden', bgcolor: '#FFF' }}
-                                >
-                                    {/* Group header */}
-                                    <Box sx={{
-                                        bgcolor: '#1565C0', px: 2, py: 1.5,
-                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                    }}>
-                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                            <PetsIcon sx={{ color: 'white', fontSize: 20 }} />
-                                            <Typography sx={{ fontWeight: 1000, color: 'white', fontSize: '0.85rem', letterSpacing: 1 }}>
-                                                MULTI-PET VISIT ({patients.length} PETS)
-                                            </Typography>
-                                            <Chip
-                                                label={patients[0]?.ownerName?.toUpperCase() || 'OWNER'}
-                                                size="small"
-                                                sx={{ bgcolor: '#E3F2FD', color: '#1565C0', fontWeight: 900, fontSize: '0.65rem', borderRadius: 0 }}
-                                            />
-                                        </Box>
-                                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)', fontWeight: 800, fontSize: '0.65rem' }}>
-                                            {visitGroupId}
-                                        </Typography>
-                                    </Box>
-
-                                    {/* Group-level resolution dropdown */}
-                                    <Box sx={{ px: 2, py: 1.5, bgcolor: '#E3F2FD', borderBottom: '1px solid #BBDEFB', display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-                                        <Typography sx={{ fontWeight: 900, fontSize: '0.75rem', color: '#1565C0', minWidth: 120 }}>
-                                            RESOLVE GROUP:
-                                        </Typography>
-                                        <FormControl size="small" sx={{ minWidth: 200 }}>
-                                            <Select
-                                                displayEmpty
-                                                value={groupResolution || ''}
-                                                onChange={(e) => handleGroupResolution(patients, e.target.value)}
-                                                sx={{ fontWeight: 900, fontSize: '0.8rem', borderRadius: 0, bgcolor: 'white' }}
-                                            >
-                                                <MenuItem value="" disabled><em style={{ fontWeight: 800, fontSize: '0.75rem' }}>SELECT RESOLUTION</em></MenuItem>
-                                                <MenuItem value="defer" sx={{ fontWeight: 800, fontSize: '0.8rem' }}>CARRY OVER (DEFER)</MenuItem>
-                                                <MenuItem value="reschedule" sx={{ fontWeight: 800, fontSize: '0.8rem' }}>RESCHEDULE</MenuItem>
-                                                <MenuItem value="no-show" sx={{ fontWeight: 800, fontSize: '0.8rem' }}>NO-SHOW</MenuItem>
-                                                <MenuItem value="cancel" sx={{ fontWeight: 800, fontSize: '0.8rem' }}>CANCEL</MenuItem>
-                                                {activeTab === 2 && <MenuItem value="hospitalize" sx={{ fontWeight: 800, fontSize: '0.8rem' }}>HOSPITALIZE</MenuItem>}
-                                                {activeTab === 2 && <MenuItem value="carryover" sx={{ fontWeight: 800, fontSize: '0.8rem' }}>ACTIVE CARRY-OVER</MenuItem>}
-                                            </Select>
-                                        </FormControl>
-                                        <Typography sx={{ fontSize: '0.72rem', color: '#1565C0', fontWeight: 800 }}>
-                                            Applies to all {patients.length} pets in this visit.
-                                        </Typography>
-                                    </Box>
-
-                                    {/* Pet sub-entries */}
-                                    <Stack spacing={0}>
-                                        {patients.map((patient, pidx) => (
-                                            <Box key={patient.id} sx={{ borderTop: pidx > 0 ? '1px solid #E3F2FD' : 'none' }}>
-                                                {/* Per-pet header with override toggle */}
-                                                <Box sx={{ px: 2, py: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', bgcolor: '#F5F5F5' }}>
-                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                                        <Typography sx={{ fontWeight: 900, fontSize: '0.8rem', color: '#5D4037' }}>
-                                                            PET {pidx + 1}/{patients.length}: {patient.petName?.toUpperCase()}
-                                                        </Typography>
-                                                        <Chip
-                                                            label={(patient.status || 'unknown').toUpperCase()}
-                                                            size="small"
-                                                            sx={{ fontWeight: 900, fontSize: '0.6rem', borderRadius: 0,
-                                                                bgcolor: patient.status === 'arrived' ? '#C8E6C9' : '#FFF3E0',
-                                                                color: patient.status === 'arrived' ? '#2E7D32' : '#E65100',
-                                                            }}
-                                                        />
-                                                    </Box>
-                                                    <Button
-                                                        size="small"
-                                                        variant={groupOverrides[patient.id] ? 'contained' : 'outlined'}
-                                                        onClick={() => toggleGroupOverride(patient.id)}
-                                                        sx={{
-                                                            fontWeight: 900,
-                                                            fontSize: '0.6rem',
-                                                            borderRadius: 0,
-                                                            letterSpacing: 0.5,
-                                                            minWidth: 0,
-                                                            px: 1.5,
-                                                            color: groupOverrides[patient.id] ? 'white' : '#5D4037',
-                                                            borderColor: '#5D4037',
-                                                            bgcolor: groupOverrides[patient.id] ? '#5D4037' : 'transparent',
-                                                            '&:hover': { bgcolor: groupOverrides[patient.id] ? '#3E2723' : '#FFF3E0' },
-                                                        }}
-                                                    >
-                                                        {groupOverrides[patient.id] ? 'OVERRIDE ON' : 'OVERRIDE'}
-                                                    </Button>
-                                                </Box>
-
-                                                {/* Full audit card shown when override is active */}
-                                                {groupOverrides[patient.id] && (
-                                                    <Box sx={{ p: 2, bgcolor: '#FFFDE7', borderTop: '1px dashed #FDD835' }}>
-                                                        <AuditPatientCard
-                                                            patient={patient}
-                                                            tabMode={activeTab}
-                                                            resolution={
-                                                                patient.status === 'confined'
-                                                                    ? 'confined'
-                                                                    : patientResolutions[patient.id]
-                                                                    ?? (activeTab === 2 && ['in-consult', 'on-hold'].includes((patient.status || '').toLowerCase())
-                                                                        ? 'hospitalize'
-                                                                        : undefined)
-                                                            }
-                                                            targetDate={targetDates[patient.id]}
-                                                            targetTime={targetTimes[patient.id]}
-                                                            auditReason={auditReasons[patient.id]}
-                                                            realTimeStatus={realTimeStatuses[patient.id]}
-                                                            ancestorData={ancestorData[patient.id]}
-                                                            loadingHistory={loadingHistory[patient.id]}
-                                                            historyMessage={historyMessage[patient.id]}
-                                                            departments={departments}
-                                                            settings={settings}
-                                                            onResolutionChange={onResolutionChange}
-                                                            onAuditReasonChange={onAuditReasonChange}
-                                                            onFetchHistory={handleFetchHistory}
-                                                            onClearHistory={handleClearHistory}
-                                                            onGenderOpen={handleGenderOpen}
-                                                            CARD_HEIGHT={CARD_HEIGHT}
-                                                            depositAmount={depositAmounts[patient.id]}
-                                                            depositMethod={depositMethods[patient.id]}
-                                                            onDepositChange={handleDepositChange}
-                                                            isClosedDay={isClosedDay}
-                                                            getDatePickerStyle={getDatePickerStyle}
-                                                        />
-                                                    </Box>
-                                                )}
-                                            </Box>
-                                        ))}
-                                    </Stack>
-
-                                    {/* Group audit reason (shared) */}
-                                    <Box sx={{ px: 2, pb: 1.5, pt: 1, bgcolor: '#FAFAFA', borderTop: '1px solid #E3F2FD' }}>
-                                        <TextField
-                                            fullWidth
-                                            size="small"
-                                            label="GROUP AUDIT REASON (applies to all pets)"
-                                            value={auditReasons[patients[0]?.id] || ''}
-                                            onChange={(e) => {
-                                                const val = e.target.value;
-                                                patients.forEach(p => onAuditReasonChange(p.id, val));
-                                            }}
-                                            InputLabelProps={{ sx: { fontWeight: 900, color: '#1565C0', fontSize: '0.75rem' } }}
-                                            inputProps={{ style: { fontWeight: 900, fontSize: '0.8rem' } }}
-                                            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0, borderColor: '#1565C0' } }}
-                                        />
-                                    </Box>
-                                </Paper>
+                                <AuditPatientCard
+                                    key={patient.id}
+                                    patient={patient}
+                                    tabMode={activeTab}
+                                    resolution={
+                                        patient.status === 'confined'
+                                            ? 'confined'
+                                            : patientResolutions[patient.id]
+                                            ?? (activeTab === 2 && ['in-consult', 'on-hold'].includes((patient.status || '').toLowerCase())
+                                                ? 'hospitalize'
+                                                : undefined)
+                                    }
+                                    targetDate={targetDates[patient.id]}
+                                    targetTime={targetTimes[patient.id]}
+                                    auditReason={auditReasons[patient.id]}
+                                    realTimeStatus={realTimeStatuses[patient.id]}
+                                    ancestorData={ancestorData[patient.id]}
+                                    loadingHistory={loadingHistory[patient.id]}
+                                    historyMessage={historyMessage[patient.id]}
+                                    departments={departments}
+                                    settings={settings}
+                                    onResolutionChange={onResolutionChange}
+                                    onAuditReasonChange={onAuditReasonChange}
+                                    onFetchHistory={handleFetchHistory}
+                                    onClearHistory={handleClearHistory}
+                                    onGenderOpen={handleGenderOpen}
+                                    CARD_HEIGHT={CARD_HEIGHT}
+                                    depositAmount={depositAmounts[patient.id]}
+                                    depositMethod={depositMethods[patient.id]}
+                                    onDepositChange={handleDepositChange}
+                                    isClosedDay={isClosedDay}
+                                    getDatePickerStyle={getDatePickerStyle}
+                                />
                             );
                         })}
                     </Stack>

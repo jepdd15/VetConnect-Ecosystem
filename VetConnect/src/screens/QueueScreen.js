@@ -608,72 +608,27 @@ export default function QueueScreen() {
             </>
           )}
 
-          {/* Multi-pet summary -- T2.489 + Phase 7.2: visitGroupId-aware grouping */}
-          {allTickets.length > 1 && (() => {
-            // Group allTickets by visitGroupId. Ungrouped tickets stay standalone.
-            const groupMap = new Map(); // visitGroupId -> ticket[]
-            const standaloneTickets = [];
-            allTickets.forEach(ticket => {
-              if (ticket.visitGroupId) {
-                if (!groupMap.has(ticket.visitGroupId)) groupMap.set(ticket.visitGroupId, []);
-                groupMap.get(ticket.visitGroupId).push(ticket);
-              } else {
-                standaloneTickets.push(ticket);
-              }
-            });
-
-            const hasGroups = groupMap.size > 0;
-
-            return (
-              <View style={styles.multiPetBox}>
-                <Text style={styles.multiPetLabel}>
-                  ALL YOUR PETS IN QUEUE ({allTickets.length})
-                </Text>
-
-                {/* Visit groups */}
-                {[...groupMap.entries()].map(([visitGroupId, tickets]) => {
-                  const sorted = [...tickets].sort((a, b) => (a.groupIndex || 0) - (b.groupIndex || 0));
-                  const sharedNumber = formatTicket(sorted[0]?.ticketPrefix, sorted[0]?.queueNumber);
-                  return (
-                    <View key={visitGroupId} style={styles.visitGroupSection}>
-                      <View style={styles.visitGroupHeader}>
-                        <Text style={styles.visitGroupLabel}>VISIT GROUP — {sharedNumber}</Text>
-                        <Text style={styles.visitGroupCount}>{sorted.length} PETS</Text>
-                      </View>
-                      {sorted.map((ticket, idx) => (
-                        <View key={ticket.id || idx} style={styles.multiPetRow}>
-                          <Text style={styles.multiPetName}>
-                            {ticket.petName || `Pet ${idx + 1}`}
-                          </Text>
-                          <Text style={[styles.multiPetTicket, styles.multiPetTicketDimmed]}>
-                            {idx === 0 ? sharedNumber : `— ${sharedNumber}`}
-                          </Text>
-                          <Text style={styles.multiPetStatus}>
-                            {getClientStatusLabel(ticket.status)}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  );
-                })}
-
-                {/* Standalone tickets (no visitGroupId) */}
-                {standaloneTickets.map((ticket, idx) => (
-                  <View key={ticket.id || idx} style={styles.multiPetRow}>
-                    <Text style={styles.multiPetName}>
-                      {ticket.petName || `Pet ${idx + 1}`}
-                    </Text>
-                    <Text style={styles.multiPetTicket}>
-                      {formatTicket(ticket.ticketPrefix, ticket.queueNumber)}
-                    </Text>
-                    <Text style={styles.multiPetStatus}>
-                      {getClientStatusLabel(ticket.status)}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            );
-          })()}
+          {/* Multi-pet summary -- T2.489 */}
+          {allTickets.length > 1 && (
+            <View style={styles.multiPetBox}>
+              <Text style={styles.multiPetLabel}>
+                ALL YOUR PETS IN QUEUE ({allTickets.length})
+              </Text>
+              {allTickets.map((ticket, idx) => (
+                <View key={ticket.id || idx} style={styles.multiPetRow}>
+                  <Text style={styles.multiPetName}>
+                    {ticket.petName || `Pet ${idx + 1}`}
+                  </Text>
+                  <Text style={styles.multiPetTicket}>
+                    {formatTicket(ticket.ticketPrefix, ticket.queueNumber)}
+                  </Text>
+                  <Text style={styles.multiPetStatus}>
+                    {getClientStatusLabel(ticket.status)}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
       ) : (
         <View style={styles.noTicketBox}>
@@ -961,37 +916,6 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: COLORS.textMuted,
     textTransform: "uppercase",
-  },
-
-  // Visit group section within multi-pet box
-  visitGroupSection: {
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: COLORS.sky,
-    backgroundColor: '#F0F9FF',
-  },
-  visitGroupHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: COLORS.sky,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  visitGroupLabel: {
-    fontWeight: '900',
-    fontSize: 12,
-    color: COLORS.white,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  visitGroupCount: {
-    fontWeight: '800',
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.8)',
-  },
-  multiPetTicketDimmed: {
-    opacity: 0.6,
   },
 
   noTicketBox: { marginTop: 20, padding: 20, alignItems: "center" },

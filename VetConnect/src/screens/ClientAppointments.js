@@ -379,94 +379,14 @@ const ClientAppointments = ({ navigation }) => {
     }
   };
 
-  // CLIENT ATTENDANCE CONFIRMATION — all unconfirmed siblings in a visit group
-  const handleConfirmGroupAttendance = async (groupAppts) => {
-    try {
-      const unconfirmed = groupAppts.filter(
-        a => a.status === "confirmed" && !a.confirmedByClient
-      );
-      await Promise.all(
-        unconfirmed.map(appt =>
-          updateDoc(doc(db, "appointments", appt.id), {
-            confirmedByClient: true,
-            confirmedByClientAt: Timestamp.now(),
-          })
-        )
-      );
-    } catch (error) {
-      Alert.alert("Error", "Could not confirm. Please try again.");
-    }
-  };
 
   // Navigate to BookAppointment in reschedule mode for a single appointment.
-  // If the appointment is part of a group, warn the user about potential desync first.
   const handleReschedule = (item) => {
-    if (item.visitGroupId) {
-      Alert.alert(
-        'Group Visit',
-        'This appointment is part of a group visit. Rescheduling it separately may desync it from the other pets in the group. Continue?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Continue',
-            onPress: () => navigation.navigate("BookAppointment", {
-              rescheduleMode: true,
-              rescheduleAppointmentId: item.id,
-              rescheduleAppointment: item,
-            }),
-          },
-        ],
-      );
-      return;
-    }
     navigation.navigate("BookAppointment", {
       rescheduleMode: true,
       rescheduleAppointmentId: item.id,
       rescheduleAppointment: item,
     });
-  };
-
-  // Navigate to BookAppointment in reschedule mode for an entire visit group.
-  // Passes the full group array so BookAppointment can update all members atomically (Amendment 1).
-  const handleRescheduleGroup = (groupAppts) => {
-    navigation.navigate("BookAppointment", {
-      rescheduleMode: true,
-      rescheduleAppointmentId: groupAppts[0].id,
-      rescheduleAppointment: groupAppts[0],
-      rescheduleGroup: groupAppts,
-    });
-  };
-
-  // Cancel all appointments in a visit group
-  const handleCancelGroup = (groupAppointments, firstServiceType) => {
-    Alert.alert(
-      "Cancel Multi-Pet Visit",
-      `Cancel your entire multi-pet visit (${groupAppointments.length} pets)? All slots will be freed.`,
-      [
-        { text: "No, keep it", style: "cancel" },
-        {
-          text: "Yes, Cancel All",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await Promise.all(
-                groupAppointments.map(appt =>
-                  updateDoc(doc(db, "appointments", appt.id), {
-                    status: "cancelled",
-                    auditReason: "Cancelled by Pet Owner (Group)",
-                    auditReasons: arrayUnion({ reason: 'Cancelled by Pet Owner (Group)', action: 'client-cancel-group', staffName: 'Client/Self', timestamp: Timestamp.now() }),
-                    cancelledAt: Timestamp.now(),
-                  })
-                )
-              );
-              Alert.alert("Cancelled", "Your multi-pet visit has been cancelled.");
-            } catch (error) {
-              Alert.alert("Error", "Could not cancel all appointments. Please try again.");
-            }
-          },
-        },
-      ],
-    );
   };
 
   // Navigate to BookAppointment with prefill params derived from the follow-up ghost.
@@ -663,111 +583,8 @@ const ClientAppointments = ({ navigation }) => {
     );
   };
 
-  // Renders a grouped multi-pet visit card.
-  // Stands separate from renderItem so the logic stays focused.
-  const renderGroupCard = (groupItem) => {
-    const { appointments: groupAppts, visitGroupId } = groupItem;
-    const first = groupAppts[0];
-    const isHistory = tab === "history";
-    // A group is cancellable if every member is pending/confirmed
-    const isCancellable = groupAppts.every(
-      a => a.status === "pending" || a.status === "confirmed"
-    );
-
-    return (
-      <View key={visitGroupId} style={[styles.card, styles.groupCard, isHistory && styles.historyCard]}>
-        {/* Group header */}
-        <View style={styles.groupHeader}>
-          <Text style={styles.groupHeaderLabel}>MULTI-PET VISIT</Text>
-          <Text style={styles.groupPetCount}>{groupAppts.length} PETS</Text>
-        </View>
-
-        {/* Date row */}
-        <View style={styles.row}>
-          <Text style={styles.date}>
-            {formatDisplayDate(first.scheduledDate, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
-          </Text>
-          <Text style={styles.date}>
-            {formatFirestoreTime(first.scheduledDate)}
-          </Text>
-        </View>
-
-        <View style={styles.divider} />
-
-        {/* Per-pet sub-entries */}
-        {groupAppts.map((appt, idx) => {
-          const icon = ICONS[appt.serviceType] || ICONS["Default"];
-          return (
-            <View key={appt.id} style={styles.groupPetRow}>
-              <Text style={{ fontSize: 18, marginRight: 8 }}>{icon}</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.groupPetName}>{appt.petName}</Text>
-                <Text style={styles.groupPetService}>{appt.serviceType || appt.primaryService || ""}</Text>
-              </View>
-              <Text style={[styles.status, getClientStatusColor(appt.status)]}>
-                {getClientStatusIcon(appt.status)} {getClientStatusLabel(appt.status).toUpperCase()}
-              </Text>
-            </View>
-          );
-        })}
-
-        {/* Actions */}
-        {!isHistory && (isCancellable || groupAppts.some(a => a.status === "confirmed")) && (
-          <View style={styles.actionRow}>
-            {isCancellable && (
-              <TouchableOpacity
-                style={[styles.btn, { backgroundColor: "#FFEBEE", borderWidth: 1, borderColor: COLORS.danger, marginRight: "auto" }]}
-                onPress={() => handleCancelGroup(groupAppts, first.serviceType || first.primaryService)}
-              >
-                <Text style={[styles.btnText, { color: COLORS.danger }]}>Cancel All</Text>
-              </TouchableOpacity>
-            )}
-
-            {/* Reschedule Group: only shown when ALL members are pending/confirmed (Amendment 1) */}
-            {isCancellable && (
-              <TouchableOpacity
-                style={[styles.btn, styles.rescheduleBtn]}
-                onPress={() => handleRescheduleGroup(groupAppts)}
-              >
-                <Text style={[styles.btnText, { color: COLORS.sky }]}>Reschedule Group</Text>
-              </TouchableOpacity>
-            )}
-
-            {(() => {
-              const confirmedMembers = groupAppts.filter(a => a.status === "confirmed");
-              const hasUnconfirmed = confirmedMembers.some(a => !a.confirmedByClient);
-              const allDone = confirmedMembers.length > 0 && confirmedMembers.every(a => a.confirmedByClient);
-              if (hasUnconfirmed) return (
-                <TouchableOpacity
-                  style={[styles.btn, styles.confirmBtn, { marginLeft: "auto" }]}
-                  onPress={() => handleConfirmGroupAttendance(groupAppts)}
-                >
-                  <Text style={[styles.btnText, { color: COLORS.success }]}>
-                    Confirm I'm Coming
-                  </Text>
-                </TouchableOpacity>
-              );
-              if (allDone) return (
-                <View style={[styles.btn, styles.confirmedBadge, { marginLeft: "auto" }]}>
-                  <Text style={[styles.btnText, { color: COLORS.success }]}>
-                    ✓ Confirmed
-                  </Text>
-                </View>
-              );
-              return null;
-            })()}
-          </View>
-        )}
-      </View>
-    );
-  };
 
   const renderItem = ({ item }) => {
-    // Group wrapper items are rendered by renderGroupCard
-    if (item._isGroupWrapper) {
-      return renderGroupCard(item);
-    }
-
     // Case chain wrappers (multi-day carry-over visits) render as a swipeable card.
     if (item._isCaseWrapper) {
       return (
@@ -1086,7 +903,7 @@ const ClientAppointments = ({ navigation }) => {
                 // Expand all standalone completed cards — skip group and case wrappers.
                 const completedIds = new Set();
                 filteredData.forEach((item) => {
-                  if (item._isGroupWrapper || item._isCaseWrapper) return;
+                  if (item._isCaseWrapper) return;
                   if (item.status === 'completed') completedIds.add(item.id);
                 });
                 setExpandedTimelines(new Set(completedIds));
@@ -1122,34 +939,7 @@ const ClientAppointments = ({ navigation }) => {
               ? base.filter(a => a.isFollowUp && a.status === 'pending')
                   .sort((a, b) => (a.scheduledDate?.toMillis() || 0) - (b.scheduledDate?.toMillis() || 0))
               : [];
-            const nonFollowUps = base.filter(a => !(a.isFollowUp && a.status === 'pending'));
-
-            // Group non-follow-up items by visitGroupId.
-            // Multi-pet bookings become a single group-wrapper item in the list.
-            // Legacy appointments without visitGroupId stay standalone.
-            const groupMap = new Map(); // visitGroupId -> appointment[]
-            const standaloneItems = [];
-
-            nonFollowUps.forEach(appt => {
-              if (appt.visitGroupId) {
-                if (!groupMap.has(appt.visitGroupId)) groupMap.set(appt.visitGroupId, []);
-                groupMap.get(appt.visitGroupId).push(appt);
-              } else {
-                standaloneItems.push(appt);
-              }
-            });
-
-            const groupWrappers = [];
-            // Emit group wrappers (sort pets within group by groupIndex)
-            for (const [visitGroupId, groupAppts] of groupMap) {
-              const sorted = [...groupAppts].sort((a, b) => (a.groupIndex || 0) - (b.groupIndex || 0));
-              groupWrappers.push({
-                _isGroupWrapper: true,
-                id: `group-${visitGroupId}`,
-                visitGroupId,
-                appointments: sorted,
-              });
-            }
+            const standaloneItems = base.filter(a => !(a.isFollowUp && a.status === 'pending'));
 
             // History tab: detect case chains among standalone items.
             // Upcoming tab: always emit standalones as-is (no case grouping).
@@ -1167,14 +957,10 @@ const ClientAppointments = ({ navigation }) => {
 
               const remainingStandalones = standaloneItems.filter(a => standaloneIds.has(a.id));
 
-              return [...followUps, ...groupWrappers, ...caseWrappers, ...remainingStandalones];
+              return [...followUps, ...caseWrappers, ...remainingStandalones];
             }
 
-            // Upcoming tab — preserve original behavior exactly.
-            const processedNonFollowUps = [...groupWrappers];
-            standaloneItems.forEach(a => processedNonFollowUps.push(a));
-
-            return [...followUps, ...processedNonFollowUps];
+            return [...followUps, ...standaloneItems];
           })()}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
@@ -1480,54 +1266,6 @@ const styles = StyleSheet.create({
   closeText: { color: COLORS.danger, fontWeight: "bold", fontSize: 16 },
 
   // --- Follow-up ghost card (B5) ---
-  // --- Multi-pet group card styles ---
-  groupCard: {
-    borderWidth: 2,
-    borderColor: COLORS.brand,
-    backgroundColor: COLORS.white,
-  },
-  groupHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: COLORS.brand,
-    marginHorizontal: -15,
-    marginTop: -15,
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    marginBottom: 10,
-  },
-  groupHeaderLabel: {
-    fontWeight: '900',
-    fontSize: 12,
-    color: COLORS.white,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  groupPetCount: {
-    fontWeight: '900',
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.8)',
-    letterSpacing: 1,
-  },
-  groupPetRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F5F5F5',
-  },
-  groupPetName: {
-    fontWeight: '900',
-    fontSize: 14,
-    color: COLORS.accent,
-  },
-  groupPetService: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    marginTop: 1,
-  },
-
   followUpCard: {
     flexDirection: 'row',
     backgroundColor: '#FFF3E0',

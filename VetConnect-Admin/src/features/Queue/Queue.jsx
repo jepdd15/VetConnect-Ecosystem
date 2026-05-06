@@ -213,7 +213,6 @@ export default function Queue() {
 
   const [openWalkIn, setOpenWalkIn] = useState(false);
   const [openAssign, setOpenAssign] = useState(false);
-  const [siblingAppts, setSiblingAppts] = useState([]); // Sibling appointments for group check-in
 
   // --- ðŸ›°ï¸ UNIVERSAL CLINICAL HOVER ENGINE ---
   const [hoverAnchor, setHoverAnchor] = useState(null);
@@ -585,7 +584,6 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           petName: patient.petName,
           vetName: profile?.fullName || 'Staff',
           appointmentId: patient.id,
-          visitGroupId: patient.visitGroupId,
           sentBy: profile?.fullName || 'Staff',
         });
       });
@@ -722,15 +720,6 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
   const handleMenuClick = (e, row) => { setAnchorEl(e.currentTarget); setSelectedRow(row); };
   const handleCloseMenu = () => { setAnchorEl(null); };
   const handleOpenAssign = (row) => {
-    // Collect confirmed siblings for group check-in (confirmed only — don't carry in-progress pets)
-    const siblings = row.visitGroupId
-      ? rows.filter(r =>
-          r.visitGroupId === row.visitGroupId &&
-          r.id !== row.id &&
-          r.status === 'confirmed'
-        )
-      : [];
-    setSiblingAppts(siblings);
     setSelectedRow(row);
     setOpenAssign(true);
     handleCloseMenu();
@@ -786,7 +775,6 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         petName: dispenseRow.petName,
         vetName: profile?.fullName || 'Pharmacy',
         appointmentId: dispenseRow.id,
-        visitGroupId: dispenseRow.visitGroupId,
         sentBy: profile?.fullName || 'Staff',
       });
 
@@ -1099,7 +1087,6 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           petName: selectedRow.petName,
           vetName: profile?.fullName || 'Staff',
           appointmentId: selectedRow.id,
-          visitGroupId: selectedRow.visitGroupId,
           customTitle: 'Appointment Rescheduled',
           customBody: `Your appointment for ${selectedRow.petName || 'your pet'} has been rescheduled to ${updatedSchDate.toLocaleDateString()}.`,
           sentBy: profile?.fullName || 'Staff',
@@ -1240,7 +1227,6 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           petName: selectedRow.petName,
           vetName: profile?.fullName || 'Staff',
           appointmentId: selectedRow.id,
-          visitGroupId: selectedRow.visitGroupId,
           customTitle: 'Visit Carried Over',
           customBody: `${selectedRow.petName || 'Your pet'}'s visit has been rescheduled to ${updatedSchDate.toLocaleDateString()}. Your progress is preserved.`,
           sentBy: profile?.fullName || 'Staff',
@@ -1506,84 +1492,22 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
     const flushToRows = () => {
       const list = Array.from(apptMap.values()).filter(passesFilter);
 
-      // ── VISIT GROUP CLUSTERING ──────────────────────────────────
-      // Group appointments by visitGroupId (authoritative signal from T2.78).
-      // Fall back to standalone for legacy appointments without visitGroupId.
-      const grouped = new Map(); // visitGroupId -> appt[]
-      const ungrouped = [];
-
-      list.forEach(item => {
-        if (item.visitGroupId) {
-          if (!grouped.has(item.visitGroupId)) grouped.set(item.visitGroupId, []);
-          grouped.get(item.visitGroupId).push(item);
-        } else {
-          ungrouped.push(item);
-        }
-      });
-
-      // Sort each group's members by their booking groupIndex
-      for (const [, group] of grouped) {
-        group.sort((a, b) => (a.groupIndex || 0) - (b.groupIndex || 0));
-      }
-
-      // Build representative entries for sorting: one per group, one per standalone
-      const representatives = [];
-      for (const [vgId, group] of grouped) {
-        representatives.push({ type: 'group', vgId, anchor: group[0], items: group });
-      }
-      ungrouped.forEach(item => representatives.push({ type: 'single', item }));
-
-      // ── AMENDMENT 1: EMERGENCY PRIORITY PRESERVATION ─────────
-      // If ANY pet in a visit group is emergency-flagged, the ENTIRE group
-      // floats to the top — they arrive together as one owner.
       const isEmergency = (item) =>
         item.ticketPrefix === 'E' || item.priority === 'emergency' || item.priority === 'high';
 
-      representatives.forEach(rep => {
-        rep.hasEmergency = rep.type === 'group'
-          ? rep.items.some(isEmergency)
-          : isEmergency(rep.item);
-      });
-
-      // PRIMARY SORT: emergency first, then priority → time → owner
-      representatives.sort((a, b) => {
-        if (a.hasEmergency && !b.hasEmergency) return -1;
-        if (!a.hasEmergency && b.hasEmergency) return 1;
-
-        const itemA = a.type === 'group' ? a.anchor : a.item;
-        const itemB = b.type === 'group' ? b.anchor : b.item;
-
-        const priorityA = itemA.priority === 'high' ? 0 : 1;
-        const priorityB = itemB.priority === 'high' ? 0 : 1;
+      list.sort((a, b) => {
+        if (isEmergency(a) && !isEmergency(b)) return -1;
+        if (!isEmergency(a) && isEmergency(b)) return 1;
+        const priorityA = a.priority === 'high' ? 0 : 1;
+        const priorityB = b.priority === 'high' ? 0 : 1;
         if (priorityA !== priorityB) return priorityA - priorityB;
-
-        const timeA = itemA.jsScheduled ? itemA.jsScheduled.getTime() : (itemA.createdAt?.toDate().getTime() || 0);
-        const timeB = itemB.jsScheduled ? itemB.jsScheduled.getTime() : (itemB.createdAt?.toDate().getTime() || 0);
+        const timeA = a.jsScheduled ? a.jsScheduled.getTime() : (a.createdAt?.toDate().getTime() || 0);
+        const timeB = b.jsScheduled ? b.jsScheduled.getTime() : (b.createdAt?.toDate().getTime() || 0);
         if (timeA !== timeB) return timeA - timeB;
-
-        return (itemA.ownerId || '').localeCompare(itemB.ownerId || '');
+        return (a.ownerId || '').localeCompare(b.ownerId || '');
       });
 
-      // Flatten and annotate each row with its group position metadata
-      const processedList = [];
-      representatives.forEach(rep => {
-        if (rep.type === 'group') {
-          rep.items.forEach((item, idx) => {
-            processedList.push({
-              ...item,
-              isGroupHeader:    idx === 0,
-              isGroupMid:       idx > 0 && idx < rep.items.length - 1,
-              isGroupTail:      idx === rep.items.length - 1 && rep.items.length > 1,
-              isStandalone:     false,
-              _visitGroupSize:  rep.items.length,
-              _visitGroupIndex: idx,
-              _visitGroupId:    rep.vgId,
-            });
-          });
-        } else {
-          processedList.push({ ...rep.item, isStandalone: true });
-        }
-      });
+      const processedList = list.map(item => ({ ...item, isStandalone: true }));
 
       setRows(processedList);
     };
@@ -2246,21 +2170,15 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           getRowClassName={(params) => {
             const classes = [];
             if (params.row.priority === 'high') classes.push('emergency-row');
-            if (params.row.isGroupHeader) classes.push('group-header');
-            if (params.row.isGroupMid) classes.push('group-mid');
-            if (params.row.isGroupTail) classes.push('group-tail');
             return classes.join(' ');
-          }} 
-          sx={{ 
-            border: 'none', 
-            bgcolor: 'transparent', 
-            '& .MuiDataGrid-columnHeaders': { bgcolor: 'rgba(255, 255, 255, 0.4)', color: '#5D4037', fontWeight: 'bold', fontSize: '1.05rem', borderBottom: '1px solid rgba(255, 255, 255, 0.5)'}, 
-            '& .emergency-row': { bgcolor: 'rgba(255, 235, 238, 0.8)' }, 
-            '& .group-header': { borderTop: '2.5px solid #8B4513 !important', bgcolor: 'rgba(255, 255, 255, 0.45)' },
-            '& .group-mid': { borderLeft: '5px solid #8B4513 !important', bgcolor: 'rgba(255, 255, 255, 0.45)' },
-            '& .group-tail': { borderLeft: '5px solid #8B4513 !important', borderBottom: '2.5px solid #8B4513 !important', bgcolor: 'rgba(255, 255, 255, 0.45)' },
-            '& .super-late-row': { bgcolor: 'rgba(255, 243, 224, 0.8)' }, 
-            '& .MuiDataGrid-row:hover': { bgcolor: 'rgba(255, 255, 255, 0.6)' }, 
+          }}
+          sx={{
+            border: 'none',
+            bgcolor: 'transparent',
+            '& .MuiDataGrid-columnHeaders': { bgcolor: 'rgba(255, 255, 255, 0.4)', color: '#5D4037', fontWeight: 'bold', fontSize: '1.05rem', borderBottom: '1px solid rgba(255, 255, 255, 0.5)'},
+            '& .emergency-row': { bgcolor: 'rgba(255, 235, 238, 0.8)' },
+            '& .super-late-row': { bgcolor: 'rgba(255, 243, 224, 0.8)' },
+            '& .MuiDataGrid-row:hover': { bgcolor: 'rgba(255, 255, 255, 0.6)' },
             '& .MuiDataGrid-cell': { borderBottom: '1px solid rgba(255, 255, 255, 0.2)' },
             '& .MuiDataGrid-cell[data-field="timing"]': { padding: 0 }
           }} 
@@ -2276,12 +2194,6 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         servicesList={servicesList}
         departments={departments}
         vetsList={vets}
-        groupAppointments={
-          selectedRow?.visitGroupId
-            ? rows.filter(r => r.visitGroupId === selectedRow.visitGroupId)
-            : []
-        }
-        onSwitchPatient={(appt) => setSelectedRow(appt)}
       />
       <POSModal
         open={openPOS}
@@ -2289,11 +2201,6 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         patient={selectedRow}
         inventoryList={joinedInventory}
         servicesList={servicesList}
-        groupAppointments={
-          selectedRow?.visitGroupId
-            ? rows.filter(r => r.visitGroupId === selectedRow.visitGroupId)
-            : []
-        }
         isDayClosed={isDayClosed}
         closingData={closingData}
       />
@@ -2319,9 +2226,8 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       
       <AssignStaffModal
         open={openAssign}
-        onClose={() => { setOpenAssign(false); setSiblingAppts([]); }}
+        onClose={() => setOpenAssign(false)}
         patient={selectedRow}
-        siblingAppointments={siblingAppts}
       />
       
       {/* THE NEW TRIAGE WIZARD SHIELD (PAGE-LEVEL OVERLAY) */}
@@ -2478,39 +2384,6 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
              </Typography>
            </MenuItem>
          )}
-
-         {/* GROUP CHECK-IN: Show when the selected row is confirmed and has
-             confirmed siblings sharing the same visitGroupId */}
-         {selectedRow?.status === 'confirmed' && selectedRow?.visitGroupId && (() => {
-           const confirmedSiblings = rows.filter(r =>
-             r.visitGroupId === selectedRow.visitGroupId &&
-             r.id !== selectedRow.id &&
-             r.status === 'confirmed'
-           );
-           if (confirmedSiblings.length === 0) return null;
-           const groupPetCount = confirmedSiblings.length + 1;
-           return (
-             <MenuItem
-               onClick={() => handleOpenAssign(selectedRow)}
-               sx={{ bgcolor: '#E3F2FD', '&:hover': { bgcolor: '#BBDEFB' } }}
-             >
-               <ListItemIcon>
-                 <Box sx={{
-                   width: 20, height: 20, borderRadius: 0,
-                   bgcolor: '#1565C0', color: 'white',
-                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                   fontSize: '0.65rem', fontWeight: '900',
-                 }}>
-                   {groupPetCount}
-                 </Box>
-               </ListItemIcon>
-               <ListItemText
-                 primary={`Check In Group (${groupPetCount} pets)`}
-                 sx={{ color: '#1565C0', '& .MuiListItemText-primary': { fontWeight: '900' } }}
-               />
-             </MenuItem>
-           );
-         })()}
 
          <MenuItem onClick={handleEditOpen}>
             <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>

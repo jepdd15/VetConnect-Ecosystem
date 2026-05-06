@@ -9,13 +9,15 @@
  * Each integration point manages its own collapse independently.
  *
  * Props:
- *   appointment    {object}   — Full appointment object (encounterItems, finalTotal, id, petId, petName)
- *   collapsed      {boolean}  — Controlled by parent
- *   onToggle       {function} — () => void
- *   onViewRecord   {function} — () => void — navigate to PetHistoryScreen
- *   onRebook       {function} — (appointment) => void — existing handleRebook
- *   salesTotal     {number|null} — From salesByAppt join; shows "Paid" line when set
- *   hideViewRecord {boolean}  — Suppress "View Full Record" button (default false)
+ *   appointment       {object}   — Full appointment object (encounterItems, finalTotal, id, petId, petName)
+ *   collapsed         {boolean}  — Controlled by parent
+ *   onToggle          {function} — () => void
+ *   onViewRecord      {function} — () => void — navigate to PetHistoryScreen
+ *   onRebook          {function} — (appointment) => void — existing handleRebook
+ *   salesTotal        {number|null} — From salesByAppt join; shows "Paid" line when set
+ *   hideViewRecord    {boolean}  — Suppress "View Full Record" button (default false)
+ *   externalMedRecord {object|null} — Pre-fetched medical_records doc; skips the
+ *                                     internal getDocs fetch when provided.
  */
 
 import { useEffect, useState } from 'react';
@@ -90,14 +92,20 @@ const EncounterSummary = ({
   onRebook,
   salesTotal,
   hideViewRecord = false,
+  hideNextSteps = false,
+  hideActions = false,
+  externalMedRecord = null,
 }) => {
-  const [medRecord, setMedRecord] = useState(null);
+  const [medRecord, setMedRecord] = useState(externalMedRecord);
   const [medRecordLoading, setMedRecordLoading] = useState(false);
-  const [medRecordFetched, setMedRecordFetched] = useState(false);
+  const [medRecordFetched, setMedRecordFetched] = useState(externalMedRecord !== null);
 
-  // Lazy-load the linked medical_records doc on first expand.
-  // medRecordFetched prevents re-querying if the user collapses and re-expands.
   useEffect(() => {
+    if (externalMedRecord !== null) {
+      setMedRecord(externalMedRecord);
+      setMedRecordFetched(true);
+      return;
+    }
     if (collapsed || medRecordFetched) return;
 
     setMedRecordFetched(true);
@@ -115,12 +123,14 @@ const EncounterSummary = ({
       })
       .catch(() => { /* silently fail — legacy data with no linked record */ })
       .finally(() => setMedRecordLoading(false));
-  }, [collapsed, medRecordFetched, appointment.id]);
+  }, [collapsed, medRecordFetched, appointment.id, externalMedRecord]);
 
   // ── Derived data ────────────────────────────────────────────────────────────
 
   const items = appointment.encounterItems || [];
-  const drugs = items.filter((i) => i.isDrug);
+  const services = items.filter((i) => i.type === 'service');
+  const products = items.filter((i) => i.type !== 'service');
+  const drugs = items.filter((i) => (i.productClass || (i.isDrug ? 'medicine' : 'retail')) === 'medicine');
   const totalAmount = appointment.finalTotal ?? 0;
 
   // Medical record fields with multi-path fallbacks for schema variants.
@@ -161,24 +171,45 @@ const EncounterSummary = ({
       <View style={styles.section}>
         <Text style={styles.sectionHeader}>Services Performed</Text>
 
-        {items.map((item, idx) => {
+        {services.map((item, idx) => {
           const lineTotal = (item.price ?? 0) * (item.qty ?? 1);
-          const instructions = resolveInstructions(item);
           return (
-            <View key={`item-${idx}`}>
+            <View key={`svc-${idx}`}>
               <View style={styles.itemRow}>
                 <Text style={styles.itemName} numberOfLines={2}>
                   {'✓ '}{item.name}
-                  {item.qty > 1 ? ` ×${item.qty}` : ''}
                 </Text>
                 <Text style={styles.itemPrice}>₱{lineTotal.toLocaleString()}</Text>
               </View>
-              {item.isDrug && instructions ? (
-                <Text style={styles.sigLine}>💊 {instructions}</Text>
-              ) : null}
             </View>
           );
         })}
+
+        {products.length > 0 && (
+          <>
+            <Text style={[styles.sectionHeader, { marginTop: 10 }]}>Items Dispensed</Text>
+            {products.map((item, idx) => {
+              const lineTotal = (item.price ?? 0) * (item.qty ?? 1);
+              const instructions = resolveInstructions(item);
+              const pc = item.productClass || (item.isDrug ? 'medicine' : 'retail');
+              const emoji = pc === 'medicine' ? '💊' : pc === 'medical_supply' ? '🩹' : '📦';
+              return (
+                <View key={`prod-${idx}`}>
+                  <View style={styles.itemRow}>
+                    <Text style={styles.itemName} numberOfLines={2}>
+                      {emoji} {item.name}
+                      {item.qty > 1 ? ` ×${item.qty}` : ''}
+                    </Text>
+                    <Text style={styles.itemPrice}>₱{lineTotal.toLocaleString()}</Text>
+                  </View>
+                  {pc === 'medicine' && instructions ? (
+                    <Text style={styles.sigLine}>directions (Sig): {instructions}</Text>
+                  ) : null}
+                </View>
+              );
+            })}
+          </>
+        )}
 
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>Total:</Text>
@@ -211,8 +242,8 @@ const EncounterSummary = ({
         </View>
       )}
 
-      {/* SECTION C — NEXT STEPS (lazy-loaded from medical_records) */}
-      {(medRecordLoading || (medRecordFetched && hasNextSteps)) && (
+      {/* SECTION C — NEXT STEPS (lazy-loaded from medical_records) — hidden when AppointmentCardContent enrichment owns this */}
+      {!hideNextSteps && (medRecordLoading || (medRecordFetched && hasNextSteps)) && (
         <View style={[styles.section, styles.sectionDivider]}>
           <Text style={styles.sectionHeader}>Next Steps</Text>
 
@@ -225,7 +256,7 @@ const EncounterSummary = ({
           ) : (
             <>
               {recheckIn ? (
-                <Text style={styles.nextStepRow}>🔄 Recheck in: {recheckIn}</Text>
+                <Text style={styles.nextStepRow}>Recheck in: {recheckIn}</Text>
               ) : null}
               {nextVisit ? (
                 <Text style={styles.nextStepRow}>
@@ -233,7 +264,7 @@ const EncounterSummary = ({
                 </Text>
               ) : null}
               {prognosis ? (
-                <Text style={styles.nextStepRow}>🩺 Prognosis: {prognosis}</Text>
+                <Text style={styles.nextStepRow}>Prognosis: {prognosis}</Text>
               ) : null}
               {patientStatus ? (
                 <Text style={styles.nextStepRow}>Status: {patientStatus}</Text>
@@ -243,21 +274,23 @@ const EncounterSummary = ({
         </View>
       )}
 
-      {/* SECTION D — ACTION BUTTONS */}
-      <View style={[styles.section, styles.sectionDivider, styles.actionRow]}>
-        {!hideViewRecord && (
-          <TouchableOpacity style={styles.actionBtn} onPress={onViewRecord} activeOpacity={0.7}>
-            <Text style={styles.actionBtnText}>View Full Record</Text>
+      {/* SECTION D — ACTION BUTTONS — hidden when AppointmentCardContent renders its own */}
+      {!hideActions && (
+        <View style={[styles.section, styles.sectionDivider, styles.actionRow]}>
+          {!hideViewRecord && (
+            <TouchableOpacity style={styles.actionBtn} onPress={onViewRecord} activeOpacity={0.7}>
+              <Text style={styles.actionBtnText}>View Full Record</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => onRebook(appointment)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.actionBtnText}>Rebook</Text>
           </TouchableOpacity>
-        )}
-        <TouchableOpacity
-          style={styles.actionBtn}
-          onPress={() => onRebook(appointment)}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.actionBtnText}>Rebook</Text>
-        </TouchableOpacity>
-      </View>
+        </View>
+      )}
     </View>
   );
 };
@@ -298,7 +331,7 @@ const styles = StyleSheet.create({
   },
   sectionDivider: {
     borderTopWidth: 1,
-    borderTopColor: '#eee',
+    borderTopColor: COLORS.borderLight,
     paddingTop: 10,
   },
 

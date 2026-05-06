@@ -21,6 +21,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Linking,
   Modal,
   ScrollView,
   StyleSheet,
@@ -33,34 +34,15 @@ import { MaterialIcons } from '@expo/vector-icons';
 import QRCode from "react-native-qrcode-svg";
 import { auth, db } from "../../firebaseConfig";
 import { findFirstBookableDate } from "../hooks/useBookingEngine";
-import {
-  getClientStatusColor,
-  getClientStatusIcon,
-  getClientStatusLabel,
-  isActiveStatus,
-  sanitizeCancelReason,
-} from "../utils/statusLabels";
+import { isActiveStatus } from "../utils/statusLabels";
 import SuperCard from "../components/SuperCard";
-import WaitTimeMetrics from "../components/WaitTimeMetrics";
 import CaseDayCard from "../components/CaseDayCard";
-import VisitTimeline from "../components/VisitTimeline";
-import EncounterSummary from "../components/EncounterSummary";
-import { buildVisitTimeline } from "../utils/buildVisitTimeline";
+import AppointmentCardContent from "../components/AppointmentCardContent";
 import { useClinicContact } from "../hooks/useClinicContact";
-import { formatFirestoreTime, formatDisplayDate, getLocalDateStr } from '../utils/helpers';
+import { formatDisplayDate, getLocalDateStr } from '../utils/helpers';
 import { COLORS } from '../theme/mobileTokens';
 import { buildCaseChains } from '../utils/buildCaseChains';
 import { useNetwork } from "../context/NetworkContext";
-
-const ICONS = {
-  Consultation: "🩺",
-  Vaccination: "💉",
-  Grooming: "✂️",
-  Surgery: "🏥",
-  Laboratory: "🔬",
-  Emergency: "🚨",
-  Default: "🐾",
-};
 
 
 const ClientAppointments = ({ navigation }) => {
@@ -612,7 +594,6 @@ const ClientAppointments = ({ navigation }) => {
 
 
   const renderItem = ({ item }) => {
-    // Case chain wrappers (multi-day carry-over visits) render as a swipeable card.
     if (item._isCaseWrapper) {
       return (
         <CaseDayCard
@@ -621,207 +602,39 @@ const ClientAppointments = ({ navigation }) => {
           salesByAppt={salesByAppt}
           onShowReceipt={handleShowReceipt}
           onRebook={handleRebook}
+          navigation={navigation}
         />
       );
     }
 
-    // Follow-up ghosts get a dedicated banner treatment — not the regular card layout.
     if (item.isFollowUp === true && item.status === 'pending') {
       return renderFollowUpRow(item);
     }
 
-    const icon = ICONS[item.serviceType] || ICONS["Default"];
-    const isHistory = tab === "history";
+    const isHistory = tab === 'history';
 
     return (
       <View style={styles.cardOuter}>
         <View style={styles.cardShadow} />
         <View style={[styles.card, isHistory && styles.historyCard]}>
-        <View style={styles.row}>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Text style={{ fontSize: 24, marginRight: 10 }}>{icon}</Text>
-            <View>
-              <Text style={styles.service}>{item.serviceType || item.primaryService || ""}</Text>
-              <Text style={styles.pet}>Patient: {item.petName}</Text>
-            </View>
-          </View>
-          <View style={{ alignItems: "flex-end" }}>
-            <Text style={[styles.status, getClientStatusColor(item.status)]}>
-              {getClientStatusIcon(item.status)} {getClientStatusLabel(item.status).toUpperCase()}
-            </Text>
-            {!isHistory && item.servicePrice > 0 && (
-              <Text style={styles.price}>Est. ₱{item.servicePrice}</Text>
-            )}
-            {isHistory && item.status === "completed" && salesByAppt[item.id]?.total != null && (
-              <Text style={styles.price}>Paid ₱{salesByAppt[item.id].total}</Text>
-            )}
-          </View>
-        </View>
-
-        <View style={styles.divider} />
-
-        <View style={styles.row}>
-          <Text style={styles.date}>
-            📅 {formatDisplayDate(item.scheduledDate, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
-          </Text>
-          <Text style={styles.date}>
-            ⏰ {formatFirestoreTime(item.scheduledDate)}
-          </Text>
-        </View>
-
-        {/* Frozen visit metrics from forensicSeal */}
-        {isHistory && item.status === 'completed' && (
-          <WaitTimeMetrics
+          <AppointmentCardContent
             appointment={item}
-            isActive={false}
-            avgWaitMins={null}
+            isUpcoming={!isHistory}
+            sale={salesByAppt[item.id]}
+            onCancel={handleCancelAppointment}
+            onReschedule={handleReschedule}
+            onShowQR={handleShowQR}
+            onShowReceipt={handleShowReceipt}
+            onToggleTimeline={() => toggleTimeline(item.id)}
+            isTimelineExpanded={expandedTimelines.has(item.id)}
+            onToggleEncounter={() => toggleEncounter(item.id)}
+            isEncounterExpanded={expandedEncounters.has(item.id)}
+            onConfirmAttendance={handleConfirmAttendance}
+            onDismissFollowUp={handleDismissFollowUp}
+            onBookFollowUp={handleBookFollowUp}
+            navigation={navigation}
+            clinicAddress={clinicAddress}
           />
-        )}
-
-        {/* Visit timeline — clinical journey for completed history cards */}
-        {isHistory && item.clinicalPulse?.length > 0 && (() => {
-          const events = buildVisitTimeline(item.clinicalPulse, {
-            isActive: false,
-            assignedVet: item.assignedVet,
-            signedOffAt: item.signedOffAt,
-          });
-          if (events.length === 0) return null;
-          return (
-            <View style={styles.timelineSection}>
-              <VisitTimeline
-                events={events}
-                isActive={false}
-                collapsed={!expandedTimelines.has(item.id)}
-                onToggle={() => toggleTimeline(item.id)}
-                assignedVet={item.assignedVet}
-              />
-            </View>
-          );
-        })()}
-
-        {/* Encounter summary — services, medications, next steps for completed signed-off visits */}
-        {isHistory && item.status === 'completed' && item.encounterItems?.length > 0 && (
-          <View style={styles.encounterSection}>
-            <EncounterSummary
-              appointment={item}
-              collapsed={!expandedEncounters.has(item.id)}
-              onToggle={() => toggleEncounter(item.id)}
-              onViewRecord={() => navigation.navigate('PetHistory', {
-                petId: item.petId,
-                petName: item.petName,
-              })}
-              onRebook={(appt) => handleRebook(appt)}
-              salesTotal={salesByAppt[item.id]?.total ?? null}
-            />
-          </View>
-        )}
-
-        {/* --- ACTION BUTTONS --- */}
-        <View style={styles.actionRow}>
-          {/* UPCOMING ACTIONS: Cancel & QR */}
-          {!isHistory &&
-            (item.status === "confirmed" || item.status === "pending") && (
-              <>
-                <TouchableOpacity
-                  style={[
-                    styles.btn,
-                    {
-                      backgroundColor: COLORS.dangerBg,
-                      borderColor: COLORS.danger,
-                      marginRight: 'auto',
-                    },
-                  ]}
-                  activeOpacity={0.8}
-                  onPress={() =>
-                    handleCancelAppointment(item.id, item.serviceType || item.primaryService)
-                  }
-                >
-                  <Text style={[styles.btnText, { color: COLORS.danger }]}>
-                    ❌ Cancel
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.btn, styles.rescheduleBtn]}
-                  onPress={() => handleReschedule(item)}
-                >
-                  <Text style={[styles.btnText, { color: COLORS.sky }]}>
-                    Reschedule
-                  </Text>
-                </TouchableOpacity>
-
-                {item.status === "confirmed" && !item.confirmedByClient && (
-                  <TouchableOpacity
-                    style={[styles.btn, styles.confirmBtn]}
-                    onPress={() => handleConfirmAttendance(item.id)}
-                  >
-                    <Text style={[styles.btnText, { color: COLORS.success }]}>
-                      Confirm I'm Coming
-                    </Text>
-                  </TouchableOpacity>
-                )}
-
-                {item.status === "confirmed" && item.confirmedByClient && (
-                  <View style={[styles.btn, styles.confirmedBadge]}>
-                    <Text style={[styles.btnText, { color: COLORS.success }]}>
-                      ✓ Confirmed
-                    </Text>
-                  </View>
-                )}
-
-                {item.status === "confirmed" && (
-                  <TouchableOpacity
-                    style={[styles.btn, styles.qrBtn]}
-                    onPress={() => handleShowQR(item.qrCode)}
-                  >
-                    <Text style={styles.btnText}>📱 QR Code</Text>
-                  </TouchableOpacity>
-                )}
-              </>
-            )}
-
-          {/* HISTORY ACTIONS: Receipt & Re-Book */}
-          {isHistory && item.status === "completed" && (
-            <>
-              <TouchableOpacity
-                style={[styles.btn, styles.receiptBtn]}
-                onPress={() => handleShowReceipt(item)}
-              >
-                <Text style={[styles.btnText, { color: COLORS.accent }]}>
-                  🧾 E-Receipt
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.btn, styles.rebookBtn]}
-                onPress={() => handleRebook(item)}
-              >
-                <Text style={[styles.btnText, { color: COLORS.accent }]}>
-                  🔄 Re-Book
-                </Text>
-              </TouchableOpacity>
-            </>
-          )}
-
-          {/* RE-BOOK for no-show and carried-over */}
-          {isHistory && (item.status === "no-show" || item.status === "carried-over") && (
-            <TouchableOpacity
-              style={[styles.btn, styles.rebookBtn]}
-              onPress={() => handleRebook(item)}
-            >
-              <Text style={[styles.btnText, { color: COLORS.accent }]}>
-                🔄 Re-Book
-              </Text>
-            </TouchableOpacity>
-          )}
-
-        </View>
-
-        {/* CANCELLATION / VOID REASON — outside actionRow to avoid flex conflict */}
-        {["cancelled", "no-show", "carried-over"].includes(item.status) && (() => {
-          const raw = item.auditReason || item.rejectReason;
-          const clean = sanitizeCancelReason(raw);
-          return clean ? <Text style={styles.reasonText}>{clean}</Text> : null;
-        })()}
         </View>
       </View>
     );
@@ -982,26 +795,20 @@ const ClientAppointments = ({ navigation }) => {
               : [];
             const standaloneItems = base.filter(a => !(a.isFollowUp && a.status === 'pending'));
 
-            // History tab: detect case chains among standalone items.
-            // Upcoming tab: always emit standalones as-is (no case grouping).
-            if (tab === 'history') {
-              const { chains, standaloneIds } = buildCaseChains(standaloneItems);
+            const { chains, standaloneIds } = buildCaseChains(standaloneItems);
 
-              const caseWrappers = [];
-              for (const [rootId, chainMembers] of chains) {
-                caseWrappers.push({
-                  _isCaseWrapper: true,
-                  id: `case-${rootId}`,
-                  caseChain: chainMembers,
-                });
-              }
-
-              const remainingStandalones = standaloneItems.filter(a => standaloneIds.has(a.id));
-
-              return [...followUps, ...caseWrappers, ...remainingStandalones];
+            const caseWrappers = [];
+            for (const [rootId, chainMembers] of chains) {
+              caseWrappers.push({
+                _isCaseWrapper: true,
+                id: `case-${rootId}`,
+                caseChain: chainMembers,
+              });
             }
 
-            return [...followUps, ...standaloneItems];
+            const remainingStandalones = standaloneItems.filter(a => standaloneIds.has(a.id));
+
+            return [...followUps, ...caseWrappers, ...remainingStandalones];
           })()}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
@@ -1378,56 +1185,8 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: COLORS.border,
   },
-  historyCard: { opacity: 0.85, backgroundColor: COLORS.cream },
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 5,
-  },
+  historyCard: { backgroundColor: COLORS.white },
   divider: { height: 1, backgroundColor: COLORS.borderLight, marginVertical: 10 },
-  service: { fontSize: 16, fontWeight: "bold", color: COLORS.accent },
-  pet: { fontSize: 14, color: COLORS.textSecondary },
-  price: {
-    fontWeight: "bold",
-    color: COLORS.accent,
-    fontSize: 12,
-    marginTop: 2,
-    textAlign: "right",
-  },
-  status: {
-    fontWeight: 'bold',
-    fontSize: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 0,
-    overflow: 'hidden',
-  },
-  date: { fontSize: 13, color: COLORS.textMuted },
-
-  actionRow: {
-    flexDirection: "row",
-    marginTop: 10,
-    justifyContent: "flex-end",
-    gap: 10,
-    alignItems: "center",
-  },
-  btn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 0, borderWidth: 2, borderColor: COLORS.border },
-  qrBtn: { backgroundColor: COLORS.brand },
-  receiptBtn: {
-    backgroundColor: COLORS.cream,
-    borderColor: COLORS.borderLight,
-  },
-  rebookBtn: { borderColor: COLORS.accent },
-  btnText: { color: COLORS.white, fontWeight: "bold", fontSize: 12 },
-  reasonText: {
-    color: COLORS.danger,
-    fontStyle: "italic",
-    fontSize: 12,
-    marginTop: 5,
-    backgroundColor: COLORS.dangerBg,
-    padding: 5,
-    width: "100%",
-  },
 
   emptyContainer: { alignItems: "center", marginTop: 50, opacity: 0.5 },
   empty: {
@@ -1600,20 +1359,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 
-  timelineSection: {
-    marginTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.borderLight,
-    paddingTop: 8,
-  },
-
-  encounterSection: {
-    marginTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.borderLight,
-    paddingTop: 8,
-  },
-
   expandCollapseRow: {
     alignItems: 'flex-end',
     paddingBottom: 8,
@@ -1626,24 +1371,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  rescheduleBtn: {
-    borderColor: COLORS.sky,
-    backgroundColor: COLORS.infoBg,
-    borderRadius: 0,
-  },
-
-  // --- Client attendance confirmation ---
-  confirmBtn: {
-    borderColor: COLORS.success,
-    backgroundColor: COLORS.successBg,
-    borderRadius: 0,
-  },
-  confirmedBadge: {
-    backgroundColor: COLORS.successBg,
-    borderColor: COLORS.success,
-    borderRadius: 0,
-    opacity: 0.8,
-  },
 });
 
 export default ClientAppointments;

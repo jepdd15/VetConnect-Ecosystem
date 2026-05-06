@@ -52,6 +52,7 @@ import PetHistoryAISheet from '../components/PetHistoryAISheet';
 import VaccinationStatusCard from '../components/VaccinationStatusCard';
 import { buildPetOwnerPrompt } from '../utils/buildPetOwnerPrompt';
 import { resolveVitals } from '../utils/resolveVitals';
+import { generateVisitPDF } from '../utils/generateVisitPDF';
 import { getNormalRange } from '../utils/speciesVitalRanges';
 import { fetchVaccineCatalog, buildVaccinationStatus } from '../utils/vaccineHelpers';
 
@@ -1031,14 +1032,51 @@ export default function PetHistoryScreen({ route, navigation }) {
     return rv;
   }, [history]);
 
-  // Active medications from the most-recent record (drugs only, cap at 5)
+  // Active medications — scans recent records for medicine-class items that are
+  // still within their prescribed duration window. Falls back to a 90-day window
+  // for older records that predate the structured sig field.
   const latestActiveMeds = useMemo(() => {
     if (!history.length) return [];
-    const latest = history[0];
-    const products = latest.dispensedProducts || latest.prescriptions || [];
-    return products.filter(rx =>
-      (rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail')) === 'medicine'
-    ).slice(0, 5);
+    const now = new Date();
+    const meds = [];
+
+    // Check the most recent 10 records so a multi-week prescription from a prior
+    // visit is still surfaced even if the pet has had follow-up visits since.
+    for (const record of history.slice(0, 10)) {
+      const products = record.dispensedProducts || record.prescriptions || [];
+      const recordDate = record.date?.toDate
+        ? record.date.toDate()
+        : record.date?.seconds ? new Date(record.date.seconds * 1000) : null;
+      if (!recordDate) continue;
+
+      products.forEach(rx => {
+        if ((rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail')) !== 'medicine') return;
+
+        const durationDays = parseInt(rx.sig?.duration) || 0;
+        let endDate = null;
+        let isActive = false;
+
+        if (durationDays > 0) {
+          endDate = new Date(recordDate.getTime() + durationDays * 86400000);
+          isActive = endDate > now;
+        } else {
+          // No structured duration — show if prescribed within the last 90 days
+          const daysSince = (now - recordDate) / 86400000;
+          isActive = daysSince <= 90;
+        }
+
+        if (isActive && !meds.some(m => m.name === rx.name)) {
+          meds.push({
+            ...rx,
+            _recordDate: recordDate,
+            _endDate: endDate,
+            _daysRemaining: endDate ? Math.max(0, Math.ceil((endDate - now) / 86400000)) : null,
+          });
+        }
+      });
+    }
+
+    return meds.slice(0, 5);
   }, [history]);
 
   /** Generates the vaccination passport PDF and opens the OS share sheet. */
@@ -1124,13 +1162,25 @@ export default function PetHistoryScreen({ route, navigation }) {
 
                   {/* Section 2: Active Medications */}
                   <View style={styles.snapshotSection}>
-                    <Text style={styles.snapshotSectionLabel}>ACTIVE MEDICATIONS</Text>
+                    <Text style={styles.snapshotSectionLabel}>
+                      ACTIVE MEDICATIONS{latestActiveMeds.length > 0 ? ` (${latestActiveMeds.length})` : ''}
+                    </Text>
                     {latestActiveMeds.length > 0 ? (
                       latestActiveMeds.map((med, i) => (
                         <View key={i} style={styles.snapshotMedRow}>
                           <Text style={styles.snapshotMedName}>{med.name}</Text>
                           {med.instructions && (
                             <Text style={styles.snapshotMedSig}>{med.instructions}</Text>
+                          )}
+                          {med._daysRemaining != null && (
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: med._daysRemaining <= 2 ? COLORS.danger : COLORS.success, marginTop: 2 }}>
+                              {med._daysRemaining === 0 ? 'Last day today' : `${med._daysRemaining} day${med._daysRemaining !== 1 ? 's' : ''} remaining`}
+                            </Text>
+                          )}
+                          {med._daysRemaining == null && (
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: COLORS.textMuted, fontStyle: 'italic', marginTop: 2 }}>
+                              Duration not set
+                            </Text>
                           )}
                         </View>
                       ))
@@ -1480,100 +1530,7 @@ export default function PetHistoryScreen({ route, navigation }) {
   }, [history]);
 
   // --- PDF GENERATOR ---
-  const generatePDF = async (record) => {
-    const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-
-    const dateStr = formatDisplayDate(record.date);
-
-    const hasDischarge = !!record.dischargeSummary;
-    const dsInstructions = record.dischargeSummary?.instructions || '';
-    const dsDiagnosis = record.dischargeSummary?.diagnosis || record.diagnosis || '';
-    const dsMeds = record.dischargeSummary?.medications || [];
-
-    const rxHtmlFromDischarge = dsMeds.length > 0
-      ? `<h3>Medications</h3><ul>${dsMeds.map((med) =>
-          `<li><b>${esc(med.name)}</b> x${esc(med.qty || 1)}: ${esc(med.instructions || 'Use as directed')}</li>`
-        ).join('')}</ul>`
-      : '';
-
-    const dsSupplies = record.dischargeSummary?.supplies || [];
-    const suppliesHtmlFromDischarge = dsSupplies.length > 0
-      ? `<h3>Take-Home Supplies</h3><ul>${dsSupplies.map((sup) =>
-          `<li><b>${esc(sup.name)}</b> x${esc(sup.qty || 1)}${sup.instructions ? `: ${esc(sup.instructions)}` : ''}</li>`
-        ).join('')}</ul>`
-      : '';
-
-    let rxHtml = '';
-    if (record.prescriptions && record.prescriptions.length > 0 && !dsMeds.length) {
-      const medications = record.prescriptions.filter(rx =>
-        (rx.productClass || (rx.isDrug ? 'medicine' : 'retail')) === 'medicine'
-      );
-      const nonDrugItems = record.prescriptions.filter(rx =>
-        (rx.productClass || (rx.isDrug ? 'medicine' : 'retail')) !== 'medicine'
-      );
-      rxHtml = [
-        medications.length > 0
-          ? `<h3>Prescribed Medications</h3><ul>${medications.map((rx) =>
-              `<li><b>${esc(rx.name)}${rx.qty ? ` x${esc(rx.qty)}` : ''}</b>: ${esc(rx.instructions || "Use as directed")}</li>`
-            ).join("")}</ul>`
-          : '',
-        nonDrugItems.length > 0
-          ? `<h3>Other Items</h3><ul>${nonDrugItems.map((rx) =>
-              `<li><b>${esc(rx.name)}${rx.qty ? ` x${esc(rx.qty)}` : ''}</b>: ${esc(rx.instructions || "Use as directed")}</li>`
-            ).join("")}</ul>`
-          : '',
-      ].join('');
-    }
-
-    const nextVisitRaw = record.dischargeSummary?.nextVisit || record.nextVisit;
-    const nextVisitStr = nextVisitRaw
-      ? formatDisplayDate(nextVisitRaw, { month: 'long', day: 'numeric', year: 'numeric' }, null)
-      : null;
-
-    // T3.133: Resolve amendments so the PDF reflects the latest amended vitals.
-    const pdfVitals = resolveVitals(record);
-    const hasAnyVital = Object.values(pdfVitals).some(v => v != null && v !== '');
-
-    const htmlContent = `
-      <html>
-        <body style="font-family: Helvetica, Arial, sans-serif; padding: 40px; color: #333;">
-          <h1 style="color: #8B4513; text-align: center; border-bottom: 2px solid #8B4513; padding-bottom: 10px;">Starbarks Veterinary Clinic</h1>
-          <h2 style="text-align: center; margin-top: 0;">Visit Summary</h2>
-          <table style="width: 100%; margin-bottom: 30px;">
-            <tr><td><b>Patient:</b> ${esc(petName)}</td><td style="text-align: right;"><b>Date:</b> ${esc(dateStr)}</td></tr>
-            <tr><td><b>Service:</b> ${esc(record.serviceType)}</td><td style="text-align: right;"><b>Attending Vet:</b> ${esc(record.vetName || "Staff")}</td></tr>
-          </table>
-          ${hasAnyVital ? `<h3>Vitals</h3>
-          <p>
-            <b>Weight:</b> ${esc(pdfVitals.weight || "-")} kg &nbsp;&nbsp; | &nbsp;&nbsp;
-            <b>Temp:</b> ${esc(pdfVitals.temp || "-")} &deg;C &nbsp;&nbsp; | &nbsp;&nbsp;
-            <b>Heart Rate:</b> ${esc(pdfVitals.hr || "-")} bpm
-            ${pdfVitals.rr ? ` &nbsp;&nbsp; | &nbsp;&nbsp; <b>RR:</b> ${esc(pdfVitals.rr)} br/min` : ''}
-            ${pdfVitals.crt ? ` &nbsp;&nbsp; | &nbsp;&nbsp; <b>CRT:</b> ${esc(pdfVitals.crt)} sec` : ''}
-            ${pdfVitals.bcs ? ` &nbsp;&nbsp; | &nbsp;&nbsp; <b>BCS:</b> ${esc(pdfVitals.bcs)}/9` : ''}
-            ${pdfVitals.pain ? ` &nbsp;&nbsp; | &nbsp;&nbsp; <b>Pain:</b> ${esc(pdfVitals.pain)}/10` : ''}
-          </p>` : ''}
-          ${dsDiagnosis ? `<h3>Diagnosis</h3><p>${esc(dsDiagnosis)}</p>` : ''}
-          ${record.patientStatus ? `<p><b>Status:</b> ${esc(record.patientStatus)}</p>` : ''}
-          ${hasDischarge && dsInstructions ? `<h3>Discharge Notes</h3><p>${esc(dsInstructions).replace(/\n/g, '<br/>')}</p>` : ''}
-          ${hasDischarge ? rxHtmlFromDischarge + suppliesHtmlFromDischarge : rxHtml}
-          ${nextVisitStr ? `<h3 style="color: #D32F2F;">Next Follow-Up Due: ${esc(nextVisitStr)}</h3>` : ""}
-          <hr style="margin-top: 50px;" />
-          <p style="text-align: center; font-size: 12px; color: #888;">This is an electronically generated visit summary and does not require a physical signature.</p>
-        </body>
-      </html>
-    `;
-
-    try {
-      const { uri } = await Print.printToFileAsync({ html: htmlContent });
-      await Sharing.shareAsync(uri, {
-        UTI: ".pdf",
-        mimeType: "application/pdf",
-      });
-    } catch (error) {
-      Alert.alert("Error generating PDF", error.message);
-    }
-  };
+  const generatePDF = (record) => generateVisitPDF({ record, petName });
 
   const handleOpenAttachment = (url) => {
     Linking.openURL(url).catch(() =>
@@ -1705,20 +1662,8 @@ export default function PetHistoryScreen({ route, navigation }) {
             <View style={styles.yearLine} />
           </View>
         )}
-        <View style={styles.timelineRow}>
-          {/* T4.155: Dot timeline left edge */}
-          <View style={styles.timelineGraphic}>
-            <TouchableOpacity
-              onPress={() => toggleRecord(item.id)}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              style={styles.dotTouchable}
-            >
-              <View style={[styles.dot, isExpanded ? styles.dotActive : styles.dotDefault]} />
-            </TouchableOpacity>
-            <View style={styles.line} />
-          </View>
-
-          {/* T4.155: Record card with collapsed header + expanded body */}
+        <View style={{ marginBottom: 16 }}>
+          {/* Record card — full width (timeline bar removed) */}
           <View style={styles.recordCardWrapper}>
             <View style={styles.recordCardShadow} />
             <TouchableOpacity
@@ -1741,70 +1686,65 @@ export default function PetHistoryScreen({ route, navigation }) {
 
               {/* EXPANDED BODY — only when expanded */}
               {isExpanded && (
-              <View style={styles.cardBody}>
-                {/* Service chips + vet badge in expanded view */}
-                <View style={styles.cardHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.dateText, { color: themeColor }]}>
-                      {visitDate}
-                    </Text>
-                    {/* T3.81: Per-service chips — falls back to [serviceType] for legacy records */}
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 2 }}>
-                      {(item.serviceNames?.length > 0 ? item.serviceNames : [item.serviceType]).map((svcName, si) => (
-                        <View key={si} style={styles.serviceChip}>
-                          <Text style={[styles.serviceChipText, { color: themeColor }]}>{svcName}</Text>
-                        </View>
-                      ))}
-                      {/* T3.95: Case-day badge for multi-day cases */}
-                      {caseDayMap[item.id] && (
-                        <View style={styles.caseDayBadge}>
-                          <Text style={styles.caseDayText}>Day {caseDayMap[item.id]}</Text>
-                        </View>
-                      )}
+              <View style={[styles.cardBody, { backgroundColor: COLORS.white }]}>
+                {/* Service chips + case day */}
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
+                  {(item.serviceNames?.length > 0 ? item.serviceNames : [item.serviceType]).map((svcName, si) => (
+                    <View key={si} style={styles.serviceChip}>
+                      <Text style={[styles.serviceChipText, { color: themeColor }]}>{svcName}</Text>
                     </View>
-                    {/* serviceAttribution: which vet(s) performed each service */}
-                    {item.serviceAttribution?.length > 0 && (() => {
-                      const attrs = item.serviceAttribution.filter(a => a.staffName);
-                      if (attrs.length === 0) return null;
-                      const uniqueNames = [...new Set(attrs.map(a => a.staffName))];
-                      if (uniqueNames.length === 1) {
-                        return (
-                          <Text style={{ fontSize: 10, fontWeight: '700', color: COLORS.textMuted, fontStyle: 'italic', marginTop: 2 }}>
-                            Performed by: {uniqueNames[0]}
-                          </Text>
-                        );
-                      }
-                      return attrs.map((a, ai) => (
-                        <Text key={ai} style={{ fontSize: 10, fontWeight: '700', color: COLORS.textMuted, fontStyle: 'italic', marginTop: ai === 0 ? 2 : 1 }}>
-                          by {a.staffName}
-                        </Text>
-                      ));
-                    })()}
-                  </View>
-                  <View style={styles.vetBadge}>
-                    <MaterialIcons name="person" size={14} color={COLORS.accent} />
-                    <Text style={styles.vetText}>
-                      {item.vetName || "Clinic Staff"}
-                    </Text>
-                  </View>
+                  ))}
+                  {caseDayMap[item.id] && (
+                    <View style={styles.caseDayBadge}>
+                      <Text style={styles.caseDayText}>Day {caseDayMap[item.id]}</Text>
+                    </View>
+                  )}
                 </View>
-            {!isGrooming && (item.diagnoses?.length > 0 || item.diagnosis) && (
-              <View style={styles.diagnosisHero}>
-                {(item.diagnoses?.length > 0
-                  ? item.diagnoses
-                  : [{ name: item.diagnosis }]
-                ).map((dx, i) => (
-                  <View key={i} style={i > 0 ? { marginTop: 4 } : undefined}>
-                    <Text style={styles.diagnosisHeroText}>
-                      {dx.name}{dx.severity ? ` (${dx.severity.toUpperCase()})` : ''}
+
+                {/* Service attribution */}
+                {item.serviceAttribution?.length > 0 && (() => {
+                  const attrs = item.serviceAttribution.filter(a => a.staffName);
+                  if (attrs.length === 0) return null;
+                  const uniqueNames = [...new Set(attrs.map(a => a.staffName))];
+                  return (
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: COLORS.textMuted, fontStyle: 'italic', marginBottom: 8 }}>
+                      Performed by: {uniqueNames.join(', ')}
                     </Text>
-                    {dx.notes ? (
-                      <Text style={styles.diagnosisHeroNotes}>{dx.notes}</Text>
-                    ) : null}
-                  </View>
-                ))}
-              </View>
-            )}
+                  );
+                })()}
+
+                {/* Section divider: CLINICAL NOTES */}
+                <View style={{ borderTopWidth: 1, borderTopColor: COLORS.borderLight, marginBottom: 10, paddingTop: 8 }}>
+                  <Text style={{ fontSize: 9, fontWeight: '900', color: COLORS.textMuted, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 6 }}>Clinical Notes</Text>
+                </View>
+            {!isGrooming && (item.diagnoses?.length > 0 || item.diagnosis) && (() => {
+              const dxList = item.diagnoses?.length > 0
+                ? item.diagnoses
+                : [{ name: item.diagnosis }];
+              const isMultiple = dxList.length > 1;
+              return (
+                <View style={styles.diagnosisHero}>
+                  <Text style={{ fontSize: 9, fontWeight: '900', color: COLORS.textMuted, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 6 }}>
+                    {isMultiple ? 'Diagnoses' : 'Diagnosis'}
+                  </Text>
+                  {dxList.map((dx, i) => (
+                    <View key={i} style={isMultiple ? { flexDirection: 'row', marginTop: i > 0 ? 6 : 0 } : { marginTop: i > 0 ? 4 : 0 }}>
+                      {isMultiple && (
+                        <Text style={{ fontSize: 18, fontWeight: '900', color: COLORS.brand, marginRight: 8, lineHeight: 26 }}>•</Text>
+                      )}
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.diagnosisHeroText}>
+                          {dx.name}{dx.severity ? ` (${dx.severity.toUpperCase()})` : ''}
+                        </Text>
+                        {dx.notes ? (
+                          <Text style={styles.diagnosisHeroNotes}>{dx.notes}</Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              );
+            })()}
 
             {!isGrooming && (item.patientStatus || item.soap?.prognosis) && (
               <View style={styles.statusPrognosisRow}>
@@ -1855,6 +1795,10 @@ export default function PetHistoryScreen({ route, navigation }) {
             )}
 
             {!isGrooming && (
+              <View>
+                <View style={{ borderTopWidth: 1, borderTopColor: COLORS.borderLight, marginBottom: 8, paddingTop: 8 }}>
+                  <Text style={{ fontSize: 9, fontWeight: '900', color: COLORS.textMuted, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 6 }}>Vitals</Text>
+                </View>
               <View style={styles.vitalsGrid}>
                 {[
                   { label: 'WEIGHT', value: weightStr, unit: 'kg' },
@@ -1874,6 +1818,7 @@ export default function PetHistoryScreen({ route, navigation }) {
                     )}
                   </View>
                 ))}
+              </View>
               </View>
             )}
 
@@ -2044,7 +1989,6 @@ export default function PetHistoryScreen({ route, navigation }) {
 
                   {doThisItems.length > 0 && (
                     <View style={styles.dischargeSection}>
-                      <Text style={styles.dischargeSectionLabel}>DO THIS</Text>
                       {doThisItems.map((line, i) => (
                         <Text key={i} style={styles.dischargeBullet}>• {line}</Text>
                       ))}
@@ -2125,7 +2069,12 @@ export default function PetHistoryScreen({ route, navigation }) {
                   )}
 
                   {ds.vetName && (
-                    <Text style={styles.dischargeSignature}>Signed by {ds.vetName}</Text>
+                    <View style={{ marginTop: 12, paddingTop: 8, borderTopWidth: 1, borderTopColor: COLORS.borderLight }}>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: COLORS.textMuted, fontStyle: 'italic' }}>Signed by</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '900', color: COLORS.brand, marginTop: 2 }}>{ds.vetName}</Text>
+                      <View style={{ marginTop: 6, borderBottomWidth: 1, borderBottomColor: COLORS.brand, width: 150 }} />
+                      <Text style={{ fontSize: 8, fontWeight: '700', color: COLORS.textMuted, marginTop: 2, letterSpacing: 0.5 }}>ATTENDING VETERINARIAN</Text>
+                    </View>
                   )}
                 </View>
               );
@@ -2359,7 +2308,7 @@ export default function PetHistoryScreen({ route, navigation }) {
           onPress={() => navigation.goBack()}
           style={styles.backBtn}
         >
-          <MaterialIcons name="arrow-back-ios" size={20} color={COLORS.accent} />
+          <MaterialIcons name="arrow-back-ios" size={20} color={COLORS.cream} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{petName.toUpperCase()}&apos;S CHART</Text>
         <Text style={styles.recordCountHeader}>
@@ -2670,42 +2619,34 @@ export default function PetHistoryScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: COLORS.cream },
+  safeArea: { flex: 1, backgroundColor: COLORS.brand, paddingTop: Platform.OS === 'android' ? 30 : 0 },
   container: { flex: 1, backgroundColor: COLORS.cream },
 
   // --- Header ---
   headerBox: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: COLORS.cream,
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    borderBottomWidth: 2,
-    borderBottomColor: COLORS.border,
+    backgroundColor: COLORS.brand,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    gap: 12,
   },
   backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 0,
-    backgroundColor: COLORS.white,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 2,
-    borderColor: COLORS.border,
+    padding: 4,
   },
   headerTitle: {
-    color: COLORS.brand,
-    fontSize: 18,
+    color: COLORS.cream,
+    fontSize: 16,
     fontWeight: '900',
     letterSpacing: 0.5,
+    flex: 1,
     flex: 1,
     marginLeft: 12,
   },
   recordCountHeader: {
     fontSize: 11,
     fontWeight: '900',
-    color: COLORS.textMuted,
+    color: `${COLORS.cream}99`,
     letterSpacing: 1,
   },
 
@@ -2763,7 +2704,6 @@ const styles = StyleSheet.create({
   recordCardWrapper: {
     flex: 1,
     position: 'relative',
-    marginLeft: 8,
   },
   recordCardShadow: {
     ...SHADOW.record,
@@ -2899,8 +2839,8 @@ const styles = StyleSheet.create({
   // --- Reason for visit ---
   reasonForVisitBox: {
     backgroundColor: COLORS.cream,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.sky,
     padding: 12,
     marginBottom: 12,
     borderRadius: 0,

@@ -17,9 +17,9 @@ import {
   View,
 } from "react-native";
 import { auth, db } from "../../firebaseConfig";
-import { COLORS, FONTS, TYPE, SPACING } from "../theme/mobileTokens";
+import { COLORS, FONTS, TYPE, SPACING, SHADOW } from "../theme/mobileTokens";
 import { useNetwork } from "../context/NetworkContext";
-import { getClientStatusLabel, isActiveStatus } from "../utils/statusLabels";
+import { isActiveStatus } from "../utils/statusLabels";
 
 /**
  * Breadcrumb stages shown on QueueScreen. Each maps an appointment status
@@ -48,6 +48,26 @@ const formatTicket = (prefix, queueNumber) => {
   return prefix ? `${prefix}-${num}` : num;
 };
 
+const getStageMessage = (status) => {
+  switch (status) {
+    case 'arrived':
+    case 'confirmed':
+      return 'Please proceed to the consultation room.';
+    case 'in-consult':
+      return 'Your pet is currently being examined.';
+    case 'dispensing':
+      return 'Your medications are being prepared at the pharmacy.';
+    case 'billing':
+      return 'Please proceed to the cashier for checkout.';
+    case 'confined':
+      return 'Your pet is being monitored. Contact the clinic for updates.';
+    case 'on-hold':
+      return 'Consultation paused — your pet is resting.';
+    default:
+      return 'Please proceed to the consultation room.';
+  }
+};
+
 export default function QueueScreen() {
   const navigation = useNavigation();
   const [queueData, setQueueData] = useState(null);
@@ -59,6 +79,7 @@ export default function QueueScreen() {
   const [avgWaitMins, setAvgWaitMins] = useState(null);
   const [deptAvgConsultMins, setDeptAvgConsultMins] = useState({});  // T4.134: per-dept avg consult durations
   const [departments, setDepartments] = useState([]);                 // T4.134: department color/name config
+  const [elapsedMins, setElapsedMins] = useState(null);
   const [lateSent, setLateSent] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
   const prevAheadRef = useRef(null);
@@ -156,10 +177,12 @@ export default function QueueScreen() {
             const data = d.data();
             return {
               queueNumber: data.queueNumber ?? null,
+              ticketPrefix: data.ticketPrefix ?? null,
               serviceDuration: data.serviceDuration ?? null,
               serviceType: data.serviceType ?? null,
-              serviceCategory: data.serviceCategory ?? null,   // T4.134: department lane filtering
+              serviceCategory: data.serviceCategory ?? null,
               priority: data.priority ?? null,
+              status: data.status ?? null,
             };
           })
         );
@@ -238,11 +261,11 @@ export default function QueueScreen() {
     fetchDepts();
   }, []);
 
-  // Derived: people ahead + estimated wait + per-service breakdown (memoized)
-  // T2.349 + T2.350 + T2.352 + T3.59 + T4.134 (dept-filtered counts + per-dept avg wait)
-  const { peopleAhead, estWaitTimeMins, serviceBreakdown, myDepartment } = useMemo(() => {
+  // Derived: people ahead + estimated wait + per-service breakdown + per-dept breakdown (memoized)
+  // T2.349 + T2.350 + T2.352 + T3.59 + T4.134 + T4.178
+  const { peopleAhead, estWaitTimeMins, serviceBreakdown, myDepartment, deptBreakdown, bottleneck } = useMemo(() => {
     if (!myTicket?.queueNumber) {
-      return { peopleAhead: 0, estWaitTimeMins: 0, serviceBreakdown: [], myDepartment: null };
+      return { peopleAhead: 0, estWaitTimeMins: 0, serviceBreakdown: [], myDepartment: null, deptBreakdown: [], bottleneck: null };
     }
 
     // T4.134: the client's department lane — filters who counts as "ahead"
@@ -261,7 +284,6 @@ export default function QueueScreen() {
     ahead.forEach((p) => {
       const pDept = p.serviceCategory || myDept || "General";
       const pAvg = deptAvgConsultMins[pDept] || deptAvgConsultMins.__global || 30;
-      // Prefer declared service duration; fall back to dept historical average
       waitMins += parseInt(p.serviceDuration, 10) || pAvg;
     });
 
@@ -280,8 +302,57 @@ export default function QueueScreen() {
       .map(([serviceType, data]) => ({ serviceType, count: data.count, totalMins: data.totalMins }))
       .sort((a, b) => b.count - a.count);
 
-    return { peopleAhead: ahead.length, estWaitTimeMins: waitMins, serviceBreakdown: breakdown, myDepartment: myDept };
+    // T4.178: per-department breakdown for multi-department appointments
+    const myDepts = myTicket.services?.length > 0
+      ? [...new Set(myTicket.services.map(s => s.serviceCategory || s.department || myDept).filter(Boolean))]
+      : (myDept ? [myDept] : []);
+
+    const deptBreakdownArr = myDepts.map(dept => {
+      const deptAhead = lobbyPatients.filter(p => {
+        if (p.status && !['arrived', 'in-consult', 'dispensing', 'billing', 'on-hold'].includes(p.status)) return false;
+        if (p.serviceCategory && p.serviceCategory !== dept) return false;
+        if (p.priority === 'high' && myTicket.priority !== 'high') return true;
+        if (p.queueNumber && p.queueNumber < myTicket.queueNumber) return true;
+        return false;
+      });
+      const deptAvg = deptAvgConsultMins[dept] || deptAvgConsultMins.__global || 30;
+      let deptWait = 0;
+      deptAhead.forEach(p => {
+        deptWait += parseInt(p.serviceDuration, 10) || deptAvg;
+      });
+      return { department: dept, ahead: deptAhead.length, waitMins: deptWait };
+    });
+
+    const bottleneckDept = deptBreakdownArr.length > 0
+      ? deptBreakdownArr.reduce((max, d) => d.waitMins > max.waitMins ? d : max, deptBreakdownArr[0])
+      : null;
+
+    return {
+      peopleAhead: ahead.length,
+      estWaitTimeMins: waitMins,
+      serviceBreakdown: breakdown,
+      myDepartment: myDept,
+      deptBreakdown: deptBreakdownArr,
+      bottleneck: bottleneckDept,
+    };
   }, [myTicket, lobbyPatients, deptAvgConsultMins]);
+
+  // T4.178: per-department "Now Serving" from lobby data (replaces single-lane daily_queue circle)
+  const nowServingByDept = useMemo(() => {
+    const serving = lobbyPatients.filter(p =>
+      ['in-consult', 'dispensing', 'billing', 'on-hold'].includes(p.status)
+    );
+    const byDept = {};
+    serving.forEach(p => {
+      const dept = p.serviceCategory || 'General';
+      if (!byDept[dept]) byDept[dept] = [];
+      byDept[dept].push(p);
+    });
+    Object.values(byDept).forEach(arr =>
+      arr.sort((a, b) => (a.queueNumber || 999) - (b.queueNumber || 999))
+    );
+    return byDept;
+  }, [lobbyPatients]);
 
   // 5. Vibrate + banner when it's the user's turn -- T2.487
   useEffect(() => {
@@ -320,6 +391,32 @@ export default function QueueScreen() {
     return () => clearInterval(interval);
   }, [estWaitTimeMins, myTicket]);
 
+  useEffect(() => {
+    if (!myTicket?.timeArrived) {
+      setElapsedMins(null);
+      return;
+    }
+
+    const computeElapsed = () => {
+      try {
+        const arrived = typeof myTicket.timeArrived?.toDate === 'function'
+          ? myTicket.timeArrived.toDate()
+          : myTicket.timeArrived instanceof Date
+            ? myTicket.timeArrived
+            : new Date(myTicket.timeArrived);
+        if (isNaN(arrived.getTime())) { setElapsedMins(null); return; }
+        const mins = Math.max(0, Math.round((Date.now() - arrived.getTime()) / 60000));
+        setElapsedMins(mins);
+      } catch {
+        setElapsedMins(null);
+      }
+    };
+
+    computeElapsed();
+    const interval = setInterval(computeElapsed, 60000);
+    return () => clearInterval(interval);
+  }, [myTicket?.timeArrived]);
+
   // Running Late handler -- T2.490
   const handleRunningLate = async () => {
     if (!myTicket || lateSent) return;
@@ -340,12 +437,6 @@ export default function QueueScreen() {
       <ActivityIndicator size="large" color={COLORS.brand} style={{ flex: 1 }} />
     );
 
-  // Format Global Number -- T2.348
-  const currentServingDisplay = formatTicket(
-    queueData.currentPrefix,
-    queueData.currentServing,
-  );
-
   // T4.134: resolve department color from Firestore departments collection
   const myDeptObj = departments.find(
     d => d.name?.toLowerCase() === (myTicket?.serviceCategory || '').toLowerCase()
@@ -354,8 +445,6 @@ export default function QueueScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.header}>Clinic Queue Monitor</Text>
-
       {/* Green banner when number is called -- T2.487 */}
       {turnAlert && (
         <View style={styles.turnBanner}>
@@ -363,31 +452,7 @@ export default function QueueScreen() {
         </View>
       )}
 
-      {/* --- GLOBAL DISPLAY --- */}
-      <View style={styles.circle}>
-        <Text style={styles.label}>Now Serving</Text>
-        <Text style={styles.bigNumber}>{currentServingDisplay}</Text>
-        <View
-          style={[
-            styles.statusBadge,
-            queueData.status === "active" ? styles.active : styles.paused,
-          ]}
-        >
-          {/* T2.344: guard null status */}
-          <Text style={styles.statusText}>
-            {(queueData.status || "unknown").toUpperCase()}
-          </Text>
-        </View>
-      </View>
-
-      {/* Offline staleness indicator — only visible when offline and data has been loaded */}
-      {!isConnected && lastUpdated && (
-        <Text style={styles.staleNote}>
-          LAST UPDATED: {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-        </Text>
-      )}
-
-      {/* --- PERSONAL DISPLAY --- */}
+      {/* --- PERSONAL TICKET HERO --- */}
       {myTicket ? (
         <View style={styles.myTicketBox}>
           {!myTicket.queueNumber ? (
@@ -406,12 +471,27 @@ export default function QueueScreen() {
           ) : (
             <>
               <Text style={styles.ticketLabel}>Your Ticket Number</Text>
-              {/* T2.348: standardized ticket format */}
               <Text style={styles.ticketNumber}>
                 {formatTicket(myTicket.ticketPrefix, myTicket.queueNumber)}
               </Text>
 
-              {/* T4.134: department lane label — tells the owner which queue they are in */}
+              {myTicket.petName && (
+                <Text style={styles.heroSubtitle}>{myTicket.petName}</Text>
+              )}
+
+              {myTicket.services?.length > 0 ? (
+                <Text style={styles.heroServices}>
+                  {myTicket.services.map(s => s.serviceName || s.serviceType).join(' + ')}
+                </Text>
+              ) : myTicket.serviceType ? (
+                <Text style={styles.heroServices}>{myTicket.serviceType}</Text>
+              ) : null}
+
+              {myTicket.assignedVet && myTicket.assignedVet !== 'Unassigned' && (
+                <Text style={styles.heroVet}>{myTicket.assignedVet}</Text>
+              )}
+
+              {/* T4.134: department lane label */}
               {myDepartment && (
                 <View style={styles.deptLaneBox}>
                   <View style={[styles.deptDot, { backgroundColor: deptColor }]} />
@@ -443,61 +523,61 @@ export default function QueueScreen() {
                 </View>
               )}
 
-              {/* Status breadcrumb — T4.134, Phase 5 */}
+              {/* Status breadcrumb — two rows of 3, T4.134 + T4.178 */}
               {myTicket.status && (() => {
-                // on-hold and confined both occur during the consult phase;
-                // map them to in-consult so the breadcrumb highlights correctly
                 const breadcrumbStatus = ['on-hold', 'confined'].includes(myTicket.status)
                   ? 'in-consult'
                   : myTicket.status;
                 const currentIdx = BREADCRUMB_STAGES.findIndex(s => s.status === breadcrumbStatus);
                 if (currentIdx < 0) return null;
 
-                // Lead-in line to current dot is green (optimistic: patient reached this stage).
-                // Trailing line from current dot is gray (stage not yet completed).
+                const renderRow = (stages, startIdx) => (
+                  <View style={styles.breadcrumbContainer}>
+                    {stages.map((stage, rowIdx) => {
+                      const idx = rowIdx + startIdx;
+                      const isPast    = idx < currentIdx;
+                      const isCurrent = idx === currentIdx;
+                      const isLast    = rowIdx === stages.length - 1;
+                      return (
+                        <View key={stage.status} style={styles.breadcrumbStep}>
+                          <View style={styles.breadcrumbDotRow}>
+                            {rowIdx > 0 && (
+                              <View style={[
+                                styles.breadcrumbLine,
+                                (isPast || isCurrent) ? styles.breadcrumbLineActive : styles.breadcrumbLineInactive,
+                              ]} />
+                            )}
+                            <View style={[
+                              styles.breadcrumbDot,
+                              isPast    && { backgroundColor: COLORS.success },
+                              isCurrent && { backgroundColor: COLORS.sky },
+                              !isPast && !isCurrent && { backgroundColor: COLORS.borderLight },
+                            ]} />
+                            {!isLast && (
+                              <View style={[
+                                styles.breadcrumbLine,
+                                isPast ? styles.breadcrumbLineActive : styles.breadcrumbLineInactive,
+                              ]} />
+                            )}
+                          </View>
+                          <Text style={[
+                            styles.breadcrumbLabel,
+                            isPast    && { color: COLORS.success },
+                            isCurrent && { color: COLORS.sky, fontWeight: '900' },
+                          ]} numberOfLines={1}>
+                            {stage.label}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                );
+
                 return (
                   <>
-                    <View style={styles.breadcrumbContainer}>
-                      {BREADCRUMB_STAGES.map((stage, idx) => {
-                        const isPast    = idx < currentIdx;
-                        const isCurrent = idx === currentIdx;
-                        const isLast    = idx === BREADCRUMB_STAGES.length - 1;
+                    {renderRow(BREADCRUMB_STAGES.slice(0, 3), 0)}
+                    {renderRow(BREADCRUMB_STAGES.slice(3), 3)}
 
-                        return (
-                          <View key={stage.status} style={styles.breadcrumbStep}>
-                            <View style={styles.breadcrumbDotRow}>
-                              {idx > 0 && (
-                                <View style={[
-                                  styles.breadcrumbLine,
-                                  (isPast || isCurrent) ? styles.breadcrumbLineActive : styles.breadcrumbLineInactive,
-                                ]} />
-                              )}
-                              <View style={[
-                                styles.breadcrumbDot,
-                                isPast    && { backgroundColor: COLORS.success },
-                                isCurrent && { backgroundColor: COLORS.sky },
-                                !isPast && !isCurrent && { backgroundColor: COLORS.borderLight },
-                              ]} />
-                              {!isLast && (
-                                <View style={[
-                                  styles.breadcrumbLine,
-                                  isPast ? styles.breadcrumbLineActive : styles.breadcrumbLineInactive,
-                                ]} />
-                              )}
-                            </View>
-                            <Text style={[
-                              styles.breadcrumbLabel,
-                              isPast    && { color: COLORS.success },
-                              isCurrent && { color: COLORS.sky, fontWeight: '900' },
-                            ]} numberOfLines={1}>
-                              {stage.label}
-                            </Text>
-                          </View>
-                        );
-                      })}
-                    </View>
-
-                    {/* Sub-state annotation for on-hold / confined */}
                     {(myTicket.status === 'on-hold' || myTicket.status === 'confined') && (
                       <Text style={styles.breadcrumbNote}>
                         {myTicket.status === 'on-hold' ? 'Currently on hold' : 'Admitted to clinic'}
@@ -508,18 +588,20 @@ export default function QueueScreen() {
               })()}
 
               <View style={styles.infoBox}>
-                {/* T2.354: use isActiveStatus for a nuanced turn check */}
                 {peopleAhead <= 0 && (isActiveStatus(myTicket.status) || myTicket.status === "confirmed") ? (
                   <View style={{ alignItems: "center" }}>
-                    <Text style={styles.readyText}>IT&apos;S YOUR TURN!</Text>
+                    <Text style={styles.readyText}>
+                      {['dispensing', 'billing'].includes(myTicket.status)
+                        ? 'NEXT STEP'
+                        : "IT'S YOUR TURN!"}
+                    </Text>
                     <Text style={styles.subText}>
-                      Please proceed to the consultation room.
+                      {getStageMessage(myTicket.status)}
                     </Text>
                   </View>
                 ) : (
                   <View style={{ alignItems: "center" }}>
                     <Text style={styles.waitingText}>Please Wait...</Text>
-                    {/* T4.134: department-filtered ahead count + explainer (Phase 6) */}
                     <View style={styles.aheadRow}>
                       <Text style={styles.subText}>
                         There are{" "}
@@ -550,16 +632,67 @@ export default function QueueScreen() {
 
                     {/* Live countdown estimate -- T2.485 */}
                     <View style={styles.estBox}>
-                      <Text style={styles.estLabel}>Estimated Wait Time:</Text>
-                      <Text style={styles.estTime}>
-                        ~ {countdown != null ? countdown : estWaitTimeMins} min{(countdown ?? estWaitTimeMins) !== 1 ? "s" : ""}
-                      </Text>
+                      {(countdown ?? estWaitTimeMins ?? 1) <= 0 ? (
+                        <>
+                          <Text style={styles.estLabel}>HANG TIGHT</Text>
+                          <Text style={styles.estTime}>Almost there</Text>
+                        </>
+                      ) : (
+                        <>
+                          <Text style={styles.estLabel}>Estimated Wait Time:</Text>
+                          <Text style={styles.estTime}>
+                            ~ {countdown != null ? countdown : estWaitTimeMins} min{(countdown ?? estWaitTimeMins) !== 1 ? "s" : ""}
+                          </Text>
+                        </>
+                      )}
+                      {elapsedMins != null && (
+                        <View style={styles.elapsedRow}>
+                          <Text style={styles.elapsedLabel}>WAITING FOR</Text>
+                          <Text style={[
+                            styles.elapsedValue,
+                            elapsedMins > (estWaitTimeMins || Infinity) && { color: COLORS.danger },
+                          ]}>
+                            {elapsedMins} min{elapsedMins !== 1 ? 's' : ''}
+                          </Text>
+                          {estWaitTimeMins != null && elapsedMins > estWaitTimeMins && (
+                            <Text style={styles.elapsedOverrun}>
+                              ~{elapsedMins - estWaitTimeMins} min over estimate
+                            </Text>
+                          )}
+                        </View>
+                      )}
                     </View>
 
+                    {/* T4.178: multi-department bottleneck headline + per-dept breakdown */}
+                    {deptBreakdown.length > 1 && bottleneck && (
+                      <Text style={styles.bottleneckHeadline}>
+                        Longest wait: {bottleneck.department} (~{bottleneck.waitMins} min)
+                      </Text>
+                    )}
+
+                    {deptBreakdown.length > 1 && (
+                      <View style={styles.deptBreakdownBox}>
+                        {deptBreakdown.map((d) => {
+                          const isBottleneck = d.department === bottleneck?.department;
+                          return (
+                            <View key={d.department} style={styles.deptBreakdownRow}>
+                              <Text style={styles.deptBreakdownName}>{d.department}</Text>
+                              <Text style={styles.deptBreakdownCount}>{d.ahead} ahead</Text>
+                              <Text style={[
+                                styles.deptBreakdownTime,
+                                isBottleneck && { color: COLORS.danger },
+                              ]}>
+                                ~{d.waitMins}m{isBottleneck ? ' (bottleneck)' : ''}
+                              </Text>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+
                     {/* T3.59: Per-service-type breakdown — only shown when 2+ distinct types are ahead */}
-                    {serviceBreakdown.length > 1 && (
+                    {deptBreakdown.length <= 1 && serviceBreakdown.length > 1 && (
                       <View style={styles.breakdownBox}>
-                        {/* T4.134: show dept name when known */}
                         <Text style={styles.breakdownLabel}>
                           {myDepartment ? `Ahead in ${myDepartment}:` : "By Service Type:"}
                         </Text>
@@ -579,7 +712,6 @@ export default function QueueScreen() {
                       </View>
                     )}
 
-                    {/* T4.134: department-specific avg, falling back to clinic-wide (absorbs T2.488) */}
                     {myDepartment && deptAvgConsultMins[myDepartment] ? (
                       <Text style={styles.avgWaitText}>
                         Avg {myDepartment.toLowerCase()} visit: ~{deptAvgConsultMins[myDepartment]} min (today)
@@ -607,28 +739,6 @@ export default function QueueScreen() {
               )}
             </>
           )}
-
-          {/* Multi-pet summary -- T2.489 */}
-          {allTickets.length > 1 && (
-            <View style={styles.multiPetBox}>
-              <Text style={styles.multiPetLabel}>
-                ALL YOUR PETS IN QUEUE ({allTickets.length})
-              </Text>
-              {allTickets.map((ticket, idx) => (
-                <View key={ticket.id || idx} style={styles.multiPetRow}>
-                  <Text style={styles.multiPetName}>
-                    {ticket.petName || `Pet ${idx + 1}`}
-                  </Text>
-                  <Text style={styles.multiPetTicket}>
-                    {formatTicket(ticket.ticketPrefix, ticket.queueNumber)}
-                  </Text>
-                  <Text style={styles.multiPetStatus}>
-                    {getClientStatusLabel(ticket.status)}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          )}
         </View>
       ) : (
         <View style={styles.noTicketBox}>
@@ -636,7 +746,54 @@ export default function QueueScreen() {
           <Text style={styles.noTicketSub}>
             Book an appointment to get started.
           </Text>
+          <View style={styles.bookNowWrapper}>
+            <View style={SHADOW.button} />
+            <TouchableOpacity
+              style={styles.bookNowBtn}
+              onPress={() => navigation.navigate('BookAppointment')}
+              activeOpacity={0.9}
+            >
+              <Text style={styles.bookNowText}>BOOK NOW</Text>
+            </TouchableOpacity>
+          </View>
         </View>
+      )}
+
+      {/* --- PER-DEPARTMENT NOW SERVING --- */}
+      <View style={styles.nowServingSection}>
+        <Text style={styles.nowServingHeader}>NOW SERVING</Text>
+        <View style={[styles.statusBadge, queueData.status === "active" ? styles.active : styles.paused]}>
+          <Text style={styles.statusText}>
+            {(queueData.status || "unknown").toUpperCase()}
+          </Text>
+        </View>
+        {Object.keys(nowServingByDept).length > 0 ? (
+          Object.entries(nowServingByDept).map(([dept, patients]) => {
+            const deptObj = departments.find(
+              d => d.name?.toLowerCase() === dept.toLowerCase()
+            );
+            const color = deptObj?.color || COLORS.sky;
+            const firstServing = patients[0];
+            return (
+              <View key={dept} style={styles.nowServingRow}>
+                <View style={[styles.deptDot, { backgroundColor: color }]} />
+                <Text style={styles.nowServingDept}>{dept.toUpperCase()}</Text>
+                <Text style={styles.nowServingTicket}>
+                  {formatTicket(firstServing.ticketPrefix, firstServing.queueNumber)}
+                </Text>
+              </View>
+            );
+          })
+        ) : (
+          <Text style={styles.nowServingEmpty}>Waiting for next patient</Text>
+        )}
+      </View>
+
+      {/* Offline staleness indicator */}
+      {!isConnected && lastUpdated && (
+        <Text style={styles.staleNote}>
+          LAST UPDATED: {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </Text>
       )}
     </ScrollView>
   );
@@ -649,43 +806,60 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.cream,
     alignItems: "center",
   },
-  header: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: COLORS.accent,
-    marginBottom: 30,
-    marginTop: 10,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-  },
-
-  // "Now Serving" circle -- deliberate design element; keeps borderRadius as visual anchor
-  circle: {
-    width: 240,
-    height: 240,
-    borderRadius: 120,
+  nowServingSection: {
+    width: '100%',
     backgroundColor: COLORS.white,
-    justifyContent: "center",
-    alignItems: "center",
-    elevation: 8,
-    borderWidth: 8,
+    borderWidth: 2,
     borderColor: COLORS.brand,
-    marginBottom: 40,
+    padding: SPACING.cardPadding,
+    marginTop: 20,
+    marginBottom: 8,
+    alignItems: 'center',
   },
-  label: {
-    fontSize: 16,
+  nowServingHeader: {
+    fontFamily: FONTS.black,
+    fontSize: 14,
     color: COLORS.muted,
-    textTransform: "uppercase",
+    textTransform: 'uppercase',
+    letterSpacing: 2,
+    marginBottom: 8,
+  },
+  nowServingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 8,
+    width: '100%',
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+  },
+  nowServingDept: {
+    flex: 1,
+    fontFamily: FONTS.bold,
+    fontSize: 13,
+    color: COLORS.accent,
+    textTransform: 'uppercase',
     letterSpacing: 1,
   },
-  bigNumber: { fontSize: 80, fontWeight: "bold", color: COLORS.brand },
+  nowServingTicket: {
+    fontFamily: FONTS.black,
+    fontSize: 28,
+    color: COLORS.brand,
+  },
+  nowServingEmpty: {
+    fontFamily: FONTS.regular,
+    fontSize: 14,
+    color: COLORS.muted,
+    marginTop: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
 
   statusBadge: {
-    position: "absolute",
-    bottom: 30,
     paddingHorizontal: 15,
     paddingVertical: 5,
     borderRadius: 0,
+    marginBottom: 8,
   },
   active: { backgroundColor: COLORS.success },
   paused: { backgroundColor: COLORS.danger },
@@ -713,7 +887,7 @@ const styles = StyleSheet.create({
     width: "100%",
     alignItems: "center",
     padding: SPACING.cardPadding,
-    backgroundColor: "#EFEBE9",
+    backgroundColor: COLORS.cream,
     borderRadius: 0,
     borderWidth: 2,
     borderColor: COLORS.brand,
@@ -725,6 +899,29 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: COLORS.info,
     marginVertical: 10,
+  },
+  heroSubtitle: {
+    fontFamily: FONTS.bold,
+    fontSize: 18,
+    color: COLORS.brand,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginTop: 4,
+  },
+  heroServices: {
+    fontFamily: FONTS.regular,
+    fontSize: 14,
+    color: COLORS.accent,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  heroVet: {
+    fontFamily: FONTS.bold,
+    fontSize: 13,
+    color: COLORS.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: 4,
   },
 
   // Progress bar -- T2.484
@@ -780,14 +977,14 @@ const styles = StyleSheet.create({
   subText: { color: COLORS.accent, textAlign: "center", fontSize: 15 },
 
   estBox: {
-    backgroundColor: "#FFF3E0",
+    backgroundColor: COLORS.cream,
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 0,
     marginTop: 15,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#FFB74D",
+    borderColor: COLORS.warning,
     width: "100%",
   },
   estLabel: {
@@ -853,6 +1050,53 @@ const styles = StyleSheet.create({
     textAlign: "right",
   },
 
+  bottleneckHeadline: {
+    fontFamily: FONTS.black,
+    fontSize: 14,
+    color: COLORS.danger,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: 12,
+    textAlign: 'center',
+  },
+  deptBreakdownBox: {
+    width: '100%',
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+  },
+  deptBreakdownRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+  },
+  deptBreakdownName: {
+    flex: 1,
+    fontFamily: FONTS.bold,
+    fontSize: 13,
+    color: COLORS.accent,
+    textTransform: 'uppercase',
+  },
+  deptBreakdownCount: {
+    fontFamily: FONTS.bold,
+    fontSize: 12,
+    color: COLORS.muted,
+    marginHorizontal: 8,
+  },
+  deptBreakdownTime: {
+    fontFamily: FONTS.bold,
+    fontSize: 13,
+    color: COLORS.warning,
+    minWidth: 80,
+    textAlign: 'right',
+  },
+
   // Running Late button -- T2.490
   lateButton: {
     marginTop: 16,
@@ -874,50 +1118,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
 
-  // Multi-pet section -- T2.489
-  multiPetBox: {
-    width: "100%",
-    marginTop: 16,
-    padding: 16,
-    backgroundColor: COLORS.white,
-    borderWidth: 2,
-    borderColor: COLORS.brand,
-  },
-  multiPetLabel: {
-    fontSize: 13,
-    fontWeight: "900",
-    color: COLORS.brand,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    marginBottom: 10,
-  },
-  multiPetRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
-  },
-  multiPetName: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: "bold",
-    color: COLORS.accent,
-  },
-  multiPetTicket: {
-    fontSize: 14,
-    fontWeight: "bold",
-    color: COLORS.info,
-    marginHorizontal: 10,
-  },
-  multiPetStatus: {
-    fontSize: 12,
-    fontWeight: "bold",
-    color: COLORS.textMuted,
-    textTransform: "uppercase",
-  },
-
   noTicketBox: { marginTop: 20, padding: 20, alignItems: "center" },
   noTicketText: { fontSize: 18, fontWeight: "bold", color: COLORS.muted },
   noTicketSub: {
@@ -926,6 +1126,27 @@ const styles = StyleSheet.create({
     marginTop: 5,
     paddingHorizontal: 20,
   },
+  bookNowWrapper: { position: 'relative', marginTop: 20, width: 200 },
+  bookNowBtn: {
+    backgroundColor: COLORS.sky,
+    paddingVertical: 16,
+    paddingHorizontal: 40,
+    borderWidth: 3,
+    borderColor: COLORS.brand,
+    alignItems: 'center',
+  },
+  bookNowText: {
+    fontFamily: FONTS.black,
+    fontSize: 18,
+    color: COLORS.textOnSky,
+    textTransform: 'uppercase',
+    letterSpacing: 2,
+  },
+
+  elapsedRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 6 },
+  elapsedLabel: { fontSize: 11, fontWeight: '900', color: COLORS.textMuted, letterSpacing: 1 },
+  elapsedValue: { fontSize: 18, fontWeight: '900', color: COLORS.brand },
+  elapsedOverrun: { fontSize: 11, fontWeight: '700', color: COLORS.danger, marginLeft: 4 },
 
   // Offline staleness indicator — shown below the Now Serving circle when offline
   staleNote: {

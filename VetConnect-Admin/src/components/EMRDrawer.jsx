@@ -1,12 +1,29 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Drawer, Box, Typography, IconButton, Chip, Divider,
-  Collapse, Stack, Paper,
+  Collapse, Stack, Paper, TextField, InputAdornment,
+  CircularProgress, Tooltip,
 } from '@mui/material';
-import { Close as CloseIcon, ExpandMore as ExpandMoreIcon, PictureAsPdf as PictureAsPdfIcon } from '@mui/icons-material';
-import { FONT, COLORS } from '../theme/designTokens';
+import {
+  Close as CloseIcon,
+  ExpandMore as ExpandMoreIcon,
+  PictureAsPdf as PictureAsPdfIcon,
+  Search as SearchIcon,
+  Print as PrintIcon,
+} from '@mui/icons-material';
+import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { db } from '../firebaseConfig';
+import { FONT, COLORS, TYPE } from '../theme/designTokens';
 import { resolveVitals } from '../utils/resolveVitals';
-import { resolveObjectiveText, hasExamData } from '../utils/examUtils';
+import { resolveObjectiveText, hasExamData, examSummaryLine } from '../utils/examUtils';
+import { openPrintWindow, PRINT_STYLES, formatPrintDate, esc } from '../utils/printUtils';
+import {
+  renderVitalsSection,
+  renderPrescriptionsSection,
+  renderVaccineSection,
+  renderLabResultsSection,
+  renderDischargeSection,
+} from '../utils/printVisitSummary';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -18,6 +35,12 @@ const formatDate = (val) => {
   } catch {
     return '—';
   }
+};
+
+const resolveRecordDate = (record) => {
+  const raw = record.createdAt || record.date;
+  if (!raw) return new Date(NaN);
+  return raw?.toDate ? raw.toDate() : new Date(raw);
 };
 
 const STATUS_CHIP_COLORS = {
@@ -42,53 +65,14 @@ const StatusChip = ({ status }) => {
   );
 };
 
-// ─── Sub-section blocks ──────────────────────────────────────────────────────
-
-const SectionBlock = ({ label, children }) => (
-  <Box sx={{ mb: 1.5 }}>
-    <Typography sx={{ fontSize: '0.6rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1, color: COLORS.textMuted, mb: 0.5 }}>
-      {label}
-    </Typography>
-    {children}
-  </Box>
-);
-
-const SoapText = ({ value }) => (
-  <Typography sx={{ fontSize: '0.8rem', fontFamily: FONT, color: COLORS.brand, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-    {value || '—'}
-  </Typography>
-);
-
-const VitalsRow = ({ vitals }) => {
-  const v = vitals?.vitals || vitals;
-  const entries = [
-    { label: 'Wt', val: (v.weight ?? v.objWeight) ? `${v.weight ?? v.objWeight} kg` : null },
-    { label: 'Temp', val: (v.temp ?? v.objTemp) ? `${v.temp ?? v.objTemp} °C` : null },
-    { label: 'HR', val: (v.hr ?? v.objHR) ? `${v.hr ?? v.objHR} bpm` : null },
-    { label: 'RR', val: (v.rr ?? v.objRR) ? `${v.rr ?? v.objRR} rpm` : null },
-    { label: 'CRT', val: (v.crt ?? v.objCRT) ? `${v.crt ?? v.objCRT}s` : null },
-    { label: 'BCS', val: v.bcs ? `${v.bcs}/9` : null },
-    { label: 'Pain', val: (v.pain ?? v.painScale) != null && (v.pain ?? v.painScale) !== '' ? `${v.pain ?? v.painScale}/4` : null },
-  ].filter(e => e.val !== null);
-
-  if (entries.length === 0) return null;
-
-  return (
-    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-      {entries.map(({ label, val }) => (
-        <Box key={label} sx={{ px: 1, py: 0.5, bgcolor: '#EFF6FF', border: `1px solid #93C5FD`, minWidth: 56, textAlign: 'center' }}>
-          <Typography sx={{ fontSize: '0.55rem', fontWeight: 900, color: COLORS.medical, textTransform: 'uppercase' }}>{label}</Typography>
-          <Typography sx={{ fontSize: '0.75rem', fontWeight: 700, color: COLORS.brand, fontFamily: 'monospace' }}>{val}</Typography>
-        </Box>
-      ))}
-    </Box>
-  );
-};
-
 // ─── Single expanded record card ─────────────────────────────────────────────
 
-const RecordCard = ({ record }) => {
+const RecordCard = ({ record, appointmentId }) => {
   const [expanded, setExpanded] = useState(false);
+  const [objExpanded, setObjExpanded] = useState(false);
+
+  const isCurrentVisit = !!(appointmentId && record.appointmentId === appointmentId);
+  const isDraft = isCurrentVisit && !record.signedOffAt;
 
   const diagnosis = record.diagnoses?.[0]?.name || record.assessment || record.diagnosis || 'No diagnosis recorded';
   const vetName = record.vetName || 'Unknown';
@@ -96,24 +80,31 @@ const RecordCard = ({ record }) => {
   const recordDate = formatDate(record.createdAt || record.date);
   const status = record.status || 'completed';
 
-  const hasSoap = record.subjective || hasExamData(record.objectiveExam) || record.objectiveNotes || record.soap?.objectiveNotes || record.soap?.objective || record.diagnoses?.length > 0 || record.assessment || record.plan;
+  const hasSoap = record.subjective || hasExamData(record.objectiveExam) || record.objectiveNotes
+    || record.soap?.objectiveNotes || record.soap?.objective
+    || record.diagnoses?.length > 0 || record.assessment || record.plan;
+
   const rv = resolveVitals(record);
-  const hasVitals = rv.weight || rv.temp || rv.hr || rv.rr || rv.crt || rv.bcs || (rv.pain != null && rv.pain !== '')
-    || record.objWeight || record.objTemp || record.objHR || record.objRR || record.objCRT || record.bcs || (record.painScale != null);
   const prescriptionList = record.dispensedProducts || record.prescriptions || [];
   const hasPrescriptions = prescriptionList.length > 0;
-  const hasDischargeSummary = record.dischargeSummary && (typeof record.dischargeSummary === 'string' || typeof record.dischargeSummary === 'object');
+  const hasDischargeSummary = record.dischargeSummary
+    && (typeof record.dischargeSummary === 'string' || typeof record.dischargeSummary === 'object');
   const hasVaccines = record.vaccineAdministrations?.length > 0 || record.vaccineData?.vaccineName;
   const hasLabResults = record.labResults?.length > 0;
   const hasAmendments = record.amendments?.length > 0;
   const hasCaseDay = record.caseDay != null;
 
+  const objText = resolveObjectiveText(record);
+  const objSummary = hasExamData(record.objectiveExam) ? examSummaryLine(record.objectiveExam) : null;
+
   return (
     <Paper
       elevation={0}
       sx={{
-        border: `2px solid ${COLORS.brand}`,
-        boxShadow: expanded ? `4px 4px 0 ${COLORS.brand}` : `2px 2px 0 ${COLORS.accent}`,
+        border: `2px solid ${isCurrentVisit ? COLORS.sky : COLORS.brand}`,
+        boxShadow: expanded
+          ? `4px 4px 0 ${isCurrentVisit ? COLORS.sky : COLORS.brand}`
+          : `2px 2px 0 ${isCurrentVisit ? COLORS.skyHover : COLORS.accent}`,
         borderRadius: 0,
         mb: 1.5,
         overflow: 'hidden',
@@ -132,9 +123,25 @@ const RecordCard = ({ record }) => {
         }}
       >
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography sx={{ fontWeight: 900, fontSize: '0.75rem', fontFamily: FONT, color: expanded ? '#FFF8E1' : COLORS.brand, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {diagnosis}
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
+            {isCurrentVisit && (
+              <Chip
+                label="CURRENT VISIT"
+                size="small"
+                sx={{
+                  height: 18, fontSize: '0.55rem', fontWeight: 900, borderRadius: 0,
+                  bgcolor: COLORS.sky, color: 'white', flexShrink: 0,
+                }}
+              />
+            )}
+            <Typography sx={{
+              fontWeight: 900, fontSize: '0.75rem', fontFamily: FONT,
+              color: expanded ? '#FFF8E1' : COLORS.brand,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {diagnosis}
+            </Typography>
+          </Box>
           <Box sx={{ display: 'flex', gap: 1, mt: 0.5, flexWrap: 'wrap', alignItems: 'center' }}>
             <Typography sx={{ fontSize: '0.6rem', fontWeight: 700, color: expanded ? '#D7CCC8' : COLORS.textMuted }}>
               {recordDate}
@@ -148,7 +155,11 @@ const RecordCard = ({ record }) => {
               · Dr. {vetName}
             </Typography>
             {hasCaseDay && (
-              <Chip label={`DAY ${record.caseDay}`} size="small" sx={{ height: 16, fontSize: '0.5rem', fontWeight: 900, borderRadius: 0, bgcolor: COLORS.accent, color: 'white' }} />
+              <Chip
+                label={`DAY ${record.caseDay}`}
+                size="small"
+                sx={{ height: 16, fontSize: '0.5rem', fontWeight: 900, borderRadius: 0, bgcolor: COLORS.accent, color: 'white' }}
+              />
             )}
           </Box>
         </Box>
@@ -165,63 +176,162 @@ const RecordCard = ({ record }) => {
         <Box sx={{ p: 2, bgcolor: '#FEFEFE', borderTop: `1px solid ${COLORS.brand}` }}>
           <Stack spacing={2} divider={<Divider sx={{ borderColor: '#F0EDE8' }} />}>
 
-            {/* Vitals */}
-            {hasVitals && (
-              <SectionBlock label="Vitals">
-                <VitalsRow vitals={rv} />
-              </SectionBlock>
+            {/* Draft warning — shown when this is the active unsigned record */}
+            {isDraft && (
+              <Box sx={{
+                bgcolor: COLORS.warningSurface, px: 1.5, py: 0.75,
+                border: `1px solid ${COLORS.kpiOrangeBorder}`,
+              }}>
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', fontWeight: 700, color: COLORS.warning, fontStyle: 'italic' }}>
+                  Draft in progress — not yet signed
+                </Typography>
+              </Box>
             )}
+
+            {/* Vitals — 7 fields, always rendered when expanded, "not taken" for missing */}
+            <Box sx={{ bgcolor: COLORS.vitalsBg, py: 1, px: 1.5, border: `1px solid ${COLORS.borderLight}` }}>
+              <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.75 }}>Vitals</Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+                {[
+                  { label: 'Wt',   value: rv.weight, unit: 'kg' },
+                  { label: 'Temp', value: rv.temp,   unit: '°C' },
+                  { label: 'HR',   value: rv.hr,     unit: 'bpm' },
+                  { label: 'RR',   value: rv.rr,     unit: 'br/min' },
+                  { label: 'CRT',  value: rv.crt,    unit: 'sec' },
+                  { label: 'BCS',  value: rv.bcs,    unit: '/9' },
+                  { label: 'Pain', value: rv.pain,   unit: '/4' },
+                ].map(({ label, value, unit }) => (
+                  <Box key={label}>
+                    <Typography sx={{ fontFamily: FONT, fontSize: '0.6rem', color: COLORS.textMuted, textTransform: 'uppercase', fontWeight: 600 }}>
+                      {label}
+                    </Typography>
+                    {value != null && value !== '' ? (
+                      <Typography sx={{ fontFamily: FONT, ...TYPE.emphasis, color: COLORS.textPrimary, fontSize: '0.85rem' }}>
+                        {value} <span style={{ fontSize: '0.65rem', fontWeight: 400, color: COLORS.textMuted }}>{unit}</span>
+                      </Typography>
+                    ) : (
+                      <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', color: COLORS.textMuted, fontStyle: 'italic' }}>
+                        not taken
+                      </Typography>
+                    )}
+                  </Box>
+                ))}
+              </Box>
+            </Box>
 
             {/* SOAP */}
             {hasSoap && (
-              <SectionBlock label="SOAP Notes">
-                <Stack spacing={1}>
-                  {record.subjective && (
-                    <Box>
-                      <Typography sx={{ fontSize: '0.58rem', fontWeight: 900, color: COLORS.medical, textTransform: 'uppercase', mb: 0.25 }}>S — Subjective</Typography>
-                      <SoapText value={record.subjective} />
-                    </Box>
-                  )}
-                  {(() => {
-                    const objText = resolveObjectiveText(record);
-                    return objText ? (
-                      <Box>
-                        <Typography sx={{ fontSize: '0.58rem', fontWeight: 900, color: COLORS.medical, textTransform: 'uppercase', mb: 0.25 }}>O — Objective</Typography>
-                        <SoapText value={objText} />
-                      </Box>
-                    ) : null;
-                  })()}
-                  {(record.diagnoses?.length > 0 || record.assessment) && (
-                    <Box>
-                      <Typography sx={{ fontSize: '0.58rem', fontWeight: 900, color: COLORS.success, textTransform: 'uppercase', mb: 0.25 }}>A — Assessment</Typography>
-                      {record.diagnoses?.length > 0 && (
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.3, mb: 0.5 }}>
-                          {record.diagnoses.map((dx, i) => (
-                            <Chip key={dx.catalogId || i} label={`${dx.name}${dx.severity ? ` — ${dx.severity}` : ''}`} size="small"
-                              sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.55rem', borderRadius: 0,
-                                bgcolor: dx.severity ? COLORS.warningSurface : '#E8F5E9',
-                                color: dx.severity ? COLORS.warning : COLORS.success }} />
-                          ))}
-                        </Box>
+              <Stack spacing={1.5}>
+
+                {/* Subjective */}
+                {record.subjective && (
+                  <Box>
+                    <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.5 }}>
+                      Subjective
+                    </Typography>
+                    <Typography sx={{
+                      fontFamily: FONT, ...TYPE.body, color: COLORS.textPrimary,
+                      pl: 1.5, borderLeft: `2px solid ${COLORS.borderLight}`,
+                      whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                    }}>
+                      {record.subjective}
+                    </Typography>
+                  </Box>
+                )}
+
+                {/* Objective — collapsible with examSummaryLine preview */}
+                {objText && (
+                  <Box>
+                    <Box
+                      onClick={(e) => { e.stopPropagation(); setObjExpanded(prev => !prev); }}
+                      sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', mb: 0.5 }}
+                    >
+                      <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted }}>Objective</Typography>
+                      {!objExpanded && objSummary && (
+                        <Typography sx={{
+                          fontFamily: FONT, fontSize: '0.72rem', color: COLORS.textMuted,
+                          fontStyle: 'italic', flex: 1, overflow: 'hidden',
+                          textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>
+                          — {objSummary}
+                        </Typography>
                       )}
-                      {(record.assessmentNotes || (!record.diagnoses?.length && record.assessment)) && (
-                        <SoapText value={record.assessmentNotes || record.assessment} />
-                      )}
+                      <ExpandMoreIcon sx={{
+                        fontSize: 14, color: COLORS.textMuted,
+                        transform: objExpanded ? 'rotate(180deg)' : 'rotate(0)',
+                        transition: 'transform 0.2s',
+                      }} />
                     </Box>
-                  )}
-                  {record.plan && (
-                    <Box>
-                      <Typography sx={{ fontSize: '0.58rem', fontWeight: 900, color: COLORS.accent, textTransform: 'uppercase', mb: 0.25 }}>P — Plan</Typography>
-                      <SoapText value={record.plan} />
-                    </Box>
-                  )}
-                </Stack>
-              </SectionBlock>
+                    <Collapse in={objExpanded} timeout={150}>
+                      <Typography sx={{
+                        fontFamily: FONT, ...TYPE.body, color: COLORS.textPrimary,
+                        whiteSpace: 'pre-wrap', pl: 1.5, borderLeft: `2px solid ${COLORS.borderLight}`,
+                      }}>
+                        {objText}
+                      </Typography>
+                    </Collapse>
+                  </Box>
+                )}
+
+                {/* Assessment — diagnosis hero */}
+                {(record.diagnoses?.length > 0 || record.assessment || record.assessmentNotes) && (
+                  <Box>
+                    <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.75 }}>Assessment</Typography>
+                    {record.diagnoses?.length > 0 && (
+                      <Stack spacing={0.75} sx={{ mb: 0.5, pl: 1.5, borderLeft: `2px solid ${COLORS.borderLight}` }}>
+                        {record.diagnoses.map((dx, i) => (
+                          <Box key={dx.catalogId || i}>
+                            <Typography sx={{ fontFamily: FONT, fontSize: '0.95rem', fontWeight: 900, color: COLORS.textPrimary, lineHeight: 1.3 }}>
+                              {dx.name}
+                              {dx.severity && (
+                                <Typography component="span" sx={{ fontFamily: FONT, fontSize: '0.72rem', fontWeight: 700, color: COLORS.warning, ml: 1 }}>
+                                  {dx.severity}
+                                </Typography>
+                              )}
+                            </Typography>
+                            {dx.notes && (
+                              <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', color: COLORS.textMuted, fontStyle: 'italic', mt: 0.25 }}>
+                                {dx.notes}
+                              </Typography>
+                            )}
+                          </Box>
+                        ))}
+                      </Stack>
+                    )}
+                    {(record.assessmentNotes || (!record.diagnoses?.length && record.assessment)) && (
+                      <Typography sx={{
+                        fontFamily: FONT, ...TYPE.body, color: COLORS.textPrimary,
+                        whiteSpace: 'pre-wrap', pl: 1.5, borderLeft: `2px solid ${COLORS.borderLight}`,
+                        fontSize: '0.8rem',
+                      }}>
+                        {record.assessmentNotes || record.assessment}
+                      </Typography>
+                    )}
+                  </Box>
+                )}
+
+                {/* Plan */}
+                {(record.plan || record.soap?.plan) && (
+                  <Box>
+                    <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.5 }}>Plan</Typography>
+                    <Typography sx={{
+                      fontFamily: FONT, ...TYPE.body, color: COLORS.textPrimary,
+                      whiteSpace: 'pre-wrap', pl: 1.5, borderLeft: `2px solid ${COLORS.borderLight}`,
+                    }}>
+                      {record.plan || record.soap?.plan}
+                    </Typography>
+                  </Box>
+                )}
+
+              </Stack>
             )}
 
             {/* Prescriptions */}
             {hasPrescriptions && (
-              <SectionBlock label={`Prescriptions (${prescriptionList.length})`}>
+              <Box>
+                <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.75 }}>
+                  Prescriptions ({prescriptionList.length})
+                </Typography>
                 <Stack spacing={0.5}>
                   {prescriptionList.map((rx, i) => (
                     <Box key={i} sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
@@ -237,14 +347,22 @@ const RecordCard = ({ record }) => {
                     </Box>
                   ))}
                 </Stack>
-              </SectionBlock>
+              </Box>
             )}
 
-            {/* Discharge summary */}
+            {/* Discharge summary — cream section */}
             {hasDischargeSummary && (
-              <SectionBlock label="Discharge Summary">
+              <Box sx={{ bgcolor: COLORS.cream, mx: -2, px: 2, py: 1.5 }}>
+                <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.75 }}>
+                  Discharge Notes
+                </Typography>
                 {typeof record.dischargeSummary === 'string' ? (
-                  <SoapText value={record.dischargeSummary} />
+                  <Typography sx={{
+                    fontFamily: FONT, ...TYPE.body, color: COLORS.textPrimary,
+                    whiteSpace: 'pre-wrap', pl: 1.5, borderLeft: `2px solid ${COLORS.borderLight}`,
+                  }}>
+                    {record.dischargeSummary}
+                  </Typography>
                 ) : (
                   <Stack spacing={0.5}>
                     {record.dischargeSummary.patientStatus && (
@@ -291,12 +409,15 @@ const RecordCard = ({ record }) => {
                     )}
                   </Stack>
                 )}
-              </SectionBlock>
+              </Box>
             )}
 
             {/* Vaccine administrations */}
             {hasVaccines && (
-              <SectionBlock label="Vaccines Administered">
+              <Box>
+                <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.75 }}>
+                  Vaccines Administered
+                </Typography>
                 <Stack spacing={0.75}>
                   {(record.vaccineAdministrations || (record.vaccineData ? [record.vaccineData] : [])).map((v, i) => (
                     <Box key={i} sx={{ px: 1.5, py: 1, bgcolor: COLORS.kpiGreenBg, border: `1px solid ${COLORS.kpiGreenBorder}` }}>
@@ -311,12 +432,15 @@ const RecordCard = ({ record }) => {
                     </Box>
                   ))}
                 </Stack>
-              </SectionBlock>
+              </Box>
             )}
 
             {/* Lab results */}
             {hasLabResults && (
-              <SectionBlock label={`Lab Results (${record.labResults.length})`}>
+              <Box>
+                <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.75 }}>
+                  Lab Results ({record.labResults.length})
+                </Typography>
                 <Stack spacing={0.5}>
                   {record.labResults.map((lab, i) => {
                     const statusKey = (lab.status || 'normal').toLowerCase();
@@ -327,12 +451,10 @@ const RecordCard = ({ record }) => {
                     };
                     const sc = statusColors[statusKey] || statusColors.normal;
 
-                    // Amendment 1: derive display label from resultType for positive-negative tests
                     const chipLabel = lab.resultType === 'positive-negative'
                       ? (statusKey === 'normal' ? 'NEGATIVE' : statusKey === 'critical' ? 'CRITICAL' : 'POSITIVE')
                       : (lab.status || 'normal').toUpperCase();
 
-                    // Reference range display — species not available in EMRDrawer, show both
                     const renderRefRange = () => {
                       const range = lab.referenceRange || null;
                       if (!range) return null;
@@ -358,7 +480,10 @@ const RecordCard = ({ record }) => {
                     };
 
                     return (
-                      <Box key={i} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', px: 1.5, py: 0.75, bgcolor: COLORS.kpiBlueBg, border: `1px solid ${COLORS.kpiBlueBorder}` }}>
+                      <Box key={i} sx={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+                        px: 1.5, py: 0.75, bgcolor: COLORS.kpiBlueBg, border: `1px solid ${COLORS.kpiBlueBorder}`,
+                      }}>
                         <Box>
                           <Typography sx={{ fontSize: '0.72rem', fontWeight: 800, color: COLORS.brand, fontFamily: FONT }}>
                             {lab.testName}
@@ -386,12 +511,15 @@ const RecordCard = ({ record }) => {
                     );
                   })}
                 </Stack>
-              </SectionBlock>
+              </Box>
             )}
 
-            {/* Attachments — T4.121 Day 2 */}
+            {/* Attachments */}
             {record.attachments?.length > 0 && (
-              <SectionBlock label={`Attachments (${record.attachments.length})`}>
+              <Box>
+                <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.75 }}>
+                  Attachments ({record.attachments.length})
+                </Typography>
                 <Stack spacing={0.5}>
                   {record.attachments.map((file, i) => {
                     const isImage = file.mimeType?.startsWith('image/');
@@ -424,12 +552,15 @@ const RecordCard = ({ record }) => {
                     );
                   })}
                 </Stack>
-              </SectionBlock>
+              </Box>
             )}
 
-            {/* Amendments — T3.99: branch on type === 'structured'; fix vetName/author + timestamp/createdAt fallbacks */}
+            {/* Amendments */}
             {hasAmendments && (
-              <SectionBlock label={`Amendments (${record.amendments.length})`}>
+              <Box>
+                <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.75 }}>
+                  Amendments ({record.amendments.length})
+                </Typography>
                 <Stack spacing={0.75}>
                   {record.amendments.map((am, i) => {
                     const authorName = am.vetName || am.author || 'Clinician';
@@ -441,8 +572,6 @@ const RecordCard = ({ record }) => {
                           <Typography sx={{ fontSize: '0.6rem', fontWeight: 900, color: COLORS.warning, textTransform: 'uppercase', mb: 0.5, fontFamily: FONT }}>
                             AMENDMENT: {am.reason}
                           </Typography>
-
-                          {/* Mini SOAP grid — only non-empty fields */}
                           <Stack spacing={0.25}>
                             {[
                               { key: 'subjective', label: 'S' },
@@ -454,19 +583,22 @@ const RecordCard = ({ record }) => {
                                 <Typography sx={{ fontSize: '0.55rem', fontWeight: 900, color: COLORS.warning, textTransform: 'uppercase' }}>
                                   {label}
                                 </Typography>
-                                <SoapText value={am.soap[key]} />
+                                <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.brand, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                                  {am.soap[key]}
+                                </Typography>
                               </Box>
                             ))}
                           </Stack>
-
-                          {/* Vitals row — reuse VitalsRow sub-component */}
                           {am.vitals && Object.values(am.vitals).some(v => v) && (
-                            <Box sx={{ mt: 0.5 }}>
-                              <VitalsRow vitals={am.vitals} />
+                            <Box sx={{ mt: 0.5, display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
+                              {Object.entries(am.vitals).filter(([, v]) => v != null && v !== '').map(([k, v]) => (
+                                <Box key={k}>
+                                  <Typography sx={{ fontFamily: FONT, fontSize: '0.6rem', color: COLORS.textMuted, textTransform: 'uppercase', fontWeight: 600 }}>{k}</Typography>
+                                  <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', fontWeight: 700, color: COLORS.brand }}>{v}</Typography>
+                                </Box>
+                              ))}
                             </Box>
                           )}
-
-                          {/* Added medications */}
                           {am.addedMedications?.length > 0 && (
                             <Box sx={{ mt: 0.5 }}>
                               <Typography sx={{ fontSize: '0.55rem', fontWeight: 900, color: COLORS.warning, textTransform: 'uppercase', mb: 0.25 }}>
@@ -479,7 +611,6 @@ const RecordCard = ({ record }) => {
                               ))}
                             </Box>
                           )}
-
                           <Box sx={{ display: 'flex', gap: 1.5, mt: 0.5, flexWrap: 'wrap' }}>
                             <Typography sx={{ fontSize: '0.6rem', color: COLORS.textMuted }}>By: {authorName}</Typography>
                             {dateVal && <Typography sx={{ fontSize: '0.6rem', color: COLORS.textMuted }}>{formatDate(dateVal)}</Typography>}
@@ -488,7 +619,6 @@ const RecordCard = ({ record }) => {
                       );
                     }
 
-                    // Legacy text blob — fixed field name fallbacks, rendering unchanged
                     return (
                       <Box key={i} sx={{ px: 1.5, py: 1, bgcolor: COLORS.kpiOrangeBg, border: `1px solid ${COLORS.kpiOrangeBorder}` }}>
                         <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, color: COLORS.brand, fontFamily: FONT }}>{am.text}</Typography>
@@ -501,7 +631,7 @@ const RecordCard = ({ record }) => {
                     );
                   })}
                 </Stack>
-              </SectionBlock>
+              </Box>
             )}
 
           </Stack>
@@ -516,17 +646,183 @@ const RecordCard = ({ record }) => {
 /**
  * EMRDrawer — right-anchored slide-over showing a pet's complete medical history.
  *
- * Read-only. Zero new Firestore reads — the `history` array is passed from
- * ClinicalWorkspace state which is populated on workspace mount.
+ * Supports two access modes:
+ * - ClinicalWorkspace mode: `history` prop pre-loaded, `appointmentId` for highlight
+ * - Queue mode: `petId` prop triggers a one-shot getDocs fetch on open
  *
  * @prop {boolean}  open
  * @prop {function} onClose
- * @prop {Array}    history      - Array of medical_record documents, newest-first
+ * @prop {Array}    history       - Pre-loaded records array (ClinicalWorkspace path)
  * @prop {string}   petName
  * @prop {string}   petSpecies
+ * @prop {string}   [appointmentId] - Highlights the matching record as "CURRENT VISIT"
+ * @prop {string}   [petId]       - Triggers independent fetch when history is empty (Queue path)
  */
-export default function EMRDrawer({ open, onClose, history = [], petName, petSpecies }) {
-  const sorted = history;
+export default function EMRDrawer({
+  open,
+  onClose,
+  history: historyProp = [],
+  petName,
+  petSpecies,
+  appointmentId,
+  petId,
+}) {
+  const [fetchedRecords, setFetchedRecords] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [searchText, setSearchText] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [dateRange, setDateRange] = useState('all');
+  const [departments, setDepartments] = useState([]);
+
+  // Fetch records from Firestore when petId is provided but no pre-loaded history
+  useEffect(() => {
+    if (!open) return;
+    if (historyProp.length === 0 && petId) {
+      setLoading(true);
+      const q = query(
+        collection(db, 'medical_records'),
+        where('petId', '==', petId),
+        orderBy('date', 'desc')
+      );
+      getDocs(q)
+        .then(snap => {
+          setFetchedRecords(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        })
+        .catch((err) => {
+          console.error('[EMRDrawer] petId fetch failed:', err);
+        })
+        .finally(() => setLoading(false));
+    }
+  }, [open, petId, historyProp.length]);
+
+  // Fetch departments for dynamic filter chips
+  useEffect(() => {
+    getDocs(collection(db, 'departments'))
+      .then(snap => setDepartments(snap.docs.map(d => ({ id: d.id, ...d.data() }))))
+      .catch(() => {});
+  }, []);
+
+  // Reset all filter state when drawer closes
+  useEffect(() => {
+    if (!open) {
+      setSearchText('');
+      setTypeFilter('all');
+      setDateRange('all');
+      setFetchedRecords([]);
+    }
+  }, [open]);
+
+  // Unified record source: prop-loaded takes precedence over fetched
+  const records = historyProp.length > 0 ? historyProp : fetchedRecords;
+
+  // Step 1: keyword search across clinical content fields
+  const searchFiltered = useMemo(() => {
+    if (!searchText.trim()) return records;
+    const q = searchText.toLowerCase().trim();
+    return records.filter(r =>
+      (r.diagnoses?.map(d => d.name).join(' ') || r.diagnosis || r.assessment || '').toLowerCase().includes(q) ||
+      (r.subjective || '').toLowerCase().includes(q) ||
+      (r.plan || r.soap?.plan || '').toLowerCase().includes(q) ||
+      (r.vetName || '').toLowerCase().includes(q) ||
+      (r.dispensedProducts || r.prescriptions || []).some(rx => (rx.name || '').toLowerCase().includes(q)) ||
+      (r.serviceType || r.primaryService || '').toLowerCase().includes(q)
+    );
+  }, [records, searchText]);
+
+  // Step 2: type + date range filters applied on top of search
+  const filteredRecords = useMemo(() => {
+    let result = searchFiltered;
+
+    if (typeFilter !== 'all') {
+      result = result.filter(r => {
+        const hasVax = r.vaccineAdministrations?.length > 0 || !!r.vaccineData;
+        if (typeFilter === 'vaccination') return hasVax;
+        const sType = (r.serviceType || r.primaryService || r.department || '').toLowerCase();
+        return sType.includes(typeFilter);
+      });
+    }
+
+    if (dateRange !== 'all') {
+      const now = new Date();
+      const cutoff = new Date();
+      if (dateRange === '6mo') cutoff.setMonth(now.getMonth() - 6);
+      else if (dateRange === '1yr') cutoff.setFullYear(now.getFullYear() - 1);
+      result = result.filter(r => {
+        const d = resolveRecordDate(r);
+        return !isNaN(d.getTime()) && d >= cutoff;
+      });
+    }
+
+    return result;
+  }, [searchFiltered, typeFilter, dateRange]);
+
+  const handlePrintFullEMR = () => {
+    if (records.length === 0) return;
+
+    let lastYear = null;
+    const recordsHtml = records.map(rec => {
+      const d = resolveRecordDate(rec);
+      const year = !isNaN(d.getTime()) ? d.getFullYear() : null;
+      const pageBreak = lastYear !== null && year !== lastYear ? 'style="page-break-before: always;"' : '';
+      lastYear = year;
+
+      const rv = resolveVitals(rec);
+      const diagnosis = rec.diagnoses?.length > 0
+        ? rec.diagnoses.map(dx => dx.severity ? `${dx.name} (${dx.severity})` : dx.name).join('; ')
+        : (rec.diagnosis || rec.assessment || '—');
+      const dateStr = formatPrintDate(rec.date || rec.createdAt);
+      const vetName = esc(rec.vetName || 'Unknown');
+      const serviceType = esc(rec.serviceType || rec.primaryService || '');
+
+      return `
+        <div ${pageBreak}>
+          <h2 style="margin-top:24px; border-bottom:2px solid #5D4037;">
+            ${dateStr} — ${esc(diagnosis)}
+          </h2>
+          <div class="info-grid">
+            <div><span class="label">Service:</span> <span class="value">${serviceType}</span></div>
+            <div><span class="label">Vet:</span> <span class="value">${vetName}</span></div>
+            <div><span class="label">Status:</span> <span class="value">${esc((rec.status || 'completed').toUpperCase())}</span></div>
+          </div>
+          <table>
+            <thead><tr><th style="width:18%">Section</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Subjective</strong></td><td style="white-space:pre-wrap">${esc(rec.subjective || rec.soap?.subjective || '—')}</td></tr>
+              <tr><td><strong>Objective</strong></td><td style="white-space:pre-wrap">${esc(resolveObjectiveText(rec) || '—')}</td></tr>
+              <tr><td><strong>Assessment</strong></td><td style="white-space:pre-wrap">${esc(diagnosis)}</td></tr>
+              <tr><td><strong>Plan</strong></td><td style="white-space:pre-wrap">${esc(rec.plan || rec.soap?.plan || rec.treatment || '—')}</td></tr>
+            </tbody>
+          </table>
+          ${renderVitalsSection(rv)}
+          ${renderPrescriptionsSection(rec.dispensedProducts || rec.prescriptions)}
+          ${renderVaccineSection(rec.vaccineData)}
+          ${renderLabResultsSection(rec.labResults)}
+          ${renderDischargeSection(rec.dischargeSummary)}
+        </div>
+      `;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Full EMR — ${esc(petName || 'Patient')}</title>
+  <style>${PRINT_STYLES}</style>
+</head>
+<body>
+  <div class="clinic-header">
+    <p class="doc-title">Complete Medical Record</p>
+    <p class="clinic-address">${esc(petName || 'Unknown Patient')}${petSpecies ? ' · ' + esc(petSpecies) : ''} · ${records.length} record${records.length !== 1 ? 's' : ''}</p>
+  </div>
+  ${recordsHtml}
+  <div class="footer">
+    Generated on ${new Date().toLocaleString('en-PH', { dateStyle: 'long', timeStyle: 'short' })} · Full EMR Export
+  </div>
+</body>
+</html>`;
+
+    openPrintWindow(html);
+  };
 
   return (
     <Drawer
@@ -537,7 +833,9 @@ export default function EMRDrawer({ open, onClose, history = [], petName, petSpe
       sx={{ zIndex: 1400 }}
       PaperProps={{
         sx: {
-          width: '55vw',
+          width: '35vw',
+          minWidth: 400,
+          maxWidth: 650,
           borderRadius: 0,
           border: `3px solid ${COLORS.brand}`,
           borderRight: 'none',
@@ -568,30 +866,158 @@ export default function EMRDrawer({ open, onClose, history = [], petName, petSpe
             {petSpecies ? ` · ${petSpecies.toUpperCase()}` : ''}
             {' · '}
             <span style={{ color: '#A5D6A7' }}>
-              {sorted.length} record{sorted.length !== 1 ? 's' : ''}
+              {records.length} record{records.length !== 1 ? 's' : ''}
             </span>
           </Typography>
         </Box>
-        <IconButton onClick={onClose} size="small" sx={{ color: '#FFF8E1', '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' } }}>
-          <CloseIcon sx={{ fontSize: 20 }} />
-        </IconButton>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <Tooltip title="Print Full EMR">
+            <span>
+              <IconButton
+                onClick={handlePrintFullEMR}
+                size="small"
+                disabled={records.length === 0}
+                sx={{ color: '#FFF8E1', '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' }, '&.Mui-disabled': { color: 'rgba(255,255,255,0.3)' } }}
+              >
+                <PrintIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <IconButton onClick={onClose} size="small" sx={{ color: '#FFF8E1', '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' } }}>
+            <CloseIcon sx={{ fontSize: 20 }} />
+          </IconButton>
+        </Box>
       </Box>
 
       {/* Body */}
-      <Box sx={{ flex: 1, overflowY: 'auto', px: 3, py: 2 }}>
-        {sorted.length === 0 ? (
+      <Box sx={{ flex: 1, overflowY: 'auto', px: 3, py: 2, minHeight: 0 }}>
+
+        {/* Search field */}
+        <TextField
+          placeholder="Search diagnosis, vet, plan..."
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+          size="small"
+          fullWidth
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon sx={{ fontSize: 18, color: COLORS.textMuted }} />
+              </InputAdornment>
+            ),
+          }}
+          sx={{
+            mb: 1,
+            '& .MuiOutlinedInput-root': {
+              borderRadius: 0,
+              fontFamily: FONT,
+              fontSize: '0.8rem',
+              bgcolor: COLORS.surfaceHover,
+              '& fieldset': { borderColor: COLORS.border },
+            },
+          }}
+        />
+
+        {/* Filter chips */}
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1.5, alignItems: 'center' }}>
+          {[
+            { key: 'all', label: 'All' },
+            ...departments.map(d => ({ key: d.name.toLowerCase(), label: d.name })),
+            { key: 'vaccination', label: 'Vaccination' },
+          ].map(f => (
+            <Chip
+              key={f.key}
+              label={f.label}
+              size="small"
+              onClick={() => setTypeFilter(f.key)}
+              sx={{
+                height: 22, fontSize: '0.6rem', fontWeight: 900, borderRadius: 0, fontFamily: FONT,
+                bgcolor: typeFilter === f.key ? COLORS.brand : COLORS.surfaceHover,
+                color: typeFilter === f.key ? '#FFF8E1' : COLORS.accent,
+                border: `1px solid ${typeFilter === f.key ? COLORS.brand : COLORS.border}`,
+                cursor: 'pointer',
+                '&:hover': { bgcolor: typeFilter === f.key ? COLORS.accent : COLORS.borderLight },
+              }}
+            />
+          ))}
+          <Box sx={{ width: '1px', height: 16, bgcolor: COLORS.border, mx: 0.5 }} />
+          {[
+            { key: 'all', label: 'All time' },
+            { key: '6mo', label: '6 months' },
+            { key: '1yr', label: '1 year' },
+          ].map(f => (
+            <Chip
+              key={f.key}
+              label={f.label}
+              size="small"
+              onClick={() => setDateRange(f.key)}
+              sx={{
+                height: 22, fontSize: '0.6rem', fontWeight: 900, borderRadius: 0, fontFamily: FONT,
+                bgcolor: dateRange === f.key ? COLORS.medical : COLORS.surfaceHover,
+                color: dateRange === f.key ? 'white' : COLORS.textMuted,
+                border: `1px solid ${dateRange === f.key ? COLORS.medical : COLORS.border}`,
+                cursor: 'pointer',
+                '&:hover': { bgcolor: dateRange === f.key ? COLORS.info : COLORS.borderLight },
+              }}
+            />
+          ))}
+          <Typography sx={{
+            ml: 'auto', fontSize: '0.6rem', fontWeight: 900, color: COLORS.textMuted,
+            fontFamily: FONT, letterSpacing: 0.5,
+          }}>
+            {filteredRecords.length} record{filteredRecords.length !== 1 ? 's' : ''}
+          </Typography>
+        </Box>
+
+        {/* Record list */}
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+            <CircularProgress size={28} sx={{ color: COLORS.accent }} />
+          </Box>
+        ) : filteredRecords.length === 0 ? (
           <Box sx={{ textAlign: 'center', py: 8 }}>
             <Typography sx={{ fontSize: '0.85rem', fontStyle: 'italic', color: COLORS.textMuted, fontFamily: FONT }}>
-              No previous records on file
+              {records.length === 0 ? 'No previous records on file' : 'No records match your filters'}
             </Typography>
-            <Typography sx={{ fontSize: '0.7rem', color: COLORS.textMuted, mt: 1 }}>
-              Records will appear here after the first sign-off.
-            </Typography>
+            {records.length === 0 && (
+              <Typography sx={{ fontSize: '0.7rem', color: COLORS.textMuted, mt: 1 }}>
+                Records will appear here after the first sign-off.
+              </Typography>
+            )}
           </Box>
         ) : (
-          sorted.map((record) => (
-            <RecordCard key={record.id} record={record} />
-          ))
+          (() => {
+            let lastMonthKey = '';
+            return filteredRecords.map((record) => {
+              const d = resolveRecordDate(record);
+              const monthKey = !isNaN(d.getTime())
+                ? `${d.getFullYear()}-${d.getMonth()}`
+                : 'unknown';
+              const showHeader = monthKey !== lastMonthKey && monthKey !== 'unknown';
+              lastMonthKey = monthKey;
+              const monthLabel = !isNaN(d.getTime())
+                ? d.toLocaleDateString('en-PH', { month: 'long', year: 'numeric' }).toUpperCase()
+                : '';
+              return (
+                <React.Fragment key={record.id}>
+                  {showHeader && (
+                    <Box sx={{
+                      bgcolor: COLORS.cream, px: 2, py: 0.75, mb: 1, mt: 0.5,
+                      border: `1px solid ${COLORS.border}`,
+                    }}>
+                      <Typography sx={{
+                        fontSize: '0.65rem', fontWeight: 900, color: COLORS.accent,
+                        textTransform: 'uppercase', letterSpacing: 1.5, fontFamily: FONT,
+                      }}>
+                        {monthLabel}
+                      </Typography>
+                    </Box>
+                  )}
+                  <RecordCard record={record} appointmentId={appointmentId} />
+                </React.Fragment>
+              );
+            });
+          })()
         )}
       </Box>
 

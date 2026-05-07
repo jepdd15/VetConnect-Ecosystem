@@ -4853,6 +4853,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         history={history}
         petName={patient?.petName}
         petSpecies={patient?.petSpecies}
+        appointmentId={patient?.id}
       />
 
       <Dialog

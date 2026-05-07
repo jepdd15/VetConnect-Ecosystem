@@ -22,6 +22,7 @@ import POSModal from '../../components/POSModal';
 import { useClosingStatus } from '../Sales/hooks/useClosingStatus';
 
 // 3. FEATURE COMPONENTS
+import EMRDrawer from '../../components/EMRDrawer';
 import WalkInModal from './WalkInModal';
 import AssignStaffModal from './AssignStaffModal';
 import EndOfDayModal from './EndOfDayModal';
@@ -177,8 +178,10 @@ export default function Queue() {
   const [openNoShow, setOpenNoShow] = useState(false);
   const [auditReason, setAuditReason] = useState("");
   const [newDate, setNewDate] = useState('');
-  const[openHistory, setOpenHistory] = useState(false);
-  const [historyList, setHistoryList] = useState([]);
+  const [emrDrawerOpen, setEmrDrawerOpen] = useState(false);
+  const [emrPetId, setEmrPetId] = useState(null);
+  const [emrPetName, setEmrPetName] = useState('');
+  const [emrPetSpecies, setEmrPetSpecies] = useState('');
   const [openRevert, setOpenRevert] = useState(false);
   const [revertReason, setRevertReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -1273,7 +1276,18 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
     } catch (e) { alert(e.message); }
     finally { setSubmitting(false); }
   };
-  const fetchHistory = async () => { if (!selectedRow.petId) return alert("Walk-In Account Required"); const q = query(collection(db, "medical_records"), where("petId", "==", selectedRow.petId), orderBy("date", "desc")); const s = await getDocs(q); setHistoryList(s.docs.map(d => d.data())); setOpenHistory(true); handleCloseMenu(); };
+  const handleOpenEMR = () => {
+    if (!selectedRow?.petId) {
+      setDispenseHoldToast({ open: true, message: 'Walk-in account required — no pet history available', severity: 'info' });
+      handleCloseMenu();
+      return;
+    }
+    setEmrPetId(selectedRow.petId);
+    setEmrPetName(selectedRow.petName || '');
+    setEmrPetSpecies(selectedRow.petSpecies || '');
+    setEmrDrawerOpen(true);
+    handleCloseMenu();
+  };
   const confirmReject = async () => {
     if (!selectedRow || submitting) return;
     setSubmitting(true);
@@ -2403,7 +2417,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
              <ListItemText primary="Reschedule / Shift" />
           </MenuItem>
         )}
-        <MenuItem onClick={fetchHistory}>
+        <MenuItem onClick={handleOpenEMR}>
            <ListItemIcon><HistoryIcon fontSize="small" /></ListItemIcon>
            <ListItemText primary="View Medical History" />
         </MenuItem>
@@ -3159,24 +3173,13 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         </DialogActions>
       </Dialog>
 
-      <Dialog open={openHistory} onClose={() => setOpenHistory(false)} fullWidth maxWidth="md">
-        <DialogTitle sx={{ fontWeight: '1000', color: '#5D4037' }}>Patient Medical History</DialogTitle>
-        <DialogContent>
-          <List>
-            {historyList.length === 0 ? <Typography sx={{ fontStyle: 'italic', color: '#9E9E9E', p: 3, textAlign: 'center' }}>No historical records found for this patient.</Typography> : 
-              historyList.map((h, i) => (
-                <Paper key={i} sx={{ p: 2, mb: 2, bgcolor: '#F5F5F5', borderLeft: '5px solid #5D4037' }}>
-                   <Typography variant="caption" sx={{ fontWeight: 'bold', color: '#757575' }}>{h.date ? (h.date.toDate ? h.date.toDate() : new Date(h.date)).toLocaleDateString() : 'Date Unknown'} ● {h.type || 'Clinical Record'}</Typography>
-                   <Typography variant="body2" sx={{ mt: 1, whiteSpace: 'pre-wrap' }}>{h.notes}</Typography>
-                </Paper>
-              ))
-            }
-          </List>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenHistory(false)} sx={{ fontWeight: 'bold' }}>Close</Button>
-        </DialogActions>
-      </Dialog>
+      <EMRDrawer
+        open={emrDrawerOpen}
+        onClose={() => setEmrDrawerOpen(false)}
+        petId={emrPetId}
+        petName={emrPetName}
+        petSpecies={emrPetSpecies}
+      />
 
 
       <Dialog 

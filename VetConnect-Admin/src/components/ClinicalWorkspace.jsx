@@ -10,6 +10,8 @@ import { LAB_CATEGORIES, LAB_STATUSES } from '../utils/labTestConstants';
 import { useDiagnosisCatalog } from '../hooks/useDiagnosisCatalog';
 import { DIAGNOSIS_CATEGORIES } from '../utils/diagnosisConstants';
 import { ZEN_PLACEHOLDERS } from '../utils/soapConstants';
+// T4.181: Breed catalog for species-filtered breed Autocomplete in identity edit form
+import { BREED_CATALOG } from '../constants/breedConstants';
 import {
   Dialog, Slide, AppBar, Toolbar, IconButton, Typography, Button,
   Box, Paper, Avatar, Chip, TextField, MenuItem,
@@ -18,6 +20,7 @@ import {
   Autocomplete, Alert, Snackbar, CircularProgress,
   DialogTitle, DialogContent, DialogContentText, DialogActions,
   Drawer, ListSubheader,
+  ToggleButtonGroup, ToggleButton, FormControlLabel,
 } from '@mui/material';
 
 // Icons (Unified)
@@ -39,6 +42,7 @@ import {
   Delete as DeleteIcon,
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
+  Edit as EditIcon,
 } from '@mui/icons-material';
 import { doc, collection, Timestamp, addDoc, updateDoc, getDoc, query, where, orderBy, getDocs, arrayUnion, writeBatch, runTransaction, setDoc } from 'firebase/firestore';
 import { db, auth, storage } from '../firebaseConfig';
@@ -512,6 +516,12 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   // Displayed as a warning badge in the identity strip to prompt the vet during consult.
   const [overdueVaccineCount, setOverdueVaccineCount] = useState(0);
 
+  // T4.181: Inline pet identity editing — edit mode, form data, saving flag
+  const [isEditingIdentity, setIsEditingIdentity] = useState(false);
+  const [identityForm, setIdentityForm] = useState(null);
+  const [identitySaving, setIdentitySaving] = useState(false);
+  const [localPetAllergies, setLocalPetAllergies] = useState(null);
+
   const [soapData, setSoapData] = useState({
     // T4.158: Auto-populate subjective from intake notes on first open (no draft).
     subjective: (() => {
@@ -693,6 +703,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
 
   const [lockedServices, setLockedServices] = useState(new Set());
   const [signOffConfirm, setSignOffConfirm] = useState(null);
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+  const [allergenConfirm, setAllergenConfirm] = useState(null);
 
   const glassStyle = {
     background: 'rgba(255, 255, 255, 0.65)',
@@ -1074,25 +1086,27 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     return 'normal';
   };
   
+  const doClose = () => {
+    if (!isRecordLockedRef.current && !hasReleasedRef.current) {
+      hasReleasedRef.current = true;
+      treatmentCartRef.current.forEach(item => {
+        if (item.type === 'product' && releaseStock) {
+          releaseStock(item.id, item.qty || 1).catch(e =>
+            console.error(`[ClinicalWorkspace] Failed to release reservation for ${item.name}:`, e)
+          );
+        }
+      });
+    }
+    onClose();
+  };
+
   const handleCloseRequest = () => {
-    const doClose = () => {
-      // Use refs (not state) to avoid stale closure captures. hasReleasedRef prevents
-      // double-release when this runs before the unmount cleanup fires.
-      if (!isRecordLockedRef.current && !hasReleasedRef.current) {
-        hasReleasedRef.current = true;
-        treatmentCartRef.current.forEach(item => {
-          if (item.type === 'product' && releaseStock) {
-            releaseStock(item.id, item.qty || 1).catch(e =>
-              console.error(`[ClinicalWorkspace] Failed to release reservation for ${item.name}:`, e)
-            );
-          }
-        });
-      }
-      onClose();
-    };
+    setIsEditingIdentity(false);
+    setIdentityForm(null);
+    setLocalPetAllergies(null);
 
     if (isDirty) {
-      if (window.confirm("You have unsaved clinical notes. Use 'Save Draft' in the Plan section to preserve them.\n\nClose anyway and discard changes?")) doClose();
+      setCloseConfirmOpen(true);
     } else {
       doClose();
     }
@@ -1345,7 +1359,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   const handleToggleAIPanel = (open) => setIsAIDrawerOpen(open);
 
   // --- 3. TREATMENT PLAN LOGIC (THE BRIDGE) ---
-  const handleAddRx = async (item) => {
+  const handleAddRx = async (item, _skipAllergenCheck) => {
     if (!item) return;
 
     // T4.117: Block out-of-stock products — with vaccine-specific override.
@@ -1364,7 +1378,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
 
     // T2.175: Allergen safety check — warn if any of the product's allergenTags match a word
     // in the patient's petAllergies string. Case-insensitive word-boundary match.
-    if (item.allergenTags && item.allergenTags.length > 0) {
+    if (!_skipAllergenCheck && item.allergenTags && item.allergenTags.length > 0) {
       const patientAllergies = (patient?.petAllergies || patient?.allergies || '').toLowerCase();
       if (patientAllergies.length > 0 && patientAllergies !== 'none') {
         const matchingTags = item.allergenTags.filter(tag => {
@@ -1372,15 +1386,13 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           return new RegExp(`\\b${escaped}\\b`, 'i').test(patientAllergies);
         });
         if (matchingTags.length > 0) {
-          const proceed = window.confirm(
-            `ALLERGEN MATCH DETECTED\n\n` +
-            `Product: ${item.itemName || item.name}\n` +
-            `Matching allergen(s): ${matchingTags.join(', ')}\n` +
-            `Patient allergies: ${patient?.petAllergies || patient?.allergies}\n\n` +
-            `This product contains an allergen flagged for this patient. ` +
-            `Add anyway?`
-          );
-          if (!proceed) return;
+          setAllergenConfirm({
+            productName: item.itemName || item.name,
+            matchingTags: matchingTags.join(', '),
+            patientAllergies: patient?.petAllergies || patient?.allergies || '',
+            onConfirm: () => { setAllergenConfirm(null); handleAddRx(item, true); },
+          });
+          return;
         }
       }
     }
@@ -1687,6 +1699,189 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   );
   const nextRouteStatus = hasDrugsInCart ? "dispensing" : "billing";
   const saveBtnText = hasDrugsInCart ? "Sign & Send to Pharmacy" : "Sign & Send to Cashier";
+
+  // T4.181: Enter identity edit mode — pre-fill form from petDetails (Firestore pet doc).
+  const handleEditIdentity = () => {
+    if (!petDetails) return;
+
+    // --- DOB MODE PRE-FILL (same pattern as EditPetModal lines 33-53) ---
+    let initialDobMode = 'unknown';
+    let initialEstYears = '';
+    let initialEstMonths = '';
+    let initialDob = '';
+
+    if (petDetails.dob) {
+      const dobDate = petDetails.dob?.toDate ? petDetails.dob.toDate() : new Date(petDetails.dob);
+      if (petDetails.isAgeExact === true || petDetails.isAgeExact === undefined) {
+        initialDobMode = 'exact';
+        initialDob = dobDate.toISOString().split('T')[0];
+      } else {
+        initialDobMode = 'approximate';
+        const now = new Date();
+        const diffMs = now - dobDate;
+        const totalMonths = Math.round(diffMs / (1000 * 60 * 60 * 24 * 30.44));
+        initialEstYears = String(Math.floor(totalMonths / 12));
+        initialEstMonths = String(totalMonths % 12);
+      }
+    }
+
+    // --- ALLERGY PRE-FILL (same pattern as EditPetModal lines 57-61) ---
+    const existingAllergies = petDetails.petAllergies || petDetails.allergies || 'None';
+    const hasAllergies = existingAllergies.trim().toLowerCase() !== 'none' && existingAllergies.trim() !== '';
+    const parsedAllergyArray = hasAllergies
+      ? existingAllergies.split(',').map(a => a.trim()).filter(Boolean)
+      : [];
+
+    setIdentityForm({
+      name: petDetails.name || patient?.petName || '',
+      species: petDetails.species || patient?.petSpecies || 'Canine',
+      breed: petDetails.breed || patient?.petBreed || '',
+      gender: petDetails.gender || patient?.petGender || 'Male',
+      isNeutered: petDetails.isNeutered ?? patient?.petIsNeutered ?? false,
+      microchip: petDetails.microchip || '',
+      color: petDetails.color || '',
+      dobMode: initialDobMode,
+      dob: initialDob,
+      estYears: initialEstYears,
+      estMonths: initialEstMonths,
+      showAllergyInput: hasAllergies,
+      allergyArray: parsedAllergyArray,
+      currentAllergyInput: '',
+    });
+    setIsEditingIdentity(true);
+  };
+
+  // T4.181: Save identity edits — write to pets + appointment + pulse + propagate allergies.
+  const handleSaveIdentity = async () => {
+    if (!identityForm || !patient?.petId || !patient?.id) return;
+    setIdentitySaving(true);
+    try {
+      // 1. Resolve DOB (same pattern as EditPetModal lines 86-104)
+      let resolvedDob = null;
+      let resolvedIsAgeExact = false;
+      if (identityForm.dobMode === 'exact') {
+        resolvedDob = identityForm.dob ? Timestamp.fromDate(new Date(identityForm.dob)) : null;
+        resolvedIsAgeExact = true;
+      } else if (identityForm.dobMode === 'approximate') {
+        const years = parseInt(identityForm.estYears) || 0;
+        const months = parseInt(identityForm.estMonths) || 0;
+        const d = new Date();
+        d.setFullYear(d.getFullYear() - years);
+        d.setMonth(d.getMonth() - months);
+        d.setDate(1);
+        d.setHours(0, 0, 0, 0);
+        resolvedDob = Timestamp.fromDate(d);
+        resolvedIsAgeExact = false;
+      }
+
+      // 2. Resolve allergies (same pattern as EditPetModal lines 113-115)
+      const resolvedAllergies = identityForm.showAllergyInput && identityForm.allergyArray.length > 0
+        ? identityForm.allergyArray.join(', ')
+        : 'None';
+
+      // 3. Build pet payload
+      const petPayload = {
+        name: identityForm.name.trim(),
+        species: identityForm.species,
+        breed: identityForm.breed.trim() || 'Unknown Breed',
+        gender: identityForm.gender,
+        isNeutered: identityForm.isNeutered,
+        dob: resolvedDob,
+        isAgeExact: resolvedIsAgeExact,
+        petAllergies: resolvedAllergies,
+        allergies: resolvedAllergies,       // legacy alias
+        microchip: identityForm.microchip.trim(),
+        color: identityForm.color.trim(),
+        updatedAt: Timestamp.now(),
+      };
+
+      // 4. Write to pets/{petId}
+      await updateDoc(doc(db, 'pets', patient.petId), petPayload);
+
+      // 5. Compute changedFields[] (same pattern as Queue.jsx lines 930-938)
+      const changedFields = [];
+      if (identityForm.name.trim() !== (petDetails?.name || patient?.petName || '')) changedFields.push('petName');
+      if (identityForm.species !== (petDetails?.species || patient?.petSpecies || '')) changedFields.push('petSpecies');
+      if (identityForm.breed.trim() !== (petDetails?.breed || patient?.petBreed || '')) changedFields.push('petBreed');
+      if (identityForm.gender !== (petDetails?.gender || patient?.petGender || '')) changedFields.push('petGender');
+      if (identityForm.isNeutered !== (petDetails?.isNeutered ?? patient?.petIsNeutered ?? false)) changedFields.push('petIsNeutered');
+      if (identityForm.microchip.trim() !== (petDetails?.microchip || '')) changedFields.push('microchip');
+      if (identityForm.color.trim() !== (petDetails?.color || '')) changedFields.push('color');
+      // DOB comparison: compare dobMode + resolved values vs original
+      const origDobMode = (petDetails?.isAgeExact === true || petDetails?.isAgeExact === undefined)
+        ? (petDetails?.dob ? 'exact' : 'unknown')
+        : (petDetails?.dob ? 'approximate' : 'unknown');
+      if (identityForm.dobMode !== origDobMode) changedFields.push('dob');
+      else if (identityForm.dobMode === 'exact' && identityForm.dob !== (petDetails?.dob?.toDate?.()?.toISOString()?.split('T')[0] || '')) changedFields.push('dob');
+      // Allergy comparison
+      const origAllergies = petDetails?.petAllergies || petDetails?.allergies || 'None';
+      if (resolvedAllergies !== origAllergies) changedFields.push('petAllergies');
+
+      // 6. Write to appointments/{appointmentId} + IDENTITY_EDIT pulse
+      await updateDoc(doc(db, 'appointments', patient.id), {
+        petName: identityForm.name.trim(),
+        petSpecies: identityForm.species,
+        petBreed: identityForm.breed.trim() || 'Unknown Breed',
+        petGender: identityForm.gender,
+        petIsNeutered: identityForm.isNeutered,
+        petBirthdate: resolvedDob,
+        isAgeExact: resolvedIsAgeExact,
+        petAllergies: resolvedAllergies,
+        color: identityForm.color.trim(),
+        microchip: identityForm.microchip.trim(),
+        clinicalPulse: arrayUnion({
+          eventId: makePulseEventId('identity-edit'),
+          type: 'IDENTITY_EDIT',
+          timestamp: Timestamp.now(),
+          staffId: cwProfile?.uid || 'unknown',
+          staffName: cwProfile?.fullName || 'System',
+          note: changedFields.length > 0
+            ? `Identity fields edited during consult: ${changedFields.join(', ')}`
+            : 'Identity record accessed during consult (no changes detected)',
+        }),
+      });
+
+      // 7. Propagate petAllergies to all active appointments for this pet
+      //    (same pattern as EditPetModal lines 144-157)
+      const ACTIVE_STATUSES = ['pending', 'confirmed', 'arrived', 'in-consult', 'dispensing', 'billing'];
+      const apptQuery = query(
+        collection(db, 'appointments'),
+        where('petId', '==', patient.petId),
+        where('status', 'in', ACTIVE_STATUSES),
+      );
+      const apptSnap = await getDocs(apptQuery);
+      if (!apptSnap.empty) {
+        const batch = writeBatch(db);
+        apptSnap.docs.forEach(apptDoc => {
+          // Skip the current appointment — already updated above
+          if (apptDoc.id !== patient.id) {
+            batch.update(apptDoc.ref, { petAllergies: resolvedAllergies });
+          }
+        });
+        await batch.commit();
+      }
+
+      // 8. Refresh local petDetails state
+      const refreshedPetDoc = await getDoc(doc(db, 'pets', patient.petId));
+      if (refreshedPetDoc.exists()) setPetDetails(refreshedPetDoc.data());
+
+      // 9. Close edit mode + overlay allergy display for current session
+      setIsEditingIdentity(false);
+      setIdentityForm(null);
+      setLocalPetAllergies(resolvedAllergies);
+      showToast(
+        changedFields.length > 0
+          ? `Patient identity updated: ${changedFields.join(', ')}`
+          : 'No changes detected.',
+        changedFields.length > 0 ? 'success' : 'info'
+      );
+    } catch (err) {
+      console.error('[ClinicalWorkspace.handleSaveIdentity]:', err);
+      showToast(`Identity save failed: ${err.message}`, 'error');
+    } finally {
+      setIdentitySaving(false);
+    }
+  };
 
   const handleSaveConsult = async () => {
     if (isSavingRef.current) return;
@@ -3333,7 +3528,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
 
             {/* Allergy — unified read: petAllergies (canonical) || allergies (legacy) */}
             {(() => {
-              const allergyVal = patient?.petAllergies || patient?.allergies || '';
+              const allergyVal = localPetAllergies ?? patient?.petAllergies ?? patient?.allergies ?? '';
               const hasAllergy = allergyVal && allergyVal.toUpperCase() !== 'NONE' && allergyVal.trim().length > 0;
               return (
                 <Chip
@@ -3348,6 +3543,16 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 />
               );
             })()}
+
+            {/* T4.181: Edit identity icon — opens inline form below */}
+            {!isEditingIdentity && petDetails && (
+              <Tooltip title="Edit Patient Identity">
+                <IconButton size="small" onClick={handleEditIdentity}
+                  sx={{ color: COLORS.accentLight, '&:hover': { color: COLORS.brand } }}>
+                  <EditIcon sx={{ fontSize: 16 }} />
+                </IconButton>
+              </Tooltip>
+            )}
 
             {/* T3.53: Overdue vaccine badge — prompts vet to discuss vaccination during consult */}
             {overdueVaccineCount > 0 && (
@@ -3399,6 +3604,284 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
               </IconButton>
             </Tooltip>
           </Box>
+
+          {/* T4.181: Inline identity edit form — Collapse for smooth open/close animation */}
+          <Collapse in={isEditingIdentity} timeout={200}>
+            {identityForm && (
+              <Box sx={{
+                px: 2, py: 1.5, bgcolor: COLORS.cream, borderBottom: `2px solid ${COLORS.accent}`,
+                flexShrink: 0,
+              }}>
+                {/* Section header */}
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                  <Typography sx={{ ...TYPE.label, color: COLORS.accent }}>
+                    PATIENT IDENTITY — EDIT MODE
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Button size="small" variant="outlined"
+                      onClick={() => { setIsEditingIdentity(false); setIdentityForm(null); }}
+                      disabled={identitySaving}
+                      sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.65rem', borderRadius: 0,
+                            color: COLORS.accent, borderColor: COLORS.accent, textTransform: 'uppercase' }}>
+                      CANCEL
+                    </Button>
+                    <Button size="small" variant="contained"
+                      onClick={handleSaveIdentity}
+                      disabled={identitySaving || !identityForm.name.trim()}
+                      sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.65rem', borderRadius: 0,
+                            bgcolor: COLORS.sky, '&:hover': { bgcolor: COLORS.skyHover },
+                            textTransform: 'uppercase' }}>
+                      {identitySaving ? 'SAVING...' : 'SAVE'}
+                    </Button>
+                  </Box>
+                </Box>
+
+                {/* Row 1: Name, Species, Breed, Gender, Color, Neutered */}
+                <Grid container spacing={1} sx={{ mb: 1 }}>
+                  <Grid item xs={3}>
+                    <TextField size="small" label="PET NAME" variant="outlined" fullWidth
+                      value={identityForm.name}
+                      onChange={e => setIdentityForm(prev => ({ ...prev, name: e.target.value }))}
+                      inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
+                      sx={{ bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+                    />
+                  </Grid>
+                  <Grid item xs={2}>
+                    <TextField size="small" label="SPECIES" variant="outlined" fullWidth select
+                      value={identityForm.species}
+                      onChange={e => {
+                        const newSpecies = e.target.value;
+                        setIdentityForm(prev => ({
+                          ...prev,
+                          species: newSpecies,
+                          // Species change clears breed — catalog is species-filtered
+                          breed: prev.species !== newSpecies ? '' : prev.breed,
+                        }));
+                      }}
+                      inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
+                      sx={{ bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 0 } }}>
+                      <MenuItem value="Canine" sx={{ fontWeight: 800 }}>CANINE</MenuItem>
+                      <MenuItem value="Feline" sx={{ fontWeight: 800 }}>FELINE</MenuItem>
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={3}>
+                    <Autocomplete
+                      freeSolo
+                      size="small"
+                      options={BREED_CATALOG[identityForm.species] || []}
+                      value={identityForm.breed}
+                      onChange={(_, v) => setIdentityForm(prev => ({ ...prev, breed: v || '' }))}
+                      onInputChange={(_, v, reason) => {
+                        if (reason === 'input') setIdentityForm(prev => ({ ...prev, breed: v }));
+                      }}
+                      componentsProps={{ paper: { sx: { borderRadius: 0, border: `1px solid ${COLORS.accent}` } } }}
+                      renderInput={params => (
+                        <TextField {...params} label="BREED"
+                          inputProps={{ ...params.inputProps, style: { fontWeight: 900, fontSize: '0.85rem' } }}
+                          sx={{ bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+                        />
+                      )}
+                    />
+                  </Grid>
+                  <Grid item xs={1.5}>
+                    <TextField size="small" label="SEX" variant="outlined" fullWidth select
+                      value={identityForm.gender}
+                      onChange={e => setIdentityForm(prev => ({ ...prev, gender: e.target.value }))}
+                      inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
+                      sx={{ bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 0 } }}>
+                      <MenuItem value="Male" sx={{ fontWeight: 800 }}>MALE</MenuItem>
+                      <MenuItem value="Female" sx={{ fontWeight: 800 }}>FEMALE</MenuItem>
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={1.5}>
+                    <TextField size="small" label="COLOR" variant="outlined" fullWidth
+                      value={identityForm.color}
+                      onChange={e => setIdentityForm(prev => ({ ...prev, color: e.target.value }))}
+                      inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
+                      sx={{ bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+                    />
+                  </Grid>
+                  <Grid item xs={1}>
+                    <FormControlLabel
+                      control={
+                        <Switch size="small" color="success"
+                          checked={identityForm.isNeutered}
+                          onChange={e => setIdentityForm(prev => ({ ...prev, isNeutered: e.target.checked }))}
+                        />
+                      }
+                      label={<Typography sx={{ fontSize: '0.6rem', fontWeight: 900, color: COLORS.accent }}>
+                        {identityForm.isNeutered ? 'FIXED' : 'INTACT'}
+                      </Typography>}
+                      sx={{ m: 0, mt: 0.5 }}
+                    />
+                  </Grid>
+                </Grid>
+
+                {/* Row 2: DOB 3-mode + Microchip + Allergies */}
+                <Grid container spacing={1}>
+                  {/* DOB 3-mode selector */}
+                  <Grid item xs={5}>
+                    <Box sx={{ p: 1, border: `1px dashed ${COLORS.borderLight}`, bgcolor: 'white' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5, gap: 1 }}>
+                        <Typography sx={{ fontWeight: 900, fontSize: '0.65rem', color: COLORS.accent }}>
+                          BIRTHDATE / AGE
+                        </Typography>
+                        <ToggleButtonGroup
+                          size="small"
+                          value={identityForm.dobMode}
+                          exclusive
+                          onChange={(_, val) => val && setIdentityForm(prev => ({ ...prev, dobMode: val }))}
+                          sx={{ ml: 'auto', height: 22 }}
+                        >
+                          <ToggleButton value="exact"
+                            sx={{ fontSize: '0.6rem', fontWeight: 900, px: 1.5, borderRadius: 0 }}>
+                            EXACT
+                          </ToggleButton>
+                          <ToggleButton value="approximate"
+                            sx={{ fontSize: '0.6rem', fontWeight: 900, px: 1.5, borderRadius: 0 }}>
+                            EST.
+                          </ToggleButton>
+                          <ToggleButton value="unknown"
+                            sx={{ fontSize: '0.6rem', fontWeight: 900, px: 1.5, borderRadius: 0 }}>
+                            UNK.
+                          </ToggleButton>
+                        </ToggleButtonGroup>
+                      </Box>
+                      {identityForm.dobMode === 'exact' && (
+                        <TextField size="small" type="date" fullWidth
+                          InputLabelProps={{ shrink: true }}
+                          value={identityForm.dob}
+                          onChange={e => setIdentityForm(prev => ({ ...prev, dob: e.target.value }))}
+                          inputProps={{ style: { fontWeight: 900, fontSize: '0.8rem' } }}
+                          sx={{ bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+                        />
+                      )}
+                      {identityForm.dobMode === 'approximate' && (
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                          <TextField size="small" label="YRS" type="number" fullWidth
+                            value={identityForm.estYears}
+                            onChange={e => setIdentityForm(prev => ({ ...prev, estYears: e.target.value }))}
+                            inputProps={{ style: { fontWeight: 900 }, min: 0 }}
+                            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+                          />
+                          <TextField size="small" label="MO" type="number" fullWidth
+                            value={identityForm.estMonths}
+                            onChange={e => setIdentityForm(prev => ({ ...prev, estMonths: e.target.value }))}
+                            inputProps={{ style: { fontWeight: 900 }, min: 0, max: 11 }}
+                            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+                          />
+                        </Box>
+                      )}
+                      {identityForm.dobMode === 'unknown' && (
+                        <Typography variant="caption" sx={{ color: COLORS.accentWarm, fontStyle: 'italic', fontWeight: 800, fontSize: '0.65rem' }}>
+                          Age will be determined during exam.
+                        </Typography>
+                      )}
+                    </Box>
+                  </Grid>
+
+                  {/* Microchip */}
+                  <Grid item xs={2}>
+                    <TextField size="small" label="MICROCHIP" variant="outlined" fullWidth
+                      value={identityForm.microchip}
+                      onChange={e => setIdentityForm(prev => ({ ...prev, microchip: e.target.value }))}
+                      inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
+                      sx={{ bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+                    />
+                  </Grid>
+
+                  {/* Allergy tag array */}
+                  <Grid item xs={5}>
+                    <Box sx={{
+                      p: 1, border: '1.2px solid',
+                      borderColor: identityForm.showAllergyInput ? COLORS.danger : COLORS.borderInput,
+                      bgcolor: 'white',
+                    }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                 mb: identityForm.showAllergyInput ? 0.5 : 0 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <WarningAmberIcon sx={{
+                            color: identityForm.showAllergyInput ? COLORS.danger : COLORS.borderInput,
+                            fontSize: 16
+                          }} />
+                          <Typography sx={{
+                            fontWeight: 900, fontSize: '0.65rem',
+                            color: identityForm.showAllergyInput ? COLORS.danger : COLORS.textMuted
+                          }}>
+                            ALLERGIES
+                          </Typography>
+                        </Box>
+                        <Switch size="small" color="error"
+                          checked={identityForm.showAllergyInput}
+                          onChange={e => setIdentityForm(prev => ({
+                            ...prev,
+                            showAllergyInput: e.target.checked,
+                            allergyArray: e.target.checked ? prev.allergyArray : [],
+                          }))}
+                        />
+                      </Box>
+                      {identityForm.showAllergyInput && (
+                        <>
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 0.5 }}>
+                            {identityForm.allergyArray.map((allergy, ai) => (
+                              <Chip key={ai} label={allergy.toUpperCase()} size="small"
+                                onDelete={() => setIdentityForm(prev => ({
+                                  ...prev,
+                                  allergyArray: prev.allergyArray.filter((_, i) => i !== ai),
+                                }))}
+                                sx={{
+                                  bgcolor: COLORS.danger, color: 'white', fontWeight: 900,
+                                  fontSize: '0.6rem', height: 20, borderRadius: 0,
+                                  '& .MuiChip-deleteIcon': { color: 'white!important', opacity: 0.8 },
+                                }}
+                              />
+                            ))}
+                            {identityForm.allergyArray.length === 0 && (
+                              <Typography variant="caption" sx={{
+                                color: COLORS.danger, fontStyle: 'italic', fontWeight: 800, fontSize: '0.6rem'
+                              }}>
+                                No allergens added...
+                              </Typography>
+                            )}
+                          </Box>
+                          <Box sx={{ display: 'flex', gap: 0.5 }}>
+                            <TextField fullWidth size="small" placeholder="Type allergy (e.g. Chicken)"
+                              value={identityForm.currentAllergyInput}
+                              onChange={e => setIdentityForm(prev => ({
+                                ...prev, currentAllergyInput: e.target.value,
+                              }))}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter' && identityForm.currentAllergyInput.trim()) {
+                                  e.preventDefault();
+                                  setIdentityForm(prev => ({
+                                    ...prev,
+                                    allergyArray: [...prev.allergyArray, prev.currentAllergyInput.trim()],
+                                    currentAllergyInput: '',
+                                  }));
+                                }
+                              }}
+                              inputProps={{ style: { fontWeight: 900, fontSize: '0.8rem' } }}
+                              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+                            />
+                            <Button variant="contained" color="error" size="small"
+                              disabled={!identityForm.currentAllergyInput.trim()}
+                              onClick={() => setIdentityForm(prev => ({
+                                ...prev,
+                                allergyArray: [...prev.allergyArray, prev.currentAllergyInput.trim()],
+                                currentAllergyInput: '',
+                              }))}
+                              sx={{ fontWeight: 900, minWidth: 32, borderRadius: 0, px: 1 }}>
+                              +
+                            </Button>
+                          </Box>
+                        </>
+                      )}
+                    </Box>
+                  </Grid>
+                </Grid>
+              </Box>
+            )}
+          </Collapse>
 
           {/* --- ALERTS --- */}
 
@@ -4453,6 +4936,63 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             </DialogActions>
           </>
         )}
+      </Dialog>
+
+      {/* Unsaved notes close confirmation */}
+      <Dialog open={closeConfirmOpen} onClose={() => setCloseConfirmOpen(false)}
+        PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.accent}`, boxShadow: `6px 6px 0px ${COLORS.accent}` } }}>
+        <DialogTitle sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '1rem', color: COLORS.brand, bgcolor: COLORS.cream, borderBottom: `2px solid ${COLORS.accent}`, textTransform: 'uppercase', letterSpacing: 1 }}>
+          Unsaved Clinical Notes
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2.5, pb: 2, bgcolor: COLORS.formBg }}>
+          <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: COLORS.brand }}>
+            You have unsaved clinical notes. Use "Save Draft" in the Plan section to preserve them.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, bgcolor: COLORS.cream, borderTop: `2px solid ${COLORS.accent}` }}>
+          <Button onClick={() => { setCloseConfirmOpen(false); doClose(); }}
+            sx={{ fontWeight: 900, color: COLORS.danger, border: `2px solid ${COLORS.danger}`, borderRadius: 0, fontFamily: FONT, px: 2.5, fontSize: '0.75rem' }}>
+            Discard & Close
+          </Button>
+          <Button onClick={() => setCloseConfirmOpen(false)} variant="contained"
+            sx={{ fontWeight: 900, borderRadius: 0, fontFamily: FONT, px: 3, fontSize: '0.75rem', bgcolor: COLORS.cta, border: `2px solid ${COLORS.ctaHover}`, '&:hover': { bgcolor: COLORS.ctaHover } }}>
+            Keep Editing
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Allergen safety warning */}
+      <Dialog open={!!allergenConfirm} onClose={() => setAllergenConfirm(null)}
+        PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.danger}`, boxShadow: `6px 6px 0px ${COLORS.danger}` } }}>
+        <DialogTitle sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '1rem', color: COLORS.danger, bgcolor: '#FFEBEE', borderBottom: `2px solid ${COLORS.danger}`, textTransform: 'uppercase', letterSpacing: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <WarningAmberIcon sx={{ color: COLORS.danger }} /> Allergen Match Detected
+        </DialogTitle>
+        {allergenConfirm && (
+          <DialogContent sx={{ pt: 2.5, pb: 2, bgcolor: COLORS.formBg }}>
+            <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: COLORS.brand, mb: 1 }}>
+              Product: {allergenConfirm.productName}
+            </Typography>
+            <Typography sx={{ fontSize: '0.85rem', color: COLORS.danger, fontWeight: 800, mb: 0.5 }}>
+              Matching allergen(s): {allergenConfirm.matchingTags}
+            </Typography>
+            <Typography sx={{ fontSize: '0.85rem', color: COLORS.accent, mb: 1 }}>
+              Patient allergies: {allergenConfirm.patientAllergies}
+            </Typography>
+            <Typography sx={{ fontSize: '0.8rem', color: COLORS.textSecondary, fontStyle: 'italic' }}>
+              This product contains an allergen flagged for this patient.
+            </Typography>
+          </DialogContent>
+        )}
+        <DialogActions sx={{ p: 2, bgcolor: '#FFEBEE', borderTop: `2px solid ${COLORS.danger}` }}>
+          <Button onClick={() => setAllergenConfirm(null)}
+            sx={{ fontWeight: 900, borderRadius: 0, fontFamily: FONT, px: 3, fontSize: '0.75rem', bgcolor: COLORS.cta, color: 'white', border: `2px solid ${COLORS.ctaHover}`, '&:hover': { bgcolor: COLORS.ctaHover } }}>
+            Cancel
+          </Button>
+          <Button onClick={allergenConfirm?.onConfirm}
+            sx={{ fontWeight: 900, color: COLORS.danger, border: `2px solid ${COLORS.danger}`, borderRadius: 0, fontFamily: FONT, px: 2.5, fontSize: '0.75rem' }}>
+            Add Anyway
+          </Button>
+        </DialogActions>
       </Dialog>
     </Dialog>
   );

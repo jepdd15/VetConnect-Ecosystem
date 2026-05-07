@@ -528,7 +528,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     objectiveNotes: '', objectiveExam: createDefaultExam(),
     // T4.141: assessment replaced with structured diagnoses[] + free-text assessmentNotes
     diagnoses: [], assessmentNotes: '',
-    prognosis: 'Good', plan: '', recheckIn: '1 Week', patientStatus: 'Stable', nextVisit: ''
+    prognosis: 'Good', plan: '', clientInstructions: '', recheckIn: '1 Week', patientStatus: 'Stable', nextVisit: ''
   });
   const [isRecordLocked, setIsRecordLocked] = useState(false);
   const [ownerSignature, setOwnerSignature] = useState(null);
@@ -783,7 +783,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             // T4.141: structured diagnosis fields replace the legacy assessment string
             diagnoses: [], assessmentNotes: '',
             prognosis: 'Good', recheckIn: '1 Week',
-            patientStatus: 'Stable', plan: '', nextVisit: '',
+            patientStatus: 'Stable', plan: '', clientInstructions: '', nextVisit: '',
           };
 
           if (draft && Object.keys(draft).length > 0 && isDraftRecent && isEligibleStatus) {
@@ -822,6 +822,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
               prognosis: draft.prognosis || 'Good',
               patientStatus: draft.patientStatus || 'Stable',
               plan: draft.plan || '',
+              clientInstructions: draft.clientInstructions || '',
               recheckIn: draft.recheckIn || '1 Week',
               nextVisit: draft.nextVisit || '',
             });
@@ -1835,6 +1836,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             assessment: soapData.assessmentNotes || '',
             prognosis: soapData.prognosis,
             plan: soapData.plan,
+            clientInstructions: soapData.clientInstructions || '',
             recheckIn: soapData.recheckIn
         },
         vitals: {
@@ -1884,7 +1886,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             ownerName: patient.ownerName || 'Walk-In Client',
             visitDate: commitTimestamp,
             diagnosis: (soapData.diagnoses || [])[0]?.name || 'Clinical Visit',
-            instructions: soapData.plan || '',
+            instructions: soapData.clientInstructions || soapData.plan || '',
             medications: treatmentCart
                 .filter(item => (item.productClass || (item.isDrug ? 'medicine' : 'retail')) === 'medicine')
                 .map(item => ({
@@ -2211,6 +2213,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             assessmentNotes: soapData.assessmentNotes || '',
             prognosis: soapData.prognosis,
             plan: soapData.plan,
+            clientInstructions: soapData.clientInstructions || '',
             recheckIn: soapData.recheckIn,
             patientStatus: soapData.patientStatus,
             nextVisit: soapData.nextVisit,
@@ -2275,6 +2278,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       prognosis: d.prognosis || 'Good',
       patientStatus: d.patientStatus || 'Stable',
       plan: d.plan || '',
+      clientInstructions: d.clientInstructions || '',
       recheckIn: d.recheckIn || '1 Week',
       nextVisit: d.nextVisit || '',
     });

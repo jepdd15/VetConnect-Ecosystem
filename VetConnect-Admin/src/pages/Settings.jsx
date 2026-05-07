@@ -220,7 +220,9 @@ export default function Settings() {
     const unsubSettings = onSnapshot(doc(db, "clinic_settings", "general"), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        setSettings(prev => ({ ...prev, ...data }));
+        if (!isDirtyRef.current) {
+          setSettings(prev => ({ ...prev, ...data }));
+        }
         if (data.dashboardAlerts) {
           setDashboardAlerts(prev => ({ ...prev, ...data.dashboardAlerts }));
         }
@@ -231,7 +233,7 @@ export default function Settings() {
         setLastSavedSettings(prev => prev === null ? {
           ...data,
           minSlotInterval: parseInt(data.minSlotInterval) || 30,
-          advanceNoticeMins: parseInt(data.advanceNoticeMins) || 120,
+          advanceNoticeMins: isNaN(parseInt(data.advanceNoticeMins)) ? 120 : parseInt(data.advanceNoticeMins),
           maxFutureBookingDays: parseInt(data.maxFutureBookingDays) || 30,
         } : prev);
       }
@@ -327,7 +329,8 @@ export default function Settings() {
     }
   };
 
-  const handleChange = (field, value) => { setSettings(prev => ({ ...prev, [field]: value })); };
+  const isDirtyRef = React.useRef(false);
+  const handleChange = (field, value) => { isDirtyRef.current = true; setSettings(prev => ({ ...prev, [field]: value })); };
 
   // --- SETTINGS AUDIT LOGGER ---
   const logSettingsEvent = async (action, entityType, entityName, details = {}) => {
@@ -400,7 +403,7 @@ export default function Settings() {
       const sanitizedSettings = {
         ...settings,
         minSlotInterval: parseInt(settings.minSlotInterval) || 30,
-        advanceNoticeMins: parseInt(settings.advanceNoticeMins) || 120,
+        advanceNoticeMins: isNaN(parseInt(settings.advanceNoticeMins)) ? 120 : parseInt(settings.advanceNoticeMins),
         maxFutureBookingDays: parseInt(settings.maxFutureBookingDays) || 30,
       };
       
@@ -436,6 +439,7 @@ export default function Settings() {
         }
       }
 
+      isDirtyRef.current = false;
       setLastSavedSettings({ ...sanitizedSettings });
       setToast({ open: true, message: 'Global Clinic Settings Updated Successfully!', severity: 'success' });
     } catch (error) { setToast({ open: true, message: error.message, severity: 'error' }); } 

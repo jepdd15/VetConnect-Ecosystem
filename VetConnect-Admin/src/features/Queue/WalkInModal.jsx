@@ -58,7 +58,7 @@ const BLANK_PET_DATA = () => ({
   expanded: true,
 });
 
-export default function WalkInModal({ open, onClose, servicesList, departments, prefillClient, prefillPet }) {
+export default function WalkInModal({ open, onClose, servicesList, departments, prefillClient, prefillPet, prefillDate, prefillTime }) {
   const { profile } = useUser();
   const staffSignature = profile?.fullName || 'System/Admin';
   const clinicSettings = useClinicSettings();
@@ -226,6 +226,17 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
     const primaryDept = mappedServices[0]?.department || 'General';
     const resolvedWeight = petWeight || null;
     const now = Timestamp.now();
+
+    // When called from Calendar's empty-slot click, prefillDate provides the
+    // scheduled date and prefillTime provides the hour. Otherwise fall back to now.
+    const scheduledTimestamp = prefillDate
+      ? Timestamp.fromDate((() => {
+          const d = new Date(prefillDate);
+          d.setHours(prefillTime ?? new Date().getHours(), 0, 0, 0);
+          return d;
+        })())
+      : now;
+
     return {
       ownerId, ownerName, ownerPhone, petId, petName, petSpecies,
       petBreed: petBreed || 'Mixed Breed',
@@ -245,9 +256,9 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
       queueNumber,
       ticketPrefix: isEmergency ? 'E' : 'W',
       priority: isEmergency ? 'high' : 'normal',
-      scheduledDate: now,
+      scheduledDate: scheduledTimestamp,
       createdAt: now,
-      timeArrived: now,
+      timeArrived: scheduledTimestamp,
       staffNotes: triageNotes,
       systemChips: [
         ...(isEmergency ? ['EMERGENCY'] : []),
@@ -549,7 +560,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
               sx={{ mb: 1.5, fontWeight: 900, borderRadius: 0, border: `2px solid ${COLORS.warning}`, py: 0.5, fontSize: '0.8rem' }}
             >
               <Typography sx={{ fontWeight: 900, fontSize: '0.8rem' }}>
-                NO-SHOW HISTORY: {noShowData.count} no-show{noShowData.count > 1 ? 's' : ''} in the last {noShowWindowDays} days.
+                NO-SHOW HISTORY: {noShowData.count} no-show{noShowData.count > 1 ? 's' : ''} on record.
               </Typography>
             </Alert>
           )}
@@ -788,6 +799,20 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
             {errorMsg && (
               <Alert severity="error" sx={{ fontWeight: 900, borderRadius: 0, border: `2px solid ${COLORS.danger}`, py: 0.5 }}>
                 {errorMsg}
+              </Alert>
+            )}
+
+            {/* Prefill banner — shown when opened from Calendar's empty-slot click */}
+            {prefillDate && (
+              <Alert severity="info" sx={{ borderRadius: 0, fontWeight: 900 }}>
+                Scheduling for{' '}
+                {new Date(prefillDate).toLocaleDateString('en-US', {
+                  weekday: 'long',
+                  month: 'long',
+                  day: 'numeric',
+                  year: 'numeric',
+                })}
+                {prefillTime != null && ` at ${prefillTime}:00`}
               </Alert>
             )}
 

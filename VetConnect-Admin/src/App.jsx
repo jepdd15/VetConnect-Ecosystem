@@ -32,6 +32,7 @@ import Expenses from './pages/Expenses';
 import Monitor from './pages/Monitor';   
 import Settings from './pages/Settings';
 import NotificationLogs from './pages/NotificationLogs';
+import Calendar from './pages/Calendar';
 
 // --- USER CONTEXT ---
 import { UserProvider, useUser } from './context/UserContext';
@@ -332,6 +333,7 @@ function AppShell() {
                 <Routes>
                   <Route path="/" element={<Dashboard />} />
                   <Route path="/queue" element={<Queue />} />
+                  <Route path="/calendar" element={<Calendar />} />
                   <Route path="/records" element={<Records />} />
                   <Route path="/patients" element={<Patients />} />
                   <Route path="/patients/:id" element={<PatientDashboard />} />

@@ -469,7 +469,7 @@ export function useMyStats({
               petId: pc.id,
               label: `${v.name} overdue`,
               detail: v.daysUntilDue != null
-                ? `${Math.abs(v.daysUntilDue)} days overdue`
+                ? `${Math.abs(v.daysUntilDue)} ${Math.abs(v.daysUntilDue) === 1 ? 'day' : 'days'} overdue`
                 : null,
               cta: 'BOOK NOW',
               ctaNav: { screen: 'BookAppointment', params: { prefillPetId: pc.id } },
@@ -504,7 +504,7 @@ export function useMyStats({
           detail: pc.recheckInfo.daysUntil == null
             ? pc.recheckInfo.recheckStr
             : isOverdue
-              ? `${Math.abs(pc.recheckInfo.daysUntil)} days overdue`
+              ? `${Math.abs(pc.recheckInfo.daysUntil)} ${Math.abs(pc.recheckInfo.daysUntil) === 1 ? 'day' : 'days'} overdue`
               : `in ${pc.recheckInfo.daysUntil} day${pc.recheckInfo.daysUntil !== 1 ? 's' : ''}`,
           cta: 'BOOK RECHECK',
           ctaNav: { screen: 'BookAppointment', params: { prefillPetId: pc.id } },

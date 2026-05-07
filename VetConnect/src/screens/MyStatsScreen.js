@@ -130,9 +130,6 @@ export default function MyStatsScreen({ route, navigation }) {
       contentContainerStyle={styles.container}
       showsVerticalScrollIndicator={false}
     >
-      {/* ── SCREEN TITLE ──────────────────────────────────────────────────── */}
-      <Text style={styles.screenTitle}>MY STATS</Text>
-
       {/* ══════════════════════════════════════════════════════════════════
           SECTION 1 — YOUR RELATIONSHIP
           ════════════════════════════════════════════════════════════════ */}
@@ -185,8 +182,8 @@ export default function MyStatsScreen({ route, navigation }) {
           )}
         </View>
 
-        {/* Profile completeness progress bar */}
-        {relationship.profileNudge && (
+        {/* Profile completeness + consent removed — not relevant to pet owners */}
+        {false && relationship.profileNudge && (
           <TouchableOpacity
             style={styles.profileRow}
             onPress={() => navigation.navigate('UserProfile')}
@@ -205,29 +202,6 @@ export default function MyStatsScreen({ route, navigation }) {
           </TouchableOpacity>
         )}
 
-        {/* Consent status row */}
-        <View style={styles.consentRow}>
-          <View style={styles.consentItem}>
-            <MaterialIcons
-              name={relationship.dpaStatus === 'signed' ? 'check-circle' : 'warning'}
-              size={16}
-              color={relationship.dpaStatus === 'signed' ? COLORS.success : COLORS.warning}
-            />
-            <Text style={styles.consentLabel}>
-              DPA — {relationship.dpaStatus === 'signed' ? 'Signed' : 'Needed'}
-            </Text>
-          </View>
-          <View style={styles.consentItem}>
-            <MaterialIcons
-              name={relationship.waiverStatus === 'signed' ? 'check-circle' : 'warning'}
-              size={16}
-              color={relationship.waiverStatus === 'signed' ? COLORS.success : COLORS.warning}
-            />
-            <Text style={styles.consentLabel}>
-              Waiver — {relationship.waiverStatus === 'signed' ? 'Signed' : 'Needed'}
-            </Text>
-          </View>
-        </View>
       </View>
 
       {/* ══════════════════════════════════════════════════════════════════
@@ -632,7 +606,7 @@ function PetHealthCard({ petCard, onBookNow, onBookRecheck }) {
                   <Text style={styles.petCardValue}>{petCard.recheckInfo.recheckStr}</Text>
                 ) : recheckIsOverdue ? (
                   <Text style={[styles.petCardValue, { color: COLORS.danger }]}>
-                    OVERDUE ({Math.abs(petCard.recheckInfo.daysUntil)} days ago)
+                    OVERDUE ({Math.abs(petCard.recheckInfo.daysUntil)} {Math.abs(petCard.recheckInfo.daysUntil) === 1 ? 'day' : 'days'} ago)
                   </Text>
                 ) : (
                   <Text style={styles.petCardValue}>

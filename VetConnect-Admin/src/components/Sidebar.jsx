@@ -22,6 +22,7 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import TvIcon from '@mui/icons-material/Tv';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
+import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 
 const drawerWidth = 260;
 
@@ -29,6 +30,7 @@ const drawerWidth = 260;
 const menuItems = [
   { name: 'Dashboard', icon: <DashboardIcon />, path: '/' },
   { name: 'Patient Queue', icon: <QueueIcon />, path: '/queue' },
+  { name: 'Calendar', icon: <CalendarMonthIcon />, path: '/calendar' },
   { name: 'Visit Log', icon: <HistoryIcon />, path: '/records' },
   { name: 'Patients (CRM)', icon: <PetsIcon />, path: '/patients' },
   { name: 'Services', icon: <MedicalServicesIcon />, path: '/services' },

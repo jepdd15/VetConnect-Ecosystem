@@ -5,17 +5,20 @@ import { db } from '../../../firebaseConfig';
 
 // Design Tokens
 import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
+import { isValidPHPhone } from '../../../utils/phoneValidation';
 
 // Icons
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import SaveIcon from '@mui/icons-material/Save';
 import PetsIcon from '@mui/icons-material/Pets';
+import ContactPhoneIcon from '@mui/icons-material/ContactPhone';
 
 export default function NewClientModal({ open, onClose }) {
   const [form, setForm] = useState({
     fullName: '', phone: '', email: '',
     address: '', city: '',
     referredBy: '',  // T2.136
+    emergencyName: '', emergencyPhone: '', emergencyRelation: '',
   });
   const [petForm, setPetForm] = useState({
     name: '', species: 'Canine',
@@ -26,7 +29,7 @@ export default function NewClientModal({ open, onClose }) {
   const [showDupeWarning, setShowDupeWarning] = useState(false);
 
   const resetForms = () => {
-    setForm({ fullName: '', phone: '', email: '', address: '', city: '', clientTag: 'Regular', referredBy: '' });
+    setForm({ fullName: '', phone: '', email: '', address: '', city: '', referredBy: '', emergencyName: '', emergencyPhone: '', emergencyRelation: '' });
     setPetForm({ name: '', species: 'Canine' });
     setError('');
     setDuplicates([]);
@@ -37,6 +40,16 @@ export default function NewClientModal({ open, onClose }) {
     // Validation
     if (!form.fullName.trim()) { setError('Client name is required.'); return; }
     if (!form.phone.trim()) { setError('Phone number is required.'); return; }
+
+    // Emergency contact validation — the section is optional, but if name is provided then phone is required and must be valid PH format
+    if (form.emergencyName.trim() && !form.emergencyPhone.trim()) {
+      setError('Emergency contact phone number is required when a name is provided.');
+      return;
+    }
+    if (form.emergencyName.trim() && form.emergencyPhone.trim() && !isValidPHPhone(form.emergencyPhone)) {
+      setError('Emergency contact phone must be a valid PH number (09XXXXXXXXX).');
+      return;
+    }
 
     // Duplicate phone check — skip if staff already confirmed via override
     if (!forceCreate) {
@@ -70,7 +83,12 @@ export default function NewClientModal({ open, onClose }) {
         accountStatus: 'admin_registered',   // no Firebase Auth account — guest-client pattern
         accountStanding: 'Good Standing',
         staffNotes: [],
-        emergencyContacts: [],
+        emergencyContacts: form.emergencyName.trim()
+          ? [{ name: form.emergencyName.trim(), phone: form.emergencyPhone.trim(), relation: form.emergencyRelation.trim() || 'Primary' }]
+          : [],
+        // Legacy scalar fields for backward compatibility (same pattern as mobile RegisterScreen T4.128)
+        emergencyName: form.emergencyName.trim() || null,
+        emergencyPhone: form.emergencyPhone.trim() || null,
         createdAt: Timestamp.now(),
       };
       const ownerRef = await addDoc(collection(db, 'users'), ownerPayload);
@@ -149,6 +167,33 @@ export default function NewClientModal({ open, onClose }) {
             </Grid>
           </Grid>
 
+          {/* EMERGENCY CONTACT (Optional) */}
+          <Divider sx={{ my: 2.5, borderColor: COLORS.border }} />
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+            <ContactPhoneIcon sx={{ fontSize: 16, color: COLORS.accent }} />
+            <Typography sx={{ fontFamily: FONT, fontWeight: 800, color: COLORS.accent, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              Emergency Contact (Optional)
+            </Typography>
+          </Box>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={5}>
+              <TextField label="Emergency Contact Name" fullWidth size="small"
+                value={form.emergencyName} onChange={(e) => setForm({...form, emergencyName: e.target.value})}
+                sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }} />
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <TextField label="Phone" fullWidth size="small"
+                value={form.emergencyPhone} onChange={(e) => setForm({...form, emergencyPhone: e.target.value})}
+                helperText="09XXXXXXXXX"
+                sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }} />
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <TextField label="Relation (Optional)" fullWidth size="small"
+                value={form.emergencyRelation} onChange={(e) => setForm({...form, emergencyRelation: e.target.value})}
+                sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }} />
+            </Grid>
+          </Grid>
+
           {/* PET INFO (Optional) */}
           <Divider sx={{ my: 3, borderColor: COLORS.border }} />
           <Typography sx={{ fontFamily: FONT, fontWeight: 800, color: COLORS.accent, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em', mb: 0.5 }}>
@@ -198,7 +243,7 @@ export default function NewClientModal({ open, onClose }) {
       </DialogActions>
 
       {/* Duplicate Phone Warning */}
-      <Dialog open={showDupeWarning} onClose={() => setShowDupeWarning(false)} maxWidth="xs" fullWidth>
+      <Dialog open={showDupeWarning} onClose={() => setShowDupeWarning(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 0 } }}>
         <DialogTitle sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.warning }}>
           Possible Duplicate Client
         </DialogTitle>

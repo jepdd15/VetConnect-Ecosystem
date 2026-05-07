@@ -369,7 +369,7 @@ export default function ClientDetails({ editForm, setEditForm, isEditing, calcul
       <Box sx={{ mt: 3, mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
         <Box sx={{ flex: 1 }}>
           <Typography variant="subtitle2" sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.accent, fontSize: '0.8rem' }}>
-            Authorized Representatives
+            Emergency Contacts
           </Typography>
           <Divider sx={{ mt: 0.5, borderColor: COLORS.border }} />
         </Box>
@@ -383,7 +383,7 @@ export default function ClientDetails({ editForm, setEditForm, isEditing, calcul
       {editForm.emergencyContacts && editForm.emergencyContacts.length > 0 ? (
         editForm.emergencyContacts.map((rep, i) => (
           <Box key={i} sx={{ py: 1, position: 'relative', bgcolor: COLORS.formBg, p: 2, borderRadius: 0, mb: 2, border: `1px solid ${COLORS.borderLight}` }}>
-            <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.accent, mb: 1, display: 'block' }}>REP #{i + 1}</Typography>
+            <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.accent, mb: 1, display: 'block' }}>CONTACT #{i + 1}</Typography>
             
             <Grid container spacing={2} alignItems="center">
               <DataField label="Name" value={rep.name} isEditing={isEditing} onChange={(val)=>handleRepChange(i, 'name', val)} width={{ xs: 12, md: 4 }} />
@@ -401,7 +401,7 @@ export default function ClientDetails({ editForm, setEditForm, isEditing, calcul
           </Box>
         ))
       ) : (
-        <Typography variant="body2" sx={{ fontFamily: FONT, color: COLORS.textMuted, fontStyle: 'italic', mt: 1 }}>No authorized emergency contacts on file.</Typography>
+        <Typography variant="body2" sx={{ fontFamily: FONT, color: COLORS.textMuted, fontStyle: 'italic', mt: 1 }}>No emergency contacts on file.</Typography>
       )}
 
     </Box>

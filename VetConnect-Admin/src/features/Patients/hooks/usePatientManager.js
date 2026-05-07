@@ -54,7 +54,14 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
   });
   const [newNote, setNewNote] = useState('');
   const[noteCategory, setNoteCategory] = useState('General');
-  const [newPetData, setNewPetData] = useState({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', allergies: 'None', microchip: '' });
+  const [newPetData, setNewPetData] = useState({
+    name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false,
+    dob: '', color: '', allergies: 'None', microchip: '',
+    // DOB 3-mode fields (UI-only, not written to Firestore)
+    dobMode: 'exact', estYears: '', estMonths: '',
+    // Allergy tag array fields (UI-only, not written to Firestore)
+    showAllergyInput: false, allergyArray: [], currentAllergyInput: '',
+  });
 
   const [loadingDirectory, setLoadingDirectory] = useState(true);
   const [loadingClientData, setLoadingClientData] = useState(false);
@@ -303,16 +310,52 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
   const handleAdminAddPet = async () => {
       if (!newPetData.name || !newPetData.breed) throw new Error("Pet Name and Breed are required.");
       if (!selectedClient) throw new Error("No client selected.");
+      if (newPetData.showAllergyInput && newPetData.allergyArray.length === 0) throw new Error("Allergy recording is enabled but no allergens were added. Add at least one allergen or turn the toggle off.");
+
+      // --- DOB RESOLVER: converts dobMode fields into Firestore-compatible values ---
+      const resolveDob = (data) => {
+        if (data.dobMode === 'exact') {
+          return {
+            finalDOB: data.dob ? Timestamp.fromDate(new Date(data.dob)) : null,
+            finalIsAgeExact: true,
+          };
+        }
+        if (data.dobMode === 'approximate') {
+          const years = parseInt(data.estYears) || 0;
+          const months = parseInt(data.estMonths) || 0;
+          const d = new Date();
+          d.setFullYear(d.getFullYear() - years);
+          d.setMonth(d.getMonth() - months);
+          d.setDate(1);  // anchor to 1st of month
+          d.setHours(0, 0, 0, 0);
+          return { finalDOB: Timestamp.fromDate(d), finalIsAgeExact: false };
+        }
+        return { finalDOB: null, finalIsAgeExact: false };
+      };
+
+      const { finalDOB, finalIsAgeExact } = resolveDob(newPetData);
+
       // T2.119: Write `petAllergies` as the canonical field; keep `allergies` as legacy alias.
-      const resolvedAllergies = (newPetData.allergies || 'None').trim();
-      const { allergies: _legacyField, ...restPetData } = newPetData;
+      // Item 4: resolve from allergyArray when switch is ON; fall back to free-text 'None'.
+      const resolvedAllergies = newPetData.showAllergyInput && newPetData.allergyArray.length > 0
+        ? newPetData.allergyArray.join(', ')
+        : 'None';
+
+      // Destructure ALL UI-only fields out so they don't leak into the Firestore document.
+      const {
+        allergies: _legacyField,
+        dobMode: _dobMode, estYears: _estYears, estMonths: _estMonths,
+        showAllergyInput: _showAllergyInput, allergyArray: _allergyArray, currentAllergyInput: _currentAllergyInput,
+        ...restPetData
+      } = newPetData;
+
       const payload = {
         ownerId: selectedClient.id,
         ...restPetData,
         petAllergies: resolvedAllergies,
         allergies: resolvedAllergies,
-        dob: newPetData.dob ? Timestamp.fromDate(new Date(newPetData.dob)) : null,
-        isAgeExact: !!newPetData.dob,
+        dob: finalDOB,
+        isAgeExact: finalIsAgeExact,
         weight: newPetData.lastWeight ? parseFloat(newPetData.lastWeight) : null,
         lastWeight: newPetData.lastWeight ? parseFloat(newPetData.lastWeight) : null,
         createdAt: Timestamp.now(),
@@ -320,7 +363,12 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
         status: 'active',
       };
       await addDoc(collection(db, "pets"), payload);
-      setNewPetData({ name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false, dob: '', color: '', allergies: 'None', microchip: '' });
+      setNewPetData({
+        name: '', species: 'Canine', breed: '', gender: 'Male', isNeutered: false,
+        dob: '', color: '', allergies: 'None', microchip: '',
+        dobMode: 'exact', estYears: '', estMonths: '',
+        showAllergyInput: false, allergyArray: [], currentAllergyInput: '',
+      });
       return true;
   };
   

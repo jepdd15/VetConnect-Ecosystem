@@ -18,37 +18,7 @@ import {
   View,
 } from "react-native";
 import { auth, db } from "../../firebaseConfig";
-
-const BREED_DATA = {
-  Canine: [
-    "Aspin (Asong Pinoy)",
-    "Shih Tzu",
-    "Pomeranian",
-    "Golden Retriever",
-    "Labrador",
-    "Poodle",
-    "Chihuahua",
-    "Husky",
-    "Beagle",
-    "Pug",
-    "Bulldog",
-    "German Shepherd",
-    "Mixed Breed",
-    "Unknown",
-    "Other",
-  ],
-  Feline: [
-    "Puspin (Pusang Pinoy)",
-    "Persian",
-    "Siamese",
-    "British Shorthair",
-    "Maine Coon",
-    "Bengal",
-    "Mixed Breed",
-    "Unknown",
-    "Other",
-  ],
-};
+import { BREED_CATALOG } from '../constants/breedConstants';
 
 export default function AddPetScreen({ navigation }) {
   const [name, setName] = useState("");
@@ -74,7 +44,7 @@ export default function AddPetScreen({ navigation }) {
   const [searchText, setSearchText] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const filteredBreeds = BREED_DATA[species].filter((item) =>
+  const filteredBreeds = (BREED_CATALOG[species] || []).filter((item) =>
     item.toLowerCase().includes(searchText.toLowerCase()),
   );
 

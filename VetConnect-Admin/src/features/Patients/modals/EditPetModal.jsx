@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, FormControlLabel, Switch, Typography, Button, Grid, Box, InputAdornment } from '@mui/material';
+import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, FormControlLabel, Switch, Typography, Button, Grid, Box, InputAdornment, Autocomplete } from '@mui/material';
+import { BREED_CATALOG } from '../../../constants/breedConstants';
 import { doc, updateDoc, Timestamp, collection, query, where, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from '../../../firebaseConfig';
 
@@ -110,7 +111,7 @@ export default function EditPetModal({ open, onClose, pet }) {
             </Grid>
             <Grid item xs={12} md={4}>
               <TextField select label="Species" fullWidth size="small"
-                value={form.species} onChange={(e) => setForm({...form, species: e.target.value})}
+                value={form.species} onChange={(e) => setForm({...form, species: e.target.value, breed: ''})}
                 sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }}>
                 <MenuItem value="Canine">🐶 Canine</MenuItem>
                 <MenuItem value="Feline">🐱 Feline</MenuItem>
@@ -119,9 +120,18 @@ export default function EditPetModal({ open, onClose, pet }) {
 
             {/* Row 2: Breed + Color */}
             <Grid item xs={12} md={6}>
-              <TextField label="Breed" fullWidth size="small"
-                value={form.breed} onChange={(e) => setForm({...form, breed: e.target.value})}
-                sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }} />
+              <Autocomplete
+                freeSolo
+                options={BREED_CATALOG[form.species] || []}
+                value={form.breed || ''}
+                onChange={(_, v) => setForm({...form, breed: v || ''})}
+                onInputChange={(_, v, reason) => { if (reason === 'input') setForm({...form, breed: v}); }}
+                componentsProps={{ paper: { sx: { borderRadius: 0, border: `1px solid ${COLORS.accent}` } } }}
+                renderInput={(params) => (
+                  <TextField {...params} label="Breed" fullWidth size="small"
+                    sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT, borderRadius: 0 } }} />
+                )}
+              />
             </Grid>
             <Grid item xs={12} md={6}>
               <TextField label="Color / Markings" fullWidth size="small"

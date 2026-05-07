@@ -17,6 +17,7 @@ import CircleIcon from '@mui/icons-material/Circle';
 import DirectionsWalkIcon from '@mui/icons-material/DirectionsWalk';
 import CakeIcon from '@mui/icons-material/Cake';
 
+import { BREED_CATALOG } from '../../constants/breedConstants';
 import { collection, doc, runTransaction, Timestamp, query, where, getDocs } from 'firebase/firestore';
 import { makePulseEventId } from '../../utils/pulseUtils';
 import { db } from '../../firebaseConfig';
@@ -570,7 +571,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
                 <FormControl fullWidth size="small" variant="outlined">
                   <InputLabel sx={{ fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' }}>SPECIES</InputLabel>
                   <Select label="SPECIES" value={entry.species}
-                    onChange={e => updateEntry(index, { species: e.target.value })}
+                    onChange={e => updateEntry(index, { species: e.target.value, breed: '' })}
                     sx={sxSelect}>
                     <MenuItem value="Canine" sx={{ fontWeight: 800, fontSize: '0.85rem' }}>CANINE</MenuItem>
                     <MenuItem value="Feline" sx={{ fontWeight: 800, fontSize: '0.85rem' }}>FELINE</MenuItem>
@@ -586,11 +587,19 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
                 />
               </Grid>
               <Grid size={{ xs: 12, md: 3 }}>
-                <TextField size="small" label="BREED / LINEAGE" variant="outlined" fullWidth
-                  value={entry.breed}
-                  onChange={e => updateEntry(index, { breed: e.target.value })}
-                  inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
-                  sx={sxField}
+                <Autocomplete
+                  freeSolo
+                  options={BREED_CATALOG[entry.species] || []}
+                  value={entry.breed || ''}
+                  onChange={(_, v) => updateEntry(index, { breed: v || '' })}
+                  onInputChange={(_, v, reason) => { if (reason === 'input') updateEntry(index, { breed: v }); }}
+                  componentsProps={{ paper: { sx: { borderRadius: 0, border: `1px solid ${COLORS.accent}` } } }}
+                  renderInput={(params) => (
+                    <TextField {...params} size="small" label="BREED / LINEAGE" variant="outlined" fullWidth
+                      inputProps={{ ...params.inputProps, style: { fontWeight: 900, fontSize: '0.85rem' } }}
+                      sx={sxField}
+                    />
+                  )}
                 />
               </Grid>
               <Grid size={{ xs: 12, md: 3 }}>
@@ -965,7 +974,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
                 )}
 
                 <TextField
-                  label="TRIAGE NOTES / CHIEF COMPLAINT"
+                  label="REASON FOR VISIT"
                   multiline
                   rows={3}
                   fullWidth

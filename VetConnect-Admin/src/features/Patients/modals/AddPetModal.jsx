@@ -1,5 +1,6 @@
 import React from 'react';
-import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, FormControlLabel, Switch, Typography, Button, Grid, Box, InputAdornment } from '@mui/material';
+import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, FormControlLabel, Switch, Typography, Button, Grid, Box, InputAdornment, Autocomplete } from '@mui/material';
+import { BREED_CATALOG } from '../../../constants/breedConstants';
 
 // Design Tokens
 import { FONT, COLORS } from '../../../theme/designTokens';
@@ -24,16 +25,25 @@ export default function AddPetModal({ open, onClose, ownerName, newPetData, setN
                   </Grid>
                   <Grid item xs={12} md={4}>
                     <TextField select label="Species" fullWidth size="small"
-                      value={newPetData.species} onChange={(e)=>setNewPetData({...newPetData, species:e.target.value})}
+                      value={newPetData.species} onChange={(e)=>setNewPetData({...newPetData, species:e.target.value, breed:''})}
                       sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }}>
                       <MenuItem value="Canine">🐶 Canine</MenuItem>
                       <MenuItem value="Feline">🐱 Feline</MenuItem>
                     </TextField>
                   </Grid>
                   <Grid item xs={12} md={6}>
-                    <TextField label="Breed" fullWidth size="small"
-                      value={newPetData.breed} onChange={(e)=>setNewPetData({...newPetData, breed:e.target.value})}
-                      sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }} />
+                    <Autocomplete
+                      freeSolo
+                      options={BREED_CATALOG[newPetData.species] || []}
+                      value={newPetData.breed || ''}
+                      onChange={(_, v) => setNewPetData({...newPetData, breed: v || ''})}
+                      onInputChange={(_, v, reason) => { if (reason === 'input') setNewPetData({...newPetData, breed: v}); }}
+                      componentsProps={{ paper: { sx: { borderRadius: 0, border: `1px solid ${COLORS.accent}` } } }}
+                      renderInput={(params) => (
+                        <TextField {...params} label="Breed" fullWidth size="small"
+                          sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT, borderRadius: 0 } }} />
+                      )}
+                    />
                   </Grid>
                   <Grid item xs={12} md={6}>
                     <TextField label="Color / Markings" fullWidth size="small"

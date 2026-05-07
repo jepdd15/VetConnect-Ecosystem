@@ -226,6 +226,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
 
   useEffect(() => {
     const initPOS = async () => {
+      if (checkoutSuccess) return;
       if (open && patient) {
         const initialCart = buildCartForAppointment(patient);
 

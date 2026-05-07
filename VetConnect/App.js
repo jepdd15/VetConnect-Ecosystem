@@ -44,6 +44,7 @@ import StaffAppointments from "./src/screens/StaffAppointments";
 import SelfCheckInScreen from "./src/screens/SelfCheckInScreen";
 import ChatbotScreen from "./src/screens/ChatbotScreen";
 import NotificationHistory from "./src/screens/NotificationHistory";
+import MyStatsScreen from "./src/screens/MyStatsScreen";
 
 // --- 5. CONSENT ---
 import ConsentScreen from "./src/screens/ConsentScreen";
@@ -249,6 +250,12 @@ export default function App() {
           name="NotificationHistory"
           component={NotificationHistory}
           options={{ title: "Notifications" }}
+        />
+
+        <Stack.Screen
+          name="MyStats"
+          component={MyStatsScreen}
+          options={{ title: "My Stats" }}
         />
 
         {/* --- CONSENT --- */}

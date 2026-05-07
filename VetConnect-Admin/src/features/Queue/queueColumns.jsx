@@ -42,7 +42,7 @@ const calculateAgeString = (dob, isAgeExact) => {
 
 export const getQueueColumns = (tabValue, currentTime, actions, isToday, departments, isTomorrow, clinicSettings) => [
   { 
-    field: 'identity', headerName: 'Patient Identity', flex: 1, minWidth: 220, 
+    field: 'identity', headerName: 'Patient Identity', flex: 1, minWidth: 180,
     resizable: false, sortable: false, disableColumnMenu: true,
     renderCell: (p) => {
       const isWalkIn = p.row.isWalkIn === true || p.row.ownerId === 'WALK_IN_USER' || String(p.row.ownerId).includes('GUEST_') || p.row.ticketPrefix === 'W' || p.row.ticketPrefix === 'E';
@@ -226,7 +226,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
     }
   },
   ...(tabValue === 0 ? [{
-    field: 'intakeAge', headerName: 'Intake Age', width: 140, sortable: false, disableColumnMenu: true,
+    field: 'intakeAge', headerName: 'Intake Age', width: 100, sortable: false, disableColumnMenu: true,
     renderCell: (p) => {
         const intakeDate = p.row.createdAt?.toDate ? p.row.createdAt.toDate() : new Date(p.row.createdAt);
         const days = Math.floor((currentTime - intakeDate) / (1000 * 60 * 60 * 24));
@@ -245,7 +245,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
   {
     field: 'notes',
     headerName: tabValue === 4 ? 'Prescription Preview' : tabValue === 5 ? 'Billing Preview' : 'Medical Intake / Notes',
-    flex: 1.2, minWidth: 200, sortable: false,
+    flex: 1, minWidth: 160, sortable: false,
     renderCell: (p) => {
       // DISPENSE tab — Prescription Preview
       if (tabValue === 4) {
@@ -408,7 +408,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
     }
   },
   { 
-    field: 'services', headerName: 'Services and Staff', flex: 1, minWidth: 220,
+    field: 'services', headerName: 'Services and Staff', flex: 0.8, minWidth: 160,
     resizable: false, sortable: false, disableColumnMenu: true,
     renderCell: (p) => {
       // Preserve insertion order for the cell display; popover handles its own sort.
@@ -509,7 +509,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
     }
   },
   { 
-    field: 'timing', headerName: 'Triage Clock', width: 160, align: 'center', headerAlign: 'center',
+    field: 'timing', headerName: 'Triage Clock', width: 200, align: 'center', headerAlign: 'center',
     resizable: false, sortable: false, disableColumnMenu: true,
     renderCell: (p) => {
       const resolveDate = (d) => {

@@ -126,6 +126,7 @@ export default function Records() {
   const [revertReason, setRevertReason] = useState('');
   const [submittingAction, setSubmittingAction] = useState(false);
   const [noShowDialog, setNoShowDialog] = useState({ open: false, reason: '' });
+  const [deferDialog, setDeferDialog] = useState({ open: false, reason: '' });
 
   // Bulk operations
   const [selectedRows, setSelectedRows] = useState([]);
@@ -524,6 +525,25 @@ export default function Records() {
     setOpenDispenseVerify(true);
   };
 
+  const handleActionFlagDispensing = async (row) => {
+    try {
+      await updateDoc(doc(db, 'appointments', row.id), {
+        dispensingHold: true,
+        clinicalPulse: arrayUnion({
+          eventId: makePulseEventId('dispense-flag'),
+          type: 'DISPENSING_HOLD',
+          timestamp: Timestamp.now(),
+          staffId: user?.uid || '',
+          staffName: profile?.fullName || user?.email || 'System',
+          note: 'Flagged for vet review from Visit Log',
+        }),
+      });
+      setToast({ open: true, message: 'Flagged for vet review', severity: 'warning' });
+    } catch (err) {
+      setToast({ open: true, message: err.message, severity: 'error' });
+    }
+  };
+
   const handleActionDispenseVerified = async (dispensingData) => {
     try {
       await runTransaction(db, async (transaction) => {
@@ -598,12 +618,23 @@ export default function Records() {
     }
   };
 
-  const handleActionDefer = async (row) => {
+  const handleActionDeferOpen = (row) => {
+    setActionRow(row);
+    setDeferDialog({ open: true, reason: '' });
+    handleActionMenuClose();
+  };
+
+  const handleActionDeferConfirm = async () => {
+    if (!deferDialog.reason.trim() || submittingAction) return;
+    setSubmittingAction(true);
     try {
-      await deferAppointment(row.id, 'Deferred from Visit Log', profile?.fullName || user?.email || 'Staff', settings);
+      await deferAppointment(actionRow.id, deferDialog.reason, profile?.fullName || user?.email || 'Staff', settings);
+      setDeferDialog({ open: false, reason: '' });
       setToast({ open: true, message: 'Appointment deferred', severity: 'info' });
     } catch (err) {
       setToast({ open: true, message: err.message, severity: 'error' });
+    } finally {
+      setSubmittingAction(false);
     }
   };
 
@@ -692,7 +723,7 @@ export default function Records() {
       }
     },
     {
-      field: 'jsCreatedAt', headerName: 'Created', width: 150,
+      field: 'jsCreatedAt', headerName: 'Created', width: 160,
       renderCell: (p) => {
         if (p.row._isDateHeader) {
           return (
@@ -723,24 +754,24 @@ export default function Records() {
       }
     },
     {
-      field: 'identity', headerName: 'Patient', flex: 1.2, minWidth: 250,
+      field: 'identity', headerName: 'Patient', flex: 0.8, minWidth: 150,
       renderCell: (p) => {
         if (p.row._isDateHeader) return null;
         if (p.row._isCaseHeader) return null;
         return (
           <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%' }}>
-            <Typography sx={{ fontWeight: '1000', color: '#1A1A1A', lineHeight: 1.1 }}>
-              {p.row.petName?.toUpperCase()}
+            <Typography sx={{ fontWeight: '1000', color: '#1A1A1A', lineHeight: 1.1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {p.row.petName?.toUpperCase()}{p.row.ownerName ? ` (${p.row.ownerName})` : ''}
             </Typography>
-            <Typography variant="caption" sx={{ color: '#795548', fontWeight: '900', fontSize: '0.65rem' }}>
-              {p.row.petSpecies} • {p.row.ownerName}
+            <Typography variant="caption" sx={{ color: '#795548', fontWeight: '900', fontSize: '0.65rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {[p.row.petSpecies, p.row.petBreed, p.row.petGender].filter(Boolean).join(' • ')}
             </Typography>
           </Box>
         );
       }
     },
     {
-      field: 'jsScheduled', headerName: 'Scheduled', width: 180,
+      field: 'jsScheduled', headerName: 'Scheduled', width: 150,
       renderCell: (p) => {
         if (p.row._isDateHeader) return null;
         if (p.row._isCaseHeader) return null;
@@ -755,7 +786,7 @@ export default function Records() {
       }
     },
     {
-      field: 'services', headerName: 'Services', flex: 1, minWidth: 200,
+      field: 'services', headerName: 'Services', flex: 0.7, minWidth: 140,
       renderCell: (p) => {
         if (p.row._isDateHeader) return null;
         if (p.row._isCaseHeader) return null;
@@ -813,7 +844,7 @@ export default function Records() {
        }
     },
     {
-      field: 'actions', headerName: 'Actions', width: 220, align: 'center', headerAlign: 'center',
+      field: 'actions', headerName: 'Actions', width: 280, align: 'center', headerAlign: 'center',
       renderCell: (p) => {
         if (p.row._isDateHeader) return null;
         if (p.row._isCaseHeader) return null;
@@ -837,7 +868,7 @@ export default function Records() {
               >Accept</Button>
               <Button variant="outlined" size="small"
                 sx={{ ...btnStyle, minWidth: 'auto', px: 1, color: COLORS.accent, borderColor: '#D7CCC8' }}
-                onClick={(e) => { e.stopPropagation(); handleActionDefer(row); }}
+                onClick={(e) => { e.stopPropagation(); handleActionDeferOpen(row); }}
               >Defer</Button>
             </>
           );
@@ -871,11 +902,21 @@ export default function Records() {
               sx={{ bgcolor: '#FF9800', color: 'white', fontWeight: 900, fontSize: '0.6rem', height: 20, borderRadius: 0 }}
             />
           ) : (
-            <Button variant="contained" size="small"
-              startIcon={<LocalHospitalIcon sx={{ fontSize: '12px !important' }} />}
-              sx={{ ...btnStyle, flex: 1, bgcolor: '#C62828' }}
-              onClick={(e) => { e.stopPropagation(); handleActionOpenDispenseVerify(row); }}
-            >VERIFY</Button>
+            <>
+              <Button variant="contained" size="small"
+                startIcon={<LocalHospitalIcon sx={{ fontSize: '12px !important' }} />}
+                sx={{ ...btnStyle, flex: 1, bgcolor: '#C62828' }}
+                onClick={(e) => { e.stopPropagation(); handleActionOpenDispenseVerify(row); }}
+              >VERIFY</Button>
+              <Tooltip title="Flag for vet review">
+                <IconButton size="small"
+                  onClick={(e) => { e.stopPropagation(); handleActionFlagDispensing(row); }}
+                  sx={{ color: '#FF9800', flexShrink: 0 }}
+                >
+                  <FlagIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </>
           );
         } else if (status === 'billing') {
           primaryButton = (
@@ -1330,7 +1371,7 @@ export default function Records() {
           <Box>
             <Box sx={{ bgcolor: '#FFF8E1', p: 1.5, borderBottom: '1px solid #5D4037', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Typography sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: 1 }}>
-                <TimelineIcon fontSize="small" /> {activeAuditRow.petName || 'Unknown'} — {(() => { const svcNames = (activeAuditRow.services || []).map(s => s.name).filter(Boolean); if (svcNames.length === 0) return activeAuditRow.serviceType || 'Visit'; if (svcNames.length <= 2) return svcNames.join(', '); return `${svcNames.slice(0, 2).join(', ')} +${svcNames.length - 2} more`; })()} ({activeAuditRow.id.slice(0, 8).toUpperCase()})
+                <TimelineIcon fontSize="small" /> {activeAuditRow.petName || 'Unknown'} — {(() => { const svcNames = (activeAuditRow.services || []).map(s => s.name).filter(Boolean); if (svcNames.length === 0) return activeAuditRow.serviceType || 'Visit'; if (svcNames.length <= 2) return svcNames.join(', '); return `${svcNames.slice(0, 2).join(', ')} +${svcNames.length - 2} more`; })()}
               </Typography>
               <Stack direction="row" spacing={1} alignItems="center">
                 {activeAuditRow.ownerPhone && (
@@ -1434,9 +1475,26 @@ export default function Records() {
                      <Box key={i} sx={{ position: 'relative' }}>
                         <Box sx={{ position: 'absolute', left: -26, top: 4, width: 8, height: 8, borderRadius: '50%', bgcolor: '#5D4037', border: '2px solid white' }} />
                         <Typography variant="caption" sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '0.62rem', display: 'block' }}>
-                           {p.type}: {(p.serviceName && (p.type === 'SERVICE_STARTED' || p.type === 'SERVICE_COMPLETED'))
-                              ? `${p.serviceName} ${p.type === 'SERVICE_STARTED' ? 'STARTED' : 'COMPLETED'}`
-                              : String(p.toStatus || 'EVENT').toUpperCase()}
+                           {(() => {
+                              const labels = {
+                                'INCEPTION': 'Booked',
+                                'STATUS_CHANGE': p.toStatus ? `${(p.fromStatus || '').replace(/-/g,' ')} → ${p.toStatus.replace(/-/g,' ')}` : 'Status updated',
+                                'SERVICE_STARTED': `${p.serviceName || 'Service'} started`,
+                                'SERVICE_COMPLETED': `${p.serviceName || 'Service'} completed`,
+                                'IDENTITY_EDIT': 'Patient identity updated',
+                                'IDENTITY_HEALING': 'Patient identity corrected',
+                                'CLINICAL_AMENDMENT': 'Record amended',
+                                'TRIAGE_DEFER': 'Deferred',
+                                'TRIAGE_RESCHEDULE': 'Rescheduled',
+                                'TRIAGE_CARRYOVER': 'Carried over',
+                                'TRIAGE_NO_SHOW': 'Marked no-show',
+                                'TRIAGE_CANCELLED': 'Cancelled',
+                                'DISPENSING_HOLD': 'Dispensing flagged',
+                                'NOTIFICATION': 'Notification sent',
+                                'AUDIT_ADDENDUM': 'Audit note added',
+                              };
+                              return labels[p.type] || p.type?.replace(/_/g, ' ') || 'Event';
+                           })()}
                         </Typography>
                         <Typography sx={{ fontWeight: '900', fontSize: '0.75rem', color: '#1A1A1A' }}>
                            {p.timestamp?.toDate ? p.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
@@ -1818,7 +1876,7 @@ export default function Records() {
           }
         }}
       >
-        {actionRow?.status === 'in-consult' && (
+        {['in-consult', 'arrived'].includes(actionRow?.status) && (
           <MenuItem onClick={() => { handleActionStatusChange(actionRow, 'on-hold'); handleActionMenuClose(); }}>
             <ListItemIcon><PauseCircleIcon fontSize="small" sx={{ color: '#FF9800' }} /></ListItemIcon>
             <ListItemText primary="Put On Hold" sx={{ color: '#FF9800' }} />
@@ -1830,13 +1888,23 @@ export default function Records() {
             <ListItemText primary="Resume Consult" sx={{ color: '#2E7D32' }} />
           </MenuItem>
         )}
-        {actionRow?.status === 'confirmed' && (
+        {(actionRow?.status === 'confirmed' || actionRow?.status === 'pending') && (
           <MenuItem onClick={() => handleActionNoShowOpen(actionRow)}>
             <ListItemIcon><PersonOffIcon fontSize="small" /></ListItemIcon>
             <ListItemText primary="Flag as No-Show" />
           </MenuItem>
         )}
-        {actionRow && !['pending'].includes(actionRow.status) && !TERMINAL_STATUSES.has(actionRow.status) && (
+        {(actionRow?.status === 'pending' || actionRow?.status === 'confirmed') && (
+          <MenuItem onClick={() => {
+            setActiveAuditRow(actionRow);
+            handleCancelAppt();
+            handleActionMenuClose();
+          }} sx={{ color: '#D32F2F' }}>
+            <ListItemIcon><CancelIcon fontSize="small" sx={{ color: '#D32F2F' }} /></ListItemIcon>
+            <ListItemText primary="Cancel Appointment" sx={{ color: '#D32F2F' }} />
+          </MenuItem>
+        )}
+        {actionRow && !TERMINAL_STATUSES.has(actionRow.status) && (
           <MenuItem onClick={() => {
             setActiveAuditRow(actionRow);
             setRescheduleData({ newDate: '', reason: '' });
@@ -1858,7 +1926,7 @@ export default function Records() {
             />
           </MenuItem>
         )}
-        {actionRow && actionRow.status !== 'pending' && !TERMINAL_STATUSES.has(actionRow.status) && (
+        {actionRow && !['pending', 'confirmed'].includes(actionRow.status) && !TERMINAL_STATUSES.has(actionRow.status) && (
           <>
             <Divider />
             <MenuItem onClick={() => {
@@ -1942,6 +2010,37 @@ export default function Records() {
           <Button variant="contained" disabled={!noShowDialog.reason.trim() || submittingAction} onClick={handleActionNoShowConfirm}
             sx={{ bgcolor: COLORS.danger, fontWeight: '1000', borderRadius: 0 }}>
             Confirm No-Show
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={deferDialog.open}
+        onClose={() => setDeferDialog({ open: false, reason: '' })}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 0, border: `4px solid #E65100` } }}
+      >
+        <DialogTitle sx={{ bgcolor: '#FFF3E0', color: '#E65100', fontWeight: '1000', borderBottom: '2px solid #E65100' }}>
+          DEFER CLINICAL INTAKE
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3 }}>
+          <Typography variant="body2" sx={{ mb: 2, fontWeight: 600 }}>
+            Postponing intake decision for <strong>{actionRow?.petName || '—'}</strong>. A mandatory reason is required for audit compliance.
+          </Typography>
+          <TextField
+            fullWidth multiline rows={3} autoFocus
+            label="Reason (required)"
+            value={deferDialog.reason}
+            onChange={(e) => setDeferDialog(prev => ({ ...prev, reason: e.target.value }))}
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ p: 2, bgcolor: '#FFF3E0', borderTop: '2px solid #E65100' }}>
+          <Button onClick={() => setDeferDialog({ open: false, reason: '' })} sx={{ fontWeight: '1000', color: '#757575' }}>Cancel</Button>
+          <Button variant="contained" disabled={!deferDialog.reason.trim() || submittingAction} onClick={handleActionDeferConfirm}
+            sx={{ bgcolor: '#E65100', fontWeight: '1000', borderRadius: 0 }}>
+            Confirm Defer
           </Button>
         </DialogActions>
       </Dialog>

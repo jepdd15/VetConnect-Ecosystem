@@ -103,6 +103,17 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ─── EXPENSE CATEGORIES ──────────────────────────────────────
+    // Staff can CRUD expense categories. Used by Expenses page for
+    // dynamic category management with monthly budgets.
+    // T4.154: isStaff() == isAuth(), no admin/staff distinction.
+    match /expense_categories/{catId} {
+      allow read:   if isStaff();
+      allow create: if isStaff();
+      allow update: if isStaff();
+      allow delete: if isStaff();
+    }
+
     // ─── USERS ────────────────────────────────────────────────────
     // Mobile clients can read/update their own profile.
     // Staff can read all users (needed for Queue, Patients CRM).

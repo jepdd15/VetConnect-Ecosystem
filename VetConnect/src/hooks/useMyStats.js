@@ -246,7 +246,10 @@ export function useMyStats({
       });
 
       // --- Allergies ---
-      const allergies = pet.petAllergies || [];
+      const rawAllergies = pet.petAllergies || pet.allergies || '';
+      const allergies = typeof rawAllergies === 'string'
+        ? rawAllergies.split(',').map(a => a.trim()).filter(a => a && a.toLowerCase() !== 'none')
+        : Array.isArray(rawAllergies) ? rawAllergies : [];
 
       // --- Next recheck countdown from the most recent discharge summary ---
       let recheckInfo = null;

@@ -610,7 +610,7 @@ function PetHealthCard({ petCard, onBookNow, onBookRecheck }) {
         )}
 
         {/* ── ALLERGIES ─────────────────────────────────────────────── */}
-        {petCard.allergies.length > 0 && (
+        {Array.isArray(petCard.allergies) && petCard.allergies.length > 0 && (
           <View style={[styles.petCardRow, styles.allergyRow]}>
             <MaterialIcons name="warning" size={13} color={COLORS.warning} style={{ marginRight: 4 }} />
             <Text style={styles.petCardRowLabel}>ALLERGIES</Text>

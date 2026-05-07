@@ -689,11 +689,6 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
           );
         }
       const btnStyle = { textTransform: 'uppercase', fontWeight: '900', px: 2, borderRadius: 2, letterSpacing: 0.5, height: 32, fontSize: '0.75rem' };
-      const scheduled = params.row.jsScheduled;
-      const autoNoShowMins = clinicSettings?.autoNoShowMins ?? 30;
-      const minsLate = scheduled ? (currentTime - scheduled) / 60000 : 0;
-      const noShowWindowOpen = scheduled != null && minsLate >= autoNoShowMins;
-      const noShowOpenTime = scheduled ? new Date(scheduled.getTime() + autoNoShowMins * 60000) : null;
 
       if (params.row.status === 'pending') {
         return (

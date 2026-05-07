@@ -95,7 +95,6 @@ export default function Settings() {
     openHour: 8, closeHour: 17,
     lunchEnabled: true, lunchStart: 12, lunchEnd: 13,
     minSlotInterval: 30, advanceNoticeMins: 120, maxFutureBookingDays: 30,
-    autoNoShowMins: 30, noShowLinkWindowDays: 30, trafficModerate: 6, trafficHigh: 13,
     clinicPhone: '',
     baiRegistrationNumber: '',
     workingDays: [1, 2, 3, 4, 5, 6, 0], // [0:Sun, 1:Mon... 6:Sat]
@@ -232,12 +231,8 @@ export default function Settings() {
         setLastSavedSettings(prev => prev === null ? {
           ...data,
           minSlotInterval: parseInt(data.minSlotInterval) || 30,
-          trafficModerate: parseInt(data.trafficModerate) || 5,
-          trafficHigh: parseInt(data.trafficHigh) || 10,
           advanceNoticeMins: parseInt(data.advanceNoticeMins) || 120,
           maxFutureBookingDays: parseInt(data.maxFutureBookingDays) || 30,
-          autoNoShowMins: parseInt(data.autoNoShowMins) || 30,
-          noShowLinkWindowDays: parseInt(data.noShowLinkWindowDays) || 30,
         } : prev);
       }
     });
@@ -305,7 +300,6 @@ export default function Settings() {
     if (!lastSavedSettings) return false;
     const tracked = ['openHour', 'closeHour', 'lunchEnabled', 'lunchStart', 'lunchEnd',
       'minSlotInterval', 'advanceNoticeMins', 'maxFutureBookingDays',
-      'autoNoShowMins', 'noShowLinkWindowDays', 'trafficModerate', 'trafficHigh',
       'workingDays', 'clinicPhone', 'baiRegistrationNumber', 'dashboardAlerts', 'dashboardGoals',
       'clinicLat', 'clinicLng', 'geofenceRadiusM'];
     return tracked.some(key => JSON.stringify(settings[key]) !== JSON.stringify(lastSavedSettings[key]));
@@ -370,11 +364,6 @@ export default function Settings() {
     if (!slot || slot <= 0) {
       return "Base Slot Interval must be greater than 0.";
     }
-    const modThresh = parseInt(settings.trafficModerate);
-    const highThresh = parseInt(settings.trafficHigh);
-    if (isNaN(modThresh) || isNaN(highThresh) || modThresh >= highThresh) {
-      return "Moderate Traffic threshold must be less than High Traffic threshold.";
-    }
     const notice = parseInt(settings.advanceNoticeMins);
     if (isNaN(notice) || notice < 0) {
       return "Advance Notice Buffer cannot be negative.";
@@ -382,14 +371,6 @@ export default function Settings() {
     const futureDays = parseInt(settings.maxFutureBookingDays);
     if (!futureDays || futureDays < 1) {
       return "Future Booking Limit must be at least 1 day.";
-    }
-    const noShow = parseInt(settings.autoNoShowMins);
-    if (!noShow || noShow < 1) {
-      return "Auto No-Show Trigger must be at least 1 minute.";
-    }
-    const linkWindow = parseInt(settings.noShowLinkWindowDays);
-    if (!linkWindow || linkWindow < 1 || linkWindow > 365) {
-      return "No-Show Lookback Window must be between 1 and 365 days.";
     }
     if ((settings.workingDays || []).length === 0) {
       return "At least one working day must be selected.";
@@ -421,10 +402,6 @@ export default function Settings() {
         minSlotInterval: parseInt(settings.minSlotInterval) || 30,
         advanceNoticeMins: parseInt(settings.advanceNoticeMins) || 120,
         maxFutureBookingDays: parseInt(settings.maxFutureBookingDays) || 30,
-        autoNoShowMins: parseInt(settings.autoNoShowMins) || 30,
-        noShowLinkWindowDays: parseInt(settings.noShowLinkWindowDays) || 30,
-        trafficModerate: parseInt(settings.trafficModerate) || 6,
-        trafficHigh: parseInt(settings.trafficHigh) || 13
       };
       
       if ((settings.closedDates || []).length > 365) {
@@ -444,7 +421,6 @@ export default function Settings() {
       if (lastSavedSettings) {
         const tracked = ['openHour', 'closeHour', 'lunchEnabled', 'lunchStart', 'lunchEnd',
           'minSlotInterval', 'advanceNoticeMins', 'maxFutureBookingDays',
-          'autoNoShowMins', 'noShowLinkWindowDays', 'trafficModerate', 'trafficHigh',
           'workingDays', 'clinicPhone', 'baiRegistrationNumber', 'dashboardAlerts', 'dashboardGoals',
           'clinicLat', 'clinicLng', 'geofenceRadiusM', 'enableAppointmentReminders',
           'enableVaccineReminders', 'vaccineReminderWindowDays', 'vaccineReminderCooldownDays',
@@ -1311,50 +1287,7 @@ export default function Settings() {
           </Paper>
         </Grid>
 
-        {/* PILLAR 3: CAPACITY & TRIAGE */}
-        <Grid size={{ xs: 12, lg: 4 }}>
-          <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
-              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
-                <LocalHospitalIcon /> Capacity & Triage
-              </Typography>
-            </Box>
-            <Box sx={{ p: 3, flexGrow: 1, bgcolor: COLORS.cardBg }}>
-              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 3 }}>Controls physical clinic limits and algorithmic traffic warnings.</Typography>
-              <Grid container spacing={2.5}>
-                <Grid size={{ xs: 12 }}><Divider sx={{ my: 1 }} /></Grid>
-                <Grid size={{ xs: 12 }}><TextField fullWidth label="Auto-No-Show Trigger" type="number" value={settings.autoNoShowMins} onChange={(e) => handleChange('autoNoShowMins', e.target.value)} InputProps={{ endAdornment: <InputAdornment position="end" sx={{ fontWeight: 900 }}>Mins Late</InputAdornment> }} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 900 } }} helperText="Mins late before Queue displays No-Show button." /></Grid>
-                <Grid size={{ xs: 12 }}>
-                  <TextField
-                    fullWidth
-                    label="No-Show Lookback Window"
-                    type="number"
-                    value={settings.noShowLinkWindowDays}
-                    onChange={(e) => handleChange('noShowLinkWindowDays', e.target.value)}
-                    InputProps={{
-                      endAdornment: (
-                        <InputAdornment position="end" sx={{ fontWeight: 900 }}>Days</InputAdornment>
-                      ),
-                    }}
-                    sx={{
-                      bgcolor: 'white',
-                      '& .MuiOutlinedInput-notchedOutline': {
-                        borderRadius: 0,
-                        border: `1px solid ${COLORS.accent}33`,
-                      },
-                    }}
-                    inputProps={{ style: { fontWeight: 900 }, min: 1, max: 365 }}
-                    helperText="Days to look back when detecting no-show history on booking."
-                  />
-                </Grid>
-                <Grid size={{ xs: 6 }}><TextField fullWidth label="Moderate Traffic" type="number" value={settings.trafficModerate} onChange={(e) => handleChange('trafficModerate', e.target.value)} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 900 } }} helperText="Patients" /></Grid>
-                <Grid size={{ xs: 6 }}><TextField fullWidth label="High Traffic" type="number" value={settings.trafficHigh} onChange={(e) => handleChange('trafficHigh', e.target.value)} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 900 } }} helperText="Patients" /></Grid>
-              </Grid>
-            </Box>
-          </Paper>
-        </Grid>
-
-        {/* PILLAR 4: DYNAMIC DEPARTMENTS */}
+        {/* PILLAR 3: DYNAMIC DEPARTMENTS */}
         <Grid size={{ xs: 12, lg: 6 }}>
           <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
             <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>

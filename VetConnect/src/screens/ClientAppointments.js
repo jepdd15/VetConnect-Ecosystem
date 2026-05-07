@@ -9,20 +9,23 @@ import {
   documentId,
   getDoc,
   getDocs,
+  limit,
   onSnapshot,
   orderBy,
   query,
+  startAfter,
   Timestamp,
   updateDoc,
   where,
 } from "firebase/firestore";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
   Linking,
   Modal,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -48,6 +51,12 @@ import { useNetwork } from "../context/NetworkContext";
 const ClientAppointments = ({ navigation }) => {
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const PAGE_SIZE = 30;
+  const [lastDoc, setLastDoc] = useState(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const hasLoadedMoreRef = useRef(false);
   const [tab, setTab] = useState("upcoming");
 
   // Search + bottom sheet filter state
@@ -124,6 +133,14 @@ const ClientAppointments = ({ navigation }) => {
     });
   };
 
+  // Pull-to-refresh handler.
+  // The onSnapshot listener already keeps data fresh. This provides the visual
+  // affordance users expect — spinner shows briefly then auto-dismisses.
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 1000);
+  }, []);
+
   const prevCompletedIdsRef = useRef('');
   const prevParentIdsRef = useRef('');
 
@@ -134,6 +151,7 @@ const ClientAppointments = ({ navigation }) => {
       collection(db, "appointments"),
       where("ownerId", "==", auth.currentUser.uid),
       orderBy("createdAt", "desc"),
+      limit(PAGE_SIZE),
     );
 
     const unsub = onSnapshot(
@@ -145,6 +163,17 @@ const ClientAppointments = ({ navigation }) => {
         });
         setAppointments(list);
         setLoading(false);
+
+        // Pagination cursor tracking — only update if user hasn't loaded older pages yet
+        if (!hasLoadedMoreRef.current) {
+          const docs = snapshot.docs;
+          if (docs.length < PAGE_SIZE) {
+            setHasMore(false);
+          } else {
+            setHasMore(true);
+            setLastDoc(docs[docs.length - 1]);
+          }
+        }
 
         // Only re-fetch sales/parent records when the relevant ID sets change
         const completedKey = list.filter(a => a.status === 'completed').map(a => a.id).sort().join(',');
@@ -281,6 +310,45 @@ const ClientAppointments = ({ navigation }) => {
       setParentRecords(results);
     } catch (error) {
       console.error('[ClientAppointments.fetchParentRecords]:', error.message);
+    }
+  };
+
+  // Load next page of older appointments using getDocs (not real-time).
+  // Older pages are static — only page 1 is live via onSnapshot.
+  const loadMore = async () => {
+    if (!lastDoc || loadingMore || !hasMore) return;
+    hasLoadedMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+      const q = query(
+        collection(db, "appointments"),
+        where("ownerId", "==", auth.currentUser.uid),
+        orderBy("createdAt", "desc"),
+        startAfter(lastDoc),
+        limit(PAGE_SIZE),
+      );
+      const snap = await getDocs(q);
+      const older = [];
+      snap.forEach((docSnap) => {
+        older.push({ id: docSnap.id, ...docSnap.data() });
+      });
+
+      if (snap.docs.length < PAGE_SIZE) {
+        setHasMore(false);
+      } else {
+        setLastDoc(snap.docs[snap.docs.length - 1]);
+      }
+
+      setAppointments(prev => {
+        // Deduplicate — page 1 listener may overlap with older pages
+        const existingIds = new Set(prev.map(a => a.id));
+        const newItems = older.filter(a => !existingIds.has(a.id));
+        return [...prev, ...newItems];
+      });
+    } catch (error) {
+      console.warn('[ClientAppointments.loadMore]:', error.message);
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -664,11 +732,22 @@ const ClientAppointments = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
+      {/* Offline staleness indicator */}
+      {!isConnected && (
+        <View style={styles.offlineBanner}>
+          <MaterialIcons name="wifi-off" size={16} color={COLORS.warning} />
+          <Text style={styles.offlineBannerText}>
+            You are offline — data may be stale
+          </Text>
+        </View>
+      )}
+
       {/* SUPER-CARD — pinned above tabs so it stays visible while switching tabs */}
       <SuperCard
         appointment={activeAppointment}
         clinicPhone={clinicPhone}
         queueAhead={queueAhead}
+        queueDepartment={activeArrivedCategory || 'General'}
         avgWaitMins={avgWaitMins}
         caseChain={caseChainForSuperCard}
         salesByAppt={salesByAppt}
@@ -813,6 +892,14 @@ const ClientAppointments = ({ navigation }) => {
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={{ paddingBottom: 20 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={COLORS.sky}
+              colors={[COLORS.sky]}
+            />
+          }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               {!isConnected ? (
@@ -844,6 +931,21 @@ const ClientAppointments = ({ navigation }) => {
                 </>
               )}
             </View>
+          }
+          ListFooterComponent={
+            hasMore && !loading ? (
+              <TouchableOpacity
+                style={styles.loadMoreBtn}
+                onPress={loadMore}
+                disabled={loadingMore}
+              >
+                {loadingMore ? (
+                  <ActivityIndicator size="small" color={COLORS.sky} />
+                ) : (
+                  <Text style={styles.loadMoreText}>LOAD OLDER BOOKINGS</Text>
+                )}
+              </TouchableOpacity>
+            ) : null
           }
         />
       )}
@@ -962,17 +1064,12 @@ const ClientAppointments = ({ navigation }) => {
                   </View>
                 ))}
                 {receiptData?.isFallback && (
-                  <Text
-                    style={{
-                      fontSize: 10,
-                      color: COLORS.muted,
-                      fontStyle: "italic",
-                      textAlign: "center",
-                      marginTop: 10,
-                    }}
-                  >
-                    Detailed POS data not found for this legacy record.
-                  </Text>
+                  <View style={styles.receiptFallbackBanner}>
+                    <MaterialIcons name="info-outline" size={14} color={COLORS.warning} />
+                    <Text style={styles.receiptFallbackText}>
+                      Estimated — final receipt available after checkout
+                    </Text>
+                  </View>
                 )}
               </ScrollView>
             )}
@@ -1369,6 +1466,63 @@ const styles = StyleSheet.create({
     color: COLORS.sky,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: COLORS.warningBg,
+    borderWidth: 2,
+    borderColor: COLORS.warning,
+    borderRadius: 0,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+  },
+  offlineBannerText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.warning,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+
+  receiptFallbackBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.warningBg,
+    borderWidth: 1,
+    borderColor: COLORS.warning,
+    borderRadius: 0,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    marginTop: 10,
+  },
+  receiptFallbackText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.warning,
+    fontStyle: 'italic',
+  },
+
+  loadMoreBtn: {
+    alignItems: 'center',
+    paddingVertical: 14,
+    marginTop: 10,
+    marginBottom: 10,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    borderRadius: 0,
+    backgroundColor: COLORS.white,
+  },
+  loadMoreText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: COLORS.sky,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
 
 });

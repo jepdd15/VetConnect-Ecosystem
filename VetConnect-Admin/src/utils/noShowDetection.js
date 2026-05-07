@@ -2,27 +2,16 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 
 /**
- * Fetches recent no-show appointments for the given pet IDs.
- *
- * Firestore does not allow two inequality filters on different fields in the
- * same query. We filter by `status == 'no-show'` in Firestore and apply the
- * date-range check client-side after the snapshot arrives.
+ * Fetches ALL no-show appointments for the given pet IDs (full history).
  *
  * Batches petIds in groups of 30 (Firestore `in` operator limit).
  *
- * @param {string[]} petIds     - Array of pet document IDs to check.
- * @param {number}   windowDays - Lookback window in days (default: 30).
+ * @param {string[]} petIds - Array of pet document IDs to check.
  * @returns {Promise<{ count: number, mostRecent: object|null }>}
  */
-export async function detectNoShows(petIds, windowDays = 30) {
+export async function detectNoShows(petIds) {
   if (!petIds || petIds.length === 0) return { count: 0, mostRecent: null };
 
-  const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-  today.setHours(0, 0, 0, 0);
-  const cutoff = new Date(today);
-  cutoff.setDate(cutoff.getDate() - windowDays);
-
-  // Batch petIds to respect Firestore's 30-value `in` limit
   const batches = [];
   for (let i = 0; i < petIds.length; i += 30) {
     batches.push(petIds.slice(i, i + 30));
@@ -37,16 +26,8 @@ export async function detectNoShows(petIds, windowDays = 30) {
       where('status', '==', 'no-show'),
     );
     const snap = await getDocs(q);
-
     snap.docs.forEach((d) => {
-      const data = { id: d.id, ...d.data() };
-
-      // Client-side date filter: Firestore allows only one inequality per query
-      const rawDate = data.scheduledDate;
-      const apptDate = rawDate?.toDate ? rawDate.toDate() : new Date(rawDate);
-      if (!isNaN(apptDate.getTime()) && apptDate >= cutoff) {
-        allNoShows.push(data);
-      }
+      allNoShows.push({ id: d.id, ...d.data() });
     });
   }
 

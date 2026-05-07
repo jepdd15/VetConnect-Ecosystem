@@ -3575,12 +3575,12 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             {patient?.noShowCount > 0 && (
               <Tooltip
                 title={patient.rebookedFromId
-                  ? `Rebooked after ${patient.noShowCount} no-show${patient.noShowCount > 1 ? 's' : ''} in the last ${clinicSettings.noShowLinkWindowDays || 30} days`
-                  : `${patient.noShowCount} no-show${patient.noShowCount > 1 ? 's' : ''} recorded in the last ${clinicSettings.noShowLinkWindowDays || 30} days`
+                  ? `Rebooked after ${patient.noShowCount} no-show${patient.noShowCount > 1 ? 's' : ''} on record`
+                  : `${patient.noShowCount} no-show${patient.noShowCount > 1 ? 's' : ''} on record`
                 }
               >
                 <Chip
-                  label={`${patient.noShowCount} NO-SHOW${patient.noShowCount > 1 ? 'S' : ''} (${clinicSettings.noShowLinkWindowDays || 30}D)`}
+                  label={`${patient.noShowCount} NO-SHOW${patient.noShowCount > 1 ? 'S' : ''}`}
                   size="small"
                   sx={{
                     height: 20, fontSize: '0.56rem', fontWeight: 1000,

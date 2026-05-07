@@ -53,6 +53,7 @@ export default function SuperCard({
   appointment,
   clinicPhone = '',
   queueAhead = null,
+  queueDepartment = null,
   avgWaitMins = null,
   caseChain = [],
   salesByAppt = {},
@@ -229,8 +230,8 @@ export default function SuperCard({
         {queueAhead != null && (
           <Text style={styles.infoLine}>
             {queueAhead === 0
-              ? "You're next in line!"
-              : `${queueAhead} pet${queueAhead !== 1 ? 's' : ''} ahead of you`}
+              ? `You're next${queueDepartment ? ` in ${queueDepartment}` : ''}!`
+              : `${queueAhead} pet${queueAhead !== 1 ? 's' : ''} ahead of you${queueDepartment ? ` in ${queueDepartment}` : ''}`}
           </Text>
         )}
         {dayShowEncounterItems && (
@@ -374,7 +375,9 @@ export default function SuperCard({
             </Text>
             {queueAhead != null && (
               <Text style={styles.queuePositionMini}>
-                {queueAhead === 0 ? 'Next!' : `${queueAhead} ahead`}
+                {queueAhead === 0
+                  ? `Next${queueDepartment ? ` in ${queueDepartment}` : ''}!`
+                  : `${queueAhead} ahead${queueDepartment ? ` in ${queueDepartment}` : ''}`}
               </Text>
             )}
           </View>

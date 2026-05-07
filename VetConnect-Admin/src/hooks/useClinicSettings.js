@@ -18,7 +18,6 @@ const DEFAULT_SETTINGS = {
   clinicLat: 16.0389,    // GPS latitude for geofence center (Starbarks, Santa Barbara, Pangasinan)
   clinicLng: 120.3977,   // GPS longitude for geofence center
   geofenceRadiusM: 150,  // Geofence radius in meters for client self-check-in
-  noShowLinkWindowDays: 30,  // Default no-show lookback window in days
 };
 
 // --- Module-level singleton store ---

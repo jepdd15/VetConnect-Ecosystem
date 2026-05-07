@@ -62,7 +62,6 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
   const { profile } = useUser();
   const staffSignature = profile?.fullName || 'System/Admin';
   const clinicSettings = useClinicSettings();
-  const noShowWindowDays = clinicSettings.noShowLinkWindowDays || 30;
 
   const [loading, setLoading] = useState(false);
   // Fix 8 — Replace double-click confirm patterns with a proper MUI Dialog
@@ -158,7 +157,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
     }
     let cancelled = false;
     Promise.all(petIds.map(pid =>
-      detectNoShows([pid], noShowWindowDays).then(r => ({ pid, result: r }))
+      detectNoShows([pid]).then(r => ({ pid, result: r }))
     )).then(results => {
       if (cancelled) return;
       const map = {};
@@ -173,7 +172,6 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
   }, [
     // eslint-disable-next-line react-hooks/exhaustive-deps
     petEntries.map(e => e.selectedPet?.id).join(','),
-    noShowWindowDays,
   ]);
 
   // --- PET ENTRY HELPERS ---

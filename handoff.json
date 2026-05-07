@@ -3714,7 +3714,8 @@
         "BillingLedger rewrite: 7 gaps fixed — authoritative balanceRemaining, receipt number, items column, payment method icons, refund visibility, correct status logic.",
         "MyPetsScreen filter consolidation: 4 rows → 1 row (search + 3 bottom sheets). Health status now vaccine-catalog-based using buildVaccinationStatus.",
         "Timeline events: INCEPTION, SERVICE_STARTED, SERVICE_COMPLETED, TRIAGE_DEFER, TRIAGE_RESCHEDULE, TRIAGE_CARRYOVER now shown to pet owners (4 internal events still excluded).",
-        "Responsiveness: Queue (timing 250→160, actions 320→240), Records (created 220→150, actions 280→220), EOD modal (1440→1280px), BillingLedger (all flex), Expenses (reduced fixed widths), Transactions (column rebalance + items preview)."
+        "Responsiveness: Queue (timing 250→160, actions 320→240), Records (created 220→150, actions 280→220), EOD modal (1440→1280px), BillingLedger (all flex), Expenses (reduced fixed widths), Transactions (column rebalance + items preview).",
+        "clientInstructions field added to ClinicalWorkspace Plan quadrant: separate client-facing discharge notes from clinical Plan. Cream box with helper text in SoapGrid. dischargeSummary.instructions prefers clientInstructions over plan fallback. Persisted to SOAP object + draft save/restore + God View hydration. Fixes the phantom field gap where T4.164 soft-warning checked clientInstructions but no input existed."
       ],
       "key_decisions_locked": [
         "Mobile balance reads from sales collection, NOT appointments. Single source of truth.",
@@ -3727,9 +3728,11 @@
         "PetHistoryScreen: navigation header hidden, single brown header bar. Timeline dot/bar removed. DO THIS label removed. Diagnosis shows singular/plural label with bullets.",
         "MyPets: health status driven by vaccine catalog (buildVaccinationStatus), not crude last-visit check. 0/N administered = Needs Checkup.",
         "Status messages: warm, service-agnostic text across QueueScreen + SuperCard. No 'proceed to consultation room' or 'proceed to cashier'.",
-        "Barcode scanning UI removed from POS (out of scope for capstone). SKU field kept on product form as data entry."
+        "Barcode scanning UI removed from POS (out of scope for capstone). SKU field kept on product form as data entry.",
+        "clientInstructions: separate field from Plan. Client-facing discharge notes in plain language. dischargeSummary uses clientInstructions first, falls back to plan for backward compat.",
+        "Spec checking: after any task is DONE, offer to verify every numbered spec point against actual code. Catches missed conditionals and phantom fields."
       ],
-      "bugs_fixed_count": 42,
+      "bugs_fixed_count": 43,
       "bugs_fixed_highlights": [
         "Mobile outstanding balance ₱2.8M ghost — appointments collection had stale balanceRemaining after admin settled via sales",
         "useSalesData crash on cleared date picker — RangeError: Invalid time value",

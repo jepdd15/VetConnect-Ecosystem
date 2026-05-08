@@ -340,7 +340,7 @@ export default function ChatbotScreen({ navigation }) {
         }
 
         case "location":
-          botText = `We are located at ${clinicAddress}. Look for the brown and beige sign!`;
+          botText = `We are located at ${clinicAddress}.`;
           actionButton = { label: "🗺️ Open in Google Maps", action: handleOpenMaps, color: COLORS.info };
           break;
 
@@ -589,10 +589,15 @@ export default function ChatbotScreen({ navigation }) {
         ))}
       </ScrollView>
 
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 56}
+      >
       {/* Chat area */}
       <ScrollView
         style={styles.chatArea}
-        contentContainerStyle={{ paddingBottom: 80 }}
+        contentContainerStyle={{ paddingBottom: 20 }}
         ref={scrollViewRef}
         onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
         keyboardShouldPersistTaps="handled"
@@ -699,10 +704,6 @@ export default function ChatbotScreen({ navigation }) {
       </ScrollView>
 
       {/* Input area (T3.62, T3.67) */}
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 56}
-      >
         {/* Rate limit feedback (T3.67) */}
         {isRateLimited && (
           <Text style={styles.rateLimitText}>Please wait a moment...</Text>

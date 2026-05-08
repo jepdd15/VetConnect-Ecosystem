@@ -99,7 +99,7 @@ export default function HorizontalBar({
                 fontFamily: FONT,
                 color: COLORS.textSecondary,
               }}>
-                {seg.label} ({seg.value})
+                {seg.label} ({typeof seg.value === 'number' ? seg.value.toLocaleString() : seg.value})
               </Typography>
             </Box>
           ))}

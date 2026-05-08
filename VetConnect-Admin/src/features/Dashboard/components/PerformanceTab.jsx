@@ -187,47 +187,7 @@ export default function PerformanceTab({ data, clinicSettings, onDataReady }) {
             <ConsultPerformanceTab data={reportData} />
           </CollapsibleSection>
 
-          <CollapsibleSection icon={<SecurityIcon />} title="Audit Integrity">
-            <AuditIntegrityTab data={reportData} />
-          </CollapsibleSection>
-
-          <CollapsibleSection icon={<GroupIcon />} title="Staff Workload">
-            <StaffWorkloadTab data={reportData} />
-          </CollapsibleSection>
-
-          {/* ── CONVERSION FUNNEL ──────────────────────────── */}
-          {reportData.conversionFunnel && (
-            <CollapsibleSection icon={<FilterListIcon />} title="Conversion Funnel">
-              <Box sx={{ p: 1 }}>
-                {reportData.conversionFunnel.map(stage => (
-                  <Box key={stage.stage} sx={{ mb: 1.5 }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                      <Typography sx={{ fontFamily: FONT, ...TYPE.label, fontSize: '0.7rem' }}>
-                        {stage.stage}
-                      </Typography>
-                      <Typography sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.7rem' }}>
-                        {stage.count} ({stage.rate}%)
-                      </Typography>
-                    </Box>
-                    <Box sx={{
-                      height: 20,
-                      bgcolor: COLORS.surface,
-                      border: `1px solid ${COLORS.border}`,
-                      borderRadius: 0,
-                    }}>
-                      <Box sx={{
-                        height: '100%',
-                        width: `${stage.rate}%`,
-                        bgcolor: COLORS.info,
-                        transition: 'width 0.4s',
-                        borderRadius: 0,
-                      }} />
-                    </Box>
-                  </Box>
-                ))}
-              </Box>
-            </CollapsibleSection>
-          )}
+          {/* Audit Integrity, Staff Workload, and Conversion Funnel hidden — insufficient data for meaningful display */}
 
           {/* ── STAFF UTILIZATION ─────────────────────────── */}
           {reportData.staffUtilization && reportData.staffUtilization.length > 0 && (

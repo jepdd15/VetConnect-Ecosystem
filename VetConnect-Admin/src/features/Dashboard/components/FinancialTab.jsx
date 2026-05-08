@@ -90,11 +90,11 @@ export default function FinancialTab({
     const merged = {};
     const order = {};
     let idx = 0;
-    financial.revenueTrend.forEach(d => {
+    (financial.revenueTrend || []).forEach(d => {
       merged[d.label] = { label: d.label, revenue: d.amount, expense: 0 };
       if (order[d.label] === undefined) order[d.label] = idx++;
     });
-    financial.expenseTrend.forEach(d => {
+    (financial.expenseTrend || []).forEach(d => {
       if (merged[d.label]) {
         merged[d.label].expense = d.amount;
       } else {
@@ -466,7 +466,7 @@ export default function FinancialTab({
               segments={Object.entries(financial.paymentMethods)
                 .sort(([, a], [, b]) => b - a)
                 .map(([method, amount]) => ({
-                  label: `${method} (${fmt(amount)})`,
+                  label: method,
                   value: amount,
                   color: METHOD_COLORS[method] || COLORS.accentLight,
                 }))
@@ -487,7 +487,7 @@ export default function FinancialTab({
               segments={Object.entries(financial.revByDept)
                 .sort(([, a], [, b]) => b - a)
                 .map(([dept, amount], i) => ({
-                  label: `${dept} (${fmt(amount)})`,
+                  label: dept,
                   value: amount,
                   color: [COLORS.medical, COLORS.grooming, COLORS.success, COLORS.warning, '#795548', '#00695C'][i % 6],
                 }))

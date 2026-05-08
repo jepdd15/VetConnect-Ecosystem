@@ -323,164 +323,171 @@ export default function MyPetsScreen({ navigation }) {
   const currentSortOption = SORT_OPTIONS.find(o => o.key === sortOrder) || SORT_OPTIONS[0];
 
   const renderPetCard = ({ item }) => {
-    const healthStatusKey = getHealthStatus(item);
-    const healthColor =
-      healthStatusKey === "Overdue" ? COLORS.danger :
-      healthStatusKey === "Due Soon" ? COLORS.warning :
-      healthStatusKey === "Needs Checkup" ? COLORS.textMuted : COLORS.success;
-    const healthStatus =
-      healthStatusKey === "Overdue" ? "Vaccines Overdue" :
-      healthStatusKey === "Due Soon" ? "Vaccines Due Soon" :
-      healthStatusKey === "Needs Checkup" ? "No Vaccine Records" : "Up to Date";
+    const speciesEmoji = item.species === "Canine" || item.species === "Dog" ? "🐶" : "🐱";
+    const ageText = calculateAge(item.dob);
+    const breed = item.breed || item.species || "";
+    const metaParts = [item.species, breed].filter(Boolean);
+
+    const weight = item.lastVitals?.weight ?? item.weight ?? item.lastWeight;
+    const weightText = weight != null ? `${weight} kg` : "—";
+
+    const sexText = item.gender
+      ? `${item.gender} · ${item.isNeutered ? "FIXED" : "INTACT"}`
+      : "—";
+
+    const allergyVal = item.petAllergies || item.allergies;
+    const hasAllergies = allergyVal && allergyVal.trim() !== "" && allergyVal !== "None";
+
+    const vaxResult = getVaccineStatus(item);
+    const vaxColor = vaxResult?.status === "Overdue" ? COLORS.danger
+      : vaxResult?.status === "Due Soon" ? COLORS.warning
+      : vaxResult ? COLORS.success
+      : COLORS.textMuted;
+    const vaxLabel = vaxResult?.status === "Overdue" ? "OVERDUE"
+      : vaxResult?.status === "Due Soon" ? "DUE SOON"
+      : vaxResult?.status === "Current" ? "UP TO DATE"
+      : "NO RECORDS";
+    const vaxNames = vaxResult?.names ?? [];
 
     return (
       <View style={styles.cardWrapper}>
         {/* Neubrutalist offset shadow layer — sits behind the card */}
         <View style={styles.cardShadow} />
         <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <View style={styles.identityBox}>
-            <View style={styles.avatarBox}>
-              <Text style={styles.avatarEmoji}>
-                {item.species === "Canine" || item.species === "Dog"
-                  ? "🐶"
-                  : "🐱"}
-              </Text>
+
+          {/* ── HEADER: emoji + name/meta + edit/delete ─────────────── */}
+          <View style={styles.cardHeader}>
+            <Text style={styles.petCardEmoji}>{speciesEmoji}</Text>
+            <View style={styles.petCardHeaderText}>
+              <Text style={styles.petName}>{item.name}</Text>
+              <Text style={styles.petCardMeta}>{metaParts.join(' · ')}</Text>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.petName} numberOfLines={1}>{item.name}</Text>
-              <Text style={styles.petBreed} numberOfLines={1}>{item.breed || item.species}</Text>
+            <View style={styles.actionRow}>
+              <Pressable
+                style={styles.iconBtn}
+                android_ripple={{ color: COLORS.borderLight, borderless: true }}
+                onPress={() => navigation.navigate("EditPet", { pet: item })}
+              >
+                <MaterialIcons name="edit" size={20} color={COLORS.accent} />
+              </Pressable>
+              <Pressable
+                style={styles.iconBtn}
+                android_ripple={{ color: COLORS.dangerBg, borderless: true }}
+                onPress={() => handleDelete(item.id, item.name)}
+              >
+                <MaterialIcons name="delete-outline" size={20} color={COLORS.danger} />
+              </Pressable>
             </View>
           </View>
 
-          <View style={styles.actionRow}>
-            <Pressable
-              style={styles.iconBtn}
-              android_ripple={{ color: COLORS.borderLight, borderless: true }}
-              onPress={() => navigation.navigate("EditPet", { pet: item })}
-            >
-              <MaterialIcons name="edit" size={20} color={COLORS.accent} />
-            </Pressable>
-            <Pressable
-              style={styles.iconBtn}
-              android_ripple={{ color: "#FFCDD2", borderless: true }}
-              onPress={() => handleDelete(item.id, item.name)}
-            >
-              <MaterialIcons name="delete-outline" size={20} color={COLORS.danger} />
-            </Pressable>
-          </View>
-        </View>
+          <View style={styles.petCardDivider} />
 
-        <View
-          style={[
-            styles.healthBanner,
-            {
-              backgroundColor: `${healthColor}1A`,
-              borderLeftColor: healthColor,
-            },
-          ]}
-        >
-          <MaterialIcons
-            name={healthStatusKey === "Up to Date" ? "verified" : healthStatusKey === "Needs Checkup" ? "help-outline" : "warning-amber"}
-            size={16}
-            color={healthColor}
-          />
-          <Text style={[styles.healthText, { color: healthColor }]}>
-            {healthStatus}
-          </Text>
-        </View>
+          {/* ── DATA ROWS ─────────────────────────────────────────────── */}
+          <View style={styles.petCardRow}>
+            <Text style={styles.petCardRowLabel}>WEIGHT</Text>
+            <View style={styles.petCardRowContent}>
+              <Text style={styles.petCardValue}>{weightText}</Text>
+            </View>
+          </View>
 
-        <View style={styles.infoStack}>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Gender</Text>
-            <Text style={styles.infoValue}>{item.gender || "Not set"}{item.isNeutered ? " · Desexed" : ""}</Text>
-          </View>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Age</Text>
-            <Text style={styles.infoValue}>{calculateAge(item.dob)}</Text>
-          </View>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Weight</Text>
-            <Text style={styles.infoValue}>
-              {(() => {
-                const w = item.lastVitals?.weight ?? item.weight ?? item.lastWeight;
-                return w != null ? `${w} kg` : "Not recorded";
-              })()}
-            </Text>
-          </View>
-          {(() => {
-            const val = item.petAllergies || item.allergies;
-            const hasAllergies = val && val.trim() !== "" && val !== "None";
-            if (!hasAllergies) return null;
-            return (
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Allergies</Text>
-                <Text style={[styles.infoValue, { color: COLORS.danger, fontWeight: '900' }]}>{val}</Text>
-              </View>
-            );
-          })()}
-        </View>
+          <View style={styles.petCardDivider} />
 
-        {item.microchipId && (
-          <View style={styles.microchipBadge}>
-            <MaterialIcons name="nfc" size={14} color={COLORS.info} />
-            <Text style={styles.microchipText}>CHIP: {item.microchipId}</Text>
+          <View style={styles.petCardRow}>
+            <Text style={styles.petCardRowLabel}>AGE</Text>
+            <View style={styles.petCardRowContent}>
+              <Text style={styles.petCardValue}>{ageText}</Text>
+            </View>
           </View>
-        )}
 
-        {(() => {
-          const vaxResult = getVaccineStatus(item);
-          if (!vaxResult) return null;
-          const { status: vaxStatus, names: vaxNames } = vaxResult;
-          const vaxColor =
-            vaxStatus === "Overdue" ? COLORS.danger :
-            vaxStatus === "Due Soon" ? COLORS.warning : COLORS.success;
-          const vaxIcon =
-            vaxStatus === "Overdue" ? "warning-amber" :
-            vaxStatus === "Due Soon" ? "schedule" : "verified";
-          const vaxLabel =
-            vaxStatus === "Overdue" ? "VACCINES OVERDUE" :
-            vaxStatus === "Due Soon" ? "VACCINES DUE SOON" : "VACCINES CURRENT";
-          return (
-            <View style={[styles.vaccineBadge, { backgroundColor: `${vaxColor}1A`, borderLeftColor: vaxColor }]}>
-              <MaterialIcons name={vaxIcon} size={14} color={vaxColor} />
-              <View>
-                <Text style={[styles.vaccineBadgeText, { color: vaxColor }]}>{vaxLabel}</Text>
-                {vaxNames.length > 0 && (
-                  <Text style={[styles.vaccineBadgeDetail, { color: vaxColor }]}>
-                    {vaxNames.length <= 3
-                      ? vaxNames.join(', ')
-                      : `${vaxNames.slice(0, 2).join(', ')} +${vaxNames.length - 2} more`}
+          <View style={styles.petCardDivider} />
+
+          <View style={styles.petCardRow}>
+            <Text style={styles.petCardRowLabel}>SEX</Text>
+            <View style={styles.petCardRowContent}>
+              <Text style={styles.petCardValue}>{sexText}</Text>
+            </View>
+          </View>
+
+          {item.microchipId && (
+            <>
+              <View style={styles.petCardDivider} />
+              <View style={styles.petCardRow}>
+                <Text style={styles.petCardRowLabel}>MICROCHIP</Text>
+                <View style={styles.petCardRowContent}>
+                  <Text style={[styles.petCardValue, { color: COLORS.info }]}>
+                    {item.microchipId}
                   </Text>
-                )}
+                </View>
               </View>
-            </View>
-          );
-        })()}
+            </>
+          )}
 
-        <View style={styles.footerActions}>
-          <TouchableOpacity
-            style={[styles.mainBtn, styles.bookBtn]}
-            onPress={() =>
-              navigation.navigate("BookAppointment", { prefillPetId: item.id })
-            }
-          >
-            <MaterialIcons name="calendar-today" size={20} color={COLORS.white} />
-            <Text style={styles.bookBtnText}>Book Visit</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.mainBtn, styles.chartBtn]}
-            onPress={() =>
-              navigation.navigate("PetHistory", {
-                petId: item.id,
-                petName: item.name,
-              })
-            }
-          >
-            <MaterialIcons name="assessment" size={20} color={COLORS.info} />
-            <Text style={styles.chartBtnText}>View Chart</Text>
-          </TouchableOpacity>
-        </View>
+          <View style={styles.petCardDivider} />
+
+          {/* ── VACCINES ROW ──────────────────────────────────────────── */}
+          <View style={styles.petCardRow}>
+            <Text style={styles.petCardRowLabel}>VACCINES</Text>
+            <View style={styles.petCardRowContent}>
+              <Text style={[styles.petCardValue, { color: vaxColor }]}>{vaxLabel}</Text>
+              {vaxNames.length > 0 && (
+                <Text style={[styles.petCardValueMuted, { color: vaxColor }]}>
+                  {vaxNames.length <= 3
+                    ? vaxNames.join(", ")
+                    : `${vaxNames.slice(0, 2).join(", ")} +${vaxNames.length - 2} more`}
+                </Text>
+              )}
+            </View>
+          </View>
+
+          {/* ── ALLERGIES ROW (conditional) ───────────────────────────── */}
+          {hasAllergies && (
+            <>
+              <View style={styles.petCardDivider} />
+              <View style={[styles.petCardRow, styles.allergyRow]}>
+                <MaterialIcons name="warning" size={13} color={COLORS.warning} style={{ marginRight: 4 }} />
+                <Text style={styles.petCardRowLabel}>ALLERGIES</Text>
+                <View style={styles.petCardRowContent}>
+                  <Text style={[styles.petCardValue, { color: COLORS.warning }]}>
+                    {allergyVal}
+                  </Text>
+                </View>
+              </View>
+            </>
+          )}
+
+          {/* ── ACTION BUTTONS ────────────────────────────────────────── */}
+          <View style={styles.footerActions}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.mainBtn,
+                styles.bookBtn,
+                pressed && styles.btnPressed,
+              ]}
+              onPress={() =>
+                navigation.navigate("BookAppointment", { prefillPetId: item.id })
+              }
+            >
+              <MaterialIcons name="calendar-today" size={18} color={COLORS.white} />
+              <Text style={styles.bookBtnText}>BOOK VISIT</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.mainBtn,
+                styles.chartBtn,
+                pressed && styles.btnPressed,
+              ]}
+              onPress={() =>
+                navigation.navigate("PetHistory", {
+                  petId: item.id,
+                  petName: item.name,
+                })
+              }
+            >
+              <MaterialIcons name="assessment" size={18} color={COLORS.sky} />
+              <Text style={styles.chartBtnText}>VIEW CHART</Text>
+            </Pressable>
+          </View>
+
         </View>
       </View>
     );
@@ -960,51 +967,39 @@ const styles = StyleSheet.create({
   // Offset shadow sibling — sits behind the card, brand espresso color
   cardShadow: {
     ...SHADOW.card,
-    backgroundColor: COLORS.brand,
   },
   card: {
     backgroundColor: COLORS.white,
     borderRadius: 0,
     borderWidth: 2,
     borderColor: COLORS.brand,
-    overflow: "hidden",
+    padding: 16,
   },
+
+  // ── Card header: emoji + name/meta column + edit/delete buttons ──
   cardHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    padding: 18,
-    borderBottomWidth: 2,
-    borderBottomColor: COLORS.borderLight,
-  },
-  identityBox: { flexDirection: "row", alignItems: "center", flex: 1 },
-
-  // Avatar — intentional circular exception per design spec
-  avatarBox: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: COLORS.cream,
     alignItems: "center",
-    justifyContent: "center",
-    marginRight: 15,
-    borderWidth: 2,
-    borderColor: COLORS.brand,
+    marginBottom: 14,
   },
-  avatarEmoji: { fontSize: 28 },
-
+  petCardEmoji: {
+    fontSize: 32,
+    marginRight: 12,
+  },
+  petCardHeaderText: {
+    flex: 1,
+  },
   petName: {
-    fontSize: 22,
     fontFamily: FONTS.black,
-    fontWeight: "900",
+    fontSize: 20,
     color: COLORS.brand,
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
-  petBreed: {
-    fontSize: 13,
-    color: COLORS.textMuted,
-    fontWeight: "700",
+  petCardMeta: {
+    fontFamily: FONTS.bold,
+    fontSize: 12,
+    color: COLORS.accentLight,
     textTransform: "uppercase",
     letterSpacing: 0.5,
     marginTop: 2,
@@ -1020,90 +1015,64 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
 
-  // Health status banner — left accent bar, colored bg tint
-  healthBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderLeftWidth: 5,
+  // ── Thin horizontal divider between rows ─────────────────────────
+  petCardDivider: {
+    height: 1,
+    backgroundColor: COLORS.borderLight,
     marginBottom: 10,
   },
-  healthText: {
-    fontSize: 12,
-    fontWeight: "900",
-    marginLeft: 8,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
 
-  // Demographics grid
-  infoStack: {
-    paddingHorizontal: 18,
-    paddingBottom: 12,
-    gap: 6,
+  // ── Labeled data rows (label left, value right) ──────────────────
+  petCardRow: {
+    flexDirection: "row",
+    marginBottom: 10,
+    alignItems: "flex-start",
   },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  petCardRowLabel: {
+    fontFamily: FONTS.bold,
+    fontSize: 11,
+    color: COLORS.accentLight,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    width: 96,
+    paddingTop: 1,
   },
-  infoLabel: {
+  petCardRowContent: {
+    flex: 1,
+  },
+  petCardValue: {
+    fontFamily: FONTS.bold,
+    fontSize: 13,
+    color: COLORS.brand,
+  },
+  petCardValueMuted: {
+    fontFamily: FONTS.regular,
     fontSize: 12,
     color: COLORS.textMuted,
-    fontWeight: '700',
-  },
-  infoValue: {
-    fontSize: 13,
-    color: COLORS.textPrimary,
-    fontWeight: '900',
-  },
-
-  // Microchip badge
-  microchipBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 18,
-    paddingBottom: 12,
-    gap: 6,
-  },
-  microchipText: {
-    fontSize: 11,
-    color: COLORS.info,
-    fontWeight: "800",
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-  },
-
-  // Vaccine status badge — left accent bar, zero radius
-  vaccineBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 18,
-    paddingVertical: 8,
-    borderLeftWidth: 5,
-    gap: 6,
-  },
-  vaccineBadgeText: {
-    fontSize: 11,
-    fontWeight: "900",
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
-  vaccineBadgeDetail: {
-    fontSize: 10,
-    fontWeight: '700',
     marginTop: 2,
+  },
+
+  // ── Allergy row — warning tinted surface ─────────────────────────
+  allergyRow: {
+    backgroundColor: COLORS.warningBg,
+    borderWidth: 1,
+    borderColor: COLORS.warning,
+    borderRadius: 0,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    marginHorizontal: -4,
+    marginBottom: 10,
+    alignItems: "center",
   },
 
   // ── Footer action buttons ────────────────────────────────────────
   footerActions: {
     flexDirection: "row",
-    padding: 18,
-    paddingTop: 12,
+    marginTop: 6,
     gap: 10,
     borderTopWidth: 2,
     borderTopColor: COLORS.borderLight,
+    paddingTop: 14,
   },
   mainBtn: {
     flex: 1,
@@ -1115,8 +1084,12 @@ const styles = StyleSheet.create({
     gap: 8,
     borderWidth: 2,
   },
+  // Press-snap: translates +4px to "close" the offset shadow gap on press
+  btnPressed: {
+    transform: [{ translateX: 4 }, { translateY: 4 }],
+  },
 
-  // Book Visit — sky blue fill, brand border
+  // BOOK VISIT — sky blue fill, brand border
   bookBtn: {
     backgroundColor: COLORS.sky,
     borderColor: COLORS.brand,
@@ -1124,12 +1097,12 @@ const styles = StyleSheet.create({
   bookBtnText: {
     color: COLORS.white,
     fontWeight: "900",
-    fontSize: 14,
+    fontSize: 13,
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
 
-  // View Chart — outlined sky blue
+  // VIEW CHART — outlined, sky blue border + text
   chartBtn: {
     backgroundColor: COLORS.white,
     borderColor: COLORS.sky,
@@ -1137,7 +1110,7 @@ const styles = StyleSheet.create({
   chartBtnText: {
     color: COLORS.sky,
     fontWeight: "900",
-    fontSize: 14,
+    fontSize: 13,
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },

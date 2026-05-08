@@ -1,8 +1,8 @@
 # VetConnect Master Task List
 
-**Last updated:** 2026-05-01 · **Branch:** `main`
+**Last updated:** 2026-05-08 · **Branch:** `main`
 **Total tasks:** ~900 · **Cancelled/Absorbed:** ~18 · **Active:** ~882
-**DONE:** ~717 · **TODO:** ~196 · **Deferred sub-tasks:** 50
+**DONE:** ~735 · **TODO:** ~189 · **Deferred sub-tasks:** 50
 **Phase 2:** COMPLETE · **Phase 3 Essential:** COMPLETE (except Blaze-gated T3.40-42) · **Phase 3 High-Value:** 8/8 batches done (T3.50 remains, T3.5 DONE) · **Phase 4 Dashboard S:** COMPLETE (T4.1-T4.4)
 **Total effort estimate:** ~350-400 hours (Phase 1+2) + ~80-110 days (Phase 3) + ~158 hours (Phase 4 S-Tier)
 

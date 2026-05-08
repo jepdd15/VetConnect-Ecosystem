@@ -224,7 +224,16 @@
 - counters + daily_closings collections (unchanged)
 - expense_categories collection added (isStaff CRUD)
 
-**Next:** T4.191 (Queue date picker, 1 hr) → T4.193 (My Stats visual enrichment, 7-8 hrs) → T4.194 (PetHistoryScreen tabbed restructure, 8-10 hrs) → T4.195 (BookAppointment neubrutalism, 2-3 hrs) → T4.169+T4.170 (Reservation audit+cleanup, 1.5 hrs) → T4.13 (Problem list, 4-5 hrs) → T4.146 (Booking TOCTOU fix, 1.5 hrs)
+**Session 2026-05-08 continued (T4.193, T4.194, T4.195 + chatbot keyboard fix + Android nav bar sweep):**
+- T4.193 My Stats Visual Enrichment (3-day, 12 items): spending bars, CircularGauge, PieChart donut, lifetime spend KPI, upcoming appointments, YoY comparison, spending date range, per-pet drill-down, weight zoom, lab sparklines, medication adherence bars, seasonal heatmap. 42/42 spec items passed.
+- T4.194 PetHistoryScreen Tabbed Restructure (2-day, 20 items): 4-tab layout (RECORDS/VITALS/VACCINES/OVERVIEW), listHeader useMemo deleted, FlatList conditional on RECORDS tab, vitals equal treatment + reference bands + normal/abnormal labels + interpretation + trend coloring + range strip + anomaly badge, vaccine urgency sort + interval text + 0% CTA + per-vaccine SCHEDULE + timeline + core labels + passport promotion + push opt-in + cost estimate. 38/38 spec items passed.
+- T4.195 BookAppointment Neubrutalism (1 pass): 27 borderRadius→0, 107 hex→COLORS tokens, 9 elevations removed, primary button→COLORS.sky.
+- Chatbot keyboard fix: KeyboardAvoidingView moved to wrap chat+input together (was wrapping only input). keyboardVerticalOffset 56 on Android. Hardcoded sign mention removed from location response.
+- Android nav bar safe area: useSafeAreaInsets added to 11 screens (ChatbotScreen, ClientAppointments, MyStatsScreen, NotificationHistory, UserProfileScreen, QueueScreen, ClientDashboard, AddPetScreen, EditPetScreen, SelfCheckInScreen, MyPetsScreen).
+- Admin deployed to Firebase Hosting. APK built via EAS.
+- ~735 DONE / ~189 TODO. ~899 total tasks.
+
+**Next:** T4.191 (Queue date picker, 1 hr) → T4.169+T4.170 (Reservation audit+cleanup, 1.5 hrs) → T4.13 (Structured problem list, 4-5 hrs) → T4.146 (Booking TOCTOU fix, 1.5 hrs) → T4.125 (CRM redesign, 10-12 hrs) → T4.10 (Queue design sweep, 3-4 hrs) → T4.16 (CW design sweep, 2-3 hrs) → T4.17 (God-View unification, 2-3 hrs)
 
 ---
 
@@ -235,7 +244,7 @@ Paste this prompt at the start of a new session:
 ```
 Read these files in this order:
 1. IMPLEMENTATION_GUIDE.md — current status section + module sequence
-2. handoff.json (section: advisory_session_2026_05_08) — latest context
+2. handoff.json (section: advisory_session_2026_05_08_continued) — latest context
 3. MASTER_TASKLIST.md — task registry with IDs, priorities, dependencies, status
 
 The full VetConnect codebase has been audited across 5+ sessions — every source
@@ -243,8 +252,8 @@ file has been deep-dived. Do NOT re-scan any code. All findings are in the
 deep-dive files at the repo root. Use the "Task-to-Source Cross-Reference" table
 in IMPLEMENTATION_GUIDE.md to find the backing file for any task.
 
-Context: This is a continuation of the 2026-05-08 advisory session.
-~729 DONE, ~195 TODO. Build passes. 322 tests passing.
+Context: This is a continuation of the 2026-05-08 advisory session (second half).
+~735 DONE, ~189 TODO. Build passes. 322 tests passing.
 Cloudflare Worker URL: https://cool-fire-2d53.jepdd15.workers.dev
 Cloudflare Worker model: claude-haiku-4-5-20251001
 Cloudflare Worker Cron: 0 23 * * * UTC (7 AM Manila daily)

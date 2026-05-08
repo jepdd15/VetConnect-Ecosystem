@@ -3814,13 +3814,55 @@
       ],
       "remaining_priority_queue": [
         "T4.191 — Queue date picker (1 hr)",
-        "T4.193 — My Stats visual enrichment 12 items (7-8 hrs, 3-day)",
-        "T4.194 — PetHistoryScreen tabbed restructure + vitals/vaccines enrichment 20 items (8-10 hrs, 2-day)",
-        "T4.195 — BookAppointment neubrutalism conversion (2-3 hrs)",
-        "T4.190 — MyPetsScreen card redesign (DONE)",
+        "T4.193 — My Stats visual enrichment 12 items (7-8 hrs, 3-day) — DONE",
+        "T4.194 — PetHistoryScreen tabbed restructure + vitals/vaccines enrichment 20 items (8-10 hrs, 2-day) — DONE",
+        "T4.195 — BookAppointment neubrutalism conversion (2-3 hrs) — DONE",
+        "T4.190 — MyPetsScreen card redesign — DONE",
         "T4.169+T4.170 — Reservation audit+cleanup (1.5 hrs)",
         "T4.13 — Structured problem list (4-5 hrs)",
         "T4.146 — Booking TOCTOU fix (1.5 hrs)"
+      ]
+    },
+    "advisory_session_2026_05_08_continued": {
+      "date": "2026-05-08",
+      "role": "Advisory + implementation session continuation. 3 major tasks shipped (T4.193, T4.194, T4.195). Chatbot keyboard fix. Android nav bar safe area sweep across 11 screens. Admin deployed. APK built.",
+      "tasks_done_this_session": "T4.193 (My Stats Visual Enrichment, 3-day, 12 items, 42/42 spec), T4.194 (PetHistoryScreen Tabbed Restructure, 2-day, 20 items, 38/38 spec), T4.195 (BookAppointment Neubrutalism, 27 borderRadius + 107 hex + 9 elevations), Chatbot keyboard fix (KeyboardAvoidingView restructure), Android nav bar safe area (11 screens), Chatbot location response cleanup",
+      "total_done_after_session": "~735",
+      "total_todo_after_session": "~189",
+      "key_architectural_changes": [
+        "MyStatsScreen: 12 visual items — spending bar chart (View-based replacing SparkLine), CircularGauge SVG vaccination ring per pet, PieChart donut for visit type breakdown, lifetime spend KPI, upcoming appointments section with countdown badges, YoY visit comparison side-by-side bars, spending date range selector (6M/YTD/LY/ALL) filtering all 4 spending outputs, per-pet spending drill-down with transaction history, weight zoom modal via VitalsZoomModal, lab result mini-sparklines per pet (top 3 tests), medication adherence progress bars (sig.days gated), seasonal visit heatmap (12-month opacity strip).",
+        "PetHistoryScreen: 4-tab restructure (RECORDS/VITALS/VACCINES/OVERVIEW). Monolithic listHeader useMemo deleted — content split into 4 conditional tab blocks. FlatList only mounts on RECORDS tab (performance). activeRx/historicalRx/labSummary/vaccineCompleteness/vaccinationStatuses extracted to standalone useMemo hooks. VITALS tab: all 7 vitals at height:80, reference bands, normal/abnormal labels, plain-language interpretation, trend direction coloring (green toward normal, red away), historical range strip, anomaly warning dot on tab badge. VACCINES tab: urgency sort, hide empty history, interval text, 0% CTA, per-vaccine SCHEDULE button, upcoming timeline, core/lifestyle/required labels, passport promoted to header, push opt-in Switch (write-only), cost estimate from services. OVERVIEW tab: vitals chips + meds + vaccine bar + visit summary + lab abnormalities.",
+        "BookAppointment: Full neubrutalism conversion — 27 borderRadius→0, 107 inline hex→COLORS tokens, 9 elevations removed, primary button COLORS.sky, FONTS/SHADOW/SPACING imported, modalSheet flat (no rounded corners).",
+        "ChatbotScreen keyboard fix: KeyboardAvoidingView moved from wrapping only the input bar to wrapping chat ScrollView + input bar together. This is the standard React Native chat pattern — when keyboard opens, the entire flex:1 area compresses, keeping input visible above keyboard.",
+        "Android nav bar safe area: useSafeAreaInsets added to 11 screens with Math.max(insets.bottom, 20) + N paddingBottom on scrollable content. Prevents content clipping behind Android gesture navigation bar."
+      ],
+      "key_decisions_locked": [
+        "MyStatsScreen: View-based bars for spending (not SparkLine), CircularGauge via strokeDasharray two-Circle pattern, PieChart via SVG Path arcs with single-slice Circle fallback, spendingRange as hook parameter filtering all 4 outputs.",
+        "PetHistoryScreen: useState('records') with conditional rendering (no 3rd-party tab library), FlatList unmounts off RECORDS tab, listHeader deleted entirely (not hidden), vitals anomaly computed via midpoint distance comparison.",
+        "BookAppointment: checkBadge borderRadius:13 and legendDot borderRadius:4 kept (circle exceptions), nextBtn COLORS.sky (was #8B4513 brown).",
+        "Chatbot keyboard: behavior='height' on Android with offset 56 (header height). paddingBottom dynamic via insets.bottom.",
+        "Nav bar: Only client-facing screens fixed. Deprecated staff screens (StaffDashboard, StaffAppointments, ConsultationScreen, ScannerScreen) skipped."
+      ],
+      "bugs_fixed_this_session": [
+        "Chatbot keyboard blocks input field — KeyboardAvoidingView restructured to wrap chat+input together",
+        "Android nav bar clipping on 11 screens — useSafeAreaInsets bottom padding added",
+        "Chatbot location response hardcoded sign mention removed"
+      ],
+      "deployments": [
+        "Admin deployed to Firebase Hosting: https://starbarks-vetconnect-f6443.web.app",
+        "APK built via EAS: https://expo.dev/accounts/jepdd15/projects/VetConnect/builds/da3732c5-96f8-41ec-9caa-93ab8b282cc8"
+      ],
+      "remaining_priority_queue": [
+        "T4.191 — Queue date picker (1 hr)",
+        "T4.169+T4.170 — Reservation audit logging + stranded cleanup (1.5 hrs)",
+        "T4.13 — Structured problem list 5 UI locations (4-5 hrs)",
+        "T4.146 — Booking TOCTOU race fix (1.5 hrs)",
+        "T4.125 — Patients CRM redesign full-width DataGrid (10-12 hrs)",
+        "T4.10 — Full Queue design sweep 8 files (3-4 hrs)",
+        "T4.16 — Full ClinicalWorkspace design sweep (2-3 hrs)",
+        "T4.17 — God-View + main grid unification via SoapGrid (2-3 hrs)",
+        "T4.11 — SOAP template library (2 hrs)",
+        "T4.15 — Clinical decision support species-adjusted alerts (1 hr)"
       ]
     }
   }

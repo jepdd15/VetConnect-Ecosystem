@@ -1,0 +1,3 @@
+- [T3.5 Consent Patterns](project_t35_consent_patterns.md) — useConsentPolicy single vs per-type activeVersion bug, ConsentRecordDialog patterns, audit log lazy-load correctness
+- [T4.151/T4.152 EOD & Receipt Patterns](project_t4151_t4152_eod_receipt_patterns.md) — printViaIframe dead-return bug, invisible checkout error state, missing receiptNumber in checkoutSuccess, transactionCount cross-day refund over-count, Z-report triple-call, two-source-of-truth postCloseRevenue
+- [T4.142 3-Tier Classification Patterns](project_t4142_3tier_classification_patterns.md) — dual-write/dual-read coverage, rename+reclassify silent skip bug in handleEditCategory, resolvedProductClass fallback gap

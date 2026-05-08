@@ -16,6 +16,7 @@ import {
   where,
 } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Alert,
   Animated,
@@ -53,6 +54,7 @@ Notifications.setNotificationHandler({
 
 
 const ClientDashboard = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [activeAppointments, setActiveAppointments] = useState([]);
   const [reminders, setReminders] = useState([]);
   const [vaccineAlerts, setVaccineAlerts] = useState([]);
@@ -762,7 +764,7 @@ const ClientDashboard = ({ navigation }) => {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView contentContainerStyle={[styles.container, { paddingBottom: Math.max(insets.bottom, 20) + 40 }]}>
       {/* WAIVER ADVISORY BANNER — non-blocking, dismissible */}
       {needsWaiver && waiverBannerVisible && !needsConsent && (
         <View style={styles.waiverBannerContainer}>

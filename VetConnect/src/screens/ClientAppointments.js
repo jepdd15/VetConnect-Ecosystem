@@ -19,6 +19,7 @@ import {
   where,
 } from "firebase/firestore";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ActivityIndicator,
   Alert,
@@ -49,6 +50,7 @@ import { useNetwork } from "../context/NetworkContext";
 
 
 const ClientAppointments = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -891,7 +893,7 @@ const ClientAppointments = ({ navigation }) => {
           })()}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
-          contentContainerStyle={{ paddingBottom: 20 }}
+          contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 20) + 60 }}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}

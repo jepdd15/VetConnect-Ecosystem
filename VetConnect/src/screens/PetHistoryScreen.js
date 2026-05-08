@@ -9,6 +9,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  setDoc,
   where,
 } from "firebase/firestore";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -61,6 +62,10 @@ import { fetchVaccineCatalog, buildVaccinationStatus } from '../utils/vaccineHel
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
+
+// ---------------------------------------------------------------------------
+// T4.194 Item 10: Vaccine urgency sort order — overdue first, unknown last
+const URGENCY_ORDER = { overdue: 0, due_soon: 1, unknown: 2, current: 3 };
 
 // ---------------------------------------------------------------------------
 // VACCINATION PASSPORT — HTML TEMPLATE
@@ -548,6 +553,109 @@ const deltaTextStyle = {
 };
 
 // ---------------------------------------------------------------------------
+// T4.194 Item 4: Normal/Abnormal status label for vitals with a reference range.
+// Returns null for weight and pain (no universal range).
+// ---------------------------------------------------------------------------
+/**
+ * @param {string} key - VITALS_CONFIG key
+ * @param {{ label: string, value: number }[]} chartData
+ * @param {string} petSpecies
+ * @returns {{ isNormal: boolean, label: string } | null}
+ */
+function getVitalStatusLabel(key, chartData, petSpecies) {
+  const cfg = VITALS_CONFIG[key];
+  if (!cfg.refKey || !chartData || chartData.length === 0) return null;
+  const latest = chartData[chartData.length - 1].value;
+  const range = getNormalRange(cfg.refKey, petSpecies);
+  if (!range) return null;
+  const isNormal = latest >= range.low && latest <= range.high;
+  return { isNormal, label: isNormal ? 'Normal' : 'Abnormal' };
+}
+
+// ---------------------------------------------------------------------------
+// T4.194 Item 6: Plain-language interpretation sentence for each vital.
+// Species-aware for rangeable vitals; shows delta for weight/pain.
+// ---------------------------------------------------------------------------
+/**
+ * @param {string} key - VITALS_CONFIG key
+ * @param {{ label: string, value: number }[]} chartData
+ * @param {string} petSpecies
+ * @returns {string | null}
+ */
+function getVitalInterpretation(key, chartData, petSpecies) {
+  const cfg = VITALS_CONFIG[key];
+  if (!chartData || chartData.length === 0) return null;
+  const latest = chartData[chartData.length - 1].value;
+  const speciesLabel = petSpecies?.toLowerCase?.().startsWith('f') ? 'felines' : 'canines';
+
+  if (cfg.refKey) {
+    const range = getNormalRange(cfg.refKey, petSpecies);
+    if (range) {
+      const isNormal = latest >= range.low && latest <= range.high;
+      if (isNormal) {
+        return `${cfg.label}: ${latest}${cfg.unit} — Within normal range for ${speciesLabel}`;
+      }
+      const direction = latest < range.low ? 'below' : 'above';
+      return `${cfg.label}: ${latest}${cfg.unit} — ${direction} normal range for ${speciesLabel}`;
+    }
+  }
+
+  // Weight / Pain — no universal range, show delta instead
+  if (chartData.length >= 2) {
+    const prev = chartData[chartData.length - 2].value;
+    const diff = latest - prev;
+    if (diff === 0) return `${cfg.label}: ${latest}${cfg.unit} — No change since last visit`;
+    const sign = diff > 0 ? '+' : '';
+    return `${cfg.label}: ${latest}${cfg.unit} — ${sign}${Number(diff.toFixed(1))}${cfg.unit} since last visit`;
+  }
+
+  return `${cfg.label}: ${latest}${cfg.unit}`;
+}
+
+// ---------------------------------------------------------------------------
+// T4.194 Item 7: Enhanced delta with trend direction coloring.
+// Green = moving toward normal range midpoint. Red = moving away. Neutral for weight/pain.
+// ---------------------------------------------------------------------------
+/**
+ * @param {string} key - VITALS_CONFIG key
+ * @param {{ label: string, value: number }[]} data
+ * @param {string} unit
+ * @param {string} petSpecies
+ * @returns {React.ReactElement | null}
+ */
+function renderEnhancedDelta(key, data, unit, petSpecies) {
+  if (data.length < 2) return null;
+  const prev = data[data.length - 2].value;
+  const curr = data[data.length - 1].value;
+  const diff = curr - prev;
+  if (diff === 0) return null;
+
+  const arrow     = diff > 0 ? '↑' : '↓';
+  const sign      = diff > 0 ? '+' : '';
+  const formatted = Number(diff.toFixed(1));
+
+  const cfg = VITALS_CONFIG[key];
+  let arrowColor = COLORS.textMuted; // Default: neutral for weight/pain
+
+  if (cfg.refKey) {
+    const range = getNormalRange(cfg.refKey, petSpecies);
+    if (range) {
+      const midpoint  = (range.low + range.high) / 2;
+      const prevDist  = Math.abs(prev - midpoint);
+      const currDist  = Math.abs(curr - midpoint);
+      // Moving toward midpoint = improving (green), moving away = worsening (red)
+      arrowColor = currDist < prevDist ? COLORS.success : COLORS.danger;
+    }
+  }
+
+  return (
+    <Text style={[deltaTextStyle, { color: arrowColor }]}>
+      {arrow} {sign}{formatted}{unit} since last visit
+    </Text>
+  );
+}
+
+// ---------------------------------------------------------------------------
 
 export default function PetHistoryScreen({ route, navigation }) {
   const { petId, petName } = route.params;
@@ -567,6 +675,16 @@ export default function PetHistoryScreen({ route, navigation }) {
   const { clinicPhone, clinicName, clinicAddress } = useClinicContact();
   const { isConnected } = useNetwork();
 
+  // T4.194: Tabbed layout — persists within screen session
+  const [activeTab, setActiveTab] = useState('records');
+
+  const TAB_CONFIG = [
+    { key: 'records',  label: 'RECORDS'  },
+    { key: 'vitals',   label: 'VITALS'   },
+    { key: 'vaccines', label: 'VACCINES' },
+    { key: 'overview', label: 'OVERVIEW' },
+  ];
+
   // T4.97: AI Pet History Assistant — pet doc, worker URL, and sheet visibility
   const [petDoc, setPetDoc]               = useState(null);
   const [workerUrl, setWorkerUrl]         = useState('');
@@ -574,6 +692,14 @@ export default function PetHistoryScreen({ route, navigation }) {
 
   // T4.118: Vaccine catalog — one-shot fetch from inventory, falls back to defaults.
   const [vaccineCatalog, setVaccineCatalog] = useState([]);
+
+  // T4.194 Item 18: Per-vaccine push reminder preferences — Set of disabled vaccine IDs.
+  // Fetched from users/{uid}/vaccine_preferences/{petId}. Default: all enabled (empty set).
+  const [disabledVaccines, setDisabledVaccines] = useState(new Set());
+
+  // T4.194 Item 19: Services price map — name→price Map for cost estimates.
+  // One-shot fetch; silently empty if Firestore rules block client access.
+  const [servicesPriceMap, setServicesPriceMap] = useState(new Map());
 
   // Records that carry vaccination data — used to gate the passport button and
   // to build the passport document. Derived; no extra Firestore read needed.
@@ -640,6 +766,47 @@ export default function PetHistoryScreen({ route, navigation }) {
     fetchVaccineCatalog().then(catalog => {
       if (!cancelled) setVaccineCatalog(catalog);
     });
+    return () => { cancelled = true; };
+  }, []);
+
+  // T4.194 Item 18: Fetch vaccine reminder preferences for this pet.
+  // Path: users/{uid}/vaccine_preferences/{petId} — doc with { disabledVaccines: string[] }.
+  // Non-critical: if the doc doesn't exist or rules block it, we default to all-enabled.
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid || !petId) return;
+    let cancelled = false;
+    getDoc(doc(db, 'users', uid, 'vaccine_preferences', petId))
+      .then(snap => {
+        if (cancelled) return;
+        if (snap.exists()) {
+          const disabled = snap.data().disabledVaccines || [];
+          setDisabledVaccines(new Set(disabled));
+        }
+      })
+      .catch(() => {
+        // Non-critical — defaults to all reminders enabled
+      });
+    return () => { cancelled = true; };
+  }, [petId]);
+
+  // T4.194 Item 19: One-shot services fetch for vaccination cost estimates.
+  // Silently empty if Firestore rules block client-side access (staff-only collection).
+  useEffect(() => {
+    let cancelled = false;
+    getDocs(collection(db, 'services'))
+      .then(snap => {
+        if (cancelled) return;
+        const map = new Map();
+        snap.docs.forEach(d => {
+          const data = d.data();
+          if (data.price) map.set((data.name || '').toLowerCase(), data.price);
+        });
+        setServicesPriceMap(map);
+      })
+      .catch(() => {
+        // Silent fallback — cost estimates hidden when collection is unreadable
+      });
     return () => { cancelled = true; };
   }, []);
 
@@ -879,6 +1046,28 @@ export default function PetHistoryScreen({ route, navigation }) {
   // the doc is loading or if species is absent — canine is the safe fallback.
   const petSpecies = petDoc?.species || 'Canine';
 
+  // T4.194 Item 9: Anomaly warning flag for VITALS tab badge.
+  // Returns true when any rangeable vital's latest reading is outside species-normal.
+  const hasVitalsAnomaly = useMemo(() => {
+    for (const [key, cfg] of Object.entries(VITALS_CONFIG)) {
+      if (!cfg.refKey) continue; // Skip weight, pain — no universal range
+      const data = vitalsChartData[key];
+      if (!data || data.length === 0) continue;
+      const latest = data[data.length - 1].value;
+      const range = getNormalRange(cfg.refKey, petSpecies);
+      if (range && (latest < range.low || latest > range.high)) return true;
+    }
+    return false;
+  }, [vitalsChartData, petSpecies]);
+
+  // T4.194 Item 20: Next recheck date — first record in history carrying a recheckIn value.
+  const nextRecheck = useMemo(() => {
+    for (const r of history) {
+      if (r.dischargeSummary?.recheckIn) return r.dischargeSummary.recheckIn;
+    }
+    return null;
+  }, [history]);
+
   // T3.93: Collapsible state for the vitals trends card.
   const [trendsExpanded, setTrendsExpanded] = useState(false);
   // T4.122: Collapsible state for the medications card (active/historical split).
@@ -1046,6 +1235,15 @@ export default function PetHistoryScreen({ route, navigation }) {
     [history, vaccineCatalog, petSpecies],
   );
 
+  // T4.194 Item 10: Vaccine urgency sort — overdue first, then due_soon, unknown, current.
+  // Sorted copy so the original vaccinationStatuses array is not mutated.
+  const sortedStatuses = useMemo(
+    () => [...vaccinationStatuses].sort(
+      (a, b) => (URGENCY_ORDER[a.status] ?? 3) - (URGENCY_ORDER[b.status] ?? 3)
+    ),
+    [vaccinationStatuses],
+  );
+
   // ---------------------------------------------------------------------------
   // T4.155 Day 2: Pet Health Snapshot strip — collapsible summary above header cards
   const [snapshotCollapsed, setSnapshotCollapsed] = useState(false);
@@ -1145,368 +1343,34 @@ export default function PetHistoryScreen({ route, navigation }) {
     }
   };
 
-  const listHeader = useMemo(() => {
-    // T4.113: Card shows when any vital has at least 1 reading (was >= 2).
-    // SparkLine handles the 1-point graceful fallback internally.
-    const hasTrends = Object.values(vitalsChartData).some(arr => arr.length >= 1);
-    const hasRx = activeRx.length > 0 || historicalRx.length > 0;
-    // T4.118: Show the header whenever there are species-relevant catalog vaccines
-    // OR the pet already has vaccine records (even if catalog is still loading).
-    const hasVaxStatus = vaccinationStatuses.length > 0 || vaccineRecords.length > 0;
-    const hasLabs = labSummary.length > 0;
-    if (!hasTrends && !hasRx && !hasVaxStatus && !hasLabs) return null;
-    return (
-      <View>
-        {/* T4.155 Day 2: Pet Health Snapshot — collapsible strip showing latest vitals, meds, vaccination % */}
-        {(latestVitals || latestActiveMeds.length > 0 || vaccineCompleteness) && (
-          <View style={styles.snapshotCard}>
-            <View style={styles.snapshotShadow} />
-            <View style={styles.snapshotInner}>
-              <TouchableOpacity
-                style={styles.snapshotHeader}
-                onPress={() => {
-                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                  setSnapshotCollapsed(prev => !prev);
-                }}
-              >
-                <Text style={styles.snapshotTitle}>PET HEALTH SNAPSHOT</Text>
-                <MaterialIcons
-                  name={snapshotCollapsed ? 'expand-more' : 'expand-less'}
-                  size={20}
-                  color={COLORS.accent}
-                />
-              </TouchableOpacity>
+  /**
+   * T4.194 Item 18: Toggles a per-vaccine push reminder preference.
+   * Optimistically updates local state, then persists to Firestore.
+   * Writes { disabledVaccines: [...] } with merge:true so other fields are preserved.
+   */
+  const handleToggleReminder = useCallback((vaccineId, enabled) => {
+    setDisabledVaccines(prev => {
+      const next = new Set(prev);
+      if (enabled) {
+        next.delete(vaccineId);
+      } else {
+        next.add(vaccineId);
+      }
 
-              {!snapshotCollapsed && (
-                <View style={styles.snapshotBody}>
-                  {/* Section 1: Latest Vitals */}
-                  {latestVitals && (
-                    <View style={styles.snapshotSection}>
-                      <Text style={styles.snapshotSectionLabel}>LATEST VITALS</Text>
-                      <View style={styles.snapshotVitalsRow}>
-                        {latestVitals.weight != null && latestVitals.weight !== '' && (
-                          <View style={styles.snapshotVitalChip}>
-                            <Text style={styles.snapshotVitalLabel}>WEIGHT</Text>
-                            <Text style={styles.snapshotVitalValue}>{latestVitals.weight} kg</Text>
-                          </View>
-                        )}
-                        {latestVitals.temp != null && latestVitals.temp !== '' && (
-                          <View style={styles.snapshotVitalChip}>
-                            <Text style={styles.snapshotVitalLabel}>TEMP</Text>
-                            <Text style={styles.snapshotVitalValue}>{latestVitals.temp} °C</Text>
-                          </View>
-                        )}
-                        {latestVitals.hr != null && latestVitals.hr !== '' && (
-                          <View style={styles.snapshotVitalChip}>
-                            <Text style={styles.snapshotVitalLabel}>HR</Text>
-                            <Text style={styles.snapshotVitalValue}>{latestVitals.hr} bpm</Text>
-                          </View>
-                        )}
-                      </View>
-                    </View>
-                  )}
+      const uid = auth.currentUser?.uid;
+      if (uid && petId) {
+        const prefRef = doc(db, 'users', uid, 'vaccine_preferences', petId);
+        setDoc(prefRef, { disabledVaccines: [...next] }, { merge: true })
+          .catch(err => console.warn('[PetHistoryScreen.handleToggleReminder]:', err.message));
+      }
 
-                  {/* Section 2: Active Medications */}
-                  <View style={styles.snapshotSection}>
-                    <Text style={styles.snapshotSectionLabel}>
-                      ACTIVE MEDICATIONS{latestActiveMeds.length > 0 ? ` (${latestActiveMeds.length})` : ''}
-                    </Text>
-                    {latestActiveMeds.length > 0 ? (
-                      latestActiveMeds.map((med, i) => (
-                        <View key={i} style={styles.snapshotMedRow}>
-                          <Text style={styles.snapshotMedName}>{med.name}</Text>
-                          {med.instructions && (
-                            <Text style={styles.snapshotMedSig}>{med.instructions}</Text>
-                          )}
-                          {med._daysRemaining != null && (
-                            <Text style={{ fontSize: 10, fontWeight: '700', color: med._daysRemaining <= 2 ? COLORS.danger : COLORS.success, marginTop: 2 }}>
-                              {med._daysRemaining === 0 ? 'Last day today' : `${med._daysRemaining} day${med._daysRemaining !== 1 ? 's' : ''} remaining`}
-                            </Text>
-                          )}
-                          {med._daysRemaining == null && (
-                            <Text style={{ fontSize: 10, fontWeight: '700', color: COLORS.textMuted, fontStyle: 'italic', marginTop: 2 }}>
-                              Duration not set
-                            </Text>
-                          )}
-                        </View>
-                      ))
-                    ) : (
-                      <Text style={styles.snapshotEmptyText}>No active medications</Text>
-                    )}
-                  </View>
+      return next;
+    });
+  }, [petId]);
 
-                  {/* Section 3: Vaccination Completeness */}
-                  {vaccineCompleteness && (
-                    <View style={styles.snapshotSection}>
-                      <Text style={styles.snapshotSectionLabel}>VACCINATION STATUS</Text>
-                      <View style={styles.snapshotVaxRow}>
-                        <Text style={styles.snapshotVaxText}>
-                          {vaccineCompleteness.administered}/{vaccineCompleteness.total} current ({vaccineCompleteness.percentage}%)
-                        </Text>
-                        <View style={styles.snapshotProgressTrack}>
-                          <View style={[styles.snapshotProgressFill, {
-                            width: `${vaccineCompleteness.percentage}%`,
-                            backgroundColor: vaccineCompleteness.percentage >= 75 ? COLORS.success
-                              : vaccineCompleteness.percentage >= 50 ? COLORS.warning
-                              : COLORS.danger,
-                          }]} />
-                        </View>
-                      </View>
-                    </View>
-                  )}
-                </View>
-              )}
-            </View>
-          </View>
-        )}
-
-        {hasTrends && (
-          <View style={styles.trendsCard}>
-            <TouchableOpacity
-              style={styles.trendsHeader}
-              onPress={() => setTrendsExpanded(prev => !prev)}
-            >
-              <Text style={styles.trendsTitle}>VITALS TRENDS</Text>
-              <MaterialIcons
-                name={trendsExpanded ? 'expand-less' : 'expand-more'}
-                size={20}
-                color={COLORS.accent}
-              />
-            </TouchableOpacity>
-
-            {/* T4.113: All 7 vitals rendered via config map — replaces 3 hardcoded blocks */}
-            {trendsExpanded && (
-              <View style={styles.trendsBody}>
-                {Object.entries(VITALS_CONFIG).map(([key, cfg]) => {
-                  const chartData = vitalsChartData[key];
-                  if (!chartData || chartData.length < 1) return null;
-                  const range = cfg.refKey
-                    ? getNormalRange(cfg.refKey, petSpecies)
-                    : null;
-                  return (
-                    <TouchableOpacity
-                      key={key}
-                      style={styles.trendRow}
-                      onPress={() => setVitalsZoom({ open: true, key })}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.trendLabel}>{cfg.label.toUpperCase()}</Text>
-                      <SparkLine
-                        data={chartData}
-                        lineColor={cfg.color}
-                        unit={cfg.unit}
-                        normalRange={range}
-                        showDateLabels
-                      />
-                      {renderDelta(chartData, ` ${cfg.unit}`)}
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            )}
-          </View>
-        )}
-        {/* T4.118: Vaccination status card — between VITALS TRENDS and Rx Frequency */}
-        {hasVaxStatus && (
-          <VaccinationStatusCard
-            statuses={vaccinationStatuses}
-            completeness={vaccineCompleteness}
-            petName={petName}
-            petId={petId}
-            history={history}
-            catalog={vaccineCatalog}
-            navigation={navigation}
-            onDownloadPassport={handleDownloadPassport}
-            hasVaccineRecords={vaccineRecords.length > 0}
-          />
-        )}
-        {hasRx && (
-          <View style={styles.rxFreqCard}>
-            <TouchableOpacity
-              style={styles.rxFreqHeader}
-              onPress={() => setRxExpanded(prev => !prev)}
-            >
-              <Text style={styles.rxFreqTitle}>
-                YOUR PET'S MEDICATIONS ({activeRx.length + historicalRx.length})
-              </Text>
-              <MaterialIcons
-                name={rxExpanded ? 'expand-less' : 'expand-more'}
-                size={20}
-                color={COLORS.accent}
-              />
-            </TouchableOpacity>
-            {rxExpanded && (
-              <View style={styles.rxFreqBody}>
-                {/* Active Medications */}
-                {activeRx.length > 0 && (
-                  <View>
-                    <Text style={styles.rxSectionLabel}>ACTIVE MEDICATIONS</Text>
-                    {activeRx.map((rx, i) => (
-                      <View key={i} style={styles.rxFreqRow}>
-                        <View style={{ flex: 1 }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                            <Text style={styles.rxFreqName}>{rx.name}</Text>
-                            {rx.isPinned && (
-                              <Text style={{ fontSize: 11, color: COLORS.warning }}>📌</Text>
-                            )}
-                          </View>
-                          {rx.lastInstructions ? (
-                            <Text style={styles.rxFreqSig}>{rx.lastInstructions}</Text>
-                          ) : null}
-                          <Text style={styles.rxTenure}>
-                            {rx.firstShort !== rx.lastShort
-                              ? `${rx.firstShort} → ${rx.lastShort}`
-                              : rx.lastDate}
-                          </Text>
-                          {rx.isPinned && (
-                            <Text style={styles.rxPinnedNote}>
-                              Ongoing — last prescribed {Math.round((Date.now() - rx.lastRawMs) / 86400000)}d ago
-                            </Text>
-                          )}
-                        </View>
-                        <View style={styles.rxFreqCountBadge}>
-                          <Text style={styles.rxFreqCountText}>{rx.count}x</Text>
-                        </View>
-                      </View>
-                    ))}
-                  </View>
-                )}
-
-                {activeRx.length === 0 && (
-                  <Text style={styles.rxEmptyText}>No active medications</Text>
-                )}
-
-                {/* Historical Medications — collapsed by default */}
-                {historicalRx.length > 0 && (
-                  <View style={styles.rxHistoricalSection}>
-                    <TouchableOpacity
-                      style={styles.rxHistoricalToggle}
-                      onPress={() => setShowHistoricalRx(prev => !prev)}
-                    >
-                      <Text style={styles.rxHistoricalToggleText}>
-                        {showHistoricalRx ? 'Hide' : 'Show'} {historicalRx.length} older
-                      </Text>
-                      <MaterialIcons
-                        name={showHistoricalRx ? 'expand-less' : 'expand-more'}
-                        size={16}
-                        color={COLORS.textMuted}
-                      />
-                    </TouchableOpacity>
-                    {showHistoricalRx && (
-                      <View style={{ gap: 10, marginTop: 8 }}>
-                        {historicalRx.map((rx, i) => (
-                          <View key={i} style={[styles.rxFreqRow, { opacity: 0.65 }]}>
-                            <View style={{ flex: 1 }}>
-                              <Text style={styles.rxFreqName}>{rx.name}</Text>
-                              <Text style={styles.rxTenure}>
-                                {rx.firstShort !== rx.lastShort
-                                  ? `${rx.firstShort} → ${rx.lastShort}`
-                                  : rx.lastDate}
-                              </Text>
-                            </View>
-                            <View style={[styles.rxFreqCountBadge, styles.rxHistoricalBadge]}>
-                              <Text style={[styles.rxFreqCountText, { color: COLORS.textMuted }]}>{rx.count}x</Text>
-                            </View>
-                          </View>
-                        ))}
-                      </View>
-                    )}
-                  </View>
-                )}
-              </View>
-            )}
-          </View>
-        )}
-        {/* T4.123: Aggregated lab results summary — collapsible, one row per unique test */}
-        {hasLabs && (
-          <View style={styles.labSummaryCard}>
-            <TouchableOpacity
-              style={styles.labSummaryHeader}
-              onPress={() => setLabExpanded(prev => !prev)}
-            >
-              <Text style={styles.labSummaryTitle}>
-                YOUR PET'S TEST RESULTS ({labSummary.length})
-              </Text>
-              <MaterialIcons
-                name={labExpanded ? 'expand-less' : 'expand-more'}
-                size={20}
-                color={COLORS.accent}
-              />
-            </TouchableOpacity>
-            {labExpanded && (
-              <View style={styles.labSummaryBody}>
-                {labSummary.map((lab, i) => {
-                  const statusKey = (lab.status || 'normal').toLowerCase();
-                  const statusColor =
-                    statusKey === 'critical' ? COLORS.danger :
-                    statusKey === 'abnormal' ? COLORS.warning :
-                    COLORS.success;
-                  const statusBg =
-                    statusKey === 'critical' ? '#FFEBEE' :
-                    statusKey === 'abnormal' ? '#FFF3E0' :
-                    '#E8F5E9';
-                  // Amendment 1: positive-negative tests show NEGATIVE/POSITIVE/CRITICAL
-                  const chipLabel = lab.resultType === 'positive-negative'
-                    ? (statusKey === 'normal' ? 'NEGATIVE' : statusKey === 'critical' ? 'CRITICAL' : 'POSITIVE')
-                    : statusKey.toUpperCase();
-
-                  // Trend arrow — only for numeric results with a previous numeric value.
-                  // null (not '') so the JSX expression renders nothing when there is no trend.
-                  let trendArrow = null;
-                  if (lab.numericResult != null && lab.previousNumeric != null) {
-                    const diff = lab.numericResult - lab.previousNumeric;
-                    if (diff > 0) trendArrow = ' ↑';
-                    else if (diff < 0) trendArrow = ' ↓';
-                    else trendArrow = ' →';
-                  }
-
-                  // Species-resolved reference range display
-                  const refDisplay = (() => {
-                    const range = lab.referenceRange;
-                    if (!range) return null;
-                    const speciesKey = petSpecies.toLowerCase().includes('cat') ? 'feline' : 'canine';
-                    const resolved = range[speciesKey] || range;
-                    if (Array.isArray(resolved) && resolved.length === 2) {
-                      return `ref: ${resolved[0]} – ${resolved[1]}${lab.unit ? ` ${lab.unit}` : ''}`;
-                    }
-                    return null;
-                  })();
-
-                  return (
-                    <TouchableOpacity
-                      key={i}
-                      style={styles.labSummaryRow}
-                      onPress={() => setLabZoom({ open: true, testName: lab.testName })}
-                      activeOpacity={0.7}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.labSummaryTestName}>{lab.testName}</Text>
-                        <Text style={styles.labSummaryResult}>
-                          {lab.result}{lab.unit ? ` ${lab.unit}` : null}{trendArrow}
-                          {lab.previousResult ? ` from ${lab.previousResult}` : null}
-                        </Text>
-                        {refDisplay && (
-                          <Text style={styles.labSummaryRef}>{refDisplay}</Text>
-                        )}
-                        <Text style={styles.labSummaryDate}>{lab.date}</Text>
-                      </View>
-                      <Text style={[styles.labSummaryStatusPill, { color: statusColor, backgroundColor: statusBg }]}>
-                        {chipLabel}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            )}
-          </View>
-        )}
-      </View>
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vitalsChartData, trendsExpanded, activeRx, historicalRx, showHistoricalRx, rxExpanded,
-      petSpecies, vaccinationStatuses, vaccineCompleteness, vaccineRecords, vaccineCatalog,
-      clinicName, labSummary, labExpanded,
-      snapshotCollapsed, latestVitals, latestActiveMeds]);
+  // T4.194 Item 1d: listHeader useMemo deleted.
+  // Health cards (snapshot, vitals, vaccines, meds, labs) now live in tab conditionals.
+  // FlatList ListHeaderComponent prop removed — RECORDS tab is a clean record list.
 
   useEffect(() => {
     const q = query(
@@ -2362,8 +2226,8 @@ export default function PetHistoryScreen({ route, navigation }) {
         </Text>
       </View>
 
-      {/* T3.94: Search + filter bar — shown once records have loaded */}
-      {!loading && history.length > 0 && (
+      {/* T4.194: Search + filter bar — RECORDS tab only */}
+      {!loading && history.length > 0 && activeTab === 'records' && (
         <View style={styles.searchFilterBar}>
           <View style={styles.searchInputWrapper}>
             <MaterialIcons name="search" size={18} color={COLORS.textMuted} />
@@ -2401,7 +2265,33 @@ export default function PetHistoryScreen({ route, navigation }) {
               )}
             </TouchableOpacity>
           </View>
+        </View>
+      )}
 
+      {/* T4.194: Tab bar — renders below search bar once records are loaded */}
+      {!loading && history.length > 0 && (
+        <View style={styles.tabBar}>
+          {TAB_CONFIG.map(tab => (
+            <TouchableOpacity
+              key={tab.key}
+              style={[styles.tabItem, activeTab === tab.key && styles.tabItemActive]}
+              onPress={() => setActiveTab(tab.key)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.tabLabelRow}>
+                <Text style={[
+                  styles.tabLabel,
+                  activeTab === tab.key && styles.tabLabelActive,
+                  tab.key === 'vitals' && hasVitalsAnomaly && styles.tabLabelDanger,
+                ]}>
+                  {tab.label}
+                </Text>
+                {tab.key === 'vitals' && hasVitalsAnomaly && (
+                  <View style={styles.tabWarningDot} />
+                )}
+              </View>
+            </TouchableOpacity>
+          ))}
         </View>
       )}
 
@@ -2431,94 +2321,384 @@ export default function PetHistoryScreen({ route, navigation }) {
           )
         ) : (
           <>
-            {/* T4.155: Month picker horizontal strip — only when 2+ months present */}
-            {months.length > 1 && (
+            {/* ================================================================
+                T4.194: Tab-conditional content rendering
+                RECORDS tab: year/month picker + FlatList (unmounts on other tabs)
+                VITALS  tab: ScrollView with 7 enhanced vital sparklines
+                VACCINES tab: ScrollView with VaccinationStatusCard
+                OVERVIEW tab: ScrollView with snapshot + meds + labs
+                ================================================================ */}
+
+            {/* ---- RECORDS TAB -------------------------------------------- */}
+            {activeTab === 'records' && (
               <>
-                {years.length >= 2 && (
-                  <View style={styles.yearDropdownRow}>
-                    {years.map(y => (
-                      <TouchableOpacity
-                        key={y}
-                        style={[styles.yearChip, selectedYear === y && styles.yearChipActive]}
-                        onPress={() => {
-                          setSelectedYear(y);
-                          const firstVisible = months.find(m => m.key.startsWith(y));
-                          if (firstVisible) setActiveMonth(firstVisible.key);
-                        }}
-                      >
-                        <Text style={[styles.yearChipText, selectedYear === y && styles.yearChipTextActive]}>
-                          {y}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
-                <ScrollView
-                  ref={monthPickerRef}
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={styles.monthPickerStrip}
-                  contentContainerStyle={styles.monthPickerContent}
-                >
-                  {visibleMonths.map(m => (
-                    <TouchableOpacity
-                      key={m.key}
-                      style={[
-                        styles.monthChip,
-                        activeMonth === m.key && styles.monthChipActive,
-                      ]}
-                      onPress={() => scrollToMonth(m.key, m.firstIndex)}
+                {/* T4.155: Month picker horizontal strip — only when 2+ months present */}
+                {months.length > 1 && (
+                  <>
+                    {years.length >= 2 && (
+                      <View style={styles.yearDropdownRow}>
+                        {years.map(y => (
+                          <TouchableOpacity
+                            key={y}
+                            style={[styles.yearChip, selectedYear === y && styles.yearChipActive]}
+                            onPress={() => {
+                              setSelectedYear(y);
+                              const firstVisible = months.find(m => m.key.startsWith(y));
+                              if (firstVisible) setActiveMonth(firstVisible.key);
+                            }}
+                          >
+                            <Text style={[styles.yearChipText, selectedYear === y && styles.yearChipTextActive]}>
+                              {y}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    )}
+                    <ScrollView
+                      ref={monthPickerRef}
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      style={styles.monthPickerStrip}
+                      contentContainerStyle={styles.monthPickerContent}
                     >
-                      <Text style={[
-                        styles.monthChipText,
-                        activeMonth === m.key && styles.monthChipTextActive,
-                      ]}>
-                        {m.label}
+                      {visibleMonths.map(m => (
+                        <TouchableOpacity
+                          key={m.key}
+                          style={[
+                            styles.monthChip,
+                            activeMonth === m.key && styles.monthChipActive,
+                          ]}
+                          onPress={() => scrollToMonth(m.key, m.firstIndex)}
+                        >
+                          <Text style={[
+                            styles.monthChipText,
+                            activeMonth === m.key && styles.monthChipTextActive,
+                          ]}>
+                            {m.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </>
+                )}
+
+                <FlatList
+                  ref={flatListRef}
+                  data={filteredHistory}
+                  keyExtractor={(item) => item.id}
+                  renderItem={renderRecord}
+                  contentContainerStyle={{ padding: 20, paddingBottom: 150 }}
+                  refreshControl={
+                    <RefreshControl
+                      refreshing={refreshing}
+                      onRefresh={onRefresh}
+                      tintColor={COLORS.sky}
+                      colors={[COLORS.sky]}
+                    />
+                  }
+                  ListEmptyComponent={
+                    <View style={styles.emptyContainer}>
+                      <MaterialIcons name="folder-open" size={48} color={COLORS.textMuted} />
+                      <Text style={styles.emptyText}>NO MEDICAL RECORDS</Text>
+                      <Text style={styles.emptySub}>
+                        Visit summaries and lab results will appear here after a
+                        consultation.
                       </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+                    </View>
+                  }
+                  onViewableItemsChanged={onViewableItemsChanged}
+                  viewabilityConfig={viewabilityConfig}
+                  onScrollToIndexFailed={(info) => {
+                    flatListRef.current?.scrollToOffset({
+                      offset: info.averageItemLength * info.index,
+                      animated: true,
+                    });
+                  }}
+                  initialNumToRender={15}
+                  maxToRenderPerBatch={10}
+                  windowSize={7}
+                  removeClippedSubviews={Platform.OS === 'android'}
+                />
               </>
             )}
 
-            <FlatList
-              ref={flatListRef}
-              data={filteredHistory}
-              keyExtractor={(item) => item.id}
-              renderItem={renderRecord}
-              contentContainerStyle={{ padding: 20, paddingBottom: 150 }}
-              ListHeaderComponent={listHeader}
-              refreshControl={
-                <RefreshControl
-                  refreshing={refreshing}
-                  onRefresh={onRefresh}
-                  tintColor={COLORS.sky}
-                  colors={[COLORS.sky]}
+            {/* ---- VITALS TAB --------------------------------------------- */}
+            {activeTab === 'vitals' && (
+              <ScrollView
+                style={{ flex: 1 }}
+                contentContainerStyle={styles.tabScrollContent}
+                showsVerticalScrollIndicator={false}
+              >
+                <Text style={styles.tabSectionTitle}>VITAL SIGNS</Text>
+                {Object.entries(VITALS_CONFIG).map(([key, cfg]) => {
+                  const chartData = vitalsChartData[key];
+                  if (!chartData || chartData.length < 1) return null;
+                  const range = cfg.refKey
+                    ? getNormalRange(cfg.refKey, petSpecies)
+                    : null;
+                  const statusLabel     = getVitalStatusLabel(key, chartData, petSpecies);
+                  const interpretation  = getVitalInterpretation(key, chartData, petSpecies);
+                  const minVal          = Math.min(...chartData.map(d => d.value));
+                  const maxVal          = Math.max(...chartData.map(d => d.value));
+
+                  return (
+                    <TouchableOpacity
+                      key={key}
+                      style={styles.vitalTabCard}
+                      onPress={() => setVitalsZoom({ open: true, key })}
+                      activeOpacity={0.7}
+                    >
+                      {/* Card header: label + status badge */}
+                      <View style={styles.vitalTabCardHeader}>
+                        <Text style={styles.vitalTabLabel}>{cfg.label.toUpperCase()}</Text>
+                        {statusLabel && (
+                          <Text style={[
+                            styles.vitalStatusBadge,
+                            { color: statusLabel.isNormal ? COLORS.success : COLORS.danger },
+                          ]}>
+                            {statusLabel.label}
+                          </Text>
+                        )}
+                      </View>
+
+                      {/* SparkLine — height 80, reference band when available */}
+                      <SparkLine
+                        data={chartData}
+                        height={80}
+                        lineColor={cfg.color}
+                        unit={cfg.unit}
+                        normalRange={range}
+                        showDateLabels
+                      />
+
+                      {/* T4.194 Item 7: Enhanced delta with directional color */}
+                      {renderEnhancedDelta(key, chartData, ` ${cfg.unit}`, petSpecies)}
+
+                      {/* T4.194 Item 6: Plain-language interpretation */}
+                      {interpretation && (
+                        <Text style={styles.vitalInterpretation}>{interpretation}</Text>
+                      )}
+
+                      {/* T4.194 Item 8: Historical range strip */}
+                      {chartData.length >= 2 && (
+                        <Text style={styles.vitalRangeStrip}>
+                          Range: {minVal}{cfg.unit} – {maxVal}{cfg.unit} across {chartData.length} visits
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+
+                {Object.values(vitalsChartData).every(arr => arr.length === 0) && (
+                  <View style={styles.tabEmptyContainer}>
+                    <MaterialIcons name="monitor-heart" size={48} color={COLORS.textMuted} />
+                    <Text style={styles.tabEmptyText}>NO VITALS RECORDED</Text>
+                    <Text style={styles.tabEmptySub}>
+                      Vitals will appear here after a veterinary consultation.
+                    </Text>
+                  </View>
+                )}
+              </ScrollView>
+            )}
+
+            {/* ---- VACCINES TAB ------------------------------------------- */}
+            {activeTab === 'vaccines' && (
+              <ScrollView
+                style={{ flex: 1 }}
+                contentContainerStyle={styles.tabScrollContent}
+                showsVerticalScrollIndicator={false}
+              >
+                {/* T4.194 Item 17: Passport button promoted to tab top */}
+                {vaccineRecords.length > 0 && (
+                  <TouchableOpacity
+                    style={styles.passportHeaderBtn}
+                    onPress={handleDownloadPassport}
+                    activeOpacity={0.85}
+                  >
+                    <MaterialIcons name="verified" size={16} color={COLORS.accent} />
+                    <Text style={styles.passportHeaderBtnText}>DOWNLOAD VACCINATION PASSPORT</Text>
+                  </TouchableOpacity>
+                )}
+                <VaccinationStatusCard
+                  statuses={sortedStatuses}
+                  completeness={vaccineCompleteness}
+                  petName={petName}
+                  petId={petId}
+                  history={history}
+                  catalog={vaccineCatalog}
+                  navigation={navigation}
+                  vaccinePreferences={disabledVaccines}
+                  onToggleReminder={handleToggleReminder}
+                  servicesPriceMap={servicesPriceMap}
                 />
-              }
-              ListEmptyComponent={
-                <View style={styles.emptyContainer}>
-                  <MaterialIcons name="folder-open" size={48} color={COLORS.textMuted} />
-                  <Text style={styles.emptyText}>NO MEDICAL RECORDS</Text>
-                  <Text style={styles.emptySub}>
-                    Visit summaries and lab results will appear here after a
-                    consultation.
+                {vaccinationStatuses.length === 0 && vaccineRecords.length === 0 && (
+                  <View style={styles.tabEmptyContainer}>
+                    <MaterialIcons name="vaccines" size={48} color={COLORS.textMuted} />
+                    <Text style={styles.tabEmptyText}>NO VACCINATION RECORDS</Text>
+                    <Text style={styles.tabEmptySub}>
+                      Vaccination history will appear here after a vaccination visit.
+                    </Text>
+                  </View>
+                )}
+              </ScrollView>
+            )}
+
+            {/* ---- OVERVIEW TAB ------------------------------------------- */}
+            {activeTab === 'overview' && (
+              <ScrollView
+                style={{ flex: 1 }}
+                contentContainerStyle={styles.tabScrollContent}
+                showsVerticalScrollIndicator={false}
+              >
+                <Text style={styles.tabSectionTitle}>AT A GLANCE</Text>
+
+                {/* Latest Vitals Chips */}
+                {latestVitals && (
+                  <View style={styles.overviewCard}>
+                    <Text style={styles.overviewCardTitle}>LATEST VITALS</Text>
+                    <View style={styles.overviewChipRow}>
+                      {latestVitals.weight != null && latestVitals.weight !== '' && (
+                        <View style={styles.overviewChip}>
+                          <Text style={styles.overviewChipLabel}>WEIGHT</Text>
+                          <Text style={styles.overviewChipValue}>{latestVitals.weight} kg</Text>
+                        </View>
+                      )}
+                      {latestVitals.temp != null && latestVitals.temp !== '' && (
+                        <View style={styles.overviewChip}>
+                          <Text style={styles.overviewChipLabel}>TEMP</Text>
+                          <Text style={styles.overviewChipValue}>{latestVitals.temp} °C</Text>
+                        </View>
+                      )}
+                      {latestVitals.hr != null && latestVitals.hr !== '' && (
+                        <View style={styles.overviewChip}>
+                          <Text style={styles.overviewChipLabel}>HR</Text>
+                          <Text style={styles.overviewChipValue}>{latestVitals.hr} bpm</Text>
+                        </View>
+                      )}
+                      {latestVitals.rr != null && latestVitals.rr !== '' && (
+                        <View style={styles.overviewChip}>
+                          <Text style={styles.overviewChipLabel}>RR</Text>
+                          <Text style={styles.overviewChipValue}>{latestVitals.rr} bpm</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                )}
+
+                {/* Active Medications */}
+                <View style={styles.overviewCard}>
+                  <Text style={styles.overviewCardTitle}>
+                    ACTIVE MEDICATIONS ({activeRx.length})
                   </Text>
+                  {activeRx.length > 0 ? (
+                    activeRx.slice(0, 3).map((rx, i) => (
+                      <Text key={i} style={styles.overviewMedText}>• {rx.name}</Text>
+                    ))
+                  ) : (
+                    <Text style={styles.overviewEmptyText}>No active medications</Text>
+                  )}
+                  {activeRx.length > 3 && (
+                    <Text style={styles.overviewMoreText}>+{activeRx.length - 3} more</Text>
+                  )}
                 </View>
-              }
-              onViewableItemsChanged={onViewableItemsChanged}
-              viewabilityConfig={viewabilityConfig}
-              onScrollToIndexFailed={(info) => {
-                flatListRef.current?.scrollToOffset({
-                  offset: info.averageItemLength * info.index,
-                  animated: true,
-                });
-              }}
-              initialNumToRender={15}
-              maxToRenderPerBatch={10}
-              windowSize={7}
-              removeClippedSubviews={Platform.OS === 'android'}
-            />
+
+                {/* Vaccine Completeness */}
+                {vaccineCompleteness && (
+                  <View style={styles.overviewCard}>
+                    <Text style={styles.overviewCardTitle}>VACCINATION STATUS</Text>
+                    <Text style={styles.overviewStatText}>
+                      {vaccineCompleteness.administered}/{vaccineCompleteness.total} current ({vaccineCompleteness.percentage}%)
+                    </Text>
+                    <View style={styles.overviewProgressTrack}>
+                      <View style={[styles.overviewProgressFill, {
+                        width: `${vaccineCompleteness.percentage}%`,
+                        backgroundColor: vaccineCompleteness.percentage >= 75 ? COLORS.success
+                          : vaccineCompleteness.percentage >= 50 ? COLORS.warning
+                          : COLORS.danger,
+                      }]} />
+                    </View>
+                  </View>
+                )}
+
+                {/* Last Visit + Next Recheck */}
+                <View style={styles.overviewCard}>
+                  <Text style={styles.overviewCardTitle}>VISIT SUMMARY</Text>
+                  <View style={styles.overviewRow}>
+                    <Text style={styles.overviewLabel}>Last visit:</Text>
+                    <Text style={styles.overviewValue}>
+                      {history.length > 0 ? formatDisplayDate(history[0].date) : 'No visits'}
+                    </Text>
+                  </View>
+                  {nextRecheck && (
+                    <View style={styles.overviewRow}>
+                      <Text style={styles.overviewLabel}>Next recheck:</Text>
+                      <Text style={styles.overviewValue}>{nextRecheck}</Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Lab Results Summary */}
+                {labSummary.length > 0 && (
+                  <View style={styles.overviewCard}>
+                    <Text style={styles.overviewCardTitle}>
+                      TEST RESULTS ({labSummary.length})
+                    </Text>
+                    {labSummary.filter(l => (l.status || 'normal') !== 'normal').slice(0, 3).map((lab, i) => (
+                      <Text key={i} style={[styles.overviewLabText, {
+                        color: (lab.status || '').toLowerCase() === 'critical' ? COLORS.danger : COLORS.warning,
+                      }]}>
+                        {lab.testName}: {lab.result} — {(lab.status || 'abnormal').toUpperCase()}
+                      </Text>
+                    ))}
+                    {labSummary.every(l => (l.status || 'normal') === 'normal') && (
+                      <Text style={styles.overviewNormalText}>All results within normal range</Text>
+                    )}
+                  </View>
+                )}
+
+                {/* Medications full list — active + historical */}
+                {(activeRx.length > 0 || historicalRx.length > 0) && (
+                  <View style={styles.overviewCard}>
+                    <Text style={styles.overviewCardTitle}>
+                      ALL MEDICATIONS ({activeRx.length + historicalRx.length})
+                    </Text>
+                    {activeRx.length > 0 && (
+                      <>
+                        <Text style={styles.overviewSubLabel}>ACTIVE</Text>
+                        {activeRx.map((rx, i) => (
+                          <View key={i} style={styles.overviewMedRow}>
+                            <Text style={styles.overviewMedName}>{rx.name}</Text>
+                            {rx.lastInstructions ? (
+                              <Text style={styles.overviewMedSig}>{rx.lastInstructions}</Text>
+                            ) : null}
+                            <Text style={styles.overviewMedTenure}>
+                              {rx.firstShort !== rx.lastShort
+                                ? `${rx.firstShort} → ${rx.lastShort}`
+                                : rx.lastDate}
+                            </Text>
+                          </View>
+                        ))}
+                      </>
+                    )}
+                    {historicalRx.length > 0 && (
+                      <>
+                        <Text style={[styles.overviewSubLabel, { marginTop: 10 }]}>HISTORICAL</Text>
+                        {historicalRx.map((rx, i) => (
+                          <View key={i} style={[styles.overviewMedRow, { opacity: 0.65 }]}>
+                            <Text style={styles.overviewMedName}>{rx.name}</Text>
+                            <Text style={styles.overviewMedTenure}>
+                              {rx.firstShort !== rx.lastShort
+                                ? `${rx.firstShort} → ${rx.lastShort}`
+                                : rx.lastDate}
+                            </Text>
+                          </View>
+                        ))}
+                      </>
+                    )}
+                  </View>
+                )}
+              </ScrollView>
+            )}
           </>
         )}
       </View>
@@ -4156,5 +4336,285 @@ const styles = StyleSheet.create({
   snapshotProgressFill: {
     height: 6,
     borderRadius: 0,
+  },
+
+  // ---------------------------------------------------------------------------
+  // T4.194: Tab bar styles
+  // ---------------------------------------------------------------------------
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.white,
+    borderBottomWidth: 2,
+    borderBottomColor: COLORS.border,
+  },
+  tabItem: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 3,
+    borderBottomColor: 'transparent',
+  },
+  tabItemActive: {
+    borderBottomColor: COLORS.sky,
+  },
+  tabLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  tabLabel: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.textMuted,
+    letterSpacing: 0.8,
+  },
+  tabLabelActive: {
+    color: COLORS.sky,
+  },
+  tabLabelDanger: {
+    color: COLORS.danger,
+  },
+  tabWarningDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3, // Exception: dots are circles
+    backgroundColor: COLORS.danger,
+  },
+
+  // ---------------------------------------------------------------------------
+  // T4.194: Shared tab content layout
+  // ---------------------------------------------------------------------------
+  tabScrollContent: {
+    padding: 16,
+    paddingBottom: 150,
+    gap: 12,
+  },
+  tabSectionTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: COLORS.textMuted,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  tabEmptyContainer: {
+    alignItems: 'center',
+    marginTop: 60,
+    paddingHorizontal: 40,
+  },
+  tabEmptyText: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: COLORS.brand,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginTop: 12,
+  },
+  tabEmptySub: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+    marginTop: 6,
+    textAlign: 'center',
+  },
+
+  // ---------------------------------------------------------------------------
+  // T4.194 Items 2-8: VITALS tab — enhanced vital sparkline cards
+  // ---------------------------------------------------------------------------
+  vitalTabCard: {
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    borderRadius: 0,
+    padding: 14,
+    gap: 6,
+  },
+  vitalTabCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  vitalTabLabel: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.accent,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  vitalStatusBadge: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  vitalInterpretation: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    marginTop: 2,
+    fontStyle: 'italic',
+  },
+  vitalRangeStrip: {
+    fontSize: 10,
+    color: COLORS.textMuted,
+    marginTop: 2,
+    letterSpacing: 0.3,
+  },
+
+  // ---------------------------------------------------------------------------
+  // T4.194 Item 17: Passport button promoted to VACCINES tab header
+  // ---------------------------------------------------------------------------
+  passportHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    borderRadius: 0,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  passportHeaderBtnText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: COLORS.accent,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+
+  // ---------------------------------------------------------------------------
+  // T4.194 Item 20: OVERVIEW tab cards
+  // ---------------------------------------------------------------------------
+  overviewCard: {
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    borderRadius: 0,
+    padding: 14,
+    gap: 6,
+  },
+  overviewCardTitle: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.accent,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  overviewChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  overviewChip: {
+    backgroundColor: COLORS.cream,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    borderRadius: 0,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    alignItems: 'center',
+  },
+  overviewChipLabel: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: COLORS.textMuted,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  overviewChipValue: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: COLORS.brand,
+    marginTop: 2,
+  },
+  overviewMedText: {
+    fontSize: 13,
+    color: COLORS.textPrimary,
+    fontWeight: '600',
+  },
+  overviewEmptyText: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    fontStyle: 'italic',
+  },
+  overviewMoreText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.sky,
+    marginTop: 2,
+  },
+  overviewStatText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  overviewProgressTrack: {
+    height: 6,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 0,
+    overflow: 'hidden',
+  },
+  overviewProgressFill: {
+    height: 6,
+    borderRadius: 0,
+  },
+  overviewRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  overviewLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  overviewValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.brand,
+  },
+  overviewLabText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  overviewNormalText: {
+    fontSize: 12,
+    color: COLORS.success,
+    fontWeight: '700',
+    fontStyle: 'italic',
+  },
+  overviewSubLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: COLORS.textMuted,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginTop: 4,
+  },
+  overviewMedRow: {
+    paddingLeft: 8,
+    borderLeftWidth: 2,
+    borderLeftColor: COLORS.sky,
+    paddingVertical: 2,
+    gap: 2,
+  },
+  overviewMedName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.brand,
+  },
+  overviewMedSig: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    fontStyle: 'italic',
+  },
+  overviewMedTenure: {
+    fontSize: 10,
+    color: COLORS.textMuted,
+    letterSpacing: 0.3,
   },
 });

@@ -1,6 +1,6 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { COLORS } from '../theme/mobileTokens';
 import { getVaccineHistory } from '../utils/vaccineHelpers';
 
@@ -11,7 +11,7 @@ import { getVaccineHistory } from '../utils/vaccineHelpers';
 const STATUS_STYLES = {
   current:  { borderColor: COLORS.success, badgeBg: '#E8F5E9', badgeText: COLORS.success },
   due_soon: { borderColor: COLORS.warning, badgeBg: '#FFF3E0', badgeText: COLORS.warning },
-  overdue:  { borderColor: COLORS.danger,  badgeBg: '#FFEBEE', badgeText: COLORS.danger  },
+  overdue:  { borderColor: COLORS.danger,  badgeBg: COLORS.dangerBg, badgeText: COLORS.danger },
   unknown:  { borderColor: '#9E9E9E',      badgeBg: '#F5F5F5', badgeText: '#616161'      },
 };
 
@@ -20,6 +20,19 @@ const STATUS_LABELS = {
   due_soon: 'DUE SOON',
   overdue:  'OVERDUE',
   unknown:  'NO RECORD',
+};
+
+/**
+ * Philippine vaccination classification per RA 9482 and common clinical practice.
+ * Vaccines not in this map default to 'RECOMMENDED'.
+ */
+const VACCINE_CLASSIFICATION = {
+  rabies:        'REQUIRED',    // RA 9482 Anti-Rabies Act of 2007
+  dhpp:          'CORE',
+  fvrcp:         'CORE',
+  bordetella:    'LIFESTYLE',
+  leptospirosis: 'LIFESTYLE',
+  felv:          'LIFESTYLE',
 };
 
 // ---------------------------------------------------------------------------
@@ -54,17 +67,74 @@ function computeNextDueLabel(lastDate, intervalDays) {
   return fmtDate(nextDue);
 }
 
+/**
+ * Formats an interval in days as a human-readable "Recommended every N year(s)/month(s)" string.
+ *
+ * @param {number} days
+ * @returns {string}
+ */
+function formatInterval(days) {
+  if (!days || days <= 0) return '';
+  if (days >= 365) {
+    const years = Math.round(days / 365);
+    return `Recommended every ${years} year${years !== 1 ? 's' : ''}`;
+  }
+  const months = Math.round(days / 30);
+  return `Recommended every ${months} month${months !== 1 ? 's' : ''}`;
+}
+
+/**
+ * Formats a due date label for the upcoming schedule timeline.
+ * Guards against null daysUntilDue.
+ *
+ * @param {{ daysUntilDue: number|null, status: string }} vax
+ * @returns {string}
+ */
+function formatDueLabel(vax) {
+  const days = vax.daysUntilDue;
+  if (days == null) return 'Due soon';
+  if (days < 0) return 'Now';
+  if (days === 0) return 'Today';
+  if (days <= 30) return `in ${days} day${days !== 1 ? 's' : ''}`;
+  if (days <= 365) {
+    const months = Math.round(days / 30);
+    return `in ${months} month${months !== 1 ? 's' : ''}`;
+  }
+  const years = Math.round(days / 365);
+  return `in ${years} year${years !== 1 ? 's' : ''}`;
+}
+
 // ---------------------------------------------------------------------------
 // SUB-COMPONENT: individual vaccine status card with tap-to-expand history
 // ---------------------------------------------------------------------------
 
-function VaccineCard({ vax, history, catalog }) {
+function VaccineCard({
+  vax,
+  history,
+  catalog,
+  navigation,
+  petId,
+  disabledVaccines,
+  onToggleReminder,
+  servicesPriceMap,
+}) {
   const [expanded, setExpanded] = useState(false);
   const st = STATUS_STYLES[vax.status] || STATUS_STYLES.unknown;
 
   const administrationHistory = expanded
     ? getVaccineHistory(vax.id, history, catalog)
     : [];
+
+  // Item 16: Resolve REQUIRED / CORE / LIFESTYLE / RECOMMENDED classification
+  const classification = VACCINE_CLASSIFICATION[vax.id?.toLowerCase()] || 'RECOMMENDED';
+
+  // Item 19: Cost estimate from services price map (optional prop — graceful fallback)
+  const estimatedCost = servicesPriceMap
+    ? (servicesPriceMap.get(vax.name?.toLowerCase()) ?? null)
+    : null;
+
+  // Item 18: Reminder opt-in state (default: enabled)
+  const reminderEnabled = disabledVaccines ? !disabledVaccines.has(vax.id) : true;
 
   return (
     <View style={[styles.vaxCard, { borderColor: st.borderColor }]}>
@@ -81,6 +151,35 @@ function VaccineCard({ vax, history, catalog }) {
           </Text>
         </View>
       </TouchableOpacity>
+
+      {/* Item 16: Classification badge row */}
+      <View style={styles.classificationRow}>
+        <View style={[
+          styles.classificationBadge,
+          {
+            backgroundColor:
+              classification === 'REQUIRED' ? COLORS.dangerBg
+              : COLORS.cream,
+          },
+        ]}>
+          <Text style={[
+            styles.classificationBadgeText,
+            {
+              color:
+                classification === 'REQUIRED' ? COLORS.danger
+                : classification === 'CORE'   ? COLORS.accent
+                : COLORS.textMuted,
+            },
+          ]}>
+            {classification}
+          </Text>
+        </View>
+      </View>
+
+      {/* Item 12: Recommended interval text */}
+      {vax.intervalDays > 0 && (
+        <Text style={styles.vaxInterval}>{formatInterval(vax.intervalDays)}</Text>
+      )}
 
       {/* Date row */}
       <View style={styles.vaxDateRow}>
@@ -104,21 +203,52 @@ function VaccineCard({ vax, history, catalog }) {
         </Text>
       )}
 
-      {/* Tap to expand: full administration history */}
-      <TouchableOpacity
-        style={styles.expandToggle}
-        onPress={() => setExpanded(prev => !prev)}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.expandToggleText}>
-          {expanded ? 'Hide history' : 'View history'}
-        </Text>
-        <MaterialIcons
-          name={expanded ? 'expand-less' : 'expand-more'}
-          size={16}
-          color={COLORS.accentLight}
-        />
-      </TouchableOpacity>
+      {/* Item 14: Per-vaccine SCHEDULE button on overdue / no-record cards */}
+      {(vax.status === 'overdue' || vax.status === 'unknown') && navigation && petId && (
+        <TouchableOpacity
+          style={styles.perVaxBookBtn}
+          onPress={() => navigation.navigate('BookAppointment', { prefillPetId: petId })}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.perVaxBookBtnText}>SCHEDULE</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Item 19: Cost estimate */}
+      {estimatedCost != null && (
+        <Text style={styles.costEstimate}>Estimated cost: ₱{estimatedCost}</Text>
+      )}
+
+      {/* Item 18: Push reminder toggle */}
+      {onToggleReminder && (
+        <View style={styles.reminderRow}>
+          <Text style={styles.reminderLabel}>Remind me when due</Text>
+          <Switch
+            value={reminderEnabled}
+            onValueChange={(val) => onToggleReminder(vax.id, val)}
+            trackColor={{ false: COLORS.borderLight, true: COLORS.sky }}
+            thumbColor={reminderEnabled ? COLORS.sky : COLORS.textMuted}
+          />
+        </View>
+      )}
+
+      {/* Item 11: Only show expand toggle when the vaccine has actual record evidence */}
+      {vax.status !== 'unknown' && (
+        <TouchableOpacity
+          style={styles.expandToggle}
+          onPress={() => setExpanded(prev => !prev)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.expandToggleText}>
+            {expanded ? 'Hide history' : 'View history'}
+          </Text>
+          <MaterialIcons
+            name={expanded ? 'expand-less' : 'expand-more'}
+            size={16}
+            color={COLORS.accentLight}
+          />
+        </TouchableOpacity>
+      )}
 
       {/* Expanded: full history list */}
       {expanded && (
@@ -158,20 +288,21 @@ function VaccineCard({ vax, history, catalog }) {
 /**
  * VaccinationStatusCard — collapsible vaccination dashboard for pet owners.
  *
- * Shows completeness bar, overdue alert with booking CTA, color-coded per-vaccine
- * cards with tap-to-expand history, and an optional passport download button.
- * Follows the same collapsible pattern as the VITALS TRENDS and Rx Frequency cards.
+ * Shows completeness bar (or 0% empty state with booking CTA), overdue alert
+ * with booking CTA, color-coded per-vaccine cards with tap-to-expand history,
+ * upcoming vaccination timeline, and classification badges.
  *
  * @param {Object}   props
- * @param {Array}    props.statuses           - From buildVaccinationStatus().statuses
- * @param {Object}   props.completeness       - From buildVaccinationStatus().completeness (or null)
- * @param {string}   props.petName            - Pet's display name
- * @param {string}   props.petId              - Pet's Firestore document ID
- * @param {Array}    props.history            - Full medical_records array (for getVaccineHistory)
- * @param {Array}    props.catalog            - Vaccine catalog (for getVaccineHistory)
- * @param {Object}   props.navigation         - React Navigation object
- * @param {Function} props.onDownloadPassport - Callback for passport PDF generation
- * @param {boolean}  props.hasVaccineRecords  - Gates the passport download button
+ * @param {Array}    props.statuses             - From buildVaccinationStatus().statuses (pre-sorted by urgency)
+ * @param {Object}   props.completeness         - From buildVaccinationStatus().completeness (or null)
+ * @param {string}   props.petName              - Pet's display name
+ * @param {string}   props.petId                - Pet's Firestore document ID
+ * @param {Array}    props.history              - Full medical_records array (for getVaccineHistory)
+ * @param {Array}    props.catalog              - Vaccine catalog (for getVaccineHistory)
+ * @param {Object}   [props.navigation]         - React Navigation object (optional; needed for book CTAs)
+ * @param {Set}      [props.vaccinePreferences] - Set of disabled vaccine IDs (for reminder toggle)
+ * @param {Function} [props.onToggleReminder]   - Callback(vaccineId, enabled) for reminder toggle
+ * @param {Map}      [props.servicesPriceMap]   - name→price Map from services collection (optional)
  */
 export default function VaccinationStatusCard({
   statuses,
@@ -181,13 +312,19 @@ export default function VaccinationStatusCard({
   history,
   catalog,
   navigation,
-  onDownloadPassport,
-  hasVaccineRecords,
+  vaccinePreferences,
+  onToggleReminder,
+  servicesPriceMap,
 }) {
   const [collapsed, setCollapsed] = useState(true);
 
   const overdueCount = statuses.filter(v => v.status === 'overdue').length;
   const hasOverdue   = overdueCount > 0;
+
+  // Item 15: Upcoming vaccination timeline — exclude unknown (no date data), sort by daysUntilDue
+  const upcomingVaccines = statuses
+    .filter(v => v.status !== 'unknown' && v.daysUntilDue != null)
+    .sort((a, b) => (a.daysUntilDue ?? 0) - (b.daysUntilDue ?? 0));
 
   // ------------------------------------------------------------------
   // Header (always visible)
@@ -213,28 +350,45 @@ export default function VaccinationStatusCard({
       {!collapsed && (
         <View style={styles.cardBody}>
 
-          {/* 2a: Completeness bar */}
+          {/* Item 13: Completeness bar — 0% shows empty state; else progress bar */}
           <View style={styles.completenessSection}>
             {completeness ? (
-              <>
-                <Text style={styles.completenessText}>
-                  {completeness.administered}/{completeness.total} vaccines current ({completeness.percentage}%)
-                </Text>
-                <View style={styles.progressTrack}>
-                  <View
-                    style={[
-                      styles.progressFill,
-                      {
-                        width: `${completeness.percentage}%`,
-                        backgroundColor:
-                          completeness.percentage >= 75 ? COLORS.success
-                          : completeness.percentage >= 50 ? COLORS.warning
-                          : COLORS.danger,
-                      },
-                    ]}
-                  />
-                </View>
-              </>
+              completeness.percentage === 0 ? (
+                <>
+                  <Text style={styles.zeroStateText}>
+                    No vaccinations on record — protect {petName} today
+                  </Text>
+                  {navigation && petId && (
+                    <TouchableOpacity
+                      style={styles.bookBtn}
+                      onPress={() => navigation.navigate('BookAppointment', { prefillPetId: petId })}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={styles.bookBtnText}>BOOK FIRST VACCINATION</Text>
+                    </TouchableOpacity>
+                  )}
+                </>
+              ) : (
+                <>
+                  <Text style={styles.completenessText}>
+                    {completeness.administered}/{completeness.total} vaccines current ({completeness.percentage}%)
+                  </Text>
+                  <View style={styles.progressTrack}>
+                    <View
+                      style={[
+                        styles.progressFill,
+                        {
+                          width: `${completeness.percentage}%`,
+                          backgroundColor:
+                            completeness.percentage >= 75 ? COLORS.success
+                            : completeness.percentage >= 50 ? COLORS.warning
+                            : COLORS.danger,
+                        },
+                      ]}
+                    />
+                  </View>
+                </>
+              )
             ) : (
               <Text style={styles.completenessEmpty}>
                 Keep {petName} protected — no vaccination records yet.
@@ -242,7 +396,7 @@ export default function VaccinationStatusCard({
             )}
           </View>
 
-          {/* 2b: Overdue alert banner */}
+          {/* Overdue alert banner */}
           {hasOverdue && (
             <View style={styles.overdueWrapper}>
               <View style={styles.overdueShadow} />
@@ -253,37 +407,49 @@ export default function VaccinationStatusCard({
                     {petName} has {overdueCount} overdue vaccine{overdueCount !== 1 ? 's' : ''}
                   </Text>
                 </View>
-                <TouchableOpacity
-                  style={styles.bookBtn}
-                  onPress={() => navigation.navigate('BookAppointment', { prefillPetId: petId })}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.bookBtnText}>BOOK VACCINATION VISIT</Text>
-                </TouchableOpacity>
+                {navigation && petId && (
+                  <TouchableOpacity
+                    style={styles.bookBtn}
+                    onPress={() => navigation.navigate('BookAppointment', { prefillPetId: petId })}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.bookBtnText}>BOOK VACCINATION VISIT</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
           )}
 
-          {/* 2c: Per-vaccine status cards */}
+          {/* Per-vaccine status cards (pre-sorted by urgency from parent) */}
           {statuses.map(vax => (
             <VaccineCard
               key={vax.id}
               vax={vax}
               history={history}
               catalog={catalog}
+              navigation={navigation}
+              petId={petId}
+              disabledVaccines={vaccinePreferences}
+              onToggleReminder={onToggleReminder}
+              servicesPriceMap={servicesPriceMap}
             />
           ))}
 
-          {/* 2d: Passport download button (gated on having actual records) */}
-          {hasVaccineRecords && (
-            <TouchableOpacity
-              style={styles.passportBtn}
-              onPress={onDownloadPassport}
-              activeOpacity={0.85}
-            >
-              <MaterialIcons name="verified" size={16} color={COLORS.accent} />
-              <Text style={styles.passportBtnText}>DOWNLOAD OFFICIAL PASSPORT</Text>
-            </TouchableOpacity>
+          {/* Item 15: Upcoming vaccination schedule timeline */}
+          {upcomingVaccines.length > 0 && (
+            <View style={styles.scheduleSection}>
+              <Text style={styles.scheduleSectionLabel}>UPCOMING SCHEDULE</Text>
+              {upcomingVaccines.map((vax) => (
+                <View key={vax.id} style={styles.scheduleRow}>
+                  <View style={[
+                    styles.scheduleDot,
+                    { backgroundColor: STATUS_STYLES[vax.status]?.borderColor || STATUS_STYLES.unknown.borderColor },
+                  ]} />
+                  <Text style={styles.scheduleName} numberOfLines={1}>{vax.name}</Text>
+                  <Text style={styles.scheduleTime}>{formatDueLabel(vax)}</Text>
+                </View>
+              ))}
+            </View>
           )}
         </View>
       )}
@@ -351,6 +517,14 @@ const styles = StyleSheet.create({
     borderRadius: 0,
   },
 
+  // --- Item 13: 0% completeness empty state ---
+  zeroStateText: {
+    fontSize:     13,
+    fontWeight:   '700',
+    color:        COLORS.warning,
+    marginBottom: 8,
+  },
+
   // --- Overdue alert banner (neubrutalist offset shadow) ---
   overdueWrapper: {
     marginBottom: 12,
@@ -364,7 +538,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.brand,
   },
   overdueBanner: {
-    backgroundColor: '#FFEBEE',
+    backgroundColor: COLORS.dangerBg,
     borderWidth:     2,
     borderColor:     COLORS.danger,
     borderRadius:    0,
@@ -430,6 +604,32 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+
+  // --- Item 16: Classification badge ---
+  classificationRow: {
+    flexDirection: 'row',
+    marginBottom:  4,
+  },
+  classificationBadge: {
+    paddingHorizontal: 6,
+    paddingVertical:   2,
+    borderRadius:      0,
+  },
+  classificationBadgeText: {
+    fontSize:      9,
+    fontWeight:    '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+
+  // --- Item 12: Recommended interval text ---
+  vaxInterval: {
+    fontSize:  10,
+    color:     COLORS.textMuted,
+    marginTop: 1,
+    marginBottom: 4,
+  },
+
   vaxDateRow: {
     gap:          4,
     marginBottom: 4,
@@ -447,6 +647,50 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginTop:  2,
   },
+
+  // --- Item 14: Per-vaccine SCHEDULE button ---
+  perVaxBookBtn: {
+    backgroundColor: COLORS.sky,
+    borderWidth:     2,
+    borderColor:     COLORS.brand,
+    borderRadius:    0,
+    paddingVertical:   6,
+    paddingHorizontal: 10,
+    alignSelf:       'flex-start',
+    marginTop:       6,
+  },
+  perVaxBookBtnText: {
+    color:         COLORS.textOnSky,
+    fontWeight:    '900',
+    fontSize:      10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+
+  // --- Item 19: Cost estimate ---
+  costEstimate: {
+    fontSize:  11,
+    color:     COLORS.textMuted,
+    fontStyle: 'italic',
+    marginTop: 4,
+  },
+
+  // --- Item 18: Reminder toggle row ---
+  reminderRow: {
+    flexDirection:  'row',
+    alignItems:     'center',
+    justifyContent: 'space-between',
+    marginTop:      8,
+    paddingTop:     8,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+  },
+  reminderLabel: {
+    fontSize:   12,
+    color:      COLORS.textMuted,
+    fontWeight: '600',
+  },
+
   expandToggle: {
     flexDirection: 'row',
     alignItems:    'center',
@@ -489,30 +733,49 @@ const styles = StyleSheet.create({
     color:    COLORS.textSecondary,
   },
   historyMeta: {
-    fontSize: 11,
-    color:    COLORS.textMuted,
+    fontSize:  11,
+    color:     COLORS.textMuted,
     marginTop: 1,
   },
 
-  // --- Passport download button (outlined, secondary) ---
-  passportBtn: {
-    flexDirection:     'row',
-    alignItems:        'center',
-    justifyContent:    'center',
-    gap:               8,
-    borderWidth:       2,
-    borderColor:       COLORS.accent,
-    backgroundColor:   'transparent',
-    borderRadius:      0,
-    paddingVertical:   10,
-    paddingHorizontal: 16,
-    marginTop:         8,
+  // --- Item 15: Upcoming schedule timeline ---
+  scheduleSection: {
+    marginTop:       12,
+    paddingTop:      12,
+    borderTopWidth:  1,
+    borderTopColor:  COLORS.borderLight,
+    gap:             6,
   },
-  passportBtnText: {
-    color:         COLORS.accent,
+  scheduleSectionLabel: {
+    fontSize:      10,
     fontWeight:    '900',
-    fontSize:      12,
+    color:         COLORS.textMuted,
     textTransform: 'uppercase',
-    letterSpacing: 0.8,
+    letterSpacing: 1,
+    marginBottom:  4,
+  },
+  scheduleRow: {
+    flexDirection: 'row',
+    alignItems:    'center',
+    gap:           8,
+    paddingVertical: 3,
+  },
+  scheduleDot: {
+    width:        8,
+    height:       8,
+    borderRadius: 4,
+    flexShrink:   0,
+  },
+  scheduleName: {
+    fontSize:   12,
+    fontWeight: '600',
+    color:      COLORS.textPrimary,
+    flex:       1,
+  },
+  scheduleTime: {
+    fontSize:   11,
+    color:      COLORS.textMuted,
+    fontStyle:  'italic',
+    flexShrink: 0,
   },
 });

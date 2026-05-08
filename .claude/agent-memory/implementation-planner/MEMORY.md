@@ -12,3 +12,112 @@
 - [DASH-4 Plan Produced](project_dash4_plan.md) — 5-task generateInsight engine + 30 rules: 10 Ops, 8 Clinical, 7 Financial, 5 Growth
 - [DASH-5 Plan Produced](project_dash5_plan.md) — 8-task drill-down nav + filter acceptance + generateReportHTML + Export Report button
 - [DASH-6 Plan Produced](project_dash6_plan.md) — 8-task final day: alert thresholds, goals, AlertStrip, progress bars, historical tooltip, annotateChartData
+- [Patients CRM Plan](project_patients_plan.md) — 10-task Patients CRM: field parity, atomic notes, dupe phone, calculateAge dedup, search expand, dead code
+- [Patients CRM Tier 5 Plan](project_patients_tier5_plan.md) — 6-task T2.113/115/116/457/459/460: WalkInModal prefill, balance fix, archive UX, weight chart, lab panel, caseDay badges
+- [Patients CRM Tier 6 Plan](project_patients_tier6_plan.md) — 11-task T2.118/129/133/134/135/136/458/461/463/464/465: dead buttons, Snackbar, freshness, KPIs, deceased, referral, QuickBook, ref lines, print CSS, Rx freq, vax%
+- [Mobile Design Sweep Plan](project_mobile_design_sweep.md) — 7-task T2.435-441: mobileTokens adoption across 7 files, ~200 color replacements, QueueScreen already done
+- [Admin Design Sweep Plan](project_design_sweep_admin.md) — 7-task T2.443-449: 441 hex, 53 borderRadius, 88 fontWeight across 41 files, absorbs 6 sub-tasks
+- [Vaccination A-Tier Plan](project_vaccination_atier_plan.md) — 3-task T3.51/T3.52/T3.53: Firestore catalog + Settings UI, printable passport, overdue alerts
+- [Queue Workflow Gaps Plan](project_queue_workflow_plan.md) — 4-task T3.9/T3.10a/T3.10b/T3.10d: admin revert gate, Records link, resolved panel, queue search
+- [RA 10173 Erasure Plan](project_ra10173_erasure_plan.md) — 4-phase T3.11: useErasureEngine hook, ErasureConfirmationDialog, safeguards, mobile polish
+- [T3.8 Forensic Reporting Plan](project_forensic_reporting_plan.md) — 3-day /reports page: ConsultPerformance + AuditIntegrity + StaffWorkload tabs, admin-only, one-shot getDocs
+- [EMR + Multi-Vaccine Plan](project_emr_multivaccine_plan.md) — 6-step T3.1/T3.2/T3.3: EMRDrawer slide-over, manual vaccine toggle, T3.3 absorbed into T3.52
+- [T3.12 Multi-Pet Visit Plan](project_multi_pet_visit_plan.md) — 10-step/8-phase: queue grouping, batch check-in, CW nav, consolidated billing, WalkIn multi-pet, EOD, mobile, Records
+- [Dispensing Hardening Plan](project_dispensing_hardening_plan.md) — 4-task T3.36/T3.37/T3.38/T3.39: stock verification, vet hold, batch picker, partial dispensing
+- [Inventory Operations Plan](project_inventory_operations_plan.md) — 3-task T3.21/T3.26/T3.27: reorder alerts + Sidebar badge, structured adjustment types, CSV/PDF export
+- [T3.32 Client Confirmation Plan](project_client_confirmation_plan.md) — 5-phase confirmedByClient flow: mobile buttons, dashboard CTA, admin queue badge, Spark-compatible
+- [T3.76 Pulse Writing Tests Plan](project_pulse_writing_tests_plan.md) — 103-test contract suite: 28 builders across 7 source files, 22 write sites
+- [T3.43 Revenue Trend Extended Plan](project_revenue_trend_plan.md) — 7-step plan: 3mo/6mo/1yr rolling periods, ISO-week bucketing, 3 files
+- [T3.5 Informed Consent Plan](project_informed_consent_plan.md) — 8-phase RA 10173 consent: versioned policies, SignatureCanvas, re-consent gate, erasure integration, migration
+- [Dashboard S-Push Plan](project_dash_s_push_plan.md) — 4-task T4.1-T4.4: auto-refresh, react-grid-layout, YoY benchmarking, multi-tab PDF export
+- [Queue Service Pulse Plan](project_queue_service_pulse_plan.md) — 3-task T3.68/T3.69/T3.78: services popover status chips, EOD waterfall, sign-off pulse gap
+- [T3.70 Notes Restructure Plan](project_notes_restructure_plan.md) — 13-step notes split: clientNotes/staffNotes/systemChips, tabbed popover, SOAP context box, dual-read fallback
+- [Admin Parity Plan](project_admin_parity_plan.md) — 7-task T3.83-87/T3.91-92: discharge, labs, status badge, attachments, SOAP assessment, vaccines; T3.91 already done
+- [Mobile Parity Plan](project_mobile_parity_plan.md) — 10-task T3.81/82/88-90/93-97: extended vitals, sparklines, amendments, services chips, search/filter, year headers
+- [T4.78 Mobile Reschedule Plan](project_mobile_reschedule_plan.md) — 9-step reschedule flow: BookAppointment rescheduleMode, slot picker reuse, updateDoc audit trail
+- [QueueScreen Polish Plan](project_queuescreen_polish_plan.md) — 2-task T3.10c/T3.59: resolved-in-grid toggle (admin), service-type wait breakdown (mobile)
+- [T3.98 Terminology Rename Plan](project_t398_terminology_rename.md) — 11-file rxCart/prescriptions/prescribedItems rename with dual-read backward compat
+- [T3.99 Structured Amendment Plan](project_structured_amendment_plan.md) — 4-phase structured SOAP amendment form: CW form+handler, PatientDashboard, EMRDrawer, PetHistoryScreen
+- [Vaccine Quick Wins Plan](project_vaccine_quickwins_plan.md) — 2-task T3.100/T3.101: species filter on vaccinationStatus + vaccineExemptions array with Dialog UI
+- [T3.107 LLM Clinical Reasoning Plan](project_llm_clinical_reasoning_plan.md) — 4-phase Gemini 2.0 Flash: llmService, Settings Pillar 11, CW integration, audit logging (CORS blocks Anthropic)
+- [Chatbot LLM Plan](project_chatbot_llm_plan.md) — 6-task T3.62-T3.67: hybrid AI chatbot, chatbotService.js, TextInput, quick-action bar, system prompt, rate limiting
+- [T3.108 FAQ Management Plan](project_faq_management_plan.md) — 10-step prompt appendix + Pillar 12 CRUD + mobile FAQ fetch, 3 files
+- [T3.110 Rx Instructions Plan](project_rx_instructions_plan.md) — 4-step Treatment Plan sidebar instructions: drug always-visible, non-drug collapsible, sig auto-populate
+- [T3.118 Amendment Dialog Plan](project_t3118_amendment_dialog_plan.md) — 3-phase AmendmentDialog extraction: shared component, PatientDashboard button, CW refactor
+- [T3.120 Check-In Simplify Plan](project_checkin_simplify_plan.md) — 4-part: strip staff UI, remove assign mode, fix missing statusHistory, fix arrayUnion dedup (6 sites)
+- [T3.121 Sign-Off Guard Plan](project_signoff_guard_plan.md) — 1-task inline auto-transition guard in handleSaveConsult for arrived/confirmed patients
+- [T3.126 Carry-Over Guard Plan](project_carryover_guard_plan.md) — 2-part: statusHistory push on EOD carry-over + carried-over added to TERMINAL_STATUSES
+- [T3.127 Inline Carry-Over Plan](project_inline_carryover_plan.md) — 4-step saveReschedule split: simple reschedule (transaction) vs full carry-over (batch+clone), EOD pattern replication
+- [T4.85 Case Day Chain Plan](project_t485_case_day_chain_plan.md) — 4-phase swipeable case cards: buildCaseChains utility, CaseDayCard component, ClientAppointments integration
+- [T4.86 Visit Timeline Plan](project_visit_timeline_plan.md) — 5-phase vertical timeline: buildVisitTimeline utility, VisitTimeline component, SuperCard/CaseDayCard/ClientAppointments
+- [T4.87 Encounter Summary Plan](project_t487_encounter_summary_plan.md) — 6-phase encounter summary: EncounterSummary component, ClientAppointments + CaseDayCard integration, Expand All toggle
+- [T4.88 Wait Transparency Plan](project_t488_wait_transparency_plan.md) — 6-step WaitTimeMetrics: live timer from clinicalPulse, frozen from forensicSeal.raw, avgWaitMins, 4 integration points
+- [T4.89 Push Worker Plan](project_t489_push_worker_plan.md) — 6-phase CF Worker push endpoints: /push (12-status templates) + /push/custom, Option B caller-pass, no debounce v1
+- [T4.90 Push Integration Plan](project_t490_push_integration_plan.md) — 7-phase sendPushNotification utility + 18-path integration, fire-and-forget, module-level caches
+- [T4.91 Notification Templates Plan](project_notif_templates_plan.md) — 4-phase Settings Pillar 13: constants file, template editor UI, reset dialog, auto-resolve cache
+- [T4.92 Custom Notification UI Plan](project_custom_notification_ui_plan.md) — 7-step SendNotificationDialog + PatientDashboard button + Queue MenuItem + NOTIFICATION pulse audit
+- [T4.95 Notification Logs Plan](project_notification_logs_plan.md) — 8-step notification_log: 3 logging paths, sentBy threading (18 sites), NotificationLogs page, Sidebar link
+- [T4.96 AI History Assistant Plan](project_ai_history_assistant_plan.md) — 4-phase: chatWithHistory, buildPetHistoryPrompt, PetHistoryAIDrawer, PatientDashboard integration
+- [T4.97 Mobile AI History Plan](project_mobile_ai_history_plan.md) — 4-phase: buildPetOwnerPrompt, SimpleMarkdown, PetHistoryAISheet, PetHistoryScreen FAB integration
+- [T4.107 Department Filters Plan](project_t4107_department_filters_plan.md) — 12-step plan: resolveDepartmentForRecord normalizer, PatientDashboard dropdown, PetHistoryScreen chips
+- [T4.109 SOAP Swap + Multi-Turn Plan](project_soap_swap_multiturn_plan.md) — 8-step: SoapGrid quadrant reorder (S+A/O+P), chatWithHistory multi-turn, DiagnosticBridge conversation UI
+- [T4.110 AI Side Panel Plan](project_t4110_ai_side_panel_plan.md) — 6-step: ClinicalAIPanel component, DiagnosticBridge slim, Drawer + God View 3-col, SoapGrid cleanup
+- [T4.111 Dept Staff Filter Plan](project_t4111_dept_staff_filter_plan.md) — 4-part: cart department field, ListSubheader dropdown, color dots, Queue alert-to-Dialog
+- [T3.128 signedOffAt Carry-Over Plan](project_t3128_signedoffat_plan.md) — 2-part: strip signedOffAt from both destructuring lists + EOD parity gap assessment (8 leaking fields)
+- [T3.132 Vitals Resolve Plan](project_vitals_resolve_plan.md) — 5-part resolveVitals utility + 4 consumer wiring sites: PatientDashboard, EMRDrawer, buildPetHistoryPrompt, printVisitSummary
+- [T4.112 Vitals S-Push Plan](project_vitals_spush_plan.md) — 12-step zoom dialog, time-proportional axis, delta annotations, tooltip fix; single-file PatientDashboard.jsx
+- [T4.113 Mobile Vitals S-Push Plan](project_t4113_mobile_vitals_spush.md) — 6-item PetHistoryScreen: 7 vitals, species bands, date labels, delta, 1-point, zoom modal
+- [T3.135 AI Retry + Degradation Plan](project_ai_retry_plan.md) — 6-file fetchWithRetry + Try Again button: llmService, chatbotService, ClinicalAIPanel, CW, AIDrawer, AISheet
+- [T3.136 Vitals Validation Plan](project_vitals_validation_plan.md) — 3-layer vitals input validation: type=number, BCS/Pain clamp, soft warning + sign-off block; CRT excluded
+- [T4.115 Structured Exam Plan](project_structured_exam_plan.md) — 8-step PhysicalExamChecklist: examUtils.js, SoapGrid, CW wiring, 6 read surfaces, dual-read fallback
+- [T3.137 Inventory Categories Move Plan](project_inventory_categories_move_plan.md) — 5-step: MedicinePillSwitch extract, InventoryCategoryManager component, 3rd Inventory tab, Settings Pillar 5 strip
+- [T4.116 Prescriptions Redesign Plan](project_t4116_prescriptions_plan.md) — 7-item PatientDashboard: active/historical Rx split, pin, zoom modal, drug/non-drug, qty, widget cleanup, back-nav
+- [T4.117 Vaccine Restructure Plan](project_vaccine_restructure_plan.md) — 3-day vaccine-to-inventory merge: vaccineConfig schema, category detection, migration, 8 files
+- [T4.118 Mobile Vax Status Plan](project_mobile_vax_status_plan.md) — 5-part: vaccineHelpers.js, VaccinationStatusCard, PetHistoryScreen wiring, passport migration
+- [T4.119 Notification History Plan](project_mobile_notification_history_plan.md) — 5-part: Firestore rules+index, bell icon+badge, NotificationHistory SectionList, App.js route, nav wiring
+- [T3.55 Vaccine Reminders Plan](project_vaccine_reminders_plan.md) — 7-part automated vaccine push: queue utility, CW piggyback, weekly recompute, ReminderWidget, CF Worker Cron, rules
+- [T4.126 Appointment Reminders Plan](project_appointment_reminders_plan.md) — 6-part 3-stage Cron: templates, queue utility, piggyback writes, ReminderWidget, Worker handler, rules
+- [T4.120 Lab Redesign Plan](project_lab_redesign_plan.md) — 15-task/3-day: 78-test catalog, Autocomplete form, custom test dialog, zoom modal with SparkLine, 8 consumer updates
+- [T4.121 File Attachments Plan](project_file_attachments_plan.md) — 9-task/2-day: uploadAttachment utility, CW SOAP+lab-test attachments, storage rules, 4 display surface updates
+- [T4.122 Mobile Rx Parity Plan](project_mobile_rx_parity_plan.md) — 6-task PetHistoryScreen: activeRx/historicalRx rewrite, medications card, qty, pet-owner language, PDF, borderRadius
+- [T4.123 Mobile Lab Parity Plan](project_mobile_lab_parity_plan.md) — 7-task PetHistoryScreen: labSummary/labTimeline useMemos, collapsible card, LabZoomModal, SparkLine chart, test selector
+- [T4.74 Offline Support Plan](project_offline_support_plan.md) — 5-phase/10-file: Firestore persistence, auth routing, expo-network banner, 12 listener error callbacks, offline UI; absorbs T4.101+T4.130
+- [T4.128 Registration Expansion Plan](project_registration_expansion_plan.md) — 8-task RegisterScreen.js: DPA checkbox, address/city, emergency, promo, consent_records, skip ConsentScreen
+- [T4.133 Header Unification Plan](project_header_unification_plan.md) — 11-page header unification: uppercase titles, COLORS.sky primary, outlined search, 2-row layout, Patients exempt
+- [T4.134 Queue Transparency Plan](project_queue_transparency_plan.md) — 7-phase dept lanes, per-dept wait estimates, breadcrumb, explainer, Monitor badges; absorbs T4.6
+- [T4.135 Multi-Channel Notifications Plan](project_multichannel_notifications_plan.md) — 11-task email (Resend) + SMS (Semaphore) cascade: Worker endpoints, _dispatchPush, queue docs, Settings, Logs
+- [T4.139 Booking Intelligence Plan](project_booking_intelligence_plan.md) — 7-phase/3-day: petServiceMap, per-pet service UI, weight-resolved pricing, cumulative capacity, parallel dept scheduling
+- [T4.141 Diagnosis System Plan](project_diagnosis_system_plan.md) — 3-day/11-hr: diagnosisConstants (~500+), useDiagnosisCatalog, SoapGrid Autocomplete+severity, 11 consumer dual-read updates
+- [Auth Hardening Plan](project_auth_hardening_plan.md) — 2-task T4.137/T4.138: blocking pw-change Dialog, Firestore rules disabled check, real-time deactivation signOut
+- [T4.147 Balance Follow-Up Plan](project_balance_followup_plan.md) — 7-task partial payment follow-up: Queue badge, Mark Settled, snooze, Patients badge, mobile fix, BookAppointment warning, Worker Cron
+- [POS Foundation Plan](project_pos_foundation_plan.md) — 14-step T4.148/T4.149/T4.153: cash change calc, two-layer custom discounts, sequential receipt numbering
+- [POS Split-Tender Plan](project_pos_split_tender_plan.md) — 16-step T4.150: paymentTenders[] array, sequential-add UI, per-Cash change, dual-write, EOD+ledger+reprint
+- [POS EOD + Receipt Plan](project_pos_eod_receipt_plan.md) — 6-phase T4.151/T4.152: daily_closings Z-report, post-close tagging, iframe print, Blob download, email receipt
+- [T4.127 CW Sidebar Split Plan](project_cw_sidebar_split_plan.md) — 4-change: Services/Items panels, inline progress chips, mid-consult arrayUnion, ServiceProgressCard delete
+- [T4.155 PetHistory Redesign Plan](project_pethistory_redesign_plan.md) — 3-day/8hr: collapsible records, month picker+dot timeline, neubrutalism, health snapshot, 7 display gaps
+- [T4.156 Client Dashboard Stats Plan](project_client_dashboard_stats_plan.md) — 8-step KPI grid + mini chart: useClientStats hook, View-based bars, 12+ stats, zero npm install
+- [T4.171 WalkInModal UI Plan](project_walkinmodal_ui_plan.md) — 8-step UI rewrite: sxField, cream headers, CTA orange, numbered sections, unused import cleanup
+- [T4.172 Remove Multi-Pet Plan](project_remove_multipet_plan.md) — 17-file/2-day: strip visitGroupId/petServiceMap/groupAppointments, single-pet-per-booking simplification
+- [T4.168 POS Transaction Fix Plan](project_pos_transaction_fix_plan.md) — 12-step Firestore read-after-write fix: 4 functions, 3-phase transaction, 6 test scenarios
+- [T4.188 Legal Compliance Plan](project_legal_compliance_plan.md) — 14-step PH vet legal compliance: PTR field, BAI settings, regulatory print fields, internal record template, dual-print dropdown
+- [T4.142 3-Tier Classification Plan](project_3tier_classification_plan.md) — 17-step/3-day: productClass (Medicine/Medical Supply/Retail), dual-write, category migration, 9 files
+- [T4.167 Record View Redesign Plan](project_record_view_redesign_plan.md) — 11-step/2-day: SOAP reorder, Assessment hero, collapsible Objective, per-dx notes, service overflow, action row
+- [T4.184 Retail POS Plan](project_retail_pos_plan.md) — 19-step/5-phase standalone retail POS: POSModal retail guard, customer nudge, 3 entry points, saleType filter, dashboard split
+- [T4.166 PetHistory Record Redesign Plan](project_pethistory_record_redesign_plan.md) — 16-step/2-day: diagnosis hero, header compaction, dept bottom sheet, year dropdown, Subjective visible, discharge rename
+- [T4.175 SuperCard Redesign Plan](project_supercard_redesign_plan.md) — 10-feature/2-day: mini header, per-service progress, what's-next, encounter items, financial, context, emergency, CTA, durations, case day swipe
+- [T4.178 QueueScreen Redesign Plan](project_queuescreen_redesign_plan.md) — 11-change/2-day: personal ticket hero, per-dept Now Serving, multi-dept breakdown, breadcrumb 3+3, elapsed counter, stage messages
+- [T4.183 Visit Log Redesign Plan](project_visitlog_redesign_plan.md) — 10-task/2-day: 3 tabs (Pending/Active/Completed), VISIT LOG rename, row-click audit, KPI strip, case+date headers
+- [T4.189 Visit Log Actions Plan](project_visitlog_actions_plan.md) — 14-step phase-aware actions: status-gated buttons, 4 modals, 3 listeners, overflow menu, revert dialog
+- [T4.176 My Bookings Neubrutalism Plan](project_mybookings_neubrutalism_plan.md) — 9-change neubrutalism + filter redesign: search bar, 2 bottom sheets, card shadows, CaseDayCard fixes
+- [T4.177 Card Enrichment Plan](project_card_enrichment_plan.md) — 25-change AppointmentCardContent extraction, date-first, clinical info, calendar/PDF/deep-link, CaseDayCard fixes
+- [T4.182 Dashboard Redesign Plan](project_dashboard_redesign_plan.md) — 3-day/13hr: TODAY/ANALYTICS/FINANCIAL/PERFORMANCE, drag-drop removal, ~30 metrics, Reports merge
+- [T4.173 Breed Catalog Plan](project_breed_catalog_plan.md) — 7-step 95-breed BREED_CATALOG: 2 constants files, 3 admin Autocomplete, 2 mobile import swaps, label rename
+- [T4.180 Data Parity Plan](project_data_parity_plan.md) — 6-item: NewClientModal emergency contacts, ClientDetails labels, AddPet/EditPet DOB 3-mode + allergy tags
+- [T4.181 CW Identity Edit Plan](project_cw_identity_edit_plan.md) — 6-phase inline pet identity edit: EditIcon, Collapse form, dual-write, IDENTITY_EDIT pulse, allergy propagation
+- [T4.174 My Bookings Hardening Plan](project_mybookings_hardening_plan.md) — 6-fix ClientAppointments: pull-to-refresh, offline banner, receipt fallback, dept queue label, pagination; Fix 3+7 already done
+- [T4.185 EMRDrawer Redesign Plan](project_emrdrawer_redesign_plan.md) — 10-step/3-phase: search, filters, date headers, 35vw responsive, T4.167 styling parity, active highlight, print, Queue access
+- [T4.186 My Stats Screen Plan](project_mystats_screen_plan.md) — 10-step/2-day MyStatsScreen: useMyStats hook, per-pet health cards, diagnosis history, spending, preventive care
+- [T4.187 Expenses Upgrade Plan](project_expenses_upgrade_plan.md) — 8-fix Expenses page: header consistency, date range, configurable categories+budgets, recurring repeat, export, KPI expansion
+- [T4.192 Calendar Page Plan](project_calendar_plan.md) — 13-task/2-day Calendar page: useCalendarData hook, week+month views, capacity heatmap, dept lanes, action popovers, WalkInModal prefill
+- [T4.193 My Stats Enrichment Plan](project_mystats_enrichment_plan.md) — 12-item/3-day: spending bars, CircularGauge, PieChart, lifetime KPI, upcoming appts, YoY, date range, drill-down, weight zoom, lab trends, adherence bars, seasonal heatmap
+- [T4.194 PetHistory Tabs Plan](project_pethistory_tabs_plan.md) — 20-item/2-day: 4-tab layout (RECORDS/VITALS/VACCINES/OVERVIEW), vitals enrichment, vaccine urgency/CTAs/timeline/labels

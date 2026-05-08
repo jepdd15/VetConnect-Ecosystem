@@ -30,6 +30,7 @@ import {
 import { auth, db } from '../../firebaseConfig';
 import { useClinicContact } from '../hooks/useClinicContact';
 import { COLORS, FONTS, SPACING } from '../theme/mobileTokens';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getTicketPrefix } from '../utils/getTicketPrefix';
 import { getLocalDateStr } from '../utils/helpers';
 
@@ -204,6 +205,7 @@ async function batchArrive() {
 // -----------------------------------------------------------------------
 
 export default function SelfCheckInScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [screenState, setScreenState] = useState(SCREEN_STATE.SCANNING);
   const [scanned, setScanned] = useState(false);
@@ -313,7 +315,7 @@ export default function SelfCheckInScreen({ navigation }) {
   // -----------------------------------------------------------------------
   if (screenState === SCREEN_STATE.SUCCESS) {
     return (
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView contentContainerStyle={[styles.container, { paddingBottom: Math.max(insets.bottom, 20) + 40 }]}>
         <View style={styles.successWrapper}>
           <View style={[styles.shadow, { backgroundColor: COLORS.success }]} />
           <View style={styles.successBox}>
@@ -443,7 +445,7 @@ export default function SelfCheckInScreen({ navigation }) {
   // SCANNING state — camera active
   // -----------------------------------------------------------------------
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView contentContainerStyle={[styles.container, { paddingBottom: Math.max(insets.bottom, 20) + 40 }]}>
       <View style={styles.headerBox}>
         <Text style={styles.title}>SCAN TO CHECK IN</Text>
         <Text style={styles.subtitle}>

@@ -3752,6 +3752,76 @@
         "breed_data_parity_chain": ["T4.173 → T4.180 → T4.181"],
         "independent_any_time": ["T4.174 (My Bookings hardening)", "T4.185 (EMRDrawer redesign)", "T4.186 (My Stats screen)", "T4.187 (Expenses upgrade)", "T4.169+T4.170 (Reservation audit+cleanup)", "T4.13 (Structured problem list)", "T4.146 (Booking TOCTOU fix)"]
       }
+    },
+    "advisory_session_2026_05_08": {
+      "date": "2026-05-08",
+      "role": "Massive advisory + implementation session. 11 tasks shipped from the dependency chain + 5 new tasks formalized. ~30 cross-surface bugfixes. Spec verification checklist introduced. 12-task spec review (131/131 pass). Calendar page built. Queue/Visit Log action parity achieved.",
+      "tasks_done_this_session": "T4.182 (Dashboard 4-tab redesign, 3-day), T4.173 (Breed catalog 95 breeds), T4.180 (Data parity 6 items), T4.181 (CW patient info editing), T4.174 (My Bookings hardening 5 fixes), T4.185 (EMRDrawer redesign, 2-day), T4.186 (My Stats screen, 2-day), T4.187 (Expenses page upgrade 8 fixes), T4.192 (Calendar page, 2-day), T4.190 (MyPetsScreen card redesign), client tag removal, vaccination passport enrichment",
+      "total_done_after_session": "~729",
+      "total_todo_after_session": "~195",
+      "tasks_formalized_this_session": "T4.190 (MyPetsScreen card redesign — DONE), T4.191 (Queue date picker), T4.192 (Calendar page — DONE), T4.193 (My Stats visual enrichment 12 items), T4.194 (PetHistoryScreen tabbed restructure + vitals/vaccines enrichment 20 items), T4.195 (BookAppointment neubrutalism conversion)",
+      "key_architectural_changes": [
+        "Dashboard 4-tab redesign: Growth/Operations/Clinical/Financial → TODAY/ANALYTICS/FINANCIAL/PERFORMANCE. react-grid-layout removed. ~30 new metrics (lab/vaccine/diagnosis/financial/operational). Forensic Reports absorbed into PERFORMANCE tab. Sparklines on KPICards. Conversion funnel + staff utilization.",
+        "Calendar page: NEW /calendar route with week+month views, capacity heatmap/badges, appointment blocks with dept color + status dot, hover+click popovers with full Queue/Visit Log action parity (7 status gates), empty-slot booking via WalkInModal prefillDate/prefillTime, department lanes toggle, filter chips, keyboard nav.",
+        "EMRDrawer complete rewrite: search TextField, dynamic department filter chips + date range, month/year section headers, responsive width (35vw/400/650), T4.167 styling parity (SOAP-order, collapsible Objective, 7-vital grid, cream discharge), active record highlight (CURRENT VISIT chip + draft notice), Print Full EMR, Queue access via petId fetch mode replacing Dialog.",
+        "ClinicalWorkspace identity editing: EditIcon toggle, Collapse 8-field form (name/species/breed/DOB 3-mode/sex/neutered/microchip/allergies), dual-write pets+appointments, IDENTITY_EDIT pulse with field diff, allergy propagation to active appointments.",
+        "My Stats dedicated screen: 6 sections (YOUR RELATIONSHIP, VISIT TRENDS, YOUR PETS, DIAGNOSIS HISTORY, SPENDING BREAKDOWN, PREVENTIVE CARE). Per-pet health cards with weight SparkLine, vaccines, meds with daysRemaining, allergies, recheck countdown, diagnoses. BOOK NOW/RECHECK CTAs. Stats section removed from ClientDashboard.",
+        "Expenses Professional tier: header Row 1+2, date range with quick chips (default This Month), 5 KPIs (PERIOD TOTAL/DAILY AVG/TOP CATEGORY/ENTRIES/BUDGET STATUS), configurable expense_categories with Manage Dialog + auto-seed + monthly budgets, collapsible budget progress bars (75%/90% thresholds), isRecurring Switch + REPEAT LAST MONTH idempotent, CSV export + print report, LOGGED BY + UPDATED columns.",
+        "Visit Log full action parity with Queue: defer audit dialog (was hardcoded reason), pending overflow menu (Cancel/No-Show/Reschedule), arrived Put On Hold, dispensing Flag for vet review. Audit dialog human-readable pulse labels (INCEPTION→Booked, STATUS_CHANGE→pending→confirmed, etc.). Doc ID code removed from header.",
+        "Data parity: NewClientModal emergency contacts (name+phone+relation, PH validation, legacy compat), ClientDetails label rename (Authorized Representatives→Emergency Contacts), AddPetModal+EditPetModal DOB 3-mode selector + allergy tag array, Firestore leakage guard on 6 UI-only fields.",
+        "Breed catalog: 95-breed BREED_CATALOG (62 Canine + 33 Feline) with species-filtered Autocomplete freeSolo on WalkInModal/AddPetModal/EditPetModal, mobile expanded 24→95, REASON FOR VISIT label rename.",
+        "Spec verification checklist: mandatory element 9 in execute prompts. Reviewer verifies every numbered spec point with grep-able acceptance criteria. Catches the T4.142 Dispensing Unit class of bugs at implementation time instead of post-hoc.",
+        "Settings dirty guard: isDirtyRef prevents onSnapshot from overwriting unsaved edits. advanceNoticeMins 0-safe with isNaN guard."
+      ],
+      "key_decisions_locked": [
+        "Capacity & Triage settings pillar removed: autoNoShowMins/noShowLinkWindowDays/trafficModerate/trafficHigh all dead or overcomplicated. No-show detection queries full history. Staff can mark no-show anytime without hidden timing gate.",
+        "Client tag system (VIP/Regular) removed: purely cosmetic, zero functional impact, visual clutter.",
+        "Vaccination passport enriched: owner name via getDoc, pet details (species/breed/age/weight/color/microchip) on cover, clinic contact in footer.",
+        "Calendar: week+month toggle, new /calendar page, minimal+hover blocks, count badge month + heatmap week, department lanes toggle + filter chips default single lane, click to view+book.",
+        "PetHistoryScreen tabbed restructure: 4 tabs (RECORDS/VITALS/VACCINES/OVERVIEW), all 7 vitals equal treatment, AI FAB floating.",
+        "Queue dual-listener race condition: documented but not fixed. Temporary visual vanish on status change, self-correcting. Fix 2 (optimistic update) + Fix 3 (ER scheduledDate) deferred — acceptable for 1-2 vet clinic."
+      ],
+      "bugs_fixed_this_session": [
+        "Client tag removal (5 files)",
+        "Settings advanceNoticeHours→advanceNoticeMins field name mismatch in lastSavedSettings seed",
+        "Settings advanceNoticeMins || 120 treats 0 as falsy → isNaN guard",
+        "Settings onSnapshot overwrites unsaved edits → isDirtyRef guard",
+        "POS checkout success overlay vanishing (initPOS guard when checkoutSuccess is set)",
+        "MyStats allergies string→array parsing crash (petAllergies is string, not array)",
+        "MyStats day/days singular grammar in 3 locations",
+        "ClinicalWorkspace last 2 window.confirm calls replaced with MUI Dialogs (unsaved notes + allergen safety)",
+        "Capacity & Triage settings removal (4 dead fields, no-show detection simplified to full history)",
+        "Visit Log defer was hardcoded reason → audit dialog with mandatory reason",
+        "Visit Log pending overflow menu was empty (all items excluded pending) → added Cancel/No-Show/Reschedule",
+        "Visit Log arrived missing Put On Hold → added",
+        "Visit Log dispensing missing Flag for vet review → added",
+        "Visit Log audit dialog doc ID code removed, pulse event types human-readable",
+        "Queue column width rebalance (Triage Clock 160→200, Notes/Services minWidth reduced, Intake Age 140→100)",
+        "Visit Log column width rebalance (Patient narrower with breed+gender, Created wider, Actions 280px)",
+        "FinancialTab revenueTrend/expenseTrend null guard (|| [] on forEach)",
+        "HorizontalBar double label (removed amount from segment label, legend shows formatted value)",
+        "PerformanceTab audit/workload/funnel sections hidden (insufficient data)",
+        "MyStats removed profile completeness + consent status",
+        "MyPetsScreen removed duplicate species emoji, added AGE row, removed text truncation",
+        "EMRDrawer hardcoded filter chips → dynamic departments from Firestore",
+        "EMRDrawer flex-column scroll fix (minHeight:0 replacing flex shrink)"
+      ],
+      "spec_reviews_completed": "12 tasks, 131/131 spec points passed: T4.164 (13/13), T4.165 (10/10), T4.167 (13/13), T4.172 (14/14), T4.175 (10/10), T4.178 (10/10), T4.179 (13/13), T4.183 (10/10), T4.176 (9/9), T4.177 (13/13), T4.166 (15/15), T4.182 (16/16), T4.173 (7/7+bonus), T4.180 (6/6+guard), T4.181 (8/8+bonus), T4.184 (9/9)",
+      "workflow_improvements": [
+        "Spec verification checklist added as mandatory element 9 in execute prompts (feedback_prompt_patterns.md updated)",
+        "Execute prompt now 10 elements (was 9): added SPEC VERIFICATION block with grep-able acceptance criteria per spec point",
+        "Reviewer agent explicitly told to check every spec item and report ✅/❌ before declaring done"
+      ],
+      "remaining_priority_queue": [
+        "T4.191 — Queue date picker (1 hr)",
+        "T4.193 — My Stats visual enrichment 12 items (7-8 hrs, 3-day)",
+        "T4.194 — PetHistoryScreen tabbed restructure + vitals/vaccines enrichment 20 items (8-10 hrs, 2-day)",
+        "T4.195 — BookAppointment neubrutalism conversion (2-3 hrs)",
+        "T4.190 — MyPetsScreen card redesign (DONE)",
+        "T4.169+T4.170 — Reservation audit+cleanup (1.5 hrs)",
+        "T4.13 — Structured problem list (4-5 hrs)",
+        "T4.146 — Booking TOCTOU fix (1.5 hrs)"
+      ]
     }
   }
 }

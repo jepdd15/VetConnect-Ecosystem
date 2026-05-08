@@ -6,6 +6,7 @@ import { collection, doc, getDocs, limit, onSnapshot, query, updateDoc, where } 
 import { onAuthStateChanged } from "firebase/auth";
 import { useNavigation } from "@react-navigation/native";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ActivityIndicator,
   Alert,
@@ -69,6 +70,7 @@ const getStageMessage = (status) => {
 };
 
 export default function QueueScreen() {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const [queueData, setQueueData] = useState(null);
   const [myTicket, setMyTicket] = useState(null);
@@ -444,7 +446,7 @@ export default function QueueScreen() {
   const deptColor = myDeptObj?.color || COLORS.sky;
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView contentContainerStyle={[styles.container, { paddingBottom: Math.max(insets.bottom, 20) + 40 }]}>
       {/* Green banner when number is called -- T2.487 */}
       {turnAlert && (
         <View style={styles.turnBanner}>

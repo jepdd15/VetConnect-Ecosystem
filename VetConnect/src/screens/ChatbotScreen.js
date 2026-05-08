@@ -20,6 +20,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db } from "../../firebaseConfig";
 import { COLORS, FONTS } from '../theme/mobileTokens';
 import { useClinicContact } from '../hooks/useClinicContact';
@@ -159,6 +160,7 @@ function buildPromptAppendix({ clinicSettings, servicesList, clinicPhone, clinic
 // ---------------------------------------------------------------------------
 
 export default function ChatbotScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
   const scrollViewRef = useRef(null);
 
   // --- Display state ---
@@ -590,7 +592,7 @@ export default function ChatbotScreen({ navigation }) {
       {/* Chat area */}
       <ScrollView
         style={styles.chatArea}
-        contentContainerStyle={{ paddingBottom: 20 }}
+        contentContainerStyle={{ paddingBottom: 80 }}
         ref={scrollViewRef}
         onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
         keyboardShouldPersistTaps="handled"
@@ -699,14 +701,14 @@ export default function ChatbotScreen({ navigation }) {
       {/* Input area (T3.62, T3.67) */}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 56}
       >
         {/* Rate limit feedback (T3.67) */}
         {isRateLimited && (
           <Text style={styles.rateLimitText}>Please wait a moment...</Text>
         )}
 
-        <View style={styles.inputBar}>
+        <View style={[styles.inputBar, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
           {/* LLM not configured: show static fallback */}
           {!isLlmReady ? (
             <Text style={styles.chatFooterText}>
@@ -938,7 +940,6 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     paddingVertical: 8,
     paddingHorizontal: 12,
-    paddingBottom: 40,
     backgroundColor: COLORS.white,
     borderTopWidth: 2,
     borderTopColor: COLORS.brand,

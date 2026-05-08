@@ -203,7 +203,28 @@
 - Mobile PetHistoryScreen: active medication tracking computes endDate from `sig.duration`, shows "X days remaining" with countdown
 - Fallback: records without sig.duration use 90-day window
 
-**Next:** T4.182 (Dashboard 4-tab redesign, 12-14 hrs, depends T4.142+T4.184) → T4.173 (Breed catalog, 1.5 hrs) → T4.180 (Data parity, 2.5-3 hrs) → T4.181 (CW patient editing, 2-3 hrs) → T4.174 (My Bookings hardening, 2.5 hrs) → T4.185 (EMR Drawer redesign, 3-4 hrs) → T4.186 (My Stats screen, 5-6 hrs) → T4.187 (Expenses upgrade, 4-5 hrs) → T4.169+T4.170 (Reservation audit+cleanup, 1.5 hrs) → T4.13 (Problem list, 4-5 hrs) → T4.146 (Booking TOCTOU fix, 1.5 hrs)
+**Session 2026-05-08 (T4.182, T4.173, T4.180, T4.181, T4.174, T4.185, T4.186, T4.187, T4.192, T4.190 + ~23 bugfixes + 5 tasks formalized):**
+- Dependency chain complete: T4.182 (Dashboard 4-tab, 3-day) → T4.173 (Breed catalog) → T4.180 (Data parity) → T4.181 (CW identity edit) → T4.174 (My Bookings hardening) → T4.185 (EMRDrawer redesign, 2-day) → T4.186 (My Stats screen, 2-day) → T4.187 (Expenses upgrade) → T4.192 (Calendar page, 2-day) → T4.190 (MyPetsScreen card redesign)
+- Client tag system removed. Vaccination passport enriched. Capacity & Triage settings removed.
+- Calendar page: week+month views, capacity heatmap, appointment interactions, dept lanes, empty-slot booking via WalkInModal prefillDate/prefillTime
+- Visit Log full action parity with Queue (defer dialog, pending overflow, arrived on-hold, dispensing flag, human-readable audit labels)
+- Settings: advanceNoticeMins 0-safe guard, isDirtyRef prevents onSnapshot overwrite
+- POS checkout success overlay vanish fix (initPOS guard)
+- MyStats allergies crash fix, day/days grammar, profile/consent removed
+- Dashboard FinancialTab null guard, HorizontalBar double label fix
+- Spec verification checklist: mandatory element 9 in execute prompts
+- 12-task spec review: 131/131 pass (T4.164-T4.184 range)
+- 5 tasks formalized: T4.191 (Queue date picker), T4.193 (My Stats enrichment), T4.194 (PetHistoryScreen tabs), T4.195 (BookAppointment neubrutalism)
+- ~729 DONE / ~195 TODO. ~899 total tasks.
+
+**Firestore rules state (updated 2026-05-08):**
+- isStaff() = isAuth() (unchanged)
+- isAdmin() = isStaff() (unchanged)
+- clinic_settings read: isAuth() || settingId == 'general' || settingId == 'consent_policy' (unchanged)
+- counters + daily_closings collections (unchanged)
+- expense_categories collection added (isStaff CRUD)
+
+**Next:** T4.191 (Queue date picker, 1 hr) → T4.193 (My Stats visual enrichment, 7-8 hrs) → T4.194 (PetHistoryScreen tabbed restructure, 8-10 hrs) → T4.195 (BookAppointment neubrutalism, 2-3 hrs) → T4.169+T4.170 (Reservation audit+cleanup, 1.5 hrs) → T4.13 (Problem list, 4-5 hrs) → T4.146 (Booking TOCTOU fix, 1.5 hrs)
 
 ---
 
@@ -214,7 +235,7 @@ Paste this prompt at the start of a new session:
 ```
 Read these files in this order:
 1. IMPLEMENTATION_GUIDE.md — current status section + module sequence
-2. handoff.json (section: advisory_session_2026_05_06_07) — latest context
+2. handoff.json (section: advisory_session_2026_05_08) — latest context
 3. MASTER_TASKLIST.md — task registry with IDs, priorities, dependencies, status
 
 The full VetConnect codebase has been audited across 5+ sessions — every source
@@ -222,8 +243,8 @@ file has been deep-dived. Do NOT re-scan any code. All findings are in the
 deep-dive files at the repo root. Use the "Task-to-Source Cross-Reference" table
 in IMPLEMENTATION_GUIDE.md to find the backing file for any task.
 
-Context: This is a continuation of the 2026-05-06/07 advisory session.
-~717 DONE, ~189 TODO. Build passes. 322 tests passing.
+Context: This is a continuation of the 2026-05-08 advisory session.
+~729 DONE, ~195 TODO. Build passes. 322 tests passing.
 Cloudflare Worker URL: https://cool-fire-2d53.jepdd15.workers.dev
 Cloudflare Worker model: claude-haiku-4-5-20251001
 Cloudflare Worker Cron: 0 23 * * * UTC (7 AM Manila daily)

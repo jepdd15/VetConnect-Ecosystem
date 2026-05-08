@@ -28,6 +28,7 @@ import {
 import { auth, db } from "../../firebaseConfig";
 import { COLORS, FONTS, SHADOW } from '../theme/mobileTokens';
 import { calculateAge } from '../utils/helpers';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fetchVaccineCatalog, buildVaccinationStatus } from '../utils/vaccineHelpers';
 
 // Sort option definitions — single source of truth for labels and sort logic keys
@@ -43,6 +44,7 @@ const SORT_OPTIONS = [
 ];
 
 export default function MyPetsScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
   const [pets, setPets] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -563,7 +565,7 @@ export default function MyPetsScreen({ navigation }) {
           data={processedPets}
           keyExtractor={(item) => item.id}
           renderItem={renderPetCard}
-          contentContainerStyle={{ paddingBottom: 120, paddingTop: 15 }}
+          contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 20) + 100, paddingTop: 15 }}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Text style={{ fontSize: 60, marginBottom: 10 }}>🐾</Text>

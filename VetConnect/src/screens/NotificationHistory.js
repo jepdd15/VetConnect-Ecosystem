@@ -14,6 +14,7 @@ import {
   Timestamp, updateDoc, where,
 } from 'firebase/firestore';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ActivityIndicator, Pressable, SectionList, StyleSheet, Text,
   TouchableOpacity, View,
@@ -90,6 +91,7 @@ function formatRelativeTime(date) {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function NotificationHistory({ navigation }) {
+  const insets = useSafeAreaInsets();
   const [notifications, setNotifications] = useState([]);
   const [filteredSections, setFilteredSections] = useState([]);
   const [activeFilter, setActiveFilter] = useState('all');
@@ -304,7 +306,7 @@ export default function NotificationHistory({ navigation }) {
           onEndReached={handleEndReached}
           onEndReachedThreshold={0.3}
           stickySectionHeadersEnabled
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: Math.max(insets.bottom, 20) + 40 }]}
         />
       )}
     </View>

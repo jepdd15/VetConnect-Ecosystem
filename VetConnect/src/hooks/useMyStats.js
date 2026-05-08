@@ -58,6 +58,7 @@ export function useMyStats({
   salesData,
   vaccineAlerts,
   userProfile,
+  spendingRange = '6m',
 }) {
   // Delegate aggregate stats to existing hook — no duplication of that logic.
   const aggregateStats = useClientStats({
@@ -174,19 +175,25 @@ export function useMyStats({
 
       // --- Weight sparkline (last 5 readings, oldest → newest for SparkLine) ---
       const weightPoints = [];
+      // allWeightPoints collects ALL readings for the zoom modal (no 5-limit).
+      const allWeightPoints = [];
       for (const rec of sorted) {
         const vitals = resolveVitals(rec);
         const w = parseFloat(vitals.weight);
         if (!isNaN(w)) {
-          weightPoints.push({
+          const point = {
             label: rec._date.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }),
             value: w,
-          });
-          if (weightPoints.length >= 5) break;
+          };
+          allWeightPoints.push(point);
+          if (weightPoints.length < 5) {
+            weightPoints.push(point);
+          }
         }
       }
-      // Reverse so SparkLine receives data oldest → newest (left → right).
+      // Reverse so SparkLine / VitalsZoomModal receive data oldest → newest (left → right).
       weightPoints.reverse();
+      allWeightPoints.reverse();
 
       const latestWeight = weightPoints.length > 0 ? weightPoints[weightPoints.length - 1].value : null;
       const prevWeight   = weightPoints.length > 1 ? weightPoints[weightPoints.length - 2].value : null;
@@ -223,15 +230,29 @@ export function useMyStats({
           if (productClass !== 'medicine') return;
 
           let daysRemaining = null;
+          let adherence = null;
           if (rx.sig?.days) {
-            const endDate = new Date(rec._date.getTime() + rx.sig.days * 86400000);
+            const totalDays = rx.sig.days;
+            const endDate = new Date(rec._date.getTime() + totalDays * 86400000);
             const remaining = Math.ceil((endDate.getTime() - now.getTime()) / 86400000);
             daysRemaining = remaining > 0 ? remaining : 0;
+
+            // Adherence — only computed when sig.days was explicitly set (not 90-day fallback).
+            const daysCompleted = Math.min(
+              totalDays,
+              Math.floor((now.getTime() - rec._date.getTime()) / 86400000),
+            );
+            adherence = {
+              totalDays,
+              daysCompleted,
+              pct: Math.round((daysCompleted / totalDays) * 100),
+            };
           }
 
           activeMeds.push({
             name: rx.itemName || rx.name || 'Unknown',
             daysRemaining,
+            adherence,
             recordDate: rec._date,
           });
         });
@@ -283,6 +304,44 @@ export function useMyStats({
       const latestDiagnosis = allDiagnoses[0] ?? null;
       const diagnosisCount  = allDiagnoses.length;
 
+      // --- Lab result sparklines — tests with 2+ numeric readings, last 5 per test ---
+      const labTestMap = {};
+      // sorted is newest-first; iterate all records to collect every lab result.
+      for (const rec of sorted) {
+        const results = rec.labResults || [];
+        results.forEach(lr => {
+          const testName = lr.testName || lr.name;
+          if (!testName) return;
+          const numeric = parseFloat(lr.value ?? lr.result);
+          if (isNaN(numeric)) return;
+          if (!labTestMap[testName]) {
+            labTestMap[testName] = { points: [], unit: lr.unit || '' };
+          }
+          labTestMap[testName].points.push({
+            label: rec._date.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }),
+            value: numeric,
+            // Store raw date so we can cap at 5 newest and then reverse.
+            _date: rec._date,
+          });
+        });
+      }
+
+      // Cap at last 5 readings per test, reverse to oldest → newest, filter 2+.
+      const labSparklines = Object.entries(labTestMap)
+        .map(([testName, { points, unit }]) => {
+          // points are already newest-first (sorted is newest-first)
+          const last5 = points.slice(0, 5).reverse();
+          return {
+            testName,
+            unit,
+            data: last5.map(p => ({ label: p.label, value: p.value })),
+            latestValue: last5[last5.length - 1]?.value ?? null,
+          };
+        })
+        .filter(t => t.data.length >= 2)
+        // Sort descending by number of data points (most data first).
+        .sort((a, b) => b.data.length - a.data.length);
+
       // --- Age computed from pet.dob ---
       let age = null;
       const dob = pet.dob?.toDate ? pet.dob.toDate()
@@ -312,6 +371,8 @@ export function useMyStats({
         latestWeight,
         weightDelta,
         weightPoints,
+        allWeightPoints,
+        labSparklines,
         lastVisitDate,
         lastVisitService,
         vaccineStatus,
@@ -382,26 +443,143 @@ export function useMyStats({
     return { totalConditions, perPetTimeline, mostRecurring, thisYearCount };
   }, [userPets, petRecords]);
 
+  // ── YEAR-OVER-YEAR VISIT DATA ─────────────────────────────────────────────
+
+  /**
+   * Side-by-side monthly visit counts for the current year vs the previous year.
+   * hasLastYear is only true when at least one completed appointment exists in the
+   * previous calendar year — controls whether the YoY section renders at all.
+   */
+  const yoyVisitData = useMemo(() => {
+    const now = new Date();
+    const thisYear = now.getFullYear();
+    const lastYear = thisYear - 1;
+    const completed = allAppointments.filter(a => a.status === 'completed');
+
+    const months = Array.from({ length: 12 }, (_, i) => {
+      const monthLabel = new Date(2000, i, 1).toLocaleDateString('en-US', { month: 'short' });
+      let thisYearCount = 0;
+      let lastYearCount = 0;
+
+      completed.forEach(a => {
+        const d = toDate(a.timeCompleted || a.scheduledDate);
+        if (!d) return;
+        if (d.getFullYear() === thisYear && d.getMonth() === i) thisYearCount++;
+        if (d.getFullYear() === lastYear && d.getMonth() === i) lastYearCount++;
+      });
+
+      return { month: i, label: monthLabel, thisYear: thisYearCount, lastYear: lastYearCount };
+    });
+
+    const maxCount = Math.max(...months.map(m => Math.max(m.thisYear, m.lastYear)), 1);
+
+    return {
+      months: months.map(m => ({
+        ...m,
+        thisYearPct: Math.round((m.thisYear / maxCount) * 100),
+        lastYearPct: Math.round((m.lastYear / maxCount) * 100),
+      })),
+      thisYearLabel: String(thisYear),
+      lastYearLabel: String(lastYear),
+      hasLastYear: completed.some(a => {
+        const d = toDate(a.timeCompleted || a.scheduledDate);
+        return d && d.getFullYear() === lastYear;
+      }),
+    };
+  }, [allAppointments]);
+
   // ── SPENDING BREAKDOWN ────────────────────────────────────────────────────
 
   /**
-   * Monthly spending trend, per-pet breakdown, per-service breakdown, and
-   * outstanding balance — all derived from the salesData array (no new queries).
+   * Monthly spending trend, per-pet breakdown, per-service breakdown,
+   * per-pet transaction drill-down, and outstanding balance — all derived
+   * from the salesData array (no new queries).
+   *
+   * spendingRange controls the date window:
+   *   '6m'  — last 6 calendar months (default)
+   *   'ytd' — Jan 1 of current year to now
+   *   'ly'  — Jan 1 to Dec 31 of previous year
+   *   'all' — no date filter
    */
   const spendingBreakdown = useMemo(() => {
     const now = new Date();
+    const currentYear = now.getFullYear();
 
-    // Monthly buckets for the last 6 months.
-    const months = Array.from({ length: 6 }, (_, i) => {
-      const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
-      return {
-        key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
-        label: d.toLocaleDateString('en-US', { month: 'short' }),
-        total: 0,
-      };
+    // ── Compute date bounds from range ──────────────────────────────────────
+    let rangeStart = null;
+    let rangeEnd = null;
+
+    if (spendingRange === '6m') {
+      rangeStart = new Date(currentYear, now.getMonth() - 5, 1);
+    } else if (spendingRange === 'ytd') {
+      rangeStart = new Date(currentYear, 0, 1);
+    } else if (spendingRange === 'ly') {
+      rangeStart = new Date(currentYear - 1, 0, 1);
+      rangeEnd   = new Date(currentYear - 1, 11, 31, 23, 59, 59);
+    }
+    // 'all' — rangeStart and rangeEnd remain null (no filter)
+
+    // ── Filter sales to the selected range ──────────────────────────────────
+    const filteredSales = salesData.filter(sale => {
+      if (!rangeStart && !rangeEnd) return true; // 'all'
+      const saleDate = toDate(sale.createdAt || sale.date);
+      if (!saleDate) return false;
+      if (rangeStart && saleDate < rangeStart) return false;
+      if (rangeEnd   && saleDate > rangeEnd)   return false;
+      return true;
     });
 
-    salesData.forEach(sale => {
+    // ── Build monthly buckets dynamically based on range ────────────────────
+    let months;
+
+    if (spendingRange === '6m') {
+      months = Array.from({ length: 6 }, (_, i) => {
+        const d = new Date(currentYear, now.getMonth() - (5 - i), 1);
+        return {
+          key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+          label: d.toLocaleDateString('en-US', { month: 'short' }),
+          total: 0,
+        };
+      });
+    } else if (spendingRange === 'ytd') {
+      months = Array.from({ length: now.getMonth() + 1 }, (_, i) => {
+        const d = new Date(currentYear, i, 1);
+        return {
+          key: `${currentYear}-${String(i + 1).padStart(2, '0')}`,
+          label: d.toLocaleDateString('en-US', { month: 'short' }),
+          total: 0,
+        };
+      });
+    } else if (spendingRange === 'ly') {
+      months = Array.from({ length: 12 }, (_, i) => {
+        const d = new Date(currentYear - 1, i, 1);
+        return {
+          key: `${currentYear - 1}-${String(i + 1).padStart(2, '0')}`,
+          label: d.toLocaleDateString('en-US', { month: 'short' }),
+          total: 0,
+        };
+      });
+    } else {
+      // 'all' — group by year-month across all time
+      const allKeys = new Set();
+      filteredSales.forEach(sale => {
+        const saleDate = toDate(sale.createdAt || sale.date);
+        if (saleDate) {
+          allKeys.add(`${saleDate.getFullYear()}-${String(saleDate.getMonth() + 1).padStart(2, '0')}`);
+        }
+      });
+      months = Array.from(allKeys)
+        .sort()
+        .map(key => {
+          const [yr, mo] = key.split('-');
+          const d = new Date(Number(yr), Number(mo) - 1, 1);
+          return { key, label: d.toLocaleDateString('en-US', { month: 'short' }), total: 0 };
+        });
+      // Cap at 12 most recent buckets for readability.
+      if (months.length > 12) months = months.slice(months.length - 12);
+    }
+
+    filteredSales.forEach(sale => {
       const saleDate = toDate(sale.createdAt || sale.date);
       if (!saleDate) return;
       const key = `${saleDate.getFullYear()}-${String(saleDate.getMonth() + 1).padStart(2, '0')}`;
@@ -409,11 +587,9 @@ export function useMyStats({
       if (bucket) bucket.total += parseFloat(sale.total) || 0;
     });
 
-    const spendingSparkline = months.map(m => ({ label: m.label, value: m.total }));
-
-    // Per pet — sales matched to their parent appointment to retrieve petName.
+    // ── Per pet ─────────────────────────────────────────────────────────────
     const perPet = {};
-    salesData.forEach(sale => {
+    filteredSales.forEach(sale => {
       const appt = allAppointments.find(a => a.id === sale.appointmentId);
       if (!appt) return;
       const petName = appt.petName || 'Unknown';
@@ -423,9 +599,9 @@ export function useMyStats({
       .map(([name, amount]) => ({ name, amount }))
       .sort((a, b) => b.amount - a.amount);
 
-    // Per service type — from appointment metadata.
+    // ── Per service type ─────────────────────────────────────────────────────
     const perService = {};
-    salesData.forEach(sale => {
+    filteredSales.forEach(sale => {
       const appt = allAppointments.find(a => a.id === sale.appointmentId);
       const serviceType = appt?.serviceCategory || appt?.department || sale.serviceType || 'Other';
       perService[serviceType] = (perService[serviceType] || 0) + (parseFloat(sale.total) || 0);
@@ -434,15 +610,125 @@ export function useMyStats({
       .map(([type, amount]) => ({ type, amount }))
       .sort((a, b) => b.amount - a.amount);
 
-    // Outstanding balance — sum of positive balanceRemaining on non-void/refunded sales.
+    // ── Outstanding balance (always from full salesData — not range-filtered) ──
     const outstandingBalance = salesData.reduce((sum, s) => {
       if (s.status === 'refunded' || s.status === 'voided') return sum;
       const bal = parseFloat(s.balanceRemaining) || 0;
       return sum + (bal > 0 ? bal : 0);
     }, 0);
 
-    return { spendingSparkline, perPetList, perServiceList, outstandingBalance };
-  }, [salesData, allAppointments]);
+    // ── Bar chart data ───────────────────────────────────────────────────────
+    const maxSpending = Math.max(...months.map(m => m.total), 1);
+    const spendingBarData = months.map(m => ({
+      key: m.key,
+      label: m.label,
+      amount: m.total,
+      pct: (m.total / maxSpending) * 100,
+    }));
+
+    // ── Per-pet transaction drill-down ───────────────────────────────────────
+    // Keyed by pet name: { [petName]: [{ date, service, amount }] }, newest-first.
+    const perPetTransactions = {};
+    filteredSales.forEach(sale => {
+      const appt = allAppointments.find(a => a.id === sale.appointmentId);
+      if (!appt) return;
+      const petName = appt.petName || 'Unknown';
+      if (!perPetTransactions[petName]) perPetTransactions[petName] = [];
+      const saleDate = toDate(sale.createdAt || sale.date);
+      perPetTransactions[petName].push({
+        date: saleDate,
+        service: appt.serviceNames?.[0] || appt.service || 'Visit',
+        amount: parseFloat(sale.total) || 0,
+      });
+    });
+    Object.values(perPetTransactions).forEach(arr =>
+      arr.sort((a, b) => (b.date?.getTime() ?? 0) - (a.date?.getTime() ?? 0))
+    );
+
+    return { spendingBarData, perPetList, perServiceList, outstandingBalance, perPetTransactions };
+  }, [salesData, allAppointments, spendingRange]);
+
+  // ── VISIT TYPE PIE DATA ───────────────────────────────────────────────────
+
+  /**
+   * Breakdown of completed visits by department/serviceCategory for the
+   * donut chart. Entries are sorted descending by count.
+   */
+  const visitTypePieData = useMemo(() => {
+    const completed = allAppointments.filter(a => a.status === 'completed');
+    const categoryMap = {};
+    completed.forEach(a => {
+      const cat = a.serviceCategory || a.department || 'Other';
+      categoryMap[cat] = (categoryMap[cat] || 0) + 1;
+    });
+    const total = completed.length;
+    return Object.entries(categoryMap)
+      .map(([name, count]) => ({
+        name,
+        count,
+        pct: total > 0 ? count / total : 0,
+      }))
+      .sort((a, b) => b.count - a.count);
+  }, [allAppointments]);
+
+  // ── UPCOMING APPOINTMENTS ─────────────────────────────────────────────────
+
+  /**
+   * Pending/confirmed appointments that are still in the future, sorted
+   * soonest-first. Each entry includes a human-readable countdown string.
+   */
+  const upcomingAppointments = useMemo(() => {
+    const now = new Date();
+    return allAppointments
+      .filter(a => {
+        if (!['pending', 'confirmed'].includes(a.status)) return false;
+        const d = toDate(a.scheduledDate);
+        return d && d > now;
+      })
+      .map(a => {
+        const d = toDate(a.scheduledDate);
+        const daysUntil = Math.ceil((d - now) / 86400000);
+        const countdown = daysUntil === 0 ? 'Today'
+          : daysUntil === 1 ? 'Tomorrow'
+          : `in ${daysUntil} days`;
+        return {
+          id: a.id,
+          petName: a.petName || 'Unknown',
+          serviceNames: a.serviceNames || [a.service || 'Visit'],
+          scheduledDate: d,
+          countdown,
+          status: a.status,
+        };
+      })
+      .sort((a, b) => a.scheduledDate.getTime() - b.scheduledDate.getTime());
+  }, [allAppointments]);
+
+  // ── SEASONAL VISIT PATTERNS ───────────────────────────────────────────────
+
+  /**
+   * Counts completed visits by calendar month (0 = Jan, 11 = Dec) across ALL
+   * years. Returns a 12-element array with intensity values 0.0–1.0 relative
+   * to the busiest month. Used to render a heatmap strip in MyStatsScreen.
+   */
+  const seasonalPattern = useMemo(() => {
+    const monthlyCounts = Array(12).fill(0);
+
+    allAppointments.forEach(a => {
+      if (a.status !== 'completed') return;
+      const d = toDate(a.timeCompleted || a.scheduledDate);
+      if (!d) return;
+      monthlyCounts[d.getMonth()]++;
+    });
+
+    const maxCount = Math.max(...monthlyCounts, 1);
+
+    return monthlyCounts.map((count, i) => ({
+      month: i,
+      label: new Date(2000, i, 1).toLocaleDateString('en-US', { month: 'short' }),
+      count,
+      intensity: count / maxCount,
+    }));
+  }, [allAppointments]);
 
   // ── PREVENTIVE CARE TIMELINE ──────────────────────────────────────────────
 
@@ -539,6 +825,10 @@ export function useMyStats({
     vaccineCatalog,
     diagnosisHistory,
     spendingBreakdown,
+    visitTypePieData,
+    upcomingAppointments,
     preventiveCare,
+    yoyVisitData,
+    seasonalPattern,
   };
 }

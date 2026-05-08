@@ -20,8 +20,10 @@ import {
 } from "react-native";
 import { db } from "../../firebaseConfig";
 import { BREED_CATALOG } from '../constants/breedConstants';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const EditPetScreen = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
   // Get the passed pet data
   const { pet } = route.params;
 
@@ -101,7 +103,7 @@ const EditPetScreen = ({ route, navigation }) => {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView contentContainerStyle={[styles.container, { paddingBottom: Math.max(insets.bottom, 20) + 40 }]}>
       <Text style={styles.header}>Edit Profile: {pet.name} 🐾</Text>
 
       {/* 1. BASIC INFO */}

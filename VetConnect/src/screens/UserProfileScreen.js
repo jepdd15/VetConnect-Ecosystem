@@ -13,6 +13,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ActivityIndicator,
   Alert,
@@ -33,6 +34,7 @@ import { isValidPHPhone } from "../utils/phoneValidation";
 
 // THE FIX: Notice we added `route` to the props to catch the secret flag!
 export default function UserProfileScreen({ navigation, route }) {
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isErased, setIsErased] = useState(false);
@@ -555,7 +557,7 @@ export default function UserProfileScreen({ navigation, route }) {
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom, 20) + 40 }]}
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.headerBox}>

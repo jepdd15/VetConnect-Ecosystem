@@ -19,8 +19,10 @@ import {
 } from "react-native";
 import { auth, db } from "../../firebaseConfig";
 import { BREED_CATALOG } from '../constants/breedConstants';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function AddPetScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
   const [name, setName] = useState("");
   const [species, setSpecies] = useState("Canine");
   const [breed, setBreed] = useState("");
@@ -154,7 +156,7 @@ export default function AddPetScreen({ navigation }) {
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom, 20) + 40 }]}
           showsVerticalScrollIndicator={false}
         >
           <Text style={styles.header}>New Patient Profile 🐾</Text>

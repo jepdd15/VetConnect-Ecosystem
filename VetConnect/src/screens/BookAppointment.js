@@ -33,7 +33,7 @@ import { auth, db } from "../../firebaseConfig";
 import { useSafeAreaInsets } from "react-native-safe-area-context"; // <-- THE FIX: Hardware measurement hook
 import { useBookingEngine } from "../hooks/useBookingEngine";
 import { formatDisplayDate, formatDisplayTime, getLocalDateStr, resolveTieredPrice } from '../utils/helpers';
-import { COLORS } from '../theme/mobileTokens';
+import { COLORS, FONTS, SHADOW, SPACING } from '../theme/mobileTokens';
 import { useNetwork } from "../context/NetworkContext";
 
 export default function BookAppointment({ navigation, route }) {
@@ -896,7 +896,7 @@ export default function BookAppointment({ navigation, route }) {
                 <TextInput
                     style={[styles.searchInput, { flex: 1, marginBottom: 0 }]}
                     placeholder="🔍 Search pets..."
-                    placeholderTextColor="#aaa"
+                    placeholderTextColor={COLORS.textMuted}
                     value={petSearch}
                     onChangeText={setPetSearch}
                 />
@@ -909,7 +909,7 @@ export default function BookAppointment({ navigation, route }) {
             </View>
             
             {fetching && (
-                <ActivityIndicator color="#8B4513" size="large" style={{ marginVertical: 20 }} />
+                <ActivityIndicator color={COLORS.accent} size="large" style={{ marginVertical: 20 }} />
             )}
           </View>
         }
@@ -926,7 +926,7 @@ export default function BookAppointment({ navigation, route }) {
             >
               {isSelected && (
                 <View style={styles.checkBadge}>
-                  <Text style={{ color: "white", fontSize: 12, fontWeight: "900" }}>✓</Text>
+                  <Text style={{ color: COLORS.white, fontSize: 12, fontWeight: "900" }}>✓</Text>
                 </View>
               )}
               <Text style={{ fontSize: 32, marginBottom: 8 }}>
@@ -958,7 +958,7 @@ export default function BookAppointment({ navigation, route }) {
           <Text style={styles.servicePrice}>₱{s.price}</Text>
           {isSelected && (
             <View style={[styles.checkBadge, { position: 'relative', top: 5, right: 0 }]}>
-              <Text style={{ color: 'white', fontSize: 10, fontWeight: '900' }}>✓</Text>
+              <Text style={{ color: COLORS.white, fontSize: 10, fontWeight: '900' }}>✓</Text>
             </View>
           )}
         </View>
@@ -985,7 +985,7 @@ export default function BookAppointment({ navigation, route }) {
               <TextInput
                 style={styles.searchInput}
                 placeholder="Search for a service..."
-                placeholderTextColor="#aaa"
+                placeholderTextColor={COLORS.textMuted}
                 value={serviceSearch}
                 onChangeText={setServiceSearch}
               />
@@ -1142,7 +1142,7 @@ export default function BookAppointment({ navigation, route }) {
           </Text>
         ) : loadingSlots ? (
           <ActivityIndicator
-            color="#8B4513"
+            color={COLORS.accent}
             style={{ marginVertical: 20 }}
             size="large"
           />
@@ -1258,19 +1258,19 @@ export default function BookAppointment({ navigation, route }) {
         {/* BOTTOM LEGEND */}
         <View style={styles.legendContainer}>
             <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: '#8B4513'}]} />
+                <View style={[styles.legendDot, { backgroundColor: COLORS.accent }]} />
                 <Text style={styles.legendText}>Selected</Text>
             </View>
             <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: '#E0E0E0'}]} />
+                <View style={[styles.legendDot, { backgroundColor: COLORS.borderLight }]} />
                 <Text style={styles.legendText}>Available</Text>
             </View>
             <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: '#FF8A65'}]} />
+                <View style={[styles.legendDot, { backgroundColor: COLORS.warning }]} />
                 <Text style={styles.legendText}>Too Soon</Text>
             </View>
             <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: '#BDBDBD'}]} />
+                <View style={[styles.legendDot, { backgroundColor: COLORS.textMuted }]} />
                 <Text style={styles.legendText}>Taken/Closed</Text>
             </View>
         </View>
@@ -1299,7 +1299,7 @@ export default function BookAppointment({ navigation, route }) {
           <TextInput
             style={styles.modalSearchInput}
             placeholder="Search departments..."
-            placeholderTextColor="#aaa"
+            placeholderTextColor={COLORS.textMuted}
             value={deptModalSearch}
             onChangeText={setDeptModalSearch}
           />
@@ -1376,7 +1376,7 @@ export default function BookAppointment({ navigation, route }) {
             <Text style={styles.summaryText}>
               Service: {rescheduleAppointment?.serviceType}
             </Text>
-            <Text style={[styles.summaryText, { textDecorationLine: 'line-through', color: '#9E9E9E' }]}>
+            <Text style={[styles.summaryText, { textDecorationLine: 'line-through', color: COLORS.textMuted }]}>
               Original: {formatDisplayDate(originalDate)} at {formatDisplayTime(originalDate)}
             </Text>
             <Text style={[styles.summaryText, { color: COLORS.success, fontWeight: '900' }]}>
@@ -1391,7 +1391,7 @@ export default function BookAppointment({ navigation, route }) {
           <TextInput
             style={styles.notesInput}
             placeholder="e.g. Schedule conflict, feeling unwell..."
-            placeholderTextColor="#aaa"
+            placeholderTextColor={COLORS.textMuted}
             multiline
             numberOfLines={3}
             value={rescheduleReason}
@@ -1442,7 +1442,7 @@ export default function BookAppointment({ navigation, route }) {
             <View style={styles.summaryBox}>
                 <Text style={styles.summaryTitle}>Booking Summary</Text>
 
-                <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#5D4037', marginBottom: 8 }}>🐾 Patient:</Text>
+                <Text style={{ fontSize: 13, fontWeight: 'bold', color: COLORS.textSecondary, marginBottom: 8 }}>🐾 Patient:</Text>
                 <View style={styles.summaryPetsContainer}>
                   {selectedPet && (
                     <View style={styles.summaryPetChip}>
@@ -1452,11 +1452,11 @@ export default function BookAppointment({ navigation, route }) {
                 </View>
 
                 {/* Service list */}
-                <Text style={{ fontWeight: 'bold', fontSize: 13, color: '#5D4037', marginTop: 15, marginBottom: 4 }}>Selected Services:</Text>
+                <Text style={{ fontWeight: 'bold', fontSize: 13, color: COLORS.textSecondary, marginTop: 15, marginBottom: 4 }}>Selected Services:</Text>
                 <View style={styles.summaryServiceScroll}>
                     <ScrollView nestedScrollEnabled={true}>
                         {selectedServices.map(s => (
-                            <Text key={s.id} style={{ fontSize: 13, color: '#5D4037', marginBottom: 4 }}>
+                            <Text key={s.id} style={{ fontSize: 13, color: COLORS.textSecondary, marginBottom: 4 }}>
                                 {'•'} {toTitleCase(s.name)} ({'₱'}{resolveTieredPrice(s, petWeight)})
                             </Text>
                         ))}
@@ -1475,7 +1475,7 @@ export default function BookAppointment({ navigation, route }) {
             <TextInput
                 style={styles.notesInput}
                 placeholder={notesPlaceholder}
-                placeholderTextColor="#aaa"
+                placeholderTextColor={COLORS.textMuted}
                 multiline
                 numberOfLines={4}
                 value={notes}
@@ -1517,7 +1517,7 @@ export default function BookAppointment({ navigation, route }) {
       {/* T4.147: Outstanding balance warning — non-blocking. Hidden in reschedule mode. */}
       {outstandingBalance > 0 && !rescheduleMode && (
         <View style={{
-          backgroundColor: '#FFF3E0',
+          backgroundColor: COLORS.warningBg,
           borderBottomWidth: 2,
           borderBottomColor: COLORS.brand,
           paddingHorizontal: 16,
@@ -1601,7 +1601,7 @@ export default function BookAppointment({ navigation, route }) {
             }
           >
             {loading ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={COLORS.white} />
             ) : (
               <Text
                 style={[
@@ -1611,7 +1611,7 @@ export default function BookAppointment({ navigation, route }) {
                     (step === 1 && !selectedPet) ||
                     (step === 2 && !hasServices) ||
                     (step === 3 && !selectedSlot) ||
-                    (rescheduleMode && step === 4 && rescheduleReason.trim() === '')) && { color: "#9E9E9E" },
+                    (rescheduleMode && step === 4 && rescheduleReason.trim() === '')) && { color: COLORS.textMuted },
                 ]}
               >
                 {!isConnected && step === 4 && !rescheduleMode
@@ -1628,80 +1628,78 @@ export default function BookAppointment({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  rootContainer: { flex: 1, backgroundColor: "#FAFAFA" },
+  rootContainer: { flex: 1, backgroundColor: COLORS.cream },
   wizardHeader: {
     padding: 20,
     paddingTop: Platform.OS === "ios" ? 10 : 20,
-    backgroundColor: "white",
+    backgroundColor: COLORS.white,
     borderBottomWidth: 1,
-    borderBottomColor: "#eee",
+    borderBottomColor: COLORS.borderLight,
   },
   wizardTitle: {
     fontSize: 14,
     fontWeight: "800",
-    color: "#8B4513",
+    color: COLORS.accent,
     marginBottom: 10,
     textTransform: "uppercase",
   },
   progressBar: {
     height: 6,
-    backgroundColor: "#EEEEEE",
-    borderRadius: 3,
+    backgroundColor: COLORS.borderLight,
+    borderRadius: 0,
     overflow: "hidden",
   },
-  progressFill: { height: "100%", backgroundColor: "#2E7D32" },
+  progressFill: { height: "100%", backgroundColor: COLORS.success },
 
   bodyContainer: { flex: 1 },
   stepContainer: { flex: 1, padding: 20 },
   stepHeader: {
     fontSize: 28,
     fontWeight: "900",
-    color: "#3E2723",
+    color: COLORS.brand,
     marginBottom: 5,
   },
-  subText: { fontSize: 14, color: "#757575", marginBottom: 20 },
+  subText: { fontSize: 14, color: COLORS.textMuted, marginBottom: 20 },
 
   gridWrap: { flexDirection: "row", flexWrap: "wrap", gap: 15 },
   card: {
     width: "47%",
-    backgroundColor: "white",
+    backgroundColor: COLORS.white,
     padding: 20,
-    borderRadius: 16,
+    borderRadius: 0,
     alignItems: "center",
     borderWidth: 2,
-    elevation: 2,
   },
-  unselectedCard: { borderColor: "#E0E0E0" },
-  selectedCard: { borderColor: "#8B4513", backgroundColor: "#FFF8E1" },
+  unselectedCard: { borderColor: COLORS.borderLight },
+  selectedCard: { borderColor: COLORS.accent, backgroundColor: COLORS.cream },
   cardText: {
     fontWeight: "700",
-    color: "#5D4037",
+    color: COLORS.textSecondary,
     marginTop: 10,
     fontSize: 16,
     textAlign: "center",
   },
-  selectedTextBold: { color: "#8B4513", fontWeight: "900" },
+  selectedTextBold: { color: COLORS.accent, fontWeight: "900" },
   checkBadge: {
     position: "absolute",
     top: -8,
     right: -8,
-    backgroundColor: "#2E7D32",
+    backgroundColor: COLORS.success,
     width: 26,
     height: 26,
     borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 10,
-    elevation: 4,
   },
 
   searchInput: {
-    backgroundColor: "#EEEEEE",
+    backgroundColor: COLORS.borderLight,
     padding: 15,
-    borderRadius: 12,
+    borderRadius: 0,
     fontSize: 16,
     fontWeight: "600",
-    color: "#333",
+    color: COLORS.textPrimary,
     marginBottom: 15,
   },
   chipWrap: {
@@ -1713,37 +1711,37 @@ const styles = StyleSheet.create({
   catChip: {
     paddingHorizontal: 16,
     paddingVertical: 10,
-    backgroundColor: "#E0E0E0",
-    borderRadius: 20,
+    backgroundColor: COLORS.borderLight,
+    borderRadius: 0,
   },
-  catChipSelected: { backgroundColor: "#5D4037" },
-  catText: { color: "#555", fontWeight: "800", fontSize: 13 },
-  catTextSelected: { color: "white" },
+  catChipSelected: { backgroundColor: COLORS.accent },
+  catText: { color: COLORS.textSecondary, fontWeight: "800", fontSize: 13 },
+  catTextSelected: { color: COLORS.white },
 
   serviceRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "white",
+    backgroundColor: COLORS.white,
     padding: 20,
-    borderRadius: 16,
+    borderRadius: 0,
     marginBottom: 12,
     borderWidth: 2,
-    borderColor: "#eee",
+    borderColor: COLORS.borderLight,
   },
-  selectedServiceRow: { borderColor: "#8B4513", backgroundColor: "#FFF8E1" },
-  serviceName: { fontSize: 16, fontWeight: "800", color: "#3E2723" },
+  selectedServiceRow: { borderColor: COLORS.accent, backgroundColor: COLORS.cream },
+  serviceName: { fontSize: 16, fontWeight: "800", color: COLORS.brand },
   serviceDuration: {
     fontSize: 12,
-    color: "#888",
+    color: COLORS.textMuted,
     marginTop: 4,
     fontStyle: "italic",
     fontWeight: "600",
   },
-  servicePrice: { fontSize: 18, fontWeight: "900", color: "#2E7D32" },
+  servicePrice: { fontSize: 18, fontWeight: "900", color: COLORS.success },
   emptyText: {
     textAlign: "center",
-    color: "#aaa",
+    color: COLORS.textMuted,
     marginTop: 20,
     fontStyle: "italic",
   },
@@ -1751,26 +1749,25 @@ const styles = StyleSheet.create({
   modernDateBtn: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "white",
+    backgroundColor: COLORS.white,
     padding: 16,
-    borderRadius: 12,
+    borderRadius: 0,
     marginBottom: 15,
     borderWidth: 2,
-    borderColor: "#8B4513",
-    elevation: 2,
+    borderColor: COLORS.accent,
   },
   modernDateText: {
     flex: 1,
-    color: "#3E2723",
+    color: COLORS.brand,
     fontWeight: "800",
     fontSize: 16,
     textAlign: "center",
   },
-  modernDateArrow: { color: "#aaa", fontSize: 12 },
+  modernDateArrow: { color: COLORS.textMuted, fontSize: 12 },
   timeOfDayHeader: {
     fontSize: 16,
     fontWeight: "900",
-    color: "#8D6E63",
+    color: COLORS.textMuted,
     marginTop: 15,
     marginBottom: 10,
   },
@@ -1783,56 +1780,56 @@ const styles = StyleSheet.create({
   slotBtn: {
     width: "31%",
     paddingVertical: 16,
-    borderRadius: 12,
+    borderRadius: 0,
     alignItems: "center",
     borderWidth: 2,
   },
-  slotAvailable: { backgroundColor: "white", borderColor: "#E0E0E0" },
-  slotSelected: { backgroundColor: "#2E7D32", borderColor: "#2E7D32" },
-  slotDisabled: { backgroundColor: "#F5F5F5", borderColor: "#EEEEEE" },
+  slotAvailable: { backgroundColor: COLORS.white, borderColor: COLORS.borderLight },
+  slotSelected: { backgroundColor: COLORS.success, borderColor: COLORS.success },
+  slotDisabled: { backgroundColor: COLORS.white, borderColor: COLORS.borderLight },
   slotText: { fontWeight: "800", fontSize: 14 },
-  slotTextAvailable: { color: "#3E2723" },
-  slotTextSelected: { color: "white" },
-  slotTextDisabled: { color: "#BDBDBD" },
+  slotTextAvailable: { color: COLORS.brand },
+  slotTextSelected: { color: COLORS.white },
+  slotTextDisabled: { color: COLORS.textMuted },
   slotSubText: {
     fontSize: 9,
-    color: "#D32F2F",
+    color: COLORS.danger,
     fontWeight: "900",
     marginTop: 4,
   },
 
   summaryBox: {
-    backgroundColor: "#FFF8E1",
+    backgroundColor: COLORS.cream,
     padding: 20,
-    borderRadius: 16,
+    borderRadius: 0,
     borderWidth: 1,
-    borderColor: "#D7CCC8",
+    borderColor: COLORS.borderLight,
     marginBottom: 20,
   },
   summaryTitle: {
     fontSize: 18,
     fontWeight: "900",
-    color: "#5D4037",
+    color: COLORS.textSecondary,
     marginBottom: 10,
   },
   summaryText: {
     fontSize: 15,
-    color: "#3E2723",
+    color: COLORS.brand,
     marginBottom: 6,
     fontWeight: "600",
   },
   inputLabel: {
     fontSize: 14,
     fontWeight: "800",
-    color: "#8D6E63",
+    color: COLORS.textMuted,
     marginBottom: 8,
   },
   notesInput: {
-    backgroundColor: "white",
+    backgroundColor: COLORS.white,
     padding: 18,
-    borderRadius: 14,
+    borderRadius: 0,
     borderWidth: 2,
-    borderColor: "#E0E0E0",
+    borderColor: COLORS.borderLight,
     fontSize: 16,
     textAlignVertical: "top",
     minHeight: 120,
@@ -1840,21 +1837,21 @@ const styles = StyleSheet.create({
 
   warningBox: {
     padding: 16,
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 2,
-    borderColor: "#D32F2F",
-    backgroundColor: "#FFEBEE",
+    borderColor: COLORS.danger,
+    backgroundColor: COLORS.dangerBg,
     marginTop: 15,
   },
   warningTitle: {
     fontWeight: "900",
     fontSize: 14,
-    color: "#D32F2F",
+    color: COLORS.danger,
     marginBottom: 6,
   },
   warningText: {
     fontSize: 13,
-    color: "#333",
+    color: COLORS.textPrimary,
     lineHeight: 20,
     fontWeight: "600",
   },
@@ -1866,33 +1863,35 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: "white",
+    backgroundColor: COLORS.white,
     paddingHorizontal: 20,
     paddingTop: 15,
-    borderTopWidth: 1,
-    borderTopColor: "#EEEEEE",
-    elevation: 20,
+    borderTopWidth: 2,
+    borderTopColor: COLORS.brand,
   },
 
   footerRow: { flexDirection: "row", justifyContent: "space-between", gap: 15 },
   backBtn: {
     flex: 1,
     padding: 18,
-    borderRadius: 14,
+    borderRadius: 0,
     alignItems: "center",
-    backgroundColor: "#F5F5F5",
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
   },
-  backBtnText: { color: "#555", fontWeight: "800", fontSize: 16 },
+  backBtnText: { color: COLORS.textSecondary, fontWeight: "800", fontSize: 16 },
   nextBtn: {
     flex: 2,
     padding: 18,
-    borderRadius: 14,
+    borderRadius: 0,
     alignItems: "center",
-    backgroundColor: "#8B4513",
-    elevation: 3,
+    backgroundColor: COLORS.sky,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
   },
-  disabledNextBtn: { backgroundColor: "#E0E0E0", elevation: 0 },
-  nextBtnText: { color: "white", fontWeight: "900", fontSize: 16 },
+  disabledNextBtn: { backgroundColor: COLORS.borderLight },
+  nextBtnText: { color: COLORS.white, fontWeight: "900", fontSize: 16 },
 
   // --- THE SCALABILITY FIX: NEW STYLES ---
   columnWrapper: { justifyContent: "space-between", marginBottom: 15 },
@@ -1905,32 +1904,31 @@ const styles = StyleSheet.create({
   inlineAddBtn: {
     width: 50,
     height: 50,
-    borderRadius: 12,
-    backgroundColor: "#EFEBE9",
+    borderRadius: 0,
+    backgroundColor: COLORS.cream,
     borderWidth: 2,
-    borderColor: "#D7CCC8",
+    borderColor: COLORS.borderLight,
     justifyContent: "center",
     alignItems: "center",
-    elevation: 1,
   },
   inlineAddText: {
     fontSize: 24,
-    color: "#8B4513",
+    color: COLORS.accent,
     fontWeight: "bold",
   },
 
   // --- THE BUNDLE BOX OPTIMIZATION ---
   bundleBox: {
-    backgroundColor: "#EFEBE9",
+    backgroundColor: COLORS.cream,
     padding: 15,
-    borderRadius: 14,
+    borderRadius: 0,
     marginBottom: 15,
     borderLeftWidth: 5,
-    borderLeftColor: "#8B4513",
+    borderLeftColor: COLORS.accent,
   },
   bundleTitle: {
     fontWeight: "900",
-    color: "#5D4037",
+    color: COLORS.textSecondary,
     fontSize: 14,
     marginBottom: 10,
   },
@@ -1944,14 +1942,14 @@ const styles = StyleSheet.create({
   bundlePill: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#8B4513",
+    backgroundColor: COLORS.accent,
     paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 20,
+    borderRadius: 0,
     gap: 6,
   },
   bundlePillText: {
-    color: "white",
+    color: COLORS.white,
     fontSize: 12,
     fontWeight: "900",
   },
@@ -1966,31 +1964,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.white,
     padding: 15,
-    borderRadius: 14,
+    borderRadius: 0,
     marginBottom: 15,
-    borderWidth: 1,
-    borderColor: '#EFEBE9',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    borderWidth: 2,
+    borderColor: COLORS.borderLight,
   },
   deptTriggerLabel: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#8B4513',
+    color: COLORS.accent,
   },
   deptTriggerSub: {
     fontSize: 12,
-    color: '#795548',
+    color: COLORS.accent,
     marginTop: 2,
   },
   deptTriggerArrow: {
     fontSize: 18,
-    color: '#BDBDBD',
+    color: COLORS.textMuted,
   },
   modalOverlay: {
     flex: 1,
@@ -1998,9 +1991,9 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalSheet: {
-    backgroundColor: 'white',
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
     padding: 24,
     height: '75%',
   },
@@ -2013,20 +2006,20 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 20,
     fontWeight: '900',
-    color: '#2E2E2E',
+    color: COLORS.brand,
   },
   modalCloseText: {
-    color: '#8B4513',
+    color: COLORS.accent,
     fontWeight: 'bold',
     fontSize: 16,
   },
   modalSearchInput: {
-    backgroundColor: '#F5F5F5',
+    backgroundColor: COLORS.borderLight,
     padding: 15,
-    borderRadius: 14,
+    borderRadius: 0,
     fontSize: 16,
     marginBottom: 15,
-    color: '#333',
+    color: COLORS.textPrimary,
   },
   sortOptionsRow: {
     flexDirection: 'row',
@@ -2036,19 +2029,19 @@ const styles = StyleSheet.create({
   sortChip: {
     paddingHorizontal: 16,
     paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#F5F5F5',
+    borderRadius: 0,
+    backgroundColor: COLORS.borderLight,
   },
   sortChipActive: {
-    backgroundColor: '#8B4513',
+    backgroundColor: COLORS.accent,
   },
   sortChipText: {
     fontSize: 12,
-    color: '#795548',
+    color: COLORS.accent,
     fontWeight: 'bold',
   },
   sortChipTextActive: {
-    color: 'white',
+    color: COLORS.white,
   },
   deptModalRow: {
     flexDirection: 'row',
@@ -2056,42 +2049,42 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 18,
     borderBottomWidth: 1,
-    borderBottomColor: '#F5F5F5',
+    borderBottomColor: COLORS.borderLight,
   },
   deptModalRowSelected: {
-    backgroundColor: '#FFF8E1',
-    borderRadius: 10,
+    backgroundColor: COLORS.cream,
+    borderRadius: 0,
     paddingHorizontal: 10,
   },
   deptModalName: {
     fontSize: 16,
-    color: '#424242',
+    color: COLORS.textPrimary,
     fontWeight: '600',
   },
   deptModalTextSelected: {
-    color: '#8B4513',
+    color: COLORS.accent,
     fontWeight: '900',
   },
   deptCountBadge: {
-    backgroundColor: '#EFEBE9',
+    backgroundColor: COLORS.cream,
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 12,
+    borderRadius: 0,
   },
   deptCountText: {
     fontSize: 12,
-    color: '#8B4513',
+    color: COLORS.accent,
     fontWeight: 'bold',
   },
 
   // --- SCHEDULING INTELLIGENCE STYLES ---
   insightBox: {
-    backgroundColor: '#F5F5F5',
+    backgroundColor: COLORS.cream,
     padding: 16,
-    borderRadius: 16,
+    borderRadius: 0,
     marginBottom: 20,
     borderLeftWidth: 4,
-    borderLeftColor: '#8B4513',
+    borderLeftColor: COLORS.accent,
   },
   insightHeaderRow: {
     flexDirection: 'row',
@@ -2102,13 +2095,13 @@ const styles = StyleSheet.create({
   insightTitle: {
     fontSize: 14,
     fontWeight: '900',
-    color: '#3E2723',
+    color: COLORS.brand,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
   insightText: {
     fontSize: 13,
-    color: '#5D4037',
+    color: COLORS.textSecondary,
     lineHeight: 18,
   },
   legendContainer: {
@@ -2116,7 +2109,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingTop: 15,
     borderTopWidth: 1,
-    borderTopColor: '#EEEEEE',
+    borderTopColor: COLORS.borderLight,
     marginTop: 10,
   },
   legendItem: {
@@ -2130,7 +2123,7 @@ const styles = StyleSheet.create({
   legendText: {
     fontSize: 10,
     fontWeight: '800',
-    color: '#9E9E9E',
+    color: COLORS.textMuted,
     textTransform: 'uppercase',
   },
 
@@ -2141,13 +2134,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   summaryPetChip: {
-    backgroundColor: '#8B4513',
+    backgroundColor: COLORS.accent,
     paddingHorizontal: 12,
     paddingVertical: 5,
-    borderRadius: 20,
+    borderRadius: 0,
   },
   summaryPetName: {
-    color: 'white',
+    color: COLORS.white,
     fontSize: 12,
     fontWeight: 'bold',
   },
@@ -2156,10 +2149,10 @@ const styles = StyleSheet.create({
     marginVertical: 5,
     padding: 10,
     backgroundColor: 'rgba(255,255,255,0.4)',
-    borderRadius: 12,
+    borderRadius: 0,
   },
   summaryTotalBig: {
-    color: "#2E7D32",
+    color: COLORS.success,
     fontWeight: "900",
     marginTop: 12,
     fontSize: 22,
@@ -2168,38 +2161,38 @@ const styles = StyleSheet.create({
 
   // --- Follow-up date hint (B5) ---
   followUpHint: {
-    backgroundColor: '#FFF3E0',
+    backgroundColor: COLORS.warningBg,
     borderLeftWidth: 3,
-    borderLeftColor: '#E65100',
+    borderLeftColor: COLORS.warning,
     padding: 10,
     marginBottom: 10,
-    borderRadius: 6,
+    borderRadius: 0,
   },
   followUpHintText: {
     fontSize: 12,
-    color: '#8B4513',
+    color: COLORS.accent,
     fontStyle: 'italic',
   },
   noShowBanner: {
     marginHorizontal: 16,
     marginBottom: 6,
     padding: 10,
-    backgroundColor: '#FFF3E0',
+    backgroundColor: COLORS.warningBg,
     borderLeftWidth: 4,
-    borderLeftColor: '#F57C00',
-    borderRadius: 4,
+    borderLeftColor: COLORS.warning,
+    borderRadius: 0,
   },
   noShowBannerTitle: {
     fontSize: 12,
     fontWeight: '900',
-    color: '#E65100',
+    color: COLORS.warning,
     marginBottom: 2,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   noShowBannerText: {
     fontSize: 11,
-    color: '#BF360C',
+    color: COLORS.danger,
     fontWeight: '700',
   },
 });

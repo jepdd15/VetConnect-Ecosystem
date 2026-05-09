@@ -59,12 +59,15 @@ function mapProductToCatalogEntry(product) {
   const legacyKws = Object.entries(LEGACY_KEYWORDS)
     .find(([key]) => nameLower.includes(key))?.[1] || [];
   return {
-    id:           product.id,
-    name:         product.itemName,
-    species:      vc.species      || ['dog', 'cat'],
-    intervalDays: vc.intervalDays || 365,
-    isActive:     !product.isArchived,
-    keywords:     [nameLower, ...legacyKws],
+    id:               product.id,
+    name:             product.itemName,
+    species:          vc.species          || ['dog', 'cat'],
+    intervalDays:     vc.intervalDays     || 365,
+    doses:            vc.doses            || 1,
+    doseIntervalDays: vc.doseIntervalDays || [],
+    startAgeWeeks:    vc.startAgeWeeks    || null,
+    isActive:         !product.isArchived,
+    keywords:         [nameLower, ...legacyKws],
   };
 }
 
@@ -85,6 +88,22 @@ async function fetchCatalog() {
 // Mirrors vaccineHelpers.buildVaccinationStatus but returns ONLY due_soon/overdue
 // entries — current and unknown are irrelevant for reminders.
 
+/**
+ * Step 4.2: Dual-read dueDate helper.
+ * Handles Firestore Timestamp (new records) and ISO string (legacy records).
+ * Never throws — returns null for unrecognized formats.
+ *
+ * @param {*} dueDate - Raw dueDate field from a vaccineAdministrations entry
+ * @returns {Date|null}
+ */
+function parseDueDate(dueDate) {
+  if (!dueDate) return null;
+  if (dueDate.toDate) return dueDate.toDate();                   // Firestore Timestamp
+  if (dueDate.seconds) return new Date(dueDate.seconds * 1000); // Timestamp-like object
+  if (typeof dueDate === 'string') return new Date(dueDate);     // ISO string (legacy)
+  return null;
+}
+
 function getVaccineAdministrations(record) {
   if (record?.vaccineAdministrations?.length > 0) return record.vaccineAdministrations;
   if (record?.vaccineData?.vaccineName) return [record.vaccineData];
@@ -103,12 +122,14 @@ function resolveVaccineFromName(name, catalog) {
 /**
  * Computes vaccine statuses for a single pet. Returns only entries that require
  * a reminder (status === 'due_soon' or 'overdue') within the reminder window.
+ * Multi-dose series aware: tracks dosesGiven vs dosesRequired and returns the
+ * correct next dose number alongside daysUntilDue.
  *
  * @param {Array<object>} records - Medical records for this pet
  * @param {Array<object>} catalog - Vaccine catalog entries
  * @param {string} petSpecies - e.g. 'Canine', 'Feline', 'Dog', 'Cat'
  * @param {number} windowDays - Reminder window in days (default 30)
- * @returns {Array<{ name: string, status: 'due_soon'|'overdue', daysUntilDue: number }>}
+ * @returns {Array<{ name: string, status: 'due_soon'|'overdue', daysUntilDue: number, doseNumber: number, totalDoses: number }>}
  */
 function computePetVaccineStatuses(records, catalog, petSpecies, windowDays = 30) {
   const sp = (petSpecies || '').toLowerCase();
@@ -117,55 +138,102 @@ function computePetVaccineStatuses(records, catalog, petSpecies, windowDays = 30
   const results = [];
 
   for (const catalogVax of catalog.filter(v => v.species?.includes(spKey))) {
-    // Path 1: Structured vaccineAdministrations records
-    let bestTime = 0;
-    let matchedRecord = null;
-    let matchedAdmin = null;
+    const totalDoses = catalogVax.doses || 1;
+    const doseIntervalDays = catalogVax.doseIntervalDays || [];
+
+    // ── Path 1: Structured vaccineAdministrations records ──────────────────
+    // Collect ALL administrations for this vaccine across ALL records.
+    // Each admin entry may carry an explicit doseNumber; if absent, we assign
+    // doses sequentially by record date (oldest record = dose 1).
+
+    /** @type {Array<{ doseNumber: number, recordDate: Date, admin: object }>} */
+    const allAdmins = [];
 
     for (const r of records) {
       const admins = getVaccineAdministrations(r);
-      const admin = admins.find(a => {
+      const recordDate = r.date?.toDate
+        ? r.date.toDate()
+        : r.date?.seconds ? new Date(r.date.seconds * 1000) : null;
+      if (!recordDate) continue;
+
+      for (const a of admins) {
         const resolved = resolveVaccineFromName(a.vaccineName, catalog);
-        return resolved?.id === catalogVax.id;
-      });
-      if (admin) {
-        const rTime = r.date?.toDate
-          ? r.date.toDate().getTime()
-          : (r.date?.seconds ? r.date.seconds * 1000 : 0);
-        if (rTime >= bestTime) {
-          matchedRecord = r;
-          matchedAdmin = admin;
-          bestTime = rTime;
-        }
+        if (resolved?.id !== catalogVax.id) continue;
+        allAdmins.push({ doseNumber: a.doseNumber || null, recordDate, admin: a });
       }
     }
 
-    if (matchedRecord && matchedAdmin) {
-      const lastDate = matchedRecord.date?.toDate
-        ? matchedRecord.date.toDate()
-        : matchedRecord.date?.seconds
-          ? new Date(matchedRecord.date.seconds * 1000)
-          : null;
+    if (allAdmins.length > 0) {
+      // Sort chronologically to assign sequential dose numbers to entries without explicit ones
+      allAdmins.sort((a, b) => a.recordDate.getTime() - b.recordDate.getTime());
 
-      if (!lastDate) continue; // Cannot determine date — skip
+      // Deduplicate by doseNumber — explicit wins; for nulls, assign next available slot
+      const doseMap = new Map(); // doseNumber → admin entry
+      for (const entry of allAdmins) {
+        if (entry.doseNumber !== null && !doseMap.has(entry.doseNumber)) {
+          doseMap.set(entry.doseNumber, entry);
+        }
+      }
+      // Assign remaining null-doseNumber entries to unfilled slots
+      let nextSlot = 1;
+      for (const entry of allAdmins) {
+        if (entry.doseNumber === null) {
+          while (doseMap.has(nextSlot)) nextSlot++;
+          doseMap.set(nextSlot, entry);
+          nextSlot++;
+        }
+      }
 
-      const explicitDue = matchedAdmin.dueDate ? new Date(matchedAdmin.dueDate) : null;
-      const intervalDays = matchedAdmin.intervalDays || catalogVax.intervalDays;
-      const daysUntilDue = explicitDue
-        ? Math.floor((explicitDue.getTime() - Date.now()) / 86400000)
-        : intervalDays - Math.floor((Date.now() - lastDate.getTime()) / 86400000);
+      const dosesGiven = doseMap.size;
+      const seriesComplete = dosesGiven >= totalDoses;
+      const nextDoseNumber = seriesComplete ? totalDoses : dosesGiven + 1;
+
+      // Determine daysUntilDue for the next event (next series dose OR annual booster)
+      let daysUntilDue;
+      if (seriesComplete) {
+        // Annual booster: measure from the date of the last (highest) dose
+        const lastEntry = doseMap.get(
+          Math.max(...[...doseMap.keys()])
+        );
+        const lastAdmin = lastEntry.admin;
+        const lastDate  = lastEntry.recordDate;
+        const explicitDue = parseDueDate(lastAdmin.dueDate);
+        const boosterInterval = lastAdmin.intervalDays || catalogVax.intervalDays;
+        daysUntilDue = explicitDue
+          ? Math.floor((explicitDue.getTime() - Date.now()) / 86400000)
+          : boosterInterval - Math.floor((Date.now() - lastDate.getTime()) / 86400000);
+      } else {
+        // Incomplete series: measure from the date of the most recently given dose
+        const latestEntry = doseMap.get(
+          Math.max(...[...doseMap.keys()])
+        );
+        const latestAdmin = latestEntry.admin;
+        const latestDate  = latestEntry.recordDate;
+        const explicitDue = parseDueDate(latestAdmin.dueDate);
+        // doseIntervalDays[i] is the gap BETWEEN dose i+1 and dose i+2 (0-indexed)
+        const intervalForNextDose = doseIntervalDays[dosesGiven - 1] || 21;
+        daysUntilDue = explicitDue
+          ? Math.floor((explicitDue.getTime() - Date.now()) / 86400000)
+          : intervalForNextDose - Math.floor((Date.now() - latestDate.getTime()) / 86400000);
+      }
 
       if (daysUntilDue <= windowDays) {
         results.push({
-          name: catalogVax.name,
-          status: daysUntilDue < 0 ? 'overdue' : 'due_soon',
+          name:        catalogVax.name,
+          status:      daysUntilDue < 0 ? 'overdue' : 'due_soon',
           daysUntilDue,
+          doseNumber:  nextDoseNumber,
+          totalDoses,
+          catalogId:   catalogVax.id,
         });
       }
       continue;
     }
 
-    // Path 2: Legacy keyword match against SOAP free-text fields
+    // ── Path 2: Legacy keyword match against SOAP free-text fields ─────────
+    // No structured administrations found — fall back to keyword scanning.
+    // Dose info is unavailable in this path; treat as single-dose (1/1).
+
     const keywordMatches = records.filter(r => {
       const text = [
         r.diagnosis,
@@ -190,14 +258,19 @@ function computePetVaccineStatuses(records, catalog, petSpecies, windowDays = 30
 
     if (!lastDate) continue; // Cannot determine date — skip
 
-    const daysSince = Math.floor((Date.now() - lastDate.getTime()) / 86400000);
+    const daysSince   = Math.floor((Date.now() - lastDate.getTime()) / 86400000);
     const daysUntilDue = catalogVax.intervalDays - daysSince;
 
     if (daysUntilDue <= windowDays) {
       results.push({
-        name: catalogVax.name,
-        status: daysUntilDue < 0 ? 'overdue' : 'due_soon',
+        name:        catalogVax.name,
+        status:      daysUntilDue < 0 ? 'overdue' : 'due_soon',
         daysUntilDue,
+        // Legacy path has no dose granularity — omit dose fields so the
+        // post-interpolation cleanup strips the "(Dose X/Y)" fragment.
+        doseNumber:  null,
+        totalDoses:  null,
+        catalogId:   catalogVax.id,
       });
     }
   }
@@ -471,11 +544,30 @@ export async function sendVaccineReminders(clinicSettings = {}) {
       title = template.title
         .replace(/\{petName\}/g, petName)
         .replace(/\{vaccineName\}/g, v.name)
-        .replace(/\{days\}/g, absDays);
+        .replace(/\{days\}/g, absDays)
+        .replace(/\{doseNumber\}/g, v.doseNumber != null ? String(v.doseNumber) : '')
+        .replace(/\{totalDoses\}/g, v.totalDoses != null ? String(v.totalDoses) : '');
       body = template.body
         .replace(/\{petName\}/g, petName)
         .replace(/\{vaccineName\}/g, v.name)
-        .replace(/\{days\}/g, absDays);
+        .replace(/\{days\}/g, absDays)
+        .replace(/\{doseNumber\}/g, v.doseNumber != null ? String(v.doseNumber) : '')
+        .replace(/\{totalDoses\}/g, v.totalDoses != null ? String(v.totalDoses) : '');
+      // Strip the dose fragment when dose data is unavailable (legacy queue entries):
+      // Case 1 — tokens not yet replaced (pre-interpolation guard, e.g. custom template)
+      title = title.replace(/\s*\(Dose \{doseNumber\}\/\{totalDoses\}\)/g, '');
+      body  = body.replace(/\s*\(Dose \{doseNumber\}\/\{totalDoses\}\)/g, '');
+      // Case 2 — partial replacement: one token resolved but not the other (contains '{')
+      //          OR both tokens replaced with empty string, leaving "(Dose /)" — strip
+      //          when either side of the slash is not a digit sequence.
+      title = title.replace(/\s*\(Dose ([^)]*?)\/([^)]*?)\)/g, (m, d1, d2) => {
+        if (m.includes('{') || !/^\d+$/.test(d1.trim()) || !/^\d+$/.test(d2.trim())) return '';
+        return m;
+      });
+      body  = body.replace(/\s*\(Dose ([^)]*?)\/([^)]*?)\)/g, (m, d1, d2) => {
+        if (m.includes('{') || !/^\d+$/.test(d1.trim()) || !/^\d+$/.test(d2.trim())) return '';
+        return m;
+      });
     } else {
       // Multiple vaccines — grouped summary
       const summary = allVax.map(v => {

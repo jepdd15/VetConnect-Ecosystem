@@ -150,9 +150,10 @@ function resolveVaccineStatus(dueDate) {
 
 
 const VACCINE_STATUS_STYLES = {
-  current:   { borderColor: '#2E7D32', badgeBg: '#E8F5E9', badgeColor: '#2E7D32', label: 'CURRENT' },
+  current:    { borderColor: '#2E7D32', badgeBg: '#E8F5E9', badgeColor: '#2E7D32', label: 'CURRENT' },
   'due-soon': { borderColor: '#E65100', badgeBg: '#FFF8E1', badgeColor: '#E65100', label: 'DUE SOON' },
-  overdue:   { borderColor: '#D32F2F', badgeBg: '#FFEBEE', badgeColor: '#D32F2F', label: 'OVERDUE' },
+  overdue:    { borderColor: '#D32F2F', badgeBg: '#FFEBEE', badgeColor: '#D32F2F', label: 'OVERDUE' },
+  incomplete: { borderColor: '#E65100', badgeBg: '#FFF3E0', badgeColor: '#E65100', label: 'INCOMPLETE' },
 };
 
 /**
@@ -168,7 +169,7 @@ const VACCINE_STATUS_STYLES = {
  * @param {Array}  params.vaccineRecords - Array of medical_record documents that contain
  *                                         vaccineAdministrations or vaccineData
  */
-function generateMobileVaccinationPassport({ petName, ownerName, clinicName, clinicPhone, clinicAddress, petDetails, vaccineRecords }) {
+function generateMobileVaccinationPassport({ petName, ownerName, clinicName, clinicPhone, clinicAddress, petDetails, vaccineRecords, vaccineCatalog }) {
   const today = fmtDate(new Date());
   const safeClinic = escHtml(clinicName || 'Starbarks Veterinary Clinic');
   const safePet = escHtml(petName);
@@ -198,12 +199,41 @@ function generateMobileVaccinationPassport({ petName, ownerName, clinicName, cli
     return true;
   });
 
+  // Pre-compute dosesGiven per vaccine name by counting distinct doseNumbers
+  // across ALL records (not just the latest per vaccine).
+  const dosesGivenByVaccine = new Map();
+  allAdministrations.forEach((vax) => {
+    const key = (vax.vaccineName || '').toLowerCase();
+    if (!key) return;
+    if (!dosesGivenByVaccine.has(key)) dosesGivenByVaccine.set(key, new Set());
+    if (vax.doseNumber) dosesGivenByVaccine.get(key).add(vax.doseNumber);
+  });
+
   // --- STATUS CARDS (one per unique vaccine, colour-coded by due-date status) ---
   const statusCardsHtml = latestByVaccine.map((vax) => {
-    const status = resolveVaccineStatus(vax.dueDate);
-    const st = VACCINE_STATUS_STYLES[status];
+    const catalogEntry = Array.isArray(vaccineCatalog)
+      ? vaccineCatalog.find(v => v.name?.toLowerCase() === (vax.vaccineName || '').toLowerCase()
+          || (v.keywords || []).some(kw => (vax.vaccineName || '').toLowerCase().includes(kw)))
+      : null;
+    const dosesRequired = catalogEntry?.doses || 1;
+    const doseNumberSet = dosesGivenByVaccine.get((vax.vaccineName || '').toLowerCase()) || new Set();
+    const dosesGiven = doseNumberSet.size > 0 ? doseNumberSet.size : (dosesRequired > 1 ? 0 : 1);
+    const isIncomplete = dosesRequired > 1 && dosesGiven < dosesRequired;
+
+    const status = isIncomplete ? 'incomplete' : resolveVaccineStatus(vax.dueDate);
+    const stKey = isIncomplete ? 'incomplete' : status;
+    const st = VACCINE_STATUS_STYLES[stKey] || VACCINE_STATUS_STYLES.incomplete;
     const administered = fmtDate(vax.recordDate);
     const dueDate = fmtDate(resolveDate(vax.dueDate));
+
+    const doseDots = dosesRequired > 1
+      ? `<div class="vaccine-card-meta" style="margin-top:4px;">
+           ${Array.from({ length: dosesRequired }, (_, i) =>
+             `<span style="color:${i < dosesGiven ? '#2E7D32' : '#BDBDBD'};font-size:13px;">${i < dosesGiven ? '●' : '○'}</span>`
+           ).join(' ')}
+           <span style="font-size:10px;font-weight:700;color:#5D4037;margin-left:4px;">Dose ${dosesGiven}/${dosesRequired}</span>
+         </div>`
+      : '';
 
     return `
       <div class="vaccine-card" style="border-left:4px solid ${st.borderColor}">
@@ -214,6 +244,7 @@ function generateMobileVaccinationPassport({ petName, ownerName, clinicName, cli
         <div class="vaccine-card-meta">Last administered: <strong>${escHtml(administered)}</strong> by ${escHtml(vax.vetName || 'Clinic Staff')}</div>
         ${vax.manufacturer ? `<div class="vaccine-card-meta">Manufacturer: ${escHtml(vax.manufacturer)}${vax.lotNumber ? ` &nbsp;|&nbsp; Lot: ${escHtml(vax.lotNumber)}` : ''}</div>` : ''}
         <div class="vaccine-card-meta">Next due: <strong>${escHtml(dueDate)}</strong></div>
+        ${doseDots}
       </div>`;
   }).join('');
 
@@ -221,16 +252,45 @@ function generateMobileVaccinationPassport({ petName, ownerName, clinicName, cli
   const historyRowsHtml = allAdministrations.map((vax) => {
     const administered = fmtDate(vax.recordDate);
     const dueDate = fmtDate(resolveDate(vax.dueDate));
+    const doseFmt = vax.doseNumber ? `Dose ${vax.doseNumber}` : '—';
     return `
       <tr>
         <td>${escHtml(administered)}</td>
         <td><strong>${escHtml(vax.vaccineName || 'Unknown')}</strong></td>
+        <td>${escHtml(doseFmt)}</td>
         <td>${escHtml(vax.manufacturer || '—')}</td>
         <td>${escHtml(vax.lotNumber || '—')}</td>
         <td>${escHtml(vax.routeOfAdmin || '—')}</td>
         <td>${escHtml(vax.vetName || 'Clinic Staff')}</td>
         <td>${escHtml(dueDate)}</td>
       </tr>`;
+  }).join('');
+
+  // --- PENDING DOSE ROWS for incomplete multi-dose series ---
+  const pendingRowsHtml = latestByVaccine.flatMap((vax) => {
+    const catalogEntry = Array.isArray(vaccineCatalog)
+      ? vaccineCatalog.find(v => v.name?.toLowerCase() === (vax.vaccineName || '').toLowerCase()
+          || (v.keywords || []).some(kw => (vax.vaccineName || '').toLowerCase().includes(kw)))
+      : null;
+    const dosesRequired = catalogEntry?.doses || 1;
+    if (dosesRequired <= 1) return [];
+    const doseNumberSet = dosesGivenByVaccine.get((vax.vaccineName || '').toLowerCase()) || new Set();
+    const dosesGiven = doseNumberSet.size > 0 ? doseNumberSet.size : 0;
+    if (dosesGiven >= dosesRequired) return [];
+    return Array.from({ length: dosesRequired - dosesGiven }, (_, i) => {
+      const pendingDoseNum = dosesGiven + 1 + i;
+      return `
+        <tr style="color:#9E9E9E; font-style:italic;">
+          <td>—</td>
+          <td><strong>${escHtml(vax.vaccineName || 'Unknown')}</strong></td>
+          <td>Dose ${pendingDoseNum}/${dosesRequired}</td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+          <td><em>pending</em></td>
+        </tr>`;
+    });
   }).join('');
 
   return `<!DOCTYPE html>
@@ -472,6 +532,7 @@ function generateMobileVaccinationPassport({ petName, ownerName, clinicName, cli
         <tr>
           <th>Date</th>
           <th>Vaccine</th>
+          <th>Dose</th>
           <th>Manufacturer</th>
           <th>Lot #</th>
           <th>Route</th>
@@ -480,7 +541,7 @@ function generateMobileVaccinationPassport({ petName, ownerName, clinicName, cli
         </tr>
       </thead>
       <tbody>
-        ${historyRowsHtml}
+        ${historyRowsHtml}${pendingRowsHtml}
       </tbody>
     </table>` : '<p style="color:#8D6E63;font-style:italic">No history records found.</p>'}
   </div>
@@ -1067,7 +1128,7 @@ export default function PetHistoryScreen({ route, navigation }) {
   const [vaccineCatalog, setVaccineCatalog] = useState([]);
 
   // T4.194 Item 18: Per-vaccine push reminder preferences — Set of disabled vaccine IDs.
-  // Fetched from users/{uid}/vaccine_preferences/{petId}. Default: all enabled (empty set).
+  // Fetched from vaccine_preferences/{petId} (ROOT collection). Default: all enabled (empty set).
   const [disabledVaccines, setDisabledVaccines] = useState(new Set());
 
   // T4.194 Item 19: Services price map — name→price Map for cost estimates.
@@ -1171,13 +1232,12 @@ export default function PetHistoryScreen({ route, navigation }) {
   }, []);
 
   // T4.194 Item 18: Fetch vaccine reminder preferences for this pet.
-  // Path: users/{uid}/vaccine_preferences/{petId} — doc with { disabledVaccines: string[] }.
+  // Path: vaccine_preferences/{petId} — ROOT collection (public read rule).
   // Non-critical: if the doc doesn't exist or rules block it, we default to all-enabled.
   useEffect(() => {
-    const uid = auth.currentUser?.uid;
-    if (!uid || !petId) return;
+    if (!petId) return;
     let cancelled = false;
-    getDoc(doc(db, 'users', uid, 'vaccine_preferences', petId))
+    getDoc(doc(db, 'vaccine_preferences', petId))
       .then(snap => {
         if (cancelled) return;
         if (snap.exists()) {
@@ -1733,6 +1793,7 @@ export default function PetHistoryScreen({ route, navigation }) {
           microchip: petDoc.microchipNumber || petDoc.microchip,
         } : null,
         vaccineRecords,
+        vaccineCatalog,
       });
       const { uri } = await Print.printToFileAsync({ html });
       await Sharing.shareAsync(uri, {
@@ -1758,9 +1819,8 @@ export default function PetHistoryScreen({ route, navigation }) {
         next.add(vaccineId);
       }
 
-      const uid = auth.currentUser?.uid;
-      if (uid && petId) {
-        const prefRef = doc(db, 'users', uid, 'vaccine_preferences', petId);
+      if (petId) {
+        const prefRef = doc(db, 'vaccine_preferences', petId);
         setDoc(prefRef, { disabledVaccines: [...next] }, { merge: true })
           .catch(err => console.warn('[PetHistoryScreen.handleToggleReminder]:', err.message));
       }

@@ -678,8 +678,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         };
       }),
     );
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doseAutoDetectMap]);
+  }, [doseAutoDetectMap, vaccineCatalog]);
 
   // T3.1: EMR slide-over drawer state
   const [emrOpen, setEmrOpen] = useState(false);
@@ -2386,7 +2385,12 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                     lotNumber: v.lotNumber,
                     routeOfAdmin: v.routeOfAdmin,
                     siteOfInjection: v.siteOfInjection,
-                    dueDate: v.dueDate || null,
+                    // Step 4.1: Store as Firestore Timestamp for server-side date queries.
+                    // 'T00:00:00' suffix prevents midnight timezone-shift off-by-one.
+                    // Dual-read consumers (parseDueDate) handle both Timestamp + legacy strings.
+                    dueDate: v.dueDate
+                        ? Timestamp.fromDate(new Date(v.dueDate + 'T00:00:00'))
+                        : null,
                     intervalDays: v.intervalDays || 365,
                     // T4.200: Explicit dose number — Decision 2 (explicit doseNumber, not count-based)
                     doseNumber: v.doseNumber || 1,
@@ -2400,7 +2404,10 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                     lotNumber: first.lotNumber,
                     routeOfAdmin: first.routeOfAdmin,
                     siteOfInjection: first.siteOfInjection,
-                    dueDate: first.dueDate || null,
+                    // Step 4.1: Consistent Timestamp storage in legacy shim.
+                    dueDate: first.dueDate
+                        ? Timestamp.fromDate(new Date(first.dueDate + 'T00:00:00'))
+                        : null,
                     intervalDays: first.intervalDays || 365,
                     // T4.200: Propagate dose number to legacy shim
                     doseNumber: first.doseNumber || 1,
@@ -3116,6 +3123,30 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                   onChange={(e) => update('manufacturer', e.target.value)} sx={{ bgcolor: 'white' }} />
               </Grid>
 
+              {/* T4.200 Day 3: Stock warning — shown when selected vaccine product has zero available stock */}
+              {(() => {
+                if (!vax.vaccineName) return null;
+                const linkedProduct = vaccineProducts.find(p =>
+                  (p.itemName || '').toLowerCase() === (vax.vaccineName || '').toLowerCase()
+                );
+                if (!linkedProduct) return null;
+                const available = (linkedProduct.stock || 0) - (linkedProduct.reserved || 0);
+                if (available > 0) return null;
+                return (
+                  <Grid size={{ xs: 12 }}>
+                    <Alert severity="warning" sx={{
+                      py: 0,
+                      fontSize: '0.65rem',
+                      fontWeight: 700,
+                      borderRadius: 0,
+                      '& .MuiAlert-message': { fontSize: '0.65rem' },
+                    }}>
+                      This vaccine is out of stock. The noStockDeduction flag will be applied.
+                    </Alert>
+                  </Grid>
+                );
+              })()}
+
               {/* T4.200: Dose selector — only for multi-dose vaccines */}
               {totalDosesForRow > 1 && (
                 <Grid size={{ xs: 12 }}>
@@ -3143,7 +3174,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                           py: 0.25,
                           '&.Mui-selected': {
                             bgcolor: `${COLORS.success} !important`,
-                            color: '#fff !important',
+                            color: `${COLORS.cardBg} !important`,
                           },
                           '&.Mui-disabled': {
                             bgcolor: `${COLORS.success}22`,

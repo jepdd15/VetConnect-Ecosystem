@@ -78,11 +78,11 @@ export const DEFAULT_TEMPLATES = {
   },
   'vaccine-due': {
     title: 'Vaccination Reminder',
-    body: "Time for {petName}'s checkup! Their {vaccineName} vaccine is due in {days} days. Book a visit to keep them protected!",
+    body: "Time for {petName}'s checkup! Their {vaccineName} vaccine (Dose {doseNumber}/{totalDoses}) is due in {days} days. Book a visit to keep them protected!",
   },
   'vaccine-overdue': {
     title: 'Overdue Vaccination Alert',
-    body: "⚠ {petName}'s {vaccineName} vaccine is overdue by {days} days. Please book as soon as possible to keep them protected.",
+    body: "Warning: {petName}'s {vaccineName} vaccine (Dose {doseNumber}/{totalDoses}) is overdue by {days} days. Please book as soon as possible.",
   },
 };
 
@@ -166,8 +166,10 @@ export const PLACEHOLDER_REFERENCE = [
   { token: '{amount}',       description: 'Total bill amount (completed only)' },
   { token: '{date}',         description: 'Appointment date (available for custom templates)' },
   { token: '{time}',         description: 'Scheduled appointment time (e.g., "2:00 PM")' },
-  { token: '{vaccineName}', description: 'Vaccine name (e.g., "Rabies") — vaccine reminders only' },
+  { token: '{vaccineName}',  description: 'Vaccine name (e.g., "Rabies") — vaccine reminders only' },
   { token: '{days}',        description: 'Days until due, days overdue, or days until appointment — reminders only' },
+  { token: '{doseNumber}',  description: 'Current dose number (e.g., "2") — vaccine reminders only' },
+  { token: '{totalDoses}',  description: 'Total doses in series (e.g., "3") — vaccine reminders only' },
 ];
 
 // ── SMS-Eligible Statuses ──────────────────────────────────────────────────

@@ -127,6 +127,18 @@ service cloud.firestore {
       match /recordFilterPresets/{presetId} {
         allow read, write: if isOwner(userId);
       }
+
+    }
+
+    // ─── VACCINE PREFERENCES (per-pet reminder opt-outs) ─────────
+    // ROOT collection — doc ID is petId, payload: { disabledVaccines: string[] }.
+    // Public read: the Cloudflare Worker Cron reads via unauthenticated REST API
+    // (no Auth JWT) to filter disabled vaccines before sending push reminders.
+    // A subcollection under users/{} would require auth ownership checks, blocking
+    // the Worker. Write restricted to any authenticated user (pet owner on mobile).
+    match /vaccine_preferences/{petId} {
+      allow read: if true;
+      allow write: if isAuth();
     }
 
     // ─── PETS ─────────────────────────────────────────────────────

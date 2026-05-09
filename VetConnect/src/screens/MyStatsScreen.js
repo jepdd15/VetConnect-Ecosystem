@@ -1640,22 +1640,36 @@ export default function MyStatsScreen({ route, navigation }) {
 
                 {/* Per-vaccine status lines */}
                 {pc.vaccineStatus.statuses.map((v, idx) => {
-                  const dotColor = v.status === 'overdue' ? COLORS.danger
-                    : v.status === 'current'   ? COLORS.success
-                    : v.status === 'due_soon'  ? COLORS.warning
+                  const dotColor = v.status === 'overdue'    ? COLORS.danger
+                    : v.status === 'current'                 ? COLORS.success
+                    : v.status === 'due_soon'                ? COLORS.warning
+                    : v.status === 'incomplete'              ? COLORS.warning
                     : COLORS.textMuted;
-                  const dotEmoji = v.status === 'overdue' ? '🔴'
-                    : v.status === 'current'  ? '🟢'
-                    : v.status === 'due_soon' ? '🟡'
+                  const dotEmoji = v.status === 'overdue'    ? '🔴'
+                    : v.status === 'current'                 ? '🟢'
+                    : v.status === 'due_soon'                ? '🟡'
+                    : v.status === 'incomplete'              ? '🟠'
                     : '⚪';
                   const detailText = v.status === 'overdue'
                     ? `OVERDUE (${Math.abs(v.daysUntilDue)} days)`
+                    : v.status === 'incomplete' && v.nextDoseNumber
+                      ? `Dose ${v.nextDoseNumber} ${v.daysUntilDue != null && v.daysUntilDue >= 0 ? `in ${v.daysUntilDue} days` : 'due'}`
                     : v.status === 'current'  ? 'current'
                     : v.status === 'due_soon' ? `in ${v.daysUntilDue} days`
                     : 'no record';
                   return (
                     <View key={idx} style={styles.vacStatusLine}>
-                      <Text style={styles.vacStatusDot}>{dotEmoji}</Text>
+                      {v.dosesRequired > 1 ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                          {Array.from({ length: v.dosesRequired }, (_, i) => (
+                            <Text key={i} style={{ fontSize: 10, color: i < v.dosesGiven ? COLORS.success : COLORS.borderLight }}>
+                              {i < v.dosesGiven ? '●' : '○'}
+                            </Text>
+                          ))}
+                        </View>
+                      ) : (
+                        <Text style={styles.vacStatusDot}>{dotEmoji}</Text>
+                      )}
                       <Text style={styles.vacStatusName}>{v.name}</Text>
                       <Text style={[styles.vacStatusDetail, { color: dotColor }]}>
                         {detailText}
@@ -1693,7 +1707,7 @@ export default function MyStatsScreen({ route, navigation }) {
             Overall:{' '}
             {petCards.reduce((s, pc) => s + (pc.vaccineStatus?.completeness?.administered ?? 0), 0)}/
             {petCards.reduce((s, pc) => s + (pc.vaccineStatus?.completeness?.total ?? 0), 0)}{' '}
-            vaccines current
+            series complete
           </Text>
         </View>
       )}
@@ -2004,7 +2018,7 @@ function PetCardSlim({ petCard, onWeightZoom, onViewChart }) {
                   },
                 ]}>
                   {petCard.vaccineStatus.completeness.administered}/
-                  {petCard.vaccineStatus.completeness.total} current
+                  {petCard.vaccineStatus.completeness.total} complete
                 </Text>
               </>
             ) : (

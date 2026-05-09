@@ -369,14 +369,17 @@ async function handleAiProxy(request, env) {
 
 // ── Vaccine Reminder Cron (T3.55) ─────────────────────────────────────────
 
+// Step 4.5: Dose placeholders added — {doseNumber}/{totalDoses} interpolated at send time.
+// Post-interpolation cleanup strips "(Dose X/Y)" when either side is not a digit (legacy path).
+// MANUAL DEPLOY required — paste to Cloudflare Dashboard Workers editor after updating this file.
 const VACCINE_TEMPLATES = {
   'vaccine-due': {
     title: 'Vaccination Reminder',
-    body: "Time for {petName}'s checkup! Their {vaccineName} vaccine is due in {days} days. Book a visit to keep them protected!",
+    body: "Time for {petName}'s checkup! Their {vaccineName} vaccine (Dose {doseNumber}/{totalDoses}) is due in {days} days. Book a visit to keep them protected!",
   },
   'vaccine-overdue': {
     title: 'Overdue Vaccination Alert',
-    body: "⚠ {petName}'s {vaccineName} vaccine is overdue by {days} days. Please book as soon as possible to keep them protected.",
+    body: "Warning: {petName}'s {vaccineName} vaccine (Dose {doseNumber}/{totalDoses}) is overdue by {days} days. Please book as soon as possible.",
   },
 };
 
@@ -425,12 +428,17 @@ async function handleVaccineReminders(env) {
     const ownerId = fields.ownerId?.stringValue || '';
     const ownerName = fields.ownerName?.stringValue || '';
 
+    // Step 4.3/4.4: Also extract catalogId, doseNumber, totalDoses for preference filtering
+    // and dose placeholder interpolation. catalogId written by vaccineReminderQueue.js (Step 4.4).
     const vaccinesArr = (fields.vaccines?.arrayValue?.values || []).map(v => {
       const m = v.mapValue?.fields || {};
       return {
-        name: m.name?.stringValue || '',
-        status: m.status?.stringValue || '',
+        name:         m.name?.stringValue        || '',
+        status:       m.status?.stringValue       || '',
         daysUntilDue: parseInt(m.daysUntilDue?.integerValue || '0'),
+        catalogId:    m.catalogId?.stringValue    || '',
+        doseNumber:   m.doseNumber?.integerValue  || m.doseNumber?.stringValue || '',
+        totalDoses:   m.totalDoses?.integerValue  || m.totalDoses?.stringValue || '',
       };
     });
 
@@ -439,8 +447,34 @@ async function handleVaccineReminders(env) {
 
     if (!pushToken) { noToken++; continue; }
 
-    const overdueVax = vaccinesArr.filter(v => v.status === 'overdue');
-    const dueVax = vaccinesArr.filter(v => v.status === 'due_soon');
+    // Step 4.3: Read vaccine_preferences for this pet — filter out disabled vaccines.
+    // Non-blocking: if the read fails for any reason, send all reminders unfiltered.
+    // Path: vaccine_preferences/{petId} — ROOT collection (public read rule allows
+    // unauthenticated Worker access; subcollection under users/{} would require auth).
+    // MANUAL DEPLOY required — paste to Cloudflare Dashboard Workers editor.
+    const petId = docName.split('/').pop();
+    let disabledVaccines = [];
+    if (petId) {
+      try {
+        const prefUrl = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/vaccine_preferences/${petId}?key=${FIREBASE_API_KEY}`;
+        const prefRes = await fetch(prefUrl);
+        if (prefRes.ok) {
+          const prefFields = (await prefRes.json()).fields || {};
+          disabledVaccines = (prefFields.disabledVaccines?.arrayValue?.values || [])
+            .map(v => v.stringValue)
+            .filter(Boolean);
+        }
+      } catch {
+        // Non-critical — if read fails, send all reminders (no filtering)
+      }
+    }
+
+    // Filter out vaccines the owner has opted out of. Filtering is by catalogId
+    // (set by vaccineReminderQueue.js) for reliable matching vs. name string comparison.
+    const filteredVaccinesArr = vaccinesArr.filter(v => !disabledVaccines.includes(v.catalogId));
+
+    const overdueVax = filteredVaccinesArr.filter(v => v.status === 'overdue');
+    const dueVax = filteredVaccinesArr.filter(v => v.status === 'due_soon');
     const allVax = [...overdueVax, ...dueVax];
     if (allVax.length === 0) { skipped++; continue; }
 
@@ -450,8 +484,26 @@ async function handleVaccineReminders(env) {
 
     if (allVax.length === 1) {
       const v = allVax[0];
-      title = template.title.replace(/\{petName\}/g, petName).replace(/\{vaccineName\}/g, v.name).replace(/\{days\}/g, String(Math.abs(v.daysUntilDue)));
-      body = template.body.replace(/\{petName\}/g, petName).replace(/\{vaccineName\}/g, v.name).replace(/\{days\}/g, String(Math.abs(v.daysUntilDue)));
+      // Step 4.5: Interpolate dose placeholders; strip "(Dose X/Y)" when either side is blank
+      // (legacy path omits doseNumber/totalDoses — see vaccineReminderQueue.js Path 2).
+      title = template.title
+        .replace(/\{petName\}/g, petName)
+        .replace(/\{vaccineName\}/g, v.name)
+        .replace(/\{days\}/g, String(Math.abs(v.daysUntilDue)))
+        .replace(/\{doseNumber\}/g, String(v.doseNumber || ''))
+        .replace(/\{totalDoses\}/g, String(v.totalDoses || ''))
+        .replace(/\s*\(Dose\s*\/\s*\)/g, '')   // both blank: "(Dose /)"
+        .replace(/\s*\(Dose\s+\/\d+\)/g, '')    // doseNumber blank
+        .replace(/\s*\(Dose\s+\d+\/\s*\)/g, ''); // totalDoses blank
+      body = template.body
+        .replace(/\{petName\}/g, petName)
+        .replace(/\{vaccineName\}/g, v.name)
+        .replace(/\{days\}/g, String(Math.abs(v.daysUntilDue)))
+        .replace(/\{doseNumber\}/g, String(v.doseNumber || ''))
+        .replace(/\{totalDoses\}/g, String(v.totalDoses || ''))
+        .replace(/\s*\(Dose\s*\/\s*\)/g, '')
+        .replace(/\s*\(Dose\s+\/\d+\)/g, '')
+        .replace(/\s*\(Dose\s+\d+\/\s*\)/g, '');
     } else {
       const summary = allVax.map(v => `${v.name} (${v.daysUntilDue < 0 ? `overdue ${Math.abs(v.daysUntilDue)}d` : `due ${v.daysUntilDue}d`})`).join(', ');
       title = overdueVax.length > 0 ? 'Overdue Vaccination Alert' : 'Vaccination Reminder';

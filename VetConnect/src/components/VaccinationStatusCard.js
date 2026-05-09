@@ -9,17 +9,19 @@ import { getVaccineHistory } from '../utils/vaccineHelpers';
 // ---------------------------------------------------------------------------
 
 const STATUS_STYLES = {
-  current:  { borderColor: COLORS.success, badgeBg: '#E8F5E9', badgeText: COLORS.success },
-  due_soon: { borderColor: COLORS.warning, badgeBg: '#FFF3E0', badgeText: COLORS.warning },
-  overdue:  { borderColor: COLORS.danger,  badgeBg: COLORS.dangerBg, badgeText: COLORS.danger },
-  unknown:  { borderColor: '#9E9E9E',      badgeBg: '#F5F5F5', badgeText: '#616161'      },
+  current:    { borderColor: COLORS.success, badgeBg: '#E8F5E9', badgeText: COLORS.success },
+  due_soon:   { borderColor: COLORS.warning, badgeBg: '#FFF3E0', badgeText: COLORS.warning },
+  overdue:    { borderColor: COLORS.danger,  badgeBg: COLORS.dangerBg, badgeText: COLORS.danger },
+  unknown:    { borderColor: '#9E9E9E',      badgeBg: '#F5F5F5', badgeText: '#616161'      },
+  incomplete: { borderColor: COLORS.warning, badgeBg: '#FFF3E0', badgeText: COLORS.warning },
 };
 
 const STATUS_LABELS = {
-  current:  'CURRENT',
-  due_soon: 'DUE SOON',
-  overdue:  'OVERDUE',
-  unknown:  'NO RECORD',
+  current:    'CURRENT',
+  due_soon:   'DUE SOON',
+  overdue:    'OVERDUE',
+  unknown:    'NO RECORD',
+  incomplete: 'INCOMPLETE',
 };
 
 /**
@@ -176,6 +178,22 @@ function VaccineCard({
         </View>
       </View>
 
+      {/* Dose dots row — only shown for multi-dose vaccines */}
+      {vax.dosesRequired > 1 && (
+        <View style={styles.doseDotsRow}>
+          {Array.from({ length: vax.dosesRequired }, (_, i) => (
+            <Text key={i} style={[styles.doseDot, {
+              color: i < vax.dosesGiven ? COLORS.success : COLORS.borderLight,
+            }]}>
+              {i < vax.dosesGiven ? '●' : '○'}
+            </Text>
+          ))}
+          <Text style={styles.doseFractionText}>
+            Dose {vax.dosesGiven}/{vax.dosesRequired}
+          </Text>
+        </View>
+      )}
+
       {/* Item 12: Recommended interval text */}
       {vax.intervalDays > 0 && (
         <Text style={styles.vaxInterval}>{formatInterval(vax.intervalDays)}</Text>
@@ -202,15 +220,29 @@ function VaccineCard({
           {Math.abs(vax.daysUntilDue)} day{Math.abs(vax.daysUntilDue) !== 1 ? 's' : ''} overdue
         </Text>
       )}
+      {vax.status === 'incomplete' && vax.daysUntilDue !== null && vax.daysUntilDue >= 0 && (
+        <Text style={[styles.daysAnnotation, { color: COLORS.warning }]}>
+          Dose {vax.nextDoseNumber} due in {vax.daysUntilDue} day{vax.daysUntilDue !== 1 ? 's' : ''}
+        </Text>
+      )}
+      {vax.status === 'incomplete' && vax.daysUntilDue !== null && vax.daysUntilDue < 0 && (
+        <Text style={[styles.daysAnnotation, { color: COLORS.danger }]}>
+          Dose {vax.nextDoseNumber} overdue by {Math.abs(vax.daysUntilDue)} day{Math.abs(vax.daysUntilDue) !== 1 ? 's' : ''}
+        </Text>
+      )}
 
-      {/* Item 14: Per-vaccine SCHEDULE button on overdue / no-record cards */}
-      {(vax.status === 'overdue' || vax.status === 'unknown') && navigation && petId && (
+      {/* Item 14: Per-vaccine SCHEDULE button on overdue / no-record / incomplete cards */}
+      {(vax.status === 'overdue' || vax.status === 'unknown' || vax.status === 'incomplete') && navigation && petId && (
         <TouchableOpacity
           style={styles.perVaxBookBtn}
           onPress={() => navigation.navigate('BookAppointment', { prefillPetId: petId })}
           activeOpacity={0.85}
         >
-          <Text style={styles.perVaxBookBtnText}>SCHEDULE</Text>
+          <Text style={styles.perVaxBookBtnText}>
+            {vax.nextDoseNumber && vax.dosesRequired > 1
+              ? `SCHEDULE DOSE ${vax.nextDoseNumber}`
+              : 'SCHEDULE'}
+          </Text>
         </TouchableOpacity>
       )}
 
@@ -261,6 +293,9 @@ function VaccineCard({
                 {i > 0 && <View style={styles.historySeparator} />}
                 <View style={styles.historyEntry}>
                   <Text style={styles.historyDate}>{fmtDate(entry.date)}</Text>
+                  {entry.doseNumber ? (
+                    <Text style={styles.historyMeta}>Dose {entry.doseNumber}</Text>
+                  ) : null}
                   <Text style={styles.historyVet}>Administered by {entry.vetName}</Text>
                   {entry.lotNumber ? (
                     <Text style={styles.historyMeta}>Lot: {entry.lotNumber}</Text>
@@ -371,7 +406,7 @@ export default function VaccinationStatusCard({
               ) : (
                 <>
                   <Text style={styles.completenessText}>
-                    {completeness.administered}/{completeness.total} vaccines current ({completeness.percentage}%)
+                    {completeness.administered}/{completeness.total} series complete ({completeness.percentage}%)
                   </Text>
                   <View style={styles.progressTrack}>
                     <View
@@ -620,6 +655,25 @@ const styles = StyleSheet.create({
     fontWeight:    '900',
     textTransform: 'uppercase',
     letterSpacing: 0.6,
+  },
+
+  // --- Dose dots row (multi-dose vaccines only) ---
+  doseDotsRow: {
+    flexDirection: 'row',
+    alignItems:    'center',
+    gap:           4,
+    marginTop:     6,
+    marginBottom:  4,
+    paddingHorizontal: 2,
+  },
+  doseDot: {
+    fontSize: 14,
+  },
+  doseFractionText: {
+    fontSize:   11,
+    fontWeight: '700',
+    color:      COLORS.accent,
+    marginLeft: 6,
   },
 
   // --- Item 12: Recommended interval text ---

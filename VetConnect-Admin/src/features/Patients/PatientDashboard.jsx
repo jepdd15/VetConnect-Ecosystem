@@ -2767,22 +2767,42 @@ export default function PatientDashboard() {
                 }
 
                 const statusColors = {
-                  current:  { bg: '#E8F5E9',          text: COLORS.success,   icon: <CheckCircleOutlineIcon sx={{ fontSize: 13, color: COLORS.success }} /> },
-                  due_soon: { bg: COLORS.cream,        text: '#F57F17',        icon: <WarningAmberIcon sx={{ fontSize: 13, color: '#F57F17' }} /> },
-                  overdue:  { bg: COLORS.dangerSurface, text: COLORS.surgery,  icon: <ErrorOutlineIcon sx={{ fontSize: 13, color: COLORS.surgery }} /> },
-                  unknown:  { bg: COLORS.tableHeaderBg, text: COLORS.textMuted, icon: null },
+                  current:    { bg: '#E8F5E9',           text: COLORS.success,   icon: <CheckCircleOutlineIcon sx={{ fontSize: 13, color: COLORS.success }} /> },
+                  due_soon:   { bg: COLORS.cream,         text: '#F57F17',        icon: <WarningAmberIcon sx={{ fontSize: 13, color: '#F57F17' }} /> },
+                  overdue:    { bg: COLORS.dangerSurface, text: COLORS.surgery,   icon: <ErrorOutlineIcon sx={{ fontSize: 13, color: COLORS.surgery }} /> },
+                  unknown:    { bg: COLORS.tableHeaderBg, text: COLORS.textMuted, icon: null },
+                  incomplete: { bg: '#FFF3E0',            text: '#EF6C00',        icon: <WarningAmberIcon sx={{ fontSize: 13, color: '#EF6C00' }} /> },
                 };
-                const c = statusColors[vax.status];
-                const statusLabel = vax.status === 'current'  ? `Due in ${vax.daysUntilDue}d`
-                  : vax.status === 'due_soon' ? `Due in ${vax.daysUntilDue}d`
-                  : vax.status === 'overdue'  ? `${Math.abs(vax.daysUntilDue)}d overdue`
+                const c = statusColors[vax.status] ?? statusColors.unknown;
+                const statusLabel = vax.status === 'current'
+                  ? `Due in ${vax.daysUntilDue}d`
+                  : vax.status === 'due_soon'
+                    ? `Due in ${vax.daysUntilDue}d`
+                  : vax.status === 'overdue'
+                    ? `${Math.abs(vax.daysUntilDue)}d overdue`
+                  : vax.status === 'incomplete' && vax.nextDoseNumber
+                    ? (vax.daysUntilDue != null
+                        ? `Dose ${vax.nextDoseNumber}/${vax.dosesRequired} in ${vax.daysUntilDue}d`
+                        : `Dose ${vax.nextDoseNumber}/${vax.dosesRequired} due`)
                   : 'No record';
 
                 return (
                   <Box key={vax.name} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 0.5, px: 1, borderRadius: 0, bgcolor: c.bg }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                       {c.icon}
-                      <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', fontWeight: 600, color: c.text }}>{vax.name}</Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        {/* Dose dots for multi-dose vaccines */}
+                        {vax.dosesRequired > 1 && (
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+                            {Array.from({ length: vax.dosesRequired }, (_, i) => (
+                              <Typography key={i} sx={{ fontSize: '0.65rem', color: i < vax.dosesGiven ? COLORS.success : COLORS.borderLight, lineHeight: 1 }}>
+                                {i < vax.dosesGiven ? '●' : '○'}
+                              </Typography>
+                            ))}
+                          </Box>
+                        )}
+                        <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', fontWeight: 600, color: c.text }}>{vax.name}</Typography>
+                      </Box>
                     </Box>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
                       <Typography sx={{ fontFamily: FONT, fontSize: '0.68rem', fontWeight: 700, color: c.text }}>{statusLabel}</Typography>

@@ -227,18 +227,22 @@ export function generateVaccinationRecordHTML({ pet, owner, vaccineRecords, clin
     const vetLicenseCell = hasLicense
       ? `${esc(r.vetName || '—')}<br/><span style="font-size:10px;color:#5D4037;">PRC: ${esc(vetDoc.prcLicense || '—')} / PTR: ${esc(vetDoc.ptrNumber || '—')}</span>`
       : esc(r.vetName || '—');
-    return admins.map(vd => `
-      <tr>
-        <td>${formatPrintDate(r.date)}</td>
-        <td><strong>${esc(vd.vaccineName || '—')}</strong></td>
-        <td>${esc(vd.manufacturer || '—')}</td>
-        <td>${esc(vd.lotNumber || '—')}</td>
-        <td>${esc(vd.routeOfAdmin || '—')}</td>
-        <td>${esc(vd.siteOfInjection || '—')}</td>
-        <td>${vetLicenseCell}</td>
-        <td>${vd.dueDate ? formatPrintDate(vd.dueDate) : '—'}</td>
-      </tr>
-    `);
+    return admins.map(vd => {
+      const doseFmt = vd.doseNumber ? `Dose ${vd.doseNumber}` : '—';
+      return `
+        <tr>
+          <td>${formatPrintDate(r.date)}</td>
+          <td><strong>${esc(vd.vaccineName || '—')}</strong></td>
+          <td>${doseFmt}</td>
+          <td>${esc(vd.manufacturer || '—')}</td>
+          <td>${esc(vd.lotNumber || '—')}</td>
+          <td>${esc(vd.routeOfAdmin || '—')}</td>
+          <td>${esc(vd.siteOfInjection || '—')}</td>
+          <td>${vetLicenseCell}</td>
+          <td>${vd.dueDate ? formatPrintDate(vd.dueDate) : '—'}</td>
+        </tr>
+      `;
+    });
   }).join('');
 
   // ── Vaccination Status Summary table rows ────────────────────
@@ -281,6 +285,20 @@ export function generateVaccinationRecordHTML({ pet, owner, vaccineRecords, clin
   if (mode === 'passport') {
     const nowDateOnly = new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
 
+    // Pre-compute dosesGiven per vaccine name by counting distinct doseNumbers
+    // across ALL records (not just the latest). This is needed for dose dots
+    // on multi-dose vaccines where earlier doses live in older records.
+    const dosesGivenByVaccine = new Map();
+    vaccineRecords.forEach(r => {
+      const admins = getVaccineAdministrations(r);
+      admins.forEach(vd => {
+        const name = (vd.vaccineName || '').toLowerCase();
+        if (!name) return;
+        if (!dosesGivenByVaccine.has(name)) dosesGivenByVaccine.set(name, new Set());
+        if (vd.doseNumber) dosesGivenByVaccine.get(name).add(vd.doseNumber);
+      });
+    });
+
     // Build per-vaccine status cards from the deduplication map already computed above.
     // When a vaccineCatalog is provided, use it to resolve the canonical intervalDays
     // for any administration entry that doesn't carry its own (legacy records).
@@ -294,13 +312,23 @@ export function generateVaccinationRecordHTML({ pet, owner, vaccineRecords, clin
         : admin;
       const { status, daysUntilDue } = deriveVaxStatus(resolvedAdmin, record.date);
 
-      const statusColor = status === 'Current' ? '#2E7D32'
-        : status === 'Due Soon' ? '#E65100'
-        : status === 'Overdue' ? '#C62828'
+      // Dose progress
+      const dosesRequired = catalogEntry?.doses || 1;
+      const doseNumberSet = dosesGivenByVaccine.get((admin.vaccineName || '').toLowerCase()) || new Set();
+      const dosesGiven = doseNumberSet.size > 0 ? doseNumberSet.size : (dosesRequired > 1 ? 0 : 1);
+
+      // Override status to Incomplete when series is not fully administered
+      const effectiveStatus = dosesRequired > 1 && dosesGiven < dosesRequired ? 'Incomplete' : status;
+
+      const statusColor = effectiveStatus === 'Current' ? '#2E7D32'
+        : effectiveStatus === 'Due Soon' ? '#E65100'
+        : effectiveStatus === 'Overdue' ? '#C62828'
+        : effectiveStatus === 'Incomplete' ? '#E65100'
         : '#757575';
-      const statusBg = status === 'Current' ? '#E8F5E9'
-        : status === 'Due Soon' ? '#FFF3E0'
-        : status === 'Overdue' ? '#FFEBEE'
+      const statusBg = effectiveStatus === 'Current' ? '#E8F5E9'
+        : effectiveStatus === 'Due Soon' ? '#FFF3E0'
+        : effectiveStatus === 'Overdue' ? '#FFEBEE'
+        : effectiveStatus === 'Incomplete' ? '#FFF3E0'
         : '#F5F5F5';
       const borderColor = statusColor;
 
@@ -320,6 +348,16 @@ export function generateVaccinationRecordHTML({ pet, owner, vaccineRecords, clin
             ? `~${new Date(Date.now() + daysUntilDue * 86400000).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}`
             : '—');
 
+      // Dose dots HTML for multi-dose vaccines
+      const doseDots = dosesRequired > 1
+        ? `<div class="vaccine-card-detail" style="margin-top:4px;">
+             ${Array.from({ length: dosesRequired }, (_, i) =>
+               `<span style="color:${i < dosesGiven ? '#2E7D32' : '#BDBDBD'};font-size:14px;">${i < dosesGiven ? '●' : '○'}</span>`
+             ).join(' ')}
+             <span style="font-size:11px;font-weight:700;color:#5D4037;margin-left:6px;">Dose ${dosesGiven}/${dosesRequired}</span>
+           </div>`
+        : '';
+
       return `
         <div class="vaccine-card" style="border-left: 4px solid ${borderColor};">
           <div class="vaccine-card-body">
@@ -327,10 +365,42 @@ export function generateVaccinationRecordHTML({ pet, owner, vaccineRecords, clin
             <div class="vaccine-card-detail">Last administered: ${formatPrintDate(record.date)}${record.vetName ? ` &mdash; ${esc(record.vetName)}` : ''}</div>
             ${mfrLot ? `<div class="vaccine-card-detail">${mfrLot}</div>` : ''}
             <div class="vaccine-card-detail">Next due: ${esc(nextDueDisplay)} (${esc(dueText)})</div>
+            ${doseDots}
           </div>
-          <span class="status-badge" style="background:${statusBg}; color:${statusColor}; border: 1px solid ${statusColor};">${esc(status)}</span>
+          <span class="status-badge" style="background:${statusBg}; color:${statusColor}; border: 1px solid ${statusColor};">${esc(effectiveStatus)}</span>
         </div>
       `;
+    }).join('');
+
+    // Build pending dose rows for incomplete multi-dose series.
+    // For each vaccine where dosesGiven < dosesRequired, add placeholder rows
+    // for the remaining doses so reviewers can see what is still outstanding.
+    const pendingHistoryRows = Array.from(latestByVaccine.values()).flatMap(({ admin }) => {
+      const catalogEntry = Array.isArray(vaccineCatalog)
+        ? vaccineCatalog.find(v => v.name?.toLowerCase() === (admin.vaccineName || '').toLowerCase()
+            || (v.keywords || []).some(kw => (admin.vaccineName || '').toLowerCase().includes(kw)))
+        : null;
+      const dosesRequired = catalogEntry?.doses || 1;
+      if (dosesRequired <= 1) return [];
+      const doseNumberSet = dosesGivenByVaccine.get((admin.vaccineName || '').toLowerCase()) || new Set();
+      const dosesGiven = doseNumberSet.size > 0 ? doseNumberSet.size : 0;
+      if (dosesGiven >= dosesRequired) return [];
+      return Array.from({ length: dosesRequired - dosesGiven }, (_, i) => {
+        const pendingDoseNum = dosesGiven + 1 + i;
+        return `
+          <tr style="color:#9E9E9E; font-style:italic;">
+            <td>—</td>
+            <td><strong>${esc(admin.vaccineName || '—')}</strong></td>
+            <td>Dose ${pendingDoseNum}/${dosesRequired}</td>
+            <td>—</td>
+            <td>—</td>
+            <td>—</td>
+            <td>—</td>
+            <td>—</td>
+            <td><em>pending</em></td>
+          </tr>
+        `;
+      });
     }).join('');
 
     const safeClinicName = esc(clinicName || 'Veterinary Clinic');
@@ -388,6 +458,7 @@ export function generateVaccinationRecordHTML({ pet, owner, vaccineRecords, clin
       <tr>
         <th>Date</th>
         <th>Vaccine</th>
+        <th>Dose</th>
         <th>Manufacturer</th>
         <th>Lot #</th>
         <th>Route</th>
@@ -396,7 +467,7 @@ export function generateVaccinationRecordHTML({ pet, owner, vaccineRecords, clin
         <th>Next Due</th>
       </tr>
     </thead>
-    <tbody>${historyRows}</tbody>
+    <tbody>${historyRows}${pendingHistoryRows}</tbody>
   </table>
   ` : '<p style="font-size:13px;color:#A1887F;font-style:italic;">No vaccination records on file.</p>'}
 
@@ -472,6 +543,7 @@ export function generateVaccinationRecordHTML({ pet, owner, vaccineRecords, clin
       <tr>
         <th>Date</th>
         <th>Vaccine</th>
+        <th>Dose</th>
         <th>Manufacturer</th>
         <th>Lot #</th>
         <th>Route</th>

@@ -70,6 +70,10 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
     defaultRoute:        item?.vaccineConfig?.defaultRoute        || 'SQ',
     defaultSite:         item?.vaccineConfig?.defaultSite         || 'Right Scruff',
     defaultManufacturer: item?.vaccineConfig?.defaultManufacturer || '',
+    // T4.200 Day 3: Multi-dose series fields
+    doses:            item?.vaccineConfig?.doses?.toString()            || '1',
+    doseIntervalDays: (item?.vaccineConfig?.doseIntervalDays || []).join(', '),
+    startAgeWeeks:    item?.vaccineConfig?.startAgeWeeks?.toString()    || '',
   });
 
   // Helper: update one field and clear its error
@@ -135,7 +139,7 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
       // Only include opening stock for new products
       ...(!isEditing && { openingStock: Number(formData.openingStock) || 0 }),
       ...(productClass !== null && { productClassOverride: productClass }),
-      // T4.117: Include vaccineConfig sub-object only for vaccine-category products
+      // T4.117 + T4.200 Day 3: Include vaccineConfig sub-object only for vaccine-category products
       ...(isVaccineCategory && {
         vaccineConfig: {
           species:             vaccineConfig.species,
@@ -143,6 +147,12 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
           defaultRoute:        vaccineConfig.defaultRoute,
           defaultSite:         vaccineConfig.defaultSite,
           defaultManufacturer: vaccineConfig.defaultManufacturer,
+          // Multi-dose series fields
+          doses:            Number(vaccineConfig.doses) || 1,
+          doseIntervalDays: vaccineConfig.doseIntervalDays
+            ? vaccineConfig.doseIntervalDays.split(',').map(s => Number(s.trim())).filter(n => n > 0)
+            : [],
+          startAgeWeeks:    Number(vaccineConfig.startAgeWeeks) || null,
         },
       }),
     });
@@ -512,6 +522,39 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
                       }))}
                       sx={sxField}
                       helperText="Auto-calculates next due date"
+                    />
+                  </Grid>
+
+                  {/* T4.200 Day 3: Total doses in series */}
+                  <Grid size={{ xs: 4, sm: 4 }}>
+                    <TextField
+                      fullWidth label="Total Doses" size="small" type="number"
+                      value={vaccineConfig.doses}
+                      onChange={(e) => setVaccineConfig(prev => ({ ...prev, doses: e.target.value }))}
+                      sx={sxField}
+                      helperText="1 = single dose (e.g. Rabies)"
+                    />
+                  </Grid>
+
+                  {/* T4.200 Day 3: Dose intervals */}
+                  <Grid size={{ xs: 4, sm: 4 }}>
+                    <TextField
+                      fullWidth label="Dose Intervals (days)" size="small"
+                      value={vaccineConfig.doseIntervalDays}
+                      onChange={(e) => setVaccineConfig(prev => ({ ...prev, doseIntervalDays: e.target.value }))}
+                      sx={sxField}
+                      helperText="Comma-separated (e.g. 21, 21)"
+                    />
+                  </Grid>
+
+                  {/* T4.200 Day 3: Minimum first-dose age */}
+                  <Grid size={{ xs: 4, sm: 4 }}>
+                    <TextField
+                      fullWidth label="Min Age (weeks)" size="small" type="number"
+                      value={vaccineConfig.startAgeWeeks}
+                      onChange={(e) => setVaccineConfig(prev => ({ ...prev, startAgeWeeks: e.target.value }))}
+                      sx={sxField}
+                      helperText="Optional first-dose age"
                     />
                   </Grid>
 

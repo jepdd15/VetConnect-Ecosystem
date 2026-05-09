@@ -273,7 +273,9 @@ export function buildVaccinationStatus(records, catalog, petSpecies) {
 
         const dosesGiven = Math.min(doseMap.size, totalDoses);
         const seriesComplete = dosesGiven >= totalDoses;
-        const nextDoseNumber = seriesComplete ? null : dosesGiven + 1;
+        const firstMissing = seriesComplete ? null
+          : Array.from({ length: totalDoses }, (_, i) => i + 1).find(n => !doseMap.has(n));
+        const nextDoseNumber = seriesComplete ? null : (firstMissing ?? dosesGiven + 1);
 
         const lastAdmin = allAdmins[allAdmins.length - 1];
         const lastDate = lastAdmin.date;

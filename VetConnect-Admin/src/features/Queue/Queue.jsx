@@ -223,8 +223,15 @@ export default function Queue() {
   const [expandedPulseId, setExpandedPulseId] = useState(null);
   const [activeCaseDay, setActiveCaseDay] = useState(0);
   const [isPinned, setIsPinned] = useState(false);
-  // T3.70: Active tab index for the tabbed notes popover (Client | Staff | System | Legacy)
+  // T3.70: Active tab index for the tabbed notes popover (kept for backward compat reset logic)
   const [notesTab, setNotesTab] = useState(0);
+
+  // Fix 9: Inline staff notes editing state
+  const [editingStaffNotes, setEditingStaffNotes] = useState(false);
+  const [editStaffNotesValue, setEditStaffNotesValue] = useState('');
+  const [editStaffNotesLoading, setEditStaffNotesLoading] = useState(false);
+  const [editStaffNotesRowId, setEditStaffNotesRowId] = useState(null);
+
   const hoverTimer = useRef(null);
   const closeTimer = useRef(null);
 
@@ -477,7 +484,9 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                 statusHistory: [...(patient.statusHistory || []), rawStatus],
                 isTriaged: true, // THE FORENSIC SHIELD STAMP
                 staffNotes: carryStaffNotes,
-                systemChips: arrayUnion('CARRY-OVER'),
+                systemChips: action === 'hospitalize'
+                  ? arrayUnion('CARRY-OVER', 'CONFINED')
+                  : arrayUnion('CARRY-OVER'),
                 processedBy: staffSignature,
                 processedAt: Timestamp.now(),
                 forensicSeal, // THE 8-METRIC AUDIT SEAL
@@ -514,7 +523,9 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                 // T3.70: Structured notes propagation — legacy `notes` excluded via destructure above.
                 clientNotes: carryClientNotes,
                 staffNotes: carryStaffNotes,
-                systemChips: [...existingChips.filter(c => c !== 'CARRY-OVER'), 'CARRY-OVER'],
+                systemChips: action === 'hospitalize'
+                  ? [...existingChips.filter(c => c !== 'CARRY-OVER' && c !== 'CONFINED'), 'CARRY-OVER', 'CONFINED']
+                  : [...existingChips.filter(c => c !== 'CARRY-OVER'), 'CARRY-OVER'],
                 processedBy: staffSignature,
                 assignedVet: action === 'hospitalize' ? (patient.assignedVet || "Unassigned") : "Unassigned",
                 assignedVetId: null,
@@ -2183,14 +2194,20 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           columnHeaderHeight={48}
           getRowClassName={(params) => {
             const classes = [];
-            if (params.row.priority === 'high') classes.push('emergency-row');
+            const chips = params.row.systemChips || [];
+            if (params.row.priority === 'high' || chips.includes('EMERGENCY') || chips.includes('CONFINED')) {
+              classes.push('emergency-row');
+            } else if (chips.includes('CARRY-OVER') || chips.includes('DEFERRED')) {
+              classes.push('carryover-row');
+            }
             return classes.join(' ');
           }}
           sx={{
             border: 'none',
             bgcolor: 'transparent',
             '& .MuiDataGrid-columnHeaders': { bgcolor: 'rgba(255, 255, 255, 0.4)', color: '#5D4037', fontWeight: 'bold', fontSize: '1.05rem', borderBottom: '1px solid rgba(255, 255, 255, 0.5)'},
-            '& .emergency-row': { bgcolor: 'rgba(255, 235, 238, 0.8)' },
+            '& .emergency-row': { bgcolor: 'rgba(255, 235, 238, 0.8)', borderLeft: `4px solid ${COLORS.danger}` },
+            '& .carryover-row': { borderLeft: `4px solid ${COLORS.warning}` },
             '& .super-late-row': { bgcolor: 'rgba(255, 243, 224, 0.8)' },
             '& .MuiDataGrid-row:hover': { bgcolor: 'rgba(255, 255, 255, 0.6)' },
             '& .MuiDataGrid-cell': { borderBottom: '1px solid rgba(255, 255, 255, 0.2)' },
@@ -2479,6 +2496,9 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         onClose={() => {
             handleHoverEnd();
             setIsPinned(false);
+            setEditingStaffNotes(false);
+            setEditStaffNotesValue('');
+            setEditStaffNotesRowId(null);
         }}
         disableRestoreFocus
         PaperProps={{
@@ -2519,71 +2539,200 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                 )}
 
                 {hoverMetadata.type === 'notes' && (() => {
-                  // T3.70: Tabbed notes popover — Client | Staff | System | Legacy
+                  // Unified notes popover — Owner / Staff / Legacy stacked (no tabs)
                   const d = hoverMetadata.data || {};
-                  // Handle legacy callers that pass a plain string
                   const isStructured = typeof d === 'object' && d !== null;
                   const clientNotes = isStructured ? (d.clientNotes || '') : '';
                   const staffNotes = isStructured ? (d.staffNotes || '') : '';
-                  const systemChips = isStructured ? (d.systemChips || []) : [];
                   const legacyNotes = isStructured ? (d.legacyNotes || '') : (typeof d === 'string' ? d : '');
                   const isLegacy = isStructured ? d.isLegacy : true;
+                  const record = isStructured ? d : {};
 
-                  // Build tab list — only tabs with content are shown
-                  const tabs = [];
-                  if (clientNotes) tabs.push({ label: 'CLIENT', content: clientNotes, color: COLORS.medical });
-                  if (staffNotes) tabs.push({ label: 'STAFF', content: staffNotes, color: COLORS.warning });
-                  if (systemChips.length > 0) tabs.push({ label: 'SYSTEM', content: systemChips, color: COLORS.accent, isChips: true });
-                  if (isLegacy && legacyNotes) tabs.push({ label: 'LEGACY', content: legacyNotes, color: COLORS.textMuted });
+                  const noteTextSx = {
+                    fontSize: '1.0rem', lineHeight: 1.6, color: COLORS.brand, fontStyle: 'italic',
+                    whiteSpace: 'pre-wrap', fontFamily: '"Merriweather", serif', fontWeight: 700, letterSpacing: '-0.01rem',
+                  };
 
-                  const activeIdx = Math.min(notesTab, Math.max(0, tabs.length - 1));
-                  const activeTab = tabs[activeIdx] || tabs[0];
+                  const hasAnyNote = clientNotes || staffNotes || (isLegacy && legacyNotes);
 
                   return (
                     <Box>
-                      <Typography variant="overline" sx={{ fontWeight: '1000', color: COLORS.accent, letterSpacing: 2, display: 'block', mb: 1 }}>
-                        CLINICAL INTAKE / NOTES
+                      <Typography variant="overline" sx={{ fontWeight: '1000', color: COLORS.accent, letterSpacing: 2, display: 'block', mb: 1.5 }}>
+                        CONTEXT / NOTES
                       </Typography>
 
-                      {tabs.length > 1 && (
-                        <Tabs
-                          value={activeIdx}
-                          onChange={(_, v) => setNotesTab(v)}
-                          sx={{
-                            minHeight: 28, mb: 1.5,
-                            '& .MuiTab-root': { minHeight: 28, py: 0.5, fontWeight: 900, fontSize: '0.65rem', letterSpacing: 1, textTransform: 'uppercase' },
-                          }}
-                        >
-                          {tabs.map((t, i) => (
-                            <Tab
-                              key={i}
-                              label={t.label}
-                              sx={{ color: t.color, '&.Mui-selected': { color: t.color } }}
-                            />
-                          ))}
-                        </Tabs>
+                      {!hasAnyNote && (
+                        <Typography sx={{ fontSize: '0.9rem', color: COLORS.textMuted, fontStyle: 'italic' }}>
+                          No notes recorded.
+                        </Typography>
                       )}
 
-                      {activeTab?.isChips ? (
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                          {activeTab.content.map((chip, i) => (
-                            <Chip
-                              key={i}
-                              label={chip}
-                              size="small"
-                              sx={{ fontWeight: 900, fontSize: '0.7rem', borderRadius: 0, height: 24 }}
-                            />
-                          ))}
+                      {/* Owner block — read-only */}
+                      {clientNotes && (
+                        <Box sx={{ mb: 1.5 }}>
+                          <Typography sx={{ fontWeight: 900, fontSize: '0.7rem', color: COLORS.medical, letterSpacing: 0.5, mb: 0.5 }}>
+                            OWNER:
+                          </Typography>
+                          <Typography sx={noteTextSx}>"{clientNotes}"</Typography>
                         </Box>
-                      ) : (
-                        <Typography sx={{
-                          fontSize: '1.05rem', lineHeight: 1.6, color: COLORS.brand, fontStyle: 'italic',
-                          whiteSpace: 'pre-wrap', fontFamily: '"Merriweather", serif', fontWeight: 700, letterSpacing: '-0.01rem'
-                        }}>
-                          {activeTab?.label === 'LEGACY'
-                            ? `(Legacy) "${activeTab?.content}"`
-                            : `"${activeTab?.content}"`}
-                        </Typography>
+                      )}
+
+                      {/* Staff block — editable via Fix 9 */}
+                      {(staffNotes || clientNotes || (isLegacy && legacyNotes)) && (
+                        <Box sx={{ mb: 1.5 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                            <Typography sx={{ fontWeight: 900, fontSize: '0.7rem', color: COLORS.warning, letterSpacing: 0.5 }}>
+                              STAFF:
+                            </Typography>
+                            <IconButton
+                              size="small"
+                              onClick={() => {
+                                setEditingStaffNotes(true);
+                                setEditStaffNotesValue(staffNotes);
+                                setEditStaffNotesRowId(record.rowId || null);
+                                setIsPinned(true);
+                              }}
+                              sx={{ p: 0.25, pointerEvents: 'auto' }}
+                            >
+                              <EditIcon sx={{ fontSize: 14, color: COLORS.textMuted }} />
+                            </IconButton>
+                          </Box>
+
+                          {editingStaffNotes && editStaffNotesRowId === record.rowId ? (
+                            <Box sx={{ mt: 0.5 }}>
+                              <TextField
+                                fullWidth
+                                multiline
+                                rows={3}
+                                size="small"
+                                value={editStaffNotesValue}
+                                onChange={(e) => setEditStaffNotesValue(e.target.value)}
+                                disabled={editStaffNotesLoading}
+                                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0, fontSize: '0.85rem' } }}
+                              />
+                              <Box sx={{ display: 'flex', gap: 1, mt: 1, justifyContent: 'flex-end' }}>
+                                <Button
+                                  size="small"
+                                  onClick={() => {
+                                    setEditingStaffNotes(false);
+                                    setEditStaffNotesValue('');
+                                    setEditStaffNotesRowId(null);
+                                  }}
+                                  disabled={editStaffNotesLoading}
+                                  sx={{ fontSize: '0.7rem', fontWeight: 900, borderRadius: 0, color: COLORS.textMuted }}
+                                >
+                                  Cancel
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  disabled={editStaffNotesLoading}
+                                  onClick={async () => {
+                                    setEditStaffNotesLoading(true);
+                                    try {
+                                      await updateDoc(doc(db, 'appointments', editStaffNotesRowId), { staffNotes: editStaffNotesValue });
+                                      setEditingStaffNotes(false);
+                                      setEditStaffNotesValue('');
+                                      setEditStaffNotesRowId(null);
+                                    } catch (err) {
+                                      console.error('[StaffNotes] Save failed:', err);
+                                    } finally {
+                                      setEditStaffNotesLoading(false);
+                                    }
+                                  }}
+                                  sx={{
+                                    fontSize: '0.7rem', fontWeight: 900, borderRadius: 0,
+                                    bgcolor: COLORS.sky, '&:hover': { bgcolor: COLORS.skyHover },
+                                  }}
+                                >
+                                  {editStaffNotesLoading ? 'Saving...' : 'Save'}
+                                </Button>
+                              </Box>
+                            </Box>
+                          ) : staffNotes ? (
+                            <Typography sx={noteTextSx}>"{staffNotes}"</Typography>
+                          ) : (
+                            <Typography sx={{ fontSize: '0.85rem', color: COLORS.textMuted, fontStyle: 'italic' }}>
+                              No staff note — click the edit icon to add one.
+                            </Typography>
+                          )}
+                        </Box>
+                      )}
+
+                      {/* Add Staff Note button when no staff note and clientNotes or legacyNotes exist */}
+                      {!staffNotes && (clientNotes || (isLegacy && legacyNotes)) && (
+                        <Box sx={{ mb: 1.5 }}>
+                          {editingStaffNotes && editStaffNotesRowId === record.rowId ? (
+                            <Box>
+                              <TextField
+                                fullWidth
+                                multiline
+                                rows={3}
+                                size="small"
+                                value={editStaffNotesValue}
+                                onChange={(e) => setEditStaffNotesValue(e.target.value)}
+                                disabled={editStaffNotesLoading}
+                                placeholder="Enter staff observation..."
+                                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0, fontSize: '0.85rem' } }}
+                              />
+                              <Box sx={{ display: 'flex', gap: 1, mt: 1, justifyContent: 'flex-end' }}>
+                                <Button
+                                  size="small"
+                                  onClick={() => { setEditingStaffNotes(false); setEditStaffNotesValue(''); setEditStaffNotesRowId(null); }}
+                                  disabled={editStaffNotesLoading}
+                                  sx={{ fontSize: '0.7rem', fontWeight: 900, borderRadius: 0, color: COLORS.textMuted }}
+                                >
+                                  Cancel
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  disabled={editStaffNotesLoading}
+                                  onClick={async () => {
+                                    setEditStaffNotesLoading(true);
+                                    try {
+                                      await updateDoc(doc(db, 'appointments', editStaffNotesRowId), { staffNotes: editStaffNotesValue });
+                                      setEditingStaffNotes(false);
+                                      setEditStaffNotesValue('');
+                                      setEditStaffNotesRowId(null);
+                                    } catch (err) {
+                                      console.error('[StaffNotes] Save failed:', err);
+                                    } finally {
+                                      setEditStaffNotesLoading(false);
+                                    }
+                                  }}
+                                  sx={{ fontSize: '0.7rem', fontWeight: 900, borderRadius: 0, bgcolor: COLORS.sky, '&:hover': { bgcolor: COLORS.skyHover } }}
+                                >
+                                  {editStaffNotesLoading ? 'Saving...' : 'Save'}
+                                </Button>
+                              </Box>
+                            </Box>
+                          ) : (
+                            <Button
+                              size="small"
+                              startIcon={<EditIcon sx={{ fontSize: 14 }} />}
+                              onClick={() => {
+                                setEditingStaffNotes(true);
+                                setEditStaffNotesValue('');
+                                setEditStaffNotesRowId(record.rowId || null);
+                                setIsPinned(true);
+                              }}
+                              sx={{ fontSize: '0.7rem', fontWeight: 900, borderRadius: 0, color: COLORS.warning, borderColor: COLORS.warning, border: `1px solid ${COLORS.warning}`, pointerEvents: 'auto' }}
+                            >
+                              Add Staff Note
+                            </Button>
+                          )}
+                        </Box>
+                      )}
+
+                      {/* Legacy block */}
+                      {isLegacy && legacyNotes && (
+                        <Box sx={{ mb: 0.5 }}>
+                          <Typography sx={{ fontWeight: 900, fontSize: '0.7rem', color: COLORS.textMuted, letterSpacing: 0.5, mb: 0.5 }}>
+                            LEGACY:
+                          </Typography>
+                          <Typography sx={{ ...noteTextSx, color: COLORS.textMuted }}>"{legacyNotes}"</Typography>
+                        </Box>
                       )}
                     </Box>
                   );

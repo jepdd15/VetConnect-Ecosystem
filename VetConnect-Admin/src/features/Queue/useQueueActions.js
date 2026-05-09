@@ -362,7 +362,6 @@ export function useQueueActions() {
         ticketPrefix: "E", // E-Series Ticket!
         timeArrived: Timestamp.now(),
         createdAt: Timestamp.now(),
-        staffNotes: "Bypassed registration for immediate triage.",
         systemChips: ['EMERGENCY', 'QUICK-ADMIT'],
         assignedVet: "Unassigned",
         clinicalPulse: [

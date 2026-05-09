@@ -219,6 +219,41 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                       )}
                   </Box>
               </Box>
+
+              {/* System status chips — relocated from notes column (Fix 3) */}
+              {(() => {
+                const systemChips = p.row.systemChips || [];
+                // QUICK-ADMIT is audit-only — hidden from display (Fix 7)
+                const visibleChips = systemChips.filter(c => c !== 'QUICK-ADMIT');
+                if (visibleChips.length === 0) return null;
+
+                const chipColor = (tag) => {
+                  if (tag === 'EMERGENCY' || tag === 'CONFINED') return { bg: COLORS.kpiRedBg, border: COLORS.danger, color: COLORS.danger };
+                  if (tag === 'CARRY-OVER' || tag === 'DEFERRED') return { bg: COLORS.kpiOrangeBg, border: COLORS.warning, color: COLORS.warning };
+                  if (tag.startsWith('NO-SHOW')) return { bg: COLORS.kpiOrangeBg, border: COLORS.warning, color: COLORS.warning };
+                  return { bg: COLORS.cream, border: COLORS.border, color: COLORS.accent };
+                };
+
+                return (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.3, mt: 0.3 }}>
+                    {visibleChips.map((tag, i) => {
+                      const c = chipColor(tag);
+                      return (
+                        <Chip
+                          key={i}
+                          label={tag}
+                          size="small"
+                          sx={{
+                            height: 16, fontSize: '0.5rem', fontWeight: 900, borderRadius: 0,
+                            bgcolor: c.bg, color: c.color, border: `1px solid ${c.border}`,
+                            '& .MuiChip-label': { px: 0.5 },
+                          }}
+                        />
+                      );
+                    })}
+                  </Box>
+                );
+              })()}
             </Box>
           </Box>
         </Box>
@@ -244,7 +279,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
   }] : []),
   {
     field: 'notes',
-    headerName: tabValue === 4 ? 'Prescription Preview' : tabValue === 5 ? 'Billing Preview' : 'Medical Intake / Notes',
+    headerName: tabValue === 4 ? 'Prescription Preview' : tabValue === 5 ? 'Billing Preview' : 'Context / Notes',
     flex: 1, minWidth: 160, sortable: false,
     renderCell: (p) => {
       // DISPENSE tab — Prescription Preview
@@ -303,38 +338,40 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
         );
       }
 
-      // Default: Medical Intake / Notes (tabs 0-3, 6, 7)
+      // Default: Context / Notes (tabs 0-3, 6, 7)
       // T3.70: Structured note fields with legacy fallback.
       const clientNotes = p.row.clientNotes || '';
       const staffNotes = p.row.staffNotes || '';
-      const systemChips = p.row.systemChips || [];
       const legacyNotes = (!clientNotes && !staffNotes) ? (p.row.notes || '') : '';
       const isLegacy = !!legacyNotes && !clientNotes && !staffNotes;
 
-      // Priority preview: staff notes > client notes > legacy
-      const previewText = staffNotes || clientNotes || legacyNotes;
+      // Fix 8: Detect carry-over to show stale date prefix on notes
+      const isCarryOver = (p.row.caseDay > 1) || !!p.row.originApptId;
+      const sourceDate = isCarryOver
+        ? (() => {
+            const raw = p.row.createdAt;
+            const d = raw?.toDate ? raw.toDate() : (raw ? new Date(raw) : null);
+            if (!d) return null;
+            const today = new Date();
+            if (d.toDateString() === today.toDateString()) return null;
+            return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+          })()
+        : null;
 
-      // Count how many distinct note categories are populated
-      const populatedCount = [clientNotes, staffNotes, legacyNotes].filter(Boolean).length;
-
-      // Chip color mapping
-      const chipColor = (tag) => {
-        if (tag === 'EMERGENCY') return { bg: COLORS.kpiRedBg, border: COLORS.danger, color: COLORS.danger };
-        if (tag === 'CARRY-OVER') return { bg: COLORS.kpiOrangeBg, border: COLORS.warning, color: COLORS.warning };
-        if (tag.startsWith('NO-SHOW')) return { bg: COLORS.kpiOrangeBg, border: COLORS.warning, color: COLORS.warning };
-        if (tag === 'QUICK-ADMIT') return { bg: COLORS.kpiRedBg, border: COLORS.danger, color: COLORS.danger };
-        if (tag === 'DEFERRED') return { bg: COLORS.kpiOrangeBg, border: COLORS.warning, color: COLORS.warning };
-        return { bg: COLORS.cream, border: COLORS.border, color: COLORS.accent };
-      };
+      const hasAnyNote = clientNotes || staffNotes || legacyNotes;
 
       return (
         <Box
           onMouseEnter={(e) => actions.handleHoverStart(e, 'notes', {
             clientNotes,
             staffNotes,
-            systemChips,
+            systemChips: p.row.systemChips || [],
             legacyNotes,
             isLegacy,
+            rowId: p.row.id,
+            createdAt: p.row.createdAt,
+            caseDay: p.row.caseDay,
+            originApptId: p.row.originApptId,
           })}
           onMouseLeave={actions.handleHoverEnd}
           sx={{
@@ -343,65 +380,59 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
             width: '100%',
             pt: 1,
             cursor: 'zoom-in',
+            gap: 0.4,
             '&:hover': { bgcolor: 'rgba(139, 69, 19, 0.04)' },
-            transition: 'background-color 0.2s'
+            transition: 'background-color 0.2s',
           }}
         >
-          {/* System chips row */}
-          {systemChips.length > 0 && (
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.3, mb: 0.5 }}>
-              {systemChips.map((tag, i) => {
-                const c = chipColor(tag);
-                return (
-                  <Chip
-                    key={i}
-                    label={tag}
-                    size="small"
-                    sx={{
-                      height: 16, fontSize: '0.5rem', fontWeight: 900, borderRadius: 0,
-                      bgcolor: c.bg, color: c.color, border: `1px solid ${c.border}`,
-                      '& .MuiChip-label': { px: 0.5 },
-                    }}
-                  />
-                );
-              })}
+          {/* Owner note line */}
+          {clientNotes && (
+            <Box sx={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+              {sourceDate && (
+                <Typography component="span" sx={{ fontSize: '0.62rem', fontWeight: 800, color: COLORS.textMuted, mr: 0.5 }}>
+                  ({sourceDate})
+                </Typography>
+              )}
+              <Typography component="span" sx={{ fontSize: '0.72rem', fontWeight: 900, color: COLORS.medical, mr: 0.4 }}>
+                Owner:
+              </Typography>
+              <Typography component="span" sx={{ fontSize: '0.78rem', fontWeight: 500, color: COLORS.textPrimary, fontStyle: 'italic' }}>
+                {clientNotes}
+              </Typography>
             </Box>
           )}
 
-          {/* Legacy label */}
-          {isLegacy && (
-            <Typography variant="caption" sx={{ fontSize: '0.55rem', color: COLORS.textMuted, fontWeight: 800, letterSpacing: 0.8, mb: 0.25 }}>
-              LEGACY
-            </Typography>
+          {/* Staff note line */}
+          {staffNotes && (
+            <Box sx={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+              {sourceDate && (
+                <Typography component="span" sx={{ fontSize: '0.62rem', fontWeight: 800, color: COLORS.textMuted, mr: 0.5 }}>
+                  ({sourceDate})
+                </Typography>
+              )}
+              <Typography component="span" sx={{ fontSize: '0.72rem', fontWeight: 900, color: COLORS.warning, mr: 0.4 }}>
+                Staff:
+              </Typography>
+              <Typography component="span" sx={{ fontSize: '0.78rem', fontWeight: 500, color: COLORS.textPrimary, fontStyle: 'italic' }}>
+                {staffNotes}
+              </Typography>
+            </Box>
           )}
 
-          {/* Preview text */}
-          {previewText ? (
-            <Typography
-              variant="body2"
-              sx={{
-                display: '-webkit-box',
-                WebkitLineClamp: 3,
-                WebkitBoxOrient: 'vertical',
-                overflow: 'hidden',
-                fontSize: '0.82rem',
-                lineHeight: 1.3,
-                color: staffNotes ? COLORS.warning : (clientNotes ? COLORS.medical : 'text.primary'),
-                fontStyle: 'italic',
-                fontWeight: 500,
-              }}
-            >
-              {previewText}
-            </Typography>
-          ) : (
+          {/* Legacy note line */}
+          {isLegacy && legacyNotes && (
+            <Box sx={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+              <Typography component="span" sx={{ fontSize: '0.62rem', fontWeight: 800, color: COLORS.textMuted, mr: 0.4, letterSpacing: 0.5 }}>
+                LEGACY:
+              </Typography>
+              <Typography component="span" sx={{ fontSize: '0.78rem', fontWeight: 500, color: COLORS.textMuted, fontStyle: 'italic' }}>
+                {legacyNotes}
+              </Typography>
+            </Box>
+          )}
+
+          {!hasAnyNote && (
             <Typography variant="caption" sx={{ color: 'text.disabled' }}>No notes provided</Typography>
-          )}
-
-          {/* +N more badge */}
-          {populatedCount > 1 && (
-            <Typography variant="caption" sx={{ fontSize: '0.6rem', color: COLORS.textMuted, fontWeight: 700, mt: 0.25, alignSelf: 'flex-end' }}>
-              +{populatedCount - 1} more
-            </Typography>
           )}
         </Box>
       );

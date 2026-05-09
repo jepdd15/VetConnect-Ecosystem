@@ -5,6 +5,7 @@
 import {
   arrayUnion,
   collection,
+  deleteDoc,
   doc,
   documentId,
   getDoc,
@@ -407,12 +408,42 @@ const ClientAppointments = ({ navigation }) => {
           style: "destructive",
           onPress: async () => {
             try {
+              // T4.205: Read appointment before cancelling to get scheduledDate + departments
+              // so we can delete the corresponding reservation docs to free the slot.
+              const apptSnap = await getDoc(doc(db, "appointments", id));
+              const apptData = apptSnap.exists() ? apptSnap.data() : null;
+
               await updateDoc(doc(db, "appointments", id), {
                 status: "cancelled",
                 auditReason: "Cancelled by Pet Owner",
                 auditReasons: arrayUnion({ reason: 'Cancelled by Pet Owner', action: 'client-cancel', staffName: 'Client/Self', timestamp: Timestamp.now() }),
                 cancelledAt: Timestamp.now(),
               });
+
+              // T4.205: Delete reservation docs to free the slot for other clients
+              if (apptData?.scheduledDate) {
+                const slotDate = apptData.scheduledDate.toDate();
+                const dateStr = `${slotDate.getFullYear()}-${String(slotDate.getMonth() + 1).padStart(2, '0')}-${String(slotDate.getDate()).padStart(2, '0')}`;
+                const hh = String(slotDate.getHours()).padStart(2, '0');
+                const mm = String(slotDate.getMinutes()).padStart(2, '0');
+
+                const depts = new Set();
+                if (apptData.services && Array.isArray(apptData.services)) {
+                  apptData.services.forEach(s => depts.add((s.department || "General").toLowerCase()));
+                } else {
+                  depts.add((apptData.serviceCategory || "General").toLowerCase());
+                }
+
+                // Fire-and-forget — the appointment is already cancelled; reservation
+                // cleanup is best-effort. Missing docs are silently ignored.
+                Promise.all(
+                  [...depts].map(dept =>
+                    deleteDoc(doc(db, "slot_reservations", `${dateStr}_${hh}_${mm}_${dept}`))
+                      .catch(() => {})
+                  )
+                );
+              }
+
               Alert.alert(
                 "Cancelled",
                 "Your appointment has been cancelled. The time slot has been freed.",

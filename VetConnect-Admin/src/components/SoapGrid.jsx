@@ -413,9 +413,6 @@ export default function SoapGrid({
             <Typography sx={{ fontSize: '0.65rem', fontWeight: 900, color: COLORS.warning, textTransform: 'uppercase', letterSpacing: 1, mb: 0.5 }}>
               Client Discharge Notes
             </Typography>
-            <Typography sx={{ fontSize: '0.6rem', color: COLORS.textMuted, mb: 1, fontStyle: 'italic' }}>
-              What the pet owner takes home. Write in plain language — this appears on printed discharge and in the mobile app.
-            </Typography>
             <TextField
               multiline fullWidth variant="standard"
               placeholder="e.g., Give medicine twice daily with food. Come back in 1 week if not better. Call us if your pet stops eating."

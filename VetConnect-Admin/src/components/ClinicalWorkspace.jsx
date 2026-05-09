@@ -26,7 +26,7 @@ import {
 
 // Icons (Unified)
 import {
-  Close as CloseIcon, Medication as MedicationIcon, AutoFixHigh as AutoFixHighIcon,
+  Close as CloseIcon, Medication as MedicationIcon,
   ContentCut as ContentCutIcon,
   AddCircle as AddCircleIcon, ReceiptLong as ReceiptLongIcon,
   HistoryEdu as HistoryEduIcon,
@@ -334,14 +334,13 @@ export const VitalsGrid = React.memo(function VitalsGrid({ soapData, updateSoap,
  * DiagnosticBridge — buttons-only trigger surface for AI clinical reasoning.
  *
  * The response panels (rule-based blue + LLM purple) have moved to ClinicalAIPanel.
- * This component now renders only the "Analyze S+O" and "Ask AI" / "New Analysis"
- * trigger buttons, plus a "Show/Hide AI Panel" toggle.
+ * This component renders the "Ask AI" / "New Analysis" trigger button
+ * and a "Show/Hide AI Panel" toggle.
  *
  * @prop {object}   soapData           - Current SOAP data (for disabled state check)
  * @prop {boolean}  [llmEnabled=false] - Whether LLM feature is active
  * @prop {boolean}  [llmLoading=false] - LLM call in-flight
  * @prop {Array}    [llmMessages=[]]   - Conversation history (used for label switching)
- * @prop {function} onAnalyze          - Runs rule-based engine + opens AI panel
  * @prop {function} [onAskAI]          - Triggers initial LLM call
  * @prop {function} [onResetAndAskAI]  - Clears conversation and re-analyzes
  * @prop {function} onToggleAIPanel    - (open: boolean) => void — toggles drawer/panel
@@ -352,7 +351,6 @@ export const DiagnosticBridge = React.memo(function DiagnosticBridge({
   llmEnabled = false,
   llmLoading = false,
   llmMessages = [],
-  onAnalyze,
   onAskAI,
   onResetAndAskAI,
   onToggleAIPanel,
@@ -364,27 +362,6 @@ export const DiagnosticBridge = React.memo(function DiagnosticBridge({
   return (
     <Box sx={{ mb: 1.5, flexShrink: 0 }}>
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 0.5 }}>
-
-        {/* Rule-based "Analyze S+O" — opens AI panel to show suggestions */}
-        <Button
-          size="small"
-          variant="outlined"
-          startIcon={<AutoFixHighIcon />}
-          onClick={() => { onAnalyze(); onToggleAIPanel(true); }}
-          disabled={!hasInputData}
-          sx={{
-            fontWeight: 900,
-            fontSize: '0.65rem',
-            textTransform: 'uppercase',
-            letterSpacing: 0.5,
-            color: COLORS.medical,
-            borderColor: COLORS.medical,
-            borderRadius: 0,
-            '&:hover': { bgcolor: 'rgba(21,101,192,0.05)' },
-          }}
-        >
-          Analyze S+O
-        </Button>
 
         {/* LLM "Ask AI" / "New Analysis" — opens AI panel */}
         {llmEnabled && (
@@ -443,57 +420,6 @@ export const DiagnosticBridge = React.memo(function DiagnosticBridge({
 });
 
 // --- 🩺 CLINICAL INTELLIGENCE KNOWLEDGE BASE (30+ rules) ---
-const KNOWLEDGE_BASE = [
-  // Respiratory
-  { keywords: ['cough', 'hacking', 'trachea'], suggestion: "RECOMMEND: Thoracic radiographs to rule out Kennel Cough vs. Cardiac (CHF) vs. Tracheal Collapse." },
-  { keywords: ['dyspnea', 'difficulty breathing', 'open mouth breathing', 'labored'], suggestion: "RECOMMEND: Immediate oxygen support. Thoracic rads + CBC/Chem. Rule out pleural effusion, pneumothorax, diaphragmatic hernia." },
-  { keywords: ['nasal discharge', 'sneezing', 'reverse sneeze'], suggestion: "RECOMMEND: Nasal cytology/culture. Rule out upper respiratory infection, foreign body, or nasal polyp/mass. Consider rhinoscopy." },
-  // Gastrointestinal
-  { keywords: ['vomiting', 'diarrhea', 'dehydrated'], suggestion: "RECOMMEND: Fluid therapy (IV/SQ) + Parvovirus SNAP test if puppy. Rule out dietary indiscretion vs. pancreatitis." },
-  { keywords: ['anorexia', 'not eating', 'inappetence', 'loss of appetite'], suggestion: "RECOMMEND: CBC/Chem/Urinalysis baseline. Abdominal palpation + radiographs. Rule out GI obstruction, systemic illness, pain." },
-  { keywords: ['constipation', 'straining to defecate', 'no feces'], suggestion: "RECOMMEND: Abdominal radiographs to assess colonic load. Enema if indicated. Rule out obstipation, pelvic canal narrowing, perineal hernia." },
-  { keywords: ['hematemesis', 'blood in vomit', 'bloody vomit'], suggestion: "RECOMMEND: CBC/Coagulation panel. Endoscopy if stable. Rule out GI ulceration, foreign body, coagulopathy, hemorrhagic gastroenteritis." },
-  // Dermatological
-  { keywords: ['scratching', 'shaking head', 'ear', 'brown discharge'], suggestion: "RECOMMEND: Ear cytology for Malassezia (Yeast) vs. Bacterial Otitis. Check for Otodectes." },
-  { keywords: ['hot spot', 'moist dermatitis', 'pyotraumatic'], suggestion: "RECOMMEND: Clip and clean lesion. Cytology for infection type. Rule out underlying allergy (atopy, food, flea). Systemic antibiotics if deep." },
-  { keywords: ['alopecia', 'hair loss', 'bald patches'], suggestion: "RECOMMEND: Skin scraping for Demodex/Sarcoptes. Fungal culture for dermatophytosis. CBC/Chem/thyroid (T4) for endocrine causes." },
-  { keywords: ['pruritus', 'itching', 'intense scratching', 'papules'], suggestion: "RECOMMEND: Skin scraping, cytology, Wood's lamp. Rule out ectoparasites, allergic dermatitis (atopy, food). Consider intradermal allergy test." },
-  // Ophthalmological
-  { keywords: ['eye discharge', 'epiphora', 'tearing', 'weeping eye'], suggestion: "RECOMMEND: Fluorescein stain to rule out corneal ulceration. Schirmer Tear Test for KCS (dry eye). Culture if purulent." },
-  { keywords: ['squinting', 'blepharospasm', 'pawing at eye'], suggestion: "RECOMMEND: Fluorescein stain — urgent if positive for corneal ulcer. Tonometry to rule out glaucoma. Check for foreign body or entropion." },
-  { keywords: ['corneal ulcer', 'corneal scratch', 'eye wound'], suggestion: "RECOMMEND: Daily fluorescein recheck. Topical antibiotic + atropine. E-collar mandatory. Refer to ophthalmologist if deep/descemetocele." },
-  // Dental
-  { keywords: ['halitosis', 'bad breath', 'mouth odor'], suggestion: "RECOMMEND: Oral exam under sedation. Dental grade 0-4. Periapical radiographs if grades 3-4. Schedule dental prophylaxis." },
-  { keywords: ['broken tooth', 'fractured tooth', 'missing tooth'], suggestion: "RECOMMEND: Dental radiograph to assess root viability. Options: extraction vs. vital pulp therapy. Antibiotics + pain management." },
-  { keywords: ['drooling', 'ptyalism', 'hypersalivation'], suggestion: "RECOMMEND: Oral exam for foreign body, mass, ulceration. Rule out nausea (GI), toxin ingestion, neurological cause, or esophageal disease." },
-  // Cardiac
-  { keywords: ['exercise intolerance', 'tires easily', 'weakness after walk'], suggestion: "RECOMMEND: Thoracic rads (VHS measurement) + ECG. Cardiac auscultation for murmur grade. Echocardiogram if murmur detected. NT-proBNP biomarker." },
-  { keywords: ['cyanosis', 'blue gums', 'mucous membrane blue'], suggestion: "RECOMMEND: EMERGENCY — Oxygen immediately. Pulse oximetry. Thoracic rads + ECG. Rule out congenital heart disease, severe anemia, respiratory failure." },
-  { keywords: ['ascites', 'fluid abdomen', 'pot belly', 'abdominal distension'], suggestion: "RECOMMEND: Abdominal ultrasound + abdominocentesis for fluid analysis. Rule out right heart failure, liver disease, neoplasia, hypoalbuminemia." },
-  // Endocrine / Metabolic
-  { keywords: ['polydipsia', 'polyuria', 'pu pd', 'drinking a lot', 'urinating frequently'], suggestion: "RECOMMEND: CBC/Chem/Urinalysis + USG. Rule out Diabetes Mellitus, Cushing's (LDDST/HDDS), Addison's, Chronic Kidney Disease, Pyometra." },
-  { keywords: ['weight gain', 'obesity', 'sluggish', 'cold intolerance'], suggestion: "RECOMMEND: Thyroid panel (Total T4 + fT4) to rule out hypothyroidism. Fasting glucose, CBC/Chem for metabolic screen." },
-  // Orthopedic
-  { keywords: ['limping', 'hind', 'cruciate', 'stifle'], suggestion: "RECOMMEND: Orthopedic exam (Drawer/Tibial Compression) + stifle radiographs. Consider NSAIDs and rest." },
-  { keywords: ['hip', 'reluctant to rise', 'bunny hopping', 'hip dysplasia'], suggestion: "RECOMMEND: Hip extension radiograph (PennHIP or OFA views). Coxofemoral joint palpation. Analgesics, weight management, or surgical referral." },
-  { keywords: ['ataxia', 'stumbling', 'incoordination', 'wobbly'], suggestion: "RECOMMEND: Full neurological exam. Differentiate vestibular (head tilt) from cerebellar or spinal cord disease. MRI referral if progressive." },
-  // Neurological
-  { keywords: ['seizure', 'fits', 'convulsions'], suggestion: "RECOMMEND: CBC/Chem to rule out metabolic causes (liver/glucose). Monitor duration/frequency for Phenobarbital start." },
-  // Oncological
-  { keywords: ['mass', 'lump', 'growth', 'nodule'], suggestion: "RECOMMEND: Fine needle aspirate (FNA) cytology as first step. If malignant or indeterminate, surgical excision + histopathology. Thoracic rads for staging." },
-  { keywords: ['lymph node', 'lymphadenopathy', 'swollen glands'], suggestion: "RECOMMEND: FNA of enlarged lymph node. CBC with differential for lymphocytosis. Abdominal ultrasound for visceral lymphadenopathy. Rule out lymphoma." },
-  // Urinary / Reproductive
-  { keywords: ['peeing', 'straining', 'blood', 'urinary'], suggestion: "RECOMMEND: Urinalysis + Culture to rule out UTI vs. Crystals/Calculi (Uroliths). Abdominal rads or ultrasound for bladder stones." },
-  { keywords: ['vaginal discharge', 'pyometra', 'uterine'], suggestion: "RECOMMEND: Abdominal ultrasound for uterine distension. CBC for leukocytosis. Emergency OVH for closed pyometra. Aglepristone if open + stable." },
-  // Neonatal / Pediatric
-  { keywords: ['fading', 'neonatal', 'newborn', 'puppy sick'], suggestion: "RECOMMEND: Check blood glucose (hypoglycemia common). Assess dehydration. Warm environment critical. Rule out fading puppy syndrome causes (herpesvirus, bacteria)." },
-  // Toxicological
-  { keywords: ['chocolate', 'theobromine', 'toxic ingestion', 'ate chocolate'], suggestion: "RECOMMEND: Calculate theobromine dose by chocolate type and body weight. Induce emesis if < 2h. Activated charcoal. Monitor cardiac arrhythmias." },
-  { keywords: ['rat poison', 'rodenticide', 'anticoagulant', 'brodifacoum'], suggestion: "RECOMMEND: Coagulation panel (PT/PTT). Vitamin K1 therapy for anticoagulant rodenticide. Monitor for 4-6 weeks post-exposure. Transfusion if severe bleeding." },
-  { keywords: ['xylitol', 'sugar free', 'sweetener ingestion'], suggestion: "RECOMMEND: EMERGENCY — Induce emesis if < 30 min. IV dextrose for hypoglycemia. Monitor liver enzymes (ALT/ALP) q24h for 72h. Hepatotoxicity risk." },
-  // Behavioral
-  { keywords: ['aggression', 'biting', 'snapping', 'sudden behavior change'], suggestion: "RECOMMEND: Rule out pain source (orthopedic, dental, neurological). Thyroid panel. Consider behavioral referral if no medical cause found." },
-];
 
 // ZEN_PLACEHOLDERS imported from shared constants — see src/utils/soapConstants.js
 
@@ -548,8 +474,6 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   });
   const [isRecordLocked, setIsRecordLocked] = useState(false);
   const [ownerSignature, setOwnerSignature] = useState(null);
-  const [assistiveText, setAssistiveText] = useState('');
-  const [diagnosticOpen, setDiagnosticOpen] = useState(false);
 
   // --- LLM CLINICAL REASONING STATE (T3.107 / T4.109 multi-turn) ---
   const [llmConfig, setLlmConfig] = useState({ enabled: false, workerUrl: '', systemPrompt: '' });
@@ -858,7 +782,6 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     const fetchPatientContext = async () => {
         if (open && patient) {
           setIsDirty(false);
-          setAssistiveText('');
           setOverdueVaccineCount(0);
           setLlmMessages([]);
           setLlmFollowUpInput('');
@@ -1333,15 +1256,6 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     );
   };
 
-  const runAssistiveDiagnosis = () => {
-    const examText = examToText(soapData.objectiveExam) || soapData.objectiveNotes || '';
-    const combinedNotes = (soapData.subjective + " " + examText).toLowerCase();
-    let suggestions =[];
-    KNOWLEDGE_BASE.forEach(c => {
-      if (c.keywords.some(k => combinedNotes.includes(k))) suggestions.push(c.suggestion);
-    });
-    setAssistiveText(suggestions.length > 0 ? suggestions.join('\n\n') : 'No rule-based suggestions found. Please proceed with standard diagnostics.');
-  };
 
   /**
    * Sends the current SOAP S+O data to the LLM via the Cloudflare Worker proxy
@@ -4104,7 +4018,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
 
                 {/* Row 1: Name, Species, Breed, Gender, Color, Neutered */}
                 <Grid container spacing={1} sx={{ mb: 1 }}>
-                  <Grid item xs={3}>
+                  <Grid size={{ xs: 3 }}>
                     <TextField size="small" label="PET NAME" variant="outlined" fullWidth
                       value={identityForm.name}
                       onChange={e => setIdentityForm(prev => ({ ...prev, name: e.target.value }))}
@@ -4112,7 +4026,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                       sx={{ bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
                     />
                   </Grid>
-                  <Grid item xs={2}>
+                  <Grid size={{ xs: 2 }}>
                     <TextField size="small" label="SPECIES" variant="outlined" fullWidth select
                       value={identityForm.species}
                       onChange={e => {
@@ -4130,7 +4044,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                       <MenuItem value="Feline" sx={{ fontWeight: 800 }}>FELINE</MenuItem>
                     </TextField>
                   </Grid>
-                  <Grid item xs={3}>
+                  <Grid size={{ xs: 3 }}>
                     <Autocomplete
                       freeSolo
                       size="small"
@@ -4149,7 +4063,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                       )}
                     />
                   </Grid>
-                  <Grid item xs={1.5}>
+                  <Grid size={{ xs: 1.5 }}>
                     <TextField size="small" label="SEX" variant="outlined" fullWidth select
                       value={identityForm.gender}
                       onChange={e => setIdentityForm(prev => ({ ...prev, gender: e.target.value }))}
@@ -4159,7 +4073,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                       <MenuItem value="Female" sx={{ fontWeight: 800 }}>FEMALE</MenuItem>
                     </TextField>
                   </Grid>
-                  <Grid item xs={1.5}>
+                  <Grid size={{ xs: 1.5 }}>
                     <TextField size="small" label="COLOR" variant="outlined" fullWidth
                       value={identityForm.color}
                       onChange={e => setIdentityForm(prev => ({ ...prev, color: e.target.value }))}
@@ -4167,7 +4081,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                       sx={{ bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
                     />
                   </Grid>
-                  <Grid item xs={1}>
+                  <Grid size={{ xs: 1 }}>
                     <FormControlLabel
                       control={
                         <Switch size="small" color="success"
@@ -4186,7 +4100,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 {/* Row 2: DOB 3-mode + Microchip + Allergies */}
                 <Grid container spacing={1}>
                   {/* DOB 3-mode selector */}
-                  <Grid item xs={5}>
+                  <Grid size={{ xs: 5 }}>
                     <Box sx={{ p: 1, border: `1px dashed ${COLORS.borderLight}`, bgcolor: 'white' }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5, gap: 1 }}>
                         <Typography sx={{ fontWeight: 900, fontSize: '0.65rem', color: COLORS.accent }}>
@@ -4247,7 +4161,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                   </Grid>
 
                   {/* Microchip */}
-                  <Grid item xs={2}>
+                  <Grid size={{ xs: 2 }}>
                     <TextField size="small" label="MICROCHIP" variant="outlined" fullWidth
                       value={identityForm.microchip}
                       onChange={e => setIdentityForm(prev => ({ ...prev, microchip: e.target.value }))}
@@ -4257,7 +4171,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                   </Grid>
 
                   {/* Allergy tag array */}
-                  <Grid item xs={5}>
+                  <Grid size={{ xs: 5 }}>
                     <Box sx={{
                       p: 1, border: '1.2px solid',
                       borderColor: identityForm.showAllergyInput ? COLORS.danger : COLORS.borderInput,
@@ -4586,10 +4500,6 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             setFullscreenField={setFullscreenField}
             getTriageLevel={getTriageLevel}
             renderHistoricalLabel={renderHistoricalLabel}
-            runAssistiveDiagnosis={runAssistiveDiagnosis}
-            assistiveText={assistiveText}
-            diagnosticOpen={diagnosticOpen}
-            setDiagnosticOpen={setDiagnosticOpen}
             SoapQuadrant={SoapQuadrant}
             VitalsGrid={VitalsGrid}
             DiagnosticBridge={DiagnosticBridge}
@@ -5275,7 +5185,6 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
               llmEnabled={llmConfig.enabled && !!llmConfig.workerUrl}
               llmLoading={llmLoading}
               llmMessages={llmMessages}
-              onAnalyze={() => { runAssistiveDiagnosis(); setDiagnosticOpen(true); }}
               onAskAI={runLlmDiagnosis}
               onResetAndAskAI={handleResetAndAskAI}
               onToggleAIPanel={handleToggleAIPanel}
@@ -5343,10 +5252,6 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
               setFullscreenField={setFullscreenField}
               getTriageLevel={getTriageLevel}
               renderHistoricalLabel={renderHistoricalLabel}
-              runAssistiveDiagnosis={runAssistiveDiagnosis}
-              assistiveText={assistiveText}
-              diagnosticOpen={diagnosticOpen}
-              setDiagnosticOpen={setDiagnosticOpen}
               SoapQuadrant={SoapQuadrant}
               VitalsGrid={VitalsGrid}
               DiagnosticBridge={DiagnosticBridge}
@@ -5388,10 +5293,6 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             <ClinicalAIPanel
               variant="column"
               soapData={soapData}
-              assistiveText={assistiveText}
-              diagnosticOpen={diagnosticOpen}
-              onAnalyze={() => { runAssistiveDiagnosis(); setDiagnosticOpen(true); }}
-              onDismissRuleBased={() => setDiagnosticOpen(false)}
               llmEnabled={llmConfig.enabled && !!llmConfig.workerUrl}
               llmLoading={llmLoading}
               llmMessages={llmMessages}
@@ -5449,10 +5350,6 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         <ClinicalAIPanel
           variant="drawer"
           soapData={soapData}
-          assistiveText={assistiveText}
-          diagnosticOpen={diagnosticOpen}
-          onAnalyze={() => { runAssistiveDiagnosis(); setDiagnosticOpen(true); }}
-          onDismissRuleBased={() => setDiagnosticOpen(false)}
           llmEnabled={llmConfig.enabled && !!llmConfig.workerUrl}
           llmLoading={llmLoading}
           llmMessages={llmMessages}

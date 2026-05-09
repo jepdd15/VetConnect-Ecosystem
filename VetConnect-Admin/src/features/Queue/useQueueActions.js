@@ -1,4 +1,4 @@
-import { doc, updateDoc, Timestamp, writeBatch, arrayUnion, runTransaction, collection } from 'firebase/firestore';
+import { deleteDoc, doc, updateDoc, Timestamp, writeBatch, arrayUnion, runTransaction, collection } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 import { useUser } from '../../context/UserContext';
 import { calculatePulseMetrics, makePulseEventId, createPulseEvent } from '../../utils/pulseUtils';
@@ -314,6 +314,28 @@ export function useQueueActions() {
         auditReasons: arrayUnion({ reason: reason || 'Individually cancelled', action: isForensic ? 'forensic-cancel' : 'cancel', staffName: staffSignature, timestamp: Timestamp.now() }),
         forensicSeal // THE 8-METRIC STAMP
       });
+
+      // T4.205: Delete reservation docs to free the slot for client rebooking.
+      // transaction.delete() is a no-op on non-existent docs — safe for pre-T4.205 appointments.
+      if (rowData.scheduledDate) {
+        const slotDate = rowData.scheduledDate.toDate
+          ? rowData.scheduledDate.toDate()
+          : new Date(rowData.scheduledDate);
+        const dateStr = `${slotDate.getFullYear()}-${String(slotDate.getMonth() + 1).padStart(2, '0')}-${String(slotDate.getDate()).padStart(2, '0')}`;
+        const hh = String(slotDate.getHours()).padStart(2, '0');
+        const mm = String(slotDate.getMinutes()).padStart(2, '0');
+
+        const depts = new Set();
+        if (rowData.services && Array.isArray(rowData.services)) {
+          rowData.services.forEach(s => depts.add((s.department || "General").toLowerCase()));
+        } else {
+          depts.add((rowData.serviceCategory || "General").toLowerCase());
+        }
+
+        for (const dept of depts) {
+          transaction.delete(doc(db, "slot_reservations", `${dateStr}_${hh}_${mm}_${dept}`));
+        }
+      }
     });
 
     // T4.90: Push notification
@@ -447,11 +469,61 @@ export function useQueueActions() {
     });
 
     // T2.53: Wrap in runTransaction for atomicity — consistent with all other queue actions.
+    // T4.205: `targetDate` used instead of `newDate` to avoid shadowing the parameter.
+    const targetDate = new Date(newDate);
     await runTransaction(db, async (transaction) => {
         const apptDoc = await transaction.get(apptRef);
         if (!apptDoc.exists()) throw new Error("Appointment not found.");
+        const oldData = apptDoc.data();
+
+        // T4.205: Swap reservation docs — delete old slot, create new slot.
+        // transaction.delete() is a no-op on non-existent docs — safe for pre-T4.205 appointments.
+        if (oldData.scheduledDate) {
+          const oldDate = oldData.scheduledDate.toDate();
+          const oldDateStr = `${oldDate.getFullYear()}-${String(oldDate.getMonth() + 1).padStart(2, '0')}-${String(oldDate.getDate()).padStart(2, '0')}`;
+          const oldHH = String(oldDate.getHours()).padStart(2, '0');
+          const oldMM = String(oldDate.getMinutes()).padStart(2, '0');
+
+          const newDateStr = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
+          const newHH = String(targetDate.getHours()).padStart(2, '0');
+          const newMM = String(targetDate.getMinutes()).padStart(2, '0');
+
+          const depts = new Set();
+          if (oldData.services && Array.isArray(oldData.services)) {
+            oldData.services.forEach(s => depts.add((s.department || "General").toLowerCase()));
+          } else {
+            depts.add((oldData.serviceCategory || "General").toLowerCase());
+          }
+
+          for (const dept of depts) {
+            // Delete old reservation
+            transaction.delete(doc(db, "slot_reservations", `${oldDateStr}_${oldHH}_${oldMM}_${dept}`));
+
+            // Compute max duration for this department
+            const deptDuration = (oldData.services || [])
+              .filter(s => (s.department || "General").toLowerCase() === dept)
+              .reduce((max, s) => Math.max(max,
+                (parseInt(String(s.duration).replace(/[^0-9]/g, "")) || 30) +
+                (parseInt(String(s.buffer).replace(/[^0-9]/g, "")) || 0)
+              ), 30);
+
+            // Create new reservation
+            transaction.set(doc(db, "slot_reservations", `${newDateStr}_${newHH}_${newMM}_${dept}`), {
+              ownerId: oldData.ownerId,
+              petId: oldData.petId,
+              appointmentId: row.id,
+              department: dept,
+              scheduledDate: Timestamp.fromDate(targetDate),
+              slotStart: `${newHH}:${newMM}`,
+              duration: deptDuration,
+              createdAt: Timestamp.now(),
+              expiresAt: Timestamp.fromDate(new Date(Date.now() + 24 * 60 * 60 * 1000)),
+            });
+          }
+        }
+
         transaction.update(apptRef, {
-            scheduledDate: Timestamp.fromDate(new Date(newDate)),
+            scheduledDate: Timestamp.fromDate(targetDate),
             clinicalPulse: arrayUnion(pulseEvent),
             lastModifiedAt: Timestamp.now(),
             modifiedBy: staffSignature,
@@ -460,7 +532,7 @@ export function useQueueActions() {
             forensicSeal
         });
     });
-    updateAppointmentQueueDate(row.id, Timestamp.fromDate(new Date(newDate)), row).catch(() => {});
+    updateAppointmentQueueDate(row.id, Timestamp.fromDate(targetDate), row).catch(() => {});
   };
 
   return { changeStatus, revertStatus, markNoShow, rejectAppointment, quickAdmitER, deferAppointment, rescheduleAppointment }; // Exported!

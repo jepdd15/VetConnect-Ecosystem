@@ -2,6 +2,7 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import {
   arrayUnion,
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -488,95 +489,90 @@ export default function BookAppointment({ navigation, route }) {
         return;
       }
 
-      // JIT capacity check — same pattern as submitBooking.
-      const startOfDay = new Date(newDateTime);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(newDateTime);
-      endOfDay.setHours(23, 59, 59, 999);
+      // T4.205: Reservation-based reschedule — delete old reservations, create new ones.
+      // JIT pre-flight (getDocs outside transaction) removed — replaced by transactional
+      // reservation doc swap for true mutual exclusion.
+      const newDateStr = getLocalDateStr(newDateTime);
+      const trimmedReason = rescheduleReason.trim();
 
-      const checkSnap = await getDocs(
-        query(
-          collection(db, "appointments"),
-          where("scheduledDate", ">=", Timestamp.fromDate(startOfDay)),
-          where("scheduledDate", "<=", Timestamp.fromDate(endOfDay)),
-          where("status", "in", ["pending", "confirmed"]),
-        ),
-      );
-
-      // Exclude the rescheduled appointment from the capacity count — it is being moved, not added.
-      const excludeIds = new Set([rescheduleAppointmentId]);
-      const filteredDocs = checkSnap.docs.filter(d => !excludeIds.has(d.id));
-
-      // T4.139: Parallel department JIT check (matches slot generator model)
+      // Compute department groups from the appointment's existing services
       const allGroupServices = rescheduleAppointment.services || [];
       const reschDeptGroups = {};
       allGroupServices.forEach(svc => {
         const dept = (svc.department || "General").toLowerCase();
         const dur = parseInt(String(svc.duration).replace(/[^0-9]/g, "")) || 30;
         const buff = parseInt(String(svc.buffer).replace(/[^0-9]/g, "")) || 0;
-        reschDeptGroups[dept] = Math.max(reschDeptGroups[dept] || 0, (dur + buff));
+        reschDeptGroups[dept] = Math.max(reschDeptGroups[dept] || 0, dur + buff);
       });
 
-      for (const [dept, duration] of Object.entries(reschDeptGroups)) {
-        const svcStart = newDateTime;
-        const svcEnd = new Date(newDateTime.getTime() + duration * 60000);
+      await runTransaction(db, async (transaction) => {
+        // 1. Read the existing appointment to get the old scheduledDate
+        const apptRef = doc(db, "appointments", rescheduleAppointmentId);
+        const apptSnap = await transaction.get(apptRef);
+        if (!apptSnap.exists()) throw new Error("Appointment not found.");
+        const oldData = apptSnap.data();
+        const oldDate = oldData.scheduledDate.toDate();
+        const oldDateStr = `${oldDate.getFullYear()}-${String(oldDate.getMonth() + 1).padStart(2, '0')}-${String(oldDate.getDate()).padStart(2, '0')}`;
+        const oldHH = String(oldDate.getHours()).padStart(2, '0');
+        const oldMM = String(oldDate.getMinutes()).padStart(2, '0');
 
-        const competing = filteredDocs.filter(d => {
-          const data = d.data();
-          const deptsInAppt = new Set();
-          if (data.services && Array.isArray(data.services)) {
-            data.services.forEach(s => deptsInAppt.add((s.department || "General").toLowerCase()));
-          } else {
-            deptsInAppt.add((data.department || data.serviceCategory || "General").toLowerCase());
-          }
-          return deptsInAppt.has(dept);
-        });
-
-        let overlaps = 0;
-        competing.forEach(d => {
-          const s = d.data().scheduledDate.toDate();
-          const e = new Date(s.getTime() + ((d.data().serviceDuration || 30) + (d.data().serviceBuffer || 0)) * 60000);
-          if (svcStart < e && svcEnd > s) overlaps++;
-        });
-
-        const capacity = departmentCapacity[dept] || 1;
-        if (overlaps >= capacity) {
-          const deptDisplay = dept.charAt(0).toUpperCase() + dept.slice(1);
-          Alert.alert(
-            "Slot Taken",
-            `Another client just booked a ${deptDisplay} specialist during this window. Please select another time.`,
-          );
-          setStep(3);
-          setSelectedSlot(null);
-          setLoading(false);
-          return;
+        // 2. Delete old reservation docs (no-op if they don't exist)
+        for (const dept of Object.keys(reschDeptGroups)) {
+          const oldResId = `${oldDateStr}_${oldHH}_${oldMM}_${dept}`;
+          transaction.delete(doc(db, "slot_reservations", oldResId));
         }
-      }
 
-      const newDateStr = getLocalDateStr(newDateTime);
-      const trimmedReason = rescheduleReason.trim();
+        // 3. Write new reservation docs — same conflict-detection pattern as submitBooking
+        const newHH = String(newDateTime.getHours()).padStart(2, '0');
+        const newMM = String(newDateTime.getMinutes()).padStart(2, '0');
+        const newResDateStr = `${newDateTime.getFullYear()}-${String(newDateTime.getMonth() + 1).padStart(2, '0')}-${String(newDateTime.getDate()).padStart(2, '0')}`;
 
-      // Build the update payload. Fields mirror the admin saveReschedule pattern
-      // with client-specific attribution. scheduledDateStr is explicitly updated
-      // (the admin path currently omits this — this client path fixes that gap).
-      const updatePayload = {
-        scheduledDate: Timestamp.fromDate(newDateTime),
-        scheduledDateStr: newDateStr,
-        status: "pending",
-        rescheduledAt: Timestamp.now(),
-        rescheduledBy: "Client/Self",
-        rescheduleReason: trimmedReason,
-        auditReason: `Rescheduled by client: ${trimmedReason}`,
-        auditReasons: arrayUnion({
-          reason: trimmedReason,
-          action: "client-reschedule",
-          staffName: "Client/Self",
-          timestamp: Timestamp.now(),
-        }),
-        confirmedByClient: false,
-      };
+        for (const [dept, duration] of Object.entries(reschDeptGroups)) {
+          const newResId = `${newResDateStr}_${newHH}_${newMM}_${dept}`;
+          const newResRef = doc(db, "slot_reservations", newResId);
 
-      await updateDoc(doc(db, "appointments", rescheduleAppointmentId), updatePayload);
+          const existingRes = await transaction.get(newResRef);
+          if (existingRes.exists()) {
+            const resData = existingRes.data();
+            if (resData.expiresAt && resData.expiresAt.toDate() > new Date()) {
+              const deptDisplay = dept.charAt(0).toUpperCase() + dept.slice(1);
+              throw new Error(
+                `The ${deptDisplay} department is fully booked for this time slot. Please select another time.`
+              );
+            }
+          }
+
+          transaction.set(newResRef, {
+            ownerId: auth.currentUser.uid,
+            petId: oldData.petId,
+            appointmentId: rescheduleAppointmentId,
+            department: dept,
+            scheduledDate: Timestamp.fromDate(newDateTime),
+            slotStart: `${newHH}:${newMM}`,
+            duration,
+            createdAt: Timestamp.now(),
+            expiresAt: Timestamp.fromDate(new Date(Date.now() + 24 * 60 * 60 * 1000)),
+          });
+        }
+
+        // 4. Update the appointment
+        transaction.update(apptRef, {
+          scheduledDate: Timestamp.fromDate(newDateTime),
+          scheduledDateStr: newResDateStr,
+          status: "pending",
+          rescheduledAt: Timestamp.now(),
+          rescheduledBy: "Client/Self",
+          rescheduleReason: trimmedReason,
+          auditReason: `Rescheduled by client: ${trimmedReason}`,
+          auditReasons: arrayUnion({
+            reason: trimmedReason,
+            action: "client-reschedule",
+            staffName: "Client/Self",
+            timestamp: Timestamp.now(),
+          }),
+          confirmedByClient: false,
+        });
+      });
 
       Alert.alert(
         "Rescheduled",
@@ -584,8 +580,15 @@ export default function BookAppointment({ navigation, route }) {
       );
       navigation.goBack();
     } catch (error) {
-      Alert.alert("Error", "Could not reschedule. Please try again.");
-      console.error("[BookAppointment.submitReschedule]:", error.message);
+      // T4.205: Slot-taken errors from reservation conflict — reset to slot picker
+      if (error.message.includes('fully booked for this time slot')) {
+        Alert.alert("Slot Taken", error.message);
+        setStep(3);
+        setSelectedSlot(null);
+      } else {
+        Alert.alert("Error", "Could not reschedule. Please try again.");
+        console.error("[BookAppointment.submitReschedule]:", error.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -641,64 +644,9 @@ export default function BookAppointment({ navigation, route }) {
         return { mapped, petBundlePrice };
       };
 
-      // JIT PRE-FLIGHT CHECK (outside transaction — getDocs queries are not transactional)
-      const startOfDay = new Date(baseDateTime);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(baseDateTime);
-      endOfDay.setHours(23, 59, 59, 999);
-
-      const checkSnap = await getDocs(
-        query(
-          collection(db, "appointments"),
-          where("scheduledDate", ">=", Timestamp.fromDate(startOfDay)),
-          where("scheduledDate", "<=", Timestamp.fromDate(endOfDay)),
-          where("status", "in", ["pending", "confirmed"]),
-        ),
-      );
-
-      // JIT pre-flight: group services by department, taking max duration per dept.
-      const jitDeptGroups = {};
-      selectedServices.forEach(s => {
-        const dept = (s.department || s.category || "General").toLowerCase();
-        const dur = parseInt(String(s.duration).replace(/[^0-9]/g, "")) || 30;
-        const buff = parseInt(String(s.bufferTime).replace(/[^0-9]/g, "")) || 0;
-        jitDeptGroups[dept] = Math.max(jitDeptGroups[dept] || 0, (dur + buff));
-      });
-
-      for (const [dept, duration] of Object.entries(jitDeptGroups)) {
-        const svcStart = baseDateTime;
-        const svcEnd = new Date(svcStart.getTime() + duration * 60000);
-
-        const competing = checkSnap.docs.filter(d => {
-          const data = d.data();
-          const deptsInAppt = new Set();
-          if (data.services && Array.isArray(data.services)) {
-            data.services.forEach(s => deptsInAppt.add((s.department || "General").toLowerCase()));
-          } else {
-            deptsInAppt.add((data.department || data.serviceCategory || "General").toLowerCase());
-          }
-          return deptsInAppt.has(dept);
-        });
-
-        let currentOverlaps = 0;
-        competing.forEach(d => {
-          const s = d.data().scheduledDate.toDate();
-          const e = new Date(s.getTime() + ((d.data().serviceDuration || 30) + (d.data().serviceBuffer || 0)) * 60000);
-          if (svcStart < e && svcEnd > s) currentOverlaps++;
-        });
-
-        const capacity = departmentCapacity[dept] || 1;
-        if (currentOverlaps >= capacity) {
-          const deptDisplay = dept.charAt(0).toUpperCase() + dept.slice(1);
-          Alert.alert(
-            "Slot Taken",
-            `Another client just booked a ${deptDisplay} specialist during this window. Please select another time.`,
-          );
-          setStep(3); setSelectedSlot(null); setLoading(false); return;
-        }
-      }
-
-      // T2.87: Use runTransaction for atomic write + retry-on-contention
+      // T2.87: Use runTransaction for atomic write + retry-on-contention.
+      // T4.205: JIT pre-flight (getDocs outside transaction) removed — replaced by
+      // reservation doc writes INSIDE the transaction for true mutual exclusion.
       await runTransaction(db, async (transaction) => {
         const bookingTimestamp = Date.now();
         const pet = selectedPet;
@@ -733,6 +681,55 @@ export default function BookAppointment({ navigation, route }) {
 
         const qrData = `VC-${auth.currentUser.uid.slice(0, 5)}-${bookingTimestamp}-0`;
         const newApptRef = doc(collection(db, "appointments"));
+
+        // T4.205: Write one reservation doc per department INSIDE the transaction.
+        // Deterministic doc ID: {dateStr}_{HH}_{MM}_{department}
+        // If two concurrent transactions write the same ID, Firestore retries one.
+        const dateStr = `${baseDateTime.getFullYear()}-${String(baseDateTime.getMonth() + 1).padStart(2, '0')}-${String(baseDateTime.getDate()).padStart(2, '0')}`;
+        const slotHH = String(baseDateTime.getHours()).padStart(2, '0');
+        const slotMM = String(baseDateTime.getMinutes()).padStart(2, '0');
+
+        const reservationDeptGroups = {};
+        selectedServices.forEach(s => {
+          const dept = (s.department || s.category || "General").toLowerCase();
+          const dur = parseInt(String(s.duration).replace(/[^0-9]/g, "")) || 30;
+          const buff = parseInt(String(s.bufferTime).replace(/[^0-9]/g, "")) || 0;
+          reservationDeptGroups[dept] = Math.max(reservationDeptGroups[dept] || 0, dur + buff);
+        });
+
+        for (const [dept] of Object.entries(reservationDeptGroups)) {
+          const reservationId = `${dateStr}_${slotHH}_${slotMM}_${dept}`;
+          const reservationRef = doc(db, "slot_reservations", reservationId);
+
+          // Read inside the transaction — registers the doc for conflict detection.
+          // If two concurrent transactions read then write the same doc, Firestore
+          // retries one and the retried client finds the existing reservation.
+          const existingRes = await transaction.get(reservationRef);
+          if (existingRes.exists()) {
+            const resData = existingRes.data();
+            const now = new Date();
+            // Only block if the reservation is still valid (not expired)
+            if (resData.expiresAt && resData.expiresAt.toDate() > now) {
+              const deptDisplay = dept.charAt(0).toUpperCase() + dept.slice(1);
+              throw new Error(
+                `The ${deptDisplay} department is fully booked for this time slot. Please select another time.`
+              );
+            }
+            // Expired reservation — overwrite it below
+          }
+
+          transaction.set(reservationRef, {
+            ownerId: auth.currentUser.uid,
+            petId: pet.id,
+            appointmentId: newApptRef.id,
+            department: dept,
+            scheduledDate: Timestamp.fromDate(baseDateTime),
+            slotStart: `${slotHH}:${slotMM}`,
+            duration: reservationDeptGroups[dept],
+            createdAt: Timestamp.now(),
+            expiresAt: Timestamp.fromDate(new Date(Date.now() + 24 * 60 * 60 * 1000)),
+          });
+        }
 
         transaction.set(newApptRef, {
           ownerId: auth.currentUser.uid,
@@ -813,7 +810,14 @@ export default function BookAppointment({ navigation, route }) {
       );
       navigation.goBack();
     } catch (error) {
-      Alert.alert("Error", error.message);
+      // T4.205: Slot-taken errors from reservation conflict — reset to slot picker
+      if (error.message.includes('fully booked for this time slot')) {
+        Alert.alert("Slot Taken", error.message);
+        setStep(3);
+        setSelectedSlot(null);
+      } else {
+        Alert.alert("Error", error.message);
+      }
     } finally {
       setLoading(false);
     }

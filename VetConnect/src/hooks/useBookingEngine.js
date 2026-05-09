@@ -35,6 +35,7 @@ export function useBookingEngine(date, selectedServices = [], selectedPet = null
   const [busynessLevel, setBusynessLevel] = useState("checking");
   const [activeCount, setActiveCount] = useState(0);
   const [dayAppointments, setDayAppointments] = useState([]); // T2.83: cached day's bookings
+  const [dayReservations, setDayReservations] = useState([]); // T4.205: active slot reservations
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [fetching, setFetching] = useState(true);
 
@@ -199,6 +200,41 @@ export function useBookingEngine(date, selectedServices = [], selectedPet = null
     return unsub;
   }, [date, closedDatesKey]);
 
+  // 3a-2. T4.205: EFFECT 1b — Listen for slot reservations to block slots claimed by
+  // concurrent bookings that haven't yet been written as full appointment docs.
+  useEffect(() => {
+    const dateStr = getLocalDateStr(date);
+    if ((clinicSettings.closedDates ?? []).includes(dateStr)) {
+      setDayReservations([]);
+      return;
+    }
+
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const q = query(
+      collection(db, "slot_reservations"),
+      where("scheduledDate", ">=", Timestamp.fromDate(startOfDay)),
+      where("scheduledDate", "<=", Timestamp.fromDate(endOfDay)),
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      // Filter out expired reservations client-side — expired docs are invisible to
+      // the slot grid but remain in Firestore until overwritten or cleaned up.
+      // `new Date()` evaluated INSIDE the callback so each firing uses the current time.
+      const now = new Date();
+      const valid = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(r => r.expiresAt && r.expiresAt.toDate() > now);
+      setDayReservations(valid);
+    }, (error) => {
+      console.warn("[useBookingEngine] reservation listener error:", error.message);
+      setDayReservations([]);
+    });
+    return unsub;
+  }, [date, closedDatesKey]);
+
   // 3b. T2.83: EFFECT 2 — Compute available slots (pure computation, no Firestore reads).
   // Debounced 300ms so rapid service toggling fires only one computation pass.
   // Depends on dayAppointments (from effect 3a) + services/pets/settings.
@@ -250,6 +286,19 @@ export function useBookingEngine(date, selectedServices = [], selectedPet = null
             if (!bookedRangesByDept[dept]) bookedRangesByDept[dept] = [];
             bookedRangesByDept[dept].push({ start: s, end });
           });
+        });
+
+        // T4.205: Merge reservation ranges — these represent slots claimed by concurrent
+        // bookings that haven't yet been written as full appointment docs. The reservation
+        // listener already filters out expired reservations, so all entries here are valid.
+        dayReservations.forEach(res => {
+          const dept = (res.department || "General").toLowerCase();
+          const start = res.scheduledDate.toDate();
+          const dur = res.duration || 30;
+          const end = new Date(start.getTime() + dur * 60000);
+
+          if (!bookedRangesByDept[dept]) bookedRangesByDept[dept] = [];
+          bookedRangesByDept[dept].push({ start, end });
         });
 
         const slots = [];
@@ -330,7 +379,7 @@ export function useBookingEngine(date, selectedServices = [], selectedPet = null
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [dayAppointments, selectedServices, selectedPet, clinicSettings, departmentCapacity]);
+  }, [dayAppointments, dayReservations, selectedServices, selectedPet, clinicSettings, departmentCapacity]);
 
   return {
     pets,

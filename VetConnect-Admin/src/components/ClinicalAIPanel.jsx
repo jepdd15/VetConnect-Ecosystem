@@ -8,7 +8,7 @@
 import React, { useRef, useEffect, useMemo } from 'react';
 import {
   Box, Typography, IconButton, Button, Chip, CircularProgress,
-  InputBase, Collapse,
+  InputBase,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import PsychologyIcon from '@mui/icons-material/Psychology';
@@ -24,16 +24,11 @@ import { normalizeMarkdownTables } from '../utils/normalizeMarkdownTables';
 /**
  * ClinicalAIPanel — full AI reasoning UI extracted from DiagnosticBridge.
  *
- * Renders the rule-based suggestions panel (blue) and the multi-turn LLM
- * conversation panel (purple) in a single scrollable column, ready to be
- * embedded in either a MUI Drawer or a persistent flex column.
+ * Renders the multi-turn LLM conversation panel (purple) in a single
+ * scrollable column, embedded in either a MUI Drawer or a persistent flex column.
  *
  * @prop {'drawer'|'column'} variant       - 'drawer' shows close button; 'column' is persistent
  * @prop {object}   soapData               - Current SOAP data (for button disabled state)
- * @prop {string}   assistiveText          - Rule-based engine output text
- * @prop {boolean}  diagnosticOpen         - Whether the rule-based panel is expanded
- * @prop {function} onAnalyze              - Runs rule-based engine + opens its panel
- * @prop {function} onDismissRuleBased     - Closes rule-based panel
  * @prop {boolean}  llmEnabled             - Whether LLM feature is active
  * @prop {boolean}  llmLoading             - LLM call in-flight
  * @prop {Array}    llmMessages            - Conversation history [{role, content}]
@@ -49,10 +44,6 @@ import { normalizeMarkdownTables } from '../utils/normalizeMarkdownTables';
 export default function ClinicalAIPanel({
   variant = 'drawer',
   soapData,
-  assistiveText,
-  diagnosticOpen,
-  onAnalyze,
-  onDismissRuleBased,
   llmEnabled,
   llmLoading,
   llmMessages = [],
@@ -69,7 +60,7 @@ export default function ClinicalAIPanel({
   const chatEndRef = useRef(null);
   const hasInputData = !!(soapData?.subjective || hasExamData(soapData?.objectiveExam) || soapData?.objectiveNotes);
   const hasAssistantResponse = llmMessages.some(m => m.role === 'assistant');
-  const isEmpty = llmMessages.length === 0 && !diagnosticOpen;
+  const isEmpty = llmMessages.length === 0;
 
   // Auto-scroll to bottom whenever messages update or loading state changes
   useEffect(() => {
@@ -315,28 +306,6 @@ export default function ClinicalAIPanel({
           </Box>
         )}
 
-        {/* ── RULE-BASED PANEL (blue) ── */}
-        <Collapse in={diagnosticOpen && !!assistiveText}>
-          <Box sx={{
-            bgcolor: 'rgba(21,101,192,0.04)',
-            border: '1px solid rgba(21,101,192,0.15)',
-            p: 1.5,
-            mb: 1.5,
-            borderRadius: 0,
-          }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
-              <Typography sx={{ ...TYPE.label, color: '#1565C0', fontWeight: 900, fontSize: '0.6rem' }}>
-                CLINICAL INTELLIGENCE SUGGESTIONS
-              </Typography>
-              <IconButton size="small" onClick={onDismissRuleBased} sx={{ p: 0.25 }}>
-                <CloseIcon sx={{ fontSize: 12, color: COLORS.textMuted }} />
-              </IconButton>
-            </Box>
-            <Typography sx={{ fontSize: '0.8rem', color: COLORS.textPrimary, whiteSpace: 'pre-line', lineHeight: 1.6 }}>
-              {assistiveText}
-            </Typography>
-          </Box>
-        </Collapse>
 
         {/* ── INITIAL LOADING STATE ── */}
         {llmLoading && llmMessages.length <= 1 && !llmError && (

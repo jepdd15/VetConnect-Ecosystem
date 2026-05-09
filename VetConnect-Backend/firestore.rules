@@ -361,6 +361,18 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // ─── SLOT RESERVATIONS (booking TOCTOU race prevention) ──────
+    // Any authenticated user can read (slot computation needs the day's reservations).
+    // Any authenticated user can create/update (booking writes reservation inside transaction).
+    // Any authenticated user can delete (cancel/reschedule removes old reservations).
+    // Update covers the overwrite path for expired reservations via transaction.set().
+    match /slot_reservations/{reservationId} {
+      allow read: if isAuth();
+      allow create: if isAuth();
+      allow update: if isAuth();
+      allow delete: if isAuth();
+    }
+
     // ─── DENY-ALL FALLBACK ────────────────────────────────────────
     // Any collection not explicitly matched above is denied.
     // This prevents accidental exposure if new collections are added

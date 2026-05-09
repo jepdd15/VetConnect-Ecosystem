@@ -214,11 +214,24 @@ export default function SuperCard({
             {(() => {
               const uniqueStaff = new Set(dayServices.map(s => s.staffName).filter(Boolean));
               const showStaffPerService = uniqueStaff.size > 1;
+              const schedMs = dayAppt.scheduledDate?.toDate
+                ? dayAppt.scheduledDate.toDate().getTime()
+                : (dayAppt.scheduledDate ? new Date(dayAppt.scheduledDate).getTime() : null);
               return dayServices.map((svc, i) => {
                 const svcStatus = svc.serviceStatus || 'pending';
-                const icon = svcStatus === 'completed' ? '✓' : svcStatus === 'in-progress' ? '⏳' : '○';
+                const isCompleted = svcStatus === 'completed';
+                const icon = isCompleted ? '✓' : svcStatus === 'in-progress' ? '⏳' : '○';
                 const durationStr = formatServiceDuration(svc);
-                const label = svcStatus === 'completed' ? `done${durationStr}` : svcStatus === 'in-progress' ? 'in progress' : 'waiting';
+                const isPriorDay = isCompleted && svc.serviceCompletedAt && schedMs && (dayAppt.caseDay || 1) > 1 && (() => {
+                  const compMs = typeof svc.serviceCompletedAt.toDate === 'function'
+                    ? svc.serviceCompletedAt.toDate().getTime()
+                    : new Date(svc.serviceCompletedAt).getTime();
+                  return compMs < schedMs;
+                })();
+                const estDuration = svcStatus === 'pending' && svc.duration ? ` · ~${svc.duration} min service` : '';
+                const label = isCompleted
+                  ? `done${durationStr}${isPriorDay ? ' · prev. day' : ''}`
+                  : svcStatus === 'in-progress' ? 'in progress' : `waiting${estDuration}`;
                 const svcStaff = showStaffPerService && svc.staffName ? svc.staffName : null;
                 const svcPrice = svc.price > 0 ? `P${svc.price.toLocaleString()}` : null;
                 const isAdded = svc.addedDuringConsult === true;
@@ -237,6 +250,11 @@ export default function SuperCard({
                 );
               });
             })()}
+            {dayServices.length >= 2 && (
+              <Text style={[styles.serviceProgressLine, { textAlign: 'right', marginTop: 4, color: dayServices.filter(s => s.serviceStatus === 'completed').length === dayServices.length ? COLORS.success : COLORS.accent }]}>
+                {dayServices.filter(s => s.serviceStatus === 'completed').length}/{dayServices.length} COMPLETE
+              </Text>
+            )}
           </View>
         )}
         {queueAhead != null && (
@@ -289,6 +307,8 @@ export default function SuperCard({
               onToggle={() => setTimelineCollapsed(prev => !prev)}
               assignedVet={dayAppt.assignedVet}
               services={dayAppt.services}
+              scheduledDate={dayAppt.scheduledDate}
+              caseDay={dayAppt.caseDay}
             />
           </View>
         )}

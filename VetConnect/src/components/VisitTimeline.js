@@ -156,7 +156,7 @@ const TimelineConnector = ({ durationMins, staffName, isLiveActive, liveElapsed 
  *   services:    Array,    // appointment.services[] — nested sub-items under in-consult node
  * }} props
  */
-const VisitTimeline = ({ events, isActive, collapsed, onToggle, assignedVet, services }) => {
+const VisitTimeline = ({ events, isActive, collapsed, onToggle, assignedVet, services, scheduledDate, caseDay }) => {
   // Live elapsed ticker — only runs when there is an active appointment.
   const [liveElapsed, setLiveElapsed] = useState(null);
   const lastTimestamp = events?.[events.length - 1]?.timestamp?.getTime() ?? 0;
@@ -275,13 +275,18 @@ const VisitTimeline = ({ events, isActive, collapsed, onToggle, assignedVet, ser
                       const mins = Math.round((endMs - startMs) / 60000);
                       if (Number.isFinite(mins) && mins > 0) durationStr = ` (${mins} min)`;
                     }
+                    const isPriorDay = svcStatus === 'completed' && svc.serviceCompletedAt && scheduledDate && (caseDay || 1) > 1 && (() => {
+                      const schedMs = typeof scheduledDate.toDate === 'function' ? scheduledDate.toDate().getTime() : new Date(scheduledDate).getTime();
+                      const compMs = typeof svc.serviceCompletedAt.toDate === 'function' ? svc.serviceCompletedAt.toDate().getTime() : new Date(svc.serviceCompletedAt).getTime();
+                      return compMs < schedMs;
+                    })();
                     return (
                       <Text key={svc.id || si} style={[
                         styles.serviceSubItem,
                         svcStatus === 'in-progress' && { color: COLORS.sky },
                         svcStatus === 'completed' && { color: COLORS.success },
                       ]}>
-                        {svcIcon} {svc.name || 'Service'}{durationStr}
+                        {svcIcon} {svc.name || 'Service'}{durationStr}{isPriorDay ? ' · prev. day' : ''}
                       </Text>
                     );
                   })}

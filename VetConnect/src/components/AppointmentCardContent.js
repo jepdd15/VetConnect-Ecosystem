@@ -309,9 +309,10 @@ const AppointmentCardContent = ({
               const icon = status === 'completed' ? '✓'
                 : status === 'in-progress' ? '⏳'
                 : '○';
+              const estDuration = status === 'pending' && svc.duration ? ` · ~${svc.duration} min service` : '';
               const label = status === 'completed' ? 'done'
                 : status === 'in-progress' ? 'in progress'
-                : 'waiting';
+                : `waiting${estDuration}`;
               const parts = [label];
               if (showStaff && svc.staffName) parts.push(svc.staffName);
               if (svc.price > 0) parts.push(`P${svc.price.toLocaleString()}`);
@@ -354,6 +355,9 @@ const AppointmentCardContent = ({
             const svcs = appointment.services || [];
             const uniqueStaff = new Set(svcs.map(s => s.staffName).filter(Boolean));
             const showStaff = uniqueStaff.size > 1;
+            const schedMs = appointment.scheduledDate?.toDate
+              ? appointment.scheduledDate.toDate().getTime()
+              : (appointment.scheduledDate ? new Date(appointment.scheduledDate).getTime() : null);
             return svcs.map((svc, i) => {
             const durationStr = (() => {
               const start = svc.serviceStartedAt;
@@ -364,7 +368,13 @@ const AppointmentCardContent = ({
               const mins = Math.round((endMs - startMs) / 60000);
               return Number.isFinite(mins) && mins > 0 ? ` (${mins} min)` : '';
             })();
-            const parts = [`done${durationStr}`];
+            const isPriorDay = svc.serviceCompletedAt && schedMs && (appointment.caseDay || 1) > 1 && (() => {
+              const compMs = typeof svc.serviceCompletedAt.toDate === 'function'
+                ? svc.serviceCompletedAt.toDate().getTime()
+                : new Date(svc.serviceCompletedAt).getTime();
+              return compMs < schedMs;
+            })();
+            const parts = [`done${durationStr}${isPriorDay ? ' (prev. day)' : ''}`];
             if (showStaff && svc.staffName) parts.push(svc.staffName);
             if (svc.price > 0) parts.push(`P${svc.price.toLocaleString()}`);
             return (
@@ -382,23 +392,36 @@ const AppointmentCardContent = ({
         (appointment.services || []).length >= 2 && (
         <View style={styles.serviceStatusSection}>
           <Text style={styles.serviceStatusLabel}>SERVICES</Text>
-          {(appointment.services || []).map((svc, i) => {
-            const status = svc.serviceStatus || 'pending';
-            const isCompleted = status === 'completed';
-            const icon = isCompleted ? '✓' : '✗';
-            const label = isCompleted ? `done${(appointment.caseDay || 1) > 1 ? ' (prev. day)' : ''}` : 'not completed this visit';
-            const parts = [label];
-            if (isCompleted && svc.staffName) parts.push(svc.staffName);
-            if (svc.price > 0) parts.push(`P${svc.price.toLocaleString()}`);
-            return (
-              <Text key={svc.id || i} style={[
-                styles.serviceStatusLine,
-                isCompleted ? { color: COLORS.success } : { color: COLORS.textMuted },
-              ]}>
-                {icon} {svc.name || 'Service'} — {parts.join(' · ')}
-              </Text>
-            );
-          })}
+          {(() => {
+            const schedMs = appointment.scheduledDate?.toDate
+              ? appointment.scheduledDate.toDate().getTime()
+              : (appointment.scheduledDate ? new Date(appointment.scheduledDate).getTime() : null);
+            return (appointment.services || []).map((svc, i) => {
+              const status = svc.serviceStatus || 'pending';
+              const isCompleted = status === 'completed';
+              const icon = isCompleted ? '✓' : '✗';
+              const isPriorDay = isCompleted && svc.serviceCompletedAt && schedMs && (() => {
+                const compMs = typeof svc.serviceCompletedAt.toDate === 'function'
+                  ? svc.serviceCompletedAt.toDate().getTime()
+                  : new Date(svc.serviceCompletedAt).getTime();
+                return compMs < schedMs;
+              })();
+              const label = isCompleted
+                ? `done${isPriorDay ? ' (prev. day)' : ''}`
+                : 'not completed this visit';
+              const parts = [label];
+              if (isCompleted && svc.staffName) parts.push(svc.staffName);
+              if (svc.price > 0) parts.push(`P${svc.price.toLocaleString()}`);
+              return (
+                <Text key={svc.id || i} style={[
+                  styles.serviceStatusLine,
+                  isCompleted ? { color: COLORS.success } : { color: COLORS.textMuted },
+                ]}>
+                  {icon} {svc.name || 'Service'} — {parts.join(' · ')}
+                </Text>
+              );
+            });
+          })()}
         </View>
       )}
 
@@ -411,6 +434,8 @@ const AppointmentCardContent = ({
             onToggle={onToggleTimeline}
             assignedVet={appointment.assignedVet}
             services={appointment.services}
+            scheduledDate={appointment.scheduledDate}
+            caseDay={appointment.caseDay}
           />
         </View>
       ) : null}

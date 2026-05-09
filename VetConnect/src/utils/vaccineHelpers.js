@@ -16,6 +16,7 @@ export const DEFAULT_VACCINE_CATALOG = [
     intervalDays: 365,
     keywords: ['rabies'],
     isActive: true,
+    doses: 1,
   },
   {
     id: 'dhpp',
@@ -24,6 +25,9 @@ export const DEFAULT_VACCINE_CATALOG = [
     intervalDays: 365,
     keywords: ['dhpp', 'da2pp', 'distemper', 'parvo', 'parvovirus', '5-in-1', '5 in 1'],
     isActive: true,
+    doses: 3,
+    doseIntervalDays: [21, 21],
+    startAgeWeeks: 6,
   },
   {
     id: 'bordetella',
@@ -32,6 +36,8 @@ export const DEFAULT_VACCINE_CATALOG = [
     intervalDays: 180,
     keywords: ['bordetella', 'kennel cough', 'kennel'],
     isActive: true,
+    doses: 2,
+    doseIntervalDays: [28],
   },
   {
     id: 'leptospirosis',
@@ -40,6 +46,8 @@ export const DEFAULT_VACCINE_CATALOG = [
     intervalDays: 365,
     keywords: ['lepto', 'leptospirosis'],
     isActive: true,
+    doses: 2,
+    doseIntervalDays: [21],
   },
   {
     id: 'fvrcp',
@@ -48,6 +56,9 @@ export const DEFAULT_VACCINE_CATALOG = [
     intervalDays: 365,
     keywords: ['fvrcp', 'feline distemper', 'panleukopenia'],
     isActive: true,
+    doses: 3,
+    doseIntervalDays: [21, 21],
+    startAgeWeeks: 6,
   },
   {
     id: 'felv',
@@ -56,6 +67,8 @@ export const DEFAULT_VACCINE_CATALOG = [
     intervalDays: 365,
     keywords: ['felv', 'feline leukemia'],
     isActive: true,
+    doses: 2,
+    doseIntervalDays: [21],
   },
 ];
 
@@ -92,12 +105,16 @@ function mapProductToCatalogEntry(product) {
   )?.[1] || [];
 
   return {
-    id:           product.id,
-    name:         product.itemName,
-    species:      vc.species      || ['dog', 'cat'],
-    intervalDays: vc.intervalDays || 365,
-    isActive:     !product.isArchived,
-    keywords:     [nameLower, ...legacyKws],
+    id:              product.id,
+    name:            product.itemName,
+    species:         vc.species      || ['dog', 'cat'],
+    intervalDays:    vc.intervalDays || 365,
+    isActive:        !product.isArchived,
+    keywords:        [nameLower, ...legacyKws],
+    // Multi-dose series fields — dual-read fallback for legacy products
+    doses:           vc.doses            || 1,
+    doseIntervalDays: vc.doseIntervalDays || [],
+    startAgeWeeks:   vc.startAgeWeeks    || null,
   };
 }
 
@@ -176,13 +193,28 @@ export function getVaccineAdministrations(record) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Parses a dueDate field from a vaccineAdministrations entry.
+ * Handles Firestore Timestamp (new), Timestamp-like {seconds}, and ISO string (legacy).
+ *
+ * @param {*} dueDate - Raw dueDate value from Firestore
+ * @returns {Date|null}
+ */
+function parseDueDate(dueDate) {
+  if (!dueDate) return null;
+  if (dueDate.toDate) return dueDate.toDate();                   // Firestore Timestamp
+  if (dueDate.seconds) return new Date(dueDate.seconds * 1000); // Timestamp-like object
+  if (typeof dueDate === 'string') return new Date(dueDate);     // ISO string (legacy)
+  return null;
+}
+
+/**
  * Builds the vaccination status array for a pet, filtered to species-relevant
  * vaccines. For each catalog vaccine, attempts two resolution paths in order:
- *   1. Structured: vaccineAdministrations[] / vaccineData fields
+ *   1. Structured: vaccineAdministrations[] / vaccineData fields (all doses)
  *   2. Legacy fallback: keyword match against SOAP / diagnosis free text
  *
- * Port of admin PatientDashboard.jsx vaccinationStatus useMemo (lines 633-712)
- * and vaccineCompleteness useMemo (lines 724-733).
+ * T4.200: Rewritten to track ALL doses per vaccine (not just the most recent),
+ * implementing full multi-dose series support with binary completeness (Decision 4).
  *
  * @param {Array}  records    - Full medical_records array (PetHistoryScreen history).
  * @param {Array}  catalog    - Vaccine catalog from fetchVaccineCatalog().
@@ -196,74 +228,124 @@ export function buildVaccinationStatus(records, catalog, petSpecies) {
   const statuses = catalog
     .filter(v => v.species?.includes(spKey))
     .map(catalogVax => {
-      // ------------------------------------------------------------------
-      // Path 1: Structured — find the most recent vaccineAdministration
-      // entry that resolves to this catalog entry.
-      // ------------------------------------------------------------------
-      let structuredRecord = null;
-      let matchedAdmin = null;
-      let bestTime = 0;
+      const totalDoses = catalogVax.doses || 1;
 
+      // -----------------------------------------------------------------------
+      // Path 1: Structured — collect ALL matching administrations across ALL
+      // records, then build series progress with explicit dose tracking.
+      // T4.200: Multi-dose aware rewrite.
+      // -----------------------------------------------------------------------
+      const allAdmins = [];
       for (const r of records) {
         const admins = getVaccineAdministrations(r);
-        const admin = admins.find(a => {
-          const resolved = resolveVaccineFromName(a.vaccineName, catalog);
-          return resolved?.id === catalogVax.id;
-        });
-        if (admin) {
-          const rTime = r.date?.toDate
-            ? r.date.toDate().getTime()
-            : (r.date?.seconds ? r.date.seconds * 1000 : 0);
-          if (rTime >= bestTime) {
-            structuredRecord = r;
-            matchedAdmin    = admin;
-            bestTime        = rTime;
+        for (const admin of admins) {
+          const resolved = resolveVaccineFromName(admin.vaccineName, catalog);
+          if (resolved?.id === catalogVax.id) {
+            const rDate = r.date?.toDate
+              ? r.date.toDate()
+              : r.date?.seconds
+                ? new Date(r.date.seconds * 1000)
+                : null;
+            allAdmins.push({
+              ...admin,
+              date: rDate,
+              vetName:  r.vetName || null,
+              recordId: r.id,
+            });
           }
         }
       }
 
-      if (structuredRecord && matchedAdmin) {
-        const lastDate = structuredRecord.date?.toDate
-          ? structuredRecord.date.toDate()
-          : structuredRecord.date?.seconds
-            ? new Date(structuredRecord.date.seconds * 1000)
-            : null;
+      if (allAdmins.length > 0) {
+        // Sort chronologically ascending (oldest first) so dose numbering is stable
+        allAdmins.sort((a, b) => (a.date?.getTime() || 0) - (b.date?.getTime() || 0));
+
+        // Deduplicate by doseNumber.
+        // Explicit doseNumber (new records): use as-is.
+        // Absent doseNumber (legacy records): assign sequential numbers by chronological order.
+        const doseMap = new Map(); // doseNumber → admin entry
+        for (const admin of allAdmins) {
+          const dn = admin.doseNumber || (doseMap.size + 1);
+          if (!doseMap.has(dn)) {
+            doseMap.set(dn, admin);
+          }
+        }
+
+        const dosesGiven = Math.min(doseMap.size, totalDoses);
+        const seriesComplete = dosesGiven >= totalDoses;
+        const nextDoseNumber = seriesComplete ? null : dosesGiven + 1;
+
+        const lastAdmin = allAdmins[allAdmins.length - 1];
+        const lastDate = lastAdmin.date;
 
         if (!lastDate) {
           return {
             name: catalogVax.name, id: catalogVax.id,
             intervalDays: catalogVax.intervalDays,
             status: 'unknown', lastDate: null, daysUntilDue: null,
-            lotNumber:    matchedAdmin.lotNumber    || null,
-            manufacturer: matchedAdmin.manufacturer || null,
-            vetName:      structuredRecord.vetName  || null,
+            lotNumber:     lastAdmin.lotNumber     || null,
+            manufacturer:  lastAdmin.manufacturer  || null,
+            vetName:       lastAdmin.vetName       || null,
+            dosesRequired: totalDoses,
+            dosesGiven,
+            nextDoseNumber,
+            doseHistory:   [],
           };
         }
 
-        const explicitDue  = matchedAdmin.dueDate ? new Date(matchedAdmin.dueDate) : null;
-        const intervalDays = matchedAdmin.intervalDays || catalogVax.intervalDays;
-        const daysUntilDue = explicitDue
-          ? Math.floor((explicitDue.getTime() - Date.now()) / 86400000)
-          : intervalDays - Math.floor((Date.now() - lastDate.getTime()) / 86400000);
+        let daysUntilDue;
+        if (seriesComplete) {
+          // Annual booster timing from the LAST dose in series
+          const explicitDue = parseDueDate(lastAdmin.dueDate);
+          daysUntilDue = explicitDue
+            ? Math.floor((explicitDue.getTime() - Date.now()) / 86400000)
+            : (lastAdmin.intervalDays || catalogVax.intervalDays) -
+              Math.floor((Date.now() - lastDate.getTime()) / 86400000);
+        } else {
+          // Next dose timing — use doseIntervalDays for the interval AFTER the last given dose
+          const doseIntervals = catalogVax.doseIntervalDays || [];
+          const intervalForNextDose = doseIntervals[dosesGiven - 1] ?? 21; // default 21 days
+          const nextDoseDate = new Date(lastDate.getTime() + intervalForNextDose * 86400000);
+          daysUntilDue = Math.floor((nextDoseDate.getTime() - Date.now()) / 86400000);
+        }
 
-        const status = daysUntilDue < 0   ? 'overdue'
-          : daysUntilDue <= 30            ? 'due_soon'
-          : 'current';
+        // Status logic:
+        // - seriesComplete: current / due_soon / overdue (annual booster)
+        // - incomplete series: overdue / due_soon / incomplete
+        const status = seriesComplete
+          ? (daysUntilDue < 0 ? 'overdue' : daysUntilDue <= 30 ? 'due_soon' : 'current')
+          : (daysUntilDue < 0 ? 'overdue' : daysUntilDue <= 30 ? 'due_soon' : 'incomplete');
+
+        const doseHistory = Array.from(doseMap.entries())
+          .sort(([a], [b]) => a - b)
+          .map(([dn, admin]) => ({
+            doseNumber:   dn,
+            date:         admin.date,
+            vetName:      admin.vetName      || null,
+            lotNumber:    admin.lotNumber    || null,
+            manufacturer: admin.manufacturer || null,
+          }));
 
         return {
           name: catalogVax.name, id: catalogVax.id,
           intervalDays: catalogVax.intervalDays,
           status, lastDate, daysUntilDue,
-          lotNumber:     matchedAdmin.lotNumber     || null,
-          manufacturer:  matchedAdmin.manufacturer  || null,
-          routeOfAdmin:  matchedAdmin.routeOfAdmin  || null,
-          vetName:       structuredRecord.vetName   || null,
+          lotNumber:     lastAdmin.lotNumber     || null,
+          manufacturer:  lastAdmin.manufacturer  || null,
+          routeOfAdmin:  lastAdmin.routeOfAdmin  || null,
+          vetName:       lastAdmin.vetName       || null,
+          // T4.200: Multi-dose fields (additive — backward compatible)
+          dosesRequired: totalDoses,
+          dosesGiven,
+          nextDoseNumber,
+          doseHistory,
         };
       }
 
-      // ------------------------------------------------------------------
+      // -----------------------------------------------------------------------
       // Path 2: Legacy — keyword match against SOAP/diagnosis free text.
-      // ------------------------------------------------------------------
+      // Preserves existing behavior; adds multi-dose fields with safe defaults.
+      // -----------------------------------------------------------------------
       const keywordMatches = records.filter(r => {
         const text = [
           r.diagnosis,
@@ -282,6 +364,10 @@ export function buildVaccinationStatus(records, catalog, petSpecies) {
           name: catalogVax.name, id: catalogVax.id,
           intervalDays: catalogVax.intervalDays,
           status: 'unknown', lastDate: null, daysUntilDue: null,
+          dosesRequired: totalDoses,
+          dosesGiven:    0,
+          nextDoseNumber: totalDoses > 1 ? 1 : null,
+          doseHistory:   [],
         };
       }
 
@@ -304,20 +390,29 @@ export function buildVaccinationStatus(records, catalog, petSpecies) {
           name: catalogVax.name, id: catalogVax.id,
           intervalDays: catalogVax.intervalDays,
           status: 'unknown', lastDate: null, daysUntilDue: null,
+          dosesRequired: totalDoses,
+          dosesGiven:    0,
+          nextDoseNumber: totalDoses > 1 ? 1 : null,
+          doseHistory:   [],
         };
       }
 
       const daysSince    = Math.floor((Date.now() - lastDate.getTime()) / 86400000);
       const daysUntilDue = catalogVax.intervalDays - daysSince;
-      const status       = daysUntilDue < 0   ? 'overdue'
-        : daysUntilDue <= 30                  ? 'due_soon'
+      const status       = daysUntilDue < 0 ? 'overdue'
+        : daysUntilDue <= 30               ? 'due_soon'
         : 'current';
 
       return {
         name: catalogVax.name, id: catalogVax.id,
         intervalDays: catalogVax.intervalDays,
         status, lastDate, daysUntilDue,
-        vetName: latest.vetName || null,
+        vetName:       latest.vetName || null,
+        // T4.200: Legacy path — assume 1 dose given (we found a keyword match)
+        dosesRequired:  totalDoses,
+        dosesGiven:     1,
+        nextDoseNumber: totalDoses > 1 ? 2 : null,
+        doseHistory:    [],
       };
     });
 
@@ -325,13 +420,19 @@ export function buildVaccinationStatus(records, catalog, petSpecies) {
     return { statuses, completeness: null };
   }
 
-  const administered = statuses.filter(v => v.status !== 'unknown').length;
+  // T4.200: Binary completeness — Decision 4.
+  // A vaccine counts as "administered" only when ALL doses are given AND status is not 'overdue'.
+  // 2/3 doses = incomplete (NOT 67%). 'unknown' = not administered.
+  const complete = statuses.filter(v =>
+    v.status !== 'unknown' && v.dosesGiven >= v.dosesRequired && v.status !== 'overdue',
+  ).length;
+
   return {
     statuses,
     completeness: {
-      administered,
-      total:      statuses.length,
-      percentage: Math.round((administered / statuses.length) * 100),
+      administered: complete,
+      total:        statuses.length,
+      percentage:   Math.round((complete / statuses.length) * 100),
     },
   };
 }
@@ -366,6 +467,8 @@ export function getVaccineHistory(vaccineId, records, catalog) {
           manufacturer: a.manufacturer || '',
           routeOfAdmin: a.routeOfAdmin || '',
           vetName:      r.vetName      || 'Clinic Staff',
+          // T4.200: Explicit dose number; null for legacy records without this field
+          doseNumber:   a.doseNumber   || null,
         });
       }
     }

@@ -83,6 +83,7 @@ const EMPTY_VAX = {
   vaccineName: '', manufacturer: '', lotNumber: '',
   routeOfAdmin: 'SQ', siteOfInjection: 'Right Scruff',
   dueDate: '', intervalDays: 365,
+  doseNumber: 1,
 };
 
 /**
@@ -572,6 +573,114 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   const [vaccineAdministrations, setVaccineAdministrations] = useState([{ ...EMPTY_VAX }]);
   // T3.2: Manual override — lets the vet show the vaccine form on non-vaccination visits
   const [manualVaccineOverride, setManualVaccineOverride] = useState(false);
+
+  /**
+   * T4.200: Dose auto-detection map — stores per-vaccine dose history for this pet.
+   * Shape: Map<vaccineId, { priorDoses: number, nextDose: number, totalDoses: number }>
+   * Populated by a one-shot getDocs query on mount / patient change.
+   */
+  const [doseAutoDetectMap, setDoseAutoDetectMap] = useState(new Map());
+
+  useEffect(() => {
+    if (!patient?.petId) return;
+    let cancelled = false;
+
+    const fetchPriorDoses = async () => {
+      try {
+        const q = query(collection(db, 'medical_records'), where('petId', '==', patient.petId));
+        const snap = await getDocs(q);
+        const allRecords = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        // Build a map: catalogId → Set of administered doseNumbers
+        const dosesByCatalogId = new Map();
+
+        for (const record of allRecords) {
+          const admins = record.vaccineAdministrations?.length > 0
+            ? record.vaccineAdministrations
+            : record.vaccineData?.vaccineName
+              ? [record.vaccineData]
+              : [];
+
+          for (const admin of admins) {
+            const resolved = vaccineCatalog.find(v => {
+              const lower = (admin.vaccineName || '').toLowerCase();
+              return v.name.toLowerCase() === lower ||
+                (v.keywords || []).some(kw => lower.includes(kw));
+            });
+            if (!resolved) continue;
+
+            if (!dosesByCatalogId.has(resolved.id)) {
+              dosesByCatalogId.set(resolved.id, new Set());
+            }
+            // Use explicit doseNumber, or count sequential as fallback
+            const existing = dosesByCatalogId.get(resolved.id);
+            const dn = admin.doseNumber || (existing.size + 1);
+            existing.add(dn);
+          }
+        }
+
+        if (cancelled) return;
+
+        // Build final map with next-dose recommendations
+        const resultMap = new Map();
+        for (const catalogEntry of vaccineCatalog) {
+          const administered = dosesByCatalogId.get(catalogEntry.id);
+          const totalDoses = catalogEntry.doses || 1;
+          const priorDoses = administered ? Math.min(administered.size, totalDoses) : 0;
+          const nextDose = priorDoses >= totalDoses ? totalDoses : priorDoses + 1;
+          resultMap.set(catalogEntry.id, { priorDoses, nextDose, totalDoses });
+        }
+        setDoseAutoDetectMap(resultMap);
+      } catch (err) {
+        // Non-blocking — dose auto-detect is a UX enhancement, not a clinical gate
+        console.error('[ClinicalWorkspace] Dose auto-detect failed:', err.message);
+      }
+    };
+
+    fetchPriorDoses();
+    return () => { cancelled = true; };
+  }, [patient?.petId, vaccineCatalog]);
+
+  /**
+   * T4.200: When the dose auto-detect map loads (async after initial render),
+   * update any already-hydrated vaccine rows that still have dose 1 from the
+   * initial default. This handles the race where the form pre-fills before
+   * the prior-dose query completes.
+   *
+   * Only updates rows where the vet hasn't manually changed the dose (still at 1).
+   */
+  useEffect(() => {
+    if (doseAutoDetectMap.size === 0) return;
+    setVaccineAdministrations(prev =>
+      prev.map(vax => {
+        if (!vax.vaccineName) return vax;
+        const resolved = vaccineCatalog.find(v => {
+          const lower = (vax.vaccineName || '').toLowerCase();
+          return v.name.toLowerCase() === lower ||
+            (v.keywords || []).some(kw => lower.includes(kw));
+        });
+        if (!resolved) return vax;
+        const autoDetect = doseAutoDetectMap.get(resolved.id);
+        if (!autoDetect || autoDetect.nextDose <= 1) return vax;
+        // Only auto-update if still at default dose 1 (not manually changed by vet)
+        if ((vax.doseNumber || 1) !== 1) return vax;
+        const isLastDose = autoDetect.nextDose >= autoDetect.totalDoses;
+        const doseIntervals = resolved.doseIntervalDays || [];
+        const intervalForDue = isLastDose
+          ? (resolved.intervalDays || vax.intervalDays || 365)
+          : (doseIntervals[autoDetect.nextDose - 1] || 21);
+        const newDue = new Date();
+        newDue.setDate(newDue.getDate() + intervalForDue);
+        return {
+          ...vax,
+          doseNumber: autoDetect.nextDose,
+          dueDate: newDue.toISOString().slice(0, 10),
+        };
+      }),
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doseAutoDetectMap]);
+
   // T3.1: EMR slide-over drawer state
   const [emrOpen, setEmrOpen] = useState(false);
 
@@ -949,6 +1058,26 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             setVaccineAdministrations(prev => {
                 const updated = [...prev];
                 if (updated[0]) {
+                    const resolvedVaxEntry = vaccineCatalog.find(v => {
+                        const lower = (firstVaccineLinkedItem.itemName || '').toLowerCase();
+                        return v.name.toLowerCase() === lower ||
+                          (v.keywords || []).some(kw => lower.includes(kw));
+                    });
+                    const autoDetect = resolvedVaxEntry
+                      ? doseAutoDetectMap.get(resolvedVaxEntry.id)
+                      : null;
+                    const hydratedDoseNumber = autoDetect ? autoDetect.nextDose : 1;
+                    const totalDosesForHydration = resolvedVaxEntry?.doses || 1;
+                    const doseIntervals = resolvedVaxEntry?.doseIntervalDays || [];
+                    const isLastDose = hydratedDoseNumber >= totalDosesForHydration;
+                    const intervalForDueDate = isLastDose
+                      ? (vc.intervalDays || 365)
+                      : (doseIntervals[hydratedDoseNumber - 1] || 21);
+                    const hydratedDueDateComputed = (() => {
+                        const due = new Date();
+                        due.setDate(due.getDate() + intervalForDueDate);
+                        return due.toISOString().slice(0, 10);
+                    })();
                     updated[0] = {
                         ...updated[0],
                         vaccineName: updated[0].vaccineName || firstVaccineLinkedItem.itemName || '',
@@ -956,8 +1085,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                         lotNumber: updated[0].lotNumber || batch?.batchNumber || batch?.lotNumber || '',
                         routeOfAdmin: updated[0].routeOfAdmin || vc.defaultRoute || 'SQ',
                         siteOfInjection: updated[0].siteOfInjection || vc.defaultSite || 'Right Scruff',
-                        dueDate: updated[0].dueDate || hydrationDueDate,
+                        dueDate: updated[0].dueDate || hydratedDueDateComputed,
                         intervalDays: updated[0].intervalDays || vc.intervalDays || 365,
+                        doseNumber: updated[0].doseNumber || hydratedDoseNumber,
                     };
                 }
                 return updated;
@@ -1519,10 +1649,27 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             setManualVaccineOverride(true);
         }
 
+        // Resolve catalog entry for dose auto-detection
+        const resolvedCatalogEntry = vaccineCatalog.find(v => {
+            const lower = (item.itemName || item.name || '').toLowerCase();
+            return v.name.toLowerCase() === lower ||
+              (v.keywords || []).some(kw => lower.includes(kw));
+        });
+        const autoDetect = resolvedCatalogEntry
+          ? doseAutoDetectMap.get(resolvedCatalogEntry.id)
+          : null;
+        const autoSelectedDose = autoDetect ? autoDetect.nextDose : 1;
+        const totalDoses = resolvedCatalogEntry?.doses || 1;
+        const doseIntervals = resolvedCatalogEntry?.doseIntervalDays || [];
+        const isLastDose = autoSelectedDose >= totalDoses;
+        // For non-final doses, use the inter-dose interval; for final dose use annual interval
+        const intervalForDue = isLastDose
+          ? (vc.intervalDays || 365)
+          : (doseIntervals[autoSelectedDose - 1] || 21);
+
         const dueDate = (() => {
-            const days = vc.intervalDays || 365;
             const due = new Date();
-            due.setDate(due.getDate() + days);
+            due.setDate(due.getDate() + intervalForDue);
             return due.toISOString().slice(0, 10);
         })();
 
@@ -1538,6 +1685,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 dueDate,
                 intervalDays: vc.intervalDays || 365,
                 noStockDeduction: itemObj.noStockDeduction || false,
+                doseNumber: autoSelectedDose,
             };
             if (emptyIdx >= 0) {
                 updated[emptyIdx] = { ...updated[emptyIdx], ...newEntry };
@@ -2240,6 +2388,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                     siteOfInjection: v.siteOfInjection,
                     dueDate: v.dueDate || null,
                     intervalDays: v.intervalDays || 365,
+                    // T4.200: Explicit dose number — Decision 2 (explicit doseNumber, not count-based)
+                    doseNumber: v.doseNumber || 1,
                     // T4.117: Audit flag — persisted so reports can identify client-supplied vaccine administrations.
                     ...(v.noStockDeduction ? { noStockDeduction: true } : {}),
                 })),
@@ -2252,6 +2402,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                     siteOfInjection: first.siteOfInjection,
                     dueDate: first.dueDate || null,
                     intervalDays: first.intervalDays || 365,
+                    // T4.200: Propagate dose number to legacy shim
+                    doseNumber: first.doseNumber || 1,
                 },
             };
         })() : {}),
@@ -2906,6 +3058,32 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           prev.length <= 1 ? [{ ...EMPTY_VAX }] : prev.filter((_, i) => i !== idx)
         );
 
+        // T4.200: Resolve catalog entry for this vaccine row to determine multi-dose UI
+        const resolvedCatalogVax = vaccineCatalog.find(v => {
+          const lower = (vax.vaccineName || '').toLowerCase();
+          return v.name.toLowerCase() === lower ||
+            (v.keywords || []).some(kw => lower.includes(kw));
+        });
+        const totalDosesForRow = resolvedCatalogVax?.doses || 1;
+        const doseIntervalsForRow = resolvedCatalogVax?.doseIntervalDays || [];
+        const autoDetectForRow = resolvedCatalogVax
+          ? doseAutoDetectMap.get(resolvedCatalogVax.id)
+          : null;
+        const priorDosesForRow = autoDetectForRow?.priorDoses ?? 0;
+
+        // When the vet changes dose, auto-compute the new due date
+        const handleDoseChange = (_, newDose) => {
+          if (newDose === null) return;
+          update('doseNumber', newDose);
+          const isLastDoseSelected = newDose >= totalDosesForRow;
+          const intervalForNewDose = isLastDoseSelected
+            ? (resolvedCatalogVax?.intervalDays || vax.intervalDays || 365)
+            : (doseIntervalsForRow[newDose - 1] || 21);
+          const newDue = new Date();
+          newDue.setDate(newDue.getDate() + intervalForNewDose);
+          update('dueDate', newDue.toISOString().slice(0, 10));
+        };
+
         return (
           <Box key={idx} sx={{
             mb: idx < vaccineAdministrations.length - 1 ? 2 : 0,
@@ -2937,6 +3115,61 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 <TextField size="small" fullWidth label="Manufacturer" value={vax.manufacturer}
                   onChange={(e) => update('manufacturer', e.target.value)} sx={{ bgcolor: 'white' }} />
               </Grid>
+
+              {/* T4.200: Dose selector — only for multi-dose vaccines */}
+              {totalDosesForRow > 1 && (
+                <Grid size={{ xs: 12 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography sx={{
+                      fontWeight: 900, fontSize: '0.6rem', textTransform: 'uppercase',
+                      letterSpacing: 0.5, color: COLORS.success, whiteSpace: 'nowrap',
+                    }}>
+                      DOSE
+                    </Typography>
+                    <ToggleButtonGroup
+                      exclusive
+                      value={vax.doseNumber || 1}
+                      onChange={handleDoseChange}
+                      size="small"
+                      sx={{
+                        gap: 0.5,
+                        '& .MuiToggleButton-root': {
+                          border: `2px solid ${COLORS.success}55 !important`,
+                          borderRadius: '0 !important',
+                          fontWeight: 900,
+                          fontSize: '0.65rem',
+                          minWidth: 28,
+                          px: 1,
+                          py: 0.25,
+                          '&.Mui-selected': {
+                            bgcolor: `${COLORS.success} !important`,
+                            color: '#fff !important',
+                          },
+                          '&.Mui-disabled': {
+                            bgcolor: `${COLORS.success}22`,
+                            color: COLORS.success,
+                            opacity: 0.7,
+                          },
+                        },
+                      }}
+                    >
+                      {Array.from({ length: totalDosesForRow }, (_, i) => (
+                        <ToggleButton
+                          key={i + 1}
+                          value={i + 1}
+                          disabled={i + 1 <= priorDosesForRow && i + 1 < (vax.doseNumber || 1)}
+                        >
+                          {i + 1}
+                        </ToggleButton>
+                      ))}
+                    </ToggleButtonGroup>
+                    <Typography sx={{ fontWeight: 700, fontSize: '0.65rem', color: COLORS.success }}>
+                      Dose {vax.doseNumber || 1}/{totalDosesForRow}
+                    </Typography>
+                  </Box>
+                </Grid>
+              )}
+
               <Grid size={{ xs: 4 }}>
                 <TextField size="small" fullWidth label="Lot Number" value={vax.lotNumber}
                   onChange={(e) => update('lotNumber', e.target.value)} sx={{ bgcolor: 'white' }} />

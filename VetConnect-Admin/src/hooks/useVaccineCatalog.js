@@ -12,12 +12,36 @@ import { db } from '../firebaseConfig';
  * transition period before migration is performed.
  */
 const DEFAULT_VACCINES = [
-  { id: 'rabies',        name: 'Rabies',        species: ['dog', 'cat'], intervalDays: 365, keywords: ['rabies'],                                                               isActive: true },
-  { id: 'dhpp',          name: 'DHPP (5-in-1)', species: ['dog'],        intervalDays: 365, keywords: ['dhpp', 'da2pp', 'distemper', 'parvo', 'parvovirus', '5-in-1', '5 in 1'], isActive: true },
-  { id: 'bordetella',    name: 'Bordetella',    species: ['dog'],        intervalDays: 180, keywords: ['bordetella', 'kennel cough', 'kennel'],                                 isActive: true },
-  { id: 'leptospirosis', name: 'Leptospirosis', species: ['dog'],        intervalDays: 365, keywords: ['lepto', 'leptospirosis'],                                               isActive: true },
-  { id: 'fvrcp',         name: 'FVRCP',         species: ['cat'],        intervalDays: 365, keywords: ['fvrcp', 'feline distemper', 'panleukopenia'],                           isActive: true },
-  { id: 'felv',          name: 'FeLV',          species: ['cat'],        intervalDays: 365, keywords: ['felv', 'feline leukemia'],                                              isActive: true },
+  {
+    id: 'rabies', name: 'Rabies', species: ['dog', 'cat'], intervalDays: 365,
+    keywords: ['rabies'], isActive: true,
+    doses: 1,
+  },
+  {
+    id: 'dhpp', name: 'DHPP (5-in-1)', species: ['dog'], intervalDays: 365,
+    keywords: ['dhpp', 'da2pp', 'distemper', 'parvo', 'parvovirus', '5-in-1', '5 in 1'], isActive: true,
+    doses: 3, doseIntervalDays: [21, 21], startAgeWeeks: 6,
+  },
+  {
+    id: 'bordetella', name: 'Bordetella', species: ['dog'], intervalDays: 180,
+    keywords: ['bordetella', 'kennel cough', 'kennel'], isActive: true,
+    doses: 2, doseIntervalDays: [28],
+  },
+  {
+    id: 'leptospirosis', name: 'Leptospirosis', species: ['dog'], intervalDays: 365,
+    keywords: ['lepto', 'leptospirosis'], isActive: true,
+    doses: 2, doseIntervalDays: [21],
+  },
+  {
+    id: 'fvrcp', name: 'FVRCP', species: ['cat'], intervalDays: 365,
+    keywords: ['fvrcp', 'feline distemper', 'panleukopenia'], isActive: true,
+    doses: 3, doseIntervalDays: [21, 21], startAgeWeeks: 6,
+  },
+  {
+    id: 'felv', name: 'FeLV', species: ['cat'], intervalDays: 365,
+    keywords: ['felv', 'feline leukemia'], isActive: true,
+    doses: 2, doseIntervalDays: [21],
+  },
 ];
 
 /**
@@ -77,6 +101,10 @@ function mapProductToCatalogEntry(product) {
     defaultSite:         vc.defaultSite         || 'Right Scruff',
     defaultManufacturer: vc.defaultManufacturer || '',
     isActive:            !product.isArchived,
+    // Multi-dose series fields — dual-read fallback: absent on legacy products
+    doses:            vc.doses            || 1,
+    doseIntervalDays: vc.doseIntervalDays || [],
+    startAgeWeeks:    vc.startAgeWeeks    || null,
     // Full inventory doc — available for cart/batch operations (Day 2)
     _product: product,
     // Legacy keyword compat: name-derived keyword + known synonyms

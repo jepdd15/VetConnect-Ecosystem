@@ -211,20 +211,32 @@ export default function SuperCard({
         {dayServices.length > 0 && (
           <View style={styles.serviceProgressSection}>
             <Text style={styles.sectionLabel}>SERVICES</Text>
-            {dayServices.map((svc, i) => {
-              const svcStatus = svc.serviceStatus || 'pending';
-              const icon = svcStatus === 'completed' ? '✓' : svcStatus === 'in-progress' ? '⏳' : '○';
-              const durationStr = formatServiceDuration(svc);
-              const label = svcStatus === 'completed' ? `done${durationStr}` : svcStatus === 'in-progress' ? 'in progress' : 'waiting';
-              return (
-                <Text
-                  key={svc.id || i}
-                  style={[styles.serviceProgressLine, svcStatus === 'in-progress' && { color: COLORS.sky }]}
-                >
-                  {icon} {svc.name || 'Service'} — {label}
-                </Text>
-              );
-            })}
+            {(() => {
+              const uniqueStaff = new Set(dayServices.map(s => s.staffName).filter(Boolean));
+              const showStaffPerService = uniqueStaff.size > 1;
+              return dayServices.map((svc, i) => {
+                const svcStatus = svc.serviceStatus || 'pending';
+                const icon = svcStatus === 'completed' ? '✓' : svcStatus === 'in-progress' ? '⏳' : '○';
+                const durationStr = formatServiceDuration(svc);
+                const label = svcStatus === 'completed' ? `done${durationStr}` : svcStatus === 'in-progress' ? 'in progress' : 'waiting';
+                const svcStaff = showStaffPerService && svc.staffName ? svc.staffName : null;
+                const svcPrice = svc.price > 0 ? `P${svc.price.toLocaleString()}` : null;
+                const isAdded = svc.addedDuringConsult === true;
+                const details = [label];
+                if (svcStaff) details.push(svcStaff);
+                if (svcPrice) details.push(svcPrice);
+                return (
+                  <View key={svc.id || i} style={styles.serviceProgressRow}>
+                    <Text style={[styles.serviceProgressLine, svcStatus === 'in-progress' && { color: COLORS.sky }]}>
+                      {icon} {svc.name || 'Service'} — {details.join(' · ')}
+                    </Text>
+                    {isAdded && (
+                      <Text style={styles.serviceAddedLabel}>(added)</Text>
+                    )}
+                  </View>
+                );
+              });
+            })()}
           </View>
         )}
         {queueAhead != null && (
@@ -276,6 +288,7 @@ export default function SuperCard({
               collapsed={timelineCollapsed}
               onToggle={() => setTimelineCollapsed(prev => !prev)}
               assignedVet={dayAppt.assignedVet}
+              services={dayAppt.services}
             />
           </View>
         )}
@@ -628,11 +641,23 @@ const styles = StyleSheet.create({
     borderTopColor: COLORS.borderLight,
     paddingTop: 8,
   },
+  serviceProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 4,
+    marginBottom: 3,
+    paddingLeft: 4,
+  },
   serviceProgressLine: {
     fontSize: 13,
     color: COLORS.accent,
     marginBottom: 3,
     paddingLeft: 4,
+  },
+  serviceAddedLabel: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    fontStyle: 'italic',
   },
 
   encounterSection: {

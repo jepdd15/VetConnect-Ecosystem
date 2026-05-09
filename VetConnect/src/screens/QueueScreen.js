@@ -489,6 +489,18 @@ export default function QueueScreen() {
                 <Text style={styles.heroServices}>{myTicket.serviceType}</Text>
               ) : null}
 
+              {/* T4.197: Compact per-service progress strip for multi-service appointments */}
+              {(myTicket.services?.length ?? 0) >= 2 &&
+                myTicket.services.some(s => s.serviceStatus && s.serviceStatus !== 'pending') && (
+                <Text style={styles.serviceStrip}>
+                  {myTicket.services.map(s => {
+                    const st = s.serviceStatus || 'pending';
+                    const icon = st === 'completed' ? '✓' : st === 'in-progress' ? '⏳' : '○';
+                    return `${icon} ${s.serviceName || s.name || s.serviceType || 'Service'}`;
+                  }).join(' · ')}
+                </Text>
+              )}
+
               {myTicket.assignedVet && myTicket.assignedVet !== 'Unassigned' && (
                 <Text style={styles.heroVet}>{myTicket.assignedVet}</Text>
               )}
@@ -924,6 +936,15 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginTop: 4,
+  },
+  // T4.197: Compact service-progress strip below service names
+  serviceStrip: {
+    fontFamily: FONTS.bold,
+    fontSize: 12,
+    color: COLORS.accent,
+    textAlign: 'center',
+    marginTop: 6,
+    letterSpacing: 0.3,
   },
 
   // Progress bar -- T2.484

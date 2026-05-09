@@ -286,6 +286,52 @@ const AppointmentCardContent = ({
           {appointment.servicePrice > 0 ? (
             <Text style={styles.contextPrice}>Est. P{appointment.servicePrice}</Text>
           ) : null}
+
+          {appointment.status === 'confined' && (
+            <Text style={styles.contextNote}>
+              Your pet is staying overnight at the clinic. Call us anytime for updates.
+            </Text>
+          )}
+        </View>
+      )}
+
+      {/* Per-service progress — only for multi-service active appointments */}
+      {isUpcoming && (appointment.services || []).length >= 2 &&
+        ACTIVE_CLINIC_STATUSES.has(appointment.status) && (
+        <View style={styles.serviceStatusSection}>
+          <Text style={styles.serviceStatusLabel}>SERVICES</Text>
+          {(() => {
+            const svcs = appointment.services || [];
+            const uniqueStaff = new Set(svcs.map(s => s.staffName).filter(Boolean));
+            const showStaff = uniqueStaff.size > 1;
+            return svcs.map((svc, i) => {
+              const status = svc.serviceStatus || 'pending';
+              const icon = status === 'completed' ? '✓'
+                : status === 'in-progress' ? '⏳'
+                : '○';
+              const label = status === 'completed' ? 'done'
+                : status === 'in-progress' ? 'in progress'
+                : 'waiting';
+              const parts = [label];
+              if (showStaff && svc.staffName) parts.push(svc.staffName);
+              if (svc.price > 0) parts.push(`P${svc.price.toLocaleString()}`);
+              const isAdded = svc.addedDuringConsult === true;
+              return (
+                <View key={svc.id || i} style={styles.serviceStatusRow}>
+                  <Text style={[
+                    styles.serviceStatusLine,
+                    status === 'in-progress' && { color: COLORS.sky },
+                    status === 'completed' && { color: COLORS.success },
+                  ]}>
+                    {icon} {svc.name || 'Service'} — {parts.join(' · ')}
+                  </Text>
+                  {isAdded && (
+                    <Text style={styles.serviceStatusAdded}>(added)</Text>
+                  )}
+                </View>
+              );
+            });
+          })()}
         </View>
       )}
 
@@ -299,6 +345,63 @@ const AppointmentCardContent = ({
         />
       )}
 
+      {/* Per-service status for completed multi-service appointments */}
+      {isHistory && appointment.status === 'completed' &&
+        (appointment.services || []).length >= 2 && (
+        <View style={styles.serviceStatusSection}>
+          <Text style={styles.serviceStatusLabel}>SERVICES</Text>
+          {(() => {
+            const svcs = appointment.services || [];
+            const uniqueStaff = new Set(svcs.map(s => s.staffName).filter(Boolean));
+            const showStaff = uniqueStaff.size > 1;
+            return svcs.map((svc, i) => {
+            const durationStr = (() => {
+              const start = svc.serviceStartedAt;
+              const end = svc.serviceCompletedAt;
+              if (!start || !end) return '';
+              const startMs = typeof start.toDate === 'function' ? start.toDate().getTime() : new Date(start).getTime();
+              const endMs = typeof end.toDate === 'function' ? end.toDate().getTime() : new Date(end).getTime();
+              const mins = Math.round((endMs - startMs) / 60000);
+              return Number.isFinite(mins) && mins > 0 ? ` (${mins} min)` : '';
+            })();
+            const parts = [`done${durationStr}`];
+            if (showStaff && svc.staffName) parts.push(svc.staffName);
+            if (svc.price > 0) parts.push(`P${svc.price.toLocaleString()}`);
+            return (
+              <Text key={svc.id || i} style={[styles.serviceStatusLine, { color: COLORS.success }]}>
+                ✓ {svc.name || 'Service'} — {parts.join(' · ')}
+              </Text>
+            );
+          });
+          })()}
+        </View>
+      )}
+
+      {/* Per-service status for carried-over multi-service appointments (mixed states) */}
+      {isHistory && appointment.status === 'carried-over' &&
+        (appointment.services || []).length >= 2 && (
+        <View style={styles.serviceStatusSection}>
+          <Text style={styles.serviceStatusLabel}>SERVICES</Text>
+          {(appointment.services || []).map((svc, i) => {
+            const status = svc.serviceStatus || 'pending';
+            const isCompleted = status === 'completed';
+            const icon = isCompleted ? '✓' : '✗';
+            const label = isCompleted ? `done${(appointment.caseDay || 1) > 1 ? ' (prev. day)' : ''}` : 'not completed this visit';
+            const parts = [label];
+            if (isCompleted && svc.staffName) parts.push(svc.staffName);
+            if (svc.price > 0) parts.push(`P${svc.price.toLocaleString()}`);
+            return (
+              <Text key={svc.id || i} style={[
+                styles.serviceStatusLine,
+                isCompleted ? { color: COLORS.success } : { color: COLORS.textMuted },
+              ]}>
+                {icon} {svc.name || 'Service'} — {parts.join(' · ')}
+              </Text>
+            );
+          })}
+        </View>
+      )}
+
       {isHistory && timelineEvents.length > 0 ? (
         <View style={styles.timelineSection}>
           <VisitTimeline
@@ -307,6 +410,7 @@ const AppointmentCardContent = ({
             collapsed={!isTimelineExpanded}
             onToggle={onToggleTimeline}
             assignedVet={appointment.assignedVet}
+            services={appointment.services}
           />
         </View>
       ) : null}
@@ -729,6 +833,40 @@ const styles = StyleSheet.create({
   },
   viewRecordBtn: {
     borderColor: COLORS.accent,
+  },
+
+  serviceStatusSection: {
+    marginTop: 8,
+    marginBottom: 4,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+    paddingTop: 8,
+  },
+  serviceStatusLabel: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  serviceStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 4,
+    marginBottom: 3,
+    paddingLeft: 4,
+  },
+  serviceStatusLine: {
+    fontSize: 13,
+    color: COLORS.accent,
+    marginBottom: 3,
+    paddingLeft: 4,
+  },
+  serviceStatusAdded: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    fontStyle: 'italic',
   },
 
 });

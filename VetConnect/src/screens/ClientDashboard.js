@@ -34,6 +34,9 @@ import { safeDate, getLocalDateStr } from "../utils/helpers";
 import { COLORS, FONTS } from "../theme/mobileTokens";
 import { useConsentGate } from "../hooks/useConsentGate";
 import { useNetwork } from "../context/NetworkContext";
+import SuperCard from "../components/SuperCard";
+import { buildCaseChains } from "../utils/buildCaseChains";
+import { useClinicContact } from "../hooks/useClinicContact";
 
 // --- PUSH NOTIFICATION IMPORTS ---
 import Constants from "expo-constants";
@@ -52,6 +55,9 @@ Notifications.setNotificationHandler({
   }),
 });
 
+
+const PRE_ARRIVAL_STATUSES = new Set(['pending', 'confirmed']);
+const IN_CLINIC_STATUSES = new Set(['arrived', 'in-consult', 'dispensing', 'billing', 'confined', 'on-hold']);
 
 const ClientDashboard = ({ navigation }) => {
   const insets = useSafeAreaInsets();
@@ -80,6 +86,7 @@ const ClientDashboard = ({ navigation }) => {
   const [consentCompleted, setConsentCompleted] = useState(false);
   const [waiverBannerVisible, setWaiverBannerVisible] = useState(true);
   const { isConnected } = useNetwork();
+  const { clinicPhone } = useClinicContact();
   const userId = auth.currentUser?.uid ?? null;
   const {
     loading: consentLoading,
@@ -443,6 +450,38 @@ const ClientDashboard = ({ navigation }) => {
 
     return () => unsubQueue();
   }, [activeAppointments]);
+
+  // ======================================================================
+  // T4.197: Split active appointments for SuperCard vs thin card rendering
+  // ======================================================================
+
+  const preArrivalAppts = useMemo(
+    () => activeAppointments.filter(a => PRE_ARRIVAL_STATUSES.has(a.status)),
+    [activeAppointments],
+  );
+
+  const inClinicAppts = useMemo(
+    () => activeAppointments.filter(a => IN_CLINIC_STATUSES.has(a.status)),
+    [activeAppointments],
+  );
+
+  const caseChainsByApptId = useMemo(() => {
+    if (inClinicAppts.length === 0) return {};
+    const result = {};
+    const { chains } = buildCaseChains(allAppointments);
+    for (const appt of inClinicAppts) {
+      if ((appt.caseDay || 1) > 1) {
+        for (const [, members] of chains) {
+          if (members.some(m => m.id === appt.id)) {
+            result[appt.id] = members;
+            break;
+          }
+        }
+      }
+      if (!result[appt.id]) result[appt.id] = [];
+    }
+    return result;
+  }, [inClinicAppts, allAppointments]);
 
   // ======================================================================
   // 3. FETCH HEALTH REMINDERS
@@ -875,7 +914,21 @@ const ClientDashboard = ({ navigation }) => {
       {!loading && activeAppointments.length > 0 && (
         <View style={styles.feedSection}>
           <Text style={styles.sectionHeader}>📌 Current Status</Text>
-          {activeAppointments.map(renderNotification)}
+          {/* In-clinic appointments: full SuperCard with per-service progress */}
+          {inClinicAppts.map(appt => (
+            <SuperCard
+              key={appt.id}
+              appointment={appt}
+              clinicPhone={clinicPhone}
+              queueAhead={appt.status === 'arrived' ? queueAhead : null}
+              queueDepartment={appt.serviceCategory || 'General'}
+              avgWaitMins={null}
+              caseChain={caseChainsByApptId[appt.id] || []}
+              salesByAppt={{}}
+            />
+          ))}
+          {/* Pre-arrival appointments: thin notification card */}
+          {preArrivalAppts.map(renderNotification)}
         </View>
       )}
 

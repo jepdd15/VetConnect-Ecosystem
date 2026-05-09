@@ -153,9 +153,10 @@ const TimelineConnector = ({ durationMins, staffName, isLiveActive, liveElapsed 
  *   collapsed:   boolean,  // controlled by parent
  *   onToggle:    function, // () => void
  *   assignedVet: string,   // "Signed by Dr. X" annotation on completed node
+ *   services:    Array,    // appointment.services[] — nested sub-items under in-consult node
  * }} props
  */
-const VisitTimeline = ({ events, isActive, collapsed, onToggle, assignedVet }) => {
+const VisitTimeline = ({ events, isActive, collapsed, onToggle, assignedVet, services }) => {
   // Live elapsed ticker — only runs when there is an active appointment.
   const [liveElapsed, setLiveElapsed] = useState(null);
   const lastTimestamp = events?.[events.length - 1]?.timestamp?.getTime() ?? 0;
@@ -255,6 +256,37 @@ const VisitTimeline = ({ events, isActive, collapsed, onToggle, assignedVet }) =
                   {event.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </Text>
               </View>
+
+              {/* Nested per-service annotation under "With the vet" node */}
+              {event.toStatus === 'in-consult' && (services?.length ?? 0) >= 2 && (
+                <View style={styles.serviceSubItems}>
+                  {services.map((svc, si) => {
+                    const svcStatus = svc.serviceStatus || 'pending';
+                    const svcIcon = svcStatus === 'completed' ? '✓'
+                      : svcStatus === 'in-progress' ? '⏳' : '○';
+                    let durationStr = '';
+                    if (svcStatus === 'completed' && svc.serviceStartedAt && svc.serviceCompletedAt) {
+                      const startMs = typeof svc.serviceStartedAt.toDate === 'function'
+                        ? svc.serviceStartedAt.toDate().getTime()
+                        : new Date(svc.serviceStartedAt).getTime();
+                      const endMs = typeof svc.serviceCompletedAt.toDate === 'function'
+                        ? svc.serviceCompletedAt.toDate().getTime()
+                        : new Date(svc.serviceCompletedAt).getTime();
+                      const mins = Math.round((endMs - startMs) / 60000);
+                      if (Number.isFinite(mins) && mins > 0) durationStr = ` (${mins} min)`;
+                    }
+                    return (
+                      <Text key={svc.id || si} style={[
+                        styles.serviceSubItem,
+                        svcStatus === 'in-progress' && { color: COLORS.sky },
+                        svcStatus === 'completed' && { color: COLORS.success },
+                      ]}>
+                        {svcIcon} {svc.name || 'Service'}{durationStr}
+                      </Text>
+                    );
+                  })}
+                </View>
+              )}
 
               {/* Connector between events (not after the last) */}
               {!isLast && (
@@ -377,6 +409,18 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     paddingTop: 2,
     minWidth: 60,
+  },
+
+  // Per-service sub-items nested under "With the vet" node
+  serviceSubItems: {
+    paddingLeft: 26,
+    marginBottom: 4,
+  },
+  serviceSubItem: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    marginBottom: 2,
+    fontWeight: '600',
   },
 
   // Connector

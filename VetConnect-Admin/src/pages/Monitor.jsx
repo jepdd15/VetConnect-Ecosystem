@@ -282,9 +282,37 @@ export default function Monitor() {
                                 {appt.petName}
                               </Typography>
                             )}
-                            <Typography sx={{ color: COLORS.textSecondary, fontSize: '1rem', fontFamily: FONT }}>
-                              {services}
-                            </Typography>
+                            {Array.isArray(appt.services) && appt.services.length >= 2 ? (
+                              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                                {appt.services.map((svc, si) => {
+                                  const st = svc.serviceStatus || 'pending';
+                                  const icon = st === 'completed' ? '✓' : st === 'in-progress' ? '⏳' : '○';
+                                  const chipColor = st === 'completed' ? COLORS.success
+                                    : st === 'in-progress' ? COLORS.ctaHover
+                                    : COLORS.textMuted;
+                                  return (
+                                    <Chip
+                                      key={svc.id || si}
+                                      label={`${icon} ${svc.serviceName || svc.name || 'Service'}`}
+                                      size="small"
+                                      sx={{
+                                        bgcolor: 'transparent',
+                                        border: `2px solid ${chipColor}`,
+                                        color: chipColor,
+                                        fontWeight: 800,
+                                        borderRadius: 0,
+                                        fontSize: '0.75rem',
+                                        fontFamily: FONT,
+                                      }}
+                                    />
+                                  );
+                                })}
+                              </Box>
+                            ) : (
+                              <Typography sx={{ color: COLORS.textSecondary, fontSize: '1rem', fontFamily: FONT }}>
+                                {services}
+                              </Typography>
+                            )}
                           </Box>
                         );
                       })}

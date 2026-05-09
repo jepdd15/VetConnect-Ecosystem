@@ -123,3 +123,4 @@
 - [T4.194 PetHistory Tabs Plan](project_pethistory_tabs_plan.md) — 20-item/2-day: 4-tab layout (RECORDS/VITALS/VACCINES/OVERVIEW), vitals enrichment, vaccine urgency/CTAs/timeline/labels
 - [T4.13 Problem List Plan](project_problem_list_plan.md) — 5-phase/4.5hr: useProblemList hook, CW widget+sign-off, PatientDashboard section, mobile CONDITIONS+annotation
 - [T4.196 Queue Notes & Flags Plan](project_queue_notes_flags_plan.md) — 9-fix: column rename, unified notes, chip relocation, row borders, CONFINED chip, staffNotes fix, inline edit
+- [T4.197 Service Progress Plan](project_service_progress_plan.md) — 6-phase per-service visibility: SuperCard enrichment, AppointmentCardContent, VisitTimeline nesting, QueueScreen strip, Monitor chips, Dashboard SuperCard

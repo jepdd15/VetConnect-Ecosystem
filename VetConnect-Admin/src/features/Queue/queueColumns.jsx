@@ -447,7 +447,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
       if (services.length === 0) return <Chip label={p.row.status.toUpperCase()} color="primary" size="small" sx={{fontWeight:'900', height: 24}}/>;
 
       // T3.68: Pass richer data shape so the popover can display pet name and context.
-      const hoverPayload = { services, petName: p.row.petName, status: p.row.status };
+      const hoverPayload = { services, petName: p.row.petName, status: p.row.status, scheduledDate: p.row.scheduledDate, caseDay: p.row.caseDay };
 
       return (
         <Box

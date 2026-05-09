@@ -253,6 +253,13 @@ const AuditPatientCard = React.memo(({
     }, [filteredPulse, combinedPulse, patient, activeCaseDay]);
 
     const totalEstMins = (patient.services || []).reduce((sum, s) => sum + (Number(s.duration || s.estMinutes) || 0), 0);
+    const totalActualMins = (patient.services || []).reduce((sum, s) => {
+      if (s.serviceStatus !== 'completed' || !s.serviceStartedAt || !s.serviceCompletedAt) return sum;
+      const startMs = typeof s.serviceStartedAt.toDate === 'function' ? s.serviceStartedAt.toDate().getTime() : new Date(s.serviceStartedAt).getTime();
+      const endMs = typeof s.serviceCompletedAt.toDate === 'function' ? s.serviceCompletedAt.toDate().getTime() : new Date(s.serviceCompletedAt).getTime();
+      const mins = Math.round((endMs - startMs) / 60000);
+      return sum + (Number.isFinite(mins) && mins > 0 ? mins : 0);
+    }, 0);
     const totalPrice = (patient.services || []).reduce((sum, s) => sum + (Number(s.price) || 0), 0);
 
     // T3.69: Service completion metrics for status chips and the PROGRESS footer column.
@@ -430,19 +437,40 @@ const AuditPatientCard = React.memo(({
                     {sortedServices.map((svc, i) => {
                         const deptObj = (departments || []).find(d => d.name === svc.department);
                         const bColor = deptObj ? deptObj.color : '#616161';
+                        const svcCompleted = svc.serviceStatus === 'completed';
+                        const actualDuration = (() => {
+                            if (!svcCompleted || !svc.serviceStartedAt || !svc.serviceCompletedAt) return null;
+                            const startMs = typeof svc.serviceStartedAt.toDate === 'function' ? svc.serviceStartedAt.toDate().getTime() : new Date(svc.serviceStartedAt).getTime();
+                            const endMs = typeof svc.serviceCompletedAt.toDate === 'function' ? svc.serviceCompletedAt.toDate().getTime() : new Date(svc.serviceCompletedAt).getTime();
+                            const mins = Math.round((endMs - startMs) / 60000);
+                            return Number.isFinite(mins) && mins > 0 ? mins : null;
+                        })();
+                        const durationDisplay = actualDuration ? `${actualDuration}M` : `${svc.duration || svc.estMinutes || 0}M`;
+                        const isAdded = svc.addedDuringConsult === true;
+                        const isPriorDay = (() => {
+                            if (!svcCompleted || !svc.serviceCompletedAt || (patient.caseDay || 1) <= 1) return false;
+                            const completedMs = typeof svc.serviceCompletedAt.toDate === 'function' ? svc.serviceCompletedAt.toDate().getTime() : new Date(svc.serviceCompletedAt).getTime();
+                            const schedMs = patient.scheduledDate?.toDate ? patient.scheduledDate.toDate().getTime() : (patient.scheduledDate ? new Date(patient.scheduledDate).getTime() : null);
+                            return schedMs && completedMs < schedMs;
+                        })();
                         return (
                             <ListItem key={i} sx={{ px: 1.2, py: 0.8, borderLeft: `6px solid ${bColor}`, borderBottom: '1px solid #eee', display: 'block' }}>
                                 <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                    <Typography variant="caption" sx={{ fontWeight: '1000', textTransform: 'uppercase', fontSize: '0.62rem', lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, pr: 1 }}>
-                                        {svc.name}
-                                    </Typography>
+                                    <Stack direction="row" alignItems="baseline" spacing={0.5} sx={{ flex: 1, pr: 1, overflow: 'hidden' }}>
+                                        <Typography variant="caption" sx={{ fontWeight: '1000', textTransform: 'uppercase', fontSize: '0.62rem', lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                            {svc.name}
+                                        </Typography>
+                                        {isAdded && (
+                                            <Typography variant="caption" sx={{ fontSize: '0.5rem', color: COLORS.textMuted, fontStyle: 'italic' }}>(added)</Typography>
+                                        )}
+                                    </Stack>
                                     <Typography variant="caption" sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '0.6rem', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                                        ({svc.duration || svc.estMinutes || 0}M • ₱{Number(svc.price || 0).toLocaleString()})
+                                        ({durationDisplay}{isPriorDay ? ' · Day 1' : ''} • ₱{Number(svc.price || 0).toLocaleString()})
                                     </Typography>
                                 </Stack>
                                 <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 0.2 }}>
-                                    <Typography variant="caption" sx={{ color: svc.staffName ? '#5D4037' : '#D32F2F', fontWeight: '900', fontSize: '0.55rem', display: 'flex', alignItems: 'center', gap: 0.3 }}>
-                                        {svc.staffName ? `👤 ${svc.staffName}` : '❌ UNASSIGNED'}
+                                    <Typography variant="caption" sx={{ color: svc.staffName ? '#5D4037' : COLORS.textMuted, fontWeight: '900', fontSize: '0.55rem', display: 'flex', alignItems: 'center', gap: 0.3 }}>
+                                        {svc.staffName ? `👤 ${svc.staffName}` : 'Unassigned'}
                                     </Typography>
                                     <Typography variant="caption" sx={{ fontWeight: '800', color: '#9E9E9E', fontSize: '0.55rem', textTransform: 'uppercase' }}>
                                         {svc.department || 'GEN'}
@@ -470,8 +498,8 @@ const AuditPatientCard = React.memo(({
                 </List>
                 <Box sx={{ mt: 'auto', p: 1.5, borderTop: `1px solid ${clinicalBorder}`, bgcolor: '#FFF', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <Box>
-                        <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', fontSize: '0.52rem', display: 'block' }}>EST. TIME</Typography>
-                        <Typography sx={{ fontWeight: '1000', fontSize: '0.75rem', color: '#5D4037' }}>{totalEstMins}M</Typography>
+                        <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', fontSize: '0.52rem', display: 'block' }}>{totalActualMins > 0 ? 'ACTUAL' : 'EST. TIME'}</Typography>
+                        <Typography sx={{ fontWeight: '1000', fontSize: '0.75rem', color: '#5D4037' }}>{totalActualMins > 0 ? totalActualMins : totalEstMins}M</Typography>
                     </Box>
                     {/* T3.69: Service completion fraction */}
                     <Box sx={{ textAlign: 'center' }}>

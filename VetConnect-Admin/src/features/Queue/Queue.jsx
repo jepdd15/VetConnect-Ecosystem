@@ -292,8 +292,8 @@ export default function Queue() {
     hoverTimer.current = setTimeout(() => {
         setHoverAnchor(target);
         setHoverMetadata({ type, data });
-        // RESET Temporal DeLorean to latest session
-        setActiveCaseDay(0);
+        // RESET Temporal DeLorean to latest day (clamped by safeActiveDay)
+        setActiveCaseDay(Infinity);
         // T3.68: Reset services sort to insertion order on each new popover open.
         if (type === 'services') setServicesSortMode('booking');
         // T3.70: Reset notes tab to first available tab on each new popover open.
@@ -2765,7 +2765,17 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
 
                   const completedCount = svcList.filter(s => s.serviceStatus === 'completed').length;
                   const totalCount = svcList.length;
-                  const totalMins = svcList.reduce((acc, s) => acc + (s.duration || 0), 0);
+                  const scheduledDate = svcData.scheduledDate;
+                  const apptCaseDay = svcData.caseDay || 1;
+                  const scheduledMs = scheduledDate?.toDate ? scheduledDate.toDate().getTime() : (scheduledDate ? new Date(scheduledDate).getTime() : null);
+                  const totalActualMins = svcList.reduce((acc, s) => {
+                    if (s.serviceStatus !== 'completed' || !s.serviceStartedAt || !s.serviceCompletedAt) return acc;
+                    const startMs = typeof s.serviceStartedAt.toDate === 'function' ? s.serviceStartedAt.toDate().getTime() : new Date(s.serviceStartedAt).getTime();
+                    const endMs = typeof s.serviceCompletedAt.toDate === 'function' ? s.serviceCompletedAt.toDate().getTime() : new Date(s.serviceCompletedAt).getTime();
+                    const mins = Math.round((endMs - startMs) / 60000);
+                    return acc + (Number.isFinite(mins) && mins > 0 ? mins : 0);
+                  }, 0);
+                  const totalEstMins = svcList.reduce((acc, s) => acc + (s.duration || 0), 0);
                   const totalPrice = svcList.reduce((acc, s) => acc + (s.price || 0), 0);
 
                   const statusChipSx = (status) => {
@@ -2784,17 +2794,17 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                     <Box>
                       {/* Header */}
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                        <Typography variant="overline" sx={{ fontWeight: '1000', color: COLORS.accent, letterSpacing: 1.5 }}>
-                          SERVICE BUNDLE ({totalCount})
+                        <Typography variant="overline" sx={{ fontWeight: 900, color: COLORS.accent, letterSpacing: 1.5 }}>
+                          SERVICES ({totalCount})
                         </Typography>
                       </Box>
 
                       {/* Summary bar */}
-                      <Box sx={{ display: 'flex', gap: 2, mb: 1.5, pb: 1, borderBottom: '1px dashed #eee' }}>
-                        <Typography variant="caption" sx={{ fontWeight: 'bold' }}>
-                          TOTAL TIME: {totalMins}m
+                      <Box sx={{ display: 'flex', gap: 2, mb: 1.5, pb: 1, borderBottom: `1px dashed ${COLORS.borderLight}` }}>
+                        <Typography variant="caption" sx={{ fontWeight: 900 }}>
+                          {totalActualMins > 0 ? `ACTUAL: ${totalActualMins}m` : `EST: ${totalEstMins}m`}
                         </Typography>
-                        <Typography variant="caption" sx={{ fontWeight: 'bold', color: 'success.main' }}>
+                        <Typography variant="caption" sx={{ fontWeight: 900, color: COLORS.success }}>
                           EST: ₱{totalPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </Typography>
                       </Box>
@@ -2833,25 +2843,49 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                       <List sx={{ p: 0 }}>
                         {sortedServices.map((svc, i) => {
                           const deptObj = (departments || []).find(d => d.name === svc.department);
-                          const bColor = deptObj ? deptObj.color : '#616161';
+                          const bColor = deptObj ? deptObj.color : COLORS.textMuted;
                           const svcStatus = svc.serviceStatus || 'pending';
+                          const isCompleted = svcStatus === 'completed';
+                          const svcDuration = (() => {
+                            if (!isCompleted || !svc.serviceStartedAt || !svc.serviceCompletedAt) return null;
+                            const startMs = typeof svc.serviceStartedAt.toDate === 'function' ? svc.serviceStartedAt.toDate().getTime() : new Date(svc.serviceStartedAt).getTime();
+                            const endMs = typeof svc.serviceCompletedAt.toDate === 'function' ? svc.serviceCompletedAt.toDate().getTime() : new Date(svc.serviceCompletedAt).getTime();
+                            const mins = Math.round((endMs - startMs) / 60000);
+                            return Number.isFinite(mins) && mins > 0 ? `${mins} min` : null;
+                          })();
+                          const isAdded = svc.addedDuringConsult === true;
+                          const isPriorDay = (() => {
+                            if (!isCompleted || !svc.serviceCompletedAt || !scheduledMs || apptCaseDay <= 1) return false;
+                            const completedMs = typeof svc.serviceCompletedAt.toDate === 'function' ? svc.serviceCompletedAt.toDate().getTime() : new Date(svc.serviceCompletedAt).getTime();
+                            return completedMs < scheduledMs;
+                          })();
                           return (
-                            <ListItem key={i} sx={{ px: 1.5, py: 0.8, mb: 0.5, borderLeft: `6px solid ${bColor}`, bgcolor: 'rgba(0,0,0,0.02)' }}>
+                            <ListItem key={i} sx={{ px: 1.5, py: 0.8, mb: 0.5, borderLeft: `6px solid ${bColor}`, bgcolor: COLORS.panelBg }}>
                               <Box sx={{ width: '100%' }}>
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                   <Box sx={{ flex: 1, pr: 1 }}>
-                                    <Typography variant="body2" sx={{ fontWeight: 'bold' }}>{svc.name}</Typography>
-                                    <Typography variant="caption" sx={{ display: 'block', color: svc.staffName ? '#5D4037' : '#D32F2F', fontWeight: '900', fontSize: '0.65rem' }}>
-                                      {svc.staffName ? `👤 ${svc.staffName}` : '❌ UNASSIGNED'}
+                                    <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.5 }}>
+                                      <Typography variant="body2" sx={{ fontWeight: 900 }}>{svc.name}</Typography>
+                                      {isAdded && (
+                                        <Typography variant="caption" sx={{ fontSize: '0.55rem', color: COLORS.textMuted, fontStyle: 'italic' }}>(added)</Typography>
+                                      )}
+                                    </Box>
+                                    <Typography variant="caption" sx={{ display: 'block', color: svc.staffName ? COLORS.accent : COLORS.textMuted, fontWeight: 900, fontSize: '0.65rem' }}>
+                                      {svc.staffName ? `👤 ${svc.staffName}` : 'Unassigned'}
                                     </Typography>
                                   </Box>
                                   <Box sx={{ textAlign: 'right' }}>
-                                    <Typography variant="caption" sx={{ display: 'block', fontSize: '0.6rem', fontWeight: 'bold' }}>
+                                    <Typography variant="caption" sx={{ display: 'block', fontSize: '0.6rem', fontWeight: 900 }}>
                                       ₱{svc.price?.toLocaleString()}
                                     </Typography>
-                                    <Typography variant="caption" sx={{ display: 'block', fontSize: '0.55rem', color: bColor, fontWeight: '900' }}>
+                                    <Typography variant="caption" sx={{ display: 'block', fontSize: '0.55rem', color: bColor, fontWeight: 900 }}>
                                       {svc.department?.toUpperCase()}
                                     </Typography>
+                                    {(svcDuration || isPriorDay) && (
+                                      <Typography variant="caption" sx={{ display: 'block', fontSize: '0.55rem', color: isPriorDay ? COLORS.warning : COLORS.success, fontWeight: 900 }}>
+                                        {svcDuration ? `${svcDuration}${isPriorDay ? ' · Day 1' : ''}` : 'Day 1'}
+                                      </Typography>
+                                    )}
                                   </Box>
                                 </Box>
                                 {/* Per-service status chip */}
@@ -2874,7 +2908,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                       </List>
 
                       {/* Footer: completion summary */}
-                      <Box sx={{ mt: 1, pt: 1, borderTop: '1px dashed #eee', display: 'flex', justifyContent: 'flex-end' }}>
+                      <Box sx={{ mt: 1, pt: 1, borderTop: `1px dashed ${COLORS.borderLight}`, display: 'flex', justifyContent: 'flex-end' }}>
                         <Typography variant="caption" sx={{
                           fontWeight: 900,
                           fontSize: '0.6rem',

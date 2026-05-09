@@ -3894,6 +3894,7 @@
       "remaining_priority_queue": [
         "T4.199 — My Stats 5-tab redesign (10-12 hrs, 18 decisions locked)",
         "T4.200 — Vaccine hardening multi-dose series (4-5 days, 4 decisions locked)",
+        "T4.199 — My Stats 5-tab redesign (10-12 hrs, 18 decisions locked) — DONE",
         "T4.198 — Calendar AI scheduling assistant (6-8 hrs, 10 decisions locked)",
         "T4.191 — Queue date picker (1 hr)",
         "T4.169+T4.170 — Reservation audit + cleanup (1.5 hrs)",
@@ -3902,6 +3903,29 @@
         "T4.10 — Queue design sweep (3-4 hrs)",
         "T4.16 — CW design sweep (2-3 hrs)",
         "T4.17 — God-View unification (2-3 hrs)"
+      ],
+      "additional_work": [
+        "T4.199 My Stats 5-tab redesign DONE (3-day, 20 steps, 64/64 spec, 7 reviewer fixes, 15+ lazy useMemos, per-tab PDF export)",
+        "react-native-chart-kit migration: custom SparkLine → LineChart across 3 files. Bezier curves, Y-axis labels, per-dot green/red color coding, smart Y-domain with reference range, responsive width. Discrete vitals (CRT/BCS/Pain) use fixed-domain straight-line charts. 200px height.",
+        "T4.199 deferred fixes: PetHealthCard 258-line dead code removed, transparent→COLORS.white, time chips hidden in pie mode, redundant dep removed",
+        "PetCardSlim weight chart: 2-point minimum for chart-kit, 1-point text fallback, width SCREEN_W-140",
+        "Vitals IIFE syntax fix + missing range variable in LINE_VITAL_KEYS map",
+        "Spending per visit: showLatestValue disabled (raw unformatted number)",
+        "3 tasks formalized: T4.201 (EncounterSummary sourceServiceId grouping), T4.202 (per-service push notifications), T4.203 (mobile PDF service breakdown)",
+        "Queue popover service actions: progress toggle + staff reassignment stay CW-only (decision: services shouldn't be startable from arrived status)"
+      ],
+      "updated_priority_queue": [
+        "T4.200 — Vaccine hardening multi-dose series (4-5 days, 4 decisions locked)",
+        "T4.198 — Calendar AI scheduling assistant (6-8 hrs, 10 decisions locked)",
+        "T4.191 — Queue date picker (1 hr)",
+        "T4.169+T4.170 — Reservation audit + cleanup (1.5 hrs)",
+        "T4.146 — Booking TOCTOU race fix (1.5 hrs)",
+        "T4.125 — Patients CRM redesign (10-12 hrs)",
+        "T4.201 — EncounterSummary service-level grouping (2-3 hrs)",
+        "T4.202 — Per-service push notifications (1.5 hrs)",
+        "T4.203 — Mobile PDF service breakdown (30 min)",
+        "T4.10 — Queue design sweep (3-4 hrs)",
+        "T4.16 — CW design sweep (2-3 hrs)"
       ]
     }
   }

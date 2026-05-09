@@ -242,9 +242,14 @@
 - 5 decision rounds: intake notes (9), service progress (13), calendar AI (10), My Stats (18), vaccine (4) = 54 total decisions locked.
 - 5 tasks formalized: T4.198 Calendar AI, T4.199 My Stats redesign, T4.200 Vaccine hardening.
 - Spec cross-reference methodology discovered: cross-reference locked decisions against execute prompt phases + spec items. Caught carried-over card logic bug before shipping.
+- T4.199 My Stats 5-tab Redesign (3-day, 20 steps, 64/64 spec, 7 reviewer fixes): OVERVIEW (KPIs + CalendarMiniView + CONDITIONS OVERVIEW from problem list) + VISITS (toggle chips MONTHLY/WEEKLY × TOTAL/BY PET/BY SERVICE/BY DEPARTMENT + YoY visits/spending + 4 new pattern charts + per-pet seasonal filter) + SPENDING (3-row toggles + spending per visit SparkLine + drill-down) + PETS (PetCardSlim: weight sparkline + vaccine gauge + med count) + HEALTH (preventive care CTAs + vaccination status per-pet + ALL PETS gauge strip) + per-tab PDF export. 15+ new lazy useMemos gated on activeTab.
+- react-native-chart-kit migration: replaced custom SparkLine across PetHistoryScreen + MyStatsScreen + LabZoomModal. Bezier curves, Y-axis labels, per-dot color coding (green normal / red abnormal via getDotColor), smart Y-domain with reference range inclusion, responsive width. Discrete vitals (CRT/BCS/Pain) use fixed-domain straight-line charts. Vitals cards 200px height.
+- 3 tasks formalized: T4.201 (EncounterSummary grouping), T4.202 (per-service push), T4.203 (mobile PDF service breakdown).
+- Queue popover service actions decision: progress toggle + staff reassignment stay CW-only (not added to Queue popover). Services shouldn't be startable from arrived status.
+- ~745 DONE / ~185 TODO. ~908 total tasks.
 - ~740 DONE / ~187 TODO. ~905 total tasks.
 
-**Next:** T4.199 (My Stats 5-tab redesign, 10-12 hrs) → T4.200 (Vaccine hardening, 4-5 days) → T4.198 (Calendar AI, 6-8 hrs) → T4.191 (Queue date picker, 1 hr) → T4.169+T4.170 (Reservation audit+cleanup, 1.5 hrs) → T4.146 (Booking TOCTOU fix, 1.5 hrs) → T4.125 (CRM redesign, 10-12 hrs) → T4.10 (Queue design sweep, 3-4 hrs) → T4.16 (CW design sweep, 2-3 hrs)
+**Next:** T4.200 (Vaccine hardening multi-dose series, 4-5 days) → T4.198 (Calendar AI, 6-8 hrs) → T4.191 (Queue date picker, 1 hr) → T4.169+T4.170 (Reservation audit+cleanup, 1.5 hrs) → T4.146 (Booking TOCTOU fix, 1.5 hrs) → T4.125 (CRM redesign, 10-12 hrs) → T4.201 (EncounterSummary grouping, 2-3 hrs) → T4.10 (Queue design sweep, 3-4 hrs) → T4.16 (CW design sweep, 2-3 hrs)
 
 ---
 
@@ -263,8 +268,8 @@ file has been deep-dived. Do NOT re-scan any code. All findings are in the
 deep-dive files at the repo root. Use the "Task-to-Source Cross-Reference" table
 in IMPLEMENTATION_GUIDE.md to find the backing file for any task.
 
-Context: This is a continuation of the 2026-05-09 advisory session.
-~740 DONE, ~187 TODO. Build passes. 322 tests passing.
+Context: This is a continuation of the 2026-05-09 advisory session (extended).
+~745 DONE, ~185 TODO. Build passes. 322 tests passing.
 Cloudflare Worker URL: https://cool-fire-2d53.jepdd15.workers.dev
 Cloudflare Worker model: claude-haiku-4-5-20251001
 Cloudflare Worker Cron: 0 23 * * * UTC (7 AM Manila daily)

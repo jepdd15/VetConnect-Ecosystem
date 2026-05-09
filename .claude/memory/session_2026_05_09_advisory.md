@@ -161,6 +161,26 @@ When reviewing the T4.197 execute prompt, I cross-referenced all 13 locked decis
 ### From discovered gaps registry
 - 28 weaknesses from 8 assessments still pending decision rounds (project_discovered_gaps_pending_decisions.md)
 
+## Additional work (session continued)
+
+- **T4.199** My Stats 5-tab redesign DONE (3-day, 20 steps, 64/64 spec items, 7 reviewer fixes)
+- **react-native-chart-kit migration** — replaced custom SparkLine with LineChart across 3 files (PetHistoryScreen, MyStatsScreen, LabZoomModal). Bezier curves, Y-axis labels, per-dot color coding, responsive width. SparkLine.js kept as fallback.
+- **BulletGauge built then replaced** — initially built for discrete vitals (CRT/BCS/Pain), then replaced with fixed-domain straight-line LineChart per user preference for consistency + temporal dot separation
+- **Vitals chart enhancements** — 200px height (was 120), smart Y-domain (hidden dataset points force reference range inclusion), per-dot color coding (green normal / red abnormal via getDotColor), discrete vitals use straight segments not bezier
+- **T4.199 deferred items fixed** — PetHealthCard dead code deleted (258 lines), 'transparent' → COLORS.white, time-grouping chips hidden in pie mode, redundant seasonalPattern dep removed
+- **PetCardSlim weight chart fix** — 2-point minimum guard for chart-kit, 1-point shows text value, width adjusted to prevent overflow
+- **Spending per visit** — showLatestValue disabled (raw number was unformatted), showDateLabels added instead
+- **Syntax fix** — IIFE brace mismatch in ternary (extra { } around (() => {}) inside ? ())
+- **Range variable missing** — added getNormalRange call to LINE_VITAL_KEYS map scope
+
+## Formalized (TODO, not built)
+- T4.201 — EncounterSummary service-level financial grouping (sourceServiceId, ~2-3 hrs)
+- T4.202 — Per-service push notifications (service-started/service-completed templates, ~1.5 hrs)
+- T4.203 — Mobile generateVisitPDF per-service breakdown (~30 min)
+
+## Decision: Queue popover service actions
+- Progress toggle (#2) and staff reassignment (#3) **NOT added to Queue popover** — user decided these are ClinicalWorkspace-only actions. Queue popover stays read-only for service status. Reason: services shouldn't be startable from the Queue while pet is in arrived status. The clinical workflow should enforce vet opens CW first.
+
 ## Deployments
 - Admin deployed to Firebase Hosting
 - APK built via EAS

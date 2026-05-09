@@ -219,7 +219,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
 
   // --- APPOINTMENT PAYLOAD BUILDER: Pure function, no side effects ---
   const buildAppointmentPayload = ({
-    ownerId, ownerName, ownerPhone, petId, petName, petSpecies, petBreed, petGender, petColor,
+    ownerId, ownerName, ownerPhone, ownerEmail, petId, petName, petSpecies, petBreed, petGender, petColor,
     petIsNeutered, petBirthdate, isAgeExact, petWeight, petAllergies,
     mappedServices, triageNotes, isEmergency, queueNumber, noShowData,
   }) => {
@@ -238,7 +238,8 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
       : now;
 
     return {
-      ownerId, ownerName, ownerPhone, petId, petName, petSpecies,
+      ownerId, ownerName, ownerPhone, ownerEmail: ownerEmail || null,
+      petId, petName, petSpecies,
       petBreed: petBreed || 'Mixed Breed',
       petGender,
       petColor,
@@ -249,7 +250,13 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
       petAllergies,
       services: mappedServices,
       primaryService: mappedServices[0]?.name || 'Unknown',
+      serviceType: mappedServices[0]?.name || 'Unknown',
       serviceCategory: primaryDept,
+      serviceDuration: mappedServices.reduce((sum, s) => sum + (s.duration || 0), 0),
+      serviceBuffer: mappedServices.reduce((sum, s) => sum + (s.bufferTime || 0), 0),
+      servicePrice: mappedServices.reduce((sum, s) => sum + (s.price || 0), 0),
+      scheduledDateStr: `${scheduledTimestamp.toDate().getFullYear()}-${String(scheduledTimestamp.toDate().getMonth() + 1).padStart(2, '0')}-${String(scheduledTimestamp.toDate().getDate()).padStart(2, '0')}`,
+      triageDate: `${scheduledTimestamp.toDate().getFullYear()}-${String(scheduledTimestamp.toDate().getMonth() + 1).padStart(2, '0')}-${String(scheduledTimestamp.toDate().getDate()).padStart(2, '0')}`,
       status: 'arrived',
       caseDay: 1,
       statusHistory: [],
@@ -306,7 +313,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
       if (isNew && (!entry.name || !entry.breed || !entry.gender || !entry.species)) {
         return setErrorMsg(`Pet biometrics (Name, Species, Breed, Gender) are required${label}.`);
       }
-      if (!entry.triageNotes) return setErrorMsg(`Triage Notes are required${label}.`);
+      // Triage notes are optional — receptionist may relay context verbally.
       if (entry.selectedServices.length === 0) return setErrorMsg(`Please select at least one service${label}.`);
     }
 
@@ -319,7 +326,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
         // ONE queue number for the entire group (shared ticket — Option C)
         const sharedNumber = queueDoc.exists() ? (queueDoc.data().lastNumberIssued || 0) + 1 : 1;
 
-        let finalOwnerId, finalOwnerName, finalOwnerPhone;
+        let finalOwnerId, finalOwnerName, finalOwnerPhone, finalOwnerEmail;
 
         // Shared timestamp for all writes within this transaction
         const txNow = Timestamp.now();
@@ -348,10 +355,12 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
           finalOwnerId = newUserRef.id;
           finalOwnerName = guestName || 'Guest Client';
           finalOwnerPhone = normalizePhone(guestPhone) || guestPhone || 'No Contact';
+          finalOwnerEmail = guestEmail || null;
         } else {
           finalOwnerId = selectedClient.id;
           finalOwnerName = selectedClient.fullName || selectedClient.displayName || 'Existing Client';
           finalOwnerPhone = selectedClient.phone || 'No Contact';
+          finalOwnerEmail = selectedClient.email || null;
         }
 
         // Increment the queue counter once (shared number)
@@ -447,6 +456,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
             ownerId: finalOwnerId,
             ownerName: finalOwnerName,
             ownerPhone: finalOwnerPhone,
+            ownerEmail: finalOwnerEmail,
             petId,
             petName,
             petSpecies,

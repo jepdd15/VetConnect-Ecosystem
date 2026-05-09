@@ -1159,29 +1159,47 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   };
 
   // --- 🆕 CLINCAL COMPARISON ENGINE (THE GHOST) ---
+  const FIELD_TO_VITALS_KEY = {
+    objWeight: 'weight',
+    objTemp: 'temp',
+    objHR: 'hr',
+    objRR: 'rr',
+    objCRT: 'crt',
+    bcs: 'bcs',
+    painScale: 'pain',
+  };
+
   const renderHistoricalLabel = (field, customVal = null) => {
     if (!history || history.length === 0) return null;
-    const last = history[0];
     let val = customVal;
 
+    let visitsAgo = 0;
     if (!val) {
-        const FIELD_TO_VITALS_KEY = {
-            objWeight: 'weight',
-            objTemp: 'temp',
-            objHR: 'hr',
-            objRR: 'rr',
-            objCRT: 'crt',
-            bcs: 'bcs',
-            painScale: 'pain',
-        };
         const vKey = FIELD_TO_VITALS_KEY[field];
-        val = vKey ? last.vitals?.[vKey] : last[field];
+        for (let i = 0; i < history.length; i++) {
+          const candidate = vKey ? history[i].vitals?.[vKey] : history[i][field];
+          if (candidate && candidate !== '0' && candidate !== 0) {
+            val = candidate;
+            visitsAgo = i + 1;
+            break;
+          }
+        }
     }
 
-    if (!val || val === '0' || val === 0) return null;
+    if (!val || val === '0' || val === 0) {
+      if (history.length > 0) {
+        return (
+          <Typography variant="caption" sx={{ display: 'block', fontSize: '0.62rem', color: COLORS.textMuted, fontWeight: 600, mt: 0.25, opacity: 0.5, letterSpacing: 0.5, fontStyle: 'italic' }}>
+            No prior reading
+          </Typography>
+        );
+      }
+      return null;
+    }
+    const suffix = visitsAgo > 1 ? ` (${visitsAgo} visits ago)` : ' (last visit)';
     return (
       <Typography variant="caption" sx={{ display: 'block', fontSize: '0.62rem', color: COLORS.textMuted, fontWeight: 900, mt: 0.25, opacity: 0.8, letterSpacing: 0.5 }}>
-        LAST: {val}
+        LAST: {val}{suffix}
       </Typography>
     );
   };
@@ -2384,6 +2402,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       const appointmentUpdate = {
           status: nextRouteStatus,
           statusHistory: [...freshStatusHistory, currentFreshStatus],
+          assignedVet: vetName,
+          assignedVetId: vetUid,
           encounterItems: treatmentCart.map(({ _showInstructions, ...rest }) => rest),
           finalTotal: visitTotal,
           signedOffAt: commitTimestamp,
@@ -4413,39 +4433,95 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                               const pc = progressColors[status] || progressColors.pending;
                               const isToggleable = !isRecordLocked && status !== 'completed';
 
+                              const currentAttr = serviceAttribution[rx.id];
+                              const currentStaffId = currentAttr?.staffId || cwProfile?.uid || '';
+                              const svcDept = rx.department || 'General';
+                              const deptVets = (vetsList || []).filter(v => (v.departments || []).includes(svcDept));
+                              const otherVets = (vetsList || []).filter(v => !(v.departments || []).includes(svcDept));
+
                               return (
                                 <Box
                                   key={rx.id || cartIdx}
                                   sx={{
-                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                    p: 1.5, bgcolor: 'white', border: `1px solid ${COLORS.borderLight}`, borderRadius: 0,
+                                    bgcolor: 'white', border: `1px solid ${COLORS.borderLight}`, borderRadius: 0,
+                                    p: 1.5,
                                   }}
                                 >
-                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1, minWidth: 0 }}>
-                                    {!isRecordLocked && !rx.isBase && (
-                                      <IconButton size="small" onClick={() => handleRemoveRx(cartIdx)} sx={{ p: 0.25 }}>
-                                        <CloseIcon sx={{ fontSize: 12, color: COLORS.danger }} />
-                                      </IconButton>
-                                    )}
-                                    <Typography sx={{ fontWeight: 900, fontSize: '0.8rem', color: COLORS.brand, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                      {rx.name}
-                                    </Typography>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1, minWidth: 0 }}>
+                                      {!isRecordLocked && !rx.isBase && (
+                                        <IconButton size="small" onClick={() => handleRemoveRx(cartIdx)} sx={{ p: 0.25 }}>
+                                          <CloseIcon sx={{ fontSize: 12, color: COLORS.danger }} />
+                                        </IconButton>
+                                      )}
+                                      <Box sx={{ minWidth: 0 }}>
+                                        <Typography sx={{ fontWeight: 900, fontSize: '0.8rem', color: COLORS.brand, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                          {rx.name}
+                                        </Typography>
+                                        <Typography sx={{ fontSize: '0.6rem', fontWeight: 700, color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                                          {svcDept}
+                                        </Typography>
+                                      </Box>
+                                    </Box>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
+                                      <Typography sx={{ fontWeight: 900, fontSize: '0.8rem', color: COLORS.brand }}>
+                                        ₱{(rx.price * rx.qty).toLocaleString()}
+                                      </Typography>
+                                      <Chip
+                                        label={pc.label}
+                                        size="small"
+                                        onClick={() => isToggleable && handleToggleServiceProgress(rx.id)}
+                                        sx={{
+                                          bgcolor: pc.bg, color: '#FFF', fontWeight: 900, fontSize: '0.6rem',
+                                          height: 22, borderRadius: 0, cursor: isToggleable ? 'pointer' : 'default',
+                                          '&:hover': isToggleable ? { opacity: 0.85 } : {},
+                                        }}
+                                      />
+                                    </Box>
                                   </Box>
-                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
-                                    <Typography sx={{ fontWeight: 900, fontSize: '0.8rem', color: COLORS.brand }}>
-                                      ₱{(rx.price * rx.qty).toLocaleString()}
-                                    </Typography>
-                                    <Chip
-                                      label={pc.label}
+                                  {!isRecordLocked && (vetsList || []).length > 0 && (
+                                    <Select
                                       size="small"
-                                      onClick={() => isToggleable && handleToggleServiceProgress(rx.id)}
-                                      sx={{
-                                        bgcolor: pc.bg, color: '#FFF', fontWeight: 900, fontSize: '0.6rem',
-                                        height: 22, borderRadius: 0, cursor: isToggleable ? 'pointer' : 'default',
-                                        '&:hover': isToggleable ? { opacity: 0.85 } : {},
+                                      value={currentStaffId}
+                                      onChange={(e) => {
+                                        const vet = (vetsList || []).find(v => v.id === e.target.value);
+                                        setServiceAttribution(prev => ({
+                                          ...prev,
+                                          [rx.id]: {
+                                            staffId: e.target.value,
+                                            staffName: vet?.fullName || vet?.name || 'Unknown',
+                                          },
+                                        }));
                                       }}
-                                    />
-                                  </Box>
+                                      displayEmpty
+                                      sx={{
+                                        mt: 1, width: '100%', height: 28, fontSize: '0.7rem',
+                                        fontWeight: 700, color: COLORS.accent, borderRadius: 0,
+                                        '& fieldset': { borderColor: COLORS.borderLight },
+                                      }}
+                                    >
+                                      {deptVets.length > 0 && (
+                                        <MenuItem disabled sx={{ fontSize: '0.6rem', fontWeight: 900, color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 0.8, minHeight: 24, opacity: '1 !important' }}>
+                                          {svcDept}
+                                        </MenuItem>
+                                      )}
+                                      {deptVets.map(v => (
+                                        <MenuItem key={v.id} value={v.id} sx={{ fontSize: '0.75rem', fontWeight: 700 }}>
+                                          {v.fullName || v.name}
+                                        </MenuItem>
+                                      ))}
+                                      {otherVets.length > 0 && (
+                                        <MenuItem disabled sx={{ fontSize: '0.6rem', fontWeight: 900, color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 0.8, minHeight: 24, opacity: '1 !important', borderTop: `1px solid ${COLORS.borderLight}`, mt: 0.5 }}>
+                                          Other Staff
+                                        </MenuItem>
+                                      )}
+                                      {otherVets.map(v => (
+                                        <MenuItem key={v.id} value={v.id} sx={{ fontSize: '0.75rem', color: COLORS.textMuted }}>
+                                          {v.fullName || v.name}
+                                        </MenuItem>
+                                      ))}
+                                    </Select>
+                                  )}
                                 </Box>
                               );
                             })}

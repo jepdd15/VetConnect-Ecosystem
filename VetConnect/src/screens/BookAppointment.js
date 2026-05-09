@@ -77,6 +77,8 @@ export default function BookAppointment({ navigation, route }) {
   const [serviceSearch, setServiceSearch] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("All");
   const [ownerName, setOwnerName] = useState("");
+  const [ownerPhone, setOwnerPhone] = useState("");
+  const [ownerEmail, setOwnerEmail] = useState("");
   const [petSearch, setPetSearch] = useState(""); // THE FIX: Searchable Pets!
   
   // --- DEPARTMENT EXPLORER MODAL STATES ---
@@ -389,6 +391,8 @@ export default function BookAppointment({ navigation, route }) {
           }
 
           setOwnerName(userData.fullName || auth.currentUser.email);
+          setOwnerPhone(userData.phone || '');
+          setOwnerEmail(userData.email || auth.currentUser.email || '');
 
           const hasEmergency = userData.emergencyContacts?.[0]?.name || userData.emergencyName;
           if (!userData.address || !hasEmergency) {
@@ -733,6 +737,8 @@ export default function BookAppointment({ navigation, route }) {
         transaction.set(newApptRef, {
           ownerId: auth.currentUser.uid,
           ownerName: ownerName,
+          ownerPhone: ownerPhone || null,
+          ownerEmail: ownerEmail || null,
           petId: pet.id,
           petName: pet.name,
           petSpecies: pet.species,
@@ -746,6 +752,7 @@ export default function BookAppointment({ navigation, route }) {
           // T2.23: Same weight resolution order as pricing
           petWeight: pet.lastVitals?.weight ?? pet.weight ?? pet.lastWeight ?? null,
           petAllergies: pet.petAllergies || pet.allergies || "None",
+          isAgeExact: pet.isAgeExact ?? true,
 
           services: petMappedServices,
           primaryService: petMappedServices[0].name,
@@ -756,6 +763,7 @@ export default function BookAppointment({ navigation, route }) {
           servicePrice: petBundlePrice,
 
           status: "pending",
+          statusHistory: [],
           caseDay: 1,
           scheduledDate: Timestamp.fromDate(baseDateTime),
           scheduledDateStr: `${baseDateTime.getFullYear()}-${String(baseDateTime.getMonth() + 1).padStart(2, '0')}-${String(baseDateTime.getDate()).padStart(2, '0')}`,

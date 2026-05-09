@@ -218,13 +218,25 @@ function AppointmentDetailCard({ appt, departments }) {
       {/* Body */}
       <Box sx={{ px: 1.5, py: 1.25 }}>
         {/* Pet identity */}
-        <Typography sx={valueSx}>
+        <Typography sx={{ ...valueSx, flexWrap: 'wrap' }}>
           {appt.petName || 'Unknown Pet'}
-          {appt.petBreed ? ` (${appt.petBreed})` : ''}
+          {appt.petBreed ? ` · ${appt.petBreed}` : ''}
+          {appt.petSpecies ? ` · ${appt.petSpecies}` : ''}
         </Typography>
-        <Typography sx={{ ...labelSx, mb: 1 }}>
-          Owner: {appt.ownerName || '—'} &nbsp;|&nbsp; {appt.petSpecies || '—'}
+        <Typography sx={labelSx}>
+          Owner: {appt.ownerName || '—'}
         </Typography>
+        {appt.ownerPhone && (
+          <Typography sx={{ ...labelSx, mb: 0 }}>
+            📞 {appt.ownerPhone}
+          </Typography>
+        )}
+        {appt.ownerEmail && (
+          <Typography sx={{ ...labelSx, mb: 1 }}>
+            ✉ {appt.ownerEmail}
+          </Typography>
+        )}
+        {!appt.ownerPhone && !appt.ownerEmail && <Box sx={{ mb: 1 }} />}
 
         <Box sx={{ borderTop: `1px solid ${COLORS.borderLight}`, my: 1 }} />
 

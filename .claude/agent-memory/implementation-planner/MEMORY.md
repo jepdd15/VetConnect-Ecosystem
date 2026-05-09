@@ -121,3 +121,4 @@
 - [T4.192 Calendar Page Plan](project_calendar_plan.md) — 13-task/2-day Calendar page: useCalendarData hook, week+month views, capacity heatmap, dept lanes, action popovers, WalkInModal prefill
 - [T4.193 My Stats Enrichment Plan](project_mystats_enrichment_plan.md) — 12-item/3-day: spending bars, CircularGauge, PieChart, lifetime KPI, upcoming appts, YoY, date range, drill-down, weight zoom, lab trends, adherence bars, seasonal heatmap
 - [T4.194 PetHistory Tabs Plan](project_pethistory_tabs_plan.md) — 20-item/2-day: 4-tab layout (RECORDS/VITALS/VACCINES/OVERVIEW), vitals enrichment, vaccine urgency/CTAs/timeline/labels
+- [T4.13 Problem List Plan](project_problem_list_plan.md) — 5-phase/4.5hr: useProblemList hook, CW widget+sign-off, PatientDashboard section, mobile CONDITIONS+annotation

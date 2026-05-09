@@ -398,7 +398,6 @@ export function useQueueActions() {
         tomorrow.setDate(tomorrow.getDate() + 1);
         const triageKey = getLocalDateStr(tomorrow);
 
-        const currentStaffNotes = data.staffNotes || data.notes || "";
         const signature = staffName || staffSignature;
 
         const forensicSeal = calculatePulseMetrics(
@@ -417,7 +416,6 @@ export function useQueueActions() {
 
         transaction.update(apptRef, {
             triageDate: triageKey,
-            staffNotes: `(Deferred to next shift by ${signature}) ${currentStaffNotes}`,
             systemChips: arrayUnion('DEFERRED'),
             lastTriagedAt: Timestamp.now(),
             triagedBy: signature,

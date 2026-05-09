@@ -21,6 +21,7 @@ import {
   DialogTitle, DialogContent, DialogContentText, DialogActions,
   Drawer, ListSubheader,
   ToggleButtonGroup, ToggleButton, FormControlLabel,
+  Checkbox, Select,
 } from '@mui/material';
 
 // Icons (Unified)
@@ -43,6 +44,8 @@ import {
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
   Edit as EditIcon,
+  // T4.13: Problem list dialog icons
+  Assignment as AssignmentIcon,
 } from '@mui/icons-material';
 import { doc, collection, Timestamp, addDoc, updateDoc, getDoc, query, where, orderBy, getDocs, arrayUnion, writeBatch, runTransaction, setDoc } from 'firebase/firestore';
 import { db, auth, storage } from '../firebaseConfig';
@@ -56,6 +59,8 @@ import { useUser } from '../context/UserContext';
 import { chatWithHistory, buildUserMessage, DEFAULT_CLINICAL_SYSTEM_PROMPT } from '../utils/llmService';
 import { sendPushNotification } from '../utils/sendPushNotification';
 import { computeSinglePetVaccineReminder } from '../utils/vaccineReminderQueue';
+// T4.13: Structured problem list hook — real-time sub-collection listener
+import { useProblemList } from '../hooks/useProblemList';
 
 // Design Tokens
 import { FONT, TYPE, COLORS } from '../theme/designTokens';
@@ -579,6 +584,26 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     [labCatalog],
   );
 
+  // T4.13: Problem list — real-time active problems for this pet.
+  // Walk-in guard is inside the hook; returns empty arrays for non-real pets.
+  const {
+    activeProblems,
+    resolvedProblems,
+    allProblems,
+  } = useProblemList(patient?.petId);
+
+  // T4.13: Collapsed state for the resolved problems toggle in the ACTIVE PROBLEMS strip.
+  const [showResolvedProblems, setShowResolvedProblems] = useState(false);
+
+  // T4.13: Problem list update state — must be declared BEFORE the sync useEffect.
+  const [problemListDialog, setProblemListDialog] = useState(null);
+  const problemListDialogRef = useRef(null);
+
+  // Keep ref in sync so proceedWithSave reads current state, not stale closure.
+  useEffect(() => {
+    problemListDialogRef.current = problemListDialog;
+  }, [problemListDialog]);
+
   // T4.120: Lab results — extended shape includes catalog-derived fields
   // { testName, result, status, notes, unit, referenceRange, catalogTestId, resultType, attachmentUrl }
   const [labResults, setLabResults] = useState([]);
@@ -705,6 +730,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   const [signOffConfirm, setSignOffConfirm] = useState(null);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [allergenConfirm, setAllergenConfirm] = useState(null);
+
+
 
   const glassStyle = {
     background: 'rgba(255, 255, 255, 0.65)',
@@ -1883,6 +1910,84 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     }
   };
 
+  // T4.13: Problem list update gate — called instead of proceedWithSave() directly.
+  // Analyzes current diagnoses vs the live problem list and shows a one-step update
+  // dialog if there are actions to take. If nothing is actionable, calls
+  // proceedWithSave() transparently (zero user interaction).
+  // Must be defined before handleSaveConsult so it can be referenced inside it.
+  const showProblemListUpdate = (proceedFn) => {
+    const isRealPet = patient?.petId && !['WALK_IN_PET', 'WALK_IN_USER', 'UNKNOWN'].includes(patient.petId);
+
+    if (!isRealPet) {
+      proceedFn();
+      return;
+    }
+
+    const currentDiagnoses = (soapData.diagnoses || []).filter((d) => d.name);
+
+    // 1. NEW diagnoses — catalogId or name not found on any existing problem
+    const allProblemCatalogIds = new Set(allProblems.map((p) => p.catalogId).filter(Boolean));
+    const allProblemNames = new Set(allProblems.map((p) => p.name?.toLowerCase()).filter(Boolean));
+    const newDiagnoses = currentDiagnoses
+      .filter((dx) => {
+        if (dx.catalogId && allProblemCatalogIds.has(dx.catalogId)) return false;
+        if (!dx.catalogId && allProblemNames.has(dx.name?.toLowerCase())) return false;
+        return true;
+      })
+      .map((dx) => ({ dx, action: 'active' })); // default: Add as Active
+
+    // 2. EXISTING problems with a severity change detected in today's SOAP
+    const existingUpdates = currentDiagnoses
+      .filter((dx) => {
+        const match = allProblems.find((p) =>
+          (dx.catalogId && p.catalogId === dx.catalogId) ||
+          (!dx.catalogId && p.name?.toLowerCase() === dx.name?.toLowerCase()),
+        );
+        return match && match.status !== 'resolved' && dx.severity && match.severity !== dx.severity;
+      })
+      .map((dx) => {
+        const match = allProblems.find((p) =>
+          (dx.catalogId && p.catalogId === dx.catalogId) ||
+          (!dx.catalogId && p.name?.toLowerCase() === dx.name?.toLowerCase()),
+        );
+        return {
+          problem: match,
+          dx,
+          action: 'update_severity',
+          oldSeverity: match.severity || 'none',
+          newSeverity: dx.severity,
+        };
+      });
+
+    // 3. ACTIVE problems NOT addressed by today's SOAP (unaddressed = possible resolution)
+    const addressedCatalogIds = new Set(currentDiagnoses.map((d) => d.catalogId).filter(Boolean));
+    const addressedNames = new Set(currentDiagnoses.map((d) => d.name?.toLowerCase()).filter(Boolean));
+    const unaddressed = activeProblems
+      .filter((p) => {
+        if (p.catalogId && addressedCatalogIds.has(p.catalogId)) return false;
+        if (p.name && addressedNames.has(p.name.toLowerCase())) return false;
+        return true;
+      })
+      .map((p) => ({ problem: p, action: 'keep' })); // default: Keep active
+
+    // If nothing to act on, skip the dialog entirely
+    if (newDiagnoses.length === 0 && existingUpdates.length === 0 && unaddressed.length === 0) {
+      proceedFn();
+      return;
+    }
+
+    setProblemListDialog({
+      newDiagnoses,
+      existingUpdates,
+      unaddressed,
+      onSkip: () => {
+        setProblemListDialog(null);
+        proceedFn();
+      },
+      _proceedFn: proceedFn,
+    });
+  };
+
   const handleSaveConsult = async () => {
     if (isSavingRef.current) return;
 
@@ -2158,6 +2263,77 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       // POSModal's `sales` collection is the canonical billing path — that write happens
       // at checkout after the patient reaches the billing/dispensing station.
 
+      // T4.13: PROBLEM LIST BATCH WRITES — join the existing writeBatch for atomicity.
+      // Reads from problemListDialogRef.current (not state) to avoid stale closure.
+      // All problem list changes are atomic with the medical record: if batch fails,
+      // nothing is written (no orphaned problem documents).
+      const activeProblemListDialog = problemListDialogRef.current;
+      if (activeProblemListDialog && patient.petId && !['WALK_IN_PET', 'WALK_IN_USER', 'UNKNOWN'].includes(patient.petId)) {
+        const problemListChanges = [];
+
+        // Add new problems
+        for (const item of (activeProblemListDialog.newDiagnoses || [])) {
+          if (item.action === 'skip') continue;
+          const newProblemRef = doc(collection(db, 'pets', patient.petId, 'problems'));
+          batch.set(newProblemRef, {
+            name: item.dx.name,
+            catalogId: item.dx.catalogId || null,
+            category: item.dx.category || '',
+            severity: item.dx.severity || null,
+            status: item.action, // 'active' or 'monitoring'
+            diagnosedAt: commitTimestamp,
+            resolvedAt: null,
+            sourceRecordId: recordRef.id,
+            resolvedByRecordId: null,
+            notes: item.dx.notes || '',
+            lastUpdated: commitTimestamp,
+            severityHistory: item.dx.severity
+              ? [{ severity: item.dx.severity, date: commitTimestamp, recordId: recordRef.id }]
+              : [],
+          });
+          problemListChanges.push({ type: 'added', name: item.dx.name, status: item.action });
+        }
+
+        // Update severity on existing problems
+        for (const item of (activeProblemListDialog.existingUpdates || [])) {
+          if (item.action !== 'update_severity') continue;
+          const problemRef = doc(db, 'pets', patient.petId, 'problems', item.problem.id);
+          batch.update(problemRef, {
+            severity: item.newSeverity,
+            lastUpdated: commitTimestamp,
+            severityHistory: [
+              ...(item.problem.severityHistory || []),
+              { severity: item.newSeverity, date: commitTimestamp, recordId: recordRef.id },
+            ],
+          });
+          problemListChanges.push({
+            type: 'severity_updated',
+            name: item.dx.name,
+            from: item.oldSeverity,
+            to: item.newSeverity,
+          });
+        }
+
+        // Resolve problems the vet marked as resolved
+        for (const item of (activeProblemListDialog.unaddressed || [])) {
+          if (item.action !== 'resolve') continue;
+          const problemRef = doc(db, 'pets', patient.petId, 'problems', item.problem.id);
+          batch.update(problemRef, {
+            status: 'resolved',
+            resolvedAt: commitTimestamp,
+            resolvedByRecordId: recordRef.id,
+            lastUpdated: commitTimestamp,
+          });
+          problemListChanges.push({ type: 'resolved', name: item.problem.name });
+        }
+
+        // Annotate the medical record with problem list changes so mobile can display
+        // the "PROBLEM LIST UPDATED" annotation without querying the sub-collection.
+        if (problemListChanges.length > 0) {
+          batch.update(recordRef, { problemListChanges });
+        }
+      }
+
       // 2. VITALS CACHE — propagate latest vitals to pet doc for fast CRM lookup
       if (patient.petId && patient.petId !== "WALK_IN_PET") {
           const petRef = doc(db, "pets", patient.petId);
@@ -2313,6 +2489,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       setIsDirty(false);
       // T4.121: Clear pending attachments — they have been uploaded and persisted.
       setSoapAttachments([]);
+      // T4.13: Clear problem list dialog state after successful batch commit.
+      setProblemListDialog(null);
       onClose();
       alert(`✅ ENCOUNTER FINALIZED!\n\nClinical record signed by ${vetName}.\nPatient moved to ${hasDrugsInCart ? 'PHARMACY' : 'CHECKOUT'}.\nTotal: ₱${visitTotal.toLocaleString()}`);
     } catch (error) {
@@ -2328,7 +2506,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         title: 'Empty Services & Items',
         message: 'No services or items have been added to this visit.',
         warnings: ['The medical record will be saved without any billable items.'],
-        onConfirm: () => { setSignOffConfirm(null); proceedWithSave(); },
+        // T4.13: Route through problem list gate instead of calling proceedWithSave() directly.
+        onConfirm: () => { setSignOffConfirm(null); showProblemListUpdate(proceedWithSave); },
       });
       return;
     }
@@ -2342,7 +2521,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         title: 'Incomplete Services',
         message: `${incompleteServices.length} service(s) are not marked as completed:`,
         warnings: incompleteServices.map(s => s.name),
-        onConfirm: () => { setSignOffConfirm(null); proceedWithSave(); },
+        // T4.13: Route through problem list gate.
+        onConfirm: () => { setSignOffConfirm(null); showProblemListUpdate(proceedWithSave); },
       });
       return;
     }
@@ -2358,12 +2538,14 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         title: 'Documentation Check',
         message: 'The following fields are empty. The vet makes the clinical judgment call.',
         warnings: emptyFields,
-        onConfirm: () => { setSignOffConfirm(null); proceedWithSave(); },
+        // T4.13: Route through problem list gate.
+        onConfirm: () => { setSignOffConfirm(null); showProblemListUpdate(proceedWithSave); },
       });
       return;
     }
 
-    proceedWithSave();
+    // T4.13: No soft warnings — route directly through problem list gate.
+    showProblemListUpdate(proceedWithSave);
   };
 
   /**
@@ -4028,6 +4210,90 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             </Alert>
           )}
 
+          {/* T4.13: ACTIVE PROBLEMS STRIP — read-only context for the vet.
+               Shows all active/monitoring conditions above SOAP quadrants.
+               Strip renders only when the pet has at least one active problem.
+               Walk-in patients return empty arrays from useProblemList so this
+               naturally stays hidden for transient patients. */}
+          {activeProblems.length > 0 && (
+            <Box sx={{
+              bgcolor: COLORS.kpiOrangeBg,
+              borderBottom: `2px solid ${COLORS.kpiOrangeBorder}`,
+              px: 2, py: 1,
+              flexShrink: 0,
+            }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                <WarningAmberIcon sx={{ fontSize: 14, color: COLORS.warning }} />
+                <Typography sx={{
+                  fontFamily: FONT, fontSize: '0.7rem', fontWeight: 900,
+                  color: COLORS.warning, textTransform: 'uppercase', letterSpacing: '0.08em',
+                }}>
+                  Active Problems ({activeProblems.length})
+                </Typography>
+                {resolvedProblems.length > 0 && (
+                  <Typography
+                    onClick={() => setShowResolvedProblems((prev) => !prev)}
+                    sx={{
+                      fontFamily: FONT, fontSize: '0.65rem', fontWeight: 700,
+                      color: COLORS.textMuted, cursor: 'pointer', ml: 'auto',
+                      '&:hover': { color: COLORS.accent },
+                    }}
+                  >
+                    {showResolvedProblems
+                      ? `Hide ${resolvedProblems.length} resolved`
+                      : `${resolvedProblems.length} resolved`}
+                  </Typography>
+                )}
+              </Box>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                {activeProblems.map((p) => {
+                  const sinceDate = p.diagnosedAt?.toDate
+                    ? p.diagnosedAt.toDate().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+                    : '';
+                  return (
+                    <Chip
+                      key={p.id}
+                      size="small"
+                      label={`${p.name}${p.severity ? ` (${p.severity})` : ''} — since ${sinceDate}`}
+                      icon={<WarningAmberIcon sx={{ fontSize: '12px !important', color: `${p.status === 'monitoring' ? COLORS.info : COLORS.warning} !important` }} />}
+                      sx={{
+                        fontFamily: FONT, fontWeight: 700, fontSize: '0.72rem',
+                        bgcolor: p.status === 'monitoring' ? COLORS.kpiBlueBg : COLORS.kpiOrangeBg,
+                        color: p.status === 'monitoring' ? COLORS.info : COLORS.warning,
+                        border: `1px solid ${p.status === 'monitoring' ? COLORS.kpiBlueBorder : COLORS.kpiOrangeBorder}`,
+                        borderRadius: 0, height: 24,
+                      }}
+                    />
+                  );
+                })}
+              </Box>
+              {showResolvedProblems && resolvedProblems.length > 0 && (
+                <Box sx={{ mt: 1, pt: 1, borderTop: `1px solid ${COLORS.borderLight}` }}>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                    {resolvedProblems.map((p) => {
+                      const resolvedDate = p.resolvedAt?.toDate
+                        ? p.resolvedAt.toDate().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+                        : '';
+                      return (
+                        <Chip
+                          key={p.id}
+                          size="small"
+                          label={`${p.name} — resolved ${resolvedDate}`}
+                          sx={{
+                            fontFamily: FONT, fontWeight: 600, fontSize: '0.65rem',
+                            bgcolor: COLORS.panelBg, color: COLORS.textMuted,
+                            borderRadius: 0, height: 20, textDecoration: 'line-through',
+                            opacity: 0.7,
+                          }}
+                        />
+                      );
+                    })}
+                  </Box>
+                </Box>
+              )}
+            </Box>
+          )}
+
           {/* --- 2x2 SOAP GRID (fills remaining space) --- */}
           {/* T4.158: Intake notes removed from SoapGrid — subjective is now pre-populated instead */}
           <SoapGrid
@@ -4933,6 +5199,238 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 }}
               >
                 Go Back and Complete
+              </Button>
+            </DialogActions>
+          </>
+        )}
+      </Dialog>
+
+      {/* T4.13: Problem List Update Dialog — shown after soft-warning confirmation,
+           before proceedWithSave(). The "Skip" button bypasses the problem list
+           entirely and proceeds directly. "Update & Sign Off" commits all actions
+           atomically inside the existing writeBatch in proceedWithSave(). */}
+      <Dialog
+        open={Boolean(problemListDialog)}
+        onClose={() => setProblemListDialog(null)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 0,
+            border: `2px solid ${COLORS.warning}`,
+            boxShadow: `8px 8px 0px ${COLORS.warning}`,
+          },
+        }}
+      >
+        {problemListDialog && (
+          <>
+            <DialogTitle sx={{
+              bgcolor: COLORS.kpiOrangeBg,
+              color: COLORS.brand,
+              fontWeight: 900,
+              fontFamily: FONT,
+              fontSize: '1rem',
+              textTransform: 'uppercase',
+              letterSpacing: 1,
+              borderBottom: `2px solid ${COLORS.warning}`,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+            }}>
+              <AssignmentIcon sx={{ color: COLORS.warning }} />
+              Update Problem List
+            </DialogTitle>
+            <DialogContent sx={{ pt: 2.5, pb: 2, bgcolor: COLORS.formBg, maxHeight: '60vh', overflow: 'auto' }}>
+
+              {/* NEW DIAGNOSES */}
+              {problemListDialog.newDiagnoses.length > 0 && (
+                <Box sx={{ mb: 2 }}>
+                  <Typography sx={{
+                    fontFamily: FONT, fontSize: '0.72rem', fontWeight: 900,
+                    color: COLORS.success, textTransform: 'uppercase', letterSpacing: '0.06em', mb: 1,
+                  }}>
+                    New Conditions Diagnosed Today
+                  </Typography>
+                  {problemListDialog.newDiagnoses.map((item, idx) => (
+                    <Box key={idx} sx={{
+                      display: 'flex', alignItems: 'center', gap: 1, py: 0.75,
+                      borderBottom: `1px solid ${COLORS.borderLight}`,
+                    }}>
+                      <Typography sx={{
+                        fontFamily: FONT, fontSize: '0.85rem', fontWeight: 700,
+                        color: COLORS.brand, flex: 1,
+                      }}>
+                        {item.dx.name}
+                        {item.dx.severity && (
+                          <Typography component="span" sx={{
+                            fontFamily: FONT, fontSize: '0.75rem', fontWeight: 600,
+                            color: COLORS.warning, ml: 1,
+                          }}>
+                            ({item.dx.severity})
+                          </Typography>
+                        )}
+                      </Typography>
+                      <Select
+                        size="small"
+                        value={item.action}
+                        onChange={(e) => {
+                          const updated = [...problemListDialog.newDiagnoses];
+                          updated[idx] = { ...updated[idx], action: e.target.value };
+                          setProblemListDialog((prev) => ({ ...prev, newDiagnoses: updated }));
+                        }}
+                        sx={{
+                          fontFamily: FONT, fontWeight: 700, fontSize: '0.75rem',
+                          minWidth: 140, height: 30, borderRadius: 0,
+                          '& fieldset': { borderColor: COLORS.border },
+                        }}
+                      >
+                        <MenuItem value="active" sx={{ fontSize: '0.8rem' }}>Add as Active</MenuItem>
+                        <MenuItem value="monitoring" sx={{ fontSize: '0.8rem' }}>Add as Monitoring</MenuItem>
+                        <MenuItem value="skip" sx={{ fontSize: '0.8rem' }}>Don&apos;t Add</MenuItem>
+                      </Select>
+                    </Box>
+                  ))}
+                </Box>
+              )}
+
+              {/* SEVERITY CHANGES */}
+              {problemListDialog.existingUpdates.length > 0 && (
+                <Box sx={{ mb: 2 }}>
+                  <Typography sx={{
+                    fontFamily: FONT, fontSize: '0.72rem', fontWeight: 900,
+                    color: COLORS.warning, textTransform: 'uppercase', letterSpacing: '0.06em', mb: 1,
+                  }}>
+                    Severity Changes Detected
+                  </Typography>
+                  {problemListDialog.existingUpdates.map((item, idx) => (
+                    <Box key={idx} sx={{
+                      display: 'flex', alignItems: 'center', gap: 1, py: 0.75,
+                      borderBottom: `1px solid ${COLORS.borderLight}`,
+                    }}>
+                      <Typography sx={{
+                        fontFamily: FONT, fontSize: '0.85rem', fontWeight: 700,
+                        color: COLORS.brand, flex: 1,
+                      }}>
+                        {item.dx.name}
+                      </Typography>
+                      <Chip
+                        size="small"
+                        label={`${item.oldSeverity} → ${item.newSeverity}`}
+                        sx={{
+                          fontFamily: FONT, fontWeight: 700, fontSize: '0.7rem',
+                          bgcolor: COLORS.kpiOrangeBg, color: COLORS.warning,
+                          borderRadius: 0, border: `1px solid ${COLORS.kpiOrangeBorder}`,
+                        }}
+                      />
+                      <Checkbox
+                        checked={item.action === 'update_severity'}
+                        onChange={(e) => {
+                          const updated = [...problemListDialog.existingUpdates];
+                          updated[idx] = { ...updated[idx], action: e.target.checked ? 'update_severity' : 'none' };
+                          setProblemListDialog((prev) => ({ ...prev, existingUpdates: updated }));
+                        }}
+                        size="small"
+                        sx={{ color: COLORS.warning, '&.Mui-checked': { color: COLORS.warning } }}
+                      />
+                    </Box>
+                  ))}
+                </Box>
+              )}
+
+              {/* UNADDRESSED ACTIVE PROBLEMS */}
+              {problemListDialog.unaddressed.length > 0 && (
+                <Box>
+                  <Typography sx={{
+                    fontFamily: FONT, fontSize: '0.72rem', fontWeight: 900,
+                    color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', mb: 1,
+                  }}>
+                    Active Problems Not Addressed Today
+                  </Typography>
+                  {problemListDialog.unaddressed.map((item, idx) => {
+                    const sinceDate = item.problem.diagnosedAt?.toDate
+                      ? item.problem.diagnosedAt.toDate().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+                      : '';
+                    return (
+                      <Box key={idx} sx={{
+                        display: 'flex', alignItems: 'center', gap: 1, py: 0.75,
+                        borderBottom: `1px solid ${COLORS.borderLight}`,
+                      }}>
+                        <Typography sx={{
+                          fontFamily: FONT, fontSize: '0.85rem', fontWeight: 700,
+                          color: COLORS.brand, flex: 1,
+                        }}>
+                          {item.problem.name}
+                          {item.problem.severity && (
+                            <Typography component="span" sx={{
+                              fontFamily: FONT, fontSize: '0.75rem', fontWeight: 600,
+                              color: COLORS.textMuted, ml: 1,
+                            }}>
+                              ({item.problem.severity}) — since {sinceDate}
+                            </Typography>
+                          )}
+                        </Typography>
+                        <Select
+                          size="small"
+                          value={item.action}
+                          onChange={(e) => {
+                            const updated = [...problemListDialog.unaddressed];
+                            updated[idx] = { ...updated[idx], action: e.target.value };
+                            setProblemListDialog((prev) => ({ ...prev, unaddressed: updated }));
+                          }}
+                          sx={{
+                            fontFamily: FONT, fontWeight: 700, fontSize: '0.75rem',
+                            minWidth: 140, height: 30, borderRadius: 0,
+                            '& fieldset': { borderColor: COLORS.border },
+                          }}
+                        >
+                          <MenuItem value="keep" sx={{ fontSize: '0.8rem' }}>Keep Active</MenuItem>
+                          <MenuItem value="resolve" sx={{ fontSize: '0.8rem' }}>Mark Resolved</MenuItem>
+                          <MenuItem value="skip" sx={{ fontSize: '0.8rem' }}>Skip</MenuItem>
+                        </Select>
+                      </Box>
+                    );
+                  })}
+                </Box>
+              )}
+            </DialogContent>
+            <DialogActions sx={{
+              p: 2,
+              bgcolor: COLORS.kpiOrangeBg,
+              borderTop: `2px solid ${COLORS.warning}`,
+              justifyContent: 'space-between',
+            }}>
+              <Button
+                onClick={() => {
+                  const skip = problemListDialog.onSkip;
+                  setProblemListDialog(null);
+                  skip();
+                }}
+                sx={{
+                  fontWeight: 900, color: COLORS.textMuted,
+                  fontFamily: FONT, fontSize: '0.75rem',
+                  textTransform: 'uppercase',
+                  '&:hover': { bgcolor: 'rgba(0,0,0,0.04)' },
+                }}
+              >
+                Skip
+              </Button>
+              <Button
+                variant="contained"
+                onClick={() => {
+                  // The dialog state is kept in problemListDialogRef (via useEffect sync)
+                  // so proceedWithSave can read the confirmed state without a stale closure.
+                  const proceed = problemListDialog._proceedFn;
+                  proceed();
+                }}
+                sx={{
+                  fontWeight: 900, bgcolor: COLORS.warning,
+                  fontFamily: FONT, fontSize: '0.75rem',
+                  borderRadius: 0, px: 3,
+                  textTransform: 'uppercase',
+                  '&:hover': { bgcolor: COLORS.ctaHover },
+                }}
+              >
+                Update &amp; Sign Off
               </Button>
             </DialogActions>
           </>

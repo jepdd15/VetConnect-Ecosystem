@@ -82,6 +82,10 @@ import { generateInternalRecordHTML, generateCombinedPrintHTML } from '../../uti
 import { getVaccineAdministrations, resolveVaccineFromName } from '../../utils/vaccineConstants';
 import { useVaccineCatalog } from '../../hooks/useVaccineCatalog';
 
+// ── Problem List Hook ────────────────────────────────────────────
+// T4.13: Real-time problem list for persistent condition tracking.
+import { useProblemList } from '../../hooks/useProblemList';
+
 // ── Modals ──────────────────────────────────────────────────────
 import ReferralModal from './components/ReferralModal';
 import WalkInModal from '../Queue/WalkInModal';
@@ -220,6 +224,11 @@ export default function PatientDashboard() {
   const [amendDialogOpen, setAmendDialogOpen] = useState(false);
   const [amendTargetApptId, setAmendTargetApptId] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // T4.13: Problem list — real-time active/resolved conditions for this pet.
+  // id comes from useParams() above and is the Firestore pet document ID.
+  const { activeProblems: petActiveProblems, resolvedProblems: petResolvedProblems } = useProblemList(id);
+  const [showProblemHistory, setShowProblemHistory] = useState(false);
 
   // T4.92: Custom notification dialog
   const [notifDialogOpen, setNotifDialogOpen] = useState(false);
@@ -1410,6 +1419,140 @@ export default function PatientDashboard() {
         {/* ── CENTER: Clinical Records (60%) ── */}
         <Box ref={timelineScrollRef} sx={{ flex: 7, overflowY: 'auto', bgcolor: COLORS.surface, borderRight: `1px solid ${COLORS.borderLight}` }}>
           <Box sx={{ py: 2, px: 3 }}>
+
+            {/* T4.13: ACTIVE PROBLEMS — persistent section above timeline.
+                 Renders only when the pet has active/monitoring conditions.
+                 Shows severity, diagnosis date, severity progression, and resolved history. */}
+            {petActiveProblems.length > 0 && (
+              <Box sx={{
+                bgcolor: COLORS.kpiOrangeBg,
+                border: `1px solid ${COLORS.kpiOrangeBorder}`,
+                borderRadius: 0,
+                mb: 2,
+                overflow: 'hidden',
+              }}>
+                <Box sx={{
+                  display: 'flex', alignItems: 'center', gap: 1,
+                  px: 2, py: 1,
+                  borderBottom: `1px solid ${COLORS.kpiOrangeBorder}`,
+                  bgcolor: COLORS.kpiOrangeBg,
+                }}>
+                  <WarningAmberIcon sx={{ fontSize: 14, color: COLORS.warning }} />
+                  <Typography sx={{
+                    fontFamily: FONT, ...TYPE.label,
+                    color: COLORS.warning, flex: 1,
+                  }}>
+                    Active Problems ({petActiveProblems.length})
+                  </Typography>
+                  {petResolvedProblems.length > 0 && (
+                    <Typography
+                      onClick={() => setShowProblemHistory((prev) => !prev)}
+                      sx={{
+                        fontFamily: FONT, fontSize: '0.68rem', fontWeight: 700,
+                        color: COLORS.textMuted, cursor: 'pointer',
+                        '&:hover': { color: COLORS.accent },
+                      }}
+                    >
+                      {showProblemHistory ? 'Hide history' : `${petResolvedProblems.length} resolved`}
+                    </Typography>
+                  )}
+                </Box>
+                <Box sx={{ px: 2, py: 1.5 }}>
+                  {petActiveProblems.map((p) => {
+                    const sinceDate = p.diagnosedAt?.toDate
+                      ? p.diagnosedAt.toDate().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+                      : '';
+                    const hasHistory = (p.severityHistory || []).length > 1;
+                    return (
+                      <Box key={p.id} sx={{
+                        display: 'flex', alignItems: 'flex-start', gap: 1, py: 0.75,
+                        borderBottom: `1px solid ${COLORS.borderLight}`,
+                        '&:last-child': { borderBottom: 'none' },
+                      }}>
+                        <Box sx={{ flex: 1 }}>
+                          <Typography sx={{
+                            fontFamily: FONT, fontSize: '0.85rem', fontWeight: 700, color: COLORS.brand,
+                          }}>
+                            {p.name}
+                            {p.severity && (
+                              <Typography component="span" sx={{
+                                fontFamily: FONT, fontSize: '0.75rem', fontWeight: 600,
+                                color: COLORS.warning, ml: 1,
+                              }}>
+                                ({p.severity})
+                              </Typography>
+                            )}
+                          </Typography>
+                          <Typography sx={{
+                            fontFamily: FONT, fontSize: '0.72rem', fontWeight: 600,
+                            color: COLORS.textMuted,
+                          }}>
+                            Since {sinceDate}
+                            {p.status === 'monitoring' && (
+                              <Chip
+                                label="MONITORING"
+                                size="small"
+                                sx={{
+                                  fontFamily: FONT, fontWeight: 700, fontSize: '0.6rem',
+                                  bgcolor: COLORS.kpiBlueBg, color: COLORS.info,
+                                  borderRadius: 0, height: 16, ml: 1,
+                                }}
+                              />
+                            )}
+                          </Typography>
+                          {/* Severity progression timeline — shown when more than one entry */}
+                          {hasHistory && (
+                            <Box sx={{ mt: 0.5 }}>
+                              {(p.severityHistory || []).map((sh, i) => {
+                                const shDate = sh.date?.toDate
+                                  ? sh.date.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                                  : '';
+                                return (
+                                  <Typography key={i} sx={{
+                                    fontFamily: FONT, fontSize: '0.65rem', fontWeight: 600,
+                                    color: COLORS.textMuted, fontStyle: 'italic',
+                                  }}>
+                                    {sh.severity} — {shDate}
+                                  </Typography>
+                                );
+                              })}
+                            </Box>
+                          )}
+                        </Box>
+                      </Box>
+                    );
+                  })}
+
+                  {/* Resolved problems — behind toggle */}
+                  {showProblemHistory && petResolvedProblems.length > 0 && (
+                    <Box sx={{ mt: 1.5, pt: 1, borderTop: `1px dashed ${COLORS.borderLight}` }}>
+                      <Typography sx={{
+                        fontFamily: FONT, fontSize: '0.65rem', fontWeight: 800,
+                        color: COLORS.textMuted, textTransform: 'uppercase',
+                        letterSpacing: '0.06em', mb: 0.5,
+                      }}>
+                        Resolved
+                      </Typography>
+                      {petResolvedProblems.map((p) => {
+                        const resolvedDate = p.resolvedAt?.toDate
+                          ? p.resolvedAt.toDate().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+                          : '';
+                        return (
+                          <Typography key={p.id} sx={{
+                            fontFamily: FONT, fontSize: '0.78rem', fontWeight: 600,
+                            color: COLORS.textMuted, textDecoration: 'line-through',
+                            py: 0.25,
+                          }}>
+                            {p.name} — resolved {resolvedDate}
+                          </Typography>
+                        );
+                      })}
+                    </Box>
+                  )}
+                </Box>
+              </Box>
+            )}
+
             {processedHistory.length > 0 && (
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
                 <Button size="small" startIcon={allExpanded ? <UnfoldLessIcon sx={{ fontSize: '14px !important' }}/> : <UnfoldMoreIcon sx={{ fontSize: '14px !important' }}/>}

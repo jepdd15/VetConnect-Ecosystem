@@ -136,6 +136,16 @@ service cloud.firestore {
       allow create: if isAuth();  // Owner adds pet; staff adds walk-in pet
       allow update: if isAuth();  // Staff updates clinical fields; owner updates profile
       allow delete: if isAdmin();
+
+      // T4.13: Structured problem list sub-collection.
+      // Owners can read their pet's problems (for mobile display).
+      // Only staff can create/update. Delete is permanently blocked for audit trail integrity.
+      match /problems/{problemId} {
+        allow read: if isAuth();
+        allow create: if isStaff();
+        allow update: if isStaff();
+        allow delete: if false;
+      }
     }
 
     // ─── MEDICAL RECORDS ──────────────────────────────────────────

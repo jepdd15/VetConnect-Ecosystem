@@ -45,7 +45,7 @@ import { useNetwork } from "../context/NetworkContext";
 import { useClinicContact } from "../hooks/useClinicContact";
 import { safeDate, formatDisplayDate, calculateAge } from "../utils/helpers";
 import { resolveDepartmentForRecord } from '../utils/resolveDepartmentForRecord';
-import { COLORS, SHADOW, SPACING } from '../theme/mobileTokens';
+import { COLORS, SHADOW, SPACING, FONTS } from '../theme/mobileTokens';
 import SparkLine from '../components/SparkLine';
 import VitalsZoomModal from '../components/VitalsZoomModal';
 import LabZoomModal from '../components/LabZoomModal';
@@ -690,6 +690,11 @@ export default function PetHistoryScreen({ route, navigation }) {
   const [workerUrl, setWorkerUrl]         = useState('');
   const [aiSheetVisible, setAiSheetVisible] = useState(false);
 
+  // T4.13: Active conditions count + list for OVERVIEW tab display.
+  // Read-only on mobile — fetched once on mount, no mutations.
+  const [activeConditionsCount, setActiveConditionsCount] = useState(0);
+  const [activeConditionsList, setActiveConditionsList]   = useState([]);
+
   // T4.118: Vaccine catalog — one-shot fetch from inventory, falls back to defaults.
   const [vaccineCatalog, setVaccineCatalog] = useState([]);
 
@@ -753,6 +758,34 @@ export default function PetHistoryScreen({ route, navigation }) {
         }
       } catch {
         // Non-critical — AI prompt falls back to { name: petName }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [petId]);
+
+  // T4.13: One-shot fetch for the pet's active problem list.
+  // getDocs (not onSnapshot) — mobile is read-only; no mutations are possible here.
+  // Failures are non-blocking: conditions card simply shows zero.
+  useEffect(() => {
+    if (!petId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const probSnap = await getDocs(
+          query(
+            collection(db, 'pets', petId, 'problems'),
+            where('status', 'in', ['active', 'monitoring']),
+            orderBy('diagnosedAt', 'desc'),
+          )
+        );
+        if (!cancelled) {
+          const problems = probSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          setActiveConditionsCount(problems.length);
+          setActiveConditionsList(problems);
+        }
+      } catch (err) {
+        // Non-blocking — conditions card defaults to zero / empty
+        console.warn('[PetHistoryScreen] Failed to fetch problem list:', err?.message);
       }
     })();
     return () => { cancelled = true; };
@@ -2182,6 +2215,49 @@ export default function PetHistoryScreen({ route, navigation }) {
               </View>
             )}
 
+            {/* T4.13: Problem list update annotation — shows when this visit
+                 triggered problem list changes. Written by proceedWithSave()
+                 into the medical record's problemListChanges array. */}
+            {item.problemListChanges?.length > 0 && (
+              <View style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: COLORS.warningBg,
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                marginTop: 8,
+                borderLeftWidth: 3,
+                borderLeftColor: COLORS.warning,
+              }}>
+                <MaterialIcons name="playlist-add-check" size={14} color={COLORS.warning} />
+                <Text style={{
+                  fontFamily: FONTS.bold,
+                  fontSize: 10,
+                  color: COLORS.warning,
+                  marginLeft: 6,
+                  letterSpacing: 0.5,
+                  textTransform: 'uppercase',
+                }}>
+                  Problem List Updated
+                </Text>
+                <Text style={{
+                  fontFamily: FONTS.regular,
+                  fontSize: 10,
+                  color: COLORS.textMuted,
+                  marginLeft: 8,
+                  flex: 1,
+                  flexWrap: 'wrap',
+                }}>
+                  {item.problemListChanges.map((c) => {
+                    if (c.type === 'added') return `+1 ${c.name}`;
+                    if (c.type === 'resolved') return `${c.name} resolved`;
+                    if (c.type === 'severity_updated') return `${c.name} ${c.from} → ${c.to}`;
+                    return '';
+                  }).filter(Boolean).join(' · ')}
+                </Text>
+              </View>
+            )}
+
             {item.nextVisit && (
               <View style={styles.reminderBanner}>
                 <MaterialIcons name="event" size={16} color={COLORS.danger} />
@@ -2584,6 +2660,22 @@ export default function PetHistoryScreen({ route, navigation }) {
                     </View>
                   </View>
                 )}
+
+                {/* T4.13: Active Conditions — read-only display of the pet's problem list. */}
+                <View style={styles.overviewCard}>
+                  <Text style={styles.overviewCardTitle}>
+                    CONDITIONS ({activeConditionsCount} active)
+                  </Text>
+                  {activeConditionsList.length > 0 ? (
+                    activeConditionsList.map((cond, i) => (
+                      <Text key={i} style={styles.overviewMedText}>
+                        {'•'} {cond.name}{cond.severity ? ` (${cond.severity})` : ''}
+                      </Text>
+                    ))
+                  ) : (
+                    <Text style={styles.overviewEmptyText}>No active conditions</Text>
+                  )}
+                </View>
 
                 {/* Active Medications */}
                 <View style={styles.overviewCard}>

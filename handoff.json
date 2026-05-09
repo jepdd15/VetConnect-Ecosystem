@@ -3855,7 +3855,7 @@
       "remaining_priority_queue": [
         "T4.191 — Queue date picker (1 hr)",
         "T4.169+T4.170 — Reservation audit logging + stranded cleanup (1.5 hrs)",
-        "T4.13 — Structured problem list 5 UI locations (4-5 hrs)",
+        "T4.13 — Structured problem list 5 UI locations (4-5 hrs) — DONE",
         "T4.146 — Booking TOCTOU race fix (1.5 hrs)",
         "T4.125 — Patients CRM redesign full-width DataGrid (10-12 hrs)",
         "T4.10 — Full Queue design sweep 8 files (3-4 hrs)",
@@ -3863,6 +3863,45 @@
         "T4.17 — God-View + main grid unification via SoapGrid (2-3 hrs)",
         "T4.11 — SOAP template library (2 hrs)",
         "T4.15 — Clinical decision support species-adjusted alerts (1 hr)"
+      ]
+    },
+    "advisory_session_2026_05_09": {
+      "date": "2026-05-09",
+      "role": "Major advisory + implementation session. 5 tasks shipped. 5 formalized. ~30 inline fixes. 5 decision rounds (54 total decisions). Spec cross-reference methodology. Mockup-driven design.",
+      "tasks_done_this_session": "T4.13 (Structured Problem List, 5 phases), T4.195 (BookAppointment neubrutalism, inline), T4.196 (Queue Notes & Flags, 9 fixes, 22/22 spec), T4.197 (Per-Service Progress, 6 phases 6 surfaces, 23/23 spec), POS neubrutalism (inline)",
+      "total_done_after_session": "~740",
+      "total_todo_after_session": "~187",
+      "tasks_formalized_this_session": "T4.196 (DONE), T4.197 (DONE), T4.198 (Calendar AI, 10 decisions), T4.199 (My Stats 5-tab redesign, 18 decisions), T4.200 (Vaccine hardening multi-dose series, 4 decisions)",
+      "key_architectural_changes": [
+        "T4.13: useProblemList hook (onSnapshot pets/{petId}/problems), CW read-only widget above SOAP, sign-off dialog (new/severity/unaddressed sections), PatientDashboard active problems section, mobile OVERVIEW CONDITIONS card, problemListChanges[] denormalization on medical_records. Stale closure fix via useRef + useEffect sync.",
+        "T4.196: System chips relocated from notes column to Patient Identity column. Notes column pure text (Owner:/Staff: prefixes). Tabbed popover replaced with unified view. Row accent borders (red EMERGENCY/CONFINED, orange CARRY-OVER/DEFERRED). CONFINED chip at EOD hospitalize. Inline staff notes edit with TextField + updateDoc.",
+        "T4.197: Per-service progress across 6 surfaces. Parallel status board pattern (NOT sequential timeline). SuperCard enriched (staff when multi-staff, price, '(added)' label). AppointmentCardContent service lines for active (✓/⏳/○) + completed (✓) + carried-over (✓/✗ + 'prev. day'). VisitTimeline nests services under 'With the vet' node. QueueScreen compact strip. Monitor per-service Chip components. Dashboard SuperCard replaces thin notification card for arrived+ statuses.",
+        "Service data parity sweep: Queue popover + EndOfDayModal + CW sidebar + Calendar popover + printed record all enriched with actual duration, estimated time for pending ('~25 min service'), '(added)' label, 'Day 1' carry-over annotation, softened unassigned, total time actual vs estimate.",
+        "SuperCard past day cards upgraded from bare summary to full read-only cards (services + full timeline + encounter summary + payment).",
+        "CW vitals 'LAST' label scans ALL history records (not just most recent), shows '(N visits ago)' suffix, 'No prior reading' for never-recorded. Per-service staff dropdown restored with department grouping (lost in T4.127). assignedVet written at sign-off.",
+        "Booking/walk-in data parity: ownerPhone, ownerEmail, statusHistory, isAgeExact, scheduledDateStr, triageDate, serviceDuration/Buffer/Price added. Triage notes made optional.",
+        "Spec cross-reference methodology: after generating execute prompts with locked decisions, cross-reference EVERY decision against phases + spec items. Caught carried-over card logic bug (caseDay>1 blanket vs serviceCompletedAt<scheduledDate timestamp comparison)."
+      ],
+      "key_decisions_locked": [
+        "Intake Notes 9 decisions: 'Context / Notes' column, unified Owner:/Staff: (no tabs), chips in identity column, red/orange accent borders, CONFINED chip, stale date display-only, edit staffNotes only.",
+        "Service Progress 13 decisions: parallel status board, single-service skips SERVICES section, staff only when different, 'prev. day' via timestamp comparison, confined warm message, VisitTimeline nests under In Consult, '(added)' label, per-service cost, Dashboard SuperCard for arrived+, thin card for pending/confirmed.",
+        "Calendar AI 10 decisions: side panel + contextual (B+D), visible + on-demand expansion (D), full context including inventory + medical history, chips + free-text, read-only, multi-turn, Firestore prompt + dynamic inject, no rate limits, llm_audit_logs, all staff.",
+        "My Stats 18 decisions: analytics-only scope, service toggle BY DEPT/BY SERVICE, spending granular toggles, all 6 new chart types, medium pet cards, conditions from problem list, keep preventive care CTAs, calendar mini-view, 5-tab layout, toggle-driven, YoY toggle, seasonal per-pet, absorbed sections, no gamification, per-tab PDF export, lazy rendering.",
+        "Vaccine 4 decisions: catalog extension (doses/doseIntervalDays/startAgeWeeks), explicit doseNumber, dots + text UI, binary completeness.",
+        "Estimated time phrasing: 'waiting · ~25 min service' (not '~25 min' which implies wait time).",
+        "Icon system: ✓ completed, ⏳ in-progress, ○ waiting (active), ✗ not completed (terminal/carried-over)."
+      ],
+      "remaining_priority_queue": [
+        "T4.199 — My Stats 5-tab redesign (10-12 hrs, 18 decisions locked)",
+        "T4.200 — Vaccine hardening multi-dose series (4-5 days, 4 decisions locked)",
+        "T4.198 — Calendar AI scheduling assistant (6-8 hrs, 10 decisions locked)",
+        "T4.191 — Queue date picker (1 hr)",
+        "T4.169+T4.170 — Reservation audit + cleanup (1.5 hrs)",
+        "T4.146 — Booking TOCTOU race fix (1.5 hrs)",
+        "T4.125 — Patients CRM redesign (10-12 hrs)",
+        "T4.10 — Queue design sweep (3-4 hrs)",
+        "T4.16 — CW design sweep (2-3 hrs)",
+        "T4.17 — God-View unification (2-3 hrs)"
       ]
     }
   }

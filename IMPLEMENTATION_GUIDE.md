@@ -233,7 +233,18 @@
 - Admin deployed to Firebase Hosting. APK built via EAS.
 - ~735 DONE / ~189 TODO. ~899 total tasks.
 
-**Next:** T4.191 (Queue date picker, 1 hr) → T4.169+T4.170 (Reservation audit+cleanup, 1.5 hrs) → T4.13 (Structured problem list, 4-5 hrs) → T4.146 (Booking TOCTOU fix, 1.5 hrs) → T4.125 (CRM redesign, 10-12 hrs) → T4.10 (Queue design sweep, 3-4 hrs) → T4.16 (CW design sweep, 2-3 hrs) → T4.17 (God-View unification, 2-3 hrs)
+**Session 2026-05-09 (T4.13, T4.196, T4.197, T4.195 BookAppointment + POS neubrutalism + ~30 inline fixes + 5 decision rounds):**
+- T4.13 Structured Problem List (5 phases, useProblemList hook, Firestore rules, CW widget + sign-off dialog + PatientDashboard + mobile OVERVIEW + mobile record annotation). TDZ bug caught (problemListDialog useState before useEffect). 20/20 spec items.
+- T4.196 Queue Intake Notes & Flags (9 fixes): column "Context / Notes", unified Owner:/Staff: display, chips relocated to identity column, row accent borders, CONFINED chip, quickAdmitER staffNotes removed, QUICK-ADMIT inline dropped, stale date prefix, inline staff notes edit. 22/22 spec items.
+- T4.197 Per-Service Progress (6 phases across 6 surfaces): SuperCard enrichment (staff+price+"(added)"), AppointmentCardContent service lines (active ✓/⏳/○ + completed ✓ + carried-over ✓/✗ + "prev. day"), VisitTimeline nested sub-items, QueueScreen strip, Monitor chips, Dashboard SuperCard for arrived+. 23/23 spec items + 2 gap amendments.
+- POS neubrutalism: 12 borderRadius, 6 hex, offset shadow.
+- ~30 inline fixes: CW vitals scan all history + visits-ago + no-prior-reading, CW staff dropdown restored with dept grouping, assignedVet written at sign-off, booking/walk-in data parity (6 fields), triage notes optional, Queue/EOD service parity (actual duration + "(added)" + "Day 1" + unassigned softened + estimated time + total actual vs estimate), Calendar popover per-service status, printed record per-service breakdown, SuperCard past day full cards, triage clock defaults to latest day.
+- 5 decision rounds: intake notes (9), service progress (13), calendar AI (10), My Stats (18), vaccine (4) = 54 total decisions locked.
+- 5 tasks formalized: T4.198 Calendar AI, T4.199 My Stats redesign, T4.200 Vaccine hardening.
+- Spec cross-reference methodology discovered: cross-reference locked decisions against execute prompt phases + spec items. Caught carried-over card logic bug before shipping.
+- ~740 DONE / ~187 TODO. ~905 total tasks.
+
+**Next:** T4.199 (My Stats 5-tab redesign, 10-12 hrs) → T4.200 (Vaccine hardening, 4-5 days) → T4.198 (Calendar AI, 6-8 hrs) → T4.191 (Queue date picker, 1 hr) → T4.169+T4.170 (Reservation audit+cleanup, 1.5 hrs) → T4.146 (Booking TOCTOU fix, 1.5 hrs) → T4.125 (CRM redesign, 10-12 hrs) → T4.10 (Queue design sweep, 3-4 hrs) → T4.16 (CW design sweep, 2-3 hrs)
 
 ---
 
@@ -244,7 +255,7 @@ Paste this prompt at the start of a new session:
 ```
 Read these files in this order:
 1. IMPLEMENTATION_GUIDE.md — current status section + module sequence
-2. handoff.json (section: advisory_session_2026_05_08_continued) — latest context
+2. handoff.json (section: advisory_session_2026_05_09) — latest context
 3. MASTER_TASKLIST.md — task registry with IDs, priorities, dependencies, status
 
 The full VetConnect codebase has been audited across 5+ sessions — every source
@@ -252,8 +263,8 @@ file has been deep-dived. Do NOT re-scan any code. All findings are in the
 deep-dive files at the repo root. Use the "Task-to-Source Cross-Reference" table
 in IMPLEMENTATION_GUIDE.md to find the backing file for any task.
 
-Context: This is a continuation of the 2026-05-08 advisory session (second half).
-~735 DONE, ~189 TODO. Build passes. 322 tests passing.
+Context: This is a continuation of the 2026-05-09 advisory session.
+~740 DONE, ~187 TODO. Build passes. 322 tests passing.
 Cloudflare Worker URL: https://cool-fire-2d53.jepdd15.workers.dev
 Cloudflare Worker model: claude-haiku-4-5-20251001
 Cloudflare Worker Cron: 0 23 * * * UTC (7 AM Manila daily)

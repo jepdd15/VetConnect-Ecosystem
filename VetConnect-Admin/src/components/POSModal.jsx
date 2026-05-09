@@ -1157,17 +1157,17 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
 
   return (
     <>
-      <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth sx={{ '& .MuiDialog-paper': { position: 'relative' } }}>
+      <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth sx={{ '& .MuiDialog-paper': { position: 'relative', borderRadius: 0, border: `2px solid ${COLORS.brand}` } }}>
         <DialogTitle sx={{ bgcolor: COLORS.success, color: COLORS.cardBg, fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 2 }}>
           <Typography component="span" variant="h6" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             {isRetailMode ? <ShoppingCartIcon /> : <PaidIcon />}
             {isRetailMode ? 'Retail Sale' : `Checkout: ${patient?.petName}`}
           </Typography>
           {!isRetailMode && (
-            <Chip label={patient?.ownerName || 'Walk-In'} sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white', fontWeight: 'bold' }} />
+            <Chip label={patient?.ownerName || 'Walk-In'} sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: COLORS.cardBg, fontWeight: 'bold', borderRadius: 0 }} />
           )}
           {isRetailMode && linkedClient && (
-            <Chip label={linkedClient.fullName} sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white', fontWeight: 'bold' }} />
+            <Chip label={linkedClient.fullName} sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: COLORS.cardBg, fontWeight: 'bold', borderRadius: 0 }} />
           )}
         </DialogTitle>
         
@@ -1298,7 +1298,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
                           <Chip
                             label={`Stock: ${opt._stock ?? 0}`}
                             size="small"
-                            sx={{ height: 20, fontSize: '0.65rem', fontWeight: 900, borderRadius: 0, bgcolor: (opt._stock ?? 0) < 1 ? '#FFEBEE' : (opt._stock ?? 0) < 5 ? '#FFF3E0' : '#E8F5E9', color: (opt._stock ?? 0) < 1 ? COLORS.danger : (opt._stock ?? 0) < 5 ? COLORS.warning : COLORS.success }}
+                            sx={{ height: 20, fontSize: '0.65rem', fontWeight: 900, borderRadius: 0, bgcolor: (opt._stock ?? 0) < 1 ? COLORS.dangerSurface : (opt._stock ?? 0) < 5 ? COLORS.warningSurface : COLORS.kpiGreenBg, color: (opt._stock ?? 0) < 1 ? COLORS.danger : (opt._stock ?? 0) < 5 ? COLORS.warning : COLORS.success }}
                           />
                         )}
                         <Typography sx={{ fontWeight: 900, fontSize: '0.85rem', minWidth: 60, textAlign: 'right' }}>₱{opt._price}</Typography>
@@ -1319,7 +1319,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
                     {...params}
                     label={isRetailMode ? 'Add Product' : 'Add Item / Service'}
                     placeholder="Search by name..."
-                    sx={{ bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
+                    sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
                   />
                 )}
                 sx={{ '& .MuiAutocomplete-listbox': { maxHeight: 350 } }}
@@ -1486,8 +1486,8 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
                      size="small"
                      sx={{ '& .MuiToggleButton-root': { borderRadius: 0, fontWeight: 900, border: `2px solid ${COLORS.amber}`, px: 1.5 } }}
                    >
-                     <ToggleButton value="%" sx={{ '&.Mui-selected': { bgcolor: COLORS.amber, color: '#fff' } }}>%</ToggleButton>
-                     <ToggleButton value="₱" sx={{ '&.Mui-selected': { bgcolor: COLORS.amber, color: '#fff' } }}>₱</ToggleButton>
+                     <ToggleButton value="%" sx={{ '&.Mui-selected': { bgcolor: COLORS.amber, color: COLORS.cardBg } }}>%</ToggleButton>
+                     <ToggleButton value="₱" sx={{ '&.Mui-selected': { bgcolor: COLORS.amber, color: COLORS.cardBg } }}>₱</ToggleButton>
                    </ToggleButtonGroup>
                    <TextField
                      fullWidth size="small" type="number"
@@ -1525,7 +1525,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
                    <Chip
                      label={`${Object.keys(itemDiscounts).length + 1} discounts applied`}
                      size="small"
-                     sx={{ mt: 1, borderRadius: 0, bgcolor: COLORS.amber, color: '#fff', fontWeight: 900 }}
+                     sx={{ mt: 1, borderRadius: 0, bgcolor: COLORS.amber, color: COLORS.cardBg, fontWeight: 900 }}
                    />
                  )}
                </Paper>
@@ -1690,8 +1690,8 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
               fullWidth
               sx={{ mb: 1.5, '& .MuiToggleButton-root': { borderRadius: 0, fontWeight: 900, border: `2px solid ${COLORS.amber}` } }}
             >
-              <ToggleButton value="%" sx={{ '&.Mui-selected': { bgcolor: COLORS.amber, color: '#fff' } }}>%</ToggleButton>
-              <ToggleButton value="₱" sx={{ '&.Mui-selected': { bgcolor: COLORS.amber, color: '#fff' } }}>₱</ToggleButton>
+              <ToggleButton value="%" sx={{ '&.Mui-selected': { bgcolor: COLORS.amber, color: COLORS.cardBg } }}>%</ToggleButton>
+              <ToggleButton value="₱" sx={{ '&.Mui-selected': { bgcolor: COLORS.amber, color: COLORS.cardBg } }}>₱</ToggleButton>
             </ToggleButtonGroup>
             <TextField
               fullWidth size="small" type="number" autoFocus
@@ -1736,7 +1736,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
           </Popover>
         </DialogContent>
         <DialogActions sx={{ p: 2.5, bgcolor: COLORS.panelBg, display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${COLORS.timelineRail}` }}>
-          <Button onClick={onClose} sx={{ color: COLORS.accent, fontWeight: 'bold', px: 3 }}>Cancel</Button>
+          <Button onClick={onClose} sx={{ color: COLORS.accent, fontWeight: 'bold', px: 3, borderRadius: 0 }}>Cancel</Button>
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
             {checkoutError && (
               <Alert severity="error" onClose={() => setCheckoutError('')} sx={{ borderRadius: 0, fontWeight: 700, width: '100%' }}>
@@ -1744,7 +1744,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
               </Alert>
             )}
             <Box sx={{ display: 'flex', gap: 2 }}>
-              <Button onClick={handleSaveDraft} disabled={loading || isRetailMode} variant="outlined" color="primary" startIcon={<SaveIcon />}>Save Invoice Draft</Button>
+              <Button onClick={handleSaveDraft} disabled={loading || isRetailMode} variant="outlined" color="primary" startIcon={<SaveIcon />} sx={{ borderRadius: 0 }}>Save Invoice Draft</Button>
               <Button
                 onClick={() => {
                   if (isRetailMode) {
@@ -1754,7 +1754,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
                   }
                 }}
                 disabled={loading || remaining > 0.005 || anyCashInsufficient || (parseFloat(billDiscountValue) > 0 && !billDiscountReason)}
-                variant="contained" color="success" size="large" startIcon={<PaidIcon />} sx={{ px: 4, fontWeight: '900', boxShadow: 3 }}
+                variant="contained" color="success" size="large" startIcon={<PaidIcon />} sx={{ px: 4, fontWeight: '900', borderRadius: 0, boxShadow: `4px 4px 0px ${COLORS.brand}` }}
               >
                 {loading ? "Processing..." : `Settle Balance (₱${financials.balanceDue})`}
               </Button>
@@ -1764,23 +1764,23 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
       </Dialog>
 
       {/* 🚨 EXTERNAL RX OVERRIDE MODAL */}
-      <Dialog open={openRxOverride} onClose={() => setOpenRxOverride(false)} maxWidth="sm" fullWidth>
+      <Dialog open={openRxOverride} onClose={() => setOpenRxOverride(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.danger}` } }}>
         <DialogTitle sx={{ bgcolor: COLORS.danger, color: COLORS.cardBg, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1 }}>
           <DescriptionIcon /> External Prescription Override
         </DialogTitle>
         <DialogContent sx={{ p: 3, bgcolor: COLORS.surfaceHover }}>
-          <Alert severity="warning" sx={{ mb: 3 }}>
+          <Alert severity="warning" sx={{ mb: 3, borderRadius: 0 }}>
             <Typography variant="body2" fontWeight="bold">You are attempting to sell a Prescription-Only (Rx) medication over the counter.</Typography>
             <Typography variant="caption" sx={{ display: 'block', mt: 1 }}>
               By law, you must record the external Veterinarian and Clinic that issued the prescription to dispense <b>{pendingRxItem?.itemName}</b> without an internal consultation.
             </Typography>
           </Alert>
-          <TextField autoFocus fullWidth label="Prescribing Veterinarian Name" placeholder="e.g. Dr. Juan Dela Cruz" value={extVetName} onChange={(e) => setExtVetName(e.target.value)} sx={{ mb: 2, bgcolor: 'white' }} />
-          <TextField fullWidth label="External Clinic Name" placeholder="e.g. ABC Animal Hospital" value={extClinicName} onChange={(e) => setExtClinicName(e.target.value)} sx={{ bgcolor: 'white' }} />
+          <TextField autoFocus fullWidth label="Prescribing Veterinarian Name" placeholder="e.g. Dr. Juan Dela Cruz" value={extVetName} onChange={(e) => setExtVetName(e.target.value)} sx={{ mb: 2, bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { borderRadius: 0 } }} />
+          <TextField fullWidth label="External Clinic Name" placeholder="e.g. ABC Animal Hospital" value={extClinicName} onChange={(e) => setExtClinicName(e.target.value)} sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { borderRadius: 0 } }} />
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
-          <Button onClick={() => setOpenRxOverride(false)} sx={{ color: COLORS.textSecondary, fontWeight: 'bold' }}>Cancel Sale</Button>
-          <Button onClick={handleExternalRxApprove} variant="contained" color="error" sx={{ fontWeight: 'bold' }}>Authorize & Add to Cart</Button>
+          <Button onClick={() => setOpenRxOverride(false)} sx={{ color: COLORS.textSecondary, fontWeight: 'bold', borderRadius: 0 }}>Cancel Sale</Button>
+          <Button onClick={handleExternalRxApprove} variant="contained" color="error" sx={{ fontWeight: 'bold', borderRadius: 0 }}>Authorize & Add to Cart</Button>
         </DialogActions>
       </Dialog>
 

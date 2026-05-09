@@ -3892,7 +3892,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             <Typography sx={{
               fontFamily: 'monospace', fontSize: '0.68rem', fontWeight: 900,
               color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.6,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
               {[patient?.petSpecies, patient?.petBreed, patient?.petGender,
                 patient?.petAge || calculateAge(patient?.petBirthdate || patient?.dob),
@@ -3901,28 +3901,34 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
               ].filter(Boolean).join(' \u00B7 ')}
             </Typography>
 
-            {/* Owner Info */}
-            <Typography sx={{ fontSize: '0.68rem', fontWeight: 800, color: COLORS.textMuted, whiteSpace: 'nowrap' }}>
-              {patient?.ownerName || 'Walk-In'} {patient?.ownerPhone ? `| ${patient.ownerPhone}` : ''}
-            </Typography>
-
             {/* Allergy — unified read: petAllergies (canonical) || allergies (legacy) */}
             {(() => {
               const allergyVal = localPetAllergies ?? patient?.petAllergies ?? patient?.allergies ?? '';
               const hasAllergy = allergyVal && allergyVal.toUpperCase() !== 'NONE' && allergyVal.trim().length > 0;
               return (
-                <Chip
-                  label={hasAllergy ? `ALLERGY: ${allergyVal}` : 'NKA'}
-                  size="small"
-                  sx={{
-                    height: 20, fontSize: '0.58rem', fontWeight: 1000,
-                    bgcolor: hasAllergy ? '#D32F2F' : 'transparent',
-                    color: hasAllergy ? 'white' : COLORS.textMuted,
-                    border: hasAllergy ? 'none' : '1px solid rgba(0,0,0,0.12)',
-                  }}
-                />
+                <Tooltip title={hasAllergy ? allergyVal : 'No Known Allergies'} arrow placement="bottom"
+                  componentsProps={hasAllergy ? { tooltip: { sx: { bgcolor: '#D32F2F', fontWeight: 900, fontSize: '0.7rem' } }, arrow: { sx: { color: '#D32F2F' } } } : {}}>
+                  <Chip
+                    label={hasAllergy ? `ALLERGY: ${allergyVal}` : 'NKA'}
+                    size="small"
+                    clickable={hasAllergy}
+                    sx={{
+                      height: 20, fontSize: '0.58rem', fontWeight: 1000,
+                      maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis',
+                      bgcolor: hasAllergy ? '#D32F2F' : 'transparent',
+                      color: hasAllergy ? 'white' : COLORS.textMuted,
+                      border: hasAllergy ? 'none' : '1px solid rgba(0,0,0,0.12)',
+                      cursor: hasAllergy ? 'pointer' : 'default',
+                    }}
+                  />
+                </Tooltip>
               );
             })()}
+
+            {/* Owner Info — pushed to right side of header */}
+            <Typography sx={{ fontSize: '0.68rem', fontWeight: 800, color: COLORS.textMuted, whiteSpace: 'nowrap', ml: 'auto' }}>
+              {patient?.ownerName || 'Walk-In'} {patient?.ownerPhone ? `| ${patient.ownerPhone}` : ''}
+            </Typography>
 
             {/* T4.181: Edit identity icon — opens inline form below */}
             {!isEditingIdentity && petDetails && (

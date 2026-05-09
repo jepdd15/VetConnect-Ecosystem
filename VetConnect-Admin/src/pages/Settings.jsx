@@ -8,7 +8,7 @@ import {
 } from '@mui/material';
 import Grid from '@mui/material/Grid'; // MUI v6 Standard
 
-import { doc, setDoc, Timestamp, collection, onSnapshot, addDoc, deleteDoc, getDocs, query, where } from 'firebase/firestore';
+import { doc, setDoc, Timestamp, collection, onSnapshot, addDoc, deleteDoc, getDocs, getDoc, query, where } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 
 // Icons
@@ -33,13 +33,14 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import GroupIcon from '@mui/icons-material/Group';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
+import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import { FAQ_CATEGORIES, DEFAULT_FAQS } from '../utils/faqConstants';
 import {
   DEFAULT_TEMPLATES, TEMPLATE_GROUPS, STATUS_LABELS,
   STATUS_CHIP_COLORS, PLACEHOLDER_REFERENCE,
 } from '../utils/notificationTemplateConstants';
 import { invalidateTemplateCache, invalidateChannelSettingsCache } from '../utils/sendPushNotification';
-import { testLlmConnection, DEFAULT_CLINICAL_SYSTEM_PROMPT } from '../utils/llmService';
+import { testLlmConnection, DEFAULT_CLINICAL_SYSTEM_PROMPT, DEFAULT_CALENDAR_AI_PROMPT } from '../utils/llmService';
 import { useConsentPolicy } from '../hooks/useConsentPolicy';
 import { CONSENT_TYPES } from '../utils/consentConstants';
 import { migrateExistingConsents } from '../utils/consentMigration';
@@ -189,6 +190,10 @@ export default function Settings() {
   const [llmTestLoading, setLlmTestLoading] = useState(false);
   const [llmSaving, setLlmSaving] = useState(false);
 
+  // --- PILLAR 11B: CALENDAR AI ASSISTANT STATE ---
+  const [calendarAIPrompt, setCalendarAIPrompt] = useState('');
+  const [calendarAISaving, setCalendarAISaving] = useState(false);
+
   // --- PILLAR 12: FAQ MANAGEMENT STATE ---
   const [faqList, setFaqList] = useState([]);
   const [faqDialogOpen, setFaqDialogOpen] = useState(false);
@@ -268,6 +273,15 @@ export default function Settings() {
           systemPrompt: data.systemPrompt ?? '',
         }));
       }
+    });
+
+    // 6b. Fetch Calendar AI system prompt (Pillar 11B)
+    getDoc(doc(db, 'system_prompts', 'calendar_assistant')).then((calSnap) => {
+      if (calSnap.exists()) {
+        setCalendarAIPrompt(calSnap.data().prompt || '');
+      }
+    }).catch((err) => {
+      console.error('[Settings] Failed to fetch calendar AI prompt:', err.message);
     });
 
     // 7. Fetch FAQs (Pillar 12)
@@ -786,6 +800,31 @@ export default function Settings() {
       setLlmTestResult({ ok: false, message: e.message || 'Test failed.' });
     } finally {
       setLlmTestLoading(false);
+    }
+  };
+
+  // --- PILLAR 11B: CALENDAR AI ASSISTANT HANDLER ---
+
+  /**
+   * Saves the Calendar AI system prompt to system_prompts/calendar_assistant.
+   * Falls back to DEFAULT_CALENDAR_AI_PROMPT when the field is empty (reset).
+   */
+  const handleSaveCalendarAIConfig = async () => {
+    setCalendarAISaving(true);
+    try {
+      const effectivePrompt = calendarAIPrompt.trim() || DEFAULT_CALENDAR_AI_PROMPT;
+      await setDoc(doc(db, 'system_prompts', 'calendar_assistant'), {
+        prompt:    effectivePrompt,
+        updatedAt: Timestamp.now(),
+        updatedBy: profile?.fullName || profile?.email || 'Unknown Admin',
+      });
+      await logSettingsEvent('UPDATE', 'system_prompts', 'calendar_assistant', {});
+      setToast({ open: true, message: 'Calendar AI prompt saved.', severity: 'success' });
+    } catch (err) {
+      console.error('[Settings.handleSaveCalendarAIConfig]:', err.message);
+      setToast({ open: true, message: `Failed to save: ${err.message}`, severity: 'error' });
+    } finally {
+      setCalendarAISaving(false);
     }
   };
 
@@ -2200,6 +2239,101 @@ export default function Settings() {
                 {llmSaving ? 'Saving...' : 'Save AI Configuration'}
               </Button>
 
+            </Box>
+          </Paper>
+        </Grid>
+
+        {/* PILLAR 11B: CALENDAR AI ASSISTANT */}
+        <Grid size={{ xs: 12 }}>
+          <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden' }}>
+            {/* Header */}
+            <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
+              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
+                <CalendarMonthIcon /> Calendar AI Assistant
+              </Typography>
+            </Box>
+            <Box sx={{ p: 3 }}>
+              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 3 }}>
+                Customize the Calendar AI scheduling assistant's behavior. This prompt is injected alongside
+                live calendar data when staff use the AI panel on the Calendar page.
+              </Typography>
+
+              {/* Shared Worker info box */}
+              <Box sx={{ mb: 3, p: 2, bgcolor: COLORS.kpiBlueBg, border: `2px solid ${COLORS.kpiBlueBorder}`, borderRadius: 0 }}>
+                <Typography sx={{ ...TYPE.label, color: COLORS.info, mb: 0.5 }}>
+                  Shares Worker Configuration
+                </Typography>
+                <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary }}>
+                  Calendar AI uses the same Cloudflare Worker URL and enable/disable toggle as the Clinical AI above.
+                  Enable AI Clinical Reasoning above and set a valid Worker URL to activate Calendar AI.
+                </Typography>
+              </Box>
+
+              {/* Calendar AI System Prompt */}
+              <TextField
+                fullWidth
+                multiline
+                minRows={6}
+                maxRows={14}
+                label="Calendar AI System Prompt"
+                value={calendarAIPrompt || DEFAULT_CALENDAR_AI_PROMPT}
+                onChange={(e) => setCalendarAIPrompt(e.target.value)}
+                helperText="Customize scheduling intelligence instructions. Calendar data is injected dynamically per query."
+                sx={{
+                  mb: 2,
+                  bgcolor: 'white',
+                  '& .MuiOutlinedInput-root': {
+                    borderRadius: 0,
+                    fontSize: '0.8rem',
+                    fontFamily: 'monospace',
+                    lineHeight: 1.6,
+                    '& fieldset': { border: `2px solid ${COLORS.accent}33` },
+                  },
+                }}
+              />
+
+              {/* Reset to default */}
+              <Box sx={{ mb: 3 }}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<RefreshIcon />}
+                  onClick={() => setCalendarAIPrompt('')}
+                  sx={{
+                    fontWeight: 900,
+                    fontSize: '0.7rem',
+                    borderRadius: 0,
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.5,
+                    borderColor: COLORS.accentLight,
+                    color: COLORS.textSecondary,
+                    '&:hover': { bgcolor: COLORS.cream },
+                  }}
+                >
+                  Reset to Default Prompt
+                </Button>
+              </Box>
+
+              {/* Save button */}
+              <Button
+                variant="contained"
+                startIcon={<SaveIcon />}
+                onClick={handleSaveCalendarAIConfig}
+                disabled={calendarAISaving}
+                sx={{
+                  fontWeight: 900,
+                  px: 4,
+                  py: 1,
+                  borderRadius: 0,
+                  bgcolor: COLORS.accent,
+                  border: `2px solid ${COLORS.brand}`,
+                  boxShadow: '4px 4px 0px rgba(93,64,55,0.1)',
+                  '&:hover': { bgcolor: COLORS.brand },
+                  '&.Mui-disabled': { bgcolor: COLORS.textMuted, color: '#fff' },
+                }}
+              >
+                {calendarAISaving ? 'Saving...' : 'Save Calendar AI Prompt'}
+              </Button>
             </Box>
           </Paper>
         </Grid>

@@ -30,9 +30,13 @@ import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import PaidIcon from '@mui/icons-material/Paid';
 import UndoIcon from '@mui/icons-material/Undo';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, getDoc, doc, addDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { COLORS, TYPE, FONT } from '../theme/designTokens';
+import { chatWithHistory, DEFAULT_CALENDAR_AI_PROMPT } from '../utils/llmService';
+import { normalizeStatus } from '../utils/statusConstants';
+import CalendarAIPanel from '../components/CalendarAIPanel';
+import PsychologyIcon from '@mui/icons-material/Psychology';
 import { useCalendarData } from '../hooks/useCalendarData';
 import { useClinicSettings } from '../hooks/useClinicSettings';
 import { useQueueActions } from '../features/Queue/useQueueActions';
@@ -314,6 +318,7 @@ const AppointmentBlock = React.memo(function AppointmentBlock({
   onHoverEnter,
   onHoverLeave,
   onClick,
+  onContextMenu,
 }) {
   const borderColor  = getDeptColor(appt.serviceCategory, departments);
   const statusColor  = STATUS_COLORS[appt.status] || COLORS.textMuted;
@@ -324,6 +329,7 @@ const AppointmentBlock = React.memo(function AppointmentBlock({
       onMouseEnter={(e) => onHoverEnter(e, appt)}
       onMouseLeave={onHoverLeave}
       onClick={(e) => { e.stopPropagation(); onClick(e, appt); }}
+      onContextMenu={onContextMenu ? (e) => { e.preventDefault(); e.stopPropagation(); onContextMenu(e, appt); } : undefined}
       sx={{
         bgcolor:    COLORS.cardBg,
         borderLeft: `3px solid ${borderColor}`,
@@ -397,6 +403,8 @@ const WeekHourCell = React.memo(function WeekHourCell({
   onHoverLeave,
   onAppointmentClick,
   onEmptySlotClick,
+  onApptContextMenu,
+  onEmptySlotContextMenu,
 }) {
   const visibleAppts  = hourAppts.slice(0, 3);
   const overflowCount = hourAppts.length - 3;
@@ -405,6 +413,12 @@ const WeekHourCell = React.memo(function WeekHourCell({
     <Box
       onClick={() => {
         if (!isClosed && !isLunch) onEmptySlotClick(dateStr, hour);
+      }}
+      onContextMenu={(e) => {
+        if (!isClosed && !isLunch && onEmptySlotContextMenu) {
+          e.preventDefault();
+          onEmptySlotContextMenu(dateStr, hour);
+        }
       }}
       sx={{
         height: 60,
@@ -472,6 +486,7 @@ const WeekHourCell = React.memo(function WeekHourCell({
               onHoverEnter={onHoverEnter}
               onHoverLeave={onHoverLeave}
               onClick={onAppointmentClick}
+              onContextMenu={onApptContextMenu}
             />
           ))}
           {overflowCount > 0 && (
@@ -513,6 +528,8 @@ function WeekView({
   onHoverLeave,
   onAppointmentClick,
   onEmptySlotClick,
+  onApptContextMenu,
+  onEmptySlotContextMenu,
 }) {
   const openHour  = settings.openHour  ?? 8;
   const closeHour = settings.closeHour ?? 17;
@@ -706,6 +723,12 @@ function WeekView({
                         onClick={() => {
                           if (!isClosed && !isLunch) onEmptySlotClick(dateStr, hour);
                         }}
+                        onContextMenu={(e) => {
+                          if (!isClosed && !isLunch && onEmptySlotContextMenu) {
+                            e.preventDefault();
+                            onEmptySlotContextMenu(dateStr, hour);
+                          }
+                        }}
                         sx={{
                           borderLeft: `2px solid ${dept.color || COLORS.textMuted}`,
                           px: 0.25,
@@ -729,6 +752,7 @@ function WeekView({
                             onHoverEnter={onHoverEnter}
                             onHoverLeave={onHoverLeave}
                             onClick={onAppointmentClick}
+                            onContextMenu={onApptContextMenu}
                           />
                         ))}
                       </Box>
@@ -760,6 +784,8 @@ function WeekView({
                   onHoverLeave={onHoverLeave}
                   onAppointmentClick={onAppointmentClick}
                   onEmptySlotClick={onEmptySlotClick}
+                  onApptContextMenu={onApptContextMenu}
+                  onEmptySlotContextMenu={onEmptySlotContextMenu}
                 />
               </Box>
             );
@@ -802,7 +828,7 @@ function getDailyCapacityLevel(totalAppts, openHour, closeHour, minSlotInterval,
   return               { level: 'full',     percent };
 }
 
-function MonthView({ anchorDate, dayMap, getSlotCapacity, isClosedDate, isWorkingDay, settings, setView, setAnchorDate }) {
+function MonthView({ anchorDate, dayMap, getSlotCapacity, isClosedDate, isWorkingDay, settings, setView, setAnchorDate, onDayContextMenu }) {
   const openHour        = settings.openHour    ?? 8;
   const closeHour       = settings.closeHour   ?? 17;
   const minSlotInterval = settings.minSlotInterval || 30;
@@ -917,6 +943,10 @@ function MonthView({ anchorDate, dayMap, getSlotCapacity, isClosedDate, isWorkin
             <Box
               key={dateStr}
               onClick={() => handleDayClick(dayDate)}
+              onContextMenu={onDayContextMenu ? (e) => {
+                e.preventDefault();
+                onDayContextMenu(dateStr, totalAppts);
+              } : undefined}
               sx={{
                 minHeight: 90,
                 p: 1,
@@ -1124,6 +1154,18 @@ export default function Calendar() {
     setToast({ open: true, message, severity });
   }, []);
 
+  // ── Calendar AI state ───────────────────────
+  const [calAIOpen,         setCalAIOpen]         = useState(false);
+  const [calAIMessages,     setCalAIMessages]     = useState([]);
+  const [calAIInput,        setCalAIInput]        = useState('');
+  const [calAILoading,      setCalAILoading]      = useState(false);
+  const [calAIError,        setCalAIError]        = useState('');
+  const [calAIContextLabel, setCalAIContextLabel] = useState(null);
+  const [llmConfig,         setLlmConfig]         = useState({ enabled: false, workerUrl: '' });
+  const [calAISystemPrompt, setCalAISystemPrompt] = useState('');
+  const calAIAbortRef          = useRef(false);
+  const lastCalAIUserContentRef = useRef('');
+
   // ── Department + supplementary data ─────────
   const [departments,         setDepartments]         = useState([]);
   const [inventoryList,       setInventoryList]       = useState([]);
@@ -1135,12 +1177,14 @@ export default function Calendar() {
   useEffect(() => {
     const loadSupplementaryData = async () => {
       try {
-        const [deptSnap, invSnap, srvSnap, catSnap, usersSnap] = await Promise.all([
+        const [deptSnap, invSnap, srvSnap, catSnap, usersSnap, llmSnap, calPromptSnap] = await Promise.all([
           getDocs(collection(db, 'departments')),
           getDocs(collection(db, 'inventory')),
           getDocs(query(collection(db, 'services'), where('isArchived', '!=', true))),
           getDocs(collection(db, 'inventory_categories')),
           getDocs(collection(db, 'users')),
+          getDoc(doc(db, 'clinic_settings', 'llm_config')),
+          getDoc(doc(db, 'system_prompts', 'calendar_assistant')),
         ]);
 
         setDepartments(deptSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
@@ -1164,6 +1208,17 @@ export default function Calendar() {
                 ['admin', 'staff', 'veterinarian', 'groomer'].includes(u.accessLevel)
             )
         );
+
+        if (llmSnap.exists()) {
+          setLlmConfig({
+            enabled:   llmSnap.data().enabled ?? false,
+            workerUrl: llmSnap.data().workerUrl ?? '',
+          });
+        }
+
+        if (calPromptSnap.exists()) {
+          setCalAISystemPrompt(calPromptSnap.data().prompt || '');
+        }
       } catch (err) {
         console.error('[Calendar.loadSupplementaryData]:', err.message);
       }
@@ -1255,6 +1310,307 @@ export default function Calendar() {
     ? todayStr >= toLocalDateStr(weekStart) && todayStr <= toLocalDateStr(weekEnd)
     : toLocalDateStr(new Date()).slice(0, 7) === toLocalDateStr(anchorDate).slice(0, 7);
 
+  // ── Abort Calendar AI on unmount ────────────
+  useEffect(() => {
+    return () => { calAIAbortRef.current = true; };
+  }, []);
+
+  // ── Calendar context builder ─────────────────
+  /**
+   * Formats all currently-loaded calendar data into a plain-text context block.
+   * Appended to the system prompt on every AI query so the LLM has full
+   * situational awareness without needing JSON parsing.
+   */
+  const buildCalendarContext = useCallback(() => {
+    const lines = [];
+    const now = new Date();
+
+    lines.push(`CURRENT VIEW: ${view === 'week' ? 'Week' : 'Month'} — ${dateLabel}`);
+    lines.push(`TODAY: ${toLocalDateStr(now)} (${now.toLocaleDateString('en-US', { weekday: 'long' })})`);
+    lines.push('');
+
+    lines.push('APPOINTMENTS IN VIEW:');
+    if (appointments.length === 0) {
+      lines.push('  (none)');
+    } else {
+      const byDate = {};
+      for (const appt of appointments) {
+        const d = appt.jsScheduled ? toLocalDateStr(appt.jsScheduled) : 'unknown';
+        if (!byDate[d]) byDate[d] = [];
+        byDate[d].push(appt);
+      }
+      for (const [dateStr, appts] of Object.entries(byDate).sort()) {
+        lines.push(`  ${dateStr} (${appts.length} appointments):`);
+        for (const a of appts) {
+          const time = a.jsScheduled ? formatTime(a.jsScheduled) : '?';
+          const svcs = (a.services || [])
+            .map((s) => (typeof s === 'string' ? s : s.serviceName || s.name || ''))
+            .filter(Boolean)
+            .join(', ') || a.primaryService || '—';
+          lines.push(`    - ${time} | ${a.petName || '?'} (${a.petSpecies || '?'}) | Owner: ${a.ownerName || '?'} | Services: ${svcs} | Status: ${a.status} | Dept: ${a.serviceCategory || '?'} | Vet: ${a.assignedVet || a.assignedVetName || 'Unassigned'}`);
+        }
+      }
+    }
+    lines.push('');
+
+    lines.push('AVAILABLE SERVICES:');
+    for (const svc of servicesList) {
+      const dur   = svc.duration ? `${svc.duration}min` : '?';
+      const dept  = svc.department || svc.serviceCategory || '?';
+      const price = svc.price != null ? `P${svc.price}` : '?';
+      lines.push(`  - ${svc.name} | ${dept} | ${dur} | ${price}`);
+    }
+    lines.push('');
+
+    lines.push('STAFF:');
+    for (const v of vets) {
+      const depts = (v.departments || []).join(', ') || v.accessLevel || '?';
+      lines.push(`  - ${v.fullName || v.email || '?'} | ${depts}`);
+    }
+    lines.push('');
+
+    lines.push('CLINIC SETTINGS:');
+    lines.push(`  Hours: ${settings.openHour ?? 8}:00 - ${settings.closeHour ?? 17}:00`);
+    lines.push(`  Slot interval: ${settings.minSlotInterval || 30} min`);
+    lines.push(`  Lunch: ${settings.lunchEnabled ? `${settings.lunchStart ?? 12}:00 - ${settings.lunchEnd ?? 13}:00` : 'No lunch break configured'}`);
+    const workDays = (settings.workingDays || [0,1,2,3,4,5,6])
+      .map((d) => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d])
+      .join(', ');
+    lines.push(`  Working days: ${workDays}`);
+    if ((settings.closedDates || []).length > 0) {
+      lines.push(`  Closed dates: ${settings.closedDates.join(', ')}`);
+    }
+    lines.push('');
+
+    lines.push('DEPARTMENT CAPACITIES:');
+    for (const dept of departments) {
+      const maxSlots = dept.maxSlots || dept.capacity || 'unlimited';
+      lines.push(`  - ${dept.name} | Max: ${maxSlots} | Color: ${dept.color || 'none'}`);
+    }
+    lines.push('');
+
+    lines.push('INVENTORY (medicines & vaccines):');
+    const medItems = joinedInventory.filter(
+      (i) => i.isMedicine || i.productClass === 'medicine'
+    );
+    for (const item of medItems.slice(0, 30)) {
+      lines.push(`  - ${item.name} | Stock: ${item.quantity ?? '?'} | ${item.productClass || 'medicine'}`);
+    }
+    if (medItems.length > 30) lines.push(`  ... and ${medItems.length - 30} more items`);
+    lines.push('');
+
+    // PET CONTEXT — deduplicated pet list from appointment docs (v1: appointment-level data only)
+    lines.push('PET CONTEXT (from appointment data):');
+    const seenPets = new Set();
+    for (const appt of appointments) {
+      const petKey = appt.petId || appt.petName;
+      if (!petKey || seenPets.has(petKey)) continue;
+      seenPets.add(petKey);
+      lines.push(`  - ${appt.petName || '?'} | ${appt.petSpecies || '?'} | ${appt.petBreed || '?'} | Owner: ${appt.ownerName || '?'}`);
+    }
+    if (seenPets.size === 0) lines.push('  (none in view)');
+    lines.push('');
+
+    return lines.join('\n');
+  }, [appointments, servicesList, vets, departments, joinedInventory, settings, view, dateLabel]);
+
+  // ── Core LLM caller ──────────────────────────
+  /**
+   * Sends a message to the Calendar AI with a full calendar-data context appendix.
+   * Manages sliding window (cap 20 messages), pre/post audit-logs, and abort guard.
+   */
+  const runCalendarAI = useCallback(async (userText, { forceInitial = false } = {}) => {
+    if (!llmConfig.enabled || !llmConfig.workerUrl) return;
+    if (calAILoading) return;
+    if (!userText?.trim()) return;
+
+    lastCalAIUserContentRef.current = userText;
+
+    const baseMessages  = forceInitial ? [] : calAIMessages;
+    const userMsg       = { role: 'user', content: userText };
+    const updatedMessages = [...baseMessages, userMsg];
+    const cappedMessages  = updatedMessages.length > 20
+      ? updatedMessages.slice(-20)
+      : updatedMessages;
+
+    calAIAbortRef.current = false;
+    setCalAIMessages(cappedMessages);
+    setCalAILoading(true);
+    setCalAIError('');
+    setCalAIInput('');
+
+    const basePrompt     = calAISystemPrompt || DEFAULT_CALENDAR_AI_PROMPT;
+    const contextBlock   = buildCalendarContext();
+    const effectivePrompt = `${basePrompt}\n\n--- CURRENT CALENDAR DATA ---\n${contextBlock}`;
+
+    const auditBase = {
+      source:    'calendar',
+      staffId:   user?.uid || '',
+      staffName: profile?.fullName || profile?.email || 'Unknown',
+      timestamp: Timestamp.now(),
+    };
+
+    let auditRef;
+    try {
+      auditRef = await addDoc(collection(db, 'llm_audit_logs'), {
+        ...auditBase,
+        type:          cappedMessages.length <= 1 ? 'request' : 'follow_up',
+        status:        'pending',
+        promptSummary: userText.substring(0, 200),
+        messageCount:  cappedMessages.length,
+      });
+    } catch (auditErr) {
+      console.error('[Calendar.runCalendarAI] Audit pre-log failed:', auditErr.message);
+    }
+
+    try {
+      const result = await chatWithHistory({
+        messages:     cappedMessages,
+        systemPrompt: effectivePrompt,
+        workerUrl:    llmConfig.workerUrl,
+      });
+
+      if (!calAIAbortRef.current) {
+        setCalAIMessages((prev) => [...prev, { role: 'assistant', content: result.text }]);
+      }
+
+      if (auditRef) {
+        await updateDoc(auditRef, {
+          status:          'success',
+          responseSummary: (result.text || '').substring(0, 500),
+          tokenCount:      result.tokenCount ?? null,
+          completedAt:     Timestamp.now(),
+        });
+      }
+    } catch (err) {
+      if (!calAIAbortRef.current) {
+        setCalAIError(err.message || 'AI request failed.');
+      }
+      if (auditRef) {
+        await updateDoc(auditRef, {
+          status:       'error',
+          errorMessage: err.message || 'Unknown error',
+          completedAt:  Timestamp.now(),
+        }).catch(() => {});
+      }
+    } finally {
+      if (!calAIAbortRef.current) {
+        setCalAILoading(false);
+      }
+    }
+  }, [llmConfig, calAILoading, calAIMessages, calAISystemPrompt, buildCalendarContext, user, profile]);
+
+  /**
+   * fetchExpandedContext — stub for future on-demand expansion.
+   *
+   * Fetches appointments for an arbitrary date range outside the current
+   * calendar view. Not wired into auto-detection in v1 — the system prompt
+   * instructs the AI to ask the user to navigate to the relevant range first.
+   * Retained here as the expansion point for a future suggest-and-confirm flow.
+   *
+   * @param {Date} queryStartDate
+   * @param {Date} queryEndDate
+   * @returns {Promise<Array>}
+   */
+  const fetchExpandedContext = useCallback(async (queryStartDate, queryEndDate) => {
+    try {
+      const expandedQuery = query(
+        collection(db, 'appointments'),
+        where('scheduledDate', '>=', Timestamp.fromDate(queryStartDate)),
+        where('scheduledDate', '<=', Timestamp.fromDate(queryEndDate)),
+        orderBy('scheduledDate', 'asc')
+      );
+      const snap = await getDocs(expandedQuery);
+      return snap.docs.map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          ...data,
+          status:      normalizeStatus(data.status),
+          jsScheduled: data.scheduledDate?.toDate?.() ?? null,
+        };
+      });
+    } catch (err) {
+      console.error('[Calendar.fetchExpandedContext]:', err.message);
+      return [];
+    }
+  }, []);
+
+  // ── Quick-action chip handler ─────────────────
+  const handleChipClick = useCallback((chipType) => {
+    const queries = {
+      briefing:          "Give me a briefing for tomorrow's schedule — how many appointments, which departments are busiest, any potential conflicts, and what to prepare.",
+      find_slot:         'What are the best available slots for the next 3 days? Consider department capacity, staff availability, and avoid overbooking.',
+      staff_availability: 'Show me staff availability and workload for the current view period. Who is busiest? Who has capacity?',
+      week_summary:      "Summarize this week's schedule — total appointments by day, busiest departments, notable patterns, and any gaps.",
+      conflicts:         'Detect any scheduling conflicts, overbooking, understaffing, or large gaps in the current view. Flag anything that needs attention.',
+    };
+    const query = queries[chipType] || chipType;
+    if (!calAIOpen) setCalAIOpen(true);
+    runCalendarAI(query);
+  }, [calAIOpen, runCalendarAI]);
+
+  // ── Calendar AI panel control handlers ───────
+  const handleCalAIReset = useCallback(() => {
+    setCalAIMessages([]);
+    setCalAIError('');
+    setCalAIContextLabel(null);
+  }, []);
+
+  const handleCalAIRetry = useCallback(() => {
+    if (lastCalAIUserContentRef.current) {
+      runCalendarAI(lastCalAIUserContentRef.current);
+    }
+  }, [runCalendarAI]);
+
+  const handleCalAIClose = useCallback(() => {
+    calAIAbortRef.current = true;
+    setCalAIOpen(false);
+    // Conversation intentionally persists — re-opening shows prior messages.
+    // Only Reset clears the conversation.
+  }, []);
+
+  // ── Right-click on month day cell ────────────
+  const handleDayContextMenu = useCallback((dateStr, apptCount) => {
+    const dayLabel = new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-US', {
+      weekday: 'long', month: 'short', day: 'numeric',
+    });
+    const countClause = apptCount > 0
+      ? ` (${apptCount} appointment${apptCount !== 1 ? 's' : ''} scheduled)`
+      : ' (no appointments scheduled)';
+    const contextQuery = `Summarize ${dayLabel}'s schedule${countClause}. How many appointments total, which departments are involved, and are there any conflicts or capacity concerns?`;
+    setCalAIContextLabel(dayLabel);
+    setCalAIOpen(true);
+    runCalendarAI(contextQuery);
+  }, [runCalendarAI]);
+
+  // ── Right-click on appointment block ─────────
+  const handleApptContextMenu = useCallback((e, appt) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const time     = appt.jsScheduled ? formatTime(appt.jsScheduled) : '';
+    const services = (appt.services || [])
+      .map((s) => (typeof s === 'string' ? s : s.serviceName || s.name))
+      .filter(Boolean)
+      .join(', ') || appt.primaryService || '';
+    const contextQuery = `Tell me about this appointment: ${appt.petName || 'Unknown'} (${appt.petSpecies || '?'}) — Owner: ${appt.ownerName || '?'} — Services: ${services} — ${time} — Status: ${appt.status}. What should staff prepare? Any scheduling considerations?`;
+
+    setCalAIContextLabel(`${appt.petName || 'Unknown'} · ${services || 'No service'} · ${time}`);
+    setCalAIOpen(true);
+    runCalendarAI(contextQuery);
+  }, [runCalendarAI]);
+
+  // ── Right-click on empty slot ─────────────────
+  const handleEmptySlotContextMenu = useCallback((dateStr, hour) => {
+    const dayLabel  = new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+    const timeLabel = formatHourLabel(hour);
+    const contextQuery = `What can I schedule at ${timeLabel} on ${dayLabel} (${dateStr})? Check department capacity, staff availability, and suggest suitable services.`;
+
+    setCalAIContextLabel(`${dayLabel} · ${timeLabel}`);
+    setCalAIOpen(true);
+    runCalendarAI(contextQuery);
+  }, [runCalendarAI]);
+
   // ── Keyboard navigation ──────────────────────
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -1265,7 +1621,8 @@ export default function Calendar() {
       if (e.key === 'ArrowRight') { handleNext(); return; }
       if (e.key === 't' || e.key === 'T') { handleToday(); return; }
       if (e.key === 'w' || e.key === 'W') { setView('week'); return; }
-      if (e.key === 'm' || e.key === 'M') { setView('month'); }
+      if (e.key === 'm' || e.key === 'M') { setView('month'); return; }
+      if (e.key === 'a' || e.key === 'A') { setCalAIOpen((prev) => !prev); }
     };
 
     document.addEventListener('keydown', handleKeyDown);
@@ -1631,6 +1988,28 @@ export default function Calendar() {
           >
             <RefreshIcon fontSize="small" />
           </IconButton>
+
+          {/* Ask AI button — visible only when LLM is enabled */}
+          {llmConfig.enabled && (
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<PsychologyIcon sx={{ fontSize: '16px !important' }} />}
+              onClick={() => setCalAIOpen((prev) => !prev)}
+              sx={{
+                borderRadius: 0,
+                bgcolor: calAIOpen ? COLORS.skyHover : COLORS.sky,
+                fontWeight: 900,
+                fontSize: '0.7rem',
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+                px: 2,
+                '&:hover': { bgcolor: COLORS.skyHover },
+              }}
+            >
+              {calAIOpen ? 'Close AI' : 'Ask AI'}
+            </Button>
+          )}
         </Box>
 
         {/* Row 2: Department filter chips + lanes toggle */}
@@ -1721,74 +2100,108 @@ export default function Calendar() {
       </Box>
 
       {/* ── BODY ──────────────────────────────────── */}
-      <Box sx={{ flexGrow: 1, overflow: 'hidden', p: 2 }}>
-        {/* Error state */}
-        {error && !loading && (
-          <Alert
-            severity="error"
-            sx={{ borderRadius: 0, mb: 2, border: `1px solid ${COLORS.danger}` }}
-            action={
-              <Button size="small" onClick={refresh} sx={{ borderRadius: 0, fontWeight: 700 }}>
-                RETRY
-              </Button>
-            }
-          >
-            Failed to load appointments: {error}
-          </Alert>
-        )}
+      <Box sx={{ flexGrow: 1, overflow: 'hidden', display: 'flex' }}>
 
-        {/* Loading skeleton */}
-        {loading && <CalendarSkeleton view={view} />}
+        {/* Calendar grid area — shrinks when AI panel is open */}
+        <Box sx={{ flex: 1, overflow: 'hidden', p: 2, minWidth: 0 }}>
+          {/* Error state */}
+          {error && !loading && (
+            <Alert
+              severity="error"
+              sx={{ borderRadius: 0, mb: 2, border: `1px solid ${COLORS.danger}` }}
+              action={
+                <Button size="small" onClick={refresh} sx={{ borderRadius: 0, fontWeight: 700 }}>
+                  RETRY
+                </Button>
+              }
+            >
+              Failed to load appointments: {error}
+            </Alert>
+          )}
 
-        {/* Empty state */}
-        {!loading && !error && appointments.length === 0 && (
-          <Box sx={{ textAlign: 'center', py: 10 }}>
-            <CalendarMonthIcon sx={{ fontSize: 64, color: COLORS.textMuted, mb: 2 }} />
-            <Typography sx={{ ...TYPE.heading, color: COLORS.textMuted }}>
-              No appointments scheduled
-            </Typography>
-            <Typography sx={{ ...TYPE.body, color: COLORS.textMuted, mt: 1 }}>
-              {view === 'week'
-                ? `No appointments found for ${dateLabel}.`
-                : `No appointments in ${dateLabel}.`}
-            </Typography>
+          {/* Loading skeleton */}
+          {loading && <CalendarSkeleton view={view} />}
+
+          {/* Empty state */}
+          {!loading && !error && appointments.length === 0 && (
+            <Box sx={{ textAlign: 'center', py: 10 }}>
+              <CalendarMonthIcon sx={{ fontSize: 64, color: COLORS.textMuted, mb: 2 }} />
+              <Typography sx={{ ...TYPE.heading, color: COLORS.textMuted }}>
+                No appointments scheduled
+              </Typography>
+              <Typography sx={{ ...TYPE.body, color: COLORS.textMuted, mt: 1 }}>
+                {view === 'week'
+                  ? `No appointments found for ${dateLabel}.`
+                  : `No appointments in ${dateLabel}.`}
+              </Typography>
+            </Box>
+          )}
+
+          {/* Calendar grid — render even when appointments.length === 0 (shows empty grid structure) */}
+          {!loading && !error && (
+            <>
+              {view === 'week' && (
+                <WeekView
+                  weekStart={weekStart}
+                  dayMap={dayMap}
+                  getSlotCapacity={getSlotCapacity}
+                  isClosedDate={isClosedDate}
+                  isWorkingDay={isWorkingDay}
+                  isLunchHour={isLunchHour}
+                  departments={departments}
+                  settings={settings}
+                  showLanes={showLanes}
+                  onHoverEnter={handleApptHoverEnter}
+                  onHoverLeave={handleApptHoverLeave}
+                  onAppointmentClick={handleApptClick}
+                  onEmptySlotClick={handleEmptySlotClick}
+                  onApptContextMenu={handleApptContextMenu}
+                  onEmptySlotContextMenu={handleEmptySlotContextMenu}
+                />
+              )}
+
+              {view === 'month' && (
+                <MonthView
+                  anchorDate={anchorDate}
+                  dayMap={dayMap}
+                  getSlotCapacity={getSlotCapacity}
+                  isClosedDate={isClosedDate}
+                  isWorkingDay={isWorkingDay}
+                  settings={settings}
+                  setView={setView}
+                  setAnchorDate={setAnchorDate}
+                  onDayContextMenu={handleDayContextMenu}
+                />
+              )}
+            </>
+          )}
+        </Box>
+
+        {/* AI Panel — collapsible right column (shrinks calendar, not overlay) */}
+        {calAIOpen && (
+          <Box sx={{
+            width: { xs: 320, lg: 380 },
+            flexShrink: 0,
+            borderLeft: `2px solid ${COLORS.border}`,
+            bgcolor: COLORS.surface,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+          }}>
+            <CalendarAIPanel
+              loading={calAILoading}
+              messages={calAIMessages}
+              error={calAIError}
+              followUpInput={calAIInput}
+              onSendMessage={(text) => runCalendarAI(text)}
+              onFollowUpChange={setCalAIInput}
+              onReset={handleCalAIReset}
+              onRetry={handleCalAIRetry}
+              onClose={handleCalAIClose}
+              onChipClick={handleChipClick}
+              contextLabel={calAIContextLabel}
+            />
           </Box>
-        )}
-
-        {/* Calendar grid — render even when appointments.length === 0 (shows empty grid structure) */}
-        {!loading && !error && (
-          <>
-            {view === 'week' && (
-              <WeekView
-                weekStart={weekStart}
-                dayMap={dayMap}
-                getSlotCapacity={getSlotCapacity}
-                isClosedDate={isClosedDate}
-                isWorkingDay={isWorkingDay}
-                isLunchHour={isLunchHour}
-                departments={departments}
-                settings={settings}
-                showLanes={showLanes}
-                onHoverEnter={handleApptHoverEnter}
-                onHoverLeave={handleApptHoverLeave}
-                onAppointmentClick={handleApptClick}
-                onEmptySlotClick={handleEmptySlotClick}
-              />
-            )}
-
-            {view === 'month' && (
-              <MonthView
-                anchorDate={anchorDate}
-                dayMap={dayMap}
-                getSlotCapacity={getSlotCapacity}
-                isClosedDate={isClosedDate}
-                isWorkingDay={isWorkingDay}
-                settings={settings}
-                setView={setView}
-                setAnchorDate={setAnchorDate}
-              />
-            )}
-          </>
         )}
       </Box>
 

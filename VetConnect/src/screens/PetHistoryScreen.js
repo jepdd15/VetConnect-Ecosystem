@@ -46,7 +46,8 @@ import { useClinicContact } from "../hooks/useClinicContact";
 import { safeDate, formatDisplayDate, calculateAge } from "../utils/helpers";
 import { resolveDepartmentForRecord } from '../utils/resolveDepartmentForRecord';
 import { COLORS, SHADOW, SPACING, FONTS } from '../theme/mobileTokens';
-import SparkLine from '../components/SparkLine';
+import { LineChart } from 'react-native-chart-kit';
+// SparkLine retained as fallback; LineChart used at all render sites.
 import VitalsZoomModal from '../components/VitalsZoomModal';
 import LabZoomModal from '../components/LabZoomModal';
 import PetHistoryAISheet from '../components/PetHistoryAISheet';
@@ -62,6 +63,31 @@ import { fetchVaccineCatalog, buildVaccinationStatus } from '../utils/vaccineHel
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
+
+// ---------------------------------------------------------------------------
+// Chart constants (react-native-chart-kit)
+// Shared config for all LineChart instances in this screen.
+// Colors match Modern Clinical Neubrutalism design tokens from mobileTokens.js.
+const SCREEN_W = Dimensions.get('window').width;
+
+const CHART_CONFIG_BASE = {
+  backgroundColor: '#FFF8E1',        // COLORS.cream
+  backgroundGradientFrom: '#FFFFFF',
+  backgroundGradientTo: '#FFFFFF',
+  decimalPlaces: 1,
+  color: (opacity = 1) => `rgba(58, 190, 249, ${opacity})`,  // COLORS.sky
+  labelColor: (opacity = 1) => `rgba(93, 64, 55, ${opacity})`, // COLORS.accent
+  style: { borderRadius: 0 },
+  propsForDots: {
+    r: '4',
+    strokeWidth: '2',
+    stroke: '#3E2723', // COLORS.brand
+  },
+  propsForBackgroundLines: {
+    strokeDasharray: '',              // solid grid lines
+    stroke: 'rgba(0,0,0,0.05)',
+  },
+};
 
 // ---------------------------------------------------------------------------
 // T4.194 Item 10: Vaccine urgency sort order — overdue first, unknown last
@@ -518,6 +544,48 @@ const VITAL_Y_DOMAINS = {
   crt:  { min: 0, max: 5  },
 };
 
+// ---------------------------------------------------------------------------
+// Vitals that use a BulletGauge (discrete/bounded) vs. a LineChart (continuous).
+// Keys must match VITALS_CONFIG and vitalsChartData property names.
+// ---------------------------------------------------------------------------
+const LINE_VITAL_KEYS   = ['weight', 'temp', 'hr', 'rr'];
+const BULLET_VITAL_KEYS = ['crt', 'bcs', 'pain'];
+
+/**
+ * Zone configurations for each bullet vital.
+ * start/end are inclusive boundary values on the stated scale.
+ * Colors are drawn from COLORS tokens; opacity is applied at render time.
+ */
+const BULLET_VITALS = {
+  crt: {
+    title: 'CAPILLARY REFILL',
+    min: 0, max: 5, unit: 's',
+    zones: [
+      { start: 0,   end: 0.9, color: COLORS.warning, label: 'FAST'    },
+      { start: 1,   end: 2,   color: COLORS.success,  label: 'NORMAL'  },
+      { start: 2.1, end: 5,   color: COLORS.danger,   label: 'DELAYED' },
+    ],
+  },
+  bcs: {
+    title: 'BODY CONDITION (BCS)',
+    min: 1, max: 9, unit: '/9',
+    zones: [
+      { start: 1, end: 3, color: COLORS.warning, label: 'UNDERWEIGHT' },
+      { start: 4, end: 5, color: COLORS.success,  label: 'IDEAL'       },
+      { start: 6, end: 9, color: COLORS.warning, label: 'OVERWEIGHT'  },
+    ],
+  },
+  pain: {
+    title: 'PAIN SCORE',
+    min: 0, max: 10, unit: '/10',
+    zones: [
+      { start: 0, end: 2,  color: COLORS.success,  label: 'NONE'     },
+      { start: 3, end: 5,  color: COLORS.warning, label: 'MILD-MOD' },
+      { start: 6, end: 10, color: COLORS.danger,   label: 'SEVERE'   },
+    ],
+  },
+};
+
 /**
  * Renders a delta annotation for a vitals sparkline data array.
  * Shows the change between the last two readings in neutral muted colour —
@@ -654,6 +722,306 @@ function renderEnhancedDelta(key, data, unit, petSpecies) {
     </Text>
   );
 }
+
+// ---------------------------------------------------------------------------
+// BulletGauge — inline sub-component for discrete/bounded vitals (CRT, BCS, Pain).
+//
+// Renders a horizontal zone bar with colored clinical segments, positioned reading
+// dots with date labels, a connector line between consecutive readings, and a
+// summary/trend line. Pure View-based — zero external dependencies.
+//
+// Circle dots are the only borderRadius exception (borderRadius:5 on 10px dots).
+// All other elements follow neubrutalism: borderRadius:0.
+// ---------------------------------------------------------------------------
+
+/**
+ * Derives which zone a numeric value falls into for a given BULLET_VITALS config.
+ * Returns the first zone whose [start, end] range includes the value.
+ *
+ * @param {number} value
+ * @param {{ start: number, end: number, color: string, label: string }[]} zones
+ * @returns {{ color: string, label: string } | null}
+ */
+function resolveZone(value, zones) {
+  return zones.find(z => value >= z.start && value <= z.end) ?? null;
+}
+
+/**
+ * BulletGauge — horizontal gauge for discrete vitals with clinical zone coloring.
+ *
+ * @param {object} props
+ * @param {string} props.title - Display title (e.g. "BODY CONDITION (BCS)")
+ * @param {{ label: string, value: number }[]} props.data - Chronological readings
+ * @param {number} props.min - Scale minimum
+ * @param {number} props.max - Scale maximum
+ * @param {{ start: number, end: number, color: string, label: string }[]} props.zones
+ * @param {string} props.unit - Unit suffix (e.g. '/9', 's')
+ * @param {{ isNormal: boolean, label: string } | null} props.statusLabel
+ * @param {string | null} props.interpretation
+ */
+function BulletGauge({ title, data, min, max, zones, unit, statusLabel, interpretation }) {
+  const scaleRange = max - min;
+
+  // Percentage offset of a value on the 0–100% scale bar.
+  const toPercent = (value) => ((value - min) / scaleRange) * 100;
+
+  // Summary trend: compare first vs last value in the data array.
+  const summaryTrend = (() => {
+    if (data.length === 0) return null;
+    const latest = data[data.length - 1].value;
+    const countStr = `${data.length} reading${data.length === 1 ? '' : 's'}`;
+
+    if (data.length === 1) {
+      return `Current: ${latest}${unit} · ${countStr}`;
+    }
+
+    const first = data[0].value;
+    const diff = latest - first;
+    let trendStr = 'Stable';
+    if (Math.abs(diff) > 0.05) {
+      trendStr = diff > 0 ? '↑ Increasing' : '↓ Decreasing';
+    }
+
+    return `Current: ${latest}${unit} · ${countStr} · ${trendStr}`;
+  })();
+
+  return (
+    <View style={bulletStyles.container}>
+      {/* Title + status badge row */}
+      <View style={bulletStyles.headerRow}>
+        <Text style={bulletStyles.title}>{title}</Text>
+        {statusLabel && (
+          <Text style={[
+            bulletStyles.statusBadge,
+            { color: statusLabel.isNormal ? COLORS.success : COLORS.danger },
+          ]}>
+            {statusLabel.label.toUpperCase()}
+          </Text>
+        )}
+      </View>
+
+      {/* Zone label row — one label centered above its segment */}
+      <View style={bulletStyles.zoneLabelRow}>
+        {zones.map((zone) => {
+          const segWidth = ((zone.end - zone.start) / scaleRange) * 100;
+          return (
+            <View
+              key={zone.label}
+              style={[bulletStyles.zoneLabelCell, { width: `${segWidth}%` }]}
+            >
+              <Text style={[bulletStyles.zoneLabel, { color: zone.color }]}>{zone.label}</Text>
+            </View>
+          );
+        })}
+      </View>
+
+      {/* Zone bar with positioned dots */}
+      <View style={bulletStyles.barWrapper}>
+        {/* Zone segments — flexDirection row */}
+        <View style={bulletStyles.barRow}>
+          {zones.map((zone) => {
+            const segWidth = ((zone.end - zone.start) / scaleRange) * 100;
+            return (
+              <View
+                key={zone.label}
+                style={[
+                  bulletStyles.zoneSegment,
+                  {
+                    width: `${segWidth}%`,
+                    backgroundColor: zone.color + '33', // ~20% opacity hex
+                    borderColor: zone.color,
+                  },
+                ]}
+              />
+            );
+          })}
+        </View>
+
+        {/* Connector line between consecutive dots — drawn before dots so dots layer on top */}
+        {data.length >= 2 && (() => {
+          const firstPct = toPercent(data[0].value);
+          const lastPct  = toPercent(data[data.length - 1].value);
+          const leftPct  = Math.min(firstPct, lastPct);
+          const widthPct = Math.abs(lastPct - firstPct);
+          return (
+            <View
+              style={[
+                bulletStyles.connectorLine,
+                { left: `${leftPct}%`, width: `${widthPct}%` },
+              ]}
+            />
+          );
+        })()}
+
+        {/* Reading dots */}
+        {data.map((reading, idx) => {
+          const pct  = toPercent(reading.value);
+          const zone = resolveZone(reading.value, zones);
+          const dotColor = zone?.color ?? COLORS.accentLight;
+          return (
+            <View
+              key={idx}
+              style={[bulletStyles.dotWrapper, { left: `${pct}%` }]}
+            >
+              <View style={[bulletStyles.dot, { backgroundColor: dotColor }]} />
+              <Text style={bulletStyles.dotLabel}>{reading.label}</Text>
+            </View>
+          );
+        })}
+      </View>
+
+      {/* Scale numbers row — min to max */}
+      <View style={bulletStyles.scaleRow}>
+        {Array.from({ length: max - min + 1 }, (_, i) => {
+          const val     = min + i;
+          const pct     = toPercent(val);
+          // Determine if this tick is inside the normal zone (success zone)
+          const normalZone = zones.find(z => z.color === COLORS.success);
+          const isNormal   = normalZone && val >= normalZone.start && val <= normalZone.end;
+          return (
+            <View key={val} style={[bulletStyles.scaleTick, { left: `${pct}%` }]}>
+              <Text style={[
+                bulletStyles.scaleNumber,
+                isNormal && bulletStyles.scaleNumberNormal,
+              ]}>
+                {val}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+
+      {/* Summary line */}
+      {summaryTrend && (
+        <Text style={bulletStyles.summaryLine}>{summaryTrend}</Text>
+      )}
+
+      {/* Interpretation */}
+      {interpretation && (
+        <Text style={bulletStyles.interpretation}>{interpretation}</Text>
+      )}
+    </View>
+  );
+}
+
+/** Styles scoped to BulletGauge — defined at module level alongside deltaTextStyle. */
+const bulletStyles = {
+  container: {
+    gap: 4,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  title: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.accent,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    fontFamily: FONTS.bold?.fontFamily,
+  },
+  statusBadge: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  zoneLabelRow: {
+    flexDirection: 'row',
+    width: '100%',
+  },
+  zoneLabelCell: {
+    alignItems: 'center',
+  },
+  zoneLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  // The bar area needs position:relative so absolutely-positioned dots work
+  barWrapper: {
+    height: 40,
+    position: 'relative',
+  },
+  barRow: {
+    flexDirection: 'row',
+    height: 24,
+    position: 'absolute',
+    top: 7, // vertically center within barWrapper
+    left: 0,
+    right: 0,
+    borderRadius: 0,
+  },
+  zoneSegment: {
+    height: '100%',
+    borderWidth: 1,
+    borderRadius: 0,
+  },
+  connectorLine: {
+    position: 'absolute',
+    top: 18, // center of 24px bar (7 offset + 12 midpoint - 1 half-height)
+    height: 2,
+    backgroundColor: COLORS.accentLight,
+  },
+  dotWrapper: {
+    position: 'absolute',
+    top: 0,
+    alignItems: 'center',
+    // Shift left by 5px so the 10px dot centers on the percentage position
+    marginLeft: -5,
+  },
+  dot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,   // Circle exception — neubrutalism permits this for data points
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    marginTop: 12,     // position dot centered on the 24px bar (7 offset + 7 center - 2 border)
+  },
+  dotLabel: {
+    fontSize: 8,
+    color: COLORS.textMuted,
+    marginTop: 1,
+    textAlign: 'center',
+    // Prevent label from being clipped; width gives it room to wrap
+    width: 36,
+  },
+  scaleRow: {
+    position: 'relative',
+    height: 14,
+    marginTop: 2,
+  },
+  scaleTick: {
+    position: 'absolute',
+    alignItems: 'center',
+    marginLeft: -4,
+  },
+  scaleNumber: {
+    fontSize: 9,
+    color: COLORS.accentLight,
+    fontWeight: '400',
+  },
+  scaleNumberNormal: {
+    color: COLORS.success,
+    fontWeight: '700',
+  },
+  summaryLine: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.accent,
+    marginTop: 2,
+    fontFamily: FONTS.bold?.fontFamily,
+  },
+  interpretation: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    marginTop: 2,
+    fontStyle: 'italic',
+  },
+};
 
 // ---------------------------------------------------------------------------
 
@@ -2506,16 +2874,17 @@ export default function PetHistoryScreen({ route, navigation }) {
                 showsVerticalScrollIndicator={false}
               >
                 <Text style={styles.tabSectionTitle}>VITAL SIGNS</Text>
-                {Object.entries(VITALS_CONFIG).map(([key, cfg]) => {
+
+                {/* ---- Continuous vitals: LineChart (weight, temp, hr, rr) ---- */}
+                {LINE_VITAL_KEYS.map((key) => {
+                  const cfg       = VITALS_CONFIG[key];
                   const chartData = vitalsChartData[key];
                   if (!chartData || chartData.length < 1) return null;
-                  const range = cfg.refKey
-                    ? getNormalRange(cfg.refKey, petSpecies)
-                    : null;
-                  const statusLabel     = getVitalStatusLabel(key, chartData, petSpecies);
-                  const interpretation  = getVitalInterpretation(key, chartData, petSpecies);
-                  const minVal          = Math.min(...chartData.map(d => d.value));
-                  const maxVal          = Math.max(...chartData.map(d => d.value));
+                  const range = cfg.refKey ? getNormalRange(cfg.refKey, petSpecies) : null;
+                  const statusLabel    = getVitalStatusLabel(key, chartData, petSpecies);
+                  const interpretation = getVitalInterpretation(key, chartData, petSpecies);
+                  const minVal         = Math.min(...chartData.map(d => d.value));
+                  const maxVal         = Math.max(...chartData.map(d => d.value));
 
                   return (
                     <TouchableOpacity
@@ -2537,30 +2906,176 @@ export default function PetHistoryScreen({ route, navigation }) {
                         )}
                       </View>
 
-                      {/* SparkLine — height 80, reference band when available */}
-                      <SparkLine
-                        data={chartData}
-                        height={80}
-                        lineColor={cfg.color}
-                        unit={cfg.unit}
-                        normalRange={range}
-                        showDateLabels
-                      />
+                      {/* Vitals trend chart — react-native-chart-kit LineChart */}
+                      {chartData.length >= 2 ? (
+                        (() => {
+                          const hexToRgba = (hex, op) => {
+                            const r = parseInt(hex.slice(1, 3), 16);
+                            const g = parseInt(hex.slice(3, 5), 16);
+                            const b = parseInt(hex.slice(5, 7), 16);
+                            return `rgba(${r},${g},${b},${op})`;
+                          };
+                          const vitalHex = cfg.color || '#3ABEF9';
+                          const values = chartData.map(d => d.value);
+                          const datasets = [{ data: values }];
+                          if (range) {
+                            datasets.push({ data: [range.low], withDots: false });
+                            datasets.push({ data: [range.high], withDots: false });
+                          }
+                          return (
+                            <LineChart
+                              data={{
+                                labels: chartData.map((d, i) =>
+                                  i % Math.ceil(chartData.length / 5) === 0
+                                    ? (d.label ?? '') : '',
+                                ),
+                                datasets,
+                              }}
+                              width={SCREEN_W - 60}
+                              height={200}
+                              chartConfig={{
+                                ...CHART_CONFIG_BASE,
+                                color: () => hexToRgba(vitalHex, 1),
+                                fillShadowGradientFrom: range ? hexToRgba(COLORS.success, 0.12) : hexToRgba(vitalHex, 0.05),
+                                fillShadowGradientTo: range ? hexToRgba(COLORS.success, 0.03) : hexToRgba(vitalHex, 0.01),
+                                propsForDots: {
+                                  r: '5',
+                                  strokeWidth: '2',
+                                  stroke: COLORS.brand,
+                                },
+                              }}
+                              bezier
+                              withDots
+                              getDotColor={(dataPoint, dataPointIndex) => {
+                                if (!range) return vitalHex;
+                                return (dataPoint >= range.low && dataPoint <= range.high)
+                                  ? COLORS.success : COLORS.danger;
+                              }}
+                              style={{ borderRadius: 0, marginLeft: -14 }}
+                              formatYLabel={v => `${parseFloat(v).toFixed(1)}${cfg.unit || ''}`}
+                            />
+                          );
+                        })()
+                      ) : chartData.length === 1 ? (
+                        <View style={{ paddingVertical: 4 }}>
+                          <Text style={{ fontSize: 18, fontWeight: '900', color: cfg.color }}>
+                            {chartData[0].value}{cfg.unit}
+                          </Text>
+                          <Text style={{ fontSize: 9, color: COLORS.textMuted, marginTop: 2 }}>
+                            1 reading · {chartData[0].label}
+                          </Text>
+                        </View>
+                      ) : null}
 
-                      {/* T4.194 Item 7: Enhanced delta with directional color */}
                       {renderEnhancedDelta(key, chartData, ` ${cfg.unit}`, petSpecies)}
 
-                      {/* T4.194 Item 6: Plain-language interpretation */}
                       {interpretation && (
                         <Text style={styles.vitalInterpretation}>{interpretation}</Text>
                       )}
 
-                      {/* T4.194 Item 8: Historical range strip */}
                       {chartData.length >= 2 && (
                         <Text style={styles.vitalRangeStrip}>
                           Range: {minVal}{cfg.unit} – {maxVal}{cfg.unit} across {chartData.length} visits
                         </Text>
                       )}
+                    </TouchableOpacity>
+                  );
+                })}
+
+                {/* ---- Discrete vitals: LineChart with fixed Y-domain + straight lines (crt, bcs, pain) ---------- */}
+                {BULLET_VITAL_KEYS.map((key) => {
+                  const cfg        = VITALS_CONFIG[key];
+                  const bulletCfg  = BULLET_VITALS[key];
+                  const chartData  = vitalsChartData[key];
+                  if (!chartData || chartData.length < 1) return null;
+                  const statusLabel    = getVitalStatusLabel(key, chartData, petSpecies);
+                  const interpretation = getVitalInterpretation(key, chartData, petSpecies);
+                  const range = cfg.refKey ? getNormalRange(cfg.refKey, petSpecies) : null;
+
+                  if (chartData.length === 1) {
+                    return (
+                      <View key={key} style={styles.vitalTabCard}>
+                        <Text style={styles.trendLabel}>{cfg.label.toUpperCase()}</Text>
+                        <Text style={{ fontSize: 13, color: COLORS.accent, marginTop: 4 }}>
+                          {chartData[0].value}{cfg.unit} · 1 reading
+                        </Text>
+                        {statusLabel && (
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: statusLabel.isNormal ? COLORS.success : COLORS.danger, marginTop: 2 }}>
+                            {statusLabel.label}
+                          </Text>
+                        )}
+                      </View>
+                    );
+                  }
+
+                  const labels = chartData.length > 5
+                    ? chartData.map((d, i) => i % Math.ceil(chartData.length / 5) === 0 ? d.label : '')
+                    : chartData.map(d => d.label);
+                  const values = chartData.map(d => d.value);
+                  const datasets = [{ data: values }];
+                  if (bulletCfg.min !== undefined) datasets.push({ data: [bulletCfg.min], withDots: false });
+                  if (bulletCfg.max !== undefined) datasets.push({ data: [bulletCfg.max], withDots: false });
+
+                  const hexToRgba = (hex, opacity) => {
+                    const r = parseInt(hex.slice(1, 3), 16);
+                    const g = parseInt(hex.slice(3, 5), 16);
+                    const b = parseInt(hex.slice(5, 7), 16);
+                    return `rgba(${r},${g},${b},${opacity})`;
+                  };
+                  const vitalColor = cfg.color || COLORS.sky;
+
+                  return (
+                    <TouchableOpacity
+                      key={key}
+                      style={styles.vitalTabCard}
+                      onPress={() => setVitalsZoom({ open: true, key })}
+                      activeOpacity={0.7}
+                    >
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                        <Text style={styles.trendLabel}>{cfg.label.toUpperCase()}</Text>
+                        {statusLabel && (
+                          <Text style={{ fontSize: 11, fontWeight: '900', color: statusLabel.isNormal ? COLORS.success : COLORS.danger }}>
+                            {statusLabel.label}
+                          </Text>
+                        )}
+                      </View>
+                      <LineChart
+                        data={{ labels, datasets }}
+                        width={SCREEN_W - 60}
+                        height={180}
+                        chartConfig={{
+                          ...CHART_CONFIG_BASE,
+                          color: () => hexToRgba(vitalColor, 1),
+                          fillShadowGradientFrom: range ? hexToRgba(COLORS.success, 0.15) : hexToRgba(vitalColor, 0.05),
+                          fillShadowGradientTo: range ? hexToRgba(COLORS.success, 0.05) : hexToRgba(vitalColor, 0.01),
+                          propsForDots: { r: '5', strokeWidth: '2', stroke: COLORS.brand },
+                        }}
+                        withDots
+                        getDotColor={(dataPoint) => {
+                          if (!range) return vitalColor;
+                          return (dataPoint >= range.low && dataPoint <= range.high)
+                            ? COLORS.success : COLORS.danger;
+                        }}
+                        withInnerLines
+                        withOuterLines={false}
+                        fromZero={bulletCfg.min === 0}
+                        style={{ borderRadius: 0, marginLeft: -14 }}
+                        formatYLabel={(val) => `${parseFloat(val).toFixed(0)}${cfg.unit}`}
+                      />
+                      {renderEnhancedDelta(key, chartData, ` ${cfg.unit}`, petSpecies)}
+                      {interpretation && (
+                        <Text style={styles.vitalInterpretation}>{interpretation}</Text>
+                      )}
+                      {chartData.length >= 2 && (() => {
+                        const vals = chartData.map(d => d.value);
+                        const minVal = Math.min(...vals);
+                        const maxVal = Math.max(...vals);
+                        return (
+                          <Text style={styles.vitalRangeStrip}>
+                            Range: {minVal}{cfg.unit} – {maxVal}{cfg.unit} across {chartData.length} visits
+                          </Text>
+                        );
+                      })()}
                     </TouchableOpacity>
                   );
                 })}

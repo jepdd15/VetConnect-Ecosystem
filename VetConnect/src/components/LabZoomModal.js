@@ -23,7 +23,8 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { COLORS } from '../theme/mobileTokens';
-import SparkLine from './SparkLine';
+import { LineChart } from 'react-native-chart-kit';
+// SparkLine retained as fallback; LineChart used at all render sites.
 
 // ---------------------------------------------------------------------------
 // Layout constants
@@ -31,6 +32,26 @@ import SparkLine from './SparkLine';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const CHART_WIDTH = SCREEN_WIDTH - 64;
+
+// react-native-chart-kit config — matches Modern Clinical Neubrutalism tokens.
+const CHART_CONFIG = {
+  backgroundColor: '#FFF8E1',
+  backgroundGradientFrom: '#FFFFFF',
+  backgroundGradientTo: '#FFFFFF',
+  decimalPlaces: 1,
+  color: (opacity = 1) => `rgba(21, 101, 192, ${opacity})`,  // COLORS.info blue
+  labelColor: (opacity = 1) => `rgba(93, 64, 55, ${opacity})`, // COLORS.accent
+  style: { borderRadius: 0 },
+  propsForDots: {
+    r: '4',
+    strokeWidth: '2',
+    stroke: '#3E2723', // COLORS.brand
+  },
+  propsForBackgroundLines: {
+    strokeDasharray: '',
+    stroke: 'rgba(0,0,0,0.05)',
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -198,17 +219,27 @@ export default function LabZoomModal({
             ))}
           </ScrollView>
 
-          {/* SparkLine chart — single numeric test with >= 2 data points */}
+          {/* Lab trend chart — single numeric test with >= 2 data points */}
           {showChart && (
             <View style={styles.chartContainer}>
-              <SparkLine
-                data={sparkData}
+              <LineChart
+                data={{
+                  labels: sparkData.map((d, i) =>
+                    // Thin the label list to prevent x-axis crowding.
+                    i % Math.ceil(sparkData.length / 5) === 0 ? (d.label ?? '') : '',
+                  ),
+                  datasets: [{ data: sparkData.map(d => d.value) }],
+                }}
                 width={CHART_WIDTH}
-                height={160}
-                lineColor={COLORS.info}
-                unit={unit}
-                normalRange={resolvedRef}
-                showDateLabels
+                height={180}
+                chartConfig={{
+                  ...CHART_CONFIG,
+                  formatYLabel: v =>
+                    unit ? `${parseFloat(v).toFixed(1)} ${unit}` : parseFloat(v).toFixed(1),
+                }}
+                bezier
+                withDots
+                style={{ borderRadius: 0 }}
               />
             </View>
           )}

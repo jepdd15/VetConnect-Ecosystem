@@ -14,6 +14,8 @@
 import { useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
+  Alert,
+  Dimensions,
   LayoutAnimation,
   Platform,
   Pressable,
@@ -24,17 +26,44 @@ import {
   UIManager,
   View,
 } from 'react-native';
+import { LineChart } from 'react-native-chart-kit';
 import { Circle, Path, Svg } from 'react-native-svg';
 import { MaterialIcons } from '@expo/vector-icons';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 import { COLORS, FONTS, SHADOW, SPACING } from '../theme/mobileTokens';
 import { useMyStats } from '../hooks/useMyStats';
-import SparkLine from '../components/SparkLine';
+// SparkLine retained as fallback; LineChart used at all render sites.
 import VitalsZoomModal from '../components/VitalsZoomModal';
 
 // Enable LayoutAnimation on Android (must run after all imports).
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
+
+// ─── CHART CONFIG ─────────────────────────────────────────────────────────────
+// Shared react-native-chart-kit config. Matches Modern Clinical Neubrutalism:
+// sky-blue line, espresso labels, zero border-radius, solid grid lines.
+const SCREEN_W = Dimensions.get('window').width;
+
+const CHART_CONFIG_BASE = {
+  backgroundColor: '#FFF8E1',        // COLORS.cream
+  backgroundGradientFrom: '#FFFFFF',
+  backgroundGradientTo: '#FFFFFF',
+  decimalPlaces: 1,
+  color: (opacity = 1) => `rgba(58, 190, 249, ${opacity})`,  // COLORS.sky
+  labelColor: (opacity = 1) => `rgba(93, 64, 55, ${opacity})`, // COLORS.accent
+  style: { borderRadius: 0 },
+  propsForDots: {
+    r: '4',
+    strokeWidth: '2',
+    stroke: '#3E2723', // COLORS.brand
+  },
+  propsForBackgroundLines: {
+    strokeDasharray: '',              // solid grid lines
+    stroke: 'rgba(0,0,0,0.05)',
+  },
+};
 
 // ─── LOCAL SUB-COMPONENTS ──────────────────────────────────────────────────────
 
@@ -69,10 +98,11 @@ function KPICard({ label, value, subtitle, accent, small, wide }) {
 
 /**
  * SectionHeader — uppercase label row with consistent spacing used between
- * every major section.
+ * every major section. Accepts an optional style override (e.g. to suppress
+ * bottom margin when rendered inside a sectionHeaderRow flex container).
  */
-function SectionHeader({ title }) {
-  return <Text style={styles.sectionHeader}>{title}</Text>;
+function SectionHeader({ title, style }) {
+  return <Text style={[styles.sectionHeader, style]}>{title}</Text>;
 }
 
 /**
@@ -148,6 +178,14 @@ function CircularGauge({ administered, total, size = 56 }) {
 }
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
+
+const TAB_CONFIG = [
+  { key: 'overview', label: 'OVERVIEW' },
+  { key: 'visits',   label: 'VISITS'   },
+  { key: 'spending', label: 'SPENDING' },
+  { key: 'pets',     label: 'PETS'     },
+  { key: 'health',   label: 'HEALTH'   },
+];
 
 /** Range options for the spending date selector. */
 const SPENDING_RANGE_OPTIONS = [
@@ -249,6 +287,79 @@ function PieChart({ data, size = 160 }) {
   );
 }
 
+/**
+ * SpendingPieChart — identical to PieChart but legend rows show currency
+ * amounts (P{count.toLocaleString()}) instead of visit counts.
+ */
+function SpendingPieChart({ data, size = 160 }) {
+  const cx = size / 2;
+  const cy = size / 2;
+  const outerR = size / 2 - 6;
+  const innerR = outerR * 0.55;
+
+  let cumulativeAngle = -Math.PI / 2;
+  const slices = data.map((entry, idx) => {
+    const startAngle = cumulativeAngle;
+    const sweep = entry.pct * 2 * Math.PI;
+    cumulativeAngle += sweep;
+    return { ...entry, startAngle, sweep, color: PIE_COLORS[idx % PIE_COLORS.length] };
+  });
+
+  function slicePath(startAngle, sweep) {
+    const endAngle = startAngle + sweep;
+    const x1 = cx + outerR * Math.cos(startAngle);
+    const y1 = cy + outerR * Math.sin(startAngle);
+    const x2 = cx + outerR * Math.cos(endAngle);
+    const y2 = cy + outerR * Math.sin(endAngle);
+    const ix1 = cx + innerR * Math.cos(endAngle);
+    const iy1 = cy + innerR * Math.sin(endAngle);
+    const ix2 = cx + innerR * Math.cos(startAngle);
+    const iy2 = cy + innerR * Math.sin(startAngle);
+    const large = sweep > Math.PI ? 1 : 0;
+    return [
+      `M ${x1.toFixed(2)} ${y1.toFixed(2)}`,
+      `A ${outerR} ${outerR} 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`,
+      `L ${ix1.toFixed(2)} ${iy1.toFixed(2)}`,
+      `A ${innerR} ${innerR} 0 ${large} 0 ${ix2.toFixed(2)} ${iy2.toFixed(2)}`,
+      'Z',
+    ].join(' ');
+  }
+
+  return (
+    <View style={{ alignItems: 'center' }}>
+      <Svg width={size} height={size}>
+        {data.length === 1 ? (
+          <>
+            <Circle cx={cx} cy={cy} r={outerR} fill={PIE_COLORS[0]} />
+            <Circle cx={cx} cy={cy} r={innerR} fill={COLORS.white} />
+          </>
+        ) : (
+          slices.map((slice, idx) => (
+            <Path
+              key={idx}
+              d={slicePath(slice.startAngle, slice.sweep)}
+              fill={slice.color}
+            />
+          ))
+        )}
+      </Svg>
+      <View style={styles.pieLegend}>
+        {slices.map((slice, idx) => (
+          <View key={idx} style={styles.pieLegendRow}>
+            <View style={[styles.pieLegendDot, { backgroundColor: slice.color }]} />
+            <Text style={styles.pieLegendLabel}>
+              {slice.name}{' '}
+              <Text style={styles.pieLegendCount}>
+                {Math.round(slice.pct * 100)}% (P{slice.count.toLocaleString()})
+              </Text>
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 // ─── SCREEN ───────────────────────────────────────────────────────────────────
 
 export default function MyStatsScreen({ route, navigation }) {
@@ -263,10 +374,29 @@ export default function MyStatsScreen({ route, navigation }) {
   } = route.params ?? {};
 
   // ── LOCAL STATE ─────────────────────────────────────────────────────────────
+  const [activeTab,      setActiveTab]      = useState('overview');
   const [spendingRange,  setSpendingRange]  = useState('6m');
   const [expandedPet,    setExpandedPet]    = useState(null);
   // weightZoomPet holds { petCard } when the weight zoom modal is open, null when closed.
   const [weightZoomPet,  setWeightZoomPet]  = useState(null);
+  // calendarMonth tracks the displayed month in the mini-view (controlled by arrows).
+  const [calendarMonth,  setCalendarMonth]  = useState(new Date());
+  // selectedCalendarDay: 'YYYY-MM-DD' string or null — filters the appointment list.
+  const [selectedCalendarDay, setSelectedCalendarDay] = useState(null);
+
+  // VISITS tab toggles (Step 10)
+  const [visitTimeGrouping,   setVisitTimeGrouping]   = useState('monthly');
+  const [visitBreakdownMode,  setVisitBreakdownMode]  = useState('total');
+
+  // YoY section toggle: 'visits' | 'spending' (Step 14)
+  const [yoyMode, setYoyMode] = useState('visits');
+
+  // Seasonal pattern per-pet filter (Step 16)
+  const [seasonalPetFilter, setSeasonalPetFilter] = useState('all');
+
+  // SPENDING tab toggles (Step 17)
+  const [spendingTimeGrouping,  setSpendingTimeGrouping]  = useState('monthly');
+  const [spendingBreakdownMode, setSpendingBreakdownMode] = useState('total');
 
   const stats = useMyStats({
     allAppointments,
@@ -276,6 +406,7 @@ export default function MyStatsScreen({ route, navigation }) {
     vaccineAlerts,
     userProfile,
     spendingRange,
+    activeTab,
   });
 
   const {
@@ -284,13 +415,27 @@ export default function MyStatsScreen({ route, navigation }) {
     monthlyVisitData,
     relationship,
     petCards,
-    diagnosisHistory,
     spendingBreakdown,
     visitTypePieData,
     upcomingAppointments,
     preventiveCare,
     yoyVisitData,
+    yoySpendingData,
     seasonalPattern,
+    perPetSeasonalPattern,
+    conditionsOverview,
+    calendarDots,
+    weeklyVisitData,
+    visitsByPet,
+    visitsByService,
+    visitsByDepartment,
+    visitFrequencyTrend,
+    visitOutcomes,
+    preferredDays,
+    speciesDistribution,
+    weeklySpendingData,
+    spendingByDepartment,
+    spendingPerVisit,
   } = stats;
 
   // ── HELPERS ─────────────────────────────────────────────────────────────────
@@ -305,6 +450,210 @@ export default function MyStatsScreen({ route, navigation }) {
     setExpandedPet(prev => (prev === petName ? null : petName));
   }
 
+  /**
+   * Generates a tab-specific HTML summary and shares it as a PDF file.
+   * Each tab produces a focused, print-friendly inline-styled table report.
+   */
+  async function handleExportTab(tabKey) {
+    const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    try {
+      let html = '';
+      const baseStyle = `
+        <style>
+          body { font-family: Arial, sans-serif; padding: 24px; color: #3E2723; }
+          h1 { font-size: 20px; text-transform: uppercase; letter-spacing: 2px; border-bottom: 3px solid #3E2723; padding-bottom: 8px; }
+          h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; color: #5D4037; margin-top: 20px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+          th { background: #3E2723; color: #FFF8E1; font-size: 11px; text-transform: uppercase; padding: 8px; text-align: left; }
+          td { border-bottom: 1px solid #ddd; padding: 8px; font-size: 12px; }
+          tr:nth-child(even) td { background: #FFF8E1; }
+          .badge-danger { color: #D32F2F; font-weight: bold; }
+          .badge-success { color: #388E3C; font-weight: bold; }
+          .badge-warning { color: #F57F17; font-weight: bold; }
+          .summary { font-size: 13px; margin: 4px 0; }
+        </style>
+      `;
+
+      if (tabKey === 'overview') {
+        const totalSpent = Math.round(financialStats?.totalSpent ?? 0).toLocaleString();
+        const avgPerVisit = financialStats?.avgPerVisit > 0
+          ? `P${financialStats.avgPerVisit.toLocaleString()}`
+          : '—';
+        const followUp = relationship.followUpCompliance
+          ? `${relationship.followUpCompliance.attended}/${relationship.followUpCompliance.due} (${relationship.followUpCompliance.pct}%)`
+          : '—';
+
+        const upcomingRows = upcomingAppointments.map(a =>
+          `<tr><td>${esc(a.serviceNames.join(', '))}</td><td>${esc(a.petName)}</td><td>${
+            a.scheduledDate.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+          }</td><td>${esc(a.countdown)}</td></tr>`
+        ).join('');
+
+        const conditionRows = conditionsOverview.hasData
+          ? Object.entries(conditionsOverview.perPet).map(([petName, conds]) =>
+              conds.map(c =>
+                `<tr><td>${esc(petName)}</td><td>${esc(c.name)}</td><td class="${c.status === 'active' ? 'badge-danger' : 'badge-warning'}">${c.status.toUpperCase()}</td></tr>`
+              ).join('')
+            ).join('')
+          : '<tr><td colspan="3">No active conditions recorded.</td></tr>';
+
+        html = `<!DOCTYPE html><html><head><meta charset="utf-8">${baseStyle}</head><body>
+          <h1>Overview — VetConnect Pet Health Summary</h1>
+          <p class="summary">Generated: ${new Date().toLocaleDateString('en-PH', { dateStyle: 'long' })}</p>
+          <h2>Relationship KPIs</h2>
+          <table>
+            <tr><th>Metric</th><th>Value</th></tr>
+            <tr><td>Client Since</td><td>${relationship.clientSince}</td></tr>
+            <tr><td>Total Visits</td><td>${visitStats?.totalVisits ?? 0}</td></tr>
+            <tr><td>Lifetime Spend</td><td>P${totalSpent}</td></tr>
+            <tr><td>Avg Per Visit</td><td>${avgPerVisit}</td></tr>
+            <tr><td>Follow-Up Compliance</td><td>${followUp}</td></tr>
+            <tr><td>No-Shows</td><td>${visitStats?.noShowCount ?? 0}</td></tr>
+          </table>
+          <h2>Upcoming Appointments</h2>
+          <table>
+            <tr><th>Service</th><th>Pet</th><th>Date</th><th>Countdown</th></tr>
+            ${upcomingRows || '<tr><td colspan="4">No upcoming appointments.</td></tr>'}
+          </table>
+          <h2>Active Conditions</h2>
+          <table>
+            <tr><th>Pet</th><th>Condition</th><th>Status</th></tr>
+            ${conditionRows}
+          </table>
+        </body></html>`;
+
+      } else if (tabKey === 'visits') {
+        const monthRows = (yoyVisitData.months || []).map(m =>
+          `<tr><td>${m.label}</td><td>${m.thisYear}</td><td>${m.lastYear}</td></tr>`
+        ).join('');
+
+        html = `<!DOCTYPE html><html><head><meta charset="utf-8">${baseStyle}</head><body>
+          <h1>Visit History — VetConnect</h1>
+          <p class="summary">Generated: ${new Date().toLocaleDateString('en-PH', { dateStyle: 'long' })}</p>
+          <h2>Summary</h2>
+          <table>
+            <tr><th>Metric</th><th>Value</th></tr>
+            <tr><td>Total Completed Visits</td><td>${visitStats?.totalVisits ?? 0}</td></tr>
+            <tr><td>No-Shows</td><td>${visitStats?.noShowCount ?? 0}</td></tr>
+            <tr><td>Visit Frequency</td><td>${visitStats?.avgFrequency ?? '—'}</td></tr>
+          </table>
+          <h2>Monthly Visits — Year Over Year</h2>
+          <table>
+            <tr><th>Month</th><th>${yoyVisitData.thisYearLabel || 'This Year'}</th><th>${yoyVisitData.lastYearLabel || 'Last Year'}</th></tr>
+            ${monthRows || '<tr><td colspan="3">No data available.</td></tr>'}
+          </table>
+        </body></html>`;
+
+      } else if (tabKey === 'spending') {
+        const petRows = (spendingBreakdown.perPetList || []).map(row =>
+          `<tr><td>${esc(row.name)}</td><td>P${Math.round(row.amount).toLocaleString()}</td></tr>`
+        ).join('');
+        const svcRows = (spendingBreakdown.perServiceList || []).map(row =>
+          `<tr><td>${esc(row.type)}</td><td>P${Math.round(row.amount).toLocaleString()}</td></tr>`
+        ).join('');
+        const balanceClass = spendingBreakdown.outstandingBalance > 0 ? 'badge-danger' : 'badge-success';
+        const balanceText = spendingBreakdown.outstandingBalance > 0
+          ? `P${Math.round(spendingBreakdown.outstandingBalance).toLocaleString()} outstanding`
+          : 'P0 — all clear';
+
+        html = `<!DOCTYPE html><html><head><meta charset="utf-8">${baseStyle}</head><body>
+          <h1>Spending Report — VetConnect</h1>
+          <p class="summary">Generated: ${new Date().toLocaleDateString('en-PH', { dateStyle: 'long' })}</p>
+          <p class="summary">Outstanding Balance: <span class="${balanceClass}">${balanceText}</span></p>
+          <h2>Spending by Pet</h2>
+          <table>
+            <tr><th>Pet</th><th>Amount</th></tr>
+            ${petRows || '<tr><td colspan="2">No data for this period.</td></tr>'}
+          </table>
+          <h2>Spending by Service Type</h2>
+          <table>
+            <tr><th>Service</th><th>Amount</th></tr>
+            ${svcRows || '<tr><td colspan="2">No data for this period.</td></tr>'}
+          </table>
+          ${spendingPerVisit.average > 0 ? `<h2>Average Spend Per Visit</h2><p class="summary"><strong>P${spendingPerVisit.average.toLocaleString()}/visit</strong></p>` : ''}
+        </body></html>`;
+
+      } else if (tabKey === 'pets') {
+        const petRows = petCards.map(pc => {
+          const vaccPct = pc.vaccineStatus?.completeness?.percentage ?? null;
+          const vaccText = vaccPct !== null
+            ? `${pc.vaccineStatus.completeness.administered}/${pc.vaccineStatus.completeness.total} (${vaccPct}%)`
+            : '—';
+          const lastVisit = pc.lastVisitDate
+            ? pc.lastVisitDate.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+            : '—';
+          return `<tr>
+            <td>${pc.speciesEmoji} ${esc(pc.name)}</td>
+            <td>${esc(pc.species) || '—'}</td>
+            <td>${pc.latestWeight != null ? `${pc.latestWeight} kg` : '—'}</td>
+            <td>${lastVisit}</td>
+            <td class="${vaccPct != null && vaccPct >= 75 ? 'badge-success' : vaccPct != null && vaccPct >= 50 ? 'badge-warning' : 'badge-danger'}">${vaccText}</td>
+            <td>${pc.activeMeds.length > 0 ? pc.activeMeds.length + ' active' : 'None'}</td>
+          </tr>`;
+        }).join('');
+
+        html = `<!DOCTYPE html><html><head><meta charset="utf-8">${baseStyle}</head><body>
+          <h1>Pet Summary — VetConnect</h1>
+          <p class="summary">Generated: ${new Date().toLocaleDateString('en-PH', { dateStyle: 'long' })}</p>
+          <h2>All Pets (${petCards.length})</h2>
+          <table>
+            <tr><th>Pet</th><th>Species</th><th>Weight</th><th>Last Visit</th><th>Vaccines</th><th>Medications</th></tr>
+            ${petRows || '<tr><td colspan="6">No pets registered.</td></tr>'}
+          </table>
+        </body></html>`;
+
+      } else if (tabKey === 'health') {
+        const careRows = preventiveCare.map(item =>
+          `<tr>
+            <td>${esc(item.petName)}</td>
+            <td>${esc(item.label)}</td>
+            <td class="${item.urgency === 0 ? 'badge-danger' : item.urgency === 1 ? 'badge-warning' : ''}">${esc(item.detail) || ''}</td>
+          </tr>`
+        ).join('');
+
+        const vaccRows = petCards.map(pc => {
+          if (!pc.vaccineStatus?.statuses) return '';
+          const statusRows = pc.vaccineStatus.statuses.map(v =>
+            `<tr>
+              <td>${pc.speciesEmoji} ${esc(pc.name)}</td>
+              <td>${esc(v.name)}</td>
+              <td class="${v.status === 'overdue' ? 'badge-danger' : v.status === 'current' ? 'badge-success' : v.status === 'due_soon' ? 'badge-warning' : ''}">${
+                v.status === 'overdue'
+                  ? `OVERDUE (${Math.abs(v.daysUntilDue)} days)`
+                  : v.status === 'current' ? 'Current'
+                  : v.status === 'due_soon' ? `Due in ${v.daysUntilDue} days`
+                  : 'No record'
+              }</td>
+            </tr>`
+          ).join('');
+          return statusRows;
+        }).join('');
+
+        html = `<!DOCTYPE html><html><head><meta charset="utf-8">${baseStyle}</head><body>
+          <h1>Health Report — VetConnect</h1>
+          <p class="summary">Generated: ${new Date().toLocaleDateString('en-PH', { dateStyle: 'long' })}</p>
+          <h2>Preventive Care Action Items</h2>
+          <table>
+            <tr><th>Pet</th><th>Item</th><th>Detail</th></tr>
+            ${careRows || '<tr><td colspan="3">All care is up to date!</td></tr>'}
+          </table>
+          <h2>Vaccination Status</h2>
+          <table>
+            <tr><th>Pet</th><th>Vaccine</th><th>Status</th></tr>
+            ${vaccRows || '<tr><td colspan="3">No vaccine records.</td></tr>'}
+          </table>
+        </body></html>`;
+      }
+
+      if (!html) return;
+
+      const { uri } = await Print.printToFileAsync({ html });
+      await Sharing.shareAsync(uri);
+    } catch (err) {
+      Alert.alert('Export failed', err.message || 'Could not generate report.');
+    }
+  }
+
   // ── RENDER ──────────────────────────────────────────────────────────────────
 
   return (
@@ -312,11 +661,46 @@ export default function MyStatsScreen({ route, navigation }) {
       contentContainerStyle={[styles.container, { paddingBottom: Math.max(insets.bottom, 20) + 40 }]}
       showsVerticalScrollIndicator={false}
     >
+      {/* ── TAB BAR ─────────────────────────────────────────────────────── */}
+      <View style={styles.tabBar}>
+        {TAB_CONFIG.map(tab => (
+          <TouchableOpacity
+            key={tab.key}
+            style={[styles.tabItem, activeTab === tab.key && styles.tabItemActive]}
+            onPress={() => setActiveTab(tab.key)}
+            activeOpacity={0.7}
+          >
+            <Text style={[
+              styles.tabLabel,
+              activeTab === tab.key && styles.tabLabelActive,
+            ]}>
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* ══════════════════════════════════════════════════════════════════
+          OVERVIEW TAB
+          ════════════════════════════════════════════════════════════════ */}
+
+      {/* ── SECTION 1 — YOUR RELATIONSHIP (overview) ────────────────────── */}
+      {activeTab === 'overview' && (
+      <>
       {/* ══════════════════════════════════════════════════════════════════
           SECTION 1 — YOUR RELATIONSHIP
           ════════════════════════════════════════════════════════════════ */}
       <View style={styles.section}>
-        <SectionHeader title="YOUR RELATIONSHIP" />
+        <View style={styles.sectionHeaderRow}>
+          <SectionHeader title="YOUR RELATIONSHIP" style={styles.sectionHeaderNoMargin} />
+          <TouchableOpacity
+            onPress={() => handleExportTab('overview')}
+            style={styles.exportButton}
+            activeOpacity={0.7}
+          >
+            <MaterialIcons name="share" size={18} color={COLORS.accentLight} />
+          </TouchableOpacity>
+        </View>
 
         {/* 2-column KPI grid */}
         <View style={styles.statsGrid}>
@@ -392,11 +776,21 @@ export default function MyStatsScreen({ route, navigation }) {
       </View>
 
       {/* ══════════════════════════════════════════════════════════════════
-          SECTION 2 — UPCOMING APPOINTMENTS
+          SECTION 2 — UPCOMING APPOINTMENTS (with calendar mini-view)
           ════════════════════════════════════════════════════════════════ */}
       <View style={styles.section}>
         <SectionHeader title="UPCOMING APPOINTMENTS" />
 
+        {/* Calendar mini-view (Step 7) */}
+        <CalendarMiniView
+          calendarMonth={calendarMonth}
+          setCalendarMonth={setCalendarMonth}
+          selectedDay={selectedCalendarDay}
+          setSelectedDay={setSelectedCalendarDay}
+          calendarDots={calendarDots}
+        />
+
+        {/* Appointment list — filtered by tapped day, or all upcoming */}
         {upcomingAppointments.length === 0 ? (
           <View style={styles.upcomingEmpty}>
             <Text style={styles.emptyState}>No upcoming appointments.</Text>
@@ -406,240 +800,482 @@ export default function MyStatsScreen({ route, navigation }) {
             />
           </View>
         ) : (
-          upcomingAppointments.map(appt => (
-            <View key={appt.id} style={styles.upcomingRow}>
-              <View style={styles.upcomingContent}>
-                <Text style={styles.upcomingService}>
-                  {appt.serviceNames.join(', ')}
-                </Text>
-                <Text style={styles.upcomingMeta}>
-                  {appt.petName}
-                  {' · '}
-                  {appt.scheduledDate.toLocaleDateString('en-PH', {
-                    weekday: 'short',
-                    month: 'short',
-                    day: 'numeric',
-                  })}
-                </Text>
-              </View>
-              <View style={[
-                styles.upcomingBadge,
-                {
-                  backgroundColor: appt.status === 'confirmed'
-                    ? COLORS.successBg
-                    : COLORS.warningBg,
-                },
-              ]}>
-                <Text style={[
-                  styles.upcomingCountdown,
+          upcomingAppointments
+            .filter(appt => {
+              if (!selectedCalendarDay) return true;
+              const d = appt.scheduledDate;
+              if (!d) return false;
+              const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+              return key === selectedCalendarDay;
+            })
+            .map(appt => (
+              <View key={appt.id} style={styles.upcomingRow}>
+                <View style={styles.upcomingContent}>
+                  <Text style={styles.upcomingService}>
+                    {appt.serviceNames.join(', ')}
+                  </Text>
+                  <Text style={styles.upcomingMeta}>
+                    {appt.petName}
+                    {' · '}
+                    {appt.scheduledDate.toLocaleDateString('en-PH', {
+                      weekday: 'short',
+                      month: 'short',
+                      day: 'numeric',
+                    })}
+                  </Text>
+                </View>
+                <View style={[
+                  styles.upcomingBadge,
                   {
-                    color: appt.status === 'confirmed'
-                      ? COLORS.success
-                      : COLORS.warning,
+                    backgroundColor: appt.status === 'confirmed'
+                      ? COLORS.successBg
+                      : COLORS.warningBg,
                   },
                 ]}>
-                  {appt.countdown}
-                </Text>
+                  <Text style={[
+                    styles.upcomingCountdown,
+                    {
+                      color: appt.status === 'confirmed'
+                        ? COLORS.success
+                        : COLORS.warning,
+                    },
+                  ]}>
+                    {appt.countdown}
+                  </Text>
+                </View>
               </View>
-            </View>
-          ))
+            ))
         )}
       </View>
 
       {/* ══════════════════════════════════════════════════════════════════
-          SECTION 3 — VISIT TRENDS
+          CONDITIONS OVERVIEW (Step 6) — only renders when problems exist
           ════════════════════════════════════════════════════════════════ */}
-      <View style={styles.section}>
-        <SectionHeader title="VISIT TRENDS" />
-
-        <View style={styles.chartContainer}>
-          <View style={styles.chartShadow} />
-          <View style={styles.chartBox}>
-            <Text style={styles.chartTitle}>VISITS PER MONTH</Text>
-            <View style={styles.chartBars}>
-              {monthlyVisitData.map(m => (
-                <View key={m.key} style={styles.chartBarCol}>
-                  <View style={styles.chartBarTrack}>
-                    <View
-                      style={[
-                        styles.chartBarFill,
-                        { height: `${Math.max(m.pct, 4)}%` },
-                      ]}
-                    />
-                  </View>
-                  <Text style={styles.chartBarLabel}>{m.label}</Text>
-                  {m.count > 0 && (
-                    <Text style={styles.chartBarCount}>{m.count}</Text>
-                  )}
-                </View>
-              ))}
+      {conditionsOverview.hasData && (
+        <View style={styles.section}>
+          <SectionHeader title="CONDITIONS OVERVIEW" />
+          <View style={styles.conditionsKpiRow}>
+            <View style={[styles.conditionsKpiPill, { borderColor: COLORS.danger }]}>
+              <Text style={[styles.conditionsKpiValue, { color: COLORS.danger }]}>
+                {conditionsOverview.activeCount}
+              </Text>
+              <Text style={styles.conditionsKpiLabel}>ACTIVE</Text>
+            </View>
+            <View style={[styles.conditionsKpiPill, { borderColor: COLORS.success }]}>
+              <Text style={[styles.conditionsKpiValue, { color: COLORS.success }]}>
+                {conditionsOverview.resolvedCount}
+              </Text>
+              <Text style={styles.conditionsKpiLabel}>RESOLVED</Text>
+            </View>
+            <View style={[styles.conditionsKpiPill, { borderColor: COLORS.warning }]}>
+              <Text style={[styles.conditionsKpiValue, { color: COLORS.warning }]}>
+                {conditionsOverview.monitoringCount}
+              </Text>
+              <Text style={styles.conditionsKpiLabel}>MONITORING</Text>
             </View>
           </View>
+          {Object.entries(conditionsOverview.perPet).map(([petName, conditions]) => (
+            <View key={petName} style={styles.conditionsPerPet}>
+              <Text style={styles.conditionsPerPetName}>{petName}:</Text>
+              <Text style={styles.conditionsPerPetList}>
+                {conditions.map(c =>
+                  `${c.name}${c.status === 'monitoring' ? ' (monitoring)' : ''}`
+                ).join(', ')}
+              </Text>
+            </View>
+          ))}
         </View>
-      </View>
+      )}
+      </>
+      )}
 
       {/* ══════════════════════════════════════════════════════════════════
-          SECTION 3b — YEAR OVER YEAR (only when prior-year data exists)
+          VISITS TAB
           ════════════════════════════════════════════════════════════════ */}
-      {yoyVisitData.hasLastYear && (
+      {activeTab === 'visits' && (
+      <>
+      {/* ── VISIT TRENDS (with toggle chips) ────────────────────────── */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeaderRow}>
+          <SectionHeader title="VISIT TRENDS" style={styles.sectionHeaderNoMargin} />
+          <TouchableOpacity
+            onPress={() => handleExportTab('visits')}
+            style={styles.exportButton}
+            activeOpacity={0.7}
+          >
+            <MaterialIcons name="share" size={18} color={COLORS.accentLight} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Row 1: Time grouping — MONTHLY / WEEKLY (only relevant for total bar chart) */}
+        {visitBreakdownMode === 'total' && (
+          <View style={styles.rangeChipRow}>
+            {[{ key: 'monthly', label: 'MONTHLY' }, { key: 'weekly', label: 'WEEKLY' }].map(chip => (
+              <Pressable
+                key={chip.key}
+                style={[styles.rangeChip, visitTimeGrouping === chip.key && styles.rangeChipActive]}
+                onPress={() => setVisitTimeGrouping(chip.key)}
+              >
+                <Text style={[
+                  styles.rangeChipText,
+                  visitTimeGrouping === chip.key && styles.rangeChipTextActive,
+                ]}>
+                  {chip.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+
+        {/* Row 2: Breakdown mode — TOTAL / BY PET / BY SERVICE / BY DEPARTMENT */}
+        <View style={styles.rangeChipRow}>
+          {[
+            { key: 'total',        label: 'TOTAL'         },
+            { key: 'byPet',        label: 'BY PET'        },
+            { key: 'byService',    label: 'BY SERVICE'    },
+            { key: 'byDepartment', label: 'BY DEPARTMENT' },
+          ].map(chip => (
+            <Pressable
+              key={chip.key}
+              style={[styles.rangeChip, visitBreakdownMode === chip.key && styles.rangeChipActive]}
+              onPress={() => setVisitBreakdownMode(chip.key)}
+            >
+              <Text style={[
+                styles.rangeChipText,
+                visitBreakdownMode === chip.key && styles.rangeChipTextActive,
+              ]}>
+                {chip.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+
+        {/* Toggle-driven chart: TOTAL → bar chart, others → pie chart */}
+        {visitBreakdownMode === 'total' ? (
+          <View style={styles.chartContainer}>
+            <View style={styles.chartShadow} />
+            <View style={styles.chartBox}>
+              <Text style={styles.chartTitle}>
+                {visitTimeGrouping === 'monthly' ? 'VISITS PER MONTH' : 'VISITS PER WEEK'}
+              </Text>
+              <View style={styles.chartBars}>
+                {(visitTimeGrouping === 'monthly' ? monthlyVisitData : weeklyVisitData).map(m => (
+                  <View key={m.key} style={styles.chartBarCol}>
+                    <View style={styles.chartBarTrack}>
+                      <View style={[styles.chartBarFill, { height: `${Math.max(m.pct, 4)}%` }]} />
+                    </View>
+                    <Text style={styles.chartBarLabel}>{m.label}</Text>
+                    {m.count > 0 && <Text style={styles.chartBarCount}>{m.count}</Text>}
+                  </View>
+                ))}
+              </View>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.chartContainer}>
+            <View style={styles.chartShadow} />
+            <View style={styles.chartBox}>
+              <Text style={styles.chartTitle}>
+                {visitBreakdownMode === 'byPet'        ? 'VISITS BY PET'
+                  : visitBreakdownMode === 'byService'  ? 'VISITS BY SERVICE'
+                  : 'VISITS BY DEPARTMENT'}
+              </Text>
+              {(() => {
+                const pieData = visitBreakdownMode === 'byPet'        ? visitsByPet
+                  : visitBreakdownMode === 'byService'                ? visitsByService
+                  : visitsByDepartment;
+                return pieData.length === 0
+                  ? <Text style={styles.emptyState}>No completed visits yet.</Text>
+                  : <PieChart data={pieData} size={160} />;
+              })()}
+            </View>
+          </View>
+        )}
+      </View>
+
+      {/* ── YEAR OVER YEAR (with VISITS / SPENDING toggle) ──────────── */}
+      {(yoyVisitData.hasLastYear || yoySpendingData.hasLastYear) && (
         <View style={styles.section}>
           <SectionHeader title="YEAR OVER YEAR" />
+
+          {/* Toggle: VISITS / SPENDING */}
+          <View style={styles.rangeChipRow}>
+            {[{ key: 'visits', label: 'VISITS' }, { key: 'spending', label: 'SPENDING' }].map(chip => (
+              <Pressable
+                key={chip.key}
+                style={[styles.rangeChip, yoyMode === chip.key && styles.rangeChipActive]}
+                onPress={() => setYoyMode(chip.key)}
+              >
+                <Text style={[
+                  styles.rangeChipText,
+                  yoyMode === chip.key && styles.rangeChipTextActive,
+                ]}>
+                  {chip.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+
+          {yoyMode === 'visits' ? (
+            <View style={styles.chartContainer}>
+              <View style={styles.chartShadow} />
+              <View style={styles.chartBox}>
+                <Text style={styles.chartTitle}>VISITS PER MONTH</Text>
+                <View style={styles.chartBars}>
+                  {yoyVisitData.months.map(m => (
+                    <View key={m.month} style={styles.chartBarCol}>
+                      <View style={styles.chartBarTrack}>
+                        <View style={styles.yoyBarGroup}>
+                          <View
+                            style={[
+                              styles.yoyBarThis,
+                              { height: `${Math.max(m.thisYearPct, m.thisYear > 0 ? 4 : 0)}%` },
+                            ]}
+                          />
+                          <View
+                            style={[
+                              styles.yoyBarLast,
+                              { height: `${Math.max(m.lastYearPct, m.lastYear > 0 ? 4 : 0)}%` },
+                            ]}
+                          />
+                        </View>
+                      </View>
+                      <Text style={styles.chartBarLabel}>{m.label}</Text>
+                    </View>
+                  ))}
+                </View>
+                <View style={styles.yoyLegend}>
+                  <View style={styles.yoyLegendItem}>
+                    <View style={[styles.yoyLegendDot, { backgroundColor: COLORS.sky }]} />
+                    <Text style={styles.yoyLegendText}>{yoyVisitData.thisYearLabel}</Text>
+                  </View>
+                  <View style={styles.yoyLegendItem}>
+                    <View style={[styles.yoyLegendDot, { backgroundColor: COLORS.borderLight }]} />
+                    <Text style={styles.yoyLegendText}>{yoyVisitData.lastYearLabel}</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.chartContainer}>
+              <View style={styles.chartShadow} />
+              <View style={styles.chartBox}>
+                <Text style={styles.chartTitle}>SPENDING PER MONTH</Text>
+                <View style={styles.chartBars}>
+                  {yoySpendingData.months.map(m => (
+                    <View key={m.month} style={styles.chartBarCol}>
+                      <View style={styles.chartBarTrack}>
+                        <View style={styles.yoyBarGroup}>
+                          <View
+                            style={[
+                              styles.yoyBarThis,
+                              { height: `${Math.max(m.thisYearPct, m.thisYear > 0 ? 4 : 0)}%` },
+                            ]}
+                          />
+                          <View
+                            style={[
+                              styles.yoyBarLast,
+                              { height: `${Math.max(m.lastYearPct, m.lastYear > 0 ? 4 : 0)}%` },
+                            ]}
+                          />
+                        </View>
+                      </View>
+                      <Text style={styles.chartBarLabel}>{m.label}</Text>
+                      {m.thisYear > 0 && (
+                        <Text style={styles.chartBarCount}>
+                          P{Math.round(m.thisYear / 1000)}k
+                        </Text>
+                      )}
+                    </View>
+                  ))}
+                </View>
+                <View style={styles.yoyLegend}>
+                  <View style={styles.yoyLegendItem}>
+                    <View style={[styles.yoyLegendDot, { backgroundColor: COLORS.sky }]} />
+                    <Text style={styles.yoyLegendText}>{yoySpendingData.thisYearLabel}</Text>
+                  </View>
+                  <View style={styles.yoyLegendItem}>
+                    <View style={[styles.yoyLegendDot, { backgroundColor: COLORS.borderLight }]} />
+                    <Text style={styles.yoyLegendText}>{yoySpendingData.lastYearLabel}</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* ── VISIT PATTERNS (4 new mini charts) ──────────────────────── */}
+      <View style={styles.section}>
+        <SectionHeader title="VISIT PATTERNS" />
+
+        {/* 1. Visit frequency trend — days between consecutive visits */}
+        {visitFrequencyTrend.length >= 2 && (
+          <View style={[styles.chartContainer, { marginBottom: 16 }]}>
+            <View style={styles.chartShadow} />
+            <View style={styles.chartBox}>
+              <Text style={styles.chartTitle}>VISIT FREQUENCY TREND</Text>
+              <LineChart
+                data={{
+                  labels: visitFrequencyTrend.map((d, i) =>
+                    // Show every other label when there are many points to avoid overlap.
+                    i % Math.ceil(visitFrequencyTrend.length / 5) === 0 ? (d.label ?? '') : '',
+                  ),
+                  datasets: [{ data: visitFrequencyTrend.map(d => d.value) }],
+                }}
+                width={SCREEN_W - 72}
+                height={150}
+                chartConfig={{
+                  ...CHART_CONFIG_BASE,
+                  formatYLabel: v => `${parseFloat(v).toFixed(0)}d`,
+                }}
+                bezier
+                withDots
+                style={{ borderRadius: 0 }}
+              />
+            </View>
+          </View>
+        )}
+
+        {/* 2. Visit outcomes — completed / cancelled / no-show pie */}
+        {visitOutcomes.length > 0 && (
+          <View style={[styles.chartContainer, { marginBottom: 16 }]}>
+            <View style={styles.chartShadow} />
+            <View style={styles.chartBox}>
+              <Text style={styles.chartTitle}>VISIT OUTCOMES</Text>
+              <PieChart data={visitOutcomes} size={140} />
+            </View>
+          </View>
+        )}
+
+        {/* 3. Preferred days — Mon-Sun bar chart */}
+        {preferredDays.length > 0 && (
+          <View style={[styles.chartContainer, { marginBottom: 16 }]}>
+            <View style={styles.chartShadow} />
+            <View style={styles.chartBox}>
+              <Text style={styles.chartTitle}>PREFERRED VISIT DAYS</Text>
+              <View style={styles.chartBars}>
+                {preferredDays.map(d => (
+                  <View key={d.label} style={styles.chartBarCol}>
+                    <View style={styles.chartBarTrack}>
+                      <View
+                        style={[
+                          styles.chartBarFill,
+                          { height: `${Math.max(d.pct, d.count > 0 ? 4 : 0)}%` },
+                        ]}
+                      />
+                    </View>
+                    <Text style={styles.chartBarLabel}>{d.label}</Text>
+                    {d.count > 0 && <Text style={styles.chartBarCount}>{d.count}</Text>}
+                  </View>
+                ))}
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* 4. Species distribution — only when 2+ distinct species */}
+        {speciesDistribution.length >= 2 && (
+          <View style={[styles.chartContainer, { marginBottom: 16 }]}>
+            <View style={styles.chartShadow} />
+            <View style={styles.chartBox}>
+              <Text style={styles.chartTitle}>SPECIES DISTRIBUTION</Text>
+              <PieChart data={speciesDistribution} size={140} />
+            </View>
+          </View>
+        )}
+
+        {visitFrequencyTrend.length < 2 && visitOutcomes.length === 0 &&
+         !preferredDays.some(d => d.count > 0) && speciesDistribution.length < 2 && (
+          <Text style={styles.emptyState}>Not enough visit data yet.</Text>
+        )}
+      </View>
+
+      {/* ── SEASONAL PATTERNS (with per-pet filter) ──────────────────── */}
+      {seasonalPattern.reduce((sum, m) => sum + m.count, 0) >= 3 && (
+        <View style={styles.section}>
+          <SectionHeader title="SEASONAL PATTERNS" />
+
+          {/* Per-pet filter chips: ALL PETS + one per pet */}
+          {userPets.length > 0 && (
+            <View style={styles.rangeChipRow}>
+              <Pressable
+                style={[styles.rangeChip, seasonalPetFilter === 'all' && styles.rangeChipActive]}
+                onPress={() => setSeasonalPetFilter('all')}
+              >
+                <Text style={[
+                  styles.rangeChipText,
+                  seasonalPetFilter === 'all' && styles.rangeChipTextActive,
+                ]}>
+                  ALL PETS
+                </Text>
+              </Pressable>
+              {userPets.map(pet => (
+                <Pressable
+                  key={pet.id}
+                  style={[styles.rangeChip, seasonalPetFilter === pet.id && styles.rangeChipActive]}
+                  onPress={() => setSeasonalPetFilter(pet.id)}
+                >
+                  <Text style={[
+                    styles.rangeChipText,
+                    seasonalPetFilter === pet.id && styles.rangeChipTextActive,
+                  ]}>
+                    {(pet.name || 'PET').toUpperCase()}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
 
           <View style={styles.chartContainer}>
             <View style={styles.chartShadow} />
             <View style={styles.chartBox}>
-              <Text style={styles.chartTitle}>VISITS PER MONTH</Text>
-              <View style={styles.chartBars}>
-                {yoyVisitData.months.map(m => (
-                  <View key={m.month} style={styles.chartBarCol}>
-                    <View style={styles.chartBarTrack}>
-                      {/* Side-by-side bars: this year (sky) and last year (borderLight) */}
-                      <View style={styles.yoyBarGroup}>
-                        <View
-                          style={[
-                            styles.yoyBarThis,
-                            { height: `${Math.max(m.thisYearPct, m.thisYear > 0 ? 4 : 0)}%` },
-                          ]}
-                        />
-                        <View
-                          style={[
-                            styles.yoyBarLast,
-                            { height: `${Math.max(m.lastYearPct, m.lastYear > 0 ? 4 : 0)}%` },
-                          ]}
-                        />
-                      </View>
+              <Text style={styles.chartTitle}>VISITS BY MONTH (ALL YEARS)</Text>
+              <View style={styles.heatmapRow}>
+                {(perPetSeasonalPattern[seasonalPetFilter] || seasonalPattern).map(cell => (
+                  <View key={cell.month} style={styles.heatmapCol}>
+                    <View
+                      style={[
+                        styles.heatmapCell,
+                        {
+                          backgroundColor: COLORS.sky,
+                          opacity: Math.max(0.1, cell.intensity),
+                        },
+                      ]}
+                    >
+                      {cell.count > 0 && (
+                        <Text style={styles.heatmapCount}>{cell.count}</Text>
+                      )}
                     </View>
-                    <Text style={styles.chartBarLabel}>{m.label}</Text>
+                    <Text style={styles.heatmapLabel}>{cell.label}</Text>
                   </View>
                 ))}
-              </View>
-              {/* Legend */}
-              <View style={styles.yoyLegend}>
-                <View style={styles.yoyLegendItem}>
-                  <View style={[styles.yoyLegendDot, { backgroundColor: COLORS.sky }]} />
-                  <Text style={styles.yoyLegendText}>{yoyVisitData.thisYearLabel}</Text>
-                </View>
-                <View style={styles.yoyLegendItem}>
-                  <View style={[styles.yoyLegendDot, { backgroundColor: COLORS.borderLight }]} />
-                  <Text style={styles.yoyLegendText}>{yoyVisitData.lastYearLabel}</Text>
-                </View>
               </View>
             </View>
           </View>
         </View>
       )}
+      </>
+      )}
 
       {/* ══════════════════════════════════════════════════════════════════
-          SECTION 4 — VISIT BREAKDOWN (donut chart)
+          SPENDING TAB
           ════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'spending' && (
       <View style={styles.section}>
-        <SectionHeader title="VISIT BREAKDOWN" />
+        {/* Section header with export button */}
+        <View style={styles.sectionHeaderRow}>
+          <SectionHeader title="SPENDING BREAKDOWN" style={styles.sectionHeaderNoMargin} />
+          <TouchableOpacity
+            onPress={() => handleExportTab('spending')}
+            style={styles.exportButton}
+            activeOpacity={0.7}
+          >
+            <MaterialIcons name="share" size={18} color={COLORS.accentLight} />
+          </TouchableOpacity>
+        </View>
 
-        {visitTypePieData.length === 0 ? (
-          <Text style={styles.emptyState}>No completed visits yet.</Text>
-        ) : (
-          <View style={styles.chartContainer}>
-            <View style={styles.chartShadow} />
-            <View style={styles.chartBox}>
-              <PieChart data={visitTypePieData} size={160} />
-            </View>
-          </View>
-        )}
-      </View>
-
-      {/* ══════════════════════════════════════════════════════════════════
-          SECTION 5 — YOUR PETS
-          ════════════════════════════════════════════════════════════════ */}
-      <View style={styles.section}>
-        <SectionHeader title="YOUR PETS" />
-
-        {petCards.length === 0 ? (
-          <Text style={styles.emptyState}>
-            No pets registered yet. Add a pet profile to see health cards here.
-          </Text>
-        ) : (
-          petCards.map(petCard => (
-            <PetHealthCard
-              key={petCard.id}
-              petCard={petCard}
-              onBookNow={() => navigateToBookAppointment(petCard.id)}
-              onBookRecheck={() => navigateToBookAppointment(petCard.id)}
-              onWeightZoom={() => setWeightZoomPet(petCard)}
-            />
-          ))
-        )}
-      </View>
-
-      {/* ══════════════════════════════════════════════════════════════════
-          SECTION 6 — DIAGNOSIS HISTORY
-          ════════════════════════════════════════════════════════════════ */}
-      <View style={styles.section}>
-        <SectionHeader title="DIAGNOSIS HISTORY" />
-
-        {diagnosisHistory.totalConditions === 0 ? (
-          <Text style={styles.emptyState}>No diagnoses recorded yet.</Text>
-        ) : (
-          <>
-            {/* Summary KPIs */}
-            <View style={styles.diagnosisSummaryRow}>
-              <View style={styles.diagnosisSummaryPill}>
-                <Text style={styles.diagnosisSummaryValue}>
-                  {diagnosisHistory.totalConditions}
-                </Text>
-                <Text style={styles.diagnosisSummaryLabel}>total conditions</Text>
-              </View>
-              <View style={styles.diagnosisSummaryPill}>
-                <Text style={styles.diagnosisSummaryValue}>
-                  {diagnosisHistory.thisYearCount}
-                </Text>
-                <Text style={styles.diagnosisSummaryLabel}>this year</Text>
-              </View>
-            </View>
-
-            {/* Most recurring */}
-            {diagnosisHistory.mostRecurring && (
-              <View style={styles.diagnosisRecurringRow}>
-                <MaterialIcons name="repeat" size={13} color={COLORS.sky} />
-                <Text style={styles.diagnosisRecurringText}>
-                  Most recurring: {diagnosisHistory.mostRecurring.name}{' '}
-                  <Text style={styles.diagnosisRecurringCount}>
-                    ({diagnosisHistory.mostRecurring.count}×)
-                  </Text>
-                </Text>
-              </View>
-            )}
-
-            {/* Per-pet timeline */}
-            {Object.entries(diagnosisHistory.perPetTimeline).map(([petName, entries]) => (
-              <View key={petName} style={styles.diagnosisPetGroup}>
-                <Text style={styles.diagnosisPetName}>{petName.toUpperCase()}</Text>
-                {entries.map((dx, idx) => (
-                  <View key={`${dx.name}-${idx}`} style={styles.diagnosisEntry}>
-                    <Text style={styles.diagnosisName}>{dx.name}</Text>
-                    {dx.date && (
-                      <Text style={styles.diagnosisDate}>
-                        {dx.date.toLocaleDateString('en-PH', {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric',
-                        })}
-                      </Text>
-                    )}
-                  </View>
-                ))}
-              </View>
-            ))}
-          </>
-        )}
-      </View>
-
-      {/* ══════════════════════════════════════════════════════════════════
-          SECTION 5 — SPENDING BREAKDOWN
-          ════════════════════════════════════════════════════════════════ */}
-      <View style={styles.section}>
-        <SectionHeader title="SPENDING BREAKDOWN" />
-
-        {/* Date range toggle chips */}
+        {/* Row 1: Date range — 6 MONTHS / THIS YEAR / LAST YEAR / ALL TIME */}
         <View style={styles.rangeChipRow}>
           {SPENDING_RANGE_OPTIONS.map(chip => (
             <Pressable
@@ -657,45 +1293,135 @@ export default function MyStatsScreen({ route, navigation }) {
           ))}
         </View>
 
+        {/* Row 2: Time grouping — MONTHLY / WEEKLY (only relevant for total bar chart) */}
+        {spendingBreakdownMode === 'total' && (
+          <View style={styles.rangeChipRow}>
+            {[{ key: 'monthly', label: 'MONTHLY' }, { key: 'weekly', label: 'WEEKLY' }].map(chip => (
+              <Pressable
+                key={chip.key}
+                style={[styles.rangeChip, spendingTimeGrouping === chip.key && styles.rangeChipActive]}
+                onPress={() => setSpendingTimeGrouping(chip.key)}
+              >
+                <Text style={[
+                  styles.rangeChipText,
+                  spendingTimeGrouping === chip.key && styles.rangeChipTextActive,
+                ]}>
+                  {chip.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+
+        {/* Row 3: Breakdown mode — TOTAL / BY PET / BY SERVICE / BY DEPARTMENT */}
+        <View style={styles.rangeChipRow}>
+          {[
+            { key: 'total',        label: 'TOTAL'         },
+            { key: 'byPet',        label: 'BY PET'        },
+            { key: 'byService',    label: 'BY SERVICE'    },
+            { key: 'byDepartment', label: 'BY DEPARTMENT' },
+          ].map(chip => (
+            <Pressable
+              key={chip.key}
+              style={[styles.rangeChip, spendingBreakdownMode === chip.key && styles.rangeChipActive]}
+              onPress={() => setSpendingBreakdownMode(chip.key)}
+            >
+              <Text style={[
+                styles.rangeChipText,
+                spendingBreakdownMode === chip.key && styles.rangeChipTextActive,
+              ]}>
+                {chip.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+
         {spendingBreakdown.spendingBarData.every(m => m.amount === 0) &&
          spendingBreakdown.perPetList.length === 0 ? (
           <Text style={styles.emptyState}>No spending data for this period.</Text>
         ) : (
           <>
-            {/* Monthly spending bar chart */}
-            {spendingBreakdown.spendingBarData.some(m => m.amount > 0) && (
+            {/* Toggle-driven main chart */}
+            {spendingBreakdownMode === 'total' ? (
+              <>
+                {/* Bar chart: MONTHLY or WEEKLY */}
+                {(spendingTimeGrouping === 'monthly'
+                  ? spendingBreakdown.spendingBarData.some(m => m.amount > 0)
+                  : weeklySpendingData.some(w => w.amount > 0)
+                ) && (
+                  <View style={styles.spendingSparklineContainer}>
+                    <View style={styles.chartShadow} />
+                    <View style={styles.chartBox}>
+                      <Text style={styles.chartTitle}>
+                        {spendingTimeGrouping === 'monthly' ? 'MONTHLY SPENDING' : 'WEEKLY SPENDING'}
+                      </Text>
+                      <View style={styles.chartBars}>
+                        {(spendingTimeGrouping === 'monthly'
+                          ? spendingBreakdown.spendingBarData
+                          : weeklySpendingData
+                        ).map(m => (
+                          <View key={m.key} style={styles.chartBarCol}>
+                            <View style={styles.chartBarTrack}>
+                              <View
+                                style={[
+                                  styles.chartBarFill,
+                                  { height: `${Math.max(m.pct, 4)}%` },
+                                ]}
+                              />
+                            </View>
+                            <Text style={styles.chartBarLabel}>{m.label}</Text>
+                            {m.amount > 0 && (
+                              <Text style={styles.chartBarCount}>
+                                P{Math.round(m.amount / 1000)}k
+                              </Text>
+                            )}
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  </View>
+                )}
+              </>
+            ) : (
+              /* Pie chart for BY PET / BY SERVICE / BY DEPARTMENT */
               <View style={styles.spendingSparklineContainer}>
                 <View style={styles.chartShadow} />
                 <View style={styles.chartBox}>
-                  <Text style={styles.chartTitle}>MONTHLY SPENDING</Text>
-                  <View style={styles.chartBars}>
-                    {spendingBreakdown.spendingBarData.map(m => (
-                      <View key={m.key} style={styles.chartBarCol}>
-                        <View style={styles.chartBarTrack}>
-                          <View
-                            style={[
-                              styles.chartBarFill,
-                              { height: `${Math.max(m.pct, 4)}%` },
-                            ]}
-                          />
-                        </View>
-                        <Text style={styles.chartBarLabel}>{m.label}</Text>
-                        {m.amount > 0 && (
-                          <Text style={styles.chartBarCount}>
-                            P{Math.round(m.amount / 1000)}k
-                          </Text>
-                        )}
-                      </View>
-                    ))}
-                  </View>
+                  <Text style={styles.chartTitle}>
+                    {spendingBreakdownMode === 'byPet'        ? 'SPENDING BY PET'
+                      : spendingBreakdownMode === 'byService'  ? 'SPENDING BY SERVICE'
+                      : 'SPENDING BY DEPARTMENT'}
+                  </Text>
+                  {(() => {
+                    const pieData = spendingBreakdownMode === 'byPet'
+                      ? spendingBreakdown.perPetList.map(r => ({
+                          name: r.name,
+                          count: Math.round(r.amount),
+                          pct: spendingBreakdown.perPetList.reduce((s, x) => s + x.amount, 0) > 0
+                            ? r.amount / spendingBreakdown.perPetList.reduce((s, x) => s + x.amount, 0)
+                            : 0,
+                        }))
+                      : spendingBreakdownMode === 'byService'
+                        ? spendingBreakdown.perServiceList.map(r => ({
+                            name: r.type,
+                            count: Math.round(r.amount),
+                            pct: spendingBreakdown.perServiceList.reduce((s, x) => s + x.amount, 0) > 0
+                              ? r.amount / spendingBreakdown.perServiceList.reduce((s, x) => s + x.amount, 0)
+                              : 0,
+                          }))
+                        : spendingByDepartment;
+                    return pieData.length === 0
+                      ? <Text style={styles.emptyState}>No spending data for this period.</Text>
+                      : <SpendingPieChart data={pieData} size={160} />;
+                  })()}
                 </View>
               </View>
             )}
 
-            {/* Per-pet spending — tappable rows with transaction drill-down */}
-            {spendingBreakdown.perPetList.length > 0 && (
+            {/* Per-pet drill-down — always shown in BY PET mode below the pie */}
+            {spendingBreakdownMode === 'byPet' && spendingBreakdown.perPetList.length > 0 && (
               <View style={styles.spendingBlock}>
-                <Text style={styles.spendingBlockTitle}>BY PET</Text>
+                <Text style={styles.spendingBlockTitle}>PET BREAKDOWN</Text>
                 {spendingBreakdown.perPetList.map(row => {
                   const isExpanded = expandedPet === row.name;
                   const transactions = spendingBreakdown.perPetTransactions?.[row.name] ?? [];
@@ -745,18 +1471,38 @@ export default function MyStatsScreen({ route, navigation }) {
               </View>
             )}
 
-            {/* Per-service spending */}
-            {spendingBreakdown.perServiceList.length > 0 && (
-              <View style={styles.spendingBlock}>
-                <Text style={styles.spendingBlockTitle}>BY SERVICE</Text>
-                {spendingBreakdown.perServiceList.map(row => (
-                  <View key={row.type} style={styles.spendingRow}>
-                    <Text style={styles.spendingRowName}>{row.type}</Text>
-                    <Text style={styles.spendingRowAmount}>
-                      P{Math.round(row.amount).toLocaleString()}
+            {/* SPENDING PER VISIT trend (Step 18) */}
+            {spendingPerVisit.trendData.length >= 2 && (
+              <View style={[styles.spendingSparklineContainer, { marginTop: 4 }]}>
+                <View style={styles.chartShadow} />
+                <View style={styles.chartBox}>
+                  <Text style={styles.chartTitle}>
+                    SPENDING PER VISIT
+                    {'  '}
+                    <Text style={styles.spendingAvgLabel}>
+                      Avg: P{spendingPerVisit.average.toLocaleString()}/visit
                     </Text>
-                  </View>
-                ))}
+                  </Text>
+                  <LineChart
+                    data={{
+                      labels: spendingPerVisit.trendData.map((d, i) =>
+                        i % Math.ceil(spendingPerVisit.trendData.length / 5) === 0
+                          ? (d.label ?? '')
+                          : '',
+                      ),
+                      datasets: [{ data: spendingPerVisit.trendData.map(d => d.value) }],
+                    }}
+                    width={SCREEN_W - 72}
+                    height={150}
+                    chartConfig={{
+                      ...CHART_CONFIG_BASE,
+                      formatYLabel: v => `₱${parseFloat(v).toFixed(0)}`,
+                    }}
+                    bezier
+                    withDots
+                    style={{ borderRadius: 0 }}
+                  />
+                </View>
               </View>
             )}
 
@@ -783,12 +1529,63 @@ export default function MyStatsScreen({ route, navigation }) {
           </>
         )}
       </View>
+      )}
 
       {/* ══════════════════════════════════════════════════════════════════
-          SECTION 7 — PREVENTIVE CARE
+          PETS TAB (Step 8 — PetCardSlim)
           ════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'pets' && (
       <View style={styles.section}>
-        <SectionHeader title="PREVENTIVE CARE" />
+        <View style={styles.sectionHeaderRow}>
+          <SectionHeader
+            title={`YOUR PETS${petCards.length > 0 ? ` (${petCards.length})` : ''}`}
+            style={styles.sectionHeaderNoMargin}
+          />
+          <TouchableOpacity
+            onPress={() => handleExportTab('pets')}
+            style={styles.exportButton}
+            activeOpacity={0.7}
+          >
+            <MaterialIcons name="share" size={18} color={COLORS.accentLight} />
+          </TouchableOpacity>
+        </View>
+
+        {petCards.length === 0 ? (
+          <Text style={styles.emptyState}>
+            No pets registered yet. Add a pet profile to see health cards here.
+          </Text>
+        ) : (
+          petCards.map(petCard => (
+            <PetCardSlim
+              key={petCard.id}
+              petCard={petCard}
+              onWeightZoom={() => setWeightZoomPet(petCard)}
+              onViewChart={() =>
+                navigation.navigate('PetHistory', { petId: petCard.id, petName: petCard.name })
+              }
+            />
+          ))
+        )}
+      </View>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════
+          HEALTH TAB
+          ════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'health' && (
+      <>
+      <View style={styles.section}>
+        {/* Section header with export button */}
+        <View style={styles.sectionHeaderRow}>
+          <SectionHeader title="PREVENTIVE CARE" style={styles.sectionHeaderNoMargin} />
+          <TouchableOpacity
+            onPress={() => handleExportTab('health')}
+            style={styles.exportButton}
+            activeOpacity={0.7}
+          >
+            <MaterialIcons name="share" size={18} color={COLORS.accentLight} />
+          </TouchableOpacity>
+        </View>
 
         {preventiveCare.length === 0 ? (
           <View style={styles.preventiveClearRow}>
@@ -810,43 +1607,100 @@ export default function MyStatsScreen({ route, navigation }) {
         )}
       </View>
 
-      {/* ══════════════════════════════════════════════════════════════════
-          SECTION 8 — SEASONAL PATTERNS (only when 3+ completed visits)
-          ════════════════════════════════════════════════════════════════ */}
-      {seasonalPattern.reduce((sum, m) => sum + m.count, 0) >= 3 && (
+      {/* ── VACCINATION STATUS (Step 19) ────────────────────────── */}
+      {petCards.some(pc => pc.vaccineStatus?.statuses) && (
         <View style={styles.section}>
-          <SectionHeader title="SEASONAL PATTERNS" />
-
-          <View style={styles.chartContainer}>
-            <View style={styles.chartShadow} />
-            <View style={styles.chartBox}>
-              <Text style={styles.chartTitle}>VISITS BY MONTH (ALL YEARS)</Text>
-              <View style={styles.heatmapRow}>
-                {seasonalPattern.map(cell => (
-                  <View key={cell.month} style={styles.heatmapCol}>
+          <SectionHeader title="VACCINATION STATUS" />
+          {petCards.map(pc => {
+            if (!pc.vaccineStatus?.statuses) return null;
+            const pct = pc.vaccineStatus.completeness?.percentage ?? 0;
+            const barColor = pct >= 75 ? COLORS.success
+              : pct >= 50 ? COLORS.warning
+              : COLORS.danger;
+            return (
+              <View key={pc.id} style={styles.vacStatusPetBlock}>
+                {/* Pet name + completeness bar */}
+                <View style={styles.vacStatusHeader}>
+                  <Text style={styles.vacStatusPetName}>
+                    {pc.speciesEmoji} {pc.name}
+                  </Text>
+                  <View style={styles.vacStatusBarTrack}>
                     <View
                       style={[
-                        styles.heatmapCell,
-                        {
-                          backgroundColor: COLORS.sky,
-                          opacity: Math.max(0.1, cell.intensity),
-                        },
+                        styles.vacStatusBarFill,
+                        { width: `${pct}%`, backgroundColor: barColor },
                       ]}
-                    >
-                      {cell.count > 0 && (
-                        <Text style={styles.heatmapCount}>{cell.count}</Text>
-                      )}
-                    </View>
-                    <Text style={styles.heatmapLabel}>{cell.label}</Text>
+                    />
                   </View>
-                ))}
+                  <Text style={[styles.vacStatusFraction, { color: barColor }]}>
+                    {pc.vaccineStatus.completeness?.administered ?? 0}/
+                    {pc.vaccineStatus.completeness?.total ?? 0} ({pct}%)
+                  </Text>
+                </View>
+
+                {/* Per-vaccine status lines */}
+                {pc.vaccineStatus.statuses.map((v, idx) => {
+                  const dotColor = v.status === 'overdue' ? COLORS.danger
+                    : v.status === 'current'   ? COLORS.success
+                    : v.status === 'due_soon'  ? COLORS.warning
+                    : COLORS.textMuted;
+                  const dotEmoji = v.status === 'overdue' ? '🔴'
+                    : v.status === 'current'  ? '🟢'
+                    : v.status === 'due_soon' ? '🟡'
+                    : '⚪';
+                  const detailText = v.status === 'overdue'
+                    ? `OVERDUE (${Math.abs(v.daysUntilDue)} days)`
+                    : v.status === 'current'  ? 'current'
+                    : v.status === 'due_soon' ? `in ${v.daysUntilDue} days`
+                    : 'no record';
+                  return (
+                    <View key={idx} style={styles.vacStatusLine}>
+                      <Text style={styles.vacStatusDot}>{dotEmoji}</Text>
+                      <Text style={styles.vacStatusName}>{v.name}</Text>
+                      <Text style={[styles.vacStatusDetail, { color: dotColor }]}>
+                        {detailText}
+                      </Text>
+                    </View>
+                  );
+                })}
               </View>
-            </View>
-          </View>
+            );
+          })}
         </View>
       )}
 
-      {/* Weight zoom modal — rendered at root level so it overlays everything */}
+      {/* ── ALL PETS gauge comparison strip ─────────────────────── */}
+      {petCards.filter(pc => pc.vaccineStatus?.completeness).length > 0 && (
+        <View style={styles.section}>
+          <SectionHeader title="ALL PETS" />
+          <View style={styles.allPetsGaugeRow}>
+            {petCards
+              .filter(pc => pc.vaccineStatus?.completeness)
+              .map(pc => (
+                <View key={pc.id} style={styles.allPetsGaugeCard}>
+                  <CircularGauge
+                    administered={pc.vaccineStatus.completeness.administered}
+                    total={pc.vaccineStatus.completeness.total}
+                    size={48}
+                  />
+                  <Text style={styles.allPetsGaugeName} numberOfLines={1}>
+                    {pc.name}
+                  </Text>
+                </View>
+              ))}
+          </View>
+          <Text style={styles.allPetsOverall}>
+            Overall:{' '}
+            {petCards.reduce((s, pc) => s + (pc.vaccineStatus?.completeness?.administered ?? 0), 0)}/
+            {petCards.reduce((s, pc) => s + (pc.vaccineStatus?.completeness?.total ?? 0), 0)}{' '}
+            vaccines current
+          </Text>
+        </View>
+      )}
+      </>
+      )}
+
+      {/* Weight zoom modal — rendered at root level (outside all tab guards) */}
       {weightZoomPet != null && (
         <VitalsZoomModal
           visible
@@ -863,31 +1717,174 @@ export default function MyStatsScreen({ route, navigation }) {
   );
 }
 
-// ─── PET HEALTH CARD ──────────────────────────────────────────────────────────
+// ─── CALENDAR MINI-VIEW ───────────────────────────────────────────────────────
 
 /**
- * PetHealthCard — rich per-pet summary card.
+ * CalendarMiniView — custom View-based month calendar grid.
  *
- * Sections: header (name/emoji/species/age), weight sparkline + delta, last
- * visit, vaccine status, active medications, allergies, recheck countdown,
- * diagnosis history. Booking CTAs appear inline where relevant.
+ * Shows a 7-column (Mon-Sun) day grid for the given month. Days with
+ * appointments in calendarDots are marked with a small sky-blue dot.
+ * Today gets a sky-blue background. Tapping a day with dots filters the
+ * upcoming appointment list below to that day.
+ *
+ * Navigation is capped at current month +/- 1 to prevent stale data browsing.
  */
-function PetHealthCard({ petCard, onBookNow, onBookRecheck, onWeightZoom }) {
-  const overdueVaccines = petCard.vaccineStatus?.statuses?.filter(
-    v => v.status === 'overdue'
-  ) ?? [];
-  const hasOverdueVaccines = overdueVaccines.length > 0;
+function CalendarMiniView({ calendarMonth, setCalendarMonth, selectedDay, setSelectedDay, calendarDots }) {
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-  const recheckIsOverdue = petCard.recheckInfo?.daysUntil != null
-    && petCard.recheckInfo.daysUntil <= 0;
-  const recheckIsDue = petCard.recheckInfo != null;
+  // Compute navigation bounds: one month before and after today's month.
+  const now = new Date();
+  const minMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const maxMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+  const canGoPrev = calendarMonth > minMonth;
+  const canGoNext = calendarMonth < maxMonth;
+
+  function handlePrevMonth() {
+    if (!canGoPrev) return;
+    setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1));
+    setSelectedDay(null);
+  }
+
+  function handleNextMonth() {
+    if (!canGoNext) return;
+    setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1));
+    setSelectedDay(null);
+  }
+
+  // Build the day grid: prefix empty cells for the first week (Mon-based).
+  const year  = calendarMonth.getFullYear();
+  const month = calendarMonth.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDayOfWeek = new Date(year, month, 1).getDay(); // 0=Sun
+  // Shift so Mon=0, Sun=6
+  const startOffset = (firstDayOfWeek + 6) % 7;
+
+  const cells = [];
+  // Empty prefix cells
+  for (let i = 0; i < startOffset; i++) {
+    cells.push({ day: null });
+  }
+  // Day cells
+  for (let d = 1; d <= daysInMonth; d++) {
+    const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    cells.push({ day: d, key, dots: calendarDots[key] ?? [] });
+  }
+
+  const monthLabel = calendarMonth.toLocaleDateString('en-PH', { month: 'long', year: 'numeric' }).toUpperCase();
+
+  return (
+    <View style={styles.chartContainer}>
+      <View style={styles.chartShadow} />
+      <View style={styles.chartBox}>
+        {/* Month navigation header */}
+        <View style={styles.calendarHeader}>
+          <TouchableOpacity
+            onPress={handlePrevMonth}
+            disabled={!canGoPrev}
+            style={styles.calendarArrow}
+            activeOpacity={0.7}
+          >
+            <MaterialIcons
+              name="chevron-left"
+              size={20}
+              color={canGoPrev ? COLORS.brand : COLORS.borderLight}
+            />
+          </TouchableOpacity>
+          <Text style={styles.calendarMonthLabel}>{monthLabel}</Text>
+          <TouchableOpacity
+            onPress={handleNextMonth}
+            disabled={!canGoNext}
+            style={styles.calendarArrow}
+            activeOpacity={0.7}
+          >
+            <MaterialIcons
+              name="chevron-right"
+              size={20}
+              color={canGoNext ? COLORS.brand : COLORS.borderLight}
+            />
+          </TouchableOpacity>
+        </View>
+
+        {/* Day-of-week headers: M T W T F S S */}
+        <View style={styles.calendarGrid}>
+          {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
+            <View key={i} style={styles.calendarDayHeader}>
+              <Text style={styles.calendarDayHeaderText}>{d}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Day cells grid */}
+        <View style={styles.calendarGrid}>
+          {cells.map((cell, idx) => {
+            if (!cell.day) {
+              return <View key={`empty-${idx}`} style={styles.calendarCell} />;
+            }
+            const isToday    = cell.key === todayKey;
+            const isSelected = cell.key === selectedDay;
+            const hasDots    = cell.dots.length > 0;
+
+            return (
+              <TouchableOpacity
+                key={cell.key}
+                style={[
+                  styles.calendarCell,
+                  isToday    && styles.calendarCellToday,
+                  isSelected && styles.calendarCellSelected,
+                ]}
+                onPress={() => setSelectedDay(isSelected ? null : cell.key)}
+                activeOpacity={hasDots ? 0.7 : 1}
+              >
+                <Text style={[
+                  styles.calendarDayText,
+                  (isToday || isSelected) && styles.calendarDayTextToday,
+                ]}>
+                  {cell.day}
+                </Text>
+                {hasDots && (
+                  <View style={styles.calendarDotRow}>
+                    {cell.dots.slice(0, 3).map((_, dotIdx) => (
+                      <View key={dotIdx} style={styles.calendarDot} />
+                    ))}
+                    {cell.dots.length > 3 && (
+                      <Text style={styles.calendarDotMore}>+</Text>
+                    )}
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ─── PET CARD SLIM ────────────────────────────────────────────────────────────
+
+/**
+ * PetCardSlim — compact pet card for the PETS tab.
+ *
+ * Shows: species emoji + name + breed/age line, weight sparkline + latest value
+ * + delta, last visit date (with days ago), vaccine CircularGauge, active med
+ * count, and a VIEW CHART button navigating to PetHistoryScreen.
+ *
+ * Deliberately omits clinical details (diagnoses, allergy lists, med details,
+ * recheck countdown, lab trends) — those belong in PetHistoryScreen.
+ */
+function PetCardSlim({ petCard, onWeightZoom, onViewChart }) {
+  const now = new Date();
+  const lastVisitDaysAgo = petCard.lastVisitDate
+    ? Math.floor((now.getTime() - petCard.lastVisitDate.getTime()) / 86400000)
+    : null;
 
   return (
     <View style={styles.petCardWrapper}>
       <View style={styles.petCardShadow} />
       <View style={styles.petCard}>
-
-        {/* ── PET HEADER ────────────────────────────────────────────── */}
+        {/* Header: emoji + name + breed/age */}
         <View style={styles.petCardHeader}>
           <Text style={styles.petCardEmoji}>{petCard.speciesEmoji}</Text>
           <View style={styles.petCardHeaderText}>
@@ -900,24 +1897,35 @@ function PetHealthCard({ petCard, onBookNow, onBookRecheck, onWeightZoom }) {
 
         <View style={styles.petCardDivider} />
 
-        {/* ── WEIGHT ────────────────────────────────────────────────── */}
+        {/* Weight: sparkline + delta */}
         <View style={styles.petCardRow}>
           <Text style={styles.petCardRowLabel}>WEIGHT</Text>
           <View style={styles.petCardRowContent}>
-            {petCard.weightPoints.length > 0 ? (
+            {petCard.weightPoints.length >= 2 ? (
               <>
-                {/* Tapping the sparkline opens VitalsZoomModal with all weight history */}
                 <TouchableOpacity
                   onPress={onWeightZoom}
                   activeOpacity={0.75}
                   style={styles.weightSparklineHit}
                 >
-                  <SparkLine
-                    data={petCard.weightPoints}
-                    lineColor={COLORS.sky}
-                    unit="kg"
-                    height={40}
-                    showLatestValue
+                  <LineChart
+                    data={{
+                      labels: petCard.weightPoints.map(() => ''),
+                      datasets: [{ data: petCard.weightPoints.map(d => d.value) }],
+                    }}
+                    width={SCREEN_W - 140}
+                    height={60}
+                    chartConfig={{
+                      ...CHART_CONFIG_BASE,
+                      propsForDots: { r: '4', strokeWidth: '2', stroke: COLORS.brand },
+                    }}
+                    bezier
+                    withDots
+                    withInnerLines={false}
+                    withOuterLines={false}
+                    withVerticalLabels={false}
+                    withHorizontalLabels={false}
+                    style={{ borderRadius: 0, marginVertical: 0, marginLeft: -16 }}
                   />
                   <MaterialIcons
                     name="zoom-in"
@@ -942,13 +1950,20 @@ function PetHealthCard({ petCard, onBookNow, onBookRecheck, onWeightZoom }) {
                   </Text>
                 )}
               </>
+            ) : petCard.weightPoints.length === 1 ? (
+              <TouchableOpacity onPress={onWeightZoom} activeOpacity={0.75}>
+                <Text style={styles.petCardValue}>
+                  {petCard.weightPoints[0].value} kg
+                </Text>
+                <Text style={styles.petCardValueMuted}>1 reading</Text>
+              </TouchableOpacity>
             ) : (
               <Text style={styles.petCardValueMuted}>No weight records</Text>
             )}
           </View>
         </View>
 
-        {/* ── LAST VISIT ────────────────────────────────────────────── */}
+        {/* Last visit */}
         <View style={styles.petCardRow}>
           <Text style={styles.petCardRowLabel}>LAST VISIT</Text>
           <View style={styles.petCardRowContent}>
@@ -959,7 +1974,9 @@ function PetHealthCard({ petCard, onBookNow, onBookRecheck, onWeightZoom }) {
                   day: 'numeric',
                   year: 'numeric',
                 })}
-                {petCard.lastVisitService ? ` · ${petCard.lastVisitService}` : ''}
+                {lastVisitDaysAgo != null && lastVisitDaysAgo <= 365
+                  ? ` (${lastVisitDaysAgo} day${lastVisitDaysAgo !== 1 ? 's' : ''} ago)`
+                  : ''}
               </Text>
             ) : (
               <Text style={styles.petCardValueMuted}>No visits yet</Text>
@@ -967,192 +1984,51 @@ function PetHealthCard({ petCard, onBookNow, onBookRecheck, onWeightZoom }) {
           </View>
         </View>
 
-        {/* ── VACCINES ──────────────────────────────────────────────── */}
+        {/* Vaccines: CircularGauge */}
         <View style={styles.petCardRow}>
           <Text style={styles.petCardRowLabel}>VACCINES</Text>
-          <View style={styles.petCardRowContent}>
-            {petCard.vaccineStatus == null ? (
-              <Text style={styles.petCardValueMuted}>Loading…</Text>
-            ) : petCard.vaccineStatus.completeness == null ? (
-              <Text style={styles.petCardValueMuted}>No vaccine records</Text>
-            ) : (
+          <View style={[styles.petCardRowContent, styles.petCardSlimGaugeRow]}>
+            {petCard.vaccineStatus?.completeness ? (
               <>
-                <View style={styles.vaccineGaugeRow}>
-                  <CircularGauge
-                    administered={petCard.vaccineStatus.completeness.administered}
-                    total={petCard.vaccineStatus.completeness.total}
-                  />
-                  <View style={styles.vaccineGaugeText}>
-                    <Text style={[
-                      styles.petCardValue,
-                      {
-                        color: petCard.vaccineStatus.completeness.percentage >= 75
-                          ? COLORS.success
-                          : COLORS.warning,
-                      },
-                    ]}>
-                      {petCard.vaccineStatus.completeness.administered}/
-                      {petCard.vaccineStatus.completeness.total} current
-                    </Text>
-                    {hasOverdueVaccines && (
-                      <Text style={styles.vaccineOverdueText}>
-                        {overdueVaccines.map(v =>
-                          `${v.name} overdue${v.daysUntilDue != null
-                            ? ` (${Math.abs(v.daysUntilDue)} days)`
-                            : ''
-                          }`
-                        ).join(', ')}
-                      </Text>
-                    )}
-                  </View>
-                </View>
-              </>
-            )}
-          </View>
-        </View>
-        {hasOverdueVaccines && (
-          <View style={styles.petCardCtaRow}>
-            <CtaButton label="BOOK VACCINATION VISIT" onPress={onBookNow} />
-          </View>
-        )}
-
-        {/* ── ACTIVE MEDICATIONS ────────────────────────────────────── */}
-        {petCard.activeMeds.length > 0 && (
-          <View style={styles.petCardRow}>
-            <Text style={styles.petCardRowLabel}>MEDICATIONS</Text>
-            <View style={styles.petCardRowContent}>
-              {petCard.activeMeds.map((med, idx) => (
-                <View key={`${med.name}-${idx}`} style={styles.medEntry}>
-                  <Text style={styles.petCardValue}>
-                    {med.name}
-                    {med.daysRemaining != null ? (
-                      med.daysRemaining === 0
-                        ? ' — course complete'
-                        : ` (${med.daysRemaining} day${med.daysRemaining !== 1 ? 's' : ''} left)`
-                    ) : ''}
-                  </Text>
-                  {/* Adherence bar — only rendered when sig.days was explicitly set */}
-                  {med.adherence != null && (
-                    <View style={styles.adherenceRow}>
-                      <View style={styles.adherenceTrack}>
-                        <View
-                          style={[
-                            styles.adherenceFill,
-                            {
-                              width: `${Math.min(med.adherence.pct, 100)}%`,
-                              backgroundColor:
-                                med.adherence.pct >= 100 ? COLORS.success
-                                : med.adherence.pct >= 50  ? COLORS.warning
-                                : COLORS.sky,
-                            },
-                          ]}
-                        />
-                      </View>
-                      <Text style={styles.adherenceLabel}>
-                        Day {med.adherence.daysCompleted}/{med.adherence.totalDays}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* ── LAB TRENDS ────────────────────────────────────────────── */}
-        {petCard.labSparklines?.length > 0 && (
-          <View style={styles.petCardRow}>
-            <Text style={styles.petCardRowLabel}>LAB TRENDS</Text>
-            <View style={styles.petCardRowContent}>
-              {petCard.labSparklines.slice(0, 3).map(lab => (
-                <View key={lab.testName} style={styles.labTrendEntry}>
-                  <Text style={styles.labTrendName}>{lab.testName}</Text>
-                  <SparkLine
-                    data={lab.data}
-                    lineColor={COLORS.info}
-                    unit={lab.unit ? ` ${lab.unit}` : ''}
-                    height={30}
-                    showDots
-                    showLatestValue
-                  />
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* ── ALLERGIES ─────────────────────────────────────────────── */}
-        {Array.isArray(petCard.allergies) && petCard.allergies.length > 0 && (
-          <View style={[styles.petCardRow, styles.allergyRow]}>
-            <MaterialIcons name="warning" size={13} color={COLORS.warning} style={{ marginRight: 4 }} />
-            <Text style={styles.petCardRowLabel}>ALLERGIES</Text>
-            <View style={styles.petCardRowContent}>
-              <Text style={[styles.petCardValue, { color: COLORS.warning }]}>
-                {petCard.allergies.join(', ')}
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* ── RECHECK COUNTDOWN ─────────────────────────────────────── */}
-        {recheckIsDue && (
-          <>
-            <View style={styles.petCardRow}>
-              <Text style={styles.petCardRowLabel}>NEXT RECHECK</Text>
-              <View style={styles.petCardRowContent}>
-                {petCard.recheckInfo.daysUntil == null ? (
-                  <Text style={styles.petCardValue}>{petCard.recheckInfo.recheckStr}</Text>
-                ) : recheckIsOverdue ? (
-                  <Text style={[styles.petCardValue, { color: COLORS.danger }]}>
-                    OVERDUE ({Math.abs(petCard.recheckInfo.daysUntil)} {Math.abs(petCard.recheckInfo.daysUntil) === 1 ? 'day' : 'days'} ago)
-                  </Text>
-                ) : (
-                  <Text style={styles.petCardValue}>
-                    in {petCard.recheckInfo.daysUntil} day
-                    {petCard.recheckInfo.daysUntil !== 1 ? 's' : ''}
-                  </Text>
-                )}
-              </View>
-            </View>
-            <View style={styles.petCardCtaRow}>
-              <CtaButton
-                label="BOOK RECHECK"
-                onPress={onBookRecheck}
-                danger={recheckIsOverdue}
-              />
-            </View>
-          </>
-        )}
-
-        {/* ── DIAGNOSIS HISTORY ─────────────────────────────────────── */}
-        <View style={styles.petCardRow}>
-          <Text style={styles.petCardRowLabel}>DIAGNOSES</Text>
-          <View style={styles.petCardRowContent}>
-            {petCard.diagnosisCount === 0 ? (
-              <Text style={styles.petCardValueMuted}>None recorded</Text>
-            ) : (
-              <>
-                <Text style={styles.petCardValue}>
-                  {petCard.diagnosisCount} condition
-                  {petCard.diagnosisCount !== 1 ? 's' : ''}
+                <CircularGauge
+                  administered={petCard.vaccineStatus.completeness.administered}
+                  total={petCard.vaccineStatus.completeness.total}
+                  size={48}
+                />
+                <Text style={[
+                  styles.petCardValue,
+                  {
+                    marginLeft: 8,
+                    color: petCard.vaccineStatus.completeness.percentage >= 75
+                      ? COLORS.success : COLORS.warning,
+                  },
+                ]}>
+                  {petCard.vaccineStatus.completeness.administered}/
+                  {petCard.vaccineStatus.completeness.total} current
                 </Text>
-                {petCard.latestDiagnosis && (
-                  <Text style={styles.petCardValueMuted}>
-                    Latest: {petCard.latestDiagnosis.name}
-                    {petCard.latestDiagnosis.date
-                      ? ` (${petCard.latestDiagnosis.date.toLocaleDateString('en-PH', {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric',
-                        })})`
-                      : ''}
-                  </Text>
-                )}
               </>
+            ) : (
+              <Text style={styles.petCardValueMuted}>No vaccine records</Text>
             )}
           </View>
         </View>
 
+        {/* Active medication count */}
+        <View style={styles.petCardRow}>
+          <Text style={styles.petCardRowLabel}>MEDICATIONS</Text>
+          <View style={styles.petCardRowContent}>
+            <Text style={petCard.activeMeds.length > 0 ? styles.petCardValue : styles.petCardValueMuted}>
+              {petCard.activeMeds.length > 0
+                ? `${petCard.activeMeds.length} active`
+                : 'None active'}
+            </Text>
+          </View>
+        </View>
+
+        {/* VIEW CHART CTA */}
+        <View style={styles.petCardSlimCtaRow}>
+          <CtaButton label="VIEW CHART" onPress={onViewChart} />
+        </View>
       </View>
     </View>
   );
@@ -2020,6 +2896,280 @@ const styles = StyleSheet.create({
     color: COLORS.accentLight,
     textTransform: 'uppercase',
     textAlign: 'center',
+  },
+
+  // ── TAB BAR ───────────────────────────────────────────────────────────────
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    marginBottom: 20,
+  },
+  tabItem: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 3,
+    borderBottomColor: COLORS.white,
+  },
+  tabItemActive: {
+    borderBottomColor: COLORS.sky,
+  },
+  tabLabel: {
+    fontSize: 10,
+    fontFamily: FONTS.black,
+    color: COLORS.textMuted,
+    letterSpacing: 0.8,
+  },
+  tabLabelActive: {
+    color: COLORS.sky,
+  },
+
+  // ── CONDITIONS OVERVIEW ───────────────────────────────────────────────────
+  conditionsKpiRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 14,
+  },
+  conditionsKpiPill: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderRadius: 0,
+    padding: 12,
+    alignItems: 'center',
+  },
+  conditionsKpiValue: {
+    fontFamily: FONTS.black,
+    fontSize: 28,
+    lineHeight: 30,
+  },
+  conditionsKpiLabel: {
+    fontFamily: FONTS.bold,
+    fontSize: 10,
+    color: COLORS.accentLight,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginTop: 4,
+  },
+  conditionsPerPet: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingVertical: 4,
+    gap: 4,
+  },
+  conditionsPerPetName: {
+    fontFamily: FONTS.black,
+    fontSize: 12,
+    color: COLORS.brand,
+  },
+  conditionsPerPetList: {
+    fontFamily: FONTS.regular,
+    fontSize: 12,
+    color: COLORS.accent,
+    flex: 1,
+  },
+
+  // ── CALENDAR MINI-VIEW ────────────────────────────────────────────────────
+  calendarHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  calendarArrow: {
+    padding: 4,
+  },
+  calendarMonthLabel: {
+    fontFamily: FONTS.black,
+    fontSize: 12,
+    color: COLORS.brand,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    flex: 1,
+    textAlign: 'center',
+  },
+  calendarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  calendarDayHeader: {
+    width: '14.28%',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  calendarDayHeaderText: {
+    fontFamily: FONTS.bold,
+    fontSize: 10,
+    color: COLORS.accentLight,
+    textTransform: 'uppercase',
+  },
+  calendarCell: {
+    width: '14.28%',
+    alignItems: 'center',
+    paddingVertical: 6,
+    minHeight: 36,
+  },
+  calendarCellToday: {
+    backgroundColor: COLORS.sky,
+  },
+  calendarCellSelected: {
+    backgroundColor: COLORS.sky,
+    opacity: 0.75,
+  },
+  calendarDayText: {
+    fontFamily: FONTS.bold,
+    fontSize: 12,
+    color: COLORS.brand,
+  },
+  calendarDayTextToday: {
+    color: COLORS.white,
+  },
+  calendarDotRow: {
+    flexDirection: 'row',
+    gap: 2,
+    marginTop: 2,
+  },
+  calendarDot: {
+    width: 4,
+    height: 4,
+    backgroundColor: COLORS.sky,
+    borderRadius: 2, // dots are circular — approved exception to zero border-radius
+  },
+  calendarDotMore: {
+    fontFamily: FONTS.black,
+    fontSize: 8,
+    color: COLORS.sky,
+    lineHeight: 4,
+  },
+
+  // ── PET CARD SLIM ─────────────────────────────────────────────────────────
+  petCardSlimGaugeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  petCardSlimCtaRow: {
+    marginTop: 10,
+  },
+
+  // ── SECTION HEADER ROW (with export button) ──────────────────────────────
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  // Suppresses the built-in marginBottom on SectionHeader when inside sectionHeaderRow,
+  // because the row itself owns the spacing.
+  sectionHeaderNoMargin: {
+    marginBottom: 0,
+  },
+  exportButton: {
+    padding: 6,
+  },
+
+  // ── SPENDING AVG LABEL ────────────────────────────────────────────────────
+  spendingAvgLabel: {
+    fontFamily: FONTS.regular,
+    fontSize: 10,
+    color: COLORS.textMuted,
+    textTransform: 'none',
+    letterSpacing: 0,
+  },
+
+  // ── VACCINATION STATUS (HEALTH tab) ──────────────────────────────────────
+  vacStatusPetBlock: {
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    borderRadius: 0,
+    padding: 12,
+    marginBottom: 12,
+  },
+  vacStatusHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    gap: 8,
+  },
+  vacStatusPetName: {
+    fontFamily: FONTS.black,
+    fontSize: 13,
+    color: COLORS.brand,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    minWidth: 72,
+  },
+  vacStatusBarTrack: {
+    flex: 1,
+    height: 6,
+    backgroundColor: COLORS.borderLight,
+    borderRadius: 0,
+    overflow: 'hidden',
+  },
+  vacStatusBarFill: {
+    height: '100%',
+    borderRadius: 0,
+  },
+  vacStatusFraction: {
+    fontFamily: FONTS.bold,
+    fontSize: 11,
+    minWidth: 72,
+    textAlign: 'right',
+  },
+  vacStatusLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+    gap: 8,
+  },
+  vacStatusDot: {
+    fontSize: 12,
+    width: 18,
+  },
+  vacStatusName: {
+    fontFamily: FONTS.bold,
+    fontSize: 12,
+    color: COLORS.brand,
+    flex: 1,
+  },
+  vacStatusDetail: {
+    fontFamily: FONTS.regular,
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+
+  // ── ALL PETS GAUGE STRIP ─────────────────────────────────────────────────
+  allPetsGaugeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+    marginBottom: 12,
+  },
+  allPetsGaugeCard: {
+    alignItems: 'center',
+    gap: 4,
+    minWidth: 52,
+  },
+  allPetsGaugeName: {
+    fontFamily: FONTS.bold,
+    fontSize: 10,
+    color: COLORS.brand,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    maxWidth: 56,
+    textAlign: 'center',
+  },
+  allPetsOverall: {
+    fontFamily: FONTS.bold,
+    fontSize: 13,
+    color: COLORS.accentLight,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
 
   // ── PER-PET SPENDING EXPAND ICON ─────────────────────────────────────────

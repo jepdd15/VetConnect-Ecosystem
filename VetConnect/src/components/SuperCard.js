@@ -313,6 +313,8 @@ export default function SuperCard({
     const dayStatusColors = getClientStatusColor(dayAppt.status);
     const dayStatusLabel = getClientStatusLabel(dayAppt.status);
     const dayStatusIcon = getClientStatusIcon(dayAppt.status);
+    const dayServices = dayAppt.services || [];
+    const isTerminal = ['completed', 'carried-over', 'cancelled', 'no-show'].includes(dayAppt.status);
     const pastTimelineEvents = dayAppt.clinicalPulse
       ? buildVisitTimeline(dayAppt.clinicalPulse, {
           isActive: false,
@@ -321,6 +323,13 @@ export default function SuperCard({
         })
       : [];
     const sale = salesByAppt[dayAppt.id];
+    const dayHasAssignedVet = dayAppt.assignedVet && dayAppt.assignedVet !== 'Unassigned';
+    const dayStartedTime = formatFirestoreTime(dayAppt.timeStarted) || formatFirestoreTime(dayAppt.timeArrived);
+    const dayWhatsNext = getWhatsNext(dayAppt.status, dayAppt.caseDay);
+
+    const completedSvcCount = dayServices.filter(s => s.serviceStatus === 'completed').length;
+    const uniquePastStaff = new Set(dayServices.map(s => s.staffName).filter(Boolean));
+    const showPastStaff = uniquePastStaff.size > 1;
 
     return (
       <ScrollView
@@ -336,10 +345,60 @@ export default function SuperCard({
               {dayStatusIcon} {dayStatusLabel.toUpperCase()}
             </Text>
           </View>
+
+          {dayHasAssignedVet && (
+            <Text style={styles.infoLine}>👨‍⚕️ {dayAppt.assignedVet}</Text>
+          )}
+          {dayStartedTime && (
+            <Text style={styles.infoLine}>🕐 Started at {dayStartedTime}</Text>
+          )}
+
+          {dayWhatsNext && dayAppt.status === 'confined' && (
+            <View style={styles.whatsNextBox}>
+              <Text style={styles.whatsNextText}>{dayWhatsNext}</Text>
+            </View>
+          )}
+
+          {dayServices.length >= 2 && (
+            <View style={styles.serviceProgressSection}>
+              <Text style={styles.sectionLabel}>SERVICES</Text>
+              {dayServices.map((svc, si) => {
+                const svcStatus = svc.serviceStatus || 'pending';
+                const icon = svcStatus === 'completed' ? '✓'
+                  : (isTerminal ? '✗' : (svcStatus === 'in-progress' ? '⏳' : '○'));
+                const durationStr = formatServiceDuration(svc);
+                const label = svcStatus === 'completed' ? `done${durationStr}`
+                  : (isTerminal ? (svcStatus === 'in-progress' ? 'not completed' : 'not started')
+                  : (svcStatus === 'in-progress' ? 'in progress' : 'waiting'));
+                const parts = [label];
+                if (showPastStaff && svc.staffName) parts.push(svc.staffName);
+                if (svc.price > 0) parts.push(`P${svc.price.toLocaleString()}`);
+                const isAdded = svc.addedDuringConsult === true;
+                return (
+                  <View key={svc.id || si} style={styles.serviceProgressRow}>
+                    <Text style={[
+                      styles.serviceProgressLine,
+                      svcStatus === 'completed' && { color: COLORS.success },
+                      isTerminal && svcStatus !== 'completed' && { color: COLORS.danger },
+                    ]}>
+                      {icon} {svc.name || 'Service'} — {parts.join(' · ')}
+                    </Text>
+                    {isAdded && (
+                      <Text style={styles.serviceAddedLabel}>(added)</Text>
+                    )}
+                  </View>
+                );
+              })}
+              <Text style={[styles.serviceProgressLine, { textAlign: 'right', marginTop: 4, color: completedSvcCount === dayServices.length ? COLORS.success : COLORS.accent }]}>
+                {completedSvcCount}/{dayServices.length} COMPLETE
+              </Text>
+            </View>
+          )}
+
           {pastTimelineEvents.length > 0 && (
             <View style={styles.pastDayTimeline}>
               <Text style={styles.sectionLabel}>TIMELINE</Text>
-              {pastTimelineEvents.slice(0, 5).map((evt, i) => (
+              {pastTimelineEvents.map((evt, i) => (
                 <Text key={i} style={styles.pastTimelineEvent}>
                   {evt.icon} {evt.label}
                 </Text>

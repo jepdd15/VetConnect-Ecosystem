@@ -50,6 +50,7 @@ service cloud.firestore {
       allow read: if isAuth();
       allow create: if isAuth() && !isScheduledDateClosed();
       allow update: if isAuth()
+        && !isScheduledDateClosed()
         // isTriaged can only go false/null → true, never revert
         && (
           !('isTriaged' in request.resource.data)

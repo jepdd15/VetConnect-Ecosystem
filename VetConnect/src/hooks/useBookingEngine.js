@@ -180,32 +180,23 @@ export function useBookingEngine(date, selectedServices = [], selectedPet = null
       return;
     }
 
-    let cancelled = false;
-    const fetchDayAppts = async () => {
-      const startOfDay = new Date(date);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(date);
-      endOfDay.setHours(23, 59, 59, 999);
-      const q = query(
-        collection(db, "appointments"),
-        where("scheduledDate", ">=", Timestamp.fromDate(startOfDay)),
-        where("scheduledDate", "<=", Timestamp.fromDate(endOfDay)),
-        where("status", "in", ["pending", "confirmed"]),
-      );
-      try {
-        const snap = await getDocs(q);
-        if (!cancelled) {
-          setDayAppointments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        }
-      } catch (error) {
-        console.warn("[useBookingEngine] slot availability error:", error.message);
-        if (!cancelled) {
-          setDayAppointments([]);
-        }
-      }
-    };
-    fetchDayAppts();
-    return () => { cancelled = true; };
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+    const q = query(
+      collection(db, "appointments"),
+      where("scheduledDate", ">=", Timestamp.fromDate(startOfDay)),
+      where("scheduledDate", "<=", Timestamp.fromDate(endOfDay)),
+      where("status", "in", ["pending", "confirmed"]),
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      setDayAppointments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, (error) => {
+      console.warn("[useBookingEngine] slot availability error:", error.message);
+      setDayAppointments([]);
+    });
+    return unsub;
   }, [date, closedDatesKey]);
 
   // 3b. T2.83: EFFECT 2 — Compute available slots (pure computation, no Firestore reads).
@@ -262,7 +253,7 @@ export function useBookingEngine(date, selectedServices = [], selectedPet = null
         });
 
         const slots = [];
-        const now = new Date();
+        const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
         const advanceNoticeTime = new Date(now.getTime() + (clinicSettings.advanceNoticeMins || 0) * 60000);
         const slotInterval = clinicSettings.minSlotInterval || 30;
         const openH = clinicSettings.openHour || 8;

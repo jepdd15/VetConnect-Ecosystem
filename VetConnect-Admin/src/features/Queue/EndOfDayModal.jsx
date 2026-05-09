@@ -445,7 +445,7 @@ const AuditPatientCard = React.memo(({
                             const mins = Math.round((endMs - startMs) / 60000);
                             return Number.isFinite(mins) && mins > 0 ? mins : null;
                         })();
-                        const durationDisplay = actualDuration ? `${actualDuration}M` : `${svc.duration || svc.estMinutes || 0}M`;
+                        const durationDisplay = actualDuration ? `${actualDuration}M` : `~${svc.duration || svc.estMinutes || 0}M`;
                         const isAdded = svc.addedDuringConsult === true;
                         const isPriorDay = (() => {
                             if (!svcCompleted || !svc.serviceCompletedAt || (patient.caseDay || 1) <= 1) return false;

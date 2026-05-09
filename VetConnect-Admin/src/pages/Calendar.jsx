@@ -242,7 +242,23 @@ function AppointmentDetailCard({ appt, departments }) {
 
         {/* Services */}
         <Typography sx={labelSx}>Services</Typography>
-        <Typography sx={{ ...valueSx, mb: 0.75 }}>{serviceNames}</Typography>
+        {Array.isArray(appt.services) && appt.services.length >= 2 ? (
+          <Box sx={{ mb: 0.75 }}>
+            {appt.services.map((svc, si) => {
+              const st = typeof svc === 'string' ? 'pending' : (svc.serviceStatus || 'pending');
+              const name = typeof svc === 'string' ? svc : (svc.name || svc.serviceName || 'Service');
+              const icon = st === 'completed' ? '✓' : st === 'in-progress' ? '⏳' : '○';
+              const stColor = st === 'completed' ? COLORS.success : st === 'in-progress' ? COLORS.warning : COLORS.textMuted;
+              return (
+                <Typography key={si} sx={{ ...TYPE.meta, fontWeight: 700, color: stColor, display: 'block', mb: 0.25 }}>
+                  {icon} {name}{svc.staffName ? ` · ${svc.staffName}` : ''}
+                </Typography>
+              );
+            })}
+          </Box>
+        ) : (
+          <Typography sx={{ ...valueSx, mb: 0.75 }}>{serviceNames}</Typography>
+        )}
 
         {/* Department */}
         <Typography sx={labelSx}>Department</Typography>

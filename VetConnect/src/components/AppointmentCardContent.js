@@ -333,6 +333,15 @@ const AppointmentCardContent = ({
               );
             });
           })()}
+          {(() => {
+            const svcs = appointment.services || [];
+            const done = svcs.filter(s => s.serviceStatus === 'completed').length;
+            return svcs.length >= 2 ? (
+              <Text style={[styles.serviceStatusLine, { textAlign: 'right', marginTop: 4, color: done === svcs.length ? COLORS.success : COLORS.accent }]}>
+                {done}/{svcs.length} COMPLETE
+              </Text>
+            ) : null;
+          })()}
         </View>
       )}
 

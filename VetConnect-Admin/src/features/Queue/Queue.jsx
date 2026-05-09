@@ -2886,6 +2886,11 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                                         {svcDuration ? `${svcDuration}${isPriorDay ? ' · Day 1' : ''}` : 'Day 1'}
                                       </Typography>
                                     )}
+                                    {svcStatus === 'pending' && svc.duration > 0 && (
+                                      <Typography variant="caption" sx={{ display: 'block', fontSize: '0.55rem', color: COLORS.textMuted, fontWeight: 900 }}>
+                                        ~{svc.duration} min service
+                                      </Typography>
+                                    )}
                                   </Box>
                                 </Box>
                                 {/* Per-service status chip */}

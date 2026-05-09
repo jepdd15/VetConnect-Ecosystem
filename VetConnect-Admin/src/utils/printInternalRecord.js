@@ -128,8 +128,22 @@ export function generateInternalRecordHTML({
   const vetPTR = esc(vetStaff?.ptrNumber || '');
   const department = esc(rec.department || appointment?.department || '—');
 
-  const servicesList = Array.isArray(rec.services)
-    ? rec.services.map(s => esc(s.name || (typeof s === 'string' ? s : '—'))).join(', ')
+  const servicesArr = Array.isArray(rec.services) ? rec.services : [];
+  const servicesList = servicesArr.length > 0
+    ? servicesArr.map(s => {
+        const name = esc(s.name || (typeof s === 'string' ? s : '—'));
+        const st = s.serviceStatus || 'pending';
+        const icon = st === 'completed' ? '✓' : st === 'in-progress' ? '⏳' : '○';
+        const staff = s.staffName ? ` · ${esc(s.staffName)}` : '';
+        const dur = (() => {
+          if (st !== 'completed' || !s.serviceStartedAt || !s.serviceCompletedAt) return '';
+          const startMs = typeof s.serviceStartedAt.toDate === 'function' ? s.serviceStartedAt.toDate().getTime() : new Date(s.serviceStartedAt).getTime();
+          const endMs = typeof s.serviceCompletedAt.toDate === 'function' ? s.serviceCompletedAt.toDate().getTime() : new Date(s.serviceCompletedAt).getTime();
+          const mins = Math.round((endMs - startMs) / 60000);
+          return Number.isFinite(mins) && mins > 0 ? ` (${mins} min)` : '';
+        })();
+        return `${icon} ${name}${dur}${staff}`;
+      }).join('<br/>')
     : esc(rec.serviceType || rec.recordType || '—');
 
   const recordId = esc(rec.id || '—');

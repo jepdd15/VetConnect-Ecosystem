@@ -4455,28 +4455,44 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                                         </IconButton>
                                       )}
                                       <Box sx={{ minWidth: 0 }}>
-                                        <Typography sx={{ fontWeight: 900, fontSize: '0.8rem', color: COLORS.brand, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                          {rx.name}
-                                        </Typography>
+                                        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.5 }}>
+                                          <Typography sx={{ fontWeight: 900, fontSize: '0.8rem', color: COLORS.brand, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                            {rx.name}
+                                          </Typography>
+                                          {rx.addedDuringConsult && (
+                                            <Typography sx={{ fontSize: '0.55rem', color: COLORS.textMuted, fontStyle: 'italic' }}>(added)</Typography>
+                                          )}
+                                        </Box>
                                         <Typography sx={{ fontSize: '0.6rem', fontWeight: 700, color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                                           {svcDept}
                                         </Typography>
                                       </Box>
                                     </Box>
-                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
-                                      <Typography sx={{ fontWeight: 900, fontSize: '0.8rem', color: COLORS.brand }}>
-                                        ₱{(rx.price * rx.qty).toLocaleString()}
-                                      </Typography>
-                                      <Chip
-                                        label={pc.label}
-                                        size="small"
-                                        onClick={() => isToggleable && handleToggleServiceProgress(rx.id)}
-                                        sx={{
-                                          bgcolor: pc.bg, color: '#FFF', fontWeight: 900, fontSize: '0.6rem',
-                                          height: 22, borderRadius: 0, cursor: isToggleable ? 'pointer' : 'default',
-                                          '&:hover': isToggleable ? { opacity: 0.85 } : {},
-                                        }}
-                                      />
+                                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5, flexShrink: 0 }}>
+                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        <Typography sx={{ fontWeight: 900, fontSize: '0.8rem', color: COLORS.brand }}>
+                                          ₱{(rx.price * rx.qty).toLocaleString()}
+                                        </Typography>
+                                        <Chip
+                                          label={pc.label}
+                                          size="small"
+                                          onClick={() => isToggleable && handleToggleServiceProgress(rx.id)}
+                                          sx={{
+                                            bgcolor: pc.bg, color: '#FFF', fontWeight: 900, fontSize: '0.6rem',
+                                            height: 22, borderRadius: 0, cursor: isToggleable ? 'pointer' : 'default',
+                                            '&:hover': isToggleable ? { opacity: 0.85 } : {},
+                                          }}
+                                        />
+                                      </Box>
+                                      {status === 'completed' && (() => {
+                                        const svcDoc = (patient.services || []).find(s => s.id === rx.id);
+                                        if (!svcDoc?.serviceStartedAt || !svcDoc?.serviceCompletedAt) return null;
+                                        const startMs = typeof svcDoc.serviceStartedAt.toDate === 'function' ? svcDoc.serviceStartedAt.toDate().getTime() : new Date(svcDoc.serviceStartedAt).getTime();
+                                        const endMs = typeof svcDoc.serviceCompletedAt.toDate === 'function' ? svcDoc.serviceCompletedAt.toDate().getTime() : new Date(svcDoc.serviceCompletedAt).getTime();
+                                        const mins = Math.round((endMs - startMs) / 60000);
+                                        if (!Number.isFinite(mins) || mins <= 0) return null;
+                                        return <Typography sx={{ fontSize: '0.55rem', fontWeight: 900, color: COLORS.success }}>{mins} min</Typography>;
+                                      })()}
                                     </Box>
                                   </Box>
                                   {!isRecordLocked && (vetsList || []).length > 0 && (

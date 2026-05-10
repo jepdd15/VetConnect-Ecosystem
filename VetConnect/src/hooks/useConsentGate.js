@@ -68,20 +68,7 @@ export function useConsentGate(userId) {
 
     async function checkConsent() {
       try {
-        // --- 1. Read the active consent policy version number --------------------
-        const policySnap = await getDoc(
-          doc(db, 'clinic_settings', 'consent_policy'),
-        );
-
-        if (!policySnap.exists() || !policySnap.data()?.activeVersion) {
-          console.warn('[useConsentGate] No active consent policy configured');
-          if (!cancelled) setLoading(false);
-          return;
-        }
-
-        const activeVersion = policySnap.data().activeVersion;
-
-        // --- 2. Read the current user's profile ---------------------------------
+        // --- 1. Read the current user's profile ---------------------------------
         const userSnap = await getDoc(doc(db, 'users', userId));
 
         if (!userSnap.exists()) {
@@ -91,71 +78,68 @@ export function useConsentGate(userId) {
 
         const userData = userSnap.data();
 
-        // --- 3. Staff bypass ----------------------------------------------------
+        // --- 2. Staff bypass ----------------------------------------------------
         if (STAFF_ROLES.has(userData.role) || STAFF_ROLES.has(userData.accessLevel)) {
           if (!cancelled) setLoading(false);
           return;
         }
 
-        // --- 4. Compare DPA consent version -------------------------------------
-        const userConsentVersion = userData.consentVersion ?? null;
-        const dpaRequired =
-          userConsentVersion === null ||
-          Number(userConsentVersion) !== Number(activeVersion);
-
-        // --- 5. Compare Waiver consent version ----------------------------------
-        const userWaiverVersion = userData.waiverVersion ?? null;
-        const waiverRequired =
-          userWaiverVersion === null ||
-          Number(userWaiverVersion) !== Number(activeVersion);
-
-        // --- 6. Fetch the active DPA policy doc (only if needed) ----------------
+        // --- 3. Fetch the active DPA policy doc --------------------------------
         let dpaPolicy = null;
-        if (dpaRequired) {
-          const dpaQuery = query(
-            collection(db, 'consent_versions'),
-            where('type', '==', 'dpa'),
-            where('status', '==', 'active'),
-            limit(1),
-          );
-          const dpaSnap = await getDocs(dpaQuery);
-          if (!dpaSnap.empty) {
-            const d = dpaSnap.docs[0];
-            dpaPolicy = {
-              versionNumber: d.data().versionNumber,
-              versionDocId:  d.id,
-              title:         d.data().title,
-              bodyText:      d.data().bodyText,
-              summary:       d.data().summary ?? null,
-            };
-          }
+        const dpaQuery = query(
+          collection(db, 'consent_versions'),
+          where('type', '==', 'dpa'),
+          where('status', '==', 'active'),
+          limit(1),
+        );
+        const dpaSnap = await getDocs(dpaQuery);
+        if (!dpaSnap.empty) {
+          const d = dpaSnap.docs[0];
+          dpaPolicy = {
+            versionNumber: d.data().versionNumber,
+            versionDocId:  d.id,
+            title:         d.data().title,
+            bodyText:      d.data().bodyText,
+            summary:       d.data().summary ?? null,
+          };
         }
 
-        // --- 7. Fetch the active Waiver policy doc (only if needed) -------------
+        // --- 4. Fetch the active Waiver policy doc -----------------------------
         let waiverPolicy = null;
-        if (waiverRequired) {
-          const waiverQuery = query(
-            collection(db, 'consent_versions'),
-            where('type', '==', 'waiver'),
-            where('status', '==', 'active'),
-            limit(1),
-          );
-          const waiverSnap = await getDocs(waiverQuery);
-          if (!waiverSnap.empty) {
-            const d = waiverSnap.docs[0];
-            waiverPolicy = {
-              versionNumber: d.data().versionNumber,
-              versionDocId:  d.id,
-              title:         d.data().title,
-              bodyText:      d.data().bodyText,
-              summary:       d.data().summary ?? null,
-            };
-          }
+        const waiverQuery = query(
+          collection(db, 'consent_versions'),
+          where('type', '==', 'waiver'),
+          where('status', '==', 'active'),
+          limit(1),
+        );
+        const waiverSnap = await getDocs(waiverQuery);
+        if (!waiverSnap.empty) {
+          const d = waiverSnap.docs[0];
+          waiverPolicy = {
+            versionNumber: d.data().versionNumber,
+            versionDocId:  d.id,
+            title:         d.data().title,
+            bodyText:      d.data().bodyText,
+            summary:       d.data().summary ?? null,
+          };
         }
+
+        // --- 5. Compare per-type: user's version vs that type's active version -
+        const userConsentVersion = userData.consentVersion ?? null;
+        const dpaRequired = dpaPolicy !== null && (
+          userConsentVersion === null ||
+          Number(userConsentVersion) < Number(dpaPolicy.versionNumber)
+        );
+
+        const userWaiverVersion = userData.waiverVersion ?? null;
+        const waiverRequired = waiverPolicy !== null && (
+          userWaiverVersion === null ||
+          Number(userWaiverVersion) < Number(waiverPolicy.versionNumber)
+        );
 
         if (!cancelled) {
-          setNeedsConsent(dpaRequired && dpaPolicy !== null);
-          setNeedsWaiver(waiverRequired && waiverPolicy !== null);
+          setNeedsConsent(dpaRequired);
+          setNeedsWaiver(waiverRequired);
           setActiveDpaPolicy(dpaPolicy);
           setActiveWaiverPolicy(waiverPolicy);
         }

@@ -818,6 +818,7 @@ const ClientDashboard = ({ navigation }) => {
                   policyText:         activeWaiverPolicy.bodyText,
                   policyTitle:        activeWaiverPolicy.title,
                   isPostRegistration: false,
+                  previousVersion:    userProfile?.waiverVersion ?? null,
                   summary:            activeWaiverPolicy.summary,
                 });
               } else {

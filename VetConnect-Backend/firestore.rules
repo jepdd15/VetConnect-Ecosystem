@@ -84,7 +84,7 @@ service cloud.firestore {
         // T2.37: clinicalPulse is append-only — can only grow, never shrink or be erased
         && (
           !('clinicalPulse' in resource.data)
-          || !resource.data.clinicalPulse is list
+          || !(resource.data.clinicalPulse is list)
           || (
             'clinicalPulse' in request.resource.data
             && request.resource.data.clinicalPulse is list
@@ -267,7 +267,7 @@ service cloud.firestore {
     match /llm_audit_logs/{logId} {
       allow read: if isStaff();
       allow create: if isStaff();
-      allow update: if isStaff();
+      allow update: if false;
       allow delete: if false;
     }
 
@@ -327,28 +327,24 @@ service cloud.firestore {
     }
 
     // ─── VACCINE REMINDER QUEUE (pre-computed push notification queue) ───
-    // Public read/create/update: the Cloudflare Worker Cron reads and writes
-    // via Firestore REST API using only the web API key (no Firebase Auth JWT).
-    // Deletes are restricted to staff — cleanup is performed by the admin app.
-    // The collection contains no sensitive PII (pet names, vaccine names only).
-    // Malicious writes are safe: they are idempotent and overwritten by the next
-    // scheduled recompute.
+    // Read + update: public (Worker Cron reads queue and PATCHes lastReminderSentAt
+    // via Firestore REST API with web API key only — no Firebase Auth JWT).
+    // Create + delete: staff only (admin recompute creates docs; prevents queue poisoning).
     match /vaccine_reminder_queue/{petId} {
       allow read: if true;
-      allow create, update: if true;
+      allow create: if isStaff();
+      allow update: if true;
       allow delete: if isStaff();
     }
 
     // ─── APPOINTMENT REMINDER QUEUE (pre-computed push notification queue) ───
-    // Public read/create/update: the Cloudflare Worker Cron reads and writes
-    // via Firestore REST API using only the web API key (no Firebase Auth JWT).
-    // Deletes are restricted to staff — cleanup is performed by the admin app.
-    // The collection contains no sensitive PII (pet names, appointment dates only).
-    // Malicious writes are safe: they are idempotent and overwritten on next
-    // appointment confirmation.
+    // Read + update: public (Worker Cron reads queue and PATCHes remindersSent
+    // via Firestore REST API with web API key only — no Firebase Auth JWT).
+    // Create + delete: staff only (admin booking flow creates docs; prevents queue poisoning).
     match /appointment_reminder_queue/{appointmentId} {
       allow read: if true;
-      allow create, update: if true;
+      allow create: if isStaff();
+      allow update: if true;
       allow delete: if isStaff();
     }
 

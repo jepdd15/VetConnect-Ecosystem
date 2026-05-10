@@ -133,6 +133,38 @@ const EncounterSummary = ({
   const drugs = items.filter((i) => (i.productClass || (i.isDrug ? 'medicine' : 'retail')) === 'medicine');
   const totalAmount = appointment.finalTotal ?? 0;
 
+  // ── Service-grouped items (T4.201) ─────────────────────────────────────────
+  // Separate service entries from product entries, then group products under
+  // the service that auto-bundled them via sourceServiceId. Products without
+  // a matching sourceServiceId (manual adds, legacy data) go to "Other Items".
+
+  const serviceEntries = items.filter((i) => i.type === 'service');
+  const productEntries = items.filter((i) => i.type !== 'service');
+
+  const serviceGroups = [];
+  const usedProductIndices = new Set();
+
+  serviceEntries.forEach((svc) => {
+    const linkedProducts = productEntries
+      .map((p, idx) => ({ ...p, _idx: idx }))
+      .filter((p) => p.sourceServiceId === svc.id && !usedProductIndices.has(p._idx));
+
+    linkedProducts.forEach((p) => usedProductIndices.add(p._idx));
+
+    serviceGroups.push({
+      serviceId: svc.id,
+      serviceName: svc.name,
+      servicePrice: (svc.price ?? 0) * (svc.qty ?? 1),
+      products: linkedProducts,
+    });
+  });
+
+  // Products that had no matching service entry (manual adds, legacy data)
+  const otherProducts = productEntries.filter((_, idx) => !usedProductIndices.has(idx));
+
+  // Single-service: skip group headers entirely — render flat for cleaner look
+  const isSingleService = serviceEntries.length <= 1 && otherProducts.length === 0;
+
   // Medical record fields with multi-path fallbacks for schema variants.
   const recheckIn = medRecord?.soap?.recheckIn || medRecord?.dischargeSummary?.recheckIn || null;
   const prognosis = medRecord?.soap?.prognosis || null;
@@ -167,48 +199,147 @@ const EncounterSummary = ({
         <Text style={styles.toggleLabel}>▲ Hide summary</Text>
       </TouchableOpacity>
 
-      {/* SECTION A — SERVICES PERFORMED */}
+      {/* SECTION A — SERVICES & ITEMS (grouped) or SERVICES PERFORMED (single-service flat) */}
       <View style={styles.section}>
-        <Text style={styles.sectionHeader}>Services Performed</Text>
+        <Text style={styles.sectionHeader}>
+          {isSingleService ? 'Services Performed' : 'Services & Items'}
+        </Text>
 
-        {services.map((item, idx) => {
-          const lineTotal = (item.price ?? 0) * (item.qty ?? 1);
+        {/* ── Single-service: flat layout (no group headers) ── */}
+        {isSingleService && (
+          <>
+            {services.map((item, idx) => {
+              const lineTotal = (item.price ?? 0) * (item.qty ?? 1);
+              return (
+                <View key={`svc-${idx}`}>
+                  <View style={styles.itemRow}>
+                    <Text style={styles.itemName} numberOfLines={2}>
+                      {'✓ '}{item.name}
+                    </Text>
+                    <Text style={styles.itemPrice}>₱{lineTotal.toLocaleString()}</Text>
+                  </View>
+                </View>
+              );
+            })}
+
+            {products.length > 0 && (
+              <>
+                {products.map((item, idx) => {
+                  const lineTotal = (item.price ?? 0) * (item.qty ?? 1);
+                  const instructions = resolveInstructions(item);
+                  const pc = item.productClass || (item.isDrug ? 'medicine' : 'retail');
+                  const emoji = pc === 'medicine' ? '💊' : pc === 'medical_supply' ? '🩹' : '📦';
+                  return (
+                    <View key={`prod-${idx}`}>
+                      <View style={styles.itemRow}>
+                        <Text style={styles.itemName} numberOfLines={2}>
+                          {emoji} {item.name}
+                          {item.qty > 1 ? ` ×${item.qty}` : ''}
+                        </Text>
+                        <Text style={styles.itemPrice}>₱{lineTotal.toLocaleString()}</Text>
+                      </View>
+                      {pc === 'medicine' && instructions ? (
+                        <Text style={styles.sigLine}>directions (Sig): {instructions}</Text>
+                      ) : null}
+                    </View>
+                  );
+                })}
+              </>
+            )}
+          </>
+        )}
+
+        {/* ── Multi-service: grouped layout with dashed service headers ── */}
+        {!isSingleService && serviceGroups.map((group, gIdx) => {
+          const groupSubtotal = group.servicePrice +
+            group.products.reduce((sum, p) => sum + (p.price ?? 0) * (p.qty ?? 1), 0);
+
           return (
-            <View key={`svc-${idx}`}>
-              <View style={styles.itemRow}>
-                <Text style={styles.itemName} numberOfLines={2}>
-                  {'✓ '}{item.name}
+            <View key={`grp-${gIdx}`} style={gIdx > 0 ? styles.groupDivider : undefined}>
+              {/* Service header row: ── NAME ──────── ₱price */}
+              <View style={styles.groupHeaderRow}>
+                <Text style={styles.groupHeaderDash}>──</Text>
+                <Text style={styles.groupHeaderName} numberOfLines={1}>
+                  {group.serviceName.toUpperCase()}
                 </Text>
-                <Text style={styles.itemPrice}>₱{lineTotal.toLocaleString()}</Text>
+                <View style={styles.groupHeaderLine} />
+                <Text style={styles.groupHeaderPrice}>
+                  ₱{group.servicePrice.toLocaleString()}
+                </Text>
               </View>
+
+              {/* Indented products under this service */}
+              {group.products.map((item, idx) => {
+                const lineTotal = (item.price ?? 0) * (item.qty ?? 1);
+                const instructions = resolveInstructions(item);
+                const pc = item.productClass || (item.isDrug ? 'medicine' : 'retail');
+                const emoji = pc === 'medicine' ? '💊' : pc === 'medical_supply' ? '🩹' : '📦';
+                return (
+                  <View key={`gp-${idx}`}>
+                    <View style={[styles.itemRow, styles.indentedItem]}>
+                      <Text style={styles.itemName} numberOfLines={2}>
+                        {emoji} {item.name}{item.qty > 1 ? ` ×${item.qty}` : ''}
+                      </Text>
+                      <Text style={styles.itemPrice}>₱{lineTotal.toLocaleString()}</Text>
+                    </View>
+                    {pc === 'medicine' && instructions ? (
+                      <Text style={[styles.sigLine, { marginLeft: 36 }]}>
+                        directions (Sig): {instructions}
+                      </Text>
+                    ) : null}
+                  </View>
+                );
+              })}
+
+              {/* Per-service subtotal — only when the group has products */}
+              {group.products.length > 0 && (
+                <View style={styles.subtotalRow}>
+                  <Text style={styles.subtotalLabel}>Subtotal:</Text>
+                  <Text style={styles.subtotalValue}>₱{groupSubtotal.toLocaleString()}</Text>
+                </View>
+              )}
             </View>
           );
         })}
 
-        {products.length > 0 && (
-          <>
-            <Text style={[styles.sectionHeader, { marginTop: 10 }]}>Items Dispensed</Text>
-            {products.map((item, idx) => {
+        {/* ── Other Items: manual adds and legacy data without sourceServiceId ── */}
+        {!isSingleService && otherProducts.length > 0 && (
+          <View style={serviceGroups.length > 0 ? styles.groupDivider : undefined}>
+            <View style={styles.groupHeaderRow}>
+              <Text style={styles.groupHeaderDash}>──</Text>
+              <Text style={styles.groupHeaderName}>OTHER ITEMS</Text>
+              <View style={styles.groupHeaderLine} />
+            </View>
+            {otherProducts.map((item, idx) => {
               const lineTotal = (item.price ?? 0) * (item.qty ?? 1);
               const instructions = resolveInstructions(item);
               const pc = item.productClass || (item.isDrug ? 'medicine' : 'retail');
               const emoji = pc === 'medicine' ? '💊' : pc === 'medical_supply' ? '🩹' : '📦';
               return (
-                <View key={`prod-${idx}`}>
-                  <View style={styles.itemRow}>
+                <View key={`other-${idx}`}>
+                  <View style={[styles.itemRow, styles.indentedItem]}>
                     <Text style={styles.itemName} numberOfLines={2}>
-                      {emoji} {item.name}
-                      {item.qty > 1 ? ` ×${item.qty}` : ''}
+                      {emoji} {item.name}{item.qty > 1 ? ` ×${item.qty}` : ''}
                     </Text>
                     <Text style={styles.itemPrice}>₱{lineTotal.toLocaleString()}</Text>
                   </View>
                   {pc === 'medicine' && instructions ? (
-                    <Text style={styles.sigLine}>directions (Sig): {instructions}</Text>
+                    <Text style={[styles.sigLine, { marginLeft: 36 }]}>
+                      directions (Sig): {instructions}
+                    </Text>
                   ) : null}
                 </View>
               );
             })}
-          </>
+            <View style={styles.subtotalRow}>
+              <Text style={styles.subtotalLabel}>Subtotal:</Text>
+              <Text style={styles.subtotalValue}>
+                ₱{otherProducts
+                  .reduce((sum, p) => sum + (p.price ?? 0) * (p.qty ?? 1), 0)
+                  .toLocaleString()}
+              </Text>
+            </View>
+          </View>
         )}
 
         <View style={styles.totalRow}>
@@ -429,6 +560,73 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+
+  // ── T4.201: Service group styles ──────────────────────────────────────────
+
+  // Dashed separator row: ── SERVICE NAME ──────── ₱price
+  groupHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+    marginBottom: 4,
+  },
+  groupHeaderDash: {
+    fontSize: 10,
+    color: COLORS.textMuted,
+    marginRight: 4,
+  },
+  groupHeaderName: {
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    color: COLORS.accent,
+    flexShrink: 1,
+  },
+  groupHeaderLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: COLORS.borderLight,
+    marginHorizontal: 4,
+  },
+  groupHeaderPrice: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+
+  // Divider between service groups
+  groupDivider: {
+    marginTop: 8,
+    paddingTop: 6,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.borderLight,
+  },
+
+  // Indented product row under a service header
+  indentedItem: {
+    marginLeft: 16,
+  },
+
+  // Per-service subtotal row
+  subtotalRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 2,
+    marginBottom: 2,
+    gap: 6,
+  },
+  subtotalLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  subtotalValue: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
   },
 });
 

@@ -923,7 +923,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 price: resolvedPrice, qty: 1, isDrug: false, productClass: 'retail', isBase: true,
                 isDiscountable: svcDef?.isScPwdEligible !== false,
                 department: svc.department || svcDef?.department || 'General',
-                category: '', // Services don't carry inventory categories
+                category: '',               // Services don't carry inventory categories
+                sourceServiceId: null,      // T4.201: services ARE the grouping keys, not grouped items
+                sourceServiceName: null,
             });
         });
 
@@ -954,6 +956,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                     productClass: linkedInv.productClass || (linkedInv.isMedicine ? 'medicine' : 'retail'),
                     isBase: false, isAutoBundled: true, instructions: '',
                     category: (linkedInv.category || '').toLowerCase(), // T4.117: enables category-based detection
+                    sourceServiceId: svc.id,       // T4.201: link to parent service for grouping
+                    sourceServiceName: svc.name,   // T4.201: human-readable label for group headers
                 });
                 // Track the first linked vaccine product for auto-fill below
                 if (!firstVaccineLinkedItem && linkedInv.batches?.length > 0) {
@@ -1515,7 +1519,10 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       // and the flag is persisted to the medical record for audit purposes.
       noStockDeduction: itemCategory === 'vaccine' && netAvailableForItem <= 0,
       sig: { dose: '1', frequency: 'SID', duration: '1', unit: item.unit || 'unit', route: 'SQ' },
-      instructions: ''
+      instructions: '',
+      // T4.201: manually-added items have no parent service link — fall into "Other Items" group
+      sourceServiceId: null,
+      sourceServiceName: null,
     };
 
     // Step 4 (T3.110): Auto-populate instructions for drug items from sig defaults.

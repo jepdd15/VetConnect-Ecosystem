@@ -66,6 +66,7 @@ export default function SuperCard({
   const [timelineCollapsed, setTimelineCollapsed] = useState(true);
   const [superCardExpanded, setSuperCardExpanded] = useState(true);
   const [activePageIndex, setActivePageIndex] = useState(0);
+  const [pastEncounterExpanded, setPastEncounterExpanded] = useState(new Set());
 
   const pageWidth = windowWidth - 28;
 
@@ -428,8 +429,12 @@ export default function SuperCard({
           {dayAppt.encounterItems?.length > 0 && (
             <EncounterSummary
               appointment={dayAppt}
-              collapsed={true}
-              onToggle={() => {}}
+              collapsed={!pastEncounterExpanded.has(dayAppt.id)}
+              onToggle={() => setPastEncounterExpanded(prev => {
+                const next = new Set(prev);
+                next.has(dayAppt.id) ? next.delete(dayAppt.id) : next.add(dayAppt.id);
+                return next;
+              })}
               onViewRecord={() => {}}
               onRebook={() => {}}
               salesTotal={sale?.total ?? null}

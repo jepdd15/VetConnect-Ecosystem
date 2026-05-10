@@ -32,7 +32,7 @@ import PaidIcon from '@mui/icons-material/Paid';
 import UndoIcon from '@mui/icons-material/Undo';
 import { collection, getDocs, query, where, orderBy, getDoc, doc, addDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
-import { COLORS, TYPE, FONT } from '../theme/designTokens';
+import { COLORS, TYPE, FONT, STATUS_COLORS } from '../theme/designTokens';
 import { chatWithHistory, DEFAULT_CALENDAR_AI_PROMPT } from '../utils/llmService';
 import { normalizeStatus } from '../utils/statusConstants';
 import CalendarAIPanel from '../components/CalendarAIPanel';
@@ -50,21 +50,6 @@ import POSModal from '../components/POSModal';
 // ─────────────────────────────────────────────
 // CONSTANTS
 // ─────────────────────────────────────────────
-
-/** Status colors for the 8px status indicator dot. */
-const STATUS_COLORS = {
-  pending:      '#FF9800',
-  confirmed:    '#3ABEF9',
-  arrived:      '#1976D2',
-  'in-consult': '#5D4037',
-  dispensing:   '#C62828',
-  billing:      '#FF8F00',
-  completed:    '#2E7D32',
-  cancelled:    '#D32F2F',
-  'no-show':    '#D32F2F',
-  'on-hold':    '#7B1FA2',
-  confined:     '#1565C0',
-};
 
 /** Status labels for display in popovers. */
 const STATUS_LABELS = {
@@ -190,7 +175,6 @@ const CAPACITY_COLORS = {
 
 /** Renders the appointment detail card used in both hover and click popovers. */
 function AppointmentDetailCard({ appt, departments }) {
-  const deptColor   = getDeptColor(appt.serviceCategory, departments);
   const statusColor = STATUS_COLORS[appt.status] || COLORS.textMuted;
   const statusLabel = STATUS_LABELS[appt.status] || (appt.status || '').toUpperCase();
 
@@ -267,7 +251,7 @@ function AppointmentDetailCard({ appt, departments }) {
         {/* Department */}
         <Typography sx={labelSx}>Department</Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.75 }}>
-          <Box sx={{ width: 8, height: 8, bgcolor: deptColor, borderRadius: 0, flexShrink: 0 }} />
+          <Box sx={{ width: 8, height: 8, bgcolor: getDeptColor(appt.serviceCategory, departments), borderRadius: 0, flexShrink: 0 }} />
           <Typography sx={valueSx}>{appt.serviceCategory || '—'}</Typography>
         </Box>
 
@@ -320,7 +304,6 @@ const AppointmentBlock = React.memo(function AppointmentBlock({
   onClick,
   onContextMenu,
 }) {
-  const borderColor  = getDeptColor(appt.serviceCategory, departments);
   const statusColor  = STATUS_COLORS[appt.status] || COLORS.textMuted;
   const scheduledTime = appt.jsScheduled ? formatTime(appt.jsScheduled) : '';
 
@@ -331,8 +314,8 @@ const AppointmentBlock = React.memo(function AppointmentBlock({
       onClick={(e) => { e.stopPropagation(); onClick(e, appt); }}
       onContextMenu={onContextMenu ? (e) => { e.preventDefault(); e.stopPropagation(); onContextMenu(e, appt); } : undefined}
       sx={{
-        bgcolor:    COLORS.cardBg,
-        borderLeft: `3px solid ${borderColor}`,
+        bgcolor:    `${statusColor}30`,
+        borderLeft: `3px solid ${statusColor}`,
         borderRadius: 0,
         boxShadow: `2px 2px 0px ${COLORS.border}`,
         px: 0.75,
@@ -343,22 +326,12 @@ const AppointmentBlock = React.memo(function AppointmentBlock({
         gap: 0.5,
         cursor: 'pointer',
         '&:hover': {
+          bgcolor: `${statusColor}50`,
           boxShadow: `2px 2px 0px ${COLORS.brand}`,
           transform: 'translate(-1px, -1px)',
         },
       }}
     >
-      {/* Status indicator dot */}
-      <Box
-        sx={{
-          width: 8,
-          height: 8,
-          borderRadius: '50%',
-          bgcolor: statusColor,
-          flexShrink: 0,
-          mt: '3px',
-        }}
-      />
       <Box sx={{ overflow: 'hidden', minWidth: 0 }}>
         <Typography
           noWrap
@@ -1347,7 +1320,8 @@ export default function Calendar() {
             .map((s) => (typeof s === 'string' ? s : s.serviceName || s.name || ''))
             .filter(Boolean)
             .join(', ') || a.primaryService || '—';
-          lines.push(`    - ${time} | ${a.petName || '?'} (${a.petSpecies || '?'}) | Owner: ${a.ownerName || '?'} | Services: ${svcs} | Status: ${a.status} | Dept: ${a.serviceCategory || '?'} | Vet: ${a.assignedVet || a.assignedVetName || 'Unassigned'}`);
+          const bookingType = a.ticketPrefix === 'E' ? 'EMERGENCY' : a.ticketPrefix === 'W' ? 'Walk-In' : 'Online';
+          lines.push(`    - ${time} | ${a.petName || '?'} (${a.petSpecies || '?'}) | Owner: ${a.ownerName || '?'} | Services: ${svcs} | Status: ${a.status} | Type: ${bookingType} | Dept: ${a.serviceCategory || '?'} | Vet: ${a.assignedVet || a.assignedVetName || 'Unassigned'}`);
         }
       }
     }
@@ -1364,7 +1338,7 @@ export default function Calendar() {
 
     lines.push('STAFF:');
     for (const v of vets) {
-      const depts = (v.departments || []).join(', ') || v.accessLevel || '?';
+      const depts = Array.isArray(v.departments) ? v.departments.join(', ') : (v.departments || v.accessLevel || '?');
       lines.push(`  - ${v.fullName || v.email || '?'} | ${depts}`);
     }
     lines.push('');

@@ -316,6 +316,7 @@ FORMAT RULES:
 - Be concise and actionable — staff are busy
 - Use clear headings and bullet points
 - Do NOT use markdown tables — they render poorly in narrow panels. Use bold labels and lists instead.
+- When listing per-day breakdowns, put each day on its own line using markdown bullet syntax (- Monday...) — NEVER inline or comma-separated. Each day MUST be a separate markdown list item.
 - When listing appointments, include time, pet name, services, and status
 - Highlight urgent items (overdue, conflicts, gaps) at the top
 - Use Philippine peso (P) for any prices mentioned`;

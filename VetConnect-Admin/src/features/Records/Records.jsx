@@ -36,7 +36,7 @@ import PlayCircleFilledWhiteIcon from '@mui/icons-material/PlayCircleFilledWhite
 import { ToggleButton, ToggleButtonGroup } from '@mui/material';
 
 // Design Tokens
-import { FONT, COLORS, TYPE } from '../../theme/designTokens';
+import { FONT, COLORS, TYPE, STATUS_COLORS } from '../../theme/designTokens';
 
 // Logic
 import { useGlobalRecords } from './hooks/useGlobalRecords';
@@ -809,10 +809,7 @@ export default function Records() {
          const s = String(p.value).toUpperCase();
          const isTerminal = TERMINAL_STATUSES.has(s.toLowerCase());
 
-         let color = '#757575';
-         if (['COMPLETED', 'CARRIED-OVER'].includes(s)) color = COLORS.success;
-         if (['CANCELLED', 'NO-SHOW'].includes(s)) color = COLORS.danger;
-         if (['IN-CONSULT', 'ARRIVED', 'DISPENSING', 'BILLING', 'ON-HOLD', 'CONFINED'].includes(s)) color = COLORS.medical;
+         const color = STATUS_COLORS[s.toLowerCase()] || '#757575';
 
          const amendCount = (p.row.clinicalPulse || []).filter(e => e.type === 'CLINICAL_AMENDMENT').length;
          return (

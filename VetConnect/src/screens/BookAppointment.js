@@ -1,5 +1,6 @@
 import DateTimePicker from "@react-native-community/datetimepicker";
 import {
+  addDoc,
   arrayUnion,
   collection,
   deleteDoc,
@@ -12,7 +13,7 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -36,6 +37,36 @@ import { useBookingEngine } from "../hooks/useBookingEngine";
 import { formatDisplayDate, formatDisplayTime, getLocalDateStr, resolveTieredPrice } from '../utils/helpers';
 import { COLORS, FONTS, SHADOW, SPACING } from '../theme/mobileTokens';
 import { useNetwork } from "../context/NetworkContext";
+import { MaterialIcons } from '@expo/vector-icons';
+import { fetchVaccineCatalog, buildVaccinationStatus } from '../utils/vaccineHelpers';
+import BookingAISheet from '../components/BookingAISheet';
+
+// T4.206: Default system prompt for the AI Booking Advisor.
+// Overridden by system_prompts/booking_assistant Firestore doc when it exists.
+const DEFAULT_BOOKING_AI_PROMPT = `You are the Starbarks Veterinary Clinic AI Booking Advisor, helping pet owners in the Philippines choose the right services and schedule appointments through the app.
+
+YOUR ROLE:
+- Help pet owners understand which services their pet needs based on the pet's health data provided below
+- Recommend when to schedule based on vaccine due dates, follow-up dates, and slot availability
+- Explain what each service involves in simple, friendly language
+- Suggest optimal timing based on the clinic's available slots
+
+WHAT YOU MUST NOT DO:
+- Never diagnose medical conditions or prescribe medications
+- Never make promises about pricing, outcomes, or specific appointment availability
+- Never book appointments -- you can only suggest. The owner books through the app's booking wizard
+- Never share information about other clients or their pets
+
+RESPONSE STYLE:
+- Keep responses under 150 words unless the question requires detail
+- Use simple, warm language -- avoid medical jargon
+- When recommending services, explain WHY (e.g. "Rabies vaccine is overdue by 45 days")
+- When suggesting times, mention which slots look less busy if that data is available
+- Be encouraging about preventive care and regular check-ups
+- Use Filipino cultural context when relevant
+
+BOOKING CONTEXT (current pet and clinic data):
+`;
 
 export default function BookAppointment({ navigation, route }) {
   const insets = useSafeAreaInsets();
@@ -94,6 +125,12 @@ export default function BookAppointment({ navigation, route }) {
   // T4.147: Outstanding balance from previous completed visits.
   // One-shot query on mount — balance is unlikely to change while booking.
   const [outstandingBalance, setOutstandingBalance] = useState(0);
+
+  // T4.206: AI Booking Advisor
+  const [aiSheetVisible, setAiSheetVisible]   = useState(false);
+  const [workerUrl, setWorkerUrl]             = useState('');
+  const [bookingContext, setBookingContext]    = useState('');
+  const [customBookingPrompt, setCustomBookingPrompt] = useState('');
 
   const { isConnected } = useNetwork();
 
@@ -227,6 +264,224 @@ export default function BookAppointment({ navigation, route }) {
       }
     })();
   }, []);
+
+  // T4.206: One-shot fetch for Cloudflare Worker URL. FAB hidden when empty.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'clinic_settings', 'llm_config'));
+        if (!cancelled && snap.exists()) {
+          const data = snap.data();
+          if (data.enabled && data.workerUrl) {
+            setWorkerUrl(data.workerUrl);
+          }
+        }
+      } catch {
+        // Non-critical -- FAB stays hidden
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // T4.206: Fetch custom system prompt from Firestore (one-shot).
+  // Falls back to DEFAULT_BOOKING_AI_PROMPT when the doc does not exist.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'system_prompts', 'booking_assistant'));
+        if (!cancelled && snap.exists()) {
+          const prompt = snap.data().prompt;
+          if (prompt) setCustomBookingPrompt(prompt);
+        }
+      } catch {
+        // Non-critical -- use default
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // T4.206: Build booking context for AI system prompt.
+  // Fetches medical_records + vaccine catalog when pet changes, formats everything.
+  useEffect(() => {
+    if (!selectedPet) {
+      setBookingContext('');
+      return;
+    }
+    let cancelled = false;
+
+    (async () => {
+      try {
+        // 1. Fetch pet's recent medical records
+        const recordsSnap = await getDocs(
+          query(
+            collection(db, 'medical_records'),
+            where('petId', '==', selectedPet.id),
+          ),
+        );
+        const allRecords = recordsSnap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => {
+            const aT = a.date?.toDate ? a.date.toDate().getTime() : a.date?.seconds ? a.date.seconds * 1000 : 0;
+            const bT = b.date?.toDate ? b.date.toDate().getTime() : b.date?.seconds ? b.date.seconds * 1000 : 0;
+            return bT - aT;
+          });
+
+        // 2. Vaccine status
+        const catalog = await fetchVaccineCatalog();
+        const { statuses: vaccineStatuses } = buildVaccinationStatus(allRecords, catalog, selectedPet.species);
+
+        if (cancelled) return;
+
+        // 3. Build context string
+        const lines = [];
+
+        // Pet profile
+        lines.push('=== PET PROFILE ===');
+        lines.push(`Name: ${selectedPet.name}`);
+        lines.push(`Species: ${selectedPet.species || 'Unknown'}`);
+        if (selectedPet.breed) lines.push(`Breed: ${selectedPet.breed}`);
+        if (selectedPet.age) lines.push(`Age: ${selectedPet.age}`);
+        if (selectedPet.weight) lines.push(`Weight: ${selectedPet.weight} kg`);
+        const allergies = selectedPet.petAllergies || selectedPet.allergies;
+        if (allergies) lines.push(`Allergies: ${allergies}`);
+
+        // Vaccination status
+        if (vaccineStatuses && vaccineStatuses.length > 0) {
+          lines.push('');
+          lines.push('=== VACCINATION STATUS ===');
+          for (const vs of vaccineStatuses) {
+            const statusLabel = vs.status === 'overdue' ? 'OVERDUE'
+              : vs.status === 'due_soon' ? 'DUE SOON'
+              : vs.status === 'current' ? 'Current'
+              : vs.status === 'incomplete' ? `Incomplete (${vs.dosesGiven}/${vs.dosesRequired} doses)`
+              : 'No record';
+            const dueInfo = vs.daysUntilDue != null
+              ? (vs.daysUntilDue < 0 ? ` (${Math.abs(vs.daysUntilDue)} days overdue)` : ` (due in ${vs.daysUntilDue} days)`)
+              : '';
+            lines.push(`- ${vs.name}: ${statusLabel}${dueInfo}`);
+          }
+        }
+
+        // Recent medical history (last 3 for prompt brevity)
+        if (allRecords.length > 0) {
+          lines.push('');
+          lines.push('=== RECENT MEDICAL HISTORY (last 3) ===');
+          for (const r of allRecords.slice(0, 3)) {
+            const rDate = r.date?.toDate ? r.date.toDate() : r.date?.seconds ? new Date(r.date.seconds * 1000) : null;
+            const dateStr = rDate ? rDate.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Unknown date';
+            lines.push(`[${dateStr}]`);
+            if (r.diagnosis) lines.push(`  Diagnosis: ${r.diagnosis}`);
+            if (r.soap?.plan || r.dischargeNotes) lines.push(`  Discharge: ${r.soap?.plan || r.dischargeNotes}`);
+            if (r.followUpDate) {
+              const fuDate = r.followUpDate?.toDate ? r.followUpDate.toDate() : new Date(r.followUpDate);
+              if (!isNaN(fuDate.getTime())) {
+                lines.push(`  Follow-up due: ${fuDate.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}`);
+              }
+            }
+          }
+        }
+
+        // Selected services (if any)
+        if (selectedServices.length > 0) {
+          lines.push('');
+          lines.push('=== CURRENTLY SELECTED SERVICES ===');
+          for (const svc of selectedServices) {
+            lines.push(`- ${svc.name} (${svc.department || svc.category || 'General'}) - ${svc.duration || 30} min`);
+          }
+        }
+
+        // Available services for this pet's species
+        const speciesKey = (selectedPet.species || '').toLowerCase();
+        const isCat = speciesKey.includes('cat') || speciesKey.includes('feline');
+        const speciesFilter = isCat ? 'Feline' : 'Canine';
+        const availForSpecies = services.filter(
+          s => !s.targetSpecies || s.targetSpecies === 'Universal' || s.targetSpecies === speciesFilter,
+        );
+        if (availForSpecies.length > 0) {
+          lines.push('');
+          lines.push('=== AVAILABLE SERVICES ===');
+          const byDept = {};
+          for (const s of availForSpecies) {
+            const dept = s.department || s.category || 'General';
+            if (!byDept[dept]) byDept[dept] = [];
+            byDept[dept].push(s.name);
+          }
+          for (const [dept, names] of Object.entries(byDept)) {
+            lines.push(`${dept}: ${names.join(', ')}`);
+          }
+        }
+
+        // Available slots for selected date (AVAILABLE status only, capped at 10)
+        if (availableSlots && availableSlots.length > 0) {
+          const openSlots = availableSlots.filter(s => s.status === 'AVAILABLE');
+          if (openSlots.length > 0) {
+            lines.push('');
+            lines.push(`=== AVAILABLE SLOTS (${date.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })}) ===`);
+            const slotLabels = openSlots.slice(0, 10).map(s => s.display);
+            lines.push(slotLabels.join(', '));
+            if (openSlots.length > 10) {
+              lines.push(`(${openSlots.length - 10} more slots available)`);
+            }
+          }
+        }
+
+        // Clinic hours
+        if (clinicSettings) {
+          lines.push('');
+          lines.push('=== CLINIC INFO ===');
+          const openH = clinicSettings.openHour;
+          const closeH = clinicSettings.closeHour;
+          if (openH != null && closeH != null) {
+            const fmt = h => {
+              const ampm = h >= 12 ? 'PM' : 'AM';
+              const display = h > 12 ? h - 12 : h === 0 ? 12 : h;
+              return `${display}:00 ${ampm}`;
+            };
+            lines.push(`Hours: ${fmt(openH)} - ${fmt(closeH)}`);
+          }
+          if (clinicSettings.workingDays) {
+            lines.push(`Working days: ${clinicSettings.workingDays.join(', ')}`);
+          }
+        }
+
+        setBookingContext(lines.join('\n'));
+      } catch (err) {
+        if (__DEV__) console.warn('[BookAppointment] Context build failed:', err.message);
+        setBookingContext('');
+      }
+    })();
+
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPet?.id, selectedServices.length, date, availableSlots?.length, clinicSettings, services]);
+
+  // T4.206: Memoized system prompt = default/Firestore prompt + live booking context.
+  const bookingSystemPrompt = useMemo(() => {
+    const basePrompt = customBookingPrompt || DEFAULT_BOOKING_AI_PROMPT;
+    return bookingContext ? `${basePrompt}\n\n${bookingContext}` : basePrompt;
+  }, [customBookingPrompt, bookingContext]);
+
+  // T4.206: Fire-and-forget audit logging for AI booking queries.
+  const handleBookingAuditLog = useCallback((promptSummary, messageCount) => {
+    try {
+      addDoc(collection(db, 'llm_audit_logs'), {
+        source: 'booking',
+        userId: auth.currentUser?.uid || 'anonymous',
+        petId: selectedPet?.id || '',
+        petName: selectedPet?.name || '',
+        species: selectedPet?.species || '',
+        timestamp: Timestamp.now(),
+        type: messageCount <= 1 ? 'request' : 'follow_up',
+        status: 'completed',
+        promptSummary,
+        messageCount,
+      });
+    } catch {
+      // Non-fatal -- audit failure should never break the booking flow
+    }
+  }, [selectedPet]);
 
   // Configured no-show lookback window — falls back to 30 days if Firestore hasn't loaded yet.
   const noShowWindowDays = clinicSettings?.noShowLinkWindowDays || 30;
@@ -1635,6 +1890,32 @@ export default function BookAppointment({ navigation, route }) {
         </View>
       </View>
       {renderDepartmentModal()}
+
+      {/* T4.206: AI Booking Advisor FAB -- feature-gated on workerUrl, hidden in reschedule mode */}
+      {!!workerUrl && !rescheduleMode && !!selectedPet && (
+        <TouchableOpacity
+          style={styles.bookingAiFab}
+          activeOpacity={0.85}
+          onPress={() => setAiSheetVisible(true)}
+        >
+          <View style={styles.bookingAiFabShadow} />
+          <View style={styles.bookingAiFabInner}>
+            <MaterialIcons name="auto-awesome" size={20} color={COLORS.white} />
+            <Text style={styles.bookingAiFabText}>Ask AI</Text>
+          </View>
+        </TouchableOpacity>
+      )}
+
+      {/* T4.206: AI Booking Advisor bottom sheet */}
+      <BookingAISheet
+        visible={aiSheetVisible}
+        onClose={() => setAiSheetVisible(false)}
+        petName={selectedPet?.name || ''}
+        systemPrompt={bookingSystemPrompt}
+        workerUrl={workerUrl}
+        userId={auth.currentUser?.uid || 'anonymous'}
+        onAuditLog={handleBookingAuditLog}
+      />
     </SafeAreaView>
   );
 }
@@ -2206,5 +2487,39 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.danger,
     fontWeight: '700',
+  },
+
+  // T4.206: AI Booking Advisor FAB
+  bookingAiFab: {
+    position: 'absolute',
+    bottom: 120,
+    right: 20,
+    zIndex: 100,
+  },
+  bookingAiFabShadow: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    right: -4,
+    bottom: -4,
+    backgroundColor: COLORS.brand,
+  },
+  bookingAiFabInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: COLORS.sky,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    borderRadius: 0,
+  },
+  bookingAiFabText: {
+    color: COLORS.white,
+    fontWeight: '900',
+    fontSize: 14,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
 });

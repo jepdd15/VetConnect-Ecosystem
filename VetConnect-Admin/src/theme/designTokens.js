@@ -108,6 +108,25 @@ export const COLORS = {
   warningSurface:'#FFF3E0', // Light orange surface — info/warning boxes
 };
 
+// ── APPOINTMENT STATUS COLORS ─────────────────────────────────
+// Single source of truth for status-based coloring across Calendar,
+// Visit Log, Queue, Dashboard, and any surface showing appointment status.
+// Queue triage column may override these with dynamic urgency colors.
+export const STATUS_COLORS = {
+  pending:        '#FF9800',   // Orange — needs confirmation
+  confirmed:      '#3ABEF9',   // Sky Blue — patient is coming
+  arrived:        '#1976D2',   // Blue — checked in, waiting
+  'in-consult':   '#5D4037',   // Espresso — with the vet
+  dispensing:     '#C62828',   // Red — pharmacy prep
+  billing:        '#FF8F00',   // Amber — ready for checkout
+  completed:      '#2E7D32',   // Green — visit done
+  cancelled:      '#D32F2F',   // Red — cancelled
+  'no-show':      '#D32F2F',   // Red — did not arrive
+  'on-hold':      '#7B1FA2',   // Purple — consultation paused
+  confined:       '#1565C0',   // Blue — hospitalized overnight
+  'carried-over': '#E65100',   // Deep orange — continued next day
+};
+
 // ── NEUBRUTALISM PANEL PRESETS ─────────────────────────────────
 // Replaces the old GLASS presets. Zero radius, solid shadows, no blur.
 export const PANEL = {

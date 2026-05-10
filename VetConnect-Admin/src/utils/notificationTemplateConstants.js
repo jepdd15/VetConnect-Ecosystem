@@ -84,6 +84,15 @@ export const DEFAULT_TEMPLATES = {
     title: 'Overdue Vaccination Alert',
     body: "Warning: {petName}'s {vaccineName} vaccine (Dose {doseNumber}/{totalDoses}) is overdue by {days} days. Please book as soon as possible.",
   },
+  // T4.202: Per-service progress notifications (multi-service appointments only)
+  'service-started': {
+    title: 'Service Started!',
+    body: "Great news! {serviceName} has started for {petName}. {staffName} is taking care of it.",
+  },
+  'service-completed': {
+    title: 'Service Complete!',
+    body: "{serviceName} is done for {petName}! {nextService}",
+  },
 };
 
 // ─── Template Groups ────────────────────────────────────────────────────────
@@ -109,6 +118,11 @@ export const TEMPLATE_GROUPS = [
     description: 'Sent the day before a scheduled appointment.',
     keys: ['reminder', 'appointment-upcoming', 'appointment-tomorrow', 'appointment-today', 'vaccine-due', 'vaccine-overdue'],
   },
+  {
+    label: 'SERVICE PROGRESS',
+    description: 'Sent during multi-service visits when individual services start or complete.',
+    keys: ['service-started', 'service-completed'],
+  },
 ];
 
 // ─── Status Display Labels ──────────────────────────────────────────────────
@@ -132,6 +146,8 @@ export const STATUS_LABELS = {
   'appointment-today':     'Today Appointment Reminder',
   'vaccine-due':         'Vaccine Due Reminder',
   'vaccine-overdue':     'Vaccine Overdue Alert',
+  'service-started':     'Service Started',
+  'service-completed':   'Service Complete',
 };
 
 // ─── Status Chip Colors ─────────────────────────────────────────────────────
@@ -155,6 +171,8 @@ export const STATUS_CHIP_COLORS = {
   'appointment-today':     { bg: '#F0FDF4', text: '#2E7D32',  border: '#86EFAC' },
   'vaccine-due':         { bg: '#FFF7ED', text: '#E65100',    border: '#FDBA74' },
   'vaccine-overdue':     { bg: '#FEF2F2', text: COLORS.danger, border: '#FCA5A5' },
+  'service-started':     { bg: '#E8F5E9', text: '#2E7D32',    border: '#A5D6A7' },
+  'service-completed':   { bg: '#F0FDF4', text: '#1B5E20',    border: '#86EFAC' },
 };
 
 // ─── Placeholder Reference ──────────────────────────────────────────────────
@@ -170,6 +188,9 @@ export const PLACEHOLDER_REFERENCE = [
   { token: '{days}',        description: 'Days until due, days overdue, or days until appointment — reminders only' },
   { token: '{doseNumber}',  description: 'Current dose number (e.g., "2") — vaccine reminders only' },
   { token: '{totalDoses}',  description: 'Total doses in series (e.g., "3") — vaccine reminders only' },
+  { token: '{serviceName}', description: 'The name of the service being started or completed — service progress only' },
+  { token: '{staffName}',   description: 'Staff member performing the service — service-started only' },
+  { token: '{nextService}', description: 'Next pending service name, or "All services complete." — service-completed only' },
 ];
 
 // ── SMS-Eligible Statuses ──────────────────────────────────────────────────

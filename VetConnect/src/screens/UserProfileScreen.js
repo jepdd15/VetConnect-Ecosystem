@@ -755,14 +755,17 @@ export default function UserProfileScreen({ navigation, route }) {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.label}>Relation</Text>
-                    <TextInput
-                      style={styles.input}
-                      value={contact.relation}
-                      onChangeText={(val) =>
-                        updateEmergencyContact(index, "relation", val)
-                      }
-                      placeholder="e.g. Spouse"
-                    />
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+                      {['Spouse', 'Parent', 'Sibling', 'Child', 'Relative', 'Friend', 'Caretaker', 'Other'].map(r => (
+                        <TouchableOpacity key={r} onPress={() => updateEmergencyContact(index, 'relation', r)}
+                          style={{ paddingHorizontal: 8, paddingVertical: 5, borderWidth: 1.5,
+                            borderColor: contact.relation === r ? COLORS.sky : '#ccc',
+                            backgroundColor: contact.relation === r ? COLORS.sky + '15' : '#fff' }}>
+                          <Text style={{ fontSize: 11, fontWeight: contact.relation === r ? '900' : '600',
+                            color: contact.relation === r ? COLORS.sky : '#666' }}>{r}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
                   </View>
                 </View>
               </View>

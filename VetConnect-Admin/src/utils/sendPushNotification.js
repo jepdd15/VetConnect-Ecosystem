@@ -203,6 +203,9 @@ function resolveTemplateForLog(resolvedTitle, resolvedBody, status, data) {
  * @param {string} [params.customTitle] - Override title (from notification_templates)
  * @param {string} [params.customBody] - Override body (from notification_templates)
  * @param {string} [params.sentBy] - Staff display name for audit logging (T4.95)
+ * @param {string} [params.serviceName] - Service name for service progress templates (T4.202)
+ * @param {string} [params.staffName] - Staff performing the service — service-started only (T4.202)
+ * @param {string} [params.nextService] - Next service hint or "All services complete." — service-completed only (T4.202)
  */
 export function sendPushNotification({
   ownerId,
@@ -214,6 +217,9 @@ export function sendPushNotification({
   customTitle,
   customBody,
   sentBy,
+  serviceName,
+  staffName,
+  nextService,
 }) {
   // Guard: walk-ins and unknown owners have no mobile app
   if (!ownerId || ownerId === 'WALK_IN_USER' || ownerId === 'UNKNOWN') return;
@@ -222,13 +228,14 @@ export function sendPushNotification({
   _dispatchPush({
     ownerId, status, petName, vetName, ticketNumber,
     appointmentId, customTitle, customBody, sentBy,
+    serviceName, staffName, nextService,
   }).catch((err) => {
     console.error('[sendPushNotification] Silent failure:', err?.message || err);
   });
 }
 
 // ─── Internal dispatch (async, never exposed) ────────────────────────────────
-async function _dispatchPush({ ownerId, status, petName, vetName, ticketNumber, appointmentId, customTitle, customBody, sentBy }) {
+async function _dispatchPush({ ownerId, status, petName, vetName, ticketNumber, appointmentId, customTitle, customBody, sentBy, serviceName, staffName, nextService }) {
   const [pushToken, workerUrl, channelSettings] = await Promise.all([
     resolvePushToken(ownerId),
     getWorkerUrl(),
@@ -249,11 +256,15 @@ async function _dispatchPush({ ownerId, status, petName, vetName, ticketNumber, 
     }
   }
 
-  // Resolve interpolated title+body for logging — shared by all channels
+  // Resolve interpolated title+body for logging — shared by all channels.
+  // T4.202: serviceName, staffName, nextService added for service progress templates.
   const interpolationData = {
     petName:      petName      || 'your pet',
     vetName:      vetName      || '',
     ticketNumber: ticketNumber || '',
+    serviceName:  serviceName  || '',
+    staffName:    staffName    || '',
+    nextService:  nextService  || '',
   };
   const { logTitle, logBody } = resolveTemplateForLog(finalTitle, finalBody, status, interpolationData);
 
@@ -290,10 +301,14 @@ async function _dispatchPush({ ownerId, status, petName, vetName, ticketNumber, 
       body: JSON.stringify({
         pushToken,
         status,
-        petName: petName || 'your pet',
-        vetName: vetName || '',
+        petName:      petName      || 'your pet',
+        vetName:      vetName      || '',
         ticketNumber: ticketNumber || '',
         appointmentId: appointmentId || '',
+        // T4.202: service progress placeholders forwarded to Worker for interpolation
+        ...(serviceName  ? { serviceName  } : {}),
+        ...(staffName    ? { staffName    } : {}),
+        ...(nextService  ? { nextService  } : {}),
         ...(finalTitle ? { customTitle: finalTitle } : {}),
         ...(finalBody  ? { customBody:  finalBody  } : {}),
       }),

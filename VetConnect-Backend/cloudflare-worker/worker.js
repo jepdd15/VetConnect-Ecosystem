@@ -98,6 +98,16 @@ const DEFAULT_TEMPLATES = {
     title: 'Outstanding Balance Reminder',
     body: 'You have ₱{amount} outstanding from a previous visit. Please settle at your next visit or contact us.',
   },
+  // T4.202: Per-service progress notifications (multi-service appointments only)
+  // MANUAL DEPLOY REQUIRED — paste this file into the Cloudflare Worker dashboard after changes.
+  'service-started': {
+    title: 'Service Started!',
+    body: "Great news! {serviceName} has started for {petName}. {staffName} is taking care of it.",
+  },
+  'service-completed': {
+    title: 'Service Complete!',
+    body: "{serviceName} is done for {petName}! {nextService}",
+  },
 };
 
 function interpolateTemplate(template, data) {
@@ -195,6 +205,8 @@ async function handlePush(request) {
   const {
     pushToken, status, petName, vetName, date, amount, ticketNumber,
     appointmentId, visitGroupId, customTitle, customBody,
+    // T4.202: service progress placeholders
+    serviceName, staffName, nextService,
   } = payload;
 
   if (!pushToken) return jsonResponse({ error: 'pushToken is required.' }, 400);
@@ -213,7 +225,11 @@ async function handlePush(request) {
     body = template.body;
   }
 
-  const data = { petName: petName || 'your pet', vetName, date, amount, ticketNumber };
+  const data = {
+    petName: petName || 'your pet', vetName, date, amount, ticketNumber,
+    // T4.202: service progress placeholders
+    serviceName: serviceName || '', staffName: staffName || '', nextService: nextService || '',
+  };
   title = interpolateTemplate(title, data);
   body = interpolateTemplate(body, data);
 

@@ -1748,6 +1748,44 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           note: `${(patient.services || []).find(s => s.id === svcId)?.name || 'Service'} ${next === 'in-progress' ? 'started' : 'completed'}.`,
         }),
       });
+
+      // T4.202: Per-service push notifications — multi-service appointments only.
+      // Fire-and-forget: never awaited so notification failure cannot block the toggle.
+      const allServices = patient.services || [];
+      if (allServices.length >= 2) {
+        const toggledServiceName = allServices.find(s => s.id === svcId)?.name || svcId;
+        const staffName = auth.currentUser?.displayName || 'Authorized Clinician';
+
+        if (next === 'in-progress') {
+          sendPushNotification({
+            ownerId: patient.ownerId,
+            status: 'service-started',
+            petName: patient.petName,
+            serviceName: toggledServiceName,
+            staffName,
+            appointmentId: patient.id,
+            sentBy: staffName,
+          });
+        } else if (next === 'completed') {
+          // Find the first remaining pending or in-progress service (excluding the one just completed)
+          const remainingService = newServices.find(
+            s => s.id !== svcId && (s.serviceStatus === 'pending' || s.serviceStatus === 'in-progress'),
+          );
+          const nextService = remainingService
+            ? `Next up: ${remainingService.name}`
+            : 'All services complete.';
+
+          sendPushNotification({
+            ownerId: patient.ownerId,
+            status: 'service-completed',
+            petName: patient.petName,
+            serviceName: toggledServiceName,
+            nextService,
+            appointmentId: patient.id,
+            sentBy: staffName,
+          });
+        }
+      }
     } catch (e) {
       console.error('[ClinicalWorkspace] Service progress update failed:', e);
       setServiceProgress(prev => ({ ...prev, [svcId]: current }));

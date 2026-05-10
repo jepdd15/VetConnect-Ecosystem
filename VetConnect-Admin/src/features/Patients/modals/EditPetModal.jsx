@@ -174,13 +174,13 @@ export default function EditPetModal({ open, onClose, pet }) {
         <Box sx={{ mt: 1 }}>
           <Grid container spacing={2}>
             {/* Row 1: Name + Species */}
-            <Grid item xs={12} md={8}>
+            <Grid size={{ xs: 12, md: 8 }}>
               <TextField autoFocus label="Pet Name" fullWidth size="small" required
                 value={form.name} onChange={(e) => setForm({...form, name: e.target.value})}
                 error={!!error && !form.name.trim()} helperText={!form.name.trim() && error ? error : ''}
                 sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }} />
             </Grid>
-            <Grid item xs={12} md={4}>
+            <Grid size={{ xs: 12, md: 4 }}>
               <TextField select label="Species" fullWidth size="small"
                 value={form.species} onChange={(e) => setForm({...form, species: e.target.value, breed: ''})}
                 sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }}>
@@ -190,7 +190,7 @@ export default function EditPetModal({ open, onClose, pet }) {
             </Grid>
 
             {/* Row 2: Breed + Color */}
-            <Grid item xs={12} md={6}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <Autocomplete
                 freeSolo
                 options={BREED_CATALOG[form.species] || []}
@@ -204,14 +204,14 @@ export default function EditPetModal({ open, onClose, pet }) {
                 )}
               />
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <TextField label="Color / Markings" fullWidth size="small"
                 value={form.color} onChange={(e) => setForm({...form, color: e.target.value})}
                 sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }} />
             </Grid>
 
             {/* Row 3: Sex */}
-            <Grid item xs={12} md={6}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <TextField select label="Sex" fullWidth size="small"
                 value={form.gender} onChange={(e) => setForm({...form, gender: e.target.value})}
                 sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }}>
@@ -221,7 +221,7 @@ export default function EditPetModal({ open, onClose, pet }) {
             </Grid>
 
             {/* Row 3b: DOB 3-mode selector (Item 5) */}
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12 }}>
               <Box sx={{ p: 1, border: `1px dashed ${COLORS.borderLight}`, bgcolor: 'transparent' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 1 }}>
                   <CakeIcon sx={{ fontSize: 18, color: COLORS.accent }} />
@@ -270,20 +270,20 @@ export default function EditPetModal({ open, onClose, pet }) {
             </Grid>
 
             {/* Row 4: Weight + Microchip */}
-            <Grid item xs={12} md={6}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <TextField label="Last Recorded Weight" fullWidth size="small" type="number"
                 value={form.lastWeight} onChange={(e) => setForm({...form, lastWeight: e.target.value})}
                 InputProps={{ endAdornment: <InputAdornment position="end"><Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', color: COLORS.textMuted }}>kg</Typography></InputAdornment> }}
                 sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }} />
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <TextField label="Microchip Number" fullWidth size="small"
                 value={form.microchip} onChange={(e) => setForm({...form, microchip: e.target.value})}
                 sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }} />
             </Grid>
 
             {/* Row 5: Allergy tag array (Item 6) */}
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12 }}>
               <Box sx={{ p: 1, border: '1.2px solid', borderColor: form.showAllergyInput ? COLORS.danger : COLORS.borderLight, bgcolor: 'transparent' }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: form.showAllergyInput ? 1.5 : 0 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -359,7 +359,7 @@ export default function EditPetModal({ open, onClose, pet }) {
             </Grid>
 
             {/* Row 6: Neutered toggle */}
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12 }}>
               <FormControlLabel
                 control={<Switch checked={form.isNeutered} onChange={(e) => setForm({...form, isNeutered: e.target.checked})} sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.success }, '& .MuiSwitch-switchBase.Mui-checked+.MuiSwitch-track': { bgcolor: COLORS.success } }} />}
                 label={<Typography sx={{ fontFamily: FONT, fontWeight: 700, color: form.isNeutered ? COLORS.success : COLORS.textSecondary }}>{form.gender === 'Female' ? 'Spayed' : 'Neutered'}</Typography>}

@@ -45,14 +45,17 @@ const RegisterScreen = ({ navigation }) => {
   // --- NEW: Expanded registration fields ---
   const [address, setAddress] = useState('');
   const [city, setCity] = useState('');
-  const [emergencyName, setEmergencyName] = useState('');
-  const [emergencyPhone, setEmergencyPhone] = useState('');
-  const [emergencyRelation, setEmergencyRelation] = useState('');
+  const [emergencyContacts, setEmergencyContacts] = useState([{ name: '', phone: '', relation: '' }]);
+  const updateEC = (idx, field, val) => setEmergencyContacts(prev => prev.map((c, i) => i === idx ? { ...c, [field]: val } : c));
+  const addEC = () => setEmergencyContacts(prev => [...prev, { name: '', phone: '', relation: '' }]);
+  const removeEC = (idx) => setEmergencyContacts(prev => prev.filter((_, i) => i !== idx));
   const [dpaConsent, setDpaConsent] = useState(false);
+  const [waiverConsent, setWaiverConsent] = useState(false);
   const [allowPromos, setAllowPromos] = useState(false);
 
-  // --- NEW: Active DPA policy (fetched on mount) ---
+  // --- Active DPA + Waiver policies (fetched on mount) ---
   const [dpaPolicy, setDpaPolicy] = useState(null);
+  const [waiverPolicy, setWaiverPolicy] = useState(null);
   const [dpaLoading, setDpaLoading] = useState(true);
   const [showFullPolicy, setShowFullPolicy] = useState(false);
 
@@ -65,13 +68,10 @@ const RegisterScreen = ({ navigation }) => {
           if (!cancelled) setDpaLoading(false);
           return;
         }
-        const dpaQuery = query(
-          collection(db, 'consent_versions'),
-          where('type', '==', 'dpa'),
-          where('status', '==', 'active'),
-          limit(1),
-        );
-        const dpaSnap = await getDocs(dpaQuery);
+        const [dpaSnap, waiverSnap] = await Promise.all([
+          getDocs(query(collection(db, 'consent_versions'), where('type', '==', 'dpa'), where('status', '==', 'active'), limit(1))),
+          getDocs(query(collection(db, 'consent_versions'), where('type', '==', 'waiver'), where('status', '==', 'active'), limit(1))),
+        ]);
         if (!dpaSnap.empty && !cancelled) {
           const d = dpaSnap.docs[0];
           setDpaPolicy({
@@ -82,8 +82,16 @@ const RegisterScreen = ({ navigation }) => {
             summary:       d.data().summary ?? null,
           });
         }
+        if (!waiverSnap.empty && !cancelled) {
+          const w = waiverSnap.docs[0];
+          setWaiverPolicy({
+            versionNumber: w.data().versionNumber,
+            versionDocId:  w.id,
+            title:         w.data().title,
+          });
+        }
       } catch (err) {
-        console.warn('[RegisterScreen] Failed to fetch DPA policy:', err.message);
+        console.warn('[RegisterScreen] Failed to fetch consent policies:', err.message);
       } finally {
         if (!cancelled) setDpaLoading(false);
       }
@@ -118,8 +126,8 @@ const RegisterScreen = ({ navigation }) => {
       return;
     }
 
-    if (!emergencyName.trim() || !emergencyPhone.trim()) {
-      Alert.alert('Missing Info', 'Please provide an emergency contact name and phone number.');
+    if (!emergencyContacts[0]?.name?.trim() || !emergencyContacts[0]?.phone?.trim()) {
+      Alert.alert('Missing Info', 'Please provide at least one emergency contact name and phone number.');
       return;
     }
 
@@ -132,12 +140,16 @@ const RegisterScreen = ({ navigation }) => {
       return;
     }
 
-    if (!isValidPHPhone(emergencyPhone)) {
-      Alert.alert(
-        'Invalid Number',
-        'Emergency contact phone must be a valid Philippine number starting with 09 (e.g., 09123456789).',
-      );
-      return;
+    for (let i = 0; i < emergencyContacts.length; i++) {
+      const cp = emergencyContacts[i].phone?.trim() || '';
+      if (i === 0 && !isValidPHPhone(cp)) {
+        Alert.alert('Invalid Number', 'Primary emergency contact phone must be a valid Philippine number (09XXXXXXXXX).');
+        return;
+      }
+      if (i > 0 && cp && !isValidPHPhone(cp)) {
+        Alert.alert('Invalid Number', `Emergency contact #${i + 1} phone must be a valid Philippine number (09XXXXXXXXX).`);
+        return;
+      }
     }
 
     if (password.length < 6) {
@@ -148,6 +160,10 @@ const RegisterScreen = ({ navigation }) => {
     // --- DPA consent required when policy exists ---
     if (dpaPolicy && !dpaConsent) {
       Alert.alert('Consent Required', 'Please agree to the Data Privacy Policy to create your account.');
+      return;
+    }
+    if (waiverPolicy && !waiverConsent) {
+      Alert.alert('Consent Required', 'Please agree to the Liability Waiver to create your account.');
       return;
     }
 
@@ -193,13 +209,9 @@ const RegisterScreen = ({ navigation }) => {
             phone: phone.trim(),
             address: address.trim(),
             city: city.trim(),
-            emergencyContacts: [{
-              name: emergencyName.trim(),
-              phone: emergencyPhone.trim(),
-              relation: emergencyRelation.trim() || '',
-            }],
-            emergencyName: emergencyName.trim(),
-            emergencyPhone: emergencyPhone.trim(),
+            emergencyContacts: emergencyContacts.filter((c, i) => i === 0 || c.name?.trim() || c.phone?.trim()),
+            emergencyName: emergencyContacts[0]?.name?.trim() || '',
+            emergencyPhone: emergencyContacts[0]?.phone?.trim() || '',
             role: "pet_owner",
             accountStatus: "claimed",
             profileComplete: true,
@@ -209,6 +221,11 @@ const RegisterScreen = ({ navigation }) => {
               consentVersion: dpaPolicy.versionNumber,
               consentGrantedAt: now,
               dpaConsent: true,
+            } : {}),
+            ...(waiverPolicy ? {
+              waiverVersion: waiverPolicy.versionNumber,
+              waiverGrantedAt: now,
+              waiverSigned: true,
             } : {}),
             createdAt: guestData.createdAt || now,
           });
@@ -250,13 +267,24 @@ const RegisterScreen = ({ navigation }) => {
           // to preserve the Auth rollback pattern — a consent_records failure
           // after a successful user doc write is an audit gap, not a user blocker)
           if (dpaPolicy) {
-            const consentRecordRef = doc(
-              collection(db, 'users', uid, 'consent_records'),
-            );
-            await setDoc(consentRecordRef, {
+            await setDoc(doc(collection(db, 'users', uid, 'consent_records')), {
               consentType: 'dpa',
               versionNumber: dpaPolicy.versionNumber,
               versionDocId: dpaPolicy.versionDocId,
+              action: 'granted',
+              signatureType: 'checkbox',
+              signatureData: null,
+              grantedAt: now,
+              grantedVia: 'registration',
+              deviceInfo: 'mobile',
+              adminNote: null,
+            });
+          }
+          if (waiverPolicy) {
+            await setDoc(doc(collection(db, 'users', uid, 'consent_records')), {
+              consentType: 'waiver',
+              versionNumber: waiverPolicy.versionNumber,
+              versionDocId: waiverPolicy.versionDocId,
               action: 'granted',
               signatureType: 'checkbox',
               signatureData: null,
@@ -280,13 +308,9 @@ const RegisterScreen = ({ navigation }) => {
             phone: phone.trim(),
             address: address.trim(),
             city: city.trim(),
-            emergencyContacts: [{
-              name: emergencyName.trim(),
-              phone: emergencyPhone.trim(),
-              relation: emergencyRelation.trim() || '',
-            }],
-            emergencyName: emergencyName.trim(),
-            emergencyPhone: emergencyPhone.trim(),
+            emergencyContacts: emergencyContacts.filter((c, i) => i === 0 || c.name?.trim() || c.phone?.trim()),
+            emergencyName: emergencyContacts[0]?.name?.trim() || '',
+            emergencyPhone: emergencyContacts[0]?.phone?.trim() || '',
             role: "pet_owner",
             accountStatus: "active",
             profileComplete: true,
@@ -296,14 +320,18 @@ const RegisterScreen = ({ navigation }) => {
               consentGrantedAt: now,
               dpaConsent: true,
             } : {}),
+            ...(waiverPolicy ? {
+              waiverVersion: waiverPolicy.versionNumber,
+              waiverGrantedAt: now,
+              waiverSigned: true,
+            } : {}),
             createdAt: now,
           });
 
 
-          // Write consent_records audit entry — separate from the user doc write
+          // Write consent_records audit entries — separate from the user doc write
           // to preserve the existing Auth rollback pattern
           if (dpaPolicy) {
-
             const consentRecordRef = doc(
               collection(db, 'users', uid, 'consent_records'),
             );
@@ -319,7 +347,20 @@ const RegisterScreen = ({ navigation }) => {
               deviceInfo: 'mobile',
               adminNote: null,
             });
-
+          }
+          if (waiverPolicy) {
+            await setDoc(doc(collection(db, 'users', uid, 'consent_records')), {
+              consentType: 'waiver',
+              versionNumber: waiverPolicy.versionNumber,
+              versionDocId: waiverPolicy.versionDocId,
+              action: 'granted',
+              signatureType: 'checkbox',
+              signatureData: null,
+              grantedAt: now,
+              grantedVia: 'registration',
+              deviceInfo: 'mobile',
+              adminNote: null,
+            });
           }
         }
       } catch (firestoreError) {
@@ -455,43 +496,61 @@ const RegisterScreen = ({ navigation }) => {
                 onChangeText={setCity}
               />
 
-              {/* ====== SECTION: EMERGENCY CONTACT ====== */}
+              {/* ====== SECTION: EMERGENCY CONTACTS ====== */}
               <View style={styles.sectionDivider} />
-              <Text style={styles.sectionLabel}>EMERGENCY CONTACT</Text>
+              <Text style={styles.sectionLabel}>EMERGENCY CONTACTS</Text>
 
-              <Text style={styles.label}>Contact Name *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. Maria Clara"
-                placeholderTextColor="#999"
-                value={emergencyName}
-                onChangeText={setEmergencyName}
-              />
-
-              <View style={styles.emergencyRow}>
-                <View style={styles.emergencyCol}>
-                  <Text style={styles.label}>Phone *</Text>
+              {emergencyContacts.map((ec, idx) => (
+                <View key={idx} style={{ marginBottom: idx < emergencyContacts.length - 1 ? 12 : 0 }}>
+                  {idx > 0 && (
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                      <Text style={[styles.label, { marginBottom: 0, color: COLORS.textMuted }]}>Contact #{idx + 1}</Text>
+                      <TouchableOpacity onPress={() => removeEC(idx)}>
+                        <Text style={{ color: COLORS.danger, fontWeight: '900', fontSize: 12 }}>REMOVE</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  <Text style={styles.label}>{idx === 0 ? 'Contact Name *' : 'Contact Name'}</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="09xxxxxxxxx"
+                    placeholder="e.g. Maria Clara"
                     placeholderTextColor="#999"
-                    keyboardType="phone-pad"
-                    maxLength={11}
-                    value={emergencyPhone}
-                    onChangeText={setEmergencyPhone}
+                    value={ec.name}
+                    onChangeText={(v) => updateEC(idx, 'name', v)}
                   />
+                  <View style={styles.emergencyRow}>
+                    <View style={styles.emergencyCol}>
+                      <Text style={styles.label}>{idx === 0 ? 'Phone *' : 'Phone'}</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="09xxxxxxxxx"
+                        placeholderTextColor="#999"
+                        keyboardType="phone-pad"
+                        maxLength={11}
+                        value={ec.phone}
+                        onChangeText={(v) => updateEC(idx, 'phone', v)}
+                      />
+                    </View>
+                    <View style={styles.emergencyCol}>
+                      <Text style={styles.label}>Relation</Text>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+                        {['Spouse', 'Parent', 'Sibling', 'Child', 'Relative', 'Friend', 'Caretaker', 'Other'].map(r => (
+                          <TouchableOpacity key={r} onPress={() => updateEC(idx, 'relation', r)}
+                            style={{ paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1.5,
+                              borderColor: ec.relation === r ? COLORS.sky : '#ccc',
+                              backgroundColor: ec.relation === r ? COLORS.sky + '15' : '#fff' }}>
+                            <Text style={{ fontSize: 11, fontWeight: ec.relation === r ? '900' : '600',
+                              color: ec.relation === r ? COLORS.sky : '#666' }}>{r}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  </View>
                 </View>
-                <View style={styles.emergencyCol}>
-                  <Text style={styles.label}>Relation</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="e.g. Spouse"
-                    placeholderTextColor="#999"
-                    value={emergencyRelation}
-                    onChangeText={setEmergencyRelation}
-                  />
-                </View>
-              </View>
+              ))}
+              <TouchableOpacity onPress={addEC} style={{ marginTop: 8, alignSelf: 'flex-start' }}>
+                <Text style={{ color: COLORS.sky, fontWeight: '900', fontSize: 13, letterSpacing: 0.5 }}>+ ADD ANOTHER CONTACT</Text>
+              </TouchableOpacity>
 
               {/* ====== SECTION: LEGAL ====== */}
               <View style={styles.sectionDivider} />
@@ -532,6 +591,23 @@ const RegisterScreen = ({ navigation }) => {
                 <Text style={styles.policyNote}>
                   Data Privacy Policy not yet configured. You can proceed without consent.
                 </Text>
+              )}
+
+              {/* Liability Waiver Checkbox */}
+              {waiverPolicy && (
+                <TouchableOpacity
+                  style={[styles.checkboxRow, { marginTop: 10 }]}
+                  onPress={() => setWaiverConsent(!waiverConsent)}
+                >
+                  <MaterialIcons
+                    name={waiverConsent ? 'check-box' : 'check-box-outline-blank'}
+                    size={24}
+                    color={waiverConsent ? '#3ABEF9' : '#999'}
+                  />
+                  <Text style={styles.checkboxText}>
+                    I have read and agree to the Liability Waiver *
+                  </Text>
+                </TouchableOpacity>
               )}
 
               {/* Promo Opt-In Checkbox */}

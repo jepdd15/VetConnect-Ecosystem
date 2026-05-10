@@ -388,7 +388,12 @@ export default function ClientDetails({ editForm, setEditForm, isEditing, calcul
             <Grid container spacing={2} alignItems="center">
               <DataField label="Name" value={rep.name} isEditing={isEditing} onChange={(val)=>handleRepChange(i, 'name', val)} width={{ xs: 12, md: 4 }} />
               <DataField label="Phone" value={rep.phone} isEditing={isEditing} onChange={(val)=>handleRepChange(i, 'phone', val)} width={{ xs: 12, md: 3 }} />
-              <DataField label="Relation" value={rep.relation} isEditing={isEditing} onChange={(val)=>handleRepChange(i, 'relation', val)} width={{ xs: 12, md: isEditing ? 4 : 5 }} />
+              <DataField label="Relation" value={rep.relation} isEditing={isEditing} onChange={(val)=>handleRepChange(i, 'relation', val)} width={{ xs: 12, md: isEditing ? 4 : 5 }} select>
+                <MenuItem value="">—</MenuItem>
+                {['Spouse', 'Parent', 'Sibling', 'Child', 'Relative', 'Friend', 'Caretaker', 'Other'].map(r => (
+                  <MenuItem key={r} value={r} sx={{ fontWeight: 700 }}>{r}</MenuItem>
+                ))}
+              </DataField>
               
               {isEditing && (
                 <Grid size={{ xs: 12, md: 1 }} sx={{ display: 'flex', justifyContent: 'flex-end', mt: -1 }}>

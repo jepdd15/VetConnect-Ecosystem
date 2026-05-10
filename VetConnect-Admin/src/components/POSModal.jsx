@@ -30,6 +30,7 @@ import { resolveTieredPrice } from '../utils/resolveTieredPrice';
 import { makePulseEventId } from '../utils/pulseUtils';
 import { sendPushNotification } from '../utils/sendPushNotification';
 import { printViaIframe, downloadHtmlAsFile, emailReceiptToOwner } from '../utils/receiptUtils';
+import { computeSingleOwnerBalanceReminder } from '../utils/computeBalanceReminderQueue';
 
 // T4.149: Mandatory reason options for custom bill discounts — enforces audit accountability.
 const DISCOUNT_REASONS = [
@@ -977,6 +978,17 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         updateDoc(doc(db, 'users', patient.ownerId), { hasOutstandingBalance: true }).catch(() => {});
       }
 
+      // T4.204: Piggyback balance reminder queue recompute after every clinical checkout.
+      // Fire-and-forget — never blocks checkout completion or the receipt overlay.
+      if (patient.ownerId && patient.ownerId !== 'WALK_IN_USER' && !String(patient.ownerId).includes('GUEST_')) {
+        computeSingleOwnerBalanceReminder(patient.ownerId, {
+          ownerName:  patient.ownerName  || '',
+          ownerEmail: patient.ownerEmail || '',
+          ownerPhone: patient.ownerPhone || '',
+          pushToken:  patient.expoPushToken || null,
+        }).catch(() => {});
+      }
+
       // T4.90: Push notification — checkout complete
       const posCashierName = profile?.fullName || 'POS Cashier';
       sendPushNotification({
@@ -1116,6 +1128,17 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         updateDoc(doc(db, 'daily_closings', closingData.id), {
           postCloseCount: increment(1),
           postCloseTotal: increment(parseFloat(financials.total) || 0),
+        }).catch(() => {});
+      }
+
+      // T4.204: Piggyback balance reminder queue recompute after every retail checkout.
+      // Fire-and-forget — only runs when the sale is linked to a registered client.
+      if (clientInfo?.id) {
+        computeSingleOwnerBalanceReminder(clientInfo.id, {
+          ownerName:  clientInfo.fullName || '',
+          ownerEmail: clientInfo.email    || '',
+          ownerPhone: clientInfo.phone    || '',
+          pushToken:  null,
         }).catch(() => {});
       }
 

@@ -352,6 +352,17 @@ service cloud.firestore {
       allow delete: if isStaff();
     }
 
+    // ─── BALANCE REMINDER QUEUE (T4.204 — pre-computed outstanding balance queue) ───
+    // Public read/write: the Cloudflare Worker Cron reads and updates lastReminderSentAt
+    // via Firestore REST API using only the web API key (no Firebase Auth JWT).
+    // Admin app writes via computeSingleOwnerBalanceReminder / computeFullBalanceReminderQueue.
+    // Authenticated staff can write (snooze handler in PatientDashboard).
+    // Doc ID = ownerId (deterministic; same owner always resolves the same doc).
+    match /balance_reminder_queue/{ownerId} {
+      allow read: if true;
+      allow write: if isAuth();
+    }
+
     // ─── CONSENT RECORDS (per-user sub-collection) ────────────────
     // User can read their own. Staff can read all. Staff can create (admin records consent on behalf).
     // User can create their own (mobile consent grant/withdrawal).

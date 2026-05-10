@@ -28,6 +28,7 @@ export default function NewClientModal({ open, onClose }) {
   const [dpaConsent, setDpaConsent] = useState(false);
   const [waiverConsent, setWaiverConsent] = useState(false);
   const [allowPromos, setAllowPromos] = useState(false);
+  const [preferredComm, setPreferredComm] = useState('SMS');
   const [dpaPolicy, setDpaPolicy] = useState(null);
   const [waiverPolicy, setWaiverPolicy] = useState(null);
   const [viewingPolicy, setViewingPolicy] = useState(null);
@@ -64,6 +65,7 @@ export default function NewClientModal({ open, onClose }) {
     setDpaConsent(false);
     setWaiverConsent(false);
     setAllowPromos(false);
+    setPreferredComm('SMS');
     setError('');
     setDuplicates([]);
     setShowDupeWarning(false);
@@ -122,6 +124,7 @@ export default function NewClientModal({ open, onClose }) {
         emergencyName: emergencyContacts[0]?.name?.trim() || null,
         emergencyPhone: emergencyContacts[0]?.phone?.trim() || null,
         allowPromos,
+        preferredComm: allowPromos ? preferredComm : 'SMS',
         ...(dpaPolicy && dpaConsent ? {
           consentVersion: dpaPolicy.versionNumber,
           consentGrantedAt: Timestamp.now(),
@@ -321,6 +324,18 @@ export default function NewClientModal({ open, onClose }) {
                   sx={{ ml: 0, flex: 1 }}
                 />
               </Box>
+              {allowPromos && (
+                <Box sx={{ ml: 4, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', fontWeight: 800, color: COLORS.textMuted, textTransform: 'uppercase' }}>
+                    Preferred:
+                  </Typography>
+                  <TextField select size="small" value={preferredComm} onChange={(e) => setPreferredComm(e.target.value)}
+                    sx={{ width: 120, '& .MuiOutlinedInput-root': { fontFamily: FONT, borderRadius: 0, fontSize: '0.8rem' } }}>
+                    <MenuItem value="SMS" sx={{ fontWeight: 700 }}>SMS</MenuItem>
+                    <MenuItem value="Email" sx={{ fontWeight: 700 }}>Email</MenuItem>
+                  </TextField>
+                </Box>
+              )}
               {!dpaConsent && !waiverConsent && (
                 <Box sx={{ bgcolor: COLORS.kpiBlueBg, border: `1px solid ${COLORS.kpiBlueBorder}`, borderRadius: 0, px: 2, py: 1, mt: 1 }}>
                   <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', color: COLORS.info }}>

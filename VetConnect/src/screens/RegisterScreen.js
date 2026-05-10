@@ -52,6 +52,7 @@ const RegisterScreen = ({ navigation }) => {
   const [dpaConsent, setDpaConsent] = useState(false);
   const [waiverConsent, setWaiverConsent] = useState(false);
   const [allowPromos, setAllowPromos] = useState(false);
+  const [preferredComm, setPreferredComm] = useState('SMS');
 
   // --- Active DPA + Waiver policies (fetched on mount) ---
   const [dpaPolicy, setDpaPolicy] = useState(null);
@@ -217,6 +218,7 @@ const RegisterScreen = ({ navigation }) => {
             profileComplete: true,
             mergedFromGuest: true,
             allowPromos,
+            preferredComm: allowPromos ? preferredComm : 'SMS',
             ...(dpaPolicy ? {
               consentVersion: dpaPolicy.versionNumber,
               consentGrantedAt: now,
@@ -315,6 +317,7 @@ const RegisterScreen = ({ navigation }) => {
             accountStatus: "active",
             profileComplete: true,
             allowPromos,
+            preferredComm: allowPromos ? preferredComm : 'SMS',
             ...(dpaPolicy ? {
               consentVersion: dpaPolicy.versionNumber,
               consentGrantedAt: now,
@@ -624,6 +627,22 @@ const RegisterScreen = ({ navigation }) => {
                   I agree to receive SMS or Emails regarding clinic promos and announcements.
                 </Text>
               </TouchableOpacity>
+              {allowPromos && (
+                <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, marginLeft: 28 }}>
+                  {['SMS', 'Email'].map(ch => (
+                    <TouchableOpacity key={ch} onPress={() => setPreferredComm(ch)}
+                      style={{ paddingHorizontal: 14, paddingVertical: 6, borderWidth: 1.5,
+                        borderColor: preferredComm === ch ? COLORS.sky : '#ccc',
+                        backgroundColor: preferredComm === ch ? COLORS.sky + '15' : '#fff' }}>
+                      <Text style={{ fontSize: 12, fontWeight: preferredComm === ch ? '900' : '600',
+                        color: preferredComm === ch ? COLORS.sky : '#666' }}>
+                        {ch}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                  <Text style={{ fontSize: 11, color: '#999', alignSelf: 'center', marginLeft: 4 }}>Preferred</Text>
+                </View>
+              )}
 
               {/* ====== SIGN UP BUTTON ====== */}
               {loading ? (

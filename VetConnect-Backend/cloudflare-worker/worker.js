@@ -776,22 +776,34 @@ async function handleAppointmentReminders(env) {
   console.log(`[ApptReminders] Done: ${sent} sent, ${skipped} skipped, ${failed} failed`);
 }
 
-// ── T4.147: Automated Balance Reminders ──────────────────────────────────────
+// ── T4.204: Automated Balance Reminders (rewritten) ──────────────────────────
 //
-// Queries the sales collection for unpaid balances, groups by owner name,
-// respects per-client snooze (balanceReminderSnoozedUntil on user doc),
-// and enforces a configurable send interval (balanceReminderIntervalDays).
-// Sends push + email. SMS is omitted (balance reminders are non-critical).
+// T4.204 REWRITE: Reads the pre-computed balance_reminder_queue collection
+// instead of querying the sales collection and user docs at send time.
+// The queue is maintained by computeBalanceReminderQueue.js (admin app):
+//   - POSModal piggybacks computeSingleOwnerBalanceReminder after every checkout
+//   - PatientDashboard piggybacks after handleMarkSettled
+//   - Dashboard "Recompute Balance Queue" button calls computeFullBalanceReminderQueue
 //
-// Known limitation (T2.112): sales docs lack ownerId — owner lookup uses
-// fullName string match. Risk of name collision is low at clinic scale.
+// Each queue doc (balance_reminder_queue/{ownerId}) contains:
+//   ownerId, ownerName, ownerEmail, ownerPhone, pushToken,
+//   totalBalance, saleCount, lastSaleDate,
+//   lastReminderSentAt, balanceReminderSnoozedUntil
+//
+// The Worker reads up to 500 queue docs, applies snooze + cooldown guards,
+// sends push + email, and updates lastReminderSentAt on the QUEUE doc.
+// No sales queries. No user doc queries.
+//
+// MANUAL DEPLOY: paste this file into the Cloudflare Worker dashboard
+// (https://dash.cloudflare.com → Workers & Pages → vetconnect-worker → Edit Code)
+// after every change — this file is the reference copy, not auto-deployed.
 
 async function handleBalanceReminders(env) {
   const PROJECT_ID = env.FIREBASE_PROJECT_ID || 'starbarks-vetconnect-f6443';
-  const API_KEY = env.FIREBASE_API_KEY;
-  const BASE = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
+  const API_KEY    = env.FIREBASE_API_KEY;
+  const BASE       = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
 
-  // 1. Read clinic settings to check master toggle and interval.
+  // 1. Read clinic settings — master toggle and send interval.
   const settingsRes = await fetch(`${BASE}/clinic_settings/general?key=${API_KEY}`);
   if (!settingsRes.ok) {
     console.log('[BalanceReminders] Failed to read settings:', settingsRes.status);
@@ -799,7 +811,8 @@ async function handleBalanceReminders(env) {
   }
   const settings = (await settingsRes.json()).fields || {};
 
-  // Intentional: balance reminders default ON (opt-out). Set enableBalanceReminders:false in clinic_settings to disable.
+  // Intentional: balance reminders default ON (opt-out).
+  // Set enableBalanceReminders: false in clinic_settings to disable.
   if (settings.enableBalanceReminders?.booleanValue === false) {
     console.log('[BalanceReminders] Disabled. Skipping.');
     return;
@@ -807,145 +820,67 @@ async function handleBalanceReminders(env) {
 
   const emailEnabled = settings.enableEmailNotifications?.booleanValue !== false;
   const intervalDays = parseInt(settings.balanceReminderIntervalDays?.integerValue || '7');
-  const intervalMs = intervalDays * 86400000;
+  const intervalMs   = intervalDays * 86400000;
+  const now          = Date.now();
 
-  // 2. Query sales. Firestore REST does not support > 0 numeric filter via URL,
-  // so we fetch with a status NOT_IN filter (excludes refunded/voided) and
-  // check balanceRemaining client-side. Fall back to fetching all if NOT_IN fails.
-  let salesResults;
+  // 2. Read the pre-computed queue — one collection read, no per-owner lookups.
+  let queueDocs;
   try {
-    const salesQueryBody = {
-      structuredQuery: {
-        from: [{ collectionId: 'sales' }],
-        where: {
-          compositeFilter: {
-            op: 'AND',
-            filters: [
-              {
-                fieldFilter: {
-                  field: { fieldPath: 'status' },
-                  op: 'NOT_IN',
-                  value: {
-                    arrayValue: {
-                      values: [
-                        { stringValue: 'refunded' },
-                        { stringValue: 'voided' },
-                      ],
-                    },
-                  },
-                },
-              },
-            ],
-          },
-        },
-        limit: 500,
-      },
-    };
-
-    const salesRes = await fetch(`${BASE}:runQuery?key=${API_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(salesQueryBody),
-    });
-
-    if (!salesRes.ok) {
-      console.log('[BalanceReminders] Sales query failed:', salesRes.status);
+    const queueRes = await fetch(
+      `${BASE}/balance_reminder_queue?key=${API_KEY}&pageSize=500`,
+    );
+    if (!queueRes.ok) {
+      console.log('[BalanceReminders] Queue read failed:', queueRes.status);
       return;
     }
-    salesResults = await salesRes.json();
+    const queueJson = await queueRes.json();
+    queueDocs = queueJson.documents || [];
   } catch (err) {
-    console.log('[BalanceReminders] Sales query error:', err.message);
+    console.log('[BalanceReminders] Queue read error:', err.message);
     return;
   }
 
-  // 3. Filter to sales with balanceRemaining > 0 and group by ownerName.
-  // Map: ownerName -> { total, ownerName, saleCount }
-  const ownerBalances = new Map();
+  if (queueDocs.length === 0) {
+    console.log('[BalanceReminders] Queue is empty. Skipping.');
+    return;
+  }
 
-  for (const result of salesResults) {
-    if (!result.document) continue;
-    const f = result.document.fields || {};
+  const template = BALANCE_TEMPLATES['balance-reminder'];
+  let sent = 0, skipped = 0, failed = 0, snoozed = 0, noToken = 0;
 
-    // Skip refunded/voided defensively (NOT_IN filter may have missed edge cases)
-    const status = f.status?.stringValue || '';
-    if (status === 'refunded' || status === 'voided') continue;
+  for (const queueDoc of queueDocs) {
+    const f        = queueDoc.fields || {};
+    const docPath  = queueDoc.name; // full resource path for PATCH
 
-    const balanceRemaining = parseFloat(
-      f.balanceRemaining?.doubleValue ?? f.balanceRemaining?.integerValue ?? '0'
+    const ownerId   = f.ownerId?.stringValue   || docPath.split('/').pop();
+    const ownerName = f.ownerName?.stringValue  || '';
+    const pushToken = f.pushToken?.stringValue  || null;
+    const ownerEmail = f.ownerEmail?.stringValue || null;
+
+    const totalBalance = parseFloat(
+      f.totalBalance?.doubleValue ?? f.totalBalance?.integerValue ?? '0',
     );
-    if (balanceRemaining <= 0) continue;
 
-    const ownerName = f.ownerName?.stringValue || '';
-    if (!ownerName || ownerName === 'Walk-In') continue;
+    // Guard: skip docs with no outstanding balance (stale queue entry)
+    if (totalBalance <= 0) { skipped++; continue; }
 
-    const existing = ownerBalances.get(ownerName) || { total: 0, ownerName, saleCount: 0 };
-    existing.total += balanceRemaining;
-    existing.saleCount += 1;
-    ownerBalances.set(ownerName, existing);
-  }
-
-  if (ownerBalances.size === 0) {
-    console.log('[BalanceReminders] No outstanding balances. Skipping.');
-    return;
-  }
-
-  // 4. For each debtor, look up their user doc for push token, email, snooze, and cooldown.
-  let sent = 0, skipped = 0, failed = 0, snoozed = 0;
-
-  for (const [ownerName, data] of ownerBalances) {
-    // Query user by fullName (imperfect — T2.112 limitation, but acceptable at clinic scale)
-    const userQueryBody = {
-      structuredQuery: {
-        from: [{ collectionId: 'users' }],
-        where: {
-          fieldFilter: {
-            field: { fieldPath: 'fullName' },
-            op: 'EQUAL',
-            value: { stringValue: ownerName },
-          },
-        },
-        limit: 1,
-      },
-    };
-
-    let userFields, userDocPath;
-    try {
-      const userRes = await fetch(`${BASE}:runQuery?key=${API_KEY}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(userQueryBody),
-      });
-      const userResults = await userRes.json();
-      if (!userResults[0]?.document) { skipped++; continue; }
-      userFields = userResults[0].document.fields || {};
-      userDocPath = userResults[0].document.name;
-    } catch {
-      skipped++;
-      continue;
-    }
-
-    // Check snooze: skip if snoozedUntil is in the future
-    const snoozedUntil = userFields.balanceReminderSnoozedUntil?.timestampValue;
-    if (snoozedUntil && new Date(snoozedUntil).getTime() > Date.now()) {
+    // Snooze guard — skip if owner snoozed reminders past now
+    const snoozedUntilRaw = f.balanceReminderSnoozedUntil?.timestampValue;
+    if (snoozedUntilRaw && new Date(snoozedUntilRaw).getTime() > now) {
       snoozed++;
       continue;
     }
 
-    // Check send interval cooldown
-    const lastSent = userFields.lastBalanceReminderSentAt?.timestampValue;
-    if (lastSent && (Date.now() - new Date(lastSent).getTime()) < intervalMs) {
+    // Cooldown guard — skip if a reminder was sent within the configured interval
+    const lastSentRaw = f.lastReminderSentAt?.timestampValue;
+    if (lastSentRaw && (now - new Date(lastSentRaw).getTime()) < intervalMs) {
       skipped++;
       continue;
     }
 
-    const pushToken = userFields.expoPushToken?.stringValue;
-    const ownerId = userDocPath.split('/').pop();
-    const ownerEmail = userFields.email?.stringValue;
-
-    const template = BALANCE_TEMPLATES['balance-reminder'];
-    const amount = data.total.toLocaleString(undefined, { maximumFractionDigits: 2 });
-    const title = template.title;
-    const body = template.body.replace(/\{amount\}/g, amount);
+    const amount = totalBalance.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    const title  = template.title;
+    const body   = template.body.replace(/\{amount\}/g, amount);
 
     // Push notification (primary channel)
     let pushOk = false;
@@ -955,11 +890,11 @@ async function handleBalanceReminders(env) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            to: pushToken,
+            to:    pushToken,
             title,
             body,
             sound: 'default',
-            data: { type: 'balance-reminder' },
+            data:  { type: 'balance-reminder' },
           }),
         });
         if (!pushRes.ok) {
@@ -971,15 +906,15 @@ async function handleBalanceReminders(env) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               fields: {
-                ownerId: { stringValue: ownerId },
+                ownerId:   { stringValue: ownerId },
                 ownerName: { stringValue: ownerName },
-                status: { stringValue: 'balance-reminder' },
-                title: { stringValue: title },
-                body: { stringValue: body },
-                sentAt: { timestampValue: new Date().toISOString() },
-                sentBy: { stringValue: 'System (Balance Cron)' },
-                channel: { stringValue: 'push' },
-                type: { stringValue: 'balance-reminder' },
+                status:    { stringValue: 'balance-reminder' },
+                title:     { stringValue: title },
+                body:      { stringValue: body },
+                sentAt:    { timestampValue: new Date().toISOString() },
+                sentBy:    { stringValue: 'System (Balance Cron)' },
+                channel:   { stringValue: 'push' },
+                type:      { stringValue: 'balance-reminder' },
               },
             }),
           }).catch(() => {});
@@ -990,23 +925,25 @@ async function handleBalanceReminders(env) {
         console.error(`[BalanceReminders] Push failed for ${ownerName}:`, err.message);
         failed++;
       }
+    } else {
+      noToken++;
     }
 
-    // Email fallback (fire-and-forget — does not block loop iteration)
+    // Email channel (fire-and-forget — does not block loop iteration)
     let emailAttempted = false;
     if (emailEnabled && ownerEmail && env.RESEND_API_KEY) {
       emailAttempted = true;
       fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type':  'application/json',
           'Authorization': `Bearer ${env.RESEND_API_KEY}`,
         },
         body: JSON.stringify({
-          from: env.RESEND_FROM_EMAIL || 'VetConnect <noreply@starbarks.vet>',
-          to: [ownerEmail],
+          from:    env.RESEND_FROM_EMAIL || 'VetConnect <noreply@starbarks.vet>',
+          to:      [ownerEmail],
           subject: title,
-          html: buildWorkerEmailHtml(title, body),
+          html:    buildWorkerEmailHtml(title, body),
         }),
       }).then(() => {
         fetch(`${BASE}/notification_log?key=${API_KEY}`, {
@@ -1014,34 +951,39 @@ async function handleBalanceReminders(env) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             fields: {
-              ownerId: { stringValue: ownerId },
+              ownerId:   { stringValue: ownerId },
               ownerName: { stringValue: ownerName },
-              status: { stringValue: 'balance-reminder' },
-              title: { stringValue: title },
-              body: { stringValue: body },
-              sentAt: { timestampValue: new Date().toISOString() },
-              sentBy: { stringValue: 'System (Balance Cron)' },
-              channel: { stringValue: 'email' },
-              type: { stringValue: 'balance-reminder' },
+              status:    { stringValue: 'balance-reminder' },
+              title:     { stringValue: title },
+              body:      { stringValue: body },
+              sentAt:    { timestampValue: new Date().toISOString() },
+              sentBy:    { stringValue: 'System (Balance Cron)' },
+              channel:   { stringValue: 'email' },
+              type:      { stringValue: 'balance-reminder' },
             },
           }),
         }).catch(() => {});
       }).catch(() => {});
     }
 
-    // Update cooldown timestamp after any successful send attempt (push or email)
+    // Stamp lastReminderSentAt on the QUEUE doc (not the user doc) after any send.
+    // Uses PATCH with an updateMask so only this field is touched — preserves all
+    // other queue fields including balanceReminderSnoozedUntil.
     if (pushOk || emailAttempted) {
-      await fetch(`${userDocPath}?key=${API_KEY}&updateMask.fieldPaths=lastBalanceReminderSentAt`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fields: { lastBalanceReminderSentAt: { timestampValue: new Date().toISOString() } },
-        }),
-      }).catch(() => {});
+      await fetch(
+        `${docPath}?key=${API_KEY}&updateMask.fieldPaths=lastReminderSentAt`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fields: { lastReminderSentAt: { timestampValue: new Date().toISOString() } },
+          }),
+        },
+      ).catch(() => {});
     }
   }
 
-  console.log(`[BalanceReminders] ${sent} sent, ${skipped} skipped, ${snoozed} snoozed, ${failed} failed.`);
+  console.log(`[BalanceReminders] ${sent} sent, ${skipped} skipped, ${snoozed} snoozed, ${noToken} no token, ${failed} failed.`);
 }
 
 // ─── MAIN FETCH HANDLER ──────────────────────────────────────────────────────

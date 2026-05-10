@@ -13,7 +13,9 @@ import {
 } from '@mui/material';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import VaccinesIcon from '@mui/icons-material/Vaccines';
+import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import SendIcon from '@mui/icons-material/Send';
+import SyncIcon from '@mui/icons-material/Sync';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
 import { useUser } from '../../../context/UserContext';
@@ -28,6 +30,7 @@ import {
   sendAppointmentRemindersFromQueue,
   countAppointmentReminderQueue,
 } from '../../../utils/appointmentReminderQueue';
+import { computeFullBalanceReminderQueue } from '../../../utils/computeBalanceReminderQueue';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -47,6 +50,7 @@ export default function ReminderWidget({ clinicSettings }) {
   const { profile }      = useUser();
   const isEnabled        = clinicSettings.enableAppointmentReminders !== false;
   const isVaccineEnabled = clinicSettings.enableVaccineReminders !== false;
+  const isBalanceEnabled = clinicSettings.enableBalanceReminders !== false;
 
   // ── Appointment reminder state ─────────────────────────────────────────────
   const [count, setCount]         = useState(null);
@@ -59,6 +63,10 @@ export default function ReminderWidget({ clinicSettings }) {
   const [vaccineCount, setVaccineCount]     = useState(null);
   const [vaccineSending, setVaccineSending] = useState(false);
   const [vaccineResult, setVaccineResult]   = useState(null);
+
+  // ── Balance queue recompute state ──────────────────────────────────────────
+  const [balanceRecomputing, setBalanceRecomputing] = useState(false);
+  const [balanceResult, setBalanceResult]           = useState(null);
 
   // Fetch tomorrow's appointment count on mount — only when feature is enabled
   useEffect(() => {
@@ -84,9 +92,9 @@ export default function ReminderWidget({ clinicSettings }) {
       .catch(() => setVaccineCount(0));
   }, [isVaccineEnabled]);
 
-  // Feature gate — hide widget entirely when both features are disabled.
+  // Feature gate — hide widget entirely when all features are disabled.
   // All hooks are declared above this guard to satisfy the rules-of-hooks.
-  if (!isEnabled && !isVaccineEnabled) return null;
+  if (!isEnabled && !isVaccineEnabled && !isBalanceEnabled) return null;
 
   const handleSend = async () => {
     setSending(true);
@@ -151,6 +159,28 @@ export default function ReminderWidget({ clinicSettings }) {
       });
     } finally {
       setVaccineSending(false);
+    }
+  };
+
+  const handleBalanceRecompute = async () => {
+    setBalanceRecomputing(true);
+    setBalanceResult(null);
+    try {
+      const res = await computeFullBalanceReminderQueue();
+      setBalanceResult(res);
+      setToast({
+        open: true,
+        message: `Balance queue recomputed: ${res.updated} updated, ${res.deleted} cleared${res.errors > 0 ? `, ${res.errors} errors` : ''}.`,
+        severity: res.errors > 0 ? 'warning' : 'success',
+      });
+    } catch (err) {
+      setToast({
+        open: true,
+        message: err?.message || 'Failed to recompute balance queue.',
+        severity: 'error',
+      });
+    } finally {
+      setBalanceRecomputing(false);
     }
   };
 
@@ -417,6 +447,119 @@ export default function ReminderWidget({ clinicSettings }) {
             }}
           >
             {vaccineSending ? 'SENDING...' : vaccineResult ? 'SEND AGAIN' : 'SEND NOW'}
+          </Button>
+        </Box>
+      )}
+
+      {/* ── Balance Reminder Queue Row (T4.204) ─────────────────────── */}
+      {isBalanceEnabled && (
+        <Box sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 2,
+          px: 3,
+          py: 1.5,
+          bgcolor: COLORS.kpiRedBg,
+          border: `2px solid ${COLORS.kpiRedBorder}`,
+          borderRadius: 0,
+          mb: 1.5,
+        }}>
+          <AccountBalanceWalletIcon sx={{ color: COLORS.danger, fontSize: 22, flexShrink: 0 }} />
+
+          {/* Label */}
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.danger }}>
+              BALANCE REMINDER QUEUE
+            </Typography>
+            <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary, mt: 0.25 }}>
+              {balanceResult
+                ? `${balanceResult.updated} owner${balanceResult.updated !== 1 ? 's' : ''} in queue, ${balanceResult.deleted} cleared.`
+                : 'Recompute to sync outstanding balances from sales.'}
+            </Typography>
+          </Box>
+
+          {/* Result chips — visible after a successful recompute */}
+          {balanceResult && !balanceRecomputing && (
+            <Box sx={{ display: 'flex', gap: 1, flexShrink: 0 }}>
+              <Chip
+                icon={<CheckCircleIcon sx={{ fontSize: '14px !important' }} />}
+                label={`${balanceResult.updated} queued`}
+                size="small"
+                sx={{
+                  fontFamily: FONT,
+                  fontWeight: 900,
+                  fontSize: '0.65rem',
+                  borderRadius: 0,
+                  bgcolor: COLORS.kpiGreenBg,
+                  color: COLORS.success,
+                  border: `1px solid ${COLORS.kpiGreenBorder}`,
+                }}
+              />
+              {balanceResult.deleted > 0 && (
+                <Chip
+                  label={`${balanceResult.deleted} cleared`}
+                  size="small"
+                  sx={{
+                    fontFamily: FONT,
+                    fontWeight: 900,
+                    fontSize: '0.65rem',
+                    borderRadius: 0,
+                    bgcolor: COLORS.kpiOrangeBg,
+                    color: COLORS.warning,
+                    border: `1px solid ${COLORS.kpiOrangeBorder}`,
+                  }}
+                />
+              )}
+              {balanceResult.errors > 0 && (
+                <Chip
+                  label={`${balanceResult.errors} errors`}
+                  size="small"
+                  sx={{
+                    fontFamily: FONT,
+                    fontWeight: 900,
+                    fontSize: '0.65rem',
+                    borderRadius: 0,
+                    bgcolor: COLORS.kpiRedBg,
+                    color: COLORS.danger,
+                    border: `1px solid ${COLORS.kpiRedBorder}`,
+                  }}
+                />
+              )}
+            </Box>
+          )}
+
+          {/* Recompute button */}
+          <Button
+            onClick={handleBalanceRecompute}
+            disabled={balanceRecomputing}
+            startIcon={balanceRecomputing ? <CircularProgress size={14} color="inherit" /> : <SyncIcon />}
+            sx={{
+              fontFamily: FONT,
+              ...TYPE.label,
+              fontSize: '0.65rem',
+              flexShrink: 0,
+              color: COLORS.cardBg,
+              bgcolor: COLORS.danger,
+              border: `2px solid ${COLORS.danger}`,
+              borderRadius: 0,
+              px: 2.5,
+              py: 0.75,
+              boxShadow: `2px 2px 0px ${COLORS.accent}`,
+              transition: 'transform 0.1s ease, box-shadow 0.1s ease',
+              '&:hover': {
+                bgcolor: '#B71C1C',
+                transform: 'translate(1px, 1px)',
+                boxShadow: `1px 1px 0px ${COLORS.accent}`,
+              },
+              '&.Mui-disabled': {
+                color: COLORS.textMuted,
+                bgcolor: COLORS.surface,
+                borderColor: COLORS.border,
+                boxShadow: 'none',
+              },
+            }}
+          >
+            {balanceRecomputing ? 'RECOMPUTING...' : balanceResult ? 'RECOMPUTE AGAIN' : 'RECOMPUTE QUEUE'}
           </Button>
         </Box>
       )}

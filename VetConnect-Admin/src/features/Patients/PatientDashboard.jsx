@@ -11,7 +11,7 @@ import {
 import Grid from '@mui/material/Grid';
 
 import { db } from '../../firebaseConfig';
-import { doc, getDoc, collection, query, where, orderBy, getDocs, Timestamp, updateDoc, onSnapshot, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, orderBy, getDocs, Timestamp, updateDoc, setDoc, onSnapshot, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { resolveVitals } from '../../utils/resolveVitals';
 import { resolveObjectiveText, hasExamData, examSummaryLine } from '../../utils/examUtils';
 
@@ -93,6 +93,7 @@ import AmendmentDialog from '../../components/AmendmentDialog';
 import SendNotificationDialog from '../../components/SendNotificationDialog';
 import PetHistoryAIDrawer from './components/PetHistoryAIDrawer';
 import { resolveDepartmentForRecord } from '../../utils/resolveDepartmentForRecord';
+import { computeSingleOwnerBalanceReminder } from '../../utils/computeBalanceReminderQueue';
 
 // ── Species-normal vital reference ranges ────────────────────────
 // Sourced from standard veterinary references.
@@ -981,6 +982,15 @@ export default function PatientDashboard() {
         updateDoc(doc(db, 'users', owner.id), {
           hasOutstandingBalance: remainingDebt > 0,
         }).catch(() => {});
+
+        // T4.204: Recompute balance reminder queue after external settlement.
+        // Fire-and-forget — never blocks the settle action.
+        computeSingleOwnerBalanceReminder(owner.id, {
+          ownerName:  owner.fullName  || '',
+          ownerEmail: owner.email     || '',
+          ownerPhone: owner.phone     || '',
+          pushToken:  owner.expoPushToken || null,
+        }).catch(() => {});
       }
     } catch (e) {
       console.error('[PatientDashboard.handleMarkSettled]:', e.message);
@@ -988,16 +998,29 @@ export default function PatientDashboard() {
     }
   };
 
-  // T4.147: Snooze automated balance reminders for this client.
-  // The Cloudflare Worker checks balanceReminderSnoozedUntil before sending.
+  // T4.147 / T4.204: Snooze automated balance reminders for this client.
+  // Writes balanceReminderSnoozedUntil to both the user doc (legacy path) and
+  // the balance_reminder_queue doc (T4.204 Worker path). The Worker now reads
+  // the queue doc exclusively, so both writes are needed during the transition.
   const handleSnoozeReminders = async (daysFromNow) => {
     if (!owner?.id) return;
     try {
       const snoozedUntil = new Date();
       snoozedUntil.setDate(snoozedUntil.getDate() + daysFromNow);
+      const snoozedTimestamp = Timestamp.fromDate(snoozedUntil);
+
+      // Primary write — user doc (legacy compat)
       await updateDoc(doc(db, 'users', owner.id), {
-        balanceReminderSnoozedUntil: Timestamp.fromDate(snoozedUntil),
+        balanceReminderSnoozedUntil: snoozedTimestamp,
       });
+
+      // T4.204: Mirror snooze to balance_reminder_queue doc so the Worker
+      // Cron picks it up without querying the user doc.
+      // Fire-and-forget via setDoc with merge:true — queue doc may not exist yet.
+      setDoc(doc(db, 'balance_reminder_queue', owner.id), {
+        balanceReminderSnoozedUntil: snoozedTimestamp,
+      }, { merge: true }).catch(() => {});
+
       setSuccessSnack(`Reminders snoozed for ${daysFromNow} day${daysFromNow !== 1 ? 's' : ''}.`);
     } catch (e) {
       console.error('[PatientDashboard.handleSnoozeReminders]:', e.message);

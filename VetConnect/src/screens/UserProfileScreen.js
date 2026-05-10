@@ -69,8 +69,21 @@ export default function UserProfileScreen({ navigation, route }) {
   const [waiverGrantedAt, setWaiverGrantedAt] = useState(null);
   const [allowPromos, setAllowPromos] = useState(false);
   const [gender, setGender] = useState("Decline");
-  const [referralSource, setReferralSource] = useState("");
+  const [referral, setReferral] = useState({ source: '', referredBy: '' });
   const [preferredComm, setPreferredComm] = useState("SMS");
+
+  const REFERRAL_SOURCES = ['Walk-by', 'Facebook', 'Google', 'Referral', 'Returning', 'Vet Referral', 'Other'];
+  const REFERRAL_NEEDS_NAME = ['Referral', 'Vet Referral'];
+
+  const handleReferralSourceChange = (src) => {
+    setReferral(prev => ({
+      source: prev.source === src ? '' : src,
+      // Keep referredBy only when *selecting* (not deselecting) a needs-name source.
+      // If the user taps the same chip to deselect it the resulting source is ''
+      // so referredBy must be cleared regardless of which chip was tapped.
+      referredBy: (prev.source !== src && REFERRAL_NEEDS_NAME.includes(src)) ? prev.referredBy : '',
+    }));
+  };
   const [whatsappOptIn, setWhatsappOptIn] = useState(false);
   const [waiverSigned, setWaiverSigned] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState({});
@@ -113,7 +126,10 @@ export default function UserProfileScreen({ navigation, route }) {
           setConsentGrantedAt(data.consentGrantedAt ?? null);
           setWaiverVersion(data.waiverVersion ?? null);
           setWaiverGrantedAt(data.waiverGrantedAt ?? null);
-          setReferralSource(data.referralSource || "");
+          setReferral({
+            source: data.referral?.source || data.referralSource || '',
+            referredBy: data.referral?.referredBy || data.referredBy || '',
+          });
           setPreferredComm(data.preferredComm || "SMS");
           setWhatsappOptIn(data.whatsappOptIn || false);
           setWaiverSigned(data.waiverSigned || false);
@@ -319,7 +335,9 @@ export default function UserProfileScreen({ navigation, route }) {
         // This keeps backward-compat code (admin portal, BookAppointment) accurate.
         dpaConsent: consentVersion != null ? true : dpaConsent,
         allowPromos,
-        referralSource: allowPromos ? (referralSource || null) : null,
+        referral: { source: referral.source || null, referredBy: referral.referredBy || null },
+        referralSource: referral.source || null,
+        referredBy: referral.referredBy || null,
         preferredComm: allowPromos ? preferredComm : "SMS",
         whatsappOptIn: allowPromos ? whatsappOptIn : false,
         waiverSigned: waiverVersion != null ? true : waiverSigned,
@@ -965,28 +983,35 @@ export default function UserProfileScreen({ navigation, route }) {
                 }}
               >
                 <Text style={styles.label}>How did you hear about us?</Text>
-                <View style={styles.toggleGroup}>
-                  {["Walk-in", "Google", "Social Media", "Referral"].map((src) => (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                  {REFERRAL_SOURCES.map((src) => (
                     <TouchableOpacity
                       key={src}
-                      style={[
-                        styles.toggleBtn,
-                        referralSource === src && styles.activeToggle,
-                      ]}
-                      onPress={() => setReferralSource(referralSource === src ? "" : src)}
+                      onPress={() => handleReferralSourceChange(src)}
+                      style={{
+                        paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1.5,
+                        borderColor: referral.source === src ? COLORS.sky : '#ccc',
+                        backgroundColor: referral.source === src ? COLORS.sky + '15' : '#fff',
+                      }}
                     >
-                      <Text
-                        style={[
-                          styles.toggleText,
-                          referralSource === src && styles.activeText,
-                          { fontSize: 10 },
-                        ]}
-                      >
-                        {src}
-                      </Text>
+                      <Text style={{
+                        fontSize: 11, fontWeight: referral.source === src ? '900' : '600',
+                        color: referral.source === src ? COLORS.sky : '#666',
+                      }}>{src}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
+                {REFERRAL_NEEDS_NAME.includes(referral.source) && (
+                  <>
+                    <Text style={[styles.label, { marginTop: 8 }]}>Referred by</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Name of referring client or vet"
+                      value={referral.referredBy}
+                      onChangeText={(v) => setReferral(prev => ({ ...prev, referredBy: v }))}
+                    />
+                  </>
+                )}
 
                 <Text style={[styles.label, { marginTop: 10 }]}>Preferred Contact Method</Text>
                 <View style={styles.toggleGroup}>

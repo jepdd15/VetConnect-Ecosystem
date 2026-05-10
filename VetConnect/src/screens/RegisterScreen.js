@@ -31,6 +31,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { auth, db } from "../../firebaseConfig";
+import { COLORS } from '../theme/mobileTokens';
 import { isValidPHPhone } from "../utils/phoneValidation";
 
 const RegisterScreen = ({ navigation }) => {
@@ -53,6 +54,21 @@ const RegisterScreen = ({ navigation }) => {
   const [waiverConsent, setWaiverConsent] = useState(false);
   const [allowPromos, setAllowPromos] = useState(false);
   const [preferredComm, setPreferredComm] = useState('SMS');
+
+  // --- Referral source ---
+  const [referral, setReferral] = useState({ source: '', referredBy: '' });
+  const REFERRAL_SOURCES = ['Walk-by', 'Facebook', 'Google', 'Referral', 'Returning', 'Vet Referral', 'Other'];
+  const REFERRAL_NEEDS_NAME = ['Referral', 'Vet Referral'];
+
+  const handleReferralSourceChange = (src) => {
+    setReferral(prev => ({
+      source: prev.source === src ? '' : src,
+      // Keep referredBy only when *selecting* (not deselecting) a needs-name source.
+      // If the user taps the same chip to deselect it the resulting source is ''
+      // so referredBy must be cleared regardless of which chip was tapped.
+      referredBy: (prev.source !== src && REFERRAL_NEEDS_NAME.includes(src)) ? prev.referredBy : '',
+    }));
+  };
 
   // --- Active DPA + Waiver policies (fetched on mount) ---
   const [dpaPolicy, setDpaPolicy] = useState(null);
@@ -219,6 +235,9 @@ const RegisterScreen = ({ navigation }) => {
             mergedFromGuest: true,
             allowPromos,
             preferredComm: allowPromos ? preferredComm : 'SMS',
+            referral: { source: referral.source || null, referredBy: referral.referredBy || null },
+            referralSource: referral.source || null,
+            referredBy: referral.referredBy || null,
             ...(dpaPolicy ? {
               consentVersion: dpaPolicy.versionNumber,
               consentGrantedAt: now,
@@ -318,6 +337,9 @@ const RegisterScreen = ({ navigation }) => {
             profileComplete: true,
             allowPromos,
             preferredComm: allowPromos ? preferredComm : 'SMS',
+            referral: { source: referral.source || null, referredBy: referral.referredBy || null },
+            referralSource: referral.source || null,
+            referredBy: referral.referredBy || null,
             ...(dpaPolicy ? {
               consentVersion: dpaPolicy.versionNumber,
               consentGrantedAt: now,
@@ -554,6 +576,41 @@ const RegisterScreen = ({ navigation }) => {
               <TouchableOpacity onPress={addEC} style={{ marginTop: 8, alignSelf: 'flex-start' }}>
                 <Text style={{ color: COLORS.sky, fontWeight: '900', fontSize: 13, letterSpacing: 0.5 }}>+ ADD ANOTHER CONTACT</Text>
               </TouchableOpacity>
+
+              {/* ====== SECTION: HOW DID YOU HEAR ABOUT US ====== */}
+              <View style={styles.sectionDivider} />
+              <Text style={styles.sectionLabel}>HOW DID YOU HEAR ABOUT US?</Text>
+              <Text style={styles.label}>Source (Optional)</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                {REFERRAL_SOURCES.map(src => (
+                  <TouchableOpacity
+                    key={src}
+                    onPress={() => handleReferralSourceChange(src)}
+                    style={{
+                      paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1.5,
+                      borderColor: referral.source === src ? COLORS.sky : '#ccc',
+                      backgroundColor: referral.source === src ? COLORS.sky + '15' : '#fff',
+                    }}
+                  >
+                    <Text style={{
+                      fontSize: 12, fontWeight: referral.source === src ? '900' : '600',
+                      color: referral.source === src ? COLORS.sky : '#666',
+                    }}>{src}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {REFERRAL_NEEDS_NAME.includes(referral.source) && (
+                <>
+                  <Text style={styles.label}>Referred by</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Name of referring client or vet"
+                    placeholderTextColor="#999"
+                    value={referral.referredBy}
+                    onChangeText={(v) => setReferral(prev => ({ ...prev, referredBy: v }))}
+                  />
+                </>
+              )}
 
               {/* ====== SECTION: LEGAL ====== */}
               <View style={styles.sectionDivider} />

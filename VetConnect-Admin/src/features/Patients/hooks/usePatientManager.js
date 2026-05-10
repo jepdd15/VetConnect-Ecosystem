@@ -22,8 +22,9 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
     emergencyContacts: [],
     gender: null,
     seniorId: '',
+    referral: { source: '', referredBy: '' },
     referralSource: '',
-    referredBy: '',    // T2.136
+    referredBy: '',
     allowPromos: false,
     preferredComm: 'SMS',
     whatsappOptIn: false,
@@ -220,6 +221,13 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
       dpaConsent: client.dpaConsent || false,
       waiverSigned: client.waiverSigned || false,
       emergencyContacts: reps,
+      // T4.208: Dual-read referral object with legacy scalar fallbacks.
+      referral: {
+        source: client.referral?.source || client.referralSource || '',
+        referredBy: client.referral?.referredBy || client.referredBy || '',
+      },
+      referralSource: client.referral?.source || client.referralSource || '',
+      referredBy: client.referral?.referredBy || client.referredBy || '',
       // Step 5.4 (T3.5): Read versioned consent fields from Firestore.
       // Firestore Timestamps are preserved as-is so ClientDetails can format them.
       // null means the client has never consented under the versioned system.
@@ -265,8 +273,12 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
         accountStanding: editForm.accountStanding || 'Good Standing',
         dpaConsent: derivedDpaConsent,
         waiverSigned: derivedWaiverSigned,
-        referralSource: editForm.referralSource,
-        referredBy: editForm.referredBy || null,   // T2.136
+        referral: {
+          source: editForm.referral?.source || editForm.referralSource || null,
+          referredBy: editForm.referral?.referredBy || editForm.referredBy || null,
+        },
+        referralSource: editForm.referral?.source || editForm.referralSource || null,
+        referredBy: editForm.referral?.referredBy || editForm.referredBy || null,
         allowPromos: editForm.allowPromos,
         preferredComm: editForm.preferredComm,
         whatsappOptIn: editForm.whatsappOptIn,

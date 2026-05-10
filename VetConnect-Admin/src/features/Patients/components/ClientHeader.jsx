@@ -66,11 +66,20 @@ export default function ClientHeader({ client, balance, isEditing, onEdit, onCan
                       {client.fullName}
                   </Typography>
                   {client.seniorId && <Chip label="SC/PWD" size="small" sx={{fontFamily: FONT, fontWeight: 'bold', height: 22, fontSize: '0.7rem', bgcolor: COLORS.kpiPurpleBg, color: COLORS.grooming}} />}
-                  {/* T2.136: Referral chip */}
-                  {client.referredBy && (
-                    <Chip label={`Ref: ${client.referredBy}`} size="small" variant="outlined"
-                      sx={{ fontFamily: FONT, fontWeight: 'bold', height: 22, fontSize: '0.7rem', borderColor: COLORS.accentLight, color: COLORS.accentLight }} />
-                  )}
+                  {/* T4.208: Referral chip — dual-read referral object with legacy scalar fallbacks */}
+                  {(() => {
+                    const refSource = client.referral?.source || client.referralSource || '';
+                    const refPerson = client.referral?.referredBy || client.referredBy || '';
+                    if (!refSource && !refPerson) return null;
+                    let label = '';
+                    if (refPerson && refSource) label = `Ref: ${refPerson} · ${refSource}`;
+                    else if (refPerson) label = `Ref: ${refPerson}`;
+                    else label = refSource;
+                    return (
+                      <Chip label={label} size="small" variant="outlined"
+                        sx={{ fontFamily: FONT, fontWeight: 'bold', height: 22, fontSize: '0.7rem', borderColor: COLORS.accentLight, color: COLORS.accentLight }} />
+                    );
+                  })()}
                 </Box>
 
                 {/* T2.134: Engagement KPIs row */}

@@ -19,8 +19,11 @@ export default function NewClientModal({ open, onClose }) {
   const [form, setForm] = useState({
     fullName: '', phone: '', email: '',
     address: '', city: '',
-    referredBy: '',  // T2.136
   });
+  const [referral, setReferral] = useState({ source: '', referredBy: '' });
+
+  const REFERRAL_SOURCES = ['Walk-by', 'Facebook', 'Google', 'Referral', 'Returning', 'Vet Referral', 'Other'];
+  const REFERRAL_NEEDS_NAME = ['Referral', 'Vet Referral'];
   const [emergencyContacts, setEmergencyContacts] = useState([{ name: '', phone: '', relation: '' }]);
   const updateEC = (idx, field, val) => setEmergencyContacts(prev => prev.map((c, i) => i === idx ? { ...c, [field]: val } : c));
   const addEC = () => setEmergencyContacts(prev => [...prev, { name: '', phone: '', relation: '' }]);
@@ -60,7 +63,8 @@ export default function NewClientModal({ open, onClose }) {
   }, [open]);
 
   const resetForms = () => {
-    setForm({ fullName: '', phone: '', email: '', address: '', city: '', referredBy: '' });
+    setForm({ fullName: '', phone: '', email: '', address: '', city: '' });
+    setReferral({ source: '', referredBy: '' });
     setEmergencyContacts([{ name: '', phone: '', relation: '' }]);
     setDpaConsent(false);
     setWaiverConsent(false);
@@ -115,7 +119,9 @@ export default function NewClientModal({ open, onClose }) {
         email: form.email.trim() || null,
         address: form.address.trim() || null,
         city: form.city.trim() || null,
-        referredBy: form.referredBy.trim() || null,  // T2.136
+        referral: { source: referral.source || null, referredBy: referral.referredBy || null },
+        referralSource: referral.source || null,
+        referredBy: referral.referredBy || null,
         role: 'pet_owner',
         accountStatus: 'admin_registered',   // no Firebase Auth account — guest-client pattern
         accountStanding: 'Good Standing',
@@ -219,12 +225,36 @@ export default function NewClientModal({ open, onClose }) {
                 value={form.city} onChange={(e) => setForm({...form, city: e.target.value})}
                 sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT, borderRadius: 0 } }} />
             </Grid>
-            {/* T2.136: Referred by — who sent this client */}
-            <Grid size={{ xs: 12 }}>
-              <TextField label="Referred by (Optional)" fullWidth size="small" placeholder="Name of referring client or source"
-                value={form.referredBy} onChange={(e) => setForm({...form, referredBy: e.target.value})}
-                sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT, borderRadius: 0 } }} />
+            {/* T4.208: Referral source — structured chip selector */}
+            <Grid size={{ xs: 12, md: REFERRAL_NEEDS_NAME.includes(referral.source) ? 6 : 12 }}>
+              <TextField
+                label="How did they hear about us? (Optional)"
+                fullWidth size="small" select
+                value={referral.source}
+                onChange={(e) => {
+                  const src = e.target.value;
+                  setReferral({ source: src, referredBy: REFERRAL_NEEDS_NAME.includes(src) ? referral.referredBy : '' });
+                }}
+                sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT, borderRadius: 0 } }}
+              >
+                <MenuItem value="">— None —</MenuItem>
+                {REFERRAL_SOURCES.map(src => (
+                  <MenuItem key={src} value={src} sx={{ fontWeight: 700 }}>{src}</MenuItem>
+                ))}
+              </TextField>
             </Grid>
+            {REFERRAL_NEEDS_NAME.includes(referral.source) && (
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  label="Referred by (name)"
+                  fullWidth size="small"
+                  placeholder="Name of referring client or vet"
+                  value={referral.referredBy}
+                  onChange={(e) => setReferral(prev => ({ ...prev, referredBy: e.target.value }))}
+                  sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT, borderRadius: 0 } }}
+                />
+              </Grid>
+            )}
           </Grid>
 
           {/* EMERGENCY CONTACT (Optional) */}

@@ -67,6 +67,7 @@ function buildUserPayload(userId, adminUid) {
     emergencyName: null,
     emergencyPhone: null,
     expoPushToken: null,
+    referral: null,
     referredBy: null,
     referralSource: null,
     staffNotes: [],

@@ -306,14 +306,46 @@ export default function ClientDetails({ editForm, setEditForm, isEditing, calcul
       {/* SECTION: MARKETING & PREFERENCES */}
       <SectionHeader title="Marketing & Preferences" />
       <Grid container spacing={2}>
-         <DataField label="Lead Source" select value={editForm.referralSource} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, referralSource: val})}>
-             <MenuItem value="Walk-in">Walk-in</MenuItem>
-             <MenuItem value="Google">Google / Search</MenuItem>
-             <MenuItem value="Social Media">Social Media</MenuItem>
-             <MenuItem value="Referral">Client Referral</MenuItem>
+         <DataField
+           label="Lead Source"
+           select
+           value={editForm.referral?.source || editForm.referralSource || ''}
+           isEditing={isEditing}
+           onChange={(val) => {
+             const needsName = ['Referral', 'Vet Referral'].includes(val);
+             setEditForm({
+               ...editForm,
+               referralSource: val,
+               referral: {
+                 source: val || null,
+                 referredBy: needsName ? (editForm.referral?.referredBy || editForm.referredBy || '') : '',
+               },
+               referredBy: needsName ? (editForm.referral?.referredBy || editForm.referredBy || '') : null,
+             });
+           }}
+         >
+             <MenuItem value="">—</MenuItem>
+             <MenuItem value="Walk-by">Walk-by</MenuItem>
+             <MenuItem value="Facebook">Facebook</MenuItem>
+             <MenuItem value="Google">Google</MenuItem>
+             <MenuItem value="Referral">Referral</MenuItem>
+             <MenuItem value="Returning">Returning</MenuItem>
+             <MenuItem value="Vet Referral">Vet Referral</MenuItem>
+             <MenuItem value="Other">Other</MenuItem>
          </DataField>
-         {/* T2.136: Referred by — free-text name of referring client or source */}
-         <DataField label="Referred By" value={editForm.referredBy} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, referredBy: val})} />
+         {/* T4.208: Referred By — conditional on source being Referral or Vet Referral */}
+         {(['Referral', 'Vet Referral'].includes(editForm.referral?.source || editForm.referralSource)) && (
+           <DataField
+             label="Referred By"
+             value={editForm.referral?.referredBy || editForm.referredBy || ''}
+             isEditing={isEditing}
+             onChange={(val) => setEditForm({
+               ...editForm,
+               referredBy: val || null,
+               referral: { ...(editForm.referral || {}), referredBy: val || null },
+             })}
+           />
+         )}
          <DataField label="Preferred Comm Method" select value={editForm.preferredComm} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, preferredComm: val})}>
              <MenuItem value="SMS">SMS / Text</MenuItem>
              <MenuItem value="Email">Email</MenuItem>

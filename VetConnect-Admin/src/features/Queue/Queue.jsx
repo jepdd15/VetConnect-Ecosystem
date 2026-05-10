@@ -1052,6 +1052,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       const pulseEvent = {
         eventId: makePulseEventId('shift'),
         type: 'STATUS_CHANGE',
+        fromStatus: selectedRow.status || 'unknown',
         toStatus: isCarryOver ? 'carried-over' : 'confirmed',
         shiftNote: 'shifted',
         timestamp: Timestamp.now(), // CLIENT-SIDE CLOCK — see W1 in pulseUtils.js

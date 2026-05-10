@@ -43,7 +43,7 @@ import { useGlobalRecords } from './hooks/useGlobalRecords';
 import { useQueueActions } from '../Queue/useQueueActions';
 import { ForensicMetricGrid } from '../Queue/ForensicMetricGrid';
 import { useAncestorChain } from './hooks/useAncestorChain';
-import { calculatePulseMetrics, makePulseEventId } from '../../utils/pulseUtils';
+import { calculatePulseMetrics, makePulseEventId, createPulseEvent } from '../../utils/pulseUtils';
 import { TERMINAL_STATUSES } from '../../utils/statusConstants';
 import { query, collection, where, onSnapshot, arrayUnion, doc, updateDoc, Timestamp, writeBatch, getDocs, getDoc, runTransaction } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
@@ -560,8 +560,8 @@ export default function Records() {
           clinicalPulse: arrayUnion({
             eventId: makePulseEventId('status'),
             type: 'STATUS_CHANGE',
-            from: 'dispensing',
-            to: 'billing',
+            fromStatus: 'dispensing',
+            toStatus: 'billing',
             timestamp: Timestamp.now(),
             staffId: user?.uid || '',
             staffName: profile?.fullName || user?.email || 'System',
@@ -1593,13 +1593,13 @@ export default function Records() {
                         const apptRef = doc(db, "appointments", activeAuditRow.id);
                         await updateDoc(apptRef, {
                           isDeferred: true,
-                          clinicalPulse: arrayUnion({
-                            type: 'DEFERRED',
+                          clinicalPulse: arrayUnion(createPulseEvent('DEFERRED', {
+                            fromStatus: activeAuditRow.status || 'unknown',
+                            toStatus: 'deferred',
                             staffName: user?.fullName || 'Unknown',
                             staffId: user?.uid || '',
-                            timestamp: Timestamp.now(), // CLIENT-SIDE CLOCK — see W1 in pulseUtils.js
-                            eventId: makePulseEventId('defer')
-                          })
+                            note: `Visit deferred from ${activeAuditRow.status || 'unknown'} (from Visit Log)`,
+                          }))
                         });
                         setToast({ open: true, message: 'Visit deferred', severity: 'info' });
                         handleCloseAudit();

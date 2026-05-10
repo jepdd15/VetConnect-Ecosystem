@@ -429,6 +429,7 @@ export function useQueueActions() {
         );
 
         const pulseEvent = createPulseEvent('STATUS_CHANGE', {
+            fromStatus: data.status || 'unknown',
             toStatus: 'pending (deferred)',
             staffId: profile?.id || 'unknown',
             staffName: signature,
@@ -463,6 +464,7 @@ export function useQueueActions() {
     const apptRef = doc(db, "appointments", row.id);
     const pulseEvent = createPulseEvent('STATUS_CHANGE', {
         fromStatus: row.status || 'unknown',
+        toStatus: 'pending (rescheduled)',
         staffId: profile?.id || 'unknown',
         staffName: staffSignature,
         note: `SCHEDULE SHIFT: ${reason} (Moved to ${new Date(newDate).toLocaleString()})`

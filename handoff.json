@@ -3927,6 +3927,59 @@
         "T4.10 — Queue design sweep (3-4 hrs)",
         "T4.16 — CW design sweep (2-3 hrs)"
       ]
+    },
+    "advisory_session_2026_05_10": {
+      "date": "2026-05-10",
+      "role": "Massive advisory + implementation session. 14 tasks shipped (T4.198-T4.208). 34 inline fixes. Booking system assessment. Calendar AI + AI Booking Advisor. Vaccine multi-dose 4-day. TOCTOU race fix. Balance reminder queue. Promo blast system. Referral unification. Consent forms on registration. Emergency contacts array. STATUS_COLORS shared constant. Multiple decision rounds.",
+      "tasks_done_this_session": "T4.200 (Vaccine hardening 4-day 92/92), T4.198 (Calendar AI 2-day 38/38), T4.205 (TOCTOU slot reservation 20/20), T4.206 (AI Booking Advisor 22/22), T4.201 (EncounterSummary grouping 18/18), T4.202 (Per-service push 11/11), T4.203 (Mobile PDF service breakdown 8/8), T4.204 (Balance reminder queue 16/16), T4.207 (Bulk promo blast 23/23), T4.208 (Referral unification 14/14)",
+      "total_done_after_session": "~758",
+      "total_todo_after_session": "~151",
+      "tasks_formalized_this_session": "T4.204 (Balance reminder queue), T4.205 (TOCTOU race fix), T4.206 (AI Booking Advisor), T4.207 (Bulk promo blast 7 decisions), T4.208 (Referral unification)",
+      "key_decisions_locked": [
+        "Booking TOCTOU: deterministic slot_reservations/{date}_{HH}_{MM}_{dept} doc pattern inside runTransaction. JIT pre-flight removed.",
+        "4-appointment cap: DROPPED — staff reviews every booking, no artificial limits.",
+        "Calendar AI 10 decisions: side panel + right-click, visible range + expansion, full context (7 sections), chips + free-text, read-only, multi-turn, Firestore prompt + dynamic inject, no rate limits, llm_audit_logs, all staff.",
+        "Bulk promo 7 decisions: Dashboard + NotificationLogs dual location, BulkPromoDialog, free-text + save as template, push always + email/SMS checkboxes, full recipient preview with names, allowPromos filter only, 1-hour cooldown.",
+        "Vaccine 4 decisions: catalog extension (doses/doseIntervalDays), explicit doseNumber, dots + text UI, binary completeness.",
+        "Registration parity: both surfaces collect DPA + waiver consent, emergency contacts array, allowPromos + preferredComm, unified referral.",
+        "Consent at registration: checkbox valid under RA 10173 + RA 8792. Version updates trigger full ConsentScreen with signature.",
+        "Relation standardized: Spouse/Parent/Sibling/Child/Relative/Friend/Caretaker/Other across all 4 surfaces.",
+        "Referral unified: referral: { source, referredBy } with 7 options (Walk-by/Facebook/Google/Referral/Returning/Vet Referral/Other), conditional referredBy input, dual-read + dual-write.",
+        "Calendar status coloring: STATUS_COLORS shared constant in designTokens.js, status-based block tinting replaces department colors.",
+        "EncounterSummary grouping: sourceServiceId on auto-bundled items, single-service skips headers.",
+        "Balance reminder queue: pre-computed queue pattern (same as vaccine/appointment), snooze + cooldown on queue doc not user doc."
+      ],
+      "workflow_patterns_validated": [
+        "Spec cross-reference: user ALWAYS asks 'will that execute prompt ensure our decisions and spec are followed?' — advisory must map every spec point to verification items. Gaps caught on T4.200 (7 across 3 days), T4.204 (2), zero on T4.207.",
+        "Mockup-driven: user requests mockups BEFORE implementation. Save to reference_mockups file. Reference file path in execute prompts. T4.206 caught chips-on-empty-state + header format mismatches because engineer didn't read mockups.",
+        "Single prompt rule: ALL flags/amendments/mockup references in ONE execute prompt. No follow-up messages. User exact words: 'don't separate them by follow-ups'.",
+        "Decision rounds: user challenges when advisory skips them. T4.207 had 7 decisions presented. User asked 'do we not need a decision round? are you sure?'",
+        "Booking assessment: Professional-grade system with honest weakness analysis. 6/8 weaknesses fixable on Spark, 4 fixed inline this session."
+      ],
+      "cloudflare_worker_state": {
+        "all_handlers_working": "vaccine + appointment + balance (403 FIXED via balance_reminder_queue)",
+        "new_templates": "service-started, service-completed (T4.202)",
+        "balance_rewrite": "reads balance_reminder_queue instead of sales collection",
+        "reference_copy": "VetConnect-Backend/cloudflare-worker/worker.js (~1031 lines)"
+      },
+      "firestore_rules_added": [
+        "slot_reservations (booking TOCTOU)",
+        "vaccine_preferences (reminder opt-out, public read)",
+        "balance_reminder_queue (balance reminders, public read)",
+        "promo_templates (promo blast)",
+        "closed-date check on appointment UPDATE path (was create-only)"
+      ],
+      "mockups_added": "AI Booking Advisor (4), EncounterSummary grouping (6), Mobile PDF (3), Bulk Promo (5), Referral unification (5) — all in reference_mockups_2026_05_09.md",
+      "updated_priority_queue": [
+        "T1.1-T1.11 — Thesis documentation (defense prep)",
+        "T4.125 — Patients CRM redesign (10-12 hrs)",
+        "T4.21 — Tax computation VAT/SC/PWD",
+        "T4.98 — Centralized status transition function",
+        "T2.451 — alert()/confirm() → MUI Dialog sweep",
+        "T4.10 — Queue design sweep",
+        "T4.16 — CW design sweep",
+        "T3.102 — Vaccine-allergy contraindication warning"
+      ]
     }
   }
 }

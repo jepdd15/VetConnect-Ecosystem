@@ -52,13 +52,14 @@ const KPICard = ({ title, value, icon, color, bgcolor, border, onClick, active }
     onClick={onClick}
     sx={{
       p: 2, px: 2.5, display: 'flex', alignItems: 'center', gap: 2,
-      borderRadius: 0, 
+      borderRadius: 0,
       border: 0,
       bgcolor: active ? `${color}1A` : COLORS.formBg,
       boxShadow: 'none',
       cursor: onClick ? 'pointer' : 'default',
       transition: 'all 0.1s ease',
       height: '100%',
+      width: '100%',
       '&:hover': onClick ? { bgcolor: active ? `${color}25` : COLORS.surfaceHover } : {},
     }}
   >
@@ -482,14 +483,14 @@ export default function Inventory() {
 
       {/* 2. BOXED KPI ROW */}
       <Box sx={{ flexShrink: 0, mb: 0 }}>
-        <Paper sx={{ p: 0, px: 4, bgcolor: COLORS.tableHeaderBg, borderBottom: `2px solid ${COLORS.accent}`, borderRadius: 0, boxShadow: 'none' }}>
+        <Paper sx={{ p: 0, bgcolor: COLORS.tableHeaderBg, borderBottom: `2px solid ${COLORS.accent}`, borderRadius: 0, boxShadow: 'none' }}>
           <Grid container spacing={0} sx={{ '& > div:not(:last-child)': { borderRight: `1px solid ${COLORS.accent}1A` } }}>
-             <Grid size={{ xs: true }}><KPICard title="Active Products" value={kpis.totalItems} icon={<InventoryIcon />} color={COLORS.medical} /></Grid>
-             <Grid size={{ xs: true }}><KPICard title="Expiring Soon" value={kpis.expiringSoon} icon={<EventBusyIcon />} color={COLORS.kpiPurpleText} onClick={() => toggleStockFilter('expiring')} active={stockFilter === 'expiring'} /></Grid>
-             <Grid size={{ xs: true }}><KPICard title="Low Stock" value={kpis.lowStock} icon={<WarningAmberIcon />} color={COLORS.warning} onClick={() => toggleStockFilter('low')} active={stockFilter === 'low'} /></Grid>
-             <Grid size={{ xs: true }}><KPICard title="Out of Stock" value={kpis.outOfStock} icon={<ErrorOutlineIcon />} color={COLORS.danger} onClick={() => toggleStockFilter('out')} active={stockFilter === 'out'} /></Grid>
-             <Grid size={{ xs: true }}><KPICard title="Archived" value={kpis.archivedCount} icon={<ArchiveIcon />} color={COLORS.warning} onClick={toggleArchived} active={showArchived} /></Grid>
-             <Grid size={{ xs: true }}><KPICard title="Total Value" value={`₱${kpis.totalValue.toLocaleString(undefined, {minimumFractionDigits: 2})}`} icon={<AttachMoneyIcon />} color={COLORS.success} /></Grid>
+             <Grid size={{ xs: 6, md: 2 }}><KPICard title="Active Products" value={kpis.totalItems} icon={<InventoryIcon />} color={COLORS.medical} /></Grid>
+             <Grid size={{ xs: 6, md: 2 }}><KPICard title="Expiring Soon" value={kpis.expiringSoon} icon={<EventBusyIcon />} color={COLORS.kpiPurpleText} onClick={() => toggleStockFilter('expiring')} active={stockFilter === 'expiring'} /></Grid>
+             <Grid size={{ xs: 6, md: 2 }}><KPICard title="Low Stock" value={kpis.lowStock} icon={<WarningAmberIcon />} color={COLORS.warning} onClick={() => toggleStockFilter('low')} active={stockFilter === 'low'} /></Grid>
+             <Grid size={{ xs: 6, md: 2 }}><KPICard title="Out of Stock" value={kpis.outOfStock} icon={<ErrorOutlineIcon />} color={COLORS.danger} onClick={() => toggleStockFilter('out')} active={stockFilter === 'out'} /></Grid>
+             <Grid size={{ xs: 6, md: 2 }}><KPICard title="Archived" value={kpis.archivedCount} icon={<ArchiveIcon />} color={COLORS.warning} onClick={toggleArchived} active={showArchived} /></Grid>
+             <Grid size={{ xs: 6, md: 2 }}><KPICard title="Total Value" value={`₱${kpis.totalValue.toLocaleString(undefined, {minimumFractionDigits: 2})}`} icon={<AttachMoneyIcon />} color={COLORS.success} /></Grid>
           </Grid>
         </Paper>
       </Box>

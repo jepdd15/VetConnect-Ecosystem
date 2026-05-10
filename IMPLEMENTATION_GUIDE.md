@@ -249,7 +249,34 @@
 - ~745 DONE / ~185 TODO. ~908 total tasks.
 - ~740 DONE / ~187 TODO. ~905 total tasks.
 
-**Next:** T4.200 (Vaccine hardening multi-dose series, 4-5 days) → T4.198 (Calendar AI, 6-8 hrs) → T4.191 (Queue date picker, 1 hr) → T4.169+T4.170 (Reservation audit+cleanup, 1.5 hrs) → T4.146 (Booking TOCTOU fix, 1.5 hrs) → T4.125 (CRM redesign, 10-12 hrs) → T4.201 (EncounterSummary grouping, 2-3 hrs) → T4.10 (Queue design sweep, 3-4 hrs) → T4.16 (CW design sweep, 2-3 hrs)
+**Session 2026-05-10 (T4.198-T4.208, 34 inline fixes):**
+- T4.200 Vaccine hardening multi-dose series (4-day, 92/92 spec, 9 reviewer fixes): catalog extension (doses/doseIntervalDays/startAgeWeeks), explicit doseNumber, series-aware buildVaccinationStatus binary completeness, dose dots on 5 surfaces, CW dose selector with auto-detect, series-aware notifications + passport, dueDate Timestamp normalization, Worker vaccine preference filter.
+- T4.198 Calendar AI (2-day, 38/38 spec): CalendarAIPanel NEW, side panel + right-click, 5 chips, buildCalendarContext 7-section, multi-turn, Settings prompt editor, month view + keyboard shortcut.
+- T4.205 Booking TOCTOU race fix (20/20 spec): slot_reservations deterministic doc pattern, JIT pre-flight removed, cancel/reschedule cleanup on 4 surfaces, dayReservations onSnapshot.
+- T4.206 AI Booking Advisor (22/22 spec): BookingAISheet NEW, pet context builder + vaccination status, 3 chips, Sky Blue FAB.
+- T4.201 EncounterSummary grouping (18/18 spec): sourceServiceId on auto-bundled items, grouped rendering, per-service subtotals.
+- T4.202 Per-service push (11/11 spec): service-started/service-completed templates, fire-and-forget in handleToggleServiceProgress.
+- T4.203 Mobile PDF service breakdown (8/8 spec): optional services param, Services Performed HTML table.
+- T4.204 Balance reminder queue (16/16 spec): NEW balance_reminder_queue, piggyback POS/settle, Worker rewrite (fixes 403), Recompute button.
+- T4.207 Bulk promo blast (23/23 spec): BulkPromoDialog NEW 3-step, push+email/SMS, recipient preview, cooldown, promo_templates.
+- T4.208 Referral unification (14/14 spec): referral: { source, referredBy } across 7 files, dual-read/dual-write.
+- 34 inline fixes: booking hardening (onSnapshot + closed-date + timezone), KNOWLEDGE_BASE removal, NKA chip + allergy tooltip, STATUS_COLORS constant, Grid v2 migrations (40 items across 4 files), NewClientModal overhaul, RegisterScreen (waiver + emergency array + relation + preferredComm + referral), relation dropdown standardization, calendar status coloring, inventory KPI layout.
+- ~758 DONE / ~151 TODO. ~913 total tasks.
+
+**Cloudflare Worker state (updated 2026-05-10):**
+- All 3 cron handlers working: vaccine + appointment + balance (403 FIXED)
+- handleBalanceReminders rewritten: reads balance_reminder_queue instead of sales
+- 2 new push templates: service-started, service-completed (T4.202)
+- Worker source: VetConnect-Backend/cloudflare-worker/worker.js (~1031 lines)
+
+**Firestore rules state (updated 2026-05-10):**
+- slot_reservations (booking TOCTOU): read/create/update/delete isAuth()
+- vaccine_preferences (reminder opt-out): read true, write isAuth()
+- balance_reminder_queue (balance reminders): read true, write isAuth()
+- promo_templates (promo blast): read isAuth(), write isStaff()
+- Closed-date check on BOTH create AND update appointment paths
+
+**Next:** T1.1-T1.11 (Thesis documentation) → T4.125 (CRM redesign, 10-12 hrs) → T4.21 (Tax computation) → T4.98 (Centralized transitions) → T2.451 (alert sweep) → T4.10 (Queue sweep) → T4.16 (CW sweep) → T3.102 (Vaccine-allergy warning)
 
 ---
 
@@ -260,7 +287,7 @@ Paste this prompt at the start of a new session:
 ```
 Read these files in this order:
 1. IMPLEMENTATION_GUIDE.md — current status section + module sequence
-2. handoff.json (section: advisory_session_2026_05_09) — latest context
+2. handoff.json (section: advisory_session_2026_05_10) — latest context
 3. MASTER_TASKLIST.md — task registry with IDs, priorities, dependencies, status
 
 The full VetConnect codebase has been audited across 5+ sessions — every source
@@ -268,15 +295,15 @@ file has been deep-dived. Do NOT re-scan any code. All findings are in the
 deep-dive files at the repo root. Use the "Task-to-Source Cross-Reference" table
 in IMPLEMENTATION_GUIDE.md to find the backing file for any task.
 
-Context: This is a continuation of the 2026-05-09 advisory session (extended).
-~745 DONE, ~185 TODO. Build passes. 322 tests passing.
+Context: This is a continuation of the 2026-05-10 advisory session.
+~758 DONE, ~151 TODO. Build passes. 322 tests passing.
 Cloudflare Worker URL: https://cool-fire-2d53.jepdd15.workers.dev
 Cloudflare Worker model: claude-haiku-4-5-20251001
 Cloudflare Worker Cron: 0 23 * * * UTC (7 AM Manila daily)
 Cloudflare Worker handlers: handleVaccineReminders + handleAppointmentReminders + handleBalanceReminders (push + email + SMS)
 Cloudflare Worker env vars: ANTHROPIC_API_KEY + FIREBASE_API_KEY + RESEND_API_KEY + RESEND_FROM_EMAIL + SEMAPHORE_API_KEY + SEMAPHORE_SENDER_NAME
 Cloudflare Worker endpoints: POST / (AI), /push, /push/custom, /email (Resend), /sms (Semaphore)
-Cloudflare Worker reference copy: VetConnect-Backend/cloudflare-worker/worker.js (~1020 lines)
+Cloudflare Worker reference copy: VetConnect-Backend/cloudflare-worker/worker.js (~1031 lines)
 
 I want to work on [MODULE NAME]. Follow the module workflow:
 1. LOOK UP: Find the module in the "Module Sequence" table. Read the listed

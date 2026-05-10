@@ -4,13 +4,45 @@ import { formatDisplayDate } from './helpers';
 import { resolveVitals } from './resolveVitals';
 
 /**
+ * Formats a duration in milliseconds into a human-readable string.
+ * Examples: 75 min → "1h 15m", 40 min → "40 min", 0 or invalid → "".
+ *
+ * @param {number} ms — duration in milliseconds
+ * @returns {string}
+ */
+function formatDuration(ms) {
+  const totalMins = Math.round(ms / 60000);
+  if (!Number.isFinite(totalMins) || totalMins <= 0) return '';
+  if (totalMins < 60) return `${totalMins} min`;
+  const hours = Math.floor(totalMins / 60);
+  const mins = totalMins % 60;
+  return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+}
+
+/**
+ * Resolves a Firestore Timestamp or ISO string to a millisecond epoch value.
+ *
+ * @param {object|string|null} ts
+ * @returns {number|null}
+ */
+function resolveTimestampMs(ts) {
+  if (!ts) return null;
+  if (typeof ts.toDate === 'function') return ts.toDate().getTime();
+  const parsed = new Date(ts).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
  * Generates and shares a PDF visit summary for a completed appointment.
  *
- * @param {{ record: object, petName: string }} params
- *   record  — medical_records document (or appointment object with service/vitals fields)
- *   petName — pet display name shown in the PDF header
+ * @param {{ record: object, petName: string, services?: object[] }} params
+ *   record   — medical_records document (or appointment object with service/vitals fields)
+ *   petName  — pet display name shown in the PDF header
+ *   services — optional appointment services[] array; when provided and has 2+ entries,
+ *              a "Services Performed" section is rendered with per-service status, duration,
+ *              staff, and price. Gracefully omitted when undefined, null, or length < 2.
  */
-export async function generateVisitPDF({ record, petName }) {
+export async function generateVisitPDF({ record, petName, services }) {
   const esc = (s) =>
     String(s ?? '')
       .replace(/&/g, '&amp;')
@@ -19,6 +51,55 @@ export async function generateVisitPDF({ record, petName }) {
       .replace(/"/g, '&quot;');
 
   const dateStr = formatDisplayDate(record.date);
+
+  // --- Services Performed section ---
+  // Only rendered when 2 or more services are provided.
+  const validServices = Array.isArray(services) && services.length >= 2 ? services : null;
+
+  const servicesHtml = validServices
+    ? `<h3>Services Performed</h3>
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+          <thead>
+            <tr style="border-bottom: 1px solid #ccc;">
+              <th style="text-align: left; padding: 4px 8px;">Service</th>
+              <th style="text-align: left; padding: 4px 8px;">Duration</th>
+              <th style="text-align: left; padding: 4px 8px;">Staff</th>
+              <th style="text-align: right; padding: 4px 8px;">Price</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${validServices.map((svc) => {
+              const status = svc.serviceStatus || 'pending';
+              const icon = status === 'completed' ? '✓' : status === 'in-progress' ? '⏳' : '○';
+              const name = esc(svc.name || (typeof svc === 'string' ? svc : '—'));
+              const startMs = resolveTimestampMs(svc.serviceStartedAt);
+              const endMs = resolveTimestampMs(svc.serviceCompletedAt);
+              const duration =
+                startMs != null && endMs != null
+                  ? formatDuration(endMs - startMs)
+                  : '';
+              const staffName = svc.staffName ? esc(svc.staffName) : '—';
+              const price =
+                svc.price != null
+                  ? `&#x20B1;${Number(svc.price).toLocaleString()}`
+                  : '—';
+              return `<tr style="border-bottom: 1px solid #eee;">
+                <td style="padding: 6px 8px;">${icon} ${name}</td>
+                <td style="padding: 6px 8px; color: #555;">${esc(duration) || '—'}</td>
+                <td style="padding: 6px 8px; color: #555;">${staffName}</td>
+                <td style="text-align: right; padding: 6px 8px;">${price}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>`
+    : '';
+
+  // When there are 2+ services, show "Services: N" in the header summary row
+  // (key becomes "Services", value becomes the count — avoids "Services: Services: 3").
+  const serviceHeaderKey = validServices ? 'Services' : 'Service';
+  const serviceHeaderLabel = validServices
+    ? String(validServices.length)
+    : esc(record.serviceType);
 
   const hasDischarge = !!record.dischargeSummary;
   const dsInstructions = record.dischargeSummary?.instructions || '';
@@ -89,8 +170,9 @@ export async function generateVisitPDF({ record, petName }) {
         <h2 style="text-align: center; margin-top: 0;">Visit Summary</h2>
         <table style="width: 100%; margin-bottom: 30px;">
           <tr><td><b>Patient:</b> ${esc(petName)}</td><td style="text-align: right;"><b>Date:</b> ${esc(dateStr)}</td></tr>
-          <tr><td><b>Service:</b> ${esc(record.serviceType)}</td><td style="text-align: right;"><b>Attending Vet:</b> ${esc(record.vetName || 'Staff')}</td></tr>
+          <tr><td><b>${serviceHeaderKey}:</b> ${serviceHeaderLabel}</td><td style="text-align: right;"><b>Attending Vet:</b> ${esc(record.vetName || 'Staff')}</td></tr>
         </table>
+        ${servicesHtml}
         ${hasAnyVital ? `<h3>Vitals</h3>
         <p>
           <b>Weight:</b> ${esc(pdfVitals.weight || '-')} kg &nbsp;&nbsp; | &nbsp;&nbsp;

@@ -1094,6 +1094,9 @@ export default function PetHistoryScreen({ route, navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   // T3.95: Case-day metadata derived from appointment documents
   const [caseDayMap, setCaseDayMap] = useState({});
+  // T4.203: Per-record services array keyed by record ID, sourced from appointment docs.
+  // Populated alongside caseDayMap in the same batch fetch — no extra Firestore reads.
+  const [appointmentServicesMap, setAppointmentServicesMap] = useState({});
   // T3.94: Search and filter state
   const [searchText, setSearchText] = useState('');
   const [activeFilters, setActiveFilters] = useState(new Set());
@@ -1882,13 +1885,21 @@ export default function PetHistoryScreen({ route, navigation }) {
 
     const fetchCaseDays = async () => {
       const cdMap = {};
+      const svcMap = {};
       await Promise.all(recordsWithAppt.map(async (rec) => {
         try {
           const apptSnap = await getDoc(doc(db, 'appointments', rec.appointmentId));
           if (apptSnap.exists()) {
-            const caseDay = apptSnap.data().caseDay || 1;
+            const apptData = apptSnap.data();
+            const caseDay = apptData.caseDay || 1;
             if (caseDay > 1) {
               cdMap[rec.id] = caseDay;
+            }
+            // T4.203: Capture services[] for the visit PDF per-service breakdown.
+            // Only store when the appointment has 2+ services (single-service visits
+            // don't need the breakdown section — matches generateVisitPDF guard).
+            if (Array.isArray(apptData.services) && apptData.services.length >= 2) {
+              svcMap[rec.id] = apptData.services;
             }
           }
         } catch {
@@ -1896,12 +1907,21 @@ export default function PetHistoryScreen({ route, navigation }) {
         }
       }));
       setCaseDayMap(cdMap);
+      setAppointmentServicesMap(svcMap);
     };
     fetchCaseDays();
   }, [history]);
 
   // --- PDF GENERATOR ---
-  const generatePDF = (record) => generateVisitPDF({ record, petName });
+  // T4.203: Services array from the linked appointment doc powers the per-service
+  // breakdown section in the PDF. Undefined for single-service visits — generateVisitPDF
+  // skips the section gracefully when services is undefined or has fewer than 2 entries.
+  const generatePDF = (record) =>
+    generateVisitPDF({
+      record,
+      petName,
+      services: appointmentServicesMap[record.id],
+    });
 
   const handleOpenAttachment = (url) => {
     Linking.openURL(url).catch(() =>

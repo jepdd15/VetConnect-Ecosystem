@@ -218,11 +218,22 @@ export default function Inventory() {
       if (stockFilter === 'low')      matchStock = stock > 0 && stock <= min;
       else if (stockFilter === 'out') matchStock = stock <= 0;
       else if (stockFilter === 'expiring') {
-        if (!item.expiryDate) { matchStock = false; }
-        else {
-          const expiry = new Date(item.expiryDate + 'T00:00:00');
+        matchStock = false;
+        const topExpiry = toDateStr(item.expiryDate);
+        if (topExpiry) {
+          const expiry = new Date(topExpiry + 'T00:00:00');
           const daysUntil = Math.floor((expiry - today) / (1000 * 60 * 60 * 24));
-          matchStock = daysUntil >= 0 && daysUntil <= 30;
+          if (daysUntil >= 0 && daysUntil <= 30) matchStock = true;
+        }
+        if (!matchStock && item.batches?.length > 0) {
+          for (const batch of item.batches) {
+            const batchExpiry = toDateStr(batch.expiryDate);
+            if (batchExpiry && batch.qty > 0) {
+              const expiry = new Date(batchExpiry + 'T00:00:00');
+              const daysUntil = Math.floor((expiry - today) / (1000 * 60 * 60 * 24));
+              if (daysUntil >= 0 && daysUntil <= 30) { matchStock = true; break; }
+            }
+          }
         }
       }
       const matchArchive = showArchived ? !!item.isArchived : !item.isArchived;

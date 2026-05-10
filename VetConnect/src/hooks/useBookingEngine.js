@@ -41,10 +41,12 @@ export function useBookingEngine(date, selectedServices = [], selectedPet = null
 
   // 1. INITIAL ECOSYSTEM FETCH & REAL-TIME PETS
   useEffect(() => {
+    if (!auth.currentUser) return;
+    const uid = auth.currentUser.uid;
     // A. Real-Time Listener for Pets (Solves the "Missing Pet" bug!)
     const qPets = query(
       collection(db, "pets"),
-      where("ownerId", "==", auth.currentUser.uid),
+      where("ownerId", "==", uid),
     );
     const unsubscribePets = onSnapshot(
       qPets,
@@ -270,6 +272,7 @@ export function useBookingEngine(date, selectedServices = [], selectedPet = null
         // Build booked ranges categorized by department from cached day appointments
         const bookedRangesByDept = {};
         dayAppointments.forEach(data => {
+          if (!data.scheduledDate?.toDate) return;
           const s = data.scheduledDate.toDate();
           const dur = data.serviceDuration || 30;
           const buff = data.serviceBuffer || 0;

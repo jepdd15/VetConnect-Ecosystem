@@ -307,7 +307,6 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
 
   const handleDeleteNote = async (noteId) => {
     if (!selectedClient) return;
-    if (!window.confirm('Delete this note permanently?')) return;
     await runTransaction(db, async (transaction) => {
       const userRef = doc(db, 'users', selectedClient.id);
       const snap = await transaction.get(userRef);

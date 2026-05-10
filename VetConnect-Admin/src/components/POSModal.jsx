@@ -5,7 +5,7 @@ import {
   Chip, IconButton, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, FormControl, InputLabel, Select,
   FormControlLabel, Switch, Alert, Divider, ListSubheader, InputAdornment, Tooltip,
-  ToggleButtonGroup, ToggleButton, Popover, Autocomplete,
+  ToggleButtonGroup, ToggleButton, Popover, Autocomplete, Snackbar,
 } from '@mui/material';
 
 // --- ALL REQUIRED ICONS ---
@@ -57,6 +57,9 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
   const[hasScId, setHasScId] = useState(false);
   const [loading, setLoading] = useState(false);
   const [depositAmount, setDepositAmount] = useState('');
+  const [toast, setToast] = useState({ open: false, message: '', severity: 'error' });
+  const showToast = (message, severity = 'error') => setToast({ open: true, message, severity });
+  const [confirmRemove, setConfirmRemove] = useState(null);
 
   // T4.149: Custom discount system.
   // Per-item discounts stored as an object keyed by cart index: { type: '%' | '₱', value: number }
@@ -262,7 +265,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
 
   // --- 2. THE RX COMPLIANCE ENGINE ---
   const processProductToCart = (p) => {
-      if (p.stock < 1) return alert("Out of Stock!"); 
+      if (p.stock < 1) return showToast("Out of stock!");
       if (p.isRxOnly) {
         setPendingRxItem(p); setOpenRxOverride(true); return; 
       }
@@ -303,7 +306,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
 
 
   const handleExternalRxApprove = () => {
-    if (!extVetName || !extClinicName) return alert("You must record the prescribing Vet and Clinic.");
+    if (!extVetName || !extClinicName) return showToast("You must record the prescribing Vet and Clinic.");
     pushToCartArray({ type: 'product', id: pendingRxItem.id, name: pendingRxItem.itemName, price: pendingRxItem.price, qty: 1, isDiscountable: true, isExternalRx: true, externalVet: extVetName, externalClinic: extClinicName });
     setOpenRxOverride(false); setPendingRxItem(null); setExtVetName(''); setExtClinicName('');
   };
@@ -314,7 +317,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
     if (newQty < 1) return; 
     if (newCart[index].type === 'product') {
         const invItem = inventoryList.find(i => i.id === newCart[index].id);
-        if (invItem && newQty > invItem.stock) return alert(`Only ${invItem.stock} in stock!`);
+        if (invItem && newQty > invItem.stock) return showToast(`Only ${invItem.stock} in stock!`);
     }
     newCart[index].qty = newQty;
     setCart(newCart);
@@ -323,7 +326,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
   const removeFromCart = (index) => {
     const item = cart[index];
     if (item.isBase) return;
-    if (item.isPrescribed && !window.confirm(`WARNING: The Veterinarian explicitly prescribed [${item.name}]. Are you sure you want to remove it?`)) return;
+    if (item.isPrescribed) { setConfirmRemove({ index, name: item.name }); return; }
     const newCart = [...cart]; newCart.splice(index, 1); setCart(newCart);
     // T4.149: Re-index item discounts — shift indices above the removed item down by 1.
     setItemDiscounts(prev => {
@@ -626,11 +629,11 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
           encounterItemsVersion: Timestamp.now()
         });
       });
-      alert("Invoice Draft Saved.");
+      showToast("Invoice draft saved.", "success");
       onClose();
     } catch (e) {
       console.error("[POSModal] Draft save error:", e);
-      alert("Error: " + e.message);
+      showToast("Error: " + e.message);
     } finally {
       setLoading(false);
     }
@@ -1882,6 +1885,25 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Prescribed item removal confirmation */}
+      <Dialog open={!!confirmRemove} onClose={() => setConfirmRemove(null)}>
+        <DialogTitle>Remove Prescribed Item?</DialogTitle>
+        <DialogContent>
+          <Typography>The veterinarian explicitly prescribed <strong>{confirmRemove?.name}</strong>. Are you sure you want to remove it?</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmRemove(null)}>Cancel</Button>
+          <Button color="error" variant="contained" onClick={() => {
+            const newCart = [...cart]; newCart.splice(confirmRemove.index, 1); setCart(newCart);
+            setConfirmRemove(null);
+          }}>Remove</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar open={toast.open} autoHideDuration={4000} onClose={() => setToast(t => ({ ...t, open: false }))} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+        <Alert severity={toast.severity} onClose={() => setToast(t => ({ ...t, open: false }))} sx={{ borderRadius: 0 }}>{toast.message}</Alert>
+      </Snackbar>
     </>
   );
 }

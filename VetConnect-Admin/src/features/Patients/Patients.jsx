@@ -96,7 +96,7 @@ export default function Patients() {
     const searchLower = searchText.toLowerCase();
     return owners.filter(o => {
       const matchesOwner = (o.fullName || '').toLowerCase().includes(searchLower) || (o.phone || '').includes(searchLower);
-      const matchesPet = allPetsSnapshot.some(p => p.ownerId === o.id && p.name.includes(searchLower));
+      const matchesPet = allPetsSnapshot.some(p => p.ownerId === o.id && (p.name || '').toLowerCase().includes(searchLower));
       return matchesOwner || matchesPet;
     });
   }, [owners, allPetsSnapshot, searchText]);

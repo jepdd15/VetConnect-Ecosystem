@@ -204,8 +204,9 @@ export default function Queue() {
   const [dispenseReasonText, setDispenseReasonText] = useState('');
   const [dispenseFlagTarget, setDispenseFlagTarget] = useState(null);
 
-  // Lightweight Snackbar for dispense-hold operation errors
   const [dispenseHoldToast, setDispenseHoldToast] = useState({ open: false, message: '', severity: 'error' });
+  const showToast = (message, severity = 'info') => setDispenseHoldToast({ open: true, message, severity });
+  const [confirmDialog, setConfirmDialog] = useState(null);
 
   // T4.92: Custom notification dialog
   const [notifDialogOpen, setNotifDialogOpen] = useState(false);
@@ -352,7 +353,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           await updateDoc(queueRef, { currentServing: 0, currentPrefix: '', lastNumberIssued: 0, status: 'active', lastResetDate: getLocalDateStr() });
         }
         setOpenEndDay(false);
-        if (!isSilent) alert("Cleanup Complete (no patients to process).");
+        if (!isSilent) showToast("Cleanup complete (no patients to process).", "success");
         return;
       }
 
@@ -363,7 +364,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
 
       const queueSnap = await getDoc(doc(db, "queue", "daily_queue"));
       if (queueSnap.exists() && queueSnap.data().lastResetDate === todayStr && !isSilent && !isForcedCleanup) {
-         alert("Data Protected: Another staff member has already reset the queue for today.");
+         showToast("Data protected: another staff member has already reset the queue for today.", "warning");
          setOpenEndDay(false);
          return;
       }
@@ -638,15 +639,15 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       setAuditReasons({});
       setTargetDates({});
       setTargetTimes({});
-      if (!isSilent) alert("Cleanup Complete.");
-    } catch (error) { alert("Error: " + error.message); } 
+      if (!isSilent) showToast("Cleanup complete.", "success");
+    } catch (error) { showToast("Error: " + error.message, "error"); }
   };
 
   const initiateResetDay = async (isAuto = false) => {
     try {
       // Guard: Don't override forced ghost cleanup with a manual reset
       if (isForcedCleanup) {
-        alert("A mandatory ghost cleanup is in progress. Please resolve all unresolved past-day cases first.");
+        showToast("A mandatory ghost cleanup is in progress. Please resolve all unresolved past-day cases first.", "warning");
         return;
       }
       const startOfDay = new Date(filterDate); startOfDay.setHours(0,0,0,0); 
@@ -721,14 +722,14 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         setOpenEndDay(true); 
       } else { 
         if (isAuto) confirmResetDay(true); 
-        else if(window.confirm("No active patients on this date. Reset queue?")) confirmResetDay(); 
+        else setConfirmDialog({ message: 'No active patients on this date. Reset queue?', onConfirm: () => { confirmResetDay(); setConfirmDialog(null); } });
       } 
     } catch (error) { console.log(error); } 
   };
 
   const handleQuickAdmit = async () => {
     try { await quickAdmitER(); } 
-    catch (error) { alert("Error admitting ER patient: " + error.message); }
+    catch (error) { showToast("Error admitting ER patient: " + error.message, "error"); }
   };
 
   const handleMenuClick = (e, row) => { setAnchorEl(e.currentTarget); setSelectedRow(row); };
@@ -883,9 +884,9 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       }
 
       await changeStatus(row, newStatus, clinicSettings);
-    } catch (e) { 
-      alert(e.message); 
-    } 
+    } catch (e) {
+      showToast(e.message, "error");
+    }
   };
   const handleEditOpen = () => {
     if (selectedRow) {
@@ -1016,7 +1017,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       await revertStatus({ ...selectedRow, revertReason: revertReason });
       setOpenRevert(false);
       handleCloseMenu();
-    } catch (e) { alert(e.message); }
+    } catch (e) { showToast(e.message, "error"); }
     finally { setSubmitting(false); }
   };
 
@@ -1260,7 +1261,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       setOpenReschedule(false);
       setAuditReason("");
     } catch (e) {
-      alert("Reschedule failed: " + e.message);
+      showToast("Reschedule failed: " + e.message, "error");
     } finally {
       setSubmitting(false);
     }
@@ -1273,7 +1274,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         await deferAppointment(selectedRow.id, auditReason, undefined, clinicSettings);
         setOpenDefer(false);
         setAuditReason("");
-    } catch (e) { alert(e.message); }
+    } catch (e) { showToast(e.message, "error"); }
     finally { setSubmitting(false); }
   };
 
@@ -1284,7 +1285,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         await markNoShow(selectedRow, auditReason, clinicSettings);
         setOpenNoShow(false);
         setAuditReason("");
-    } catch (e) { alert(e.message); }
+    } catch (e) { showToast(e.message, "error"); }
     finally { setSubmitting(false); }
   };
   const handleOpenEMR = () => {
@@ -1309,7 +1310,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       await rejectAppointment(selectedRow.id, rejectReason, selectedRow.services, isHighStakes, clinicSettings, selectedRow);
       setOpenReject(false);
       setRejectReason('');
-    } catch (err) { alert(err.message); }
+    } catch (err) { showToast(err.message, "error"); }
     finally { setSubmitting(false); }
   };
 
@@ -1644,7 +1645,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       countDone: rows.filter(r => r.status === 'completed' || r.status === 'carried-over' || (r.isTriaged && r.status === 'pending')).length,
       countCancelled: rows.filter(r => r.status === 'cancelled' || r.status === 'no-show').length,
     };
-  }, [rows]);
+  }, [rows, isToday]);
 
   // T3.10b — Derive recently resolved rows from the already-loaded dataset, sorted most-recent first
   const recentlyResolved = useMemo(() => {
@@ -3850,6 +3851,15 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           }
         }}
       />
+
+      <Dialog open={!!confirmDialog} onClose={() => setConfirmDialog(null)} maxWidth="xs">
+        <DialogTitle>Confirm</DialogTitle>
+        <DialogContent><Typography>{confirmDialog?.message}</Typography></DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDialog(null)}>Cancel</Button>
+          <Button variant="contained" onClick={confirmDialog?.onConfirm} sx={{ borderRadius: 0 }}>Confirm</Button>
+        </DialogActions>
+      </Dialog>
 
     </Box>
   );

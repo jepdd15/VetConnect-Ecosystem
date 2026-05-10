@@ -795,7 +795,9 @@ export default function EMRDrawer({
           </table>
           ${renderVitalsSection(rv)}
           ${renderPrescriptionsSection(rec.dispensedProducts || rec.prescriptions)}
-          ${renderVaccineSection(rec.vaccineData)}
+          ${(rec.vaccineAdministrations?.length > 0
+            ? rec.vaccineAdministrations.map(v => renderVaccineSection(v)).join('')
+            : renderVaccineSection(rec.vaccineData))}
           ${renderLabResultsSection(rec.labResults)}
           ${renderDischargeSection(rec.dischargeSummary)}
         </div>

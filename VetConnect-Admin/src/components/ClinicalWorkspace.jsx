@@ -1663,7 +1663,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     if (delta > 0 && item.type === 'product') {
       const invItem = inventoryList.find(i => i.id === item.id);
       if (invItem && (invItem.stock - invItem.reserved) <= 0) {
-        return alert("⚠️ STOCK EXHAUSTED: Cannot increase quantity further.");
+        return showToast("Stock exhausted — cannot increase quantity further.", "error");
       }
     }
 
@@ -2199,7 +2199,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           } catch (guardError) {
               isSavingRef.current = false;
               setLoading(false);
-              return alert(`Failed to transition patient to in-consult before sign-off: ${guardError.message}`);
+              return showToast(`Failed to transition patient before sign-off: ${guardError.message}`, "error");
           }
       }
 
@@ -2630,7 +2630,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       // T4.13: Clear problem list dialog state after successful batch commit.
       setProblemListDialog(null);
       onClose();
-      alert(`✅ ENCOUNTER FINALIZED!\n\nClinical record signed by ${vetName}.\nPatient moved to ${hasDrugsInCart ? 'PHARMACY' : 'CHECKOUT'}.\nTotal: ₱${visitTotal.toLocaleString()}`);
+      showToast(`Encounter finalized — signed by ${vetName}. Patient → ${hasDrugsInCart ? 'Pharmacy' : 'Checkout'}. Total: ₱${visitTotal.toLocaleString()}`, "success");
     } catch (error) {
         console.error('[ClinicalWorkspace.handleSaveConsult]:', error.message);
         isSavingRef.current = false;

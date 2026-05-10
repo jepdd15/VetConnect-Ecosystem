@@ -42,7 +42,7 @@ const CLINICAL_KNOWLEDGE_BASE = [
 ];
 
 const ConsultationScreen = ({ route, navigation }) => {
-  const { appointmentId, petId, petName, ownerId } = route.params;
+  const { appointmentId, petId, petName, ownerId } = route.params || {};
 
   // --- SOAP STATES ---
   const [subjective, setSubjective] = useState(""); // Owner's complaint

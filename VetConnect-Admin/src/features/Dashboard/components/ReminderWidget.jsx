@@ -14,9 +14,14 @@ import {
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import VaccinesIcon from '@mui/icons-material/Vaccines';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
+import CampaignIcon from '@mui/icons-material/Campaign';
 import SendIcon from '@mui/icons-material/Send';
 import SyncIcon from '@mui/icons-material/Sync';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import {
+  collection, getDocs, query, where, orderBy, limit,
+} from 'firebase/firestore';
+import { db } from '../../../firebaseConfig';
 import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
 import { useUser } from '../../../context/UserContext';
 import {
@@ -31,8 +36,23 @@ import {
   countAppointmentReminderQueue,
 } from '../../../utils/appointmentReminderQueue';
 import { computeFullBalanceReminderQueue } from '../../../utils/computeBalanceReminderQueue';
+import BulkPromoDialog from '../../../components/BulkPromoDialog';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+const PROMO_STAFF_ROLES = ['admin', 'staff', 'veterinarian', 'groomer'];
+
+/** Returns a human-readable relative date, e.g. "2 days ago", "just now". */
+function formatRelativeDate(date) {
+  const diffMs  = Date.now() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return 'just now';
+  if (diffMin < 60) return `${diffMin} min ago`;
+  const diffHrs = Math.floor(diffMin / 60);
+  if (diffHrs < 24) return `${diffHrs} hr${diffHrs !== 1 ? 's' : ''} ago`;
+  const diffDays = Math.floor(diffHrs / 24);
+  return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
+}
 
 /** Returns a human-readable label for tomorrow, e.g. "Wed, May 1". */
 function getTomorrowLabel() {
@@ -68,6 +88,11 @@ export default function ReminderWidget({ clinicSettings }) {
   const [balanceRecomputing, setBalanceRecomputing] = useState(false);
   const [balanceResult, setBalanceResult]           = useState(null);
 
+  // ── Promotional section state (T4.207) ────────────────────────────────────
+  const [promoCount, setPromoCount]           = useState(null);
+  const [promoDialogOpen, setPromoDialogOpen] = useState(false);
+  const [lastPromoSent, setLastPromoSent]     = useState(null); // Date | null
+
   // Fetch tomorrow's appointment count on mount — only when feature is enabled
   useEffect(() => {
     if (!isEnabled) return;
@@ -91,6 +116,33 @@ export default function ReminderWidget({ clinicSettings }) {
       .then(setVaccineCount)
       .catch(() => setVaccineCount(0));
   }, [isVaccineEnabled]);
+
+  // Fetch promo opted-in client count + last sent date on mount (T4.207)
+  useEffect(() => {
+    getDocs(query(collection(db, 'users'), where('allowPromos', '==', true)))
+      .then((snap) => {
+        const clientCount = snap.docs.filter((d) => {
+          const role = d.data().role || d.data().accessLevel || 'client';
+          return !PROMO_STAFF_ROLES.includes(role);
+        }).length;
+        setPromoCount(clientCount);
+      })
+      .catch(() => setPromoCount(0));
+
+    getDocs(query(
+      collection(db, 'notification_log'),
+      where('type', '==', 'promo'),
+      orderBy('sentAt', 'desc'),
+      limit(1),
+    ))
+      .then((snap) => {
+        if (!snap.empty) {
+          const ts = snap.docs[0].data().sentAt;
+          setLastPromoSent(ts?.toDate ? ts.toDate() : null);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Feature gate — hide widget entirely when all features are disabled.
   // All hooks are declared above this guard to satisfy the rules-of-hooks.
@@ -563,6 +615,74 @@ export default function ReminderWidget({ clinicSettings }) {
           </Button>
         </Box>
       )}
+
+      {/* ── Promotional Section (T4.207) ──────────────────────────────── */}
+      <Box sx={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 2,
+        px: 3,
+        py: 1.5,
+        bgcolor: COLORS.kpiPurpleBg,
+        border: `2px solid ${COLORS.kpiPurpleBorder}`,
+        borderRadius: 0,
+        mb: 1.5,
+      }}>
+        <CampaignIcon sx={{ color: COLORS.kpiPurpleText, fontSize: 22, flexShrink: 0 }} />
+
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.kpiPurpleText }}>
+            PROMOTIONAL
+          </Typography>
+          <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary, mt: 0.25 }}>
+            {promoCount === null
+              ? 'Loading...'
+              : `${promoCount} client${promoCount !== 1 ? 's' : ''} opted in.`}
+            {lastPromoSent && (
+              ` Last sent: ${lastPromoSent.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })} (${formatRelativeDate(lastPromoSent)}).`
+            )}
+          </Typography>
+        </Box>
+
+        <Button
+          onClick={() => setPromoDialogOpen(true)}
+          disabled={promoCount === null || promoCount === 0}
+          startIcon={<SendIcon />}
+          sx={{
+            fontFamily: FONT,
+            ...TYPE.label,
+            fontSize: '0.65rem',
+            flexShrink: 0,
+            color: COLORS.cardBg,
+            bgcolor: COLORS.kpiPurpleText,
+            border: `2px solid ${COLORS.kpiPurpleText}`,
+            borderRadius: 0,
+            px: 2.5,
+            py: 0.75,
+            boxShadow: `2px 2px 0px ${COLORS.accent}`,
+            transition: 'transform 0.1s ease, box-shadow 0.1s ease',
+            '&:hover': {
+              bgcolor: '#4A148C',
+              transform: 'translate(1px, 1px)',
+              boxShadow: `1px 1px 0px ${COLORS.accent}`,
+            },
+            '&.Mui-disabled': {
+              color: COLORS.textMuted,
+              bgcolor: COLORS.surface,
+              borderColor: COLORS.border,
+              boxShadow: 'none',
+            },
+          }}
+        >
+          COMPOSE PROMO
+        </Button>
+      </Box>
+
+      <BulkPromoDialog
+        open={promoDialogOpen}
+        onClose={() => setPromoDialogOpen(false)}
+        onSent={() => setLastPromoSent(new Date())}
+      />
 
       {/* Feedback Snackbar — no window.alert() */}
       <Snackbar

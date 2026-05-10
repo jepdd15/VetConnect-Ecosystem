@@ -33,6 +33,10 @@ import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import SearchIcon from '@mui/icons-material/Search';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import CampaignIcon from '@mui/icons-material/Campaign';
+
+// Components
+import BulkPromoDialog from '../components/BulkPromoDialog';
 
 // Design
 import { FONT, TYPE, COLORS } from '../theme/designTokens';
@@ -41,9 +45,10 @@ import { FONT, TYPE, COLORS } from '../theme/designTokens';
 const PAGE_SIZE = 50;
 
 const TYPE_CHIP_CONFIG = {
-  status:   { label: 'STATUS',   bg: COLORS.chipBlueBg,  color: COLORS.medical,  border: COLORS.medical },
-  custom:   { label: 'CUSTOM',   bg: COLORS.kpiPurpleBg, color: COLORS.grooming, border: COLORS.grooming },
-  reminder: { label: 'REMINDER', bg: COLORS.kpiOrangeBg, color: COLORS.warning,  border: COLORS.warning },
+  status:   { label: 'STATUS',   bg: COLORS.chipBlueBg,  color: COLORS.medical,       border: COLORS.medical },
+  custom:   { label: 'CUSTOM',   bg: COLORS.kpiPurpleBg, color: COLORS.grooming,      border: COLORS.grooming },
+  reminder: { label: 'REMINDER', bg: COLORS.kpiOrangeBg, color: COLORS.warning,       border: COLORS.warning },
+  promo:    { label: 'PROMO',    bg: COLORS.kpiPurpleBg, color: COLORS.kpiPurpleText, border: COLORS.kpiPurpleBorder },
 };
 
 const CHANNEL_CHIP_CONFIG = {
@@ -402,6 +407,7 @@ export default function NotificationLogs() {
   const [refreshKey, setRefreshKey]       = useState(0);
   const [isBackfilling, setIsBackfilling] = useState(false);
   const [snackbar, setSnackbar]           = useState({ open: false, message: '', severity: 'success' });
+  const [promoDialogOpen, setPromoDialogOpen] = useState(false);
 
   // ── Fetch (server-side date range, cursor pagination) ─────────────────────
   const fetchLogs = useCallback(async (append = false) => {
@@ -585,11 +591,34 @@ export default function NotificationLogs() {
           flexShrink: 0,
         }}
       >
-        {/* Row 1: Title + record count */}
+        {/* Row 1: Title + COMPOSE PROMO button + record count */}
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
           <Typography sx={{ fontFamily: FONT, fontWeight: 1000, fontSize: '1.5rem', color: COLORS.brand, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
             Notifications
           </Typography>
+          <Button
+            onClick={() => setPromoDialogOpen(true)}
+            startIcon={<CampaignIcon sx={{ fontSize: '16px !important' }} />}
+            sx={{
+              fontFamily: FONT,
+              fontWeight: 800,
+              fontSize: '0.75rem',
+              borderRadius: 0,
+              bgcolor: COLORS.kpiPurpleText,
+              color: COLORS.cardBg,
+              border: `2px solid ${COLORS.kpiPurpleText}`,
+              px: 2,
+              py: 0.5,
+              boxShadow: `2px 2px 0px ${COLORS.accent}`,
+              '&:hover': {
+                bgcolor: '#4A148C',
+                transform: 'translate(1px,1px)',
+                boxShadow: `1px 1px 0px ${COLORS.accent}`,
+              },
+            }}
+          >
+            COMPOSE PROMO
+          </Button>
           <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textMuted, ml: 'auto' }}>
             {filteredLogs.length} of {logs.length} entries
           </Typography>
@@ -666,6 +695,7 @@ export default function NotificationLogs() {
               <MenuItem value="reminder" sx={{ fontFamily: FONT }}>Reminder</MenuItem>
               <MenuItem value="vaccine-reminder" sx={{ fontFamily: FONT }}>Vaccine Reminder</MenuItem>
               <MenuItem value="appointment-reminder" sx={{ fontFamily: FONT }}>Appointment Reminder</MenuItem>
+              <MenuItem value="promo" sx={{ fontFamily: FONT }}>Promo</MenuItem>
             </Select>
           </FormControl>
 
@@ -827,6 +857,13 @@ export default function NotificationLogs() {
           {snackbar.message}
         </Alert>
       </Snackbar>
+
+      {/* ── Bulk Promo Dialog (T4.207) ──────────────────────────────── */}
+      <BulkPromoDialog
+        open={promoDialogOpen}
+        onClose={() => setPromoDialogOpen(false)}
+        onSent={() => setRefreshKey((k) => k + 1)}
+      />
     </Box>
   );
 }

@@ -384,6 +384,14 @@ service cloud.firestore {
       allow delete: if isAuth();
     }
 
+    // ─── PROMO TEMPLATES (promotional notification templates) ─────
+    // Staff reads templates when composing promos (T4.207).
+    // Only staff can write — same pattern as notification_templates.
+    match /promo_templates/{docId} {
+      allow read: if isAuth();
+      allow create, update, delete: if isStaff();
+    }
+
     // ─── DENY-ALL FALLBACK ────────────────────────────────────────
     // Any collection not explicitly matched above is denied.
     // This prevents accidental exposure if new collections are added

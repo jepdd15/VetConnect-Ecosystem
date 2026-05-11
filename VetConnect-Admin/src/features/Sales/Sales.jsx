@@ -386,6 +386,8 @@ export default function Sales() {
    * Generates the Z-Report HTML document from the frozen closing data.
    * Follows the same styling conventions as handlePrintReport.
    */
+  const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
   const generateZReportHTML = () => {
     const cd = closingData;
     if (!cd) return '';
@@ -421,13 +423,13 @@ export default function Sales() {
       </style></head>
       <body>
         <div class="z-badge">Z-REPORT (END OF DAY)</div>
-        <h1>${clinicSettings.clinicName || 'VetConnect Clinic'}</h1>
+        <h1>${esc(clinicSettings.clinicName || 'VetConnect Clinic')}</h1>
         <p class="date">${reportDate}</p>
 
         <div class="close-info">
-          <strong>Closed by:</strong> ${cd.closedByName || 'N/A'}<br/>
+          <strong>Closed by:</strong> ${esc(cd.closedByName || 'N/A')}<br/>
           <strong>Closed at:</strong> ${closedTime}
-          ${cd.reopenedAt ? `<br/><strong style="color:#E65100;">Reopened by:</strong> ${cd.reopenedByName || 'N/A'} — ${cd.reopenReason || 'No reason'}` : ''}
+          ${cd.reopenedAt ? `<br/><strong style="color:#E65100;">Reopened by:</strong> ${esc(cd.reopenedByName || 'N/A')} — ${esc(cd.reopenReason || 'No reason')}` : ''}
         </div>
 
         ${postCloseSales.length > 0 ? `
@@ -463,12 +465,12 @@ export default function Sales() {
         </table>
 
         <div class="signature">
-          <div class="sig-line">Prepared by: ${cd.closedByName || '_______________'}</div>
+          <div class="sig-line">Prepared by: ${esc(cd.closedByName || '_______________')}</div>
           <div class="sig-line">Verified by: _______________</div>
         </div>
 
         <div class="footer">
-          <p>Generated on ${new Date().toLocaleString('en-PH')} | ${clinicSettings.clinicName || 'VetConnect'}</p>
+          <p>Generated on ${new Date().toLocaleString('en-PH')} | ${esc(clinicSettings.clinicName || 'VetConnect')}</p>
           <p>This is a system-generated Z-Report. Retain for BIR compliance.</p>
         </div>
       </body>

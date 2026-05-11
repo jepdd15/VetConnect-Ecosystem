@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# Audit reports (working files from 55-agent ecosystem audit)
+audits/
+
 # Implementation plan files (generated per module, not production code)
 *_PLAN.md
 *_PLAN_*.md

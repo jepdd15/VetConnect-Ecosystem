@@ -1027,20 +1027,26 @@ const EndOfDayModal = React.memo(({
         setLoadingRealTime(true);
         const ids = leftoverPatients.map(p => p.id);
 
-        // We listen to the appointments collection for these specific IDs
-        const q = query(collection(db, "appointments"), where("__name__", "in", ids));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const statuses = {};
-            snapshot.docs.forEach(doc => {
-                statuses[doc.id] = doc.data().status;
+        const chunks = [];
+        for (let i = 0; i < ids.length; i += 30) chunks.push(ids.slice(i, i + 30));
+
+        const statusesRef = {};
+        let pending = chunks.length;
+        const unsubs = chunks.map(chunk => {
+            const q = query(collection(db, "appointments"), where("__name__", "in", chunk));
+            return onSnapshot(q, (snapshot) => {
+                snapshot.docs.forEach(d => { statusesRef[d.id] = d.data().status; });
+                pending = Math.max(0, pending - 1);
+                if (pending === 0) {
+                    setRealTimeStatuses({ ...statusesRef });
+                    setLoadingRealTime(false);
+                }
+            }, (err) => {
+                console.error("Forensic Sync Failure:", err);
             });
-            setRealTimeStatuses(statuses);
-            setLoadingRealTime(false);
-        }, (err) => {
-            console.error("Forensic Sync Failure:", err);
         });
 
-        return () => unsubscribe();
+        return () => unsubs.forEach(u => u());
     }, [open, leftoverPatients]);
 
     // RESET STAGED ACTION ON TAB CHANGE

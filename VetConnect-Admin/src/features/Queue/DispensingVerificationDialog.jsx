@@ -35,7 +35,7 @@ export default function DispensingVerificationDialog({
   clinicSettings,
   inventoryList,
 }) {
-  const encounterItems = patient?.encounterItems || patient?.prescribedItems || [];
+  const encounterItems = useMemo(() => patient?.encounterItems || patient?.prescribedItems || [], [patient?.encounterItems, patient?.prescribedItems]);
   const [checklist, setChecklist] = useState({});
 
   // T3.38: batch selection state — keyed by item index, value = batchNumber string

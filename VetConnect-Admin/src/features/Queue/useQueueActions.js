@@ -1,4 +1,4 @@
-import { deleteDoc, doc, updateDoc, Timestamp, writeBatch, arrayUnion, runTransaction, collection } from 'firebase/firestore';
+import { doc, Timestamp, arrayUnion, runTransaction, collection } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 import { useUser } from '../../context/UserContext';
 import { calculatePulseMetrics, makePulseEventId, createPulseEvent } from '../../utils/pulseUtils';
@@ -470,13 +470,6 @@ export function useQueueActions() {
         throw new Error("❌ AUDIT FAILURE: Rescheduling requires a mandatory forensic justification.");
     }
 
-    const forensicSeal = calculatePulseMetrics(
-        row.clinicalPulse || [],
-        settings,
-        row.createdAt,
-        new Date()
-    );
-
     const apptRef = doc(db, "appointments", row.id);
     const pulseEvent = createPulseEvent('STATUS_CHANGE', {
         fromStatus: row.status || 'unknown',
@@ -493,6 +486,13 @@ export function useQueueActions() {
         const apptDoc = await transaction.get(apptRef);
         if (!apptDoc.exists()) throw new Error("Appointment not found.");
         const oldData = apptDoc.data();
+
+        const forensicSeal = calculatePulseMetrics(
+            oldData.clinicalPulse || [],
+            settings,
+            oldData.createdAt,
+            new Date()
+        );
 
         // T4.205: Swap reservation docs — delete old slot, create new slot.
         // transaction.delete() is a no-op on non-existent docs — safe for pre-T4.205 appointments.

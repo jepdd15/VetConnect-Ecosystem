@@ -156,7 +156,7 @@ export default function QueueScreen() {
 
   // 3. Listen to lobby for wait-time calculation (privacy-scoped) -- T2.345 + T2.347
   useEffect(() => {
-    const now = new Date();
+    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const endOfDay = new Date(startOfDay);
     endOfDay.setDate(endOfDay.getDate() + 1);
@@ -200,7 +200,7 @@ export default function QueueScreen() {
   useEffect(() => {
     const fetchAvg = async () => {
       try {
-        const now = new Date();
+        const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
         const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const q = query(
           collection(db, "appointments"),

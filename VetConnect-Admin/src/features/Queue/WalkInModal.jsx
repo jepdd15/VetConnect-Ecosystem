@@ -92,19 +92,18 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
   const [noShowMap, setNoShowMap] = useState({});
 
   useEffect(() => {
-    if (open && clients.length === 0) {
-      const fetchClients = async () => {
-        try {
-          const q = query(collection(db, "users"), where("role", "==", "pet_owner"));
-          const snap = await getDocs(q);
-          const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-          list.sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
-          setClients(list);
-        } catch (e) { console.error(e); }
-      };
-      fetchClients();
-    }
-  }, [open, clients]);
+    if (!open) return;
+    const fetchClients = async () => {
+      try {
+        const q = query(collection(db, "users"), where("role", "==", "pet_owner"));
+        const snap = await getDocs(q);
+        const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        list.sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
+        setClients(list);
+      } catch (e) { console.error(e); }
+    };
+    fetchClients();
+  }, [open]);
 
   // Prefill from Patients CRM (T2.115)
   useEffect(() => {
@@ -431,20 +430,20 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
             petAllergies = pet.petAllergies || 'None';
           }
 
-          // Map services
+          // Map services — skip any that no longer exist in the catalog
           const mappedServices = entry.selectedServices.map(svcName => {
             const s = servicesList.find(item => item.name === svcName);
-            const dept = s?.department || s?.category || 'General';
+            if (!s) { console.warn(`[WalkInModal] Service "${svcName}" not found in catalog — skipped.`); return null; }
             return {
-              id: s?.id || Math.random().toString(36).substr(2, 9),
+              id: s.id,
               name: svcName,
               price: resolveTieredPrice(s, petWeight),
-              department: dept,
+              department: s.department || s.category || 'General',
               status: 'pending',
               staffId: null,
               staffName: 'Unassigned',
             };
-          });
+          }).filter(Boolean);
 
           const isEmergency = entry.selectedServices.some(
             svcName => servicesList.find(s => s.name === svcName)?.isEmergency

@@ -1,0 +1,43 @@
+# Hide documentation, planning, and audit files from GitHub diff/browse views
+# Files are still in the repo — just collapsed behind "generated files" toggle
+
+# Deep-dive analysis files (historical)
+*_DEEPDIVE.md linguist-generated
+*_DEEPDIVE_*.md linguist-generated
+ECOSYSTEM_ARCHITECTURE_REPORT.md linguist-generated
+
+# Planning and task management
+MASTER_TASKLIST.md linguist-generated
+IMPLEMENTATION_GUIDE.md linguist-generated
+handoff.json linguist-generated
+
+# Thesis documents
+THESIS_RECONCILIATION.md linguist-generated
+THESIS_CORRECTIONS.html linguist-generated
+THESIS_CORRECTIONS.pdf linguist-generated
+BetaTestEra.pdf linguist-generated
+BetaTestEra.txt linguist-generated
+Chapter-4.pdf linguist-generated
+Chapter-4.txt linguist-generated
+Chapter-5.pdf linguist-generated
+Chapter-5.txt linguist-generated
+AlphaTestForm.txt linguist-generated
+BetaTestForm.txt linguist-generated
+
+# Generated diagrams and charts
+VETCONNECT_ERD_SCHEMA.html linguist-generated
+VETCONNECT_ERD_SCHEMA.pdf linguist-generated
+VETCONNECT_FLOWCHARTS.html linguist-generated
+VETCONNECT_FLOWCHARTS.pdf linguist-generated
+VETCONNECT_DIAGRAMS.html linguist-generated
+VETCONNECT_DIAGRAMS.pdf linguist-generated
+erd_diagram.svg linguist-generated
+
+# Audit reports
+audits/** linguist-generated
+
+# Plan files
+AUDIT_T4233_CALENDAR_AI_CONTEXT_PLAN.md linguist-generated
+
+# Claude agent memory (internal)
+.claude/** linguist-generated

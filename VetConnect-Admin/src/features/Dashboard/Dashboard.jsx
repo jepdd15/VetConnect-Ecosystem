@@ -28,7 +28,6 @@ import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 
 import { FONT, TYPE, COLORS } from '../../theme/designTokens';
-import { useUser } from '../../context/UserContext';
 import { useClinicSettings } from '../../hooks/useClinicSettings';
 import { useDashboardData } from './hooks/useDashboardData';
 import PeriodSelector from './components/PeriodSelector';
@@ -78,7 +77,6 @@ function computeClinicOpenStatus(clinicSettings) {
 // ── Component ────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  const { isAdmin } = useUser();
   const clinicSettings = useClinicSettings();
 
   const visibleTabs = TAB_CONFIG;

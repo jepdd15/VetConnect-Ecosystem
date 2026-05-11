@@ -17,28 +17,11 @@ import PeopleAltIcon from '@mui/icons-material/PeopleAlt';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import SpeedIcon from '@mui/icons-material/Speed';
 
-import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
+import { FONT, TYPE, COLORS, STATUS_COLORS } from '../../../theme/designTokens';
 import KPICard from './KPICard';
 import HorizontalBar from './HorizontalBar';
 import { buildDrillDown } from '../utils/drillDownConfig';
 
-// Hex colors for each appointment status in the distribution bar.
-// These are deliberate data-viz colors, not COLORS tokens — they need
-// to be visually distinct from each other when displayed side-by-side.
-const STATUS_COLORS = {
-  pending:        '#90A4AE',
-  confirmed:      '#42A5F5',
-  arrived:        '#66BB6A',
-  'in-consult':   '#FFA726',
-  dispensing:     '#AB47BC',
-  billing:        '#EC407A',
-  completed:      COLORS.success,
-  cancelled:      COLORS.danger,
-  'no-show':      '#795548',
-  confined:       '#EF5350',
-  'on-hold':      '#BDBDBD',
-  'carried-over': '#8D6E63',
-};
 
 // Department bar uses this palette cycling for up to 6 departments.
 const DEPT_COLORS = [

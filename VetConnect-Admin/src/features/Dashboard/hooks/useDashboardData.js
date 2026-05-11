@@ -1039,10 +1039,10 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
       .reduce((sum, a) => sum + (parseFloat(a.balanceRemaining) || 0), 0);
 
     // T2.306: Revenue by service department — cross-reference sales with appointments
+    const apptMap = new Map(appointments.map(a => [a.id, a]));
     const revByDept = {};
     paidSales.forEach(s => {
-      const matchingAppt = appointments.find(a => a.id === s.appointmentId);
-      const dept = matchingAppt?.serviceCategory || 'Other';
+      const dept = apptMap.get(s.appointmentId)?.serviceCategory || 'Other';
       revByDept[dept] = (revByDept[dept] || 0) + (parseFloat(s.total) || 0);
     });
 

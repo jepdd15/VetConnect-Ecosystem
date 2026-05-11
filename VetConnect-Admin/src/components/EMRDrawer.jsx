@@ -13,7 +13,7 @@ import {
 } from '@mui/icons-material';
 import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
-import { FONT, COLORS, TYPE } from '../theme/designTokens';
+import { FONT, COLORS, TYPE, STATUS_COLORS } from '../theme/designTokens';
 import { resolveVitals } from '../utils/resolveVitals';
 import { resolveObjectiveText, hasExamData, examSummaryLine } from '../utils/examUtils';
 import { openPrintWindow, PRINT_STYLES, formatPrintDate, esc } from '../utils/printUtils';
@@ -43,23 +43,16 @@ const resolveRecordDate = (record) => {
   return raw?.toDate ? raw.toDate() : new Date(raw);
 };
 
-const STATUS_CHIP_COLORS = {
-  completed: { bg: '#E8F5E9', color: COLORS.success, label: 'COMPLETED' },
-  'in-consult': { bg: '#E3F2FD', color: COLORS.medical, label: 'IN-CONSULT' },
-  dispensing: { bg: '#FFF3E0', color: COLORS.warning, label: 'DISPENSING' },
-  billing: { bg: '#F3E5F5', color: '#6A1B9A', label: 'BILLING' },
-};
-
 const StatusChip = ({ status }) => {
-  const cfg = STATUS_CHIP_COLORS[status] || { bg: '#F5F5F5', color: COLORS.textMuted, label: (status || 'N/A').toUpperCase() };
+  const color = STATUS_COLORS[status] || COLORS.textMuted;
   return (
     <Chip
-      label={cfg.label}
+      label={(status || 'N/A').toUpperCase().replace(/-/g, ' ')}
       size="small"
       sx={{
         height: 18, fontSize: '0.55rem', fontWeight: 900,
-        borderRadius: 0, bgcolor: cfg.bg, color: cfg.color,
-        border: `1px solid ${cfg.color}`,
+        borderRadius: 0, bgcolor: `${color}18`, color,
+        border: `1px solid ${color}`,
       }}
     />
   );
@@ -421,7 +414,9 @@ const RecordCard = ({ record, appointmentId }) => {
                 <Stack spacing={0.75}>
                   {(record.vaccineAdministrations || (record.vaccineData ? [record.vaccineData] : [])).map((v, i) => (
                     <Box key={i} sx={{ px: 1.5, py: 1, bgcolor: COLORS.kpiGreenBg, border: `1px solid ${COLORS.kpiGreenBorder}` }}>
-                      <Typography sx={{ fontSize: '0.75rem', fontWeight: 900, color: COLORS.success, fontFamily: FONT }}>{v.vaccineName}</Typography>
+                      <Typography sx={{ fontSize: '0.75rem', fontWeight: 900, color: COLORS.success, fontFamily: FONT }}>
+                        {v.vaccineName}{v.doseNumber ? ` (Dose ${v.doseNumber}${v.totalDoses ? `/${v.totalDoses}` : ''})` : ''}
+                      </Typography>
                       <Box sx={{ display: 'flex', gap: 1.5, mt: 0.5, flexWrap: 'wrap' }}>
                         {v.manufacturer && <Typography sx={{ fontSize: '0.6rem', color: COLORS.textSecondary }}>Mfr: {v.manufacturer}</Typography>}
                         {v.lotNumber && <Typography sx={{ fontSize: '0.6rem', color: COLORS.textSecondary }}>Lot: {v.lotNumber}</Typography>}

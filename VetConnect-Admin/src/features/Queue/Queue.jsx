@@ -46,7 +46,7 @@ import {
   removeAppointmentQueueDoc,
   updateAppointmentQueueDate,
 } from '../../utils/appointmentReminderQueue';
-import { COLORS, FONT } from '../../theme/designTokens';
+import { COLORS, FONT, STATUS_COLORS } from '../../theme/designTokens';
 import { HIGH_STAKES_STATUSES, ACTIVE_STATUSES, normalizeStatus, TERMINAL_STATUSES } from '../../utils/statusConstants';
 import { getLocalDateStr } from '../../utils/dateUtils';
 import { useClinicSettings } from '../../hooks/useClinicSettings';
@@ -2100,8 +2100,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
 
           <Stack spacing={1}>
             {recentlyResolved.slice(0, 10).map(row => {
-              const statusColor = row.status === 'completed' ? '#2E7D32'
-                : row.status === 'no-show' ? '#E65100' : '#D32F2F';
+              const statusColor = STATUS_COLORS[row.status] || COLORS.danger;
               const canUndo = row.statusHistory && row.statusHistory.length > 0
                 && (isAdmin || !TERMINAL_STATUSES.has(row.status));
               const resolvedTime = row.timeCompleted?.toDate?.() || row.timeRejected?.toDate?.() || null;

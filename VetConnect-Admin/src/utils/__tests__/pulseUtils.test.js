@@ -138,10 +138,9 @@ describe('makePulseEventId', () => {
     expect(id).toMatch(/^pulse_event_\d+_/);
   });
 
-  it('3.3 produces unique IDs across sequential calls', () => {
-    const id1 = makePulseEventId('test');
-    const id2 = makePulseEventId('test');
-    expect(id1).not.toBe(id2);
+  it('3.3 produces unique IDs across 100 burst calls', () => {
+    const ids = new Set(Array.from({ length: 100 }, () => makePulseEventId('test')));
+    expect(ids.size).toBe(100);
   });
 });
 
@@ -340,12 +339,13 @@ describe('calculatePulseMetrics', () => {
     expect(result.raw.recordAgeMins).toBe(360); // 8am to 2pm = 6h = 360 min
   });
 
-  it('6.7 non-terminal record with no auditEnd uses current time (recordAgeMins > 0)', () => {
-    // No auditEnd, no terminal event → falls back to new Date()
-    // We just assert recordAgeMins is positive (we cannot know exact current time)
+  it('6.7 non-terminal record with no auditEnd uses current time (deterministic via fake timers)', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 3, 15, 14, 0, 0)); // Wed 2pm
     const pulse = [mkEvent('arrived', wed8am)];
     const result = calculatePulseMetrics(pulse, defaultSettings, wed8am, wed8am);
-    expect(result.raw.recordAgeMins).toBeGreaterThan(0);
+    expect(result.raw.recordAgeMins).toBe(360); // 8am to 2pm = 6h = 360 min
+    vi.useRealTimers();
   });
 
   it('6.8 voided events are skipped via correctedEventId (DNA-link correction)', () => {

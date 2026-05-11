@@ -1,13 +1,66 @@
 # Dependencies
 node_modules/
 
-# Audit reports (working files from 55-agent ecosystem audit)
+# ── Documentation & planning files (kept locally, not in repo) ──
+
+# Audit reports
 audits/
 
-# Implementation plan files (generated per module, not production code)
+# Deep-dive analysis files
+*_DEEPDIVE.md
+*_DEEPDIVE_*.md
+ECOSYSTEM_ARCHITECTURE_REPORT.md
+
+# Implementation plan files
 *_PLAN.md
 *_PLAN_*.md
-BATCH_*_PLAN.md
-PHASE3_*_PLAN.md
-DASHBOARD_DAY*_PLAN.md
-*_S_TIER_PLAN.md
+
+# Task management & handoff
+MASTER_TASKLIST.md
+IMPLEMENTATION_GUIDE.md
+handoff.json
+CLAUDE.md
+
+# Thesis documents
+THESIS_CORRECTIONS.html
+THESIS_CORRECTIONS.pdf
+THESIS_RECONCILIATION.md
+THESIS_REWRITES.md
+thesis_notes.md
+BetaTestEra.pdf
+BetaTestEra.txt
+Chapter-4.pdf
+Chapter-4.txt
+Chapter-5.pdf
+Chapter-5.txt
+AlphaTestForm.txt
+BetaTestForm.txt
+
+# Generated diagrams
+VETCONNECT_ERD_SCHEMA.html
+VETCONNECT_ERD_SCHEMA.pdf
+VETCONNECT_FLOWCHARTS.html
+VETCONNECT_FLOWCHARTS.pdf
+VETCONNECT_DIAGRAMS.html
+VETCONNECT_DIAGRAMS.pdf
+VETCONNECT_DIAGRAMS.md
+VETCONNECT_DIAGRAMS_PRINT.md
+VETCONNECT_FLOWCHARTS.md
+VETCONNECT_MODERN_NEUBRUTALISM_DESIGN_GUIDE.md
+erd_diagram.svg
+
+# Claude agent memory & config
+.claude/
+
+# Sub-project claude memory
+VetConnect-Admin/.claude/
+VetConnect/.claude/
+
+# Sub-project plan files
+VetConnect-Admin/*_PLAN.md
+VetConnect/*_PLAN.md
+
+# Misc working files
+VetConnect-Admin/marianne_report.txt
+*.Alpha-Test-Evaluation-Form*
+*.Beta-Test-Evaluation-Form*

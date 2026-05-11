@@ -26,8 +26,8 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  FlatList, // THE FIX: Mandatory for high-performance large lists!
-  Modal, // THE FIX: New Explorer Modal!
+  FlatList,
+  Modal,
 } from "react-native";
 import { auth, db } from "../../firebaseConfig";
 
@@ -1955,7 +1955,6 @@ const styles = StyleSheet.create({
   },
   subText: { fontSize: 14, color: COLORS.textMuted, marginBottom: 20 },
 
-  gridWrap: { flexDirection: "row", flexWrap: "wrap", gap: 15 },
   card: {
     width: "47%",
     backgroundColor: COLORS.white,
@@ -1996,22 +1995,6 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     marginBottom: 15,
   },
-  chipWrap: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 10,
-  },
-  catChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: COLORS.borderLight,
-    borderRadius: 0,
-  },
-  catChipSelected: { backgroundColor: COLORS.accent },
-  catText: { color: COLORS.textSecondary, fontWeight: "800", fontSize: 13 },
-  catTextSelected: { color: COLORS.white },
-
   serviceRow: {
     flexDirection: "row",
     justifyContent: "space-between",

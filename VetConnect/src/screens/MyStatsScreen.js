@@ -33,7 +33,6 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { COLORS, FONTS, SHADOW, SPACING } from '../theme/mobileTokens';
 import { useMyStats } from '../hooks/useMyStats';
-// SparkLine retained as fallback; LineChart used at all render sites.
 import VitalsZoomModal from '../components/VitalsZoomModal';
 
 // Enable LayoutAnimation on Android (must run after all imports).
@@ -753,25 +752,6 @@ export default function MyStatsScreen({ route, navigation }) {
           />
         </View>
 
-        {/* Profile completeness + consent removed — not relevant to pet owners */}
-        {false && relationship.profileNudge && (
-          <TouchableOpacity
-            style={styles.profileRow}
-            onPress={() => navigation.navigate('UserProfile')}
-            activeOpacity={0.75}
-          >
-            <View style={styles.profileProgressTrack}>
-              <View
-                style={[
-                  styles.profileProgressFill,
-                  { width: `${relationship.profilePct}%` },
-                ]}
-              />
-            </View>
-            <Text style={styles.profileNudgeText}>{relationship.profileNudge}</Text>
-            <MaterialIcons name="chevron-right" size={16} color={COLORS.accentLight} />
-          </TouchableOpacity>
-        )}
 
       </View>
 
@@ -817,7 +797,7 @@ export default function MyStatsScreen({ route, navigation }) {
                   <Text style={styles.upcomingMeta}>
                     {appt.petName}
                     {' · '}
-                    {appt.scheduledDate.toLocaleDateString('en-PH', {
+                    {appt.scheduledDate?.toLocaleDateString('en-PH', {
                       weekday: 'short',
                       month: 'short',
                       day: 'numeric',
@@ -2102,15 +2082,6 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     backgroundColor: COLORS.cream,
   },
-  screenTitle: {
-    fontFamily: FONTS.black,
-    fontSize: 36,
-    color: COLORS.brand,
-    textTransform: 'uppercase',
-    letterSpacing: -1,
-    lineHeight: 38,
-    marginBottom: 28,
-  },
 
   // ── SECTION ───────────────────────────────────────────────────────────────
   section: {
@@ -2211,23 +2182,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.accent,
     flex: 2,
-  },
-
-  // ── CONSENT ROW ───────────────────────────────────────────────────────────
-  consentRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 4,
-  },
-  consentItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  consentLabel: {
-    fontFamily: FONTS.bold,
-    fontSize: 12,
-    color: COLORS.accent,
   },
 
   // ── MINI BAR CHART (mirrors ClientDashboard) ──────────────────────────────
@@ -2397,41 +2351,7 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
 
-  // ── VACCINES — circular gauge + overdue text ──────────────────────────────
-  vaccineGaugeRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-  },
-  vaccineGaugeText: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  vaccineOverdueText: {
-    fontFamily: FONTS.bold,
-    fontSize: 12,
-    color: COLORS.danger,
-    marginTop: 3,
-  },
-
-  // ── ALLERGY ROW ───────────────────────────────────────────────────────────
-  allergyRow: {
-    backgroundColor: COLORS.warningBg,
-    borderWidth: 1,
-    borderColor: COLORS.warning,
-    borderRadius: 0,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    marginHorizontal: -4,
-    marginBottom: 10,
-    alignItems: 'center',
-  },
-
   // ── CTA BUTTON ────────────────────────────────────────────────────────────
-  petCardCtaRow: {
-    marginTop: 4,
-    marginBottom: 10,
-  },
   ctaWrapper: {
     position: 'relative',
     alignSelf: 'flex-start',
@@ -2462,89 +2382,6 @@ const styles = StyleSheet.create({
     color: COLORS.textOnSky,
     textTransform: 'uppercase',
     letterSpacing: 1,
-  },
-
-  // ── DIAGNOSIS HISTORY ─────────────────────────────────────────────────────
-  diagnosisSummaryRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 14,
-  },
-  diagnosisSummaryPill: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    borderWidth: 2,
-    borderColor: COLORS.brand,
-    borderRadius: 0,
-    padding: 12,
-    alignItems: 'center',
-  },
-  diagnosisSummaryValue: {
-    fontFamily: FONTS.black,
-    fontSize: 28,
-    color: COLORS.brand,
-    lineHeight: 30,
-  },
-  diagnosisSummaryLabel: {
-    fontFamily: FONTS.bold,
-    fontSize: 11,
-    color: COLORS.accentLight,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  diagnosisRecurringRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: COLORS.white,
-    borderWidth: 2,
-    borderColor: COLORS.sky,
-    borderRadius: 0,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    marginBottom: 14,
-  },
-  diagnosisRecurringText: {
-    fontFamily: FONTS.bold,
-    fontSize: 13,
-    color: COLORS.brand,
-    flex: 1,
-  },
-  diagnosisRecurringCount: {
-    color: COLORS.sky,
-  },
-  diagnosisPetGroup: {
-    marginBottom: 14,
-  },
-  diagnosisPetName: {
-    fontFamily: FONTS.black,
-    fontSize: 11,
-    color: COLORS.accentLight,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 6,
-  },
-  diagnosisEntry: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 5,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
-  },
-  diagnosisName: {
-    fontFamily: FONTS.bold,
-    fontSize: 13,
-    color: COLORS.brand,
-    flex: 1,
-  },
-  diagnosisDate: {
-    fontFamily: FONTS.regular,
-    fontSize: 12,
-    color: COLORS.textMuted,
-    marginLeft: 8,
   },
 
   // ── SPENDING BREAKDOWN ────────────────────────────────────────────────────
@@ -2831,47 +2668,6 @@ const styles = StyleSheet.create({
   },
   weightZoomIcon: {
     marginLeft: 2,
-  },
-
-  // ── MEDICATION ADHERENCE ──────────────────────────────────────────────────
-  medEntry: {
-    marginBottom: 6,
-  },
-  adherenceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-    gap: 6,
-  },
-  adherenceTrack: {
-    flex: 1,
-    height: 4,
-    backgroundColor: COLORS.borderLight,
-    borderRadius: 0,
-    overflow: 'hidden',
-  },
-  adherenceFill: {
-    height: '100%',
-    borderRadius: 0,
-  },
-  adherenceLabel: {
-    fontFamily: FONTS.regular,
-    fontSize: 10,
-    color: COLORS.textMuted,
-    width: 60,
-  },
-
-  // ── LAB TRENDS ────────────────────────────────────────────────────────────
-  labTrendEntry: {
-    marginBottom: 10,
-  },
-  labTrendName: {
-    fontFamily: FONTS.bold,
-    fontSize: 11,
-    color: COLORS.accentLight,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 4,
   },
 
   // ── SEASONAL PATTERNS HEATMAP ─────────────────────────────────────────────

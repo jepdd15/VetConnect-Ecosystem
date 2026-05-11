@@ -1243,16 +1243,6 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: '#3E2723',
   },
-  iconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 0,
-    backgroundColor: "rgba(255,255,255,0.6)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 15,
-  },
-  notifIcon: { fontSize: 20 },
   notifContent: { flex: 1 },
   notifTitle: {
     fontFamily: "Inter_900Black",
@@ -1330,15 +1320,6 @@ const styles = StyleSheet.create({
   balanceIcon: { fontSize: 32, marginRight: 15 },
   balanceTitle: { fontFamily: "Inter_900Black", color: "white", fontSize: 18, letterSpacing: 0.5 },
   balanceMsg: { fontFamily: "Inter_700Bold", color: "rgba(255,255,255,0.9)", fontSize: 12 },
-  balanceActionButton: {
-    backgroundColor: "white",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 2,
-    borderColor: "#3E2723",
-  },
-  balanceActionText: { color: "#3E2723", fontWeight: "900", fontSize: 11 },
-
   // EMPTY STATE
   emptyStateContainer: {
     paddingVertical: 20,

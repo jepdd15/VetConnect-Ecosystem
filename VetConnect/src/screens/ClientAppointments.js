@@ -25,7 +25,6 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Linking,
   Modal,
   RefreshControl,
   ScrollView,

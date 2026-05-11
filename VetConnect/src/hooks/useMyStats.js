@@ -388,70 +388,6 @@ export function useMyStats({
     });
   }, [userPets, petRecords, allAppointments, vaccineCatalog]);
 
-  // ── DIAGNOSIS HISTORY ─────────────────────────────────────────────────────
-
-  /**
-   * Aggregates all diagnosis entries across every pet from medical_records.
-   * T4.13 (structured problem list / active-vs-resolved) is not built, so this
-   * is a flat chronological log with no status distinction.
-   *
-   * Gated on activeTab === 'overview' — returns empty shell when off-tab.
-   */
-  const diagnosisHistory = useMemo(() => {
-    if (activeTab !== 'overview') {
-      return { totalConditions: 0, perPetTimeline: {}, mostRecurring: null, thisYearCount: 0 };
-    }
-
-    const allDx = []; // { name, petName, petId, date }
-
-    userPets.forEach(pet => {
-      const records = petRecords[pet.id] || [];
-      records.forEach(r => {
-        const recordDate = toDate(r.createdAt || r.dateOfVisit || r.date);
-        const dxList = r.diagnoses?.length > 0
-          ? r.diagnoses
-          : r.diagnosis ? [{ name: r.diagnosis }] : [];
-        dxList.forEach(dx => {
-          if (dx.name) {
-            allDx.push({
-              name: dx.name,
-              petName: pet.name,
-              petId: pet.id,
-              date: recordDate,
-            });
-          }
-        });
-      });
-    });
-
-    // Sort newest first.
-    allDx.sort((a, b) => (b.date?.getTime() ?? 0) - (a.date?.getTime() ?? 0));
-
-    const totalConditions = allDx.length;
-
-    // Per-pet timelines (already in descending order from the sort above).
-    const perPetTimeline = {};
-    allDx.forEach(dx => {
-      if (!perPetTimeline[dx.petName]) perPetTimeline[dx.petName] = [];
-      perPetTimeline[dx.petName].push(dx);
-    });
-
-    // Most recurring diagnosis name across all pets (only if count > 1).
-    const nameCounts = {};
-    allDx.forEach(dx => {
-      nameCounts[dx.name] = (nameCounts[dx.name] || 0) + 1;
-    });
-    const sortedNames = Object.entries(nameCounts).sort((a, b) => b[1] - a[1]);
-    const mostRecurring = sortedNames.length > 0 && sortedNames[0][1] > 1
-      ? { name: sortedNames[0][0], count: sortedNames[0][1] }
-      : null;
-
-    const thisYear = new Date().getFullYear();
-    const thisYearCount = allDx.filter(dx => dx.date?.getFullYear() === thisYear).length;
-
-    return { totalConditions, perPetTimeline, mostRecurring, thisYearCount };
-  }, [userPets, petRecords, activeTab]);
-
   // ── YEAR-OVER-YEAR VISIT DATA ─────────────────────────────────────────────
 
   /**
@@ -1333,7 +1269,6 @@ export function useMyStats({
     relationship,
     petCards,
     vaccineCatalog,
-    diagnosisHistory,
     spendingBreakdown,
     visitTypePieData,
     upcomingAppointments,

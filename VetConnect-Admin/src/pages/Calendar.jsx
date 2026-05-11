@@ -1158,7 +1158,7 @@ export default function Calendar() {
         const [deptSnap, invSnap, srvSnap, catSnap, usersSnap, llmSnap, calPromptSnap] = await Promise.all([
           getDocs(collection(db, 'departments')),
           getDocs(collection(db, 'inventory')),
-          getDocs(query(collection(db, 'services'), where('isArchived', '!=', true))),
+          getDocs(collection(db, 'services')),
           getDocs(collection(db, 'inventory_categories')),
           getDocs(collection(db, 'users')),
           getDoc(doc(db, 'clinic_settings', 'llm_config')),

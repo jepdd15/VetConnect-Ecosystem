@@ -1742,7 +1742,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           type: next === 'in-progress' ? 'SERVICE_STARTED' : 'SERVICE_COMPLETED',
           timestamp: Timestamp.now(),
           staffId: auth.currentUser?.uid || 'unknown',
-          staffName: auth.currentUser?.displayName || 'Authorized Clinician',
+          staffName: cwProfile?.fullName || auth.currentUser?.displayName || 'Authorized Clinician',
           serviceId: svcId,
           serviceName: (patient.services || []).find(s => s.id === svcId)?.name || svcId,
           note: `${(patient.services || []).find(s => s.id === svcId)?.name || 'Service'} ${next === 'in-progress' ? 'started' : 'completed'}.`,
@@ -2829,9 +2829,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       const pulseEvent = {
         eventId: makePulseEventId('draft-discard'),
         type: 'DRAFT_DISCARDED',
-        timestamp: Timestamp.now(), // CLIENT-SIDE CLOCK — see W1 in pulseUtils.js
-        staffId: auth.currentUser?.uid || 'unknown',
-        staffName: auth.currentUser?.displayName || 'Authorized Clinician',
+        timestamp: Timestamp.now(),
+        staffId: cwProfile?.uid || auth.currentUser?.uid || 'unknown',
+        staffName: cwProfile?.fullName || auth.currentUser?.displayName || 'Authorized Clinician',
         note: `Draft discarded (was saved by ${draftBannerState?.savedByName || 'unknown'})`,
         discardedDraftSavedAt: draftBannerState?.savedAt ? Timestamp.fromDate(draftBannerState.savedAt) : null,
         discardedDraftSavedBy: draftBannerState?.savedByUid || null,
@@ -4015,7 +4015,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                   size="small"
                   sx={{
                     height: 20, fontSize: '0.56rem', fontWeight: 1000,
-                    bgcolor: '#F57C00', color: 'white', cursor: 'help',
+                    bgcolor: COLORS.danger, color: 'white', cursor: 'help',
                   }}
                 />
               </Tooltip>

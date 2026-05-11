@@ -2420,7 +2420,7 @@ export default function PetHistoryScreen({ route, navigation }) {
                 <Text style={styles.vaccineHeader}>VACCINATION RECORD</Text>
                 {(item.vaccineAdministrations || (item.vaccineData ? [item.vaccineData] : [])).map((vax, vIdx) => (
                   <View key={vIdx} style={vIdx > 0 ? styles.vaccineEntryDivider : undefined}>
-                    <Text style={styles.vaccineName}>{vax.vaccineName}</Text>
+                    <Text style={styles.vaccineName}>{vax.vaccineName}{vax.doseNumber ? ` (Dose ${vax.doseNumber}${vax.totalDoses ? `/${vax.totalDoses}` : ''})` : ''}</Text>
                     <View style={styles.vaccineGrid}>
                       {vax.manufacturer && (
                         <View style={styles.vaccineCell}>

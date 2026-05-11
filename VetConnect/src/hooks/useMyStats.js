@@ -134,13 +134,13 @@ export function useMyStats({
       {
         key: 'emergencyContacts',
         label: 'Emergency Contact',
-        check: v => Array.isArray(v) && v.length > 0 && !!v[0]?.name,
+        check: (v, profile) => (Array.isArray(v) && v.length > 0 && !!v[0]?.name) || !!profile?.emergencyName,
       },
       { key: 'govIdType',         label: 'Government ID' },
     ];
 
     const filledCount = profileFields.filter(f =>
-      f.check ? f.check(userProfile?.[f.key]) : !!userProfile?.[f.key]
+      f.check ? f.check(userProfile?.[f.key], userProfile) : !!userProfile?.[f.key]
     ).length;
 
     const profilePct = Math.round((filledCount / profileFields.length) * 100);

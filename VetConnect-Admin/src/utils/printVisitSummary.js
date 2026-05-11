@@ -86,7 +86,7 @@ export function renderVaccineSection(vaccineData) {
     <h2>Vaccine Administered</h2>
     <div class="info-grid">
       <div><span class="label">Vaccine:</span></div>
-      <div><span class="value">${esc(vaccineData.vaccineName)}</span></div>
+      <div><span class="value">${esc(vaccineData.vaccineName)}${vaccineData.doseNumber ? ' (Dose ' + vaccineData.doseNumber + (vaccineData.totalDoses ? '/' + vaccineData.totalDoses : '') + ')' : ''}</span></div>
       <div></div>
       <div><span class="label">Manufacturer:</span></div>
       <div><span class="value">${esc(vaccineData.manufacturer || '—')}</span></div>
@@ -339,7 +339,9 @@ export function generateVisitSummaryHTML({ record, pet, owner, clinicName, clini
 
   ${renderVitalsSection(rvPrint)}
   ${renderPrescriptionsSection(rec.dispensedProducts || rec.prescriptions)}
-  ${renderVaccineSection(rec.vaccineData)}
+  ${(rec.vaccineAdministrations?.length > 0
+    ? rec.vaccineAdministrations.map(v => renderVaccineSection(v)).join('')
+    : renderVaccineSection(rec.vaccineData))}
   ${renderLabResultsSection(rec.labResults)}
   ${renderDischargeSection(rec.dischargeSummary)}
   ${renderAttachmentsSection(rec.attachments)}

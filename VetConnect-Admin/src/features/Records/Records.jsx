@@ -1915,11 +1915,11 @@ export default function Records() {
         {actionRow?.statusHistory?.length > 0 && (
           <MenuItem onClick={() => handleActionRevertOpen(actionRow)}>
             <ListItemIcon>
-              <UndoIcon fontSize="small" sx={{ color: TERMINAL_STATUSES.has(actionRow?.status) ? '#D32F2F' : '#E65100' }} />
+              <UndoIcon fontSize="small" sx={{ color: TERMINAL_STATUSES.has(actionRow?.status) ? COLORS.danger : COLORS.warning }} />
             </ListItemIcon>
             <ListItemText
               primary={TERMINAL_STATUSES.has(actionRow?.status) ? 'Revert Terminal State' : 'Revert Status (Undo)'}
-              sx={{ color: TERMINAL_STATUSES.has(actionRow?.status) ? '#D32F2F' : '#E65100' }}
+              sx={{ color: TERMINAL_STATUSES.has(actionRow?.status) ? COLORS.danger : COLORS.warning }}
             />
           </MenuItem>
         )}

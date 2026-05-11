@@ -200,7 +200,7 @@ export async function sendAppointmentReminders() {
           sentAt:        Timestamp.now(),
           sentBy:        'System (Auto-Reminder)',
           channel:       'push',
-          type:          'reminder',
+          type:          'appointment-reminder',
         }).catch(() => {});
 
         // 4f. Stamp reminderSentAt to prevent re-sending today

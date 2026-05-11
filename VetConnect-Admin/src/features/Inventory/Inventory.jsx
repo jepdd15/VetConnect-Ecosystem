@@ -118,28 +118,28 @@ export default function Inventory() {
 
   // --- REAL-TIME LISTENER FOR DYNAMIC CATEGORIES ---
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "inventory_categories"), async (snap) => {
+    const seedDefaults = () => {
+      const batch = writeBatch(db);
+      const defaultCategories = [
+        { name: 'medicine',    isMedicine: true,  productClass: 'medicine' },
+        { name: 'vaccine',     isMedicine: true,  productClass: 'medicine' },
+        { name: 'food',        isMedicine: false, productClass: 'retail' },
+        { name: 'supplies',    isMedicine: false, productClass: 'medical_supply' },
+        { name: 'accessories', isMedicine: false, productClass: 'retail' },
+        { name: 'lab',         isMedicine: false, productClass: 'medical_supply' },
+      ];
+      defaultCategories.forEach((cat) => {
+        const catRef = doc(db, "inventory_categories", `default_${cat.name}`);
+        batch.set(catRef, cat, { merge: true });
+      });
+      batch.commit().catch(err => console.error("Auto-seeding failed:", err));
+    };
+
+    const unsub = onSnapshot(collection(db, "inventory_categories"), (snap) => {
       if (snap.empty) {
-        try {
-          const batch = writeBatch(db);
-          const defaultCategories = [
-            { name: 'medicine',    isMedicine: true,  productClass: 'medicine' },
-            { name: 'vaccine',     isMedicine: true,  productClass: 'medicine' },
-            { name: 'food',        isMedicine: false, productClass: 'retail' },
-            { name: 'supplies',    isMedicine: false, productClass: 'medical_supply' },
-            { name: 'accessories', isMedicine: false, productClass: 'retail' },
-            { name: 'lab',         isMedicine: false, productClass: 'medical_supply' },
-          ];
-          defaultCategories.forEach((cat) => {
-            // T2.173: Deterministic IDs prevent duplicate seeding from concurrent tabs
-            const catRef = doc(db, "inventory_categories", `default_${cat.name}`);
-            batch.set(catRef, cat, { merge: true });
-          });
-          await batch.commit();
-        } catch (error) { console.error("Auto-seeding failed:", error); }
+        seedDefaults();
       } else {
         const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        // Ensure UI dropdown only shows unique formatted values with their clinical status
         const catMap = new Map();
         list.forEach(c => {
           const name = c.name?.toLowerCase().trim();

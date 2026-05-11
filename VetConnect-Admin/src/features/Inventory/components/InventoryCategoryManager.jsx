@@ -190,19 +190,21 @@ export default function InventoryCategoryManager({ inventory = [] }) {
       isMedicine: newPC === 'medicine',
     });
 
-    if (!isDefault && name !== oldName) {
+    const nameChanged = !isDefault && name !== oldName;
+    const classChanged = newPC !== oldPC;
+    if (nameChanged || classChanged) {
       const invSnap = await getDocs(query(collection(db, 'inventory'), where('category', '==', oldName)));
-      invSnap.docs.forEach(d => batch.update(d.ref, { category: name }));
-    }
-
-    if (newPC !== oldPC) {
-      const catName = oldName;
-      const invSnap = await getDocs(query(collection(db, 'inventory'), where('category', '==', catName)));
       invSnap.docs.forEach(d => {
-        const data = d.data();
-        if (!data.productClass || data.productClass === oldPC) {
-          batch.update(d.ref, { productClass: newPC, isMedicine: newPC === 'medicine' });
+        const updates = {};
+        if (nameChanged) updates.category = name;
+        if (classChanged) {
+          const data = d.data();
+          if (!data.productClass || data.productClass === oldPC) {
+            updates.productClass = newPC;
+            updates.isMedicine = newPC === 'medicine';
+          }
         }
+        if (Object.keys(updates).length > 0) batch.update(d.ref, updates);
       });
     }
 

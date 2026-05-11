@@ -83,7 +83,7 @@ export default function Records() {
     const df = location.state?.dashboardFilter;
     if (!df) return;
     if (df.searchText) setSearchText(df.searchText);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [location.state]);
 
   const [vets, setVets] = useState([]);
 
@@ -556,7 +556,7 @@ export default function Records() {
           ...dispensingData,
           status: 'billing',
           timePaymentStarted: Timestamp.now(),
-          statusHistory: [...(freshData.statusHistory || []), dispenseRow.status || 'dispensing'],
+          statusHistory: arrayUnion(dispenseRow.status || 'dispensing'),
           clinicalPulse: arrayUnion({
             eventId: makePulseEventId('status'),
             type: 'STATUS_CHANGE',

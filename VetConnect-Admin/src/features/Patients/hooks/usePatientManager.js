@@ -107,40 +107,46 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
     
     setLoadingClientData(true);
     
+    let lastPetIds = '';
     const unsubPets = onSnapshot(
       query(collection(db, "pets"), where("ownerId", "==", selectedClient.id)),
       async (petsSnapshot) => {
+        const basePets = petsSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        const currentPetIds = basePets.map(p => p.id).sort().join(',');
+        const idsChanged = currentPetIds !== lastPetIds;
+        lastPetIds = currentPetIds;
+
+        if (!idsChanged && basePets.length > 0) {
+          setClientPets(prev => prev.map(old => {
+            const fresh = basePets.find(b => b.id === old.id);
+            return fresh ? { ...fresh, lastVisit: old.lastVisit, lastWeight: old.lastWeight, nextAppt: old.nextAppt } : old;
+          }));
+          return;
+        }
+
         const petsWithHistory = await Promise.all(
-          petsSnapshot.docs.map(async (petDoc) => {
-            const petData = { id: petDoc.id, ...petDoc.data() };
-            
-            // A. Fetch Last Visit & Weight
-            const historyQuery = query(
+          basePets.map(async (petData) => {
+            const historySnap = await getDocs(query(
               collection(db, "medical_records"),
               where("petId", "==", petData.id),
               orderBy("date", "desc"),
               limit(1)
-            );
-            const historySnap = await getDocs(historyQuery);
+            ));
             if (!historySnap.empty) {
               const lastRecord = historySnap.docs[0].data();
               petData.lastVisit = lastRecord.date;
-              petData.lastWeight = lastRecord.vitals?.weight || null; // Capture the weight!
+              petData.lastWeight = lastRecord.vitals?.weight || null;
             }
-
-            // B. Fetch Upcoming Appointments (To prevent double-booking)
-            const upcomingQuery = query(
+            const upcomingSnap = await getDocs(query(
               collection(db, "appointments"),
               where("petId", "==", petData.id),
               where("status", "in", ['pending', 'confirmed']),
               orderBy("scheduledDate", "asc"),
               limit(1)
-            );
-            const upcomingSnap = await getDocs(upcomingQuery);
+            ));
             if (!upcomingSnap.empty) {
               petData.nextAppt = upcomingSnap.docs[0].data().scheduledDate;
             }
-
             return petData;
           })
         );

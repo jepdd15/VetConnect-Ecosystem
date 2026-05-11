@@ -236,6 +236,11 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
         })())
       : now;
 
+    // Future booking: if scheduled date is after today, status is 'confirmed' not 'arrived'
+    const scheduledJs = scheduledTimestamp.toDate();
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    const isFutureBooking = prefillDate && scheduledJs > todayStart && scheduledJs.toDateString() !== new Date().toDateString();
+
     return {
       ownerId, ownerName, ownerPhone, ownerEmail: ownerEmail || null,
       petId, petName, petSpecies,
@@ -256,15 +261,15 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
       servicePrice: mappedServices.reduce((sum, s) => sum + (s.price || 0), 0),
       scheduledDateStr: `${scheduledTimestamp.toDate().getFullYear()}-${String(scheduledTimestamp.toDate().getMonth() + 1).padStart(2, '0')}-${String(scheduledTimestamp.toDate().getDate()).padStart(2, '0')}`,
       triageDate: `${scheduledTimestamp.toDate().getFullYear()}-${String(scheduledTimestamp.toDate().getMonth() + 1).padStart(2, '0')}-${String(scheduledTimestamp.toDate().getDate()).padStart(2, '0')}`,
-      status: 'arrived',
+      status: isFutureBooking ? 'confirmed' : 'arrived',
       caseDay: 1,
       statusHistory: [],
-      queueNumber,
+      queueNumber: isFutureBooking ? null : queueNumber,
       ticketPrefix: isEmergency ? 'E' : 'W',
       priority: isEmergency ? 'high' : 'normal',
       scheduledDate: scheduledTimestamp,
       createdAt: now,
-      timeArrived: scheduledTimestamp,
+      ...(isFutureBooking ? { timeAccepted: now } : { timeArrived: scheduledTimestamp }),
       staffNotes: triageNotes,
       systemChips: [
         ...(isEmergency ? ['EMERGENCY'] : []),
@@ -278,13 +283,15 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
       } : {}),
       clinicalPulse: [
         {
-          eventId: makePulseEventId('walkin'),
+          eventId: makePulseEventId(isFutureBooking ? 'calendar-book' : 'walkin'),
           type: 'INCEPTION',
-          toStatus: 'arrived',
+          toStatus: isFutureBooking ? 'confirmed' : 'arrived',
           timestamp: now,
           staffId: profile?.id || 'system_walkin',
           staffName: staffSignature,
-          note: `Physical Intake [WT: ${resolvedWeight || 'N/A'}kg]:${isEmergency ? ' URGENT ER' : ''} ${triageNotes}`,
+          note: isFutureBooking
+            ? `Staff-booked via Calendar for ${scheduledJs.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}${isEmergency ? ' [URGENT]' : ''}`
+            : `Physical Intake [WT: ${resolvedWeight || 'N/A'}kg]:${isEmergency ? ' URGENT ER' : ''} ${triageNotes}`,
         },
       ],
     };
@@ -476,16 +483,34 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
 
           const newApptRef = doc(collection(db, "appointments"));
           transaction.set(newApptRef, appointmentPayload);
+
+          // Future bookings: create slot reservation to prevent double-booking
+          if (prefillDate && appointmentPayload.status === 'confirmed') {
+            const sd = appointmentPayload.scheduledDate.toDate();
+            const dateStr = `${sd.getFullYear()}-${String(sd.getMonth() + 1).padStart(2, '0')}-${String(sd.getDate()).padStart(2, '0')}`;
+            const hh = String(sd.getHours()).padStart(2, '0');
+            const mm = String(sd.getMinutes()).padStart(2, '0');
+            const depts = new Set(mappedServices.map(s => (s.department || 'General').toLowerCase()));
+            for (const dept of depts) {
+              transaction.set(doc(db, 'slot_reservations', `${dateStr}_${hh}_${mm}_${dept}`), {
+                ownerId: finalOwnerId,
+                petId,
+                duration: mappedServices.reduce((sum, s) => sum + (s.duration || 30), 0),
+                createdAt: Timestamp.now(),
+              });
+            }
+          }
         }
       });
 
-      // T4.90: Push notification — walk-in arrived (existing clients only; guests no-op via guard)
+      // Push notification — walk-in arrived or future booking confirmed
+      const isFuture = prefillDate && new Date(prefillDate).toDateString() !== new Date().toDateString();
       petEntries.forEach((entry) => {
         const resolvedOwnerId = walkInType === 'guest' ? null : selectedClient?.id;
         if (resolvedOwnerId) {
           sendPushNotification({
             ownerId: resolvedOwnerId,
-            status: 'arrived',
+            status: isFuture ? 'confirmed' : 'arrived',
             petName: entry.isNewPet || walkInType === 'guest' ? entry.name : entry.selectedPet?.name,
             sentBy: profile?.fullName || 'Staff',
           });
@@ -493,10 +518,9 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
       });
 
       const count = petEntries.length;
-      // Fix 13 — Show Snackbar instead of browser alert()
-      setSuccessToast(count > 1
-        ? `${count} patients successfully added to queue with shared ticket.`
-        : `Patient successfully added to queue.`
+      setSuccessToast(isFuture
+        ? (count > 1 ? `${count} appointments booked.` : `Appointment booked.`)
+        : (count > 1 ? `${count} patients added to queue.` : `Patient added to queue.`)
       );
       handleClose();
     } catch (error) {

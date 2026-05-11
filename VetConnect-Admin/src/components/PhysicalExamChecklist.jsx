@@ -7,7 +7,6 @@ import {
 } from '@mui/material';
 import { COLORS, FONT, TYPE } from '../theme/designTokens';
 import {
-  BODY_SYSTEMS,
   DENTAL_GRADES,
   HYDRATION_OPTIONS,
   MEMBRANE_OPTIONS,

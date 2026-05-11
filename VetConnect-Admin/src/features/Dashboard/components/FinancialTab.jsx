@@ -17,7 +17,6 @@ import Grid from '@mui/material/Grid';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Line, Area, ComposedChart,
   Tooltip as RechartsTooltip, ResponsiveContainer, Cell, Legend,
-  ReferenceLine,
 } from 'recharts';
 
 // Icons
@@ -41,7 +40,6 @@ import KPICard from './KPICard';
 import HorizontalBar from './HorizontalBar';
 import { CHART_COLORS, CHART_TOOLTIP_STYLE, CHART_TICK_STYLE, CHART_GRID_PROPS, PANEL_SX } from './chartConfig';
 import { buildDrillDown } from '../utils/drillDownConfig';
-import { annotateChartData } from '../utils/annotateChartData';
 
 // Payment method colors — each channel has a distinct, meaningful color
 const METHOD_COLORS = {
@@ -79,11 +77,6 @@ export default function FinancialTab({
 
   const goals = clinicSettings?.dashboardGoals || {};
   const hist = data.historical || {};
-
-  const revenueAnnotation = React.useMemo(
-    () => annotateChartData(financial?.revenueTrend, 'amount'),
-    [financial?.revenueTrend],
-  );
 
   const overlayData = React.useMemo(() => {
     if (!financial) return [];
@@ -201,7 +194,7 @@ export default function FinancialTab({
             value={fmt(financial.monthlyBurnRate)}
             icon={<LocalFireDepartmentIcon />}
             variant={financial.monthlyBurnRate > financial.totalCollected ? 'red' : 'orange'}
-            subtitle={`₱${financial.dailyExpenseRate.toLocaleString()}/day avg`}
+            subtitle={`₱${(financial.dailyExpenseRate || 0).toLocaleString()}/day avg`}
             compact
             onClick={drillDown['MONTHLY BURN RATE']}
             insight={insights['MONTHLY BURN RATE']}

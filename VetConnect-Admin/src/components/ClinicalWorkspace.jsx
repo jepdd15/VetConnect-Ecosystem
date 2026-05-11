@@ -19,7 +19,7 @@ import {
   Stack, Collapse, Tooltip, InputBase, Switch,
   Autocomplete, Alert, Snackbar, CircularProgress,
   DialogTitle, DialogContent, DialogContentText, DialogActions,
-  Drawer, ListSubheader,
+  Drawer,
   ToggleButtonGroup, ToggleButton, FormControlLabel,
   Checkbox, Select,
 } from '@mui/material';
@@ -48,7 +48,7 @@ import {
   Assignment as AssignmentIcon,
 } from '@mui/icons-material';
 import { doc, collection, Timestamp, addDoc, updateDoc, getDoc, query, where, orderBy, getDocs, arrayUnion, writeBatch, runTransaction, setDoc } from 'firebase/firestore';
-import { db, auth, storage } from '../firebaseConfig';
+import { db, auth } from '../firebaseConfig';
 // T4.121: File attachment upload utility
 import { uploadAttachment } from '../utils/uploadAttachment';
 import { useInventory } from '../features/Inventory/hooks/useInventory';
@@ -5182,7 +5182,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                   {patient?.petName || 'UNKNOWN PATIENT'}
                 </Typography>
                 <Typography component="div" sx={{ fontFamily: FONT, fontSize: '0.68rem', fontWeight: 900, color: COLORS.brand, textTransform: 'uppercase', mt: 0.5, opacity: 0.8, display: 'flex', alignItems: 'center', gap: 1 }}>
-                    {patient?.petSpecies} • {patient?.petBreed || 'MIXED'} • {patient?.petGender || '??'} • {calculateAge(patient?.petBirthdate || petDetails?.dob)} • {soapData.objWeight || patient.petWeight ? `${soapData.objWeight || patient.petWeight} KG` : 'WEIGH REQUIRED'} • {patient?.petIsNeutered ? 'FIXED' : 'INTACT'}
+                    {patient?.petSpecies} • {patient?.petBreed || 'MIXED'} • {patient?.petGender || '??'} • {calculateAge(patient?.petBirthdate || petDetails?.dob)} • {soapData.objWeight || patient?.petWeight ? `${soapData.objWeight || patient?.petWeight} KG` : 'WEIGH REQUIRED'} • {patient?.petIsNeutered ? 'FIXED' : 'INTACT'}
                     {(() => { const a = patient?.petAllergies || patient?.allergies || ''; return a.trim().length > 0 && a.toUpperCase() !== 'NONE'; })() ? (
                         <Box component="span" sx={{ bgcolor: '#D32F2F', color: 'white', px: 0.8, py: 0.1, borderRadius: 0.5, fontSize: '0.55rem', fontWeight: 1000, ml: 1, display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
                             ⚠️ {(patient?.petAllergies || patient?.allergies || '').toUpperCase()} ALERT
@@ -5270,7 +5270,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                     {patient?.petName?.toUpperCase() || 'UNKNOWN PATIENT'}
                 </Typography>
                 <Typography variant="caption" sx={{ color: COLORS.brand, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1.5, opacity: 0.8, display: 'flex', alignItems: 'center', gap: 1, justifyContent: 'center' }}>
-                    {patient?.petSpecies} • {patient?.petBreed || 'MIXED BREED'} • {patient?.petGender || 'UNKNOWN'} • {calculateAge(patient?.petBirthdate || petDetails?.dob)} • {soapData.objWeight || patient.petWeight ? `${soapData.objWeight || patient.petWeight} KG` : 'WEIGH REQUIRED'} • {patient?.petIsNeutered ? 'FIXED' : 'INTACT'} • {patient?.color || patient?.petColor || petDetails?.color || 'N/A'}
+                    {patient?.petSpecies} • {patient?.petBreed || 'MIXED BREED'} • {patient?.petGender || 'UNKNOWN'} • {calculateAge(patient?.petBirthdate || petDetails?.dob)} • {soapData.objWeight || patient?.petWeight ? `${soapData.objWeight || patient?.petWeight} KG` : 'WEIGH REQUIRED'} • {patient?.petIsNeutered ? 'FIXED' : 'INTACT'} • {patient?.color || patient?.petColor || petDetails?.color || 'N/A'}
                     {(() => { const a = patient?.petAllergies || patient?.allergies || ''; return a && a.trim().length > 0 && a.toUpperCase() !== 'NONE'; })() ? (
                         <Box component="span" sx={{ bgcolor: '#D32F2F', color: 'white', px: 1, py: 0.2, borderRadius: 0, fontSize: '0.6rem', fontWeight: 1000, ml: 1, display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
                             ⚠️ ALLERGY ALERT: {(patient?.petAllergies || patient?.allergies || '').toUpperCase()}

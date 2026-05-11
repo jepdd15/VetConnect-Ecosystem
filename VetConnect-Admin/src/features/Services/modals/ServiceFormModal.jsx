@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem,
   Chip, Button, Box, Typography, Paper, InputAdornment, FormControlLabel,
-  Switch, FormControl, InputLabel, Select, Stack, Grid, IconButton, Divider,
+  Switch, FormControl, InputLabel, Select, Grid, IconButton, Divider,
   ListSubheader, Autocomplete,
 } from '@mui/material';
 

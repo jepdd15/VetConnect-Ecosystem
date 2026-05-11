@@ -1,11 +1,10 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { useLocation } from 'react-router-dom';
 import { DataGrid } from '@mui/x-data-grid';
 import {
   Box, Typography, IconButton, Dialog, DialogTitle, DialogContent,
   DialogActions, Button, TextField, InputAdornment, MenuItem, Alert, Chip,
   Skeleton, Snackbar, Paper, Table, TableHead, TableRow, TableCell,
-  TableBody, Collapse, Switch, FormControlLabel, Tooltip, LinearProgress,
+  TableBody, Collapse, Switch, FormControlLabel, Tooltip,
 } from '@mui/material';
 import {
   collection, query, orderBy, onSnapshot, doc, addDoc, updateDoc,
@@ -90,7 +89,6 @@ function toRangeTimestamps(startDate, endDate) {
 
 export default function Expenses() {
   const { user, profile } = useUser();
-  const location = useLocation();
 
   // ── Core data ──
   const [expenses, setExpenses] = useState([]);
@@ -135,12 +133,6 @@ export default function Expenses() {
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' });
   const showToast = (message, severity = 'success') =>
     setToast({ open: true, message, severity });
-
-  // ─── Location-based dashboard filter ─────────────────────────────────────
-  useEffect(() => {
-    const df = location.state?.dashboardFilter;
-    if (!df) return;
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Expense categories listener (Fix 4) ──────────────────────────────────
   useEffect(() => {

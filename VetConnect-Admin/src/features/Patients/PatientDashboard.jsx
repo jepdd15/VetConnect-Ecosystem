@@ -731,7 +731,8 @@ export default function PatientDashboard() {
       const dateStr = ms
         ? new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
         : '—';
-      (rec.labResults || []).forEach(lab => {
+      const labs = Array.isArray(rec.labResults) ? rec.labResults : [];
+      labs.forEach(lab => {
         if (!lab.testName) return;
         const numericResult = parseFloat(lab.result);
         entries.push({

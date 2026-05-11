@@ -47,7 +47,6 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
   const { profile } = useUser();
   const clinicSettings = useClinicSettings();
   const [cart, setCart] = useState([]);
-  const[selectedItemVal, setSelectedItemVal] = useState('');
   // T4.150: Multi-tender state — array of { method, amount, amountTendered }.
   // Default: one Cash tender for the full balance. Replaces single paymentMethod + amountTendered.
   const [paymentTenders, setPaymentTenders] = useState([
@@ -234,7 +233,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
       if (open && patient) {
         const initialCart = buildCartForAppointment(patient);
 
-        setCart(initialCart); setSelectedItemVal('');        setPaymentTenders([{ method: 'Cash', amount: '', amountTendered: '' }]);
+        setCart(initialCart); setPaymentTenders([{ method: 'Cash', amount: '', amountTendered: '' }]);
         setDepositAmount(patient.depositPaid ? patient.depositPaid.toString() : '');
         setItemDiscounts({}); setBillDiscountType('%'); setBillDiscountValue(''); setBillDiscountReason('');
         // T4.151/T4.152: Reset success overlay state on every modal open.
@@ -251,7 +250,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
       }
 
       if (open && isRetailMode) {
-        setCart([]); setSelectedItemVal('');        setPaymentTenders([{ method: 'Cash', amount: '', amountTendered: '' }]);
+        setCart([]); setPaymentTenders([{ method: 'Cash', amount: '', amountTendered: '' }]);
         setDepositAmount('');
         setItemDiscounts({}); setBillDiscountType('%'); setBillDiscountValue(''); setBillDiscountReason('');
         setCheckoutSuccess(null); setCheckoutError(''); setEmailFeedback('');
@@ -289,21 +288,6 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
 
     setCart(prev => [...prev, taggedItem]);
   };
-
-  const handleDropdownAdd = () => { 
-    if (!selectedItemVal) return; 
-    const [type, id] = selectedItemVal.split('|');
-    if (type === 'product') {
-      const p = inventoryList.find(i => i.id === id);
-      if (p) processProductToCart(p);
-    } else if (type === 'service') {
-      const s = servicesList.find(i => i.id === id);
-      if (s) pushToCartArray({ type: 'service', id: s.id, name: s.name, price: s.price, qty: 1, isDiscountable: s.isScPwdEligible !== false });
-    }
-    setSelectedItemVal(''); 
-  };
-
-
 
   const handleExternalRxApprove = () => {
     if (!extVetName || !extClinicName) return showToast("You must record the prescribing Vet and Clinic.");

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Typography, Chip, Tooltip, IconButton, Button, Stack, Paper } from '@mui/material';
+import { Box, Typography, Chip, Tooltip, IconButton, Button, Stack } from '@mui/material';
 import { STATUS } from '../../utils/statusConstants';
 import { formatDuration } from '../../utils/pulseUtils';
 import { COLORS } from '../../theme/designTokens';
@@ -9,20 +9,12 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import PlayCircleFilledWhiteIcon from '@mui/icons-material/PlayCircleFilledWhite'; 
 import DirectionsWalkIcon from '@mui/icons-material/DirectionsWalk'; 
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital'; 
-import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'; 
 import PaidIcon from '@mui/icons-material/Paid';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
-import SmartphoneIcon from '@mui/icons-material/Smartphone'; 
-import AccessTimeIcon from '@mui/icons-material/AccessTime'; 
-import PauseCircleIcon from '@mui/icons-material/PauseCircle'; 
+import SmartphoneIcon from '@mui/icons-material/Smartphone';
 import WarningIcon from '@mui/icons-material/Warning';
-import PhoneIcon from '@mui/icons-material/Phone';
-import PersonIcon from '@mui/icons-material/Person';
 import AssignmentIcon from '@mui/icons-material/Assignment';
-import ReceiptIcon from '@mui/icons-material/Receipt';
-import ScaleIcon from '@mui/icons-material/Scale';
 import HowToRegIcon from '@mui/icons-material/HowToReg';
-import UndoIcon from '@mui/icons-material/Undo';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import FlagIcon from '@mui/icons-material/Flag';
 
@@ -40,7 +32,7 @@ const calculateAgeString = (dob, isAgeExact) => {
     return isAgeExact === false ? `${ageBase} (EST)` : ageBase;
 };
 
-export const getQueueColumns = (tabValue, currentTime, actions, isToday, departments, isTomorrow, clinicSettings) => [
+export const getQueueColumns = (tabValue, currentTime, actions, isToday, departments, isTomorrow) => [
   { 
     field: 'identity', headerName: 'Patient Identity', flex: 1, minWidth: 180,
     resizable: false, sortable: false, disableColumnMenu: true,
@@ -330,9 +322,9 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
             <Typography variant="caption" sx={{ fontWeight: '800', color: '#795548', mt: 0.5 }}>
               {items.filter(i => i.type === 'service').length} services, {items.filter(i => i.type === 'product').length} products
             </Typography>
-            {p.row.depositPaid > 0 && (
+            {parseFloat(p.row.depositPaid || 0) > 0 && (
               <Typography variant="caption" sx={{ fontWeight: '800', color: '#E65100', mt: 0.5 }}>
-                Deposit: P{p.row.depositPaid.toLocaleString()}
+                Deposit: P{parseFloat(p.row.depositPaid || 0).toLocaleString()}
               </Typography>
             )}
           </Box>

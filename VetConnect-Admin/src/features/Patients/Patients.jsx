@@ -1,11 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
 import { Box, Tabs, Tab, Typography, CircularProgress, Snackbar, Alert, Button } from '@mui/material';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 
 // Design Tokens
-import { FONT, TYPE, COLORS } from '../../theme/designTokens';
+import { FONT, COLORS } from '../../theme/designTokens';
 
 // 1. Logic (The Brain)
 import { usePatientManager } from './hooks/usePatientManager';
@@ -31,15 +30,9 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
 
 export default function Patients() {
-  const location = useLocation();
   const [activeTab, setActiveTab] = useState(0);
 
-  useEffect(() => {
-    const df = location.state?.dashboardFilter;
-    if (!df) return;
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const { 
+  const {
     owners, allPetsSnapshot, searchText, setSearchText, selectedClient, 
     clientPets, clientTransactions, outstandingBalance, 
     handleSelectClient, calculatePetAge, isEditing, setIsEditing,

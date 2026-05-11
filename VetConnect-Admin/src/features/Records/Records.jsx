@@ -4,7 +4,7 @@ import {
   Box, Typography, Paper, TextField, InputAdornment, Chip, Stack, Tooltip,
   IconButton, Popover, Divider, Button, Dialog, DialogTitle, DialogContent, DialogActions,
   Tabs, Tab, FormControl, InputLabel, Select, MenuItem, Menu, ListItemIcon, ListItemText,
-  Snackbar, Alert
+  Snackbar, Alert, ToggleButton, ToggleButtonGroup
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 
@@ -20,7 +20,6 @@ import PersonIcon from '@mui/icons-material/Person';
 import PhoneIcon from '@mui/icons-material/Phone';
 import LockIcon from '@mui/icons-material/Lock';
 import ShieldIcon from '@mui/icons-material/Shield';
-import FilterListIcon from '@mui/icons-material/FilterList';
 import CloseIcon from '@mui/icons-material/Close';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -33,7 +32,6 @@ import EventIcon from '@mui/icons-material/Event';
 import PersonOffIcon from '@mui/icons-material/PersonOff';
 import PauseCircleIcon from '@mui/icons-material/PauseCircle';
 import PlayCircleFilledWhiteIcon from '@mui/icons-material/PlayCircleFilledWhite';
-import { ToggleButton, ToggleButtonGroup } from '@mui/material';
 
 // Design Tokens
 import { FONT, COLORS, TYPE, STATUS_COLORS } from '../../theme/designTokens';
@@ -234,14 +232,11 @@ export default function Records() {
     return { totalQueue, totalConsult, totalConfined };
   }, [ancestors, activeAuditRow, settings]);
 
-  // --- CLIENT-SIDE RENDERING (PRE-FLIGHT) ---
-  const filteredRecords = records; // Now handled server-side for performance
-
   // --- CASE-GROUPING (T2.61) ---
   const groupedRecords = useMemo(() => {
-    if (viewMode !== 'case') return filteredRecords;
+    if (viewMode !== 'case') return records;
 
-    const byId = new Map(filteredRecords.map(r => [r.id, r]));
+    const byId = new Map(records.map(r => [r.id, r]));
     const rootMap = new Map();
 
     const findRoot = (r) => {
@@ -254,12 +249,12 @@ export default function Records() {
       return current.id;
     };
 
-    filteredRecords.forEach(r => {
+    records.forEach(r => {
       rootMap.set(r.id, findRoot(r));
     });
 
     const groups = new Map();
-    filteredRecords.forEach(r => {
+    records.forEach(r => {
       const rootId = rootMap.get(r.id);
       if (!groups.has(rootId)) groups.set(rootId, []);
       groups.get(rootId).push(r);
@@ -286,7 +281,7 @@ export default function Records() {
       });
     }
     return result;
-  }, [viewMode, filteredRecords]);
+  }, [viewMode, records]);
 
   // --- DATE-SECTION HEADERS (Task 9) ---
   const displayRecords = useMemo(() => {
@@ -319,12 +314,12 @@ export default function Records() {
   // --- PER-TAB KPI COUNTS (Task 7) ---
   const tabStatusCounts = useMemo(() => {
     const counts = {};
-    (filteredRecords || []).forEach(r => {
+    (records || []).forEach(r => {
       const s = (r.status || '').toLowerCase();
       counts[s] = (counts[s] || 0) + 1;
     });
     return counts;
-  }, [filteredRecords]);
+  }, [records]);
 
   // --- ACTIONS HANDLERS ---
   const handleOpenAudit = (event, row) => {
@@ -643,7 +638,7 @@ export default function Records() {
     let successCount = 0;
     const failures = [];
     for (const id of selectedRows) {
-      const record = filteredRecords.find(r => r.id === id);
+      const record = records.find(r => r.id === id);
       if (record) {
         try {
           await rescheduleAppointment(record, bulkDate, bulkReason, settings);

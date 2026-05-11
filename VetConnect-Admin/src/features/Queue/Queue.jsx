@@ -4,11 +4,11 @@ import {
   Box, Typography, Paper, IconButton, Tooltip, Stack,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button,
   Tabs, Tab, Menu, MenuItem, ListItemIcon, ListItemText, Divider, List, ListItem, Alert,
-  Popover, Chip, keyframes, FormControl, InputLabel, Select, Switch,
+  Popover, Chip, FormControl, InputLabel, Select, Switch,
   ToggleButton, ToggleButtonGroup, Autocomplete, InputAdornment, Snackbar,
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, Timestamp, where, getDocs, writeBatch, getDoc, arrayUnion, runTransaction, deleteField } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, updateDoc, Timestamp, where, getDocs, writeBatch, getDoc, arrayUnion, runTransaction, deleteField } from 'firebase/firestore';
 
 // 1. BACKEND & BRAIN
 import { db } from '../../firebaseConfig'; 
@@ -224,9 +224,6 @@ export default function Queue() {
   const [expandedPulseId, setExpandedPulseId] = useState(null);
   const [activeCaseDay, setActiveCaseDay] = useState(0);
   const [isPinned, setIsPinned] = useState(false);
-  // T3.70: Active tab index for the tabbed notes popover (kept for backward compat reset logic)
-  const [notesTab, setNotesTab] = useState(0);
-
   // Fix 9: Inline staff notes editing state
   const [editingStaffNotes, setEditingStaffNotes] = useState(false);
   const [editStaffNotesValue, setEditStaffNotesValue] = useState('');
@@ -297,8 +294,6 @@ export default function Queue() {
         setActiveCaseDay(Infinity);
         // T3.68: Reset services sort to insertion order on each new popover open.
         if (type === 'services') setServicesSortMode('booking');
-        // T3.70: Reset notes tab to first available tab on each new popover open.
-        if (type === 'notes') setNotesTab(0);
     }, 200); 
   };
 
@@ -451,7 +446,6 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
 
           // PHASE 5.6.20: THE FORENSIC ACTION TRANSLATOR
           const actionLabel = action === 'hospitalize' ? 'CONFINE' : (action === 'reschedule' ? 'RESCHEDULE' : (action === 'carryover' ? 'CARRY-OVER' : (action === 'defer' ? 'DEFER' : 'CARRY-OVER')));
-          const triagePrefix = `[Clinical Triage: ${actionLabel}]`;
 
           if (patient.status === 'carried-over') {
             batch.update(oldRef, {
@@ -1142,7 +1136,6 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         const carryStaffNotes = freshData.staffNotes || freshData.notes || "";
         const carryClientNotes = freshData.clientNotes || "";
         const existingChips = freshData.systemChips || [];
-        const triagePrefix = '[Clinical Triage: CARRY-OVER]';
 
         // Strip all temporal, forensic, and attribution fields from the clone.
         // Explicit overrides below further ensure correctness (spread-then-override).
@@ -1638,11 +1631,11 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
   const { countOnline, countScheduled, countArrived, countStarted, countDispense, countPayment, countDone, countCancelled } = useMemo(() => {
     return {
       countOnline: rows.filter(r => r.status === 'pending' && (isToday ? !r.isTriaged : true)).length,
-      countScheduled: rows.filter(r => r.status === 'confirmed' && r.status !== 'carried-over' && (isToday ? !r.isTriaged : true)).length,
-      countArrived: rows.filter(r => r.status === 'arrived' && r.status !== 'carried-over' && (isToday ? !r.isTriaged : true)).length,
-      countStarted: rows.filter(r => (r.status === 'in-consult' || r.status === 'confined' || r.status === 'on-hold') && r.status !== 'carried-over' && (isToday ? !r.isTriaged : true)).length,
-      countDispense: rows.filter(r => r.status === 'dispensing' && r.status !== 'carried-over' && (isToday ? !r.isTriaged : true)).length,
-      countPayment: rows.filter(r => r.status === 'billing' && r.status !== 'carried-over' && (isToday ? !r.isTriaged : true)).length,
+      countScheduled: rows.filter(r => r.status === 'confirmed' && (isToday ? !r.isTriaged : true)).length,
+      countArrived: rows.filter(r => r.status === 'arrived' && (isToday ? !r.isTriaged : true)).length,
+      countStarted: rows.filter(r => (r.status === 'in-consult' || r.status === 'confined' || r.status === 'on-hold') && (isToday ? !r.isTriaged : true)).length,
+      countDispense: rows.filter(r => r.status === 'dispensing' && (isToday ? !r.isTriaged : true)).length,
+      countPayment: rows.filter(r => r.status === 'billing' && (isToday ? !r.isTriaged : true)).length,
       countDone: rows.filter(r => r.status === 'completed' || r.status === 'carried-over' || (r.isTriaged && r.status === 'pending')).length,
       countCancelled: rows.filter(r => r.status === 'cancelled' || r.status === 'no-show').length,
     };
@@ -1665,11 +1658,11 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
     let filtered = [];
     switch (tabValue) {
       case 0: filtered = rows.filter(r => r.status === 'pending' && (isToday ? !r.isTriaged : true)); break;
-      case 1: filtered = rows.filter(r => r.status === 'confirmed' && r.status !== 'carried-over' && (isToday ? !r.isTriaged : true)); break;
-      case 2: filtered = rows.filter(r => r.status === 'arrived' && r.status !== 'carried-over' && (isToday ? !r.isTriaged : true)); break;
-      case 3: filtered = rows.filter(r => (r.status === 'in-consult' || r.status === 'confined' || r.status === 'on-hold') && r.status !== 'carried-over' && (isToday ? !r.isTriaged : true)); break;
-      case 4: filtered = rows.filter(r => r.status === 'dispensing' && r.status !== 'carried-over' && (isToday ? !r.isTriaged : true)); break;
-      case 5: filtered = rows.filter(r => r.status === 'billing' && r.status !== 'carried-over' && (isToday ? !r.isTriaged : true)); break;
+      case 1: filtered = rows.filter(r => r.status === 'confirmed' && (isToday ? !r.isTriaged : true)); break;
+      case 2: filtered = rows.filter(r => r.status === 'arrived' && (isToday ? !r.isTriaged : true)); break;
+      case 3: filtered = rows.filter(r => (r.status === 'in-consult' || r.status === 'confined' || r.status === 'on-hold') && (isToday ? !r.isTriaged : true)); break;
+      case 4: filtered = rows.filter(r => r.status === 'dispensing' && (isToday ? !r.isTriaged : true)); break;
+      case 5: filtered = rows.filter(r => r.status === 'billing' && (isToday ? !r.isTriaged : true)); break;
       case 6: filtered = rows.filter(r => r.status === 'completed' || r.status === 'carried-over' || (r.isTriaged && r.status === 'pending')); break;
       case 7: filtered = rows.filter(r => r.status === 'cancelled' || r.status === 'no-show'); break;
       default: filtered = rows;
@@ -3865,9 +3858,3 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
   );
 }
 
-// THE CLINICAL PULSE EFFECT
-const pulse = keyframes`
-  0% { box-shadow: 0 0 0 0 rgba(211, 47, 47, 0.7); }
-  70% { box-shadow: 0 0 0 10px rgba(211, 47, 47, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(211, 47, 47, 0); }
-`;

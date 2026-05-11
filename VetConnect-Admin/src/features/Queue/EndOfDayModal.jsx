@@ -1099,7 +1099,6 @@ const EndOfDayModal = React.memo(({
         if (!res) return;
 
         const rawStatus = (p.status || "").toLowerCase();
-        const isActive = ['arrived', 'in-consult', 'on-hold', 'dispensing', 'billing', 'confined'].includes(rawStatus);
 
         if (res === 'defer') census.defer++;
         else if (res === 'no-show') census.noShow++;

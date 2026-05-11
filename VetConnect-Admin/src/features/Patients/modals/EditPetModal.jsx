@@ -5,7 +5,7 @@ import { doc, updateDoc, Timestamp, collection, query, where, getDocs, writeBatc
 import { db } from '../../../firebaseConfig';
 
 // Design Tokens
-import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
+import { FONT, COLORS } from '../../../theme/designTokens';
 
 // Icons
 import PetsIcon from '@mui/icons-material/Pets';

@@ -114,7 +114,6 @@ export const calculatePulseMetrics = (pulse = [], settings = {}, createdAt, targ
 
 
   const clinicStart = settings.openHour || 8;
-  const clinicEnd = settings.closeHour || 17;
   const workingDays = settings.workingDays || [0, 1, 2, 3, 4, 5, 6];
 
   // 1. RECORD AGE (Absolute)

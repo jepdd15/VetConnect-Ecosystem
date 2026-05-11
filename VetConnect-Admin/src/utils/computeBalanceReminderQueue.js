@@ -146,7 +146,8 @@ export async function computeSingleOwnerBalanceReminder(ownerId, ownerData = {})
     // Exclude refunded/voided sales — consistent with the old Worker logic
     if (status === 'refunded' || status === 'voided') continue;
 
-    const balance = parseFloat(data.balanceRemaining ?? 0);
+    const parsedBalance = parseFloat(data.balanceRemaining ?? 0);
+    const balance = isNaN(parsedBalance) ? 0 : parsedBalance;
     if (balance <= 0) continue;
 
     totalBalance += balance;
@@ -215,7 +216,8 @@ export async function computeFullBalanceReminderQueue() {
     if (!ownerId || ownerId === 'WALK_IN_USER' || String(ownerId).includes('GUEST_')) continue;
     if (status === 'refunded' || status === 'voided') continue;
 
-    const balance = parseFloat(data.balanceRemaining ?? 0);
+    const parsedBalance2 = parseFloat(data.balanceRemaining ?? 0);
+    const balance = isNaN(parsedBalance2) ? 0 : parsedBalance2;
     if (balance <= 0) continue;
 
     const existing = ownerMap.get(ownerId) || {

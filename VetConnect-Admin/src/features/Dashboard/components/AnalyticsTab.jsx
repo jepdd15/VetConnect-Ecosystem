@@ -35,7 +35,6 @@ import MedicationIcon from '@mui/icons-material/Medication';
 import EventRepeatIcon from '@mui/icons-material/EventRepeat';
 import HotelIcon from '@mui/icons-material/Hotel';
 import PersonIcon from '@mui/icons-material/Person';
-import GroupsIcon from '@mui/icons-material/Groups';
 import TimelineIcon from '@mui/icons-material/Timeline';
 import BiotechIcon from '@mui/icons-material/Biotech';
 

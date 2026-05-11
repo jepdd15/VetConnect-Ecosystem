@@ -99,12 +99,14 @@ const ClientDashboard = ({ navigation }) => {
 
   // PULSE ANIMATION FOR ALERTS
   useEffect(() => {
-    Animated.loop(
+    const anim = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 1.1, duration: 1000, useNativeDriver: true }),
         Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
       ])
-    ).start();
+    );
+    anim.start();
+    return () => anim.stop();
   }, []);
 
   // Loading timeout safety net — prevents infinite spinners if all listeners fail.

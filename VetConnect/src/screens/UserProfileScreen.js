@@ -252,8 +252,8 @@ export default function UserProfileScreen({ navigation, route }) {
       !phone.trim() ||
       !address.trim() ||
       !city.trim() ||
-      !emergencyContacts[0].name.trim() ||
-      !emergencyContacts[0].phone.trim()
+      !emergencyContacts[0]?.name?.trim() ||
+      !emergencyContacts[0]?.phone?.trim()
     ) {
       Alert.alert("Incomplete", "Please fill in all required fields (*).");
       return;
@@ -521,7 +521,7 @@ export default function UserProfileScreen({ navigation, route }) {
               const userRef = doc(db, "users", auth.currentUser.uid);
               await updateDoc(userRef, {
                 deletionRequested: true,
-                deletionRequestedAt: new Date().toISOString(),
+                deletionRequestedAt: Timestamp.now(),
               });
               Alert.alert(
                 "Request Submitted",

@@ -557,7 +557,9 @@ const ClientAppointments = ({ navigation }) => {
         fromFollowUp: true,
         ghostAppointmentId: item.id,
       });
-    })();
+    })().catch(err => {
+      Alert.alert('Follow-Up Error', err.message || 'Could not prepare follow-up booking.');
+    });
   };
 
   // Confirm-gated dismissal of a follow-up ghost.

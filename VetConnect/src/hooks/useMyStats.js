@@ -1016,7 +1016,7 @@ export function useMyStats({
       }));
     });
     return result;
-  }, [allAppointments, userPets, activeTab]);
+  }, [allAppointments, userPets, activeTab, seasonalPattern]);
 
   // ── CONDITIONS OVERVIEW ───────────────────────────────────────────────────
 

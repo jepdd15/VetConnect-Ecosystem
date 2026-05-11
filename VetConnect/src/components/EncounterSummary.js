@@ -106,7 +106,7 @@ const EncounterSummary = ({
       setMedRecordFetched(true);
       return;
     }
-    if (collapsed || medRecordFetched) return;
+    if (collapsed || medRecordFetched || !appointment?.id) return;
 
     setMedRecordFetched(true);
     setMedRecordLoading(true);

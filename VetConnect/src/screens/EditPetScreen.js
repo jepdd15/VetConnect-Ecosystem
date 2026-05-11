@@ -67,8 +67,8 @@ const EditPetScreen = ({ route, navigation }) => {
   };
 
   const handleUpdatePet = async () => {
-    if (!name || !breed || !color) {
-      Alert.alert("Missing Info", "Please fill in Name, Breed, and Color.");
+    if (!name || !breed || !color || !gender || gender === 'UNK') {
+      Alert.alert("Missing Info", "Please fill in Name, Breed, Color, and Gender.");
       return;
     }
 
@@ -89,7 +89,8 @@ const EditPetScreen = ({ route, navigation }) => {
         petAllergies: showAllergyToggle && allergyArray.length > 0 ? allergyArray.join(", ") : "None",
         allergies: showAllergyToggle && allergyArray.length > 0 ? allergyArray.join(", ") : "None",
         dob: isAgeTotallyUnknown ? null : Timestamp.fromDate(dob),
-        isAgeExact: !isAgeTotallyUnknown, // Forensic Parity!
+        isAgeExact: !isAgeTotallyUnknown,
+        isAgeUnknown: isAgeTotallyUnknown,
         updatedAt: Timestamp.now(), // Track when it was edited
       });
 

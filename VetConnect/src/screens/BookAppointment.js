@@ -242,9 +242,9 @@ export default function BookAppointment({ navigation, route }) {
   }, [rescheduleMode, selectedPet, selectedServices.length]);
 
   // Outstanding balance — reads from SALES collection (single source of truth).
-  // Matches admin's computation in usePatientManager.js + ClientDashboard.js.
   useEffect(() => {
     if (!auth.currentUser) return;
+    let cancelled = false;
     (async () => {
       try {
         const q = query(
@@ -258,11 +258,12 @@ export default function BookAppointment({ navigation, route }) {
           const bal = data.balanceRemaining || 0;
           return sum + (bal > 0 ? bal : 0);
         }, 0);
-        setOutstandingBalance(total);
+        if (!cancelled) setOutstandingBalance(total);
       } catch (err) {
         console.warn('[BookAppointment] Balance check failed:', err.message);
       }
     })();
+    return () => { cancelled = true; };
   }, []);
 
   // T4.206: One-shot fetch for Cloudflare Worker URL. FAB hidden when empty.

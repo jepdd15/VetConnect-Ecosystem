@@ -253,7 +253,7 @@ const VisitTimeline = ({ events, isActive, collapsed, onToggle, assignedVet, ser
 
                 {/* Right: timestamp */}
                 <Text style={styles.eventTime}>
-                  {event.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {event.timestamp ? event.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                 </Text>
               </View>
 

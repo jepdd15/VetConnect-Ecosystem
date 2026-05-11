@@ -70,10 +70,12 @@ export default function BookingAISheet({
   onAuditLog,
 }) {
   const [messages, setMessages] = useState([]);
+  const messagesRef = useRef([]);
   const [input, setInput]       = useState('');
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState('');
 
+  messagesRef.current = messages;
   const scrollRef = useRef(null);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
@@ -105,7 +107,7 @@ export default function BookingAISheet({
     if (!trimmed || loading) return;
 
     const userMsg = { role: 'user', content: trimmed };
-    const updatedMessages = [...(baseMessages ?? messages), userMsg];
+    const updatedMessages = [...(baseMessages ?? messagesRef.current), userMsg];
 
     // Sliding window: preserve first message + last 19 to stay within context limits
     const cappedMessages =

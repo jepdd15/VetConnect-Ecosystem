@@ -209,7 +209,7 @@ export default function MyPetsScreen({ navigation }) {
       if (p.species === 'Cat' || p.species === 'Feline') counts.Feline++;
     });
     return counts;
-  }, [pets]);
+  }, [pets, vaccineCatalog]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Counts per gender value (from unarchived pets). */
   const genderCounts = useMemo(() => {

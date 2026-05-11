@@ -62,10 +62,11 @@ const LoginScreen = ({ navigation }) => {
 
         const staffRoles = ["admin", "staff", "veterinarian", "groomer"];
         if (staffRoles.includes(userData.role) || staffRoles.includes(userData.accessLevel)) {
-          navigation.replace("StaffDashboard");
-        } else {
-          navigation.replace("ClientDashboard");
+          await auth.signOut();
+          Alert.alert("Staff Account", "Staff members should use the web admin dashboard at your clinic's URL. This app is for pet owners only.");
+          return;
         }
+        navigation.replace("ClientDashboard");
       } else {
         await auth.signOut(); // Log them out if their DB profile is missing
         Alert.alert("Error", "User profile not found. Please contact support.");

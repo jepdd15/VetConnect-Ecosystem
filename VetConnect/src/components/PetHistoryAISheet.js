@@ -139,14 +139,16 @@ export default function PetHistoryAISheet({
    *
    * @param {string} [overrideText] - If provided, uses this instead of `input`
    */
-  const handleSend = useCallback(async (overrideText) => {
+  const handleSend = useCallback(async (overrideText, { skipRateCheck = false } = {}) => {
     const trimmed = (overrideText ?? input).trim();
     if (!trimmed || loading) return;
 
-    const allowed = await checkAndIncrementRate(userId);
-    if (!allowed) {
-      setRateLimited(true);
-      return;
+    if (!skipRateCheck) {
+      const allowed = await checkAndIncrementRate(userId);
+      if (!allowed) {
+        setRateLimited(true);
+        return;
+      }
     }
 
     const userMsg = { role: 'user', content: trimmed };
@@ -193,7 +195,7 @@ export default function PetHistoryAISheet({
       }
       return prev;
     });
-    setTimeout(() => handleSend(lastUserMsg.content), 0);
+    setTimeout(() => handleSend(lastUserMsg.content, { skipRateCheck: true }), 0);
   }, [messages, handleSend]);
 
   // ── Render ────────────────────────────────────────────────────────────────

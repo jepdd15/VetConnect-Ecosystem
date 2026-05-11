@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { collection, getDocs, limit, query, where } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 import { COLORS } from '../theme/mobileTokens';
@@ -642,7 +642,7 @@ const AppointmentCardContent = ({
       {showCalendarButton ? (
         <TouchableOpacity
           style={[styles.btn, styles.calendarBtn]}
-          onPress={() => Linking.openURL(calendarUrl).catch(() => {})}
+          onPress={() => Linking.openURL(calendarUrl).catch(() => Alert.alert('Error', 'Could not open calendar link.'))}
         >
           <Text style={[styles.btnText, { color: COLORS.sky }]}>Add to Calendar</Text>
         </TouchableOpacity>

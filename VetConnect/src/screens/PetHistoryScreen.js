@@ -588,7 +588,7 @@ const VITALS_CONFIG = {
   weight: { label: 'Weight Trend',     unit: 'kg',  color: COLORS.info,    refKey: null    },
   temp:   { label: 'Temperature',      unit: '°C',  color: COLORS.danger,  refKey: 'temp'  },
   hr:     { label: 'Heart Rate',       unit: 'bpm', color: COLORS.success, refKey: 'hr'    },
-  rr:     { label: 'Respiratory Rate', unit: 'bpm', color: '#7B1FA2',      refKey: 'rr'    },
+  rr:     { label: 'Respiratory Rate', unit: 'brpm', color: '#7B1FA2',      refKey: 'rr'    },
   crt:    { label: 'Capillary Refill', unit: 's',   color: '#00838F',      refKey: 'crt'   },
   bcs:    { label: 'Body Condition',   unit: '/9',  color: '#EF6C00',      refKey: 'bcs'   },
   pain:   { label: 'Pain Score',       unit: '/10', color: COLORS.danger,  refKey: null    },
@@ -1532,15 +1532,9 @@ export default function PetHistoryScreen({ route, navigation }) {
     return null;
   }, [history]);
 
-  // T3.93: Collapsible state for the vitals trends card.
-  const [trendsExpanded, setTrendsExpanded] = useState(false);
-  // T4.122: Collapsible state for the medications card (active/historical split).
-  const [rxExpanded, setRxExpanded] = useState(false);
-  const [showHistoricalRx, setShowHistoricalRx] = useState(false);
   // T4.113: Zoom modal state — tracks which vital key is currently expanded.
   const [vitalsZoom, setVitalsZoom] = useState({ open: false, key: null });
-  // T4.123: Lab results summary card — collapsible + zoom modal state.
-  const [labExpanded, setLabExpanded] = useState(false);
+  // T4.123: Lab results zoom modal state.
   const [labZoom, setLabZoom] = useState({ open: false, testName: null });
   // T4.124: Full-screen image lightbox state.
   const [lightbox, setLightbox] = useState({ open: false, url: null });
@@ -1709,8 +1703,7 @@ export default function PetHistoryScreen({ route, navigation }) {
   );
 
   // ---------------------------------------------------------------------------
-  // T4.155 Day 2: Pet Health Snapshot strip — collapsible summary above header cards
-  const [snapshotCollapsed, setSnapshotCollapsed] = useState(false);
+
 
   // Latest vitals from the most-recent record (history is newest-first)
   const latestVitals = useMemo(() => {
@@ -1718,53 +1711,6 @@ export default function PetHistoryScreen({ route, navigation }) {
     const rv = resolveVitals(history[0]);
     if (!rv.weight && !rv.temp && !rv.hr) return null;
     return rv;
-  }, [history]);
-
-  // Active medications — scans recent records for medicine-class items that are
-  // still within their prescribed duration window. Falls back to a 90-day window
-  // for older records that predate the structured sig field.
-  const latestActiveMeds = useMemo(() => {
-    if (!history.length) return [];
-    const now = new Date();
-    const meds = [];
-
-    // Check the most recent 10 records so a multi-week prescription from a prior
-    // visit is still surfaced even if the pet has had follow-up visits since.
-    for (const record of history.slice(0, 10)) {
-      const products = record.dispensedProducts || record.prescriptions || [];
-      const recordDate = record.date?.toDate
-        ? record.date.toDate()
-        : record.date?.seconds ? new Date(record.date.seconds * 1000) : null;
-      if (!recordDate) continue;
-
-      products.forEach(rx => {
-        if ((rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail')) !== 'medicine') return;
-
-        const durationDays = parseInt(rx.sig?.duration) || 0;
-        let endDate = null;
-        let isActive = false;
-
-        if (durationDays > 0) {
-          endDate = new Date(recordDate.getTime() + durationDays * 86400000);
-          isActive = endDate > now;
-        } else {
-          // No structured duration — show if prescribed within the last 90 days
-          const daysSince = (now - recordDate) / 86400000;
-          isActive = daysSince <= 90;
-        }
-
-        if (isActive && !meds.some(m => m.name === rx.name)) {
-          meds.push({
-            ...rx,
-            _recordDate: recordDate,
-            _endDate: endDate,
-            _daysRemaining: endDate ? Math.max(0, Math.ceil((endDate - now) / 86400000)) : null,
-          });
-        }
-      });
-    }
-
-    return meds.slice(0, 5);
   }, [history]);
 
   /** Generates the vaccination passport PDF and opens the OS share sheet. */
@@ -2022,9 +1968,6 @@ export default function PetHistoryScreen({ route, navigation }) {
     const themeColor = isGrooming ? COLORS.accentLight : COLORS.info;
     const themeBg = COLORS.cream;
 
-    // Collapsed header: primary diagnosis label
-    const diagnosisLabel = item.diagnoses?.[0]?.name || item.diagnosis ||
-      (isGrooming ? 'Grooming' : 'Consultation');
 
     const coerceVital = (v) => {
       if (v == null) return '';
@@ -2625,7 +2568,7 @@ export default function PetHistoryScreen({ route, navigation }) {
                                 { label: 'RR',   val: amend.vitals.rr     ? `${amend.vitals.rr} rpm`    : null },
                                 { label: 'CRT',  val: amend.vitals.crt    ? `${amend.vitals.crt}s`      : null },
                                 { label: 'BCS',  val: amend.vitals.bcs    ? `${amend.vitals.bcs}/9`     : null },
-                                { label: 'Pain', val: amend.vitals.pain   ? `${amend.vitals.pain}/4`    : null },
+                                { label: 'Pain', val: amend.vitals.pain   ? `${amend.vitals.pain}/10`   : null },
                               ].filter(e => e.val).map(({ label, val }) => (
                                 <Text key={label} style={styles.amendVitalChip}>{label}: {val}</Text>
                               ))}
@@ -2744,7 +2687,7 @@ export default function PetHistoryScreen({ route, navigation }) {
         >
           <MaterialIcons name="arrow-back-ios" size={20} color={COLORS.cream} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{petName.toUpperCase()}&apos;S CHART</Text>
+        <Text style={styles.headerTitle}>{(petName || 'PET').toUpperCase()}&apos;S CHART</Text>
         <Text style={styles.recordCountHeader}>
           {filteredHistory.length} RECORD{filteredHistory.length !== 1 ? 'S' : ''}
         </Text>
@@ -3249,7 +3192,7 @@ export default function PetHistoryScreen({ route, navigation }) {
                       {latestVitals.rr != null && latestVitals.rr !== '' && (
                         <View style={styles.overviewChip}>
                           <Text style={styles.overviewChipLabel}>RR</Text>
-                          <Text style={styles.overviewChipValue}>{latestVitals.rr} bpm</Text>
+                          <Text style={styles.overviewChipValue}>{latestVitals.rr} brpm</Text>
                         </View>
                       )}
                     </View>

@@ -352,11 +352,13 @@ service cloud.firestore {
     // Public read/write: the Cloudflare Worker Cron reads and updates lastReminderSentAt
     // via Firestore REST API using only the web API key (no Firebase Auth JWT).
     // Admin app writes via computeSingleOwnerBalanceReminder / computeFullBalanceReminderQueue.
-    // Authenticated staff can write (snooze handler in PatientDashboard).
-    // Doc ID = ownerId (deterministic; same owner always resolves the same doc).
+    // Read + update: public (Worker Cron PATCHes lastReminderSentAt via REST API).
+    // Create + delete: authenticated (admin recompute + POS checkout create docs;
+    // snooze uses updateDoc so isAuth() on create doesn't affect it).
     match /balance_reminder_queue/{ownerId} {
       allow read: if true;
-      allow write: if isAuth();
+      allow create, delete: if isAuth();
+      allow update: if true;
     }
 
     // ─── CONSENT RECORDS (per-user sub-collection) ────────────────

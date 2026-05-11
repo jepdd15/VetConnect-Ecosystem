@@ -289,6 +289,8 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
         preferredComm: editForm.preferredComm,
         whatsappOptIn: editForm.whatsappOptIn,
         emergencyContacts: editForm.emergencyContacts,
+        emergencyName: editForm.emergencyContacts?.[0]?.name || null,
+        emergencyPhone: editForm.emergencyContacts?.[0]?.phone || null,
         updatedAt: Timestamp.now(),                // T2.133: resets the freshness clock
     };
 

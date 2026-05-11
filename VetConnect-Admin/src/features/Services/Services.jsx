@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import {
   Box, Typography, Button, Paper, TextField, InputAdornment,
-  FormControl, Select, MenuItem, Snackbar, Alert, Tabs, Tab, Switch, FormControlLabel
+  FormControl, Select, MenuItem, Snackbar, Alert, Tabs, Tab, Switch, FormControlLabel,
+  Dialog, DialogTitle, DialogContent, DialogActions
 } from '@mui/material';
 
 import AddIcon from '@mui/icons-material/Add';
@@ -34,6 +35,7 @@ export default function Services() {
 
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' });
   const showToast = (message, severity = 'success') => setToast({ open: true, message, severity });
+  const [confirmDialog, setConfirmDialog] = useState(null);
 
   const filteredServices = useMemo(() => {
     return services.filter(s => {
@@ -54,11 +56,16 @@ export default function Services() {
     } catch (e) { showToast(e.message, "error"); }
   };
 
-  const handleArchive = async (id, name) => {
-    if (window.confirm(`Archive "${name}"? It will be hidden from walk-in and booking, but can be restored.`)) {
-      try { await archiveService(id); showToast("Service archived.", "success"); }
-      catch (e) { showToast(e.message, "error"); }
-    }
+  const handleArchive = (id, name) => {
+    setConfirmDialog({
+      title: 'Archive Service?',
+      message: `Archive "${name}"? It will be hidden from walk-in and booking, but can be restored.`,
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        try { await archiveService(id); showToast("Service archived.", "success"); }
+        catch (e) { showToast(e.message, "error"); }
+      },
+    });
   };
 
   const handleRestore = async (id) => {
@@ -66,11 +73,17 @@ export default function Services() {
     catch (e) { showToast(e.message, "error"); }
   };
 
-  const handleDelete = async (id, name) => {
-    if (window.confirm(`Permanently delete "${name}"? This cannot be undone.`)) {
-      try { await removeService(id); showToast("Service permanently deleted.", "success"); }
-      catch (e) { showToast(e.message, "error"); }
-    }
+  const handleDelete = (id, name) => {
+    setConfirmDialog({
+      title: 'Permanently Delete?',
+      message: `Permanently delete "${name}"? This cannot be undone.`,
+      color: 'error',
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        try { await removeService(id); showToast("Service permanently deleted.", "success"); }
+        catch (e) { showToast(e.message, "error"); }
+      },
+    });
   };
 
   return (
@@ -216,6 +229,15 @@ export default function Services() {
           item={logItem}
         />
       )}
+
+      <Dialog open={!!confirmDialog} onClose={() => setConfirmDialog(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 900, fontFamily: FONT }}>{confirmDialog?.title}</DialogTitle>
+        <DialogContent><Typography>{confirmDialog?.message}</Typography></DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDialog(null)} sx={{ fontFamily: FONT }}>Cancel</Button>
+          <Button variant="contained" color={confirmDialog?.color || 'primary'} onClick={confirmDialog?.onConfirm} sx={{ borderRadius: 0, fontWeight: 800, fontFamily: FONT }}>Confirm</Button>
+        </DialogActions>
+      </Dialog>
 
       <Snackbar open={toast.open} autoHideDuration={4000} onClose={() => setToast({ ...toast, open: false })} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert severity={toast.severity} sx={{ width: '100%', fontWeight: 'bold', boxShadow: 3 }}>{toast.message}</Alert>

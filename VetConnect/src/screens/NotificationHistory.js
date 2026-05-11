@@ -162,7 +162,7 @@ export default function NotificationHistory({ navigation }) {
       ? notifications
       : notifications.filter((n) => {
           if (activeFilter === 'reminder') {
-            return n.type === 'reminder' || n.type === 'vaccine-reminder' || n.type === 'appointment-reminder';
+            return n.type === 'reminder' || n.type === 'vaccine-reminder' || n.type === 'appointment-reminder' || n.type === 'balance-reminder';
           }
           return n.type === activeFilter;
         });

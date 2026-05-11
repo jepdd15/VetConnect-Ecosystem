@@ -45,10 +45,13 @@ import { FONT, TYPE, COLORS } from '../theme/designTokens';
 const PAGE_SIZE = 50;
 
 const TYPE_CHIP_CONFIG = {
-  status:   { label: 'STATUS',   bg: COLORS.chipBlueBg,  color: COLORS.medical,       border: COLORS.medical },
-  custom:   { label: 'CUSTOM',   bg: COLORS.kpiPurpleBg, color: COLORS.grooming,      border: COLORS.grooming },
-  reminder: { label: 'REMINDER', bg: COLORS.kpiOrangeBg, color: COLORS.warning,       border: COLORS.warning },
-  promo:    { label: 'PROMO',    bg: COLORS.kpiPurpleBg, color: COLORS.kpiPurpleText, border: COLORS.kpiPurpleBorder },
+  status:                 { label: 'STATUS',       bg: COLORS.chipBlueBg,  color: COLORS.medical,       border: COLORS.medical },
+  custom:                 { label: 'CUSTOM',       bg: COLORS.kpiPurpleBg, color: COLORS.grooming,      border: COLORS.grooming },
+  reminder:               { label: 'REMINDER',     bg: COLORS.kpiOrangeBg, color: COLORS.warning,       border: COLORS.warning },
+  'vaccine-reminder':     { label: 'VACCINE',      bg: COLORS.kpiGreenBg,  color: COLORS.success,       border: COLORS.success },
+  'appointment-reminder': { label: 'APPT REMIND',  bg: COLORS.kpiOrangeBg, color: COLORS.warning,       border: COLORS.warning },
+  'balance-reminder':     { label: 'BALANCE',      bg: COLORS.kpiRedBg,    color: COLORS.danger,        border: COLORS.danger },
+  promo:                  { label: 'PROMO',        bg: COLORS.kpiPurpleBg, color: COLORS.kpiPurpleText, border: COLORS.kpiPurpleBorder },
 };
 
 const CHANNEL_CHIP_CONFIG = {
@@ -695,6 +698,7 @@ export default function NotificationLogs() {
               <MenuItem value="reminder" sx={{ fontFamily: FONT }}>Reminder</MenuItem>
               <MenuItem value="vaccine-reminder" sx={{ fontFamily: FONT }}>Vaccine Reminder</MenuItem>
               <MenuItem value="appointment-reminder" sx={{ fontFamily: FONT }}>Appointment Reminder</MenuItem>
+              <MenuItem value="balance-reminder" sx={{ fontFamily: FONT }}>Balance Reminder</MenuItem>
               <MenuItem value="promo" sx={{ fontFamily: FONT }}>Promo</MenuItem>
             </Select>
           </FormControl>

@@ -927,24 +927,21 @@ export default function PatientDashboard() {
     try {
       const newBalance = Math.max(0, (recordPaymentTarget.balanceRemaining || 0) - amount);
       await updateDoc(doc(db, 'sales', recordPaymentTarget.id), { balanceRemaining: newBalance });
-      let updatedSales;
-      setOwnerSales(prev => {
-        updatedSales = prev.map(s =>
-          s.id === recordPaymentTarget.id ? { ...s, balanceRemaining: newBalance } : s
-        );
-        return updatedSales;
-      });
+      const updatedSales = ownerSales.map(s =>
+        s.id === recordPaymentTarget.id ? { ...s, balanceRemaining: newBalance } : s
+      );
+      setOwnerSales(updatedSales);
       setRecordPaymentOpen(false);
       setRecordPaymentTarget(null);
       setRecordPaymentAmount('');
 
-      if (owner?.id && updatedSales) {
+      if (owner?.id) {
         const remainingDebt = updatedSales
           .filter(s => s.status !== 'refunded' && s.status !== 'voided')
           .reduce((sum, s) => sum + (s.balanceRemaining || 0), 0);
-        updateDoc(doc(db, 'users', owner.id), {
+        await updateDoc(doc(db, 'users', owner.id), {
           hasOutstandingBalance: remainingDebt > 0,
-        }).catch(() => {});
+        });
       }
     } catch (e) {
       console.error('[PatientDashboard.handleRecordPayment]:', e.message);

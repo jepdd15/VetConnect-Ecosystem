@@ -81,7 +81,7 @@ export default function EditPetModal({ open, onClose, pet }) {
       });
       setError('');
     }
-  }, [pet]);
+  }, [pet?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- DOB RESOLVER: converts dobMode form fields into Firestore-compatible values ---
   const resolveDob = () => {

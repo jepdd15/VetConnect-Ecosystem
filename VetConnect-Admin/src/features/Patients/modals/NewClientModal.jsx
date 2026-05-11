@@ -95,16 +95,22 @@ export default function NewClientModal({ open, onClose }) {
     // Duplicate phone check — skip if staff already confirmed via override
     if (!forceCreate) {
       setSaving(true);
-      const phoneQ = query(
-        collection(db, 'users'),
-        where('phone', '==', form.phone.trim()),
-        where('role', '==', 'pet_owner'),
-      );
-      const phoneSnap = await getDocs(phoneQ);
-      if (!phoneSnap.empty) {
-        setDuplicates(phoneSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-        setShowDupeWarning(true);
+      try {
+        const phoneQ = query(
+          collection(db, 'users'),
+          where('phone', '==', form.phone.trim()),
+          where('role', '==', 'pet_owner'),
+        );
+        const phoneSnap = await getDocs(phoneQ);
+        if (!phoneSnap.empty) {
+          setDuplicates(phoneSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+          setShowDupeWarning(true);
+          setSaving(false);
+          return;
+        }
+      } catch (err) {
         setSaving(false);
+        setError('Phone check failed: ' + err.message);
         return;
       }
     }

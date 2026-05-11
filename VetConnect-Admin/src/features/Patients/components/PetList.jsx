@@ -280,7 +280,7 @@ export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePet
                       <Box>
                         <Typography sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textMuted }}>{pet.name}</Typography>
                         <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.textMuted }}>
-                          Archived {pet.archivedAt ? new Date(pet.archivedAt.seconds * 1000).toLocaleDateString() : ''}
+                          Archived {pet.archivedAt ? new Date(pet.archivedAt?.seconds ? pet.archivedAt.seconds * 1000 : pet.archivedAt).toLocaleDateString() : ''}
                         </Typography>
                       </Box>
                     </Box>
@@ -317,7 +317,7 @@ export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePet
                     <Typography sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textSecondary }}>{pet.name}</Typography>
                     <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.textMuted }}>
                       {pet.dateOfDeath
-                        ? `Passed ${new Date(pet.dateOfDeath.seconds * 1000).toLocaleDateString()}`
+                        ? `Passed ${new Date(pet.dateOfDeath?.seconds ? pet.dateOfDeath.seconds * 1000 : pet.dateOfDeath).toLocaleDateString()}`
                         : 'Deceased'}
                     </Typography>
                   </Box>

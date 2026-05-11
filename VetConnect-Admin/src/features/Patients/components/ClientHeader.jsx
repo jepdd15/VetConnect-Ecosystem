@@ -102,7 +102,7 @@ export default function ClientHeader({ client, balance, isEditing, onEdit, onCan
                     {engagementKPIs.noShowCount > 0 && (
                       <Chip
                         icon={<EventBusyIcon sx={{ fontSize: '12px !important' }} />}
-                        label={`${engagementKPIs.noShowCount} no-show${engagementKPIs.noShowCount > 1 ? 's' : ''} (${Math.round((engagementKPIs.noShowCount / engagementKPIs.totalAppointments) * 100)}%)`}
+                        label={`${engagementKPIs.noShowCount} no-show${engagementKPIs.noShowCount > 1 ? 's' : ''} (${engagementKPIs.totalAppointments ? Math.round((engagementKPIs.noShowCount / engagementKPIs.totalAppointments) * 100) : 0}%)`}
                         size="small"
                         sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.65rem', height: 20, bgcolor: COLORS.dangerSurface, color: COLORS.danger, border: '1px solid #EF9A9A' }}
                       />
@@ -120,7 +120,7 @@ export default function ClientHeader({ client, balance, isEditing, onEdit, onCan
                       <EmailIcon sx={{fontSize: 16, color: COLORS.textMuted}}/> {client.email || 'No email provided'}
                     </Typography>
                     <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.textMuted, ml: 1, fontStyle: 'italic', borderLeft: `1px solid ${COLORS.border}`, pl: 2.5 }}>
-                      Client Since: {client.createdAt ? new Date(client.createdAt.seconds * 1000).toLocaleDateString() : 'N/A'}
+                      Client Since: {client.createdAt ? new Date(client.createdAt?.seconds ? client.createdAt.seconds * 1000 : client.createdAt).toLocaleDateString() : 'N/A'}
                     </Typography>
                   </Box>
                 )}

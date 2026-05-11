@@ -1373,12 +1373,12 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       }
 
       if (auditRef) {
-        await updateDoc(auditRef, {
+        updateDoc(auditRef, {
           status: 'success',
           responseSummary: (result.text || '').substring(0, 500),
           tokenCount: result.tokenCount ?? null,
           completedAt: Timestamp.now(),
-        });
+        }).catch(() => {});
       }
     } catch (err) {
       if (!llmAbortRef.current) {
@@ -1386,7 +1386,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       }
 
       if (auditRef) {
-        await updateDoc(auditRef, {
+        updateDoc(auditRef, {
           status: 'error',
           errorMessage: err.message || 'Unknown error',
           completedAt: Timestamp.now(),

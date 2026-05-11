@@ -196,7 +196,7 @@ export function useConsentPolicy() {
       throw new Error('[useConsentPolicy.createDraft] Body text is required.');
     }
 
-    const nextVersion = deriveNextVersionNumber(versions);
+    const nextVersion = deriveNextVersionNumber(versions.filter(v => v.type === type));
     const now = Timestamp.now();
 
     const newDoc = await addDoc(versionsColRef, {

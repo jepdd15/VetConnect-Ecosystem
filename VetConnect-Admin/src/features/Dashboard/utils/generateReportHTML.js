@@ -320,8 +320,8 @@ function buildFinancialReport(data) {
 
   html += '<div class="section"><h2>Payment Method Distribution</h2><table>';
   html += '<tr><th>Method</th><th>Amount</th><th>Percentage</th></tr>';
-  const totalPayments = Object.values(financial.paymentMethods).reduce((s, v) => s + v, 0);
-  Object.entries(financial.paymentMethods).sort(([, a], [, b]) => b - a).forEach(([method, amount]) => {
+  const totalPayments = Object.values(financial.paymentMethods || {}).reduce((s, v) => s + v, 0);
+  Object.entries(financial.paymentMethods || {}).sort(([, a], [, b]) => b - a).forEach(([method, amount]) => {
     const pct = totalPayments > 0 ? Math.round((amount / totalPayments) * 100) : 0;
     html += `<tr><td>${esc(method)}</td><td class="numeric">${fmt(amount)}</td><td class="numeric">${pct}%</td></tr>`;
   });
@@ -329,14 +329,14 @@ function buildFinancialReport(data) {
 
   html += '<div class="section"><h2>Revenue By Department</h2><table>';
   html += '<tr><th>Department</th><th>Amount</th></tr>';
-  Object.entries(financial.revByDept).sort(([, a], [, b]) => b - a).forEach(([dept, amount]) => {
+  Object.entries(financial.revByDept || {}).sort(([, a], [, b]) => b - a).forEach(([dept, amount]) => {
     html += `<tr><td>${esc(dept)}</td><td class="numeric">${fmt(amount)}</td></tr>`;
   });
   html += '</table></div>';
 
   html += '<div class="section"><h2>Expense Category Breakdown</h2><table>';
   html += '<tr><th>Category</th><th>Amount</th></tr>';
-  Object.entries(financial.expenseCategories).sort(([, a], [, b]) => b - a).forEach(([cat, amount]) => {
+  Object.entries(financial.expenseCategories || {}).sort(([, a], [, b]) => b - a).forEach(([cat, amount]) => {
     html += `<tr><td>${esc(cat)}</td><td class="numeric">${fmt(amount)}</td></tr>`;
   });
   html += '</table></div>';

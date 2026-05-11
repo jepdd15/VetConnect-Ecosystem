@@ -463,7 +463,7 @@ export default function FinancialTab({
               PAYMENT METHOD DISTRIBUTION
             </Typography>
             <HorizontalBar
-              segments={Object.entries(financial.paymentMethods)
+              segments={Object.entries(financial.paymentMethods || {})
                 .sort(([, a], [, b]) => b - a)
                 .map(([method, amount]) => ({
                   label: method,
@@ -484,7 +484,7 @@ export default function FinancialTab({
               REVENUE BY DEPARTMENT
             </Typography>
             <HorizontalBar
-              segments={Object.entries(financial.revByDept)
+              segments={Object.entries(financial.revByDept || {})
                 .sort(([, a], [, b]) => b - a)
                 .map(([dept, amount], i) => ({
                   label: dept,
@@ -505,11 +505,11 @@ export default function FinancialTab({
         <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.accent, mb: 1.5 }}>
           EXPENSE CATEGORY BREAKDOWN
         </Typography>
-        {Object.keys(financial.expenseCategories).length > 0 ? (
+        {Object.keys(financial.expenseCategories || {}).length > 0 ? (
           <Box sx={{ width: '100%', height: 200 }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
-                data={Object.entries(financial.expenseCategories)
+                data={Object.entries(financial.expenseCategories || {})
                   .sort(([, a], [, b]) => b - a)
                   .map(([category, amount]) => ({ category, amount }))
                 }
@@ -526,7 +526,7 @@ export default function FinancialTab({
                   formatter={(value) => [fmt(value), 'Amount']}
                 />
                 <Bar dataKey="amount" radius={0}>
-                  {Object.entries(financial.expenseCategories)
+                  {Object.entries(financial.expenseCategories || {})
                     .sort(([, a], [, b]) => b - a)
                     .map(([cat]) => (
                       <Cell key={cat} fill={EXPENSE_COLORS[cat] || COLORS.accentLight} />

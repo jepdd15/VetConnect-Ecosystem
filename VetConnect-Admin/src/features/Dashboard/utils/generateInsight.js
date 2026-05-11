@@ -409,14 +409,14 @@ const RULES = [
     target: 'AVG TRANSACTION',
     condition: ({ financial }) => {
       if (!financial || financial.transactionCount < 3) return false;
-      const methods = Object.entries(financial.paymentMethods);
+      const methods = Object.entries(financial.paymentMethods || {});
       if (methods.length < 1) return false;
       const total = methods.reduce((s, [, v]) => s + v, 0);
       const sorted = methods.sort(([, a], [, b]) => b - a);
       return sorted[0][1] / total > 0.8;
     },
     message: ({ financial }) => {
-      const sorted = Object.entries(financial.paymentMethods).sort(([, a], [, b]) => b - a);
+      const sorted = Object.entries(financial.paymentMethods || {}).sort(([, a], [, b]) => b - a);
       const total = sorted.reduce((s, [, v]) => s + v, 0);
       const pct = Math.round((sorted[0][1] / total) * 100);
       return `${sorted[0][0]} is ${pct}% of payments`;

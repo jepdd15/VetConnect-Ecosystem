@@ -33,10 +33,8 @@ export default function ExpiredDisposalModal({ open, onClose, expiredItems, onDi
     setDisposing(true);
     try {
       await onDispose(expiredItems);
-      // onClose is called by the parent's handleDispose after success toast
-    } catch (err) {
-      // Parent's handleDispose catches this and shows the error toast
-      throw err;
+    } catch {
+      // Parent's onDispose handles error display
     } finally {
       setDisposing(false);
     }

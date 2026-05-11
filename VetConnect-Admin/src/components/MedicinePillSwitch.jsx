@@ -2,45 +2,61 @@ import { styled } from '@mui/material/styles';
 import { Switch } from '@mui/material';
 
 /**
- * Bespoke medicine pill toggle switch used across Settings (notification
- * reminders toggle) and InventoryCategoryManager (medicine/retail toggle).
- * Extracted from Settings.jsx so both consumers share one definition.
+ * Brand toggle switch used in Settings notification channel toggles.
+ * Neubrutalist styling: solid colors, square thumb, brown brand palette,
+ * hard offset shadow on the thumb for tactile feel.
  */
-const MedicinePillSwitch = styled(Switch)(({ theme }) => ({
-  width: 62, height: 34, padding: 7,
+const MedicinePillSwitch = styled(Switch)(() => ({
+  width: 56,
+  height: 30,
+  padding: 0,
+  overflow: 'visible',
   '& .MuiSwitch-switchBase': {
-    margin: 1, padding: 0,
-    transform: 'translateX(6px)',
+    padding: 3,
+    transitionDuration: '180ms',
     '&.Mui-checked': {
+      transform: 'translateX(26px)',
       color: '#fff',
-      transform: 'translateX(22px)',
-      '& .MuiSwitch-thumb:before': {
-        background: 'linear-gradient(180deg, #D32F2F 50%, #FFFFFF 50%)', // Red/White Pill
+      '& .MuiSwitch-thumb': {
+        backgroundColor: '#FFF8E1',     // cream thumb when ON
+        border: '2px solid #3E2723',    // brand brown
+        boxShadow: '2px 2px 0px rgba(62, 39, 35, 0.35)',
       },
       '& + .MuiSwitch-track': {
         opacity: 1,
-        backgroundColor: '#D32F2F20',
-        border: '2px solid #D32F2F',
+        backgroundColor: '#5D4037',     // accent brown when ON
+        border: '2px solid #3E2723',
+      },
+    },
+    '&.Mui-disabled': {
+      '& .MuiSwitch-thumb': {
+        backgroundColor: '#EDE7E0',
+        border: '2px solid #A1887F',
+        boxShadow: 'none',
+      },
+      '& + .MuiSwitch-track': {
+        backgroundColor: '#F5F0EB',
+        border: '2px solid #D7CCC8',
+        opacity: 1,
       },
     },
   },
   '& .MuiSwitch-thumb': {
-    backgroundColor: '#fff',
-    width: 32, height: 32,
-    '&:before': {
-      content: "''",
-      position: 'absolute',
-      width: '100%', height: '100%',
-      left: 0, top: 0,
-      background: 'linear-gradient(180deg, #9E9E9E 50%, #E0E0E0 50%)',
-      borderRadius: '50%',
-    },
+    width: 22,
+    height: 22,
+    borderRadius: 2,
+    backgroundColor: '#FFFFFF',
+    border: '2px solid #8D6E63',         // accentLight when OFF
+    boxShadow: '2px 2px 0px rgba(141, 110, 99, 0.35)',
+    boxSizing: 'border-box',
+    transition: 'background-color 180ms, border-color 180ms, box-shadow 180ms',
   },
   '& .MuiSwitch-track': {
     opacity: 1,
-    backgroundColor: '#00000010',
-    borderRadius: 20,
-    border: '2px solid #9E9E9E',
+    backgroundColor: '#EDE7E0',          // borderLight when OFF
+    border: '2px solid #8D6E63',
+    borderRadius: 3,
+    transition: 'background-color 180ms, border-color 180ms',
   },
 }));
 

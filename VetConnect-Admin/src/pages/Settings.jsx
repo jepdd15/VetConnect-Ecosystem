@@ -4,7 +4,7 @@ import {
   Snackbar, Alert, InputAdornment, TextField, Switch, FormControlLabel,
   Divider, Stack, Chip, ListItemText, ToggleButton, ToggleButtonGroup,
   Dialog, DialogTitle, DialogContent, DialogActions, IconButton,
-  LinearProgress, CircularProgress, Tooltip, Tabs, Tab,
+  LinearProgress, CircularProgress, Tooltip, Tabs, Tab, Slider,
 } from '@mui/material';
 import Grid from '@mui/material/Grid'; // MUI v6 Standard
 
@@ -33,7 +33,11 @@ import GroupIcon from '@mui/icons-material/Group';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
-import { FAQ_CATEGORIES, DEFAULT_FAQS } from '../utils/faqConstants';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import SearchIcon from '@mui/icons-material/Search';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import { FAQ_CATEGORIES } from '../utils/faqConstants';
 import {
   DEFAULT_TEMPLATES, TEMPLATE_GROUPS, STATUS_LABELS,
   STATUS_CHIP_COLORS, PLACEHOLDER_REFERENCE,
@@ -48,6 +52,7 @@ import { migrateExistingConsents } from '../utils/consentMigration';
 import { FONT, TYPE, COLORS } from '../theme/designTokens';
 import { useUser } from '../context/UserContext';
 import MedicinePillSwitch from '../components/MedicinePillSwitch';
+import LocationPicker from '../components/LocationPicker';
 
 // Expanded, Neutral Brand Colors for the Color Picker
 const COLOR_PALETTE =[
@@ -202,12 +207,20 @@ export default function Settings() {
   const [editingFaqId, setEditingFaqId] = useState(null); // null = creating, string = editing
   const [faqDeleteConfirm, setFaqDeleteConfirm] = useState({ open: false, id: '', question: '' });
   const [faqActiveTab, setFaqActiveTab] = useState('All');
+  const [faqSearchQuery, setFaqSearchQuery] = useState('');
   const [faqSaving, setFaqSaving] = useState(false);
 
   // --- PILLAR 13: NOTIFICATION TEMPLATES STATE ---
   const [notifTemplates, setNotifTemplates] = useState({}); // { [statusKey]: { title, body, isCustom } }
   const [notifSaving, setNotifSaving] = useState(false);
   const [notifResetConfirm, setNotifResetConfirm] = useState({ open: false, key: null }); // key = null => reset all
+  const [expandedGroups, setExpandedGroups] = useState({});
+  const toggleGroup = (label) => setExpandedGroups(prev => ({ ...prev, [label]: !prev[label] }));
+
+  // AI & Chatbot tab — Advanced settings collapse state
+  const [advancedClinicalOpen, setAdvancedClinicalOpen] = useState(false);
+  const [advancedCalendarOpen, setAdvancedCalendarOpen] = useState(false);
+  const [advancedMigrationOpen, setAdvancedMigrationOpen] = useState(false);
 
   // Legacy data migration — Step 7.2 (T3.5 Phase 7)
   const [migrationResult, setMigrationResult] = useState({
@@ -639,21 +652,22 @@ export default function Settings() {
     setReconsentProgress((prev) => ({ ...prev, loading: true }));
 
     try {
+      // Single-field Firestore query — combining `!=` with `==` on different
+      // fields requires a composite index AND excludes docs where the field
+      // is missing. Filter `accountStatus !== 'erased'` in memory instead,
+      // matching the pattern used in usePatientManager.js.
       const usersRef = collection(db, 'users');
-      const activeClientsQuery = query(
-        usersRef,
-        where('role', '==', 'pet_owner'),
-        where('accountStatus', '!=', 'erased'),
-      );
-      const snapshot = await getDocs(activeClientsQuery);
+      const petOwnersQuery = query(usersRef, where('role', '==', 'pet_owner'));
+      const snapshot = await getDocs(petOwnersQuery);
 
       let total = 0;
       let consented = 0;
 
       snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (data.accountStatus === 'erased') return; // skip soft-deleted accounts
         total += 1;
-        const { consentVersion } = docSnap.data();
-        if (consentVersion != null && Number(consentVersion) >= Number(consentActiveVersion)) {
+        if (data.consentVersion != null && Number(data.consentVersion) >= Number(consentActiveVersion)) {
           consented += 1;
         }
       });
@@ -661,7 +675,7 @@ export default function Settings() {
       setReconsentProgress({ consented, total, loading: false, queried: true });
     } catch (err) {
       console.error('[Settings.handleRefreshReconsentProgress]:', err.message);
-      setToast({ open: true, message: 'Failed to load re-consent progress.', severity: 'error' });
+      setToast({ open: true, message: 'Failed to load client acceptance progress.', severity: 'error' });
       setReconsentProgress((prev) => ({ ...prev, loading: false, queried: true }));
     }
   };
@@ -918,37 +932,6 @@ export default function Settings() {
     }
   };
 
-  const handleSeedFaqs = async () => {
-    if (faqList.length > 0) {
-      return setToast({
-        open: true,
-        message: 'FAQs already exist. Seed is only available when the list is empty.',
-        severity: 'warning',
-      });
-    }
-    try {
-      const who = profile?.fullName || profile?.email || 'Unknown Admin';
-      await Promise.all(
-        DEFAULT_FAQS.map((faq, i) =>
-          addDoc(collection(db, 'faqs'), {
-            ...faq,
-            isActive:  true,
-            sortOrder: i,
-            createdAt: Timestamp.now(),
-            createdBy: who,
-            updatedAt: Timestamp.now(),
-            updatedBy: who,
-          })
-        )
-      );
-      await logSettingsEvent('CREATE', 'faq', 'seed_defaults', { count: DEFAULT_FAQS.length });
-      setToast({ open: true, message: `${DEFAULT_FAQS.length} default FAQs seeded.`, severity: 'success' });
-    } catch (e) {
-      console.error('[Settings.handleSeedFaqs]:', e.message);
-      setToast({ open: true, message: e.message, severity: 'error' });
-    }
-  };
-
   // --- PILLAR 13: NOTIFICATION TEMPLATES HANDLERS ---
 
   const handleNotifTemplateChange = (statusKey, field, value) => {
@@ -1141,50 +1124,25 @@ export default function Settings() {
         <Tab label="AI & Chatbot" />
         <Tab label="Compliance" />
         <Tab label="Dashboard" />
+        <Tab label="Departments" />
       </Tabs>
 
       {/* TAB 0 — CLINIC */}
       {activeTab === 0 && (
-      <Grid container spacing={4}>
+      <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden' }}>
 
-        {/* PILLAR 1: OPERATING HOURS */}
-        <Grid size={{ xs: 12, lg: 4 }}>
-          <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
-              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
-                <AccessTimeIcon /> Operating Hours
-              </Typography>
-            </Box>
-            <Box sx={{ p: 3, flexGrow: 1, bgcolor: COLORS.cardBg }}>
-              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 3 }}>Controls the mobile app's booking calendar boundaries.</Typography>
+        {/* ── SECTION 1: CLINIC IDENTITY ──────────────────────────── */}
+        <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
+          <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
+            <DomainIcon /> Clinic Identity
+          </Typography>
+          <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mt: 0.5 }}>
+            Basic clinic details shown to pet owners and printed on official documents.
+          </Typography>
+        </Box>
+        <Box sx={{ p: 3, bgcolor: COLORS.cardBg }}>
               <Grid container spacing={2.5}>
-                <Grid size={{ xs: 12 }}>
-                  <FormControl fullWidth size="medium" sx={{ bgcolor: 'white' }}>
-                    <InputLabel sx={{ fontWeight: 900, color: COLORS.accent }}>Clinic Opens</InputLabel>
-                    <Select 
-                      value={settings.openHour} label="Clinic Opens" 
-                      onChange={(e) => handleChange('openHour', e.target.value)}
-                      sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `2px solid ${COLORS.accent}33` }, fontWeight: 900 }}
-                    >
-                      {hoursArray.map(h => <MenuItem key={h} value={h}>{formatHour(h)}</MenuItem>)}
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid size={{ xs: 12 }}>
-                  <FormControl fullWidth size="medium" sx={{ bgcolor: 'white' }}>
-                    <InputLabel sx={{ fontWeight: 900, color: COLORS.accent }}>Clinic Closes</InputLabel>
-                    <Select 
-                      value={settings.closeHour} label="Clinic Closes" 
-                      onChange={(e) => handleChange('closeHour', e.target.value)}
-                      sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `2px solid ${COLORS.accent}33` }, fontWeight: 900 }}
-                    >
-                      {hoursArray.map(h => <MenuItem key={h} value={h}>{formatHour(h)}</MenuItem>)}
-                    </Select>
-                  </FormControl>
-                </Grid>
-                
-                {/* Clinic Phone — configurable, displayed to clients via useClinicSettings */}
-                <Grid size={{ xs: 12 }}>
+                <Grid size={{ xs: 12, md: 6 }}>
                   <TextField
                     fullWidth size="medium"
                     label="Clinic Phone Number"
@@ -1195,8 +1153,7 @@ export default function Settings() {
                     helperText="Shown to clients in the mobile app. Leave empty to hide the Call Clinic button."
                   />
                 </Grid>
-
-                <Grid size={{ xs: 12 }}>
+                <Grid size={{ xs: 12, md: 6 }}>
                   <TextField
                     fullWidth size="medium"
                     label="BAI Registration Number"
@@ -1208,190 +1165,277 @@ export default function Settings() {
                   />
                 </Grid>
 
-                {/* 🧬 CLINIC WORKING DAYS SELECTOR (Phase 4 Polish) */}
                 <Grid size={{ xs: 12 }}>
-                    <Typography variant="overline" sx={{ fontWeight: 900, color: COLORS.accent, letterSpacing: 1, display: 'block', mb: 1 }}>
-                        Clinic Working Days
-                    </Typography>
-                    <ToggleButtonGroup
-                        value={settings.workingDays || []}
-                        onChange={(e, val) => { if (val.length === 0) return; handleChange('workingDays', val); }}
-                        fullWidth
-                        size="small"
-                        sx={{ 
-                            gap: 0.5, 
-                            '& .MuiToggleButton-root': {
-                                border: `2px solid ${COLORS.accent}33 !important`,
-                                borderRadius: '0 !important',
-                                width: 32, height: 32, minWidth: 32,
-                                fontWeight: 900, fontSize: '0.65rem', color: COLORS.accent,
-                                '&.Mui-selected': {
-                                    bgcolor: `${COLORS.accent} !important`,
-                                    color: `${COLORS.cardBg} !important`,
-                                    boxShadow: '2px 2px 0px rgba(93, 64, 55, 0.2)'
-                                }
-                            }
-                        }}
+                  <Typography variant="overline" sx={{ fontWeight: 900, color: COLORS.accent, letterSpacing: 1, display: 'block', mb: 1 }}>
+                    Clinic Working Days
+                  </Typography>
+                  <ToggleButtonGroup
+                    value={settings.workingDays || []}
+                    onChange={(e, val) => { if (val.length === 0) return; handleChange('workingDays', val); }}
+                    size="small"
+                    sx={{
+                      gap: 0.5,
+                      '& .MuiToggleButton-root': {
+                        border: `2px solid ${COLORS.accent}33 !important`,
+                        borderRadius: '0 !important',
+                        width: 36, height: 36, minWidth: 36,
+                        fontWeight: 900, fontSize: '0.7rem', color: COLORS.accent,
+                        '&.Mui-selected': {
+                          bgcolor: `${COLORS.accent} !important`,
+                          color: `${COLORS.cardBg} !important`,
+                          boxShadow: '2px 2px 0px rgba(93, 64, 55, 0.2)'
+                        }
+                      }
+                    }}
+                  >
+                    {['S','M','T','W','T','F','S'].map((day, i) => (
+                      <ToggleButton key={i} value={i} title={['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][i]}>
+                        {day}
+                      </ToggleButton>
+                    ))}
+                  </ToggleButtonGroup>
+                </Grid>
+              </Grid>
+            </Box>
+
+        {/* ── SECTION 2: OPERATING SCHEDULE ──────────────────────────── */}
+        <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderTop: `2px solid ${COLORS.accent}`, borderBottom: `2px solid ${COLORS.accent}` }}>
+          <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
+            <AccessTimeIcon /> Operating Schedule
+          </Typography>
+          <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mt: 0.5 }}>
+            Daily hours and break times. Controls the mobile booking calendar boundaries.
+          </Typography>
+        </Box>
+        <Box sx={{ p: 3, bgcolor: COLORS.cardBg }}>
+              <Grid container spacing={2.5}>
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <FormControl fullWidth size="medium" sx={{ bgcolor: 'white' }}>
+                    <InputLabel sx={{ fontWeight: 900, color: COLORS.accent }}>Clinic Opens</InputLabel>
+                    <Select
+                      value={settings.openHour} label="Clinic Opens"
+                      onChange={(e) => handleChange('openHour', e.target.value)}
+                      sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `2px solid ${COLORS.accent}33` }, fontWeight: 900 }}
                     >
-                        {['S','M','T','W','T','F','S'].map((day, i) => (
-                            <ToggleButton key={i} value={i} title={['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][i]}>
-                                {day}
-                            </ToggleButton>
-                        ))}
-                    </ToggleButtonGroup>
+                      {hoursArray.map(h => <MenuItem key={h} value={h}>{formatHour(h)}</MenuItem>)}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <FormControl fullWidth size="medium" sx={{ bgcolor: 'white' }}>
+                    <InputLabel sx={{ fontWeight: 900, color: COLORS.accent }}>Clinic Closes</InputLabel>
+                    <Select
+                      value={settings.closeHour} label="Clinic Closes"
+                      onChange={(e) => handleChange('closeHour', e.target.value)}
+                      sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `2px solid ${COLORS.accent}33` }, fontWeight: 900 }}
+                    >
+                      {hoursArray.map(h => <MenuItem key={h} value={h}>{formatHour(h)}</MenuItem>)}
+                    </Select>
+                  </FormControl>
                 </Grid>
 
-                {/* CLOSED DATES */}
                 <Grid size={{ xs: 12 }}>
-                  <Divider sx={{ my: 1 }} />
-                  <Typography variant="overline" sx={{ fontWeight: 900, color: COLORS.accent, letterSpacing: 1, display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                    <BlockIcon sx={{ fontSize: 16 }} /> Clinic Closures (Holidays, Maintenance)
-                  </Typography>
-                  <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 1.5 }}>
-                    Specific dates the clinic is closed. Blocks mobile booking and skips queue carry-over targets.
-                  </Typography>
-                  <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
-                    <TextField
-                      type="date"
-                      size="small"
-                      value={newClosedDate}
-                      onChange={(e) => setNewClosedDate(e.target.value)}
-                      sx={{ flex: 1, bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `2px solid ${COLORS.accent}33` } }}
-                      inputProps={{ style: { fontWeight: 900 } }}
-                    />
-                    <Button
-                      variant="contained"
-                      onClick={handleAddClosedDate}
-                      disabled={!newClosedDate}
-                      sx={{
-                        borderRadius: 0, fontWeight: 900, px: 3,
-                        bgcolor: COLORS.accent, border: `2px solid ${COLORS.accent}`,
-                        boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
-                        '&:hover': { bgcolor: COLORS.brand }
-                      }}
-                    >
-                      Add
-                    </Button>
-                  </Stack>
-                  {(settings.closedDates || []).length === 0 ? (
-                    <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, fontStyle: 'italic' }}>
-                      No closures scheduled.
-                    </Typography>
-                  ) : (
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-                      {(settings.closedDates || []).map(dateStr => (
-                        <Chip
-                          key={dateStr}
-                          label={new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })}
-                          onDelete={() => handleRemoveClosedDate(dateStr)}
-                          sx={{
-                            borderRadius: 0,
-                            border: `2px solid ${COLORS.accent}`,
-                            bgcolor: COLORS.cream,
-                            fontWeight: 900,
-                            color: COLORS.accent,
-                            boxShadow: '2px 2px 0px rgba(93, 64, 55, 0.15)',
-                            '& .MuiChip-deleteIcon': { color: COLORS.accent }
-                          }}
-                        />
-                      ))}
-                    </Box>
-                  )}
+                  <Divider sx={{ my: 0.5, borderColor: COLORS.border }} />
+                  <FormControlLabel
+                    control={<Switch checked={settings.lunchEnabled} onChange={(e) => handleChange('lunchEnabled', e.target.checked)} color="primary" />}
+                    label={<Typography sx={{ fontWeight: 900, color: COLORS.accent }}>Enforce Lunch Break</Typography>}
+                  />
                 </Grid>
-
-                <Grid size={{ xs: 12 }}><Divider sx={{ my: 1 }} /><FormControlLabel control={<Switch checked={settings.lunchEnabled} onChange={(e) => handleChange('lunchEnabled', e.target.checked)} color="primary" />} label={<Typography sx={{ fontWeight: 900, color: COLORS.accent }}>Enforce Lunch Break</Typography>} /></Grid>
                 {settings.lunchEnabled && (
-                    <React.Fragment>
-                        <Grid size={{ xs: 6 }}><FormControl fullWidth size="small" sx={{ bgcolor: 'white' }}><InputLabel sx={{ fontWeight: 900 }}>Start</InputLabel><Select value={settings.lunchStart} label="Start" onChange={(e) => handleChange('lunchStart', e.target.value)} sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}>{hoursArray.map(h => <MenuItem key={h} value={h}>{formatHour(h)}</MenuItem>)}</Select></FormControl></Grid>
-                        <Grid size={{ xs: 6 }}><FormControl fullWidth size="small" sx={{ bgcolor: 'white' }}><InputLabel sx={{ fontWeight: 900 }}>End</InputLabel><Select value={settings.lunchEnd} label="End" onChange={(e) => handleChange('lunchEnd', e.target.value)} sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}>{hoursArray.map(h => <MenuItem key={h} value={h}>{formatHour(h)}</MenuItem>)}</Select></FormControl></Grid>
-                    </React.Fragment>
+                  <React.Fragment>
+                    <Grid size={{ xs: 6, md: 6 }}>
+                      <FormControl fullWidth size="small" sx={{ bgcolor: 'white' }}>
+                        <InputLabel sx={{ fontWeight: 900 }}>Start</InputLabel>
+                        <Select value={settings.lunchStart} label="Start" onChange={(e) => handleChange('lunchStart', e.target.value)} sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}>
+                          {hoursArray.map(h => <MenuItem key={h} value={h}>{formatHour(h)}</MenuItem>)}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid size={{ xs: 6, md: 6 }}>
+                      <FormControl fullWidth size="small" sx={{ bgcolor: 'white' }}>
+                        <InputLabel sx={{ fontWeight: 900 }}>End</InputLabel>
+                        <Select value={settings.lunchEnd} label="End" onChange={(e) => handleChange('lunchEnd', e.target.value)} sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}>
+                          {hoursArray.map(h => <MenuItem key={h} value={h}>{formatHour(h)}</MenuItem>)}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                  </React.Fragment>
                 )}
               </Grid>
             </Box>
-          </Paper>
-        </Grid>
 
-        {/* PILLAR 2: BOOKING ENGINE RULES */}
-        <Grid size={{ xs: 12, lg: 4 }}>
-          <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
-              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
-                <EventBusyIcon /> Client Limitations
-              </Typography>
-            </Box>
-            <Box sx={{ p: 3, flexGrow: 1, bgcolor: COLORS.cardBg }}>
-              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 3 }}>Protects the clinic from schedule hoarding and last-minute bookings.</Typography>
+        {/* ── SECTION 3: BOOKING RULES ──────────────────────────── */}
+        <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderTop: `2px solid ${COLORS.accent}`, borderBottom: `2px solid ${COLORS.accent}` }}>
+          <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
+            <EventBusyIcon /> Booking Rules
+          </Typography>
+          <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mt: 0.5 }}>
+            Protects the clinic from schedule hoarding and last-minute bookings.
+          </Typography>
+        </Box>
+        <Box sx={{ p: 3, bgcolor: COLORS.cardBg }}>
               <Grid container spacing={2.5}>
-                <Grid size={{ xs: 12 }}><FormControl fullWidth size="medium" sx={{ bgcolor: 'white' }}><InputLabel sx={{ fontWeight: 900 }}>Base Slot Interval</InputLabel><Select value={settings.minSlotInterval} label="Base Slot Interval" onChange={(e) => handleChange('minSlotInterval', e.target.value)} sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `2px solid ${COLORS.accent}33` }, fontWeight: 900 }}><MenuItem value={15}>15 Minutes</MenuItem><MenuItem value={30}>30 Minutes</MenuItem><MenuItem value={45}>45 Minutes</MenuItem><MenuItem value={60}>60 Minutes</MenuItem></Select></FormControl></Grid>
-                <Grid size={{ xs: 12 }}><FormControl fullWidth size="medium" sx={{ bgcolor: 'white' }}><InputLabel sx={{ fontWeight: 900 }}>Advance Notice Buffer</InputLabel><Select value={settings.advanceNoticeMins} label="Advance Notice Buffer" onChange={(e) => handleChange('advanceNoticeMins', e.target.value)} sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `2px solid ${COLORS.accent}33` }, fontWeight: 900 }}><MenuItem value={0}>0 Mins (Allow immediate walk-ins)</MenuItem><MenuItem value={30}>30 Minutes</MenuItem><MenuItem value={60}>1 Hour</MenuItem><MenuItem value={120}>2 Hours</MenuItem><MenuItem value={1440}>24 Hours (Next-day only)</MenuItem></Select></FormControl></Grid>
-                <Grid size={{ xs: 12 }}><TextField fullWidth label="Future Limit" type="number" value={settings.maxFutureBookingDays} onChange={(e) => handleChange('maxFutureBookingDays', e.target.value)} InputProps={{ endAdornment: <InputAdornment position="end">Days</InputAdornment> }} sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} inputProps={{ style: { fontWeight: 900 } }} /></Grid>
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <FormControl fullWidth size="medium" sx={{ bgcolor: 'white' }}>
+                    <InputLabel sx={{ fontWeight: 900 }}>Base Slot Interval</InputLabel>
+                    <Select value={settings.minSlotInterval} label="Base Slot Interval" onChange={(e) => handleChange('minSlotInterval', e.target.value)} sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `2px solid ${COLORS.accent}33` }, fontWeight: 900 }}>
+                      <MenuItem value={15}>15 Minutes</MenuItem>
+                      <MenuItem value={30}>30 Minutes</MenuItem>
+                      <MenuItem value={45}>45 Minutes</MenuItem>
+                      <MenuItem value={60}>60 Minutes</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <FormControl fullWidth size="medium" sx={{ bgcolor: 'white' }}>
+                    <InputLabel sx={{ fontWeight: 900 }}>Advance Notice Buffer</InputLabel>
+                    <Select value={settings.advanceNoticeMins} label="Advance Notice Buffer" onChange={(e) => handleChange('advanceNoticeMins', e.target.value)} sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `2px solid ${COLORS.accent}33` }, fontWeight: 900 }}>
+                      <MenuItem value={0}>0 Mins (Allow immediate walk-ins)</MenuItem>
+                      <MenuItem value={30}>30 Minutes</MenuItem>
+                      <MenuItem value={60}>1 Hour</MenuItem>
+                      <MenuItem value={120}>2 Hours</MenuItem>
+                      <MenuItem value={1440}>24 Hours (Next-day only)</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <TextField
+                    fullWidth label="Future Limit" type="number"
+                    value={settings.maxFutureBookingDays}
+                    onChange={(e) => handleChange('maxFutureBookingDays', e.target.value)}
+                    InputProps={{ endAdornment: <InputAdornment position="end">Days</InputAdornment> }}
+                    sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
+                    inputProps={{ style: { fontWeight: 900 } }}
+                    helperText="How far ahead pet owners can book appointments."
+                  />
+                </Grid>
               </Grid>
             </Box>
-          </Paper>
-        </Grid>
 
-        {/* PILLAR 3: DYNAMIC DEPARTMENTS */}
-        <Grid size={{ xs: 12, lg: 6 }}>
-          <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
+        {/* ── SECTION 4: CLINIC CLOSURES ──────────────────────────── */}
+        <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderTop: `2px solid ${COLORS.accent}`, borderBottom: `2px solid ${COLORS.accent}` }}>
+          <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
+            <BlockIcon /> Clinic Closures
+          </Typography>
+          <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mt: 0.5 }}>
+            Holidays, maintenance, or any specific dates the clinic is closed. Blocks mobile booking and skips queue carry-over targets.
+          </Typography>
+        </Box>
+        <Box sx={{ p: 3, bgcolor: COLORS.cardBg }}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 2.5, alignItems: { xs: 'stretch', sm: 'center' } }}>
+                <TextField
+                  type="date"
+                  size="medium"
+                  value={newClosedDate}
+                  onChange={(e) => setNewClosedDate(e.target.value)}
+                  sx={{ flex: 1, maxWidth: { sm: 320 }, bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `2px solid ${COLORS.accent}33` } }}
+                  inputProps={{ style: { fontWeight: 900 } }}
+                />
+                <Button
+                  variant="contained"
+                  onClick={handleAddClosedDate}
+                  disabled={!newClosedDate}
+                  startIcon={<AddCircleOutlineIcon />}
+                  sx={{
+                    borderRadius: 0, fontWeight: 900, px: 4, py: 1,
+                    bgcolor: COLORS.accent, border: `2px solid ${COLORS.accent}`,
+                    boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
+                    '&:hover': { bgcolor: COLORS.brand }
+                  }}
+                >
+                  Add Closure
+                </Button>
+              </Stack>
+              {(settings.closedDates || []).length === 0 ? (
+                <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, fontStyle: 'italic' }}>
+                  No closures scheduled.
+                </Typography>
+              ) : (
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                  {(settings.closedDates || []).map(dateStr => (
+                    <Chip
+                      key={dateStr}
+                      label={new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })}
+                      onDelete={() => handleRemoveClosedDate(dateStr)}
+                      sx={{
+                        borderRadius: 0,
+                        border: `2px solid ${COLORS.accent}`,
+                        bgcolor: COLORS.cream,
+                        fontWeight: 900,
+                        color: COLORS.accent,
+                        boxShadow: '2px 2px 0px rgba(93, 64, 55, 0.15)',
+                        '& .MuiChip-deleteIcon': { color: COLORS.accent }
+                      }}
+                    />
+                  ))}
+                </Box>
+              )}
+            </Box>
+
+      </Paper>
+      )} {/* end Tab 0 — Clinic */}
+
+      {/* TAB 5 — DEPARTMENTS */}
+      {activeTab === 5 && (
+      <Grid container spacing={4}>
+        <Grid size={{ xs: 12 }}>
+          <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden' }}>
             <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
               <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
                 <DomainIcon /> Clinic Departments / Categories
               </Typography>
-            </Box>
-            <Box sx={{ p: 3, bgcolor: COLORS.cardBg, flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
-              
-              {/* THE FIX: Fixed minHeight on description creates perfect alignment with the Inventory Card */}
-              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 2.5, minHeight: 40 }}>
-                These departments drive the Skill-Based Routing Engine and the color-coding system.
+              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mt: 0.5 }}>
+                These departments drive the Skill-Based Routing Engine and the color-coding system across the app.
               </Typography>
-              
-              <Stack direction="row" spacing={2} sx={{ mb: 4, alignItems: 'center' }}>
-                <TextField 
-                  label="New Department Name" size="small" value={newDepartmentName} 
-                  onChange={(e) => setNewDepartmentName(e.target.value)} 
-                  sx={{ flexGrow: 1, bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }} 
+            </Box>
+            <Box sx={{ p: 3, bgcolor: COLORS.cardBg }}>
+
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 3, alignItems: { xs: 'stretch', md: 'center' } }}>
+                <TextField
+                  label="New Department Name" size="small" value={newDepartmentName}
+                  onChange={(e) => setNewDepartmentName(e.target.value)}
+                  sx={{ flexGrow: 1, bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
                   inputProps={{ spellCheck: 'false', style: { fontWeight: 900 } }}
                 />
-                
-                <FormControl size="small" sx={{ minWidth: 200, bgcolor: 'white' }}>
-                    <InputLabel sx={{ fontWeight: 900 }}>Color Tag</InputLabel>
-                    <Select 
-                      value={newDepartmentColor} 
-                      label="Color Tag" 
-                      onChange={(e) => setNewDepartmentColor(e.target.value)}
-                      sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
-                      renderValue={(value) => (
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <CircleIcon sx={{ color: value, fontSize: 18 }} />
-                          <Typography variant="body2" fontWeight="bold">{(COLOR_PALETTE.find(c => c.value === value) || {}).label}</Typography>
-                        </Box>
-                      )}
-                    >
-                      {COLOR_PALETTE.map(c => <MenuItem key={c.value} value={c.value}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                            <CircleIcon sx={{ color: c.value }} /> <ListItemText primary={c.label} />
-                          </Box>
-                      </MenuItem>)}
-                    </Select>
+
+                <FormControl size="small" sx={{ minWidth: 220, bgcolor: 'white' }}>
+                  <InputLabel sx={{ fontWeight: 900 }}>Color Tag</InputLabel>
+                  <Select
+                    value={newDepartmentColor}
+                    label="Color Tag"
+                    onChange={(e) => setNewDepartmentColor(e.target.value)}
+                    sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
+                    renderValue={(value) => (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <CircleIcon sx={{ color: value, fontSize: 18 }} />
+                        <Typography variant="body2" fontWeight="bold">{(COLOR_PALETTE.find(c => c.value === value) || {}).label}</Typography>
+                      </Box>
+                    )}
+                  >
+                    {COLOR_PALETTE.map(c => <MenuItem key={c.value} value={c.value}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <CircleIcon sx={{ color: c.value }} /> <ListItemText primary={c.label} />
+                      </Box>
+                    </MenuItem>)}
+                  </Select>
                 </FormControl>
 
-                <Button 
-                  variant="contained" onClick={handleAddDepartment} 
-                  startIcon={<AddCircleOutlineIcon/>} 
-                  sx={{ 
-                      bgcolor: COLORS.accent, fontWeight: 900, px: 4, py: 1, 
-                      borderRadius: 0, border: `2px solid ${COLORS.brand}`,
-                      boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
-                      '&:hover': { bgcolor: COLORS.brand }
+                <Button
+                  variant="contained" onClick={handleAddDepartment}
+                  startIcon={<AddCircleOutlineIcon />}
+                  sx={{
+                    bgcolor: COLORS.accent, fontWeight: 900, px: 4, py: 1,
+                    borderRadius: 0, border: `2px solid ${COLORS.brand}`,
+                    boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
+                    '&:hover': { bgcolor: COLORS.brand }
                   }}
                 >
                   Add
                 </Button>
               </Stack>
 
-              {/* THE FIX: Added Sort Dropdown next to Quick Find */}
               <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-                <TextField 
+                <TextField
                   placeholder="🔍 Quick find department..." size="small" fullWidth
                   value={deptSearch} onChange={(e) => setDeptSearch(e.target.value)}
                   sx={{ bgcolor: 'rgba(255,255,255,0.9)', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, borderColor: COLORS.borderInput } }}
@@ -1408,41 +1452,42 @@ export default function Settings() {
                 </FormControl>
               </Box>
 
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, p: 2.5, bgcolor: 'rgba(250,250,250,0.8)', borderRadius: 0, border: '1px inset rgba(0,0,0,0.1)', flexGrow: 1, height: 180, overflowY: 'auto', alignContent: 'flex-start' }}>
-                {/* THE FIX: Sorts the array dynamically before mapping! */}
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, p: 2.5, bgcolor: 'rgba(250,250,250,0.8)', borderRadius: 0, border: '1px inset rgba(0,0,0,0.1)', minHeight: 220, alignContent: 'flex-start' }}>
                 {[...departments]
                   .sort((a, b) => deptSort === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name))
                   .filter(d => d.name.toLowerCase().includes(deptSearch.toLowerCase()))
                   .map(dept => {
-                    // Calculate real-time usage for the UI Chip
                     const staffU = allStaff.filter(u => u.role === 'staff' && (Array.isArray(u.departments) ? u.departments.includes(dept.name) : u.department === dept.name)).length;
                     const serviceU = allServices.filter(s => !s.isArchived && (s.department || s.category) === dept.name).length;
                     const totalU = staffU + serviceU;
 
                     return (
-                        <Chip 
-                          key={dept.id} 
-                          label={`${dept.name} (${totalU})`} 
-                          onDelete={() => handleDeleteDepartment(dept.id, dept.name)}
-                          sx={{ 
-                              fontWeight: 900, color: 'white', bgcolor: dept.color || '#616161', 
-                              borderRadius: 0,
-                              border: totalU > 0 ? '2px solid rgba(255,255,255,0.4)' : '1px solid rgba(0,0,0,0.1)', 
-                              fontSize: '0.75rem', py: 2.2, px: 1, 
-                              '& .MuiChip-deleteIcon': { color: 'rgba(255,255,255,0.7)', '&:hover': { color: 'white' } } 
-                          }}
-                          title={`Assigned to ${staffU} staff and ${serviceU} services`}
-                        />
+                      <Chip
+                        key={dept.id}
+                        label={`${dept.name} (${totalU})`}
+                        onDelete={() => handleDeleteDepartment(dept.id, dept.name)}
+                        sx={{
+                          fontWeight: 900, color: 'white', bgcolor: dept.color || '#616161',
+                          borderRadius: 0,
+                          border: totalU > 0 ? '2px solid rgba(255,255,255,0.4)' : '1px solid rgba(0,0,0,0.1)',
+                          fontSize: '0.75rem', py: 2.2, px: 1,
+                          '& .MuiChip-deleteIcon': { color: 'rgba(255,255,255,0.7)', '&:hover': { color: 'white' } }
+                        }}
+                        title={`Assigned to ${staffU} staff and ${serviceU} services`}
+                      />
                     );
-                })}
-                {departments.filter(d => d.name.toLowerCase().includes(deptSearch.toLowerCase())).length === 0 && (<Typography variant="body2" color="textSecondary" sx={{ width: '100%', textAlign: 'center', mt: 4, fontStyle: 'italic' }}>No departments match your search.</Typography>)}
+                  })}
+                {departments.filter(d => d.name.toLowerCase().includes(deptSearch.toLowerCase())).length === 0 && (
+                  <Typography variant="body2" color="textSecondary" sx={{ width: '100%', textAlign: 'center', mt: 4, fontStyle: 'italic' }}>
+                    No departments match your search.
+                  </Typography>
+                )}
               </Box>
             </Box>
           </Paper>
         </Grid>
-
       </Grid>
-      )} {/* end Tab 0 — Clinic */}
+      )} {/* end Tab 5 — Departments */}
 
       {/* TAB 4 — DASHBOARD */}
       {activeTab === 4 && (
@@ -1590,95 +1635,127 @@ export default function Settings() {
 
       {/* TAB 3 — COMPLIANCE */}
       {activeTab === 3 && (
-      <Grid container spacing={4}>
+      <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden' }}>
 
-        {/* PILLAR 8: CLIENT SELF-CHECK-IN QR */}
-        <Grid size={{ xs: 12, lg: 6 }}>
-          <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden' }}>
-            <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
-              <Typography variant="subtitle1" sx={{
-                color: COLORS.accent, fontWeight: 900,
-                display: 'flex', alignItems: 'center', gap: 1,
-                textTransform: 'uppercase', letterSpacing: 1,
-              }}>
-                <QrCodeScannerIcon /> Client Self-Check-In QR
-              </Typography>
-            </Box>
-            <Box sx={{ p: 3, bgcolor: COLORS.cardBg }}>
-              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 3 }}>
-                Print and display this QR code in the clinic lobby. Clients scan it with the VetConnect app to self-check-in.
-              </Typography>
+        {/* ── SECTION 1: SELF-CHECK-IN QR CODE ─────────────────────────── */}
+        <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
+          <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
+            <QrCodeScannerIcon /> Self-Check-In QR Code
+          </Typography>
+          <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mt: 0.5 }}>
+            Print this QR code and put it up in the lobby. Pet owners scan it with the app when they arrive to check themselves in.
+          </Typography>
+        </Box>
+        <Box sx={{ p: 3, bgcolor: COLORS.cardBg }}>
+          <Grid container spacing={3}>
 
-              {/* QR code centered */}
-              <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
+            {/* LEFT: QR code + print */}
+            <Grid size={{ xs: 12, md: 5 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
                 <Box ref={qrRef} sx={{ p: 3, border: `3px solid ${COLORS.accent}`, borderRadius: 0, bgcolor: 'white' }}>
                   <QRCode value="STARBARKS-CHECKIN-starbarks-vetconnect-f6443" size={180} />
                 </Box>
               </Box>
-
-              {/* Print button */}
               <Button
                 variant="contained" fullWidth
                 onClick={handlePrintQR}
                 sx={{
                   fontWeight: 900, borderRadius: 0, bgcolor: COLORS.accent,
-                  border: `2px solid ${COLORS.brand}`, mb: 3,
+                  border: `2px solid ${COLORS.brand}`,
                   boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
                   '&:hover': { bgcolor: COLORS.brand }
                 }}
               >
                 Print QR Poster
               </Button>
+            </Grid>
 
-              {/* Geofence settings */}
-              <Divider sx={{ my: 2 }} />
-              <Typography variant="overline" sx={{ fontWeight: 900, color: COLORS.accent, letterSpacing: 1, display: 'block', mb: 1 }}>
-                GPS Geofence (Check-In Radius)
+            {/* RIGHT: Check-In Zone (map + slider) */}
+            <Grid size={{ xs: 12, md: 7 }}>
+              <Typography variant="overline" sx={{ fontWeight: 900, color: COLORS.accent, letterSpacing: 1, display: 'block', mb: 0.5 }}>
+                Check-In Zone
               </Typography>
-              <Grid container spacing={2}>
-                <Grid size={{ xs: 4 }}>
-                  <TextField fullWidth label="Latitude" type="number"
-                    value={settings.clinicLat ?? ''}
-                    onChange={(e) => handleChange('clinicLat', parseFloat(e.target.value) || 0)}
-                    inputProps={{ step: 0.0001, style: { fontWeight: 900 } }}
-                    sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
-                  />
-                </Grid>
-                <Grid size={{ xs: 4 }}>
-                  <TextField fullWidth label="Longitude" type="number"
-                    value={settings.clinicLng ?? ''}
-                    onChange={(e) => handleChange('clinicLng', parseFloat(e.target.value) || 0)}
-                    inputProps={{ step: 0.0001, style: { fontWeight: 900 } }}
-                    sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
-                  />
-                </Grid>
-                <Grid size={{ xs: 4 }}>
-                  <TextField fullWidth label="Radius" type="number"
-                    value={settings.geofenceRadiusM ?? ''}
-                    onChange={(e) => handleChange('geofenceRadiusM', parseInt(e.target.value) || 0)}
-                    InputProps={{ endAdornment: <InputAdornment position="end">m</InputAdornment> }}
-                    inputProps={{ style: { fontWeight: 900 } }}
-                    sx={{ bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
-                  />
-                </Grid>
-              </Grid>
-            </Box>
-          </Paper>
-        </Grid>
+              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 2, fontSize: '0.8rem' }}>
+                Only allow self-check-in when the pet owner is physically near the clinic. Set the clinic's location, then how close they need to be.
+              </Typography>
 
-        {/* PILLAR 10: DATA PRIVACY & CONSENT POLICIES */}
-        <Grid size={{ xs: 12 }}>
-          <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden' }}>
-            <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
-              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
-                <GavelIcon /> Data Privacy & Consent Policies
-              </Typography>
-            </Box>
-            <Box sx={{ p: 3, bgcolor: COLORS.cardBg }}>
+              <LocationPicker
+                latitude={settings.clinicLat}
+                longitude={settings.clinicLng}
+                radius={settings.geofenceRadiusM}
+                onChange={({ latitude, longitude }) => {
+                  handleChange('clinicLat', latitude);
+                  handleChange('clinicLng', longitude);
+                }}
+              />
 
-              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 3 }}>
-                Manage versioned consent policies under Republic Act No. 10173 (Data Privacy Act of 2012). Publishing a new version requires all clients to re-consent on their next login.
-              </Typography>
+              {/* Radius slider */}
+              <Box sx={{ mt: 3 }}>
+                <Stack direction="row" alignItems="baseline" spacing={1} sx={{ mb: 1 }}>
+                  <Typography variant="overline" sx={{ fontWeight: 900, color: COLORS.accent, letterSpacing: 1 }}>
+                    Check-In Radius
+                  </Typography>
+                  <Typography sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.brand, fontSize: '1rem' }}>
+                    {(settings.geofenceRadiusM || 500) >= 1000
+                      ? `${(settings.geofenceRadiusM / 1000).toFixed(settings.geofenceRadiusM % 1000 === 0 ? 0 : 1)} km`
+                      : `${settings.geofenceRadiusM || 500} m`}
+                  </Typography>
+                </Stack>
+                <Box sx={{ px: 1.5 }}>
+                  <Slider
+                    value={Math.min(settings.geofenceRadiusM || 500, 2000)}
+                    onChange={(_, value) => handleChange('geofenceRadiusM', value)}
+                    step={null}
+                    min={100}
+                    max={2000}
+                    marks={[
+                      { value: 100, label: '100m' },
+                      { value: 250, label: '250m' },
+                      { value: 500, label: '500m' },
+                      { value: 1000, label: '1km' },
+                      { value: 2000, label: '2km' },
+                    ]}
+                    sx={{
+                      color: COLORS.brand,
+                      '& .MuiSlider-thumb': {
+                        borderRadius: 0,
+                        bgcolor: '#FFF8E1',
+                        border: `2px solid ${COLORS.brand}`,
+                        width: 20,
+                        height: 20,
+                        '&:hover, &.Mui-focusVisible, &.Mui-active': {
+                          boxShadow: `0 0 0 8px ${COLORS.brand}22`,
+                        },
+                      },
+                      '& .MuiSlider-track': { bgcolor: COLORS.brand, border: 'none', height: 4 },
+                      '& .MuiSlider-rail': { bgcolor: COLORS.borderLight, opacity: 1, height: 4 },
+                      '& .MuiSlider-mark': { bgcolor: COLORS.accent, height: 8, width: 2 },
+                      '& .MuiSlider-markActive': { bgcolor: COLORS.brand },
+                      '& .MuiSlider-markLabel': {
+                        fontFamily: FONT,
+                        fontWeight: 700,
+                        fontSize: '0.7rem',
+                        color: COLORS.textSecondary,
+                      },
+                      '& .MuiSlider-markLabelActive': { color: COLORS.brand },
+                    }}
+                  />
+                </Box>
+              </Box>
+            </Grid>
+          </Grid>
+        </Box>
+
+        {/* ── SECTION 2: PRIVACY & CONSENT POLICIES ────────────────────── */}
+        <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderTop: `2px solid ${COLORS.accent}`, borderBottom: `2px solid ${COLORS.accent}` }}>
+          <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
+            <GavelIcon /> Privacy & Consent Policies
+          </Typography>
+          <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mt: 0.5 }}>
+            Versioned consent policies under Republic Act No. 10173 (Data Privacy Act of 2012). When you publish a new version, all pet owners must agree to it the next time they open the app.
+          </Typography>
+        </Box>
+        <Box sx={{ p: 3, bgcolor: COLORS.cardBg }}>
 
               {/* SEED BUTTON — visible only when zero versions exist */}
               {!consentLoading && consentVersions.length === 0 && (
@@ -1718,14 +1795,14 @@ export default function Settings() {
                 </Box>
               )}
 
-              {/* RE-CONSENT PROGRESS COUNTER */}
+              {/* RE-CONSENT PROGRESS COUNTER — now labeled "Client Acceptance" */}
               {consentActiveVersion !== null && (
                 <Box sx={{ mb: 3, p: 2, border: `2px solid ${COLORS.border}`, bgcolor: COLORS.cardBg }}>
                   <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
                     <Stack direction="row" alignItems="center" spacing={1}>
                       <GroupIcon sx={{ fontSize: 18, color: COLORS.accent }} />
                       <Typography sx={{ ...TYPE.label, color: COLORS.accent }}>
-                        Re-consent Progress — Version {consentActiveVersion}
+                        Client Acceptance — Version {consentActiveVersion}
                       </Typography>
                     </Stack>
                     <Button
@@ -1757,7 +1834,7 @@ export default function Settings() {
                   {reconsentProgress.total > 0 ? (
                     <>
                       <Typography sx={{ ...TYPE.bodyBold, color: COLORS.textPrimary, mb: 1 }}>
-                        {reconsentProgress.consented} / {reconsentProgress.total} clients consented
+                        {reconsentProgress.consented} of {reconsentProgress.total} pet owners have accepted
                         {' '}
                         <Typography component="span" sx={{ ...TYPE.meta, color: COLORS.textMuted }}>
                           ({Math.round((reconsentProgress.consented / reconsentProgress.total) * 100)}%)
@@ -1781,40 +1858,61 @@ export default function Settings() {
                       />
                       {reconsentProgress.consented < reconsentProgress.total && (
                         <Typography sx={{ ...TYPE.meta, color: COLORS.warning, mt: 1 }}>
-                          {reconsentProgress.total - reconsentProgress.consented} client(s) have not yet re-consented.
+                          {reconsentProgress.total - reconsentProgress.consented} pet owner(s) haven't accepted the current version yet.
                         </Typography>
                       )}
                       {reconsentProgress.consented === reconsentProgress.total && (
                         <Typography sx={{ ...TYPE.meta, color: COLORS.success, mt: 1 }}>
-                          All active clients have re-consented.
+                          All pet owners have accepted the current version.
                         </Typography>
                       )}
                     </>
                   ) : reconsentProgress.queried && reconsentProgress.total === 0 ? (
                     <Typography sx={{ ...TYPE.meta, color: COLORS.textMuted, fontStyle: 'italic' }}>
-                      No active clients found.
+                      No pet owners on record yet.
                     </Typography>
                   ) : !reconsentProgress.queried && !reconsentProgress.loading ? (
                     <Typography sx={{ ...TYPE.meta, color: COLORS.textMuted, fontStyle: 'italic' }}>
-                      Press Refresh to load re-consent progress.
+                      Tap Refresh to see how many pet owners have accepted the current version.
                     </Typography>
                   ) : null}
                 </Box>
               )}
 
-              {/* LEGACY DATA MIGRATION — Step 7.2 (T3.5 Phase 7) */}
+              {/* ONE-TIME SETUP: CARRY OVER OLD CONSENTS — collapsible advanced section */}
               {consentVersions.length > 0 && (
-                <Box sx={{ mb: 3, p: 2.5, border: `2px solid ${COLORS.border}`, bgcolor: COLORS.cardBg }}>
-                  <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
-                    <GavelIcon sx={{ fontSize: 18, color: COLORS.accent }} />
-                    <Typography sx={{ ...TYPE.label, color: COLORS.accent }}>
-                      Legacy Data Migration
-                    </Typography>
-                  </Stack>
+              <Box sx={{ mb: 3 }}>
+                <Box
+                  onClick={() => setAdvancedMigrationOpen(o => !o)}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1.5,
+                    px: 2,
+                    py: 1.5,
+                    bgcolor: advancedMigrationOpen ? COLORS.cream : 'white',
+                    border: `2px solid ${COLORS.accent}33`,
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                    '&:hover': { bgcolor: COLORS.cream },
+                  }}
+                >
+                  <Typography sx={{ ...TYPE.label, color: COLORS.accent, fontSize: '0.8rem' }}>
+                    One-Time Setup: Carry Over Old Consents
+                  </Typography>
+                  <Typography sx={{ ...TYPE.meta, color: COLORS.textMuted, fontSize: '0.72rem' }}>
+                    Only needed once when first setting up consent policies
+                  </Typography>
+                  <Box sx={{ ml: 'auto', color: COLORS.textSecondary, display: 'flex', alignItems: 'center' }}>
+                    {advancedMigrationOpen ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                  </Box>
+                </Box>
+
+                {advancedMigrationOpen && (
+                <Box sx={{ p: 2.5, border: `2px solid ${COLORS.accent}33`, borderTop: 'none', bgcolor: COLORS.cardBg }}>
 
                   <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 2 }}>
-                    Migrate existing clients who consented under the old boolean system to the new versioned consent records.
-                    This is a one-time operation and is safe to preview before running.
+                    Pet owners who agreed to the old terms before the versioning system existed need their consent attached to the current version. Run this once when you first set up consent policies. Preview first to see who's affected — nothing changes until you tap "Run".
                   </Typography>
 
                   {/* Preview result */}
@@ -1901,6 +1999,8 @@ export default function Settings() {
                     </Button>
                   </Stack>
                 </Box>
+                )}
+              </Box>
               )}
 
               {/* CREATE NEW DRAFT BUTTON */}
@@ -1917,7 +2017,7 @@ export default function Settings() {
                       '&:hover': { bgcolor: COLORS.brand },
                     }}
                   >
-                    Create New Version
+                    Draft New Version
                   </Button>
                 </Box>
               )}
@@ -1972,9 +2072,9 @@ export default function Settings() {
                           v{v.versionNumber}
                         </Typography>
 
-                        {/* Type */}
-                        <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                          {v.type === CONSENT_TYPES.DPA ? 'DPA' : 'Waiver'}
+                        {/* Type — human label */}
+                        <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, fontWeight: 700 }}>
+                          {v.type === CONSENT_TYPES.DPA ? 'Privacy Policy' : 'Liability Waiver'}
                         </Typography>
 
                         {/* Summary + created date */}
@@ -2030,79 +2130,92 @@ export default function Settings() {
               )}
 
             </Box>
-          </Paper>
-        </Grid>
 
-      </Grid>
+      </Paper>
       )} {/* end Tab 3 — Compliance */}
 
       {/* TAB 2 — AI & CHATBOT */}
       {activeTab === 2 && (
-      <Grid container spacing={4}>
+      <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden' }}>
 
-        {/* PILLAR 11: AI CLINICAL REASONING */}
-        <Grid size={{ xs: 12 }}>
-          <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden' }}>
+        {/* ── SECTION 1: AI DIAGNOSIS HELPER ──────────────────────── */}
+        <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
+          <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
+            <AutoFixHighIcon /> AI Diagnosis Helper
+          </Typography>
+          <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mt: 0.5 }}>
+            Suggests possible diagnoses based on the pet's symptoms and vitals during a visit. The vet always makes the final call — this is just a second pair of eyes.
+          </Typography>
+        </Box>
+        <Box sx={{ p: 3, bgcolor: COLORS.cardBg }}>
 
-            {/* Header */}
-            <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
-              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
-                <AutoFixHighIcon /> AI Clinical Reasoning
-              </Typography>
-            </Box>
-
-            <Box sx={{ p: 3, bgcolor: COLORS.cardBg }}>
-
-              {/* Description */}
-              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 3 }}>
-                Enable AI-powered differential diagnosis suggestions in the Clinical Workspace. The LLM analysis is additive — the existing rule-based engine continues to run. This feature is advisory only; the attending veterinarian makes all clinical decisions.
-              </Typography>
-
-              {/* Provider notice */}
-              <Box sx={{ mb: 3, p: 2, bgcolor: COLORS.kpiBlueBg, border: `2px solid ${COLORS.kpiBlueBorder}` }}>
-                <Typography sx={{ ...TYPE.label, color: COLORS.info, mb: 0.5 }}>
-                  Provider: Anthropic Claude Haiku 4.5 via Cloudflare Worker
-                </Typography>
-                <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary }}>
-                  Requests are proxied through a Cloudflare Worker. The API key lives in the
-                  Worker's environment variable — it never touches the browser or Firestore.
-                  Deploy a Worker using the instructions in PHASE3_LLM_CLINICAL_REASONING_PLAN.md Phase 0.
-                </Typography>
-              </Box>
-
-              {/* Enable toggle */}
-              <Box sx={{ mb: 3 }}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={llmConfig.enabled}
-                      onChange={(e) => setLlmConfig(prev => ({ ...prev, enabled: e.target.checked }))}
-                      sx={{
-                        '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.info },
-                        '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: COLORS.info },
-                      }}
-                    />
-                  }
-                  label={
-                    <Typography sx={{ ...TYPE.bodyBold, color: COLORS.textPrimary }}>
-                      Enable AI Clinical Reasoning
-                    </Typography>
-                  }
+          {/* Enable toggle */}
+          <Box sx={{ mb: 2 }}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={llmConfig.enabled}
+                  onChange={(e) => setLlmConfig(prev => ({ ...prev, enabled: e.target.checked }))}
+                  sx={{
+                    '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.info },
+                    '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: COLORS.info },
+                  }}
                 />
-              </Box>
+              }
+              label={
+                <Typography sx={{ ...TYPE.bodyBold, color: COLORS.textPrimary }}>
+                  Enable AI Diagnosis Helper
+                </Typography>
+              }
+            />
+          </Box>
+
+          <Typography sx={{ ...TYPE.meta, color: COLORS.textMuted, fontSize: '0.78rem', mb: 2.5 }}>
+            Powered by Claude AI. Typical monthly cost: ₱30–₱150 for a small clinic.
+          </Typography>
+
+          {/* Advanced Settings — collapsible */}
+          <Box
+            onClick={() => setAdvancedClinicalOpen(o => !o)}
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1.5,
+              px: 2,
+              py: 1.5,
+              bgcolor: advancedClinicalOpen ? COLORS.cream : 'white',
+              border: `2px solid ${COLORS.accent}33`,
+              cursor: 'pointer',
+              userSelect: 'none',
+              '&:hover': { bgcolor: COLORS.cream },
+            }}
+          >
+            <Typography sx={{ ...TYPE.label, color: COLORS.accent, fontSize: '0.8rem' }}>
+              Advanced Settings
+            </Typography>
+            <Typography sx={{ ...TYPE.meta, color: COLORS.textMuted, fontSize: '0.72rem' }}>
+              For troubleshooting and customizing AI behavior
+            </Typography>
+            <Box sx={{ ml: 'auto', color: COLORS.textSecondary, display: 'flex', alignItems: 'center' }}>
+              {advancedClinicalOpen ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+            </Box>
+          </Box>
+
+          {advancedClinicalOpen && (
+            <Box sx={{ border: `2px solid ${COLORS.accent}33`, borderTop: 'none', p: 2.5, bgcolor: COLORS.cardBg }}>
 
               {/* Worker URL + Test button */}
               <Box sx={{ mb: 1 }}>
                 <TextField
                   fullWidth
-                  label="Cloudflare Worker URL"
+                  label="AI Service Connection (Worker URL)"
                   placeholder="https://vetconnect-ai.your-name.workers.dev"
                   value={llmConfig.workerUrl}
                   onChange={(e) => {
                     setLlmConfig(prev => ({ ...prev, workerUrl: e.target.value }));
                     setLlmTestResult(null);
                   }}
-                  helperText="The URL of your deployed Cloudflare Worker proxy. The API key is not entered here."
+                  helperText="The connection address for the AI service. Set during initial setup — staff usually don't need to change this."
                   sx={{
                     bgcolor: 'white',
                     '& .MuiOutlinedInput-root': {
@@ -2157,10 +2270,10 @@ export default function Settings() {
                 </Box>
               )}
 
-              {/* System prompt */}
+              {/* AI Instructions */}
               <Box sx={{ mb: 1, mt: 3 }}>
                 <Typography sx={{ ...TYPE.label, color: COLORS.accent, mb: 1 }}>
-                  System Prompt
+                  AI Instructions (Diagnosis)
                 </Typography>
                 <TextField
                   fullWidth
@@ -2169,7 +2282,7 @@ export default function Settings() {
                   maxRows={16}
                   value={llmConfig.systemPrompt || DEFAULT_CLINICAL_SYSTEM_PROMPT}
                   onChange={(e) => setLlmConfig(prev => ({ ...prev, systemPrompt: e.target.value }))}
-                  helperText="Customize the AI's clinical reasoning instructions. Changes take effect after saving."
+                  helperText="The rules the AI follows when suggesting diagnoses. The default works well for most clinics — only edit if you understand prompt engineering."
                   sx={{
                     bgcolor: 'white',
                     '& .MuiOutlinedInput-root': {
@@ -2201,99 +2314,119 @@ export default function Settings() {
                     '&:hover': { bgcolor: COLORS.cream },
                   }}
                 >
-                  Reset to Default Prompt
+                  Reset to Default Instructions
                 </Button>
               </Box>
 
-              {/* Billing guidance */}
-              <Box sx={{ mb: 3, p: 2, bgcolor: COLORS.warningSurface, border: `2px solid ${COLORS.warning}` }}>
+              {/* Billing guidance — simplified */}
+              <Box sx={{ p: 2, bgcolor: COLORS.warningSurface, border: `2px solid ${COLORS.warning}` }}>
                 <Typography sx={{ ...TYPE.label, color: COLORS.warning, mb: 0.5 }}>
-                  Billing Notice
+                  Cost Estimate
                 </Typography>
                 <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary }}>
-                  Claude Haiku 4.5: approximately $0.55–$2.76/month for typical clinic volume.
-                  Each clinical reasoning call uses approximately 500–2,000 tokens.
-                  Set billing limits at console.anthropic.com to prevent unexpected charges.
-                  Cloudflare Worker free tier: 100,000 requests/day.
+                  Typical monthly cost is ₱30 to ₱150 for a small clinic. Each diagnosis suggestion costs only a few centavos. You can set a billing cap with your AI provider to avoid surprises.
                 </Typography>
               </Box>
 
-              {/* Save button */}
-              <Button
-                variant="contained"
-                startIcon={<SaveIcon />}
-                onClick={handleSaveLlmConfig}
-                disabled={llmSaving}
-                sx={{
-                  fontWeight: 900,
-                  px: 4,
-                  py: 1,
-                  borderRadius: 0,
-                  bgcolor: COLORS.accent,
-                  border: `2px solid ${COLORS.brand}`,
-                  boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
-                  '&:hover': { bgcolor: COLORS.brand },
-                  '&.Mui-disabled': { bgcolor: COLORS.textMuted, color: '#fff' },
-                }}
-              >
-                {llmSaving ? 'Saving...' : 'Save AI Configuration'}
-              </Button>
-
             </Box>
-          </Paper>
-        </Grid>
+          )}
 
-        {/* PILLAR 11B: CALENDAR AI ASSISTANT */}
-        <Grid size={{ xs: 12 }}>
-          <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden' }}>
-            {/* Header */}
-            <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
-              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
-                <CalendarMonthIcon /> Calendar AI Assistant
-              </Typography>
+          {/* Save button (always visible) */}
+          <Box sx={{ mt: 3 }}>
+            <Button
+              variant="contained"
+              startIcon={<SaveIcon />}
+              onClick={handleSaveLlmConfig}
+              disabled={llmSaving}
+              sx={{
+                fontWeight: 900,
+                px: 4,
+                py: 1,
+                borderRadius: 0,
+                bgcolor: COLORS.accent,
+                border: `2px solid ${COLORS.brand}`,
+                boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
+                '&:hover': { bgcolor: COLORS.brand },
+                '&.Mui-disabled': { bgcolor: COLORS.textMuted, color: '#fff' },
+              }}
+            >
+              {llmSaving ? 'Saving...' : 'Save Diagnosis Helper Settings'}
+            </Button>
+          </Box>
+
+        </Box>
+
+        {/* ── SECTION 2: AI SCHEDULING HELPER ──────────────────────── */}
+        <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderTop: `2px solid ${COLORS.accent}`, borderBottom: `2px solid ${COLORS.accent}` }}>
+          <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
+            <CalendarMonthIcon /> AI Scheduling Helper
+          </Typography>
+          <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mt: 0.5 }}>
+            Helps you find open time slots, spot booking conflicts, and plan staff coverage from the Calendar page.
+          </Typography>
+        </Box>
+        <Box sx={{ p: 3, bgcolor: COLORS.cardBg }}>
+
+          <Typography sx={{ ...TYPE.meta, color: COLORS.textMuted, fontSize: '0.78rem', mb: 2.5 }}>
+            Uses the same AI service as the diagnosis helper above. Enable that one to activate scheduling support.
+          </Typography>
+
+          {/* Advanced Settings — collapsible */}
+          <Box
+            onClick={() => setAdvancedCalendarOpen(o => !o)}
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1.5,
+              px: 2,
+              py: 1.5,
+              bgcolor: advancedCalendarOpen ? COLORS.cream : 'white',
+              border: `2px solid ${COLORS.accent}33`,
+              cursor: 'pointer',
+              userSelect: 'none',
+              '&:hover': { bgcolor: COLORS.cream },
+            }}
+          >
+            <Typography sx={{ ...TYPE.label, color: COLORS.accent, fontSize: '0.8rem' }}>
+              Advanced Settings
+            </Typography>
+            <Typography sx={{ ...TYPE.meta, color: COLORS.textMuted, fontSize: '0.72rem' }}>
+              Customize how the scheduling AI thinks about your calendar
+            </Typography>
+            <Box sx={{ ml: 'auto', color: COLORS.textSecondary, display: 'flex', alignItems: 'center' }}>
+              {advancedCalendarOpen ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
             </Box>
-            <Box sx={{ p: 3 }}>
-              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 3 }}>
-                Customize the Calendar AI scheduling assistant's behavior. This prompt is injected alongside
-                live calendar data when staff use the AI panel on the Calendar page.
-              </Typography>
+          </Box>
 
-              {/* Shared Worker info box */}
-              <Box sx={{ mb: 3, p: 2, bgcolor: COLORS.kpiBlueBg, border: `2px solid ${COLORS.kpiBlueBorder}`, borderRadius: 0 }}>
-                <Typography sx={{ ...TYPE.label, color: COLORS.info, mb: 0.5 }}>
-                  Shares Worker Configuration
+          {advancedCalendarOpen && (
+            <Box sx={{ border: `2px solid ${COLORS.accent}33`, borderTop: 'none', p: 2.5, bgcolor: COLORS.cardBg }}>
+
+              <Box sx={{ mb: 1 }}>
+                <Typography sx={{ ...TYPE.label, color: COLORS.accent, mb: 1 }}>
+                  AI Instructions (Scheduling)
                 </Typography>
-                <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary }}>
-                  Calendar AI uses the same Cloudflare Worker URL and enable/disable toggle as the Clinical AI above.
-                  Enable AI Clinical Reasoning above and set a valid Worker URL to activate Calendar AI.
-                </Typography>
+                <TextField
+                  fullWidth
+                  multiline
+                  minRows={6}
+                  maxRows={14}
+                  value={calendarAIPrompt || DEFAULT_CALENDAR_AI_PROMPT}
+                  onChange={(e) => setCalendarAIPrompt(e.target.value)}
+                  helperText="The rules the scheduling AI follows. Live calendar data is added automatically when staff ask a question. The default is well-tuned — only edit if you understand prompt engineering."
+                  sx={{
+                    bgcolor: 'white',
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: 0,
+                      fontSize: '0.8rem',
+                      fontFamily: 'monospace',
+                      lineHeight: 1.6,
+                      '& fieldset': { border: `2px solid ${COLORS.accent}33` },
+                    },
+                  }}
+                />
               </Box>
 
-              {/* Calendar AI System Prompt */}
-              <TextField
-                fullWidth
-                multiline
-                minRows={6}
-                maxRows={14}
-                label="Calendar AI System Prompt"
-                value={calendarAIPrompt || DEFAULT_CALENDAR_AI_PROMPT}
-                onChange={(e) => setCalendarAIPrompt(e.target.value)}
-                helperText="Customize scheduling intelligence instructions. Calendar data is injected dynamically per query."
-                sx={{
-                  mb: 2,
-                  bgcolor: 'white',
-                  '& .MuiOutlinedInput-root': {
-                    borderRadius: 0,
-                    fontSize: '0.8rem',
-                    fontFamily: 'monospace',
-                    lineHeight: 1.6,
-                    '& fieldset': { border: `2px solid ${COLORS.accent}33` },
-                  },
-                }}
-              />
-
-              {/* Reset to default */}
-              <Box sx={{ mb: 3 }}>
+              <Box sx={{ mt: 2 }}>
                 <Button
                   size="small"
                   variant="outlined"
@@ -2310,52 +2443,96 @@ export default function Settings() {
                     '&:hover': { bgcolor: COLORS.cream },
                   }}
                 >
-                  Reset to Default Prompt
+                  Reset to Default Instructions
                 </Button>
               </Box>
 
-              {/* Save button */}
-              <Button
-                variant="contained"
-                startIcon={<SaveIcon />}
-                onClick={handleSaveCalendarAIConfig}
-                disabled={calendarAISaving}
-                sx={{
-                  fontWeight: 900,
-                  px: 4,
-                  py: 1,
-                  borderRadius: 0,
-                  bgcolor: COLORS.accent,
-                  border: `2px solid ${COLORS.brand}`,
-                  boxShadow: '4px 4px 0px rgba(93,64,55,0.1)',
-                  '&:hover': { bgcolor: COLORS.brand },
-                  '&.Mui-disabled': { bgcolor: COLORS.textMuted, color: '#fff' },
-                }}
-              >
-                {calendarAISaving ? 'Saving...' : 'Save Calendar AI Prompt'}
-              </Button>
             </Box>
-          </Paper>
-        </Grid>
+          )}
 
-        {/* PILLAR 12: FAQ MANAGEMENT */}
-        <Grid size={{ xs: 12 }}>
-          <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden' }}>
-            {/* Header */}
-            <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
-              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
-                <HelpOutlineIcon /> Chatbot FAQ Knowledge Base
-              </Typography>
-            </Box>
+          <Box sx={{ mt: 3 }}>
+            <Button
+              variant="contained"
+              startIcon={<SaveIcon />}
+              onClick={handleSaveCalendarAIConfig}
+              disabled={calendarAISaving}
+              sx={{
+                fontWeight: 900,
+                px: 4,
+                py: 1,
+                borderRadius: 0,
+                bgcolor: COLORS.accent,
+                border: `2px solid ${COLORS.brand}`,
+                boxShadow: '4px 4px 0px rgba(93,64,55,0.1)',
+                '&:hover': { bgcolor: COLORS.brand },
+                '&.Mui-disabled': { bgcolor: COLORS.textMuted, color: '#fff' },
+              }}
+            >
+              {calendarAISaving ? 'Saving...' : 'Save Scheduling Helper Settings'}
+            </Button>
+          </Box>
 
-            <Box sx={{ p: 3 }}>
-              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 3 }}>
-                Active FAQ entries are injected into the chatbot's system prompt on the mobile app.
-                The AI uses them to answer common client questions accurately and consistently.
-                Keep answers concise (1-3 sentences) to stay within the token budget.
-              </Typography>
+        </Box>
 
-              {/* Category filter tabs */}
+        {/* ── SECTION 3: CHATBOT KNOWLEDGE BASE ──────────────────────── */}
+        <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderTop: `2px solid ${COLORS.accent}`, borderBottom: `2px solid ${COLORS.accent}` }}>
+          <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
+            <HelpOutlineIcon /> Chatbot Knowledge Base
+          </Typography>
+          <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mt: 0.5 }}>
+            Common questions the chatbot answers for pet owners on the mobile app. Keep answers short — 1 to 3 sentences works best.
+          </Typography>
+        </Box>
+        <Box sx={{ p: 3, bgcolor: COLORS.cardBg }}>
+
+              {/* Soft warning: approaching the chatbot's instruction budget */}
+              {faqList.length >= 40 && (
+                <Box sx={{ mb: 2.5, p: 2, bgcolor: COLORS.warningSurface, border: `2px solid ${COLORS.warning}`, display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
+                  <WarningAmberIcon sx={{ color: COLORS.warning, mt: 0.25 }} />
+                  <Box>
+                    <Typography sx={{ ...TYPE.label, color: COLORS.warning, mb: 0.5 }}>
+                      Approaching the chatbot's instruction budget
+                    </Typography>
+                    <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary }}>
+                      You have {faqList.length} FAQs. The chatbot reads every active FAQ each time a pet owner asks a question — too many can slow responses and increase costs. Consider consolidating similar questions or turning off the ones that are rarely asked.
+                    </Typography>
+                  </Box>
+                </Box>
+              )}
+
+              {/* Search box — filters by question, answer, or category */}
+              <Box sx={{ mb: 2 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  placeholder="Search FAQs by question, answer, or category…"
+                  value={faqSearchQuery}
+                  onChange={(e) => setFaqSearchQuery(e.target.value)}
+                  sx={{
+                    bgcolor: 'white',
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: 0,
+                      '& fieldset': { border: `2px solid ${COLORS.accent}33` },
+                    },
+                  }}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon sx={{ color: COLORS.textMuted, fontSize: 20 }} />
+                      </InputAdornment>
+                    ),
+                    endAdornment: faqSearchQuery ? (
+                      <InputAdornment position="end">
+                        <IconButton size="small" onClick={() => setFaqSearchQuery('')} sx={{ borderRadius: 0 }}>
+                          <CloseIcon fontSize="small" />
+                        </IconButton>
+                      </InputAdornment>
+                    ) : null,
+                  }}
+                />
+              </Box>
+
+              {/* Category filter tabs — labels show per-category counts */}
               <Box sx={{ mb: 3 }}>
                 <ToggleButtonGroup
                   exclusive
@@ -2382,25 +2559,90 @@ export default function Settings() {
                     },
                   }}
                 >
-                  <ToggleButton value="All">All</ToggleButton>
-                  {FAQ_CATEGORIES.map((cat) => (
-                    <ToggleButton key={cat} value={cat}>{cat}</ToggleButton>
-                  ))}
+                  <ToggleButton value="All">All ({faqList.length})</ToggleButton>
+                  {FAQ_CATEGORIES.map((cat) => {
+                    const count = faqList.filter((f) => f.category === cat).length;
+                    return (
+                      <ToggleButton key={cat} value={cat}>{cat} ({count})</ToggleButton>
+                    );
+                  })}
                 </ToggleButtonGroup>
               </Box>
 
               {/* FAQ list */}
               {(() => {
-                const filteredFaqs = faqActiveTab === 'All'
+                const byCategory = faqActiveTab === 'All'
                   ? faqList
                   : faqList.filter((f) => f.category === faqActiveTab);
+                const q = faqSearchQuery.trim().toLowerCase();
+                const filteredFaqs = q
+                  ? byCategory.filter((f) =>
+                      (f.question || '').toLowerCase().includes(q) ||
+                      (f.answer || '').toLowerCase().includes(q) ||
+                      (f.category || '').toLowerCase().includes(q)
+                    )
+                  : byCategory;
 
                 if (filteredFaqs.length === 0) {
+                  // Search returned nothing
+                  if (q) {
+                    return (
+                      <Box sx={{ py: 4, textAlign: 'center', border: `2px dashed ${COLORS.accent}33` }}>
+                        <Typography sx={{ ...TYPE.meta, color: COLORS.textMuted }}>
+                          No FAQs match "{faqSearchQuery}"{faqActiveTab !== 'All' ? ` in the "${faqActiveTab}" category` : ''}.
+                        </Typography>
+                      </Box>
+                    );
+                  }
+                  if (faqActiveTab !== 'All') {
+                    return (
+                      <Box sx={{ py: 4, textAlign: 'center', border: `2px dashed ${COLORS.accent}33` }}>
+                        <Typography sx={{ ...TYPE.meta, color: COLORS.textMuted }}>
+                          No FAQs in the "{faqActiveTab}" category.
+                        </Typography>
+                      </Box>
+                    );
+                  }
+                  // All-tab empty state: helpful nudge instead of generic message
                   return (
-                    <Box sx={{ py: 4, textAlign: 'center', border: `2px dashed ${COLORS.accent}33` }}>
-                      <Typography sx={{ ...TYPE.meta, color: COLORS.textMuted }}>
-                        {faqActiveTab === 'All' ? 'No FAQs yet. Add one or seed the defaults.' : `No FAQs in the "${faqActiveTab}" category.`}
+                    <Box sx={{ py: 4, px: 3, textAlign: 'center', border: `2px dashed ${COLORS.accent}55`, bgcolor: 'white' }}>
+                      <Typography sx={{ fontSize: '2.5rem', mb: 1 }}>📭</Typography>
+                      <Typography sx={{ fontWeight: 900, color: COLORS.accent, fontSize: '1rem', mb: 1.5 }}>
+                        No FAQs yet
                       </Typography>
+                      <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 2, maxWidth: 560, mx: 'auto' }}>
+                        The chatbot already knows your hours, location, services, prices, and emergency contact from your clinic settings. Add FAQs for things it can't figure out on its own, like:
+                      </Typography>
+                      <Box sx={{ display: 'inline-block', textAlign: 'left', mb: 2.5 }}>
+                        {[
+                          'Cancellation and rebooking policy',
+                          'Accepted payment methods',
+                          'Data privacy practices',
+                          'Vaccination schedules and recommendations',
+                          'What to bring to your first visit',
+                        ].map((topic) => (
+                          <Typography key={topic} sx={{ ...TYPE.meta, color: COLORS.textSecondary, fontSize: '0.82rem', lineHeight: 1.9 }}>
+                            • {topic}
+                          </Typography>
+                        ))}
+                      </Box>
+                      <Box>
+                        <Button
+                          variant="contained"
+                          startIcon={<AddCircleOutlineIcon />}
+                          onClick={() => handleOpenFaqDialog()}
+                          sx={{
+                            fontWeight: 900,
+                            borderRadius: 0,
+                            bgcolor: COLORS.accent,
+                            border: `2px solid ${COLORS.brand}`,
+                            boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.15)',
+                            '&:hover': { bgcolor: COLORS.brand },
+                          }}
+                        >
+                          Add Your First FAQ
+                        </Button>
+                      </Box>
                     </Box>
                   );
                 }
@@ -2492,75 +2734,70 @@ export default function Settings() {
                 );
               })()}
 
-              {/* Footer actions */}
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 2, flexWrap: 'wrap' }}>
-                <Button
-                  variant="contained"
-                  startIcon={<AddCircleOutlineIcon />}
-                  onClick={() => handleOpenFaqDialog()}
-                  sx={{
-                    fontWeight: 900,
-                    borderRadius: 0,
-                    bgcolor: COLORS.accent,
-                    border: `2px solid ${COLORS.brand}`,
-                    boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
-                    '&:hover': { bgcolor: COLORS.brand },
-                  }}
-                >
-                  Add FAQ
-                </Button>
-                <Button
-                  variant="outlined"
-                  disabled={faqList.length > 0}
-                  onClick={handleSeedFaqs}
-                  sx={{
-                    fontWeight: 900,
-                    borderRadius: 0,
-                    borderColor: COLORS.accentLight,
-                    color: COLORS.textSecondary,
-                    '&:hover': { bgcolor: COLORS.cream },
-                    '&.Mui-disabled': { borderColor: COLORS.border, color: COLORS.textMuted },
-                  }}
-                >
-                  Seed Defaults
-                </Button>
-                <Typography sx={{ ...TYPE.meta, color: COLORS.textMuted, ml: 'auto' }}>
-                  {faqList.filter((f) => f.isActive).length} of {faqList.length} FAQs active — injected into chatbot prompt
-                </Typography>
-              </Box>
+              {/* Footer actions — only when the list has content; empty state has its own CTA */}
+              {faqList.length > 0 && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 2, flexWrap: 'wrap' }}>
+                  <Button
+                    variant="contained"
+                    startIcon={<AddCircleOutlineIcon />}
+                    onClick={() => handleOpenFaqDialog()}
+                    sx={{
+                      fontWeight: 900,
+                      borderRadius: 0,
+                      bgcolor: COLORS.accent,
+                      border: `2px solid ${COLORS.brand}`,
+                      boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
+                      '&:hover': { bgcolor: COLORS.brand },
+                    }}
+                  >
+                    Add FAQ
+                  </Button>
+                  <Typography sx={{ ...TYPE.meta, color: COLORS.textMuted, ml: 'auto' }}>
+                    {faqList.filter((f) => f.isActive).length} of {faqList.length} FAQs active
+                  </Typography>
+                </Box>
+              )}
             </Box>
-          </Paper>
-        </Grid>
 
-      </Grid>
+      </Paper>
       )} {/* end Tab 2 — AI & Chatbot */}
 
       {/* TAB 1 — NOTIFICATIONS */}
       {activeTab === 1 && (
       <Grid container spacing={4}>
 
-        {/* ── PILLAR 13: NOTIFICATION TEMPLATES ───────────────────────────── */}
+        {/* ── SECTION 1: NOTIFICATION CHANNELS ────────────────────────────── */}
         <Grid size={{ xs: 12 }}>
           <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden' }}>
 
-            {/* Header */}
             <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
               <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
-                <NotificationsActiveIcon /> Notification Templates
+                <NotificationsActiveIcon /> Notification Channels
+              </Typography>
+              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mt: 0.5 }}>
+                Control what gets sent to pet owners, and how. Saved with "Save Configuration" above.
               </Typography>
             </Box>
 
-            <Box sx={{ p: 3, bgcolor: COLORS.cardBg }}>
+            <Box
+              sx={{
+                p: 3,
+                bgcolor: COLORS.cardBg,
+                '& .MuiFormControlLabel-root': { alignItems: 'flex-start', ml: 0, mr: 0 },
+                '& .MuiFormControlLabel-label': { ml: 2.5, mt: 0.25 },
+              }}
+            >
 
-              {/* Description */}
-              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 2 }}>
-                Customize the push notification messages sent to pet owners at each stage of their visit.
-                Changes take effect immediately after saving — the next notification will use the updated wording.
-                Placeholders like <strong>{'{petName}'}</strong> are replaced with real values when the notification is sent.
-              </Typography>
+              {/* ─── SUB-SECTION: AUTOMATIC REMINDERS ─── */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5 }}>
+                <Typography sx={{ ...TYPE.label, color: COLORS.accent, fontSize: '0.78rem', letterSpacing: '0.08em' }}>
+                  AUTOMATIC REMINDERS
+                </Typography>
+                <Divider sx={{ flex: 1, borderColor: COLORS.border }} />
+              </Box>
 
-              {/* Appointment Reminders toggle (T4.93) */}
-              <Box sx={{ mb: 3, p: 2, bgcolor: COLORS.cream, border: `2px solid ${COLORS.accent}22`, borderRadius: 0 }}>
+              {/* Manual Appointment Reminders (T4.93) */}
+              <Box sx={{ mb: 1.5, p: 2, bgcolor: '#FFFFFF', border: `2px solid ${COLORS.brand}`, borderRadius: 0, boxShadow: '4px 4px 0px rgba(62, 39, 35, 0.18)' }}>
                 <FormControlLabel
                   control={
                     <MedicinePillSwitch
@@ -2570,19 +2807,19 @@ export default function Settings() {
                   }
                   label={
                     <Box>
-                      <Typography sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.accent, fontSize: '0.85rem' }}>
-                        Enable Appointment Reminders
+                      <Typography sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.brand, fontSize: '0.9rem' }}>
+                        Manual Appointment Reminders
                       </Typography>
                       <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary, fontSize: '0.75rem' }}>
-                        When enabled, a "Send Reminders" button appears on the Dashboard allowing staff to send push notifications to pet owners with confirmed appointments the next day.
+                        Shows a "Send Reminders" button on the Dashboard so you can remind tomorrow's clients with one click.
                       </Typography>
                     </Box>
                   }
                 />
               </Box>
 
-              {/* Automated Appointment Reminders (T4.126) */}
-              <Box sx={{ mb: 3, p: 2, bgcolor: COLORS.cream, border: `2px solid ${COLORS.accent}22`, borderRadius: 0 }}>
+              {/* Automatic Appointment Reminders (T4.126) */}
+              <Box sx={{ mb: 1.5, p: 2, bgcolor: '#FFFFFF', border: `2px solid ${COLORS.brand}`, borderRadius: 0, boxShadow: '4px 4px 0px rgba(62, 39, 35, 0.18)' }}>
                 <FormControlLabel
                   control={
                     <MedicinePillSwitch
@@ -2592,23 +2829,21 @@ export default function Settings() {
                   }
                   label={
                     <Box>
-                      <Typography sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.accent, fontSize: '0.85rem' }}>
-                        Enable Automated Appointment Reminders (Cron)
+                      <Typography sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.brand, fontSize: '0.9rem' }}>
+                        Automatic Appointment Reminders
                       </Typography>
                       <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary, fontSize: '0.75rem' }}>
-                        When enabled, the Cloudflare Worker sends 3-stage reminders automatically at 7 AM daily:
-                        heads-up (configurable days before), tomorrow, and same-day. The manual "Send Reminders"
-                        button continues to work independently.
+                        Reminds clients automatically 3 times: a few days ahead, the day before, and the morning of their appointment. Sent every day at 7 AM.
                       </Typography>
                     </Box>
                   }
                 />
 
                 {settings.enableAutoAppointmentReminders === true && (
-                  <Box sx={{ mt: 2 }}>
+                  <Box sx={{ mt: 2, pl: { xs: 0, sm: 6 } }}>
                     <TextField
                       type="number"
-                      label="Heads-Up Reminder (days before appointment)"
+                      label="First reminder sent how many days ahead?"
                       value={settings.appointmentReminderHeadsUpDays ?? 3}
                       onChange={(e) => {
                         const v = parseInt(e.target.value) || 3;
@@ -2616,17 +2851,17 @@ export default function Settings() {
                       }}
                       inputProps={{ min: 2, max: 14 }}
                       size="small"
-                      helperText="How many days before the appointment to send the first reminder (2-14)"
-                      sx={{ width: 320, '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
-                      InputLabelProps={{ sx: { fontFamily: FONT, fontSize: '0.8rem' } }}
-                      FormHelperTextProps={{ sx: { fontFamily: FONT, fontSize: '0.65rem' } }}
+                      helperText="Between 2 and 14 days"
+                      sx={{ width: 360, bgcolor: 'white', boxShadow: '3px 3px 0px rgba(62, 39, 35, 0.18)', '& .MuiOutlinedInput-root': { borderRadius: 0, '& fieldset': { borderColor: COLORS.brand, borderWidth: 2 }, '&:hover fieldset': { borderColor: COLORS.brand }, '&.Mui-focused fieldset': { borderColor: COLORS.brand, borderWidth: 2 } }, '& input': { color: COLORS.brand, fontWeight: 700, fontSize: '1.05rem' }, '& .MuiInputLabel-root.Mui-focused': { color: COLORS.brand, fontWeight: 700 } }}
+                      InputLabelProps={{ sx: { fontFamily: FONT, fontSize: '0.82rem', color: COLORS.accent, fontWeight: 700 } }}
+                      FormHelperTextProps={{ sx: { fontFamily: FONT, fontSize: '0.78rem', color: COLORS.accent, fontWeight: 600, mt: 1, ml: 0 } }}
                     />
                   </Box>
                 )}
               </Box>
 
-              {/* Vaccine Reminders config (T3.55) */}
-              <Box sx={{ mb: 3, p: 2, bgcolor: COLORS.cream, border: `2px solid ${COLORS.accent}22`, borderRadius: 0 }}>
+              {/* Vaccine Due Reminders (T3.55) */}
+              <Box sx={{ mb: 3, p: 2, bgcolor: '#FFFFFF', border: `2px solid ${COLORS.brand}`, borderRadius: 0, boxShadow: '4px 4px 0px rgba(62, 39, 35, 0.18)' }}>
                 <FormControlLabel
                   control={
                     <MedicinePillSwitch
@@ -2636,45 +2871,59 @@ export default function Settings() {
                   }
                   label={
                     <Box>
-                      <Typography sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.accent, fontSize: '0.85rem' }}>
-                        Enable Vaccine Reminders
+                      <Typography sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.brand, fontSize: '0.9rem' }}>
+                        Vaccine Due Reminders
                       </Typography>
                       <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary, fontSize: '0.75rem' }}>
-                        When enabled, automated push notifications are sent daily at 9 AM to pet owners with
-                        due or overdue vaccinations. A manual "Send Now" button also appears on the Dashboard.
+                        Notifies pet owners when their pet's vaccines are due or overdue. Sent automatically every morning at 9 AM.
                       </Typography>
                     </Box>
                   }
                 />
 
                 {settings.enableVaccineReminders !== false && (
-                  <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
+                  <Box sx={{ display: 'flex', gap: 2, mt: 2, pl: { xs: 0, sm: 6 }, flexWrap: 'wrap' }}>
                     <TextField
                       type="number"
-                      label="Reminder Window (days before due)"
+                      label="Start reminding how many days before due?"
                       value={settings.vaccineReminderWindowDays ?? 30}
                       onChange={(e) => handleChange('vaccineReminderWindowDays', parseInt(e.target.value) || 30)}
                       inputProps={{ min: 7, max: 90 }}
                       size="small"
-                      sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
-                      InputLabelProps={{ sx: { fontFamily: FONT, fontSize: '0.8rem' } }}
+                      helperText="Between 7 and 90 days"
+                      sx={{ flex: 1, minWidth: 280, bgcolor: 'white', boxShadow: '3px 3px 0px rgba(62, 39, 35, 0.18)', '& .MuiOutlinedInput-root': { borderRadius: 0, '& fieldset': { borderColor: COLORS.brand, borderWidth: 2 }, '&:hover fieldset': { borderColor: COLORS.brand }, '&.Mui-focused fieldset': { borderColor: COLORS.brand, borderWidth: 2 } }, '& input': { color: COLORS.brand, fontWeight: 700, fontSize: '1.05rem' }, '& .MuiInputLabel-root.Mui-focused': { color: COLORS.brand, fontWeight: 700 } }}
+                      InputLabelProps={{ sx: { fontFamily: FONT, fontSize: '0.82rem', color: COLORS.accent, fontWeight: 700 } }}
+                      FormHelperTextProps={{ sx: { fontFamily: FONT, fontSize: '0.78rem', color: COLORS.accent, fontWeight: 600, mt: 1, ml: 0 } }}
                     />
                     <TextField
                       type="number"
-                      label="Cooldown Period (days between sends)"
+                      label="Wait how many days before reminding again?"
                       value={settings.vaccineReminderCooldownDays ?? 7}
                       onChange={(e) => handleChange('vaccineReminderCooldownDays', parseInt(e.target.value) || 7)}
                       inputProps={{ min: 1, max: 30 }}
                       size="small"
-                      sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
-                      InputLabelProps={{ sx: { fontFamily: FONT, fontSize: '0.8rem' } }}
+                      helperText="Between 1 and 30 days"
+                      sx={{ flex: 1, minWidth: 280, bgcolor: 'white', boxShadow: '3px 3px 0px rgba(62, 39, 35, 0.18)', '& .MuiOutlinedInput-root': { borderRadius: 0, '& fieldset': { borderColor: COLORS.brand, borderWidth: 2 }, '&:hover fieldset': { borderColor: COLORS.brand }, '&.Mui-focused fieldset': { borderColor: COLORS.brand, borderWidth: 2 } }, '& input': { color: COLORS.brand, fontWeight: 700, fontSize: '1.05rem' }, '& .MuiInputLabel-root.Mui-focused': { color: COLORS.brand, fontWeight: 700 } }}
+                      InputLabelProps={{ sx: { fontFamily: FONT, fontSize: '0.82rem', color: COLORS.accent, fontWeight: 700 } }}
+                      FormHelperTextProps={{ sx: { fontFamily: FONT, fontSize: '0.78rem', color: COLORS.accent, fontWeight: 600, mt: 1, ml: 0 } }}
                     />
                   </Box>
                 )}
               </Box>
 
-              {/* Email Notifications toggle (T4.135) */}
-              <Box sx={{ mb: 3, p: 2, bgcolor: COLORS.cream, border: `2px solid ${COLORS.accent}22`, borderRadius: 0 }}>
+              {/* ─── SUB-SECTION: EXTRA DELIVERY CHANNELS ─── */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5 }}>
+                <Typography sx={{ ...TYPE.label, color: COLORS.accent, fontSize: '0.78rem', letterSpacing: '0.08em' }}>
+                  EXTRA DELIVERY CHANNELS
+                </Typography>
+                <Divider sx={{ flex: 1, borderColor: COLORS.border }} />
+                <Typography sx={{ ...TYPE.meta, color: COLORS.textMuted, fontSize: '0.7rem' }}>
+                  Push notifications are always on
+                </Typography>
+              </Box>
+
+              {/* Also Send by Email (T4.135) */}
+              <Box sx={{ mb: 1.5, p: 2, bgcolor: '#FFFFFF', border: `2px solid ${COLORS.brand}`, borderRadius: 0, boxShadow: '4px 4px 0px rgba(62, 39, 35, 0.18)' }}>
                 <FormControlLabel
                   control={
                     <MedicinePillSwitch
@@ -2684,21 +2933,19 @@ export default function Settings() {
                   }
                   label={
                     <Box>
-                      <Typography sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.accent, fontSize: '0.85rem' }}>
-                        Enable Email Notifications
+                      <Typography sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.brand, fontSize: '0.9rem' }}>
+                        Also Send by Email
                       </Typography>
                       <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary, fontSize: '0.75rem' }}>
-                        When enabled, an email copy of every push notification is sent to the pet owner's
-                        registered email address. Uses Resend API (free tier: 100 emails/day).
-                        API key is configured in the Cloudflare Worker environment — not stored here.
+                        Sends a copy of every notification to the pet owner's email address.
                       </Typography>
                     </Box>
                   }
                 />
               </Box>
 
-              {/* SMS Notifications toggle (T4.135) */}
-              <Box sx={{ mb: 3, p: 2, bgcolor: COLORS.cream, border: `2px solid ${COLORS.accent}22`, borderRadius: 0 }}>
+              {/* Also Send by SMS (T4.135) */}
+              <Box sx={{ p: 2, bgcolor: '#FFFFFF', border: `2px solid ${COLORS.brand}`, borderRadius: 0, boxShadow: '4px 4px 0px rgba(62, 39, 35, 0.18)' }}>
                 <FormControlLabel
                   control={
                     <MedicinePillSwitch
@@ -2708,20 +2955,36 @@ export default function Settings() {
                   }
                   label={
                     <Box>
-                      <Typography sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.accent, fontSize: '0.85rem' }}>
-                        Enable SMS Notifications (Selective)
+                      <Typography sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.brand, fontSize: '0.9rem' }}>
+                        Also Send by SMS (Critical Only)
                       </Typography>
                       <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary, fontSize: '0.75rem' }}>
-                        When enabled, SMS messages are sent for critical notifications only:
-                        appointment confirmation, tomorrow reminder, and same-day reminder.
-                        Uses Semaphore API (PH gateway, ~P0.40/SMS). API key is configured
-                        in the Cloudflare Worker environment. Disabled by default — enable
-                        only after configuring the SEMAPHORE_API_KEY in the Worker dashboard.
+                        Sends text messages for the most important notifications: booking confirmations, day-before, and same-day reminders. Costs roughly ₱0.40 per message.
                       </Typography>
                     </Box>
                   }
                 />
               </Box>
+
+            </Box>
+          </Paper>
+        </Grid>
+
+        {/* ── SECTION 2: MESSAGE TEMPLATES ─────────────────────────────────── */}
+        <Grid size={{ xs: 12 }}>
+          <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden' }}>
+
+            <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
+              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
+                <EditIcon /> Message Templates
+              </Typography>
+              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mt: 0.5 }}>
+                Customize the push notification messages sent to pet owners at each stage of their visit.
+                Placeholders like <strong>{'{petName}'}</strong> are replaced with real values when the notification is sent.
+              </Typography>
+            </Box>
+
+            <Box sx={{ p: 3, bgcolor: COLORS.cardBg }}>
 
               {/* Placeholder reference guide */}
               <Box sx={{ mb: 3, p: 2, bgcolor: COLORS.kpiBlueBg, border: `2px solid ${COLORS.kpiBlueBorder}` }}>
@@ -2750,142 +3013,174 @@ export default function Settings() {
                 </Box>
               </Box>
 
-              {/* Template groups */}
-              {TEMPLATE_GROUPS.map((group) => (
-                <Box key={group.label} sx={{ mb: 4 }}>
+              {/* Collapsible template groups */}
+              {TEMPLATE_GROUPS.map((group) => {
+                const isOpen = !!expandedGroups[group.label];
+                const customizedCount = group.keys.filter((key) => {
+                  const tpl = notifTemplates[key];
+                  return tpl && (tpl.title !== DEFAULT_TEMPLATES[key]?.title || tpl.body !== DEFAULT_TEMPLATES[key]?.body);
+                }).length;
 
-                  {/* Group header */}
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                    <Typography sx={{ ...TYPE.label, color: COLORS.accent }}>
-                      {group.label}
-                    </Typography>
-                    <Divider sx={{ flex: 1, borderColor: COLORS.border }} />
-                  </Box>
-                  <Typography sx={{ ...TYPE.meta, color: COLORS.textMuted, mb: 2, fontSize: '0.75rem' }}>
-                    {group.description}
-                  </Typography>
+                return (
+                  <Box key={group.label} sx={{ mb: 2 }}>
 
-                  {/* Template cards */}
-                  <Stack spacing={2}>
-                    {group.keys.map((statusKey) => {
-                      const tpl = notifTemplates[statusKey];
-                      if (!tpl) return null;
-                      const chipColor = STATUS_CHIP_COLORS[statusKey] || STATUS_CHIP_COLORS.confirmed;
-                      const isDefault = tpl.title === DEFAULT_TEMPLATES[statusKey]?.title
-                                     && tpl.body  === DEFAULT_TEMPLATES[statusKey]?.body;
+                    {/* Accordion header — click to expand/collapse */}
+                    <Box
+                      onClick={() => toggleGroup(group.label)}
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1.5,
+                        px: 2,
+                        py: 1.5,
+                        bgcolor: isOpen ? COLORS.cream : 'white',
+                        border: `2px solid ${COLORS.accent}33`,
+                        cursor: 'pointer',
+                        userSelect: 'none',
+                        '&:hover': { bgcolor: COLORS.cream },
+                      }}
+                    >
+                      <Typography sx={{ ...TYPE.label, color: COLORS.accent, fontSize: '0.8rem' }}>
+                        {group.label}
+                      </Typography>
+                      <Typography sx={{ ...TYPE.meta, color: COLORS.textMuted, fontSize: '0.72rem' }}>
+                        {group.keys.length} templates{customizedCount > 0 ? ` · ${customizedCount} customized` : ''}
+                      </Typography>
+                      <Box sx={{ ml: 'auto', color: COLORS.textSecondary, display: 'flex', alignItems: 'center' }}>
+                        {isOpen ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                      </Box>
+                    </Box>
 
-                      return (
-                        <Box
-                          key={statusKey}
-                          sx={{
-                            p: 2.5,
-                            bgcolor: isDefault ? 'white' : COLORS.warningSurface,
-                            border: `2px solid ${isDefault ? COLORS.accent + '22' : COLORS.warning + '44'}`,
-                          }}
-                        >
-                          {/* Status chip + customized indicator + reset button */}
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
-                            <Chip
-                              label={STATUS_LABELS[statusKey]}
-                              size="small"
-                              sx={{
-                                fontWeight: 900,
-                                fontSize: '0.68rem',
-                                letterSpacing: '0.04em',
-                                borderRadius: 0,
-                                bgcolor: chipColor.bg,
-                                color: chipColor.text,
-                                border: `1px solid ${chipColor.border}`,
-                              }}
-                            />
-                            {!isDefault && (
-                              <Chip
-                                label="CUSTOMIZED"
-                                size="small"
+                    {/* Accordion body */}
+                    {isOpen && (
+                      <Box sx={{ border: `2px solid ${COLORS.accent}33`, borderTop: 'none', p: 2, bgcolor: COLORS.cardBg }}>
+                        <Typography sx={{ ...TYPE.meta, color: COLORS.textMuted, mb: 2, fontSize: '0.75rem' }}>
+                          {group.description}
+                        </Typography>
+
+                        <Stack spacing={2}>
+                          {group.keys.map((statusKey) => {
+                            const tpl = notifTemplates[statusKey];
+                            if (!tpl) return null;
+                            const chipColor = STATUS_CHIP_COLORS[statusKey] || STATUS_CHIP_COLORS.confirmed;
+                            const isDefault = tpl.title === DEFAULT_TEMPLATES[statusKey]?.title
+                                           && tpl.body  === DEFAULT_TEMPLATES[statusKey]?.body;
+
+                            return (
+                              <Box
+                                key={statusKey}
                                 sx={{
-                                  fontWeight: 900,
-                                  fontSize: '0.6rem',
-                                  borderRadius: 0,
-                                  bgcolor: COLORS.warningSurface,
-                                  color: COLORS.warning,
-                                  border: `1px solid ${COLORS.warning}`,
-                                }}
-                              />
-                            )}
-                            {!isDefault && (
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                startIcon={<RefreshIcon sx={{ fontSize: '0.85rem' }} />}
-                                onClick={() => setNotifResetConfirm({ open: true, key: statusKey })}
-                                sx={{
-                                  ml: 'auto',
-                                  fontWeight: 900,
-                                  fontSize: '0.65rem',
-                                  borderRadius: 0,
-                                  textTransform: 'uppercase',
-                                  letterSpacing: 0.5,
-                                  borderColor: COLORS.accentLight,
-                                  color: COLORS.textSecondary,
-                                  py: 0.25,
-                                  '&:hover': { bgcolor: COLORS.cream },
+                                  p: 2.5,
+                                  bgcolor: isDefault ? 'white' : COLORS.warningSurface,
+                                  border: `2px solid ${isDefault ? COLORS.accent + '22' : COLORS.warning + '44'}`,
                                 }}
                               >
-                                Reset
-                              </Button>
-                            )}
-                          </Box>
+                                {/* Status chip + customized indicator + reset button */}
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+                                  <Chip
+                                    label={STATUS_LABELS[statusKey]}
+                                    size="small"
+                                    sx={{
+                                      fontWeight: 900,
+                                      fontSize: '0.68rem',
+                                      letterSpacing: '0.04em',
+                                      borderRadius: 0,
+                                      bgcolor: chipColor.bg,
+                                      color: chipColor.text,
+                                      border: `1px solid ${chipColor.border}`,
+                                    }}
+                                  />
+                                  {!isDefault && (
+                                    <Chip
+                                      label="CUSTOMIZED"
+                                      size="small"
+                                      sx={{
+                                        fontWeight: 900,
+                                        fontSize: '0.6rem',
+                                        borderRadius: 0,
+                                        bgcolor: COLORS.warningSurface,
+                                        color: COLORS.warning,
+                                        border: `1px solid ${COLORS.warning}`,
+                                      }}
+                                    />
+                                  )}
+                                  {!isDefault && (
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      startIcon={<RefreshIcon sx={{ fontSize: '0.85rem' }} />}
+                                      onClick={() => setNotifResetConfirm({ open: true, key: statusKey })}
+                                      sx={{
+                                        ml: 'auto',
+                                        fontWeight: 900,
+                                        fontSize: '0.65rem',
+                                        borderRadius: 0,
+                                        textTransform: 'uppercase',
+                                        letterSpacing: 0.5,
+                                        borderColor: COLORS.accentLight,
+                                        color: COLORS.textSecondary,
+                                        py: 0.25,
+                                        '&:hover': { bgcolor: COLORS.cream },
+                                      }}
+                                    >
+                                      Reset
+                                    </Button>
+                                  )}
+                                </Box>
 
-                          {/* Title field */}
-                          <TextField
-                            fullWidth
-                            label="Title"
-                            size="small"
-                            value={tpl.title}
-                            onChange={(e) => handleNotifTemplateChange(statusKey, 'title', e.target.value)}
-                            sx={{
-                              mb: 1.5,
-                              bgcolor: 'white',
-                              '& .MuiOutlinedInput-root': {
-                                borderRadius: 0,
-                                '& fieldset': { border: `2px solid ${COLORS.accent}33` },
-                              },
-                            }}
-                            inputProps={{ style: { fontWeight: 700 } }}
-                          />
+                                {/* Title field */}
+                                <TextField
+                                  fullWidth
+                                  label="Title"
+                                  size="small"
+                                  value={tpl.title}
+                                  onChange={(e) => handleNotifTemplateChange(statusKey, 'title', e.target.value)}
+                                  sx={{
+                                    mb: 1.5,
+                                    bgcolor: 'white',
+                                    '& .MuiOutlinedInput-root': {
+                                      borderRadius: 0,
+                                      '& fieldset': { border: `2px solid ${COLORS.accent}33` },
+                                    },
+                                  }}
+                                  inputProps={{ style: { fontWeight: 700 } }}
+                                />
 
-                          {/* Body field */}
-                          <TextField
-                            fullWidth
-                            label="Body"
-                            size="small"
-                            multiline
-                            minRows={2}
-                            maxRows={4}
-                            value={tpl.body}
-                            onChange={(e) => handleNotifTemplateChange(statusKey, 'body', e.target.value)}
-                            sx={{
-                              bgcolor: 'white',
-                              '& .MuiOutlinedInput-root': {
-                                borderRadius: 0,
-                                '& fieldset': { border: `2px solid ${COLORS.accent}33` },
-                              },
-                            }}
-                            helperText={
-                              isDefault
-                                ? 'Default template — edit to customize.'
-                                : 'Customized — will override the default notification.'
-                            }
-                          />
-                        </Box>
-                      );
-                    })}
-                  </Stack>
-                </Box>
-              ))}
+                                {/* Body field */}
+                                <TextField
+                                  fullWidth
+                                  label="Body"
+                                  size="small"
+                                  multiline
+                                  minRows={2}
+                                  maxRows={4}
+                                  value={tpl.body}
+                                  onChange={(e) => handleNotifTemplateChange(statusKey, 'body', e.target.value)}
+                                  sx={{
+                                    bgcolor: 'white',
+                                    '& .MuiOutlinedInput-root': {
+                                      borderRadius: 0,
+                                      '& fieldset': { border: `2px solid ${COLORS.accent}33` },
+                                    },
+                                  }}
+                                  helperText={
+                                    isDefault
+                                      ? 'Default template — edit to customize.'
+                                      : 'Customized — will override the default notification.'
+                                  }
+                                />
+                              </Box>
+                            );
+                          })}
+                        </Stack>
+                      </Box>
+                    )}
+                  </Box>
+                );
+              })}
 
               {/* Footer actions */}
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 1, flexWrap: 'wrap' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 3, flexWrap: 'wrap' }}>
                 <Button
                   variant="contained"
                   startIcon={<SaveIcon />}

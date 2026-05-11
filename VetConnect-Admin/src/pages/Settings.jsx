@@ -15,7 +15,6 @@ import { db } from '../firebaseConfig';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import SaveIcon from '@mui/icons-material/Save';
-import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import DomainIcon from '@mui/icons-material/Domain';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import CircleIcon from '@mui/icons-material/Circle';
@@ -71,7 +70,7 @@ const COLOR_PALETTE =[
 
 
 export default function Settings() {
-  const { profile, isAdmin } = useUser();
+  const { profile } = useUser();
   const [loading, setLoading] = useState(false);
   const[toast, setToast] = useState({ open: false, message: '', severity: 'success' });
   const [activeTab, setActiveTab] = useState(0);
@@ -222,6 +221,7 @@ export default function Settings() {
 
   useEffect(() => {
     // 1. Fetch Global Settings
+    const onErr = (err) => console.warn('[Settings] Listener error:', err.message);
     const unsubSettings = onSnapshot(doc(db, "clinic_settings", "general"), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
@@ -242,13 +242,13 @@ export default function Settings() {
           maxFutureBookingDays: parseInt(data.maxFutureBookingDays) || 30,
         } : prev);
       }
-    });
+    }, onErr);
 
     // 2. Fetch Dynamic Departments
     const unsubDepts = onSnapshot(collection(db, "departments"), (snapshot) => {
       const depts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       setDepartments(depts);
-    });
+    }, onErr);
 
     // 3. One-shot fetch for department usage counts (services + staff) —
     //    real-time updates are unnecessary here; refreshUsageCounts() re-fetches after mutations
@@ -273,7 +273,7 @@ export default function Settings() {
           systemPrompt: data.systemPrompt ?? '',
         }));
       }
-    });
+    }, onErr);
 
     // 6b. Fetch Calendar AI system prompt (Pillar 11B)
     getDoc(doc(db, 'system_prompts', 'calendar_assistant')).then((calSnap) => {
@@ -290,7 +290,7 @@ export default function Settings() {
         .map((d) => ({ id: d.id, ...d.data() }))
         .sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999));
       setFaqList(entries);
-    });
+    }, onErr);
 
     // 8. Fetch Notification Templates (Pillar 13)
     const unsubNotifTemplates = onSnapshot(collection(db, 'notification_templates'), (snapshot) => {
@@ -306,7 +306,7 @@ export default function Settings() {
           : { title: DEFAULT_TEMPLATES[key].title, body: DEFAULT_TEMPLATES[key].body, isCustom: false };
       });
       setNotifTemplates(merged);
-    });
+    }, onErr);
 
     return () => { unsubSettings(); unsubDepts(); unsubLlm(); unsubFaqs(); unsubNotifTemplates(); };
   },[]);
@@ -1961,7 +1961,7 @@ export default function Settings() {
                         {/* Status chip */}
                         <Box>
                           <Chip
-                            label={v.status.toUpperCase()}
+                            label={(v.status || 'draft').toUpperCase()}
                             size="small"
                             sx={getConsentStatusChipSx(v.status)}
                           />

@@ -901,8 +901,8 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       
       const rawDob = selectedRow.petBirthdate;
       if (rawDob) {
-        const d = rawDob.toDate();
-        setEditDob(d.toISOString().split('T')[0]);
+        const d = rawDob?.toDate ? rawDob.toDate() : new Date(rawDob);
+        setEditDob(isNaN(d) ? '' : d.toISOString().split('T')[0]);
       } else {
         setEditDob('');
       }
@@ -1528,8 +1528,8 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         const priorityA = a.priority === 'high' ? 0 : 1;
         const priorityB = b.priority === 'high' ? 0 : 1;
         if (priorityA !== priorityB) return priorityA - priorityB;
-        const timeA = a.jsScheduled ? a.jsScheduled.getTime() : (a.createdAt?.toDate().getTime() || 0);
-        const timeB = b.jsScheduled ? b.jsScheduled.getTime() : (b.createdAt?.toDate().getTime() || 0);
+        const timeA = a.jsScheduled ? a.jsScheduled.getTime() : (a.createdAt?.toDate?.()?.getTime?.() || 0);
+        const timeB = b.jsScheduled ? b.jsScheduled.getTime() : (b.createdAt?.toDate?.()?.getTime?.() || 0);
         if (timeA !== timeB) return timeA - timeB;
         return (a.ownerId || '').localeCompare(b.ownerId || '');
       });
@@ -1661,7 +1661,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
 
   const unfinishedCount = countOnline + countScheduled + countArrived + countStarted + countDispense + countPayment;
 
-  const getFilteredRows = () => {
+  const filteredRows = useMemo(() => {
     let filtered = [];
     switch (tabValue) {
       case 0: filtered = rows.filter(r => r.status === 'pending' && (isToday ? !r.isTriaged : true)); break;
@@ -1689,9 +1689,9 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
     if (tabValue === 0) {
       // 0: ONLINE - Strictly FCFS (Oldest Intake First)
       return [...filtered].sort((a, b) => {
-        const da = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
-        const db = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
-        return da - db;
+        const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
+        const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
+        return dateA - dateB;
       });
     }
 
@@ -1729,7 +1729,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
     }
 
     return filtered;
-  };
+  }, [rows, tabValue, isToday, queueSearchText]);
 
   const tableColumns = getQueueColumns(tabValue, currentTime, {
     handleStatusChange,
@@ -2184,7 +2184,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       {/* DATA GRID (FLEX: 1 - THE FILLER) */}
       <Paper sx={{ ...clinicalFlatStyle, flex: 1, minHeight: 0, width: '100%', overflow: 'hidden' }}>
         <DataGrid 
-          rows={getFilteredRows()} 
+          rows={filteredRows}
           columns={tableColumns} 
           hideFooter
           disableRowSelectionOnClick
@@ -2973,9 +2973,9 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                   const getPrimaryDate = (pulse) => {
                     if (!pulse || pulse.length === 0) return new Date();
                     const sorted = [...pulse].sort((a, b) => {
-                      const da = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp ?? Infinity);
-                      const db = b.timestamp?.toDate ? b.timestamp.toDate() : new Date(b.timestamp ?? Infinity);
-                      return da - db;
+                      const dateA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp ?? Infinity);
+                      const dateB = b.timestamp?.toDate ? b.timestamp.toDate() : new Date(b.timestamp ?? Infinity);
+                      return dateA - dateB;
                     });
                     const firstTs = sorted[0].timestamp;
                     const d = firstTs?.toDate ? firstTs.toDate() : new Date(firstTs);
@@ -3074,9 +3074,9 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
 
                                 return events
                                 .sort((a,b) => {
-                                    const da = a.val && a.val.toDate ? a.val.toDate() : new Date(a.val || 0);
-                                    const db = b.val && b.val.toDate ? b.val.toDate() : new Date(b.val || 0);
-                                    return da - db;
+                                    const dateA = a.val && a.val.toDate ? a.val.toDate() : new Date(a.val || 0);
+                                    const dateB = b.val && b.val.toDate ? b.val.toDate() : new Date(b.val || 0);
+                                    return dateA - dateB;
                                 })
                                 .map((item, idx) => {
                                     const isLatestTotal = item.id === events[events.length - 1]?.id;

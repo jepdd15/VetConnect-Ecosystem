@@ -263,8 +263,9 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
   ...(tabValue === 0 ? [{
     field: 'intakeAge', headerName: 'Intake Age', width: 100, sortable: false, disableColumnMenu: true,
     renderCell: (p) => {
-        const intakeDate = p.row.createdAt?.toDate ? p.row.createdAt.toDate() : new Date(p.row.createdAt);
-        const days = Math.floor((currentTime - intakeDate) / (1000 * 60 * 60 * 24));
+        const raw = p.row.createdAt;
+        const intakeDate = raw?.toDate ? raw.toDate() : raw ? new Date(raw) : new Date();
+        const days = isNaN(intakeDate) ? 0 : Math.floor((currentTime - intakeDate) / (1000 * 60 * 60 * 24));
         return (
             <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', width: '100%' }}>
                 <Typography sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '1rem' }}>
@@ -317,7 +318,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
       // PAYMENT tab — Billing Preview
       if (tabValue === 5) {
         const items = p.row.encounterItems || p.row.prescribedItems || [];
-        const total = p.row.finalTotal || items.reduce((sum, i) => sum + ((i.price || 0) * (i.qty || 1)), 0);
+        const total = p.row.finalTotal ?? items.reduce((sum, i) => sum + ((i.price || 0) * (i.qty || 1)), 0);
         return (
           <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%', py: 1, justifyContent: 'center', height: '100%' }}>
             <Typography variant="overline" sx={{ fontWeight: '1000', fontSize: '0.6rem', color: '#FF8F00', lineHeight: 1, letterSpacing: 1, mb: 1 }}>

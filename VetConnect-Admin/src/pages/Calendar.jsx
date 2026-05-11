@@ -1486,30 +1486,6 @@ export default function Calendar() {
    * @param {Date} queryEndDate
    * @returns {Promise<Array>}
    */
-  const fetchExpandedContext = useCallback(async (queryStartDate, queryEndDate) => {
-    try {
-      const expandedQuery = query(
-        collection(db, 'appointments'),
-        where('scheduledDate', '>=', Timestamp.fromDate(queryStartDate)),
-        where('scheduledDate', '<=', Timestamp.fromDate(queryEndDate)),
-        orderBy('scheduledDate', 'asc')
-      );
-      const snap = await getDocs(expandedQuery);
-      return snap.docs.map((d) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          ...data,
-          status:      normalizeStatus(data.status),
-          jsScheduled: data.scheduledDate?.toDate?.() ?? null,
-        };
-      });
-    } catch (err) {
-      console.error('[Calendar.fetchExpandedContext]:', err.message);
-      return [];
-    }
-  }, []);
-
   // ── Quick-action chip handler ─────────────────
   const handleChipClick = useCallback((chipType) => {
     const queries = {

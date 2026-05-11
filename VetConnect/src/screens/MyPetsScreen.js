@@ -74,19 +74,30 @@ export default function MyPetsScreen({ navigation }) {
       collection(db, "pets"),
       where("ownerId", "==", auth.currentUser.uid),
     );
+    let lastPetIds = '';
     const unsubscribe = onSnapshot(q, async (snapshot) => {
-      // T2.375: Parallelize medical record lookups
+      const basePets = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      const currentPetIds = basePets.map(p => p.id).sort().join(',');
+      const idsChanged = currentPetIds !== lastPetIds;
+      lastPetIds = currentPetIds;
+
+      if (!idsChanged && basePets.length > 0) {
+        setPets(prev => prev.map(old => {
+          const fresh = basePets.find(b => b.id === old.id);
+          return fresh ? { ...fresh, lastVisit: old.lastVisit, _medicalRecords: old._medicalRecords, vaccineDueDates: old.vaccineDueDates } : old;
+        }));
+        return;
+      }
+
       const petList = await Promise.all(
-        snapshot.docs.map(async (petDoc) => {
-          const petData = { id: petDoc.id, ...petDoc.data() };
+        basePets.map(async (petData) => {
           try {
-            const medQ = query(
+            const medSnap = await getDocs(query(
               collection(db, "medical_records"),
               where("petId", "==", petData.id),
               orderBy("date", "desc"),
               limit(20),
-            );
-            const medSnap = await getDocs(medQ);
+            ));
 
             const medicalRecord = medSnap.docs.find(
               (d) => d.data().recordType === "medical"

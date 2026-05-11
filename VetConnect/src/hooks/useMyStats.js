@@ -613,10 +613,13 @@ export function useMyStats({
       if (bucket) bucket.total += parseFloat(sale.total) || 0;
     });
 
+    // ── Pre-build appointment lookup map (O(n) instead of O(n*m) per loop) ──
+    const apptMap = new Map(allAppointments.map(a => [a.id, a]));
+
     // ── Per pet ─────────────────────────────────────────────────────────────
     const perPet = {};
     filteredSales.forEach(sale => {
-      const appt = allAppointments.find(a => a.id === sale.appointmentId);
+      const appt = apptMap.get(sale.appointmentId);
       if (!appt) return;
       const petName = appt.petName || 'Unknown';
       perPet[petName] = (perPet[petName] || 0) + (parseFloat(sale.total) || 0);
@@ -628,7 +631,7 @@ export function useMyStats({
     // ── Per service type ─────────────────────────────────────────────────────
     const perService = {};
     filteredSales.forEach(sale => {
-      const appt = allAppointments.find(a => a.id === sale.appointmentId);
+      const appt = apptMap.get(sale.appointmentId);
       const serviceType = appt?.serviceCategory || appt?.department || sale.serviceType || 'Other';
       perService[serviceType] = (perService[serviceType] || 0) + (parseFloat(sale.total) || 0);
     });
@@ -656,7 +659,7 @@ export function useMyStats({
     // Keyed by pet name: { [petName]: [{ date, service, amount }] }, newest-first.
     const perPetTransactions = {};
     filteredSales.forEach(sale => {
-      const appt = allAppointments.find(a => a.id === sale.appointmentId);
+      const appt = apptMap.get(sale.appointmentId);
       if (!appt) return;
       const petName = appt.petName || 'Unknown';
       if (!perPetTransactions[petName]) perPetTransactions[petName] = [];
@@ -1033,8 +1036,7 @@ export function useMyStats({
     let cancelled = false;
 
     (async () => {
-      const allProblems = [];
-      for (const pet of userPets) {
+      const results = await Promise.all(userPets.map(async (pet) => {
         try {
           const snap = await getDocs(
             query(
@@ -1042,14 +1044,12 @@ export function useMyStats({
               orderBy('diagnosedAt', 'desc'),
             )
           );
-          snap.docs.forEach(d => {
-            allProblems.push({ id: d.id, ...d.data(), petName: pet.name, petId: pet.id });
-          });
+          return snap.docs.map(d => ({ id: d.id, ...d.data(), petName: pet.name, petId: pet.id }));
         } catch {
-          // Non-blocking — conditions default to empty if subcollection absent
+          return [];
         }
-      }
-      if (!cancelled) setConditionsRaw(allProblems);
+      }));
+      if (!cancelled) setConditionsRaw(results.flat());
     })();
 
     return () => { cancelled = true; };
@@ -1278,9 +1278,10 @@ export function useMyStats({
       if (rangeEnd   && d > rangeEnd)   return false;
       return true;
     });
+    const deptApptMap = new Map(allAppointments.map(a => [a.id, a]));
     const deptMap = {};
     filtered.forEach(sale => {
-      const appt = allAppointments.find(a => a.id === sale.appointmentId);
+      const appt = deptApptMap.get(sale.appointmentId);
       const dept = appt?.department || appt?.serviceCategory || sale.serviceType || 'Other';
       deptMap[dept] = (deptMap[dept] || 0) + (parseFloat(sale.total) || 0);
     });

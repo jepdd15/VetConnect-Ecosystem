@@ -11,7 +11,7 @@
  * listeners are opened here. Per-pet enrichment is handled by useMyStats.
  */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Alert,
@@ -145,7 +145,7 @@ function CircularGauge({ administered, total, size = 56 }) {
   const gapLength = circumference - arcLength;
 
   return (
-    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+    <View style={useMemo(() => ({ width: size, height: size, alignItems: 'center', justifyContent: 'center' }), [size])}>
       <Svg width={size} height={size}>
         {/* Background ring */}
         <Circle
@@ -1393,23 +1393,20 @@ export default function MyStatsScreen({ route, navigation }) {
                       : 'SPENDING BY DEPARTMENT'}
                   </Text>
                   {(() => {
-                    const pieData = spendingBreakdownMode === 'byPet'
-                      ? spendingBreakdown.perPetList.map(r => ({
-                          name: r.name,
-                          count: Math.round(r.amount),
-                          pct: spendingBreakdown.perPetList.reduce((s, x) => s + x.amount, 0) > 0
-                            ? r.amount / spendingBreakdown.perPetList.reduce((s, x) => s + x.amount, 0)
-                            : 0,
-                        }))
-                      : spendingBreakdownMode === 'byService'
-                        ? spendingBreakdown.perServiceList.map(r => ({
-                            name: r.type,
-                            count: Math.round(r.amount),
-                            pct: spendingBreakdown.perServiceList.reduce((s, x) => s + x.amount, 0) > 0
-                              ? r.amount / spendingBreakdown.perServiceList.reduce((s, x) => s + x.amount, 0)
-                              : 0,
-                          }))
-                        : spendingByDepartment;
+                    let pieData;
+                    if (spendingBreakdownMode === 'byPet') {
+                      const total = spendingBreakdown.perPetList.reduce((s, x) => s + x.amount, 0);
+                      pieData = spendingBreakdown.perPetList.map(r => ({
+                        name: r.name, count: Math.round(r.amount), pct: total > 0 ? r.amount / total : 0,
+                      }));
+                    } else if (spendingBreakdownMode === 'byService') {
+                      const total = spendingBreakdown.perServiceList.reduce((s, x) => s + x.amount, 0);
+                      pieData = spendingBreakdown.perServiceList.map(r => ({
+                        name: r.type, count: Math.round(r.amount), pct: total > 0 ? r.amount / total : 0,
+                      }));
+                    } else {
+                      pieData = spendingByDepartment;
+                    }
                     return pieData.length === 0
                       ? <Text style={styles.emptyState}>No spending data for this period.</Text>
                       : <SpendingPieChart data={pieData} size={160} />;
@@ -1660,7 +1657,7 @@ export default function MyStatsScreen({ route, navigation }) {
                   return (
                     <View key={idx} style={styles.vacStatusLine}>
                       {v.dosesRequired > 1 ? (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                        <View style={styles.vacDoseRow}>
                           {Array.from({ length: v.dosesRequired }, (_, i) => (
                             <Text key={i} style={{ fontSize: 10, color: i < v.dosesGiven ? COLORS.success : COLORS.borderLight }}>
                               {i < v.dosesGiven ? '●' : '○'}
@@ -3139,6 +3136,11 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: COLORS.borderLight,
     gap: 8,
+  },
+  vacDoseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
   },
   vacStatusDot: {
     fontSize: 12,

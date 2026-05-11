@@ -908,6 +908,7 @@ async function handleBalanceReminders(env) {
               fields: {
                 ownerId:   { stringValue: ownerId },
                 ownerName: { stringValue: ownerName },
+                petName:   { nullValue: null },
                 status:    { stringValue: 'balance-reminder' },
                 title:     { stringValue: title },
                 body:      { stringValue: body },
@@ -953,6 +954,7 @@ async function handleBalanceReminders(env) {
             fields: {
               ownerId:   { stringValue: ownerId },
               ownerName: { stringValue: ownerName },
+              petName:   { nullValue: null },
               status:    { stringValue: 'balance-reminder' },
               title:     { stringValue: title },
               body:      { stringValue: body },

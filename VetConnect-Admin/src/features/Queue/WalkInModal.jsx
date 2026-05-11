@@ -962,6 +962,12 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
                   multiple
                   options={[...(servicesList || [])]
                     .filter(s => s.isWalkIn !== false)
+                    .filter(s => {
+                      const petSpecies = petEntries[0]?.selectedPet?.species || petEntries[0]?.species || '';
+                      if (!petSpecies || !s.targetSpecies || s.targetSpecies === 'Universal') return true;
+                      const speciesMap = { 'Dog': 'Canine', 'Cat': 'Feline', 'Canine': 'Canine', 'Feline': 'Feline' };
+                      return s.targetSpecies === (speciesMap[petSpecies] || petSpecies);
+                    })
                     .sort((a, b) => {
                       const deptA = (a.department || a.category || 'General').toUpperCase();
                       const deptB = (b.department || b.category || 'General').toUpperCase();

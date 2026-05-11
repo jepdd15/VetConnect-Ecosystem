@@ -166,29 +166,6 @@ npm test
 
 322 unit tests across 2 test suites covering the clinical pulse engine (50 tests) and pulse event writers (256 tests + 16 draft save/resume tests).
 
-## Spark Plan Constraints
-
-The Firebase project runs on the free Spark plan. Key limitations:
-- Cloud Functions cannot be deployed (reference implementations in `functions/index.js`)
-- No Custom Claims — `isStaff()` uses `isAuth()` as a workaround
-- No server-side triggers — automation uses the Cloudflare Worker cron instead
-- Pre-computed queue collections enable Worker access without authentication
-
-## Project Documentation
-
-| Document | Description |
-|----------|-------------|
-| `CLAUDE.md` | Codebase conventions, architecture reference |
-| `MASTER_TASKLIST.md` | Task registry (~940 tasks, ~758 done) |
-| `IMPLEMENTATION_GUIDE.md` | Module sequence and session prompts |
-| `handoff.json` | Session context, decisions, and terminology |
-| `THESIS_CORRECTIONS.pdf` | Chapter 1-3 factual corrections |
-| `THESIS_RECONCILIATION.md` | Thesis vs codebase gap analysis |
-| `VETCONNECT_ERD_SCHEMA.pdf` | ERD diagram + database schema |
-| `VETCONNECT_FLOWCHARTS.pdf` | 8 process flowcharts (current + system) |
-| `VETCONNECT_DIAGRAMS.pdf` | Use case + system architecture diagrams |
-| `audits/` | 55 audit reports from full ecosystem review |
-
 ## Team
 
 | Name | Role |

@@ -30,10 +30,11 @@ import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import PaidIcon from '@mui/icons-material/Paid';
 import UndoIcon from '@mui/icons-material/Undo';
-import { collection, getDocs, query, where, orderBy, getDoc, doc, addDoc, updateDoc, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, getDoc, doc, addDoc, updateDoc, Timestamp, limit } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { COLORS, TYPE, FONT, STATUS_COLORS } from '../theme/designTokens';
 import { chatWithHistory, DEFAULT_CALENDAR_AI_PROMPT } from '../utils/llmService';
+import { resolveVitals } from '../utils/resolveVitals';
 import { normalizeStatus } from '../utils/statusConstants';
 import CalendarAIPanel from '../components/CalendarAIPanel';
 import PsychologyIcon from '@mui/icons-material/Psychology';
@@ -68,6 +69,9 @@ const STATUS_LABELS = {
 
 /** Terminal statuses — only Revert available. */
 const TERMINAL_STATUSES = new Set(['completed', 'cancelled', 'no-show', 'carried-over']);
+
+/** Maximum number of pets to enrich with full medical snapshots per AI context build. */
+const MAX_MEDICAL_PETS = 15;
 
 /** Day-of-week column header labels. Starts Monday (JS getDay 1). */
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -1138,6 +1142,7 @@ export default function Calendar() {
   const [calAISystemPrompt, setCalAISystemPrompt] = useState('');
   const calAIAbortRef          = useRef(false);
   const lastCalAIUserContentRef = useRef('');
+  const petMedicalCacheRef      = useRef({ data: null, petIds: null, rangeKey: null });
 
   // ── Department + supplementary data ─────────
   const [departments,         setDepartments]         = useState([]);
@@ -1288,13 +1293,115 @@ export default function Calendar() {
     return () => { calAIAbortRef.current = true; };
   }, []);
 
+  // ── Medical context fetcher ──────────────────
+  /**
+   * Fetches medical context for a set of petIds and returns a Map<petId, snapshot>.
+   * Runs 3 parallel Firestore reads per pet (pet doc + medical_records limit 3 + problems).
+   * Errors for individual pets are swallowed so a single failure doesn't block the AI.
+   *
+   * @param {string[]} petIds
+   * @returns {Promise<Map<string, object>>}
+   */
+  const fetchPetMedicalContext = useCallback(async (petIds) => {
+    const results = new Map();
+
+    const fetches = petIds.map(async (petId) => {
+      try {
+        const [petSnap, recordsSnap, problemsSnap] = await Promise.all([
+          getDoc(doc(db, 'pets', petId)),
+          getDocs(query(
+            collection(db, 'medical_records'),
+            where('petId', '==', petId),
+            orderBy('date', 'desc'),
+            limit(3)
+          )),
+          getDocs(query(
+            collection(db, 'pets', petId, 'problems'),
+            orderBy('diagnosedAt', 'desc')
+          )),
+        ]);
+
+        const petData  = petSnap.exists() ? petSnap.data() : {};
+        const records  = recordsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const problems = problemsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+        // ── Pet-level fields ──
+        const allergies = petData.petAllergies || petData.allergies || null;
+        const weight    = petData.weight || null;
+
+        // ── Active conditions from problem list ──
+        const activeConditions = problems
+          .filter((p) => p.status === 'active' || p.status === 'monitoring')
+          .map((p) => ({ name: p.name, severity: p.severity, status: p.status }));
+
+        // ── Last 3 diagnoses with dates from medical records ──
+        const lastDiagnoses = records
+          .map((r) => {
+            const date = r.date?.toDate
+              ? r.date.toDate()
+              : r.date?.seconds
+                ? new Date(r.date.seconds * 1000)
+                : null;
+            const dxList = r.diagnoses?.length > 0
+              ? r.diagnoses.map((d) => d.name)
+              : r.soap?.assessment
+                ? [r.soap.assessment]
+                : r.diagnosis
+                  ? [r.diagnosis]
+                  : [];
+            return dxList.length > 0 ? { date, diagnoses: dxList } : null;
+          })
+          .filter(Boolean);
+
+        // ── Current medications from dispensed products (deduplicated, capped at 5) ──
+        const medications = [];
+        for (const r of records) {
+          const rxItems = r.dispensedProducts || r.prescriptions || [];
+          const drugs = rxItems.filter(
+            (rx) => rx.productClass === 'medicine' || rx.isDrug || rx.isMedicine
+          );
+          for (const rx of drugs) {
+            if (!medications.find((m) => m.name === rx.name)) {
+              medications.push({
+                name:         rx.name,
+                instructions: (rx.instructions || '').substring(0, 50),
+              });
+            }
+            if (medications.length >= 5) break;
+          }
+          if (medications.length >= 5) break;
+        }
+
+        // ── Last vitals from most recent record ──
+        const lastVitals = records.length > 0 ? resolveVitals(records[0]) : {};
+
+        results.set(petId, {
+          allergies,
+          weight,
+          activeConditions,
+          lastDiagnoses,
+          medications,
+          lastVitals,
+        });
+      } catch (err) {
+        console.error(`[Calendar.fetchPetMedicalContext] Failed for petId=${petId}:`, err.message);
+        // Non-blocking — skip this pet's medical context rather than halting the AI call.
+      }
+    });
+
+    await Promise.all(fetches);
+    return results;
+  }, []);
+
   // ── Calendar context builder ─────────────────
   /**
    * Formats all currently-loaded calendar data into a plain-text context block.
    * Appended to the system prompt on every AI query so the LLM has full
    * situational awareness without needing JSON parsing.
+   *
+   * @param {Map<string, object>|null} medicalSnapshots - Optional per-pet medical data.
    */
-  const buildCalendarContext = useCallback(() => {
+  const buildCalendarContext = useCallback((medicalSnapshots = null) => {
     const lines = [];
     const now = new Date();
 
@@ -1385,6 +1492,70 @@ export default function Calendar() {
     if (seenPets.size === 0) lines.push('  (none in view)');
     lines.push('');
 
+    // ── Section 8: PATIENT MEDICAL SNAPSHOTS (enriched from Firestore) ──
+    if (medicalSnapshots && medicalSnapshots.size > 0) {
+      const allApptPetIds = [...new Set(appointments.map((a) => a.petId).filter(Boolean))];
+      const renderedPets = new Set();
+
+      lines.push('PATIENT MEDICAL SNAPSHOTS:');
+      for (const appt of appointments) {
+        const petKey = appt.petId;
+        if (!petKey || !medicalSnapshots.has(petKey) || renderedPets.has(petKey)) continue;
+        renderedPets.add(petKey);
+
+        const snap = medicalSnapshots.get(petKey);
+        lines.push(`  [${appt.petName || '?'}]`);
+
+        lines.push(`    Allergies: ${snap.allergies || 'None recorded'}`);
+
+        if (snap.weight) {
+          lines.push(`    Weight: ${snap.weight} kg`);
+        }
+
+        if (snap.activeConditions.length > 0) {
+          const condStr = snap.activeConditions
+            .map((c) => (c.severity ? `${c.name} (${c.severity})` : c.name))
+            .join(', ');
+          lines.push(`    Active Conditions: ${condStr}`);
+        } else {
+          lines.push(`    Active Conditions: None`);
+        }
+
+        if (snap.lastDiagnoses.length > 0) {
+          for (const d of snap.lastDiagnoses) {
+            const dateStr = d.date
+              ? d.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+              : '?';
+            lines.push(`    Diagnosis (${dateStr}): ${d.diagnoses.join(', ')}`);
+          }
+        }
+
+        if (snap.medications.length > 0) {
+          const medStr = snap.medications
+            .map((m) => (m.instructions ? `${m.name} (${m.instructions})` : m.name))
+            .join(', ');
+          lines.push(`    Current Medications: ${medStr}`);
+        }
+
+        const v = snap.lastVitals;
+        const vParts = [];
+        if (v.weight) vParts.push(`Weight: ${v.weight}kg`);
+        if (v.temp)   vParts.push(`Temp: ${v.temp}C`);
+        if (v.hr)     vParts.push(`HR: ${v.hr}`);
+        if (v.rr)     vParts.push(`RR: ${v.rr}`);
+        if (vParts.length > 0) {
+          lines.push(`    Last Vitals: ${vParts.join(', ')}`);
+        }
+
+        lines.push('');
+      }
+
+      if (allApptPetIds.length > MAX_MEDICAL_PETS) {
+        lines.push(`  (${allApptPetIds.length - MAX_MEDICAL_PETS} additional pets in view — ask about specific pets for their details)`);
+        lines.push('');
+      }
+    }
+
     return lines.join('\n');
   }, [appointments, servicesList, vets, departments, joinedInventory, settings, view, dateLabel]);
 
@@ -1413,8 +1584,31 @@ export default function Calendar() {
     setCalAIError('');
     setCalAIInput('');
 
-    const basePrompt     = calAISystemPrompt || DEFAULT_CALENDAR_AI_PROMPT;
-    const contextBlock   = buildCalendarContext();
+    // ── Medical context: fetch or use cached data ──
+    const allPetIds    = [...new Set(appointments.map((a) => a.petId).filter(Boolean))];
+    const uniquePetIds = allPetIds.slice(0, MAX_MEDICAL_PETS);
+    const rangeKey     = `${startDate?.getTime()}_${endDate?.getTime()}`;
+
+    const cached = petMedicalCacheRef.current;
+    const cacheValid = cached.rangeKey === rangeKey
+      && cached.petIds?.length === uniquePetIds.length
+      && uniquePetIds.every((id) => cached.petIds.includes(id));
+
+    let medicalSnapshots = null;
+    if (cacheValid && cached.data) {
+      medicalSnapshots = cached.data;
+    } else if (uniquePetIds.length > 0) {
+      try {
+        medicalSnapshots = await fetchPetMedicalContext(uniquePetIds);
+        petMedicalCacheRef.current = { data: medicalSnapshots, petIds: uniquePetIds, rangeKey };
+      } catch (err) {
+        console.error('[Calendar.runCalendarAI] Medical context fetch failed:', err.message);
+        // Non-blocking — proceed without medical context on fetch failure.
+      }
+    }
+
+    const basePrompt      = calAISystemPrompt || DEFAULT_CALENDAR_AI_PROMPT;
+    const contextBlock    = buildCalendarContext(medicalSnapshots);
     const effectivePrompt = `${basePrompt}\n\n--- CURRENT CALENDAR DATA ---\n${contextBlock}`;
 
     const auditBase = {
@@ -1472,7 +1666,7 @@ export default function Calendar() {
         setCalAILoading(false);
       }
     }
-  }, [llmConfig, calAILoading, calAIMessages, calAISystemPrompt, buildCalendarContext, user, profile]);
+  }, [llmConfig, calAILoading, calAIMessages, calAISystemPrompt, buildCalendarContext, fetchPetMedicalContext, user, profile, appointments, startDate, endDate]);
 
   /**
    * fetchExpandedContext — stub for future on-demand expansion.
@@ -1505,6 +1699,7 @@ export default function Calendar() {
     setCalAIMessages([]);
     setCalAIError('');
     setCalAIContextLabel(null);
+    petMedicalCacheRef.current = { data: null, petIds: null, rangeKey: null };
   }, []);
 
   const handleCalAIRetry = useCallback(() => {

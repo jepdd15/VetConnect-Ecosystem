@@ -62,5 +62,6 @@ VetConnect/*_PLAN.md
 
 # Misc working files
 VetConnect-Admin/marianne_report.txt
-*.Alpha-Test-Evaluation-Form*
-*.Beta-Test-Evaluation-Form*
+*Alpha-Test-Evaluation-Form*
+*Beta-Test-Evaluation-Form*
+.gitattributes

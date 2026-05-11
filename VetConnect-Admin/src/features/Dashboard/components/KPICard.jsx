@@ -21,6 +21,8 @@ import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
  * @param {React.ReactNode}     insight      - Contextual insight text (Day 4 engine)
  * @param {number|null}         yearAgoDelta - T4.3 YoY % change (null = hide indicator)
  * @param {Array<{value:number}>|null} sparkline - T4.182 optional trend sparkline (2+ points)
+ * @param {string|null} iconAccent - When variant='brand', this color tints the icon
+ *   tile so each card keeps a small semantic hint while the chrome stays unified.
  */
 export default function KPICard({
   title,
@@ -37,6 +39,7 @@ export default function KPICard({
   historicalContext = undefined, // T2.339: { min, avg, max } for hover tooltip
   yearAgoDelta = undefined,   // T4.3: year-over-year % change (null = hide, undefined = not active)
   sparkline = null,           // T4.182: optional Array<{ value: number }> for trend sparkline
+  iconAccent = null,          // OptionJ: per-card icon color when variant='brand'
 }) {
   const colorMap = {
     blue:    { bg: COLORS.kpiBlueBg,   border: COLORS.kpiBlueBorder,   text: COLORS.info },
@@ -45,9 +48,13 @@ export default function KPICard({
     red:     { bg: COLORS.kpiRedBg,    border: COLORS.kpiRedBorder,    text: COLORS.danger },
     purple:  { bg: COLORS.kpiPurpleBg, border: COLORS.kpiPurpleBorder, text: COLORS.kpiPurpleText },
     neutral: { bg: COLORS.cardBg,      border: COLORS.border,          text: COLORS.textPrimary },
+    // Starbarks brand variant — unified brown chrome, optional iconAccent for the icon tile.
+    brand:   { bg: COLORS.cardBg,      border: COLORS.brand,           text: COLORS.brand },
   };
 
   const c = colorMap[variant] || colorMap.neutral;
+  // For the brand variant, allow the icon to keep a semantic tint via iconAccent.
+  const iconColor = (variant === 'brand' && iconAccent) ? iconAccent : c.text;
 
   return (
     <Box
@@ -79,9 +86,9 @@ export default function KPICard({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          bgcolor: `${c.text}15`,
-          color: c.text,
-          border: `1px solid ${c.text}30`,
+          bgcolor: `${iconColor}15`,
+          color: iconColor,
+          border: `1px solid ${iconColor}30`,
           flexShrink: 0,
         }}>
           {icon}

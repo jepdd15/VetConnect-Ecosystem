@@ -64,9 +64,12 @@ function getTomorrowLabel() {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 /**
- * @param {{ clinicSettings: object }} props
+ * @param {{ clinicSettings: object, onActionCountChange?: function }} props
+ * onActionCountChange is called with the running total of actionable items
+ * (appointment confirmations, queued reminders, vaccine queue size, promo
+ * opt-ins) so the parent can drive a notification-bell badge.
  */
-export default function ReminderWidget({ clinicSettings }) {
+export default function ReminderWidget({ clinicSettings, onActionCountChange }) {
   const { profile }      = useUser();
   const isEnabled        = clinicSettings.enableAppointmentReminders !== false;
   const isVaccineEnabled = clinicSettings.enableVaccineReminders !== false;
@@ -92,6 +95,18 @@ export default function ReminderWidget({ clinicSettings }) {
   const [promoCount, setPromoCount]           = useState(null);
   const [promoDialogOpen, setPromoDialogOpen] = useState(false);
   const [lastPromoSent, setLastPromoSent]     = useState(null); // Date | null
+
+  // Report a running total of actionable items up to the parent so it can
+  // drive a notification-bell badge. Treats null as 0 (still loading).
+  useEffect(() => {
+    if (!onActionCountChange) return;
+    const total =
+      (Number(count) || 0) +
+      (Number(queueCount) || 0) +
+      (Number(vaccineCount) || 0) +
+      (Number(promoCount) || 0);
+    onActionCountChange(total);
+  }, [count, queueCount, vaccineCount, promoCount, onActionCountChange]);
 
   // Fetch tomorrow's appointment count on mount — only when feature is enabled
   useEffect(() => {
@@ -250,9 +265,10 @@ export default function ReminderWidget({ clinicSettings }) {
         gap: 2,
         px: 3,
         py: 1.5,
-        bgcolor: COLORS.kpiBlueBg,
-        border: `2px solid ${COLORS.kpiBlueBorder}`,
+        bgcolor: COLORS.cream,
+        border: `2px solid ${COLORS.brand}`,
         borderRadius: 0,
+        boxShadow: '3px 3px 0px rgba(62, 39, 35, 0.15)',
         mb: 1.5,
       }}>
 
@@ -381,9 +397,10 @@ export default function ReminderWidget({ clinicSettings }) {
           gap: 2,
           px: 3,
           py: 1.5,
-          bgcolor: COLORS.kpiOrangeBg,
-          border: `2px solid ${COLORS.kpiOrangeBorder}`,
+          bgcolor: COLORS.cream,
+          border: `2px solid ${COLORS.brand}`,
           borderRadius: 0,
+          boxShadow: '3px 3px 0px rgba(62, 39, 35, 0.15)',
           mb: 1.5,
         }}>
           <VaccinesIcon sx={{ color: COLORS.warning, fontSize: 22, flexShrink: 0 }} />
@@ -511,9 +528,10 @@ export default function ReminderWidget({ clinicSettings }) {
           gap: 2,
           px: 3,
           py: 1.5,
-          bgcolor: COLORS.kpiRedBg,
-          border: `2px solid ${COLORS.kpiRedBorder}`,
+          bgcolor: COLORS.cream,
+          border: `2px solid ${COLORS.brand}`,
           borderRadius: 0,
+          boxShadow: '3px 3px 0px rgba(62, 39, 35, 0.15)',
           mb: 1.5,
         }}>
           <AccountBalanceWalletIcon sx={{ color: COLORS.danger, fontSize: 22, flexShrink: 0 }} />
@@ -623,9 +641,10 @@ export default function ReminderWidget({ clinicSettings }) {
         gap: 2,
         px: 3,
         py: 1.5,
-        bgcolor: COLORS.kpiPurpleBg,
-        border: `2px solid ${COLORS.kpiPurpleBorder}`,
+        bgcolor: COLORS.cream,
+        border: `2px solid ${COLORS.brand}`,
         borderRadius: 0,
+        boxShadow: '3px 3px 0px rgba(62, 39, 35, 0.15)',
         mb: 1.5,
       }}>
         <CampaignIcon sx={{ color: COLORS.kpiPurpleText, fontSize: 22, flexShrink: 0 }} />

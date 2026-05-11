@@ -35,55 +35,82 @@ function endOfDay(date) {
  * Converts a period key into an inclusive [startDate, endDate] range.
  * All ranges end at the current moment's end-of-day.
  */
-function buildDateRange(period) {
-  const now = new Date();
+function buildDateRange(period, offset = 0) {
+  const realNow = new Date();
+  // Shift the "anchor" date by `offset` units of the selected period so that
+  // navigation arrows can target specific historical periods (e.g. April 2026
+  // when offset=-1 and period='month' in May 2026).
+  const anchor = new Date(realNow);
+  if (offset !== 0) {
+    switch (period) {
+      case 'today':   anchor.setDate(anchor.getDate() + offset); break;
+      case 'week':    anchor.setDate(anchor.getDate() + offset * 7); break;
+      case 'month':   anchor.setMonth(anchor.getMonth() + offset); break;
+      case 'quarter': anchor.setMonth(anchor.getMonth() + offset * 3); break;
+      case 'year':    anchor.setFullYear(anchor.getFullYear() + offset); break;
+      // Rolling windows (3month/6month/1year) don't support offset navigation.
+      default: break;
+    }
+  }
+  const isPast = offset < 0;
 
   switch (period) {
     case 'today':
-      return { startDate: startOfDay(now), endDate: endOfDay(now) };
+      return { startDate: startOfDay(anchor), endDate: endOfDay(anchor) };
 
     case 'week': {
-      const weekAgo = new Date(now);
-      weekAgo.setDate(now.getDate() - 6);
-      return { startDate: startOfDay(weekAgo), endDate: endOfDay(now) };
+      const weekStart = new Date(anchor);
+      weekStart.setDate(anchor.getDate() - 6);
+      return { startDate: startOfDay(weekStart), endDate: endOfDay(anchor) };
     }
 
     case 'month': {
-      const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      return { startDate: startOfDay(firstOfMonth), endDate: endOfDay(now) };
+      const firstOfMonth = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+      // When viewing a past month, end at last day of that month; otherwise
+      // end at the live "now" so today's data appears in the current month.
+      const endDate = isPast
+        ? new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0)
+        : realNow;
+      return { startDate: startOfDay(firstOfMonth), endDate: endOfDay(endDate) };
     }
 
     case 'quarter': {
-      const quarterStartMonth = Math.floor(now.getMonth() / 3) * 3;
-      const firstOfQuarter = new Date(now.getFullYear(), quarterStartMonth, 1);
-      return { startDate: startOfDay(firstOfQuarter), endDate: endOfDay(now) };
+      const quarterStartMonth = Math.floor(anchor.getMonth() / 3) * 3;
+      const firstOfQuarter = new Date(anchor.getFullYear(), quarterStartMonth, 1);
+      const endDate = isPast
+        ? new Date(anchor.getFullYear(), quarterStartMonth + 3, 0)
+        : realNow;
+      return { startDate: startOfDay(firstOfQuarter), endDate: endOfDay(endDate) };
     }
 
     case 'year': {
-      const firstOfYear = new Date(now.getFullYear(), 0, 1);
-      return { startDate: startOfDay(firstOfYear), endDate: endOfDay(now) };
+      const firstOfYear = new Date(anchor.getFullYear(), 0, 1);
+      const endDate = isPast
+        ? new Date(anchor.getFullYear(), 11, 31)
+        : realNow;
+      return { startDate: startOfDay(firstOfYear), endDate: endOfDay(endDate) };
     }
 
     case '3month': {
-      const start = new Date(now);
-      start.setDate(now.getDate() - 89); // 90-day rolling window
-      return { startDate: startOfDay(start), endDate: endOfDay(now) };
+      const start = new Date(anchor);
+      start.setDate(anchor.getDate() - 89);
+      return { startDate: startOfDay(start), endDate: endOfDay(anchor) };
     }
 
     case '6month': {
-      const start = new Date(now);
-      start.setDate(now.getDate() - 179); // 180-day rolling window
-      return { startDate: startOfDay(start), endDate: endOfDay(now) };
+      const start = new Date(anchor);
+      start.setDate(anchor.getDate() - 179);
+      return { startDate: startOfDay(start), endDate: endOfDay(anchor) };
     }
 
     case '1year': {
-      const start = new Date(now);
-      start.setDate(now.getDate() - 364); // 365-day rolling window
-      return { startDate: startOfDay(start), endDate: endOfDay(now) };
+      const start = new Date(anchor);
+      start.setDate(anchor.getDate() - 364);
+      return { startDate: startOfDay(start), endDate: endOfDay(anchor) };
     }
 
     default:
-      return { startDate: startOfDay(now), endDate: endOfDay(now) };
+      return { startDate: startOfDay(anchor), endDate: endOfDay(anchor) };
   }
 }
 
@@ -94,7 +121,7 @@ function buildDateRange(period) {
  * For rolling windows (3month, 6month, 1year) the entire window shifts
  * back 365 days so the comparison is apples-to-apples in duration.
  */
-function buildYearAgoRange(period) {
+function buildYearAgoRange(period, offset = 0) {
   const now = new Date();
   const oneYearAgo = new Date(now);
   oneYearAgo.setFullYear(now.getFullYear() - 1);
@@ -160,39 +187,21 @@ function buildYearAgoRange(period) {
  * Computes the previous period's date range for delta comparisons.
  * 'today' -> yesterday, 'week' -> prior 7 days, 'month' -> prior month,
  * 'quarter' -> prior quarter, 'year' -> prior year.
+ *
+ * When `offset` is non-zero, returns the period one step earlier than the
+ * currently-viewed historical period (e.g. if viewing March 2026 with
+ * offset=-2, the "previous" period is February 2026 at offset=-3).
  */
-function buildPrevDateRange(period) {
+function buildPrevDateRange(period, offset = 0) {
+  // For the non-rolling periods, "previous" is just one offset step earlier.
+  if (['today', 'week', 'month', 'quarter', 'year'].includes(period)) {
+    return buildDateRange(period, offset - 1);
+  }
+  // Rolling windows keep their original "previous N days" semantics regardless
+  // of offset (offset isn't supported for rolling windows in this build).
   const now = new Date();
 
   switch (period) {
-    case 'today': {
-      const yesterday = new Date(now);
-      yesterday.setDate(now.getDate() - 1);
-      return { startDate: startOfDay(yesterday), endDate: endOfDay(yesterday) };
-    }
-    case 'week': {
-      const prevWeekEnd = new Date(now);
-      prevWeekEnd.setDate(now.getDate() - 7);
-      const prevWeekStart = new Date(prevWeekEnd);
-      prevWeekStart.setDate(prevWeekEnd.getDate() - 6);
-      return { startDate: startOfDay(prevWeekStart), endDate: endOfDay(prevWeekEnd) };
-    }
-    case 'month': {
-      const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const prevMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0); // last day of prev month
-      return { startDate: startOfDay(prevMonth), endDate: endOfDay(prevMonthEnd) };
-    }
-    case 'quarter': {
-      const qStart = Math.floor(now.getMonth() / 3) * 3;
-      const prevQStart = new Date(now.getFullYear(), qStart - 3, 1);
-      const prevQEnd = new Date(now.getFullYear(), qStart, 0);
-      return { startDate: startOfDay(prevQStart), endDate: endOfDay(prevQEnd) };
-    }
-    case 'year': {
-      const prevYear = new Date(now.getFullYear() - 1, 0, 1);
-      const prevYearEnd = new Date(now.getFullYear() - 1, 11, 31);
-      return { startDate: startOfDay(prevYear), endDate: endOfDay(prevYearEnd) };
-    }
     case '3month': {
       // Previous 90 days: [now-179d, now-90d]
       const prevEnd = new Date(now);
@@ -331,7 +340,7 @@ function buildFinancialTrend(docs, dateField, period, valueField) {
 
 // ── Hook ────────────────────────────────────────────────────────
 
-export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnabled = false) {
+export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnabled = false, periodOffset = 0) {
   const [appointments, setAppointments] = useState([]);
   const [queueData, setQueueData] = useState(null);
   const [staffList, setStaffList] = useState([]);
@@ -379,7 +388,7 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
   // refreshKey is included so a manual refresh tick (T4.1) forces date
   // recomputation — important for 'today' crossing midnight, and for
   // re-triggering the period-scoped onSnapshot listeners.
-  const dateRange = useMemo(() => buildDateRange(period), [period, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const dateRange = useMemo(() => buildDateRange(period, periodOffset), [period, periodOffset, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Listener 1: Appointments (period-scoped) ──────────────────
   useEffect(() => {
@@ -559,7 +568,7 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
 
   // ── Previous period data (one-shot, for delta computation) ──────
   useEffect(() => {
-    const prevRange = buildPrevDateRange(period);
+    const prevRange = buildPrevDateRange(period, periodOffset);
     const prevStartTs = Timestamp.fromDate(prevRange.startDate);
     const prevEndTs = Timestamp.fromDate(prevRange.endDate);
 
@@ -603,7 +612,7 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
     };
 
     fetchPrev();
-  }, [period, refreshKey]); // Re-fetch on period change or manual refresh tick (T4.1)
+  }, [period, periodOffset, refreshKey]); // Re-fetch on period change, offset change, or manual refresh tick (T4.1)
 
   // ── Historical data fetch (one-shot, 6-month lookback for min/max/avg, T2.338) ──
   // Fires only on mount — 6 months is a fixed lookback window that doesn't change

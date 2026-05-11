@@ -244,7 +244,7 @@ export function useQueueActions() {
 
       transaction.update(apptRef, {
         status: 'no-show',
-        statusHistory: [...(apptDoc.data().statusHistory || []), apptDoc.data().status],
+        statusHistory: arrayUnion(apptDoc.data().status),
         assignedVet: "Unassigned",
         assignedVetId: null,
         services: clearedServices,
@@ -255,6 +255,22 @@ export function useQueueActions() {
         auditReasons: arrayUnion({ reason, action: 'no-show', staffName: staffSignature, timestamp: Timestamp.now() }),
         forensicSeal // THE 8-METRIC STAMP
       });
+
+      if (row.scheduledDate) {
+        const slotDate = row.scheduledDate.toDate ? row.scheduledDate.toDate() : new Date(row.scheduledDate);
+        const dateStr = `${slotDate.getFullYear()}-${String(slotDate.getMonth() + 1).padStart(2, '0')}-${String(slotDate.getDate()).padStart(2, '0')}`;
+        const hh = String(slotDate.getHours()).padStart(2, '0');
+        const mm = String(slotDate.getMinutes()).padStart(2, '0');
+        const depts = new Set();
+        if (row.services && Array.isArray(row.services)) {
+          row.services.forEach(s => depts.add((s.department || "General").toLowerCase()));
+        } else {
+          depts.add((row.serviceCategory || "General").toLowerCase());
+        }
+        for (const dept of depts) {
+          transaction.delete(doc(db, "slot_reservations", `${dateStr}_${hh}_${mm}_${dept}`));
+        }
+      }
     });
 
     // T4.90: Push notification

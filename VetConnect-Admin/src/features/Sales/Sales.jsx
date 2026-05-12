@@ -12,6 +12,7 @@ import { useSalesData } from './hooks/useSalesData';
 import EodSummary from './components/EodSummary';
 import { printViaIframe, downloadHtmlAsFile, emailReceiptToOwner } from '../../utils/receiptUtils';
 import { exportSalesCSV } from '../../utils/exportSalesCSV';
+import { printSalesLedger } from '../../utils/printSalesLedger';
 import POSModal from '../../components/POSModal';
 
 // Icons
@@ -161,6 +162,15 @@ export default function Sales() {
 
     return list;
   }, [sales, searchText, filterMethod, filterStatus, filterType, order, orderBy]);
+
+  const filterSummary = useMemo(() => {
+    const parts = [];
+    if (searchText) parts.push(`Search: "${searchText}"`);
+    if (filterDate) parts.push(`Date: ${filterDate}`);
+    if (filterStatus !== 'All') parts.push(`Status: ${filterStatus}`);
+    if (filterType !== 'All') parts.push(`Type: ${filterType}`);
+    return parts.join(' | ') || 'All Transactions';
+  }, [searchText, filterDate, filterStatus, filterType]);
 
   const handleOpenRefund = (sale) => {
     setSelectedSale(sale); setRestock(true); setOpenRefund(true);
@@ -878,7 +888,23 @@ export default function Sales() {
               </IconButton>
             </Tooltip>
 
-            <Tooltip title="Print EOD Report">
+            <Tooltip title="Print Ledger (Filtered List)">
+              <IconButton 
+                onClick={() => printSalesLedger(processedSales, clinicSettings, filterSummary, () => setToast({ open: true, message: 'Pop-up blocked — allow pop-ups for this site.', severity: 'warning' }))} 
+                disabled={loading || processedSales.length === 0}
+                sx={{ 
+                  bgcolor: COLORS.cardBg, 
+                  border: `2px solid ${COLORS.accent}33`, 
+                  color: COLORS.accent,
+                  borderRadius: 0,
+                  '&:hover': { bgcolor: COLORS.cream, borderColor: COLORS.accent }
+                }}
+              >
+                <PrintIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+
+            <Tooltip title="Print EOD Report (Summary)">
               <IconButton 
                 onClick={handlePrintReport} 
                 disabled={loading} 

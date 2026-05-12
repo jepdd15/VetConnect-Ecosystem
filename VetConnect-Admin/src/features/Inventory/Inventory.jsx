@@ -21,6 +21,7 @@ import ArchiveIcon from '@mui/icons-material/Archive';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import PrintIcon from '@mui/icons-material/Print';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import CloseIcon from '@mui/icons-material/Close';
 
 // Database
 import { onSnapshot, collection, doc, writeBatch, getDocs, query } from 'firebase/firestore';
@@ -334,166 +335,199 @@ export default function Inventory() {
       {/* 1. BOXED FORENSIC HEADER */}
       <Box sx={{ flexShrink: 0, mb: 0 }}>
         <Paper sx={{
-          p: 2.5, px: 4, display: 'flex', flexWrap: 'wrap', gap: 2.5, alignItems: 'center',
-          bgcolor: COLORS.cream, borderBottom: `2px solid ${COLORS.accent}`, borderRadius: 0, boxShadow: 'none'
+          p: 2, px: 4, 
+          display: 'flex', 
+          flexWrap: 'wrap', 
+          gap: 2, 
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          bgcolor: COLORS.cream, 
+          borderBottom: `2px solid ${COLORS.accent}`, 
+          borderRadius: 0, 
+          boxShadow: 'none',
+          minHeight: { xs: 'auto', md: 80 }
         }}>
-          <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 1000, color: COLORS.brand, textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0, mr: 1, fontSize: '1.5rem', lineHeight: 1 }}>
-            Inventory
-          </Typography>
+          
+          {/* LEFT SIDE: Identity & Filters */}
+          <Box sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: 3, 
+            flexWrap: 'wrap', 
+            flexGrow: 1,
+            flexBasis: '450px' 
+          }}>
+            <Box sx={{ flexShrink: 0 }}>
+              <Typography variant="h4" sx={{ fontWeight: 1000, color: COLORS.brand, lineHeight: 1.1, textTransform: 'uppercase', letterSpacing: 1 }}>
+                INVENTORY
+              </Typography>
+              <Typography sx={{ fontWeight: 900, color: COLORS.accent, fontSize: '0.85rem', letterSpacing: 1, fontStyle: 'italic' }}>
+                {filteredItems.length} {filteredItems.length === 1 ? 'Record' : 'Records'}
+              </Typography>
+            </Box>
 
-          {/* T2.164: Filter controls only apply to the Inventory Table tab — hide them on Activity Log */}
-          {activeTab === 0 && (<>
-          {/* Search */}
-          <TextField
-            variant="outlined"
-            size="small"
-            placeholder="Search items..."
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            InputProps={{
-              startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: COLORS.textMuted }} /></InputAdornment>,
-              style: { color: COLORS.textPrimary, fontWeight: 'bold', fontSize: '0.9rem' },
-            }}
-            sx={{
-              flex: 1, maxWidth: 350, minWidth: 180, flexShrink: 0,
-              '& .MuiOutlinedInput-root': {
-                borderRadius: 0, bgcolor: COLORS.formBg,
-                '& fieldset': { borderColor: COLORS.border },
-                '&:hover fieldset': { borderColor: COLORS.accent },
-                '&.Mui-focused fieldset': { borderColor: COLORS.accent },
-              },
-            }}
-          />
+            {activeTab === 0 && (
+              <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexGrow: 1, flexWrap: 'wrap' }}>
+                <TextField
+                  variant="outlined"
+                  size="small"
+                  placeholder="Search items..."
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon sx={{ fontSize: 18, color: COLORS.brand }} />
+                      </InputAdornment>
+                    ),
+                    ...(searchText && {
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <IconButton size="small" onClick={() => setSearchText('')}>
+                            <CloseIcon sx={{ fontSize: 14, color: COLORS.brand }} />
+                          </IconButton>
+                        </InputAdornment>
+                      ),
+                    }),
+                  }}
+                  sx={{
+                    flex: { xs: '1 1 100%', sm: '1 1 220px' }, 
+                    maxWidth: { xs: '100%', lg: 220 }, 
+                    minWidth: 160,
+                    '& .MuiOutlinedInput-root': {
+                      fontWeight: 900,
+                      fontSize: '0.85rem',
+                      color: COLORS.brand,
+                      bgcolor: '#FFF',
+                      borderRadius: 0,
+                      boxShadow: `2px 2px 0px ${COLORS.brand}`,
+                      '& fieldset': { borderColor: COLORS.brand, borderWidth: 2 },
+                      '&:hover fieldset': { borderColor: COLORS.brand },
+                      '&.Mui-focused fieldset': { borderColor: COLORS.brand },
+                    },
+                  }}
+                />
 
-          {/* Category dropdown */}
-          <FormControl size="small" sx={{ minWidth: 160, flexShrink: 0 }}>
-            <Select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} displayEmpty sx={{ bgcolor: COLORS.cardBg, fontWeight: 'bold', fontSize: '0.85rem', '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33` } }}>
-              <MenuItem value="All">All Categories</MenuItem>
-              {invCategories.map(c => <MenuItem key={c.name} value={c.name}>{formatCategory(c.name)}</MenuItem>)}
-            </Select>
-          </FormControl>
+                <FormControl size="small" sx={{ minWidth: 160, flexShrink: 0 }}>
+                  <Select 
+                    value={filterCategory} 
+                    onChange={(e) => setFilterCategory(e.target.value)} 
+                    displayEmpty 
+                    sx={{ 
+                      bgcolor: COLORS.cardBg, 
+                      fontWeight: '900', 
+                      fontSize: '0.85rem', 
+                      borderRadius: 0,
+                      boxShadow: `2px 2px 0px ${COLORS.accent}1A`,
+                      '& .MuiOutlinedInput-notchedOutline': { borderColor: COLORS.accent, borderWidth: 2 } 
+                    }}
+                  >
+                    <MenuItem value="All">All Categories</MenuItem>
+                    {invCategories.map(c => <MenuItem key={c.name} value={c.name}>{formatCategory(c.name)}</MenuItem>)}
+                  </Select>
+                </FormControl>
+              </Box>
+            )}
+          </Box>
 
+          {/* RIGHT SIDE: Actions */}
+          <Box sx={{ 
+            display: 'flex', 
+            gap: 1.5, 
+            alignItems: 'center', 
+            flexGrow: 2, 
+            justifyContent: { xs: 'flex-start', lg: 'flex-end' },
+            flexWrap: 'wrap',
+            flexBasis: '600px'
+          }}>
+            {activeTab === 0 && !showArchived && (
+              <Button
+                variant="outlined"
+                startIcon={<PrintIcon />}
+                disabled={lowStockItems.length === 0}
+                onClick={() => printReorderList(lowStockItems, clinicSettings, () => showToast('Pop-up blocked — allow pop-ups for this site.', 'warning'))}
+                sx={{
+                  fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1, px: 2, borderRadius: 0, border: '2px solid',
+                  color: COLORS.warning, borderColor: `${COLORS.warning}33`, '&:hover': { bgcolor: COLORS.warningSurface, borderColor: COLORS.warning }
+                }}
+              >
+                Reorder List{lowStockItems.length > 0 ? ` (${lowStockItems.length})` : ''}
+              </Button>
+            )}
 
-          <Typography variant="body2" sx={{ fontFamily: FONT, color: COLORS.accent, fontWeight: 900, whiteSpace: 'nowrap', flexShrink: 0, fontStyle: 'italic', ml: 1 }}>
-            {filteredItems.length} Records
-          </Typography>
-          </>)}
+            {activeTab === 0 && (
+              <Button
+                variant="outlined"
+                startIcon={<FileDownloadIcon />}
+                disabled={filteredItems.length === 0}
+                onClick={() => {
+                  const timestamp = new Date().toISOString().slice(0, 10);
+                  exportInventoryCSV(filteredItems, `inventory_${timestamp}.csv`);
+                  showToast(`Exported ${filteredItems.length} items to CSV.`);
+                }}
+                sx={{
+                  fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1, px: 2, borderRadius: 0, border: '2px solid',
+                  color: COLORS.medical, borderColor: `${COLORS.medical}33`, '&:hover': { bgcolor: COLORS.kpiBlueBg, borderColor: COLORS.medical }
+                }}
+              >
+                Export CSV
+              </Button>
+            )}
 
-          <Box sx={{ flexGrow: 1 }} />
+            {/* T3.27: Printable inventory report — always visible on Inventory Table tab */}
+            {activeTab === 0 && (
+              <Button
+                variant="outlined"
+                startIcon={<PrintIcon />}
+                disabled={filteredItems.length === 0}
+                onClick={() => printInventoryReport(
+                  filteredItems,
+                  clinicSettings,
+                  filterSummary,
+                  () => showToast('Pop-up blocked — allow pop-ups for this site.', 'warning')
+                )}
+                sx={{
+                  fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1, px: 2, borderRadius: 0, border: '2px solid',
+                  color: COLORS.accent, borderColor: `${COLORS.accent}33`, '&:hover': { bgcolor: COLORS.cream, borderColor: COLORS.accent }
+                }}
+              >
+                Print Report
+              </Button>
+            )}
 
-          {/* T3.21: Printable reorder list — shown when on Inventory tab (not archived) */}
-          {activeTab === 0 && !showArchived && (
+            {activeTab === 0 && !showArchived && (
+              <Button
+                variant="outlined"
+                startIcon={<DeleteSweepIcon />}
+                onClick={() => setOpenDisposal(true)}
+                sx={{
+                  fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1, px: 2, borderRadius: 0, border: '2px solid',
+                  color: expiredItems.length > 0 ? COLORS.danger : COLORS.accent, 
+                  borderColor: expiredItems.length > 0 ? COLORS.danger : `${COLORS.accent}33`,
+                  '&:hover': { bgcolor: COLORS.dangerSurface, borderColor: COLORS.danger }
+                }}
+              >
+                Dispose Expired{expiredItems.length > 0 ? ` (${expiredItems.length})` : ''}
+              </Button>
+            )}
+
             <Button
-              variant="outlined"
-              startIcon={<PrintIcon />}
-              disabled={lowStockItems.length === 0}
-              onClick={() => printReorderList(
-                lowStockItems,
-                clinicSettings,
-                () => showToast('Pop-up blocked — allow pop-ups for this site.', 'warning')
-              )}
-              sx={{
-                fontFamily: FONT, fontWeight: 900, textTransform: 'uppercase',
-                letterSpacing: 1, px: 2, py: 1, borderRadius: 0,
-                border: '2px solid',
-                color: COLORS.warning,
-                borderColor: `${COLORS.warning}33`,
-                '&:hover': { bgcolor: COLORS.warningSurface, borderColor: COLORS.warning },
+              variant="contained"
+              startIcon={<AddIcon />}
+              sx={{ 
+                bgcolor: COLORS.sky, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1, px: 3, borderRadius: 0, border: `2px solid ${COLORS.skyHover}`, 
+                boxShadow: `4px 4px 0px ${COLORS.brand}1A`,
+                '&:hover': { bgcolor: COLORS.skyHover } 
               }}
+              onClick={() => { setSelectedItem(null); setOpenForm(true); }}
             >
-              Reorder List{lowStockItems.length > 0 ? ` (${lowStockItems.length})` : ''}
+              Add Item
             </Button>
-          )}
-
-          {/* T3.27: CSV export — always visible on Inventory Table tab */}
-          {activeTab === 0 && (
-            <Button
-              variant="outlined"
-              startIcon={<FileDownloadIcon />}
-              disabled={filteredItems.length === 0}
-              onClick={() => {
-                const timestamp = new Date().toISOString().slice(0, 10);
-                exportInventoryCSV(filteredItems, `inventory_${timestamp}.csv`);
-                showToast(`Exported ${filteredItems.length} items to CSV.`);
-              }}
-              sx={{
-                fontFamily: FONT, fontWeight: 900, textTransform: 'uppercase',
-                letterSpacing: 1, px: 2, py: 1, borderRadius: 0,
-                border: '2px solid',
-                color: COLORS.medical,
-                borderColor: `${COLORS.medical}33`,
-                '&:hover': { bgcolor: COLORS.kpiBlueBg, borderColor: COLORS.medical },
-              }}
-            >
-              Export CSV
-            </Button>
-          )}
-
-          {/* T3.27: Printable inventory report — always visible on Inventory Table tab */}
-          {activeTab === 0 && (
-            <Button
-              variant="outlined"
-              startIcon={<PrintIcon />}
-              disabled={filteredItems.length === 0}
-              onClick={() => printInventoryReport(
-                filteredItems,
-                clinicSettings,
-                filterSummary,
-                () => showToast('Pop-up blocked — allow pop-ups for this site.', 'warning')
-              )}
-              sx={{
-                fontFamily: FONT, fontWeight: 900, textTransform: 'uppercase',
-                letterSpacing: 1, px: 2, py: 1, borderRadius: 0,
-                border: '2px solid',
-                color: COLORS.accent,
-                borderColor: `${COLORS.accent}33`,
-                '&:hover': { bgcolor: COLORS.cream, borderColor: COLORS.accent },
-              }}
-            >
-              Print Report
-            </Button>
-          )}
-
-          {activeTab === 0 && !showArchived && (
-            <Button
-              variant="outlined"
-              startIcon={<DeleteSweepIcon />}
-              onClick={() => setOpenDisposal(true)}
-              sx={{
-                fontFamily: FONT,
-                fontWeight: 900,
-                textTransform: 'uppercase',
-                letterSpacing: 1,
-                px: 2,
-                py: 1,
-                borderRadius: 0,
-                border: `2px solid`,
-                color: expiredItems.length > 0 ? COLORS.danger : COLORS.accent,
-                borderColor: expiredItems.length > 0 ? COLORS.danger : `${COLORS.accent}33`,
-                '&:hover': {
-                  bgcolor: COLORS.dangerSurface,
-                  borderColor: COLORS.danger,
-                },
-              }}
-            >
-              Dispose Expired{expiredItems.length > 0 ? ` (${expiredItems.length})` : ''}
-            </Button>
-          )}
-
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            sx={{ bgcolor: COLORS.sky, fontFamily: FONT, fontWeight: 900, boxShadow: '4px 4px 0px rgba(58, 190, 249, 0.15)', textTransform: 'uppercase', letterSpacing: 1, px: 3, py: 1, borderRadius: 0, border: `2px solid ${COLORS.skyHover}`, '&:hover': { bgcolor: COLORS.skyHover } }}
-            onClick={() => { setSelectedItem(null); setOpenForm(true); }}
-          >
-            Add Item
-          </Button>
-
+          </Box>
         </Paper>
       </Box>
-
-      {/* 2. BOXED KPI ROW */}
       <Box sx={{ flexShrink: 0, mb: 0 }}>
+      {/* 2. BOXED KPI ROW */}
         <Paper sx={{ p: 0, bgcolor: COLORS.tableHeaderBg, borderBottom: `2px solid ${COLORS.accent}`, borderRadius: 0, boxShadow: 'none' }}>
           <Grid container spacing={0} sx={{ '& > div:not(:last-child)': { borderRight: `1px solid ${COLORS.accent}1A` } }}>
              <Grid size={{ xs: 6, md: 2 }}><KPICard title="Active Products" value={kpis.totalItems} icon={<InventoryIcon />} color={COLORS.medical} /></Grid>

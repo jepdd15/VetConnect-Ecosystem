@@ -1,15 +1,15 @@
 /**
  * VitalsZoomModal — full-width, tap-to-expand vital trend chart.
  *
- * Renders as a slide-up Modal with a full-width SVG chart, Y-axis labels,
- * X-axis date labels, a species-normal reference band, tappable data-point
- * circles with tooltip bubbles, and a delta annotation.
+ * Renders as a slide-up Modal with a GiftedLineChart, Y-axis labels with units,
+ * X-axis date labels, species-normal reference lines, interactive pointer
+ * tooltip, and a delta annotation.
  *
  * Design: Modern Clinical Neubrutalism — borderRadius 0, solid borders,
  * COLORS from mobileTokens.
  */
 
-import React, { useState } from 'react';
+import React from 'react';
 import {
   Dimensions,
   Modal,
@@ -19,20 +19,15 @@ import {
   View,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Circle, Line, Path, Rect, Svg } from 'react-native-svg';
+import { LineChart as GiftedLineChart } from 'react-native-gifted-charts';
 import { COLORS } from '../theme/mobileTokens';
-import { valueToY } from '../utils/chartHelpers';
 
 // ---------------------------------------------------------------------------
 // Layout constants
 // ---------------------------------------------------------------------------
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
-const CHART_MARGIN = { top: 20, right: 48, bottom: 40, left: 48 };
-const CHART_WIDTH  = SCREEN_WIDTH - 32 - CHART_MARGIN.left - CHART_MARGIN.right;
-const CHART_HEIGHT = 260;
-const SVG_WIDTH    = CHART_WIDTH + CHART_MARGIN.left + CHART_MARGIN.right;
-const SVG_HEIGHT   = CHART_HEIGHT + CHART_MARGIN.top  + CHART_MARGIN.bottom;
+const CHART_WIDTH  = SCREEN_WIDTH - 100; // Account for modal padding + yAxisLabelWidth
 
 // ---------------------------------------------------------------------------
 // Component
@@ -48,8 +43,7 @@ const SVG_HEIGHT   = CHART_HEIGHT + CHART_MARGIN.top  + CHART_MARGIN.bottom;
  * @param {{ low: number, high: number } | null} normalRange - Species-normal band, or null.
  * @param {string}   petName      - Displayed below the vital label in the header.
  * @param {{ min: number, max: number } | null} yDomain - Optional fixed Y-axis domain. When
- *   provided, overrides auto-domain derived from data (e.g. pain score always 0–10). A 10%
- *   padding is still added so dots at the edges aren't clipped.
+ *   provided, overrides auto-domain derived from data (e.g. pain score always 0–10).
  */
 export default function VitalsZoomModal({
   visible,
@@ -62,11 +56,9 @@ export default function VitalsZoomModal({
   petName,
   yDomain = null,
 }) {
-  const [tooltip, setTooltip] = useState(null); // { x, y, value, label }
-
   if (!visible) return null;
 
-  // Filter to valid numeric points — same logic as SparkLine.
+  // Filter to valid numeric points.
   const validPoints = (data || []).filter(
     (d) => d.value != null && !isNaN(parseFloat(d.value)),
   );
@@ -75,76 +67,18 @@ export default function VitalsZoomModal({
 
   const values = validPoints.map((d) => parseFloat(d.value));
 
-  // Determine base Y domain: use caller-supplied fixed domain when present so
-  // vitals like pain (0–10) or BCS (1–9) always render on their canonical scale.
-  // Otherwise auto-derive from data, expanding to include the normal-range band
-  // so the green band is never clipped when it falls outside the data range.
-  const yMin = yDomain
-    ? yDomain.min
-    : Math.min(...values, normalRange?.low ?? Infinity);
-  const yMax = yDomain
-    ? yDomain.max
-    : Math.max(...values, normalRange?.high ?? -Infinity);
-
-  // Add 10 % padding so dots at domain edges are never flush against the chart
-  // border. Falls back to ±1 when domain is a single value (all readings equal).
-  const yPadding   = yDomain ? 0.5 : ((yMax - yMin) * 0.1 || 1);
-  const paddedMin  = yMin - yPadding;
-  const paddedMax  = yMax + yPadding;
-
-  // Map data points to pixel coordinates within the chart area.
-  const chartPoints = validPoints.map((d, i) => ({
-    x: CHART_MARGIN.left + (
-      validPoints.length === 1
-        ? CHART_WIDTH / 2
-        : (i / (validPoints.length - 1)) * CHART_WIDTH
-    ),
-    y: CHART_MARGIN.top + valueToY(parseFloat(d.value), paddedMin, paddedMax, CHART_HEIGHT),
+  // Build chart data array for GiftedLineChart.
+  const chartData = validPoints.map((d, i) => ({
     value: parseFloat(d.value),
-    label: d.label,
+    label: i % Math.ceil(validPoints.length / 5) === 0
+      ? (d.label ?? '') : '',
+    dataPointColor: normalRange
+      ? (d.value >= normalRange.low && d.value <= normalRange.high
+          ? COLORS.success : COLORS.danger)
+      : lineColor,
   }));
 
-  // SVG line path connecting all data points.
-  const linePath = chartPoints
-    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)},${p.y.toFixed(1)}`)
-    .join(' ');
-
-  // Five evenly-spaced Y-axis tick values.
-  const yTicks = Array.from({ length: 5 }, (_, i) =>
-    paddedMin + (paddedMax - paddedMin) * (i / 4),
-  );
-
-  // Up to 5 evenly-spaced X-axis label indices.
-  const maxXLabels    = Math.min(5, validPoints.length);
-  const xLabelIndices = maxXLabels <= 1
-    ? [0]
-    : Array.from({ length: maxXLabels }, (_, i) =>
-        Math.round((i / (maxXLabels - 1)) * (validPoints.length - 1)),
-      );
-
-  // Species-normal reference band.
-  let bandElement = null;
-  if (normalRange) {
-    const bandTopY    = CHART_MARGIN.top + valueToY(normalRange.high, paddedMin, paddedMax, CHART_HEIGHT);
-    const bandBottomY = CHART_MARGIN.top + valueToY(normalRange.low,  paddedMin, paddedMax, CHART_HEIGHT);
-    const bandHeight  = Math.abs(bandBottomY - bandTopY);
-    if (bandHeight > 0) {
-      bandElement = (
-        <Rect
-          x={CHART_MARGIN.left}
-          y={Math.min(bandTopY, bandBottomY)}
-          width={CHART_WIDTH}
-          height={bandHeight}
-          fill="#4CAF50"
-          opacity={0.1}
-        />
-      );
-    }
-  }
-
-  // Delta annotation — change between the last two readings, direction only.
-  // Color is always neutral (COLORS.textMuted) — pet owners should not
-  // interpret direction without vet advice.
+  // Delta annotation — change between the last two readings.
   let deltaText = null;
   if (values.length >= 2) {
     const diff = values[values.length - 1] - values[values.length - 2];
@@ -153,6 +87,31 @@ export default function VitalsZoomModal({
       const sign  = diff > 0 ? '+' : '';
       deltaText = `${arrow} ${sign}${Number(diff.toFixed(1))}${unit} since last visit`;
     }
+  }
+
+  // Y-axis domain props.
+  const yAxisProps = {};
+  if (yDomain) {
+    yAxisProps.maxValue = yDomain.max;
+    yAxisProps.minValue = yDomain.min;
+    yAxisProps.stepValue = yDomain.max <= 10 ? (yDomain.max <= 5 ? 1 : 2) : undefined;
+  }
+
+  // Reference line props for normal range.
+  const refLineProps = {};
+  if (normalRange) {
+    refLineProps.showReferenceLine1 = true;
+    refLineProps.referenceLine1Position = normalRange.low;
+    refLineProps.referenceLine1Config = {
+      color: COLORS.success,
+      thickness: 1.5,
+    };
+    refLineProps.showReferenceLine2 = true;
+    refLineProps.referenceLine2Position = normalRange.high;
+    refLineProps.referenceLine2Config = {
+      color: COLORS.success,
+      thickness: 1.5,
+    };
   }
 
   return (
@@ -178,105 +137,60 @@ export default function VitalsZoomModal({
             </TouchableOpacity>
           </View>
 
-          {/* Chart area — tapping anywhere outside a dot clears the tooltip */}
-          <TouchableOpacity activeOpacity={1} onPress={() => setTooltip(null)}>
-            <Svg width={SVG_WIDTH} height={SVG_HEIGHT}>
-              {/* Species-normal reference band — behind all other elements */}
-              {bandElement}
-
-              {/* Y-axis grid lines */}
-              {yTicks.map((tick, i) => {
-                const y = CHART_MARGIN.top + valueToY(tick, paddedMin, paddedMax, CHART_HEIGHT);
+          {/* Chart */}
+          <GiftedLineChart
+            data={chartData}
+            width={CHART_WIDTH}
+            height={260}
+            initialSpacing={20}
+            endSpacing={20}
+            overflowTop={20}
+            curved
+            areaChart
+            color={lineColor}
+            startFillColor={lineColor}
+            startOpacity={0.1}
+            endOpacity={0.02}
+            thickness={2.5}
+            dataPointsRadius={5}
+            yAxisLabelWidth={50}
+            formatYLabel={v => `${parseFloat(v).toFixed(1)}${unit}`}
+            yAxisTextStyle={{ fontSize: 9, color: COLORS.textMuted }}
+            xAxisLabelTextStyle={{ fontSize: 9, color: COLORS.textMuted }}
+            rulesType="solid"
+            rulesColor="#E0E0E0"
+            xAxisColor="#E0E0E0"
+            yAxisColor="#E0E0E0"
+            noOfSections={5}
+            roundToDigits={1}
+            pointerConfig={{
+              pointerStripHeight: 260,
+              pointerStripColor: 'rgba(0,0,0,0.1)',
+              pointerStripWidth: 1,
+              pointerColor: lineColor,
+              radius: 6,
+              pointerLabelWidth: 120,
+              pointerLabelHeight: 50,
+              autoAdjustPointerLabelPosition: true,
+              shiftPointerLabelY: -20,
+              pointerLabelComponent: (items) => {
+                const item = items?.[0];
+                if (!item) return null;
                 return (
-                  <Line
-                    key={`grid-${i}`}
-                    x1={CHART_MARGIN.left}
-                    y1={y}
-                    x2={CHART_MARGIN.left + CHART_WIDTH}
-                    y2={y}
-                    stroke="#E0E0E0"
-                    strokeWidth={1}
-                  />
+                  <View style={styles.tooltip}>
+                    <Text style={styles.tooltipValue}>
+                      {item.value}{unit}
+                    </Text>
+                    <Text style={styles.tooltipDate}>
+                      {validPoints[items[0]?.index]?.label || ''}
+                    </Text>
+                  </View>
                 );
-              })}
-
-              {/* Trend line */}
-              {chartPoints.length >= 2 && (
-                <Path
-                  d={linePath}
-                  fill="none"
-                  stroke={lineColor}
-                  strokeWidth={2.5}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              )}
-
-              {/* Data point circles — each circle is individually tappable */}
-              {chartPoints.map((p, i) => (
-                <Circle
-                  key={i}
-                  cx={p.x}
-                  cy={p.y}
-                  r={5}
-                  fill={lineColor}
-                  onPress={() => setTooltip({ x: p.x, y: p.y, value: p.value, label: p.label })}
-                />
-              ))}
-            </Svg>
-
-            {/* Y-axis labels — React Native Text positioned absolutely over the SVG */}
-            {yTicks.map((tick, i) => {
-              const y = CHART_MARGIN.top + valueToY(tick, paddedMin, paddedMax, CHART_HEIGHT);
-              return (
-                <Text
-                  key={`yl-${i}`}
-                  style={[styles.axisLabel, { position: 'absolute', top: y - 6, left: 4 }]}
-                >
-                  {Number(tick.toFixed(1))}
-                </Text>
-              );
-            })}
-
-            {/* X-axis date labels */}
-            {xLabelIndices.map((idx, i) => (
-              <Text
-                key={`xl-${i}`}
-                style={[
-                  styles.axisLabel,
-                  {
-                    position: 'absolute',
-                    top: CHART_MARGIN.top + CHART_HEIGHT + 8,
-                    left: chartPoints[idx].x - 18,
-                    width: 40,
-                    textAlign: 'center',
-                  },
-                ]}
-              >
-                {validPoints[idx].label}
-              </Text>
-            ))}
-
-            {/* Tooltip bubble — shown when a data dot is tapped */}
-            {tooltip && (
-              <View
-                style={[
-                  styles.tooltip,
-                  {
-                    position: 'absolute',
-                    top: tooltip.y - 44,
-                    left: Math.min(
-                      Math.max(tooltip.x - 40, 8),
-                      SVG_WIDTH - 88,
-                    ),
-                  },
-                ]}
-              >
-                <Text style={styles.tooltipValue}>{tooltip.value}{unit}</Text>
-                <Text style={styles.tooltipDate}>{tooltip.label}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
+              },
+            }}
+            {...yAxisProps}
+            {...refLineProps}
+          />
 
           {/* Delta annotation */}
           {deltaText && (
@@ -334,10 +248,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.textMuted,
     marginTop: 2,
-  },
-  axisLabel: {
-    fontSize: 9,
-    color: COLORS.textMuted,
   },
   tooltip: {
     backgroundColor: COLORS.brand,

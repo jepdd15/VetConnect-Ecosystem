@@ -26,7 +26,7 @@ import {
   UIManager,
   View,
 } from 'react-native';
-import { LineChart } from 'react-native-chart-kit';
+import { LineChart as GiftedLineChart } from 'react-native-gifted-charts';
 import { Circle, Path, Svg } from 'react-native-svg';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
@@ -40,29 +40,8 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// ─── CHART CONFIG ─────────────────────────────────────────────────────────────
-// Shared react-native-chart-kit config. Matches Modern Clinical Neubrutalism:
-// sky-blue line, espresso labels, zero border-radius, solid grid lines.
+// ─── LAYOUT ──────────────────────────────────────────────────────────────────
 const SCREEN_W = Dimensions.get('window').width;
-
-const CHART_CONFIG_BASE = {
-  backgroundColor: '#FFF8E1',        // COLORS.cream
-  backgroundGradientFrom: '#FFFFFF',
-  backgroundGradientTo: '#FFFFFF',
-  decimalPlaces: 1,
-  color: (opacity = 1) => `rgba(58, 190, 249, ${opacity})`,  // COLORS.sky
-  labelColor: (opacity = 1) => `rgba(93, 64, 55, ${opacity})`, // COLORS.accent
-  style: { borderRadius: 0 },
-  propsForDots: {
-    r: '4',
-    strokeWidth: '2',
-    stroke: '#3E2723', // COLORS.brand
-  },
-  propsForBackgroundLines: {
-    strokeDasharray: '',              // solid grid lines
-    stroke: 'rgba(0,0,0,0.05)',
-  },
-};
 
 // ─── LOCAL SUB-COMPONENTS ──────────────────────────────────────────────────────
 
@@ -1103,25 +1082,34 @@ export default function MyStatsScreen({ route, navigation }) {
             <View style={styles.chartShadow} />
             <View style={styles.chartBox}>
               <Text style={styles.chartTitle}>VISIT FREQUENCY TREND</Text>
-              <LineChart
-                data={{
-                  labels: visitFrequencyTrend.map((d, i) =>
-                    // Show every other label when there are many points to avoid overlap.
-                    i % Math.ceil(visitFrequencyTrend.length / 5) === 0 ? (d.label ?? '') : '',
-                  ),
-                  datasets: [{ data: visitFrequencyTrend.map(d => d.value) }],
-                }}
-                width={SCREEN_W - 24}
+              <GiftedLineChart
+                data={visitFrequencyTrend.map((d, i) => ({
+                  value: d.value,
+                  label: i % Math.ceil(visitFrequencyTrend.length / 5) === 0
+                    ? (d.label ?? '') : '',
+                }))}
+                width={SCREEN_W - 72}
                 height={150}
-                yAxisSuffix="d"
-                chartConfig={{
-                  ...CHART_CONFIG_BASE,
-                  // days_between is always integer — no decimals to suffix.
-                  decimalPlaces: 0,
-                }}
-                bezier
-                withDots
-                style={{ borderRadius: 0 }}
+                overflowTop={20}
+                curved
+                areaChart
+                color={COLORS.sky}
+                startFillColor={COLORS.sky}
+                startOpacity={0.3}
+                endOpacity={0.05}
+                thickness={2}
+                yAxisLabelSuffix="d"
+                yAxisLabelWidth={40}
+                stepValue={1}
+                roundToDigits={0}
+                yAxisTextStyle={{ fontFamily: FONTS.bold, fontSize: 10, color: COLORS.accent }}
+                xAxisLabelTextStyle={{ fontFamily: FONTS.bold, fontSize: 10, color: COLORS.accentLight }}
+                dataPointsColor={COLORS.brand}
+                dataPointsRadius={4}
+                rulesType="solid"
+                rulesColor="rgba(0,0,0,0.05)"
+                xAxisColor={COLORS.borderLight}
+                yAxisColor={COLORS.borderLight}
               />
             </View>
           </View>
@@ -1470,35 +1458,39 @@ export default function MyStatsScreen({ route, navigation }) {
                       Avg: P{spendingPerVisit.average.toLocaleString()}/visit
                     </Text>
                   </Text>
-                  <LineChart
-                    data={{
-                      labels: spendingPerVisit.trendData.map((d, i) =>
-                        i % Math.ceil(spendingPerVisit.trendData.length / 5) === 0
-                          ? (d.label ?? '')
-                          : '',
-                      ),
-                      datasets: [{ data: spendingPerVisit.trendData.map(d => d.value) }],
-                    }}
-                    width={SCREEN_W - 24}
+                  <GiftedLineChart
+                    data={spendingPerVisit.trendData.map((d, i) => ({
+                      value: d.value,
+                      label: i % Math.ceil(spendingPerVisit.trendData.length / 5) === 0
+                        ? (d.label ?? '') : '',
+                    }))}
+                    width={SCREEN_W - 96}
                     height={150}
-                    yAxisLabel="₱"
-                    chartConfig={{
-                      ...CHART_CONFIG_BASE,
-                      decimalPlaces: 0,
-                      // Peso values reach 7 digits. Pass through a compact
-                      // formatter so the Y-axis tick fits the chart's label
-                      // gutter without clipping on the left.
-                      formatYLabel: (raw) => {
-                        const n = parseFloat(raw);
-                        const abs = Math.abs(n);
-                        if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`;
-                        if (abs >= 1_000)     return `${(n / 1_000).toFixed(abs >= 10_000 ? 0 : 1)}k`;
-                        return `${Math.round(n)}`;
-                      },
+                    overflowTop={20}
+                    curved
+                    areaChart
+                    color={COLORS.sky}
+                    startFillColor={COLORS.sky}
+                    startOpacity={0.3}
+                    endOpacity={0.05}
+                    thickness={2}
+                    yAxisLabelWidth={60}
+                    formatYLabel={(val) => {
+                      const n = parseFloat(val);
+                      const abs = Math.abs(n);
+                      if (abs >= 1_000_000) return `₱${(n / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`;
+                      if (abs >= 1_000)     return `₱${(n / 1_000).toFixed(abs >= 10_000 ? 0 : 1)}k`;
+                      return `₱${Math.round(n)}`;
                     }}
-                    bezier
-                    withDots
-                    style={{ borderRadius: 0 }}
+                    yAxisTextStyle={{ fontFamily: FONTS.bold, fontSize: 10, color: COLORS.accent }}
+                    xAxisLabelTextStyle={{ fontFamily: FONTS.bold, fontSize: 10, color: COLORS.accentLight }}
+                    dataPointsColor={COLORS.brand}
+                    dataPointsRadius={4}
+                    rulesType="solid"
+                    rulesColor="rgba(0,0,0,0.05)"
+                    xAxisColor={COLORS.borderLight}
+                    yAxisColor={COLORS.borderLight}
+                    noOfSections={4}
                   />
                 </View>
               </View>
@@ -1904,24 +1896,18 @@ function PetCardSlim({ petCard, onWeightZoom, onViewChart }) {
                   activeOpacity={0.75}
                   style={styles.weightSparklineHit}
                 >
-                  <LineChart
-                    data={{
-                      labels: petCard.weightPoints.map(() => ''),
-                      datasets: [{ data: petCard.weightPoints.map(d => d.value) }],
-                    }}
-                    width={SCREEN_W - 140}
+                  <GiftedLineChart
+                    data={petCard.weightPoints.map(d => ({ value: d.value }))}
+                    width={SCREEN_W - 160}
                     height={60}
-                    chartConfig={{
-                      ...CHART_CONFIG_BASE,
-                      propsForDots: { r: '4', strokeWidth: '2', stroke: COLORS.brand },
-                    }}
-                    bezier
-                    withDots
-                    withInnerLines={false}
-                    withOuterLines={false}
-                    withVerticalLabels={false}
-                    withHorizontalLabels={false}
-                    style={{ borderRadius: 0, marginVertical: 0, marginLeft: -16 }}
+                    curved
+                    thickness={2}
+                    color={COLORS.sky}
+                    dataPointsColor={COLORS.brand}
+                    dataPointsRadius={4}
+                    hideYAxisText
+                    hideAxesAndRules
+                    hideDataPoints={false}
                   />
                   <MaterialIcons
                     name="zoom-in"
@@ -2223,6 +2209,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 2,
     borderColor: COLORS.brand,
     backgroundColor: COLORS.white,
+    overflow: 'visible',
   },
   chartShadow: {
     width: 0,
@@ -2231,6 +2218,7 @@ const styles = StyleSheet.create({
   chartBox: {
     paddingVertical: 14,
     paddingHorizontal: 12,
+    paddingBottom: 20,
   },
   chartTitle: {
     fontFamily: FONTS.bold,
@@ -2422,6 +2410,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 2,
     borderColor: COLORS.brand,
     backgroundColor: COLORS.white,
+    overflow: 'visible',
   },
   spendingBlock: {
     marginBottom: 14,

@@ -46,7 +46,7 @@ import { useClinicContact } from "../hooks/useClinicContact";
 import { safeDate, formatDisplayDate, calculateAge } from "../utils/helpers";
 import { resolveDepartmentForRecord } from '../utils/resolveDepartmentForRecord';
 import { COLORS, SHADOW, SPACING, FONTS } from '../theme/mobileTokens';
-import { LineChart } from 'react-native-chart-kit';
+import { LineChart as GiftedLineChart } from 'react-native-gifted-charts';
 import VitalsZoomModal from '../components/VitalsZoomModal';
 import LabZoomModal from '../components/LabZoomModal';
 import PetHistoryAISheet from '../components/PetHistoryAISheet';
@@ -64,29 +64,8 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 // ---------------------------------------------------------------------------
-// Chart constants (react-native-chart-kit)
-// Shared config for all LineChart instances in this screen.
-// Colors match Modern Clinical Neubrutalism design tokens from mobileTokens.js.
+// Layout constants
 const SCREEN_W = Dimensions.get('window').width;
-
-const CHART_CONFIG_BASE = {
-  backgroundColor: '#FFF8E1',        // COLORS.cream
-  backgroundGradientFrom: '#FFFFFF',
-  backgroundGradientTo: '#FFFFFF',
-  decimalPlaces: 1,
-  color: (opacity = 1) => `rgba(58, 190, 249, ${opacity})`,  // COLORS.sky
-  labelColor: (opacity = 1) => `rgba(93, 64, 55, ${opacity})`, // COLORS.accent
-  style: { borderRadius: 0 },
-  propsForDots: {
-    r: '4',
-    strokeWidth: '2',
-    stroke: '#3E2723', // COLORS.brand
-  },
-  propsForBackgroundLines: {
-    strokeDasharray: '',              // solid grid lines
-    stroke: 'rgba(0,0,0,0.05)',
-  },
-};
 
 // ---------------------------------------------------------------------------
 // T4.194 Item 10: Vaccine urgency sort order — overdue first, unknown last
@@ -1166,7 +1145,7 @@ export default function PetHistoryScreen({ route, navigation }) {
     const extract = (field) =>
       resolved
         .filter(r => r._rv[field] != null && r._rv[field] !== '')
-        .map(r => ({ label: formatDisplayDate(r.date), value: parseFloat(r._rv[field]) }))
+        .map(r => ({ label: formatDisplayDate(r.date, { month: 'short', day: 'numeric' }), value: parseFloat(r._rv[field]) }))
         .filter(d => !isNaN(d.value));
     return {
       weight: extract('weight'),
@@ -2607,7 +2586,7 @@ export default function PetHistoryScreen({ route, navigation }) {
                         )}
                       </View>
 
-                      {/* Vitals trend chart — react-native-chart-kit LineChart */}
+                      {/* Vitals trend chart — react-native-gifted-charts LineChart */}
                       {chartData.length >= 2 ? (
                         (() => {
                           const hexToRgba = (hex, op) => {
@@ -2617,43 +2596,39 @@ export default function PetHistoryScreen({ route, navigation }) {
                             return `rgba(${r},${g},${b},${op})`;
                           };
                           const vitalHex = cfg.color || '#3ABEF9';
-                          const values = chartData.map(d => d.value);
-                          const datasets = [{ data: values }];
-                          if (range) {
-                            datasets.push({ data: [range.low], withDots: false });
-                            datasets.push({ data: [range.high], withDots: false });
-                          }
                           return (
-                            <LineChart
-                              data={{
-                                labels: chartData.map((d, i) =>
-                                  i % Math.ceil(chartData.length / 5) === 0
-                                    ? (d.label ?? '') : '',
-                                ),
-                                datasets,
-                              }}
-                              width={SCREEN_W - 60}
-                              height={200}
-                              chartConfig={{
-                                ...CHART_CONFIG_BASE,
-                                color: () => hexToRgba(vitalHex, 1),
-                                fillShadowGradientFrom: range ? hexToRgba(COLORS.success, 0.12) : hexToRgba(vitalHex, 0.05),
-                                fillShadowGradientTo: range ? hexToRgba(COLORS.success, 0.03) : hexToRgba(vitalHex, 0.01),
-                                propsForDots: {
-                                  r: '5',
-                                  strokeWidth: '2',
-                                  stroke: COLORS.brand,
-                                },
-                              }}
-                              bezier
-                              withDots
-                              getDotColor={(dataPoint, dataPointIndex) => {
-                                if (!range) return vitalHex;
-                                return (dataPoint >= range.low && dataPoint <= range.high)
-                                  ? COLORS.success : COLORS.danger;
-                              }}
-                              style={{ borderRadius: 0, marginLeft: -14 }}
+                            <GiftedLineChart
+                              data={chartData.map((d, i) => ({
+                                value: d.value,
+                                label: i % Math.ceil(chartData.length / 5) === 0
+                                  ? (d.label ?? '') : '',
+                                dataPointColor: range
+                                  ? (d.value >= range.low && d.value <= range.high
+                                      ? COLORS.success : COLORS.danger)
+                                  : vitalHex,
+                              }))}
+                              width={SCREEN_W - 80}
+                              height={180}
+                              initialSpacing={15}
+                              overflowTop={20}
+                              curved
+                              areaChart
+                              color={vitalHex}
+                              startFillColor={range
+                                ? hexToRgba(COLORS.success, 0.12)
+                                : hexToRgba(vitalHex, 0.05)}
+                              startOpacity={0.3}
+                              endOpacity={0.05}
+                              thickness={2}
+                              yAxisLabelWidth={55}
                               formatYLabel={v => `${parseFloat(v).toFixed(1)}${cfg.unit || ''}`}
+                              yAxisTextStyle={{ fontSize: 10, color: COLORS.accent }}
+                              xAxisLabelTextStyle={{ fontSize: 9, color: COLORS.accentLight }}
+                              dataPointsRadius={5}
+                              rulesType="solid"
+                              rulesColor="rgba(0,0,0,0.05)"
+                              xAxisColor={COLORS.borderLight}
+                              yAxisColor={COLORS.borderLight}
                             />
                           );
                         })()
@@ -2709,14 +2684,6 @@ export default function PetHistoryScreen({ route, navigation }) {
                     );
                   }
 
-                  const labels = chartData.length > 5
-                    ? chartData.map((d, i) => i % Math.ceil(chartData.length / 5) === 0 ? d.label : '')
-                    : chartData.map(d => d.label);
-                  const values = chartData.map(d => d.value);
-                  const datasets = [{ data: values }];
-                  if (bulletCfg.min !== undefined) datasets.push({ data: [bulletCfg.min], withDots: false });
-                  if (bulletCfg.max !== undefined) datasets.push({ data: [bulletCfg.max], withDots: false });
-
                   const hexToRgba = (hex, opacity) => {
                     const r = parseInt(hex.slice(1, 3), 16);
                     const g = parseInt(hex.slice(3, 5), 16);
@@ -2740,28 +2707,42 @@ export default function PetHistoryScreen({ route, navigation }) {
                           </Text>
                         )}
                       </View>
-                      <LineChart
-                        data={{ labels, datasets }}
-                        width={SCREEN_W - 60}
-                        height={180}
-                        chartConfig={{
-                          ...CHART_CONFIG_BASE,
-                          color: () => hexToRgba(vitalColor, 1),
-                          fillShadowGradientFrom: range ? hexToRgba(COLORS.success, 0.15) : hexToRgba(vitalColor, 0.05),
-                          fillShadowGradientTo: range ? hexToRgba(COLORS.success, 0.05) : hexToRgba(vitalColor, 0.01),
-                          propsForDots: { r: '5', strokeWidth: '2', stroke: COLORS.brand },
-                        }}
-                        withDots
-                        getDotColor={(dataPoint) => {
-                          if (!range) return vitalColor;
-                          return (dataPoint >= range.low && dataPoint <= range.high)
-                            ? COLORS.success : COLORS.danger;
-                        }}
-                        withInnerLines
-                        withOuterLines={false}
-                        fromZero={bulletCfg.min === 0}
-                        style={{ borderRadius: 0, marginLeft: -14 }}
-                        formatYLabel={(val) => `${parseFloat(val).toFixed(0)}${cfg.unit}`}
+                      <GiftedLineChart
+                        data={chartData.map((d, i) => ({
+                          value: d.value,
+                          label: chartData.length > 5
+                            ? (i % Math.ceil(chartData.length / 5) === 0 ? d.label : '')
+                            : d.label,
+                          dataPointColor: range
+                            ? (d.value >= range.low && d.value <= range.high
+                                ? COLORS.success : COLORS.danger)
+                            : vitalColor,
+                        }))}
+                        width={SCREEN_W - 80}
+                        height={160}
+                        initialSpacing={15}
+                        overflowTop={20}
+                        color={vitalColor}
+                        thickness={2}
+                        yAxisLabelWidth={45}
+                        stepValue={key === 'pain' ? 2 : 1}
+                        roundToDigits={0}
+                        maxValue={bulletCfg.max}
+                        minValue={bulletCfg.min}
+                        formatYLabel={val => `${parseFloat(val).toFixed(0)}${cfg.unit}`}
+                        yAxisTextStyle={{ fontSize: 10, color: COLORS.accent }}
+                        xAxisLabelTextStyle={{ fontSize: 9, color: COLORS.accentLight }}
+                        dataPointsRadius={5}
+                        rulesType="solid"
+                        rulesColor="rgba(0,0,0,0.05)"
+                        xAxisColor={COLORS.borderLight}
+                        yAxisColor={COLORS.borderLight}
+                        areaChart
+                        startFillColor={range
+                          ? hexToRgba(COLORS.success, 0.15)
+                          : hexToRgba(vitalColor, 0.05)}
+                        startOpacity={0.3}
+                        endOpacity={0.05}
                       />
                       {renderEnhancedDelta(key, chartData, ` ${cfg.unit}`, petSpecies)}
                       {interpretation && (

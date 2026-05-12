@@ -23,8 +23,8 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { COLORS } from '../theme/mobileTokens';
-import { LineChart } from 'react-native-chart-kit';
-// SparkLine retained as fallback; LineChart used at all render sites.
+import { LineChart as GiftedLineChart } from 'react-native-gifted-charts';
+// LineChart from react-native-gifted-charts replaces react-native-chart-kit.
 
 // ---------------------------------------------------------------------------
 // Layout constants
@@ -33,25 +33,7 @@ import { LineChart } from 'react-native-chart-kit';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const CHART_WIDTH = SCREEN_WIDTH - 64;
 
-// react-native-chart-kit config — matches Modern Clinical Neubrutalism tokens.
-const CHART_CONFIG = {
-  backgroundColor: '#FFF8E1',
-  backgroundGradientFrom: '#FFFFFF',
-  backgroundGradientTo: '#FFFFFF',
-  decimalPlaces: 1,
-  color: (opacity = 1) => `rgba(21, 101, 192, ${opacity})`,  // COLORS.info blue
-  labelColor: (opacity = 1) => `rgba(93, 64, 55, ${opacity})`, // COLORS.accent
-  style: { borderRadius: 0 },
-  propsForDots: {
-    r: '4',
-    strokeWidth: '2',
-    stroke: '#3E2723', // COLORS.brand
-  },
-  propsForBackgroundLines: {
-    strokeDasharray: '',
-    stroke: 'rgba(0,0,0,0.05)',
-  },
-};
+
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -222,24 +204,35 @@ export default function LabZoomModal({
           {/* Lab trend chart — single numeric test with >= 2 data points */}
           {showChart && (
             <View style={styles.chartContainer}>
-              <LineChart
-                data={{
-                  labels: sparkData.map((d, i) =>
-                    // Thin the label list to prevent x-axis crowding.
-                    i % Math.ceil(sparkData.length / 5) === 0 ? (d.label ?? '') : '',
-                  ),
-                  datasets: [{ data: sparkData.map(d => d.value) }],
-                }}
-                width={CHART_WIDTH}
-                height={180}
-                chartConfig={{
-                  ...CHART_CONFIG,
-                  formatYLabel: v =>
-                    unit ? `${parseFloat(v).toFixed(1)} ${unit}` : parseFloat(v).toFixed(1),
-                }}
-                bezier
-                withDots
-                style={{ borderRadius: 0 }}
+              <GiftedLineChart
+                data={sparkData.map((d, i) => ({
+                  value: d.value,
+                  label: i % Math.ceil(sparkData.length / 5) === 0
+                    ? (d.label ?? '') : '',
+                }))}
+                width={CHART_WIDTH - 40}
+                height={160}
+                overflowTop={20}
+                curved
+                areaChart
+                color={COLORS.info}
+                startFillColor={COLORS.info}
+                startOpacity={0.15}
+                endOpacity={0.03}
+                thickness={2}
+                yAxisLabelWidth={55}
+                formatYLabel={v =>
+                  unit ? `${parseFloat(v).toFixed(1)} ${unit}` : parseFloat(v).toFixed(1)
+                }
+                yAxisTextStyle={{ fontSize: 10, color: COLORS.accent }}
+                xAxisLabelTextStyle={{ fontSize: 9, color: COLORS.accentLight }}
+                dataPointsColor={COLORS.brand}
+                dataPointsRadius={4}
+                rulesType="solid"
+                rulesColor="rgba(0,0,0,0.05)"
+                xAxisColor="#E0E0E0"
+                yAxisColor="#E0E0E0"
+                noOfSections={4}
               />
             </View>
           )}

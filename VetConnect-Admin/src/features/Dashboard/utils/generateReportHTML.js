@@ -6,119 +6,125 @@ const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').
 // Both generateReportHTML and generateFullReportHTML reference this constant
 // so the stylesheet stays in one place.
 const REPORT_CSS = `
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-family: 'Inter', sans-serif;
       font-size: 12px;
-      color: #333;
-      padding: 24px;
-      max-width: 800px;
+      color: #3E2723;
+      padding: 40px;
+      max-width: 900px;
       margin: 0 auto;
+      background: #fff;
     }
     .header {
-      border-bottom: 3px solid #3E2723;
-      padding-bottom: 12px;
-      margin-bottom: 20px;
+      border-bottom: 4px solid #3E2723;
+      padding-bottom: 15px;
+      margin-bottom: 30px;
+      position: relative;
     }
     .header h1 {
-      font-size: 20px;
+      font-size: 24px;
       font-weight: 900;
       text-transform: uppercase;
-      letter-spacing: 2px;
+      letter-spacing: -0.5px;
       color: #3E2723;
-      margin-bottom: 4px;
     }
     .header .subtitle {
-      font-size: 11px;
-      color: #666;
+      font-size: 12px;
+      font-weight: 700;
+      color: #795548;
       text-transform: uppercase;
-      letter-spacing: 1px;
+      margin-top: 4px;
     }
     .header .period {
-      font-size: 13px;
-      font-weight: 700;
-      color: #5D4037;
-      margin-top: 6px;
+      font-size: 12px;
+      font-weight: 900;
+      color: #3E2723;
+      margin-top: 10px;
+      background: #F5F5F5;
+      display: inline-block;
+      padding: 4px 12px;
+      border: 2px solid #3E2723;
     }
     .kpi-grid {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
-      gap: 12px;
-      margin-bottom: 24px;
+      gap: 15px;
+      margin-bottom: 30px;
     }
     .kpi-card {
       border: 2px solid #3E2723;
-      padding: 12px;
+      padding: 15px;
+      background: #fff;
+      box-shadow: 4px 4px 0px #3E2723;
     }
     .kpi-card .label {
-      font-size: 9px;
-      font-weight: 800;
+      font-size: 10px;
+      font-weight: 900;
       text-transform: uppercase;
-      letter-spacing: 1px;
-      color: #666;
-      margin-bottom: 4px;
+      color: #795548;
+      margin-bottom: 6px;
     }
     .kpi-card .value {
-      font-size: 18px;
+      font-size: 20px;
       font-weight: 900;
       color: #3E2723;
+      line-height: 1;
     }
-    .kpi-card .sub {
-      font-size: 9px;
-      color: #888;
-      margin-top: 2px;
+    .kpi-card .delta {
+      font-size: 10px;
+      font-weight: 900;
+      margin-top: 6px;
+      padding: 2px 6px;
+      display: inline-block;
+      border: 1px solid #3E2723;
     }
+    .delta.up { color: #2E7D32; background: #E8F5E9; }
+    .delta.down { color: #D32F2F; background: #FFEBEE; }
+    .delta.neutral { color: #757575; background: #F5F5F5; }
+
     .section {
-      margin-bottom: 20px;
+      margin-bottom: 30px;
+      page-break-inside: avoid;
     }
     .section h2 {
-      font-size: 12px;
+      font-size: 14px;
       font-weight: 900;
       text-transform: uppercase;
-      letter-spacing: 1.5px;
-      color: #3E2723;
-      border-bottom: 2px solid #3E2723;
-      padding-bottom: 4px;
-      margin-bottom: 8px;
+      color: #fff;
+      background: #3E2723;
+      padding: 6px 12px;
+      margin-bottom: 15px;
     }
     table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 11px;
+      border: 2px solid #3E2723;
     }
     th {
-      background: #FFF8E1;
-      border: 1px solid #3E2723;
-      padding: 6px 8px;
-      font-weight: 800;
+      background: #EFEBE9;
+      border: 2px solid #3E2723;
+      padding: 10px;
+      font-weight: 900;
       text-transform: uppercase;
-      font-size: 9px;
-      letter-spacing: 0.5px;
+      font-size: 10px;
       text-align: left;
-      color: #3E2723;
     }
     td {
-      border: 1px solid #ccc;
-      padding: 5px 8px;
+      border: 1px solid #D7CCC8;
+      padding: 8px 10px;
+      font-weight: 600;
     }
-    td.numeric {
-      text-align: right;
-      font-weight: 700;
-    }
+    tr:nth-child(even) { background: #FAFAFA; }
     .footer {
-      margin-top: 30px;
-      padding-top: 12px;
-      border-top: 1px solid #ccc;
-      font-size: 9px;
-      color: #999;
+      margin-top: 50px;
+      border-top: 2px solid #3E2723;
+      padding-top: 15px;
+      font-size: 10px;
+      font-weight: 700;
       text-align: center;
-    }
-    @media print {
-      body { padding: 12px; }
-      .kpi-grid { grid-template-columns: repeat(4, 1fr); }
-      .kpi-card { break-inside: avoid; }
-      .section { break-inside: avoid; }
-      .footer { position: fixed; bottom: 0; left: 0; right: 0; }
+      text-transform: uppercase;
     }
 `;
 
@@ -126,10 +132,18 @@ function fmt(n) {
   return `₱${(n || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
 
-function kpi(label, value, sub = '') {
+function kpi(label, value, sub = '', delta = null) {
+  let deltaHtml = '';
+  if (delta !== null) {
+    const cls = delta > 0 ? 'up' : delta < 0 ? 'down' : 'neutral';
+    const sym = delta > 0 ? '▲' : delta < 0 ? '▼' : '—';
+    deltaHtml = `<div class="delta ${cls}">${sym} ${Math.abs(delta)}% vs prev</div>`;
+  }
+
   return `<div class="kpi-card">
     <div class="label">${esc(label)}</div>
     <div class="value">${esc(String(value))}</div>
+    ${deltaHtml}
     ${sub ? `<div class="sub">${esc(String(sub))}</div>` : ''}
   </div>`;
 }
@@ -306,15 +320,15 @@ function buildClinicalReport(data) {
 }
 
 function buildFinancialReport(data) {
-  const { financial } = data;
+  const { financial, deltas } = data;
   if (!financial) return '<p>Financial data not available.</p>';
 
   const isProfit = financial.netMargin >= 0;
 
   let html = '<div class="kpi-grid">';
-  html += kpi('Revenue Collected', fmt(financial.totalCollected), `${financial.transactionCount} transactions`);
+  html += kpi('Revenue Collected', fmt(financial.totalCollected), `${financial.transactionCount} transactions`, deltas?.revenue);
   html += kpi('Total Billed', fmt(financial.totalBilled), 'before deposits');
-  html += kpi('Total Expenses', fmt(financial.totalExpenses));
+  html += kpi('Total Expenses', fmt(financial.totalExpenses), '', deltas?.expenses);
   html += kpi('Net Margin', fmt(Math.abs(financial.netMargin)), isProfit ? 'profit' : 'loss');
   html += '</div>';
 
@@ -356,16 +370,42 @@ function buildFinancialReport(data) {
 }
 
 function buildAnalyticsReport(data) {
-  const { growth, clinical } = data;
+  const { growth, clinical, financial, deltas } = data;
   if (!growth && !clinical) return '<p>Analytics data not available.</p>';
 
+  const isProfit = financial?.netMargin >= 0;
   let html = '';
+
+  // ── FINANCIAL SUMMARY section ─────────────────────────────────
+  if (financial) {
+    html += '<div class="section"><h2>Financial Performance</h2>';
+    html += '<div class="kpi-grid">';
+    html += kpi('Revenue Collected', fmt(financial.totalCollected), `${financial.transactionCount} transactions`, deltas?.revenue);
+    html += kpi('Total Expenses', fmt(financial.totalExpenses), '', deltas?.expenses);
+    html += kpi('Net Margin', fmt(Math.abs(financial.netMargin)), isProfit ? 'Profit' : 'Loss');
+    html += kpi('Collection Rate', `${financial.collectionRate || 0}%`);
+    html += '</div>';
+
+    // Radar Alert: Revenue Leakage
+    if (financial.leakageCount > 0) {
+      html += `
+        <div class="kpi-card" style="border-color: #D32F2F; background: #FFEBEE; margin-bottom: 20px;">
+          <div class="label" style="color: #D32F2F;">⚠ REVENUE LEAKAGE ALERT</div>
+          <div class="value" style="color: #D32F2F;">${financial.leakageCount} Unbilled Appointments</div>
+          <div class="sub" style="color: #3E2723; font-weight: 700; margin-top: 4px;">
+            Estimated Missing Revenue: ${fmt(financial.leakageEstimatedAmount)}
+          </div>
+        </div>
+      `;
+    }
+    html += '</div>';
+  }
 
   // ── PATIENTS section ──────────────────────────────────────────
   if (growth) {
-    html += '<div class="section"><h2>Patients</h2>';
+    html += '<div class="section"><h2>Patient & Growth Metrics</h2>';
     html += '<div class="kpi-grid">';
-    html += kpi('New Clients', growth.newClientCount, 'registered this period');
+    html += kpi('New Clients', growth.newClientCount, 'registered this period', deltas?.uniqueClients);
     html += kpi('Total Active Clients', growth.totalActiveClients);
     html += kpi('Total Active Pets', growth.totalActivePets);
     if (growth.newPetsCount != null) {
@@ -554,15 +594,15 @@ function buildAnalyticsReport(data) {
 }
 
 function buildFinancialReportExtended(data) {
-  const { financial } = data;
+  const { financial, deltas } = data;
   if (!financial) return '<p>Financial data not available.</p>';
 
   const isProfit = financial.netMargin >= 0;
 
   let html = '<div class="kpi-grid">';
-  html += kpi('Revenue Collected', fmt(financial.totalCollected), `${financial.transactionCount} transactions`);
+  html += kpi('Revenue Collected', fmt(financial.totalCollected), `${financial.transactionCount} transactions`, deltas?.revenue);
   html += kpi('Total Billed', fmt(financial.totalBilled), 'before deposits');
-  html += kpi('Total Expenses', fmt(financial.totalExpenses));
+  html += kpi('Total Expenses', fmt(financial.totalExpenses), '', deltas?.expenses);
   html += kpi('Net Margin', fmt(Math.abs(financial.netMargin)), isProfit ? 'profit' : 'loss');
   html += '</div>';
 
@@ -628,6 +668,24 @@ function buildFinancialReportExtended(data) {
     html += '<tr><th>#</th><th>Service</th><th>Amount</th></tr>';
     financial.revenueByService.forEach((s, i) => {
       html += `<tr><td>${i + 1}</td><td>${esc(s.name)}</td><td class="numeric">${fmt(s.amount)}</td></tr>`;
+    });
+    html += '</table></div>';
+  }
+
+  if (financial.topSoldProducts?.length > 0) {
+    html += '<div class="section"><h2>Top Sold Products</h2><table>';
+    html += '<tr><th>#</th><th>Product</th><th>Qty</th></tr>';
+    financial.topSoldProducts.forEach((p, i) => {
+      html += `<tr><td>${i + 1}</td><td>${esc(p.name)}</td><td class="numeric">${p.count}</td></tr>`;
+    });
+    html += '</table></div>';
+  }
+
+  if (financial.topSpendingClients?.length > 0) {
+    html += '<div class="section"><h2>Top Spending Clients</h2><table>';
+    html += '<tr><th>#</th><th>Client</th><th>Total Spent</th></tr>';
+    financial.topSpendingClients.forEach((c, i) => {
+      html += `<tr><td>${i + 1}</td><td>${esc(c.name)}</td><td class="numeric">${fmt(c.amount)}</td></tr>`;
     });
     html += '</table></div>';
   }

@@ -1072,19 +1072,34 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
     const scPwdDiscountTotal = scPwdSales.reduce((sum, s) => sum + (parseFloat(s.discount) || 0), 0);
     const customDiscountTotal = totalDiscounts - scPwdDiscountTotal;
 
-    // T4.182: Revenue per service type (top 10 by revenue)
+    // T4.184: Revenue per service type (top 10 by revenue)
     const revenuePerService = {};
+    const productVolumeMap = {};
+
     paidSales.forEach(s => {
       (s.items || []).forEach(item => {
-        const svcName = item.serviceName || item.name || 'Unknown';
-        revenuePerService[svcName] = (revenuePerService[svcName] || 0) +
-          (parseFloat(item.price) || 0) * (item.qty || 1);
+        const name = item.name || 'Unknown';
+        const isProduct = item.type === 'product' || item.stock !== undefined;
+
+        if (!isProduct) {
+          revenuePerService[name] = (revenuePerService[name] || 0) +
+            (parseFloat(item.price) || 0) * (item.qty || 1);
+        } else {
+          // T4.183: Track product sales volume for forensic inventory monitoring
+          productVolumeMap[name] = (productVolumeMap[name] || 0) + (item.qty || 1);
+        }
       });
     });
+
     const revenueByService = Object.entries(revenuePerService)
       .sort(([, a], [, b]) => b - a)
       .slice(0, 10)
       .map(([name, amount]) => ({ name, amount: Math.round(amount) }));
+
+    const topSoldProducts = Object.entries(productVolumeMap)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 10)
+      .map(([name, count]) => ({ name, count }));
 
     // T4.182: Revenue forecast from pending + confirmed appointments
     const upcomingRevenue = appointments
@@ -1096,6 +1111,32 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
 
     // T4.182: Deposit total collected
     const depositTotal = paidSales.reduce((sum, s) => sum + (parseFloat(s.deposit) || 0), 0);
+
+    // T4.183: Top spending clients (VIP tracking)
+    const clientSpendMap = {};
+    paidSales.forEach(s => {
+      const name = s.ownerName || 'Walk-In';
+      if (name !== 'Walk-In') {
+        clientSpendMap[name] = (clientSpendMap[name] || 0) + (parseFloat(s.total) || 0);
+      }
+    });
+    const topSpendingClients = Object.entries(clientSpendMap)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 10)
+      .map(([name, amount]) => ({ name, amount: Math.round(amount) }));
+
+    // T4.182: Revenue leakage detection
+    // Identify appointments that are 'completed' but have no associated sale record.
+    const billedAppointmentIds = new Set(
+      sales.map(s => s.appointmentId).filter(id => id)
+    );
+    const unbilledAppointments = appointments.filter(a => 
+      a.status === 'completed' && !billedAppointmentIds.has(a.id)
+    );
+    const leakageCount = unbilledAppointments.length;
+    const leakageEstimatedAmount = unbilledAppointments.reduce(
+      (sum, a) => sum + (parseFloat(a.servicePrice) || 0), 0
+    );
 
     return {
       totalCollected,
@@ -1121,14 +1162,19 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
       retailRevenue,
       clinicalRevenue,
       retailTransactionCount,
-      // T4.182 new fields
       collectionRate,
       scPwdDiscountTotal,
       customDiscountTotal,
       revenueByService,
+      topSoldProducts,
+      topSpendingClients,
       upcomingRevenue,
       upcomingCount,
       depositTotal,
+      // Leakage Radar
+      leakageCount,
+      leakageEstimatedAmount,
+      unbilledAppointments,
     };
   }, [sales, expenses, appointments, period, dateRange]);
 
@@ -1161,7 +1207,7 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
     });
     const topDiagnoses = Object.values(diagnosisMap)
       .sort((a, b) => b.count - a.count)
-      .slice(0, 5);
+      .slice(0, 10);
 
     // T2.291: Vaccine administration by type
     // Structured data in `vaccineAdministrations` array (preferred),
@@ -1183,12 +1229,15 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
       .map(([name, count]) => ({ name, count }));
     const totalVaccinations = vaccinesByType.reduce((s, v) => s + v.count, 0);
 
-    // T2.292: Top dispensed items — flatten dispensedProducts arrays, group by name
     const rxMap = {};
     medicalRecords.forEach(r => {
       const rxList = r.dispensedProducts || r.prescriptions;
       if (rxList && rxList.length > 0) {
         rxList.forEach(rx => {
+          // T4.183: Forensic filter — only include items with a medical classification
+          const pClass = rx.productClass || (rx.isDrug ? 'medicine' : 'retail');
+          if (pClass !== 'medicine') return;
+
           const name = (rx.name || 'Unknown').trim();
           if (name) rxMap[name] = (rxMap[name] || 0) + (rx.qty || 1);
         });

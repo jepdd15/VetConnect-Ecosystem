@@ -34,6 +34,9 @@ import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import PaymentIcon from '@mui/icons-material/Payment';
 import CategoryIcon from '@mui/icons-material/Category';
+import MedicationIcon from '@mui/icons-material/Medication';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
+import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
@@ -314,6 +317,67 @@ function SectionHeader({ icon, label }) {
   );
 }
 
+// ─── Radar Alerts (Leakage Detector) ────────────────────────────
+
+function RadarAlerts({ data }) {
+  const { financial } = data;
+  if (!financial?.leakageCount || financial.leakageCount === 0) return null;
+
+  return (
+    <Box
+      sx={{
+        mb: 3,
+        p: 2,
+        bgcolor: COLORS.kpiRedBg,
+        border: `2px solid ${COLORS.danger}`,
+        boxShadow: `4px 4px 0px ${COLORS.danger}`,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 2,
+      }}
+    >
+      <Box
+        sx={{
+          width: 48,
+          height: 48,
+          bgcolor: COLORS.danger,
+          color: '#fff',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}
+      >
+        <TrendingUpIcon sx={{ fontSize: 28, transform: 'rotate(180deg)' }} />
+      </Box>
+      <Box sx={{ flex: 1 }}>
+        <Typography sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.danger, fontSize: '0.9rem', lineHeight: 1.2 }}>
+          REVENUE LEAKAGE DETECTED
+        </Typography>
+        <Typography sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textPrimary, fontSize: '0.75rem', mt: 0.25 }}>
+          There are <strong>{financial.leakageCount} unbilled completed appointments</strong> in this period. 
+          Estimated missing revenue: <strong>{formatPHP(financial.leakageEstimatedAmount)}</strong>.
+        </Typography>
+      </Box>
+      <Button
+        size="small"
+        sx={{
+          fontFamily: FONT,
+          ...TYPE.label,
+          fontSize: '0.65rem',
+          bgcolor: COLORS.danger,
+          color: '#fff',
+          borderRadius: 0,
+          px: 2,
+          '&:hover': { bgcolor: '#b71c1c' },
+        }}
+      >
+        VIEW UNBILLED
+      </Button>
+    </Box>
+  );
+}
+
 // ─── Performance Zone (4 KPI cards) ─────────────────────────────
 
 function PerformanceZone({ data, compareEnabled }) {
@@ -428,8 +492,8 @@ function RankedList({ title, items, emptyMessage, valueFormatter, icon }) {
     );
   }
 
-  const top5 = items.slice(0, 5);
-  const maxValue = Math.max(...top5.map((i) => i.value));
+  const top10 = items.slice(0, 10);
+  const maxValue = Math.max(...top10.map((i) => i.value));
 
   return (
     <Box
@@ -447,9 +511,9 @@ function RankedList({ title, items, emptyMessage, valueFormatter, icon }) {
           {title}
         </Typography>
       </Box>
-
+ 
       <Stack spacing={1.25}>
-        {top5.map((item, idx) => {
+        {top10.map((item, idx) => {
           const widthPct = maxValue > 0 ? (item.value / maxValue) * 100 : 0;
           return (
             <Box key={`${item.name}-${idx}`}>
@@ -501,45 +565,81 @@ function RankedList({ title, items, emptyMessage, valueFormatter, icon }) {
 // ─── Patterns Zone ──────────────────────────────────────────────
 
 function PatternsZone({ data }) {
-  const { growth, clinical } = data;
+  const { growth, clinical, financial } = data;
 
-  // Top services from growth.serviceRanking — already array of { name, count } or similar
+  // Top services from growth.serviceRanking
   const topServices = (growth?.serviceRanking || []).map((s) => ({
     name: s.name || s.serviceName || 'Unknown',
     value: s.count || s.value || 0,
   }));
 
-  // Top breeds from growth.topBreeds — already array of { breed, count }
+  // Top prescribed medications (medically filtered)
+  const topPrescribed = (clinical?.topPrescribed || []).map((rx) => ({
+    name: rx.name || 'Unknown',
+    value: rx.qty || 0,
+  }));
+
+  // T4.184: Top sold products (inventory movement)
+  const topSoldProducts = (financial?.topSoldProducts || []).map((p) => ({
+    name: p.name || 'Unknown',
+    value: p.count || 0,
+  }));
+
+  // Top breeds from growth.topBreeds
   const topBreeds = (growth?.topBreeds || []).map((b) => ({
     name: b.breed || b.name || 'Unknown',
     value: b.count || b.value || 0,
   }));
 
-  // Top diagnoses from clinical.topDiagnoses — array of { diagnosis, count }
+  // Top diagnoses from clinical.topDiagnoses
   const topDiagnoses = (clinical?.topDiagnoses || []).map((d) => ({
     name: d.diagnosis || d.name || 'Unknown',
     value: d.count || d.value || 0,
+  }));
+
+  // T4.183: Top spending clients (VIP tracking)
+  const topClients = (financial?.topSpendingClients || []).map((c) => ({
+    name: c.name || 'Unknown',
+    value: c.amount || 0,
   }));
 
   return (
     <Box sx={{ mb: 4 }}>
       <SectionHeader icon={<CategoryIcon />} label="PATTERNS" />
 
+      {/* Unified Grid Container for perfect wrapping on all screen sizes */}
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 4 }}>
           <RankedList
             title="TOP SERVICES"
             items={topServices}
             icon={<MedicalServicesIcon />}
-            emptyMessage="No services booked yet for this period."
+            emptyMessage="No services booked yet."
           />
         </Grid>
+        <Grid size={{ xs: 12, md: 4 }}>
+          <RankedList
+            title="TOP PRESCRIBED"
+            items={topPrescribed}
+            icon={<MedicationIcon />}
+            emptyMessage="No medications dispensed yet."
+          />
+        </Grid>
+        <Grid size={{ xs: 12, md: 4 }}>
+          <RankedList
+            title="TOP SOLD PRODUCTS"
+            items={topSoldProducts}
+            icon={<ShoppingCartIcon />}
+            emptyMessage="No products sold yet."
+          />
+        </Grid>
+
         <Grid size={{ xs: 12, md: 4 }}>
           <RankedList
             title="TOP BREEDS"
             items={topBreeds}
             icon={<PetsIcon />}
-            emptyMessage="No pets seen yet for this period."
+            emptyMessage="No pets seen yet."
           />
         </Grid>
         <Grid size={{ xs: 12, md: 4 }}>
@@ -547,7 +647,16 @@ function PatternsZone({ data }) {
             title="TOP DIAGNOSES"
             items={topDiagnoses}
             icon={<LocalHospitalIcon />}
-            emptyMessage="No medical records signed in this period."
+            emptyMessage="No medical records signed."
+          />
+        </Grid>
+        <Grid size={{ xs: 12, md: 4 }}>
+          <RankedList
+            title="TOP SPENDERS"
+            items={topClients}
+            icon={<EmojiEventsIcon />}
+            emptyMessage="No transactions yet."
+            valueFormatter={formatPHPShort}
           />
         </Grid>
       </Grid>
@@ -701,10 +810,21 @@ function StackedDistributionBar({ title, data, icon, palette, formatter }) {
       ) : (
         <>
           {/* Single stacked horizontal bar */}
-          <Box sx={{ display: 'flex', height: 32, mb: 2, border: `1px solid ${COLORS.border}` }}>
+          <Box sx={{ display: 'flex', height: 32, mb: 2, border: `2px solid ${COLORS.brand}` }}>
             {entries.map((e, idx) => {
               const widthPct = (e.value / total) * 100;
-              const color = palette[idx % palette.length];
+              
+              // T4.182: Unified forensic colors for payment methods
+              const colorMap = {
+                'Cash': COLORS.success,
+                'GCash': COLORS.medical,
+                'Maya': COLORS.medical,
+                'GCash / Maya': COLORS.medical,
+                'Card': COLORS.amber,
+                'Bank Transfer': '#E91E63',
+              };
+              const color = colorMap[e.key] || palette[idx % palette.length];
+
               return (
                 <Box
                   key={e.key}
@@ -718,6 +838,7 @@ function StackedDistributionBar({ title, data, icon, palette, formatter }) {
                     fontFamily: FONT,
                     fontWeight: 900,
                     fontSize: '0.7rem',
+                    borderRight: idx < entries.length - 1 ? `1px solid #fff3` : 'none',
                   }}
                   title={`${e.key}: ${formatter ? formatter(e.value) : e.value}`}
                 >
@@ -729,20 +850,39 @@ function StackedDistributionBar({ title, data, icon, palette, formatter }) {
 
           {/* Legend */}
           <Stack spacing={0.5}>
-            {entries.map((e, idx) => (
-              <Box
-                key={e.key}
-                sx={{ display: 'flex', alignItems: 'center', gap: 1, fontFamily: FONT, fontSize: '0.78rem' }}
-              >
-                <Box sx={{ width: 12, height: 12, bgcolor: palette[idx % palette.length], flexShrink: 0 }} />
-                <Typography sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textPrimary, fontSize: '0.78rem', flex: 1 }}>
-                  {e.key}
-                </Typography>
-                <Typography sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textSecondary, fontSize: '0.78rem' }}>
-                  {formatter ? formatter(e.value) : e.value}
-                </Typography>
-              </Box>
-            ))}
+            {entries.map((e, idx) => {
+              // T4.182: Unified forensic colors for payment methods
+              const colorMap = {
+                'Cash': COLORS.success,
+                'GCash': COLORS.medical,
+                'Maya': COLORS.medical,
+                'GCash / Maya': COLORS.medical,
+                'Card': COLORS.amber,
+                'Bank Transfer': '#E91E63',
+              };
+              const color = colorMap[e.key] || palette[idx % palette.length];
+
+              return (
+                <Box
+                  key={e.key}
+                  sx={{ display: 'flex', alignItems: 'center', gap: 1, fontFamily: FONT, fontSize: '0.78rem' }}
+                >
+                  <Box sx={{ 
+                    width: 12, 
+                    height: 12, 
+                    bgcolor: color, 
+                    flexShrink: 0,
+                    border: `1px solid ${COLORS.brand}33`
+                  }} />
+                  <Typography sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textPrimary, fontSize: '0.78rem', flex: 1 }}>
+                    {e.key}
+                  </Typography>
+                  <Typography sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textSecondary, fontSize: '0.78rem' }}>
+                    {formatter ? formatter(e.value) : e.value}
+                  </Typography>
+                </Box>
+              );
+            })}
           </Stack>
         </>
       )}
@@ -820,6 +960,7 @@ export default function OptionJDashboard({
         onToggleCompare={onToggleCompare}
       />
 
+      <RadarAlerts data={data} />
       <PerformanceZone data={data} compareEnabled={compareEnabled} />
       <PatternsZone data={data} />
       <TrendsZone data={data} period={period} />

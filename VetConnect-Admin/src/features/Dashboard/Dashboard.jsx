@@ -30,6 +30,7 @@ import ReminderWidget from './components/ReminderWidget';
 import { generateReportHTML } from './utils/generateReportHTML';
 import { openPrintWindow } from '../../utils/printUtils';
 import { computeFullVaccineReminderQueue } from '../../utils/vaccineReminderQueue';
+import { exportDashboardCSV } from './utils/exportDashboardCSV';
 import { doc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 
@@ -174,6 +175,10 @@ export default function Dashboard() {
     openPrintWindow(html, () => setPopupBlockedOpen(true));
   };
 
+  const handleExportCSV = () => {
+    exportDashboardCSV(data, period, clinicSettings);
+  };
+
   return (
     <Box
       sx={{
@@ -293,9 +298,9 @@ export default function Dashboard() {
           </Tooltip>
 
           <Button
-            onClick={handleExportReport}
+            onClick={handleExportCSV}
             disabled={data.loading}
-            startIcon={<PrintIcon />}
+            variant="outlined"
             sx={{
               fontFamily: FONT,
               ...TYPE.label,
@@ -320,7 +325,38 @@ export default function Dashboard() {
               },
             }}
           >
-            EXPORT
+            EXPORT CSV
+          </Button>
+
+          <Button
+            onClick={handleExportReport}
+            disabled={data.loading}
+            startIcon={<PrintIcon />}
+            sx={{
+              fontFamily: FONT,
+              ...TYPE.label,
+              fontSize: '0.7rem',
+              color: '#fff',
+              bgcolor: COLORS.brand,
+              border: `2px solid ${COLORS.brand}`,
+              borderRadius: 0,
+              px: 2,
+              py: 0.75,
+              boxShadow: `2px 2px 0px ${COLORS.accent}`,
+              transition: 'transform 0.1s ease, box-shadow 0.1s ease',
+              '&:hover': {
+                bgcolor: COLORS.accent,
+                transform: 'translate(1px, 1px)',
+                boxShadow: `1px 1px 0px ${COLORS.accent}`,
+              },
+              '&.Mui-disabled': {
+                color: COLORS.textMuted,
+                borderColor: COLORS.border,
+                boxShadow: 'none',
+              },
+            }}
+          >
+            PRINT REPORT
           </Button>
 
           <Tooltip

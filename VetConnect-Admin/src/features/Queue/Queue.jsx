@@ -1822,7 +1822,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
     <Box sx={{ 
         display: 'flex', 
         flexDirection: 'column', 
-        height: 'calc(100vh - 24px)', 
+        height: '100vh', 
         gap: 0, 
         overflow: 'hidden' 
     }}>
@@ -1876,20 +1876,46 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
 
       {/* HEADER CONTROLS (FLEX-SHRINK: 0) */}
       <Box sx={{ flexShrink: 0, mb: 3 }}>
-        <Paper sx={{ ...headerFlatStyle, p: 2, display: 'flex', flexWrap: 'wrap', gap: 2, justifyContent: 'space-between', alignItems: 'center' }}>
+        <Paper sx={{ 
+          ...headerFlatStyle, 
+          p: 2, 
+          display: 'flex', 
+          flexWrap: 'wrap', 
+          gap: 2, 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          // T5.10: Hardened layout — ensure the header doesn't collapse weirdly
+          minHeight: { xs: 'auto', md: 80 }
+        }}>
         
-        {/* LEFT SIDE: Title & Shift Toggle */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap', flexGrow: 1 }}>
-          <Box>
+        {/* LEFT SIDE: Identity & Shift Toggle */}
+        <Box sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 3, 
+          flexWrap: 'wrap', 
+          flexGrow: 1,
+          flexBasis: '400px' // Stability anchor
+        }}>
+          <Box sx={{ flexShrink: 0 }}>
             <Typography variant="h4" sx={{ fontWeight: 1000, color: COLORS.brand, lineHeight: 1.1, textTransform: 'uppercase', letterSpacing: 1 }}>
               QUEUE
             </Typography>
-            <Typography variant="caption" sx={{ fontWeight: 800, color: isTomorrowView ? COLORS.info : COLORS.textMuted, letterSpacing: 1, textTransform: 'uppercase' }}>
-              {isTomorrowView ? 'NEXT-DAY PREVIEW' : 'ACTIVE CLINICAL SHIFT'}
+            <Typography sx={{ fontWeight: 900, color: isTomorrowView ? COLORS.info : '#5D4037', fontSize: '0.85rem', letterSpacing: 1 }}>
+              {new Date(filterDate).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' }).toUpperCase()}
             </Typography>
           </Box>
 
-          <Box sx={{ display: 'flex', alignItems: 'center', bgcolor: COLORS.panelBg, borderRadius: 0, border: `2px solid ${COLORS.accent}`, p: 0.5, boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)' }}>
+          <Box sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            bgcolor: COLORS.panelBg, 
+            borderRadius: 0, 
+            border: `2px solid ${COLORS.accent}`, 
+            p: 0.5, 
+            boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
+            flexShrink: 0
+          }}>
              <Button
                 onClick={() => setIsTomorrowView(false)}
                 sx={{
@@ -1914,15 +1940,19 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
              </Button>
           </Box>
 
-          <Box sx={{ ml: 1 }}>
-            <Typography sx={{ fontWeight: '900', color: '#5D4037', fontSize: '1.1rem' }}>
-              {new Date(filterDate).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' }).toUpperCase()}
-            </Typography>
-          </Box>
+
         </Box>
         
-        {/* RIGHT SIDE: Counter & Action Buttons */}
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+        {/* RIGHT SIDE: Search, Counter & Action Buttons */}
+        <Box sx={{ 
+          display: 'flex', 
+          gap: 2, 
+          alignItems: 'center', 
+          flexGrow: 2, 
+          justifyContent: { xs: 'flex-start', lg: 'flex-end' },
+          flexWrap: 'wrap',
+          flexBasis: '600px' // Triggers wrap at a predictable point
+        }}>
           {/* T3.10d — Global patient search */}
           <TextField
             variant="outlined"
@@ -1933,33 +1963,37 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <SearchIcon sx={{ fontSize: 18, color: COLORS.textMuted }} />
+                  <SearchIcon sx={{ fontSize: 18, color: COLORS.brand }} />
                 </InputAdornment>
               ),
               ...(queueSearchText && {
                 endAdornment: (
                   <InputAdornment position="end">
                     <IconButton size="small" onClick={() => setQueueSearchText('')}>
-                      <CloseIcon sx={{ fontSize: 14 }} />
+                      <CloseIcon sx={{ fontSize: 14, color: COLORS.brand }} />
                     </IconButton>
                   </InputAdornment>
                 ),
               }),
             }}
             sx={{
-              flex: 1, maxWidth: 350, minWidth: 180,
+              flex: { xs: '1 1 100%', sm: '1 1 220px' }, 
+              maxWidth: { xs: '100%', lg: 220 }, 
+              minWidth: 160,
               '& .MuiOutlinedInput-root': {
                 fontWeight: 900,
                 fontSize: '0.85rem',
+                color: COLORS.brand,
                 bgcolor: '#FFF',
                 borderRadius: 0,
-                '& fieldset': { borderColor: COLORS.border, borderWidth: 2 },
-                '&:hover fieldset': { borderColor: COLORS.accent },
-                '&.Mui-focused fieldset': { borderColor: COLORS.accent },
+                boxShadow: `2px 2px 0px ${COLORS.brand}`,
+                '& fieldset': { borderColor: COLORS.brand, borderWidth: 2 },
+                '&:hover fieldset': { borderColor: COLORS.brand },
+                '&.Mui-focused fieldset': { borderColor: COLORS.brand },
               },
             }}
           />
-           <Typography variant="body2" sx={{ color: '#5D4037', fontStyle: 'italic', fontWeight: '900', letterSpacing: 0.5, mr: 1 }}>
+           <Typography variant="body2" sx={{ color: '#5D4037', fontStyle: 'italic', fontWeight: '900', letterSpacing: 0.5, mr: 1, whiteSpace: 'nowrap' }}>
               {rows.length} {rows.length === 1 ? 'Record' : 'Records'}
            </Typography>
 
@@ -2014,7 +2048,12 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
            {isToday && !isTomorrowView && (
              <Button
                 variant="contained" startIcon={<PersonAddIcon />}
-                sx={{ bgcolor: COLORS.sky, fontWeight: '900', boxShadow: '4px 4px 0px rgba(58, 190, 249, 0.15)', textTransform: 'uppercase', letterSpacing: 0.5, px: 3, borderRadius: 0, border: `2px solid ${COLORS.skyHover}`, '&:hover': { bgcolor: COLORS.skyHover } }}
+                sx={{ 
+                  bgcolor: COLORS.sky, fontWeight: '900', boxShadow: '4px 4px 0px rgba(58, 190, 249, 0.15)', 
+                  textTransform: 'uppercase', letterSpacing: 0.5, px: 3, borderRadius: 0, 
+                  border: `2px solid ${COLORS.skyHover}`, '&:hover': { bgcolor: COLORS.skyHover },
+                  flexShrink: 0
+                }}
                 onClick={() => setOpenWalkIn(true)}
              >
                 Add Walk-In
@@ -2029,6 +2068,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                  textTransform: 'uppercase', letterSpacing: 0.5, px: 3, borderRadius: 0,
                  borderWidth: 2,
                  '&:hover': { bgcolor: COLORS.chipBlueBg, borderColor: COLORS.skyHover || COLORS.sky },
+                 flexShrink: 0
                }}
                onClick={() => setOpenRetailPOS(true)}
              >
@@ -2175,7 +2215,17 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       )}
 
       {/* DATA GRID (FLEX: 1 - THE FILLER) */}
-      <Paper sx={{ ...clinicalFlatStyle, flex: 1, minHeight: 0, width: '100%', overflow: 'hidden' }}>
+      <Paper sx={{ 
+        ...clinicalFlatStyle, 
+        flex: 1, 
+        minHeight: 0, 
+        width: '100%', 
+        overflow: 'hidden',
+        borderBottom: 0,
+        borderLeft: 0,
+        borderRight: 0,
+        boxShadow: 'none'
+      }}>
         <DataGrid 
           rows={filteredRows}
           columns={tableColumns} 
@@ -2197,6 +2247,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
             return classes.join(' ');
           }}
           sx={{
+            height: '100%',
             border: 'none',
             bgcolor: 'transparent',
             '& .MuiDataGrid-columnHeaders': { bgcolor: 'rgba(255, 255, 255, 0.4)', color: '#5D4037', fontWeight: 'bold', fontSize: '1.05rem', borderBottom: '1px solid rgba(255, 255, 255, 0.5)'},

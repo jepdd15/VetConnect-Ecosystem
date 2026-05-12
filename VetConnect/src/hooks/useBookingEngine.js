@@ -305,7 +305,9 @@ export function useBookingEngine(date, selectedServices = [], selectedPet = null
         });
 
         const slots = [];
-        const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+        const manilaDateStr = new Intl.DateTimeFormat('en-ZA', { timeZone: 'Asia/Manila' }).format(new Date()).replace(/\//g, '-');
+        const manilaTimeStr = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date());
+        const now = new Date(`${manilaDateStr}T${manilaTimeStr}+08:00`);
         const advanceNoticeTime = new Date(now.getTime() + (clinicSettings.advanceNoticeMins || 0) * 60000);
         const slotInterval = clinicSettings.minSlotInterval || 30;
         const openH = clinicSettings.openHour || 8;

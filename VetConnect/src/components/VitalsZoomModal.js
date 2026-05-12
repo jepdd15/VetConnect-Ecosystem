@@ -146,11 +146,6 @@ export default function VitalsZoomModal({
             endSpacing={20}
             overflowTop={20}
             curved
-            areaChart
-            color={lineColor}
-            startFillColor={lineColor}
-            startOpacity={0.1}
-            endOpacity={0.02}
             thickness={2.5}
             dataPointsRadius={5}
             yAxisLabelWidth={50}

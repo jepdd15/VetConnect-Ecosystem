@@ -499,8 +499,8 @@ export default function BookAppointment({ navigation, route }) {
     let cancelled = false;
     const runDetection = async () => {
       try {
-        const manilaToday = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-        manilaToday.setHours(0, 0, 0, 0);
+        const manilaTodayStr = new Intl.DateTimeFormat('en-ZA', { timeZone: 'Asia/Manila' }).format(new Date()).replace(/\//g, '-');
+        const manilaToday = new Date(`${manilaTodayStr}T00:00:00+08:00`);
         const cutoff = new Date(manilaToday);
         cutoff.setDate(cutoff.getDate() - noShowWindowDays);
 

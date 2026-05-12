@@ -2612,13 +2612,6 @@ export default function PetHistoryScreen({ route, navigation }) {
                               initialSpacing={15}
                               overflowTop={20}
                               curved
-                              areaChart
-                              color={vitalHex}
-                              startFillColor={range
-                                ? hexToRgba(COLORS.success, 0.12)
-                                : hexToRgba(vitalHex, 0.05)}
-                              startOpacity={0.3}
-                              endOpacity={0.05}
                               thickness={2}
                               yAxisLabelWidth={55}
                               formatYLabel={v => `${parseFloat(v).toFixed(1)}${cfg.unit || ''}`}
@@ -2737,12 +2730,6 @@ export default function PetHistoryScreen({ route, navigation }) {
                         rulesColor="rgba(0,0,0,0.05)"
                         xAxisColor={COLORS.borderLight}
                         yAxisColor={COLORS.borderLight}
-                        areaChart
-                        startFillColor={range
-                          ? hexToRgba(COLORS.success, 0.15)
-                          : hexToRgba(vitalColor, 0.05)}
-                        startOpacity={0.3}
-                        endOpacity={0.05}
                       />
                       {renderEnhancedDelta(key, chartData, ` ${cfg.unit}`, petSpecies)}
                       {interpretation && (

@@ -68,13 +68,15 @@ const DANGER_FIELD_SX = {
 
 /** Returns today's date as 'YYYY-MM-DD' in Manila timezone. */
 function todayStr() {
-  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Manila' });
+  return new Intl.DateTimeFormat('en-ZA', { timeZone: 'Asia/Manila' }).format(new Date()).replace(/\//g, '-');
 }
 
 /** Returns the first day of the current month as 'YYYY-MM-DD' in Manila timezone. */
 function firstOfMonthStr() {
-  const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-  return new Date(d.getFullYear(), d.getMonth(), 1).toLocaleDateString('sv-SE', { timeZone: 'Asia/Manila' });
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Manila', year: 'numeric', month: 'numeric' }).formatToParts(new Date());
+  const dMap = {};
+  parts.forEach(p => { if (p.type !== 'literal') dMap[p.type] = p.value; });
+  return `${dMap.year}-${dMap.month.padStart(2, '0')}-01`;
 }
 
 /** Builds Manila-timezone Firestore Timestamps from a date string pair. */
@@ -196,9 +198,16 @@ export default function Expenses() {
   // ─── Quick range chip handler (Fix 2) ────────────────────────────────────
   const applyRange = (range) => {
     setActiveRange(range);
-    const manila = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-    const today = todayStr();
-    const fmtDate = (d) => d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Manila' });
+    const manilaTodayStr = new Intl.DateTimeFormat('en-ZA', { timeZone: 'Asia/Manila' }).format(new Date()).replace(/\//g, '-');
+    const [y, m, d] = manilaTodayStr.split('-').map(Number);
+    const manila = new Date(y, m - 1, d);
+    const today = manilaTodayStr;
+    const fmtDate = (dateObj) => {
+      const yy = dateObj.getFullYear();
+      const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const dd = String(dateObj.getDate()).padStart(2, '0');
+      return `${yy}-${mm}-${dd}`;
+    };
 
     if (range === 'today') {
       setStartDate(today);
@@ -210,11 +219,11 @@ export default function Expenses() {
       setStartDate(fmtDate(monday));
       setEndDate(today);
     } else if (range === 'month') {
-      setStartDate(fmtDate(new Date(manila.getFullYear(), manila.getMonth(), 1)));
+      setStartDate(`${y}-${String(m).padStart(2, '0')}-01`);
       setEndDate(today);
     } else if (range === 'quarter') {
-      const qMonth = Math.floor(manila.getMonth() / 3) * 3;
-      setStartDate(fmtDate(new Date(manila.getFullYear(), qMonth, 1)));
+      const qMonth = Math.floor((m - 1) / 3) * 3;
+      setStartDate(`${y}-${String(qMonth + 1).padStart(2, '0')}-01`);
       setEndDate(today);
     }
   };

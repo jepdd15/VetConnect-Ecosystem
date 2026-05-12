@@ -90,10 +90,12 @@ function getDayDiff(scheduledDate, today) {
  * @returns {Date}
  */
 function getManilaToday() {
-  const manilaStr = new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' });
-  const manila    = new Date(manilaStr);
-  // Return a date-only Date in local coordinates that matches Manila's calendar date
-  return new Date(manila.getFullYear(), manila.getMonth(), manila.getDate());
+  const options = { timeZone: 'Asia/Manila', year: 'numeric', month: 'numeric', day: 'numeric' };
+  const parts = new Intl.DateTimeFormat('en-US', options).formatToParts(new Date());
+  const d = {};
+  parts.forEach(p => { if (p.type !== 'literal') d[p.type] = parseInt(p.value, 10); });
+  // Return a Date object representing Manila's midnight in local coordinates for getDayDiff
+  return new Date(d.year, d.month - 1, d.day, 0, 0, 0);
 }
 
 // ── Public: Write a single appointment queue doc ──────────────────────────────

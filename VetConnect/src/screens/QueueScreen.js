@@ -156,8 +156,9 @@ export default function QueueScreen() {
 
   // 3. Listen to lobby for wait-time calculation (privacy-scoped) -- T2.345 + T2.347
   useEffect(() => {
-    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    // Safe "Start of Day" in Manila (+08:00) regardless of device timezone
+    const manilaTodayStr = new Intl.DateTimeFormat('en-ZA', { timeZone: 'Asia/Manila' }).format(new Date()).replace(/\//g, '-');
+    const startOfDay = new Date(`${manilaTodayStr}T00:00:00+08:00`);
     const endOfDay = new Date(startOfDay);
     endOfDay.setDate(endOfDay.getDate() + 1);
 
@@ -200,8 +201,8 @@ export default function QueueScreen() {
   useEffect(() => {
     const fetchAvg = async () => {
       try {
-        const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const manilaTodayStr = new Intl.DateTimeFormat('en-ZA', { timeZone: 'Asia/Manila' }).format(new Date()).replace(/\//g, '-');
+        const startOfDay = new Date(`${manilaTodayStr}T00:00:00+08:00`);
         const q = query(
           collection(db, "appointments"),
           where("status", "==", "completed"),

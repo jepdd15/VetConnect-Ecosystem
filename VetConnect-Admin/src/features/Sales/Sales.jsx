@@ -653,31 +653,162 @@ export default function Sales() {
       {/* 1. FULL-BLEED COMMAND STRIP header */}
       <Box sx={{ flexShrink: 0, mb: 0 }}>
         <Paper elevation={0} sx={{
-          p: 2.5, px: 4, display: 'flex', flexDirection: 'column', gap: 1.5,
-          bgcolor: COLORS.cream, borderBottom: `2px solid ${COLORS.accent}`, borderTop: 'none', borderLeft: 'none', borderRight: 'none', borderRadius: 0
+          p: 2, px: 4, 
+          display: 'flex', 
+          flexWrap: 'wrap', 
+          gap: 2, 
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          bgcolor: COLORS.cream, 
+          borderBottom: `2px solid ${COLORS.accent}`, 
+          borderRadius: 0, 
+          boxShadow: 'none',
+          minHeight: { xs: 'auto', md: 80 }
         }}>
-          {/* Row 1: Title + print icon */}
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
-            <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 1000, color: COLORS.brand, textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0, mr: 1, fontSize: '1.5rem', lineHeight: 1 }}>
-              Transactions
-            </Typography>
+          
+          {/* LEFT SIDE: Identity & Filters */}
+          <Box sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: 3, 
+            flexWrap: 'wrap', 
+            flexGrow: 1,
+            flexBasis: '600px' 
+          }}>
+            <Box sx={{ flexShrink: 0 }}>
+              <Typography variant="h4" sx={{ fontWeight: 1000, color: COLORS.brand, lineHeight: 1.1, textTransform: 'uppercase', letterSpacing: 1 }}>
+                TRANSACTIONS
+              </Typography>
+              <Typography sx={{ fontWeight: 900, color: COLORS.accent, fontSize: '0.85rem', letterSpacing: 1, fontStyle: 'italic' }}>
+                {processedSales.length} {processedSales.length === 1 ? 'Record' : 'Records'}
+              </Typography>
+            </Box>
+
+            <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexGrow: 1, flexWrap: 'wrap' }}>
+              <TextField
+                variant="outlined"
+                size="small"
+                placeholder="Search transactions..."
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon sx={{ fontSize: 18, color: COLORS.brand }} />
+                    </InputAdornment>
+                  ),
+                  ...(searchText && {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton size="small" onClick={() => setSearchText('')}>
+                          <CloseIcon sx={{ fontSize: 14, color: COLORS.brand }} />
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  }),
+                }}
+                sx={{
+                  flex: { xs: '1 1 100%', sm: '1 1 240px' }, 
+                  maxWidth: { xs: '100%', lg: 240 }, 
+                  minWidth: 180,
+                  '& .MuiOutlinedInput-root': {
+                    fontWeight: 900,
+                    fontSize: '0.85rem',
+                    color: COLORS.brand,
+                    bgcolor: '#FFF',
+                    borderRadius: 0,
+                    boxShadow: `2px 2px 0px ${COLORS.brand}`,
+                    '& fieldset': { borderColor: COLORS.brand, borderWidth: 2 },
+                    '&:hover fieldset': { borderColor: COLORS.brand },
+                    '&.Mui-focused fieldset': { borderColor: COLORS.brand },
+                  },
+                }}
+              />
+
+              <TextField
+                type="date"
+                size="small"
+                value={filterDate}
+                onChange={(e) => setFilterDate(e.target.value)}
+                InputProps={{
+                  startAdornment: <InputAdornment position="start"><CalendarMonthIcon fontSize="small" sx={{ color: COLORS.accent }} /></InputAdornment>,
+                  sx: { borderRadius: 0, fontWeight: 900, fontSize: '0.85rem' }
+                }}
+                sx={{ 
+                  bgcolor: COLORS.cardBg, 
+                  minWidth: 160,
+                  boxShadow: `2px 2px 0px ${COLORS.accent}1A`,
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: COLORS.accent, borderWidth: 2, borderRadius: 0 } 
+                }}
+              />
+
+              <FormControl size="small" sx={{ minWidth: 130 }}>
+                <Select 
+                  value={filterStatus} 
+                  onChange={(e) => setFilterStatus(e.target.value)} 
+                  displayEmpty 
+                  sx={{ 
+                    fontWeight: 900, 
+                    fontSize: '0.85rem',
+                    bgcolor: COLORS.cardBg, 
+                    borderRadius: 0,
+                    boxShadow: `2px 2px 0px ${COLORS.accent}1A`,
+                    '& .MuiOutlinedInput-notchedOutline': { borderColor: COLORS.accent, borderWidth: 2 } 
+                  }}
+                >
+                  <MenuItem value="All">All Statuses</MenuItem>
+                  <MenuItem value="Paid">Paid</MenuItem>
+                  <MenuItem value="refunded">Refunded</MenuItem>
+                </Select>
+              </FormControl>
+
+              <FormControl size="small" sx={{ minWidth: 130 }}>
+                <Select
+                  value={filterType}
+                  onChange={(e) => setFilterType(e.target.value)}
+                  displayEmpty
+                  sx={{ 
+                    fontWeight: 900, 
+                    fontSize: '0.85rem',
+                    bgcolor: COLORS.cardBg, 
+                    borderRadius: 0,
+                    boxShadow: `2px 2px 0px ${COLORS.accent}1A`,
+                    '& .MuiOutlinedInput-notchedOutline': { borderColor: COLORS.accent, borderWidth: 2 } 
+                  }}
+                >
+                  <MenuItem value="All">All Types</MenuItem>
+                  <MenuItem value="retail">Retail Only</MenuItem>
+                  <MenuItem value="clinical">Clinical Only</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+          </Box>
+
+          {/* RIGHT SIDE: Actions */}
+          <Box sx={{ 
+            display: 'flex', 
+            gap: 1.5, 
+            alignItems: 'center', 
+            flexGrow: 2, 
+            justifyContent: { xs: 'flex-start', lg: 'flex-end' },
+            flexWrap: 'wrap',
+            flexBasis: '400px'
+          }}>
             <Button
               variant="contained"
               startIcon={<ShoppingCartIcon />}
               onClick={() => setOpenRetailPOS(true)}
               sx={{
                 bgcolor: COLORS.sky, fontWeight: 900, borderRadius: 0, px: 3,
-                border: `2px solid ${COLORS.sky}`,
-                boxShadow: `3px 3px 0px ${COLORS.sky}33`,
+                border: `2px solid ${COLORS.skyHover}`,
+                boxShadow: `4px 4px 0px ${COLORS.brand}1A`,
                 textTransform: 'uppercase', letterSpacing: 0.5, fontSize: '0.75rem',
-                '&:hover': { bgcolor: COLORS.skyHover || '#2196F3', boxShadow: `1px 1px 0px ${COLORS.sky}33` },
+                '&:hover': { bgcolor: COLORS.skyHover },
               }}
             >
               NEW SALE
             </Button>
-            <Box sx={{ flexGrow: 1 }} />
 
-            {/* T4.151: EOD close-out controls (admin only) */}
             {isAdmin && !isDayClosed && (
               <Button
                 variant="contained"
@@ -687,94 +818,62 @@ export default function Sales() {
                 sx={{
                   bgcolor: COLORS.danger, fontWeight: 900, borderRadius: 0, px: 2,
                   border: `2px solid ${COLORS.dangerHover}`,
-                  boxShadow: `3px 3px 0px ${COLORS.danger}33`,
-                  '&:hover': { bgcolor: COLORS.dangerHover, boxShadow: `1px 1px 0px ${COLORS.danger}33` },
+                  boxShadow: `4px 4px 0px ${COLORS.brand}1A`,
+                  '&:hover': { bgcolor: COLORS.dangerHover },
                   textTransform: 'uppercase', letterSpacing: 0.5, fontSize: '0.75rem',
                 }}
               >
                 CLOSE DAY
               </Button>
             )}
+
             {isDayClosed && (
               <Button
                 variant="outlined"
                 size="small"
                 onClick={() => setOpenZReport(true)}
                 sx={{
-                  fontWeight: 900, borderRadius: 0, px: 2,
-                  borderColor: COLORS.success, color: COLORS.success, borderWidth: 2,
+                  fontWeight: 900, borderRadius: 0, px: 2, borderWidth: 2,
+                  borderColor: COLORS.success, color: COLORS.success,
                   textTransform: 'uppercase', letterSpacing: 0.5, fontSize: '0.75rem',
+                  '&:hover': { bgcolor: COLORS.kpiGreenBg, borderColor: COLORS.success }
                 }}
               >
-                VIEW Z-REPORT
+                Z-REPORT
               </Button>
             )}
+
             {isDayClosed && isAdmin && (
               <Button
                 variant="outlined"
                 size="small"
                 onClick={() => setOpenReopenDay(true)}
                 sx={{
-                  fontWeight: 900, borderRadius: 0, px: 2,
-                  borderColor: COLORS.warning, color: COLORS.warning, borderWidth: 2,
+                  fontWeight: 900, borderRadius: 0, px: 2, borderWidth: 2,
+                  borderColor: COLORS.warning, color: COLORS.warning,
                   textTransform: 'uppercase', letterSpacing: 0.5, fontSize: '0.75rem',
+                  '&:hover': { bgcolor: COLORS.warningSurface, borderColor: COLORS.warning }
                 }}
               >
-                REOPEN DAY
+                REOPEN
               </Button>
             )}
 
-            <Tooltip title="Print Detailed Report">
-              <IconButton onClick={handlePrintReport} disabled={loading} sx={{ bgcolor: COLORS.cardBg, border: `1px solid ${COLORS.accent}33`, color: COLORS.accent }}>
+            <Tooltip title="Print EOD Report">
+              <IconButton 
+                onClick={handlePrintReport} 
+                disabled={loading} 
+                sx={{ 
+                  bgcolor: COLORS.cardBg, 
+                  border: `2px solid ${COLORS.accent}33`, 
+                  color: COLORS.accent,
+                  borderRadius: 0,
+                  '&:hover': { bgcolor: COLORS.cream, borderColor: COLORS.accent }
+                }}
+              >
                 <PrintIcon fontSize="small" />
               </IconButton>
             </Tooltip>
-          </Box>
-
-          {/* Row 2: Search + filters */}
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
-            {/* Search */}
-            <TextField
-              variant="outlined" size="small" placeholder="Search transactions..."
-              value={searchText} onChange={(e) => setSearchText(e.target.value)}
-              InputProps={{
-                startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" sx={{ color: COLORS.textMuted }} /></InputAdornment>,
-              }}
-              sx={{
-                flex: 1, maxWidth: 350, minWidth: 180,
-                '& .MuiOutlinedInput-root': { borderRadius: 0, bgcolor: COLORS.formBg, '& fieldset': { borderColor: COLORS.border }, '&:hover fieldset': { borderColor: COLORS.accent }, '&.Mui-focused fieldset': { borderColor: COLORS.accent } },
-              }}
-            />
-
-            <TextField
-              type="date" size="small"
-              value={filterDate}
-              onChange={(e) => setFilterDate(e.target.value)}
-              InputProps={{
-                startAdornment: <InputAdornment position="start"><CalendarMonthIcon fontSize="small" sx={{ color: COLORS.accent }} /></InputAdornment>,
-                sx: { borderRadius: 0, fontWeight: 800, fontFamily: 'Inter', fontSize: '0.85rem' }
-              }}
-              sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33`, borderRadius: 0 }, minWidth: 170 }}
-            />
-            <FormControl size="small" sx={{ minWidth: 130 }}>
-                <Select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} displayEmpty sx={{ fontWeight: 800, color: COLORS.accent, bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33` } }}>
-                    <MenuItem value="All">All Statuses</MenuItem>
-                    <MenuItem value="Paid">Paid</MenuItem>
-                    <MenuItem value="refunded">Refunded</MenuItem>
-                </Select>
-            </FormControl>
-            <FormControl size="small" sx={{ minWidth: 140 }}>
-              <Select
-                value={filterType}
-                onChange={(e) => setFilterType(e.target.value)}
-                displayEmpty
-                sx={{ fontWeight: 800, color: COLORS.accent, bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33`, borderRadius: 0 }, borderRadius: 0 }}
-              >
-                <MenuItem value="All">All Types</MenuItem>
-                <MenuItem value="retail">Retail Only</MenuItem>
-                <MenuItem value="clinical">Clinical Only</MenuItem>
-              </Select>
-            </FormControl>
           </Box>
         </Paper>
       </Box>

@@ -193,7 +193,7 @@ export default function KPICard({
         {/* T4.182: Sparkline trend indicator */}
         {sparkline && sparkline.length > 1 && (
           <Box sx={{ width: 60, height: 20, mt: 0.5 }}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width={60} height={20} minWidth={0} minHeight={0}>
               <LineChart data={sparkline}>
                 <Line
                   type="monotone"

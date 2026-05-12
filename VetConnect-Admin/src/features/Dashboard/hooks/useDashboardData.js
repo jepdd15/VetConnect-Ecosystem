@@ -66,29 +66,21 @@ function buildDateRange(period, offset = 0) {
 
     case 'month': {
       const firstOfMonth = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
-      // When viewing a past month, end at last day of that month; otherwise
-      // end at the live "now" so today's data appears in the current month.
-      const endDate = isPast
-        ? new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0)
-        : realNow;
-      return { startDate: startOfDay(firstOfMonth), endDate: endOfDay(endDate) };
+      const lastOfMonth = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0);
+      return { startDate: startOfDay(firstOfMonth), endDate: endOfDay(lastOfMonth) };
     }
 
     case 'quarter': {
       const quarterStartMonth = Math.floor(anchor.getMonth() / 3) * 3;
       const firstOfQuarter = new Date(anchor.getFullYear(), quarterStartMonth, 1);
-      const endDate = isPast
-        ? new Date(anchor.getFullYear(), quarterStartMonth + 3, 0)
-        : realNow;
-      return { startDate: startOfDay(firstOfQuarter), endDate: endOfDay(endDate) };
+      const lastOfQuarter = new Date(anchor.getFullYear(), quarterStartMonth + 3, 0);
+      return { startDate: startOfDay(firstOfQuarter), endDate: endOfDay(lastOfQuarter) };
     }
 
     case 'year': {
       const firstOfYear = new Date(anchor.getFullYear(), 0, 1);
-      const endDate = isPast
-        ? new Date(anchor.getFullYear(), 11, 31)
-        : realNow;
-      return { startDate: startOfDay(firstOfYear), endDate: endOfDay(endDate) };
+      const lastOfYear = new Date(anchor.getFullYear(), 11, 31);
+      return { startDate: startOfDay(firstOfYear), endDate: endOfDay(lastOfYear) };
     }
 
     case '3month': {
@@ -238,23 +230,59 @@ const STAFF_ROLES = ['veterinarian', 'groomer', 'staff', 'admin'];
 // ── Trend helpers ────────────────────────────────────────────────
 
 /**
- * Groups documents by date bucket for bar chart trends, returning entries
- * sorted chronologically by the earliest timestamp in each bucket.
- *
- * For 'today': group by hour. For 'week': group by weekday label.
- * For 'month': group by day-of-month. For 'quarter'/'3month'/'6month': group by ISO week.
- * For 'year'/'1year': group by month name.
- *
- * @param {Object[]} docs       - Array of Firestore document objects
- * @param {string}   dateField  - Field name holding a Firestore Timestamp or Date
- * @param {string}   period     - One of 'today' | 'week' | 'month' | 'quarter' | 'year' | '3month' | '6month' | '1year'
- * @returns {{ label: string, count: number }[]}
+ * Pre-fills trend buckets for the entire period range to ensure charts
+ * always span the full duration (e.g. all 30 days of a month).
  */
-function buildTrend(docs, dateField, period) {
-  if (docs.length === 0) return [];
+function prefillBuckets(period, dateRange) {
+  const buckets = {};
+  const sortKeys = {};
+  const current = new Date(dateRange.startDate);
+  const end = new Date(dateRange.endDate);
 
-  const counts = {};
-  const sortKeys = {}; // earliest timestamp per bucket for chronological ordering
+  // Safety break to prevent infinite loops if dates are invalid
+  let iterations = 0;
+  while (current <= end && iterations < 1000) {
+    iterations++;
+    let key;
+    const ts = current.getTime();
+    if (period === 'today') {
+      key = `${current.getHours()}:00`;
+      if (buckets[key] === undefined) {
+        buckets[key] = 0;
+        sortKeys[key] = ts;
+      }
+      current.setHours(current.getHours() + 1);
+    } else if (period === 'week' || period === 'month') {
+      key = period === 'week' 
+        ? current.toLocaleDateString('en-PH', { weekday: 'short' })
+        : `${current.getMonth() + 1}/${current.getDate()}`;
+      if (buckets[key] === undefined) {
+        buckets[key] = 0;
+        sortKeys[key] = ts;
+      }
+      current.setDate(current.getDate() + 1);
+    } else if (period === 'quarter' || period === '3month' || period === '6month') {
+      const weekOfYear = Math.ceil(((current - new Date(current.getFullYear(), 0, 1)) / 86400000 + 1) / 7);
+      key = `W${weekOfYear}`;
+      if (buckets[key] === undefined) {
+        buckets[key] = 0;
+        sortKeys[key] = ts;
+      }
+      current.setDate(current.getDate() + 7);
+    } else {
+      key = current.toLocaleDateString('en-PH', { month: 'short' });
+      if (buckets[key] === undefined) {
+        buckets[key] = 0;
+        sortKeys[key] = ts;
+      }
+      current.setMonth(current.getMonth() + 1);
+    }
+  }
+  return { buckets, sortKeys };
+}
+
+function buildTrend(docs, dateField, period, dateRange) {
+  const { buckets: counts, sortKeys } = prefillBuckets(period, dateRange);
 
   docs.forEach(d => {
     const raw = d[dateField];
@@ -270,18 +298,16 @@ function buildTrend(docs, dateField, period) {
     } else if (period === 'month') {
       key = `${date.getMonth() + 1}/${date.getDate()}`;
     } else if (period === 'quarter' || period === '3month' || period === '6month') {
-      const weekOfYear = Math.ceil(
-        ((date - new Date(date.getFullYear(), 0, 1)) / 86400000 + 1) / 7,
-      );
+      const weekOfYear = Math.ceil(((date - new Date(date.getFullYear(), 0, 1)) / 86400000 + 1) / 7);
       key = `W${weekOfYear}`;
     } else {
-      // 'year' and '1year' both bucket by month name
       key = date.toLocaleDateString('en-PH', { month: 'short' });
     }
 
-    counts[key] = (counts[key] || 0) + 1;
-    // Track the earliest timestamp per bucket so we can sort chronologically
-    if (sortKeys[key] === undefined || ts < sortKeys[key]) sortKeys[key] = ts;
+    if (counts[key] !== undefined) {
+      counts[key] += 1;
+      if (ts < sortKeys[key]) sortKeys[key] = ts;
+    }
   });
 
   return Object.entries(counts)
@@ -289,21 +315,8 @@ function buildTrend(docs, dateField, period) {
     .map(([label, count]) => ({ label, count }));
 }
 
-/**
- * Groups financial documents by date bucket, summing a numeric value field.
- * Returns entries sorted chronologically by earliest timestamp per bucket.
- *
- * @param {Object[]} docs       - Array of Firestore document objects
- * @param {string}   dateField  - Field name holding a Firestore Timestamp or Date
- * @param {string}   period     - One of 'today' | 'week' | 'month' | 'quarter' | 'year' | '3month' | '6month' | '1year'
- * @param {string}   valueField - Field name holding the numeric value to sum
- * @returns {{ label: string, amount: number }[]}
- */
-function buildFinancialTrend(docs, dateField, period, valueField) {
-  if (docs.length === 0) return [];
-
-  const sums = {};
-  const sortKeys = {};
+function buildFinancialTrend(docs, dateField, period, valueField, dateRange) {
+  const { buckets: sums, sortKeys } = prefillBuckets(period, dateRange);
 
   docs.forEach(d => {
     const raw = d[dateField];
@@ -320,17 +333,16 @@ function buildFinancialTrend(docs, dateField, period, valueField) {
     } else if (period === 'month') {
       key = `${date.getMonth() + 1}/${date.getDate()}`;
     } else if (period === 'quarter' || period === '3month' || period === '6month') {
-      const weekOfYear = Math.ceil(
-        ((date - new Date(date.getFullYear(), 0, 1)) / 86400000 + 1) / 7,
-      );
+      const weekOfYear = Math.ceil(((date - new Date(date.getFullYear(), 0, 1)) / 86400000 + 1) / 7);
       key = `W${weekOfYear}`;
     } else {
-      // 'year' and '1year' both bucket by month name
       key = date.toLocaleDateString('en-PH', { month: 'short' });
     }
 
-    sums[key] = (sums[key] || 0) + val;
-    if (sortKeys[key] === undefined || ts < sortKeys[key]) sortKeys[key] = ts;
+    if (sums[key] !== undefined) {
+      sums[key] += val;
+      if (ts < sortKeys[key]) sortKeys[key] = ts;
+    }
   });
 
   return Object.entries(sums)
@@ -356,6 +368,10 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
 
   // Day 3: Clinical tab data
   const [medicalRecords, setMedicalRecords] = useState([]);
+
+  // T4.Forensic: Global catalogs for robust dropdowns
+  const [serviceCatalog, setServiceCatalog] = useState([]);
+  const [inventoryCatalog, setInventoryCatalog] = useState([]);
 
   // Day 3: Previous period data (one-shot, for delta computation)
   const [prevData, setPrevData] = useState({
@@ -856,7 +872,7 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
     const totalActiveClients = allClientIds.size;
 
     // T2.307: Client registration trend — grouped by date bucket
-    const clientTrend = buildTrend(clients, 'createdAt', period);
+    const clientTrend = buildTrend(clients, 'createdAt', period, dateRange);
 
     // T2.308: Total active pets + species distribution (period-independent)
     const totalActivePets = pets.length;
@@ -885,7 +901,7 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
       .map(([breed, count]) => ({ breed, count }));
 
     // T2.285: Appointment volume trend — grouped by date bucket
-    const appointmentTrend = buildTrend(appointments, 'scheduledDate', period);
+    const appointmentTrend = buildTrend(appointments, 'scheduledDate', period, dateRange);
 
     // T2.280: Walk-in vs scheduled classification
     let walkInCount = 0;
@@ -1023,8 +1039,8 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
       : 0;
 
     // T2.301 + T2.303: Revenue and expense trends for charting
-    const revenueTrend = buildFinancialTrend(paidSales, 'date', period, 'total');
-    const expenseTrend = buildFinancialTrend(expenses, 'date', period, 'amount');
+    const revenueTrend = buildFinancialTrend(paidSales, 'date', period, 'total', dateRange);
+    const expenseTrend = buildFinancialTrend(expenses, 'date', period, 'amount', dateRange);
 
     // T2.302: Expense category breakdown
     const expenseCategories = {};
@@ -1142,6 +1158,24 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
       (sum, a) => sum + (parseFloat(a.servicePrice) || 0), 0
     );
 
+    // T4.184: Inject trendLabels into raw data for dynamic UI aggregation
+    // This MUST match the key logic in buildFinancialTrend exactly.
+    const getTrendLabel = (timestamp) => {
+      const d = timestamp?.toDate ? timestamp.toDate() : new Date(timestamp);
+      if (!timestamp) return 'Unknown';
+      if (period === 'today') return `${d.getHours()}:00`;
+      if (period === 'week') return d.toLocaleDateString('en-PH', { weekday: 'short' });
+      if (period === 'month') return `${d.getMonth() + 1}/${d.getDate()}`;
+      if (period === 'quarter' || period === '3month' || period === '6month') {
+        const weekOfYear = Math.ceil(((d - new Date(d.getFullYear(), 0, 1)) / 86400000 + 1) / 7);
+        return `W${weekOfYear}`;
+      }
+      return d.toLocaleDateString('en-PH', { month: 'short' }); // year / 1year
+    };
+
+    paidSales.forEach(s => { s.trendLabel = getTrendLabel(s.date); });
+    medicalRecords.forEach(r => { r.trendLabel = getTrendLabel(r.date); });
+
     return {
       totalCollected,
       totalBilled,
@@ -1179,8 +1213,12 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
       leakageCount,
       leakageEstimatedAmount,
       unbilledAppointments,
+      // Expose raw data for Forensic Query Engine
+      paidSales,
+      medicalRecords,
+      appointments,
     };
-  }, [sales, expenses, appointments, period, dateRange]);
+  }, [sales, expenses, appointments, medicalRecords, period, dateRange]);
 
   // ── Derived metrics: Clinical tab ─────────────────────────────────
   const clinical = useMemo(() => {
@@ -1732,8 +1770,13 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
     historical,                        // Day 6: 6-month min/max/avg per metric (T2.338)
     yearAgoDeltas,                     // T4.3: Year-over-year deltas (null when benchmarkEnabled is false)
     queueData,
+    sales,
+    expenses,
+    medicalRecords,
     appointments,
     staffList,
+    serviceCatalog,
+    inventoryCatalog,
     period,
     dateRange,
   };

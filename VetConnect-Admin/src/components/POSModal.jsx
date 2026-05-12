@@ -188,6 +188,10 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         const price = svcDef
           ? (resolveTieredPrice(svcDef, petWeight) || svcDef.price || svc.price || 0)
           : (svc.price ?? 0);
+
+        // T4.Forensic: Flag items that are not in the official catalog
+        const isUnverified = !svcDef && svc.id !== 'svc_fee';
+
         items.push({
           type: 'service',
           id: svc.id || `svc_${svc.name}`,
@@ -196,6 +200,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
           qty: 1,
           isBase: true,
           isDiscountable: svcDef?.isScPwdEligible !== false,
+          isUnverified,
           _sourceAppointmentId: appt.id,
           _sourcePetName: appt.petName,
         });
@@ -788,6 +793,10 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
   };
 
   const handleCheckout = async () => {
+    if (cart.some(i => i.isUnverified)) {
+      showToast("Strict Catalog Enforcement: Unverified services detected. Please select valid services from the catalog.", "error");
+      return;
+    }
     setLoading(true);
     try {
       const checkoutCorrelationId = `CHK-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -906,6 +915,8 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             prescribedItemCount: cart.filter(i => i.isPrescribed).length,
             cashierAddedItemCount: cart.filter(i => i.addedBy === 'cashier').length,
             hasUnprescribedAdditions: cart.some(i => i.addedBy === 'cashier'),
+            hasUnverifiedItems: cart.some(i => i.isUnverified),
+            unverifiedItemCount: cart.filter(i => i.isUnverified).length,
             ...cashAuditFields,
             ...customDiscountAuditFields,
             // T4.151: Tag post-close sales for audit visibility.
@@ -1010,6 +1021,10 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
   };
 
   const handleRetailCheckout = async (clientInfo) => {
+    if (cart.some(i => i.isUnverified)) {
+      showToast("Strict Catalog Enforcement: Unverified items detected. Please select valid products from the inventory.", "error");
+      return;
+    }
     setLoading(true);
     try {
       let checkoutReceiptNumber = '';
@@ -1352,6 +1367,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
                           {item.name}
                         </Typography>
                         {item.isBase && <Typography variant="caption" color="primary" fontWeight="bold" display="block">Base Service</Typography>}
+                        {item.isUnverified && <Typography variant="caption" color="error" sx={{ fontWeight: 900, display: 'block', textTransform: 'uppercase', fontSize: '0.65rem' }}>⚠️ Unverified Item (Legacy/Manual)</Typography>}
                         {item.isAutoBundled && <Typography variant="caption" color="textSecondary" fontWeight="bold" display="block">Auto-Bundled Supply</Typography>}
                         {item.isExternalRx && <Typography variant="caption" color="secondary" fontWeight="bold" display="block"><DescriptionIcon fontSize="inherit"/> Ext Rx: {item.externalVet}</Typography>}
                         {!item.isDiscountable && <Typography variant="caption" color="error" fontWeight="bold" display="block">No SC/PWD Applied</Typography>}

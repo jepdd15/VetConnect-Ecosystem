@@ -16,7 +16,9 @@
  */
 
 import React from 'react';
-import { Box, Typography, Chip, Stack, IconButton, Button } from '@mui/material';
+import { 
+  Box, Typography, Chip, Stack, IconButton, Button, Autocomplete, TextField
+} from '@mui/material';
 import Grid from '@mui/material/Grid';
 import {
   Area, AreaChart, XAxis, YAxis, Tooltip,
@@ -39,7 +41,10 @@ import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
+
+
 
 import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
 import KPICard from './KPICard';
@@ -411,7 +416,7 @@ function PerformanceZone({ data, compareEnabled }) {
             sparkline={revenueSparkline}
           />
         </Grid>
-
+ 
         <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <KPICard
             title="APPOINTMENTS"
@@ -424,7 +429,7 @@ function PerformanceZone({ data, compareEnabled }) {
             sparkline={appointmentSparkline}
           />
         </Grid>
-
+ 
         <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <KPICard
             title="NEW CLIENTS"
@@ -437,7 +442,7 @@ function PerformanceZone({ data, compareEnabled }) {
             sparkline={clientSparkline}
           />
         </Grid>
-
+ 
         <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <KPICard
             title="VACCINE COMPLIANCE"
@@ -459,7 +464,7 @@ function PerformanceZone({ data, compareEnabled }) {
 
 // ─── Ranked List (used inside Patterns zone) ────────────────────
 
-function RankedList({ title, items, emptyMessage, valueFormatter, secondaryFormatter, icon }) {
+function RankedList({ title, items, emptyMessage, valueFormatter, secondaryFormatter, icon, onDrill }) {
   if (!items || items.length === 0) {
     return (
       <Box
@@ -516,9 +521,20 @@ function RankedList({ title, items, emptyMessage, valueFormatter, secondaryForma
         {top10.map((item, idx) => {
           const widthPct = maxValue > 0 ? (item.value / maxValue) * 100 : 0;
           return (
-            <Box key={`${item.name}-${idx}`}>
+            <Box 
+              key={`${item.name}-${idx}`}
+              onClick={() => onDrill?.(item.name)}
+              sx={{ 
+                cursor: onDrill ? 'pointer' : 'default',
+                '&:hover': {
+                  '& .item-name': { color: COLORS.accent },
+                  '& .progress-bg': { bgcolor: `${COLORS.accent}22` }
+                }
+              }}
+            >
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', mb: 0.5 }}>
                 <Typography
+                  className="item-name"
                   sx={{
                     fontFamily: FONT,
                     fontWeight: 700,
@@ -529,6 +545,7 @@ function RankedList({ title, items, emptyMessage, valueFormatter, secondaryForma
                     whiteSpace: 'nowrap',
                     flex: 1,
                     mr: 1,
+                    transition: 'color 0.2s ease'
                   }}
                 >
                   {idx + 1}. {item.name}
@@ -560,7 +577,7 @@ function RankedList({ title, items, emptyMessage, valueFormatter, secondaryForma
                   )}
                 </Box>
               </Box>
-              <Box sx={{ height: 6, bgcolor: COLORS.borderLight, position: 'relative' }}>
+              <Box className="progress-bg" sx={{ height: 6, bgcolor: COLORS.borderLight, position: 'relative', transition: 'background-color 0.2s ease' }}>
                 <Box
                   sx={{
                     position: 'absolute',
@@ -580,7 +597,7 @@ function RankedList({ title, items, emptyMessage, valueFormatter, secondaryForma
 
 // ─── Patterns Zone ──────────────────────────────────────────────
 
-function PatternsZone({ data }) {
+function PatternsZone({ data, onDrill }) {
   const { growth, clinical, financial } = data;
 
   // T4.184: Dual-metric Service Ranking (Revenue + Volume)
@@ -625,7 +642,6 @@ function PatternsZone({ data }) {
     <Box sx={{ mb: 4 }}>
       <SectionHeader icon={<CategoryIcon />} label="PATTERNS" />
 
-      {/* Unified Grid Container for perfect wrapping on all screen sizes */}
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 4 }}>
           <RankedList
@@ -634,6 +650,7 @@ function PatternsZone({ data }) {
             icon={<MedicalServicesIcon />}
             emptyMessage="No services booked yet."
             secondaryFormatter={formatPHPShort}
+            onDrill={(name) => onDrill?.('services', name)}
           />
         </Grid>
         <Grid size={{ xs: 12, md: 4 }}>
@@ -642,6 +659,7 @@ function PatternsZone({ data }) {
             items={topPrescribed}
             icon={<MedicationIcon />}
             emptyMessage="No medications dispensed yet."
+            onDrill={(name) => onDrill?.('prescribed', name)}
           />
         </Grid>
         <Grid size={{ xs: 12, md: 4 }}>
@@ -651,15 +669,17 @@ function PatternsZone({ data }) {
             icon={<ShoppingCartIcon />}
             emptyMessage="No products sold yet."
             secondaryFormatter={formatPHPShort}
+            onDrill={(name) => onDrill?.('products', name)}
           />
         </Grid>
-
+ 
         <Grid size={{ xs: 12, md: 4 }}>
           <RankedList
             title="TOP BREEDS"
             items={topBreeds}
             icon={<PetsIcon />}
             emptyMessage="No pets seen yet."
+            onDrill={(name) => onDrill?.('breeds', name)}
           />
         </Grid>
         <Grid size={{ xs: 12, md: 4 }}>
@@ -668,6 +688,7 @@ function PatternsZone({ data }) {
             items={topDiagnoses}
             icon={<LocalHospitalIcon />}
             emptyMessage="No medical records signed."
+            onDrill={(name) => onDrill?.('diagnoses', name)}
           />
         </Grid>
         <Grid size={{ xs: 12, md: 4 }}>
@@ -677,6 +698,7 @@ function PatternsZone({ data }) {
             icon={<EmojiEventsIcon />}
             emptyMessage="No transactions yet."
             valueFormatter={formatPHPShort}
+            onDrill={(name) => onDrill?.('spenders', name)}
           />
         </Grid>
       </Grid>
@@ -686,14 +708,176 @@ function PatternsZone({ data }) {
 
 // ─── Trends Zone (revenue trend chart) ──────────────────────────
 
-function TrendsZone({ data, period }) {
-  const { financial } = data;
-  const trend = financial?.revenueTrend || [];
+function TrendsZone({ 
+  data, 
+  period, 
+  category, 
+  search, 
+  onCategoryChange, 
+  onSearchChange 
+}) {
+  const { financial, appointments, sales, medicalRecords } = data;
 
-  const chartData = trend.map((p) => ({
-    label: p.label,
-    amount: Number(p.amount) || 0,
-  }));
+
+  const categoryIcons = {
+    revenue: { icon: <AttachMoneyIcon />, label: 'Revenue' },
+    services: { icon: <MedicalServicesIcon />, label: 'Services' },
+    prescribed: { icon: <MedicationIcon />, label: 'Rx' },
+    products: { icon: <ShoppingCartIcon />, label: 'Products' },
+    breeds: { icon: <PetsIcon />, label: 'Breeds' },
+    diagnoses: { icon: <LocalHospitalIcon />, label: 'Diagnoses' },
+    spenders: { icon: <EmojiEventsIcon />, label: 'VIPs' },
+  };
+
+  const chartData = React.useMemo(() => {
+    const baseLabels = (financial?.revenueTrend || []).map(p => p.label);
+    if (baseLabels.length === 0) return [];
+
+    const buckets = {};
+    baseLabels.forEach(lbl => { buckets[lbl] = 0; });
+
+    const q = (search || '').toLowerCase().trim();
+
+    if (category === 'revenue') {
+      if (!q) {
+        const base = (financial?.revenueTrend || []).map(p => ({ label: p.label, value: Number(p.amount) || 0 }));
+        return base;
+      } else {
+        (sales || []).forEach(s => {
+          if (s.status !== 'paid') return;
+          const lbl = s.trendLabel;
+          if (buckets[lbl] === undefined) return;
+          (s.items || []).forEach(item => {
+            if ((item.name || '').toLowerCase().includes(q)) {
+              buckets[lbl] += (parseFloat(item.price) || 0) * (item.qty || 1);
+            }
+          });
+        });
+      }
+    } else if (category === 'services') {
+      (sales || []).forEach(s => {
+        if (s.status !== 'paid') return;
+        const lbl = s.trendLabel;
+        if (buckets[lbl] === undefined) return;
+        (s.items || []).forEach(item => {
+          if (item.type === 'service' && (!q || (item.name || '').toLowerCase().includes(q))) {
+            buckets[lbl] += (item.qty || 1);
+          }
+        });
+      });
+    } else if (category === 'prescribed') {
+      (medicalRecords || []).forEach(r => {
+        const lbl = r.trendLabel;
+        if (buckets[lbl] === undefined) return;
+        const rxList = r.dispensedProducts || r.prescriptions;
+        (rxList || []).forEach(rx => {
+          const pClass = rx.productClass || (rx.isDrug ? 'medicine' : 'retail');
+          if (pClass === 'medicine' && (!q || (rx.name || '').toLowerCase().includes(q))) {
+            buckets[lbl] += (rx.qty || 1);
+          }
+        });
+      });
+    } else if (category === 'products') {
+      (sales || []).forEach(s => {
+        if (s.status !== 'paid') return;
+        const lbl = s.trendLabel;
+        if (buckets[lbl] === undefined) return;
+        (s.items || []).forEach(item => {
+          if (item.type === 'product' && (!q || (item.name || '').toLowerCase().includes(q))) {
+            buckets[lbl] += (item.qty || 1);
+          }
+        });
+      });
+    } else if (category === 'breeds') {
+      (appointments || []).forEach(a => {
+        const d = a.scheduledDate?.toDate ? a.scheduledDate.toDate() : new Date(a.scheduledDate);
+        const key = period === 'today' ? `${d.getHours()}:00` 
+                  : period === 'week' ? d.toLocaleDateString('en-PH', { weekday: 'short' })
+                  : period === 'month' ? `${d.getMonth() + 1}/${d.getDate()}`
+                  : (period === 'quarter' || period === '3month' || period === '6month') ? `W${Math.ceil(((d - new Date(d.getFullYear(), 0, 1)) / 86400000 + 1) / 7)}`
+                  : d.toLocaleDateString('en-PH', { month: 'short' });
+        
+        if (buckets[key] === undefined) return;
+        if (!q || (a.petBreed || '').toLowerCase().includes(q)) {
+          buckets[key] += 1;
+        }
+      });
+    } else if (category === 'diagnoses') {
+      (medicalRecords || []).forEach(r => {
+        const lbl = r.trendLabel;
+        if (buckets[lbl] === undefined) return;
+        (r.diagnoses || []).forEach(dx => {
+          if (!q || (dx.name || '').toLowerCase().includes(q)) {
+            buckets[lbl] += 1;
+          }
+        });
+      });
+    } else if (category === 'spenders') {
+      (sales || []).forEach(s => {
+        if (s.status !== 'paid') return;
+        const lbl = s.trendLabel;
+        if (buckets[lbl] === undefined) return;
+        if (!q || (s.ownerName || '').toLowerCase().includes(q)) {
+          buckets[lbl] += (parseFloat(s.total) || 0);
+        }
+      });
+    }
+
+    return baseLabels.map(lbl => ({ label: lbl, value: buckets[lbl] }));
+  }, [data, category, search, period, financial?.revenueTrend]);
+
+  // T4.Forensic: Robust Forensic Options Extraction (Catalog-Driven)
+  const options = React.useMemo(() => {
+    const rawNames = new Set();
+    const qSales = sales || [];
+    const qRecords = medicalRecords || [];
+    const qAppts = appointments || [];
+    const qSvc = data.serviceCatalog || [];
+    const qInv = data.inventoryCatalog || [];
+
+    if (category === 'revenue' || category === 'services' || category === 'products') {
+      if (category === 'services' || category === 'revenue') {
+        qSvc.forEach(s => { if (s.name) rawNames.add(s.name.trim()); });
+      }
+      if (category === 'products' || category === 'revenue') {
+        qInv.forEach(i => { if (i.itemName) rawNames.add(i.itemName.trim()); });
+      }
+      qSales.forEach(s => {
+        (s.items || []).forEach(i => {
+          if (i.name) {
+            if (category === 'revenue') rawNames.add(i.name.trim());
+            else if (category === 'services' && i.type === 'service') rawNames.add(i.name.trim());
+            else if (category === 'products' && i.type === 'product') rawNames.add(i.name.trim());
+          }
+        });
+      });
+    } else if (category === 'prescribed') {
+      qRecords.forEach(r => {
+        const rxList = r.dispensedProducts || r.prescriptions || [];
+        rxList.forEach(p => { 
+          const pClass = p.productClass || (p.isDrug ? 'medicine' : 'retail');
+          if (pClass === 'medicine' && p.name) rawNames.add(p.name.trim()); 
+        });
+      });
+    } else if (category === 'breeds') {
+      qAppts.forEach(a => { if (a.petBreed) rawNames.add(a.petBreed.trim()); });
+    } else if (category === 'diagnoses') {
+      qRecords.forEach(r => {
+        (r.diagnoses || []).forEach(d => { if (d.name) rawNames.add(d.name.trim()); });
+      });
+    } else if (category === 'spenders') {
+      qSales.forEach(s => { if (s.ownerName) rawNames.add(s.ownerName.trim()); });
+    }
+
+    const normalized = new Set();
+    rawNames.forEach(n => {
+      if (!n || n.toLowerCase() === 'unknown') return;
+      const name = n.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+      normalized.add(name);
+    });
+
+    return Array.from(normalized).sort();
+  }, [category, sales, medicalRecords, appointments, data.serviceCatalog, data.inventoryCatalog]);
 
   const granularityLabel = {
     today: 'Hourly',
@@ -703,9 +887,114 @@ function TrendsZone({ data, period }) {
     year: 'Monthly',
   }[period] || 'Per period';
 
+  const isFinancial = category === 'revenue' || category === 'spenders';
+  const unitLabel = isFinancial ? 'Revenue' : 'Volume';
+
   return (
     <Box sx={{ mb: 4 }}>
-      <SectionHeader icon={<TrendingUpIcon />} label={`TRENDS — Revenue (${granularityLabel})`} />
+      <Grid container spacing={2} alignItems="center" id="trends-zone-header" sx={{ mb: 2 }}>
+        <Grid size={{ xs: 12, md: 4 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <TrendingUpIcon sx={{ fontSize: 20, color: COLORS.accent }} />
+            <Typography
+              sx={{
+                ...TYPE.label,
+                fontFamily: FONT,
+                color: COLORS.accent,
+                fontSize: '0.85rem',
+                fontWeight: 900,
+                letterSpacing: '0.08em',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              TRENDS — {category.toUpperCase()} ({granularityLabel})
+            </Typography>
+          </Box>
+        </Grid>
+        <Grid size={{ xs: 12, md: 8 }}>
+          <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', justifyContent: { xs: 'flex-start', md: 'flex-end' }, alignItems: 'center' }}>
+
+
+            {Object.entries(categoryIcons).map(([cat, { icon, label }]) => (
+              <Button
+                key={cat}
+                size="small"
+                onClick={() => onCategoryChange(cat)}
+                startIcon={React.cloneElement(icon, { sx: { fontSize: '18px !important' } })}
+                sx={{
+                  minWidth: 'auto',
+                  height: 32,
+                  px: 1.5,
+                  borderRadius: 0,
+                  bgcolor: category === cat ? COLORS.brand : COLORS.cardBg,
+                  color: category === cat ? '#fff' : COLORS.brand,
+                  border: `2px solid ${COLORS.brand}`,
+                  boxShadow: category === cat ? 'none' : `2px 2px 0px ${COLORS.brand}33`,
+                  fontFamily: FONT,
+                  fontSize: '0.65rem',
+                  fontWeight: 900,
+                  letterSpacing: '0.05em',
+                  '&:hover': { bgcolor: category === cat ? COLORS.brand : `${COLORS.accent}22` },
+                  '& .MuiButton-startIcon': { mr: 0.75, ml: -0.25 }
+                }}
+              >
+                {label.toUpperCase()}
+              </Button>
+            ))}
+          </Box>
+        </Grid>
+      </Grid>
+
+      {/* Forensic Search Filter with Autocomplete */}
+      <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Autocomplete
+          freeSolo
+          options={options}
+          value={search}
+          onInputChange={(event, newInputValue) => {
+            onSearchChange(newInputValue);
+          }}
+          sx={{ flex: 1 }}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              placeholder={`Search ${category}... (e.g. ${options[0] || ''})`}
+              variant="outlined"
+              size="small"
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: 0,
+                  bgcolor: COLORS.cardBg,
+                  '& fieldset': { border: `2px solid ${COLORS.brand}` },
+                  '&:hover fieldset': { borderColor: COLORS.accent },
+                  '&.Mui-focused fieldset': { borderColor: COLORS.accent },
+                },
+                '& .MuiInputBase-input': {
+                  fontFamily: FONT,
+                  ...TYPE.meta,
+                  fontSize: '0.8rem',
+                  py: 0.5
+                }
+              }}
+            />
+          )}
+        />
+        {search && (
+          <Button 
+            onClick={() => onSearchChange('')} 
+            sx={{ 
+              minWidth: 'auto', 
+              color: COLORS.brand, 
+              ...TYPE.meta, 
+              fontFamily: FONT, 
+              fontSize: '0.7rem',
+              fontWeight: 900
+            }}
+          >
+            CLEAR
+          </Button>
+        )}
+      </Box>
 
       <Box
         sx={{
@@ -714,51 +1003,39 @@ function TrendsZone({ data, period }) {
           boxShadow: '4px 4px 0px rgba(62, 39, 35, 0.18)',
           p: 2,
           pt: 2.5,
-          height: 280,
+          height: 320,
         }}
       >
         {chartData.length < 2 ? (
-          <Box
-            sx={{
-              height: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Typography
-              sx={{
-                ...TYPE.meta,
-                fontFamily: FONT,
-                color: COLORS.textMuted,
-                fontStyle: 'italic',
-              }}
-            >
-              Not enough data to show a trend yet for this period.
+          <Box sx={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Typography sx={{ ...TYPE.meta, fontFamily: FONT, color: COLORS.textMuted, fontStyle: 'italic' }}>
+              Not enough data to show a trend for this query.
             </Typography>
           </Box>
         ) : (
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
             <AreaChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
               <defs>
-                <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={COLORS.accent} stopOpacity={0.35} />
-                  <stop offset="100%" stopColor={COLORS.accent} stopOpacity={0.05} />
+                <linearGradient id="forensicGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={COLORS.brand} stopOpacity={0.3} />
+                  <stop offset="100%" stopColor={COLORS.brand} stopOpacity={0.02} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke={COLORS.borderLight} vertical={false} />
               <XAxis
                 dataKey="label"
-                tick={{ fontFamily: FONT, fontSize: 11, fill: COLORS.textSecondary }}
+                tick={{ fontFamily: FONT, fontSize: 10, fill: COLORS.textSecondary }}
                 axisLine={{ stroke: COLORS.border }}
                 tickLine={false}
+                interval={0}
+                minTickGap={15}
               />
               <YAxis
-                tickFormatter={formatPHPShort}
-                tick={{ fontFamily: FONT, fontSize: 11, fill: COLORS.textSecondary }}
+                tickFormatter={isFinancial ? formatPHPShort : (v) => v}
+                tick={{ fontFamily: FONT, fontSize: 10, fill: COLORS.textSecondary }}
                 axisLine={{ stroke: COLORS.border }}
                 tickLine={false}
-                width={60}
+                width={isFinancial ? 60 : 30}
               />
               <Tooltip
                 contentStyle={{
@@ -766,18 +1043,19 @@ function TrendsZone({ data, period }) {
                   borderRadius: 0,
                   border: `2px solid ${COLORS.brand}`,
                   background: COLORS.cardBg,
+                  fontSize: '0.8rem'
                 }}
                 labelStyle={{ fontWeight: 900, color: COLORS.brand }}
-                formatter={(value) => [formatPHP(value), 'Revenue']}
+                formatter={(value) => [isFinancial ? formatPHP(value) : value, unitLabel]}
               />
               <Area
                 type="monotone"
-                dataKey="amount"
+                dataKey="value"
                 stroke={COLORS.brand}
                 strokeWidth={2.5}
-                fill="url(#revenueGradient)"
-                dot={{ fill: COLORS.brand, r: 3 }}
-                activeDot={{ r: 5, fill: COLORS.brand }}
+                fill="url(#forensicGradient)"
+                dot={{ fill: COLORS.brand, r: 2.5 }}
+                activeDot={{ r: 4, fill: COLORS.brand }}
               />
             </AreaChart>
           </ResponsiveContainer>
@@ -969,6 +1247,16 @@ export default function OptionJDashboard({
   compareEnabled,
   onToggleCompare,
 }) {
+  const [trendCategory, setTrendCategory] = React.useState('revenue');
+  const [trendSearch, setTrendSearch] = React.useState('');
+
+
+  const handleDrill = (category, itemName) => {
+    setTrendCategory(category);
+    setTrendSearch(itemName);
+    document.getElementById('trends-zone-header')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
   return (
     <Box>
       <TimeRangeBar
@@ -982,8 +1270,15 @@ export default function OptionJDashboard({
 
       <RadarAlerts data={data} />
       <PerformanceZone data={data} compareEnabled={compareEnabled} />
-      <PatternsZone data={data} />
-      <TrendsZone data={data} period={period} />
+      <PatternsZone data={data} onDrill={handleDrill} />
+      <TrendsZone 
+        data={data} 
+        period={period} 
+        category={trendCategory}
+        search={trendSearch}
+        onCategoryChange={setTrendCategory}
+        onSearchChange={setTrendSearch}
+      />
       <DistributionZone data={data} />
     </Box>
   );

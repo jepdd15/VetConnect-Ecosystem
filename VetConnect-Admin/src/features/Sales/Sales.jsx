@@ -479,7 +479,7 @@ export default function Sales() {
 
   const columns = [
     { 
-      field: 'jsDate', width: 120, sortable: false, disableColumnMenu: true,
+      field: 'jsDate', width: 155, sortable: false, disableColumnMenu: true,
       renderHeader: () => (<TableSortLabel active={orderBy === 'jsDate'} direction={orderBy === 'jsDate' ? order : 'asc'} onClick={() => handleRequestSort('jsDate')} sx={{ fontWeight: 800, color: COLORS.accent, fontSize: '0.75rem' }}>DATE & TIME</TableSortLabel>),
       renderCell: (p) => (
         <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', py: 1 }}>
@@ -523,7 +523,7 @@ export default function Sales() {
       },
     },
     {
-      field: 'petName', flex: 1, minWidth: 110, sortable: false, disableColumnMenu: true,
+      field: 'petName', width: 220, sortable: false, disableColumnMenu: true,
       renderHeader: () => (<TableSortLabel active={orderBy === 'petName'} direction={orderBy === 'petName' ? order : 'asc'} onClick={() => handleRequestSort('petName')} sx={{ fontWeight: 800, color: COLORS.accent, fontSize: '0.75rem' }}>PATIENT & OWNER</TableSortLabel>),
       renderCell: (p) => (
         <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', py: 1 }}>

@@ -51,6 +51,20 @@ function sortedRecordsForPet(petRecords, petId) {
     .sort((a, b) => b._date.getTime() - a._date.getTime());
 }
 
+/**
+ * Two visits on the same calendar day produce identical date labels which
+ * the chart can't visually distinguish. Walk the array left-to-right and
+ * suffix collisions with "#2", "#3", … so the chart shows distinct ticks.
+ */
+function dedupeLabels(items) {
+  const seen = {};
+  return items.map(item => {
+    const base = item.label;
+    seen[base] = (seen[base] || 0) + 1;
+    return seen[base] > 1 ? { ...item, label: `${base} #${seen[base]}` } : item;
+  });
+}
+
 // ─── HOOK ─────────────────────────────────────────────────────────────────────
 
 export function useMyStats({
@@ -821,7 +835,7 @@ export function useMyStats({
         value: daysBetween,
       });
     }
-    return gaps.slice(-10);
+    return dedupeLabels(gaps.slice(-10));
   }, [allAppointments, activeTab]);
 
   /**
@@ -1094,7 +1108,11 @@ export function useMyStats({
       }
 
       // Recheck reminders — overdue recheck escalates to urgency 0.
-      if (pc.recheckInfo) {
+      // Guard: only surface a recheck if the pet has actually been visited
+      // at least once. Otherwise a stale medical_record without an associated
+      // appointment can produce a misleading "Recheck overdue" for a pet that
+      // technically has "No visits yet" elsewhere in the UI.
+      if (pc.recheckInfo && pc.lastVisitDate) {
         const isOverdue = pc.recheckInfo.daysUntil != null && pc.recheckInfo.daysUntil <= 0;
         items.push({
           type: 'recheck',
@@ -1253,10 +1271,12 @@ export function useMyStats({
       .filter(m => m.date)
       .sort((a, b) => a.date.getTime() - b.date.getTime());
 
-    const trendData = matched.slice(-12).map(m => ({
-      label: m.date.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }),
-      value: Math.round(m.amount),
-    }));
+    const trendData = dedupeLabels(
+      matched.slice(-12).map(m => ({
+        label: m.date.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }),
+        value: Math.round(m.amount),
+      })),
+    );
 
     const totalSpend = matched.reduce((s, m) => s + m.amount, 0);
     const average = matched.length > 0 ? Math.round(totalSpend / matched.length) : 0;

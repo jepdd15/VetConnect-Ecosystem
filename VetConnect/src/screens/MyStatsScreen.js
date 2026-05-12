@@ -179,11 +179,11 @@ function CircularGauge({ administered, total, size = 56 }) {
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 
 const TAB_CONFIG = [
-  { key: 'overview', label: 'OVERVIEW' },
-  { key: 'visits',   label: 'VISITS'   },
-  { key: 'spending', label: 'SPENDING' },
-  { key: 'pets',     label: 'PETS'     },
-  { key: 'health',   label: 'HEALTH'   },
+  { key: 'overview', label: 'OVERVIEW', icon: 'dashboard'                  },
+  { key: 'visits',   label: 'VISITS',   icon: 'event'                      },
+  { key: 'spending', label: 'SPENDING', icon: 'account-balance-wallet'     },
+  { key: 'pets',     label: 'PETS',     icon: 'pets'                       },
+  { key: 'health',   label: 'HEALTH',   icon: 'favorite'                   },
 ];
 
 /** Range options for the spending date selector. */
@@ -660,23 +660,31 @@ export default function MyStatsScreen({ route, navigation }) {
       contentContainerStyle={[styles.container, { paddingBottom: Math.max(insets.bottom, 20) + 40 }]}
       showsVerticalScrollIndicator={false}
     >
-      {/* ── TAB BAR ─────────────────────────────────────────────────────── */}
+      {/* ── TAB BAR — icon + stacked label per tab (Option A) ───────────── */}
       <View style={styles.tabBar}>
-        {TAB_CONFIG.map(tab => (
-          <TouchableOpacity
-            key={tab.key}
-            style={[styles.tabItem, activeTab === tab.key && styles.tabItemActive]}
-            onPress={() => setActiveTab(tab.key)}
-            activeOpacity={0.7}
-          >
-            <Text style={[
-              styles.tabLabel,
-              activeTab === tab.key && styles.tabLabelActive,
-            ]}>
-              {tab.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
+        {TAB_CONFIG.map(tab => {
+          const isActive = activeTab === tab.key;
+          return (
+            <TouchableOpacity
+              key={tab.key}
+              style={[styles.tabItem, isActive && styles.tabItemActive]}
+              onPress={() => setActiveTab(tab.key)}
+              activeOpacity={0.7}
+            >
+              <MaterialIcons
+                name={tab.icon}
+                size={20}
+                color={isActive ? COLORS.sky : COLORS.textMuted}
+              />
+              <Text style={[
+                styles.tabLabel,
+                isActive && styles.tabLabelActive,
+              ]}>
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       {/* ══════════════════════════════════════════════════════════════════
@@ -709,7 +717,7 @@ export default function MyStatsScreen({ route, navigation }) {
             small
           />
           <KPICard
-            label="TOTAL VISITS"
+            label="COMPLETED VISITS"
             value={visitStats.totalVisits}
           />
           <KPICard
@@ -1103,11 +1111,13 @@ export default function MyStatsScreen({ route, navigation }) {
                   ),
                   datasets: [{ data: visitFrequencyTrend.map(d => d.value) }],
                 }}
-                width={SCREEN_W - 72}
+                width={SCREEN_W - 24}
                 height={150}
+                yAxisSuffix="d"
                 chartConfig={{
                   ...CHART_CONFIG_BASE,
-                  formatYLabel: v => `${parseFloat(v).toFixed(0)}d`,
+                  // days_between is always integer — no decimals to suffix.
+                  decimalPlaces: 0,
                 }}
                 bezier
                 withDots
@@ -1469,11 +1479,22 @@ export default function MyStatsScreen({ route, navigation }) {
                       ),
                       datasets: [{ data: spendingPerVisit.trendData.map(d => d.value) }],
                     }}
-                    width={SCREEN_W - 72}
+                    width={SCREEN_W - 24}
                     height={150}
+                    yAxisLabel="₱"
                     chartConfig={{
                       ...CHART_CONFIG_BASE,
-                      formatYLabel: v => `₱${parseFloat(v).toFixed(0)}`,
+                      decimalPlaces: 0,
+                      // Peso values reach 7 digits. Pass through a compact
+                      // formatter so the Y-axis tick fits the chart's label
+                      // gutter without clipping on the left.
+                      formatYLabel: (raw) => {
+                        const n = parseFloat(raw);
+                        const abs = Math.abs(n);
+                        if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`;
+                        if (abs >= 1_000)     return `${(n / 1_000).toFixed(abs >= 10_000 ? 0 : 1)}k`;
+                        return `${Math.round(n)}`;
+                      },
                     }}
                     bezier
                     withDots
@@ -1660,26 +1681,10 @@ export default function MyStatsScreen({ route, navigation }) {
         </View>
       )}
 
-      {/* ── ALL PETS gauge comparison strip ─────────────────────── */}
+      {/* ── Overall summary line (per-pet circles deleted as redundant
+              with the Vaccination Status cards above this section) ────── */}
       {petCards.filter(pc => pc.vaccineStatus?.completeness).length > 0 && (
         <View style={styles.section}>
-          <SectionHeader title="ALL PETS" />
-          <View style={styles.allPetsGaugeRow}>
-            {petCards
-              .filter(pc => pc.vaccineStatus?.completeness)
-              .map(pc => (
-                <View key={pc.id} style={styles.allPetsGaugeCard}>
-                  <CircularGauge
-                    administered={pc.vaccineStatus.completeness.administered}
-                    total={pc.vaccineStatus.completeness.total}
-                    size={48}
-                  />
-                  <Text style={styles.allPetsGaugeName} numberOfLines={1}>
-                    {pc.name}
-                  </Text>
-                </View>
-              ))}
-          </View>
           <Text style={styles.allPetsOverall}>
             Overall:{' '}
             {petCards.reduce((s, pc) => s + (pc.vaccineStatus?.completeness?.administered ?? 0), 0)}/
@@ -1892,7 +1897,7 @@ function PetCardSlim({ petCard, onWeightZoom, onViewChart }) {
         <View style={styles.petCardRow}>
           <Text style={styles.petCardRowLabel}>WEIGHT</Text>
           <View style={styles.petCardRowContent}>
-            {petCard.weightPoints.length >= 2 ? (
+            {petCard.weightPoints.length >= 3 ? (
               <>
                 <TouchableOpacity
                   onPress={onWeightZoom}
@@ -1941,6 +1946,25 @@ function PetCardSlim({ petCard, onWeightZoom, onViewChart }) {
                   </Text>
                 )}
               </>
+            ) : petCard.weightPoints.length === 2 ? (
+              // Two readings: a sparkline curve looks visually broken at this size.
+              // Show current weight + delta arrow instead — clearer at a glance.
+              <TouchableOpacity onPress={onWeightZoom} activeOpacity={0.75} style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+                <Text style={styles.petCardValue}>
+                  {petCard.weightPoints[petCard.weightPoints.length - 1].value} kg
+                </Text>
+                {petCard.weightDelta !== null && petCard.weightDelta !== 0 && (
+                  <Text style={[
+                    styles.weightDelta,
+                    {
+                      color: petCard.weightDelta > 0 ? COLORS.success : COLORS.danger,
+                    },
+                  ]}>
+                    {petCard.weightDelta > 0 ? '▲' : '▼'} {Math.abs(petCard.weightDelta).toFixed(1)} kg
+                  </Text>
+                )}
+                <Text style={styles.petCardValueMuted}>2 readings</Text>
+              </TouchableOpacity>
             ) : petCard.weightPoints.length === 1 ? (
               <TouchableOpacity onPress={onWeightZoom} activeOpacity={0.75}>
                 <Text style={styles.petCardValue}>
@@ -2185,24 +2209,28 @@ const styles = StyleSheet.create({
   },
 
   // ── MINI BAR CHART (mirrors ClientDashboard) ──────────────────────────────
+  // ── Option E (edge-to-edge): chartContainer + chartShadow + chartBox are
+  // redefined so the existing JSX renders as full-width sections with brown
+  // top/bottom lines only. No boxed cards, no offset shadow.
+  // chartContainer breaks out of the page's horizontal padding to reach the
+  // screen edges. chartShadow is rendered as a no-op (zero size). chartBox
+  // becomes a transparent passthrough that just provides 12px of horizontal
+  // breathing room for the chart content.
   chartContainer: {
-    position: 'relative',
-    marginBottom: 4,
+    marginHorizontal: -SPACING.screenPadding,
+    marginBottom: 20,
+    borderTopWidth: 2,
+    borderBottomWidth: 2,
+    borderColor: COLORS.brand,
+    backgroundColor: COLORS.white,
   },
   chartShadow: {
-    position: 'absolute',
-    top: 4,
-    left: 4,
-    right: -4,
-    bottom: -4,
-    backgroundColor: COLORS.brand,
+    width: 0,
+    height: 0,
   },
   chartBox: {
-    backgroundColor: COLORS.white,
-    borderWidth: 2,
-    borderColor: COLORS.brand,
-    borderRadius: 0,
-    padding: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
   },
   chartTitle: {
     fontFamily: FONTS.bold,
@@ -2385,9 +2413,15 @@ const styles = StyleSheet.create({
   },
 
   // ── SPENDING BREAKDOWN ────────────────────────────────────────────────────
+  // Same Option E treatment as chartContainer — edge-to-edge with top + bottom
+  // brown rules. The internal chartShadow/chartBox no-ops apply equally here.
   spendingSparklineContainer: {
-    position: 'relative',
+    marginHorizontal: -SPACING.screenPadding,
     marginBottom: 16,
+    borderTopWidth: 2,
+    borderBottomWidth: 2,
+    borderColor: COLORS.brand,
+    backgroundColor: COLORS.white,
   },
   spendingBlock: {
     marginBottom: 14,
@@ -2716,18 +2750,21 @@ const styles = StyleSheet.create({
   tabItem: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 2,
     borderBottomWidth: 3,
     borderBottomColor: COLORS.white,
+    gap: 3,
   },
   tabItemActive: {
     borderBottomColor: COLORS.sky,
   },
   tabLabel: {
-    fontSize: 10,
+    fontSize: 9,
     fontFamily: FONTS.black,
     color: COLORS.textMuted,
-    letterSpacing: 0.8,
+    letterSpacing: 0.5,
+    marginTop: 2,
   },
   tabLabelActive: {
     color: COLORS.sky,

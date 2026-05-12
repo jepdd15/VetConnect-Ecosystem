@@ -96,7 +96,8 @@ export default function Expenses() {
   const [expenses, setExpenses] = useState([]);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
 
-  // ── Date range (Fix 2) ──
+  // ── Date range (Fix 2: Parity with Sales) ──
+  const [viewMode, setViewMode] = useState('range'); 
   const [activeRange, setActiveRange] = useState('month');
   const [startDate, setStartDate] = useState(firstOfMonthStr);
   const [endDate,   setEndDate]   = useState(todayStr);
@@ -197,6 +198,8 @@ export default function Expenses() {
 
   // ─── Quick range chip handler (Fix 2) ────────────────────────────────────
   const applyRange = (range) => {
+    // Switching to a preset always forces range mode for clarity
+    setViewMode('range');
     setActiveRange(range);
     const manilaTodayStr = new Intl.DateTimeFormat('en-ZA', { timeZone: 'Asia/Manila' }).format(new Date()).replace(/\//g, '-');
     const [y, m, d] = manilaTodayStr.split('-').map(Number);
@@ -225,6 +228,13 @@ export default function Expenses() {
       const qMonth = Math.floor((m - 1) / 3) * 3;
       setStartDate(`${y}-${String(qMonth + 1).padStart(2, '0')}-01`);
       setEndDate(today);
+    }
+  };
+
+  const handleModeChange = (newMode) => {
+    setViewMode(newMode);
+    if (newMode === 'daily') {
+      setEndDate(startDate);
     }
   };
 
@@ -796,38 +806,91 @@ export default function Expenses() {
           gap:           1.5,
         }}
       >
-        {/* Row 1: Title + action buttons */}
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
-          <Typography
-            variant="h4"
-            sx={{
-              fontFamily:    FONT,
-              fontWeight:    1000,
-              color:         COLORS.brand,
-              textTransform: 'uppercase',
-              letterSpacing: 1,
-              fontSize:      '1.5rem',
-              lineHeight:    1,
-            }}
-          >
-            EXPENSES
-          </Typography>
+        {/* Row 1: Identity Anchor + Actions */}
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Typography
+              variant="h4"
+              sx={{
+                fontFamily:    FONT,
+                fontWeight:    1000,
+                color:         COLORS.brand,
+                textTransform: 'uppercase',
+                letterSpacing: 1,
+                fontSize:      '1.5rem',
+                lineHeight:    1,
+              }}
+            >
+              EXPENSES
+            </Typography>
+            <Chip
+              label={`${filteredExpenses.length} RECORDS`}
+              size="small"
+              sx={{
+                borderRadius: 0,
+                bgcolor: COLORS.brand,
+                color: COLORS.cream,
+                fontWeight: 900,
+                fontSize: '0.65rem',
+                height: 20,
+                letterSpacing: 0.5,
+                border: 'none'
+              }}
+            />
 
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+            <Box sx={{ ml: 2, borderLeft: `2px solid ${COLORS.accent}33`, pl: 2 }}>
+              <Box sx={{ 
+                display: 'flex', 
+                bgcolor: COLORS.cardBg, 
+                border: `2px solid ${COLORS.accent}`,
+                height: 32,
+                borderRadius: 0,
+                overflow: 'hidden'
+              }}>
+                <Button
+                  onClick={() => handleModeChange('daily')}
+                  sx={{
+                    px: 2, borderRadius: 0, fontSize: '0.65rem', fontWeight: 900,
+                    bgcolor: viewMode === 'daily' ? COLORS.accent : 'transparent',
+                    color: viewMode === 'daily' ? COLORS.cardBg : COLORS.accent,
+                    '&:hover': { bgcolor: viewMode === 'daily' ? COLORS.brand : COLORS.panelBg }
+                  }}
+                >
+                  SINGLE DAY
+                </Button>
+                <Button
+                  onClick={() => handleModeChange('range')}
+                  sx={{
+                    px: 2, borderRadius: 0, fontSize: '0.65rem', fontWeight: 900,
+                    bgcolor: viewMode === 'range' ? COLORS.accent : 'transparent',
+                    color: viewMode === 'range' ? COLORS.cardBg : COLORS.accent,
+                    borderLeft: `2px solid ${COLORS.accent}`,
+                    '&:hover': { bgcolor: viewMode === 'range' ? COLORS.brand : COLORS.panelBg }
+                  }}
+                >
+                  DATE RANGE
+                </Button>
+              </Box>
+            </Box>
+          </Box>
+
+          <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
             <Button
               variant="contained"
               startIcon={<AddIcon />}
               onClick={openAddDialog}
               sx={{
-                fontWeight:  TYPE.label.fontWeight,
+                fontWeight:  900,
                 px:          3,
                 py:          1,
                 borderRadius: 0,
                 bgcolor:     COLORS.sky,
                 border:      `2px solid ${COLORS.skyHover}`,
-                boxShadow:   `4px 4px 0px ${COLORS.skyHover}`,
+                boxShadow:   `4px 4px 0px ${COLORS.brand}1A`,
                 fontFamily:  FONT,
-                '&:hover':   { bgcolor: COLORS.skyHover, boxShadow: `2px 2px 0px ${COLORS.skyHover}` },
+                textTransform: 'uppercase',
+                fontSize: '0.75rem',
+                '&:hover':   { bgcolor: COLORS.skyHover, boxShadow: `2px 2px 0px ${COLORS.brand}1A` },
               }}
             >
               LOG EXPENSE
@@ -839,13 +902,15 @@ export default function Expenses() {
               onClick={handleOpenRepeatDialog}
               disabled={repeatLoading}
               sx={{
-                fontWeight:  TYPE.label.fontWeight,
+                fontWeight:  900,
                 px:          2,
                 py:          1,
                 borderRadius: 0,
                 border:      `2px solid ${COLORS.accent}`,
                 color:       COLORS.accent,
-                '&:hover':   { bgcolor: COLORS.panelBg },
+                textTransform: 'uppercase',
+                fontSize: '0.75rem',
+                '&:hover':   { bgcolor: COLORS.panelBg, borderWidth: 2 },
               }}
             >
               REPEAT LAST MONTH
@@ -856,74 +921,95 @@ export default function Expenses() {
               startIcon={<FileDownloadIcon />}
               onClick={handleExportCSV}
               sx={{
-                fontWeight:  TYPE.label.fontWeight,
+                fontWeight:  900,
                 px:          2,
                 py:          1,
                 borderRadius: 0,
                 border:      `2px solid ${COLORS.accent}`,
                 color:       COLORS.accent,
-                '&:hover':   { bgcolor: COLORS.panelBg },
+                textTransform: 'uppercase',
+                fontSize: '0.75rem',
+                '&:hover':   { bgcolor: COLORS.panelBg, borderWidth: 2 },
               }}
             >
               EXPORT CSV
             </Button>
 
-            <Tooltip title="Print Report">
-              <IconButton
-                onClick={handlePrintReport}
-                sx={{
-                  bgcolor:      COLORS.cardBg,
-                  border:       `1px solid ${COLORS.accent}44`,
-                  color:        COLORS.accent,
-                  borderRadius: 0,
-                  '&:hover':    { bgcolor: COLORS.panelBg },
-                }}
-              >
-                <PrintIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
+            <Button
+              variant="outlined"
+              startIcon={<PrintIcon />}
+              onClick={handlePrintReport}
+              sx={{
+                fontWeight:  900,
+                px:          2,
+                py:          1,
+                borderRadius: 0,
+                border:      `2px solid ${COLORS.brand}`,
+                color:       COLORS.brand,
+                textTransform: 'uppercase',
+                fontSize: '0.75rem',
+                '&:hover':   { bgcolor: COLORS.cream, borderWidth: 2 },
+              }}
+            >
+              {viewMode === 'daily' ? 'PRINT DAY SUMMARY' : 'PRINT RANGE REPORT'}
+            </Button>
           </Box>
         </Box>
 
-        {/* Row 2: Date range + quick chips + category filter + count */}
-        <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-          <TextField
-            type="date" size="small"
-            value={startDate}
-            onChange={(e) => { setStartDate(e.target.value); setActiveRange('custom'); }}
-            sx={{ width: 160, bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { borderRadius: 0, '& fieldset': { border: `2px solid ${COLORS.accent}` } }, '& .MuiInputBase-input': { ...TYPE.label, py: 0.5 } }}
-          />
-          <Typography sx={{ ...TYPE.label, color: COLORS.textMuted }}>TO</Typography>
-          <TextField
-            type="date" size="small"
-            value={endDate}
-            onChange={(e) => { setEndDate(e.target.value); setActiveRange('custom'); }}
-            sx={{ width: 160, bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { borderRadius: 0, '& fieldset': { border: `2px solid ${COLORS.accent}` } }, '& .MuiInputBase-input': { ...TYPE.label, py: 0.5 } }}
-          />
-
-          {QUICK_RANGES.map(({ key, label }) => (
-            <Chip
-              key={key}
-              label={label}
-              size="small"
-              onClick={() => applyRange(key)}
-              sx={{
-                borderRadius: 0,
-                border:       `2px solid ${COLORS.accent}`,
-                bgcolor:      activeRange === key ? COLORS.accent  : COLORS.cardBg,
-                color:        activeRange === key ? COLORS.cardBg  : COLORS.accent,
-                fontWeight:   TYPE.label.fontWeight,
-                fontSize:     '0.65rem',
-                letterSpacing: '0.06em',
-                cursor:       'pointer',
-                '&:hover':    { bgcolor: activeRange === key ? COLORS.brand : COLORS.panelBg },
+        {/* Row 2: Date range + quick chips + category filter */}
+        <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1.5 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <TextField
+              type="date" size="small"
+              value={startDate}
+              onChange={(e) => { 
+                setStartDate(e.target.value); 
+                if (viewMode === 'daily') setEndDate(e.target.value);
               }}
+              sx={{ width: 150, bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { borderRadius: 0, '& fieldset': { border: `2px solid ${COLORS.accent}` } }, '& .MuiInputBase-input': { ...TYPE.label, py: 0.5 } }}
             />
-          ))}
+            {viewMode === 'range' && (
+              <>
+                <Typography sx={{ ...TYPE.label, color: COLORS.textMuted, fontSize: '0.7rem' }}>TO</Typography>
+                <TextField
+                  type="date" size="small"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  sx={{ width: 150, bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { borderRadius: 0, '& fieldset': { border: `2px solid ${COLORS.accent}` } }, '& .MuiInputBase-input': { ...TYPE.label, py: 0.5 } }}
+                />
+              </>
+            )}
+          </Box>
 
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, ml: 'auto' }}>
-            <Typography variant="caption" sx={{ fontWeight: TYPE.label.fontWeight, color: COLORS.accent, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-              Category:
+          {viewMode === 'range' && (
+            <Box sx={{ display: 'flex', gap: 0.5 }}>
+              {QUICK_RANGES.map(({ key, label }) => (
+                <Chip
+                  key={key}
+                  label={label}
+                  size="small"
+                  onClick={() => applyRange(key)}
+                  sx={{
+                    borderRadius: 0,
+                    border:       `2px solid ${COLORS.accent}`,
+                    bgcolor:      activeRange === key ? COLORS.accent  : COLORS.cardBg,
+                    color:        activeRange === key ? COLORS.cardBg  : COLORS.accent,
+                    fontWeight:   900,
+                    fontSize:     '0.65rem',
+                    letterSpacing: '0.06em',
+                    cursor:       'pointer',
+                    '&:hover':    { bgcolor: activeRange === key ? COLORS.brand : COLORS.panelBg },
+                  }}
+                />
+              ))}
+            </Box>
+          )}
+
+          <Box sx={{ height: 24, width: 2, bgcolor: `${COLORS.accent}33`, mx: 1 }} />
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexGrow: 1, overflowX: 'auto', pb: 0.5 }}>
+            <Typography variant="caption" sx={{ fontWeight: 900, color: COLORS.accent, textTransform: 'uppercase', whiteSpace: 'nowrap', fontSize: '0.65rem', mr: 1 }}>
+              CATEGORY:
             </Typography>
             {['All', ...expenseCategories.map(c => c.name)].map(cat => (
               <Chip
@@ -933,10 +1019,10 @@ export default function Expenses() {
                 onClick={() => setFilterCategory(cat)}
                 sx={{
                   borderRadius: 0,
-                  border:       `2px solid ${COLORS.accent}`,
-                  bgcolor:      filterCategory === cat ? COLORS.accent : COLORS.cardBg,
+                  border:       `2px solid ${filterCategory === cat ? COLORS.brand : COLORS.accent}`,
+                  bgcolor:      filterCategory === cat ? COLORS.brand : COLORS.cardBg,
                   color:        filterCategory === cat ? COLORS.cardBg : COLORS.accent,
-                  fontWeight:   TYPE.label.fontWeight,
+                  fontWeight:   900,
                   fontSize:     '0.65rem',
                   cursor:       'pointer',
                   '&:hover':    { bgcolor: filterCategory === cat ? COLORS.brand : COLORS.panelBg },
@@ -947,23 +1033,11 @@ export default function Expenses() {
               <IconButton
                 size="small"
                 onClick={() => setCatManagerOpen(true)}
-                sx={{ color: COLORS.accent, borderRadius: 0, '&:hover': { bgcolor: COLORS.panelBg } }}
+                sx={{ color: COLORS.accent, borderRadius: 0, '&:hover': { bgcolor: COLORS.panelBg }, border: `2px solid ${COLORS.accent}33`, ml: 1 }}
               >
                 <SettingsIcon fontSize="small" />
               </IconButton>
             </Tooltip>
-
-            <Chip
-              label={`${filteredExpenses.length} records`}
-              size="small"
-              sx={{
-                borderRadius: 0,
-                bgcolor:      COLORS.panelBg,
-                color:        COLORS.textSecondary,
-                fontWeight:   TYPE.label.fontWeight,
-                fontSize:     '0.65rem',
-              }}
-            />
           </Box>
         </Box>
       </Paper>

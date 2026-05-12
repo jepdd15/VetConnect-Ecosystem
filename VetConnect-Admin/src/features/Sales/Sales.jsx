@@ -11,6 +11,7 @@ import {
 import { useSalesData } from './hooks/useSalesData';
 import EodSummary from './components/EodSummary';
 import { printViaIframe, downloadHtmlAsFile, emailReceiptToOwner } from '../../utils/receiptUtils';
+import { exportSalesCSV } from '../../utils/exportSalesCSV';
 import POSModal from '../../components/POSModal';
 
 // Icons
@@ -23,6 +24,8 @@ import CreditCardIcon from '@mui/icons-material/CreditCard';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import CloseIcon from '@mui/icons-material/Close';
 
 // Design Tokens
 import { FONT, COLORS } from '../../theme/designTokens';
@@ -858,6 +861,22 @@ export default function Sales() {
                 REOPEN
               </Button>
             )}
+
+            <Tooltip title="Download CSV">
+              <IconButton 
+                onClick={() => exportSalesCSV(processedSales)} 
+                disabled={loading || processedSales.length === 0}
+                sx={{ 
+                  bgcolor: COLORS.cardBg, 
+                  border: `2px solid ${COLORS.brand}33`, 
+                  color: COLORS.brand,
+                  borderRadius: 0,
+                  '&:hover': { bgcolor: COLORS.cream, borderColor: COLORS.brand }
+                }}
+              >
+                <FileDownloadIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
 
             <Tooltip title="Print EOD Report">
               <IconButton 

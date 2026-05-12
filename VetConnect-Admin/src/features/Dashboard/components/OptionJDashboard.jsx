@@ -459,7 +459,7 @@ function PerformanceZone({ data, compareEnabled }) {
 
 // ─── Ranked List (used inside Patterns zone) ────────────────────
 
-function RankedList({ title, items, emptyMessage, valueFormatter, icon }) {
+function RankedList({ title, items, emptyMessage, valueFormatter, secondaryFormatter, icon }) {
   if (!items || items.length === 0) {
     return (
       <Box
@@ -533,16 +533,32 @@ function RankedList({ title, items, emptyMessage, valueFormatter, icon }) {
                 >
                   {idx + 1}. {item.name}
                 </Typography>
-                <Typography
-                  sx={{
-                    fontFamily: FONT,
-                    fontWeight: 900,
-                    color: COLORS.brand,
-                    fontSize: '0.85rem',
-                  }}
-                >
-                  {valueFormatter ? valueFormatter(item.value) : item.value}
-                </Typography>
+                <Box sx={{ textAlign: 'right' }}>
+                  <Typography
+                    sx={{
+                      fontFamily: FONT,
+                      fontWeight: 900,
+                      color: COLORS.brand,
+                      fontSize: '0.85rem',
+                      lineHeight: 1,
+                    }}
+                  >
+                    {valueFormatter ? valueFormatter(item.value) : item.value}
+                  </Typography>
+                  {item.secondaryValue !== undefined && (
+                    <Typography
+                      sx={{
+                        fontFamily: FONT,
+                        fontSize: '0.75rem',
+                        color: COLORS.brand,
+                        fontWeight: 900,
+                        mt: 0.25,
+                      }}
+                    >
+                      {secondaryFormatter ? secondaryFormatter(item.secondaryValue) : item.secondaryValue}
+                    </Typography>
+                  )}
+                </Box>
               </Box>
               <Box sx={{ height: 6, bgcolor: COLORS.borderLight, position: 'relative' }}>
                 <Box
@@ -567,10 +583,11 @@ function RankedList({ title, items, emptyMessage, valueFormatter, icon }) {
 function PatternsZone({ data }) {
   const { growth, clinical, financial } = data;
 
-  // Top services from growth.serviceRanking
-  const topServices = (growth?.serviceRanking || []).map((s) => ({
-    name: s.name || s.serviceName || 'Unknown',
-    value: s.count || s.value || 0,
+  // T4.184: Dual-metric Service Ranking (Revenue + Volume)
+  const topServices = (financial?.revenueByService || []).map((s) => ({
+    name: s.name || 'Unknown',
+    value: s.count || 0,
+    secondaryValue: s.amount || 0,
   }));
 
   // Top prescribed medications (medically filtered)
@@ -579,10 +596,11 @@ function PatternsZone({ data }) {
     value: rx.qty || 0,
   }));
 
-  // T4.184: Top sold products (inventory movement)
+  // T4.184: Dual-metric Product Ranking (Revenue + Volume)
   const topSoldProducts = (financial?.topSoldProducts || []).map((p) => ({
     name: p.name || 'Unknown',
     value: p.count || 0,
+    secondaryValue: p.amount || 0,
   }));
 
   // Top breeds from growth.topBreeds
@@ -615,6 +633,7 @@ function PatternsZone({ data }) {
             items={topServices}
             icon={<MedicalServicesIcon />}
             emptyMessage="No services booked yet."
+            secondaryFormatter={formatPHPShort}
           />
         </Grid>
         <Grid size={{ xs: 12, md: 4 }}>
@@ -631,6 +650,7 @@ function PatternsZone({ data }) {
             items={topSoldProducts}
             icon={<ShoppingCartIcon />}
             emptyMessage="No products sold yet."
+            secondaryFormatter={formatPHPShort}
           />
         </Grid>
 

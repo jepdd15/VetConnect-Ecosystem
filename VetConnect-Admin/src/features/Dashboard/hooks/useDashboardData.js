@@ -1072,34 +1072,38 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
     const scPwdDiscountTotal = scPwdSales.reduce((sum, s) => sum + (parseFloat(s.discount) || 0), 0);
     const customDiscountTotal = totalDiscounts - scPwdDiscountTotal;
 
-    // T4.184: Revenue per service type (top 10 by revenue)
-    const revenuePerService = {};
-    const productVolumeMap = {};
+    // T4.184: Dual-metric aggregation (Volume + Revenue)
+    const serviceStats = {};
+    const productStats = {};
 
     paidSales.forEach(s => {
       (s.items || []).forEach(item => {
         const name = item.name || 'Unknown';
         const isProduct = item.type === 'product' || item.stock !== undefined;
+        const qty = item.qty || 1;
+        const revenue = (parseFloat(item.price) || 0) * qty;
 
         if (!isProduct) {
-          revenuePerService[name] = (revenuePerService[name] || 0) +
-            (parseFloat(item.price) || 0) * (item.qty || 1);
+          if (!serviceStats[name]) serviceStats[name] = { count: 0, amount: 0 };
+          serviceStats[name].count += qty;
+          serviceStats[name].amount += revenue;
         } else {
-          // T4.183: Track product sales volume for forensic inventory monitoring
-          productVolumeMap[name] = (productVolumeMap[name] || 0) + (item.qty || 1);
+          if (!productStats[name]) productStats[name] = { count: 0, amount: 0 };
+          productStats[name].count += qty;
+          productStats[name].amount += revenue;
         }
       });
     });
 
-    const revenueByService = Object.entries(revenuePerService)
-      .sort(([, a], [, b]) => b - a)
+    const revenueByService = Object.entries(serviceStats)
+      .sort(([, a], [, b]) => b.amount - a.amount)
       .slice(0, 10)
-      .map(([name, amount]) => ({ name, amount: Math.round(amount) }));
+      .map(([name, stats]) => ({ name, ...stats }));
 
-    const topSoldProducts = Object.entries(productVolumeMap)
-      .sort(([, a], [, b]) => b - a)
+    const topSoldProducts = Object.entries(productStats)
+      .sort(([, a], [, b]) => b.amount - a.amount)
       .slice(0, 10)
-      .map(([name, count]) => ({ name, count }));
+      .map(([name, stats]) => ({ name, ...stats }));
 
     // T4.182: Revenue forecast from pending + confirmed appointments
     const upcomingRevenue = appointments

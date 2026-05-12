@@ -3,9 +3,11 @@ import { Paper, Typography } from '@mui/material';
 import Grid from '@mui/material/Grid'; // THE FIX: Standard MUI Grid, NO Grid2!
 import { COLORS } from '../../../theme/designTokens';
 
-export default function EodSummary({ totals, filterMethod, setFilterMethod, isDayClosed = false, closingData = null, filterDate = '' }) {
-  const isToday = filterDate === new Date().toISOString().split('T')[0];
-  const collectedLabel = isToday ? 'COLLECTED TODAY' : `COLLECTED`;
+export default function EodSummary({ totals, filterMethod, setFilterMethod, isDayClosed = false, closingData = null, startDate = '', endDate = '' }) {
+  const isSingleDay = startDate === endDate;
+  const isToday = isSingleDay && startDate === new Date().toISOString().split('T')[0];
+  const collectedLabel = isToday ? 'COLLECTED TODAY' : (isSingleDay ? 'COLLECTED' : 'COLLECTED (PERIOD)');
+  const cashLabel = isToday ? 'CASH IN DRAWER' : 'CASH';
 
   const handleToggle = (method) => {
     if (method === 'All') {
@@ -77,7 +79,7 @@ export default function EodSummary({ totals, filterMethod, setFilterMethod, isDa
       )}
         <Grid size={{ xs: 6, md: 2.4 }} onClick={() => handleToggle('Cash')}>
             <Paper sx={{ ...forensicTile('Cash'), borderLeft: filterMethod.includes('Cash') ? `12px solid ${COLORS.success}` : `6px solid ${COLORS.success}` }}>
-                <Typography variant="caption" sx={{ fontWeight: 800, color: filterMethod.includes('Cash') ? COLORS.cream : COLORS.textMuted, fontSize: '0.65rem', letterSpacing: 0.5 }}>{isToday ? 'CASH IN DRAWER' : 'CASH'}</Typography>
+                <Typography variant="caption" sx={{ fontWeight: 800, color: filterMethod.includes('Cash') ? COLORS.cream : COLORS.textMuted, fontSize: '0.65rem', letterSpacing: 0.5 }}>{cashLabel}</Typography>
                 <Typography variant="h5" sx={{ fontWeight: 800, color: filterMethod.includes('Cash') ? COLORS.cream : COLORS.success }}>₱{totals.cash.toFixed(2)}</Typography>
             </Paper>
         </Grid>

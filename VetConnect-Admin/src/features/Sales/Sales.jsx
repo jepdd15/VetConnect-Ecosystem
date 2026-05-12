@@ -6,7 +6,8 @@ import { DataGrid } from '@mui/x-data-grid';
 import {
   Box, Typography, Paper, Chip, IconButton, Tooltip, Snackbar,
   Dialog, DialogTitle, DialogContent, DialogActions, Button, Checkbox, FormControlLabel,
-  InputAdornment, TextField, Alert, Switch, TableSortLabel, FormControl, Select, MenuItem
+  InputAdornment, TextField, Alert, Switch, TableSortLabel, FormControl, Select, MenuItem,
+  Tabs, Tab
 } from '@mui/material';
 import { useSalesData } from './hooks/useSalesData';
 import EodSummary from './components/EodSummary';
@@ -37,10 +38,14 @@ export default function Sales() {
   const { profile, isAdmin } = useUser();
   const clinicSettings = useClinicSettings();
   const location = useLocation();
-  const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // T4.185: View Mode state (Daily vs Periodic)
+  const [viewMode, setViewMode] = useState('daily');
+  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
 
   // THE BRAIN: Hook handles all database fetching, refund, void, and EOD close-out.
-  const { sales, loading, error: salesError, eodTotals, processRefundTransaction, voidTransaction, isDayClosed, closingData, closeDay, reopenDay } = useSalesData(filterDate, profile);
+  const { sales, loading, error: salesError, eodTotals, processRefundTransaction, voidTransaction, isDayClosed, closingData, closeDay, reopenDay } = useSalesData(startDate, endDate, profile);
 
   // T4.184: Retail POS state
   const [openRetailPOS, setOpenRetailPOS] = useState(false);
@@ -166,11 +171,34 @@ export default function Sales() {
   const filterSummary = useMemo(() => {
     const parts = [];
     if (searchText) parts.push(`Search: "${searchText}"`);
-    if (filterDate) parts.push(`Date: ${filterDate}`);
+    if (viewMode === 'daily') {
+      parts.push(`Date: ${startDate}`);
+    } else {
+      parts.push(`Range: ${startDate} to ${endDate}`);
+    }
     if (filterStatus !== 'All') parts.push(`Status: ${filterStatus}`);
     if (filterType !== 'All') parts.push(`Type: ${filterType}`);
     return parts.join(' | ') || 'All Transactions';
-  }, [searchText, filterDate, filterStatus, filterType]);
+  }, [searchText, viewMode, startDate, endDate, filterStatus, filterType]);
+
+  // T4.185: Quick Toggle handlers
+  const handleQuickRange = (type) => {
+    const now = new Date();
+    const to = now.toISOString().split('T')[0];
+    let from;
+
+    if (type === '7D') {
+      const d = new Date(); d.setDate(d.getDate() - 7);
+      from = d.toISOString().split('T')[0];
+    } else if (type === 'Month') {
+      from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    } else if (type === 'YTD') {
+      from = new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0];
+    }
+    
+    setStartDate(from);
+    setEndDate(to);
+  };
 
   const handleOpenRefund = (sale) => {
     setSelectedSale(sale); setRestock(true); setOpenRefund(true);
@@ -325,7 +353,10 @@ export default function Sales() {
   };
 
   const handlePrintReport = () => {
-    const reportDate = new Date(filterDate).toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const reportLabel = viewMode === 'daily' 
+      ? new Date(startDate).toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+      : `${startDate} to ${endDate}`;
+    
     const paidCount = sales.filter(s => s.status !== 'refunded').length;
     const refundedCount = sales.filter(s => s.status === 'refunded').length;
 
@@ -348,8 +379,8 @@ export default function Sales() {
           </style>
         </head>
         <body>
-          <h1>End-of-Day Sales Report</h1>
-          <p class="date">${reportDate}</p>
+          <h1>${viewMode === 'daily' ? 'End-of-Day Sales Report' : 'Periodic Revenue Report'}</h1>
+          <p class="date">${reportLabel}</p>
 
           <h2>Payment Breakdown</h2>
           <table>
@@ -407,7 +438,7 @@ export default function Sales() {
     const closedTime = cd.closedAt?.toDate?.()
       ? cd.closedAt.toDate().toLocaleString('en-PH')
       : 'N/A';
-    const reportDate = new Date(filterDate).toLocaleDateString('en-PH', {
+    const reportDate = new Date(startDate).toLocaleDateString('en-PH', {
       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
     });
     const postCloseSales = sales.filter(s => s.postClose);
@@ -678,30 +709,50 @@ export default function Sales() {
           boxShadow: 'none',
           minHeight: { xs: 'auto', md: 80 }
         }}>
-          
-          {/* LEFT SIDE: Identity & Filters */}
+           {/* LEFT SIDE: Identity & Filters */}
           <Box sx={{ 
             display: 'flex', 
             alignItems: 'center', 
             gap: 3, 
             flexWrap: 'wrap', 
             flexGrow: 1,
-            flexBasis: '600px' 
+            flexBasis: '700px' 
           }}>
             <Box sx={{ flexShrink: 0 }}>
               <Typography variant="h4" sx={{ fontWeight: 1000, color: COLORS.brand, lineHeight: 1.1, textTransform: 'uppercase', letterSpacing: 1 }}>
                 TRANSACTIONS
               </Typography>
-              <Typography sx={{ fontWeight: 900, color: COLORS.accent, fontSize: '0.85rem', letterSpacing: 1, fontStyle: 'italic' }}>
-                {processedSales.length} {processedSales.length === 1 ? 'Record' : 'Records'}
-              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                <Typography sx={{ fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem', letterSpacing: 1, fontStyle: 'italic' }}>
+                  {processedSales.length} {processedSales.length === 1 ? 'Record' : 'Records'}
+                </Typography>
+                <Box sx={{ borderLeft: `2px solid ${COLORS.accent}33`, height: 14, mx: 1 }} />
+                <Tabs 
+                  value={viewMode} 
+                  onChange={(e, v) => {
+                    setViewMode(v);
+                    if (v === 'daily') setEndDate(startDate);
+                  }}
+                  sx={{ 
+                    minHeight: 0, 
+                    '& .MuiTabs-indicator': { bgcolor: COLORS.brand, height: 3 },
+                    '& .MuiTab-root': { 
+                      minHeight: 0, py: 0.5, px: 1, fontSize: '0.7rem', fontWeight: 1000, color: `${COLORS.brand}80`,
+                      '&.Mui-selected': { color: COLORS.brand }
+                    }
+                  }}
+                >
+                  <Tab value="daily" label="SINGLE DAY" />
+                  <Tab value="range" label="DATE RANGE" />
+                </Tabs>
+              </Box>
             </Box>
 
             <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexGrow: 1, flexWrap: 'wrap' }}>
               <TextField
                 variant="outlined"
                 size="small"
-                placeholder="Search transactions..."
+                placeholder="Search ledger..."
                 value={searchText}
                 onChange={(e) => setSearchText(e.target.value)}
                 InputProps={{
@@ -721,9 +772,9 @@ export default function Sales() {
                   }),
                 }}
                 sx={{
-                  flex: { xs: '1 1 100%', sm: '1 1 240px' }, 
-                  maxWidth: { xs: '100%', lg: 240 }, 
-                  minWidth: 180,
+                  flex: { xs: '1 1 100%', sm: '1 1 200px' }, 
+                  maxWidth: { xs: '100%', lg: 200 }, 
+                  minWidth: 160,
                   '& .MuiOutlinedInput-root': {
                     fontWeight: 900,
                     fontSize: '0.85rem',
@@ -738,24 +789,61 @@ export default function Sales() {
                 }}
               />
 
-              <TextField
-                type="date"
-                size="small"
-                value={filterDate}
-                onChange={(e) => setFilterDate(e.target.value)}
-                InputProps={{
-                  startAdornment: <InputAdornment position="start"><CalendarMonthIcon fontSize="small" sx={{ color: COLORS.accent }} /></InputAdornment>,
-                  sx: { borderRadius: 0, fontWeight: 900, fontSize: '0.85rem' }
-                }}
-                sx={{ 
-                  bgcolor: COLORS.cardBg, 
-                  minWidth: 160,
-                  boxShadow: `2px 2px 0px ${COLORS.accent}1A`,
-                  '& .MuiOutlinedInput-notchedOutline': { borderColor: COLORS.accent, borderWidth: 2, borderRadius: 0 } 
-                }}
-              />
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                <TextField
+                  type="date"
+                  size="small"
+                  label={viewMode === 'range' ? 'From' : ''}
+                  value={startDate}
+                  onChange={(e) => {
+                    setStartDate(e.target.value);
+                    if (viewMode === 'daily') setEndDate(e.target.value);
+                  }}
+                  InputProps={{
+                    startAdornment: viewMode === 'daily' && <InputAdornment position="start"><CalendarMonthIcon fontSize="small" sx={{ color: COLORS.accent }} /></InputAdornment>,
+                    sx: { borderRadius: 0, fontWeight: 900, fontSize: '0.85rem' }
+                  }}
+                  sx={{ 
+                    bgcolor: COLORS.cardBg, 
+                    minWidth: 140,
+                    boxShadow: `2px 2px 0px ${COLORS.accent}1A`,
+                    '& .MuiOutlinedInput-notchedOutline': { borderColor: COLORS.accent, borderWidth: 2, borderRadius: 0 },
+                    '& .MuiInputLabel-root': { fontWeight: 900, fontSize: '0.75rem', color: COLORS.accent }
+                  }}
+                />
 
-              <FormControl size="small" sx={{ minWidth: 130 }}>
+                {viewMode === 'range' && (
+                  <>
+                    <Typography sx={{ fontWeight: 1000, color: COLORS.accent }}>➔</Typography>
+                    <TextField
+                      type="date"
+                      size="small"
+                      label="To"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      InputProps={{ sx: { borderRadius: 0, fontWeight: 900, fontSize: '0.85rem' } }}
+                      sx={{ 
+                        bgcolor: COLORS.cardBg, 
+                        minWidth: 140,
+                        boxShadow: `2px 2px 0px ${COLORS.accent}1A`,
+                        '& .MuiOutlinedInput-notchedOutline': { borderColor: COLORS.accent, borderWidth: 2, borderRadius: 0 },
+                        '& .MuiInputLabel-root': { fontWeight: 900, fontSize: '0.75rem', color: COLORS.accent }
+                      }}
+                    />
+                    
+                    <Box sx={{ display: 'flex', gap: 0.5 }}>
+                      {['7D', 'Month', 'YTD'].map(p => (
+                        <Button key={p} size="small" onClick={() => handleQuickRange(p)} 
+                          sx={{ minWidth: 0, p: '2px 6px', fontSize: '0.65rem', fontWeight: 1000, border: `1px solid ${COLORS.accent}33`, color: COLORS.accent, borderRadius: 0 }}>
+                          {p}
+                        </Button>
+                      ))}
+                    </Box>
+                  </>
+                )}
+              </Box>
+
+              <FormControl size="small" sx={{ minWidth: 120 }}>
                 <Select 
                   value={filterStatus} 
                   onChange={(e) => setFilterStatus(e.target.value)} 
@@ -769,13 +857,13 @@ export default function Sales() {
                     '& .MuiOutlinedInput-notchedOutline': { borderColor: COLORS.accent, borderWidth: 2 } 
                   }}
                 >
-                  <MenuItem value="All">All Statuses</MenuItem>
+                  <MenuItem value="All">All Status</MenuItem>
                   <MenuItem value="Paid">Paid</MenuItem>
                   <MenuItem value="refunded">Refunded</MenuItem>
                 </Select>
               </FormControl>
 
-              <FormControl size="small" sx={{ minWidth: 130 }}>
+              <FormControl size="small" sx={{ minWidth: 120 }}>
                 <Select
                   value={filterType}
                   onChange={(e) => setFilterType(e.target.value)}
@@ -789,9 +877,9 @@ export default function Sales() {
                     '& .MuiOutlinedInput-notchedOutline': { borderColor: COLORS.accent, borderWidth: 2 } 
                   }}
                 >
-                  <MenuItem value="All">All Types</MenuItem>
-                  <MenuItem value="retail">Retail Only</MenuItem>
-                  <MenuItem value="clinical">Clinical Only</MenuItem>
+                  <MenuItem value="All">All Type</MenuItem>
+                  <MenuItem value="retail">Retail</MenuItem>
+                  <MenuItem value="clinical">Clinical</MenuItem>
                 </Select>
               </FormControl>
             </Box>
@@ -802,10 +890,9 @@ export default function Sales() {
             display: 'flex', 
             gap: 1.5, 
             alignItems: 'center', 
-            flexGrow: 2, 
-            justifyContent: { xs: 'flex-start', lg: 'flex-end' },
+            justifyContent: 'flex-end',
             flexWrap: 'wrap',
-            flexBasis: '400px'
+            flexGrow: 1 
           }}>
             <Button
               variant="contained"
@@ -817,12 +904,13 @@ export default function Sales() {
                 boxShadow: `4px 4px 0px ${COLORS.brand}1A`,
                 textTransform: 'uppercase', letterSpacing: 0.5, fontSize: '0.75rem',
                 '&:hover': { bgcolor: COLORS.skyHover },
+                mr: 1 // Add slight margin before the reporting group
               }}
             >
               NEW SALE
             </Button>
 
-            {isAdmin && !isDayClosed && (
+            {isAdmin && viewMode === 'daily' && !isDayClosed && (
               <Button
                 variant="contained"
                 size="small"
@@ -840,7 +928,7 @@ export default function Sales() {
               </Button>
             )}
 
-            {isDayClosed && (
+            {isDayClosed && viewMode === 'daily' && (
               <Button
                 variant="outlined"
                 size="small"
@@ -856,7 +944,7 @@ export default function Sales() {
               </Button>
             )}
 
-            {isDayClosed && isAdmin && (
+            {isDayClosed && isAdmin && viewMode === 'daily' && (
               <Button
                 variant="outlined"
                 size="small"
@@ -872,53 +960,53 @@ export default function Sales() {
               </Button>
             )}
 
-            <Tooltip title="Download CSV">
-              <IconButton 
-                onClick={() => exportSalesCSV(processedSales)} 
-                disabled={loading || processedSales.length === 0}
-                sx={{ 
-                  bgcolor: COLORS.cardBg, 
-                  border: `2px solid ${COLORS.brand}33`, 
-                  color: COLORS.brand,
-                  borderRadius: 0,
-                  '&:hover': { bgcolor: COLORS.cream, borderColor: COLORS.brand }
-                }}
-              >
-                <FileDownloadIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<FileDownloadIcon />}
+              onClick={() => exportSalesCSV(processedSales)}
+              disabled={loading || processedSales.length === 0}
+              sx={{ 
+                fontWeight: 900, borderRadius: 0, px: 2, borderWidth: 2,
+                borderColor: COLORS.brand, color: COLORS.brand,
+                textTransform: 'uppercase', letterSpacing: 0.5, fontSize: '0.7rem',
+                '&:hover': { bgcolor: COLORS.cream, borderColor: COLORS.brand, borderWidth: 2 }
+              }}
+            >
+              EXPORT CSV
+            </Button>
 
-            <Tooltip title="Print Ledger (Filtered List)">
-              <IconButton 
-                onClick={() => printSalesLedger(processedSales, clinicSettings, filterSummary, () => setToast({ open: true, message: 'Pop-up blocked — allow pop-ups for this site.', severity: 'warning' }))} 
-                disabled={loading || processedSales.length === 0}
-                sx={{ 
-                  bgcolor: COLORS.cardBg, 
-                  border: `2px solid ${COLORS.accent}33`, 
-                  color: COLORS.accent,
-                  borderRadius: 0,
-                  '&:hover': { bgcolor: COLORS.cream, borderColor: COLORS.accent }
-                }}
-              >
-                <PrintIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<PrintIcon />}
+              onClick={() => printSalesLedger(processedSales, clinicSettings, filterSummary, () => setToast({ open: true, message: 'Pop-up blocked — allow pop-ups for this site.', severity: 'warning' }))}
+              disabled={loading || processedSales.length === 0}
+              sx={{ 
+                fontWeight: 900, borderRadius: 0, px: 2, borderWidth: 2,
+                borderColor: COLORS.accent, color: COLORS.accent,
+                textTransform: 'uppercase', letterSpacing: 0.5, fontSize: '0.7rem',
+                '&:hover': { bgcolor: COLORS.cream, borderColor: COLORS.accent, borderWidth: 2 }
+              }}
+            >
+              PRINT LEDGER
+            </Button>
 
-            <Tooltip title="Print EOD Report (Summary)">
-              <IconButton 
-                onClick={handlePrintReport} 
-                disabled={loading} 
-                sx={{ 
-                  bgcolor: COLORS.cardBg, 
-                  border: `2px solid ${COLORS.accent}33`, 
-                  color: COLORS.accent,
-                  borderRadius: 0,
-                  '&:hover': { bgcolor: COLORS.cream, borderColor: COLORS.accent }
-                }}
-              >
-                <PrintIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<PrintIcon />}
+              onClick={handlePrintReport}
+              disabled={loading}
+              sx={{ 
+                fontWeight: 900, borderRadius: 0, px: 2, borderWidth: 2,
+                borderColor: COLORS.brand, color: COLORS.brand,
+                textTransform: 'uppercase', letterSpacing: 0.5, fontSize: '0.7rem',
+                '&:hover': { bgcolor: COLORS.cream, borderColor: COLORS.brand, borderWidth: 2 }
+              }}
+            >
+              {viewMode === 'daily' ? 'PRINT EOD' : 'PRINT SUMMARY'}
+            </Button>
           </Box>
         </Paper>
       </Box>
@@ -929,7 +1017,7 @@ export default function Sales() {
           p: 2, px: 4, bgcolor: COLORS.cardBg, borderBottom: `2px solid ${COLORS.accent}`,
           borderTop: 'none', borderLeft: 'none', borderRight: 'none', borderRadius: 0
         }}>
-          <EodSummary totals={eodTotals} filterMethod={filterMethod} setFilterMethod={setFilterMethod} isDayClosed={isDayClosed} closingData={closingData} filterDate={filterDate} />
+          <EodSummary totals={eodTotals} filterMethod={filterMethod} setFilterMethod={setFilterMethod} isDayClosed={isDayClosed} closingData={closingData} startDate={startDate} endDate={endDate} />
         </Box>
       </Box>
 
@@ -1137,7 +1225,7 @@ export default function Sales() {
           borderBottom: `2px solid ${COLORS.brand}`, textTransform: 'uppercase', letterSpacing: 1,
           fontSize: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
-          Z-Report — {filterDate}
+          Z-Report — {startDate}
           <Box sx={{ display: 'flex', gap: 1 }}>
             <Button
               variant="contained" size="small"
@@ -1149,7 +1237,7 @@ export default function Sales() {
             </Button>
             <Button
               variant="outlined" size="small"
-              onClick={() => downloadHtmlAsFile(generateZReportHTML(), `Z-Report-${filterDate}.html`)}
+              onClick={() => downloadHtmlAsFile(generateZReportHTML(), `Z-Report-${startDate}.html`)}
               sx={{ fontWeight: 900, borderRadius: 0, borderColor: COLORS.accent, color: COLORS.accent, borderWidth: 2 }}
             >
               DOWNLOAD

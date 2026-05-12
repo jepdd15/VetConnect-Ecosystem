@@ -3,27 +3,29 @@ import { collection, query, orderBy, onSnapshot, where, Timestamp, doc, runTrans
 import { makePulseEventId } from '../../../utils/pulseUtils';
 import { db } from '../../../firebaseConfig';
 
-export function useSalesData(filterDate, currentUser) {
+export function useSalesData(startDate, endDate, currentUser) {
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  // T4.151: EOD close status for the current filterDate.
+  // T4.151: EOD close status — only applicable if startDate === endDate.
   const [closingData, setClosingData] = useState(null);
 
+  const isRange = startDate !== endDate;
+
   useEffect(() => {
-    if (!filterDate || isNaN(new Date(filterDate).getTime())) {
+    if (!startDate || isNaN(new Date(startDate).getTime())) {
       setSales([]); setLoading(false); setClosingData(null);
       return;
     }
     setLoading(true);
     setError(null);
 
-    const startOfDay = new Date(filterDate); startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(filterDate); endOfDay.setHours(23, 59, 59, 999);
-    const startTs = Timestamp.fromDate(startOfDay);
-    const endTs = Timestamp.fromDate(endOfDay);
+    const start = new Date(startDate); start.setHours(0, 0, 0, 0);
+    const end = new Date(endDate || startDate); end.setHours(23, 59, 59, 999);
+    const startTs = Timestamp.fromDate(start);
+    const endTs = Timestamp.fromDate(end);
 
-    // Query 1: Sales made on this day (existing behavior)
+    // Query 1: Sales made within the range
     const qSales = query(
         collection(db, "sales"),
         where("date", ">=", startTs),
@@ -31,12 +33,7 @@ export function useSalesData(filterDate, currentUser) {
         orderBy("date", "desc")
     );
 
-    // Query 2: Refunds processed on this day (for sales made on OTHER days)
-    // Requires composite Firestore index: { status ASC, refundedAt ASC }
-    // Create in Firebase Console or add to firestore.indexes.json:
-    // { "collectionGroup": "sales", "queryScope": "COLLECTION",
-    //   "fields": [{ "fieldPath": "status", "order": "ASCENDING" },
-    //              { "fieldPath": "refundedAt", "order": "ASCENDING" }] }
+    // Query 2: Refunds processed within the range (for sales made anytime)
     const qRefunds = query(
         collection(db, "sales"),
         where("refundedAt", ">=", startTs),
@@ -51,8 +48,6 @@ export function useSalesData(filterDate, currentUser) {
 
     const merge = () => {
       if (!salesReady || !refundsReady) return;
-      // Deduplicate: sales made AND refunded on the same day appear in both queries.
-      // Primary query (qSales) takes priority — cross-day refunds get the badge flag.
       const seen = new Set(salesData.map(s => s.id));
       const crossDayRefunds = refundData
         .filter(r => !seen.has(r.id))
@@ -91,17 +86,20 @@ export function useSalesData(filterDate, currentUser) {
       merge();
     });
 
-    // Query 3: Daily closing status for this date (T4.151).
-    const closingRef = doc(db, 'daily_closings', filterDate);
-    const unsub3 = onSnapshot(closingRef, (snapshot) => {
-      setClosingData(snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null);
-    }, (err) => {
-      console.error('[useSalesData] Closing status fetch error:', err);
-      // Non-fatal — closingData stays null (treated as "day open")
-    });
-
-    return () => { unsub1(); unsub2(); unsub3(); };
-  }, [filterDate]);
+    // Query 3: Daily closing status — only if NOT a range (single day reconciliation).
+    if (!isRange) {
+      const closingRef = doc(db, 'daily_closings', startDate);
+      const unsub3 = onSnapshot(closingRef, (snapshot) => {
+        setClosingData(snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null);
+      }, (err) => {
+        console.error('[useSalesData] Closing status fetch error:', err);
+      });
+      return () => { unsub1(); unsub2(); unsub3(); };
+    } else {
+      setClosingData(null);
+      return () => { unsub1(); unsub2(); };
+    }
+  }, [startDate, endDate]);
 
   const eodTotals = useMemo(() => {
       let cash = 0, gcash = 0, card = 0, bank = 0;
@@ -336,14 +334,14 @@ export function useSalesData(filterDate, currentUser) {
   const isDayClosed = closingData !== null && !closingData.reopenedAt;
 
   /**
-   * Freezes the day's financial totals into a daily_closings/{filterDate} doc.
+   * Freezes the day's financial totals into a daily_closings/{startDate} doc.
    * Uses setDoc so the call is idempotent if the admin retries after a transient error.
    * @param {object} staffProfile - The current user's profile (must have `id`).
    */
   const closeDay = async (staffProfile) => {
     if (!staffProfile?.id) throw new Error('Staff profile required to close day.');
 
-    const closingRef = doc(db, 'daily_closings', filterDate);
+    const closingRef = doc(db, 'daily_closings', startDate);
     const voidedSales = sales.filter(s => s.status === 'voided');
     const closingVoidCount = voidedSales.length;
     const closingVoidAmount = voidedSales.reduce((sum, s) => sum + (parseFloat(s.total) || 0), 0);
@@ -384,7 +382,7 @@ export function useSalesData(filterDate, currentUser) {
     if (!staffProfile?.id) throw new Error('Staff profile required to reopen day.');
     if (!reason || reason.trim().length === 0) throw new Error('Audit reason required.');
 
-    const closingRef = doc(db, 'daily_closings', filterDate);
+    const closingRef = doc(db, 'daily_closings', startDate);
     await updateDoc(closingRef, {
       reopenedAt: Timestamp.now(),
       reopenedBy: staffProfile.id,

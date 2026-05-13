@@ -183,10 +183,16 @@ export default function BookAppointment({ navigation, route }) {
   // once both pet and service have been pre-selected by the two effects above.
   useEffect(() => {
     if (prefillApplied.current) return;
-    if (prefillDate && !fetching && selectedPet && selectedServices.length > 0) {
-      const parsed = new Date(prefillDate);
-      if (!isNaN(parsed.getTime())) {
-        setDate(parsed);
+    if (selectedPet && selectedServices.length > 0) {
+      if (prefillDate) {
+        const parsed = new Date(prefillDate);
+        if (!isNaN(parsed.getTime())) {
+          setDate(parsed);
+          setStep(3);
+          prefillApplied.current = true;
+        }
+      } else {
+        // T4.207: If pet and service are prefilled (Re-Book), skip directly to Step 3 (Slot Picker)
         setStep(3);
         prefillApplied.current = true;
       }

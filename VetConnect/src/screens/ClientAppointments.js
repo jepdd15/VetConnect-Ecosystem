@@ -1098,9 +1098,11 @@ const ClientAppointments = ({ navigation }) => {
                 <Text style={styles.receiptHeader}>
                   {receiptData?.clinicName || clinicName || 'VET CLINIC'}
                 </Text>
-                <Text style={[styles.receiptMetaValue, { textAlign: 'center', fontSize: 10, color: COLORS.textMuted }]}>
-                  {receiptData?.clinicAddress || clinicAddress}
-                </Text>
+                { (receiptData?.clinicAddress || clinicAddress) && (
+                  <Text style={[styles.receiptMetaValue, { textAlign: 'center', fontSize: 10, color: COLORS.textMuted }]}>
+                    {receiptData?.clinicAddress || clinicAddress}
+                  </Text>
+                )}
                 { (receiptData?.clinicPhone || clinicPhone) && (
                   <Text style={[styles.receiptMetaValue, { textAlign: 'center', fontSize: 10, color: COLORS.textMuted }]}>
                     TEL: {receiptData?.clinicPhone || clinicPhone}

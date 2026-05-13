@@ -14,7 +14,6 @@ import {
   sanitizeCancelReason,
 } from '../utils/statusLabels';
 import { buildVisitTimeline } from '../utils/buildVisitTimeline';
-import { generateVisitPDF } from '../utils/generateVisitPDF';
 import VisitTimeline from './VisitTimeline';
 import EncounterSummary from './EncounterSummary';
 import WaitTimeMetrics from './WaitTimeMetrics';
@@ -594,18 +593,6 @@ const AppointmentCardContent = ({
               }}
             >
               <Text style={[styles.btnText, { color: COLORS.accent }]}>Re-Book</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.btn, styles.downloadBtn]}
-              disabled={medRecordLoading}
-              onPress={() => generateVisitPDF({
-                record: medRecord || appointment,
-                petName: appointment.petName,
-              })}
-            >
-              <Text style={[styles.btnText, { color: COLORS.sky }]}>
-                {medRecordLoading ? 'Loading...' : 'Visit Summary'}
-              </Text>
             </TouchableOpacity>
             {navigation ? (
               <TouchableOpacity

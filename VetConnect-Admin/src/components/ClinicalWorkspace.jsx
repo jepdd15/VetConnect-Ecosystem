@@ -2310,7 +2310,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             ownerName: patient.ownerName || 'Walk-In Client',
             visitDate: commitTimestamp,
             diagnosis: (soapData.diagnoses || [])[0]?.name || 'Clinical Visit',
-            instructions: soapData.clientInstructions || soapData.plan || '',
+            instructions: soapData.clientInstructions || '',
             medications: treatmentCart
                 .filter(item => (item.productClass || (item.isDrug ? 'medicine' : 'retail')) === 'medicine')
                 .map(item => ({

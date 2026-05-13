@@ -746,7 +746,7 @@ function renderEnhancedDelta(key, data, unit, petSpecies) {
 // ---------------------------------------------------------------------------
 
 export default function PetHistoryScreen({ route, navigation }) {
-  const { petId, petName } = route.params;
+  const { petId, petName, highlightRecordId } = route.params;
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   // T4.155 Day 3: Pull-to-refresh — visual affordance (data auto-refreshes via onSnapshot)
@@ -761,6 +761,8 @@ export default function PetHistoryScreen({ route, navigation }) {
   const [activeFilters, setActiveFilters] = useState(new Set());
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [pendingFilters, setPendingFilters] = useState(new Set());
+  const [highlightedId, setHighlightedId] = useState(null);
+  const scrollPerformed = useRef(false);
   // T4.107: Departments — one-shot fetch for dynamic filter chips
   const [departments, setDepartments] = useState([]);
   const { clinicPhone, clinicName, clinicAddress, clinicTIN, baiRegistrationNumber } = useClinicContact();
@@ -1208,11 +1210,34 @@ export default function PetHistoryScreen({ route, navigation }) {
   // Auto-expand the latest record when filtered history first populates
   useEffect(() => {
     if (filteredHistory.length > 0 && expandedIds.size === 0 && !allExpanded) {
-      setExpandedIds(new Set([filteredHistory[0].id]));
+      if (highlightRecordId) {
+        setExpandedIds(new Set([highlightRecordId]));
+      } else {
+        setExpandedIds(new Set([filteredHistory[0].id]));
+      }
     }
-    // Intentional: only run when filteredHistory changes identity (new data loaded)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredHistory]);
+  }, [filteredHistory, highlightRecordId]);
+
+  // T4.207: Auto-scroll to highlighted record when history is loaded
+  useEffect(() => {
+    if (!highlightRecordId || scrollPerformed.current || loading || filteredHistory.length === 0) return;
+
+    const index = filteredHistory.findIndex(r => r.id === highlightRecordId);
+    if (index !== -1) {
+      setTimeout(() => {
+        flatListRef.current?.scrollToIndex({
+          index,
+          animated: true,
+          viewPosition: 0.1, // Near top
+        });
+        setHighlightedId(highlightRecordId);
+        scrollPerformed.current = true;
+
+        // Clear highlight after 3 seconds
+        setTimeout(() => setHighlightedId(null), 3000);
+      }, 500);
+    }
+  }, [highlightRecordId, loading, filteredHistory]);
 
   const toggleRecord = useCallback((id) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -1662,7 +1687,10 @@ export default function PetHistoryScreen({ route, navigation }) {
           <View style={styles.recordCardWrapper}>
             <View style={styles.recordCardShadow} />
             <TouchableOpacity
-              style={styles.recordCard}
+              style={[
+                styles.recordCard,
+                item.id === highlightedId && styles.recordCardHighlighted
+              ]}
               onPress={() => toggleRecord(item.id)}
               activeOpacity={0.9}
             >
@@ -1708,14 +1736,24 @@ export default function PetHistoryScreen({ route, navigation }) {
                   );
                 })()}
 
-                {/* Section divider: CLINICAL NOTES */}
-                <View style={{ borderTopWidth: 1, borderTopColor: COLORS.borderLight, marginBottom: 10, paddingTop: 8 }}>
-                  <Text style={{ fontSize: 9, fontWeight: '900', color: COLORS.textMuted, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 6 }}>Clinical Notes</Text>
-                </View>
-            {!isGrooming && (item.diagnoses?.length > 0 || item.diagnosis) && (() => {
-              const dxList = item.diagnoses?.length > 0
+                {/* INTEGRATED REASON FOR VISIT — Moved to top for better context flow */}
+                {!isGrooming && item.soap?.subjective && (
+                  <View style={{ marginBottom: 12 }}>
+                    <Text style={{ fontSize: 13, color: COLORS.brand, fontWeight: '700' }}>
+                      <Text style={{ color: COLORS.textMuted, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1 }}>Reason: </Text>
+                      {item.soap.subjective}
+                    </Text>
+                  </View>
+                )}
+
+            {!isGrooming && (() => {
+              const dxList = (item.diagnoses?.length > 0
                 ? item.diagnoses
-                : [{ name: item.diagnosis }];
+                : (item.diagnosis ? [{ name: item.diagnosis }] : []))
+                .filter(dx => dx.name && !['Clinical Visit', 'Unspecified', 'N/A'].includes(dx.name));
+              
+              if (dxList.length === 0) return null;
+              
               const isMultiple = dxList.length > 1;
               return (
                 <View style={styles.diagnosisHero}>
@@ -1731,15 +1769,14 @@ export default function PetHistoryScreen({ route, navigation }) {
                         <Text style={styles.diagnosisHeroText}>
                           {dx.name}{dx.severity ? ` (${dx.severity.toUpperCase()})` : ''}
                         </Text>
-                        {dx.notes ? (
-                          <Text style={styles.diagnosisHeroNotes}>{dx.notes}</Text>
-                        ) : null}
+                        {/* dx.notes hidden for client privacy — only Instructions are shown */}
                       </View>
                     </View>
                   ))}
                 </View>
               );
             })()}
+
 
             {!isGrooming && (item.patientStatus || item.soap?.prognosis) && (
               <View style={styles.statusPrognosisRow}>
@@ -1759,12 +1796,8 @@ export default function PetHistoryScreen({ route, navigation }) {
               </View>
             )}
 
-            {!isGrooming && item.soap?.subjective && (
-              <View style={styles.reasonForVisitBox}>
-                <Text style={styles.reasonForVisitLabel}>REASON FOR VISIT</Text>
-                <Text style={styles.reasonForVisitText}>{item.soap.subjective}</Text>
-              </View>
-            )}
+            {/* Reason for Visit integrated at top — old box removed */}
+
 
             {(item.intakeContext?.clientNotes || item.intakeContext?.staffNotes) && (
               <View style={styles.intakeContextBox}>
@@ -1782,40 +1815,46 @@ export default function PetHistoryScreen({ route, navigation }) {
               </View>
             )}
 
-            {!item.dischargeSummary && !!(item.assessmentNotes || (item.soap?.assessment && item.soap.assessment !== item.diagnosis)) && (
-              <View style={styles.assessmentBox}>
-                <Text style={styles.assessmentLabel}>VET&apos;S NOTES</Text>
-                <Text style={styles.assessmentText}>{item.assessmentNotes || item.soap?.assessment}</Text>
+            {/* Internal Vet's Notes (Assessments) removed for client privacy */}
+
+
+            {!isGrooming && (
+              <View style={{ marginTop: 12, marginBottom: 12 }}>
+                <Text style={{ fontSize: 9, fontWeight: '900', color: COLORS.textMuted, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 8 }}>Vitals</Text>
+                <View style={{ 
+                  flexDirection: 'row', 
+                  flexWrap: 'wrap', 
+                  borderWidth: 2, 
+                  borderColor: COLORS.brand, 
+                  backgroundColor: COLORS.white,
+                  padding: 8
+                }}>
+                  {[
+                    { label: 'WT', value: weightStr, unit: 'kg' },
+                    { label: 'TEMP', value: tempStr, unit: '°C' },
+                    { label: 'HR', value: hrStr, unit: 'bpm' },
+                    { label: 'RR', value: rrStr, unit: 'br/min' },
+                    { label: 'CRT', value: crtStr, unit: 's' },
+                    { label: 'BCS', value: bcsStr, unit: '/9' },
+                    { label: 'PAIN', value: painStr, unit: '/10' },
+                  ].map((v, i) => (
+                    <View key={i} style={{ 
+                      flexDirection: 'row', 
+                      alignItems: 'center', 
+                      marginRight: 12,
+                      marginBottom: 4
+                    }}>
+                      <Text style={{ fontSize: 10, fontWeight: '900', color: COLORS.textMuted }}>{v.label}: </Text>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: COLORS.brand }}>
+                        {v.value ? `${v.value}${v.unit}` : '--'}
+                      </Text>
+                      {i < 6 && <Text style={{ marginLeft: 12, color: COLORS.borderLight, fontWeight: '300' }}>|</Text>}
+                    </View>
+                  ))}
+                </View>
               </View>
             )}
 
-            {!isGrooming && (
-              <View>
-                <View style={{ borderTopWidth: 1, borderTopColor: COLORS.borderLight, marginBottom: 8, paddingTop: 8 }}>
-                  <Text style={{ fontSize: 9, fontWeight: '900', color: COLORS.textMuted, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 6 }}>Vitals</Text>
-                </View>
-              <View style={styles.vitalsGrid}>
-                {[
-                  { label: 'WEIGHT', value: weightStr, unit: 'kg' },
-                  { label: 'TEMP', value: tempStr, unit: '°C' },
-                  { label: 'HR', value: hrStr, unit: 'bpm' },
-                  { label: 'RR', value: rrStr, unit: 'br/min' },
-                  { label: 'CRT', value: crtStr, unit: 'sec' },
-                  { label: 'BCS', value: bcsStr, unit: '/9' },
-                  { label: 'PAIN', value: painStr, unit: '/10' },
-                ].map((v, i) => (
-                  <View key={i} style={styles.vitalsGridItem}>
-                    <Text style={styles.vitalsGridLabel}>{v.label}</Text>
-                    {v.value ? (
-                      <Text style={styles.vitalsGridValue}>{v.value} {v.unit}</Text>
-                    ) : (
-                      <Text style={styles.vitalsGridMissing}>not taken</Text>
-                    )}
-                  </View>
-                ))}
-              </View>
-              </View>
-            )}
 
             {/* T2.8: Show discharge instructions (client-safe) instead of raw SOAP plan */}
             {!item.dischargeSummary && (
@@ -1826,35 +1865,43 @@ export default function PetHistoryScreen({ route, navigation }) {
                 ]}
               >
                 <Text style={[styles.planLabel, { color: themeColor }]}>
-                  {isGrooming ? "GROOMING NOTES:" : "INSTRUCTIONS:"}
+                  {isGrooming ? "GROOMING NOTES:" : "DISCHARGE NOTES:"}
                 </Text>
                 <Text style={styles.planText}>
                   {isGrooming
                     ? (item.treatment || "No grooming notes recorded.")
-                    : "Visit summary not yet available for this record."}
+                    : (item.soap?.clientInstructions || "No care instructions provided for this visit.")}
                 </Text>
               </View>
             )}
 
-            {!item.dischargeSummary && item.prescriptions?.filter(rx =>
-              (rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail')) === 'medicine'
-            ).length > 0 && (
-              <View style={styles.rxBox}>
-                <Text style={styles.rxTitle}>PRESCRIBED MEDICATIONS</Text>
-                {item.prescriptions.filter(rx =>
-                  (rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail')) === 'medicine'
-                ).map((rx, idx) => (
-                  <View key={idx} style={styles.rxItem}>
-                    <Text style={styles.rxName}>
-                      {rx.name}{rx.qty ? ` x${rx.qty}` : ''}
-                    </Text>
-                    <Text style={styles.rxSig}>
-                      {rx.instructions || "Use as directed"}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            )}
+            {!item.dischargeSummary && (() => {
+              const meds = [
+                ...(item.prescriptions || []),
+                ...(item.dispensedProducts || [])
+              ].filter(rx => 
+                (rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail')) === 'medicine'
+              );
+              
+              if (meds.length === 0) return null;
+
+              return (
+                <View style={styles.rxBox}>
+                  <Text style={styles.rxTitle}>MEDICATIONS</Text>
+                  {meds.map((rx, idx) => (
+                    <View key={idx} style={styles.rxItem}>
+                      <Text style={styles.rxName}>
+                        {rx.name}{rx.qty ? ` x${rx.qty}` : ''}
+                      </Text>
+                      <Text style={styles.rxSig}>
+                        {rx.instructions || rx.sig || "Use as directed"}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              );
+            })()}
+
 
             {!item.dischargeSummary && item.prescriptions?.filter(rx => {
               const pc = rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail');
@@ -1977,28 +2024,29 @@ export default function PetHistoryScreen({ route, navigation }) {
                 : null;
 
               return (
-                <View style={styles.dischargeCard}>
+                <View style={[styles.dischargeCard, { borderWidth: 2, borderColor: COLORS.brand, backgroundColor: COLORS.white }]}>
                   <View style={styles.dischargeHeaderRow}>
                     <MaterialIcons name="assignment" size={14} color={COLORS.accent} />
                     <Text style={styles.dischargeHeader}>DISCHARGE NOTES</Text>
-                    {ds.patientStatus && (
-                      <Text style={styles.dischargeStatusPill}>{ds.patientStatus}</Text>
-                    )}
                   </View>
 
-                  {doThisItems.length > 0 && (
-                    <View style={styles.dischargeSection}>
-                      {doThisItems.map((line, i) => (
+                  <View style={styles.dischargeSection}>
+                    {doThisItems.length > 0 ? (
+                      doThisItems.map((line, i) => (
                         <Text key={i} style={styles.dischargeBullet}>• {line}</Text>
-                      ))}
-                    </View>
-                  )}
+                      ))
+                    ) : (
+                      <Text style={[styles.dischargeBullet, { fontStyle: 'italic', color: COLORS.textMuted }]}>
+                        No care instructions provided for this visit.
+                      </Text>
+                    )}
+                  </View>
 
                   {ds.medications && ds.medications.length > 0 && (
                     <View style={styles.dischargeSection}>
                       <Text style={styles.dischargeSectionLabel}>MEDICATIONS</Text>
                       {ds.medications.map((med, i) => (
-                        <View key={i} style={styles.dischargeMedRow}>
+                        <View key={i} style={[styles.dischargeMedRow, { backgroundColor: COLORS.cream }]}>
                           <Text style={styles.dischargeMedName}>{med.name}</Text>
                           <Text style={styles.dischargeMedMeta}>
                             ×{med.qty || 1} — {med.instructions || 'Use as directed'}
@@ -2008,64 +2056,55 @@ export default function PetHistoryScreen({ route, navigation }) {
                     </View>
                   )}
 
-                  {ds.supplies && ds.supplies.length > 0 && (
-                    <View style={styles.dischargeSection}>
-                      <Text style={styles.dischargeSectionLabel}>TAKE-HOME SUPPLIES</Text>
-                      {ds.supplies.map((sup, i) => (
-                        <View key={i} style={styles.dischargeMedRow}>
-                          <Text style={styles.dischargeMedName}>{sup.name}</Text>
-                          <Text style={styles.dischargeMedMeta}>
-                            x{sup.qty || 1}{sup.instructions ? ` — ${sup.instructions}` : ''}
-                          </Text>
-                        </View>
-                      ))}
+                  <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: COLORS.borderLight }}>
+                    <Text style={{ fontSize: 9, fontWeight: '900', color: COLORS.textMuted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Next Steps</Text>
+                    
+                    {ds.recheckIn && (
+                      <View style={[styles.dischargeRecheckRow, { backgroundColor: COLORS.white, borderStyle: 'dashed' }]}>
+                        <MaterialIcons name="replay" size={14} color={COLORS.accent} />
+                        <Text style={styles.dischargeRecheckText}>Recheck in: {ds.recheckIn}</Text>
+                      </View>
+                    )}
+
+                    {nextVisitStr && (
+                      <View style={[styles.dischargeNextVisit, { backgroundColor: COLORS.white, borderStyle: 'dashed' }]}>
+                        <MaterialIcons name="event" size={14} color={COLORS.warning} />
+                        <Text style={styles.dischargeNextVisitText}>
+                          Follow up <Text style={styles.dischargeNextVisitDate}>{nextVisitStr}</Text>
+                        </Text>
+                      </View>
+                    )}
+
+                    <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                      <TouchableOpacity
+                        style={[styles.dischargeCallBtn, { flex: 1, marginBottom: 0 }, !clinicPhone && styles.dischargeCallBtnDisabled]}
+                        onPress={() => {
+                          if (!clinicPhone) return;
+                          Linking.openURL(`tel:${clinicPhone}`);
+                        }}
+                        disabled={!clinicPhone}
+                      >
+                        <MaterialIcons name="phone" size={14} color={COLORS.white} />
+                        <Text style={styles.dischargeCallBtnText}>Call Us</Text>
+                      </TouchableOpacity>
+
+                      {nextVisitDate && (
+                        <TouchableOpacity
+                          style={[styles.dischargeFollowUpBtn, { flex: 1.5, marginBottom: 0 }]}
+                          onPress={() => navigation.navigate('BookAppointment', {
+                            prefillPetId: petId,
+                            prefillServiceType: item.serviceType || null,
+                            prefillDate: nextVisitDate.toISOString(),
+                            prefillDateMatchType: 'exact',
+                            prefillTargetDate: nextVisitDate.toISOString(),
+                            fromFollowUp: true,
+                          })}
+                        >
+                          <Text style={styles.dischargeFollowUpBtnText}>Book Follow-Up</Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
-                  )}
-
-                  {/* T4.155 Day 2: Gap 4 — recheck interval from ClinicalWorkspace discharge form */}
-                  {ds.recheckIn && (
-                    <View style={styles.dischargeRecheckRow}>
-                      <MaterialIcons name="replay" size={14} color={COLORS.accent} />
-                      <Text style={styles.dischargeRecheckText}>Recheck in: {ds.recheckIn}</Text>
-                    </View>
-                  )}
-
-                  {nextVisitStr && (
-                    <View style={styles.dischargeNextVisit}>
-                      <MaterialIcons name="event" size={14} color={COLORS.warning} />
-                      <Text style={styles.dischargeNextVisitText}>
-                        Follow up <Text style={styles.dischargeNextVisitDate}>{nextVisitStr}</Text>
-                      </Text>
-                    </View>
-                  )}
-
-                  <TouchableOpacity
-                    style={[styles.dischargeCallBtn, !clinicPhone && styles.dischargeCallBtnDisabled]}
-                    onPress={() => {
-                      if (!clinicPhone) return;
-                      Linking.openURL(`tel:${clinicPhone}`);
-                    }}
-                    disabled={!clinicPhone}
-                  >
-                    <MaterialIcons name="phone" size={14} color={COLORS.white} />
-                    <Text style={styles.dischargeCallBtnText}>Call Us</Text>
-                  </TouchableOpacity>
-
-                  {nextVisitDate && (
-                    <TouchableOpacity
-                      style={styles.dischargeFollowUpBtn}
-                      onPress={() => navigation.navigate('BookAppointment', {
-                        prefillPetId: petId,
-                        prefillServiceType: item.serviceType || null,
-                        prefillDate: nextVisitDate.toISOString(),
-                        prefillDateMatchType: 'exact',
-                        prefillTargetDate: nextVisitDate.toISOString(),
-                        fromFollowUp: true,
-                      })}
-                    >
-                      <Text style={styles.dischargeFollowUpBtnText}>Book Follow-Up</Text>
-                    </TouchableOpacity>
-                  )}
+                  </View>
 
                   {ds.vetName && (
                     <View style={{ marginTop: 12, paddingTop: 8, borderTopWidth: 1, borderTopColor: COLORS.borderLight }}>
@@ -2076,6 +2115,7 @@ export default function PetHistoryScreen({ route, navigation }) {
                     </View>
                   )}
                 </View>
+
               );
             })()}
 
@@ -2324,16 +2364,13 @@ export default function PetHistoryScreen({ route, navigation }) {
               </View>
             )}
 
-            <View style={styles.actionsRow}>
-              <TouchableOpacity style={styles.actionBtn} onPress={() => generatePDF(item)}>
+            <View style={[styles.actionsRow, { justifyContent: 'flex-end' }]}>
+              <TouchableOpacity style={styles.actionBtn} onPress={() => generateVisitPDF({ record: item, petName, services: item.services })}>
                 <MaterialIcons name="picture-as-pdf" size={16} color={COLORS.accent} />
                 <Text style={styles.actionBtnText}>Visit Summary</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.actionBtn} onPress={() => generatePDF(item)}>
-                <MaterialIcons name="share" size={16} color={COLORS.accent} />
-                <Text style={styles.actionBtnText}>Share</Text>
-              </TouchableOpacity>
             </View>
+
           </View>
           )}
         </TouchableOpacity>
@@ -3150,7 +3187,6 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 0.5,
     flex: 1,
-    flex: 1,
     marginLeft: 12,
   },
   recordCountHeader: {
@@ -3224,6 +3260,11 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     borderRadius: 0,
     overflow: "hidden",
+  },
+  recordCardHighlighted: {
+    borderColor: COLORS.warning,
+    borderWidth: 3,
+    backgroundColor: '#FFFDE7', // Subtle highlight bg
   },
 
   // --- T4.155: Collapsed header row ---

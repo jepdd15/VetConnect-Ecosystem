@@ -128,12 +128,17 @@ export async function generateVisitPDF({ record, petName, services }) {
       : '';
 
   let rxHtml = '';
-  if (record.prescriptions && record.prescriptions.length > 0 && !dsMeds.length) {
-    const medications = record.prescriptions.filter(
-      (rx) => (rx.productClass || (rx.isDrug ? 'medicine' : 'retail')) === 'medicine',
+  const allMeds = [
+    ...(record.prescriptions || []),
+    ...(record.dispensedProducts || [])
+  ];
+
+  if (allMeds.length > 0 && !dsMeds.length) {
+    const medications = allMeds.filter(
+      (rx) => (rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail')) === 'medicine',
     );
-    const nonDrugItems = record.prescriptions.filter(
-      (rx) => (rx.productClass || (rx.isDrug ? 'medicine' : 'retail')) !== 'medicine',
+    const nonDrugItems = allMeds.filter(
+      (rx) => (rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail')) !== 'medicine',
     );
     rxHtml = [
       medications.length > 0

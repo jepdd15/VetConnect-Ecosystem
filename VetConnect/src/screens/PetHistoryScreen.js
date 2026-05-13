@@ -1697,8 +1697,9 @@ export default function PetHistoryScreen({ route, navigation }) {
               {/* COLLAPSED HEADER — always visible */}
               <View style={styles.collapsedHeader}>
                 <Text style={styles.collapsedDate}>{visitDate}</Text>
+                <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: COLORS.borderLight, marginHorizontal: 8 }} />
                 <Text style={styles.collapsedVet} numberOfLines={1}>
-                  {item.vetName || 'Staff'}
+                  {item.vetName || 'Attending Clinician'}
                 </Text>
                 <MaterialIcons
                   name={isExpanded ? 'expand-less' : 'expand-more'}
@@ -1710,31 +1711,51 @@ export default function PetHistoryScreen({ route, navigation }) {
               {/* EXPANDED BODY — only when expanded */}
               {isExpanded && (
               <View style={[styles.cardBody, { backgroundColor: COLORS.white }]}>
-                {/* Service chips + case day */}
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
-                  {(item.serviceNames?.length > 0 ? item.serviceNames : [item.serviceType]).map((svcName, si) => (
-                    <View key={si} style={styles.serviceChip}>
-                      <Text style={[styles.serviceChipText, { color: themeColor }]}>{svcName}</Text>
-                    </View>
-                  ))}
+                {/* T4.194: Typographic "Memo Header" — Services & Staff */}
+                <View style={{ marginBottom: 4 }}>
+                  {/* SERVICES ROW — Sorted A-Z for predictability */}
+                  {(() => {
+                    const sortedServices = [...(item.serviceNames?.length > 0 ? item.serviceNames : [item.serviceType])].sort();
+                    const servicesText = sortedServices.join(', ').toUpperCase();
+                    
+                    const performerNames = item.serviceAttribution?.filter(a => a.staffName).map(a => a.staffName) || [];
+                    const uniquePerformers = [...new Set(performerNames)];
+                    const staffText = uniquePerformers.length > 0 
+                      ? uniquePerformers.join(', ') 
+                      : `${item.vetName || 'Attending Clinician'} (Attending)`;
+
+                    return (
+                      <>
+                        <View style={{ flexDirection: 'row', marginBottom: 4 }}>
+                          <Text style={styles.memoLabel}>SERVICES</Text>
+                          <Text style={styles.memoValue}>{servicesText}</Text>
+                        </View>
+                        
+                        <View style={{ flexDirection: 'row', marginBottom: 4 }}>
+                          <Text style={styles.memoLabel}>STAFF</Text>
+                          <Text style={styles.memoValue}>{staffText}</Text>
+                        </View>
+                      </>
+                    );
+                  })()}
+
+                  {/* CLINIC DAY — Minimalist industrial label */}
                   {caseDayMap[item.id] && (
                     <View style={styles.caseDayBadge}>
-                      <Text style={styles.caseDayText}>Day {caseDayMap[item.id]}</Text>
+                      <Text style={styles.caseDayText}>CLINIC DAY [ DAY {caseDayMap[item.id]} ]</Text>
                     </View>
                   )}
                 </View>
 
-                {/* Service attribution */}
-                {item.serviceAttribution?.length > 0 && (() => {
-                  const attrs = item.serviceAttribution.filter(a => a.staffName);
-                  if (attrs.length === 0) return null;
-                  const uniqueNames = [...new Set(attrs.map(a => a.staffName))];
-                  return (
-                    <Text style={{ fontSize: 10, fontWeight: '700', color: COLORS.textMuted, fontStyle: 'italic', marginBottom: 8 }}>
-                      Performed by: {uniqueNames.join(', ')}
-                    </Text>
-                  );
-                })()}
+                {/* T4.194: Broken line separator after services */}
+                <View style={{ 
+                  height: 1, 
+                  borderTopWidth: 1, 
+                  borderColor: COLORS.borderLight, 
+                  borderStyle: 'dashed', 
+                  marginVertical: 12,
+                  marginHorizontal: -4
+                }} />
 
                 {/* INTEGRATED REASON FOR VISIT — Moved to top for better context flow */}
                 {!isGrooming && item.soap?.subjective && (
@@ -2024,7 +2045,7 @@ export default function PetHistoryScreen({ route, navigation }) {
                 : null;
 
               return (
-                <View style={[styles.dischargeCard, { borderWidth: 2, borderColor: COLORS.brand, backgroundColor: COLORS.white }]}>
+                <View style={[styles.dischargeCard, { backgroundColor: COLORS.white, borderTopWidth: 2, borderTopColor: COLORS.border, borderStyle: 'dashed', marginTop: 20, paddingTop: 16 }]}>
                   <View style={styles.dischargeHeaderRow}>
                     <MaterialIcons name="assignment" size={14} color={COLORS.accent} />
                     <Text style={styles.dischargeHeader}>DISCHARGE NOTES</Text>
@@ -2043,20 +2064,24 @@ export default function PetHistoryScreen({ route, navigation }) {
                   </View>
 
                   {ds.medications && ds.medications.length > 0 && (
-                    <View style={styles.dischargeSection}>
+                    <View style={{ marginTop: 12 }}>
+                      <View style={{ height: 1, borderTopWidth: 1, borderColor: COLORS.borderLight, borderStyle: 'dashed', marginBottom: 12 }} />
                       <Text style={styles.dischargeSectionLabel}>MEDICATIONS</Text>
                       {ds.medications.map((med, i) => (
-                        <View key={i} style={[styles.dischargeMedRow, { backgroundColor: COLORS.cream }]}>
-                          <Text style={styles.dischargeMedName}>{med.name}</Text>
-                          <Text style={styles.dischargeMedMeta}>
-                            ×{med.qty || 1} — {med.instructions || 'Use as directed'}
+                        <View key={i} style={{ marginBottom: 10, paddingLeft: 4 }}>
+                          <Text style={styles.dischargeMedName}>
+                            • {med.name}{med.qty ? ` x${med.qty}` : ''}
+                          </Text>
+                          <Text style={[styles.dischargeMedMeta, { marginLeft: 14, marginTop: 1 }]}>
+                            {med.instructions || 'Use as directed'}
                           </Text>
                         </View>
                       ))}
                     </View>
                   )}
 
-                  <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: COLORS.borderLight }}>
+                  <View style={{ marginTop: 16 }}>
+                    <View style={{ height: 1, borderTopWidth: 1, borderColor: COLORS.borderLight, borderStyle: 'dashed', marginBottom: 16 }} />
                     <Text style={{ fontSize: 9, fontWeight: '900', color: COLORS.textMuted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Next Steps</Text>
                     
                     {ds.recheckIn && (
@@ -2107,7 +2132,7 @@ export default function PetHistoryScreen({ route, navigation }) {
                   </View>
 
                   {ds.vetName && (
-                    <View style={{ marginTop: 12, paddingTop: 8, borderTopWidth: 1, borderTopColor: COLORS.borderLight }}>
+                    <View style={{ marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: COLORS.border, borderStyle: 'dashed' }}>
                       <Text style={{ fontSize: 10, fontWeight: '700', color: COLORS.textMuted, fontStyle: 'italic' }}>Signed by</Text>
                       <Text style={{ fontSize: 13, fontWeight: '900', color: COLORS.brand, marginTop: 2 }}>{ds.vetName}</Text>
                       <View style={{ marginTop: 6, borderBottomWidth: 1, borderBottomColor: COLORS.brand, width: 150 }} />
@@ -3640,6 +3665,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     backgroundColor: COLORS.cream,
     borderRadius: 0,
+    borderTopWidth: 2,
+    borderColor: COLORS.border,
+    borderStyle: 'dashed',
   },
   dischargeHeaderRow: {
     flexDirection: "row",
@@ -3936,36 +3964,33 @@ const styles = StyleSheet.create({
   },
 
   // T3.81: Service chips
-  serviceChip: {
-    backgroundColor: COLORS.cream,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    borderRadius: 0,
-  },
-  serviceChipText: {
+  memoLabel: {
+    width: 70,
     fontSize: 10,
     fontWeight: '900',
+    color: COLORS.textMuted,
+    letterSpacing: 1,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+  },
+  memoValue: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.brand,
+    lineHeight: 18,
   },
 
   // T3.95: Case-day badge
   caseDayBadge: {
-    backgroundColor: COLORS.cream,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderWidth: 1,
-    borderColor: COLORS.warning,
-    borderRadius: 0,
+    marginTop: 4,
+    marginBottom: 4,
   },
   caseDayText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '900',
     color: COLORS.warning,
+    letterSpacing: 1,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
 
   // T3.89: SOAP Assessment block

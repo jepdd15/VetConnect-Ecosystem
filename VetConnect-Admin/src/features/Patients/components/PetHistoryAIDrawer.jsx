@@ -2,16 +2,13 @@
  * PetHistoryAIDrawer.jsx — T4.96
  *
  * Conversational AI assistant for a pet's complete medical history.
- * Renders as a right-anchored MUI Drawer with quick-action chips,
- * multi-turn chat, and react-markdown rendering.
- *
- * All data arrives via props (pet, owner, records, vaccinations) —
- * zero Firestore coupling inside this component.
+ * Modernized to 'Clinical Neubrutalist' aesthetic.
  */
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   Drawer, Box, Typography, IconButton, TextField, Button, Chip, CircularProgress,
+  Divider,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import SendIcon from '@mui/icons-material/Send';
@@ -39,24 +36,36 @@ const QUICK_ACTIONS = [
     label: 'Detect Patterns',
     prompt: "Analyze this patient's medical records for patterns: recurring conditions, weight trends, medication changes, and any concerning trajectories that warrant attention.",
   },
+  {
+    label: 'Vaccination Audit',
+    prompt: "Audit the patient's vaccination history. List what is up-to-date, what is overdue, and what is due within the next 60 days based on the record.",
+  },
+  {
+    label: 'Medication Review',
+    prompt: "Perform a medication reconciliation. List all active or recently mentioned medications, dosages, and any noted instructions or owner compliance issues.",
+  },
+  {
+    label: 'Weight Trajectory',
+    prompt: "Extract all weight data points. Provide a summary of the 12-month weight trend and flag any significant fluctuations (>5% change) that warrant clinical review.",
+  },
 ];
 
-// ─── ReactMarkdown component map (matches ClinicalWorkspace pattern) ─────────
+// ─── ReactMarkdown component map (Modernized) ─────────
 
 function buildMarkdownComponents() {
   return {
     h1: ({ children }) => (
-      <Typography sx={{ fontFamily: FONT, fontSize: '0.95rem', fontWeight: 900, color: COLORS.grooming, mt: 1, mb: 0.5 }}>
+      <Typography sx={{ fontFamily: FONT, fontSize: '0.95rem', fontWeight: 900, color: COLORS.brand, mt: 1, mb: 0.5, textTransform: 'uppercase' }}>
         {children}
       </Typography>
     ),
     h2: ({ children }) => (
-      <Typography sx={{ fontFamily: FONT, fontSize: '0.88rem', fontWeight: 900, color: COLORS.grooming, mt: 0.75, mb: 0.25 }}>
+      <Typography sx={{ fontFamily: FONT, fontSize: '0.88rem', fontWeight: 900, color: COLORS.brand, mt: 0.75, mb: 0.25 }}>
         {children}
       </Typography>
     ),
     h3: ({ children }) => (
-      <Typography sx={{ fontFamily: FONT, fontSize: '0.83rem', fontWeight: 800, color: COLORS.grooming, mt: 0.5, mb: 0.25 }}>
+      <Typography sx={{ fontFamily: FONT, fontSize: '0.83rem', fontWeight: 800, color: COLORS.brand, mt: 0.5, mb: 0.25 }}>
         {children}
       </Typography>
     ),
@@ -66,40 +75,28 @@ function buildMarkdownComponents() {
       </Typography>
     ),
     li: ({ children }) => (
-      <li style={{ fontSize: '0.8rem', marginBottom: '2px', lineHeight: 1.5 }}>{children}</li>
+      <li style={{ fontSize: '0.8rem', marginBottom: '2px', lineHeight: 1.5, color: COLORS.textPrimary }}>{children}</li>
     ),
-    strong: ({ children }) => <strong>{children}</strong>,
+    strong: ({ children }) => <strong style={{ fontWeight: 800, color: COLORS.brand }}>{children}</strong>,
     table: ({ children }) => (
-      <table style={{ borderCollapse: 'collapse', width: '100%', marginBottom: '6px', fontSize: '0.75rem' }}>
+      <table style={{ borderCollapse: 'collapse', width: '100%', marginBottom: '10px', fontSize: '0.75rem', border: `2px solid ${COLORS.brand}` }}>
         {children}
       </table>
     ),
     th: ({ children }) => (
-      <th style={{ border: `1px solid ${COLORS.kpiPurpleBorder}`, padding: '3px 6px', fontWeight: 800, textAlign: 'left', backgroundColor: 'rgba(123,31,162,0.06)' }}>
+      <th style={{ border: `1px solid ${COLORS.brand}`, padding: '4px 8px', fontWeight: 900, textAlign: 'left', backgroundColor: COLORS.panelBg, color: COLORS.brand }}>
         {children}
       </th>
     ),
     td: ({ children }) => (
-      <td style={{ border: `1px solid ${COLORS.kpiPurpleBorder}`, padding: '3px 6px' }}>{children}</td>
+      <td style={{ border: `1px solid ${COLORS.brand}`, padding: '4px 8px', color: COLORS.textPrimary }}>{children}</td>
     ),
     hr: () => (
-      <hr style={{ border: 'none', borderTop: `1px solid ${COLORS.kpiPurpleBorder}`, margin: '6px 0' }} />
+      <hr style={{ border: 'none', borderTop: `2px solid ${COLORS.brand}`, margin: '8px 0' }} />
     ),
   };
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
-/**
- * @param {object}   props
- * @param {boolean}  props.open         - Drawer open state
- * @param {function} props.onClose      - Close handler
- * @param {object}   props.pet          - Pet document
- * @param {object}   props.owner        - Owner document
- * @param {Array}    props.records      - medical_records array (newest-first)
- * @param {Array}    props.vaccinations - vaccinationStatus array
- * @param {string}   props.workerUrl    - Cloudflare Worker URL
- */
 export default function PetHistoryAIDrawer({ open, onClose, pet, owner, records, vaccinations, workerUrl }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -108,20 +105,17 @@ export default function PetHistoryAIDrawer({ open, onClose, pet, owner, records,
   const chatEndRef = useRef(null);
   const markdownComponents = useMemo(() => buildMarkdownComponents(), []);
 
-  // System prompt rebuilds only when the underlying data changes
   const systemPrompt = useMemo(
     () => buildPetHistoryPrompt({ pet, owner, records, vaccinations }),
     [pet, owner, records, vaccinations],
   );
 
-  // Reset conversation whenever the viewed pet changes
   useEffect(() => {
     setMessages([]);
     setInput('');
     setError('');
   }, [pet?.id]);
 
-  // Auto-scroll to bottom on new message or loading indicator
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
@@ -140,7 +134,6 @@ export default function PetHistoryAIDrawer({ open, onClose, pet, owner, records,
     const userMsg = { role: 'user', content: trimmed };
     const newMessages = [...messages, userMsg];
 
-    // Sliding window: keep first message + last 19 to cap context at 20 turns
     const cappedMessages = newMessages.length > 20
       ? [newMessages[0], ...newMessages.slice(-19)]
       : newMessages;
@@ -172,11 +165,6 @@ export default function PetHistoryAIDrawer({ open, onClose, pet, owner, records,
     setError('');
   }, []);
 
-  /**
-   * Retries the last failed message.
-   * Finds the last user message from the conversation, drops the orphaned
-   * copy (since it produced no paired assistant reply), then re-sends it.
-   */
   const handleRetry = useCallback(() => {
     const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
     if (!lastUserMsg) return;
@@ -198,40 +186,40 @@ export default function PetHistoryAIDrawer({ open, onClose, pet, owner, records,
       variant="temporary"
       PaperProps={{
         sx: {
-          width: 420,
+          width: 440,
           borderRadius: 0,
           border: `3px solid ${COLORS.brand}`,
           borderRight: 'none',
-          boxShadow: `-6px 0 0 ${COLORS.brand}`,
+          boxShadow: `-8px 0 0 rgba(62, 39, 35, 0.15)`, // Subtle depth
           display: 'flex',
           flexDirection: 'column',
         },
       }}
     >
-      {/* ── Header ──────────────────────────────────────────────────────────── */}
+      {/* ── Header (Neubrutalist Header) ── */}
       <Box sx={{
-        flexShrink: 0, px: 2.5, py: 1.5,
+        flexShrink: 0, px: 2.5, py: 2,
         bgcolor: COLORS.brand,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <AutoAwesomeIcon sx={{ color: '#FFF8E1', fontSize: 18 }} />
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <AutoAwesomeIcon sx={{ color: COLORS.cream, fontSize: 20 }} />
           <Box>
-            <Typography sx={{ fontWeight: 900, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: 1, color: '#FFF8E1', fontFamily: FONT }}>
+            <Typography sx={{ fontWeight: 900, fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: 1.5, color: COLORS.cream, fontFamily: FONT }}>
               AI Assistant
             </Typography>
-            <Typography sx={{ fontSize: '0.65rem', fontWeight: 600, color: '#D7CCC8', fontFamily: FONT }}>
-              {pet?.name || 'Patient'} History
+            <Typography sx={{ fontSize: '0.65rem', fontWeight: 800, color: COLORS.cream, fontFamily: FONT, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              {pet?.name || 'Patient'} Records Analysis
             </Typography>
           </Box>
         </Box>
 
-        <Box sx={{ display: 'flex', gap: 0.5 }}>
+        <Box sx={{ display: 'flex', gap: 1 }}>
           <IconButton
             size="small"
             onClick={handleReset}
             title="Reset conversation"
-            sx={{ color: '#D7CCC8', '&:hover': { color: '#FFF8E1' } }}
+            sx={{ color: COLORS.cream, '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' } }}
           >
             <RestartAltIcon fontSize="small" />
           </IconButton>
@@ -239,63 +227,73 @@ export default function PetHistoryAIDrawer({ open, onClose, pet, owner, records,
             size="small"
             onClick={handleClose}
             title="Close"
-            sx={{ color: '#D7CCC8', '&:hover': { color: '#FFF8E1' } }}
+            sx={{ color: COLORS.cream, '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' } }}
           >
             <CloseIcon fontSize="small" />
           </IconButton>
         </Box>
       </Box>
 
-      {/* ── Disclaimer bar ─────────────────────────────────────────────────── */}
-      <Box sx={{ px: 2, py: 0.75, bgcolor: COLORS.kpiPurpleBg, borderBottom: `1px solid ${COLORS.kpiPurpleBorder}` }}>
-        <Typography sx={{ fontFamily: FONT, fontSize: '0.62rem', color: COLORS.grooming, fontStyle: 'italic', lineHeight: 1.4 }}>
-          AI-generated — verify all information against the actual records. Not a substitute for clinical judgment.
+      {/* ── Disclaimer bar (Neutral) ── */}
+      <Box sx={{ px: 2.5, py: 1, bgcolor: COLORS.cream, borderBottom: `2px solid ${COLORS.brand}` }}>
+        <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.brand, fontWeight: 700, fontStyle: 'italic', lineHeight: 1.4 }}>
+          AI-generated — verify all information against clinical records. Not a substitute for clinical judgment.
         </Typography>
       </Box>
 
-      {/* ── Quick-action chips (empty state only) ──────────────────────────── */}
-      {messages.length === 0 && (
-        <Box sx={{ px: 2, py: 1.5, display: 'flex', flexDirection: 'column', gap: 1, borderBottom: `1px solid ${COLORS.borderLight}`, flexShrink: 0 }}>
-          <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, fontSize: '0.6rem' }}>
-            QUICK ACTIONS
-          </Typography>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-            {QUICK_ACTIONS.map(qa => (
-              <Chip
-                key={qa.label}
-                label={qa.label}
-                size="small"
-                onClick={() => handleSend(qa.prompt)}
-                sx={{
-                  fontFamily: FONT, fontWeight: 700, fontSize: '0.7rem',
-                  bgcolor: COLORS.cardBg, color: COLORS.grooming,
-                  border: `1.5px solid ${COLORS.kpiPurpleBorder}`,
-                  borderRadius: 0,
-                  '&:hover': { bgcolor: COLORS.kpiPurpleBg },
-                }}
-              />
-            ))}
-          </Box>
-        </Box>
-      )}
-
-      {/* ── Chat area ──────────────────────────────────────────────────────── */}
+      {/* ── Chat Content area ── */}
       <Box sx={{
-        flex: 1, overflowY: 'auto', px: 2, py: 1.5,
-        display: 'flex', flexDirection: 'column', gap: 1.5,
-        '&::-webkit-scrollbar': { width: 4 },
-        '&::-webkit-scrollbar-thumb': { bgcolor: COLORS.timelineRail },
+        flex: 1, overflowY: 'auto', px: 2.5, py: 2,
+        display: 'flex', flexDirection: 'column', gap: 2,
+        bgcolor: COLORS.surfaceAlt,
+        '&::-webkit-scrollbar': { width: 5 },
+        '&::-webkit-scrollbar-thumb': { bgcolor: COLORS.brand },
       }}>
-        {/* Empty-state prompt */}
+        
+        {/* Empty-state & Quick Actions */}
         {messages.length === 0 && (
-          <Box sx={{ textAlign: 'center', py: 6, color: COLORS.textMuted }}>
-            <AutoAwesomeIcon sx={{ fontSize: 36, opacity: 0.25, mb: 1 }} />
-            <Typography sx={{ fontFamily: FONT, fontSize: '0.82rem', fontWeight: 600 }}>
-              Ask anything about {pet?.name || 'this patient'}&apos;s medical history
-            </Typography>
-            <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', mt: 0.5 }}>
-              Try a quick action above, or type your own question.
-            </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, pt: 2 }}>
+            <Box sx={{ textAlign: 'center', color: COLORS.textMuted }}>
+              <AutoAwesomeIcon sx={{ fontSize: 48, opacity: 0.1, mb: 2 }} />
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', fontWeight: 800, color: COLORS.brand }}>
+                Explore {pet?.name || 'this patient'}&apos;s medical history
+              </Typography>
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', mt: 0.5, color: COLORS.textSecondary }}>
+                Ask a specific question or use a quick action below.
+              </Typography>
+            </Box>
+
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, fontSize: '0.6rem' }}>
+                SUGGESTED ANALYTICS
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                {QUICK_ACTIONS.map(qa => (
+                  <Button
+                    key={qa.label}
+                    onClick={() => handleSend(qa.prompt)}
+                    sx={{
+                      fontFamily: FONT, fontWeight: 800, fontSize: '0.72rem',
+                      color: COLORS.brand, bgcolor: COLORS.cardBg,
+                      border: `2px solid ${COLORS.brand}`,
+                      borderRadius: 0,
+                      textTransform: 'none',
+                      px: 2, py: 0.75,
+                      boxShadow: `3px 3px 0px ${COLORS.brand}`,
+                      transition: 'all 0.1s ease',
+                      '&:hover': {
+                        bgcolor: COLORS.panelBg,
+                        transform: 'translate(-1px, -1px)',
+                        boxShadow: `4px 4px 0px ${COLORS.brand}`,
+                      },
+                    }}
+                  >
+                    {qa.label}
+                  </Button>
+                ))}
+              </Box>
+            </Box>
+            <Divider sx={{ borderBottomWidth: 2, borderColor: COLORS.brand, opacity: 0.1 }} />
           </Box>
         )}
 
@@ -303,31 +301,32 @@ export default function PetHistoryAIDrawer({ open, onClose, pet, owner, records,
         {messages.map((msg, i) => (
           <Box
             key={i}
-            sx={{ alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '90%' }}
+            sx={{ alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '92%' }}
           >
             <Typography sx={{
-              fontFamily: FONT, fontSize: '0.58rem', fontWeight: 800,
-              textTransform: 'uppercase', letterSpacing: '0.06em',
-              color: msg.role === 'user' ? COLORS.textMuted : COLORS.grooming,
-              mb: 0.25, px: 0.5,
+              fontFamily: FONT, fontSize: '0.6rem', fontWeight: 1000,
+              textTransform: 'uppercase', letterSpacing: '0.08em',
+              color: msg.role === 'user' ? COLORS.textMuted : COLORS.brand,
+              mb: 0.5, px: 0.5, textAlign: msg.role === 'user' ? 'right' : 'left'
             }}>
-              {msg.role === 'user' ? 'You' : 'AI Assistant'}
+              {msg.role === 'user' ? 'Clinician' : 'AI Assistant'}
             </Typography>
 
             <Box sx={{
-              px: 1.5, py: 1,
+              px: 2, py: 1.5,
               bgcolor: msg.role === 'user' ? COLORS.panelBg : COLORS.cardBg,
-              border: `1.5px solid ${msg.role === 'user' ? COLORS.border : COLORS.kpiPurpleBorder}`,
+              border: `2px solid ${COLORS.brand}`,
               borderRadius: 0,
+              boxShadow: msg.role === 'assistant' ? `4px 4px 0px ${COLORS.brand}` : 'none',
             }}>
               {msg.role === 'assistant' ? (
-                <Box sx={{ fontSize: '0.8rem', color: COLORS.textPrimary, lineHeight: 1.6, fontFamily: FONT }}>
+                <Box sx={{ fontSize: '0.82rem', color: COLORS.textPrimary, lineHeight: 1.7, fontFamily: FONT }}>
                   <ReactMarkdown components={markdownComponents}>
                     {normalizeMarkdownTables(msg.content)}
                   </ReactMarkdown>
                 </Box>
               ) : (
-                <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', color: COLORS.textPrimary, lineHeight: 1.6 }}>
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.82rem', color: COLORS.textPrimary, lineHeight: 1.7, fontWeight: 500 }}>
                   {msg.content}
                 </Typography>
               )}
@@ -337,55 +336,40 @@ export default function PetHistoryAIDrawer({ open, onClose, pet, owner, records,
 
         {/* Loading indicator */}
         {loading && (
-          <Box sx={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 1, px: 1 }}>
-            <CircularProgress size={14} sx={{ color: COLORS.grooming }} />
-            <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', color: COLORS.textMuted, fontStyle: 'italic' }}>
-              Analyzing records...
+          <Box sx={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 1.5, px: 1, py: 1 }}>
+            <CircularProgress size={16} thickness={6} sx={{ color: COLORS.brand }} />
+            <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.brand, fontWeight: 700, letterSpacing: '0.05em' }}>
+              RECONSTRUCTING HISTORY...
             </Typography>
           </Box>
         )}
 
-        {/* Inline error display with retry — no window.alert() */}
         {error && (
           <Box sx={{
-            px: 1.5, py: 1.25,
+            px: 2, py: 1.5,
             bgcolor: COLORS.dangerSurface,
-            border: `1.5px solid ${COLORS.danger}`,
+            border: `2px solid ${COLORS.danger}`,
             borderRadius: 0,
+            boxShadow: `4px 4px 0px ${COLORS.danger}`,
           }}>
-            <Typography sx={{
-              fontFamily: FONT, fontSize: '0.82rem',
-              color: COLORS.danger, fontWeight: 800, mb: 0.25,
-            }}>
-              AI temporarily unavailable
+            <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', color: COLORS.danger, fontWeight: 900, mb: 0.5 }}>
+              INTELLIGENCE OFFLINE
             </Typography>
-            <Typography sx={{
-              fontFamily: FONT, fontSize: '0.72rem',
-              color: COLORS.textMuted, lineHeight: 1.4, mb: 1,
-            }}>
+            <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textSecondary, mb: 1.5 }}>
               {error}
             </Typography>
             <Button
               size="small"
-              variant="outlined"
+              variant="contained"
               startIcon={<ReplayIcon sx={{ fontSize: 14 }} />}
               onClick={handleRetry}
               sx={{
-                fontFamily: FONT,
-                fontWeight: 900,
-                fontSize: '0.65rem',
-                textTransform: 'uppercase',
-                letterSpacing: 0.5,
-                borderRadius: 0,
-                borderColor: COLORS.danger,
-                color: COLORS.danger,
-                '&:hover': {
-                  borderColor: '#B71C1C',
-                  bgcolor: 'rgba(211,47,47,0.04)',
-                },
+                fontFamily: FONT, fontWeight: 900, fontSize: '0.65rem',
+                bgcolor: COLORS.danger, color: '#fff', borderRadius: 0,
+                boxShadow: 'none', '&:hover': { bgcolor: COLORS.dangerHover },
               }}
             >
-              Try Again
+              Retry Connection
             </Button>
           </Box>
         )}
@@ -393,33 +377,33 @@ export default function PetHistoryAIDrawer({ open, onClose, pet, owner, records,
         <div ref={chatEndRef} />
       </Box>
 
-      {/* ── Input area ─────────────────────────────────────────────────────── */}
+      {/* ── Input area (Hardened) ── */}
       <Box sx={{
-        flexShrink: 0, px: 2, py: 1.5,
-        borderTop: `2px solid ${COLORS.border}`,
-        bgcolor: COLORS.surfaceAlt,
+        flexShrink: 0, px: 2, py: 2,
+        borderTop: `3px solid ${COLORS.brand}`,
+        bgcolor: COLORS.panelBg,
         display: 'flex', gap: 1,
       }}>
         <TextField
           fullWidth
           size="small"
-          placeholder="Ask about medical history..."
+          placeholder="Ask a medical query..."
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={loading}
           multiline
-          maxRows={3}
+          maxRows={4}
           sx={{
             fontFamily: FONT,
             '& .MuiOutlinedInput-root': {
               borderRadius: 0,
-              fontSize: '0.82rem',
+              fontSize: '0.85rem',
               fontFamily: FONT,
               bgcolor: COLORS.cardBg,
-              '& fieldset': { borderColor: COLORS.border },
-              '&:hover fieldset': { borderColor: COLORS.accentLight },
-              '&.Mui-focused fieldset': { borderColor: COLORS.grooming },
+              '& fieldset': { border: `2px solid ${COLORS.brand}` },
+              '&:hover fieldset': { borderColor: COLORS.brand },
+              '&.Mui-focused fieldset': { borderWidth: 2, borderColor: COLORS.brand },
             },
           }}
         />
@@ -428,10 +412,11 @@ export default function PetHistoryAIDrawer({ open, onClose, pet, owner, records,
           onClick={() => handleSend()}
           disabled={!input.trim() || loading}
           sx={{
-            minWidth: 44, px: 1, borderRadius: 0,
-            bgcolor: COLORS.grooming, color: '#fff',
-            '&:hover': { bgcolor: COLORS.kpiPurpleText },
-            '&.Mui-disabled': { bgcolor: COLORS.borderLight },
+            minWidth: 50, borderRadius: 0,
+            bgcolor: COLORS.brand, color: COLORS.cream,
+            boxShadow: 'none',
+            '&:hover': { bgcolor: COLORS.accent, boxShadow: 'none' },
+            '&.Mui-disabled': { bgcolor: COLORS.borderLight, color: COLORS.textMuted },
           }}
         >
           <SendIcon fontSize="small" />

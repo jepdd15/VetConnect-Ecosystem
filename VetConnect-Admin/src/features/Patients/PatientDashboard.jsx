@@ -1164,9 +1164,6 @@ export default function PatientDashboard() {
           <Box sx={{ minWidth: 0, flex: 1, ml: 1.5 }}>
             <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, flexWrap: 'wrap' }}>
               <Typography sx={{ fontFamily: FONT, ...TYPE.heading, color: COLORS.brand, textTransform: 'capitalize' }}>{pet?.name}</Typography>
-              <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', color: COLORS.textMuted, fontStyle: 'italic' }}>
-                {pet?.species}
-              </Typography>
               
               {owner && (
                 <Tooltip title={`OWNER: ${owner.fullName || owner.displayName || owner.name} | ${owner.phone || ''} | ${owner.email || ''}`} arrow>
@@ -1185,6 +1182,14 @@ export default function PatientDashboard() {
             </Box>
 
             <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 2.5, rowGap: 1, mt: 0.5 }}>
+              {/* Species */}
+              <Box>
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.62rem', fontWeight: 1000, color: COLORS.textMuted, mb: -0.2, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Species</Typography>
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.82rem', fontWeight: 800, color: COLORS.textPrimary, textTransform: 'capitalize' }}>
+                  {pet?.species || '—'}
+                </Typography>
+              </Box>
+
               {/* Breed */}
               <Box>
                 <Typography sx={{ fontFamily: FONT, fontSize: '0.62rem', fontWeight: 1000, color: COLORS.textMuted, mb: -0.2, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Breed</Typography>
@@ -1429,7 +1434,7 @@ export default function PatientDashboard() {
                           <Box sx={{ color: COLORS.textMuted, display: 'flex', alignItems: 'center' }}>
                             {isYearCollapsed ? <ChevronRightIcon sx={{ fontSize: 14 }} /> : <ExpandMoreIcon sx={{ fontSize: 14 }} />}
                           </Box>
-                          <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', fontWeight: 800, color: COLORS.accent, letterSpacing: '0.04em' }}>{group.year}</Typography>
+                          <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', fontWeight: 800, color: COLORS.textMuted, letterSpacing: '0.04em' }}>{group.year}</Typography>
                           <Typography sx={{ fontFamily: FONT, fontSize: '0.62rem', fontWeight: 600, color: COLORS.textMuted, ml: 'auto' }}>({group.records.length})</Typography>
                         </Box>
 
@@ -1442,11 +1447,11 @@ export default function PatientDashboard() {
                               <Box key={entry.index} onClick={() => scrollToRecord(entry.index)} sx={{
                                 display: 'flex', alignItems: 'center', gap: 1, pl: 2, pr: 1, py: 0.6,
                                 cursor: 'pointer', transition: 'all 0.15s ease',
-                                borderLeft: isActive ? `3px solid ${COLORS.accentLight}` : '3px solid transparent',
+                                borderLeft: isActive ? `3px solid ${COLORS.brand}` : '3px solid transparent',
                                 bgcolor: isActive ? COLORS.panelBg : 'transparent',
                                 '&:hover': { bgcolor: isActive ? COLORS.panelBg : COLORS.surface },
                               }}>
-                                <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: dotColor, flexShrink: 0 }} />
+                                <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: isActive ? COLORS.brand : COLORS.border, flexShrink: 0 }} />
                                 <Box sx={{ minWidth: 0, flex: 1 }}>
                                   <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', fontWeight: isActive ? 700 : 500, color: isActive ? COLORS.brand : COLORS.textSecondary, lineHeight: 1.3 }}>
                                     {entry.dateLabel}
@@ -1471,7 +1476,7 @@ export default function PatientDashboard() {
                 <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 1.5, gap: 0.25 }}>
                   {tocGroups.map((group) => (
                     <React.Fragment key={group.year}>
-                      <Typography sx={{ fontFamily: FONT, fontSize: '0.55rem', fontWeight: 800, color: COLORS.accent, my: 0.5, letterSpacing: '0.04em' }}>
+                      <Typography sx={{ fontFamily: FONT, fontSize: '0.55rem', fontWeight: 800, color: COLORS.textMuted, my: 0.5, letterSpacing: '0.04em' }}>
                         {String(group.year).slice(-2)}
                       </Typography>
                       {group.records.map((entry) => {
@@ -1481,10 +1486,10 @@ export default function PatientDashboard() {
                           <Tooltip key={entry.index} title={`${entry.dateLabel} — ${entry.diagnosis}`} placement="right" arrow>
                             <Box onClick={() => scrollToRecord(entry.index)} sx={{
                               width: 8, height: 8, borderRadius: '50%', my: 0.3,
-                              bgcolor: isActive ? dotColor : 'transparent',
-                              border: `2px solid ${dotColor}`,
+                              bgcolor: isActive ? COLORS.brand : 'transparent',
+                              border: `2px solid ${isActive ? COLORS.brand : COLORS.border}`,
                               cursor: 'pointer', transition: 'all 0.15s ease',
-                              '&:hover': { transform: 'scale(1.5)', bgcolor: dotColor },
+                              '&:hover': { transform: 'scale(1.5)', bgcolor: COLORS.brand },
                             }} />
                           </Tooltip>
                         );

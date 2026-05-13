@@ -563,7 +563,7 @@ const BASE_CSS = `
  * @returns {string} Full HTML document as a string
  */
 export function generateForensicReportHTML({ tabKey, reportData, clinicSettings, startDate, endDate }) {
-  const clinicName = esc(clinicSettings?.clinicName || 'Starbarks Veterinary Clinic');
+  const clinicName = esc(clinicSettings?.clinicName || '');
 
   const now = new Date();
   const generatedAt = now.toLocaleString('en-PH', {

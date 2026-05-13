@@ -103,6 +103,7 @@ export default function Settings() {
     lunchEnabled: true, lunchStart: 12, lunchEnd: 13,
     minSlotInterval: 30, advanceNoticeMins: 120, maxFutureBookingDays: 30,
     clinicPhone: '',
+    clinicEmail: '',
     clinicTIN: '',
     baiRegistrationNumber: '',
     workingDays: [1, 2, 3, 4, 5, 6, 0], // [0:Sun, 1:Mon... 6:Sat]
@@ -454,7 +455,7 @@ export default function Settings() {
       if (lastSavedSettings) {
         const tracked = ['clinicName', 'clinicAddress', 'openHour', 'closeHour', 'lunchEnabled', 'lunchStart', 'lunchEnd',
           'minSlotInterval', 'advanceNoticeMins', 'maxFutureBookingDays',
-          'workingDays', 'clinicPhone', 'clinicTIN', 'baiRegistrationNumber', 'dashboardAlerts', 'dashboardGoals',
+          'workingDays', 'clinicPhone', 'clinicEmail', 'clinicTIN', 'baiRegistrationNumber', 'dashboardAlerts', 'dashboardGoals',
           'clinicLat', 'clinicLng', 'geofenceRadiusM', 'enableAppointmentReminders',
           'enableVaccineReminders', 'vaccineReminderWindowDays', 'vaccineReminderCooldownDays',
           'enableAutoAppointmentReminders', 'appointmentReminderHeadsUpDays'];
@@ -1063,7 +1064,7 @@ export default function Settings() {
         </head>
         <body>
           <div class="poster">
-            <div class="clinic-name">Starbarks Veterinary Clinic</div>
+            <div class="clinic-name">Your Clinic Name</div>
             <div class="instruction">Scan with the VetConnect app to check in</div>
             <div class="qr-box">${qrSvgHtml}</div>
             <div class="footer">VetConnect Self Check-In System</div>
@@ -1149,7 +1150,7 @@ export default function Settings() {
                   <TextField
                     fullWidth size="medium"
                     label="Clinic Official Name"
-                    placeholder="e.g. Starbarks Veterinary Clinic"
+                    placeholder="e.g. My Veterinary Clinic"
                     value={settings.clinicName || ''}
                     onChange={(e) => handleChange('clinicName', e.target.value)}
                     sx={{ bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 0, '& fieldset': { border: `2px solid ${COLORS.accent}33` } } }}
@@ -1167,7 +1168,7 @@ export default function Settings() {
                     helperText="Displayed in the mobile app and document headers."
                   />
                 </Grid>
-                <Grid size={{ xs: 12, md: 4 }}>
+                <Grid size={{ xs: 12, md: 6 }}>
                   <TextField
                     fullWidth size="medium"
                     label="Clinic Phone Number"
@@ -1178,7 +1179,18 @@ export default function Settings() {
                     helperText="Shown to clients in the mobile app."
                   />
                 </Grid>
-                <Grid size={{ xs: 12, md: 4 }}>
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <TextField
+                    fullWidth size="medium"
+                    label="Clinic Official Email"
+                    placeholder="e.g. contact@myclinic.com"
+                    value={settings.clinicEmail || ''}
+                    onChange={(e) => handleChange('clinicEmail', e.target.value)}
+                    sx={{ bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 0, '& fieldset': { border: `2px solid ${COLORS.accent}33` } } }}
+                    helperText="Used for official records and headers."
+                  />
+                </Grid>
+                <Grid size={{ xs: 12, md: 6 }}>
                   <TextField
                     fullWidth size="medium"
                     label="Clinic TIN"
@@ -1189,7 +1201,7 @@ export default function Settings() {
                     helperText="Printed on official receipts for transparency."
                   />
                 </Grid>
-                <Grid size={{ xs: 12, md: 4 }}>
+                <Grid size={{ xs: 12, md: 6 }}>
                   <TextField
                     fullWidth size="medium"
                     label="BAI Reg. #"
@@ -1689,7 +1701,7 @@ export default function Settings() {
             <Grid size={{ xs: 12, md: 5 }}>
               <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
                 <Box ref={qrRef} sx={{ p: 3, border: `3px solid ${COLORS.accent}`, borderRadius: 0, bgcolor: 'white' }}>
-                  <QRCode value="STARBARKS-CHECKIN-starbarks-vetconnect-f6443" size={180} />
+                  <QRCode value="CLINIC-CHECKIN-starbarks-vetconnect-f6443" size={180} />
                 </Box>
               </Box>
               <Button

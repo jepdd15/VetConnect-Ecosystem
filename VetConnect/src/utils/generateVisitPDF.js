@@ -35,14 +35,13 @@ function resolveTimestampMs(ts) {
 /**
  * Generates and shares a PDF visit summary for a completed appointment.
  *
- * @param {{ record: object, petName: string, services?: object[] }} params
+ * @param {{ record: object, petName: string, services?: object[], clinicSettings?: object }} params
  *   record   — medical_records document (or appointment object with service/vitals fields)
  *   petName  — pet display name shown in the PDF header
- *   services — optional appointment services[] array; when provided and has 2+ entries,
- *              a "Services Performed" section is rendered with per-service status, duration,
- *              staff, and price. Gracefully omitted when undefined, null, or length < 2.
+ *   services — optional appointment services[] array
+ *   clinicSettings - optional dynamic clinic contact info from Firestore
  */
-export async function generateVisitPDF({ record, petName, services }) {
+export async function generateVisitPDF({ record, petName, services, clinicSettings }) {
   const esc = (s) =>
     String(s ?? '')
       .replace(/&/g, '&amp;')
@@ -103,7 +102,13 @@ export async function generateVisitPDF({ record, petName, services }) {
 
   const hasDischarge = !!record.dischargeSummary;
   const dsInstructions = record.dischargeSummary?.instructions || '';
-  const dsDiagnosis = record.dischargeSummary?.diagnosis || record.diagnosis || '';
+  const dsDiagnosisList = (record.diagnoses?.length > 0
+    ? record.diagnoses
+    : (record.dischargeSummary?.diagnosis ? [{ name: record.dischargeSummary.diagnosis }] : (record.diagnosis ? [{ name: record.diagnosis }] : [])))
+    .filter(dx => dx.name && !['Clinical Visit', 'Unspecified', 'N/A'].includes(dx.name));
+  
+  const hasMultipleDx = dsDiagnosisList.length > 1;
+  const dxLabel = hasMultipleDx ? 'Diagnoses' : 'Diagnosis';
   const dsMeds = record.dischargeSummary?.medications || [];
 
   const rxHtmlFromDischarge =
@@ -168,33 +173,159 @@ export async function generateVisitPDF({ record, petName, services }) {
   const pdfVitals = resolveVitals(record);
   const hasAnyVital = Object.values(pdfVitals).some((v) => v != null && v !== '');
 
+  const clinic = clinicSettings || {};
+  const clinicName = esc(clinic.clinicName || '');
+  const clinicAddress = esc(clinic.clinicAddress || '');
+  const clinicPhone = esc(clinic.clinicPhone || '');
+  const clinicEmail = esc(clinic.clinicEmail || '');
+  const baiReg = esc(clinic.baiRegistrationNumber || '—');
+  const clinicTIN = esc(clinic.clinicTIN || '—');
+
+  const sortedServices = [...(record.serviceNames?.length > 0 ? record.serviceNames : [record.serviceType || 'Clinical Visit'])].sort();
+  const servicesText = sortedServices.join(', ');
+  const staffNames = record.serviceAttribution?.filter(a => a.staffName).map(a => a.staffName) || [];
+  const staffText = staffNames.length > 0 ? [...new Set(staffNames)].join(', ') : esc(record.vetName || 'Attending Clinician');
+
   const htmlContent = `
     <html>
-      <body style="font-family: Helvetica, Arial, sans-serif; padding: 40px; color: #333;">
-        <h1 style="color: #8B4513; text-align: center; border-bottom: 2px solid #8B4513; padding-bottom: 10px;">Starbarks Veterinary Clinic</h1>
-        <h2 style="text-align: center; margin-top: 0;">Visit Summary</h2>
-        <table style="width: 100%; margin-bottom: 30px;">
-          <tr><td><b>Patient:</b> ${esc(petName)}</td><td style="text-align: right;"><b>Date:</b> ${esc(dateStr)}</td></tr>
-          <tr><td><b>${serviceHeaderKey}:</b> ${serviceHeaderLabel}</td><td style="text-align: right;"><b>Attending Vet:</b> ${esc(record.vetName || 'Staff')}</td></tr>
-        </table>
-        ${servicesHtml}
-        ${hasAnyVital ? `<h3>Vitals</h3>
-        <p>
-          <b>Weight:</b> ${esc(pdfVitals.weight || '-')} kg &nbsp;&nbsp; | &nbsp;&nbsp;
-          <b>Temp:</b> ${esc(pdfVitals.temp || '-')} &deg;C &nbsp;&nbsp; | &nbsp;&nbsp;
-          <b>Heart Rate:</b> ${esc(pdfVitals.hr || '-')} bpm
-          ${pdfVitals.rr ? ` &nbsp;&nbsp; | &nbsp;&nbsp; <b>RR:</b> ${esc(pdfVitals.rr)} br/min` : ''}
-          ${pdfVitals.crt ? ` &nbsp;&nbsp; | &nbsp;&nbsp; <b>CRT:</b> ${esc(pdfVitals.crt)} sec` : ''}
-          ${pdfVitals.bcs ? ` &nbsp;&nbsp; | &nbsp;&nbsp; <b>BCS:</b> ${esc(pdfVitals.bcs)}/9` : ''}
-          ${pdfVitals.pain ? ` &nbsp;&nbsp; | &nbsp;&nbsp; <b>Pain:</b> ${esc(pdfVitals.pain)}/10` : ''}
-        </p>` : ''}
-        ${dsDiagnosis ? `<h3>Diagnosis</h3><p>${esc(dsDiagnosis)}</p>` : ''}
-        ${record.patientStatus ? `<p><b>Status:</b> ${esc(record.patientStatus)}</p>` : ''}
-        ${hasDischarge && dsInstructions ? `<h3>Discharge Notes</h3><p>${esc(dsInstructions).replace(/\n/g, '<br/>')}</p>` : ''}
-        ${hasDischarge ? rxHtmlFromDischarge + suppliesHtmlFromDischarge : rxHtml}
-        ${nextVisitStr ? `<h3 style="color: #D32F2F;">Next Follow-Up Due: ${esc(nextVisitStr)}</h3>` : ''}
-        <hr style="margin-top: 50px;" />
-        <p style="text-align: center; font-size: 12px; color: #888;">This is an electronically generated visit summary and does not require a physical signature.</p>
+      <head>
+        <style>
+          body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 20px 40px; color: #1A1A1A; line-height: 1.5; }
+          .header-container { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px; }
+          .clinic-info { flex: 1; }
+          .clinic-name { font-size: 22px; font-weight: 900; color: #1A1A1A; margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: -0.5px; }
+          .clinic-meta { font-size: 11px; color: #666; margin: 0; }
+          
+          .doc-badge { background: #1A1A1A; color: #FFFFFF; padding: 8px 16px; font-size: 12px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
+          
+          .memo-grid { display: table; width: 100%; border-top: 2px solid #1A1A1A; border-bottom: 1px solid #E5E5E5; margin-bottom: 24px; padding: 12px 0; }
+          .memo-row { display: table-row; }
+          .memo-label { display: table-cell; width: 100px; font-size: 10px; font-weight: 900; color: #888; padding: 4px 0; text-transform: uppercase; letter-spacing: 1px; }
+          .memo-value { display: table-cell; font-size: 13px; font-weight: 700; color: #1A1A1A; padding: 4px 0; }
+          
+          .section-anchor { font-size: 11px; font-weight: 900; color: #888; text-transform: uppercase; letter-spacing: 1.5px; margin: 24px 0 8px 0; border-bottom: 1px dashed #E5E5E5; padding-bottom: 4px; }
+          .content-text { font-size: 14px; color: #1A1A1A; font-weight: 500; margin: 0; }
+          .bullet-list { margin: 8px 0; padding-left: 16px; list-style-type: none; }
+          .bullet-item { font-size: 14px; color: #1A1A1A; margin-bottom: 6px; position: relative; }
+          .bullet-item::before { content: "•"; position: absolute; left: -14px; color: #888; }
+          
+          .vitals-table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+          .vitals-row { border-bottom: 1px dashed #F0F0F0; }
+          .vitals-label { font-size: 11px; font-weight: 900; color: #888; padding: 8px 0; text-transform: uppercase; }
+          .vitals-value { font-size: 13px; font-weight: 700; color: #1A1A1A; text-align: right; padding: 8px 0; font-family: monospace; }
+          .stipple { color: #DDD; font-weight: 400; letter-spacing: 2px; }
+
+          .signature-area { margin-top: 60px; display: flex; flex-direction: column; align-items: flex-end; }
+          .sig-label { font-size: 10px; font-weight: 700; color: #888; font-style: italic; margin-bottom: 4px; }
+          .sig-name { font-size: 14px; font-weight: 900; color: #1A1A1A; margin-bottom: 4px; }
+          .sig-line { width: 200px; height: 1px; background: #1A1A1A; margin-bottom: 4px; }
+          .sig-title { font-size: 9px; font-weight: 900; color: #888; letter-spacing: 1px; text-transform: uppercase; }
+          
+          .reg-footer { margin-top: 40px; border-top: 1px solid #E5E5E5; padding-top: 12px; display: flex; justify-content: space-between; font-size: 9px; color: #AAA; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+        </style>
+      </head>
+      <body>
+        <div class="header-container">
+          <div class="clinic-info">
+            <h1 class="clinic-name">${clinicName}</h1>
+            <p class="clinic-meta">${clinicAddress}</p>
+            <p class="clinic-meta">T: ${clinicPhone} | E: ${clinicEmail}</p>
+          </div>
+          <div class="doc-badge">Visit Summary</div>
+        </div>
+
+        <div class="memo-grid">
+          <div class="memo-row">
+            <div class="memo-label">Services</div>
+            <div class="memo-value">${esc(servicesText)}</div>
+          </div>
+          <div class="memo-row">
+            <div class="memo-label">Staff</div>
+            <div class="memo-value">${esc(staffText)}</div>
+          </div>
+          <div class="memo-row">
+            <div class="memo-label">Patient</div>
+            <div class="memo-value">${esc(petName)}</div>
+          </div>
+          <div class="memo-row">
+            <div class="memo-label">Date</div>
+            <div class="memo-value">${esc(dateStr)}</div>
+          </div>
+        </div>
+
+        ${record.soap?.subjective ? `
+          <div class="section-anchor">Reason for Visit</div>
+          <p class="content-text" style="font-size: 16px; font-weight: 700;">${esc(record.soap.subjective)}</p>
+        ` : ''}
+
+        ${dsDiagnosisList.length > 0 ? `
+          <div class="section-anchor">${dxLabel}</div>
+          ${hasMultipleDx ? `
+            <ul class="bullet-list">
+              ${dsDiagnosisList.map(dx => `<li class="bullet-item">${esc(dx.name)}${dx.severity ? ` (${esc(dx.severity.toUpperCase())})` : ''}</li>`).join('')}
+            </ul>
+          ` : `<p class="content-text">${esc(dsDiagnosisList[0].name)}${dsDiagnosisList[0].severity ? ` (${esc(dsDiagnosisList[0].severity.toUpperCase())})` : ''}</p>`}
+        ` : ''}
+
+        ${hasAnyVital ? `
+          <div class="section-anchor">Vitals</div>
+          <table class="vitals-table">
+            <tr class="vitals-row">
+              <td class="vitals-label">Weight <span class="stipple">................</span></td>
+              <td class="vitals-value">${esc(pdfVitals.weight || '-')} kg</td>
+              <td style="width: 40px;"></td>
+              <td class="vitals-label">Temperature <span class="stipple">...........</span></td>
+              <td class="vitals-value">${esc(pdfVitals.temp || '-')} &deg;C</td>
+            </tr>
+            <tr class="vitals-row">
+              <td class="vitals-label">Heart Rate <span class="stipple">...........</span></td>
+              <td class="vitals-value">${esc(pdfVitals.hr || '-')} bpm</td>
+              <td style="width: 40px;"></td>
+              <td class="vitals-label">Resp Rate <span class="stipple">.............</span></td>
+              <td class="vitals-value">${esc(pdfVitals.rr || '-')} br/min</td>
+            </tr>
+            <tr class="vitals-row">
+              <td class="vitals-label">CRT <span class="stipple">..................</span></td>
+              <td class="vitals-value">${esc(pdfVitals.crt || '-')} s</td>
+              <td style="width: 40px;"></td>
+              <td class="vitals-label">BCS <span class="stipple">..................</span></td>
+              <td class="vitals-value">${esc(pdfVitals.bcs || '-')} / 9</td>
+            </tr>
+          </table>
+        ` : ''}
+
+        ${hasDischarge && dsInstructions ? `
+          <div class="section-anchor">Discharge Notes</div>
+          <p class="content-text" style="line-height: 1.6;">${esc(dsInstructions).replace(/\n/g, '<br/>')}</p>
+        ` : ''}
+
+        ${hasDischarge && dsMeds.length > 0 ? `
+          <div class="section-anchor">Medications</div>
+          <ul class="bullet-list">
+            ${dsMeds.map(med => `
+              <li class="bullet-item">
+                <b>${esc(med.name)}</b> x${esc(med.qty || 1)}: ${esc(med.instructions || 'Use as directed')}
+              </li>
+            `).join('')}
+          </ul>
+        ` : ''}
+
+        ${nextVisitStr ? `
+          <div class="section-anchor">Next Steps</div>
+          <p class="content-text" style="color: #D32F2F; font-weight: 900;">RECHECK IN: ${esc(nextVisitStr)}</p>
+        ` : ''}
+
+        <div class="signature-area">
+          <div class="sig-label">Signed by</div>
+          <div class="sig-name">${esc(record.vetName || 'Authorized Clinician')}</div>
+          <div class="sig-line"></div>
+          <div class="sig-title">Attending Veterinarian</div>
+        </div>
+
+        <div class="reg-footer">
+          <span>BAI Reg No: ${baiReg}</span>
+          <span>TIN: ${clinicTIN}</span>
+        </div>
       </body>
     </html>
   `;

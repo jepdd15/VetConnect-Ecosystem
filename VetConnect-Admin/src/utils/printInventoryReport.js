@@ -14,7 +14,7 @@ const formatCategory = (str) => {
  * @returns {string} Full HTML document string
  */
 export function generateInventoryReportHTML(items, clinicSettings = {}, filterSummary = '') {
-  const clinicName = esc(clinicSettings?.clinicName || 'Starbarks Veterinary Clinic');
+  const clinicName = esc(clinicSettings?.clinicName || '');
   const clinicAddr = esc(clinicSettings?.clinicAddress || '');
   const generated = new Date().toLocaleString('en-PH', {
     timeZone: 'Asia/Manila',

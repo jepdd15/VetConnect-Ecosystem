@@ -25,7 +25,7 @@ import { resolveObjectiveText } from './examUtils';
 export function buildPetHistoryPrompt({ pet, owner, records, vaccinations }) {
   const lines = [];
 
-  lines.push('You are VetConnect AI History Assistant, supporting licensed veterinarians at Starbarks Veterinary Clinic in the Philippines.');
+  lines.push('You are VetConnect AI History Assistant, supporting licensed veterinarians in the Philippines.');
   lines.push('You have access to the complete medical history of the patient described below.');
   lines.push('Answer questions accurately based ONLY on the provided records. If the answer is not in the records, say so.');
   lines.push('Be clinical, concise, and suitable for a licensed veterinarian audience.');

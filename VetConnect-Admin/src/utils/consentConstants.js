@@ -71,7 +71,7 @@ export const SIGNATURE_TYPES = Object.freeze({
 export const DEFAULT_DPA_TEXT = `DATA PRIVACY CONSENT FORM
 Republic Act No. 10173 — Data Privacy Act of 2012
 
-Clinic: StarBarks VetConnect Veterinary Clinic
+Clinic: [Your Clinic Name]
 Effective Version: 1
 Date: Effective upon publication
 
@@ -79,7 +79,7 @@ Date: Effective upon publication
 
 I. INTRODUCTION
 
-StarBarks VetConnect Veterinary Clinic ("the Clinic") is committed to protecting and respecting your privacy in accordance with the Republic Act No. 10173, otherwise known as the Data Privacy Act of 2012 ("DPA"), its Implementing Rules and Regulations, and all relevant National Privacy Commission (NPC) issuances.
+The Clinic is committed to protecting and respecting your privacy in accordance with the Republic Act No. 10173, otherwise known as the Data Privacy Act of 2012 ("DPA"), its Implementing Rules and Regulations, and all relevant National Privacy Commission (NPC) issuances.
 
 This Consent Form describes what personal data we collect about you and your pet(s), why we collect it, how we use it, how long we keep it, and what rights you have over it. Please read this form carefully before providing your consent.
 
@@ -186,10 +186,10 @@ IX. DATA PROTECTION OFFICER CONTACT
 
 For privacy-related inquiries, requests to exercise your data subject rights, or concerns regarding this consent form, please contact the Clinic's Data Protection Officer:
 
-StarBarks VetConnect — Data Protection Officer
-Address: Santa Barbara, Pangasinan
-Email: privacy@starbarks.com
-Phone: Please contact the clinic directly
+[Clinic Name] — Data Protection Officer
+Address: [Clinic Address]
+Email: [DPO Email]
+Phone: [DPO Phone]
 
 ─────────────────────────────────────────────────────────────
 
@@ -202,7 +202,7 @@ b. You freely, voluntarily, and knowingly give your consent to the collection, u
 c. You understand that you may withdraw this consent at any time by contacting the Clinic, subject to the legal retention requirements described in Section V.
 d. You are at least eighteen (18) years of age, or, if below 18, that your parent or legal guardian has provided consent on your behalf.
 
-This consent is valid for all future interactions with StarBarks VetConnect until withdrawn in writing.`;
+This consent is valid for all future interactions with the Clinic until withdrawn in writing.`;
 
 // ---------------------------------------------------------------------------
 // DEFAULT WAIVER TEXT — Veterinary Services Liability Waiver
@@ -214,7 +214,7 @@ This consent is valid for all future interactions with StarBarks VetConnect unti
  */
 export const DEFAULT_WAIVER_TEXT = `VETERINARY SERVICES LIABILITY WAIVER AND AUTHORIZATION FORM
 
-Clinic: StarBarks VetConnect Veterinary Clinic
+Clinic: [Your Clinic Name]
 Effective Version: 1
 
 ─────────────────────────────────────────────────────────────
@@ -242,7 +242,7 @@ I agree to promptly inform the attending veterinarian of any changes to my pet's
 
 III. AUTHORISATION FOR EMERGENCY CARE
 
-In the event of a life-threatening emergency where I am temporarily unreachable and immediate intervention is required to preserve my pet's life or prevent serious suffering, I hereby authorise StarBarks VetConnect to proceed with emergency stabilisation procedures at the reasonable clinical discretion of the attending veterinarian.
+In the event of a life-threatening emergency where I am temporarily unreachable and immediate intervention is required to preserve my pet's life or prevent serious suffering, I hereby authorise the Clinic to proceed with emergency stabilisation procedures at the reasonable clinical discretion of the attending veterinarian.
 
 The Clinic will make reasonable efforts to contact me before proceeding with non-emergency interventions. All authorised emergency procedures will be documented and communicated to me at the earliest opportunity.
 
@@ -250,7 +250,7 @@ The Clinic will make reasonable efforts to contact me before proceeding with non
 
 IV. FINANCIAL RESPONSIBILITY
 
-I accept full financial responsibility for all professional services, medications, procedures, and supplies rendered to my pet by StarBarks VetConnect. Payment is due at the time services are rendered unless an alternative arrangement has been agreed in writing.
+I accept full financial responsibility for all professional services, medications, procedures, and supplies rendered to my pet by the Clinic. Payment is due at the time services are rendered unless an alternative arrangement has been agreed in writing.
 
 I understand that routine services will be priced according to the Clinic's current fee schedule. Estimates will be provided for elective procedures. Emergency or unplanned interventions may incur additional fees, which will be communicated as soon as reasonably practicable.
 
@@ -258,7 +258,7 @@ I understand that routine services will be priced according to the Clinic's curr
 
 V. LIMITATION OF LIABILITY
 
-Subject to applicable Philippine law, StarBarks VetConnect and its veterinarians, staff, and agents shall not be liable for any injury, illness, deterioration of condition, or death of a pet arising from:
+Subject to applicable Philippine law, the Clinic and its veterinarians, staff, and agents shall not be liable for any injury, illness, deterioration of condition, or death of a pet arising from:
 
 a. The inherent risks described in Section I
 b. Pre-existing conditions that were not disclosed or were not detectable with reasonable diagnostic effort
@@ -271,7 +271,7 @@ This waiver does not exclude liability for gross negligence or wilful misconduct
 
 VI. PHOTOGRAPHS AND CLINICAL DOCUMENTATION
 
-I understand that clinical photographs, diagnostic images, and procedure records may be created as part of my pet's medical record. These records are the property of the Clinic and are used solely for clinical care purposes. Identifiable photographs or records will not be used for marketing, training, or publication without my separate written consent.
+I understand that clinical photographs, diagnostic images, and procedure records may be created as part of my pet's medical records at our Veterinary Clinic in the Philippines. These records are the property of the Clinic and are used solely for clinical care purposes. Identifiable photographs or records will not be used for marketing, training, or publication without my separate written consent.
 
 ─────────────────────────────────────────────────────────────
 
@@ -285,4 +285,4 @@ c. You voluntarily accept the inherent risks associated with veterinary care.
 d. You authorise emergency stabilisation procedures as described in Section III.
 e. You accept financial responsibility for services rendered.
 
-You understand that this waiver does not constitute a limitation on the quality of care provided — StarBarks VetConnect is committed to delivering the highest standard of veterinary medicine.`;
+You understand that this waiver does not constitute a limitation on the quality of care provided — the Clinic is committed to delivering the highest standard of veterinary medicine.`;

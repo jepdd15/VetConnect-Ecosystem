@@ -65,7 +65,7 @@ const buildGoogleCalendarUrl = (appointment, clinicAddress) => {
 
   const title = encodeURIComponent(`Vet Visit: ${appointment.petName} - ${services}`);
   const details = encodeURIComponent(`Pet: ${appointment.petName}\nServices: ${services}`);
-  const location = encodeURIComponent(clinicAddress || 'Starbarks Veterinary Clinic');
+  const location = encodeURIComponent(clinicAddress || '');
 
   return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startStr}/${endStr}&details=${details}&location=${location}`;
 };

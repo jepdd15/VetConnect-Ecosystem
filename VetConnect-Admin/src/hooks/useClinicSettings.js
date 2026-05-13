@@ -11,12 +11,12 @@ const DEFAULT_SETTINGS = {
   openHour: 8,
   workingDays: [0, 1, 2, 3, 4, 5, 6],
   closedDates: [], // ISO YYYY-MM-DD strings, sorted asc
-  clinicName: 'Starbarks Veterinary Clinic',
-  clinicAddress: 'Santa Barbara, Pangasinan',
+  clinicName: '',
+  clinicAddress: '',
   clinicPhone: '', // Configurable via Settings > General — displayed to clients
   clinicTIN: '',
   baiRegistrationNumber: '',
-  clinicLat: 16.0389,    // GPS latitude for geofence center (Starbarks, Santa Barbara, Pangasinan)
+  clinicLat: 16.0389,    // GPS latitude for geofence center
   clinicLng: 120.3977,   // GPS longitude for geofence center
   geofenceRadiusM: 150,  // Geofence radius in meters for client self-check-in
 };

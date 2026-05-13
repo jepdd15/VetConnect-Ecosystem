@@ -35,7 +35,7 @@ import { getTicketPrefix } from '../utils/getTicketPrefix';
 import { getLocalDateStr } from '../utils/helpers';
 
 // The canonical QR value printed on the clinic poster.
-const CLINIC_QR_VALUE = 'STARBARKS-CHECKIN-starbarks-vetconnect-f6443';
+const CLINIC_QR_VALUE = 'CLINIC-CHECKIN-starbarks-vetconnect-f6443';
 
 // GPS acquisition timeout. Resolves to null so the geofence falls back gracefully.
 const GPS_TIMEOUT_MS = 10000;
@@ -225,7 +225,7 @@ export default function SelfCheckInScreen({ navigation }) {
     // Validate QR prefix.
     if (data !== CLINIC_QR_VALUE) {
       setErrorMessage(
-        'This QR code is not a Starbarks check-in code.\nPlease scan the poster displayed in the clinic lobby.',
+        'This QR code is not a valid check-in code.\nPlease scan the poster displayed in the clinic lobby.',
       );
       setScreenState(SCREEN_STATE.ERROR);
       return;

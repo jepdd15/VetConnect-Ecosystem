@@ -25,7 +25,7 @@
 //   RESEND_API_KEY         — Resend email API key (T4.135)
 //   RESEND_FROM_EMAIL      — Sender address (default: VetConnect <noreply@starbarks.vet>)
 //   SEMAPHORE_API_KEY      — Semaphore SMS API key (T4.135)
-//   SEMAPHORE_SENDER_NAME  — SMS sender name (default: STARBARKS)
+//   SEMAPHORE_SENDER_NAME  — SMS sender name (default: CLINIC)
 //
 // Last synced: 2026-05-04
 // ============================================================================
@@ -67,7 +67,7 @@ const DEFAULT_TEMPLATES = {
   },
   'completed': {
     title: 'Visit Complete',
-    body: "{petName}'s visit is complete. Total: PHP {amount}. Thank you for choosing Starbarks!",
+    body: "{petName}'s visit is complete. Total: PHP {amount}. Thank you for choosing our clinic!",
   },
   'no-show': {
     title: 'Missed Appointment',
@@ -83,7 +83,7 @@ const DEFAULT_TEMPLATES = {
   },
   'appointment-upcoming': {
     title: 'Upcoming Appointment',
-    body: "{petName} has an appointment in {days} days at Starbarks. We look forward to seeing you!",
+    body: "{petName} has an appointment in {days} days. We look forward to seeing you!",
   },
   'appointment-tomorrow': {
     title: 'Appointment Tomorrow!',
@@ -125,9 +125,9 @@ function buildWorkerEmailHtml(title, body) {
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
 <body style="margin:0;padding:0;background-color:#F5F0EB;font-family:Arial,Helvetica,sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:24px auto;background:#FFFFFF;border:2px solid #3E2723;">
-    <tr><td style="background:#3E2723;padding:18px 24px;"><h1 style="margin:0;color:#FFF8E1;font-size:18px;font-weight:900;letter-spacing:0.04em;">Starbarks Veterinary Clinic</h1></td></tr>
+    <tr><td style="background:#3E2723;padding:18px 24px;"><h1 style="margin:0;color:#FFF8E1;font-size:18px;font-weight:900;letter-spacing:0.04em;">Veterinary Clinic</h1></td></tr>
     <tr><td style="padding:28px 24px 12px;"><h2 style="margin:0 0 12px;color:#3E2723;font-size:16px;font-weight:800;">${esc(title)}</h2><p style="margin:0;color:#5D4037;font-size:14px;line-height:1.6;">${esc(body).replace(/\n/g, '<br>')}</p></td></tr>
-    <tr><td style="padding:20px 24px;border-top:1px solid #E0D6CC;"><p style="margin:0;color:#A1887F;font-size:11px;">This is an automated message from Starbarks Veterinary Clinic. Please do not reply.</p></td></tr>
+    <tr><td style="padding:20px 24px;border-top:1px solid #E0D6CC;"><p style="margin:0;color:#A1887F;font-size:11px;">This is an automated message from our clinic. Please do not reply.</p></td></tr>
   </table>
 </body></html>`;
 }
@@ -329,7 +329,7 @@ async function handleSms(request, env) {
         apikey: apiKey,
         number: to,
         message,
-        sendername: env.SEMAPHORE_SENDER_NAME || 'STARBARKS',
+        sendername: env.SEMAPHORE_SENDER_NAME || 'CLINIC',
       }),
     });
 
@@ -736,7 +736,7 @@ async function handleAppointmentReminders(env) {
         if (smsEnabled && ownerPhone && SMS_CRIT_STAGES.has(templateKey) && env.SEMAPHORE_API_KEY) {
           const smsTemplates = {
             'appointment-tomorrow': `Reminder: ${petName}'s appointment is tomorrow. Arrive 10 min early.`,
-            'appointment-today':    `Today! ${petName}'s appointment is today. See you soon at Starbarks!`,
+            'appointment-today':    `Today! ${petName}'s appointment is today. See you soon!`,
           };
           const smsMsg = smsTemplates[templateKey] || body;
 
@@ -747,7 +747,7 @@ async function handleAppointmentReminders(env) {
               apikey: env.SEMAPHORE_API_KEY,
               number: ownerPhone,
               message: smsMsg,
-              sendername: env.SEMAPHORE_SENDER_NAME || 'STARBARKS',
+              sendername: env.SEMAPHORE_SENDER_NAME || 'CLINIC',
             }),
           }).then(() => {
             fetch(`${BASE}/notification_log?key=${API_KEY}`, {

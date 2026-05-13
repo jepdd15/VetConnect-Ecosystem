@@ -341,7 +341,10 @@ export default function Sales() {
             <div class="header">
               <p class="clinic-name">${esc(clinicSettings.clinicName)}</p>
               <p class="clinic-meta">${esc(clinicSettings.clinicAddress)}</p>
-              ${clinicSettings.clinicPhone ? `<p class="clinic-meta">TEL: ${esc(clinicSettings.clinicPhone)}</p>` : ''}
+              <div style="display: flex; justify-content: center; gap: 10px;">
+                ${clinicSettings.clinicPhone ? `<p class="clinic-meta">T: ${esc(clinicSettings.clinicPhone)}</p>` : ''}
+                ${clinicSettings.clinicEmail ? `<p class="clinic-meta">E: ${esc(clinicSettings.clinicEmail)}</p>` : ''}
+              </div>
               ${clinicSettings.clinicTIN ? `<p class="clinic-meta">TIN: ${esc(clinicSettings.clinicTIN)}</p>` : ''}
               <p class="clinic-meta" style="margin-top: 8px;">OFFICIAL RECEIPT</p>
             </div>

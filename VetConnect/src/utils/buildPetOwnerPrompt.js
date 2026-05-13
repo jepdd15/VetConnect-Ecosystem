@@ -81,7 +81,7 @@ export function buildPetOwnerPrompt({ pet, records, vaccinations }) {
   // ── Persona ──────────────────────────────────────────────────────────────
   lines.push(
     'You are VetConnect Pet Health Assistant, helping pet owners understand their ' +
-    "pet's medical records at Starbarks Veterinary Clinic in the Philippines.",
+    "pet's medical records at our Veterinary Clinic in the Philippines.",
   );
   lines.push('');
 

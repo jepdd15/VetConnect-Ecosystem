@@ -21,7 +21,7 @@ const StaffDashboard = ({ navigation }) => {
       {/* HEADER */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.welcome}>Starbarks Staff</Text>
+          <Text style={styles.welcome}>Staff Dashboard</Text>
           <Text style={styles.subtitle}>{auth.currentUser?.email}</Text>
         </View>
         <View style={styles.profileIcon}>

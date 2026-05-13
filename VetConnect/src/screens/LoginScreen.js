@@ -199,7 +199,7 @@ const LoginScreen = ({ navigation }) => {
             )}
 
             <View style={styles.registerContainer}>
-              <Text style={styles.registerText}>New to Starbarks? </Text>
+              <Text style={styles.registerText}>New here? </Text>
               <TouchableOpacity onPress={() => navigation.navigate("Register")}>
                 <Text style={styles.registerLink}>CREATE ACCOUNT</Text>
               </TouchableOpacity>

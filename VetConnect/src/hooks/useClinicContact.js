@@ -10,8 +10,9 @@ import { db } from '../../firebaseConfig';
  */
 const DEFAULTS = {
   clinicPhone: '',
-  clinicAddress: 'Starbarks Veterinary Clinic, Santa Barbara, Pangasinan',
-  clinicName: 'Starbarks Veterinary Clinic',
+  clinicAddress: '',
+  clinicName: '',
+  clinicEmail: '',
   clinicTIN: '',
   baiRegistrationNumber: '',
   clinicLat: 16.0389,
@@ -37,6 +38,7 @@ function ensureListener() {
         clinicPhone: data.clinicPhone || DEFAULTS.clinicPhone,
         clinicAddress: data.clinicAddress || DEFAULTS.clinicAddress,
         clinicName: data.clinicName || DEFAULTS.clinicName,
+        clinicEmail: data.clinicEmail || DEFAULTS.clinicEmail,
         clinicTIN: data.clinicTIN || DEFAULTS.clinicTIN,
         baiRegistrationNumber: data.baiRegistrationNumber || DEFAULTS.baiRegistrationNumber,
         clinicLat: data.clinicLat ?? DEFAULTS.clinicLat,

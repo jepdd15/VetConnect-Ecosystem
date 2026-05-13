@@ -65,7 +65,7 @@ function buildInitialMessage() {
   return {
     id: Date.now(),
     type: 'bot',
-    text: `${buildGreeting()}! 🐾 I am the Starbarks Virtual Assistant. How can I help you today?`,
+    text: `${buildGreeting()}! 🐾 I am your Clinic Virtual Assistant. How can I help you today?`,
   };
 }
 
@@ -555,7 +555,7 @@ export default function ChatbotScreen({ navigation }) {
             <Text style={{ fontSize: 22 }}>🤖</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.headerText}>Starbarks Virtual Assistant</Text>
+            <Text style={styles.headerText}>Clinic Virtual Assistant</Text>
             <Text style={styles.subText}>🟢 Online • Automated Support</Text>
           </View>
           {/* NEW CHAT button (T3.67): only visible once a conversation has started */}

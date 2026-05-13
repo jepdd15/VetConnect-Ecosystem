@@ -136,7 +136,7 @@ export default function Login() {
                 VetConnect
             </Typography>
             <Typography variant="h5" color="rgba(255,255,255,0.7)" sx={{ mb: 4, fontWeight: '300' }}>
-                Starbarks Veterinary Clinic
+                Veterinary Clinic
             </Typography>
             <Divider sx={{ width: 60, height: 4, bgcolor: COLORS.amber, borderRadius: 0, mx: 'auto', mb: 4 }} />
             <Typography variant="body1" color="rgba(255,255,255,0.5)" sx={{ maxWidth: 400, fontStyle: 'italic' }}>
@@ -178,7 +178,7 @@ export default function Login() {
                     <TextField
                         fullWidth label="Email Address" variant="outlined" sx={{ mb: 3, bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
                         value={email} onChange={(e) => setEmail(e.target.value)}
-                        placeholder="vet@starbarks.com"
+                        placeholder="admin@clinic.com"
                     />
                     
                     <TextField

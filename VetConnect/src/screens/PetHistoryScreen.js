@@ -151,7 +151,7 @@ const VACCINE_STATUS_STYLES = {
  */
 function generateMobileVaccinationPassport({ petName, ownerName, clinicName, clinicPhone, clinicAddress, clinicTIN, clinicBAI, petDetails, vaccineRecords, vaccineCatalog }) {
   const today = fmtDate(new Date());
-  const safeClinic = escHtml(clinicName || 'Starbarks Veterinary Clinic');
+  const safeClinic = escHtml(clinicName || '');
   const safePet = escHtml(petName);
   const safeOwner = escHtml(ownerName || 'Pet Owner');
   const safePhone = escHtml(clinicPhone || '');
@@ -765,7 +765,7 @@ export default function PetHistoryScreen({ route, navigation }) {
   const scrollPerformed = useRef(false);
   // T4.107: Departments — one-shot fetch for dynamic filter chips
   const [departments, setDepartments] = useState([]);
-  const { clinicPhone, clinicName, clinicAddress, clinicTIN, baiRegistrationNumber } = useClinicContact();
+  const { clinicPhone, clinicName, clinicAddress, clinicTIN, baiRegistrationNumber, clinicEmail } = useClinicContact();
   const { isConnected } = useNetwork();
 
   // T4.194: Tabbed layout — persists within screen session
@@ -1412,7 +1412,7 @@ export default function PetHistoryScreen({ route, navigation }) {
       const html = generateMobileVaccinationPassport({
         petName,
         ownerName: ownerFullName,
-        clinicName: clinicName || 'Starbarks Veterinary Clinic',
+        clinicName: clinicName || '',
         clinicPhone: clinicPhone || '',
         clinicAddress: clinicAddress || '',
         clinicTIN: clinicTIN || '',
@@ -2378,7 +2378,15 @@ export default function PetHistoryScreen({ route, navigation }) {
             )}
 
             <View style={[styles.actionsRow, { justifyContent: 'flex-end' }]}>
-              <TouchableOpacity style={styles.actionBtn} onPress={() => generateVisitPDF({ record: item, petName, services: item.services })}>
+              <TouchableOpacity 
+                style={styles.actionBtn} 
+                onPress={() => generateVisitPDF({ 
+                  record: item, 
+                  petName, 
+                  services: item.services,
+                  clinicSettings: { clinicPhone, clinicName, clinicAddress, clinicTIN, baiRegistrationNumber, clinicEmail }
+                })}
+              >
                 <MaterialIcons name="picture-as-pdf" size={16} color={COLORS.accent} />
                 <Text style={styles.actionBtnText}>Visit Summary</Text>
               </TouchableOpacity>

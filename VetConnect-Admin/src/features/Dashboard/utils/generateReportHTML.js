@@ -768,7 +768,7 @@ const PERIOD_LABELS = {
 };
 
 export function generateReportHTML(tabKey, data, clinicSettings, period) {
-  const clinicName = esc(clinicSettings.clinicName || 'Starbarks Veterinary Clinic');
+  const clinicName = esc(clinicSettings.clinicName || '');
   const now = new Date();
   const generated = now.toLocaleString('en-PH', {
     timeZone: 'Asia/Manila',
@@ -844,7 +844,7 @@ export function generateReportHTML(tabKey, data, clinicSettings, period) {
  * @returns {string} Complete HTML document string
  */
 export function generateFullReportHTML(data, clinicSettings, period) {
-  const clinicName = esc(clinicSettings.clinicName || 'Starbarks Veterinary Clinic');
+  const clinicName = esc(clinicSettings.clinicName || '');
   const now = new Date();
   const generated = now.toLocaleString('en-PH', {
     timeZone: 'Asia/Manila',

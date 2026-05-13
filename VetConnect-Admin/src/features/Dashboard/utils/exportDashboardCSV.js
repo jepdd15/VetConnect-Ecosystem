@@ -9,7 +9,7 @@ export function exportDashboardCSV(data, period, clinicSettings) {
   let csvContent = 'data:text/csv;charset=utf-8,';
   
   // 1. Header Information
-  csvContent += `Clinic,${clinicSettings.clinicName || 'Starbarks Veterinary Clinic'}\r\n`;
+  csvContent += `Clinic,${clinicSettings.clinicName || ''}\r\n`;
   csvContent += `Period,${period.toUpperCase()}\r\n`;
   csvContent += `Exported At,${new Date().toLocaleString('en-PH')}\r\n\r\n`;
 

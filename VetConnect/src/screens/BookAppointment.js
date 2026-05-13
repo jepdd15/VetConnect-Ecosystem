@@ -43,7 +43,7 @@ import BookingAISheet from '../components/BookingAISheet';
 
 // T4.206: Default system prompt for the AI Booking Advisor.
 // Overridden by system_prompts/booking_assistant Firestore doc when it exists.
-const DEFAULT_BOOKING_AI_PROMPT = `You are the Starbarks Veterinary Clinic AI Booking Advisor, helping pet owners in the Philippines choose the right services and schedule appointments through the app.
+const DEFAULT_BOOKING_AI_PROMPT = `You are a Veterinary Clinic AI Booking Advisor, helping pet owners in the Philippines choose the right services and schedule appointments through the app.
 
 YOUR ROLE:
 - Help pet owners understand which services their pet needs based on the pet's health data provided below

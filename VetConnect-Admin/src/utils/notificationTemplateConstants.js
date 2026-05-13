@@ -46,7 +46,7 @@ export const DEFAULT_TEMPLATES = {
   },
   completed: {
     title: 'Visit Complete',
-    body: "{petName}'s visit is complete. Total: PHP {amount}. Thank you for choosing Starbarks!",
+    body: "{petName}'s visit is complete. Total: PHP {amount}. Thank you for choosing our clinic!",
   },
   'no-show': {
     title: 'Missed Appointment',
@@ -66,7 +66,7 @@ export const DEFAULT_TEMPLATES = {
   },
   'appointment-upcoming': {
     title: 'Upcoming Appointment',
-    body: "{petName} has an appointment in {days} days at Starbarks. We look forward to seeing you!",
+    body: "{petName} has an appointment in {days} days. We look forward to seeing you!",
   },
   'appointment-tomorrow': {
     title: 'Appointment Tomorrow!',
@@ -205,9 +205,9 @@ export const SMS_CRITICAL_STATUSES = new Set([
 // Max 160 characters per message to avoid multi-part SMS charges.
 // Placeholders: {petName} only — SMS must be ultra-concise.
 export const SMS_TEMPLATES = {
-  confirmed:              "{petName}'s appointment confirmed. See you at Starbarks!",
+  confirmed:              "{petName}'s appointment confirmed. See you soon!",
   'appointment-tomorrow': "Reminder: {petName}'s appointment is tomorrow. Arrive 10 min early.",
-  'appointment-today':    "Today! {petName}'s appointment is today. See you soon at Starbarks!",
+  'appointment-today':    "Today! {petName}'s appointment is today. See you soon!",
 };
 
 // ── Email HTML Wrapper ─────────────────────────────────────────────────────
@@ -221,7 +221,7 @@ export const SMS_TEMPLATES = {
  * @param {string} clinicName - Clinic display name (default: Starbarks Veterinary Clinic)
  * @returns {string} Complete HTML document string
  */
-export function buildEmailHtml(title, body, clinicName = 'Starbarks Veterinary Clinic') {
+export function buildEmailHtml(title, body, clinicName = '') {
   const esc = (str) => String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   return `<!DOCTYPE html>
 <html lang="en">

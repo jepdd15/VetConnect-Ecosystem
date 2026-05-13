@@ -77,11 +77,11 @@ export const DEFAULT_TEMPLATES = {
     body: "Today is the day! {petName}'s appointment is today. Please arrive 10 minutes early. See you soon!",
   },
   'vaccine-due': {
-    title: 'Vaccination Reminder',
+    title: 'Vaccination Reminder: {vaccineName} (Dose {doseNumber}/{totalDoses})',
     body: "Time for {petName}'s checkup! Their {vaccineName} vaccine (Dose {doseNumber}/{totalDoses}) is due in {days} days. Book a visit to keep them protected!",
   },
   'vaccine-overdue': {
-    title: 'Overdue Vaccination Alert',
+    title: 'Overdue Vaccination Alert: {vaccineName} (Dose {doseNumber}/{totalDoses})',
     body: "Warning: {petName}'s {vaccineName} vaccine (Dose {doseNumber}/{totalDoses}) is overdue by {days} days. Please book as soon as possible.",
   },
   // T4.202: Per-service progress notifications (multi-service appointments only)

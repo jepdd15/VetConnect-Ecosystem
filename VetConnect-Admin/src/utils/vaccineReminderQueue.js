@@ -541,41 +541,56 @@ export async function sendVaccineReminders(clinicSettings = {}) {
       // Single vaccine — use template interpolation directly
       const v = allVax[0];
       const absDays = String(Math.abs(v.daysUntilDue));
+      
+      const doseNum = v.doseNumber != null ? String(v.doseNumber) : '';
+      const totalD = v.totalDoses != null ? String(v.totalDoses) : '';
+
       title = template.title
         .replace(/\{petName\}/g, petName)
         .replace(/\{vaccineName\}/g, v.name)
         .replace(/\{days\}/g, absDays)
-        .replace(/\{doseNumber\}/g, v.doseNumber != null ? String(v.doseNumber) : '')
-        .replace(/\{totalDoses\}/g, v.totalDoses != null ? String(v.totalDoses) : '');
+        .replace(/\{doseNumber\}/g, doseNum)
+        .replace(/\{totalDoses\}/g, totalD);
       body = template.body
         .replace(/\{petName\}/g, petName)
         .replace(/\{vaccineName\}/g, v.name)
         .replace(/\{days\}/g, absDays)
-        .replace(/\{doseNumber\}/g, v.doseNumber != null ? String(v.doseNumber) : '')
-        .replace(/\{totalDoses\}/g, v.totalDoses != null ? String(v.totalDoses) : '');
-      // Strip the dose fragment when dose data is unavailable (legacy queue entries):
-      // Case 1 — tokens not yet replaced (pre-interpolation guard, e.g. custom template)
-      title = title.replace(/\s*\(Dose \{doseNumber\}\/\{totalDoses\}\)/g, '');
-      body  = body.replace(/\s*\(Dose \{doseNumber\}\/\{totalDoses\}\)/g, '');
-      // Case 2 — partial replacement: one token resolved but not the other (contains '{')
-      //          OR both tokens replaced with empty string, leaving "(Dose /)" — strip
-      //          when either side of the slash is not a digit sequence.
-      title = title.replace(/\s*\(Dose ([^)]*?)\/([^)]*?)\)/g, (m, d1, d2) => {
-        if (m.includes('{') || !/^\d+$/.test(d1.trim()) || !/^\d+$/.test(d2.trim())) return '';
-        return m;
-      });
-      body  = body.replace(/\s*\(Dose ([^)]*?)\/([^)]*?)\)/g, (m, d1, d2) => {
-        if (m.includes('{') || !/^\d+$/.test(d1.trim()) || !/^\d+$/.test(d2.trim())) return '';
-        return m;
-      });
+        .replace(/\{doseNumber\}/g, doseNum)
+        .replace(/\{totalDoses\}/g, totalD);
+
+      // --- Forensic Aesthetic Cleanup (Ghost Token Logic) ---
+      // Strip redundant (Dose 1/1) or invalid (Dose /) or unreplaced {doseNumber} fragments.
+      const cleanupRegex = /\s*\(Dose ([^)]*?)\/([^)]*?)\)/g;
+      const cleanupFn = (match, d1, d2) => {
+        const val1 = d1.trim();
+        const val2 = d2.trim();
+        // Case A: Token was not replaced (e.g. legacy record or manual template error)
+        if (val1.includes('{') || val2.includes('{')) return '';
+        // Case B: No data available (empty strings)
+        if (!val1 || !val2) return '';
+        // Case C: Redundant 1/1 series (aesthetic overhead)
+        if (val1 === '1' && val2 === '1') return '';
+        // Case D: Valid multi-dose series — KEEP IT
+        return match;
+      };
+
+      title = title.replace(cleanupRegex, cleanupFn);
+      body  = body.replace(cleanupRegex, cleanupFn);
     } else {
-      // Multiple vaccines — grouped summary
+      // Multiple vaccines — grouped summary (T4.Forensic: injected dose precision)
       const summary = allVax.map(v => {
         const label = v.daysUntilDue < 0
           ? `overdue ${Math.abs(v.daysUntilDue)}d`
           : `due ${v.daysUntilDue}d`;
-        return `${v.name} (${label})`;
+        
+        // Only show dose info for actual series (totalDoses > 1)
+        const doseInfo = (v.doseNumber && v.totalDoses && v.totalDoses > 1)
+          ? ` (Dose ${v.doseNumber}/${v.totalDoses})`
+          : '';
+
+        return `${v.name}${doseInfo} (${label})`;
       }).join(', ');
+
       title = overdueVax.length > 0 ? 'Overdue Vaccination Alert' : 'Vaccination Reminder';
       body  = `${petName} has ${allVax.length} vaccines needing attention: ${summary}. Book a visit to keep them protected!`;
     }

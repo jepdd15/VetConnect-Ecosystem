@@ -1785,7 +1785,7 @@ export default function PatientDashboard() {
                                             </Typography>
                                           )}
                                         </Typography>
-                                        {dx.notes && <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', color: COLORS.textMuted, fontStyle: 'italic', ml: 2, mt: 0.25 }}>{dx.notes}</Typography>}
+                                        {dx.notes && <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', color: COLORS.textPrimary, fontStyle: 'italic', ml: 2, mt: 0.25, opacity: 0.85 }}>{dx.notes}</Typography>}
                                       </Box>
                                     ))}
                                   </Stack>
@@ -1809,7 +1809,7 @@ export default function PatientDashboard() {
                                   </Box>
                                 )}
                                 {(rec.assessmentNotes || rec.soap?.assessment) && (
-                                  <Typography sx={{ fontFamily: FONT, fontSize: '0.9rem', color: COLORS.textSecondary, whiteSpace: 'pre-wrap', fontStyle: 'italic', lineHeight: 1.5 }}>
+                                  <Typography sx={{ fontFamily: FONT, fontSize: '0.95rem', color: COLORS.textPrimary, whiteSpace: 'pre-wrap', fontStyle: 'italic', lineHeight: 1.6 }}>
                                     {rec.assessmentNotes || rec.soap.assessment}
                                   </Typography>
                                 )}

@@ -195,6 +195,7 @@ export default function PatientDashboard() {
   const [referralOpen, setReferralOpen] = useState(false);
   const [printBlockedToast, setPrintBlockedToast] = useState(false);
   const [printMenuAnchor, setPrintMenuAnchor] = useState(null);
+  const [actionMenuAnchor, setActionMenuAnchor] = useState(null);
   const [printMenuRecord, setPrintMenuRecord] = useState(null);
   // T2.101: Owner sales for computed outstanding balance
   const [ownerSales, setOwnerSales] = useState([]);
@@ -514,6 +515,9 @@ export default function PatientDashboard() {
       setTimelineFilter('All');
     }
   }, [availableFilters, timelineFilter]);
+
+  const handleActionsClick = (event) => setActionMenuAnchor(event.currentTarget);
+  const handleActionsClose = () => setActionMenuAnchor(null);
 
   const processedHistory = useMemo(() => {
     let f = [...(history || [])];
@@ -1157,141 +1161,197 @@ export default function PatientDashboard() {
           <Avatar sx={{ width: 42, height: 42, fontFamily: FONT, bgcolor: getInitialColor(pet?.name), fontWeight: 700, fontSize: '1rem', color: COLORS.cardBg }}>
             {(pet?.name || '?')[0].toUpperCase()}
           </Avatar>
-          <Box sx={{ minWidth: 0 }}>
-            <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1.5 }}>
+          <Box sx={{ minWidth: 0, flex: 1, ml: 1.5 }}>
+            <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, flexWrap: 'wrap' }}>
               <Typography sx={{ fontFamily: FONT, ...TYPE.heading, color: COLORS.brand, textTransform: 'capitalize' }}>{pet?.name}</Typography>
               <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', color: COLORS.textMuted, fontStyle: 'italic' }}>
-                {pet?.species}{pet?.breed && pet.breed !== 'Unknown Breed' ? `, ${pet.breed}` : ''}
+                {pet?.species}
               </Typography>
-            </Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 0.25 }}>
-              <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                {pet?.gender === 'Female' ? <FemaleIcon sx={{ fontSize: 13, color: '#E91E63' }} /> : pet?.gender === 'Male' ? <MaleIcon sx={{ fontSize: 13, color: '#1976D2' }} /> : null}
-                {sexLabel}
-              </Typography>
-              <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary }}>Age: <span style={{ color: COLORS.brand, fontWeight: 700 }}>{calculatePetAge(pet?.dob)}</span></Typography>
-              <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary }}>Wt: <span style={{ color: COLORS.warning, fontWeight: 700 }}>{pet?.lastWeight ? `${pet.lastWeight}kg` : 'N/A'}</span></Typography>
-              {computedOutstandingBalance > 0 && (
-                <Tooltip title="This client has an unpaid balance computed from sales records.">
-                  <Chip
-                    label={`₱${computedOutstandingBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })} OWED`}
-                    size="small"
-                    sx={{
-                      bgcolor: COLORS.dangerSurface, color: COLORS.dangerHover,
-                      fontWeight: 900, fontSize: '0.72rem',
-                      height: 22, border: '1px solid #EF9A9A',
-                      fontFamily: FONT, animation: 'pulse 2s infinite'
-                    }}
-                  />
+              
+              {owner && (
+                <Tooltip title={`OWNER: ${owner.fullName || owner.displayName || owner.name} | ${owner.phone || ''} | ${owner.email || ''}`} arrow>
+                  <Typography sx={{ 
+                    fontFamily: FONT, fontSize: '0.85rem', fontWeight: 700, 
+                    color: COLORS.brand, ml: 0.5, opacity: 0.9,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    maxWidth: { xs: 200, sm: 300, md: 500 }
+                  }}>
+                    ({owner.fullName || owner.displayName || owner.name} 
+                    {owner.phone && ` · ${owner.phone}`}
+                    {owner.email && ` · ${owner.email}`})
+                  </Typography>
                 </Tooltip>
               )}
-              {hasAllergies ? (
-                <Chip icon={<WarningAmberIcon sx={{ color: `${COLORS.cardBg} !important`, fontSize: 12 }} />} label={resolvedPetAllergies} size="small" sx={{ bgcolor: COLORS.surgery, color: COLORS.cardBg, fontWeight: 700, fontSize: '0.72rem', height: 22, fontFamily: FONT }} />
-              ) : (
-                <Typography sx={{ fontFamily: FONT, ...TYPE.tiny, color: COLORS.textMuted, bgcolor: COLORS.panelBg, px: 0.75, py: 0.25, borderRadius: 0 }}>NKA</Typography>
-              )}
-              {lastSeenLabel && (
-                <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <AccessTimeIcon sx={{ fontSize: 11 }} /> Last seen: <span style={{ fontWeight: 600, color: COLORS.textSecondary }}>{lastSeenLabel}</span>
-                </Typography>
-              )}
             </Box>
-            {/* T4.116: Owner contact row — compact, below the pet vitals row */}
-            {owner && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 0.25 }}>
-                <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <PersonIcon sx={{ fontSize: 12 }} /> {owner.fullName || owner.displayName || owner.name || 'Unknown'}
+
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 2.5, rowGap: 1, mt: 0.5 }}>
+              {/* Breed */}
+              <Box>
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.62rem', fontWeight: 1000, color: COLORS.textMuted, mb: -0.2, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Breed</Typography>
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.82rem', fontWeight: 800, color: COLORS.textPrimary }}>
+                  {pet?.breed && pet.breed !== 'Unknown Breed' ? pet.breed : 'Unknown'}
                 </Typography>
-                {(owner.phone || owner.contactNumber) && (
-                  <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textSecondary, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <PhoneIcon sx={{ fontSize: 11 }} /> {owner.phone || owner.contactNumber}
-                  </Typography>
-                )}
-                {owner.email && (
-                  <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textSecondary, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <EmailIcon sx={{ fontSize: 11 }} /> {owner.email}
-                  </Typography>
+              </Box>
+
+              {/* Gender & Status */}
+              <Box>
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.62rem', fontWeight: 1000, color: COLORS.textMuted, mb: -0.2, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Sex & Status</Typography>
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.82rem', fontWeight: 800, color: COLORS.textPrimary, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  {pet?.gender === 'Female' ? <FemaleIcon sx={{ fontSize: 13, color: '#E91E63' }} /> : pet?.gender === 'Male' ? <MaleIcon sx={{ fontSize: 13, color: '#1976D2' }} /> : null}
+                  {pet?.gender || 'Unknown'} {pet?.isNeutered ? `(${pet.gender === 'Female' ? 'Spayed' : 'Neutered'})` : '(Intact)'}
+                </Typography>
+              </Box>
+
+              {/* Age */}
+              <Box>
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.62rem', fontWeight: 1000, color: COLORS.textMuted, mb: -0.2, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Current Age</Typography>
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.82rem', fontWeight: 800, color: COLORS.brand }}>
+                  {calculatePetAge(pet?.dob)}
+                </Typography>
+              </Box>
+
+              {/* Weight */}
+              <Box>
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.62rem', fontWeight: 1000, color: COLORS.textMuted, mb: -0.2, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Weight</Typography>
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.82rem', fontWeight: 800, color: COLORS.textPrimary }}>
+                  {pet?.lastWeight ? `${pet.lastWeight} kg` : '—'}
+                </Typography>
+              </Box>
+
+              {/* Allergy Status */}
+              <Box>
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.62rem', fontWeight: 1000, color: COLORS.textMuted, mb: -0.2, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Allergies</Typography>
+                {hasAllergies ? (
+                  <Tooltip title={`ALLERGIES: ${resolvedPetAllergies.toUpperCase()}`} arrow>
+                    <Chip 
+                      label={resolvedPetAllergies.toUpperCase()} 
+                      size="small" 
+                      sx={{ 
+                        bgcolor: COLORS.surgery, color: COLORS.cardBg, fontWeight: 900, fontSize: '0.65rem', 
+                        height: 18, borderRadius: 0, fontFamily: FONT,
+                        maxWidth: 180, '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis' }
+                      }} 
+                    />
+                  </Tooltip>
+                ) : (
+                  <Tooltip title="ALLERGIES: NO KNOWN ALLERGIES" arrow>
+                    <Typography sx={{ fontFamily: FONT, fontSize: '0.82rem', fontWeight: 800, color: COLORS.success, cursor: 'help' }}>NKA</Typography>
+                  </Tooltip>
                 )}
               </Box>
-            )}
+
+              {/* Outstanding Balance */}
+              {computedOutstandingBalance > 0 && (
+                <Box>
+                  <Typography sx={{ fontFamily: FONT, fontSize: '0.62rem', fontWeight: 1000, color: COLORS.danger, mb: -0.2, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Financial Alert</Typography>
+                  <Tooltip title="Outstanding balance from unpaid visits.">
+                    <Typography sx={{ fontFamily: FONT, fontSize: '0.82rem', fontWeight: 1000, color: COLORS.danger, animation: 'pulse 2s infinite' }}>
+                      ₱{computedOutstandingBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })} DUE
+                    </Typography>
+                  </Tooltip>
+                </Box>
+              )}
+            </Box>
           </Box>
         </Box>
 
-        {/* Search Toolkit */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, borderLeft: `1px solid ${COLORS.borderLight}`, borderRight: `1px solid ${COLORS.borderLight}`, py: 1.5 }}>
-          <TextField size="small" placeholder="Search records..." value={timelineSearch} onChange={(e) => setTimelineSearch(e.target.value)}
-            InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: COLORS.textMuted, fontSize: 18 }} /></InputAdornment> }}
-            sx={{ minWidth: 160, '& .MuiOutlinedInput-root': { fontFamily: FONT, fontSize: '0.85rem', color: COLORS.textPrimary, bgcolor: COLORS.formBg, borderRadius: 0, height: 36, '& fieldset': { borderColor: COLORS.border } } }}
+        {/* Unified Command Bar (T4.118: Integrated Search & Filter Hub) */}
+        <Box sx={{ display: 'flex', alignItems: 'center', px: 2, borderLeft: `1px solid ${COLORS.borderLight}`, borderRight: `1px solid ${COLORS.borderLight}`, py: 1.5 }}>
+          <TextField
+            size="small"
+            placeholder="Search records..."
+            value={timelineSearch}
+            onChange={(e) => setTimelineSearch(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start" sx={{ ml: -1 }}>
+                  <FormControl size="small" variant="standard">
+                    <Select
+                      value={timelineFilter}
+                      onChange={(e) => setTimelineFilter(e.target.value)}
+                      disableUnderline
+                      sx={{
+                        fontFamily: FONT, fontWeight: 800, fontSize: '0.72rem',
+                        color: COLORS.brand, height: 36, px: 1,
+                        textTransform: 'uppercase', letterSpacing: '0.04em',
+                        borderRight: `1px solid ${COLORS.borderLight}`,
+                        '& .MuiSelect-select': { py: '0 !important', display: 'flex', alignItems: 'center' }
+                      }}
+                    >
+                      <MenuItem value="All" sx={{ fontSize: '0.75rem', fontWeight: 700 }}>All Depts</MenuItem>
+                      <Divider />
+                      {availableFilters.map(f => (
+                        <MenuItem key={f} value={f} sx={{ fontSize: '0.75rem', fontWeight: 700 }}>{f}</MenuItem>
+                      ))}
+                      <Divider />
+                      <MenuItem value="Vaccination" sx={{ fontSize: '0.75rem', fontWeight: 700 }}>Vaccination</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <SearchIcon sx={{ color: COLORS.textMuted, fontSize: 16, ml: 1.5 }} />
+                </InputAdornment>
+              ),
+              endAdornment: (
+                <InputAdornment position="end">
+                  <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, fontWeight: 900, textTransform: 'uppercase', opacity: 0.8 }}>
+                    {processedHistory.length} items
+                  </Typography>
+                </InputAdornment>
+              )
+            }}
+            sx={{
+              minWidth: 320,
+              '& .MuiOutlinedInput-root': {
+                fontFamily: FONT, fontSize: '0.82rem', color: COLORS.textPrimary,
+                bgcolor: COLORS.formBg, borderRadius: 0, height: 36,
+                pr: 1.5,
+                '& fieldset': { borderColor: COLORS.border },
+                '&:hover fieldset': { borderColor: COLORS.brand },
+              }
+            }}
           />
-          <FormControl size="small" sx={{ minWidth: 100 }}>
-            <Select value={timelineFilter} onChange={(e) => setTimelineFilter(e.target.value)}
-              sx={{ fontFamily: FONT, fontWeight: 600, fontSize: '0.8rem', color: COLORS.textPrimary, bgcolor: COLORS.formBg, height: 36, borderRadius: 0, '& fieldset': { borderColor: COLORS.border } }}>
-              <MenuItem value="All" sx={{ fontSize: '0.85rem' }}>All Departments</MenuItem>
-              <Divider />
-              {availableFilters.map(f => {
-                const deptColor = deptsList.find(d => d.name === f)?.color || '#616161';
-                return (
-                  <MenuItem key={f} value={f} sx={{ fontSize: '0.85rem', fontWeight: 600 }}>
-                    <Box sx={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', bgcolor: deptColor, mr: 1, flexShrink: 0 }} />
-                    {f}
-                  </MenuItem>
-                );
-              })}
-              <Divider />
-              <MenuItem value="Vaccination" sx={{ fontSize: '0.85rem', fontWeight: 600 }}>Vaccination</MenuItem>
-            </Select>
-          </FormControl>
-          <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, fontWeight: 600, whiteSpace: 'nowrap' }}>{processedHistory.length} rec</Typography>
-          <IconButton size="small" onClick={() => setTimelineSort(p => p === 'desc' ? 'asc' : 'desc')}
-            sx={{ color: COLORS.textMuted, border: `1px solid ${COLORS.border}`, borderRadius: 0, width: 36, height: 36, '&:hover': { bgcolor: COLORS.panelBg } }}>
-            <SortIcon fontSize="small" />
-          </IconButton>
         </Box>
 
-        {/* Actions */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 1.5 }}>
+        {/* Action Hub (Consolidated T4.119) */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1.5 }}>
           <Button
             variant="contained"
             size="small"
-            disabled={isErased}
-            startIcon={<EventAvailableIcon sx={{ fontSize: '15px !important' }} />}
-            onClick={() => setQuickBookOpen(true)}
-            sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.78rem', textTransform: 'none', bgcolor: COLORS.success, borderRadius: 0, px: 2, height: 36, boxShadow: 'none', '&:hover': { bgcolor: '#1B5E20' } }}
-          >
-            Book Visit
-          </Button>
-          <Button
-            variant="outlined"
-            size="small"
-            disabled={isErased}
-            startIcon={<LocalHospitalIcon sx={{ fontSize: '15px !important' }} />}
-            onClick={() => setReferralOpen(true)}
+            onClick={handleActionsClick}
+            endIcon={<ExpandMoreIcon />}
             sx={{
-              fontFamily: FONT, fontWeight: 700, fontSize: '0.78rem', textTransform: 'none',
-              color: COLORS.accent, borderColor: COLORS.border, borderRadius: 0,
-              px: 2, height: 36, '&:hover': { borderColor: COLORS.accentLight, bgcolor: COLORS.panelBg },
+              fontFamily: FONT, fontWeight: 900, fontSize: '0.72rem', textTransform: 'uppercase',
+              bgcolor: COLORS.brand, borderRadius: 0, px: 2.5, height: 36, boxShadow: 'none',
+              letterSpacing: '0.05em',
+              '&:hover': { bgcolor: COLORS.brandHover }
             }}
           >
-            Referral
+            Actions
           </Button>
-          {/* T4.92: Send custom push notification to the pet owner */}
-          <Button
-            variant="outlined"
-            size="small"
-            disabled={isErased || !pet?.ownerId || pet?.ownerId === 'WALK_IN_USER'}
-            startIcon={<NotificationsActiveIcon sx={{ fontSize: '15px !important' }} />}
-            onClick={() => setNotifDialogOpen(true)}
-            sx={{
-              fontFamily: FONT, fontWeight: 700, fontSize: '0.78rem', textTransform: 'none',
-              color: COLORS.medical, borderColor: COLORS.border, borderRadius: 0,
-              px: 2, height: 36,
-              '&:hover': { borderColor: COLORS.medical, bgcolor: COLORS.chipBlueBg },
-            }}
+          <Menu
+            anchorEl={actionMenuAnchor}
+            open={Boolean(actionMenuAnchor)}
+            onClose={handleActionsClose}
+            PaperProps={{ sx: { borderRadius: 0, mt: 0.5, border: `1px solid ${COLORS.border}`, boxShadow: 'none' } }}
           >
-            Notify Owner
-          </Button>
+            <MenuItem onClick={() => { handleActionsClose(); setQuickBookOpen(true); }} sx={{ gap: 1.5, py: 1 }}>
+              <EventAvailableIcon sx={{ fontSize: 18, color: COLORS.success }} />
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', fontWeight: 800 }}>Book Visit</Typography>
+            </MenuItem>
+            <MenuItem onClick={() => { handleActionsClose(); setReferralOpen(true); }} sx={{ gap: 1.5, py: 1 }}>
+              <LocalHospitalIcon sx={{ fontSize: 18, color: COLORS.accent }} />
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', fontWeight: 800 }}>Request Referral</Typography>
+            </MenuItem>
+            <MenuItem 
+              disabled={isErased || !pet?.ownerId || pet?.ownerId === 'WALK_IN_USER'}
+              onClick={() => { handleActionsClose(); setNotifDialogOpen(true); }} 
+              sx={{ gap: 1.5, py: 1 }}
+            >
+              <NotificationsActiveIcon sx={{ fontSize: 18, color: COLORS.medical }} />
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', fontWeight: 800 }}>Notify Owner</Typography>
+            </MenuItem>
+          </Menu>
 
-          {/* T4.96: AI History Assistant — gated on LLM config */}
+          {/* T4.96: AI History Assistant Tool */}
           {llmConfig.enabled && !!llmConfig.workerUrl && (
             <Button
               variant="outlined"
@@ -1300,7 +1360,7 @@ export default function PatientDashboard() {
               startIcon={<AutoAwesomeIcon sx={{ fontSize: '15px !important' }} />}
               onClick={() => setAiDrawerOpen(true)}
               sx={{
-                fontFamily: FONT, fontWeight: 700, fontSize: '0.78rem', textTransform: 'none',
+                fontFamily: FONT, fontWeight: 700, fontSize: '0.72rem', textTransform: 'none',
                 color: COLORS.grooming, borderColor: COLORS.kpiPurpleBorder, borderRadius: 0,
                 px: 2, height: 36,
                 '&:hover': { borderColor: COLORS.grooming, bgcolor: COLORS.kpiPurpleBg },
@@ -1835,40 +1895,55 @@ export default function PatientDashboard() {
                           <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 900, color: COLORS.info, mb: 2, textTransform: 'uppercase', letterSpacing: 1.2, display: 'flex', alignItems: 'center', gap: 0.5 }}>
                             <ScienceIcon sx={{ fontSize: 14 }} /> LAB RESULTS ({rec.labResults.length})
                           </Typography>
-                          <Grid container spacing={2}>
-                            {rec.labResults.map((lab, i) => {
-                              const labStatus = (lab.status || 'normal').toLowerCase();
-                              const colorMap = { critical: COLORS.danger, abnormal: COLORS.warning, normal: COLORS.success };
-                              const statusColor = colorMap[labStatus] || COLORS.success;
-                              return (
-                                <Grid key={i} size={{ xs: 12, sm: 6 }}>
-                                  <Box sx={{ p: 2, border: `1px solid ${COLORS.borderLight}`, bgcolor: COLORS.white, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                    <Box sx={{ flex: 1 }}>
-                                      <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', fontWeight: 900, color: COLORS.brand }}>{lab.testName.toUpperCase()}</Typography>
-                                      <Typography sx={{ fontFamily: FONT, fontSize: '0.9rem', fontWeight: 700, color: COLORS.textPrimary, mt: 0.5 }}>
-                                        {lab.result}{lab.unit ? ` ${lab.unit}` : ''}
-                                      </Typography>
-                                      {lab.referenceRange && (
-                                        <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, mt: 0.25 }}>
+                          
+                          <TableContainer component={Paper} sx={{ borderRadius: 0, border: `1px solid ${COLORS.border}`, boxShadow: 'none' }}>
+                            <Table size="small">
+                              <TableHead sx={{ bgcolor: COLORS.brand }}>
+                                <TableRow>
+                                  <TableCell sx={{ color: 'white', fontWeight: 900, fontSize: '0.65rem', py: 1 }}>TEST NAME</TableCell>
+                                  <TableCell sx={{ color: 'white', fontWeight: 900, fontSize: '0.65rem', py: 1 }}>RESULT</TableCell>
+                                  <TableCell sx={{ color: 'white', fontWeight: 900, fontSize: '0.65rem', py: 1 }}>STATUS</TableCell>
+                                  <TableCell sx={{ color: 'white', fontWeight: 900, fontSize: '0.65rem', py: 1 }}>CLINICAL NOTES</TableCell>
+                                </TableRow>
+                              </TableHead>
+                              <TableBody>
+                                {rec.labResults.map((lab, i) => {
+                                  const labStatus = (lab.status || 'normal').toLowerCase();
+                                  const colorMap = { critical: COLORS.danger, abnormal: COLORS.warning, normal: COLORS.success };
+                                  const statusColor = colorMap[labStatus] || COLORS.success;
+                                  return (
+                                    <TableRow key={i} sx={{ '&:nth-of-type(even)': { bgcolor: '#FAF8F5' } }}>
+                                      <TableCell sx={{ py: 1.5 }}>
+                                        <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', fontWeight: 900, color: COLORS.brand }}>
+                                          {lab.testName.toUpperCase()}
+                                        </Typography>
+                                        <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted }}>
                                           REF: {(() => {
                                             const sk = (pet?.species || '').toLowerCase().includes('cat') ? 'feline' : 'canine';
                                             const r = lab.referenceRange?.[sk] || lab.referenceRange;
-                                            return Array.isArray(r) ? `${r[0]} - ${r[1]}` : r;
+                                            return Array.isArray(r) ? `${r[0]} - ${r[1]}` : (r || 'N/A');
                                           })()}{lab.unit ? ` ${lab.unit}` : ''}
                                         </Typography>
-                                      )}
-                                      {lab.notes && <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, fontStyle: 'italic', mt: 1 }}>{lab.notes}</Typography>}
-                                    </Box>
-                                    <Box sx={{ px: 1, py: 0.25, bgcolor: `${statusColor}12`, border: `1px solid ${statusColor}` }}>
-                                      <Typography sx={{ fontFamily: FONT, fontSize: '0.6rem', fontWeight: 900, color: statusColor }}>
-                                        {(lab.resultType === 'positive-negative' ? (labStatus === 'normal' ? 'NEGATIVE' : 'POSITIVE') : labStatus).toUpperCase()}
-                                      </Typography>
-                                    </Box>
-                                  </Box>
-                                </Grid>
-                              );
-                            })}
-                          </Grid>
+                                      </TableCell>
+                                      <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.95rem', fontWeight: 1000, color: COLORS.textPrimary }}>
+                                        {lab.result}{lab.unit ? ` ${lab.unit}` : ''}
+                                      </TableCell>
+                                      <TableCell>
+                                        <Box sx={{ display: 'inline-block', px: 1, py: 0.25, bgcolor: `${statusColor}12`, border: `1px solid ${statusColor}` }}>
+                                          <Typography sx={{ fontFamily: FONT, fontSize: '0.6rem', fontWeight: 900, color: statusColor }}>
+                                            {(lab.resultType === 'positive-negative' ? (labStatus === 'normal' ? 'NEGATIVE' : 'POSITIVE') : labStatus).toUpperCase()}
+                                          </Typography>
+                                        </Box>
+                                      </TableCell>
+                                      <TableCell sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textSecondary, fontStyle: 'italic' }}>
+                                        {lab.notes || '—'}
+                                      </TableCell>
+                                    </TableRow>
+                                  );
+                                })}
+                              </TableBody>
+                            </Table>
+                          </TableContainer>
                         </Box>
                       )}
 

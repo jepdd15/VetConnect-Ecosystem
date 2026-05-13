@@ -1716,7 +1716,7 @@ export default function PetHistoryScreen({ route, navigation }) {
                   {/* SERVICES ROW — Sorted A-Z for predictability */}
                   {(() => {
                     const sortedServices = [...(item.serviceNames?.length > 0 ? item.serviceNames : [item.serviceType])].sort();
-                    const servicesText = sortedServices.join(', ').toUpperCase();
+                    const servicesText = sortedServices.join(', ');
                     
                     const performerNames = item.serviceAttribution?.filter(a => a.staffName).map(a => a.staffName) || [];
                     const uniquePerformers = [...new Set(performerNames)];
@@ -2025,13 +2025,8 @@ export default function PetHistoryScreen({ route, navigation }) {
                 </View>
               );
             })()}
-
             {item.dischargeSummary && (() => {
               const ds = item.dischargeSummary;
-              const doThisItems = (ds.instructions || '')
-                .split('\n')
-                .map(s => s.trim())
-                .filter(Boolean);
               const nextVisitStr = ds.nextVisit
                 ? formatDisplayDate(ds.nextVisit, { weekday: 'long', month: 'long', day: 'numeric' }, null)
                 : null;
@@ -2048,18 +2043,13 @@ export default function PetHistoryScreen({ route, navigation }) {
 
               return (
                 <View style={[styles.dischargeCard, { backgroundColor: COLORS.white, borderTopWidth: 2, borderTopColor: COLORS.border, borderStyle: 'dashed', marginTop: 20, paddingTop: 16 }]}>
-                  <View style={styles.dischargeHeaderRow}>
-                    <MaterialIcons name="assignment" size={14} color={COLORS.accent} />
-                    <Text style={styles.dischargeHeader}>DISCHARGE NOTES</Text>
-                  </View>
+                  <Text style={styles.sectionAnchorLabel}>Discharge Notes</Text>
 
                   <View style={styles.dischargeSection}>
-                    {doThisItems.length > 0 ? (
-                      doThisItems.map((line, i) => (
-                        <Text key={i} style={styles.dischargeBullet}>• {line}</Text>
-                      ))
+                    {ds.instructions ? (
+                      <Text style={styles.dischargeText}>{ds.instructions}</Text>
                     ) : (
-                      <Text style={[styles.dischargeBullet, { fontStyle: 'italic', color: COLORS.textMuted }]}>
+                      <Text style={[styles.dischargeText, { fontStyle: 'italic', color: COLORS.textMuted }]}>
                         No care instructions provided for this visit.
                       </Text>
                     )}
@@ -2068,7 +2058,7 @@ export default function PetHistoryScreen({ route, navigation }) {
                   {ds.medications && ds.medications.length > 0 && (
                     <View style={{ marginTop: 12 }}>
                       <View style={{ height: 1, borderTopWidth: 1, borderColor: COLORS.borderLight, borderStyle: 'dashed', marginBottom: 12 }} />
-                      <Text style={styles.dischargeSectionLabel}>MEDICATIONS</Text>
+                      <Text style={styles.sectionAnchorLabel}>Medications</Text>
                       {ds.medications.map((med, i) => (
                         <View key={i} style={{ marginBottom: 10, paddingLeft: 4 }}>
                           <Text style={styles.dischargeMedName}>
@@ -2084,22 +2074,18 @@ export default function PetHistoryScreen({ route, navigation }) {
 
                   <View style={{ marginTop: 16 }}>
                     <View style={{ height: 1, borderTopWidth: 1, borderColor: COLORS.borderLight, borderStyle: 'dashed', marginBottom: 16 }} />
-                    <Text style={{ fontSize: 9, fontWeight: '900', color: COLORS.textMuted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Next Steps</Text>
+                    <Text style={styles.sectionAnchorLabel}>Next Steps</Text>
                     
                     {ds.recheckIn && (
-                      <View style={[styles.dischargeRecheckRow, { backgroundColor: COLORS.white, borderStyle: 'dashed' }]}>
-                        <MaterialIcons name="replay" size={14} color={COLORS.accent} />
-                        <Text style={styles.dischargeRecheckText}>Recheck in: {ds.recheckIn}</Text>
-                      </View>
+                      <Text style={styles.dischargeNextStepInfo}>
+                        Recheck in: <Text style={styles.dischargeNextStepValue}>{ds.recheckIn}</Text>
+                      </Text>
                     )}
 
                     {nextVisitStr && (
-                      <View style={[styles.dischargeNextVisit, { backgroundColor: COLORS.white, borderStyle: 'dashed' }]}>
-                        <MaterialIcons name="event" size={14} color={COLORS.warning} />
-                        <Text style={styles.dischargeNextVisitText}>
-                          Follow up <Text style={styles.dischargeNextVisitDate}>{nextVisitStr}</Text>
-                        </Text>
-                      </View>
+                      <Text style={styles.dischargeNextStepInfo}>
+                        Follow-up: <Text style={styles.dischargeNextStepValue}>{nextVisitStr}</Text>
+                      </Text>
                     )}
 
                     <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
@@ -2134,11 +2120,11 @@ export default function PetHistoryScreen({ route, navigation }) {
                   </View>
 
                   {ds.vetName && (
-                    <View style={{ marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: COLORS.border, borderStyle: 'dashed' }}>
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: COLORS.textMuted, fontStyle: 'italic' }}>Signed by</Text>
-                      <Text style={{ fontSize: 13, fontWeight: '900', color: COLORS.brand, marginTop: 2 }}>{ds.vetName}</Text>
-                      <View style={{ marginTop: 6, borderBottomWidth: 1, borderBottomColor: COLORS.brand, width: 150 }} />
-                      <Text style={{ fontSize: 8, fontWeight: '700', color: COLORS.textMuted, marginTop: 2, letterSpacing: 0.5 }}>ATTENDING VETERINARIAN</Text>
+                    <View style={{ marginTop: 24, paddingTop: 16, borderTopWidth: 1, borderTopColor: COLORS.border, borderStyle: 'dashed', alignItems: 'flex-end' }}>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: COLORS.textMuted, fontStyle: 'italic', textAlign: 'right' }}>Signed by</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '900', color: COLORS.brand, marginTop: 2, textAlign: 'right' }}>{ds.vetName}</Text>
+                      <View style={{ marginTop: 6, borderBottomWidth: 1, borderBottomColor: COLORS.brand, width: 160 }} />
+                      <Text style={{ fontSize: 8, fontWeight: '700', color: COLORS.textMuted, marginTop: 4, letterSpacing: 0.5, textAlign: 'right' }}>ATTENDING VETERINARIAN</Text>
                     </View>
                   )}
                 </View>
@@ -3656,20 +3642,6 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     borderStyle: 'dashed',
   },
-  dischargeHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 10,
-  },
-  dischargeHeader: {
-    fontSize: 11,
-    fontWeight: "900",
-    color: COLORS.accent,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    flex: 1,
-  },
   dischargeStatusPill: {
     fontSize: 10,
     fontWeight: "900",
@@ -3686,20 +3658,11 @@ const styles = StyleSheet.create({
   dischargeSection: {
     marginBottom: 10,
   },
-  dischargeSectionLabel: {
-    fontSize: 10,
-    fontWeight: "900",
-    color: COLORS.textMuted,
-    marginBottom: 6,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  dischargeBullet: {
+  dischargeText: {
     fontSize: 14,
     color: COLORS.brand,
-    lineHeight: 20,
-    marginLeft: 6,
-    marginBottom: 3,
+    lineHeight: 22,
+    marginBottom: 8,
   },
   dischargeMedRow: {
     backgroundColor: COLORS.white,
@@ -3720,25 +3683,14 @@ const styles = StyleSheet.create({
     fontStyle: "italic",
     marginTop: 2,
   },
-  dischargeNextVisit: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.cream,
-    padding: 10,
-    borderRadius: 0,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: COLORS.warning,
-    gap: 6,
+  dischargeNextStepInfo: {
+    fontSize: 14,
+    color: COLORS.brand,
+    marginBottom: 6,
+    lineHeight: 20,
   },
-  dischargeNextVisitText: {
-    fontSize: 13,
-    color: COLORS.accent,
-    flex: 1,
-  },
-  dischargeNextVisitDate: {
-    fontWeight: "900",
-    color: COLORS.warning,
+  dischargeNextStepValue: {
+    fontWeight: '900',
   },
   dischargeCallBtn: {
     flexDirection: 'row',
@@ -3780,23 +3732,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   // T4.155 Day 2: Gap 4 — recheck interval
-  dischargeRecheckRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 10,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    backgroundColor: COLORS.cream,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    borderRadius: 0,
-  },
-  dischargeRecheckText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: COLORS.accent,
-  },
 
   // --- Vaccine card (B4) ---
   vaccineCard: {

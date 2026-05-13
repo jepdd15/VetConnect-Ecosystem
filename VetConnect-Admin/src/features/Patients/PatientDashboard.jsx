@@ -1347,7 +1347,7 @@ export default function PatientDashboard() {
               sx={{ gap: 1.5, py: 1 }}
             >
               <NotificationsActiveIcon sx={{ fontSize: 18, color: COLORS.medical }} />
-              <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', fontWeight: 800 }}>Notify Owner</Typography>
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', fontWeight: 800 }}>Notify Owner (Push/Email)</Typography>
             </MenuItem>
           </Menu>
 

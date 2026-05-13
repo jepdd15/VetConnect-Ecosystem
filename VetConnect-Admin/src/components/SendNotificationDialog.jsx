@@ -2,10 +2,16 @@ import React, { useEffect, useState } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Button, Box, Typography, Snackbar, Alert,
-  CircularProgress,
+  CircularProgress, Checkbox, FormControlLabel, IconButton, Tooltip,
+  Divider,
 } from '@mui/material';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import SendIcon from '@mui/icons-material/Send';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import PhoneIphoneIcon from '@mui/icons-material/PhoneIphone';
+import EmailIcon from '@mui/icons-material/Email';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import CancelIcon from '@mui/icons-material/Cancel';
 import { addDoc, collection, Timestamp } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { FONT, TYPE, COLORS } from '../theme/designTokens';
@@ -14,22 +20,10 @@ import { buildEmailHtml } from '../utils/notificationTemplateConstants';
 import { useUser } from '../context/UserContext';
 
 /**
- * T4.92 — Reusable dialog for sending free-text push notifications to a client.
- *
- * Resolves the client's Expo push token and the Cloudflare Worker URL from
- * Firestore, then POSTs to /push/custom. All success/error feedback is handled
- * internally via Snackbar — callers receive a clean `onSent` callback for any
- * context-specific audit logging they need to perform.
- *
- * Deliberately NOT fire-and-forget: the send is awaited so the admin can see
- * whether the delivery attempt succeeded before the dialog closes.
- *
- * @param {boolean}  open           - Dialog visibility state (controlled by parent).
- * @param {function} onClose        - Called when the dialog should close.
- * @param {string}   recipientName  - Display name shown in the dialog header.
- * @param {string}   ownerId        - Firestore user ID used to resolve expoPushToken.
- * @param {string}   [petName]      - Optional pet name to pre-populate body placeholder.
- * @param {function} [onSent]       - Called after successful send: ({ title, body }) => void.
+ * T4.92 — Reusable dialog for sending free-text notifications (Push + Email).
+ * 
+ * Provides a 'Smart Channel Hub' where staff can toggle between Push and Email,
+ * verify destination details, and refresh contact data directly from Firestore.
  */
 export default function SendNotificationDialog({
   open, onClose, recipientName, ownerId, petName, onSent,
@@ -38,15 +32,45 @@ export default function SendNotificationDialog({
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
+  const [resolving, setResolving] = useState(false);
   const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' });
 
+  // Channel Destinations (T4.122)
+  const [pushToken, setPushToken] = useState(null);
+  const [ownerEmail, setOwnerEmail] = useState(null);
+  const [sendPush, setSendPush] = useState(true);
+  const [sendEmail, setSendEmail] = useState(true);
+
+  const resolveDestinations = async () => {
+    if (!ownerId) return;
+    setResolving(true);
+    try {
+      // Resolve both channels from Firestore/Cache
+      const token = await resolvePushToken(ownerId);
+      setPushToken(token);
+      
+      const email = getCachedOwnerEmail(ownerId);
+      setOwnerEmail(email);
+
+      // Auto-toggle based on availability
+      setSendPush(!!token);
+      setSendEmail(!!email);
+    } catch (err) {
+      console.error('[SendNotificationDialog] Resolve failed:', err);
+    } finally {
+      setResolving(false);
+    }
+  };
+
   useEffect(() => {
-    if (open) { setTitle(''); setBody(''); }
-  }, [open]);
+    if (open) { 
+      setTitle(''); 
+      setBody(''); 
+      resolveDestinations();
+    }
+  }, [open, ownerId]);
 
   const handleClose = () => {
-    // Block close while a request is in-flight to prevent the Snackbar from
-    // disappearing before the user reads the result.
     if (sending) return;
     setTitle('');
     setBody('');
@@ -55,18 +79,19 @@ export default function SendNotificationDialog({
 
   const handleSend = async () => {
     if (!title.trim() || !body.trim()) return;
+    if (!sendPush && !sendEmail) {
+      setSnack({ open: true, message: 'Please select at least one delivery channel.', severity: 'warning' });
+      return;
+    }
+
     setSending(true);
 
     try {
-      const [pushToken, workerUrl] = await Promise.all([
-        resolvePushToken(ownerId),
-        getWorkerUrl(),
-      ]);
-
+      const workerUrl = await getWorkerUrl();
       if (!workerUrl) {
         setSnack({
           open: true,
-          message: 'Push notification service is not configured. Set the Worker URL in Settings.',
+          message: 'Notification service is not configured. Set the Worker URL in Settings.',
           severity: 'error',
         });
         setSending(false);
@@ -74,10 +99,10 @@ export default function SendNotificationDialog({
       }
 
       const baseEndpoint = workerUrl.replace(/\/+$/, '');
-      let pushSent = false;
+      const channelsSent = [];
 
-      // Channel 1: Push — only when the client has a push token
-      if (pushToken) {
+      // Channel 1: Push
+      if (sendPush && pushToken) {
         const res = await fetch(baseEndpoint + '/push/custom', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -88,33 +113,19 @@ export default function SendNotificationDialog({
           }),
         });
 
-        if (!res.ok) {
-          const errText = await res.text().catch(() => 'Unknown error');
-          throw new Error(errText);
+        if (res.ok) {
+          channelsSent.push('Push');
+          addDoc(collection(db, 'notification_log'), {
+            ownerId, ownerName: recipientName || null, status: null, petName: petName || null,
+            title: title.trim(), body: body.trim(), appointmentId: null, sentAt: Timestamp.now(),
+            sentBy: profile?.fullName || 'Staff', channel: 'push', type: 'custom',
+          }).catch(() => {});
         }
-        pushSent = true;
-
-        // T4.95: Fire-and-forget push notification log
-        addDoc(collection(db, 'notification_log'), {
-          ownerId,
-          ownerName:     recipientName || null,
-          status:        null,
-          petName:       petName || null,
-          title:         title.trim(),
-          body:          body.trim(),
-          appointmentId: null,
-          sentAt:        Timestamp.now(),
-          sentBy:        profile?.fullName || 'Staff',
-          channel:       'push',
-          type:          'custom',
-        }).catch(() => {});
       }
 
-      // Channel 2: Email — independent of push; fires even when pushToken is null
-      // SMS is not sent for custom notifications — they are not in SMS_CRITICAL_STATUSES.
-      const ownerEmail = getCachedOwnerEmail(ownerId);
-      if (ownerEmail) {
-        fetch(baseEndpoint + '/email', {
+      // Channel 2: Email
+      if (sendEmail && ownerEmail) {
+        const res = await fetch(baseEndpoint + '/email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -122,39 +133,30 @@ export default function SendNotificationDialog({
             subject: title.trim(),
             html:    buildEmailHtml(title.trim(), body.trim()),
           }),
-        }).then(() => {
-          addDoc(collection(db, 'notification_log'), {
-            ownerId,
-            ownerName:     recipientName || null,
-            status:        null,
-            petName:       petName || null,
-            title:         title.trim(),
-            body:          body.trim(),
-            appointmentId: null,
-            sentAt:        Timestamp.now(),
-            sentBy:        profile?.fullName || 'Staff',
-            channel:       'email',
-            type:          'custom',
-          }).catch(() => {});
-        }).catch((err) => {
-          console.error('[SendNotificationDialog] Email copy failed:', err?.message);
         });
+
+        if (res.ok) {
+          channelsSent.push('Email');
+          addDoc(collection(db, 'notification_log'), {
+            ownerId, ownerName: recipientName || null, status: null, petName: petName || null,
+            title: title.trim(), body: body.trim(), appointmentId: null, sentAt: Timestamp.now(),
+            sentBy: profile?.fullName || 'Staff', channel: 'email', type: 'custom',
+          }).catch(() => {});
+        }
       }
 
-      const channelsSent = [pushSent && 'push', ownerEmail && 'email'].filter(Boolean).join(' + ') || 'none';
+      if (channelsSent.length === 0) {
+        throw new Error('All selected delivery attempts failed. Check connectivity.');
+      }
+
       setSnack({
         open: true,
-        message: pushSent
-          ? `Notification sent to ${recipientName || 'client'} (${channelsSent}).`
-          : ownerEmail
-            ? `Push unavailable — email sent to ${recipientName || 'client'}.`
-            : 'This client has no push token or email on file.',
-        severity: pushSent || ownerEmail ? 'success' : 'warning',
+        message: `Message sent via ${channelsSent.join(' & ')}.`,
+        severity: 'success',
       });
 
       if (onSent) onSent({ title: title.trim(), body: body.trim() });
 
-      // Brief delay so the Snackbar is visible before the dialog dismisses.
       setTimeout(() => {
         setTitle('');
         setBody('');
@@ -173,7 +175,6 @@ export default function SendNotificationDialog({
   };
 
   const dismissSnack = () => setSnack((prev) => ({ ...prev, open: false }));
-
   const hasPreview = title.trim() || body.trim();
 
   return (
@@ -191,17 +192,10 @@ export default function SendNotificationDialog({
           },
         }}
       >
-        {/* ── Header ─────────────────────────────────────────────── */}
         <DialogTitle
           sx={{
-            fontFamily: FONT,
-            fontWeight: 900,
-            fontSize: '0.95rem',
-            color: COLORS.brand,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1,
-            borderBottom: `2px solid ${COLORS.border}`,
+            fontFamily: FONT, fontWeight: 900, fontSize: '0.95rem', color: COLORS.brand,
+            display: 'flex', alignItems: 'center', gap: 1, borderBottom: `2px solid ${COLORS.border}`,
             bgcolor: COLORS.cream,
           }}
         >
@@ -209,143 +203,95 @@ export default function SendNotificationDialog({
           Send Notification to {recipientName || 'Client'}
         </DialogTitle>
 
-        {/* ── Fields ─────────────────────────────────────────────── */}
-        <DialogContent sx={{ pt: 3, pb: 1 }}>
+        <DialogContent sx={{ pt: 2, pb: 1 }}>
+          {/* ── Destination Resolver & Status (T4.122) ────────────────── */}
+          <Box sx={{ bgcolor: COLORS.panelBg, border: `1px solid ${COLORS.borderLight}`, p: 1.5, mb: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 1000, color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Delivery Destinations
+              </Typography>
+              <Tooltip title="Refresh contact data from Firestore">
+                <IconButton size="small" onClick={() => resolveDestinations()} disabled={resolving || sending}>
+                  {resolving ? <CircularProgress size={14} color="inherit" /> : <RefreshIcon sx={{ fontSize: 14 }} />}
+                </IconButton>
+              </Tooltip>
+            </Box>
+            
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+              {/* Push Status */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <PhoneIphoneIcon sx={{ fontSize: 16, color: pushToken ? COLORS.success : COLORS.textMuted }} />
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 700, color: pushToken ? COLORS.textPrimary : COLORS.textMuted }}>
+                  Push: {pushToken ? 'READY' : 'UNAVAILABLE'}
+                </Typography>
+                {pushToken ? <CheckCircleIcon sx={{ fontSize: 12, color: COLORS.success }} /> : <CancelIcon sx={{ fontSize: 12, color: COLORS.textMuted }} />}
+              </Box>
+
+              {/* Email Status */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <EmailIcon sx={{ fontSize: 16, color: ownerEmail ? COLORS.accent : COLORS.textMuted }} />
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 700, color: ownerEmail ? COLORS.textPrimary : COLORS.textMuted }}>
+                  Email: {ownerEmail ? ownerEmail : 'UNAVAILABLE'}
+                </Typography>
+                {ownerEmail ? <CheckCircleIcon sx={{ fontSize: 12, color: COLORS.success }} /> : <CancelIcon sx={{ fontSize: 12, color: COLORS.textMuted }} />}
+              </Box>
+            </Box>
+
+            <Divider sx={{ my: 1.5 }} />
+
+            {/* Channel Selection */}
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <FormControlLabel
+                control={<Checkbox size="small" checked={sendPush} onChange={(e) => setSendPush(e.target.checked)} disabled={!pushToken || sending} />}
+                label={<Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 700 }}>Push Notification</Typography>}
+              />
+              <FormControlLabel
+                control={<Checkbox size="small" checked={sendEmail} onChange={(e) => setSendEmail(e.target.checked)} disabled={!ownerEmail || sending} />}
+                label={<Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 700 }}>Email Message</Typography>}
+              />
+            </Box>
+          </Box>
+
           <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textSecondary, mb: 0.5 }}>
             NOTIFICATION TITLE
           </Typography>
           <TextField
-            fullWidth
-            size="small"
-            placeholder="e.g., Lab Results Ready"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            disabled={sending}
-            sx={{
-              mb: 2,
-              '& .MuiOutlinedInput-root': {
-                fontFamily: FONT,
-                fontWeight: 600,
-                fontSize: '0.9rem',
-                borderRadius: 0,
-                bgcolor: COLORS.formBg,
-                '& fieldset': { borderColor: COLORS.borderInput },
-              },
-            }}
+            fullWidth size="small" placeholder="e.g., Lab Results Ready"
+            value={title} onChange={(e) => setTitle(e.target.value)} disabled={sending}
+            sx={{ mb: 2, '& .MuiOutlinedInput-root': { fontFamily: FONT, fontWeight: 600, fontSize: '0.9rem', borderRadius: 0, bgcolor: COLORS.formBg, '& fieldset': { borderColor: COLORS.borderInput } } }}
           />
 
           <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textSecondary, mb: 0.5 }}>
             MESSAGE BODY
           </Typography>
           <TextField
-            fullWidth
-            multiline
-            rows={3}
-            placeholder={
-              petName
-                ? `e.g., ${petName}'s lab results are ready for pickup.`
-                : "e.g., Your pet's lab results are ready for pickup."
-            }
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            disabled={sending}
-            sx={{
-              mb: 2.5,
-              '& .MuiOutlinedInput-root': {
-                fontFamily: FONT,
-                fontWeight: 500,
-                fontSize: '0.875rem',
-                borderRadius: 0,
-                bgcolor: COLORS.formBg,
-                '& fieldset': { borderColor: COLORS.borderInput },
-              },
-            }}
+            fullWidth multiline rows={3}
+            placeholder={petName ? `e.g., ${petName}'s lab results are ready for pickup.` : "e.g., Your pet's lab results are ready for pickup."}
+            value={body} onChange={(e) => setBody(e.target.value)} disabled={sending}
+            sx={{ mb: 2.5, '& .MuiOutlinedInput-root': { fontFamily: FONT, fontWeight: 500, fontSize: '0.875rem', borderRadius: 0, bgcolor: COLORS.formBg, '& fieldset': { borderColor: COLORS.borderInput } } }}
           />
 
-          {/* ── Live preview (only shown when at least one field has text) ── */}
           {hasPreview && (
-            <Box
-              sx={{
-                border: `1px dashed ${COLORS.border}`,
-                bgcolor: COLORS.surfaceAlt,
-                borderRadius: 0,
-                p: 2,
-              }}
-            >
-              <Typography
-                sx={{
-                  fontFamily: FONT,
-                  ...TYPE.label,
-                  color: COLORS.textMuted,
-                  mb: 1,
-                  letterSpacing: '0.06em',
-                }}
-              >
-                NOTIFICATION PREVIEW
-              </Typography>
-              <Box
-                sx={{
-                  bgcolor: COLORS.cardBg,
-                  border: `1px solid ${COLORS.borderLight}`,
-                  borderRadius: 0,
-                  p: 1.5,
-                }}
-              >
-                <Typography
-                  sx={{
-                    fontFamily: FONT,
-                    fontWeight: 700,
-                    fontSize: '0.85rem',
-                    color: COLORS.textPrimary,
-                    mb: 0.25,
-                  }}
-                >
-                  {title.trim() || 'Title'}
-                </Typography>
-                <Typography
-                  sx={{
-                    fontFamily: FONT,
-                    fontSize: '0.82rem',
-                    color: COLORS.textSecondary,
-                    whiteSpace: 'pre-wrap',
-                  }}
-                >
-                  {body.trim() || 'Message body'}
-                </Typography>
+            <Box sx={{ border: `1px dashed ${COLORS.border}`, bgcolor: COLORS.surfaceAlt, borderRadius: 0, p: 2 }}>
+              <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 1, letterSpacing: '0.06em' }}>NOTIFICATION PREVIEW</Typography>
+              <Box sx={{ bgcolor: COLORS.cardBg, border: `1px solid ${COLORS.borderLight}`, borderRadius: 0, p: 1.5 }}>
+                <Typography sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.85rem', color: COLORS.textPrimary, mb: 0.25 }}>{title.trim() || 'Title'}</Typography>
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.82rem', color: COLORS.textSecondary, whiteSpace: 'pre-wrap' }}>{body.trim() || 'Message body'}</Typography>
               </Box>
             </Box>
           )}
         </DialogContent>
 
-        {/* ── Actions ─────────────────────────────────────────────── */}
         <DialogActions sx={{ px: 2.5, pb: 2, pt: 1, borderTop: `1px solid ${COLORS.borderLight}` }}>
+          <Button onClick={handleClose} disabled={sending} sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textSecondary, borderRadius: 0 }}>Cancel</Button>
           <Button
-            onClick={handleClose}
-            disabled={sending}
-            sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textSecondary, borderRadius: 0 }}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSend}
-            variant="contained"
+            onClick={handleSend} variant="contained"
             disabled={!title.trim() || !body.trim() || sending}
-            startIcon={
-              sending
-                ? <CircularProgress size={16} color="inherit" />
-                : <SendIcon sx={{ fontSize: '16px !important' }} />
-            }
+            startIcon={sending ? <CircularProgress size={16} color="inherit" /> : <SendIcon sx={{ fontSize: '16px !important' }} />}
             sx={{
-              fontFamily: FONT,
-              fontWeight: 700,
-              fontSize: '0.82rem',
-              textTransform: 'none',
-              bgcolor: COLORS.medical,
-              borderRadius: 0,
-              px: 3,
-              boxShadow: 'none',
-              '&:hover': { bgcolor: '#0D47A1' },
-              '&.Mui-disabled': { bgcolor: COLORS.borderLight },
+              fontFamily: FONT, fontWeight: 700, fontSize: '0.82rem', textTransform: 'none',
+              bgcolor: COLORS.medical, borderRadius: 0, px: 3, boxShadow: 'none',
+              '&:hover': { bgcolor: '#0D47A1' }, '&.Mui-disabled': { bgcolor: COLORS.borderLight },
             }}
           >
             {sending ? 'Sending...' : 'Send Notification'}
@@ -353,21 +299,8 @@ export default function SendNotificationDialog({
         </DialogActions>
       </Dialog>
 
-      {/* Internal Snackbar — lives outside Dialog so it survives dialog close transitions */}
-      <Snackbar
-        open={snack.open}
-        autoHideDuration={4000}
-        onClose={dismissSnack}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert
-          onClose={dismissSnack}
-          severity={snack.severity}
-          variant="filled"
-          sx={{ fontFamily: FONT, width: '100%' }}
-        >
-          {snack.message}
-        </Alert>
+      <Snackbar open={snack.open} autoHideDuration={4000} onClose={dismissSnack} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+        <Alert onClose={dismissSnack} severity={snack.severity} variant="filled" sx={{ fontFamily: FONT, width: '100%' }}>{snack.message}</Alert>
       </Snackbar>
     </>
   );

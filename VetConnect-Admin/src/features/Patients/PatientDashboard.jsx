@@ -1661,7 +1661,7 @@ export default function PatientDashboard() {
 
                     {/* STATUS ICONS */}
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, ml: 'auto' }}>
-                      {!isExpanded && hasV && <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, display: { xs: 'none', lg: 'block' } }}>{[rv.weight&&`${rv.weight}kg`,rv.temp&&`${rv.temp}°C`,rv.hr&&`${rv.hr}bpm`].filter(Boolean).join(' · ')}</Typography>}
+                      {/* Vitals strip removed for simplicity */}
                       {/* SEALED indicator removed */}
                       {rec.legal?.isLocked === true && rec.appointmentId && (
                         <Button

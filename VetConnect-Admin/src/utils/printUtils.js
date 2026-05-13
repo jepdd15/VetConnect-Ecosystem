@@ -323,7 +323,11 @@ export function esc(str) {
 export function calculatePetAge(dob) {
   if (!dob) return '—';
   try {
-    const birthDate = dob.toDate ? dob.toDate() : new Date(dob);
+    const birthDate = dob.toDate 
+      ? dob.toDate() 
+      : dob.seconds 
+        ? new Date(dob.seconds * 1000) 
+        : new Date(dob);
     if (isNaN(birthDate.getTime())) return '—';
     const today = new Date();
     let age = today.getFullYear() - birthDate.getFullYear();

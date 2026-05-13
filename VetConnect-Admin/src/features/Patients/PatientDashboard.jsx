@@ -1624,9 +1624,9 @@ export default function PatientDashboard() {
                       </Typography>
                     </Box>
                   )}
-                  {/* Header Row */}
+                  {/* Header Row — High-Density Clinical Command Center */}
                   <Box onClick={() => toggleRecord(index)} sx={{
-                    display: 'flex', alignItems: 'center', gap: 1.5, py: 1.25, px: 2,
+                    display: 'flex', alignItems: 'center', gap: 2, py: 1.5, px: 2,
                     bgcolor: isExpanded ? COLORS.cardBg : 'transparent',
                     borderRadius: 0,
                     border: isExpanded ? `1px solid ${COLORS.border}` : '1px solid transparent',
@@ -1634,470 +1634,359 @@ export default function PatientDashboard() {
                     cursor: 'pointer', transition: 'all 0.15s ease',
                     '&:hover': { bgcolor: isExpanded ? COLORS.cardBg : COLORS.borderLight },
                   }}>
-                    <Box sx={{ width: 3, height: 24, borderRadius: 2, bgcolor: rc, flexShrink: 0 }} />
-                    <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary, minWidth: 88, flexShrink: 0 }}>{dateStr}</Typography>
-                    {/* T4.167: Service chips — 1-3 inline, 4+ collapses */}
-                    {(() => {
-                      const svcNames = rec.serviceNames?.length > 0 ? rec.serviceNames : [rec.serviceType || rec.recordType || 'medical'];
-                      const showAll = expandedServiceChips.has(index);
-                      const visible = showAll ? svcNames : svcNames.slice(0, 3);
-                      return (
-                        <>
-                          {visible.map((svcName, si) => (
-                            <Box key={si} sx={{ px: 0.75, py: 0.2, borderRadius: 0, bgcolor: `${rc}12`, textAlign: 'center' }}>
-                              <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 800, color: rc, textTransform: 'uppercase', letterSpacing: 0.8 }}>
-                                {svcName}
+                    {/* Vertical indicator removed for minimalist aesthetic */}
+                    
+                    {/* FORENSIC METADATA STRIP */}
+                    <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', fontWeight: 800, color: COLORS.textPrimary, minWidth: 100, flexShrink: 0 }}>
+                      {dateStr.toUpperCase()}
+                    </Typography>
+
+                    <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', fontWeight: 700, color: COLORS.textSecondary, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {rec.vetName || 'ATTENDING CLINICIAN'}
+                    </Typography>
+
+                    {/* T2.457: Case-day badge for multi-day cases */}
+                    {caseDayMap[rec.id] && (
+                      <Box sx={{ 
+                        px: 1, py: 0.25, 
+                        bgcolor: caseDayMap[rec.id].caseDay === 1 ? COLORS.chipBlueBg : COLORS.warningSurface,
+                        border: `1px solid ${caseDayMap[rec.id].caseDay === 1 ? COLORS.medical : COLORS.warning}`,
+                        flexShrink: 0 
+                      }}>
+                        <Typography sx={{ fontFamily: FONT, fontSize: '0.62rem', fontWeight: 900, color: caseDayMap[rec.id].caseDay === 1 ? COLORS.medical : COLORS.warning, textTransform: 'uppercase' }}>
+                          DAY {caseDayMap[rec.id].caseDay}
+                        </Typography>
+                      </Box>
+                    )}
+
+                    {/* STATUS ICONS */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, ml: 'auto' }}>
+                      {!isExpanded && hasV && <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, display: { xs: 'none', lg: 'block' } }}>{[rv.weight&&`${rv.weight}kg`,rv.temp&&`${rv.temp}°C`,rv.hr&&`${rv.hr}bpm`].filter(Boolean).join(' · ')}</Typography>}
+                      {/* SEALED indicator removed */}
+                      {rec.legal?.isLocked === true && rec.appointmentId && (
+                        <Button
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setAmendTargetApptId(rec.appointmentId);
+                            setAmendDialogOpen(true);
+                          }}
+                          sx={{
+                            fontFamily: FONT, fontWeight: 900, fontSize: '0.62rem', textTransform: 'uppercase',
+                            color: COLORS.warning, borderRadius: 0, py: 0.25, px: 1, minWidth: 0,
+                            border: `1px solid ${COLORS.warning}`,
+                            '&:hover': { bgcolor: COLORS.warningSurface },
+                          }}
+                        >
+                          Amend
+                        </Button>
+                      )}
+                      <Box sx={{ color: COLORS.accent }}>{isExpanded ? <ExpandLessIcon sx={{ fontSize: 20 }}/> : <ExpandMoreIcon sx={{ fontSize: 20 }}/>}</Box>
+                    </Box>
+                  </Box>
+
+
+                  {/* Expanded Body — Clinical Command Center */}
+                  <Collapse in={isExpanded} timeout={200}>
+                    <Box sx={{ bgcolor: COLORS.cardBg, px: 3, pb: 3, pt: 2, border: `1px solid ${COLORS.border}`, borderTop: `1px solid ${COLORS.borderLight}`, borderRadius: 0 }}>
+                      
+                      {/* T4.194: Typographic Memo Section (Services & Staff) */}
+                      <Box sx={{ mb: 2.5 }}>
+                        {(() => {
+                          const svcNames = [...(rec.serviceNames?.length > 0 ? rec.serviceNames : [rec.serviceType || rec.recordType || 'medical'])].sort();
+                          const servicesText = svcNames.join(', ').toUpperCase();
+                          
+                          const attrs = (rec.serviceAttribution || []).filter(a => a.staffName);
+                          const uniquePerformers = [...new Set(attrs.map(a => a.staffName))];
+                          const staffText = uniquePerformers.length > 0 
+                            ? uniquePerformers.join(', ').toUpperCase() 
+                            : `${rec.vetName || 'ATTENDING CLINICIAN'} (ATTENDING)`;
+
+                          return (
+                            <Stack spacing={0.5}>
+                              <Box sx={{ display: 'flex', gap: 1.5 }}>
+                                <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 900, color: COLORS.textMuted, width: 70, letterSpacing: 1 }}>SERVICES</Typography>
+                                <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', fontWeight: 700, color: COLORS.textPrimary, flex: 1 }}>{servicesText}</Typography>
+                              </Box>
+                              <Box sx={{ display: 'flex', gap: 1.5 }}>
+                                <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 900, color: COLORS.textMuted, width: 70, letterSpacing: 1 }}>STAFF</Typography>
+                                <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', fontWeight: 700, color: COLORS.textPrimary, flex: 1 }}>{staffText}</Typography>
+                              </Box>
+                            </Stack>
+                          );
+                        })()}
+                      </Box>
+
+                      {/* T4.194: Borderless Vitals Stream */}
+                      {hasV && (
+                        <Box sx={{ py: 1.5, borderTop: `1px dashed ${COLORS.border}`, borderBottom: `1px dashed ${COLORS.border}`, mb: 3, display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                          {[
+                            { label: 'WT',   value: rv.weight, unit: 'kg' },
+                            { label: 'TEMP', value: rv.temp,   unit: '°C' },
+                            { label: 'HR',   value: rv.hr,     unit: 'bpm' },
+                            { label: 'RR',   value: rv.rr,     unit: 'br/m' },
+                            { label: 'CRT',  value: rv.crt,    unit: 's' },
+                            { label: 'BCS',  value: rv.bcs,    unit: '/9' },
+                            { label: 'PAIN', value: rv.pain,   unit: '/10' },
+                          ].filter(v => v.value != null && v.value !== '').map(({ label, value, unit }) => (
+                            <Box key={label} sx={{ display: 'flex', alignItems: 'baseline', gap: 0.5 }}>
+                              <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 900, color: COLORS.textMuted }}>{label}</Typography>
+                              <Typography sx={{ fontFamily: FONT, fontSize: '0.95rem', fontWeight: 800, color: COLORS.textPrimary }}>
+                                {value}<span style={{ fontSize: '0.7rem', fontWeight: 600, color: COLORS.textMuted, marginLeft: 2 }}>{unit}</span>
                               </Typography>
                             </Box>
                           ))}
-                          {svcNames.length > 3 && !showAll && (
-                            <Typography
-                              component="span"
-                              onClick={(e) => { e.stopPropagation(); setExpandedServiceChips(prev => { const n = new Set(prev); n.add(index); return n; }); }}
-                              sx={{ fontFamily: FONT, fontSize: '0.6rem', fontWeight: 800, color: COLORS.accent, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                            >
-                              +{svcNames.length - 3} more
-                            </Typography>
-                          )}
-                          {svcNames.length > 3 && showAll && (
-                            <Typography
-                              component="span"
-                              onClick={(e) => { e.stopPropagation(); setExpandedServiceChips(prev => { const n = new Set(prev); n.delete(index); return n; }); }}
-                              sx={{ fontFamily: FONT, fontSize: '0.6rem', fontWeight: 800, color: COLORS.textMuted, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                            >
-                              show less
-                            </Typography>
-                          )}
-                        </>
-                      );
-                    })()}
-                    {/* serviceAttribution: which vet(s) performed each service */}
-                    {rec.serviceAttribution?.length > 0 && (() => {
-                      const attrs = rec.serviceAttribution.filter(a => a.staffName);
-                      if (attrs.length === 0) return null;
-                      const uniqueNames = [...new Set(attrs.map(a => a.staffName))];
-                      if (uniqueNames.length === 1) {
-                        return (
-                          <Typography sx={{ fontFamily: FONT, fontSize: '0.55rem', fontWeight: 700, color: COLORS.textMuted, fontStyle: 'italic', whiteSpace: 'nowrap' }}>
-                            Performed by: {uniqueNames[0]}
-                          </Typography>
-                        );
-                      }
-                      return attrs.map((a, ai) => (
-                        <Typography key={ai} sx={{ fontFamily: FONT, fontSize: '0.55rem', fontWeight: 700, color: COLORS.textMuted, fontStyle: 'italic', whiteSpace: 'nowrap' }}>
-                          by {a.staffName}
-                        </Typography>
-                      ));
-                    })()}
-                    <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.textPrimary, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{rec.diagnoses?.[0]?.name || rec.diagnosis || 'Clinical Visit'}</Typography>
-                    {/* T2.457: Case-day badge for multi-day cases */}
-                    {caseDayMap[rec.id] && (
-                      <Chip
-                        label={`Day ${caseDayMap[rec.id].caseDay}${caseDayMap[rec.id].totalDays > 1 ? ` of ${caseDayMap[rec.id].totalDays}` : ''}`}
-                        size="small"
-                        sx={{
-                          fontFamily: FONT,
-                          fontSize: '0.62rem',
-                          fontWeight: 800,
-                          height: 20,
-                          bgcolor: caseDayMap[rec.id].caseDay === 1 ? COLORS.chipBlueBg : COLORS.warningSurface,
-                          color: caseDayMap[rec.id].caseDay === 1 ? COLORS.medical : COLORS.warning,
-                          border: `1px solid ${caseDayMap[rec.id].caseDay === 1 ? COLORS.medical : COLORS.warning}`,
-                          flexShrink: 0,
-                        }}
-                      />
-                    )}
-                    {!isExpanded && hasV && <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, display: { xs: 'none', md: 'block' } }}>{[rv.weight&&`${rv.weight}kg`,rv.temp&&`${rv.temp}°C`,rv.hr&&`${rv.hr}bpm`].filter(Boolean).join(' · ')}</Typography>}
-                    {!isExpanded && hasRx && <MedicationIcon sx={{ fontSize: 14, color: COLORS.rxText, opacity: 0.6 }} />}
-                    <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, flexShrink: 0 }}>{rec.vetName || '—'}</Typography>
-                    {rec.legal?.isLocked === true && rec.appointmentId && (
-                      <Button
-                        size="small"
-                        startIcon={<ShieldIcon sx={{ fontSize: 11 }} />}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setAmendTargetApptId(rec.appointmentId);
-                          setAmendDialogOpen(true);
-                        }}
-                        sx={{
-                          fontFamily: FONT, fontWeight: 900, fontSize: '0.62rem', textTransform: 'uppercase',
-                          color: COLORS.warning, borderRadius: 0, py: 0, px: 0.75, minWidth: 0,
-                          '&:hover': { bgcolor: COLORS.warningSurface },
-                          flexShrink: 0,
-                        }}
-                      >
-                        Amend
-                      </Button>
-                    )}
-                    <Box sx={{ color: COLORS.textMuted }}>{isExpanded ? <ExpandLessIcon sx={{ fontSize: 18 }}/> : <ExpandMoreIcon sx={{ fontSize: 18 }}/>}</Box>
-                  </Box>
+                        </Box>
+                      )}
 
-                  {/* Expanded Body */}
-                  <Collapse in={isExpanded} timeout={200}>
-                    <Box sx={{ bgcolor: COLORS.cardBg, px: 3, pb: 2.5, pt: 1.5, border: `1px solid ${COLORS.border}`, borderTop: `1px solid ${COLORS.borderLight}`, borderRadius: 0, boxShadow: '0 2px 8px rgba(62,39,35,0.04)' }}>
-                      <Grid container spacing={3}>
-                        <Grid size={{ xs: 12, md: 8 }}>
-                          <Stack spacing={1.5}>
-                            {/* T3.70: Show intake context for records created after the restructure */}
-                            {(rec.intakeContext?.clientNotes || rec.intakeContext?.staffNotes) && (
-                              <Box sx={{ bgcolor: COLORS.formBg, border: `1px solid ${COLORS.borderLight}`, p: 1.5, borderRadius: 0 }}>
-                                <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.5, fontSize: '0.6rem' }}>
-                                  INTAKE NOTES
-                                </Typography>
-                                {rec.intakeContext.clientNotes && (
-                                  <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.medical, fontWeight: 700, mb: 0.25 }}>
-                                    CLIENT: {rec.intakeContext.clientNotes}
-                                  </Typography>
-                                )}
-                                {rec.intakeContext.staffNotes && (
-                                  <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.warning, fontWeight: 700 }}>
-                                    STAFF TRIAGE: {rec.intakeContext.staffNotes}
-                                  </Typography>
-                                )}
-                              </Box>
-                            )}
+                      {/* MAIN CLINICAL GRID (6:6) */}
+                      <Grid container spacing={4}>
+                        {/* LEFT COLUMN: HISTORY & EXAM */}
+                        <Grid size={{ xs: 12, md: 6 }}>
+                          <Stack spacing={3}>
+                            {/* Subjective */}
                             <Box>
-                              <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.5 }}>Subjective</Typography>
-                              <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: hasS ? COLORS.textPrimary : COLORS.textMuted, pl: 1.5, borderLeft: `2px solid ${COLORS.borderLight}`, fontStyle: hasS ? 'normal' : 'italic' }}>{hasS ? rec.soap.subjective : '—'}</Typography>
+                              <Typography sx={{ fontFamily: FONT, fontSize: '1.1rem', fontWeight: 900, color: COLORS.textPrimary, mb: 2, textTransform: 'uppercase', letterSpacing: 2, borderBottom: `3px solid ${COLORS.brand}`, width: 'fit-content', pb: 0.5 }}>S — SUBJECTIVE</Typography>
+                              <Box sx={{ height: 200, overflowY: 'auto', pr: 1, '&::-webkit-scrollbar': { width: '4px' }, '&::-webkit-scrollbar-thumb': { bgcolor: COLORS.border, borderRadius: 0 } }}>
+                                <Typography sx={{ fontFamily: FONT, fontSize: '0.95rem', color: hasS ? COLORS.textPrimary : COLORS.textMuted, fontStyle: hasS ? 'normal' : 'italic', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+                                  {hasS ? rec.soap.subjective : '— No subjective notes recorded —'}
+                                </Typography>
+                              </Box>
                             </Box>
-                            {(() => {
-                              const objSummary = hasO ? examSummaryLine(rec.objectiveExam) : null;
-                              return (
+                            
+                            {/* Objective */}
                             <Box>
-                              <Box
-                                onClick={hasO ? (e) => { e.stopPropagation(); toggleObjective(index); } : undefined}
-                                sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: hasO ? 'pointer' : 'default', mb: 0.5 }}
-                              >
-                                <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted }}>
-                                  Objective
+                              <Typography sx={{ fontFamily: FONT, fontSize: '1.1rem', fontWeight: 900, color: COLORS.textPrimary, mb: 2, textTransform: 'uppercase', letterSpacing: 2, borderBottom: `3px solid ${COLORS.brand}`, width: 'fit-content', pb: 0.5 }}>O — OBJECTIVE</Typography>
+                              <Box sx={{ height: 200, overflowY: 'auto', pr: 1, '&::-webkit-scrollbar': { width: '4px' }, '&::-webkit-scrollbar-thumb': { bgcolor: COLORS.border, borderRadius: 0 } }}>
+                                <Typography sx={{ fontFamily: FONT, fontSize: '0.95rem', color: hasO ? COLORS.textPrimary : COLORS.textMuted, fontStyle: hasO ? 'normal' : 'italic', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+                                  {hasO ? resolveObjectiveText(rec) : '— No objective exam recorded —'}
                                 </Typography>
-                                {hasO && !expandedObjectives.has(index) && objSummary && (
-                                  <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', color: COLORS.textMuted, fontStyle: 'italic', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    — {objSummary}
-                                  </Typography>
-                                )}
-                                {hasO && (
-                                  <Box sx={{ color: COLORS.textMuted }}>
-                                    {expandedObjectives.has(index) ? <ExpandLessIcon sx={{ fontSize: 14 }} /> : <ExpandMoreIcon sx={{ fontSize: 14 }} />}
-                                  </Box>
-                                )}
-                              </Box>
-                              <Collapse in={expandedObjectives.has(index) || !hasO} timeout={150}>
-                                <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: hasO ? COLORS.textPrimary : COLORS.textMuted, whiteSpace: 'pre-wrap', pl: 1.5, borderLeft: `2px solid ${COLORS.borderLight}`, fontStyle: hasO ? 'normal' : 'italic' }}>
-                                  {hasO ? resolveObjectiveText(rec) : '—'}
-                                </Typography>
-                              </Collapse>
-                            </Box>
-                              );
-                            })()}
-                            <Box sx={{ bgcolor: COLORS.vitalsBg, py: 1, px: 1.5, borderRadius: 0, border: `1px solid ${COLORS.borderLight}` }}>
-                              <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.75 }}>Vitals</Typography>
-                              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2.5 }}>
-                                {[
-                                  { label: 'Wt',   value: rv.weight, unit: 'kg' },
-                                  { label: 'Temp', value: rv.temp,   unit: '°C' },
-                                  { label: 'HR',   value: rv.hr,     unit: 'bpm' },
-                                  { label: 'RR',   value: rv.rr,     unit: 'br/min' },
-                                  { label: 'CRT',  value: rv.crt,    unit: 'sec' },
-                                  { label: 'BCS',  value: rv.bcs,    unit: '/9' },
-                                  { label: 'Pain', value: rv.pain,   unit: '/10' },
-                                ].map(({ label, value, unit }) => (
-                                  <Box key={label}>
-                                    <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, textTransform: 'uppercase', fontWeight: 600 }}>{label}</Typography>
-                                    {value != null && value !== '' ? (
-                                      <Typography sx={{ fontFamily: FONT, ...TYPE.emphasis, color: COLORS.textPrimary }}>
-                                        {value} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: COLORS.textMuted }}>{unit}</span>
-                                      </Typography>
-                                    ) : (
-                                      <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', color: COLORS.textMuted, fontStyle: 'italic' }}>
-                                        not taken
-                                      </Typography>
-                                    )}
-                                  </Box>
-                                ))}
                               </Box>
                             </Box>
-                            {(rec.diagnoses?.length > 0 || rec.soap?.assessment || rec.assessmentNotes) && (
-                              <Box>
-                                <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.75 }}>
-                                  Assessment
-                                </Typography>
-                                {rec.diagnoses?.length > 0 && (
-                                  <Stack spacing={1} sx={{ mb: 1, pl: 1.5, borderLeft: `2px solid ${COLORS.borderLight}` }}>
+                          </Stack>
+                        </Grid>
+
+                        {/* RIGHT COLUMN: ASSESSMENT & PLAN */}
+                        <Grid size={{ xs: 12, md: 6 }}>
+                          <Stack spacing={3}>
+                            {/* Assessment */}
+                            <Box>
+                              <Typography sx={{ fontFamily: FONT, fontSize: '1.1rem', fontWeight: 900, color: COLORS.textPrimary, mb: 2, textTransform: 'uppercase', letterSpacing: 2, borderBottom: `3px solid ${COLORS.brand}`, width: 'fit-content', pb: 0.5 }}>A — ASSESSMENT</Typography>
+                              <Box sx={{ height: 200, overflowY: 'auto', pr: 1, '&::-webkit-scrollbar': { width: '4px' }, '&::-webkit-scrollbar-thumb': { bgcolor: COLORS.border, borderRadius: 0 } }}>
+                                {(rec.diagnoses?.length > 0) ? (
+                                  <Stack spacing={1} sx={{ mb: 1.5 }}>
                                     {rec.diagnoses.map((dx, i) => (
                                       <Box key={dx.catalogId || i}>
-                                        <Typography sx={{ fontFamily: FONT, fontSize: '1.05rem', fontWeight: 900, color: COLORS.textPrimary, lineHeight: 1.3 }}>
-                                          {dx.name}
+                                        <Typography sx={{ fontFamily: FONT, fontSize: '1.05rem', fontWeight: 900, color: COLORS.textPrimary, lineHeight: 1.2 }}>
+                                          • {dx.name.toUpperCase()}
                                           {dx.severity && (
-                                            <Typography component="span" sx={{ fontFamily: FONT, fontSize: '0.8rem', fontWeight: 700, color: COLORS.warning, ml: 1 }}>
-                                              {dx.severity}
+                                            <Typography component="span" sx={{ fontFamily: FONT, fontSize: '0.8rem', fontWeight: 900, color: COLORS.warning, ml: 1, textTransform: 'uppercase' }}>
+                                              [{dx.severity}]
                                             </Typography>
                                           )}
                                         </Typography>
-                                        {dx.notes && (
-                                          <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', color: COLORS.textMuted, fontStyle: 'italic', mt: 0.25 }}>
-                                            {dx.notes}
-                                          </Typography>
-                                        )}
+                                        {dx.notes && <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', color: COLORS.textMuted, fontStyle: 'italic', ml: 2, mt: 0.25 }}>{dx.notes}</Typography>}
                                       </Box>
                                     ))}
                                   </Stack>
-                                )}
-                                {(rec.patientStatus || rec.soap?.prognosis) && (
-                                  <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', fontWeight: 700, color: COLORS.textSecondary, mb: 0.75 }}>
-                                    {rec.patientStatus || 'Stable'} · Prognosis: {rec.soap?.prognosis || 'Good'}
+                                ) : (
+                                  <Typography sx={{ fontFamily: FONT, fontSize: '1.05rem', fontWeight: 900, color: COLORS.textPrimary, mb: 1 }}>
+                                    {rec.diagnosis?.toUpperCase() || 'CLINICAL VISIT'}
                                   </Typography>
                                 )}
-                                {(rec.assessmentNotes || (!rec.diagnoses?.length && rec.soap?.assessment)) && (
-                                  <Box sx={{ mt: 0.5 }}>
-                                    <Typography sx={{ fontFamily: FONT, fontSize: '0.62rem', fontWeight: 900, color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em', mb: 0.25 }}>
-                                      Assessment Notes
+                                {(rec.patientStatus || rec.soap?.prognosis) && (
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                                    <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 900, color: COLORS.medical, bgcolor: `${COLORS.medical}12`, px: 1, py: 0.25 }}>
+                                      STATUS: {rec.patientStatus?.toUpperCase() || 'STABLE'}
                                     </Typography>
-                                    <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.textPrimary, whiteSpace: 'pre-wrap', pl: 1.5, borderLeft: `2px solid ${COLORS.borderLight}` }}>
-                                      {rec.assessmentNotes || rec.soap?.assessment}
+                                    <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 900, color: COLORS.accent, bgcolor: `${COLORS.accent}12`, px: 1, py: 0.25 }}>
+                                      PROGNOSIS: {rec.soap?.prognosis?.toUpperCase() || 'GOOD'}
                                     </Typography>
                                   </Box>
                                 )}
+                                {(rec.assessmentNotes || rec.soap?.assessment) && (
+                                  <Typography sx={{ fontFamily: FONT, fontSize: '0.9rem', color: COLORS.textSecondary, whiteSpace: 'pre-wrap', fontStyle: 'italic', lineHeight: 1.5 }}>
+                                    {rec.assessmentNotes || rec.soap.assessment}
+                                  </Typography>
+                                )}
                               </Box>
-                            )}
-                            <Box>
-                              <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.5 }}>
-                                Plan
-                              </Typography>
-                              <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: hasT ? COLORS.textPrimary : COLORS.textMuted, whiteSpace: 'pre-wrap', pl: 1.5, borderLeft: `2px solid ${COLORS.borderLight}`, fontStyle: hasT ? 'normal' : 'italic' }}>
-                                {hasT ? rec.treatment : '—'}
-                              </Typography>
                             </Box>
-                            {rec.dischargeSummary && (
-                              <Box sx={{ bgcolor: COLORS.cream, mx: -3, px: 3, py: 1.5 }}>
-                                <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.75, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                  Discharge Notes
-                                </Typography>
-                                {rec.dischargeSummary.instructions && (
-                                  <Stack spacing={0.25} sx={{ mb: 0.75 }}>
-                                    {rec.dischargeSummary.instructions
-                                      .split('\n')
-                                      .filter(line => line.trim())
-                                      .map((line, i) => (
-                                        <Typography key={i} sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.textPrimary }}>
-                                          — {line.trim()}
-                                        </Typography>
-                                      ))}
-                                  </Stack>
-                                )}
-                                {rec.dischargeSummary.medications?.length > 0 && (
-                                  <Stack spacing={0.25} sx={{ mb: 0.75 }}>
-                                    {rec.dischargeSummary.medications.map((med, i) => (
-                                      <Typography key={i} sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.textPrimary }}>
-                                        <Typography component="span" sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.textPrimary }}>
-                                          {med.name}
-                                        </Typography>
-                                        {med.qty ? ` x${med.qty}` : ''}
-                                        {med.instructions ? ` — ${med.instructions}` : ''}
-                                      </Typography>
-                                    ))}
-                                  </Stack>
-                                )}
-                                {rec.dischargeSummary.supplies?.length > 0 && (
-                                  <Stack spacing={0.25} sx={{ mb: 0.75 }}>
-                                    <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.success, fontSize: '0.7rem' }}>
-                                      Take-Home Supplies
-                                    </Typography>
-                                    {rec.dischargeSummary.supplies.map((sup, i) => (
-                                      <Typography key={i} sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.textPrimary }}>
-                                        <Typography component="span" sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.textPrimary }}>
-                                          {sup.name}
-                                        </Typography>
-                                        {sup.qty ? ` x${sup.qty}` : ''}
-                                        {sup.instructions ? ` — ${sup.instructions}` : ''}
-                                      </Typography>
-                                    ))}
-                                  </Stack>
-                                )}
-                                {rec.dischargeSummary.nextVisit && (
-                                  <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.danger, mb: 0.25 }}>
-                                    Follow-up: {rec.dischargeSummary.nextVisit}
-                                  </Typography>
-                                )}
-                                {rec.dischargeSummary.recheckIn && (
-                                  <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.textSecondary, mb: 0.25 }}>
-                                    Recheck in: {rec.dischargeSummary.recheckIn}
-                                  </Typography>
-                                )}
-                                {rec.dischargeSummary.vetName && (
-                                  <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, mt: 0.5 }}>
-                                    Signed by {rec.dischargeSummary.vetName}
-                                  </Typography>
-                                )}
-                              </Box>
-                            )}
-                            {!rec.dischargeSummary && rec.nextVisit && (
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, p: 1, bgcolor: COLORS.warningSurface, border: `1px solid ${COLORS.peach}`, borderRadius: 0 }}>
-                                <CalendarMonthIcon sx={{ fontSize: 14, color: COLORS.warning }} />
-                                <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.warning, fontWeight: 700 }}>
-                                  Follow-up:{' '}
-                                  {rec.nextVisit?.toDate
-                                    ? rec.nextVisit.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                                    : rec.nextVisit}
+
+                            {/* Plan */}
+                            <Box>
+                              <Typography sx={{ fontFamily: FONT, fontSize: '1.1rem', fontWeight: 900, color: COLORS.textPrimary, mb: 2, textTransform: 'uppercase', letterSpacing: 2, borderBottom: `3px solid ${COLORS.brand}`, width: 'fit-content', pb: 0.5 }}>P — PLAN</Typography>
+                              <Box sx={{ height: 200, overflowY: 'auto', pr: 1, '&::-webkit-scrollbar': { width: '4px' }, '&::-webkit-scrollbar-thumb': { bgcolor: COLORS.border, borderRadius: 0 } }}>
+                                <Typography sx={{ fontFamily: FONT, fontSize: '0.95rem', color: hasT ? COLORS.textPrimary : COLORS.textMuted, fontStyle: hasT ? 'normal' : 'italic', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+                                  {hasT ? rec.treatment : '— No clinical plan recorded —'}
                                 </Typography>
                               </Box>
-                            )}
-                            {/* T3.84: Lab results */}
-                            {rec.labResults?.length > 0 && (
-                              <Box sx={{ bgcolor: COLORS.kpiBlueBg, border: `1px solid ${COLORS.kpiBlueBorder}`, py: 1, px: 1.5, borderRadius: 0 }}>
-                                <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.info, mb: 0.75, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                  <ScienceIcon sx={{ fontSize: 13 }} />
-                                  Lab Results ({rec.labResults.length})
-                                </Typography>
-                                <Stack spacing={1}>
-                                  {rec.labResults.map((lab, i) => {
-                                    const labStatus = (lab.status || '').toLowerCase();
-                                    const labChipColors = {
-                                      normal:   { bgcolor: COLORS.kpiGreenBg, color: COLORS.success },
-                                      abnormal: { bgcolor: COLORS.warningSurface, color: COLORS.warning },
-                                      critical: { bgcolor: COLORS.dangerSurface, color: COLORS.danger },
-                                    };
-                                    const lc = labChipColors[labStatus] || labChipColors.normal;
-                                    // T4.120 Amendment 1: display POSITIVE/NEGATIVE for positive-negative tests
-                                    const chipLabel = lab.resultType === 'positive-negative'
-                                      ? (labStatus === 'normal' ? 'NEGATIVE' : labStatus === 'critical' ? 'CRITICAL' : 'POSITIVE')
-                                      : (lab.status || 'normal').toUpperCase();
-                                    return (
-                                      <Box key={i}>
-                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                          <Box sx={{ flex: 1, minWidth: 0, mr: 1 }}>
-                                            <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.textPrimary }}>{lab.testName}</Typography>
-                                            {/* T4.120: Show unit after result value */}
-                                            <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.textSecondary }}>
-                                              {lab.result}{lab.unit ? ` ${lab.unit}` : ''}
-                                            </Typography>
-                                            {/* T4.120: Reference range — species-resolved, gracefully degrades on legacy records */}
-                                            {lab.referenceRange && (() => {
-                                              const speciesKey = (pet?.species || '').toLowerCase().includes('cat') ? 'feline' : 'canine';
-                                              const range = lab.referenceRange?.[speciesKey] || lab.referenceRange;
-                                              if (Array.isArray(range)) {
-                                                return (
-                                                  <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted }}>
-                                                    Ref: {range[0]} – {range[1]}{lab.unit ? ` ${lab.unit}` : ''}
-                                                  </Typography>
-                                                );
-                                              }
-                                              if (typeof range === 'string') {
-                                                return (
-                                                  <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted }}>
-                                                    Ref: {range}
-                                                  </Typography>
-                                                );
-                                              }
-                                              return null;
-                                            })()}
-                                          </Box>
-                                          <Chip
-                                            label={chipLabel}
-                                            size="small"
-                                            sx={{
-                                              fontFamily: FONT,
-                                              fontSize: '0.62rem',
-                                              fontWeight: 800,
-                                              height: 20,
-                                              borderRadius: 0,
-                                              flexShrink: 0,
-                                              bgcolor: lc.bgcolor,
-                                              color: lc.color,
-                                            }}
-                                          />
-                                        </Box>
-                                        {lab.notes && (
-                                          <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.textMuted, fontStyle: 'italic', mt: 0.25 }}>
-                                            {lab.notes}
-                                          </Typography>
-                                        )}
-                                        {lab.attachmentUrl && (
-                                          <Typography
-                                            component="a"
-                                            href={lab.attachmentUrl}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            sx={{ fontSize: '0.6rem', color: COLORS.medical, textDecoration: 'underline', display: 'flex', alignItems: 'center', gap: 0.3, mt: 0.25 }}
-                                          >
-                                            <AttachFileIcon sx={{ fontSize: 10 }} /> Lab attachment
-                                          </Typography>
-                                        )}
-                                      </Box>
-                                    );
-                                  })}
-                                </Stack>
-                              </Box>
-                            )}
+                            </Box>
                           </Stack>
                         </Grid>
-                        <Grid size={{ xs: 12, md: 4 }}>
-                          <Stack spacing={1.5}>
-                            {hasRx && (() => {
+                      </Grid>
+
+                      {/* DIAGNOSTIC FINDINGS (LABS) */}
+                      {rec.labResults?.length > 0 && (
+                        <Box sx={{ mt: 4, pt: 3, borderTop: `1px solid ${COLORS.border}` }}>
+                          <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 900, color: COLORS.info, mb: 2, textTransform: 'uppercase', letterSpacing: 1.2, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <ScienceIcon sx={{ fontSize: 14 }} /> LAB RESULTS ({rec.labResults.length})
+                          </Typography>
+                          <Grid container spacing={2}>
+                            {rec.labResults.map((lab, i) => {
+                              const labStatus = (lab.status || 'normal').toLowerCase();
+                              const colorMap = { critical: COLORS.danger, abnormal: COLORS.warning, normal: COLORS.success };
+                              const statusColor = colorMap[labStatus] || COLORS.success;
+                              return (
+                                <Grid key={i} size={{ xs: 12, sm: 6 }}>
+                                  <Box sx={{ p: 2, border: `1px solid ${COLORS.borderLight}`, bgcolor: COLORS.white, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                    <Box sx={{ flex: 1 }}>
+                                      <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', fontWeight: 900, color: COLORS.brand }}>{lab.testName.toUpperCase()}</Typography>
+                                      <Typography sx={{ fontFamily: FONT, fontSize: '0.9rem', fontWeight: 700, color: COLORS.textPrimary, mt: 0.5 }}>
+                                        {lab.result}{lab.unit ? ` ${lab.unit}` : ''}
+                                      </Typography>
+                                      {lab.referenceRange && (
+                                        <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, mt: 0.25 }}>
+                                          REF: {(() => {
+                                            const sk = (pet?.species || '').toLowerCase().includes('cat') ? 'feline' : 'canine';
+                                            const r = lab.referenceRange?.[sk] || lab.referenceRange;
+                                            return Array.isArray(r) ? `${r[0]} - ${r[1]}` : r;
+                                          })()}{lab.unit ? ` ${lab.unit}` : ''}
+                                        </Typography>
+                                      )}
+                                      {lab.notes && <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, fontStyle: 'italic', mt: 1 }}>{lab.notes}</Typography>}
+                                    </Box>
+                                    <Box sx={{ px: 1, py: 0.25, bgcolor: `${statusColor}12`, border: `1px solid ${statusColor}` }}>
+                                      <Typography sx={{ fontFamily: FONT, fontSize: '0.6rem', fontWeight: 900, color: statusColor }}>
+                                        {(lab.resultType === 'positive-negative' ? (labStatus === 'normal' ? 'NEGATIVE' : 'POSITIVE') : labStatus).toUpperCase()}
+                                      </Typography>
+                                    </Box>
+                                  </Box>
+                                </Grid>
+                              );
+                            })}
+                          </Grid>
+                        </Box>
+                      )}
+
+                      {/* LOGISTICS & DISPENSING */}
+                      {hasRx && (
+                        <Box sx={{ mt: 4, pt: 3, borderTop: `1px solid ${COLORS.border}` }}>
+                          <Typography sx={{ fontFamily: FONT, fontSize: '1.1rem', fontWeight: 900, color: COLORS.accent, mb: 2, textTransform: 'uppercase', letterSpacing: 2, borderBottom: `3px solid ${COLORS.accent}`, width: 'fit-content', pb: 0.5 }}>
+                            ITEMS
+                          </Typography>
+                          {(() => {
+                            const allRx = rec.dispensedProducts || rec.prescriptions || [];
+                            const resolvePC = (rx) => rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail');
+                            const groups = [
+                              { label: 'MEDICATIONS', items: allRx.filter(rx => resolvePC(rx) === 'medicine'), color: COLORS.brand },
+                              { label: 'MEDICAL SUPPLIES', items: allRx.filter(rx => resolvePC(rx) === 'medical_supply'), color: COLORS.brand },
+                              { label: 'RETAIL & OTHER', items: allRx.filter(rx => resolvePC(rx) === 'retail'), color: COLORS.brand },
+                            ];
+                            return (
+                              <Stack spacing={2.5}>
+                                {groups.filter(g => g.items.length > 0).map((g, gi) => (
+                                  <Box key={gi}>
+                                    <Typography sx={{ fontFamily: FONT, fontSize: '0.95rem', fontWeight: 900, color: g.color, mb: 1, borderBottom: `1px solid ${g.color}33`, pb: 0.5, width: 'fit-content' }}>
+                                      {g.label}
+                                    </Typography>
+                                    <Stack spacing={1}>
+                                      {g.items.map((it, ii) => (
+                                        <Box key={ii} sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+                                          <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', fontWeight: 800, color: COLORS.textPrimary, minWidth: 200 }}>
+                                            • {it.name.toUpperCase()} {it.qty ? `[x${it.qty}]` : ''}
+                                          </Typography>
+                                          <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', color: COLORS.textSecondary, flex: 1 }}>
+                                            {it.instructions || 'USE AS DIRECTED'}
+                                          </Typography>
+                                        </Box>
+                                      ))}
+                                    </Stack>
+                                  </Box>
+                                ))}
+                              </Stack>
+                            );
+                          })()}
+                        </Box>
+                      )}
+
+                      {/* MOBILE-PARITY DISCHARGE NOTES */}
+                      {rec.dischargeSummary && (
+                        <Box sx={{ mt: 5, pt: 4, borderTop: `2px dashed ${COLORS.border}`, bgcolor: `${COLORS.cream}33`, mx: -3, px: 3 }}>
+                          <Typography sx={{ fontFamily: FONT, fontSize: '1.1rem', fontWeight: 900, color: COLORS.brand, mb: 2, textTransform: 'uppercase', letterSpacing: 2, borderBottom: `3px solid ${COLORS.brand}`, width: 'fit-content', pb: 0.5 }}>
+                            DISCHARGE NOTES
+                          </Typography>
+                          
+                          <Stack spacing={4}>
+                            <Box>
+                              <Typography sx={{ fontFamily: FONT, fontSize: '0.95rem', color: COLORS.textPrimary, lineHeight: 1.6 }}>
+                                {rec.dischargeSummary.instructions || 'No discharge notes recorded for this visit.'}
+                              </Typography>
+                            </Box>
+
+                            {/* MEDICATIONS SECTION (MOBILE PARITY) */}
+                            {(() => {
                               const allRx = rec.dispensedProducts || rec.prescriptions || [];
                               const resolvePC = (rx) => rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail');
-                              const medicines = allRx.filter(rx => resolvePC(rx) === 'medicine');
-                              const supplies = allRx.filter(rx => resolvePC(rx) === 'medical_supply');
-                              const otherItems = allRx.filter(rx => resolvePC(rx) === 'retail');
+                              const medItems = allRx.filter(rx => resolvePC(rx) === 'medicine');
+                              if (medItems.length === 0) return null;
                               return (
-                                <>
-                                  {medicines.length > 0 && (
-                                    <Box sx={{ bgcolor: COLORS.rxBg, py: 1, px: 1.5, borderRadius: 0, border: `1px solid ${COLORS.rxBorder}` }}>
-                                      <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.rxText, mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                        <MedicationIcon sx={{ fontSize: 13 }}/> Rx
-                                      </Typography>
-                                      <Stack spacing={0.5}>
-                                        {medicines.map((rx, idx) => (
-                                          <Box key={idx}>
-                                            <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.rxText }}>
-                                              {rx.name}{rx.qty ? ` x${rx.qty}` : ''}
+                                <Box sx={{ mt: 2, pt: 2, borderTop: `1px dashed ${COLORS.border}` }}>
+                                  <Typography sx={{ fontFamily: FONT, fontSize: '1.1rem', fontWeight: 900, color: COLORS.brand, mb: 2, textTransform: 'uppercase', letterSpacing: 2, borderBottom: `3px solid ${COLORS.brand}`, width: 'fit-content', pb: 0.5 }}>
+                                    MEDICATIONS
+                                  </Typography>
+                                  <Stack spacing={1.5}>
+                                    {medItems.map((it, ii) => (
+                                      <Box key={ii}>
+                                        <Typography sx={{ fontFamily: FONT, fontSize: '0.9rem', fontWeight: 900, color: COLORS.textPrimary }}>
+                                          • {it.name.toUpperCase()} {it.qty ? `x${it.qty}` : ''}
+                                        </Typography>
+                                        {it.instructions && (
+                                          <Box sx={{ ml: 2, mt: 0.25 }}>
+                                            <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, fontStyle: 'italic' }}>
+                                              Directions (Sig):
                                             </Typography>
-                                            {rx.instructions && <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', color: '#B45309' }}>{rx.instructions}</Typography>}
-                                          </Box>
-                                        ))}
-                                      </Stack>
-                                    </Box>
-                                  )}
-                                  {supplies.length > 0 && (
-                                    <Box sx={{ bgcolor: COLORS.kpiGreenBg, py: 1, px: 1.5, borderRadius: 0, border: `1px solid ${COLORS.success}33` }}>
-                                      <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.success, mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                        <Inventory2Icon sx={{ fontSize: 13 }}/> Take-Home Supplies
-                                      </Typography>
-                                      <Stack spacing={0.5}>
-                                        {supplies.map((rx, idx) => (
-                                          <Box key={idx}>
-                                            <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.textPrimary }}>
-                                              {rx.name}{rx.qty ? ` x${rx.qty}` : ''}
+                                            <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', color: COLORS.textSecondary, fontStyle: 'italic' }}>
+                                              {it.instructions.replace(/^Directions \(Sig\):\s*/i, '')}
                                             </Typography>
-                                            {rx.instructions && <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', color: COLORS.textMuted }}>{rx.instructions}</Typography>}
                                           </Box>
-                                        ))}
-                                      </Stack>
-                                    </Box>
-                                  )}
-                                  {otherItems.length > 0 && (
-                                    <Box sx={{ bgcolor: COLORS.formBg, py: 1, px: 1.5, borderRadius: 0, border: `1px solid ${COLORS.borderLight}` }}>
-                                      <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                        <Inventory2Icon sx={{ fontSize: 13 }}/> Other Items
-                                      </Typography>
-                                      <Stack spacing={0.5}>
-                                        {otherItems.map((rx, idx) => (
-                                          <Box key={idx}>
-                                            <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.textSecondary }}>
-                                              {rx.name}{rx.qty ? ` x${rx.qty}` : ''}
-                                            </Typography>
-                                            {rx.instructions && <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', color: COLORS.textMuted }}>{rx.instructions}</Typography>}
-                                          </Box>
-                                        ))}
-                                      </Stack>
-                                    </Box>
-                                  )}
-                                </>
+                                        )}
+                                      </Box>
+                                    ))}
+                                  </Stack>
+                                </Box>
                               );
                             })()}
-                            {/* T3.86: Attachments */}
-                            {rec.attachments?.length > 0 && (
-                              <Box data-attachments sx={{ bgcolor: COLORS.formBg, border: `1px solid ${COLORS.borderLight}`, py: 1, px: 1.5, borderRadius: 0 }}>
+
+                            <Box sx={{ mt: 2, pt: 2, borderTop: `1px dashed ${COLORS.border}` }}>
+                              <Typography sx={{ fontFamily: FONT, fontSize: '1.1rem', fontWeight: 900, color: COLORS.brand, mb: 2, textTransform: 'uppercase', letterSpacing: 2, borderBottom: `3px solid ${COLORS.brand}`, width: 'fit-content', pb: 0.5 }}>
+                                NEXT STEPS
+                              </Typography>
+                              <Typography sx={{ fontFamily: FONT, fontSize: '0.95rem', color: COLORS.textPrimary }}>
+                                Recheck in: <strong>{rec.dischargeSummary.recheckIn || 'As Needed'}</strong>
+                              </Typography>
+                              {rec.dischargeSummary.nextVisit && (
+                                <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', color: COLORS.textSecondary, mt: 0.5 }}>
+                                  Scheduled Visit: {new Date(rec.dischargeSummary.nextVisit.toDate ? rec.dischargeSummary.nextVisit.toDate() : rec.dischargeSummary.nextVisit).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                </Typography>
+                              )}
+                            </Box>
+
+                            <Box sx={{ alignSelf: 'flex-end', textAlign: 'right', minWidth: 250 }}>
+                              <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', fontWeight: 700, color: COLORS.textMuted, fontStyle: 'italic', mb: 1 }}>SIGNED BY</Typography>
+                              <Typography sx={{ fontFamily: FONT, fontSize: '1.1rem', fontWeight: 900, color: COLORS.brand }}>
+                                {rec.dischargeSummary.vetName?.toUpperCase() || 'ATTENDING VETERINARIAN'}
+                              </Typography>
+                              <Box sx={{ height: 1, bgcolor: COLORS.brand, mt: 1, mb: 0.5, width: '100%' }} />
+                              <Typography sx={{ fontFamily: FONT, fontSize: '0.6rem', fontWeight: 900, color: COLORS.textMuted, letterSpacing: 1 }}>AUTHORIZED SIGNATURE</Typography>
+                            </Box>
+                          </Stack>
+                        </Box>
+                      )}
+
+                      {/* ATTACHMENTS FOOTER */}
+                      {rec.attachments?.length > 0 && (
+                        <Box sx={{ mt: 4, pt: 2, display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
+
                                 <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
                                   <AttachFileIcon sx={{ fontSize: 13 }} />
                                   Attachments ({rec.attachments.length})
@@ -2156,9 +2045,6 @@ export default function PatientDashboard() {
                                 </Stack>
                               </Box>
                             )}
-                          </Stack>
-                        </Grid>
-                      </Grid>
 
                       {/* Clinical Amendments (T2.453) */}
                       {rec.amendments?.length > 0 && (
@@ -2280,7 +2166,7 @@ export default function PatientDashboard() {
                                     </Typography>
                                   </Box>
                                 );
-                              })}
+                              }) }
                           </Stack>
                         </Box>
                       )}

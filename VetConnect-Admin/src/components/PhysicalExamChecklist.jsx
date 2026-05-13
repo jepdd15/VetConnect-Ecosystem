@@ -81,7 +81,8 @@ export default function PhysicalExamChecklist({
   const exam = examData || createDefaultExam();
 
   const handleSystemToggle = (index, newStatus) => {
-    if (!newStatus) return; // MUI exclusive ToggleButtonGroup can fire null on re-click — ignore
+    // T4.115: Allow newStatus to be null (deselection) to return to 'Not Examined' state.
+    // This prevents medical errors by ensuring no system is pre-selected as Normal.
     const updatedSystems = exam.systems.map((sys, i) =>
       i === index
         ? { ...sys, status: newStatus, notes: newStatus === 'normal' ? '' : sys.notes }
@@ -193,9 +194,10 @@ export default function PhysicalExamChecklist({
           <Select
             size="small"
             fullWidth
-            value={exam.dental?.grade ?? 0}
+            value={exam.dental?.grade} // Allows null
             onChange={handleDentalChange}
             disabled={disabled}
+            displayEmpty
             sx={selectSx}
           >
             {DENTAL_GRADES.map(opt => (
@@ -213,9 +215,10 @@ export default function PhysicalExamChecklist({
           <Select
             size="small"
             fullWidth
-            value={exam.hydration?.status || 'normal'}
+            value={exam.hydration?.status} // Allows null
             onChange={handleHydrationChange}
             disabled={disabled}
+            displayEmpty
             sx={selectSx}
           >
             {HYDRATION_OPTIONS.map(opt => (
@@ -233,9 +236,10 @@ export default function PhysicalExamChecklist({
           <Select
             size="small"
             fullWidth
-            value={exam.mucousMembranes?.status || 'pink-moist'}
+            value={exam.mucousMembranes?.status} // Allows null
             onChange={handleMucousMembranesChange}
             disabled={disabled}
+            displayEmpty
             sx={selectSx}
           >
             {MEMBRANE_OPTIONS.map(opt => (

@@ -20,6 +20,7 @@ export const BODY_SYSTEMS = [
 ];
 
 export const DENTAL_GRADES = [
+  { value: null, label: '— Not Examined —' },
   { value: 0, label: 'Grade 0 — No calculus/gingivitis' },
   { value: 1, label: 'Grade 1 — Mild gingivitis' },
   { value: 2, label: 'Grade 2 — Moderate calculus' },
@@ -28,6 +29,7 @@ export const DENTAL_GRADES = [
 ];
 
 export const HYDRATION_OPTIONS = [
+  { value: null,       label: '— Not Examined —' },
   { value: 'normal',   label: 'Normal' },
   { value: 'mild',     label: 'Mild dehydration' },
   { value: 'moderate', label: 'Moderate dehydration' },
@@ -35,6 +37,7 @@ export const HYDRATION_OPTIONS = [
 ];
 
 export const MEMBRANE_OPTIONS = [
+  { value: null,         label: '— Not Examined —' },
   { value: 'pink-moist', label: 'Pink/Moist (normal)' },
   { value: 'pale',       label: 'Pale' },
   { value: 'icteric',    label: 'Icteric (jaundice)' },
@@ -46,10 +49,10 @@ export const MEMBRANE_OPTIONS = [
  */
 export function createDefaultExam() {
   return {
-    systems: BODY_SYSTEMS.map(name => ({ name, status: 'normal', notes: '' })),
-    dental:          { grade: 0 },
-    hydration:       { status: 'normal' },
-    mucousMembranes: { status: 'pink-moist' },
+    systems: BODY_SYSTEMS.map(name => ({ name, status: null, notes: '' })),
+    dental:          { grade: null },
+    hydration:       { status: null },
+    mucousMembranes: { status: null },
     generalNotes: '',
   };
 }
@@ -72,7 +75,7 @@ export function examToText(exam) {
   (exam.systems || []).forEach(sys => {
     if (sys.status === 'abnormal') {
       abnormal.push(`${sys.name}: ABNORMAL${sys.notes ? ` — ${sys.notes}` : ''}`);
-    } else {
+    } else if (sys.status === 'normal') {
       normal.push(sys.name);
     }
   });
@@ -127,12 +130,13 @@ export function examToText(exam) {
 export function hasExamData(exam) {
   if (!exam) return false;
   const hasAbnormal = (exam.systems || []).some(s => s.status === 'abnormal');
+  const hasNormal = (exam.systems || []).some(s => s.status === 'normal');
   const hasNotes = (exam.systems || []).some(s => s.notes?.trim());
-  const hasDental = exam.dental?.grade > 0;
-  const hasHydration = exam.hydration?.status && exam.hydration.status !== 'normal';
-  const hasMM = exam.mucousMembranes?.status && exam.mucousMembranes.status !== 'pink-moist';
+  const hasDental = exam.dental?.grade !== null;
+  const hasHydration = exam.hydration?.status !== null;
+  const hasMM = exam.mucousMembranes?.status !== null;
   const hasGeneral = exam.generalNotes?.trim();
-  return hasAbnormal || hasNotes || hasDental || hasHydration || hasMM || !!hasGeneral;
+  return hasAbnormal || hasNormal || hasNotes || hasDental || hasHydration || hasMM || !!hasGeneral;
 }
 
 /**

@@ -890,6 +890,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         // ==============================
 
         // 2a. Compute inventory deductions from collected data.
+        const patientLabel = `${patient.petName} (${patient.ownerName || 'Walk-In'})`;
         const { updatePayloads, logEntries, batchSourceMap } =
           computeInventoryDeductions(cart, inventoryMap, patientLabel);
 

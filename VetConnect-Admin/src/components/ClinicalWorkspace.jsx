@@ -1276,7 +1276,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
    */
   const buildInitialSoapMessage = () => buildUserMessage({
     subjective: soapData.subjective || '',
-    objective: examToText(soapData.objectiveExam) || soapData.objectiveNotes || '',
+    objective: hasExamData(soapData.objectiveExam) ? examToText(soapData.objectiveExam) : (soapData.objectiveNotes || ''),
     vitals: {
       temp: soapData.objTemp,
       hr: soapData.objHR,
@@ -1754,7 +1754,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       const allServices = patient.services || [];
       if (allServices.length >= 2) {
         const toggledServiceName = allServices.find(s => s.id === svcId)?.name || svcId;
-        const staffName = auth.currentUser?.displayName || 'Authorized Clinician';
+        const staffName = cwProfile?.fullName || auth.currentUser?.displayName || 'Authorized Clinician';
 
         if (next === 'in-progress') {
           sendPushNotification({
@@ -2147,8 +2147,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       isSavingRef.current = true;
       setLoading(true);
       try {
-      const vetUid = auth.currentUser?.uid || "system";
-      const vetName = auth.currentUser?.displayName || "Authorized Clinician";
+      const vetUid = cwProfile?.uid || auth.currentUser?.uid || "system";
+      const vetName = cwProfile?.fullName || auth.currentUser?.displayName || "Authorized Clinician";
       const visitTotal = treatmentCart.reduce((sum, item) => sum + (item.price * item.qty), 0);
       const commitTimestamp = Timestamp.now();
 
@@ -2255,8 +2255,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         objectiveExam: soapData.objectiveExam,
         soap: {
             subjective: soapData.subjective,
-            objective: examToText(soapData.objectiveExam) || soapData.objectiveNotes || '',
-            objectiveNotes: examToText(soapData.objectiveExam) || soapData.objectiveNotes || '',
+            objective: hasExamData(soapData.objectiveExam) ? examToText(soapData.objectiveExam) : (soapData.objectiveNotes || ''),
+            objectiveNotes: hasExamData(soapData.objectiveExam) ? examToText(soapData.objectiveExam) : (soapData.objectiveNotes || ''),
             assessment: soapData.assessmentNotes || '',
             prognosis: soapData.prognosis,
             plan: soapData.plan,

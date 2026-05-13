@@ -368,10 +368,6 @@ export const DiagnosticBridge = React.memo(function DiagnosticBridge({
           <Button
             size="small"
             variant="outlined"
-            startIcon={llmLoading
-              ? <CircularProgress size={14} sx={{ color: COLORS.grooming }} />
-              : <PsychologyIcon />
-            }
             onClick={() => {
               if (hasConversation) onResetAndAskAI();
               else onAskAI();
@@ -383,11 +379,21 @@ export const DiagnosticBridge = React.memo(function DiagnosticBridge({
               fontSize: '0.65rem',
               textTransform: 'uppercase',
               letterSpacing: 0.5,
-              color: COLORS.grooming,
-              borderColor: COLORS.grooming,
+              color: COLORS.brand,
+              bgcolor: COLORS.cardBg,
+              borderColor: COLORS.brand,
+              borderWidth: '2px',
               borderRadius: 0,
-              '&:hover': { bgcolor: 'rgba(123,31,162,0.05)' },
-              '&.Mui-disabled': { opacity: 0.5 },
+              px: 2,
+              boxShadow: `3px 3px 0px ${COLORS.brand}`,
+              '&:hover': {
+                bgcolor: COLORS.panelBg,
+                borderColor: COLORS.brand,
+                borderWidth: '2px',
+                transform: 'translate(-1px, -1px)',
+                boxShadow: `4px 4px 0px ${COLORS.brand}`,
+              },
+              '&.Mui-disabled': { opacity: 0.4, borderWidth: '2px' },
             }}
           >
             {llmLoading ? 'Analyzing...' : hasConversation ? 'New Analysis' : 'Ask AI'}
@@ -398,8 +404,7 @@ export const DiagnosticBridge = React.memo(function DiagnosticBridge({
         {llmEnabled && hasConversation && (
           <Button
             size="small"
-            variant="text"
-            startIcon={<PsychologyIcon />}
+            variant="outlined"
             onClick={() => onToggleAIPanel(!isAIPanelOpen)}
             sx={{
               fontWeight: 900,
@@ -407,8 +412,17 @@ export const DiagnosticBridge = React.memo(function DiagnosticBridge({
               textTransform: 'uppercase',
               letterSpacing: 0.5,
               borderRadius: 0,
-              color: isAIPanelOpen ? COLORS.grooming : COLORS.textMuted,
-              '&:hover': { bgcolor: 'rgba(123,31,162,0.05)' },
+              px: 2,
+              border: `2px solid ${COLORS.brand}`,
+              bgcolor: isAIPanelOpen ? COLORS.brand : COLORS.cardBg,
+              color: isAIPanelOpen ? COLORS.cream : COLORS.brand,
+              boxShadow: isAIPanelOpen ? 'none' : `3px 3px 0px ${COLORS.brand}`,
+              '&:hover': {
+                bgcolor: isAIPanelOpen ? COLORS.brand : COLORS.panelBg,
+                borderColor: COLORS.brand,
+                transform: isAIPanelOpen ? 'none' : 'translate(-1px, -1px)',
+                boxShadow: isAIPanelOpen ? 'none' : `4px 4px 0px ${COLORS.brand}`,
+              },
             }}
           >
             {isAIPanelOpen ? 'Hide AI Panel' : 'Show AI Panel'}
@@ -1332,7 +1346,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       setLlmMessages(cappedMessages);
       setLlmLoading(true);
       setLlmError('');
-      setIsAIDrawerOpen(true);
+      if (!isUnifiedZen) {
+        setIsAIDrawerOpen(true);
+      }
       setLlmFollowUpInput('');
     }
 
@@ -1744,8 +1760,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           staffId: auth.currentUser?.uid || 'unknown',
           staffName: cwProfile?.fullName || auth.currentUser?.displayName || 'Authorized Clinician',
           serviceId: svcId,
-          serviceName: (patient.services || []).find(s => s.id === svcId)?.name || svcId,
-          note: `${(patient.services || []).find(s => s.id === svcId)?.name || 'Service'} ${next === 'in-progress' ? 'started' : 'completed'}.`,
+          serviceName: newServices.find(s => s.id === svcId)?.name || svcId,
+          note: `${newServices.find(s => s.id === svcId)?.name || 'Service'} ${next === 'in-progress' ? 'started' : 'completed'}.`,
         }),
       });
 
@@ -3783,8 +3799,15 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   );
 
   const followUpJSX = !lockedServices.has('medical') ? (
-    <Box sx={{ mt: 2, p: 2, bgcolor: '#F3E5F5', border: '1px solid #CE93D8', flexShrink: 0 }}>
-      <Typography sx={{ fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: 1, color: '#6A1B9A', mb: 1.5 }}>
+    <Box sx={{ 
+      mt: 2, p: 2, 
+      bgcolor: COLORS.cardBg, 
+      border: `2px solid ${COLORS.brand}`, 
+      borderRadius: 0,
+      boxShadow: `3px 3px 0px ${COLORS.brand}`,
+      flexShrink: 0 
+    }}>
+      <Typography sx={{ fontWeight: 1000, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 1.2, color: COLORS.brand, mb: 1.5 }}>
         FOLLOW-UP & DISCHARGE
       </Typography>
       <Grid container spacing={1.5}>
@@ -3795,7 +3818,10 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             value={soapData.patientStatus || ''}
             displayEmpty
             onChange={(e) => updateSoap('patientStatus', e.target.value)}
-            sx={{ bgcolor: 'white' }}
+            sx={{ 
+              bgcolor: 'white',
+              '& .MuiOutlinedInput-root': { borderRadius: 0 }
+            }}
           >
             <MenuItem value=""><em>Not Specified</em></MenuItem>
             <MenuItem value="Stable">Stable</MenuItem>
@@ -3812,7 +3838,10 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             value={soapData.prognosis || ''}
             displayEmpty
             onChange={(e) => updateSoap('prognosis', e.target.value)}
-            sx={{ bgcolor: 'white' }}
+            sx={{ 
+              bgcolor: 'white',
+              '& .MuiOutlinedInput-root': { borderRadius: 0 }
+            }}
           >
             <MenuItem value=""><em>Not Specified</em></MenuItem>
             <MenuItem value="Excellent">Excellent</MenuItem>
@@ -3829,7 +3858,10 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             label="Recheck In"
             value={soapData.recheckIn || '1 Week'}
             onChange={(e) => updateSoap('recheckIn', e.target.value)}
-            sx={{ bgcolor: 'white' }}
+            sx={{ 
+              bgcolor: 'white',
+              '& .MuiOutlinedInput-root': { borderRadius: 0 }
+            }}
           >
             <MenuItem value="3 Days">3 Days</MenuItem>
             <MenuItem value="1 Week">1 Week</MenuItem>
@@ -3849,13 +3881,16 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             value={soapData.nextVisit || ''}
             onChange={(e) => updateSoap('nextVisit', e.target.value)}
             InputLabelProps={{ shrink: true }}
-            sx={{ bgcolor: 'white' }}
+            sx={{ 
+              bgcolor: 'white',
+              '& .MuiOutlinedInput-root': { borderRadius: 0 }
+            }}
             inputProps={{ min: new Date().toISOString().split('T')[0] }}
           />
         </Grid>
       </Grid>
       {soapData.nextVisit && (
-        <Typography sx={{ mt: 1, fontSize: '0.68rem', fontWeight: 800, color: '#6A1B9A', opacity: 0.9 }}>
+        <Typography sx={{ mt: 1.5, fontSize: '0.7rem', fontWeight: 1000, color: COLORS.brand, opacity: 0.9 }}>
           A follow-up appointment will be auto-created when you sign off.
         </Typography>
       )}
@@ -3991,7 +4026,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             })()}
 
             {/* Owner Info — pushed to right side of header */}
-            <Typography sx={{ fontSize: '0.68rem', fontWeight: 800, color: COLORS.textMuted, whiteSpace: 'nowrap', ml: 'auto' }}>
+            <Typography sx={{ fontSize: '0.85rem', fontWeight: 900, color: COLORS.brand, whiteSpace: 'nowrap', ml: 'auto', letterSpacing: '0.02em' }}>
               {patient?.ownerName || 'Walk-In'} {patient?.ownerPhone ? `| ${patient.ownerPhone}` : ''}
             </Typography>
 
@@ -4604,9 +4639,17 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           {/* Scrollable area: search, cart, service progress */}
           <Box sx={{ flex: 1, overflowY: 'auto', minHeight: 0, p: 3 }}>
             <Stack spacing={3}>
-                <Paper ref={treatmentRef} sx={{ ...glassStyle, p: 3, borderLeft: `8px solid ${COLORS.accent}` }}>
-                    <Typography variant="h6" sx={{ fontWeight: 1000, color: COLORS.brand, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <ReceiptLongIcon sx={{ color: COLORS.accent }} /> Services &amp; Items
+                <Paper ref={treatmentRef} sx={{ 
+                  bgcolor: COLORS.cardBg, 
+                  p: 3, 
+                  border: `2px solid ${COLORS.brand}`, 
+                  borderRadius: 0,
+                  boxShadow: `4px 4px 0px ${COLORS.brand}`,
+                  position: 'relative',
+                  overflow: 'hidden'
+                }}>
+                    <Typography variant="h6" sx={{ fontWeight: 1000, color: COLORS.brand, mb: 1.5, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: -0.5 }}>
+                        <ReceiptLongIcon sx={{ color: COLORS.brand }} /> Services &amp; Items
                     </Typography>
 
                     {/* 🧬 PHASE 3: STOCK GUARD & CLINICAL ALERTS */}
@@ -4646,9 +4689,12 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                                     sx={{ 
                                         mb: 2, 
                                         '& .MuiOutlinedInput-root': { 
-                                            borderRadius: 2, 
+                                            borderRadius: 0, 
                                             bgcolor: 'white',
-                                            fontWeight: 900
+                                            fontWeight: 900,
+                                            '& fieldset': { border: `2px solid ${COLORS.brand}`, borderBottomWidth: '4px', borderRightWidth: '4px' },
+                                            '&:hover fieldset': { borderColor: COLORS.brand },
+                                            '&.Mui-focused fieldset': { borderColor: COLORS.brand },
                                         } 
                                     }} 
                                 />
@@ -4662,8 +4708,15 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                       const serviceItems = treatmentCart.filter(rx => rx.type === 'service');
                       if (serviceItems.length === 0) return null;
                       return (
-                        <Paper sx={{ p: 2, borderRadius: 0, border: `2px solid ${COLORS.sky}`, bgcolor: '#F8FCFF', mt: 1 }}>
-                          <Typography sx={{ fontWeight: 1000, fontSize: '0.75rem', color: COLORS.sky, letterSpacing: '0.08em', mb: 1.5 }}>
+                        <Paper sx={{ 
+                          p: 2, 
+                          borderRadius: 0, 
+                          border: `2px solid ${COLORS.brand}`, 
+                          bgcolor: COLORS.panelBg, 
+                          mt: 1,
+                          boxShadow: `3px 3px 0px ${COLORS.brand}`
+                        }}>
+                          <Typography sx={{ fontWeight: 1000, fontSize: '0.75rem', color: COLORS.brand, letterSpacing: '0.12em', mb: 1.5, textTransform: 'uppercase' }}>
                             SERVICES ({serviceItems.length})
                           </Typography>
                           <Stack spacing={1}>
@@ -5286,8 +5339,11 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         {/* --- 🆕 LEGACY IMMERSION HEADER --- */}
         <Box sx={{ p: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(0,0,0,0.05)', bgcolor: 'white', flexShrink: 0 }}>
             <Box>
-                <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 1000, color: COLORS.brand, letterSpacing: -1, lineHeight: 1, mb: 0.5 }}>
+                <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 1000, color: COLORS.brand, letterSpacing: -1, lineHeight: 1, mb: 0.5, display: 'flex', alignItems: 'baseline', gap: 1.5 }}>
                     {patient?.petName?.toUpperCase() || 'UNKNOWN PATIENT'}
+                    <Box component="span" sx={{ fontSize: '0.9rem', fontWeight: 700, color: COLORS.textMuted, opacity: 0.8, textTransform: 'none', letterSpacing: 0 }}>
+                        {patient?.ownerName || 'Unknown Owner'} | {patient?.ownerContact || 'No Contact'}
+                    </Box>
                 </Typography>
                 <Typography variant="caption" sx={{ color: COLORS.brand, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1.5, opacity: 0.8, display: 'flex', alignItems: 'center', gap: 1, justifyContent: 'center' }}>
                     {patient?.petSpecies} • {patient?.petBreed || 'MIXED BREED'} • {patient?.petGender || 'UNKNOWN'} • {calculateAge(patient?.petBirthdate || petDetails?.dob)} • {soapData.objWeight || patient?.petWeight ? `${soapData.objWeight || patient?.petWeight} KG` : 'WEIGH REQUIRED'} • {patient?.petIsNeutered ? 'FIXED' : 'INTACT'} • {patient?.color || patient?.petColor || petDetails?.color || 'N/A'}
@@ -5356,7 +5412,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             flex: 3,
             minWidth: 280,
             maxWidth: 460,
-            borderLeft: `3px solid ${COLORS.grooming}`,
+            borderLeft: `3px solid ${COLORS.brand}`,
             display: 'flex',
             flexDirection: 'column',
             bgcolor: '#FDFCFB',
@@ -5410,9 +5466,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           sx: {
             width: 420,
             borderRadius: 0,
-            border: `3px solid ${COLORS.grooming}`,
+            border: `3px solid ${COLORS.brand}`,
             borderRight: 'none',
-            boxShadow: `-6px 0 0 ${COLORS.grooming}`,
+            boxShadow: `-6px 0 0 ${COLORS.brand}`,
             display: 'flex',
             flexDirection: 'column',
           },

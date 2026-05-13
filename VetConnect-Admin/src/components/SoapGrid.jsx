@@ -381,14 +381,16 @@ export default function SoapGrid({
                   variant="outlined"
                   size="small"
                   sx={{
-                    mb: 1,
-                    maxWidth: 300,
+                    mb: 2,
+                    maxWidth: 320,
                     '& .MuiOutlinedInput-root': {
                       borderRadius: 0,
                       bgcolor: 'white',
                       fontWeight: 900,
                       fontSize: '0.75rem',
-                      '& fieldset': { border: `2px solid ${COLORS.success}` },
+                      '& fieldset': { border: `2px solid ${COLORS.brand}`, borderBottomWidth: '4px', borderRightWidth: '4px' },
+                      '&:hover fieldset': { borderColor: COLORS.brand },
+                      '&.Mui-focused fieldset': { borderColor: COLORS.brand },
                     },
                   }}
                 />
@@ -409,9 +411,9 @@ export default function SoapGrid({
             InputProps={inputPropsSx}
           />
           {/* Client-facing discharge instructions — separate from clinical Plan */}
-          <Box sx={{ mt: 2, p: 1.5, bgcolor: '#FFF8E1', border: `2px solid ${COLORS.peach}`, borderRadius: 0 }}>
-            <Typography sx={{ fontSize: '0.65rem', fontWeight: 900, color: COLORS.warning, textTransform: 'uppercase', letterSpacing: 1, mb: 0.5 }}>
-              Client Discharge Notes
+          <Box sx={{ mt: 2, p: 2, bgcolor: COLORS.cardBg, border: `2px solid ${COLORS.brand}`, borderRadius: 0, boxShadow: `3px 3px 0px ${COLORS.brand}` }}>
+            <Typography sx={{ fontSize: '0.7rem', fontWeight: 1000, color: COLORS.brand, textTransform: 'uppercase', letterSpacing: 1.2, mb: 1.5 }}>
+              CLIENT DISCHARGE NOTES
             </Typography>
             <TextField
               multiline fullWidth variant="standard"
@@ -423,10 +425,13 @@ export default function SoapGrid({
                 ...textFieldSx,
                 '& .MuiInputBase-root': {
                   ...textFieldSx['& .MuiInputBase-root'],
-                  bgcolor: 'white',
+                  bgcolor: 'transparent',
                 },
               }}
-              InputProps={inputPropsSx}
+              InputProps={{
+                ...inputPropsSx,
+                sx: { ...inputPropsSx.sx, fontSize: '1rem', fontStyle: 'italic', opacity: 0.9 }
+              }}
             />
           </Box>
           {followUpNode}

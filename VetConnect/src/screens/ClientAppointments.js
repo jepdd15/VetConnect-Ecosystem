@@ -44,7 +44,7 @@ import CaseDayCard from "../components/CaseDayCard";
 import AppointmentCardContent from "../components/AppointmentCardContent";
 import { useClinicContact } from "../hooks/useClinicContact";
 import { formatDisplayDate, getLocalDateStr } from '../utils/helpers';
-import { COLORS } from '../theme/mobileTokens';
+import { COLORS, FONTS, SHADOW } from '../theme/mobileTokens';
 import { buildCaseChains } from '../utils/buildCaseChains';
 import { useNetwork } from "../context/NetworkContext";
 
@@ -363,7 +363,12 @@ const ClientAppointments = ({ navigation }) => {
   const handleShowReceipt = async (item) => {
     setLoadingReceipt(true);
     setShowReceipt(true);
-    setReceiptData(null);
+    // Prime with basic info from the appointment while loading full sale data
+    setReceiptData({ 
+      clinicName: item.clinicName, 
+      date: item.scheduledDate, 
+      items: [] 
+    });
     try {
       const q = query(
         collection(db, "sales"),
@@ -371,13 +376,15 @@ const ClientAppointments = ({ navigation }) => {
       );
       const snap = await getDocs(q);
       if (!snap.empty) {
-        setReceiptData(snap.docs[0].data());
+        setReceiptData({ id: snap.docs[0].id, ...snap.docs[0].data() });
       } else {
         setReceiptData({
           items: [
-            { name: item.serviceType, price: item.servicePrice || 0, qty: 1 },
+            { name: item.serviceType || item.primaryService || 'General Service', price: item.servicePrice || 0, qty: 1 },
           ],
           total: item.servicePrice || 0,
+          clinicName: item.clinicName,
+          date: item.scheduledDate,
           isFallback: true,
         });
       }
@@ -1075,58 +1082,114 @@ const ClientAppointments = ({ navigation }) => {
       {/* RECEIPT MODAL */}
       <Modal visible={showReceipt} transparent={true} animationType="slide">
         <View style={styles.modalBg}>
-          <View style={styles.receiptContent}>
-            <Text style={styles.receiptHeader}>STARBARKS VET CLINIC</Text>
-            <Text style={styles.receiptSub}>Official E-Receipt</Text>
-            <View style={styles.divider} />
+          <View style={styles.receiptContainer}>
+            {/* Neubrutalist Shadow */}
+            <View style={styles.receiptShadow} />
+            
+            <View style={styles.receiptContent}>
+              {/* Top Perforation */}
+              <View style={styles.perforationRow}>
+                {[...Array(12)].map((_, i) => (
+                  <View key={i} style={styles.perforationHole} />
+                ))}
+              </View>
 
-            {loadingReceipt ? (
-              <ActivityIndicator color={COLORS.accent} style={{ marginVertical: 20 }} />
-            ) : (
-              <ScrollView style={{ width: "100%", maxHeight: 300 }}>
-                {receiptData?.items?.map((item, i) => (
-                  <View key={i} style={styles.receiptItemRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.receiptItemName}>{item.name}</Text>
-                      <Text style={styles.receiptItemQty}>
-                        {item.qty}x @ ₱{item.price}
-                      </Text>
-                    </View>
-                    <Text style={styles.receiptItemTotal}>
-                      ₱{item.qty * item.price}
+              <View style={styles.receiptInner}>
+                <Text style={styles.receiptHeader}>
+                  {receiptData?.clinicName || 'VET CLINIC'}
+                </Text>
+                <Text style={styles.receiptSub}>Official E-Receipt</Text>
+                
+                <View style={styles.receiptMetaRow}>
+                  <View>
+                    <Text style={styles.receiptMetaLabel}>RECEIPT #</Text>
+                    <Text style={styles.receiptMetaValue}>
+                      {receiptData?.receiptNumber || receiptData?.id?.slice(0, 8).toUpperCase() || 'DRAFT'}
                     </Text>
                   </View>
-                ))}
-                {receiptData?.isFallback && (
-                  <View style={styles.receiptFallbackBanner}>
-                    <MaterialIcons name="info-outline" size={14} color={COLORS.warning} />
-                    <Text style={styles.receiptFallbackText}>
-                      Estimated — final receipt available after checkout
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={styles.receiptMetaLabel}>DATE</Text>
+                    <Text style={styles.receiptMetaValue}>
+                      {(() => {
+                        const d = receiptData?.date;
+                        if (!d) return new Date().toLocaleDateString();
+                        if (d.seconds) return new Date(d.seconds * 1000).toLocaleDateString();
+                        return new Date(d).toLocaleDateString();
+                      })()}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.receiptDividerDashed} />
+
+                {loadingReceipt ? (
+                  <ActivityIndicator color={COLORS.accent} style={{ marginVertical: 20 }} />
+                ) : (
+                  <ScrollView style={{ width: "100%", maxHeight: 300 }} showsVerticalScrollIndicator={false}>
+                    {receiptData?.items?.map((item, i) => (
+                      <View key={i} style={styles.receiptItemRow}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.receiptItemName}>{item.name}</Text>
+                          <Text style={styles.receiptItemQty}>
+                            {item.qty || 1}x @ ₱{(item.price || 0).toLocaleString()}
+                          </Text>
+                        </View>
+                        <Text style={styles.receiptItemTotal}>
+                          ₱{((item.qty || 1) * (item.price || 0)).toLocaleString()}
+                        </Text>
+                      </View>
+                    ))}
+                    {receiptData?.isFallback && (
+                      <View style={styles.receiptFallbackBanner}>
+                        <MaterialIcons name="info-outline" size={14} color={COLORS.warning} />
+                        <Text style={styles.receiptFallbackText}>
+                          Estimated — final receipt available after checkout
+                        </Text>
+                      </View>
+                    )}
+                  </ScrollView>
+                )}
+
+                <View style={styles.receiptDividerDashed} />
+
+                {receiptData?.refundAmount > 0 && (
+                  <View style={styles.receiptRefundRow}>
+                    <Text style={styles.receiptRefundLabel}>REFUND</Text>
+                    <Text style={styles.receiptRefundValue}>
+                      -₱{receiptData.refundAmount?.toLocaleString()}
                     </Text>
                   </View>
                 )}
-              </ScrollView>
-            )}
-            <View style={styles.divider} />
-            {receiptData?.refundAmount > 0 && (
-              <View style={styles.receiptRefundRow}>
-                <Text style={styles.receiptRefundLabel}>REFUND</Text>
-                <Text style={styles.receiptRefundValue}>
-                  -₱{receiptData.refundAmount}
-                </Text>
+
+                <View style={styles.receiptTotalRow}>
+                  <Text style={styles.receiptTotalLabel}>GRAND TOTAL</Text>
+                  <Text style={styles.receiptTotalValue}>
+                    ₱{((receiptData?.total || 0) - (receiptData?.refundAmount || 0)).toLocaleString()}
+                  </Text>
+                </View>
+
+                <View style={styles.receiptFooter}>
+                  <Text style={styles.receiptFooterText}>THANK YOU FOR TRUSTING US!</Text>
+                  <Text style={styles.receiptFooterSub}>Visit again soon 🐾</Text>
+                </View>
               </View>
-            )}
-            <View style={styles.receiptTotalRow}>
-              <Text style={styles.receiptTotalLabel}>GRAND TOTAL</Text>
-              <Text style={styles.receiptTotalValue}>
-                ₱{(receiptData?.total || 0) - (receiptData?.refundAmount || 0)}
-              </Text>
+
+              {/* Bottom Perforation */}
+              <View style={[styles.perforationRow, { marginTop: 10 }]}>
+                {[...Array(12)].map((_, i) => (
+                  <View key={i} style={styles.perforationHole} />
+                ))}
+              </View>
             </View>
+          </View>
+
+          <View style={{ alignSelf: 'center', position: 'relative', marginTop: 30 }}>
+            <View style={styles.receiptCloseBtnShadow} />
             <TouchableOpacity
-              style={styles.closeBtn}
+              style={styles.receiptCloseBtn}
               onPress={() => setShowReceipt(false)}
             >
-              <Text style={styles.closeText}>Close</Text>
+              <Text style={styles.receiptCloseText}>CLOSE</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1350,75 +1413,160 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
   },
 
+  receiptContainer: {
+    width: '90%',
+    position: 'relative',
+  },
+  receiptShadow: {
+    ...SHADOW.form,
+  },
   receiptContent: {
     backgroundColor: COLORS.white,
-    padding: 25,
-    borderRadius: 0,
-    width: '90%',
-    borderStyle: 'solid',
     borderWidth: 2,
     borderColor: COLORS.border,
+    paddingVertical: 10,
+  },
+  perforationRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingHorizontal: 5,
+  },
+  perforationHole: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(0,0,0,0.1)',
+  },
+  receiptInner: {
+    paddingHorizontal: 20,
+    paddingVertical: 15,
   },
   receiptHeader: {
-    fontSize: 22,
-    fontWeight: "bold",
-    color: COLORS.textPrimary,
+    fontSize: 24,
+    fontFamily: FONTS.black,
+    color: COLORS.brand,
     textAlign: "center",
     letterSpacing: 1,
+    textTransform: 'uppercase',
   },
   receiptSub: {
-    fontSize: 12,
+    fontSize: 11,
+    fontFamily: FONTS.bold,
     color: COLORS.textMuted,
     textAlign: "center",
-    marginBottom: 10,
+    marginBottom: 20,
+    letterSpacing: 1,
+  },
+  receiptMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 15,
+  },
+  receiptMetaLabel: {
+    fontSize: 9,
+    fontFamily: FONTS.bold,
+    color: COLORS.textMuted,
+    letterSpacing: 0.5,
+  },
+  receiptMetaValue: {
+    fontSize: 13,
+    fontFamily: 'monospace',
+    fontWeight: '900',
+    color: COLORS.accent,
+  },
+  receiptDividerDashed: {
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    borderStyle: 'dashed',
+    marginVertical: 15,
   },
   receiptItemRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: 12,
   },
-  receiptItemName: { fontSize: 14, fontWeight: "bold", color: COLORS.textPrimary },
-  receiptItemQty: { fontSize: 12, color: COLORS.textMuted },
-  receiptItemTotal: { fontSize: 14, fontWeight: "bold", color: COLORS.textPrimary },
+  receiptItemName: {
+    fontSize: 14,
+    fontFamily: FONTS.bold,
+    color: COLORS.brand,
+  },
+  receiptItemQty: {
+    fontSize: 12,
+    fontFamily: FONTS.medium,
+    color: COLORS.textMuted,
+    marginTop: 2,
+  },
+  receiptItemTotal: {
+    fontSize: 14,
+    fontFamily: FONTS.bold,
+    color: COLORS.brand,
+  },
   receiptRefundRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 5,
-    paddingVertical: 5,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.danger,
+    marginBottom: 10,
+    padding: 8,
     backgroundColor: COLORS.dangerBg,
-    paddingHorizontal: 5,
+    borderWidth: 1,
+    borderColor: COLORS.danger,
   },
   receiptRefundLabel: {
-    fontSize: 14,
-    fontWeight: 'bold',
+    fontSize: 13,
+    fontFamily: FONTS.bold,
     color: COLORS.danger,
   },
   receiptRefundValue: {
-    fontSize: 14,
-    fontWeight: 'bold',
+    fontSize: 13,
+    fontFamily: FONTS.bold,
     color: COLORS.danger,
   },
   receiptTotalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: 'center',
     marginTop: 5,
   },
-  receiptTotalLabel: { fontSize: 18, fontWeight: "bold", color: COLORS.textPrimary },
-  receiptTotalValue: { fontSize: 20, fontWeight: "bold", color: COLORS.success },
-
-  closeBtn: {
-    marginTop: 20,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    alignSelf: 'center',
-    borderWidth: 2,
-    borderColor: COLORS.danger,
-    borderRadius: 0,
-    backgroundColor: COLORS.white,
+  receiptTotalLabel: {
+    fontSize: 18,
+    fontFamily: FONTS.black,
+    color: COLORS.brand,
   },
-  closeText: { color: COLORS.danger, fontWeight: '900', fontSize: 14, textTransform: 'uppercase', letterSpacing: 0.5 },
+  receiptTotalValue: {
+    fontSize: 22,
+    fontFamily: FONTS.black,
+    color: COLORS.success,
+  },
+  receiptFooter: {
+    marginTop: 30,
+    alignItems: 'center',
+  },
+  receiptFooterText: {
+    fontSize: 11,
+    fontFamily: FONTS.black,
+    color: COLORS.brand,
+    letterSpacing: 0.5,
+  },
+  receiptFooterSub: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  receiptCloseBtnShadow: {
+    ...SHADOW.button,
+  },
+  receiptCloseBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 25,
+    backgroundColor: COLORS.brand,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+  },
+  receiptCloseText: {
+    color: COLORS.cream,
+    fontFamily: FONTS.black,
+    fontSize: 14,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
 
   // --- Follow-up ghost card ---
   followUpCard: {

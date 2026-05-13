@@ -108,6 +108,8 @@ export function generateInventoryReportHTML(items, clinicSettings = {}, filterSu
   <div class="clinic-header">
     <p class="clinic-name">${clinicName}</p>
     ${clinicAddr ? `<p class="clinic-address">${clinicAddr}</p>` : ''}
+    ${clinicSettings?.clinicPhone ? `<p class="clinic-address">TEL: ${esc(clinicSettings.clinicPhone)}</p>` : ''}
+    ${clinicSettings?.clinicTIN ? `<p class="clinic-address">TIN: ${esc(clinicSettings.clinicTIN)}</p>` : ''}
   </div>
   <div class="doc-title">INVENTORY REPORT</div>
   <p style="text-align:center;font-size:11px;color:#A1887F;">Generated: ${generated}</p>

@@ -87,7 +87,7 @@ const ClientAppointments = ({ navigation }) => {
   // Populated for follow-up ghost appointments so we can show the real diagnosis + vet name.
   const [parentRecords, setParentRecords] = useState({});
 
-  const { clinicPhone, clinicAddress } = useClinicContact();
+  const { clinicPhone, clinicAddress, clinicName, clinicTIN } = useClinicContact();
   const { isConnected } = useNetwork();
 
   const [queueAhead, setQueueAhead] = useState(null);
@@ -1096,8 +1096,21 @@ const ClientAppointments = ({ navigation }) => {
 
               <View style={styles.receiptInner}>
                 <Text style={styles.receiptHeader}>
-                  {receiptData?.clinicName || 'VET CLINIC'}
+                  {receiptData?.clinicName || clinicName || 'VET CLINIC'}
                 </Text>
+                <Text style={[styles.receiptMetaValue, { textAlign: 'center', fontSize: 10, color: COLORS.textMuted }]}>
+                  {receiptData?.clinicAddress || clinicAddress}
+                </Text>
+                { (receiptData?.clinicPhone || clinicPhone) && (
+                  <Text style={[styles.receiptMetaValue, { textAlign: 'center', fontSize: 10, color: COLORS.textMuted }]}>
+                    TEL: {receiptData?.clinicPhone || clinicPhone}
+                  </Text>
+                )}
+                { (receiptData?.clinicTIN || clinicTIN) && (
+                  <Text style={[styles.receiptMetaValue, { textAlign: 'center', fontSize: 10, color: COLORS.textMuted }]}>
+                    TIN: {receiptData?.clinicTIN || clinicTIN}
+                  </Text>
+                )}
                 <Text style={styles.receiptSub}>Official E-Receipt</Text>
                 
                 <View style={styles.receiptMetaRow}>
@@ -1116,6 +1129,15 @@ const ClientAppointments = ({ navigation }) => {
                         if (d.seconds) return new Date(d.seconds * 1000).toLocaleDateString();
                         return new Date(d).toLocaleDateString();
                       })()}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={[styles.receiptMetaRow, { marginTop: 4 }]}>
+                  <View>
+                    <Text style={styles.receiptMetaLabel}>CASHIER</Text>
+                    <Text style={styles.receiptMetaValue}>
+                      {(receiptData?.cashier || receiptData?.processedBy || 'ADMIN').toUpperCase()}
                     </Text>
                   </View>
                 </View>

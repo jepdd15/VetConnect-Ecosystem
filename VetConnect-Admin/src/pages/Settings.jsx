@@ -97,10 +97,13 @@ export default function Settings() {
 
   // --- CONFIGURATION STATE ---
   const [settings, setSettings] = useState({
+    clinicName: '',
+    clinicAddress: '',
     openHour: 8, closeHour: 17,
     lunchEnabled: true, lunchStart: 12, lunchEnd: 13,
     minSlotInterval: 30, advanceNoticeMins: 120, maxFutureBookingDays: 30,
     clinicPhone: '',
+    clinicTIN: '',
     baiRegistrationNumber: '',
     workingDays: [1, 2, 3, 4, 5, 6, 0], // [0:Sun, 1:Mon... 6:Sat]
     clinicLat: 16.0389, clinicLng: 120.3977, geofenceRadiusM: 150,
@@ -449,9 +452,9 @@ export default function Settings() {
 
       // Field-level diff for audit trail
       if (lastSavedSettings) {
-        const tracked = ['openHour', 'closeHour', 'lunchEnabled', 'lunchStart', 'lunchEnd',
+        const tracked = ['clinicName', 'clinicAddress', 'openHour', 'closeHour', 'lunchEnabled', 'lunchStart', 'lunchEnd',
           'minSlotInterval', 'advanceNoticeMins', 'maxFutureBookingDays',
-          'workingDays', 'clinicPhone', 'baiRegistrationNumber', 'dashboardAlerts', 'dashboardGoals',
+          'workingDays', 'clinicPhone', 'clinicTIN', 'baiRegistrationNumber', 'dashboardAlerts', 'dashboardGoals',
           'clinicLat', 'clinicLng', 'geofenceRadiusM', 'enableAppointmentReminders',
           'enableVaccineReminders', 'vaccineReminderWindowDays', 'vaccineReminderCooldownDays',
           'enableAutoAppointmentReminders', 'appointmentReminderHeadsUpDays'];
@@ -1145,23 +1148,56 @@ export default function Settings() {
                 <Grid size={{ xs: 12, md: 6 }}>
                   <TextField
                     fullWidth size="medium"
-                    label="Clinic Phone Number"
-                    placeholder="e.g. 09171234567"
-                    value={settings.clinicPhone || ''}
-                    onChange={(e) => handleChange('clinicPhone', e.target.value)}
+                    label="Clinic Official Name"
+                    placeholder="e.g. Starbarks Veterinary Clinic"
+                    value={settings.clinicName || ''}
+                    onChange={(e) => handleChange('clinicName', e.target.value)}
                     sx={{ bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 0, '& fieldset': { border: `2px solid ${COLORS.accent}33` } } }}
-                    helperText="Shown to clients in the mobile app. Leave empty to hide the Call Clinic button."
+                    helperText="Used on all receipts and reports."
                   />
                 </Grid>
                 <Grid size={{ xs: 12, md: 6 }}>
                   <TextField
                     fullWidth size="medium"
-                    label="BAI Registration Number"
-                    placeholder="Bureau of Animal Industry clinic registration"
+                    label="Clinic Physical Address"
+                    placeholder="Street, Barangay, City, Province"
+                    value={settings.clinicAddress || ''}
+                    onChange={(e) => handleChange('clinicAddress', e.target.value)}
+                    sx={{ bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 0, '& fieldset': { border: `2px solid ${COLORS.accent}33` } } }}
+                    helperText="Displayed in the mobile app and document headers."
+                  />
+                </Grid>
+                <Grid size={{ xs: 12, md: 4 }}>
+                  <TextField
+                    fullWidth size="medium"
+                    label="Clinic Phone Number"
+                    placeholder="e.g. 09171234567"
+                    value={settings.clinicPhone || ''}
+                    onChange={(e) => handleChange('clinicPhone', e.target.value)}
+                    sx={{ bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 0, '& fieldset': { border: `2px solid ${COLORS.accent}33` } } }}
+                    helperText="Shown to clients in the mobile app."
+                  />
+                </Grid>
+                <Grid size={{ xs: 12, md: 4 }}>
+                  <TextField
+                    fullWidth size="medium"
+                    label="Clinic TIN"
+                    placeholder="Tax Identification Number"
+                    value={settings.clinicTIN || ''}
+                    onChange={(e) => handleChange('clinicTIN', e.target.value)}
+                    sx={{ bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 0, '& fieldset': { border: `2px solid ${COLORS.accent}33` } } }}
+                    helperText="Printed on official receipts for transparency."
+                  />
+                </Grid>
+                <Grid size={{ xs: 12, md: 4 }}>
+                  <TextField
+                    fullWidth size="medium"
+                    label="BAI Reg. #"
+                    placeholder="BAI clinic registration"
                     value={settings.baiRegistrationNumber || ''}
                     onChange={(e) => handleChange('baiRegistrationNumber', e.target.value)}
                     sx={{ bgcolor: 'white', '& .MuiOutlinedInput-root': { borderRadius: 0, '& fieldset': { border: `2px solid ${COLORS.accent}33` } } }}
-                    helperText="Printed on vaccination records and official documents. Leave empty to omit."
+                    helperText="Printed on vaccination records."
                   />
                 </Grid>
 

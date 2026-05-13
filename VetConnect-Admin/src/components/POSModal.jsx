@@ -42,6 +42,18 @@ const DISCOUNT_REASONS = [
   'Other',
 ];
 
+/**
+ * Escapes HTML special characters to prevent XSS in print templates.
+ */
+const esc = (str) => {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+};
+
 export default function POSModal({ open, onClose, patient, inventoryList, servicesList, isDayClosed = false, closingData = null }) {
   const isRetailMode = !patient;
   const { profile } = useUser();
@@ -429,83 +441,104 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
     const today = new Date().toLocaleString();
 
     const itemsHTML = cart.map(item => `
-      <tr>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${item.name} ${item.isDiscountable ? '' : '<span style="color:red; font-size:10px;">(No SC/PWD)</span>'}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: center;">${item.qty}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">P${item.price.toFixed(2)}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">P${(item.price * item.qty).toFixed(2)}</td>
-      </tr>
+      <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px;">
+        <div style="flex: 1; padding-right: 10px;">
+          <div style="font-weight: 700;">${esc(item.name)} ${item.isDiscountable ? '' : '<span style="color:#d32f2f; font-size:10px;">(No SC/PWD)</span>'}</div>
+          <div style="color: #666;">${item.qty} x ₱${item.price.toFixed(2)}</div>
+        </div>
+        <div style="font-weight: 900; text-align: right; font-family: 'JetBrains Mono', monospace;">
+          ₱${(item.price * item.qty).toFixed(2)}
+        </div>
+      </div>
     `).join('');
 
     const patientLabel = `${patient.petName} (${patient.ownerName || 'Walk-In'})`;
+
+    const tenderSection = (() => {
+      return paymentTenders.map(t => {
+        const amt = parseFloat(t.amount) || balanceDueNum;
+        let line = `<div class="total-row"><span>${esc(t.method)}:</span><span>₱${amt.toFixed(2)}</span></div>`;
+        if (t.method === 'Cash' && t.amountTendered && parseFloat(t.amountTendered) > 0) {
+          const tendered = parseFloat(t.amountTendered);
+          const change = Math.max(0, tendered - amt);
+          line += `<div class="total-row sub-row"><span>&nbsp;&nbsp;Tendered:</span><span>₱${tendered.toFixed(2)}</span></div>`;
+          line += `<div class="total-row sub-row change"><span>&nbsp;&nbsp;Change:</span><span>₱${change.toFixed(2)}</span></div>`;
+        }
+        return line;
+      }).join('');
+    })();
 
     return `
       <html>
         <head>
           <style>
-            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #333; line-height: 1.6; }
-            .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #8B4513; padding-bottom: 10px; }
-            .clinic-name { font-size: 24px; font-weight: bold; color: #5D4037; margin: 0; }
-            .details { margin-bottom: 20px; font-size: 14px; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-            th { background-color: #f5f5f5; padding: 10px; text-align: left; font-size: 14px; border-bottom: 2px solid #ddd; }
-            .totals { width: 50%; float: right; border-top: 2px solid #8B4513; padding-top: 10px; }
-            .total-row { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 14px; }
-            .grand-total { font-weight: bold; font-size: 18px; margin-top: 10px; border-top: 1px dashed #ccc; padding-top: 10px; }
-            .footer { clear: both; text-align: center; margin-top: 50px; font-size: 12px; color: #777; }
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+            body { font-family: 'Inter', sans-serif; color: #111; line-height: 1.4; margin: 0; padding: 20px; display: flex; justify-content: center; background-color: #f0f0f0; }
+            .receipt-container { width: 100%; max-width: 380px; background-color: #fff; padding: 30px 20px; border: 3px solid #111; box-sizing: border-box; }
+            .header { text-align: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px dashed #111; }
+            .clinic-name { font-size: 20px; font-weight: 900; color: #111; margin: 0 0 5px 0; text-transform: uppercase; letter-spacing: -0.5px; }
+            .clinic-meta { margin: 0; font-size: 11px; color: #444; font-weight: 700; text-transform: uppercase; }
+            .meta-section { margin-bottom: 20px; font-size: 12px; display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; border-bottom: 2px dashed #111; padding-bottom: 15px; }
+            .meta-label { font-weight: 900; color: #555; text-transform: uppercase; }
+            .meta-value { font-family: 'JetBrains Mono', monospace; font-weight: 700; text-align: right; }
+            .items-section { margin-bottom: 15px; border-bottom: 2px dashed #111; padding-bottom: 10px; min-height: 100px; }
+            .totals-section { font-size: 13px; font-family: 'JetBrains Mono', monospace; }
+            .total-row { display: flex; justify-content: space-between; margin-bottom: 4px; font-weight: 400; }
+            .total-row.bold { font-weight: 700; }
+            .total-row.discount { color: #d32f2f; }
+            .sub-row { font-size: 11px; color: #555; }
+            .sub-row.change { font-weight: 700; color: #111; }
+            .grand-total { font-weight: 900; font-size: 18px; margin-top: 10px; border-top: 2px solid #111; padding-top: 10px; font-family: 'Inter', sans-serif; display: flex; justify-content: space-between; align-items: flex-end; }
+            .footer { text-align: center; margin-top: 30px; font-size: 11px; color: #111; font-weight: 700; border-top: 2px dashed #111; padding-top: 15px; }
           </style>
         </head>
         <body>
-          <div class="header">
-            <p class="clinic-name">${clinicSettings.clinicName}</p>
-            <p style="margin: 0; font-size: 12px; color: #666;">${clinicSettings.clinicAddress} | Official Receipt</p>
-          </div>
+          <div class="receipt-container">
+            <div class="header">
+              <p class="clinic-name">${esc(clinicSettings.clinicName)}</p>
+              <p class="clinic-meta">${esc(clinicSettings.clinicAddress)}</p>
+              ${clinicSettings.clinicPhone ? `<p class="clinic-meta">TEL: ${esc(clinicSettings.clinicPhone)}</p>` : ''}
+              ${clinicSettings.clinicTIN ? `<p class="clinic-meta">TIN: ${esc(clinicSettings.clinicTIN)}</p>` : ''}
+              <p class="clinic-meta" style="margin-top: 8px;">OFFICIAL RECEIPT</p>
+            </div>
+            
+            <div class="meta-section">
+              <span class="meta-label">RCPT #:</span> <span class="meta-value">${esc(receiptNumber || transactionId.slice(0, 8).toUpperCase())}</span>
+              <span class="meta-label">DATE:</span> <span class="meta-value">${esc(today)}</span>
+              <span class="meta-label">CUST:</span> <span class="meta-value" style="font-family: 'Inter', sans-serif; text-transform: uppercase;">${esc(patientLabel)}</span>
+              <span class="meta-label">CSHR:</span> <span class="meta-value" style="font-family: 'Inter', sans-serif; text-transform: uppercase;">${esc(profile?.fullName || 'POS Cashier')}</span>
+            </div>
 
-          <div class="details">
-            <p><strong>Receipt #:</strong> ${receiptNumber || transactionId.slice(0, 8).toUpperCase()}</p>
-            <p><strong>Date:</strong> ${today}</p>
-            <p><strong>Patient:</strong> ${patientLabel}</p>
-            <p><strong>Cashier:</strong> ${profile?.fullName || 'POS Cashier'}</p>
-          </div>
+            <div class="items-section">
+              ${itemsHTML}
+            </div>
 
-          <table>
-            <thead><tr><th>Description</th><th style="text-align:center;">Qty</th><th style="text-align:right;">Price</th><th style="text-align:right;">Amount</th></tr></thead>
-            <tbody>${itemsHTML}</tbody>
-          </table>
+            <div class="totals-section">
+              <div class="total-row"><span>SUBTOTAL</span><span>₱${financials.subtotal}</span></div>
+              ${applyScPwd && parseFloat(financials.discount) > 0 ? `
+                <div class="total-row"><span>VAT EXEMPT</span><span>₱${financials.vatExempt}</span></div>
+                <div class="total-row discount"><span>SC/PWD DISC</span><span>- ₱${financials.discount}</span></div>
+              ` : ''}
+              ${!applyScPwd && parseFloat(financials.itemDiscounts) > 0 ? `<div class="total-row discount"><span>ITEM DISC</span><span>- ₱${financials.itemDiscounts}</span></div>` : ''}
+              ${!applyScPwd && parseFloat(financials.billDiscount) > 0 ? `<div class="total-row discount"><span>BILL DISC</span><span>- ₱${financials.billDiscount}</span></div>` : ''}
+              <div class="total-row"><span>LESS DEPOSIT</span><span>- ₱${financials.deposit}</span></div>
+              
+              <div class="grand-total">
+                <span>BALANCE PAID</span>
+                <span>₱${financials.balanceDue}</span>
+              </div>
+              
+              <div style="margin-top: 15px;">
+                <div class="total-row bold" style="margin-bottom: 5px;"><span>PAYMENT (${paymentTenders.length > 1 ? 'SPLIT' : primaryPaymentMethod.toUpperCase()}):</span><span></span></div>
+                ${tenderSection}
+              </div>
+            </div>
 
-          <div class="totals">
-            <div class="total-row"><span>Subtotal:</span><span>P${financials.subtotal}</span></div>
-            ${applyScPwd && parseFloat(financials.discount) > 0 ? `
-              <div class="total-row"><span>VAT Exempt (Eligible):</span><span>P${financials.vatExempt}</span></div>
-              <div class="total-row" style="color: #D32F2F;"><span>SC/PWD Discount (20%):</span><span>- P${financials.discount}</span></div>
-            ` : ''}
-            ${!applyScPwd && parseFloat(financials.itemDiscounts) > 0 ? `
-              <div class="total-row" style="color: #E65100;"><span>Item Discounts:</span><span>- P${financials.itemDiscounts}</span></div>
-            ` : ''}
-            ${!applyScPwd && parseFloat(financials.billDiscount) > 0 ? `
-              <div class="total-row" style="color: #E65100;"><span>Bill Discount (${billDiscountReason || 'Custom'}):</span><span>- P${financials.billDiscount}</span></div>
-            ` : ''}
-            <div class="total-row"><span>Less Deposit:</span><span>- P${financials.deposit}</span></div>
-            <div class="total-row grand-total"><span>BALANCE PAID:</span><span>P${financials.balanceDue}</span></div>
-            <div class="total-row" style="margin-top:5px; font-size:12px; color:#555; font-weight:bold;"><span>Payment:</span><span>${paymentTenders.length > 1 ? 'Split' : primaryPaymentMethod}</span></div>
-            ${(() => {
-              return paymentTenders.map(t => {
-                const amt = parseFloat(t.amount) || balanceDueNum;
-                let line = `<div class="total-row" style="font-size:12px; color:#555;"><span>${t.method}:</span><span>P${amt.toFixed(2)}</span></div>`;
-                if (t.method === 'Cash' && t.amountTendered && parseFloat(t.amountTendered) > 0) {
-                  const tendered = parseFloat(t.amountTendered);
-                  const change = Math.max(0, tendered - amt);
-                  line += `<div class="total-row" style="font-size:11px; color:#888; margin-left:10px;"><span>&nbsp;&nbsp;Tendered:</span><span>P${tendered.toFixed(2)}</span></div>`;
-                  line += `<div class="total-row" style="font-size:11px; color:#888; font-weight:bold; margin-left:10px;"><span>&nbsp;&nbsp;Change:</span><span>P${change.toFixed(2)}</span></div>`;
-                }
-                return line;
-              }).join('');
-            })()}
-          </div>
-
-          <div class="footer">
-            <p>Thank you for trusting ${clinicSettings.clinicName} with your pet's health!</p>
-            <p>This document is a system-generated receipt.</p>
+            <div class="footer">
+              <p style="margin: 0 0 5px 0;">THANK YOU FOR TRUSTING</p>
+              <p style="margin: 0 0 15px 0; font-weight: 900; text-transform: uppercase;">${esc(clinicSettings.clinicName)}</p>
+              <p style="margin: 0; font-size: 9px; color: #666; font-family: 'JetBrains Mono', monospace;">SYSTEM GENERATED RECEIPT</p>
+            </div>
           </div>
         </body>
       </html>
@@ -515,80 +548,107 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
   const generateRetailReceiptHTML = (transactionId, receiptNumber, clientInfo) => {
     const today = new Date().toLocaleString();
     const itemsHTML = cart.map(item => `
-      <tr>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${item.name}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: center;">${item.qty}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">P${item.price.toFixed(2)}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">P${(item.price * item.qty).toFixed(2)}</td>
-      </tr>
+      <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px;">
+        <div style="flex: 1; padding-right: 10px;">
+          <div style="font-weight: 700;">${item.name}</div>
+          <div style="color: #666;">${item.qty} x P${item.price.toFixed(2)}</div>
+        </div>
+        <div style="font-weight: 900; text-align: right; font-family: 'JetBrains Mono', monospace;">
+          P${(item.price * item.qty).toFixed(2)}
+        </div>
+      </div>
     `).join('');
 
     const customerLabel = clientInfo?.fullName
       ? `${clientInfo.fullName}${clientInfo.phone ? ` (${clientInfo.phone})` : ''}`
       : 'Counter Sale (Walk-In)';
 
+    const tenderSection = (() => {
+      return paymentTenders.map(t => {
+        const amt = parseFloat(t.amount) || balanceDueNum;
+        let line = `<div class="total-row"><span>${esc(t.method)}:</span><span>₱${amt.toFixed(2)}</span></div>`;
+        if (t.method === 'Cash' && t.amountTendered && parseFloat(t.amountTendered) > 0) {
+          const tendered = parseFloat(t.amountTendered);
+          const change = Math.max(0, tendered - amt);
+          line += `<div class="total-row sub-row"><span>&nbsp;&nbsp;Tendered:</span><span>₱${tendered.toFixed(2)}</span></div>`;
+          line += `<div class="total-row sub-row change"><span>&nbsp;&nbsp;Change:</span><span>₱${change.toFixed(2)}</span></div>`;
+        }
+        return line;
+      }).join('');
+    })();
+
     return `
       <html>
         <head>
           <style>
-            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #333; line-height: 1.6; }
-            .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #8B4513; padding-bottom: 10px; }
-            .clinic-name { font-size: 24px; font-weight: bold; color: #5D4037; margin: 0; }
-            .details { margin-bottom: 20px; font-size: 14px; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-            th { background-color: #f5f5f5; padding: 10px; text-align: left; font-size: 14px; border-bottom: 2px solid #ddd; }
-            .totals { width: 50%; float: right; border-top: 2px solid #8B4513; padding-top: 10px; }
-            .total-row { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 14px; }
-            .grand-total { font-weight: bold; font-size: 18px; margin-top: 10px; border-top: 1px dashed #ccc; padding-top: 10px; }
-            .footer { clear: both; text-align: center; margin-top: 50px; font-size: 12px; color: #777; }
-            .retail-badge { text-align: center; font-weight: bold; border: 2px solid #3ABEF9; padding: 5px; margin-bottom: 15px; color: #3ABEF9; letter-spacing: 2px; font-size: 12px; }
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+            body { font-family: 'Inter', sans-serif; color: #111; line-height: 1.4; margin: 0; padding: 20px; display: flex; justify-content: center; background-color: #f0f0f0; }
+            .receipt-container { width: 100%; max-width: 380px; background-color: #fff; padding: 30px 20px; border: 3px solid #111; box-sizing: border-box; }
+            .header { text-align: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px dashed #111; }
+            .clinic-name { font-size: 20px; font-weight: 900; color: #111; margin: 0 0 5px 0; text-transform: uppercase; letter-spacing: -0.5px; }
+            .clinic-meta { margin: 0; font-size: 11px; color: #444; font-weight: 700; text-transform: uppercase; }
+            .retail-badge { text-align: center; font-weight: 900; border: 2px solid #3ABEF9; padding: 8px; margin-bottom: 15px; color: #3ABEF9; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; }
+            .meta-section { margin-bottom: 20px; font-size: 12px; display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; border-bottom: 2px dashed #111; padding-bottom: 15px; }
+            .meta-label { font-weight: 900; color: #555; text-transform: uppercase; }
+            .meta-value { font-family: 'JetBrains Mono', monospace; font-weight: 700; text-align: right; }
+            .items-section { margin-bottom: 15px; border-bottom: 2px dashed #111; padding-bottom: 10px; min-height: 100px; }
+            .totals-section { font-size: 13px; font-family: 'JetBrains Mono', monospace; }
+            .total-row { display: flex; justify-content: space-between; margin-bottom: 4px; font-weight: 400; }
+            .total-row.bold { font-weight: 700; }
+            .total-row.discount { color: #d32f2f; }
+            .sub-row { font-size: 11px; color: #555; }
+            .sub-row.change { font-weight: 700; color: #111; }
+            .grand-total { font-weight: 900; font-size: 18px; margin-top: 10px; border-top: 2px solid #111; padding-top: 10px; font-family: 'Inter', sans-serif; display: flex; justify-content: space-between; align-items: flex-end; }
+            .footer { text-align: center; margin-top: 30px; font-size: 11px; color: #111; font-weight: 700; border-top: 2px dashed #111; padding-top: 15px; }
           </style>
         </head>
         <body>
-          <div class="retail-badge">RETAIL SALE</div>
-          <div class="header">
-            <p class="clinic-name">${clinicSettings.clinicName}</p>
-            <p style="margin: 0; font-size: 12px; color: #666;">${clinicSettings.clinicAddress} | Official Receipt</p>
-          </div>
-          <div class="details">
-            <p><strong>Receipt #:</strong> ${receiptNumber || transactionId.slice(0, 8).toUpperCase()}</p>
-            <p><strong>Date:</strong> ${today}</p>
-            <p><strong>Customer:</strong> ${customerLabel}</p>
-            <p><strong>Cashier:</strong> ${profile?.fullName || 'POS Cashier'}</p>
-          </div>
-          <table>
-            <thead><tr><th>Description</th><th style="text-align:center;">Qty</th><th style="text-align:right;">Price</th><th style="text-align:right;">Amount</th></tr></thead>
-            <tbody>${itemsHTML}</tbody>
-          </table>
-          <div class="totals">
-            <div class="total-row"><span>Subtotal:</span><span>P${financials.subtotal}</span></div>
-            ${applyScPwd && parseFloat(financials.discount) > 0 ? `
-              <div class="total-row"><span>VAT Exempt (Eligible):</span><span>P${financials.vatExempt}</span></div>
-              <div class="total-row" style="color: #D32F2F;"><span>SC/PWD Discount (20%):</span><span>- P${financials.discount}</span></div>
-            ` : ''}
-            ${!applyScPwd && parseFloat(financials.itemDiscounts) > 0 ? `
-              <div class="total-row" style="color: #E65100;"><span>Item Discounts:</span><span>- P${financials.itemDiscounts}</span></div>
-            ` : ''}
-            ${!applyScPwd && parseFloat(financials.billDiscount) > 0 ? `
-              <div class="total-row" style="color: #E65100;"><span>Bill Discount (${billDiscountReason || 'Custom'}):</span><span>- P${financials.billDiscount}</span></div>
-            ` : ''}
-            <div class="total-row grand-total"><span>TOTAL PAID:</span><span>P${financials.balanceDue}</span></div>
-            <div class="total-row" style="margin-top:5px; font-size:12px; color:#555; font-weight:bold;"><span>Payment:</span><span>${paymentTenders.length > 1 ? 'Split' : primaryPaymentMethod}</span></div>
-            ${paymentTenders.map(t => {
-              const amt = parseFloat(t.amount) || balanceDueNum;
-              let line = `<div class="total-row" style="font-size:12px; color:#555;"><span>${t.method}:</span><span>P${amt.toFixed(2)}</span></div>`;
-              if (t.method === 'Cash' && t.amountTendered && parseFloat(t.amountTendered) > 0) {
-                const tendered = parseFloat(t.amountTendered);
-                const change = Math.max(0, tendered - amt);
-                line += `<div class="total-row" style="font-size:11px; color:#888; margin-left:10px;"><span>&nbsp;&nbsp;Tendered:</span><span>P${tendered.toFixed(2)}</span></div>`;
-                line += `<div class="total-row" style="font-size:11px; color:#888; font-weight:bold; margin-left:10px;"><span>&nbsp;&nbsp;Change:</span><span>P${change.toFixed(2)}</span></div>`;
-              }
-              return line;
-            }).join('')}
-          </div>
-          <div class="footer">
-            <p>Thank you for your purchase at ${clinicSettings.clinicName}!</p>
-            <p>This document is a system-generated receipt.</p>
+          <div class="receipt-container">
+            <div class="retail-badge">RETAIL SALE</div>
+            <div class="header">
+              <p class="clinic-name">${esc(clinicSettings.clinicName)}</p>
+              <p class="clinic-meta">${esc(clinicSettings.clinicAddress)}</p>
+              ${clinicSettings.clinicPhone ? `<p class="clinic-meta">TEL: ${esc(clinicSettings.clinicPhone)}</p>` : ''}
+              ${clinicSettings.clinicTIN ? `<p class="clinic-meta">TIN: ${esc(clinicSettings.clinicTIN)}</p>` : ''}
+              <p class="clinic-meta" style="margin-top: 8px;">OFFICIAL RECEIPT</p>
+            </div>
+            
+            <div class="meta-section">
+              <span class="meta-label">RCPT #:</span> <span class="meta-value">${esc(receiptNumber || transactionId.slice(0, 8).toUpperCase())}</span>
+              <span class="meta-label">DATE:</span> <span class="meta-value">${esc(today)}</span>
+              <span class="meta-label">CUST:</span> <span class="meta-value" style="font-family: 'Inter', sans-serif; text-transform: uppercase;">${esc(customerLabel)}</span>
+              <span class="meta-label">CSHR:</span> <span class="meta-value" style="font-family: 'Inter', sans-serif; text-transform: uppercase;">${esc(profile?.fullName || 'POS Cashier')}</span>
+            </div>
+
+            <div class="items-section">
+              ${itemsHTML}
+            </div>
+
+            <div class="totals-section">
+              <div class="total-row"><span>SUBTOTAL</span><span>₱${financials.subtotal}</span></div>
+              ${applyScPwd && parseFloat(financials.discount) > 0 ? `
+                <div class="total-row"><span>VAT EXEMPT</span><span>₱${financials.vatExempt}</span></div>
+                <div class="total-row discount"><span>SC/PWD DISC</span><span>- ₱${financials.discount}</span></div>
+              ` : ''}
+              ${!applyScPwd && parseFloat(financials.itemDiscounts) > 0 ? `<div class="total-row discount"><span>ITEM DISC</span><span>- ₱${financials.itemDiscounts}</span></div>` : ''}
+              ${!applyScPwd && parseFloat(financials.billDiscount) > 0 ? `<div class="total-row discount"><span>BILL DISC</span><span>- ₱${financials.billDiscount}</span></div>` : ''}
+              
+              <div class="grand-total">
+                <span>TOTAL PAID</span>
+                <span>₱${financials.balanceDue}</span>
+              </div>
+              
+              <div style="margin-top: 15px;">
+                <div class="total-row bold" style="margin-bottom: 5px;"><span>PAYMENT (${paymentTenders.length > 1 ? 'SPLIT' : primaryPaymentMethod.toUpperCase()}):</span><span></span></div>
+                ${tenderSection}
+              </div>
+            </div>
+
+            <div class="footer">
+              <p style="margin: 0 0 5px 0;">THANK YOU FOR YOUR PURCHASE</p>
+              <p style="margin: 0 0 15px 0; font-weight: 900; text-transform: uppercase;">${esc(clinicSettings.clinicName)}</p>
+              <p style="margin: 0; font-size: 9px; color: #666; font-family: 'JetBrains Mono', monospace;">SYSTEM GENERATED RECEIPT</p>
+            </div>
           </div>
         </body>
       </html>

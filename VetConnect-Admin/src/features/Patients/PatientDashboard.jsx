@@ -1789,19 +1789,23 @@ export default function PatientDashboard() {
                                       </Box>
                                     ))}
                                   </Stack>
-                                ) : (
+                                ) : rec.diagnosis ? (
                                   <Typography sx={{ fontFamily: FONT, fontSize: '1.05rem', fontWeight: 900, color: COLORS.textPrimary, mb: 1 }}>
-                                    {rec.diagnosis?.toUpperCase() || 'CLINICAL VISIT'}
+                                    {rec.diagnosis.toUpperCase()}
                                   </Typography>
-                                )}
+                                ) : null}
                                 {(rec.patientStatus || rec.soap?.prognosis) && (
-                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
-                                    <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 900, color: COLORS.medical, bgcolor: `${COLORS.medical}12`, px: 1, py: 0.25 }}>
-                                      STATUS: {rec.patientStatus?.toUpperCase() || 'STABLE'}
-                                    </Typography>
-                                    <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 900, color: COLORS.accent, bgcolor: `${COLORS.accent}12`, px: 1, py: 0.25 }}>
-                                      PROGNOSIS: {rec.soap?.prognosis?.toUpperCase() || 'GOOD'}
-                                    </Typography>
+                                  <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                                    {rec.patientStatus && (
+                                      <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 900, color: COLORS.medical, bgcolor: `${COLORS.medical}12`, px: 1, py: 0.25 }}>
+                                        STATUS: {rec.patientStatus.toUpperCase()}
+                                      </Typography>
+                                    )}
+                                    {rec.soap?.prognosis && (
+                                      <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 900, color: COLORS.accent, bgcolor: `${COLORS.accent}12`, px: 1, py: 0.25 }}>
+                                        PROGNOSIS: {rec.soap.prognosis.toUpperCase()}
+                                      </Typography>
+                                    )}
                                   </Box>
                                 )}
                                 {(rec.assessmentNotes || rec.soap?.assessment) && (

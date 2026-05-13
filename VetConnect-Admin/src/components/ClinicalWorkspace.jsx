@@ -470,7 +470,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
     objectiveNotes: '', objectiveExam: createDefaultExam(),
     // T4.141: assessment replaced with structured diagnoses[] + free-text assessmentNotes
     diagnoses: [], assessmentNotes: '',
-    prognosis: 'Good', plan: '', clientInstructions: '', recheckIn: '1 Week', patientStatus: 'Stable', nextVisit: ''
+    prognosis: null, plan: '', clientInstructions: '', recheckIn: '1 Week', patientStatus: null, nextVisit: ''
   });
   const [isRecordLocked, setIsRecordLocked] = useState(false);
   const [ownerSignature, setOwnerSignature] = useState(null);
@@ -852,8 +852,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             objectiveNotes: '', objectiveExam: createDefaultExam(),
             // T4.141: structured diagnosis fields replace the legacy assessment string
             diagnoses: [], assessmentNotes: '',
-            prognosis: 'Good', recheckIn: '1 Week',
-            patientStatus: 'Stable', plan: '', clientInstructions: '', nextVisit: '',
+            prognosis: null, recheckIn: '1 Week',
+            patientStatus: null, plan: '', clientInstructions: '', nextVisit: '',
           };
 
           if (draft && Object.keys(draft).length > 0 && isDraftRecent && isEligibleStatus) {
@@ -889,8 +889,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
               // T4.141: dual-read — new fields first, fall back to legacy assessment string
               diagnoses: draft.diagnoses || [],
               assessmentNotes: draft.assessmentNotes || draft.assessment || '',
-              prognosis: draft.prognosis || 'Good',
-              patientStatus: draft.patientStatus || 'Stable',
+              prognosis: draft.prognosis || null,
+              patientStatus: draft.patientStatus || null,
               plan: draft.plan || '',
               clientInstructions: draft.clientInstructions || '',
               recheckIn: draft.recheckIn || '1 Week',
@@ -2328,7 +2328,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             nextVisit: soapData.nextVisit || null,
             recheckIn: soapData.recheckIn || null,
             vetName: vetName,
-            patientStatus: soapData.patientStatus || 'Stable',
+            patientStatus: soapData.patientStatus || null,
         },
         // C1: Structured vaccine records — array, supports multi-vaccine per visit.
         // Also writes legacy vaccineData (first entry) for backward compat with
@@ -2790,8 +2790,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       // T4.141: dual-read — new fields first, fall back to legacy assessment string
       diagnoses: d.diagnoses || [],
       assessmentNotes: d.assessmentNotes || d.assessment || '',
-      prognosis: d.prognosis || 'Good',
-      patientStatus: d.patientStatus || 'Stable',
+      prognosis: d.prognosis || null,
+      patientStatus: d.patientStatus || null,
       plan: d.plan || '',
       clientInstructions: d.clientInstructions || '',
       recheckIn: d.recheckIn || '1 Week',
@@ -3792,15 +3792,35 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           <TextField
             size="small" fullWidth select
             label="Patient Status"
-            value={soapData.patientStatus || 'Stable'}
+            value={soapData.patientStatus || ''}
+            displayEmpty
             onChange={(e) => updateSoap('patientStatus', e.target.value)}
             sx={{ bgcolor: 'white' }}
           >
+            <MenuItem value=""><em>Not Specified</em></MenuItem>
             <MenuItem value="Stable">Stable</MenuItem>
             <MenuItem value="Improving">Improving</MenuItem>
             <MenuItem value="Guarded">Guarded</MenuItem>
             <MenuItem value="Critical">Critical</MenuItem>
             <MenuItem value="Palliative">Palliative</MenuItem>
+          </TextField>
+        </Grid>
+        <Grid size={{ xs: 4 }}>
+          <TextField
+            size="small" fullWidth select
+            label="Prognosis"
+            value={soapData.prognosis || ''}
+            displayEmpty
+            onChange={(e) => updateSoap('prognosis', e.target.value)}
+            sx={{ bgcolor: 'white' }}
+          >
+            <MenuItem value=""><em>Not Specified</em></MenuItem>
+            <MenuItem value="Excellent">Excellent</MenuItem>
+            <MenuItem value="Good">Good</MenuItem>
+            <MenuItem value="Fair">Fair</MenuItem>
+            <MenuItem value="Guarded">Guarded</MenuItem>
+            <MenuItem value="Poor">Poor</MenuItem>
+            <MenuItem value="Grave">Grave</MenuItem>
           </TextField>
         </Grid>
         <Grid size={{ xs: 4 }}>

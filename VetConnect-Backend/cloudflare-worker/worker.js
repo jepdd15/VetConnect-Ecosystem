@@ -630,7 +630,8 @@ async function handleAppointmentReminders(env) {
     const appointmentId = docName.split('/').pop();
 
     const pushToken = f.pushToken?.stringValue;
-    if (!pushToken) { skipped++; continue; }
+    const ownerEmail = f.ownerEmail?.stringValue;
+    if (!pushToken && !ownerEmail) { skipped++; continue; }
 
     const petName = f.petName?.stringValue || 'your pet';
     const ownerId = f.ownerId?.stringValue || '';
@@ -668,45 +669,42 @@ async function handleAppointmentReminders(env) {
       const body = template.body.replace(/\{petName\}/g, petName).replace(/\{days\}/g, days);
 
       try {
-        const pushRes = await fetch('https://exp.host/--/api/v2/push/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ to: pushToken, title, body, sound: 'default', data: { appointmentId, type: templateKey } }),
-        });
-
-        if (!pushRes.ok) { console.log(`[ApptReminders] Push failed ${appointmentId} ${stage}:`, pushRes.status); failed++; continue; }
-
         const now = new Date().toISOString();
-        await fetch(`${BASE}/appointment_reminder_queue/${appointmentId}?key=${API_KEY}&updateMask.fieldPaths=remindersSent.${stage}&updateMask.fieldPaths=updatedAt`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fields: {
-              remindersSent: { mapValue: { fields: { [stage]: { timestampValue: now } } } },
-              updatedAt: { timestampValue: now },
-            },
-          }),
-        });
+        let pushOk = false;
 
-        fetch(`${BASE}/notification_log?key=${API_KEY}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fields: {
-              ownerId: { stringValue: ownerId }, ownerName: { stringValue: ownerName },
-              status: { stringValue: templateKey }, petName: { stringValue: petName },
-              title: { stringValue: title }, body: { stringValue: body },
-              appointmentId: { stringValue: appointmentId },
-              sentAt: { timestampValue: now },
-              sentBy: { stringValue: 'System (Appointment Cron)' },
-              channel: { stringValue: 'push' }, type: { stringValue: 'appointment-reminder' },
-            },
-          }),
-        }).catch(() => {});
+        // ── Push (only if token available) ───────────────────────────────────
+        if (pushToken) {
+          const pushRes = await fetch('https://exp.host/--/api/v2/push/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to: pushToken, title, body, sound: 'default', data: { appointmentId, type: templateKey } }),
+          });
+          if (pushRes.ok) {
+            pushOk = true;
+            fetch(`${BASE}/notification_log?key=${API_KEY}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                fields: {
+                  ownerId: { stringValue: ownerId }, ownerName: { stringValue: ownerName },
+                  status: { stringValue: templateKey }, petName: { stringValue: petName },
+                  title: { stringValue: title }, body: { stringValue: body },
+                  appointmentId: { stringValue: appointmentId },
+                  sentAt: { timestampValue: now },
+                  sentBy: { stringValue: 'System (Appointment Cron)' },
+                  channel: { stringValue: 'push' }, type: { stringValue: 'appointment-reminder' },
+                },
+              }),
+            }).catch(() => {});
+          } else {
+            console.log(`[ApptReminders] Push failed ${appointmentId} ${stage}:`, pushRes.status);
+          }
+        }
 
-        // ── Email fallback (fire-and-forget) ────────────────────────────────
-        const ownerEmail = f.ownerEmail?.stringValue;
+        // ── Email (independent of push) ───────────────────────────────────────
+        let emailAttempted = false;
         if (emailEnabled && ownerEmail && env.RESEND_API_KEY) {
+          emailAttempted = true;
           fetch('https://api.resend.com/emails', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${env.RESEND_API_KEY}` },
@@ -733,7 +731,7 @@ async function handleAppointmentReminders(env) {
           }).catch(() => {});
         }
 
-        // ── SMS (critical stages only: tomorrow + today) ─────────────────────
+        // ── SMS (critical stages only: tomorrow + today) ──────────────────────
         const ownerPhone = f.ownerPhone?.stringValue;
         if (smsEnabled && ownerPhone && SMS_CRIT_STAGES.has(templateKey) && env.SEMAPHORE_API_KEY) {
           const smsTemplates = {
@@ -768,7 +766,22 @@ async function handleAppointmentReminders(env) {
           }).catch(() => {});
         }
 
-        sent++;
+        // ── Mark stage sent if at least one channel delivered ─────────────────
+        if (pushOk || emailAttempted) {
+          await fetch(`${BASE}/appointment_reminder_queue/${appointmentId}?key=${API_KEY}&updateMask.fieldPaths=remindersSent.${stage}&updateMask.fieldPaths=updatedAt`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fields: {
+                remindersSent: { mapValue: { fields: { [stage]: { timestampValue: now } } } },
+                updatedAt: { timestampValue: now },
+              },
+            }),
+          });
+          sent++;
+        } else {
+          failed++;
+        }
       } catch (err) { console.log(`[ApptReminders] Error ${appointmentId} ${stage}:`, err.message); failed++; }
     }
   }

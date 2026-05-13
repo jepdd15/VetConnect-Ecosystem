@@ -874,47 +874,67 @@ export default function MyStatsScreen({ route, navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* Row 1: Time grouping — MONTHLY / WEEKLY (only relevant for total bar chart) */}
+        {/* Group 1: TIME GROUPING (Smart Hiding) */}
         {visitBreakdownMode === 'total' && (
-          <View style={styles.rangeChipRow}>
-            {[{ key: 'monthly', label: 'MONTHLY' }, { key: 'weekly', label: 'WEEKLY' }].map(chip => (
+          <View style={styles.filterGroup}>
+            <Text style={styles.filterLabel}>TIME GROUPING</Text>
+            <View style={[styles.segmentedControl, { width: '60%' }]}>
+              {[{ key: 'monthly', label: 'MONTHLY' }, { key: 'weekly', label: 'WEEKLY' }].map((item, idx, arr) => (
+                <Pressable
+                  key={item.key}
+                  style={[
+                    styles.segmentedItem,
+                    visitTimeGrouping === item.key && styles.segmentedItemActive,
+                    idx === arr.length - 1 && styles.segmentedItemLast
+                  ]}
+                  onPress={() => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setVisitTimeGrouping(item.key);
+                  }}
+                >
+                  <Text style={[
+                    styles.segmentedText,
+                    visitTimeGrouping === item.key && styles.segmentedTextActive
+                  ]}>
+                    {item.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* Group 2: VIEW MODE (Segmented Control) */}
+        <View style={styles.filterGroup}>
+          <Text style={styles.filterLabel}>VIEW MODE</Text>
+          <View style={styles.segmentedControl}>
+            {[
+              { key: 'total',        label: 'TOTAL'         },
+              { key: 'byPet',        label: 'BY PET'        },
+              { key: 'byService',    label: 'BY SERVICE'    },
+              { key: 'byDepartment', label: 'BY DEPARTMENT' },
+            ].map((item, idx, arr) => (
               <Pressable
-                key={chip.key}
-                style={[styles.rangeChip, visitTimeGrouping === chip.key && styles.rangeChipActive]}
-                onPress={() => setVisitTimeGrouping(chip.key)}
+                key={item.key}
+                style={[
+                  styles.segmentedItem,
+                  visitBreakdownMode === item.key && styles.segmentedItemActive,
+                  idx === arr.length - 1 && styles.segmentedItemLast
+                ]}
+                onPress={() => {
+                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                  setVisitBreakdownMode(item.key);
+                }}
               >
                 <Text style={[
-                  styles.rangeChipText,
-                  visitTimeGrouping === chip.key && styles.rangeChipTextActive,
+                  styles.segmentedText,
+                  visitBreakdownMode === item.key && styles.segmentedTextActive
                 ]}>
-                  {chip.label}
+                  {item.label}
                 </Text>
               </Pressable>
             ))}
           </View>
-        )}
-
-        {/* Row 2: Breakdown mode — TOTAL / BY PET / BY SERVICE / BY DEPARTMENT */}
-        <View style={styles.rangeChipRow}>
-          {[
-            { key: 'total',        label: 'TOTAL'         },
-            { key: 'byPet',        label: 'BY PET'        },
-            { key: 'byService',    label: 'BY SERVICE'    },
-            { key: 'byDepartment', label: 'BY DEPARTMENT' },
-          ].map(chip => (
-            <Pressable
-              key={chip.key}
-              style={[styles.rangeChip, visitBreakdownMode === chip.key && styles.rangeChipActive]}
-              onPress={() => setVisitBreakdownMode(chip.key)}
-            >
-              <Text style={[
-                styles.rangeChipText,
-                visitBreakdownMode === chip.key && styles.rangeChipTextActive,
-              ]}>
-                {chip.label}
-              </Text>
-            </Pressable>
-          ))}
         </View>
 
         {/* Toggle-driven chart: TOTAL → bar chart, others → pie chart */}
@@ -965,22 +985,31 @@ export default function MyStatsScreen({ route, navigation }) {
         <View style={styles.section}>
           <SectionHeader title="YEAR OVER YEAR" />
 
-          {/* Toggle: VISITS / SPENDING */}
-          <View style={styles.rangeChipRow}>
-            {[{ key: 'visits', label: 'VISITS' }, { key: 'spending', label: 'SPENDING' }].map(chip => (
-              <Pressable
-                key={chip.key}
-                style={[styles.rangeChip, yoyMode === chip.key && styles.rangeChipActive]}
-                onPress={() => setYoyMode(chip.key)}
-              >
-                <Text style={[
-                  styles.rangeChipText,
-                  yoyMode === chip.key && styles.rangeChipTextActive,
-                ]}>
-                  {chip.label}
-                </Text>
-              </Pressable>
-            ))}
+          <View style={styles.filterGroup}>
+            <Text style={styles.filterLabel}>COMPARE METRIC</Text>
+            <View style={[styles.segmentedControl, { width: '60%' }]}>
+              {[{ key: 'visits', label: 'VISITS' }, { key: 'spending', label: 'SPENDING' }].map((item, idx, arr) => (
+                <Pressable
+                  key={item.key}
+                  style={[
+                    styles.segmentedItem,
+                    yoyMode === item.key && styles.segmentedItemActive,
+                    idx === arr.length - 1 && styles.segmentedItemLast
+                  ]}
+                  onPress={() => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setYoyMode(item.key);
+                  }}
+                >
+                  <Text style={[
+                    styles.segmentedText,
+                    yoyMode === item.key && styles.segmentedTextActive
+                  ]}>
+                    {item.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
           </View>
 
           {yoyMode === 'visits' ? (
@@ -1174,12 +1203,20 @@ export default function MyStatsScreen({ route, navigation }) {
         <View style={styles.section}>
           <SectionHeader title="SEASONAL PATTERNS" />
 
-          {/* Per-pet filter chips: ALL PETS + one per pet */}
-          {userPets.length > 0 && (
-            <View style={styles.rangeChipRow}>
+          <View style={styles.filterGroup}>
+            <Text style={styles.filterLabel}>FILTER BY PET</Text>
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false} 
+              style={styles.filterScroll}
+              contentContainerStyle={styles.filterChipsContainer}
+            >
               <Pressable
                 style={[styles.rangeChip, seasonalPetFilter === 'all' && styles.rangeChipActive]}
-                onPress={() => setSeasonalPetFilter('all')}
+                onPress={() => {
+                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                  setSeasonalPetFilter('all');
+                }}
               >
                 <Text style={[
                   styles.rangeChipText,
@@ -1192,7 +1229,10 @@ export default function MyStatsScreen({ route, navigation }) {
                 <Pressable
                   key={pet.id}
                   style={[styles.rangeChip, seasonalPetFilter === pet.id && styles.rangeChipActive]}
-                  onPress={() => setSeasonalPetFilter(pet.id)}
+                  onPress={() => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setSeasonalPetFilter(pet.id);
+                  }}
                 >
                   <Text style={[
                     styles.rangeChipText,
@@ -1202,8 +1242,8 @@ export default function MyStatsScreen({ route, navigation }) {
                   </Text>
                 </Pressable>
               ))}
-            </View>
-          )}
+            </ScrollView>
+          </View>
 
           <View style={styles.chartContainer}>
             <View style={styles.chartShadow} />
@@ -1240,6 +1280,7 @@ export default function MyStatsScreen({ route, navigation }) {
           SPENDING TAB
           ════════════════════════════════════════════════════════════════ */}
       {activeTab === 'spending' && (
+      <>
       <View style={styles.section}>
         {/* Section header with export button */}
         <View style={styles.sectionHeaderRow}>
@@ -1253,66 +1294,97 @@ export default function MyStatsScreen({ route, navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* Row 1: Date range — 6 MONTHS / THIS YEAR / LAST YEAR / ALL TIME */}
-        <View style={styles.rangeChipRow}>
-          {SPENDING_RANGE_OPTIONS.map(chip => (
-            <Pressable
-              key={chip.key}
-              style={[styles.rangeChip, spendingRange === chip.key && styles.rangeChipActive]}
-              onPress={() => setSpendingRange(chip.key)}
-            >
-              <Text style={[
-                styles.rangeChipText,
-                spendingRange === chip.key && styles.rangeChipTextActive,
-              ]}>
-                {chip.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-
-        {/* Row 2: Time grouping — MONTHLY / WEEKLY (only relevant for total bar chart) */}
-        {spendingBreakdownMode === 'total' && (
-          <View style={styles.rangeChipRow}>
-            {[{ key: 'monthly', label: 'MONTHLY' }, { key: 'weekly', label: 'WEEKLY' }].map(chip => (
+        {/* Group 1: TIME RANGE */}
+        <View style={styles.filterGroup}>
+          <Text style={styles.filterLabel}>TIME RANGE</Text>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false} 
+            style={styles.filterScroll}
+            contentContainerStyle={styles.filterChipsContainer}
+          >
+            {SPENDING_RANGE_OPTIONS.map(chip => (
               <Pressable
                 key={chip.key}
-                style={[styles.rangeChip, spendingTimeGrouping === chip.key && styles.rangeChipActive]}
-                onPress={() => setSpendingTimeGrouping(chip.key)}
+                style={[styles.rangeChip, spendingRange === chip.key && styles.rangeChipActive]}
+                onPress={() => {
+                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                  setSpendingRange(chip.key);
+                }}
               >
                 <Text style={[
                   styles.rangeChipText,
-                  spendingTimeGrouping === chip.key && styles.rangeChipTextActive,
+                  spendingRange === chip.key && styles.rangeChipTextActive,
                 ]}>
                   {chip.label}
                 </Text>
               </Pressable>
             ))}
+          </ScrollView>
+        </View>
+
+        {/* Group 2: BREAKDOWN (Segmented Control) */}
+        <View style={styles.filterGroup}>
+          <Text style={styles.filterLabel}>BREAKDOWN MODE</Text>
+          <View style={styles.segmentedControl}>
+            {[
+              { key: 'total',        label: 'TOTAL'         },
+              { key: 'byPet',        label: 'BY PET'        },
+              { key: 'byService',    label: 'BY SERVICE'    },
+              { key: 'byDepartment', label: 'BY DEPARTMENT' },
+            ].map((item, idx, arr) => (
+              <Pressable
+                key={item.key}
+                style={[
+                  styles.segmentedItem,
+                  spendingBreakdownMode === item.key && styles.segmentedItemActive,
+                  idx === arr.length - 1 && styles.segmentedItemLast
+                ]}
+                onPress={() => {
+                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                  setSpendingBreakdownMode(item.key);
+                }}
+              >
+                <Text style={[
+                  styles.segmentedText,
+                  spendingBreakdownMode === item.key && styles.segmentedTextActive
+                ]}>
+                  {item.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
+        {/* Group 3: GRANULARITY (Smart Hiding) */}
+        {spendingBreakdownMode === 'total' && (
+          <View style={styles.filterGroup}>
+            <Text style={styles.filterLabel}>GRANULARITY</Text>
+            <View style={[styles.segmentedControl, { width: '60%' }]}>
+              {[{ key: 'monthly', label: 'MONTHLY' }, { key: 'weekly', label: 'WEEKLY' }].map((item, idx, arr) => (
+                <Pressable
+                  key={item.key}
+                  style={[
+                    styles.segmentedItem,
+                    spendingTimeGrouping === item.key && styles.segmentedItemActive,
+                    idx === arr.length - 1 && styles.segmentedItemLast
+                  ]}
+                  onPress={() => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setSpendingTimeGrouping(item.key);
+                  }}
+                >
+                  <Text style={[
+                    styles.segmentedText,
+                    spendingTimeGrouping === item.key && styles.segmentedTextActive
+                  ]}>
+                    {item.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
           </View>
         )}
-
-        {/* Row 3: Breakdown mode — TOTAL / BY PET / BY SERVICE / BY DEPARTMENT */}
-        <View style={styles.rangeChipRow}>
-          {[
-            { key: 'total',        label: 'TOTAL'         },
-            { key: 'byPet',        label: 'BY PET'        },
-            { key: 'byService',    label: 'BY SERVICE'    },
-            { key: 'byDepartment', label: 'BY DEPARTMENT' },
-          ].map(chip => (
-            <Pressable
-              key={chip.key}
-              style={[styles.rangeChip, spendingBreakdownMode === chip.key && styles.rangeChipActive]}
-              onPress={() => setSpendingBreakdownMode(chip.key)}
-            >
-              <Text style={[
-                styles.rangeChipText,
-                spendingBreakdownMode === chip.key && styles.rangeChipTextActive,
-              ]}>
-                {chip.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
 
         {spendingBreakdown.spendingBarData.every(m => m.amount === 0) &&
          spendingBreakdown.perPetList.length === 0 ? (
@@ -1519,12 +1591,14 @@ export default function MyStatsScreen({ route, navigation }) {
           </>
         )}
       </View>
+      </>
       )}
 
       {/* ══════════════════════════════════════════════════════════════════
           PETS TAB (Step 8 — PetCardSlim)
           ════════════════════════════════════════════════════════════════ */}
       {activeTab === 'pets' && (
+      <>
       <View style={styles.section}>
         <View style={styles.sectionHeaderRow}>
           <SectionHeader
@@ -1557,6 +1631,7 @@ export default function MyStatsScreen({ route, navigation }) {
           ))
         )}
       </View>
+      </>
       )}
 
       {/* ══════════════════════════════════════════════════════════════════
@@ -3046,5 +3121,60 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.black,
     fontSize: 12,
     color: COLORS.brand,
+  },
+
+  // ── COMMAND CENTER FILTERS ───────────────────────────────────────────────
+  filterGroup: {
+    marginBottom: 16,
+  },
+  filterLabel: {
+    fontFamily: FONTS.black,
+    fontSize: 9,
+    color: COLORS.accentLight,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+    marginBottom: 6,
+    marginLeft: 2,
+  },
+  filterScroll: {
+    marginHorizontal: -16, // using raw value since SPACING.md might be 16
+    paddingHorizontal: 16,
+  },
+  filterChipsContainer: {
+    gap: 8,
+    paddingRight: 24,
+    paddingVertical: 4, 
+  },
+  segmentedControl: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    borderRadius: 0,
+    overflow: 'hidden',
+  },
+  segmentedItem: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRightWidth: 1,
+    borderRightColor: COLORS.brand,
+  },
+  segmentedItemLast: {
+    borderRightWidth: 0,
+  },
+  segmentedItemActive: {
+    backgroundColor: COLORS.sky,
+  },
+  segmentedText: {
+    fontFamily: FONTS.bold,
+    fontSize: 10,
+    color: COLORS.brand,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  segmentedTextActive: {
+    color: COLORS.textOnSky,
   },
 });

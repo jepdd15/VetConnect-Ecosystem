@@ -1759,9 +1759,9 @@ export default function PetHistoryScreen({ route, navigation }) {
 
                 {/* INTEGRATED REASON FOR VISIT — Moved to top for better context flow */}
                 {!isGrooming && item.soap?.subjective && (
-                  <View style={{ marginBottom: 12 }}>
-                    <Text style={{ fontSize: 13, color: COLORS.brand, fontWeight: '700' }}>
-                      <Text style={{ color: COLORS.textMuted, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1 }}>Reason: </Text>
+                  <View style={{ marginBottom: 16 }}>
+                    <Text style={styles.sectionAnchorLabel}>Reason for visit</Text>
+                    <Text style={{ fontSize: 15, color: COLORS.brand, fontWeight: '700' }}>
                       {item.soap.subjective}
                     </Text>
                   </View>
@@ -1777,22 +1777,14 @@ export default function PetHistoryScreen({ route, navigation }) {
               
               const isMultiple = dxList.length > 1;
               return (
-                <View style={styles.diagnosisHero}>
-                  <Text style={{ fontSize: 9, fontWeight: '900', color: COLORS.textMuted, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 6 }}>
+                <View style={{ marginBottom: 16 }}>
+                  <Text style={styles.sectionAnchorLabel}>
                     {isMultiple ? 'Diagnoses' : 'Diagnosis'}
                   </Text>
                   {dxList.map((dx, i) => (
-                    <View key={i} style={isMultiple ? { flexDirection: 'row', marginTop: i > 0 ? 6 : 0 } : { marginTop: i > 0 ? 4 : 0 }}>
-                      {isMultiple && (
-                        <Text style={{ fontSize: 18, fontWeight: '900', color: COLORS.brand, marginRight: 8, lineHeight: 26 }}>•</Text>
-                      )}
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.diagnosisHeroText}>
-                          {dx.name}{dx.severity ? ` (${dx.severity.toUpperCase()})` : ''}
-                        </Text>
-                        {/* dx.notes hidden for client privacy — only Instructions are shown */}
-                      </View>
-                    </View>
+                    <Text key={i} style={styles.diagnosisClinicalText}>
+                      • {dx.name}{dx.severity ? ` (${dx.severity.toUpperCase()})` : ''}
+                    </Text>
                   ))}
                 </View>
               );
@@ -1839,42 +1831,52 @@ export default function PetHistoryScreen({ route, navigation }) {
             {/* Internal Vet's Notes (Assessments) removed for client privacy */}
 
 
-            {!isGrooming && (
-              <View style={{ marginTop: 12, marginBottom: 12 }}>
-                <Text style={{ fontSize: 9, fontWeight: '900', color: COLORS.textMuted, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 8 }}>Vitals</Text>
-                <View style={{ 
-                  flexDirection: 'row', 
-                  flexWrap: 'wrap', 
-                  borderWidth: 2, 
-                  borderColor: COLORS.brand, 
-                  backgroundColor: COLORS.white,
-                  padding: 8
-                }}>
-                  {[
-                    { label: 'WT', value: weightStr, unit: 'kg' },
-                    { label: 'TEMP', value: tempStr, unit: '°C' },
-                    { label: 'HR', value: hrStr, unit: 'bpm' },
-                    { label: 'RR', value: rrStr, unit: 'br/min' },
-                    { label: 'CRT', value: crtStr, unit: 's' },
-                    { label: 'BCS', value: bcsStr, unit: '/9' },
-                    { label: 'PAIN', value: painStr, unit: '/10' },
-                  ].map((v, i) => (
-                    <View key={i} style={{ 
-                      flexDirection: 'row', 
-                      alignItems: 'center', 
-                      marginRight: 12,
-                      marginBottom: 4
-                    }}>
-                      <Text style={{ fontSize: 10, fontWeight: '900', color: COLORS.textMuted }}>{v.label}: </Text>
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: COLORS.brand }}>
-                        {v.value ? `${v.value}${v.unit}` : '--'}
-                      </Text>
-                      {i < 6 && <Text style={{ marginLeft: 12, color: COLORS.borderLight, fontWeight: '300' }}>|</Text>}
-                    </View>
-                  ))}
+            {!isGrooming && (() => {
+              const vitalsData = [
+                { key: 'weight', label: 'Weight', value: weightStr, unit: 'kg' },
+                { key: 'temp', label: 'Temperature', value: tempStr, unit: '°C' },
+                { key: 'hr', label: 'Heart Rate', value: hrStr, unit: 'bpm' },
+                { key: 'rr', label: 'Resp Rate', value: rrStr, unit: 'br/min' },
+                { key: 'crt', label: 'CRT', value: crtStr, unit: 's' },
+                { key: 'bcs', label: 'BCS', value: bcsStr, unit: '/9' },
+                { key: 'pain', label: 'Pain Scale', value: painStr, unit: '/10' },
+              ].filter(v => v.value);
+
+              if (vitalsData.length === 0) return null;
+
+              const historyIndex = history.findIndex(h => h.id === item.id);
+              const getPriorVital = (key) => {
+                if (historyIndex === -1) return null;
+                for (let j = historyIndex + 1; j < history.length; j++) {
+                  const prevRv = resolveVitals(history[j]);
+                  const val = coerceVital(prevRv[key]);
+                  if (val) return val;
+                }
+                return null;
+              };
+
+              return (
+                <View style={{ marginTop: 12, marginBottom: 16 }}>
+                  <Text style={styles.sectionAnchorLabel}>Vitals</Text>
+                  <View style={styles.vitalsListBox}>
+                    {vitalsData.map((v, i) => {
+                      const prior = getPriorVital(v.key);
+                      return (
+                        <View key={i} style={[styles.vitalsListRow, i === vitalsData.length - 1 && { borderBottomWidth: 0 }]}>
+                          <Text style={styles.vitalsListLabel}>{v.label.toUpperCase()}</Text>
+                          <Text style={styles.vitalsListValue}>
+                            {v.value}{v.unit}
+                            {prior && (
+                              <Text style={styles.vitalsListPrior}> (Last: {prior}{v.unit})</Text>
+                            )}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
                 </View>
-              </View>
-            )}
+              );
+            })()}
 
 
             {/* T2.8: Show discharge instructions (client-safe) instead of raw SOAP plan */}
@@ -3380,19 +3382,20 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // --- Diagnosis hero ---
-  diagnosisHero: { marginBottom: 12 },
-  diagnosisHeroText: {
-    fontSize: 20,
+  sectionAnchorLabel: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: COLORS.textMuted,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  diagnosisClinicalText: {
+    fontSize: 15,
     fontWeight: '900',
     color: COLORS.brand,
-    lineHeight: 26,
-  },
-  diagnosisHeroNotes: {
-    fontSize: 12,
-    color: COLORS.textMuted,
-    fontStyle: 'italic',
-    marginTop: 2,
+    marginBottom: 6,
+    lineHeight: 22,
   },
 
   // --- Status + Prognosis merged line ---
@@ -3412,55 +3415,39 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
   },
 
-  // --- Reason for visit ---
-  reasonForVisitBox: {
-    backgroundColor: COLORS.cream,
-    borderLeftWidth: 3,
-    borderLeftColor: COLORS.sky,
-    padding: 12,
-    marginBottom: 12,
-    borderRadius: 0,
-  },
-  reasonForVisitLabel: {
-    fontWeight: '900',
-    fontSize: 10,
-    color: COLORS.textMuted,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginBottom: 4,
-  },
-  reasonForVisitText: {
-    fontSize: 14,
-    color: COLORS.textPrimary,
-    lineHeight: 20,
-  },
 
-  // --- Vitals grid ---
-  vitalsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 12,
-  },
-  vitalsGridItem: {
-    alignItems: 'center',
-    minWidth: 70,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
+  vitalsListBox: {
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
     borderRadius: 0,
-    backgroundColor: COLORS.cream,
   },
-  vitalsGridLabel: {
+  vitalsListRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+  },
+  vitalsListLabel: {
     fontSize: 10,
     fontWeight: '900',
     color: COLORS.textMuted,
     letterSpacing: 0.5,
-    textTransform: 'uppercase',
-    marginBottom: 4,
   },
-  vitalsGridValue: { fontSize: 15, fontWeight: '900', color: COLORS.brand },
+  vitalsListValue: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: COLORS.brand,
+  },
+  vitalsListPrior: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+    fontStyle: 'italic',
+  },
   vitalsGridMissing: {
     fontSize: 12,
     color: COLORS.textMuted,

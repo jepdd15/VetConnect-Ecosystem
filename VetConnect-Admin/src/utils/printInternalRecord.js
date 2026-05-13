@@ -14,16 +14,17 @@ function renderDiagnosesSection(diagnoses) {
   if (!diagnoses?.length) return '';
   const rows = diagnoses.map(d => `
     <tr>
-      <td>${esc(d.name || '—')}</td>
-      <td>${esc(d.severity || '—')}</td>
-      <td>${esc(d.category || '—')}</td>
+      <td><strong style="font-size:13px;">${esc(d.name || '—')}</strong></td>
+      <td style="text-align:center;">${esc(d.severity || '—')}</td>
+      <td style="text-align:center;">${esc(d.category || '—')}</td>
+      <td>${esc(d.notes || '—')}</td>
     </tr>
   `).join('');
   return `
-    <h2>Diagnoses</h2>
+    <h2>Diagnoses Detail</h2>
     <table>
       <thead>
-        <tr><th>Name</th><th>Severity</th><th>Category</th></tr>
+        <tr><th>Name</th><th style="text-align:center;">Severity</th><th style="text-align:center;">Category</th><th>Clinical Notes</th></tr>
       </thead>
       <tbody>${rows}</tbody>
     </table>
@@ -96,6 +97,55 @@ function renderPulseTimelineSection(pulseSummary) {
   `;
 }
 
+function renderHeadboard({ clinicName, clinicAddress, clinicPhone, clinicBAI, pet, owner, visitDate, vetName, vetPRC, vetPTR, department }) {
+  const sexLabel = pet?.gender === 'Male'
+    ? (pet?.isNeutered ? 'MN (Male Neutered)' : 'MI (Male Intact)')
+    : pet?.gender === 'Female'
+      ? (pet?.isNeutered ? 'FS (Female Spayed)' : 'FI (Female Intact)')
+      : '—';
+  const age = calculatePetAge(pet?.dob);
+
+  return `
+    <div class="headboard">
+      <div class="headboard-column">
+        <div class="clinic-branding">
+          <div class="clinic-name">${esc(clinicName || 'Veterinary Clinic')}</div>
+          <div class="clinic-meta">${esc(clinicAddress || '')}</div>
+          ${clinicPhone ? `<div class="clinic-meta">TEL: ${esc(clinicPhone)}</div>` : ''}
+          ${clinicBAI ? `<div class="clinic-meta">BAI REG: ${esc(clinicBAI)}</div>` : ''}
+        </div>
+      </div>
+
+      <div class="headboard-column">
+        <div class="headboard-label">Patient / Owner</div>
+        <div class="headboard-value" style="font-size:15px; font-weight:900;">${esc(pet?.name || '—')}</div>
+        <div class="headboard-value" style="font-size:11px; opacity:0.8;">Owner: ${esc(owner?.fullName || owner?.displayName || owner?.name || '—')} (${esc(owner?.phone || owner?.contactNumber || '—')})</div>
+        
+        <div style="margin-top:8px;">
+          <div class="headboard-label">Species / Breed</div>
+          <div class="headboard-value">${esc(pet?.species || '—')} · ${esc(pet?.breed || '—')}</div>
+        </div>
+
+        <div style="margin-top:8px;">
+          <div class="headboard-label">Sex / Age</div>
+          <div class="headboard-value">${esc(sexLabel)} · ${esc(age)}</div>
+        </div>
+      </div>
+
+      <div class="headboard-column">
+        <div class="headboard-label">Visit Date</div>
+        <div class="headboard-value" style="font-size:14px;">${esc(visitDate)}</div>
+
+        <div style="margin-top:8px;">
+          <div class="headboard-label">Attending Veterinarian</div>
+          <div class="headboard-value">${esc(vetName)}</div>
+          ${vetPRC ? `<div class="clinic-meta" style="font-size:9px; margin-top:2px;">PRC: ${esc(vetPRC)}</div>` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 export function generateInternalRecordHTML({
   record, pet, owner,
   clinicName, clinicAddress, clinicPhone, clinicBAI,
@@ -105,140 +155,78 @@ export function generateInternalRecordHTML({
   const soap = rec.soap || {};
 
   const visitDate = formatPrintDate(rec.date);
-  const petName = esc(pet?.name || rec.petName || '—');
-  const species = esc(pet?.species || '—');
-  const breed = esc((pet?.breed && pet.breed !== 'Unknown Breed') ? pet.breed : '—');
-  const sexLabel = pet?.gender === 'Male'
-    ? (pet?.isNeutered ? 'MN (Male Neutered)' : 'MI (Male Intact)')
-    : pet?.gender === 'Female'
-      ? (pet?.isNeutered ? 'FS (Female Spayed)' : 'FI (Female Intact)')
-      : '—';
-  const age = calculatePetAge(pet?.dob);
-  const rvPrint = resolveVitals(rec);
-  const weight = rvPrint.weight ? `${rvPrint.weight} kg` : (pet?.lastWeight ? `${pet.lastWeight} kg` : '—');
-  const microchip = esc(pet?.microchipNumber || pet?.microchip || '');
-  const neutered = pet?.isNeutered ? 'Yes' : 'No';
-
-  const ownerName = esc(owner?.displayName || owner?.name || rec.ownerName || '—');
-  const ownerPhone = esc(owner?.phone || owner?.contactNumber || '—');
-  const ownerAddress = esc([owner?.address, owner?.city].filter(Boolean).join(', ') || '');
-
   const vetName = esc(vetStaff?.fullName || rec.vetName || '—');
   const vetPRC = esc(vetStaff?.prcLicense || '');
   const vetPTR = esc(vetStaff?.ptrNumber || '');
-  const department = esc(rec.department || appointment?.department || '—');
-
-  const servicesArr = Array.isArray(rec.services) ? rec.services : [];
-  const servicesList = servicesArr.length > 0
-    ? servicesArr.map(s => {
-        const name = esc(s.name || (typeof s === 'string' ? s : '—'));
-        const st = s.serviceStatus || 'pending';
-        const icon = st === 'completed' ? '✓' : st === 'in-progress' ? '⏳' : '○';
-        const staff = s.staffName ? ` · ${esc(s.staffName)}` : '';
-        const dur = (() => {
-          if (st !== 'completed' || !s.serviceStartedAt || !s.serviceCompletedAt) return '';
-          const startMs = typeof s.serviceStartedAt.toDate === 'function' ? s.serviceStartedAt.toDate().getTime() : new Date(s.serviceStartedAt).getTime();
-          const endMs = typeof s.serviceCompletedAt.toDate === 'function' ? s.serviceCompletedAt.toDate().getTime() : new Date(s.serviceCompletedAt).getTime();
-          const mins = Math.round((endMs - startMs) / 60000);
-          return Number.isFinite(mins) && mins > 0 ? ` (${mins} min)` : '';
-        })();
-        return `${icon} ${name}${dur}${staff}`;
-      }).join('<br/>')
-    : esc(rec.serviceType || rec.recordType || '—');
-
-  const recordId = esc(rec.id || '—');
-  const caseDay = rec.caseDay && rec.caseDay > 1 ? `Day ${esc(String(rec.caseDay))}` : '';
-
-  const rawAllergies = pet?.petAllergies || pet?.allergies;
-  const allergies = (rawAllergies && !['None', 'None recorded', ''].includes(rawAllergies))
-    ? `<strong style="color:#C62828;">${esc(rawAllergies)}</strong>`
-    : 'None known';
-
-  const now = new Date().toLocaleString('en-PH', { dateStyle: 'long', timeStyle: 'short' });
+  const department = esc(rec.department || appointment?.department || 'General');
 
   const objectiveText = resolveObjectiveText(rec);
-  const assessmentText = rec.diagnoses?.length > 0
-    ? rec.diagnoses.map(d => d.severity ? `${d.name} (${d.severity})` : d.name).join('; ') + (rec.assessmentNotes ? '\n\n' + rec.assessmentNotes : '')
-    : (soap.assessment || rec.diagnosis || '—');
+  
+  let assessmentContent = '';
+  if (rec.diagnoses?.length > 0) {
+    assessmentContent = rec.diagnoses.map(d => {
+      let line = d.severity ? `[${d.severity}] ${d.name}` : d.name;
+      if (d.notes) line += ` — ${d.notes}`;
+      return line;
+    }).join('\n');
+  } else {
+    assessmentContent = soap.assessment || rec.diagnosis || '—';
+  }
+
+  // Add Status & Prognosis badges
+  const statusLine = [
+    rec.patientStatus ? `STATUS: ${rec.patientStatus.toUpperCase()}` : '',
+    rec.soap?.prognosis ? `PROGNOSIS: ${rec.soap.prognosis.toUpperCase()}` : ''
+  ].filter(Boolean).join('  |  ');
+
+  const assessmentText = (statusLine ? `【 ${statusLine} 】\n\n` : '') + 
+    assessmentContent + 
+    (rec.assessmentNotes ? '\n\n' + rec.assessmentNotes : '');
+
+  const rvPrint = resolveVitals(rec);
+
+  const soapSections = [
+    { label: 'S — Subjective (History & Client Report)', content: soap.subjective },
+    { label: 'O — Objective (Exam & Findings)', content: objectiveText },
+    { label: 'A — Assessment (Diagnosis & Prognosis)', content: assessmentText },
+    { label: 'P — Plan (Treatment & Rechecks)', content: soap.plan || rec.treatment },
+  ];
+
+  const soapHtml = soapSections.map(s => {
+    const isEmpty = !s.content || s.content === '—';
+    return `
+      <div class="soap-block">
+        <div class="soap-header">${esc(s.label)}</div>
+        <div class="soap-content ${isEmpty ? 'empty' : ''}">${esc(s.content || '—')}</div>
+      </div>
+    `;
+  }).join('');
+
+  const allItems = rec.dispensedProducts || rec.prescriptions || [];
+  const resolvePC = (rx) => rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail');
+  const medicineItems = allItems.filter(rx => resolvePC(rx) === 'medicine');
+  const otherItems = allItems.filter(rx => resolvePC(rx) === 'retail');
+
+  const now = new Date().toLocaleString('en-PH', { dateStyle: 'long', timeStyle: 'short' });
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Internal Clinical Record — ${petName}</title>
+  <title>Clinical Record — ${esc(pet?.name || 'Patient')}</title>
   <style>${PRINT_STYLES}</style>
 </head>
 <body>
-  <div class="clinic-header">
-    <p class="clinic-name">${esc(clinicName || 'Veterinary Clinic')}</p>
-    <p class="clinic-address">${esc(clinicAddress || '')}</p>
-    ${clinicPhone ? `<p class="clinic-address">${esc(clinicPhone)}</p>` : ''}
-    ${clinicBAI ? `<p class="clinic-address">BAI Reg. No. ${esc(clinicBAI)}</p>` : ''}
-    <p class="doc-title">INTERNAL CLINICAL RECORD</p>
-  </div>
-
-  <h2>Patient Information</h2>
-  <div class="info-grid">
-    <div><span class="label">Name:</span> <span class="value">${petName}</span></div>
-    <div><span class="label">Species:</span> <span class="value">${species}</span></div>
-    <div><span class="label">Breed:</span> <span class="value">${breed}</span></div>
-    <div><span class="label">Sex:</span> <span class="value">${sexLabel}</span></div>
-    <div><span class="label">Age:</span> <span class="value">${age}</span></div>
-    <div><span class="label">Weight:</span> <span class="value">${weight}</span></div>
-    <div><span class="label">Neutered:</span> <span class="value">${neutered}</span></div>
-    ${microchip ? `<div><span class="label">Microchip:</span> <span class="value">${microchip}</span></div>` : ''}
-    <div><span class="label">Allergies:</span> <span class="value">${allergies}</span></div>
-  </div>
-
-  <h2>Owner Information</h2>
-  <div class="info-grid">
-    <div><span class="label">Name:</span> <span class="value">${ownerName}</span></div>
-    <div><span class="label">Phone:</span> <span class="value">${ownerPhone}</span></div>
-    ${ownerAddress ? `<div><span class="label">Address:</span> <span class="value">${ownerAddress}</span></div>` : ''}
-  </div>
-
-  <h2>Visit Details</h2>
-  <div class="info-grid">
-    <div><span class="label">Date:</span> <span class="value">${visitDate}</span></div>
-    <div><span class="label">Services:</span> <span class="value" style="text-transform:capitalize;">${servicesList}</span></div>
-    <div><span class="label">Attending Vet:</span> <span class="value">${vetName}</span></div>
-    ${vetPRC ? `<div><span class="label">PRC License:</span> <span class="value">${vetPRC}</span></div>` : ''}
-    ${vetPTR ? `<div><span class="label">PTR:</span> <span class="value">${vetPTR}</span></div>` : ''}
-    <div><span class="label">Department:</span> <span class="value">${department}</span></div>
-    <div><span class="label">Record ID:</span> <span class="value" style="font-size:11px; color:#666;">${recordId}</span></div>
-    ${caseDay ? `<div><span class="label">Case:</span> <span class="value">${caseDay}</span></div>` : ''}
-  </div>
-
-  <h2>SOAP Notes</h2>
-  <table>
-    <thead>
-      <tr><th style="width:18%">Section</th><th>Notes</th></tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td><strong>S — Subjective</strong></td>
-        <td style="white-space:pre-wrap;">${esc(soap.subjective || '—')}</td>
-      </tr>
-      <tr>
-        <td><strong>O — Objective</strong></td>
-        <td style="white-space:pre-wrap;">${esc(objectiveText || '—')}</td>
-      </tr>
-      <tr>
-        <td><strong>A — Assessment</strong></td>
-        <td style="white-space:pre-wrap;">${esc(assessmentText)}</td>
-      </tr>
-      <tr>
-        <td><strong>P — Plan</strong></td>
-        <td style="white-space:pre-wrap;">${esc(soap.plan || rec.treatment || '—')}</td>
-      </tr>
-      ${soap.prognosis ? `<tr><td><strong>Prognosis</strong></td><td style="white-space:pre-wrap;">${esc(soap.prognosis)}</td></tr>` : ''}
-    </tbody>
-  </table>
+  ${renderHeadboard({ clinicName, clinicAddress, clinicPhone, clinicBAI, pet, owner, visitDate, vetName, vetPRC, vetPTR, department })}
 
   ${renderVitalsSection(rvPrint)}
+
+  ${soapHtml}
+
   ${renderDiagnosesSection(rec.diagnoses)}
-  ${renderPrescriptionsSection(rec.dispensedProducts || rec.prescriptions)}
+  ${renderPrescriptionsSection(medicineItems, 'Medical Prescriptions')}
+  ${renderPrescriptionsSection(otherItems, 'Retail & Other Dispensary')}
   ${renderVaccineSection(rec.vaccineData)}
   ${renderLabResultsSection(rec.labResults)}
   ${renderExamChecklistSection(rec.examChecklist)}
@@ -247,23 +235,20 @@ export function generateInternalRecordHTML({
   ${renderAttachmentsSection(rec.attachments)}
   ${renderPulseTimelineSection(pulseSummary)}
 
-  <div style="margin-top:40px; display:flex; gap:32px;">
+  <div style="margin-top:60px; display:flex; gap:64px;">
     <div style="flex:1;">
-      <div style="border-bottom:1.5px solid #3E2723; height:36px; margin-bottom:4px;"></div>
-      <p style="font-size:10px; color:#5D4037; margin:0;">Veterinarian Signature</p>
-      ${vetPRC ? `<p style="font-size:10px; color:#5D4037; margin:2px 0 0;">PRC: ${vetPRC}${vetPTR ? ' / PTR: ' + vetPTR : ''}</p>` : ''}
+      <div style="border-bottom:2px solid #3E2723; height:48px; margin-bottom:8px;"></div>
+      <p style="font-size:10px; color:#8D6E63; font-weight:900; text-transform:uppercase; margin:0; letter-spacing:1px;">Attending Veterinarian Signature</p>
+      ${vetPRC ? `<p style="font-size:9px; color:#8D6E63; margin:4px 0 0;">LICENSE NO: ${vetPRC}</p>` : ''}
     </div>
     <div style="flex:1;">
-      <div style="border-bottom:1.5px solid #3E2723; height:36px; margin-bottom:4px;"></div>
-      <p style="font-size:10px; color:#5D4037; margin:0;">Date Signed</p>
+      <div style="border-bottom:2px solid #3E2723; height:48px; margin-bottom:8px;"></div>
+      <p style="font-size:10px; color:#8D6E63; font-weight:900; text-transform:uppercase; margin:0; letter-spacing:1px;">Date of Sign-off</p>
     </div>
   </div>
 
-  <div class="footer" style="margin-top:24px; color:#C62828; font-weight:700; text-align:center; border-top:2px solid #C62828; padding-top:8px;">
-    INTERNAL RECORD — NOT FOR CLIENT DISTRIBUTION
-  </div>
   <div class="footer">
-    Generated on ${now} &nbsp;|&nbsp; ${esc(clinicName || 'Veterinary Clinic')} &nbsp;|&nbsp; Confidential clinical record.
+    Generated on ${now} &nbsp;|&nbsp; ${esc(clinicName || 'Veterinary Clinic')} &nbsp;|&nbsp; Electronic medical record.
   </div>
 </body>
 </html>`;

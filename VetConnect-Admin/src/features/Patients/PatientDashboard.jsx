@@ -1944,6 +1944,27 @@ export default function PatientDashboard() {
                                         <Typography sx={{ fontFamily: FONT, fontSize: '0.9rem', fontWeight: 900, color: COLORS.textPrimary }}>
                                           • {it.name.toUpperCase()} {it.qty ? `x${it.qty}` : ''}
                                         </Typography>
+
+                                        {/* T4.117: Structured Sig Order Tags (Smart Parity) */}
+                                        {it.sig && (it.sig.dose || it.sig.frequency || it.sig.route) && (
+                                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, ml: 2, mt: 0.5, mb: 0.5 }}>
+                                            {[
+                                              it.sig.dose ? `DOSE: ${it.sig.dose} ${it.sig.unit || ''}` : '',
+                                              it.sig.route ? `ROUTE: ${it.sig.route}` : '',
+                                              it.sig.frequency ? `FREQ: ${it.sig.frequency}` : '',
+                                              it.sig.duration ? `DUR: ${it.sig.duration}D` : ''
+                                            ].filter(Boolean).map((tag, idx) => (
+                                              <Typography key={idx} sx={{ 
+                                                fontFamily: 'monospace', fontSize: '0.6rem', fontWeight: 900, 
+                                                color: COLORS.medical, bgcolor: `${COLORS.medical}12`, 
+                                                px: 0.6, py: 0.1, border: `1px solid ${COLORS.medical}33`
+                                              }}>
+                                                {tag}
+                                              </Typography>
+                                            ))}
+                                          </Box>
+                                        )}
+
                                         {it.instructions && (
                                           <Box sx={{ ml: 2, mt: 0.25 }}>
                                             <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, fontStyle: 'italic' }}>

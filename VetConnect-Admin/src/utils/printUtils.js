@@ -11,99 +11,187 @@
 // Follows the VetConnect Clinical Neubrutalism design language:
 // Espresso (#5D4037) headers, warm neutral surfaces, collapsed-border tables.
 export const PRINT_STYLES = `
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
   body {
-    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-    color: #333;
-    max-width: 700px;
+    font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    color: #3E2723;
+    max-width: 850px;
     margin: 0 auto;
     padding: 30px;
-    line-height: 1.6;
+    line-height: 1.5;
+    background: #FFF;
   }
-  .clinic-header {
-    text-align: center;
-    border-bottom: 2px solid #5D4037;
-    padding-bottom: 12px;
-    margin-bottom: 20px;
+  .headboard {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr 1fr;
+    gap: 24px;
+    border-bottom: 3px solid #3E2723;
+    padding-bottom: 24px;
+    margin-bottom: 32px;
+    align-items: start;
+  }
+  .headboard-column {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .headboard-label {
+    font-size: 9px;
+    font-weight: 900;
+    color: #8D6E63;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: -2px;
+  }
+  .headboard-value {
+    font-size: 12px;
+    font-weight: 700;
+    color: #3E2723;
+    word-break: break-word;
+  }
+  .clinic-branding {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
   }
   .clinic-name {
-    font-size: 22px;
-    font-weight: bold;
-    color: #5D4037;
-    margin: 0;
+    font-size: 20px;
+    font-weight: 900;
+    color: #3E2723;
     text-transform: uppercase;
     letter-spacing: 1px;
+    line-height: 1.1;
   }
-  .clinic-address {
-    font-size: 12px;
+  .clinic-meta {
+    font-size: 11px;
     color: #8D6E63;
-    margin: 4px 0 0;
+    font-weight: 600;
   }
-  .doc-title {
-    font-size: 16px;
-    font-weight: 800;
-    color: #5D4037;
+  .doc-type-badge {
+    background: #3E2723;
+    color: white;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 900;
     text-transform: uppercase;
     letter-spacing: 2px;
-    text-align: center;
-    margin: 15px 0;
+    width: fit-content;
+    margin-top: 12px;
   }
   h2 {
-    color: #5D4037;
-    font-size: 13px;
-    font-weight: 800;
+    color: #3E2723;
+    font-size: 12px;
+    font-weight: 900;
     text-transform: uppercase;
-    letter-spacing: 1px;
-    border-bottom: 1px solid #D7CCC8;
-    padding-bottom: 4px;
-    margin-top: 20px;
-    margin-bottom: 8px;
+    letter-spacing: 1.5px;
+    border-bottom: 2px solid #E0D6CC;
+    padding-bottom: 6px;
+    margin-top: 28px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .soap-block {
+    margin-bottom: 32px;
+    border-left: 4px solid #3E2723;
+    padding: 0 0 0 24px;
+    background: transparent;
+  }
+  .soap-header {
+    font-size: 11px;
+    font-weight: 900;
+    color: #3E2723;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 10px;
+    display: block;
+  }
+  .soap-content {
+    font-size: 13.5px;
+    color: #000000;
+    white-space: pre-wrap;
+    line-height: 1.6;
+    font-weight: 500;
+  }
+  .soap-content.empty {
+    color: #8D6E63;
+    font-style: italic;
+    opacity: 0.7;
+  }
+  .vitals-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 16px 0 24px;
+  }
+  .vital-card {
+    flex: 1;
+    min-width: 90px;
+    border: 2px solid #3E2723;
+    padding: 10px 8px;
+    text-align: center;
+    background: #FAF8F5;
+  }
+  .vital-card.critical {
+    border-color: #D32F2F;
+    background: #FFEBEE;
+  }
+  .vital-card.warning {
+    border-color: #EF6C00;
+    background: #FFF3E0;
+  }
+  .vital-label {
+    font-size: 9px;
+    font-weight: 900;
+    color: #8D6E63;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+    letter-spacing: 0.5px;
+  }
+  .vital-value {
+    font-size: 15px;
+    font-weight: 900;
+    color: #3E2723;
   }
   table {
     width: 100%;
     border-collapse: collapse;
-    margin-bottom: 12px;
+    margin-bottom: 16px;
+    border: 2px solid #3E2723;
   }
   th {
-    background: #F5F0EB;
-    padding: 6px 10px;
+    background: #3E2723;
+    color: white;
+    padding: 8px 12px;
     text-align: left;
-    font-size: 11px;
-    font-weight: 800;
+    font-size: 10px;
+    font-weight: 900;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: #5D4037;
-    border-bottom: 2px solid #5D4037;
+    letter-spacing: 1px;
   }
   td {
-    padding: 6px 10px;
-    font-size: 13px;
+    padding: 8px 12px;
+    font-size: 12px;
     border-bottom: 1px solid #E0D6CC;
+    color: #3E2723;
   }
-  .info-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 4px 20px;
-    font-size: 13px;
-    margin-bottom: 12px;
-  }
-  .info-grid .label {
-    font-weight: 700;
-    color: #5D4037;
-  }
-  .info-grid .value {
-    color: #333;
+  tr:nth-child(even) {
+    background-color: #FAF8F5;
   }
   .footer {
     text-align: center;
-    margin-top: 30px;
-    font-size: 11px;
-    color: #A1887F;
-    border-top: 1px solid #E0D6CC;
-    padding-top: 10px;
+    margin-top: 40px;
+    font-size: 10px;
+    color: #8D6E63;
+    font-weight: 600;
+    border-top: 2px solid #E0D6CC;
+    padding-top: 16px;
   }
   @media print {
-    body { margin: 0; padding: 15mm; }
-    .no-print { display: none; }
+    body { margin: 0; padding: 10mm; }
+    .soap-block { break-inside: avoid; }
+    table { break-inside: avoid; }
   }
 `;
 

@@ -9,35 +9,27 @@ import { resolveObjectiveText } from './examUtils';
  * @returns {string} HTML string
  */
 export function renderVitalsSection(vitals) {
-  if (!vitals || !(vitals.weight || vitals.temp || vitals.hr || vitals.rr || vitals.crt || vitals.bcs || vitals.pain)) {
-    return '';
-  }
+  const v = vitals || {};
+  const cards = [
+    { label: 'Weight', value: v.weight ? `${v.weight} kg` : '—' },
+    { label: 'Temp',   value: v.temp ? `${v.temp} °C` : '—' },
+    { label: 'HR',     value: v.hr ? `${v.hr} bpm` : '—' },
+    { label: 'RR',     value: v.rr ? `${v.rr} rpm` : '—' },
+    { label: 'CRT',    value: v.crt || '—' },
+    { label: 'BCS',    value: v.bcs ? `${v.bcs}/9` : '—' },
+    { label: 'Pain',   value: v.pain ? `${v.pain}/10` : '—' },
+  ];
+
+  const cardsHtml = cards.map(c => `
+    <div class="vital-card">
+      <div class="vital-label">${esc(c.label)}</div>
+      <div class="vital-value">${esc(c.value)}</div>
+    </div>
+  `).join('');
+
   return `
-    <h2>Vitals</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>Weight (kg)</th>
-          <th>Temp (°C)</th>
-          <th>HR (bpm)</th>
-          <th>RR (rpm)</th>
-          <th>CRT</th>
-          <th>BCS</th>
-          <th>Pain</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>${esc(vitals.weight || '—')}</td>
-          <td>${esc(vitals.temp || '—')}</td>
-          <td>${esc(vitals.hr || '—')}</td>
-          <td>${esc(vitals.rr || '—')}</td>
-          <td>${esc(vitals.crt || '—')}</td>
-          <td>${esc(vitals.bcs || '—')}</td>
-          <td>${esc(vitals.pain || '—')}</td>
-        </tr>
-      </tbody>
-    </table>
+    <h2>Clinical Vitals</h2>
+    <div class="vitals-row">${cardsHtml}</div>
   `;
 }
 
@@ -48,25 +40,43 @@ export function renderVitalsSection(vitals) {
  * @param {Array} dispensedProducts
  * @returns {string} HTML string
  */
-export function renderPrescriptionsSection(dispensedProducts) {
-  if (!dispensedProducts?.length) return '';
-  const rows = dispensedProducts.map((rx, i) => `
-    <tr>
-      <td>${i + 1}</td>
-      <td><strong>${esc(rx.name || '—')}</strong></td>
-      <td>${rx.qty ?? '—'}</td>
-      <td>${esc(rx.instructions || '—')}</td>
-    </tr>
-  `).join('');
+export function renderPrescriptionsSection(items, title = 'Prescriptions') {
+  if (!items?.length) return '';
+  const rows = items.map((rx, i) => {
+    const sig = rx.sig;
+    let sigLine = '';
+    if (sig && (sig.dose || sig.frequency || sig.route)) {
+      const parts = [
+        sig.dose ? `${sig.dose} ${sig.unit || ''}` : '',
+        sig.route ? `via ${sig.route}` : '',
+        sig.frequency || '',
+        sig.duration ? `for ${sig.duration} days` : '',
+      ].filter(Boolean);
+      sigLine = `<div style="font-size:10px; color:#5D4037; margin-top:4px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">Order: ${parts.join(' · ')}</div>`;
+    }
+
+    return `
+      <tr>
+        <td style="width:30px; text-align:center; font-weight:900;">${i + 1}</td>
+        <td>
+          <strong style="font-size:13px;">${esc(rx.name || '—')}</strong>
+          ${sigLine}
+        </td>
+        <td style="text-align:center;">${rx.qty ?? '—'}</td>
+        <td style="font-size:11px;">${esc(rx.instructions || '—')}</td>
+      </tr>
+    `;
+  }).join('');
+
   return `
-    <h2>Prescriptions</h2>
+    <h2>${title}</h2>
     <table>
       <thead>
         <tr>
-          <th>#</th>
-          <th>Medication</th>
-          <th>Qty</th>
-          <th>Instructions</th>
+          <th style="width:30px; text-align:center;">#</th>
+          <th>Item / Description</th>
+          <th style="text-align:center;">Qty</th>
+          <th>Instructions / Sig</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
@@ -82,27 +92,31 @@ export function renderPrescriptionsSection(dispensedProducts) {
  */
 export function renderVaccineSection(vaccineData) {
   if (!vaccineData?.vaccineName) return '';
+  const doseInfo = vaccineData.doseNumber ? ` (Dose ${vaccineData.doseNumber}${vaccineData.totalDoses ? '/' + vaccineData.totalDoses : ''})` : '';
+  
   return `
     <h2>Vaccine Administered</h2>
-    <div class="info-grid">
-      <div><span class="label">Vaccine:</span></div>
-      <div><span class="value">${esc(vaccineData.vaccineName)}${vaccineData.doseNumber ? ' (Dose ' + vaccineData.doseNumber + (vaccineData.totalDoses ? '/' + vaccineData.totalDoses : '') + ')' : ''}</span></div>
-      <div></div>
-      <div><span class="label">Manufacturer:</span></div>
-      <div><span class="value">${esc(vaccineData.manufacturer || '—')}</span></div>
-      <div></div>
-      <div><span class="label">Lot Number:</span></div>
-      <div><span class="value">${esc(vaccineData.lotNumber || '—')}</span></div>
-      <div></div>
-      <div><span class="label">Route:</span></div>
-      <div><span class="value">${esc(vaccineData.routeOfAdmin || '—')}</span></div>
-      <div></div>
-      <div><span class="label">Site:</span></div>
-      <div><span class="value">${esc(vaccineData.siteOfInjection || '—')}</span></div>
-      <div></div>
-      <div><span class="label">Next Due:</span></div>
-      <div><span class="value">${vaccineData.dueDate ? formatPrintDate(vaccineData.dueDate) : '—'}</span></div>
-      <div></div>
+    <div style="display:grid; grid-template-columns:1.5fr 1fr 1fr; gap:20px; margin-bottom:24px; border:2px solid #3E2723; padding:16px; background:#FAF8F5;">
+      <div class="headboard-column">
+        <div class="headboard-label">Vaccine / Antigen</div>
+        <div class="headboard-value" style="font-size:14px; font-weight:900;">${esc(vaccineData.vaccineName)}${doseInfo}</div>
+        <div style="margin-top:8px;">
+          <div class="headboard-label">Manufacturer / Brand</div>
+          <div class="headboard-value">${esc(vaccineData.manufacturer || '—')}</div>
+        </div>
+      </div>
+      <div class="headboard-column">
+        <div class="headboard-label">Lot / Batch No.</div>
+        <div class="headboard-value">${esc(vaccineData.lotNumber || '—')}</div>
+        <div style="margin-top:8px;">
+          <div class="headboard-label">Route & Site</div>
+          <div class="headboard-value">${esc(vaccineData.routeOfAdmin || '—')} · ${esc(vaccineData.siteOfInjection || '—')}</div>
+        </div>
+      </div>
+      <div class="headboard-column">
+        <div class="headboard-label">Next Due Date</div>
+        <div class="headboard-value" style="color:#D32F2F; font-weight:900;">${vaccineData.dueDate ? formatPrintDate(vaccineData.dueDate) : '—'}</div>
+      </div>
     </div>
   `;
 }
@@ -179,15 +193,17 @@ export function renderDischargeSection(dischargeSummary) {
   if (!(instructions || nextVisit || recheckIn || patientStatus)) return '';
   const followUp = nextVisit || recheckIn || '—';
   return `
-    <h2>Discharge Instructions</h2>
-    <p style="font-size:13px; white-space:pre-wrap;">${esc(instructions || 'None provided.')}</p>
-    <div class="info-grid">
-      <div><span class="label">Follow-up:</span></div>
-      <div><span class="value">${esc(followUp)}</span></div>
-      <div></div>
-      <div><span class="label">Patient Status:</span></div>
-      <div><span class="value">${esc(patientStatus || '—')}</span></div>
-      <div></div>
+    <h2>Discharge Notes</h2>
+    <div style="font-size:13px; white-space:pre-wrap; margin-bottom:16px; border-left:4px solid #3E2723; padding-left:16px;">${esc(instructions || 'None provided.')}</div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; border-top:1px solid #E0D6CC; pt:12px;">
+      <div class="headboard-column">
+        <div class="headboard-label">Follow-up / Recheck</div>
+        <div class="headboard-value">${esc(followUp)}</div>
+      </div>
+      <div class="headboard-column">
+        <div class="headboard-label">Patient Status at Discharge</div>
+        <div class="headboard-value" style="font-weight:900;">${esc(patientStatus || '—')}</div>
+      </div>
     </div>
   `;
 }

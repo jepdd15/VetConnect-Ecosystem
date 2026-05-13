@@ -195,6 +195,78 @@ export const PRINT_STYLES = `
   }
 `;
 
+export const UNIFIED_PRINT_STYLES = `
+  body { 
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; 
+    padding: 20px 40px; 
+    color: #1A1A1A; 
+    line-height: 1.5; 
+    background: #FFF;
+  }
+  .header-container { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px; }
+  .clinic-info { flex: 1; }
+  .clinic-name { font-size: 22px; font-weight: 900; color: #1A1A1A; margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: -0.5px; }
+  .clinic-meta { font-size: 11px; color: #666; margin: 0; }
+  
+  .memo-grid { 
+    display: grid; 
+    grid-template-columns: 110px 1fr 110px 1fr; 
+    width: 100%; 
+    border-top: 2px solid #1A1A1A; 
+    border-bottom: 1px solid #E5E5E5; 
+    margin-bottom: 24px; 
+    padding: 12px 0; 
+  }
+  .memo-row { display: contents; }
+  .memo-label { font-size: 10px; font-weight: 900; color: #888; padding: 4px 0; text-transform: uppercase; letter-spacing: 1px; }
+  .memo-value { font-size: 13px; font-weight: 700; color: #1A1A1A; padding: 4px 0; }
+  
+  .allergy-alert-bar { 
+    background: #FFEBEE; 
+    border: 2px solid #D32F2F; 
+    color: #D32F2F; 
+    padding: 12px 16px; 
+    margin-bottom: 24px; 
+    font-size: 12px; 
+    font-weight: 900; 
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .section-anchor { font-size: 11px; font-weight: 900; color: #888; text-transform: uppercase; letter-spacing: 1.5px; margin: 24px 0 8px 0; border-bottom: 1px dashed #E5E5E5; padding-bottom: 4px; }
+  .content-text { font-size: 14px; color: #1A1A1A; font-weight: 500; margin: 0; }
+  .bullet-list { margin: 8px 0; padding-left: 16px; list-style-type: none; }
+  .bullet-item { font-size: 14px; color: #1A1A1A; margin-bottom: 6px; position: relative; }
+  .bullet-item::before { content: "•"; position: absolute; left: -14px; color: #888; }
+  
+  .vitals-table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+  .vitals-row { border-bottom: 1px dashed #F0F0F0; }
+  .vitals-label { font-size: 11px; font-weight: 900; color: #888; padding: 8px 0; text-transform: uppercase; }
+  .vitals-value { font-size: 13px; font-weight: 700; color: #1A1A1A; text-align: right; padding: 8px 0; font-family: monospace; }
+  .stipple { color: #DDD; font-weight: 400; letter-spacing: 2px; }
+
+  .data-table { width: 100%; border-collapse: collapse; margin: 12px 0; border: 1px solid #EEE; }
+  .data-table th { background: #F9F9F9; color: #888; font-size: 10px; font-weight: 900; text-transform: uppercase; padding: 8px 12px; text-align: left; border-bottom: 2px solid #1A1A1A; }
+  .data-table td { padding: 10px 12px; font-size: 12px; border-bottom: 1px solid #F0F0F0; color: #1A1A1A; }
+  .data-table tr:last-child td { border-bottom: none; }
+
+  .signature-area { margin-top: 60px; display: flex; flex-direction: column; align-items: flex-end; }
+  .sig-label { font-size: 10px; font-weight: 700; color: #888; font-style: italic; margin-bottom: 4px; }
+  .sig-name { font-size: 14px; font-weight: 900; color: #1A1A1A; margin-bottom: 4px; }
+  .sig-line { width: 200px; height: 1px; background: #1A1A1A; margin-bottom: 4px; }
+  .sig-title { font-size: 9px; font-weight: 900; color: #888; letter-spacing: 1px; text-transform: uppercase; }
+  
+  .reg-footer { margin-top: 40px; border-top: 1px solid #E5E5E5; padding-top: 12px; display: flex; justify-content: space-between; font-size: 9px; color: #AAA; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+  
+  @media print {
+    body { margin: 0; padding: 10mm; }
+    .section-anchor, .vitals-table, .data-table { break-inside: avoid; }
+  }
+`;
+
 /**
  * Converts a Firestore Timestamp, seconds-object, or date string to a
  * formatted Philippine locale date string (e.g. "April 22, 2026").

@@ -1,46 +1,49 @@
-import { PRINT_STYLES, formatPrintDate, esc, calculatePetAge } from './printUtils';
+import { UNIFIED_PRINT_STYLES, formatPrintDate, esc, calculatePetAge } from './printUtils';
 import { resolveVitals } from './resolveVitals';
 import { resolveObjectiveText } from './examUtils';
 
 /**
- * Renders the vitals table row. Returns an empty string when no vitals exist.
+ * Renders the persistent stippled vitals table.
  *
  * @param {object} vitals
  * @returns {string} HTML string
  */
 export function renderVitalsSection(vitals) {
   const v = vitals || {};
-  const cards = [
-    { label: 'Weight', value: v.weight ? `${v.weight} kg` : '—' },
-    { label: 'Temp',   value: v.temp ? `${v.temp} °C` : '—' },
-    { label: 'HR',     value: v.hr ? `${v.hr} bpm` : '—' },
-    { label: 'RR',     value: v.rr ? `${v.rr} rpm` : '—' },
-    { label: 'CRT',    value: v.crt || '—' },
-    { label: 'BCS',    value: v.bcs ? `${v.bcs}/9` : '—' },
-    { label: 'Pain',   value: v.pain ? `${v.pain}/10` : '—' },
-  ];
-
-  const cardsHtml = cards.map(c => `
-    <div class="vital-card">
-      <div class="vital-label">${esc(c.label)}</div>
-      <div class="vital-value">${esc(c.value)}</div>
-    </div>
-  `).join('');
-
+  const hasV = (val) => (val != null && val !== '');
+  
   return `
-    <h2>Clinical Vitals</h2>
-    <div class="vitals-row">${cardsHtml}</div>
+    <div class="section-anchor">Vitals</div>
+    <table class="vitals-table">
+      <tr class="vitals-row">
+        <td class="vitals-label">Weight <span class="stipple">................</span></td>
+        <td class="vitals-value">${esc(hasV(v.weight) ? v.weight : '—')} kg</td>
+        <td style="width: 40px;"></td>
+        <td class="vitals-label">Temperature <span class="stipple">...........</span></td>
+        <td class="vitals-value">${esc(hasV(v.temp) ? v.temp : '—')} &deg;C</td>
+      </tr>
+      <tr class="vitals-row">
+        <td class="vitals-label">Heart Rate <span class="stipple">...........</span></td>
+        <td class="vitals-value">${esc(hasV(v.hr) ? v.hr : '—')} bpm</td>
+        <td style="width: 40px;"></td>
+        <td class="vitals-label">Resp Rate <span class="stipple">.............</span></td>
+        <td class="vitals-value">${esc(hasV(v.rr) ? v.rr : '—')} br/min</td>
+      </tr>
+      <tr class="vitals-row">
+        <td class="vitals-label">CRT <span class="stipple">..................</span></td>
+        <td class="vitals-value">${esc(hasV(v.crt) ? v.crt : '—')} s</td>
+        <td style="width: 40px;"></td>
+        <td class="vitals-label">BCS <span class="stipple">..................</span></td>
+        <td class="vitals-value">${esc(hasV(v.bcs) ? v.bcs + '/9' : '—')}</td>
+      </tr>
+    </table>
   `;
 }
 
 /**
- * Renders the prescriptions table. Omits price per clinical document policy
- * (prices belong on receipts, not clinical notes).
- *
- * @param {Array} dispensedProducts
- * @returns {string} HTML string
+ * Renders the prescriptions table with price parity for services.
  */
-export function renderPrescriptionsSection(items, title = 'Prescriptions') {
+export function renderPrescriptionsSection(items, title = 'Medications') {
   if (!items?.length) return '';
   const rows = items.map((rx, i) => {
     const sig = rx.sig;
@@ -52,31 +55,31 @@ export function renderPrescriptionsSection(items, title = 'Prescriptions') {
         sig.frequency || '',
         sig.duration ? `for ${sig.duration} days` : '',
       ].filter(Boolean);
-      sigLine = `<div style="font-size:10px; color:#5D4037; margin-top:4px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">Order: ${parts.join(' · ')}</div>`;
+      sigLine = `<div style="font-size:10px; color:#888; margin-top:4px;">Sig: ${parts.join(' · ')}</div>`;
     }
 
     return `
       <tr>
-        <td style="width:30px; text-align:center; font-weight:900;">${i + 1}</td>
+        <td style="width:30px; text-align:center;">${i + 1}</td>
         <td>
-          <strong style="font-size:13px;">${esc(rx.name || '—')}</strong>
+          <b style="font-size:13px;">${esc(rx.name || '—')}</b>
           ${sigLine}
         </td>
-        <td style="text-align:center;">${rx.qty ?? '—'}</td>
-        <td style="font-size:11px;">${esc(rx.instructions || '—')}</td>
+        <td style="text-align:center;">x${rx.qty ?? 1}</td>
+        <td>${esc(rx.instructions || 'Use as directed')}</td>
       </tr>
     `;
   }).join('');
 
   return `
-    <h2>${title}</h2>
-    <table>
+    <div class="section-anchor">${title}</div>
+    <table class="data-table">
       <thead>
         <tr>
           <th style="width:30px; text-align:center;">#</th>
-          <th>Item / Description</th>
+          <th>Item / Medication</th>
           <th style="text-align:center;">Qty</th>
-          <th>Instructions / Sig</th>
+          <th>Instructions</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
@@ -85,39 +88,35 @@ export function renderPrescriptionsSection(items, title = 'Prescriptions') {
 }
 
 /**
- * Renders the vaccine administered section, only when vaccineData is present.
- *
- * @param {object} vaccineData
- * @returns {string} HTML string
+ * Renders the vaccine administered section with detailed forensic data.
  */
-export function renderVaccineSection(vaccineData) {
-  if (!vaccineData?.vaccineName) return '';
-  const doseInfo = vaccineData.doseNumber ? ` (Dose ${vaccineData.doseNumber}${vaccineData.totalDoses ? '/' + vaccineData.totalDoses : ''})` : '';
+export function renderVaccineSection(vax) {
+  if (!vax?.vaccineName) return '';
+  const date = vax.recordDate ? formatPrintDate(vax.recordDate) : '—';
+  const due = vax.dueDate ? formatPrintDate(vax.dueDate) : '—';
   
   return `
-    <h2>Vaccine Administered</h2>
-    <div style="display:grid; grid-template-columns:1.5fr 1fr 1fr; gap:20px; margin-bottom:24px; border:2px solid #3E2723; padding:16px; background:#FAF8F5;">
-      <div class="headboard-column">
-        <div class="headboard-label">Vaccine / Antigen</div>
-        <div class="headboard-value" style="font-size:14px; font-weight:900;">${esc(vaccineData.vaccineName)}${doseInfo}</div>
-        <div style="margin-top:8px;">
-          <div class="headboard-label">Manufacturer / Brand</div>
-          <div class="headboard-value">${esc(vaccineData.manufacturer || '—')}</div>
-        </div>
-      </div>
-      <div class="headboard-column">
-        <div class="headboard-label">Lot / Batch No.</div>
-        <div class="headboard-value">${esc(vaccineData.lotNumber || '—')}</div>
-        <div style="margin-top:8px;">
-          <div class="headboard-label">Route & Site</div>
-          <div class="headboard-value">${esc(vaccineData.routeOfAdmin || '—')} · ${esc(vaccineData.siteOfInjection || '—')}</div>
-        </div>
-      </div>
-      <div class="headboard-column">
-        <div class="headboard-label">Next Due Date</div>
-        <div class="headboard-value" style="color:#D32F2F; font-weight:900;">${vaccineData.dueDate ? formatPrintDate(vaccineData.dueDate) : '—'}</div>
-      </div>
-    </div>
+    <div class="section-anchor">Immunizations</div>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Vaccine</th>
+          <th>Manufacturer</th>
+          <th>Lot / Batch</th>
+          <th>Route</th>
+          <th style="text-align:right;">Next Due</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>${esc(vax.vaccineName)}</b>${vax.doseNumber ? `<br/><small>Dose ${vax.doseNumber}</small>` : ''}</td>
+          <td>${esc(vax.manufacturer || '—')}</td>
+          <td style="font-family: monospace;">${esc(vax.lotNumber || '—')}</td>
+          <td>${esc(vax.routeOfAdmin || '—')}</td>
+          <td style="text-align:right; font-weight:700;">${esc(due)}</td>
+        </tr>
+      </tbody>
+    </table>
   `;
 }
 
@@ -150,23 +149,25 @@ function resolveRefRangeForPrint(range) {
  * @returns {string} HTML string
  */
 export function renderLabResultsSection(labResults) {
-  if (!labResults?.length) return '';
-  const rows = labResults.map(lr => {
+  const labs = Array.isArray(labResults) ? labResults : [];
+  if (labs.length === 0) return '';
+  const rows = labs.map(lr => {
     const resultWithUnit = `${esc(lr.result || '—')}${lr.unit ? ' ' + esc(lr.unit) : ''}`;
     const refDisplay = resolveRefRangeForPrint(lr.referenceRange || null);
+    const status = (lr.status || 'normal').toLowerCase();
     return `
       <tr>
-        <td>${esc(lr.testName || '—')}</td>
-        <td>${resultWithUnit}</td>
-        <td>${esc(refDisplay)}</td>
-        <td>${esc(lr.status || '—')}</td>
-        <td>${esc(lr.notes || '—')}</td>
+        <td><b>${esc(lr.testName || '—')}</b></td>
+        <td style="font-family: monospace; font-weight: 700;">${resultWithUnit}</td>
+        <td style="color: #888;">${esc(refDisplay)}</td>
+        <td><span class="status-badge status-${status}">${esc(status.toUpperCase())}</span></td>
+        <td style="font-size: 11px; color: #666;">${esc(lr.notes || '—')}</td>
       </tr>
     `;
   }).join('');
   return `
-    <h2>Lab Results</h2>
-    <table>
+    <div class="section-anchor">Laboratory Results</div>
+    <table class="data-table">
       <thead>
         <tr>
           <th>Test</th>
@@ -182,55 +183,117 @@ export function renderLabResultsSection(labResults) {
 }
 
 /**
- * Renders the discharge instructions section.
- *
- * @param {object} dischargeSummary
- * @returns {string} HTML string
+ * Renders the hierarchical physical exam section.
  */
-export function renderDischargeSection(dischargeSummary) {
-  if (!dischargeSummary) return '';
-  const { instructions, nextVisit, recheckIn, patientStatus } = dischargeSummary;
-  if (!(instructions || nextVisit || recheckIn || patientStatus)) return '';
-  const followUp = nextVisit || recheckIn || '—';
+export function renderExamSection(record) {
+  if (!record.physicalExam) return '';
+  const exams = record.physicalExam;
+  const categories = Object.keys(exams).filter(cat => exams[cat].status && exams[cat].status !== 'not_examined');
+  if (categories.length === 0) return '';
+
+  const cards = categories.map(cat => {
+    const data = exams[cat];
+    const isAbnormal = data.status === 'abnormal';
+    return `
+      <div style="break-inside: avoid; margin-bottom: 12px; border-left: 3px solid ${isAbnormal ? '#D32F2F' : '#EEE'}; padding-left: 10px;">
+        <div style="font-size: 9px; font-weight: 900; color: #888; text-transform: uppercase; letter-spacing: 0.5px;">${esc(cat.replace(/_/g, ' '))}</div>
+        <div style="font-size: 12px; font-weight: 700; color: ${isAbnormal ? '#D32F2F' : '#1A1A1A'}; margin: 2px 0;">${isAbnormal ? 'ABNORMAL' : 'NORMAL'}</div>
+        ${data.notes ? `<div style="font-size: 11px; color: #666; line-height: 1.4;">${esc(data.notes)}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+
   return `
-    <h2>Discharge Notes</h2>
-    <div style="font-size:13px; white-space:pre-wrap; margin-bottom:16px; border-left:4px solid #3E2723; padding-left:16px;">${esc(instructions || 'None provided.')}</div>
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; border-top:1px solid #E0D6CC; pt:12px;">
-      <div class="headboard-column">
-        <div class="headboard-label">Follow-up / Recheck</div>
-        <div class="headboard-value">${esc(followUp)}</div>
+    <div class="section-anchor">Physical Examination</div>
+    <div style="column-count: 2; column-gap: 30px; margin-top: 8px;">
+      ${cards}
+    </div>
+  `;
+}
+
+/**
+ * Renders the financial services ledger for a record.
+ */
+export function renderServicesSection(record) {
+  // Mobile uses appointment services array; Admin usually has serviceNames on the record.
+  // We prioritize the structured ledger if available.
+  const services = record.services || [];
+  if (services.length < 2) return '';
+
+  const rows = services.map(svc => `
+    <tr>
+      <td><b>${esc(svc.name || '—')}</b></td>
+      <td>${svc.staffName || '—'}</td>
+      <td style="text-align: right; font-weight: 700;">&#x20B1;${Number(svc.price || 0).toLocaleString()}</td>
+    </tr>
+  `).join('');
+
+  return `
+    <div class="section-anchor">Services Performed</div>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Service Item</th>
+          <th>Staff</th>
+          <th style="text-align: right;">Price</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+/**
+ * Renders the discharge instructions section with integrated Clinical Outlook.
+ */
+export function renderDischargeSection(dischargeSummary, soapPrognosis) {
+  if (!dischargeSummary && !soapPrognosis) return '';
+  const { instructions, nextVisit, recheckIn, patientStatus } = dischargeSummary || {};
+  const prognosis = soapPrognosis || '—';
+  const status = patientStatus || '—';
+  
+  return `
+    <div class="section-anchor">Discharge Notes</div>
+    <div style="font-size: 14px; color: #1A1A1A; white-space: pre-wrap; margin-bottom: 16px; padding: 12px; background: #FEFEFE; border: 1px dashed #EEE;">${esc(instructions || 'No specific notes provided.')}</div>
+
+    <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+      <div style="flex: 1; background: #1A1A1A; color: white; padding: 12px; border-radius: 0;">
+        <span style="font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; display: block; opacity: 0.7; margin-bottom: 4px;">Patient Status</span>
+        <span style="font-size: 15px; font-weight: 900;">${esc(status)}</span>
       </div>
-      <div class="headboard-column">
-        <div class="headboard-label">Patient Status at Discharge</div>
-        <div class="headboard-value" style="font-weight:900;">${esc(patientStatus || '—')}</div>
+      <div style="flex: 1; background: #F9F9F9; border: 1px solid #EEE; padding: 12px;">
+        <span style="font-size: 10px; font-weight: 900; color: #888; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 4px;">Prognosis</span>
+        <span style="font-size: 15px; font-weight: 900; color: #1A1A1A;">${esc(prognosis)}</span>
       </div>
+    </div>
+    
+    <div style="display: flex; justify-content: space-between; border-top: 1px solid #E5E5E5; padding-top: 12px;">
+      <span style="font-size: 10px; font-weight: 900; color: #888; text-transform: uppercase;">Follow-up / Recheck</span>
+      <span style="font-size: 13px; font-weight: 700; color: #1A1A1A;">${esc(nextVisit || recheckIn || 'None scheduled')}</span>
     </div>
   `;
 }
 
 /**
  * Renders the attachments section for print output.
- * Attachment labels are rendered as clickable links. Client-visible
- * attachments are flagged so recipients know the file was shared with the owner.
- *
- * All dynamic values go through esc() to prevent XSS in the printed document.
- *
- * @param {Array} attachments
- * @returns {string} HTML string
  */
 export function renderAttachmentsSection(attachments) {
   if (!attachments?.length) return '';
   const items = attachments.map(att => {
     const icon = att.mimeType?.startsWith('image/') ? '📷' : '📄';
-    const shared = att.clientVisible ? ' <span style="color:#2E7D32; font-size:10px;">[Shared with owner]</span>' : '';
-    return `<li style="margin-bottom:4px;">
-      ${icon} <a href="${esc(att.url || (typeof att === 'string' ? att : ''))}" target="_blank" rel="noopener noreferrer" style="color:#1565C0;">${esc(att.label || att.fileName || 'Attachment')}</a>
-      <span style="color:#999; font-size:11px;"> (${esc(att.type || 'other')})</span>${shared}
-    </li>`;
+    return `
+      <div style="padding: 8px 12px; background: #F9F9F9; border: 1px solid #EEE; margin-bottom: 8px; display: flex; align-items: center; gap: 12px;">
+        <span style="font-size: 20px;">${icon}</span>
+        <div>
+          <b style="font-size: 12px; display: block;">${esc(att.label || att.fileName || 'Attachment')}</b>
+          <span style="font-size: 10px; color: #888;">${esc(att.type || 'other')}</span>
+        </div>
+      </div>
+    `;
   }).join('');
   return `
-    <h2>Attachments</h2>
-    <ul style="list-style:none; padding-left:0;">${items}</ul>
+    <div class="section-anchor">Reference Attachments</div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">${items}</div>
   `;
 }
 
@@ -249,7 +312,10 @@ export function renderAttachmentsSection(attachments) {
  * @param {string} params.clinicAddress  From useClinicSettings()
  * @returns {string} Full HTML document string
  */
-export function generateVisitSummaryHTML({ record, pet, owner, clinicName, clinicAddress, clinicPhone, clinicBAI, vetStaff }) {
+/**
+ * Generates a complete HTML string for the Super Template Visit Summary.
+ */
+export function generateVisitSummaryHTML({ record, pet, owner, clinicName, clinicAddress, clinicPhone, clinicEmail, clinicTIN, clinicBAI, vetStaff }) {
   const rec = record || {};
   const soap = rec.soap || {};
 
@@ -257,23 +323,27 @@ export function generateVisitSummaryHTML({ record, pet, owner, clinicName, clini
   const petName = esc(pet?.name || rec.petName || '—');
   const species = esc(pet?.species || '—');
   const breed = esc((pet?.breed && pet.breed !== 'Unknown Breed') ? pet.breed : '—');
-  const sexLabel = pet?.gender === 'Male' ? (pet?.isNeutered ? 'MN (Male Neutered)' : 'MI (Male Intact)')
-    : pet?.gender === 'Female' ? (pet?.isNeutered ? 'FS (Female Spayed)' : 'FI (Female Intact)')
+  const typeLabel = `${species} (${breed})`;
+  
+  const sexLabel = pet?.gender === 'Male' ? (pet?.isNeutered ? 'Male Neutered (MN)' : 'Male Intact (MI)')
+    : pet?.gender === 'Female' ? (pet?.isNeutered ? 'Female Spayed (FS)' : 'Female Intact (FI)')
     : '—';
-  const age = calculatePetAge(pet?.dob);
+    
+  const ageLabel = calculatePetAge(pet?.dob);
+  const dobLabel = pet?.dob ? formatPrintDate(pet.dob) : 'Unknown';
+  
   const rvPrint = resolveVitals(rec);
-  const weight = rvPrint.weight ? `${rvPrint.weight} kg` : (pet?.lastWeight ? `${pet.lastWeight} kg` : '—');
   const ownerName = esc(owner?.displayName || owner?.name || rec.ownerName || '—');
   const ownerPhone = esc(owner?.phone || owner?.contactNumber || '—');
-  const ownerAddress = esc([owner?.address, owner?.city].filter(Boolean).join(', ') || '');
-  const rawAllergies = pet?.petAllergies || pet?.allergies;
-  const allergies = (rawAllergies && !['None', 'None recorded', ''].includes(rawAllergies))
-    ? `<strong style="color:#C62828;">${esc(rawAllergies)}</strong>`
-    : 'None known';
+  const ownerEmail = esc(owner?.email || '—');
+  const contactLabel = `${ownerPhone} | ${ownerEmail}`;
 
+  const rawAllergies = pet?.petAllergies || pet?.allergies || rec.allergies;
+  const allergyList = (rawAllergies && !['None', 'None recorded', ''].includes(rawAllergies)) ? esc(rawAllergies) : null;
+
+  const vetName = esc(rec.vetName || 'Attending Clinician');
   const vetPRC = esc(vetStaff?.prcLicense || '');
-  const vetPTR = esc(vetStaff?.ptrNumber || '');
-
+  
   const now = new Date().toLocaleString('en-PH', { dateStyle: 'long', timeStyle: 'short' });
 
   return `<!DOCTYPE html>
@@ -282,99 +352,86 @@ export function generateVisitSummaryHTML({ record, pet, owner, clinicName, clini
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Visit Summary — ${petName}</title>
-  <style>${PRINT_STYLES}</style>
+  <style>${UNIFIED_PRINT_STYLES}</style>
 </head>
 <body>
-  <div class="clinic-header">
-    <p class="clinic-name">${esc(clinicName || 'Veterinary Clinic')}</p>
-    <p class="clinic-address">${esc(clinicAddress || '')}</p>
-    ${clinicPhone ? `<p class="clinic-address">${esc(clinicPhone)}</p>` : ''}
-    ${clinicBAI ? `<p class="clinic-address">BAI Reg. No. ${esc(clinicBAI)}</p>` : ''}
-    <p class="doc-title">Visit Summary</p>
+  <div class="header-container">
+    <div class="clinic-info">
+      <h1 class="clinic-name">${esc(clinicName || 'Veterinary Clinic')}</h1>
+      <p class="clinic-meta">${esc(clinicAddress || '')}</p>
+      <p class="clinic-meta">T: ${esc(clinicPhone || '—')} | E: ${esc(clinicEmail || '—')}</p>
+    </div>
   </div>
 
-  <h2>Patient Information</h2>
-  <div class="info-grid">
-    <div><span class="label">Name:</span> <span class="value">${petName}</span></div>
-    <div><span class="label">Species:</span> <span class="value">${species}</span></div>
-    <div><span class="label">Breed:</span> <span class="value">${breed}</span></div>
-    <div><span class="label">Sex:</span> <span class="value">${sexLabel}</span></div>
-    <div><span class="label">Age:</span> <span class="value">${age}</span></div>
-    <div><span class="label">Weight:</span> <span class="value">${weight}</span></div>
-    <div><span class="label">Owner:</span> <span class="value">${ownerName}</span></div>
-    <div><span class="label">Phone:</span> <span class="value">${ownerPhone}</span></div>
-    ${ownerAddress ? `<div><span class="label">Address:</span> <span class="value">${ownerAddress}</span></div>` : ''}
-    <div><span class="label">Allergies:</span> <span class="value">${allergies}</span></div>
+  <div class="memo-grid">
+    <div class="memo-row">
+      <div class="memo-label">Patient</div>
+      <div class="memo-value">${petName}</div>
+      <div class="memo-label">Type</div>
+      <div class="memo-value">${typeLabel}</div>
+    </div>
+    <div class="memo-row">
+      <div class="memo-label">Sex</div>
+      <div class="memo-value">${sexLabel}</div>
+      <div class="memo-label">Age</div>
+      <div class="memo-value">${ageLabel}</div>
+    </div>
+    <div class="memo-row">
+      <div class="memo-label">Allergies</div>
+      <div class="memo-value" style="grid-column: span 3;">${allergyList || 'None Recorded'}</div>
+    </div>
+    <div class="memo-row">
+      <div class="memo-label">Owner</div>
+      <div class="memo-value">${ownerName}</div>
+      <div class="memo-label">Contact</div>
+      <div class="memo-value">${contactLabel}</div>
+    </div>
+    <div class="memo-row">
+      <div class="memo-label">Visit Date</div>
+      <div class="memo-value">${visitDate}</div>
+      <div class="memo-label">Attending</div>
+      <div class="memo-value">${vetName} ${vetPRC ? '(PRC: ' + vetPRC + ')' : ''}</div>
+    </div>
   </div>
 
-  <h2>Visit Details</h2>
-  <div class="info-grid">
-    <div><span class="label">Date:</span> <span class="value">${visitDate}</span></div>
-    <div><span class="label">Service:</span> <span class="value" style="text-transform:capitalize">${esc(rec.serviceType || rec.recordType || '—')}</span></div>
-    <div></div>
-    <div><span class="label">Attending Vet:</span> <span class="value">${esc(rec.vetName || '—')}</span></div>
-    ${vetPRC ? `<div><span class="label">PRC License:</span> <span class="value">${vetPRC}</span></div>` : ''}
-    ${vetPTR ? `<div><span class="label">PTR:</span> <span class="value">${vetPTR}</span></div>` : ''}
-    <div><span class="label">Diagnosis:</span> <span class="value">${esc(
-      rec.diagnoses?.length > 0
-        ? rec.diagnoses.map(d => d.severity ? `${d.name} (${d.severity})` : d.name).join('; ')
-        : (rec.diagnosis || '—')
-    )}</span></div>
-    <div></div>
-  </div>
+  ${soap.subjective ? `
+    <div class="section-anchor">Subjective / Chief Complaint</div>
+    <p class="content-text" style="margin-bottom: 24px;">${esc(soap.subjective)}</p>
+  ` : ''}
 
-  <h2>Clinical Notes (SOAP)</h2>
-  <table>
-    <thead>
-      <tr><th style="width:18%">Section</th><th>Notes</th></tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td><strong>Subjective</strong></td>
-        <td style="white-space:pre-wrap">${esc(soap.subjective || '—')}</td>
-      </tr>
-      <tr>
-        <td><strong>Objective</strong></td>
-        <td style="white-space:pre-wrap">${esc(resolveObjectiveText(rec) || '—')}</td>
-      </tr>
-      <tr>
-        <td><strong>Assessment</strong></td>
-        <td style="white-space:pre-wrap">${esc(
-          rec.diagnoses?.length > 0
-            ? rec.diagnoses.map(d => d.severity ? `${d.name} (${d.severity})` : d.name).join('; ') + (rec.assessmentNotes ? '\n\n' + rec.assessmentNotes : '')
-            : (soap.assessment || rec.diagnosis || '—')
-        )}</td>
-      </tr>
-      <tr>
-        <td><strong>Plan</strong></td>
-        <td style="white-space:pre-wrap">${esc(soap.plan || rec.treatment || '—')}</td>
-      </tr>
-      ${soap.prognosis ? `<tr><td><strong>Prognosis</strong></td><td style="white-space:pre-wrap">${esc(soap.prognosis)}</td></tr>` : ''}
-    </tbody>
-  </table>
+  ${renderExamSection(rec)}
 
   ${renderVitalsSection(rvPrint)}
-  ${renderPrescriptionsSection(rec.dispensedProducts || rec.prescriptions)}
+  
+  <div class="section-anchor">Diagnosis / Findings</div>
+  <div style="font-size: 14px; font-weight: 500; color: #1A1A1A; margin-top: 4px; margin-bottom: 24px;">
+    ${rec.diagnoses?.length > 0 
+      ? rec.diagnoses.map(d => d.severity ? `${d.name} (${d.severity})` : d.name).join('; ')
+      : (rec.diagnosis || '—')}
+  </div>
+
+  ${renderLabResultsSection(rec.labResults)}
+  
   ${(rec.vaccineAdministrations?.length > 0
     ? rec.vaccineAdministrations.map(v => renderVaccineSection(v)).join('')
     : renderVaccineSection(rec.vaccineData))}
-  ${renderLabResultsSection(rec.labResults)}
-  ${renderDischargeSection(rec.dischargeSummary)}
-  ${renderAttachmentsSection(rec.attachments)}
 
-  <div style="margin-top:40px; display:flex; gap:32px;">
-    <div style="flex:1;">
-      <div style="border-bottom:1.5px solid #3E2723; height:36px; margin-bottom:4px;"></div>
-      <p style="font-size:10px; color:#5D4037; margin:0;">Veterinarian Signature</p>
-    </div>
-    <div style="flex:1;">
-      <div style="border-bottom:1.5px solid #3E2723; height:36px; margin-bottom:4px;"></div>
-      <p style="font-size:10px; color:#5D4037; margin:0;">Date Signed</p>
-    </div>
+  ${renderPrescriptionsSection(rec.dispensedProducts || rec.prescriptions)}
+
+  ${renderServicesSection(rec)}
+
+  ${renderDischargeSection(rec.dischargeSummary, soap.prognosis)}
+
+  <div class="signature-area">
+    <div class="sig-line"></div>
+    <div class="sig-title">Attending Veterinarian Signature</div>
+    <div class="sig-name" style="margin-top: 4px;">${vetName}</div>
   </div>
 
-  <div class="footer">
-    Generated on ${now} &nbsp;|&nbsp; ${esc(clinicName || 'Veterinary Clinic')} &nbsp;|&nbsp; This is a system-generated document.
+  <div class="reg-footer">
+    <span>BAI Reg No: ${esc(clinicBAI || '—')}</span>
+    <span>TIN: ${esc(clinicTIN || '—')}</span>
+    <span>Generated: ${now}</span>
   </div>
 </body>
 </html>`;

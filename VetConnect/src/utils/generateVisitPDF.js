@@ -1,14 +1,25 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { formatDisplayDate } from './helpers';
+import { formatDisplayDate, calculateAge } from './helpers';
 import { resolveVitals } from './resolveVitals';
 
 /**
+ * Super Template: Mobile PDF Generator
+ * Achieves 1:1 parity with Administrative Printouts.
+ */
+
+const esc = (s) =>
+  String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const stipple = '<span style="color: #DDD; font-weight: 400; letter-spacing: 2px;">................</span>';
+
+/**
  * Formats a duration in milliseconds into a human-readable string.
- * Examples: 75 min → "1h 15m", 40 min → "40 min", 0 or invalid → "".
- *
- * @param {number} ms — duration in milliseconds
- * @returns {string}
  */
 function formatDuration(ms) {
   const totalMins = Math.round(ms / 60000);
@@ -19,12 +30,6 @@ function formatDuration(ms) {
   return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
 }
 
-/**
- * Resolves a Firestore Timestamp or ISO string to a millisecond epoch value.
- *
- * @param {object|string|null} ts
- * @returns {number|null}
- */
 function resolveTimestampMs(ts) {
   if (!ts) return null;
   if (typeof ts.toDate === 'function') return ts.toDate().getTime();
@@ -32,301 +37,364 @@ function resolveTimestampMs(ts) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-/**
- * Generates and shares a PDF visit summary for a completed appointment.
- *
- * @param {{ record: object, petName: string, services?: object[], clinicSettings?: object }} params
- *   record   — medical_records document (or appointment object with service/vitals fields)
- *   petName  — pet display name shown in the PDF header
- *   services — optional appointment services[] array
- *   clinicSettings - optional dynamic clinic contact info from Firestore
- */
-export async function generateVisitPDF({ record, petName, services, clinicSettings }) {
-  const esc = (s) =>
-    String(s ?? '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+// ─── Modular Renderers (1:1 with Admin) ──────────────────────────────────────
 
-  const dateStr = formatDisplayDate(record.date);
+const renderVitalsSection = (vitals) => {
+  const v = vitals || {};
+  return `
+    <div class="section-anchor">Vitals</div>
+    <table class="vitals-table">
+      <tr class="vitals-row">
+        <td class="vitals-label">Weight ${stipple}</td>
+        <td class="vitals-value">${esc(v.weight || '—')} kg</td>
+        <td style="width: 40px;"></td>
+        <td class="vitals-label">Temperature ${stipple}</td>
+        <td class="vitals-value">${esc(v.temp || '—')} &deg;C</td>
+      </tr>
+      <tr class="vitals-row">
+        <td class="vitals-label">Heart Rate ${stipple}</td>
+        <td class="vitals-value">${esc(v.hr || '—')} bpm</td>
+        <td style="width: 40px;"></td>
+        <td class="vitals-label">Resp Rate ${stipple}</td>
+        <td class="vitals-value">${esc(v.rr || '—')} br/min</td>
+      </tr>
+      <tr class="vitals-row">
+        <td class="vitals-label">CRT ${stipple}</td>
+        <td class="vitals-value">${esc(v.crt || '—')} s</td>
+        <td style="width: 40px;"></td>
+        <td class="vitals-label">BCS ${stipple}</td>
+        <td class="vitals-value">${esc(v.bcs || '—')} / 9</td>
+      </tr>
+    </table>
+  `;
+};
 
-  // --- Services Performed section ---
-  // Only rendered when 2 or more services are provided.
+const renderExamSection = (record) => {
+  if (!record.physicalExam) return '';
+  const exams = record.physicalExam;
+  const categories = Object.keys(exams).filter(cat => exams[cat].status && exams[cat].status !== 'not_examined');
+  if (categories.length === 0) return '';
+
+  return `
+    <div class="section-anchor">Physical Examination</div>
+    <div style="column-count: 2; column-gap: 30px;">
+      ${categories.map(cat => {
+        const data = exams[cat];
+        const isAbnormal = data.status === 'abnormal';
+        return `
+          <div style="break-inside: avoid; margin-bottom: 12px; border-left: 2px solid ${isAbnormal ? '#D32F2F' : '#E5E5E5'}; padding-left: 8px;">
+            <div style="font-size: 9px; font-weight: 900; color: #888; text-transform: uppercase;">${esc(cat.replace(/_/g, ' '))}</div>
+            <div style="font-size: 11px; font-weight: 700; color: ${isAbnormal ? '#D32F2F' : '#1A1A1A'};">${isAbnormal ? 'ABNORMAL' : 'NORMAL'}</div>
+            ${data.notes ? `<div style="font-size: 11px; color: #666; margin-top: 2px;">${esc(data.notes)}</div>` : ''}
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+};
+
+const renderLabResultsSection = (labResults) => {
+  const labs = Array.isArray(labResults) ? labResults : [];
+  if (labs.length === 0) return '';
+
+  return `
+    <div class="section-anchor">Laboratory Results</div>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Test Name</th>
+          <th style="text-align: right;">Result</th>
+          <th>Status</th>
+          <th>Reference Range</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${labs.map(lab => `
+          <tr>
+            <td><b>${esc(lab.testName || lab.name)}</b></td>
+            <td style="text-align: right; font-family: monospace; font-weight: 700;">${esc(lab.result)} ${esc(lab.unit || '')}</td>
+            <td><span class="status-badge status-${(lab.status || 'normal').toLowerCase()}">${esc((lab.status || 'NORMAL').toUpperCase())}</span></td>
+            <td style="color: #888; font-size: 11px;">${esc(lab.referenceRange || '—')}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+};
+
+const renderVaccineSection = (vaccines) => {
+  const vaxList = Array.isArray(vaccines) ? vaccines : (vaccines ? [vaccines] : []);
+  if (vaxList.length === 0) return '';
+
+  return `
+    <div class="section-anchor">Immunizations</div>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Vaccine</th>
+          <th>Dose</th>
+          <th>Lot / Batch</th>
+          <th style="text-align: right;">Next Due</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${vaxList.map(v => `
+          <tr>
+            <td><b>${esc(v.vaccineName || v.name)}</b><br/><small style="color:#888">${esc(v.manufacturer || '')}</small></td>
+            <td>${esc(v.doseNumber ? 'Dose ' + v.doseNumber : '—')}</td>
+            <td style="font-family: monospace;">${esc(v.lotNumber || '—')}</td>
+            <td style="text-align: right; font-weight: 700;">${v.dueDate ? esc(formatDisplayDate(v.dueDate)) : '—'}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+};
+
+const renderPrescriptionsSection = (prescriptions) => {
+  const meds = (prescriptions || []).filter(rx => (rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail')) === 'medicine');
+  if (meds.length === 0) return '';
+
+  return `
+    <div class="section-anchor">Prescriptions</div>
+    <div class="bullet-list">
+      ${meds.map(rx => `
+        <div class="bullet-item">
+          <div style="font-size: 13px; font-weight: 700;">${esc(rx.name)} ${rx.qty ? `(${esc(rx.qty)})` : ''}</div>
+          <div style="font-size: 12px; color: #444; font-style: italic;">Sig: ${esc(rx.instructions || 'Use as directed')}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+};
+
+const renderServicesSection = (record, services) => {
   const validServices = Array.isArray(services) && services.length >= 2 ? services : null;
+  if (!validServices) return '';
 
-  const servicesHtml = validServices
-    ? `<h3>Services Performed</h3>
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-          <thead>
-            <tr style="border-bottom: 1px solid #ccc;">
-              <th style="text-align: left; padding: 4px 8px;">Service</th>
-              <th style="text-align: left; padding: 4px 8px;">Duration</th>
-              <th style="text-align: left; padding: 4px 8px;">Staff</th>
-              <th style="text-align: right; padding: 4px 8px;">Price</th>
+  return `
+    <div class="section-anchor">Services Performed</div>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Service</th>
+          <th>Duration</th>
+          <th>Staff</th>
+          <th style="text-align: right;">Price</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${validServices.map(svc => {
+          const startMs = resolveTimestampMs(svc.serviceStartedAt);
+          const endMs = resolveTimestampMs(svc.serviceCompletedAt);
+          const duration = startMs != null && endMs != null ? formatDuration(endMs - startMs) : '—';
+          return `
+            <tr>
+              <td><b>${esc(svc.name || '—')}</b></td>
+              <td style="color: #666;">${esc(duration)}</td>
+              <td>${esc(svc.staffName || '—')}</td>
+              <td style="text-align: right; font-weight: 700;">&#x20B1;${Number(svc.price || 0).toLocaleString()}</td>
             </tr>
-          </thead>
-          <tbody>
-            ${validServices.map((svc) => {
-              const status = svc.serviceStatus || 'pending';
-              const icon = status === 'completed' ? '✓' : status === 'in-progress' ? '⏳' : '○';
-              const name = esc(svc.name || (typeof svc === 'string' ? svc : '—'));
-              const startMs = resolveTimestampMs(svc.serviceStartedAt);
-              const endMs = resolveTimestampMs(svc.serviceCompletedAt);
-              const duration =
-                startMs != null && endMs != null
-                  ? formatDuration(endMs - startMs)
-                  : '';
-              const staffName = svc.staffName ? esc(svc.staffName) : '—';
-              const price =
-                svc.price != null
-                  ? `&#x20B1;${Number(svc.price).toLocaleString()}`
-                  : '—';
-              return `<tr style="border-bottom: 1px solid #eee;">
-                <td style="padding: 6px 8px;">${icon} ${name}</td>
-                <td style="padding: 6px 8px; color: #555;">${esc(duration) || '—'}</td>
-                <td style="padding: 6px 8px; color: #555;">${staffName}</td>
-                <td style="text-align: right; padding: 6px 8px;">${price}</td>
-              </tr>`;
-            }).join('')}
-          </tbody>
-        </table>`
-    : '';
+          `;
+        }).join('')}
+      </tbody>
+    </table>
+  `;
+};
 
-  // When there are 2+ services, show "Services: N" in the header summary row
-  // (key becomes "Services", value becomes the count — avoids "Services: Services: 3").
-  const serviceHeaderKey = validServices ? 'Services' : 'Service';
-  const serviceHeaderLabel = validServices
-    ? String(validServices.length)
-    : esc(record.serviceType);
-
-  const hasDischarge = !!record.dischargeSummary;
-  const dsInstructions = record.dischargeSummary?.instructions || '';
-  const dsDiagnosisList = (record.diagnoses?.length > 0
-    ? record.diagnoses
-    : (record.dischargeSummary?.diagnosis ? [{ name: record.dischargeSummary.diagnosis }] : (record.diagnosis ? [{ name: record.diagnosis }] : [])))
-    .filter(dx => dx.name && !['Clinical Visit', 'Unspecified', 'N/A'].includes(dx.name));
+const renderDischargeSection = (discharge, soapPrognosis) => {
+  if (!discharge && !soapPrognosis) return '';
+  const status = discharge?.patientStatus || '—';
   
-  const hasMultipleDx = dsDiagnosisList.length > 1;
-  const dxLabel = hasMultipleDx ? 'Diagnoses' : 'Diagnosis';
-  const dsMeds = record.dischargeSummary?.medications || [];
+  return `
+    <div class="section-anchor">Discharge Notes</div>
+    ${discharge?.instructions ? `
+      <div style="margin-bottom: 12px; background: #F9F9F9; padding: 12px; border-left: 3px solid #1A1A1A;">
+        <p class="content-text" style="font-size: 13px; line-height: 1.6;">${esc(discharge.instructions).replace(/\n/g, '<br/>')}</p>
+      </div>
+    ` : ''}
 
-  const rxHtmlFromDischarge =
-    dsMeds.length > 0
-      ? `<h3>Medications</h3><ul>${dsMeds
-          .map(
-            (med) =>
-              `<li><b>${esc(med.name)}</b> x${esc(med.qty || 1)}: ${esc(med.instructions || 'Use as directed')}</li>`,
-          )
-          .join('')}</ul>`
-      : '';
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 12px;">
+      <div>
+        <span style="font-size: 9px; font-weight: 900; color: #888; text-transform: uppercase;">Patient Status</span>
+        <p class="content-text" style="font-weight: 700;">${esc(status).toUpperCase()}</p>
+      </div>
+      ${soapPrognosis ? `
+        <div>
+          <span style="font-size: 9px; font-weight: 900; color: #888; text-transform: uppercase;">Prognosis</span>
+          <p class="content-text" style="font-weight: 700;">${esc(soapPrognosis).toUpperCase()}</p>
+        </div>
+      ` : ''}
+    </div>
+    
+    <div style="border-top: 1px solid #EEE; padding-top: 12px; display: flex; justify-content: space-between; align-items: center;">
+      <span style="font-size: 9px; font-weight: 900; color: #888; text-transform: uppercase;">Follow-up / Recheck</span>
+      <span style="font-size: 13px; font-weight: 700;">${esc(discharge?.nextVisit ? formatDisplayDate(discharge.nextVisit) : (discharge?.recheckIn || 'None scheduled'))}</span>
+    </div>
+  `;
+};
 
-  const dsSupplies = record.dischargeSummary?.supplies || [];
-  const suppliesHtmlFromDischarge =
-    dsSupplies.length > 0
-      ? `<h3>Take-Home Supplies</h3><ul>${dsSupplies
-          .map(
-            (sup) =>
-              `<li><b>${esc(sup.name)}</b> x${esc(sup.qty || 1)}${sup.instructions ? `: ${esc(sup.instructions)}` : ''}</li>`,
-          )
-          .join('')}</ul>`
-      : '';
+// ─── Main Export ─────────────────────────────────────────────────────────────
 
-  let rxHtml = '';
-  const allMeds = [
-    ...(record.prescriptions || []),
-    ...(record.dispensedProducts || [])
-  ];
-
-  if (allMeds.length > 0 && !dsMeds.length) {
-    const medications = allMeds.filter(
-      (rx) => (rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail')) === 'medicine',
-    );
-    const nonDrugItems = allMeds.filter(
-      (rx) => (rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail')) !== 'medicine',
-    );
-    rxHtml = [
-      medications.length > 0
-        ? `<h3>Prescribed Medications</h3><ul>${medications
-            .map(
-              (rx) =>
-                `<li><b>${esc(rx.name)}${rx.qty ? ` x${esc(rx.qty)}` : ''}</b>: ${esc(rx.instructions || 'Use as directed')}</li>`,
-            )
-            .join('')}</ul>`
-        : '',
-      nonDrugItems.length > 0
-        ? `<h3>Other Items</h3><ul>${nonDrugItems
-            .map(
-              (rx) =>
-                `<li><b>${esc(rx.name)}${rx.qty ? ` x${esc(rx.qty)}` : ''}</b>: ${esc(rx.instructions || 'Use as directed')}</li>`,
-            )
-            .join('')}</ul>`
-        : '',
-    ].join('');
-  }
-
-  const nextVisitRaw = record.dischargeSummary?.nextVisit || record.nextVisit;
-  const nextVisitStr = nextVisitRaw
-    ? formatDisplayDate(nextVisitRaw, { month: 'long', day: 'numeric', year: 'numeric' }, null)
-    : null;
-
+export async function generateVisitPDF({ record, pet, owner, services, clinicSettings }) {
+  const dateStr = formatDisplayDate(record.date);
   const pdfVitals = resolveVitals(record);
-  const hasAnyVital = Object.values(pdfVitals).some((v) => v != null && v !== '');
-
+  
   const clinic = clinicSettings || {};
-  const clinicName = esc(clinic.clinicName || '');
-  const clinicAddress = esc(clinic.clinicAddress || '');
-  const clinicPhone = esc(clinic.clinicPhone || '');
-  const clinicEmail = esc(clinic.clinicEmail || '');
-  const baiReg = esc(clinic.baiRegistrationNumber || '—');
+  const clinicName = esc(clinic.clinicName);
+  const clinicAddress = esc(clinic.clinicAddress);
+  const clinicPhone = esc(clinic.clinicPhone);
+  const clinicEmail = esc(clinic.clinicEmail);
   const clinicTIN = esc(clinic.clinicTIN || '—');
+  const clinicBAI = esc(clinic.baiRegistrationNumber || '—');
 
-  const sortedServices = [...(record.serviceNames?.length > 0 ? record.serviceNames : [record.serviceType || 'Clinical Visit'])].sort();
-  const servicesText = sortedServices.join(', ');
-  const staffNames = record.serviceAttribution?.filter(a => a.staffName).map(a => a.staffName) || [];
-  const staffText = staffNames.length > 0 ? [...new Set(staffNames)].join(', ') : esc(record.vetName || 'Attending Clinician');
+  // Signalment Helpers
+  const petName = esc(pet?.name || 'Unknown Patient');
+  const speciesBreed = `${esc(pet?.species || '—')} / ${esc(pet?.breed || '—')}`;
+  const sexAge = `${esc(pet?.gender || '—')}${pet?.isNeutered ? ' (D)' : ''} / ${esc(pet?.dob ? calculateAge(pet.dob) : '—')}`;
+  const ownerName = esc(owner?.fullName || owner?.name || '—');
+  const ownerContact = `${esc(owner?.phoneNumber || '—')} / ${esc(owner?.email || '—')}`;
+
+  const diagnoses = (record.diagnoses?.length > 0
+    ? record.diagnoses.map(dx => dx.severity ? `${dx.name} (${dx.severity.toUpperCase()})` : dx.name).join('; ')
+    : (record.diagnosis || '—'));
 
   const htmlContent = `
-    <html>
-      <head>
-        <style>
-          body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 20px 40px; color: #1A1A1A; line-height: 1.5; }
-          .header-container { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px; }
-          .clinic-info { flex: 1; }
-          .clinic-name { font-size: 22px; font-weight: 900; color: #1A1A1A; margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: -0.5px; }
-          .clinic-meta { font-size: 11px; color: #666; margin: 0; }
-          
-          .doc-badge { background: #1A1A1A; color: #FFFFFF; padding: 8px 16px; font-size: 12px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
-          
-          .memo-grid { display: table; width: 100%; border-top: 2px solid #1A1A1A; border-bottom: 1px solid #E5E5E5; margin-bottom: 24px; padding: 12px 0; }
-          .memo-row { display: table-row; }
-          .memo-label { display: table-cell; width: 100px; font-size: 10px; font-weight: 900; color: #888; padding: 4px 0; text-transform: uppercase; letter-spacing: 1px; }
-          .memo-value { display: table-cell; font-size: 13px; font-weight: 700; color: #1A1A1A; padding: 4px 0; }
-          
-          .section-anchor { font-size: 11px; font-weight: 900; color: #888; text-transform: uppercase; letter-spacing: 1.5px; margin: 24px 0 8px 0; border-bottom: 1px dashed #E5E5E5; padding-bottom: 4px; }
-          .content-text { font-size: 14px; color: #1A1A1A; font-weight: 500; margin: 0; }
-          .bullet-list { margin: 8px 0; padding-left: 16px; list-style-type: none; }
-          .bullet-item { font-size: 14px; color: #1A1A1A; margin-bottom: 6px; position: relative; }
-          .bullet-item::before { content: "•"; position: absolute; left: -14px; color: #888; }
-          
-          .vitals-table { width: 100%; border-collapse: collapse; margin: 8px 0; }
-          .vitals-row { border-bottom: 1px dashed #F0F0F0; }
-          .vitals-label { font-size: 11px; font-weight: 900; color: #888; padding: 8px 0; text-transform: uppercase; }
-          .vitals-value { font-size: 13px; font-weight: 700; color: #1A1A1A; text-align: right; padding: 8px 0; font-family: monospace; }
-          .stipple { color: #DDD; font-weight: 400; letter-spacing: 2px; }
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <style>
+        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 30px 45px; color: #1A1A1A; line-height: 1.4; }
+        
+        /* Header & Identity */
+        .header-container { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 25px; }
+        .clinic-info { flex: 1; }
+        .clinic-name { font-size: 20px; font-weight: 900; margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: -0.5px; }
+        .clinic-meta { font-size: 10px; color: #666; margin: 0; font-weight: 500; }
+        .doc-badge { background: #1A1A1A; color: #FFF; padding: 6px 12px; font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; }
 
-          .signature-area { margin-top: 60px; display: flex; flex-direction: column; align-items: flex-end; }
-          .sig-label { font-size: 10px; font-weight: 700; color: #888; font-style: italic; margin-bottom: 4px; }
-          .sig-name { font-size: 14px; font-weight: 900; color: #1A1A1A; margin-bottom: 4px; }
-          .sig-line { width: 200px; height: 1px; background: #1A1A1A; margin-bottom: 4px; }
-          .sig-title { font-size: 9px; font-weight: 900; color: #888; letter-spacing: 1px; text-transform: uppercase; }
-          
-          .reg-footer { margin-top: 40px; border-top: 1px solid #E5E5E5; padding-top: 12px; display: flex; justify-content: space-between; font-size: 9px; color: #AAA; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-        </style>
-      </head>
-      <body>
-        <div class="header-container">
-          <div class="clinic-info">
-            <h1 class="clinic-name">${clinicName}</h1>
-            <p class="clinic-meta">${clinicAddress}</p>
-            <p class="clinic-meta">T: ${clinicPhone} | E: ${clinicEmail}</p>
-          </div>
-          <div class="doc-badge">Visit Summary</div>
+        .signalment-grid { 
+          display: grid; 
+          grid-template-columns: 110px 1fr 110px 1fr; 
+          width: 100%; 
+          border-top: 2px solid #1A1A1A; 
+          border-bottom: 2px solid #1A1A1A; 
+          margin-bottom: 20px; 
+          padding: 10px 0;
+        }
+        .sig-row { display: contents; }
+        .sig-label { font-size: 9px; font-weight: 900; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; padding: 4px 0; }
+        .sig-value { font-size: 13px; font-weight: 700; color: #1A1A1A; padding: 4px 0; }
+
+        /* Sections */
+        .section-anchor { font-size: 10px; font-weight: 900; color: #888; text-transform: uppercase; letter-spacing: 1.5px; margin: 24px 0 10px 0; border-bottom: 1px solid #EEE; padding-bottom: 4px; }
+        .content-text { font-size: 14px; margin: 0; font-weight: 500; }
+        
+        /* Allergy Alert */
+        .allergy-alert { background: #D32F2F; color: #FFF; padding: 8px 12px; font-weight: 900; font-size: 11px; text-transform: uppercase; margin-bottom: 20px; letter-spacing: 1px; }
+
+        /* Tables */
+        .vitals-table { width: 100%; border-collapse: collapse; margin-top: 5px; }
+        .vitals-row { border-bottom: 1px dashed #E5E5E5; }
+        .vitals-label { font-size: 10px; font-weight: 900; color: #888; padding: 8px 0; text-transform: uppercase; }
+        .vitals-value { font-size: 13px; font-weight: 700; text-align: right; padding: 8px 0; font-family: monospace; }
+        
+        .data-table { width: 100%; border-collapse: collapse; margin-top: 5px; }
+        .data-table th { font-size: 9px; font-weight: 900; color: #888; text-transform: uppercase; text-align: left; padding: 8px; border-bottom: 2px solid #1A1A1A; }
+        .data-table td { font-size: 12px; padding: 8px; border-bottom: 1px solid #EEE; vertical-align: middle; }
+        
+        .status-badge { padding: 2px 6px; font-size: 9px; font-weight: 900; border-radius: 0; text-transform: uppercase; }
+        .status-normal { background: #E8F5E9; color: #2E7D32; }
+        .status-abnormal { background: #FFEBEE; color: #D32F2F; }
+
+        .bullet-list { margin-top: 5px; }
+        .bullet-item { padding: 8px 12px; border-left: 3px solid #EEE; margin-bottom: 8px; background: #FAFAFA; }
+
+        /* Signature & Footer */
+        .footer-area { margin-top: 50px; display: flex; justify-content: flex-end; align-items: flex-end; }
+        .signature-block { width: 220px; }
+        .sig-line { border-bottom: 1px solid #1A1A1A; height: 35px; margin-bottom: 5px; }
+        .sig-label { font-size: 9px; font-weight: 900; color: #888; text-transform: uppercase; }
+        
+        .legal-footer { border-top: 1px solid #EEE; padding-top: 15px; margin-top: 30px; display: flex; justify-content: space-between; font-size: 9px; color: #AAA; font-weight: 700; text-transform: uppercase; }
+      </style>
+    </head>
+    <body>
+      <div class="header-container">
+        <div class="clinic-info">
+          <h1 class="clinic-name">${clinicName}</h1>
+          <p class="clinic-meta">${clinicAddress}</p>
+          <p class="clinic-meta">TEL: ${clinicPhone} &middot; EMAIL: ${clinicEmail}</p>
         </div>
+        <div class="doc-badge">Visit Summary</div>
+      </div>
 
-        <div class="memo-grid">
-          <div class="memo-row">
-            <div class="memo-label">Services</div>
-            <div class="memo-value">${esc(servicesText)}</div>
-          </div>
-          <div class="memo-row">
-            <div class="memo-label">Staff</div>
-            <div class="memo-value">${esc(staffText)}</div>
-          </div>
-          <div class="memo-row">
-            <div class="memo-label">Patient</div>
-            <div class="memo-value">${esc(petName)}</div>
-          </div>
-          <div class="memo-row">
-            <div class="memo-label">Date</div>
-            <div class="memo-value">${esc(dateStr)}</div>
-          </div>
+      <div class="signalment-grid">
+        <div class="sig-row">
+          <div class="sig-label">Patient</div>
+          <div class="sig-value">${petName}</div>
+          <div class="sig-label">Type</div>
+          <div class="sig-value">${speciesBreed}</div>
         </div>
+        <div class="sig-row">
+          <div class="sig-label">Sex</div>
+          <div class="sig-value">${pet?.gender === 'Male' ? (pet?.isNeutered ? 'Male Neutered (MN)' : 'Male Intact (MI)')
+            : pet?.gender === 'Female' ? (pet?.isNeutered ? 'Female Spayed (FS)' : 'Female Intact (FI)')
+            : '—'}</div>
+          <div class="sig-label">Age</div>
+          <div class="sig-value">${esc(pet?.dob ? calculateAge(pet.dob) : '—')}</div>
+        </div>
+        <div class="sig-row">
+          <div class="sig-label">Allergies</div>
+          <div class="sig-value" style="grid-column: span 3;">${esc(pet?.allergies || 'None Recorded')}</div>
+        </div>
+        <div class="sig-row">
+          <div class="sig-label">Owner</div>
+          <div class="sig-value">${ownerName}</div>
+          <div class="sig-label">Contact</div>
+          <div class="sig-value">${ownerContact}</div>
+        </div>
+        <div class="sig-row">
+          <div class="sig-label">Visit Date</div>
+          <div class="sig-value">${esc(dateStr)}</div>
+          <div class="sig-label">Attending</div>
+          <div class="sig-value">${esc(record.vetName || 'Authorized Clinician')}</div>
+        </div>
+      </div>
 
-        ${record.soap?.subjective ? `
-          <div class="section-anchor">Reason for Visit</div>
-          <p class="content-text" style="font-size: 16px; font-weight: 700;">${esc(record.soap.subjective)}</p>
-        ` : ''}
+      ${record.soap?.subjective ? `
+        <div class="section-anchor">Subjective / Chief Complaint</div>
+        <p class="content-text">${esc(record.soap.subjective)}</p>
+      ` : ''}
 
-        ${dsDiagnosisList.length > 0 ? `
-          <div class="section-anchor">${dxLabel}</div>
-          ${hasMultipleDx ? `
-            <ul class="bullet-list">
-              ${dsDiagnosisList.map(dx => `<li class="bullet-item">${esc(dx.name)}${dx.severity ? ` (${esc(dx.severity.toUpperCase())})` : ''}</li>`).join('')}
-            </ul>
-          ` : `<p class="content-text">${esc(dsDiagnosisList[0].name)}${dsDiagnosisList[0].severity ? ` (${esc(dsDiagnosisList[0].severity.toUpperCase())})` : ''}</p>`}
-        ` : ''}
+      ${renderExamSection(record)}
+      ${renderVitalsSection(pdfVitals)}
+      
+      <div class="section-anchor">Diagnosis / Findings</div>
+      <div style="font-size: 14px; font-weight: 500; color: #1A1A1A; margin-top: 4px; margin-bottom: 24px;">
+        ${esc(diagnoses)}
+      </div>
+      ${renderLabResultsSection(record.labResults)}
+      ${renderVaccineSection(record.vaccineAdministrations || record.vaccineData)}
+      ${renderPrescriptionsSection(record.prescriptions || record.dispensedProducts)}
+      ${renderServicesSection(record, services)}
+      ${renderDischargeSection(record.dischargeSummary, record.soap?.prognosis)}
 
-        ${hasAnyVital ? `
-          <div class="section-anchor">Vitals</div>
-          <table class="vitals-table">
-            <tr class="vitals-row">
-              <td class="vitals-label">Weight <span class="stipple">................</span></td>
-              <td class="vitals-value">${esc(pdfVitals.weight || '-')} kg</td>
-              <td style="width: 40px;"></td>
-              <td class="vitals-label">Temperature <span class="stipple">...........</span></td>
-              <td class="vitals-value">${esc(pdfVitals.temp || '-')} &deg;C</td>
-            </tr>
-            <tr class="vitals-row">
-              <td class="vitals-label">Heart Rate <span class="stipple">...........</span></td>
-              <td class="vitals-value">${esc(pdfVitals.hr || '-')} bpm</td>
-              <td style="width: 40px;"></td>
-              <td class="vitals-label">Resp Rate <span class="stipple">.............</span></td>
-              <td class="vitals-value">${esc(pdfVitals.rr || '-')} br/min</td>
-            </tr>
-            <tr class="vitals-row">
-              <td class="vitals-label">CRT <span class="stipple">..................</span></td>
-              <td class="vitals-value">${esc(pdfVitals.crt || '-')} s</td>
-              <td style="width: 40px;"></td>
-              <td class="vitals-label">BCS <span class="stipple">..................</span></td>
-              <td class="vitals-value">${esc(pdfVitals.bcs || '-')} / 9</td>
-            </tr>
-          </table>
-        ` : ''}
-
-        ${hasDischarge && dsInstructions ? `
-          <div class="section-anchor">Discharge Notes</div>
-          <p class="content-text" style="line-height: 1.6;">${esc(dsInstructions).replace(/\n/g, '<br/>')}</p>
-        ` : ''}
-
-        ${hasDischarge && dsMeds.length > 0 ? `
-          <div class="section-anchor">Medications</div>
-          <ul class="bullet-list">
-            ${dsMeds.map(med => `
-              <li class="bullet-item">
-                <b>${esc(med.name)}</b> x${esc(med.qty || 1)}: ${esc(med.instructions || 'Use as directed')}
-              </li>
-            `).join('')}
-          </ul>
-        ` : ''}
-
-        ${nextVisitStr ? `
-          <div class="section-anchor">Next Steps</div>
-          <p class="content-text" style="color: #D32F2F; font-weight: 900;">RECHECK IN: ${esc(nextVisitStr)}</p>
-        ` : ''}
-
-        <div class="signature-area">
-          <div class="sig-label">Signed by</div>
-          <div class="sig-name">${esc(record.vetName || 'Authorized Clinician')}</div>
+      <div class="footer-area">
+        <div class="signature-block">
           <div class="sig-line"></div>
-          <div class="sig-title">Attending Veterinarian</div>
+          <div class="sig-label">Attending Veterinarian Signature</div>
+          <div style="font-size: 13px; font-weight: 700; margin-top: 4px;">${esc(record.vetName || 'Authorized Clinician')}</div>
         </div>
+      </div>
 
-        <div class="reg-footer">
-          <span>BAI Reg No: ${baiReg}</span>
-          <span>TIN: ${clinicTIN}</span>
-        </div>
-      </body>
+      <div class="legal-footer">
+        <span>BAI Reg No: ${esc(clinicBAI)}</span>
+        <span>TIN: ${esc(clinicTIN)}</span>
+        <span>Generated: ${esc(new Date().toLocaleString('en-PH', { dateStyle: 'long', timeStyle: 'short' }))}</span>
+      </div>
+    </body>
     </html>
   `;
 

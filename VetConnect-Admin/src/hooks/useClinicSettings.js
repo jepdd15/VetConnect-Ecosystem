@@ -14,6 +14,7 @@ const DEFAULT_SETTINGS = {
   clinicName: '',
   clinicAddress: '',
   clinicPhone: '', // Configurable via Settings > General — displayed to clients
+  clinicEmail: '',
   clinicTIN: '',
   baiRegistrationNumber: '',
   clinicLat: 16.0389,    // GPS latitude for geofence center

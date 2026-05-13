@@ -310,6 +310,8 @@ export default function PatientDashboard() {
       clinicName: clinicSettings.clinicName,
       clinicAddress: clinicSettings.clinicAddress,
       clinicPhone: clinicSettings.clinicPhone,
+      clinicEmail: clinicSettings.clinicEmail,
+      clinicTIN: clinicSettings.clinicTIN,
       clinicBAI: clinicSettings.baiRegistrationNumber,
       vetStaff,
       pulseSummary,

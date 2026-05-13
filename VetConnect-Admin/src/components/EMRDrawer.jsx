@@ -16,13 +16,15 @@ import { db } from '../firebaseConfig';
 import { FONT, COLORS, TYPE, STATUS_COLORS } from '../theme/designTokens';
 import { resolveVitals } from '../utils/resolveVitals';
 import { resolveObjectiveText, hasExamData, examSummaryLine } from '../utils/examUtils';
-import { openPrintWindow, PRINT_STYLES, formatPrintDate, esc } from '../utils/printUtils';
+import { openPrintWindow, UNIFIED_PRINT_STYLES, formatPrintDate, esc } from '../utils/printUtils';
 import {
   renderVitalsSection,
   renderPrescriptionsSection,
   renderVaccineSection,
   renderLabResultsSection,
   renderDischargeSection,
+  renderExamSection,
+  renderServicesSection,
 } from '../utils/printVisitSummary';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -771,30 +773,36 @@ export default function EMRDrawer({
 
       return `
         <div ${pageBreak}>
-          <h2 style="margin-top:24px; border-bottom:2px solid #5D4037;">
+          <div class="section-anchor" style="border-bottom: 2px solid #1A1A1A; font-size: 14px; padding-bottom: 8px; margin-bottom: 16px;">
             ${dateStr} — ${esc(diagnosis)}
-          </h2>
-          <div class="info-grid">
-            <div><span class="label">Service:</span> <span class="value">${serviceType}</span></div>
-            <div><span class="label">Vet:</span> <span class="value">${vetName}</span></div>
-            <div><span class="label">Status:</span> <span class="value">${esc((rec.status || 'completed').toUpperCase())}</span></div>
           </div>
-          <table>
-            <thead><tr><th style="width:18%">Section</th><th>Notes</th></tr></thead>
-            <tbody>
-              <tr><td><strong>Subjective</strong></td><td style="white-space:pre-wrap">${esc(rec.subjective || rec.soap?.subjective || '—')}</td></tr>
-              <tr><td><strong>Objective</strong></td><td style="white-space:pre-wrap">${esc(resolveObjectiveText(rec) || '—')}</td></tr>
-              <tr><td><strong>Assessment</strong></td><td style="white-space:pre-wrap">${esc(diagnosis)}</td></tr>
-              <tr><td><strong>Plan</strong></td><td style="white-space:pre-wrap">${esc(rec.plan || rec.soap?.plan || rec.treatment || '—')}</td></tr>
-            </tbody>
-          </table>
+          <div class="memo-grid" style="border-top: none; padding-top: 0;">
+            <div class="memo-row">
+              <div class="memo-label">Service</div>
+              <div class="memo-value">${serviceType}</div>
+              <div class="memo-label">Attending</div>
+              <div class="memo-value">Dr. ${vetName}</div>
+            </div>
+          </div>
+
+          <div class="section-anchor">Clinical Notes</div>
+          ${rec.subjective ? `
+            <div style="margin-bottom: 12px;">
+              <span style="font-size: 10px; font-weight: 900; color: #888; text-transform: uppercase;">Subjective</span>
+              <p class="content-text">${esc(rec.subjective)}</p>
+            </div>
+          ` : ''}
+
+          ${renderExamSection(rec)}
+
           ${renderVitalsSection(rv)}
           ${renderPrescriptionsSection(rec.dispensedProducts || rec.prescriptions)}
           ${(rec.vaccineAdministrations?.length > 0
             ? rec.vaccineAdministrations.map(v => renderVaccineSection(v)).join('')
             : renderVaccineSection(rec.vaccineData))}
           ${renderLabResultsSection(rec.labResults)}
-          ${renderDischargeSection(rec.dischargeSummary)}
+          ${renderServicesSection(rec)}
+          ${renderDischargeSection(rec.dischargeSummary, rec.soap?.prognosis)}
         </div>
       `;
     }).join('');
@@ -804,7 +812,7 @@ export default function EMRDrawer({
 <head>
   <meta charset="UTF-8" />
   <title>Full EMR — ${esc(petName || 'Patient')}</title>
-  <style>${PRINT_STYLES}</style>
+  <style>${UNIFIED_PRINT_STYLES}</style>
 </head>
 <body>
   <div class="clinic-header">

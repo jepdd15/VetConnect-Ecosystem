@@ -780,6 +780,7 @@ export default function PetHistoryScreen({ route, navigation }) {
 
   // T4.97: AI Pet History Assistant — pet doc, worker URL, and sheet visibility
   const [petDoc, setPetDoc]               = useState(null);
+  const [ownerDoc, setOwnerDoc]           = useState(null);
   const [workerUrl, setWorkerUrl]         = useState('');
   const [aiSheetVisible, setAiSheetVisible] = useState(false);
 
@@ -847,7 +848,15 @@ export default function PetHistoryScreen({ route, navigation }) {
       try {
         const snap = await getDoc(doc(db, 'pets', petId));
         if (!cancelled && snap.exists()) {
-          setPetDoc({ id: snap.id, ...snap.data() });
+          const pData = { id: snap.id, ...snap.data() };
+          setPetDoc(pData);
+          
+          if (pData.ownerId) {
+            const ownerSnap = await getDoc(doc(db, 'users', pData.ownerId));
+            if (!cancelled && ownerSnap.exists()) {
+              setOwnerDoc({ id: ownerSnap.id, ...ownerSnap.data() });
+            }
+          }
         }
       } catch {
         // Non-critical — AI prompt falls back to { name: petName }
@@ -1551,8 +1560,17 @@ export default function PetHistoryScreen({ route, navigation }) {
   const generatePDF = (record) =>
     generateVisitPDF({
       record,
-      petName,
+      pet: petDoc,
+      owner: ownerDoc,
       services: appointmentServicesMap[record.id],
+      clinicSettings: {
+        clinicName,
+        clinicAddress,
+        clinicPhone,
+        clinicEmail,
+        clinicTIN,
+        baiRegistrationNumber,
+      }
     });
 
   const handleOpenAttachment = (url) => {
@@ -2380,12 +2398,7 @@ export default function PetHistoryScreen({ route, navigation }) {
             <View style={[styles.actionsRow, { justifyContent: 'flex-end' }]}>
               <TouchableOpacity 
                 style={styles.actionBtn} 
-                onPress={() => generateVisitPDF({ 
-                  record: item, 
-                  petName, 
-                  services: item.services,
-                  clinicSettings: { clinicPhone, clinicName, clinicAddress, clinicTIN, baiRegistrationNumber, clinicEmail }
-                })}
+                onPress={() => generatePDF(item)}
               >
                 <MaterialIcons name="picture-as-pdf" size={16} color={COLORS.accent} />
                 <Text style={styles.actionBtnText}>Visit Summary</Text>

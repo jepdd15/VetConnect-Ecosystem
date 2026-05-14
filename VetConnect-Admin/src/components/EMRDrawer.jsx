@@ -47,7 +47,10 @@ import {
   renderDischargeSection,
   renderExamSection,
   renderServicesSection,
+  generateVisitSummaryHTML,
 } from '../utils/printVisitSummary';
+import { generateInternalRecordHTML, generateCombinedPrintHTML } from '../utils/printInternalRecord';
+import { useClinicSettings } from '../hooks/useClinicSettings';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -94,8 +97,19 @@ const resolveProductClass = (rx) => {
 
 // ─── Single expanded record card ─────────────────────────────────────────────
 
-const RecordCard = ({ record, appointmentId }) => {
+const RecordCard = ({ record, appointmentId, onPrint }) => {
   const [expanded, setExpanded] = useState(false);
+  const [printAnchor, setPrintAnchor] = useState(null);
+
+  const handlePrintClick = (e) => {
+    e.stopPropagation();
+    setPrintAnchor(e.currentTarget);
+  };
+
+  const handlePrintSelect = (mode) => {
+    setPrintAnchor(null);
+    onPrint(record, mode);
+  };
 
   const isCurrentVisit = !!(appointmentId && record.appointmentId === appointmentId);
   const dateStr = formatDate(record.createdAt || record.date);
@@ -144,9 +158,48 @@ const RecordCard = ({ record, appointmentId }) => {
           </Box>
         )}
 
-        {/* Expand Icon */}
-        <Box sx={{ color: COLORS.accent }}>{expanded ? <ExpandLessIcon sx={{ fontSize: 20 }}/> : <ExpandMoreIcon sx={{ fontSize: 20 }}/>}</Box>
+        {/* Action Cluster: Print & Expand */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Tooltip title="Print Record Options">
+            <IconButton 
+              size="small" 
+              onClick={handlePrintClick}
+              sx={{ color: COLORS.brand, '&:hover': { bgcolor: `${COLORS.brand}12` } }}
+            >
+              <PrintIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Tooltip>
+          <Box sx={{ color: COLORS.accent }}>{expanded ? <ExpandLessIcon sx={{ fontSize: 20 }}/> : <ExpandMoreIcon sx={{ fontSize: 20 }}/>}</Box>
+        </Box>
       </Box>
+
+
+      {/* Per-Record Print Menu (Elevated Layer) */}
+      <Menu
+        anchorEl={printAnchor}
+        open={Boolean(printAnchor)}
+        onClose={() => setPrintAnchor(null)}
+        sx={{ zIndex: 3000 }}
+        disableScrollLock
+        PaperProps={{
+          sx: {
+            borderRadius: 0, border: `2px solid ${COLORS.brand}`,
+            boxShadow: `4px 4px 0 ${COLORS.brand}`,
+            mt: 0.5,
+          }
+        }}
+      >
+        <MenuItem onClick={() => handlePrintSelect('client')} sx={{ py: 1 }}>
+          <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 800, color: COLORS.brand }}>CLIENT VISIT SUMMARY</Typography>
+        </MenuItem>
+        <MenuItem onClick={() => handlePrintSelect('internal')} sx={{ py: 1 }}>
+          <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 800, color: COLORS.brand }}>INTERNAL MEDICAL RECORD</Typography>
+        </MenuItem>
+        <Divider sx={{ borderColor: COLORS.borderLight }} />
+        <MenuItem onClick={() => handlePrintSelect('combined')} sx={{ py: 1 }}>
+          <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 800, color: COLORS.brand }}>COMBINED PRINT (BOTH)</Typography>
+        </MenuItem>
+      </Menu>
 
       {/* Expanded Body — Clinical Command Center */}
       <Collapse in={expanded} timeout={200}>
@@ -500,6 +553,59 @@ export default function EMRDrawer({
   const [medAnchorEl, setMedAnchorEl] = useState(null);
   const [supplyAnchorEl, setSupplyAnchorEl] = useState(null);
   const [retailAnchorEl, setRetailAnchorEl] = useState(null);
+  const [fullPrintAnchorEl, setFullPrintAnchorEl] = useState(null);
+
+  const clinicSettings = useClinicSettings();
+
+  const handlePrintRecord = async (rec, mode) => {
+    if (!rec) return;
+
+    let vetStaff = null;
+    const vetUid = rec.vetId || rec.signedBy?.uid;
+    
+    // Attempt to resolve staff from drawer's staffList first (high-speed lookup)
+    if (vetUid) {
+      vetStaff = staffList.find(s => s.id === vetUid);
+    }
+    
+    // Fallback to Firestore if not found in list
+    if (!vetStaff && (vetUid || rec.vetName)) {
+      try {
+        if (vetUid) {
+          const staffDoc = await getDoc(doc(db, 'users', vetUid));
+          if (staffDoc.exists()) vetStaff = staffDoc.data();
+        } else if (rec.vetName) {
+          const snap = await getDocs(query(collection(db, 'users'), where('fullName', '==', rec.vetName)));
+          if (!snap.empty) vetStaff = snap.docs[0].data();
+        }
+      } catch (e) {
+        console.warn('[EMRDrawer] Staff resolution failed for print:', e);
+      }
+    }
+
+    const commonParams = {
+      record: rec,
+      pet: petData,
+      owner: ownerData,
+      clinicName: clinicSettings.clinicName,
+      clinicAddress: clinicSettings.clinicAddress,
+      clinicPhone: clinicSettings.clinicPhone,
+      clinicEmail: clinicSettings.clinicEmail,
+      clinicTIN: clinicSettings.clinicTIN,
+      clinicBAI: clinicSettings.baiRegistrationNumber,
+      vetStaff,
+    };
+
+    if (mode === 'client') {
+      openPrintWindow(generateVisitSummaryHTML(commonParams));
+    } else if (mode === 'internal') {
+      openPrintWindow(generateInternalRecordHTML(commonParams));
+    } else {
+      const clientHTML = generateVisitSummaryHTML(commonParams);
+      const internalHTML = generateInternalRecordHTML(commonParams);
+      openPrintWindow(generateCombinedPrintHTML(clientHTML, internalHTML));
+    }
+  };
 
   const handleDeptClick = (e) => { e.stopPropagation(); setDeptAnchorEl(e.currentTarget); };
   const handleDeptClose = () => setDeptAnchorEl(null);
@@ -875,80 +981,77 @@ export default function EMRDrawer({
     return result;
   }, [searchFiltered, typeFilters, staffFilters, diagnosisFilters, labFilters, medFilters, supplyFilters, retailFilters, dateRangeType, customStart, customEnd]);
 
-  const handlePrintFullEMR = () => {
-    if (records.length === 0) return;
+  const handlePrintFullEMR = async (mode = 'internal') => {
+    setFullPrintAnchorEl(null);
+    if (filteredRecords.length === 0) return;
 
-    let lastYear = null;
-    const recordsHtml = records.map(rec => {
-      const d = resolveRecordDate(rec);
-      const year = !isNaN(d.getTime()) ? d.getFullYear() : null;
-      const pageBreak = lastYear !== null && year !== lastYear ? 'style="page-break-before: always;"' : '';
-      lastYear = year;
+    // Batch bodies collection
+    const batchBodies = [];
+    
+    for (const rec of filteredRecords) {
+      let vetStaff = null;
+      const vetUid = rec.vetId || rec.signedBy?.uid;
+      
+      if (vetUid) {
+        vetStaff = staffList.find(s => s.id === vetUid);
+      }
+      
+      if (!vetStaff && (vetUid || rec.vetName)) {
+        try {
+          if (vetUid) {
+            const staffDoc = await getDoc(doc(db, 'users', vetUid));
+            if (staffDoc.exists()) vetStaff = staffDoc.data();
+          } else if (rec.vetName) {
+            const snap = await getDocs(query(collection(db, 'users'), where('fullName', '==', rec.vetName)));
+            if (!snap.empty) vetStaff = snap.docs[0].data();
+          }
+        } catch (e) {
+          console.warn('[EMRDrawer] Staff resolution failed for batch print:', e);
+        }
+      }
 
-      const rv = resolveVitals(rec);
-      const diagnosis = rec.diagnoses?.length > 0
-        ? rec.diagnoses.map(dx => dx.severity ? `${dx.name} (${dx.severity})` : dx.name).join('; ')
-        : (rec.diagnosis || rec.assessment || '—');
-      const dateStr = formatPrintDate(rec.date || rec.createdAt);
-      const vetName = esc(rec.vetName || 'Unknown');
-      const serviceType = esc(rec.serviceType || rec.primaryService || '');
+      const commonParams = {
+        record: rec,
+        pet: petData,
+        owner: ownerData,
+        clinicName: clinicSettings.clinicName,
+        clinicAddress: clinicSettings.clinicAddress,
+        clinicPhone: clinicSettings.clinicPhone,
+        clinicEmail: clinicSettings.clinicEmail,
+        clinicTIN: clinicSettings.clinicTIN,
+        clinicBAI: clinicSettings.baiRegistrationNumber,
+        vetStaff,
+      };
 
-      return `
-        <div ${pageBreak}>
-          <div class="section-anchor" style="border-bottom: 2px solid #1A1A1A; font-size: 14px; padding-bottom: 8px; margin-bottom: 16px;">
-            ${dateStr} — ${esc(diagnosis)}
-          </div>
-          <div class="memo-grid" style="border-top: none; padding-top: 0;">
-            <div class="memo-row">
-              <div class="memo-label">Service</div>
-              <div class="memo-value">${serviceType}</div>
-              <div class="memo-label">Attending</div>
-              <div class="memo-value">Dr. ${vetName}</div>
-            </div>
-          </div>
+      let recordHtml = '';
+      if (mode === 'client') {
+        recordHtml = generateVisitSummaryHTML(commonParams);
+      } else if (mode === 'internal') {
+        recordHtml = generateInternalRecordHTML(commonParams);
+      } else {
+        const c = generateVisitSummaryHTML(commonParams);
+        const i = generateInternalRecordHTML(commonParams);
+        recordHtml = generateCombinedPrintHTML(c, i);
+      }
 
-          <div class="section-anchor">Clinical Notes</div>
-          ${rec.subjective ? `
-            <div style="margin-bottom: 12px;">
-              <span style="font-size: 10px; font-weight: 900; color: #888; text-transform: uppercase;">Subjective</span>
-              <p class="content-text">${esc(rec.subjective)}</p>
-            </div>
-          ` : ''}
+      const bodyMatch = recordHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+      const cleanBody = bodyMatch ? bodyMatch[1] : recordHtml;
+      batchBodies.push(`<div style="page-break-after: always;">${cleanBody}</div>`);
+    }
 
-          ${renderExamSection(rec)}
-
-          ${renderVitalsSection(rv)}
-          ${renderPrescriptionsSection(rec.dispensedProducts || rec.prescriptions)}
-          ${(rec.vaccineAdministrations?.length > 0
-            ? rec.vaccineAdministrations.map(v => renderVaccineSection(v)).join('')
-            : renderVaccineSection(rec.vaccineData))}
-          ${renderLabResultsSection(rec.labResults)}
-          ${renderServicesSection(rec)}
-          ${renderDischargeSection(rec.dischargeSummary, rec.soap?.prognosis)}
-        </div>
-      `;
-    }).join('');
-
-    const html = `<!DOCTYPE html>
+    const finalHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Full EMR — ${esc(petName || 'Patient')}</title>
+  <title>EMR Archive — ${esc(petName || 'Patient')}</title>
   <style>${UNIFIED_PRINT_STYLES}</style>
 </head>
-<body>
-  <div class="clinic-header">
-    <p class="doc-title">Complete Medical Record</p>
-    <p class="clinic-address">${esc(petName || 'Unknown Patient')}${petSpecies ? ' · ' + esc(petSpecies) : ''} · ${records.length} record${records.length !== 1 ? 's' : ''}</p>
-  </div>
-  ${recordsHtml}
-  <div class="footer">
-    Generated on ${new Date().toLocaleString('en-PH', { dateStyle: 'long', timeStyle: 'short' })} · Full EMR Export
-  </div>
+<body style="margin: 0; padding: 0;">
+  ${batchBodies.join('')}
 </body>
 </html>`;
 
-    openPrintWindow(html);
+    openPrintWindow(finalHtml);
   };
 
   const getDateLabel = () => {
@@ -1021,13 +1124,63 @@ export default function EMRDrawer({
               </Typography>
             </Box>
             <Box sx={{ width: '2px', height: 32, bgcolor: 'rgba(255,255,255,0.1)' }} />
-            <Tooltip title="Print Full EMR">
+            <Tooltip title="Print Full EMR Options">
               <span>
-                <IconButton onClick={handlePrintFullEMR} size="small" disabled={records.length === 0} sx={{ color: '#FFF8E1', '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' } }}>
+                <IconButton 
+                  onClick={(e) => setFullPrintAnchorEl(e.currentTarget)} 
+                  size="small" 
+                  disabled={records.length === 0} 
+                  sx={{ color: '#FFF8E1', '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' } }}
+                >
                   <PrintIcon sx={{ fontSize: 24 }} />
                 </IconButton>
               </span>
             </Tooltip>
+
+            <Menu
+              anchorEl={fullPrintAnchorEl}
+              open={Boolean(fullPrintAnchorEl)}
+              onClose={() => setFullPrintAnchorEl(null)}
+              sx={{ zIndex: 3000 }}
+              disableScrollLock
+              PaperProps={{
+                sx: {
+                  borderRadius: 0, border: `2px solid ${COLORS.brand}`,
+                  boxShadow: `4px 4px 0 ${COLORS.brand}`,
+                  mt: 1,
+                }
+              }}
+            >
+              <MenuItem onClick={() => handlePrintFullEMR('client')} sx={{ py: 1.5 }}>
+                <Stack direction="row" spacing={1.5} alignItems="center">
+                  <PersonIcon sx={{ color: COLORS.brand }} />
+                  <Box>
+                    <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', fontWeight: 800, color: COLORS.brand }}>CLIENT FACING (FULL)</Typography>
+                    <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted }}>Symmetric visit summaries for owners</Typography>
+                  </Box>
+                </Stack>
+              </MenuItem>
+              <MenuItem onClick={() => handlePrintFullEMR('internal')} sx={{ py: 1.5 }}>
+                <Stack direction="row" spacing={1.5} alignItems="center">
+                  <ShieldIcon sx={{ color: COLORS.brand }} />
+                  <Box>
+                    <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', fontWeight: 800, color: COLORS.brand }}>INTERNAL RECORD (FULL)</Typography>
+                    <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted }}>Comprehensive forensic SOAP audit trail</Typography>
+                  </Box>
+                </Stack>
+              </MenuItem>
+              <Divider sx={{ borderColor: COLORS.borderLight }} />
+              <MenuItem onClick={() => handlePrintFullEMR('combined')} sx={{ py: 1.5 }}>
+                <Stack direction="row" spacing={1.5} alignItems="center">
+                  <AssignmentIcon sx={{ color: COLORS.brand }} />
+                  <Box>
+                    <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', fontWeight: 800, color: COLORS.brand }}>COMBINED ARCHIVE (BATCH)</Typography>
+                    <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted }}>Chronological export of both formats</Typography>
+                  </Box>
+                </Stack>
+              </MenuItem>
+            </Menu>
+
             <IconButton onClick={onClose} size="small" sx={{ color: '#FFF8E1', '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' } }}>
               <CloseIcon sx={{ fontSize: 26 }} />
             </IconButton>
@@ -1390,7 +1543,11 @@ export default function EMRDrawer({
                       </Typography>
                     </Box>
                   )}
-                  <RecordCard record={record} appointmentId={appointmentId} />
+                  <RecordCard 
+                    record={record} 
+                    appointmentId={appointmentId} 
+                    onPrint={handlePrintRecord}
+                  />
                 </React.Fragment>
               );
             });

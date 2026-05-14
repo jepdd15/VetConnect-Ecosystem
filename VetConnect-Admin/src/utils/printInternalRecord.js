@@ -1,4 +1,4 @@
-import { PRINT_STYLES, formatPrintDate, esc, calculatePetAge } from './printUtils';
+import { UNIFIED_PRINT_STYLES, formatPrintDate, esc, calculatePetAge } from './printUtils';
 import { resolveVitals } from './resolveVitals';
 import { resolveObjectiveText } from './examUtils';
 import {
@@ -8,21 +8,22 @@ import {
   renderLabResultsSection,
   renderDischargeSection,
   renderAttachmentsSection,
+  renderServicesSection,
 } from './printVisitSummary';
 
 function renderDiagnosesSection(diagnoses) {
   if (!diagnoses?.length) return '';
   const rows = diagnoses.map(d => `
     <tr>
-      <td><strong style="font-size:13px;">${esc(d.name || '—')}</strong></td>
+      <td><b style="font-size:13px;">${esc(d.name || '—')}</b></td>
       <td style="text-align:center;">${esc(d.severity || '—')}</td>
       <td style="text-align:center;">${esc(d.category || '—')}</td>
       <td>${esc(d.notes || '—')}</td>
     </tr>
   `).join('');
   return `
-    <h2>Diagnoses Detail</h2>
-    <table>
+    <div class="section-anchor">Diagnoses Detail (Internal)</div>
+    <table class="data-table">
       <thead>
         <tr><th>Name</th><th style="text-align:center;">Severity</th><th style="text-align:center;">Category</th><th>Clinical Notes</th></tr>
       </thead>
@@ -35,14 +36,14 @@ function renderExamChecklistSection(examChecklist) {
   if (!examChecklist || !Object.keys(examChecklist).length) return '';
   const rows = Object.entries(examChecklist).map(([system, finding]) => `
     <tr>
-      <td style="font-weight:600; text-transform:capitalize;">${esc(system.replace(/([A-Z])/g, ' $1').trim())}</td>
+      <td style="font-weight:900; text-transform:uppercase; font-size:10px; color:#888;">${esc(system.replace(/([A-Z])/g, ' $1').trim())}</td>
       <td>${esc(typeof finding === 'string' ? finding : (finding?.finding || finding?.value || JSON.stringify(finding)))}</td>
     </tr>
   `).join('');
   return `
-    <h2>Physical Exam</h2>
-    <table>
-      <thead><tr><th>System</th><th>Finding</th></tr></thead>
+    <div class="section-anchor">Physical Exam Checklist</div>
+    <table class="data-table">
+      <thead><tr><th style="width:150px;">System</th><th>Clinical Finding</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
   `;
@@ -58,66 +59,73 @@ function renderAmendmentHistorySection(amendments) {
       <tr>
         <td>${esc(a.vetName || a.by || '—')}</td>
         <td>${esc(ts)}</td>
-        <td>${esc(a.field || '—')}</td>
-        <td>${esc(String(a.oldValue ?? '—'))}</td>
-        <td>${esc(String(a.newValue ?? '—'))}</td>
+        <td><code style="font-size:10px;">${esc(a.field || '—')}</code></td>
+        <td style="color:#666;">${esc(String(a.oldValue ?? '—'))}</td>
+        <td style="font-weight:700;">${esc(String(a.newValue ?? '—'))}</td>
       </tr>
     `;
   }).join('');
   return `
-    <h2>Amendment History</h2>
-    <table>
-      <thead><tr><th>Vet</th><th>Timestamp</th><th>Field</th><th>Previous</th><th>Updated</th></tr></thead>
+    <div class="section-anchor">Audit Trail: Amendment History</div>
+    <table class="data-table">
+      <thead><tr><th>Clinician</th><th>Timestamp</th><th>Field</th><th>Previous</th><th>Updated</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
   `;
 }
 
-
-
-function renderHeadboard({ clinicName, clinicAddress, clinicPhone, clinicBAI, pet, owner, visitDate, vetName, vetPRC, vetPTR, department }) {
-  const sexLabel = pet?.gender === 'Male'
-    ? (pet?.isNeutered ? 'MN (Male Neutered)' : 'MI (Male Intact)')
-    : pet?.gender === 'Female'
-      ? (pet?.isNeutered ? 'FS (Female Spayed)' : 'FI (Female Intact)')
-      : '—';
-  const age = calculatePetAge(pet?.dob);
+function renderHeadboard({ clinicName, clinicAddress, clinicPhone, clinicEmail, pet, owner, visitDate, vetName, vetPRC, vetPTR, allergyList, contactLabel }) {
+  const petName = esc(pet?.name || '—');
+  const species = esc(pet?.species || '—');
+  const breed = esc((pet?.breed && pet.breed !== 'Unknown Breed') ? pet.breed : '—');
+  const typeLabel = `${species} (${breed})`;
+  
+  const sexLabel = pet?.gender === 'Male' ? (pet?.isNeutered ? 'Male Neutered (MN)' : 'Male Intact (MI)')
+    : pet?.gender === 'Female' ? (pet?.isNeutered ? 'Female Spayed (FS)' : 'Female Intact (FI)')
+    : '—';
+    
+  const ageLabel = calculatePetAge(pet?.dob);
+  const ownerName = esc(owner?.fullName || owner?.displayName || owner?.name || '—');
 
   return `
-    <div class="headboard">
-      <div class="headboard-column">
-        <div class="clinic-branding">
-          <div class="clinic-name">${esc(clinicName || 'Veterinary Clinic')}</div>
-          <div class="clinic-meta">${esc(clinicAddress || '')}</div>
-          ${clinicPhone ? `<div class="clinic-meta">TEL: ${esc(clinicPhone)}</div>` : ''}
-          ${clinicBAI ? `<div class="clinic-meta">BAI REG: ${esc(clinicBAI)}</div>` : ''}
-        </div>
+    <div class="header-container">
+      <div class="clinic-info">
+        <h1 class="clinic-name">${esc(clinicName || 'Veterinary Clinic')}</h1>
+        <p class="clinic-meta">${esc(clinicAddress || '')}</p>
+        <p class="clinic-meta">TEL: ${esc(clinicPhone || '—')} &middot; EMAIL: ${esc(clinicEmail || '—')}</p>
       </div>
+    </div>
 
-      <div class="headboard-column">
-        <div class="headboard-label">Patient / Owner</div>
-        <div class="headboard-value" style="font-size:15px; font-weight:900;">${esc(pet?.name || '—')}</div>
-        <div class="headboard-value" style="font-size:11px; opacity:0.8;">Owner: ${esc(owner?.fullName || owner?.displayName || owner?.name || '—')} (${esc(owner?.phone || owner?.contactNumber || '—')})</div>
-        
-        <div style="margin-top:8px;">
-          <div class="headboard-label">Species / Breed</div>
-          <div class="headboard-value">${esc(pet?.species || '—')} · ${esc(pet?.breed || '—')}</div>
-        </div>
-
-        <div style="margin-top:8px;">
-          <div class="headboard-label">Sex / Age</div>
-          <div class="headboard-value">${esc(sexLabel)} · ${esc(age)}</div>
-        </div>
+    <div class="memo-grid">
+      <div class="memo-row">
+        <div class="memo-label">Patient</div>
+        <div class="memo-value">${petName}</div>
+        <div class="memo-label">Type</div>
+        <div class="memo-value">${typeLabel}</div>
       </div>
-
-      <div class="headboard-column">
-        <div class="headboard-label">Visit Date</div>
-        <div class="headboard-value" style="font-size:14px;">${esc(visitDate)}</div>
-
-        <div style="margin-top:8px;">
-          <div class="headboard-label">Attending Veterinarian</div>
-          <div class="headboard-value">${esc(vetName)}</div>
-          ${vetPRC ? `<div class="clinic-meta" style="font-size:9px; margin-top:2px;">PRC: ${esc(vetPRC)}</div>` : ''}
+      <div class="memo-row">
+        <div class="memo-label">Sex</div>
+        <div class="memo-value">${sexLabel}</div>
+        <div class="memo-label">Age</div>
+        <div class="memo-value">${ageLabel}</div>
+      </div>
+      <div style="grid-column: span 4; border-top: 1px dashed #EEE; padding: 8px 0; margin-top: 4px;">
+        <div class="memo-label" style="margin-bottom: 2px;">Allergies</div>
+        <div class="memo-value" style="font-size: 14px; color: #1A1A1A;">${allergyList || 'None Recorded'}</div>
+      </div>
+      <div class="memo-row">
+        <div class="memo-label">Owner</div>
+        <div class="memo-value">${ownerName}</div>
+        <div class="memo-label">Contact</div>
+        <div class="memo-value">${contactLabel}</div>
+      </div>
+      <div class="memo-row">
+        <div class="memo-label">Visit Date</div>
+        <div class="memo-value">${visitDate}</div>
+        <div class="memo-label">Attending</div>
+        <div class="memo-value">
+          ${vetName} ${vetPRC ? `(PRC: ${vetPRC})` : ''}
+          <div style="font-size: 10px; color: #666; margin-top: 2px;">PTR No. ${esc(vetPTR || '—')}</div>
         </div>
       </div>
     </div>
@@ -126,7 +134,7 @@ function renderHeadboard({ clinicName, clinicAddress, clinicPhone, clinicBAI, pe
 
 export function generateInternalRecordHTML({
   record, pet, owner,
-  clinicName, clinicAddress, clinicPhone, clinicBAI,
+  clinicName, clinicAddress, clinicPhone, clinicEmail, clinicBAI, clinicTIN,
   vetStaff, appointment,
 }) {
   const rec = record || {};
@@ -136,7 +144,13 @@ export function generateInternalRecordHTML({
   const vetName = esc(vetStaff?.fullName || rec.vetName || '—');
   const vetPRC = esc(vetStaff?.prcLicense || '');
   const vetPTR = esc(vetStaff?.ptrNumber || '');
-  const department = esc(rec.department || appointment?.department || 'General');
+
+  const rawAllergies = pet?.petAllergies || pet?.allergies || rec.allergies;
+  const allergyList = (rawAllergies && !['None', 'None recorded', ''].includes(rawAllergies)) ? esc(rawAllergies) : null;
+
+  const ownerPhone = esc(owner?.phone || owner?.contactNumber || '—');
+  const ownerEmail = esc(owner?.email || '—');
+  const contactLabel = `${ownerPhone} | ${ownerEmail}`;
 
   const objectiveText = resolveObjectiveText(rec);
   
@@ -151,7 +165,6 @@ export function generateInternalRecordHTML({
     assessmentContent = soap.assessment || rec.diagnosis || '—';
   }
 
-  // Add Status & Prognosis badges
   const statusLine = [
     rec.patientStatus ? `STATUS: ${rec.patientStatus.toUpperCase()}` : '',
     rec.soap?.prognosis ? `PROGNOSIS: ${rec.soap.prognosis.toUpperCase()}` : ''
@@ -173,10 +186,8 @@ export function generateInternalRecordHTML({
   const soapHtml = soapSections.map(s => {
     const isEmpty = !s.content || s.content === '—';
     return `
-      <div class="soap-block">
-        <div class="soap-header">${esc(s.label)}</div>
-        <div class="soap-content ${isEmpty ? 'empty' : ''}">${esc(s.content || '—')}</div>
-      </div>
+      <div class="section-anchor">${esc(s.label)}</div>
+      <div class="content-text ${isEmpty ? 'empty' : ''}" style="white-space: pre-wrap; margin-bottom: 24px;">${esc(s.content || '—')}</div>
     `;
   }).join('');
 
@@ -193,10 +204,10 @@ export function generateInternalRecordHTML({
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title></title>
-  <style>${PRINT_STYLES}</style>
+  <style>${UNIFIED_PRINT_STYLES}</style>
 </head>
 <body>
-  ${renderHeadboard({ clinicName, clinicAddress, clinicPhone, clinicBAI, pet, owner, visitDate, vetName, vetPRC, vetPTR, department })}
+  ${renderHeadboard({ clinicName, clinicAddress, clinicPhone, clinicEmail, clinicBAI, pet, owner, visitDate, vetName, vetPRC, vetPTR, allergyList, contactLabel })}
 
   ${renderVitalsSection(rvPrint)}
 
@@ -207,26 +218,23 @@ export function generateInternalRecordHTML({
   ${renderPrescriptionsSection(otherItems, 'Retail & Other Dispensary')}
   ${renderVaccineSection(rec.vaccineData)}
   ${renderLabResultsSection(rec.labResults)}
-  ${renderExamChecklistSection(rec.examChecklist)}
+  ${renderServicesSection(rec)}
+  ${renderExamChecklistSection(rec.objectiveExam || rec.examChecklist)}
   ${renderAmendmentHistorySection(rec.amendments)}
   ${renderDischargeSection(rec.dischargeSummary)}
   ${renderAttachmentsSection(rec.attachments)}
 
-
-  <div style="margin-top:60px; display:flex; gap:64px;">
-    <div style="flex:1;">
-      <div style="border-bottom:2px solid #3E2723; height:48px; margin-bottom:8px;"></div>
-      <p style="font-size:10px; color:#8D6E63; font-weight:900; text-transform:uppercase; margin:0; letter-spacing:1px;">Attending Veterinarian Signature</p>
-      ${vetPRC ? `<p style="font-size:9px; color:#8D6E63; margin:4px 0 0;">LICENSE NO: ${vetPRC}</p>` : ''}
-    </div>
-    <div style="flex:1;">
-      <div style="border-bottom:2px solid #3E2723; height:48px; margin-bottom:8px;"></div>
-      <p style="font-size:10px; color:#8D6E63; font-weight:900; text-transform:uppercase; margin:0; letter-spacing:1px;">Date of Sign-off</p>
-    </div>
+  <div class="signature-area">
+    <div style="font-size: 9px; font-weight: 900; color: #888; text-transform: uppercase; margin-bottom: 2px;">Signed by</div>
+    <div class="sig-name">${vetName}</div>
+    <div class="sig-line" style="margin-top: 8px;"></div>
+    <div class="sig-title">Attending Veterinarian ${vetPRC ? `&middot; PRC: ${vetPRC}` : ''}</div>
   </div>
 
-  <div class="footer">
-    Generated on ${now} &nbsp;|&nbsp; ${esc(clinicName || 'Veterinary Clinic')} &nbsp;|&nbsp; Electronic medical record.
+  <div class="reg-footer">
+    <span>BAI Reg No: ${esc(clinicBAI || '—')}</span>
+    <span>TIN: ${esc(clinicTIN || '—')}</span>
+    <span>Generated: ${now}</span>
   </div>
 </body>
 </html>`;

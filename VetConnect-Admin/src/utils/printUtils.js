@@ -273,15 +273,17 @@ export const UNIFIED_PRINT_STYLES = `
   .signature-area { margin-top: 60px; display: flex; flex-direction: column; align-items: flex-end; }
   .sig-label { font-size: 10px; font-weight: 700; color: #888; font-style: italic; margin-bottom: 4px; }
   .sig-name { font-size: 14px; font-weight: 900; color: #1A1A1A; margin-bottom: 4px; }
-  .sig-line { width: 200px; height: 1px; background: #1A1A1A; margin-bottom: 4px; }
+  .sig-line { width: 200px; border-top: 1.5px solid #1A1A1A; margin-bottom: 4px; }
   .sig-title { font-size: 9px; font-weight: 900; color: #888; letter-spacing: 1px; text-transform: uppercase; }
   
   .reg-footer { margin-top: 40px; border-top: 1px solid #E5E5E5; padding-top: 12px; display: flex; justify-content: space-between; font-size: 9px; color: #AAA; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
   
   @media print {
-    @page { margin: 0; }
-    body { margin: 0; padding: 10mm; }
-    .section-anchor, .vitals-table, .data-table { break-inside: avoid; }
+    @page { margin: 10mm; }
+    body { margin: 0; padding: 0; }
+    .section-anchor { break-after: avoid; page-break-after: avoid; }
+    .data-table, .vitals-table, .signature-area, .memo-grid { break-inside: avoid; page-break-inside: avoid; }
+    tr { break-inside: avoid; page-break-inside: avoid; }
   }
 `;
 

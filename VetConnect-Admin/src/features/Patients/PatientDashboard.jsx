@@ -58,13 +58,13 @@ import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import OpenInFullIcon from '@mui/icons-material/OpenInFull';
 import PushPinIcon from '@mui/icons-material/PushPin';
-import Inventory2Icon from '@mui/icons-material/Inventory2';
+import ShowChartIcon from '@mui/icons-material/ShowChart';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import FilterListOffIcon from '@mui/icons-material/FilterListOff';
-import TodayIcon from '@mui/icons-material/Today';
-import BiotechIcon from '@mui/icons-material/Biotech';
-import InventoryIcon from '@mui/icons-material/Inventory';
 import ShoppingBagIcon from '@mui/icons-material/ShoppingBag';
+import BiotechIcon from '@mui/icons-material/Biotech';
+import TodayIcon from '@mui/icons-material/Today';
+import InventoryIcon from '@mui/icons-material/Inventory';
 import Checkbox from '@mui/material/Checkbox';
 import Badge from '@mui/material/Badge';
 
@@ -299,6 +299,7 @@ export default function PatientDashboard() {
 
   // T4.96: AI History Assistant
   const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [llmConfig, setLlmConfig] = useState({ enabled: false, workerUrl: '' });
 
   const clinicSettings = useClinicSettings();
@@ -1558,6 +1559,8 @@ export default function PatientDashboard() {
             </MenuItem>
           </Menu>
 
+          <Box sx={{ height: 24, width: '1px', bgcolor: COLORS.borderLight, mx: 0.5 }} />
+
           {/* T4.96: AI History Assistant Tool */}
           {llmConfig.enabled && !!llmConfig.workerUrl && (
             <Button
@@ -2812,8 +2815,66 @@ export default function PatientDashboard() {
           </Box>
         </Box>
 
-        {/* ── RIGHT: Analytics Panel (30%) ── */}
-        <Box sx={{ flex: 3, maxWidth: 320, minWidth: 240, overflowY: 'auto', bgcolor: COLORS.surfaceAlt, py: 2, px: 2, '&::-webkit-scrollbar': { width: 4 }, '&::-webkit-scrollbar-thumb': { bgcolor: COLORS.timelineRail, borderRadius: 2 } }}>
+        {/* ── RIGHT: Analytics Panel (Collapsible Ribbon) ── */}
+        <Box sx={{ 
+          width: analyticsOpen ? 320 : 44,
+          flexShrink: 0,
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          bgcolor: COLORS.surfaceAlt, 
+          borderLeft: `1px solid ${COLORS.borderLight}`,
+          transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          position: 'relative'
+        }}>
+          {/* Symmetrical Toggle Header */}
+          <Box sx={{ 
+            display: 'flex', 
+            justifyContent: analyticsOpen ? 'flex-start' : 'center', 
+            px: 0.5, py: 0.75, 
+            borderBottom: `1px solid ${COLORS.borderLight}`, 
+            flexShrink: 0 
+          }}>
+            <IconButton 
+              size="small" 
+              onClick={() => setAnalyticsOpen(p => !p)} 
+              sx={{ color: COLORS.textMuted, width: 28, height: 28, '&:hover': { bgcolor: COLORS.panelBg } }}
+            >
+              {analyticsOpen ? <ChevronRightIcon sx={{ fontSize: 16 }} /> : <ChevronLeftIcon sx={{ fontSize: 16 }} />}
+            </IconButton>
+          </Box>
+
+          {/* Collapsed State: Vertical Label */}
+          {!analyticsOpen && (
+            <Box sx={{ 
+              flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              opacity: 0.4, filter: 'grayscale(1)'
+            }}>
+              <Typography sx={{ 
+                writingMode: 'vertical-rl', 
+                textTransform: 'uppercase', 
+                fontSize: '0.7rem', 
+                fontWeight: 900, 
+                letterSpacing: 3,
+                fontFamily: FONT,
+                color: COLORS.textMuted,
+              }}>
+                Trends
+              </Typography>
+            </Box>
+          )}
+
+          <Box sx={{ 
+            minWidth: 320, 
+            height: analyticsOpen ? '100%' : 0, // Collapse height when hidden
+            overflowY: 'auto',
+            py: 2, px: 2,
+            display: analyticsOpen ? 'block' : 'none', // Remove from flow when collapsed
+            opacity: analyticsOpen ? 1 : 0,
+            transition: 'opacity 0.2s ease',
+            '&::-webkit-scrollbar': { width: 4 }, 
+            '&::-webkit-scrollbar-thumb': { bgcolor: COLORS.timelineRail, borderRadius: 2 } 
+          }}>
 
           {/* Weight Trend — T2.460: 1-point display + delta annotation */}
           <Widget title="Weight Trend" icon={<ScaleIcon sx={{ fontSize: 14, color: COLORS.accentLight }} />} onExpand={vitalsData.length > 1 ? () => setVitalsZoom({ open: true, key: 'weight' }) : undefined}>
@@ -3478,6 +3539,7 @@ export default function PatientDashboard() {
             </Widget>
           )}
 
+          </Box>
         </Box>
       </Box>
 

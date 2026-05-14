@@ -129,6 +129,24 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                         {p.row.color || p.row.petColor || 'NOT RECORDED'}
                     </Typography>
                 </Box>
+                
+                <Box sx={{ mt: 1.5, pt: 1, borderTop: '1px solid #D7CCC8' }}>
+                    <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1, fontSize: '0.6rem', opacity: 0.8, display: 'block', mb: 0.5 }}>
+                        OWNER ENGAGEMENT
+                    </Typography>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem' }}>NAME</Typography>
+                        <Typography sx={{ color: '#1A1A1A', fontWeight: '900', fontSize: '0.82rem', textTransform: 'uppercase' }}>
+                            {p.row.ownerName || 'Unknown Owner'}
+                        </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem' }}>PHONE</Typography>
+                        <Typography sx={{ color: '#1976D2', fontWeight: '1000', fontSize: '0.82rem' }}>
+                            {p.row.ownerPhone || 'No Contact'}
+                        </Typography>
+                    </Box>
+                </Box>
 
                 {/* 🧬 FORENSIC ALLERGY HARDENING: THE VERIFIED NEGATIVE */}
                 {/* 🧬 FORENSIC ALLERGY HARDENING: THE ATOMIC ALERT */}

@@ -45,7 +45,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
       const PassportCard = (
         <Box sx={{ p: 1, minWidth: 220 }}>
             <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1.5, display: 'block', mb: 1, opacity: 0.8 }}>
-                🩺 CLINICAL PASSPORT
+                CLINICAL PASSPORT
             </Typography>
             <Typography variant="h6" sx={{ fontWeight: '1000', color: '#1A1A1A', mb: 2, fontSize: '1.2rem', lineHeight: 1 }}>
                 {p.row.petName?.toUpperCase()}
@@ -135,7 +135,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                 {hasSpecificAllergies ? (
                      <Box sx={{ mt: 1, p: 0.8, bgcolor: 'rgba(211, 47, 47, 0.05)', borderRadius: 1, border: '1.5px solid #D32F2F' }}>
                         <Typography variant="caption" sx={{ color: '#D32F2F', fontWeight: '1000', fontSize: '0.65rem', display: 'block', mb: 1 }}>
-                            ⚠️ CRITICAL MEDICAL ALERTS:
+                            CRITICAL MEDICAL ALERTS:
                         </Typography>
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                             {petAllergies.split(',').map((allergy, index) => (
@@ -148,7 +148,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                 ) : (
                     <Box sx={{ mt: 1, p: 0.8, bgcolor: '#F5F5F5', borderRadius: 1, border: '1px solid #E0E0E0', opacity: 0.8 }}>
                         <Typography variant="caption" sx={{ color: '#757575', fontWeight: '1000', fontSize: '0.62rem' }}>
-                            ✅ ALLERGIES: NONE DISCLOSED
+                            ALLERGIES: NONE DISCLOSED
                         </Typography>
                     </Box>
                 )}

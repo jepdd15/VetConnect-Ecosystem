@@ -273,7 +273,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
   {
     field: 'notes',
     headerName: tabValue === 4 ? 'Prescription Preview' : tabValue === 5 ? 'Billing Preview' : 'Context / Notes',
-    flex: 1, minWidth: 160, sortable: false,
+    flex: 0.7, minWidth: 130, sortable: false,
     renderCell: (p) => {
       // DISPENSE tab — Prescription Preview
       if (tabValue === 4) {
@@ -432,7 +432,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
     }
   },
   { 
-    field: 'services', headerName: 'Services and Staff', flex: 0.8, minWidth: 160,
+    field: 'services', headerName: 'Services and Staff', flex: 0.6, minWidth: 130,
     resizable: false, sortable: false, disableColumnMenu: true,
     renderCell: (p) => {
       // Preserve insertion order for the cell display; popover handles its own sort.
@@ -533,7 +533,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
     }
   },
   { 
-    field: 'timing', headerName: 'Triage Clock', width: 200, align: 'center', headerAlign: 'center',
+    field: 'timing', headerName: 'Triage Clock', flex: 1, minWidth: 260, align: 'center', headerAlign: 'center',
     resizable: false, sortable: false, disableColumnMenu: true,
     renderCell: (p) => {
       const resolveDate = (d) => {

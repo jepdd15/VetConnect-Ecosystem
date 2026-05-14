@@ -73,29 +73,7 @@ function renderAmendmentHistorySection(amendments) {
   `;
 }
 
-function renderPulseTimelineSection(pulseSummary) {
-  if (!pulseSummary?.events?.length) return '';
-  const rows = pulseSummary.events.map(e => {
-    const ts = e.timestamp?.toDate
-      ? e.timestamp.toDate().toLocaleString('en-PH')
-      : (e.timestamp ? new Date(e.timestamp).toLocaleString('en-PH') : '—');
-    return `
-      <tr>
-        <td>${esc(e.type || '—')}</td>
-        <td>${esc(ts)}</td>
-        <td>${esc(e.staffName || '—')}</td>
-        <td>${esc(e.note || '')}</td>
-      </tr>
-    `;
-  }).join('');
-  return `
-    <h2>Clinical Pulse Timeline</h2>
-    <table>
-      <thead><tr><th>Event</th><th>Timestamp</th><th>Staff</th><th>Note</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-  `;
-}
+
 
 function renderHeadboard({ clinicName, clinicAddress, clinicPhone, clinicBAI, pet, owner, visitDate, vetName, vetPRC, vetPTR, department }) {
   const sexLabel = pet?.gender === 'Male'
@@ -149,7 +127,7 @@ function renderHeadboard({ clinicName, clinicAddress, clinicPhone, clinicBAI, pe
 export function generateInternalRecordHTML({
   record, pet, owner,
   clinicName, clinicAddress, clinicPhone, clinicBAI,
-  vetStaff, appointment, pulseSummary,
+  vetStaff, appointment,
 }) {
   const rec = record || {};
   const soap = rec.soap || {};
@@ -205,7 +183,7 @@ export function generateInternalRecordHTML({
   const allItems = rec.dispensedProducts || rec.prescriptions || [];
   const resolvePC = (rx) => rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail');
   const medicineItems = allItems.filter(rx => resolvePC(rx) === 'medicine');
-  const otherItems = allItems.filter(rx => resolvePC(rx) === 'retail');
+  const otherItems = allItems.filter(rx => resolvePC(rx) !== 'medicine');
 
   const now = new Date().toLocaleString('en-PH', { dateStyle: 'long', timeStyle: 'short' });
 
@@ -233,7 +211,7 @@ export function generateInternalRecordHTML({
   ${renderAmendmentHistorySection(rec.amendments)}
   ${renderDischargeSection(rec.dischargeSummary)}
   ${renderAttachmentsSection(rec.attachments)}
-  ${renderPulseTimelineSection(pulseSummary)}
+
 
   <div style="margin-top:60px; display:flex; gap:64px;">
     <div style="flex:1;">

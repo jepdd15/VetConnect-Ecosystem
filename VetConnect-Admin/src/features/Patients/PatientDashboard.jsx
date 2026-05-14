@@ -299,10 +299,6 @@ export default function PatientDashboard() {
       }
     } catch { /* graceful fallback */ }
 
-    const pulseSummary = rec.clinicalPulse?.length
-      ? { events: rec.clinicalPulse }
-      : null;
-
     const commonParams = {
       record: rec,
       pet,
@@ -314,7 +310,6 @@ export default function PatientDashboard() {
       clinicTIN: clinicSettings.clinicTIN,
       clinicBAI: clinicSettings.baiRegistrationNumber,
       vetStaff,
-      pulseSummary,
     };
 
     if (mode === 'client') {
@@ -1966,7 +1961,7 @@ export default function PatientDashboard() {
                             const groups = [
                               { label: 'MEDICATIONS', items: allRx.filter(rx => resolvePC(rx) === 'medicine'), color: COLORS.brand },
                               { label: 'MEDICAL SUPPLIES', items: allRx.filter(rx => resolvePC(rx) === 'medical_supply'), color: COLORS.brand },
-                              { label: 'RETAIL & OTHER', items: allRx.filter(rx => resolvePC(rx) === 'retail'), color: COLORS.brand },
+                              { label: 'RETAIL & OTHER', items: allRx.filter(rx => !['medicine', 'medical_supply'].includes(resolvePC(rx))), color: COLORS.brand },
                             ];
                             return (
                               <Stack spacing={2.5}>

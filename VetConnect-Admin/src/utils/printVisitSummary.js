@@ -444,7 +444,17 @@ export function generateVisitSummaryHTML({ record, pet, owner, clinicName, clini
     ? rec.vaccineAdministrations.map(v => renderVaccineSection(v)).join('')
     : renderVaccineSection(rec.vaccineData))}
 
-  ${renderPrescriptionsSection(rec.dispensedProducts || rec.prescriptions)}
+  ${(() => {
+    const allItems = rec.dispensedProducts || rec.prescriptions || [];
+    const resolvePC = (rx) => rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail');
+    const medicineItems = allItems.filter(rx => resolvePC(rx) === 'medicine');
+    const otherItems = allItems.filter(rx => resolvePC(rx) !== 'medicine');
+    
+    return `
+      ${renderPrescriptionsSection(medicineItems, 'Medical Prescriptions')}
+      ${renderPrescriptionsSection(otherItems, 'Retail & Other Dispensary')}
+    `;
+  })()}
 
   ${renderServicesSection(rec)}
 

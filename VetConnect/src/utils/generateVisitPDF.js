@@ -155,12 +155,11 @@ const renderVaccineSection = (vaccines) => {
   `;
 };
 
-const renderPrescriptionsSection = (prescriptions) => {
-  const meds = (prescriptions || []).filter(rx => (rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail')) === 'medicine');
-  if (meds.length === 0) return '';
+const renderPrescriptionsSection = (items, title = 'Prescriptions') => {
+  if (!items?.length) return '';
 
   return `
-    <div class="section-anchor">Prescriptions</div>
+    <div class="section-anchor">${esc(title)}</div>
     <table class="data-table">
       <thead>
         <tr>
@@ -171,7 +170,7 @@ const renderPrescriptionsSection = (prescriptions) => {
         </tr>
       </thead>
       <tbody>
-        ${meds.map((rx, i) => `
+        ${items.map((rx, i) => `
           <tr>
             <td style="text-align: center;">${i + 1}</td>
             <td><b>${esc(rx.name)}</b></td>
@@ -412,7 +411,16 @@ export async function generateVisitPDF({ record, pet, owner, services, clinicSet
       </div>
       ${renderLabResultsSection(record.labResults)}
       ${renderVaccineSection(record.vaccineAdministrations || record.vaccineData)}
-      ${renderPrescriptionsSection(record.prescriptions || record.dispensedProducts)}
+      ${(() => {
+        const allItems = record.prescriptions || record.dispensedProducts || [];
+        const resolvePC = (rx) => rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail');
+        const medicineItems = allItems.filter(rx => resolvePC(rx) === 'medicine');
+        const otherItems = allItems.filter(rx => resolvePC(rx) !== 'medicine');
+        return `
+          ${renderPrescriptionsSection(medicineItems, 'Medical Prescriptions')}
+          ${renderPrescriptionsSection(otherItems, 'Retail & Other Dispensary')}
+        `;
+      })()}
       ${renderServicesSection(record, services)}
       ${renderDischargeSection(record.dischargeSummary, record.soap?.prognosis)}
       ${renderAttachmentsSection(record.attachments)}

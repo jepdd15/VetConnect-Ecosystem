@@ -47,9 +47,11 @@ const DEFAULT_BOOKING_AI_PROMPT = `You are a Veterinary Clinic AI Booking Adviso
 
 YOUR ROLE:
 - Help pet owners understand which services their pet needs based on the pet's health data provided below
+WHAT YOU MUST DO:
 - Recommend when to schedule based on vaccine due dates, follow-up dates, and slot availability
 - Explain what each service involves in simple, friendly language
 - Suggest optimal timing based on the clinic's available slots
+- TRUST THE PROVIDED DATA: The "CLINIC INFO" and "AVAILABLE SLOTS" are the ground truth. If the clinic opens at 1:00 AM or has a 2-hour notice buffer, treat these as intentional business rules, not system errors.
 
 WHAT YOU MUST NOT DO:
 - Never diagnose medical conditions or prescribe medications
@@ -61,6 +63,7 @@ RESPONSE STYLE:
 - Keep responses under 150 words unless the question requires detail
 - Use simple, warm language -- avoid medical jargon
 - When recommending services, explain WHY (e.g. "Rabies vaccine is overdue by 45 days")
+- Mention any known pet allergies if relevant to the proposed services
 - When suggesting times, mention which slots look less busy if that data is available
 - Be encouraging about preventive care and regular check-ups
 - Use Filipino cultural context when relevant
@@ -186,7 +189,7 @@ export default function BookAppointment({ navigation, route }) {
   // once both pet and service have been pre-selected by the two effects above.
   useEffect(() => {
     if (prefillApplied.current) return;
-    if (selectedPet && selectedServices.length > 0) {
+    if ((prefillPetId || prefillServiceType) && selectedPet && selectedServices.length > 0) {
       if (prefillDate) {
         const parsed = new Date(prefillDate);
         if (!isNaN(parsed.getTime())) {
@@ -423,16 +426,17 @@ export default function BookAppointment({ navigation, route }) {
           }
         }
 
-        // Available slots for selected date (AVAILABLE status only, capped at 10)
+        // Available slots for selected date (AVAILABLE status only, increased visibility)
         if (availableSlots && availableSlots.length > 0) {
           const openSlots = availableSlots.filter(s => s.status === 'AVAILABLE');
           if (openSlots.length > 0) {
             lines.push('');
             lines.push(`=== AVAILABLE SLOTS (${date.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })}) ===`);
-            const slotLabels = openSlots.slice(0, 10).map(s => s.display);
+            // Increased visibility (40 slots) ensures afternoon slots are visible even if opening is 1 AM
+            const slotLabels = openSlots.slice(0, 40).map(s => s.display);
             lines.push(slotLabels.join(', '));
-            if (openSlots.length > 10) {
-              lines.push(`(${openSlots.length - 10} more slots available)`);
+            if (openSlots.length > 40) {
+              lines.push(`(${openSlots.length - 40} more slots available)`);
             }
           }
         }
@@ -453,6 +457,12 @@ export default function BookAppointment({ navigation, route }) {
           }
           if (clinicSettings.workingDays) {
             lines.push(`Working days: ${clinicSettings.workingDays.join(', ')}`);
+          }
+          if (clinicSettings.lunchEnabled) {
+            lines.push(`Lunch Break (No Bookings): ${fmt(clinicSettings.lunchStart || 12)} - ${fmt(clinicSettings.lunchEnd || 13)}`);
+          }
+          if (clinicSettings.advanceNoticeMins) {
+            lines.push(`Advance Notice Required: ${clinicSettings.advanceNoticeMins} minutes before slot`);
           }
         }
 
@@ -1342,20 +1352,6 @@ export default function BookAppointment({ navigation, route }) {
       (s) => parseInt(s.timeValue.split(":")[0]) >= 12,
     );
     
-    // --- SCHEDULING INTELLIGENCE MATH ---
-    const totalBundleDuration = selectedServices.reduce((sum, s) => {
-        const d = parseInt(String(s.duration).replace(/[^0-9]/g, "")) || 30;
-        const b = parseInt(String(s.bufferTime).replace(/[^0-9]/g, "")) || 0;
-        return sum + d + b;
-    }, 0);
-
-    const leadHours = (clinicSettings?.advanceNoticeMins || 120) / 60;
-    const now = new Date();
-    const readyTime = new Date(now.getTime() + leadHours * 60 * 60 * 1000);
-    const isToday = date.toDateString() === now.toDateString();
-    
-    const readyTimeString = formatDisplayTime(readyTime);
-
     // Dynamic cutoff time based on Web Admin settings
     const minDateAllowed = new Date();
     const closeHour = clinicSettings?.closeHour || 17;
@@ -1381,22 +1377,6 @@ export default function BookAppointment({ navigation, route }) {
           </View>
         )}
 
-        {/* CLINICAL INSIGHT BOX (🩺) */}
-        <View style={styles.insightBox}>
-            <View style={styles.insightHeaderRow}>
-                <Text style={{ fontSize: 20 }}>🩺</Text>
-                <Text style={styles.insightTitle}>Scheduling Insight</Text>
-            </View>
-            <Text style={styles.insightText}>
-                Your <Text style={{ fontWeight: '900' }}>{totalBundleDuration} minute</Text> visit is ready to be scheduled.
-                {isToday && (
-                    <>
-                        {"\n"}Same-day bookings require a <Text style={{ fontWeight: '900' }}>{leadHours} hour</Text> notice. Available after <Text style={{ fontWeight: '900' }}>{readyTimeString}</Text>.
-                    </>
-                )}
-            </Text>
-        </View>
-
         <TouchableOpacity
           style={styles.modernDateBtn}
           onPress={() => setShowDatePicker(true)}
@@ -1418,6 +1398,26 @@ export default function BookAppointment({ navigation, route }) {
             maximumDate={maxDateAllowed}
           />
         )}
+
+        {/* RE-POSITIONED LEGEND (Tier 1 Hardening) */}
+        <View style={[styles.legendContainer, { borderTopWidth: 0, marginTop: 5, marginBottom: 15, justifyContent: 'flex-start', gap: 15 }]}>
+            <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.borderLight }]} />
+                <Text style={styles.legendText}>Available</Text>
+            </View>
+            <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: COLORS.warning }]} />
+                <Text style={styles.legendText}>Too Soon</Text>
+            </View>
+            <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: COLORS.danger }]} />
+                <Text style={styles.legendText}>Taken</Text>
+            </View>
+            <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: COLORS.textMuted }]} />
+                <Text style={styles.legendText}>Closed</Text>
+            </View>
+        </View>
 
         {selectedServices.length === 0 || !selectedPet ? (
           <Text style={styles.subtlePrompt}>
@@ -1537,26 +1537,6 @@ export default function BookAppointment({ navigation, route }) {
             </View>
           </ScrollView>
         )}
-
-        {/* BOTTOM LEGEND */}
-        <View style={styles.legendContainer}>
-            <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: COLORS.accent }]} />
-                <Text style={styles.legendText}>Selected</Text>
-            </View>
-            <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: COLORS.borderLight }]} />
-                <Text style={styles.legendText}>Available</Text>
-            </View>
-            <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: COLORS.warning }]} />
-                <Text style={styles.legendText}>Too Soon</Text>
-            </View>
-            <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: COLORS.textMuted }]} />
-                <Text style={styles.legendText}>Taken/Closed</Text>
-            </View>
-        </View>
       </View>
     );
   };
@@ -1977,6 +1957,7 @@ const styles = StyleSheet.create({
     borderRadius: 0,
     alignItems: "center",
     borderWidth: 2,
+    overflow: "visible",
   },
   unselectedCard: { borderColor: COLORS.borderLight },
   selectedCard: { borderColor: COLORS.accent, backgroundColor: COLORS.cream },
@@ -2369,33 +2350,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 
-  // --- SCHEDULING INTELLIGENCE STYLES ---
-  insightBox: {
-    backgroundColor: COLORS.cream,
-    padding: 16,
-    borderRadius: 0,
-    marginBottom: 20,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.accent,
-  },
-  insightHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-    gap: 8,
-  },
-  insightTitle: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: COLORS.brand,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  insightText: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    lineHeight: 18,
-  },
+
   legendContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',

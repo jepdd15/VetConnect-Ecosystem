@@ -65,7 +65,7 @@ function buildInitialMessage() {
   return {
     id: Date.now(),
     type: 'bot',
-    text: `${buildGreeting()}! 🐾 I am your Clinic Virtual Assistant. How can I help you today?`,
+    text: `${buildGreeting()}! 🐾 I am your Starbarks Chatbot. How can I help you today?`,
   };
 }
 
@@ -552,11 +552,11 @@ export default function ChatbotScreen({ navigation }) {
         </TouchableOpacity>
         <View style={styles.headerTitleRow}>
           <View style={styles.botAvatarHeader}>
-            <Text style={{ fontSize: 22 }}>🤖</Text>
+            <Text style={{ fontSize: 22 }}>✨</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.headerText}>Clinic Virtual Assistant</Text>
-            <Text style={styles.subText}>🟢 Online • Automated Support</Text>
+            <Text style={styles.headerText}>Starbarks Chatbot</Text>
+            <Text style={styles.subText}>🟢 Online</Text>
           </View>
           {/* NEW CHAT button (T3.67): only visible once a conversation has started */}
           {conversationHistory.length > 0 && (
@@ -626,7 +626,7 @@ export default function ChatbotScreen({ navigation }) {
           >
             {msg.type === "bot" && (
               <View style={styles.botAvatarBubble}>
-                <Text style={{ fontSize: 18 }}>🤖</Text>
+                <Text style={{ fontSize: 18 }}>✨</Text>
               </View>
             )}
             <View style={styles.bubbleColumn}>
@@ -688,7 +688,7 @@ export default function ChatbotScreen({ navigation }) {
         {showTypingDots && (
           <View style={[styles.messageWrapper, styles.botWrapper]}>
             <View style={styles.botAvatarBubble}>
-              <Text style={{ fontSize: 18 }}>🤖</Text>
+              <Text style={{ fontSize: 18 }}>✨</Text>
             </View>
             <View
               style={[

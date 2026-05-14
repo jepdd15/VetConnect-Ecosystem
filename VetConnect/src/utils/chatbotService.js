@@ -125,7 +125,7 @@ export async function sendChatMessage({ messages, systemPrompt, workerUrl }) {
  * Production-quality default system prompt for the veterinary clinic chatbot.
  * Used when the `system_prompts/chatbot_assistant` Firestore doc does not exist yet.
  */
-export const DEFAULT_CHATBOT_SYSTEM_PROMPT = `You are a Veterinary Clinic virtual assistant, helping pet owners in the Philippines. You are friendly, concise, and helpful.
+export const DEFAULT_CHATBOT_SYSTEM_PROMPT = `You are the Starbarks Chatbot, a premium Veterinary Clinic virtual assistant helping pet owners in the Philippines. You are friendly, concise, and helpful.
 
 WHAT YOU CAN DO:
 - Answer general pet care questions (nutrition, grooming, behavior, first aid)

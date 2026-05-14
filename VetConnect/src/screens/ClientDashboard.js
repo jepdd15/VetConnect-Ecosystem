@@ -1090,8 +1090,8 @@ const ClientDashboard = ({ navigation }) => {
             style={({ pressed }) => [styles.card, pressed && styles.cardPressed, { borderColor: '#3E2723' }]}
             onPress={() => navigation.navigate("Chatbot")}
           >
-            <Text style={styles.cardIcon}>🤖</Text>
-            <Text style={[styles.cardText, { color: '#3ABEF9' }]}>HELP CENTER</Text>
+            <Text style={styles.cardIcon}>✨</Text>
+            <Text style={[styles.cardText, { color: '#3ABEF9' }]}>CHATBOT</Text>
           </Pressable>
         </View>
 

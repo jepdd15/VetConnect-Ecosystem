@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Drawer, Box, Typography, IconButton, Chip, Divider,
   Collapse, Stack, Paper, TextField, InputAdornment,
-  CircularProgress, Tooltip,
+  CircularProgress, Tooltip, Button, Menu, MenuItem, Checkbox,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
@@ -17,8 +17,17 @@ import {
   Shield as ShieldIcon,
   Vaccines as VaccinesIcon,
   AttachFile as AttachFileIcon,
+  FilterList as FilterListIcon,
+  Pets as PetsIcon,
+  Person as PersonIcon,
+  Today as TodayIcon,
+  CalendarMonth as CalendarIcon,
+  Female as FemaleIcon,
+  Male as MaleIcon,
+  Scale as ScaleIcon,
+  WarningAmber as WarningIcon,
 } from '@mui/icons-material';
-import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { FONT, COLORS, TYPE, STATUS_COLORS } from '../theme/designTokens';
 import { resolveVitals } from '../utils/resolveVitals';
@@ -52,19 +61,24 @@ const resolveRecordDate = (record) => {
   return raw?.toDate ? raw.toDate() : new Date(raw);
 };
 
-const StatusChip = ({ status }) => {
-  const color = STATUS_COLORS[status] || COLORS.textMuted;
-  return (
-    <Chip
-      label={(status || 'N/A').toUpperCase().replace(/-/g, ' ')}
-      size="small"
-      sx={{
-        height: 18, fontSize: '0.55rem', fontWeight: 900,
-        borderRadius: 0, bgcolor: `${color}18`, color,
-        border: `1px solid ${color}`,
-      }}
-    />
-  );
+const calculatePetAge = (dob) => {
+  if (!dob) return '—';
+  try {
+    const birthDate = dob.toDate ? dob.toDate() : dob.seconds ? new Date(dob.seconds * 1000) : new Date(dob);
+    if (isNaN(birthDate.getTime())) return '—';
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const m = today.getMonth() - birthDate.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--;
+    if (age < 0) return '—';
+    if (age === 0) {
+      const mo = Math.floor((today - birthDate) / (1000 * 60 * 60 * 24 * 30.44));
+      return mo > 0 ? `${mo}mo` : 'Newborn';
+    }
+    return `${age}y`;
+  } catch {
+    return '—';
+  }
 };
 
 // ─── Single expanded record card ─────────────────────────────────────────────
@@ -200,8 +214,7 @@ const RecordCard = ({ record, appointmentId }) => {
                 <Box>
                   <Typography sx={{ fontFamily: FONT, fontSize: '1.1rem', fontWeight: 900, color: COLORS.textPrimary, mb: 1, textTransform: 'uppercase', letterSpacing: 2, borderBottom: `3px solid ${COLORS.brand}`, width: 'fit-content', pb: 0.5 }}>O — OBJECTIVE</Typography>
                   <Box sx={{ height: 200, overflowY: 'auto', pr: 1, '&::-webkit-scrollbar': { width: '4px' }, '&::-webkit-scrollbar-thumb': { bgcolor: COLORS.border, borderRadius: 0 } }}>
-                    <Typography sx={{ fontFamily: FONT, fontSize: '0.95rem', color: hasO ? COLORS.textPrimary : COLORS.textMuted, fontStyle: hasO ? 'normal' : 'italic', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
-                      {hasO ? resolveObjectiveText(record) : '— No objective exam —'}
+                    <Typography sx={{ fontFamily: FONT, fontSize: '0.95rem', color: hasO ? resolveObjectiveText(record) : '— No objective exam —' }}>
                     </Typography>
                   </Box>
                 </Box>
@@ -435,21 +448,6 @@ const RecordCard = ({ record, appointmentId }) => {
 
 // ─── Main drawer ─────────────────────────────────────────────────────────────
 
-/**
- * EMRDrawer — right-anchored slide-over showing a pet's complete medical history.
- *
- * Supports two access modes:
- * - ClinicalWorkspace mode: `history` prop pre-loaded, `appointmentId` for highlight
- * - Queue mode: `petId` prop triggers a one-shot getDocs fetch on open
- *
- * @prop {boolean}  open
- * @prop {function} onClose
- * @prop {Array}    history       - Pre-loaded records array (ClinicalWorkspace path)
- * @prop {string}   petName
- * @prop {string}   petSpecies
- * @prop {string}   [appointmentId] - Highlights the matching record as "CURRENT VISIT"
- * @prop {string}   [petId]       - Triggers independent fetch when history is empty (Queue path)
- */
 export default function EMRDrawer({
   open,
   onClose,
@@ -460,15 +458,74 @@ export default function EMRDrawer({
   petId,
 }) {
   const [fetchedRecords, setFetchedRecords] = useState([]);
+  const [petData, setPetData] = useState(null);
+  const [ownerData, setOwnerData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [searchText, setSearchText] = useState('');
-  const [typeFilter, setTypeFilter] = useState('all');
-  const [dateRange, setDateRange] = useState('all');
-  const [departments, setDepartments] = useState([]);
+  const [typeFilters, setTypeFilters] = useState(['all']);
+  const [staffFilters, setStaffFilters] = useState(['all']);
+  
+  // Date Range Hub States
+  const [dateRangeType, setDateRangeType] = useState('all');
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
 
-  // Fetch records from Firestore when petId is provided but no pre-loaded history
+  const [departments, setDepartments] = useState([]);
+  const [staffList, setStaffList] = useState([]);
+  
+  const [deptAnchorEl, setDeptAnchorEl] = useState(null);
+  const [staffAnchorEl, setStaffAnchorEl] = useState(null);
+  const [dateAnchorEl, setDateAnchorEl] = useState(null);
+
+  const handleDeptClick = (e) => { e.stopPropagation(); setDeptAnchorEl(e.currentTarget); };
+  const handleDeptClose = () => setDeptAnchorEl(null);
+
+  const handleStaffClick = (e) => { e.stopPropagation(); setStaffAnchorEl(e.currentTarget); };
+  const handleStaffClose = () => setStaffAnchorEl(null);
+
+  const handleDateClick = (e) => { e.stopPropagation(); setDateAnchorEl(e.currentTarget); };
+  const handleDateClose = () => setDateAnchorEl(null);
+
+  const toggleTypeFilter = (key) => {
+    if (key === 'all') {
+      setTypeFilters(['all']);
+    } else {
+      const newFilters = typeFilters.includes(key)
+        ? typeFilters.filter(f => f !== key)
+        : [...typeFilters.filter(f => f !== 'all'), key];
+      setTypeFilters(newFilters.length === 0 ? ['all'] : newFilters);
+    }
+  };
+
+  const toggleStaffFilter = (key) => {
+    if (key === 'all') {
+      setStaffFilters(['all']);
+    } else {
+      const newFilters = staffFilters.includes(key)
+        ? staffFilters.filter(f => f !== key)
+        : [...staffFilters.filter(f => f !== 'all'), key];
+      setStaffFilters(newFilters.length === 0 ? ['all'] : newFilters);
+    }
+  };
+
   useEffect(() => {
     if (!open) return;
+
+    // Fetch Pet & Owner Profile for Header Context
+    if (petId) {
+      getDoc(doc(db, 'pets', petId)).then(snap => {
+        if (snap.exists()) {
+          const p = { id: snap.id, ...snap.data() };
+          setPetData(p);
+          if (p.ownerId && p.ownerId !== 'WALK_IN_USER') {
+            getDoc(doc(db, 'users', p.ownerId)).then(osnap => {
+              if (osnap.exists()) setOwnerData({ id: osnap.id, ...osnap.data() });
+            });
+          }
+        }
+      });
+    }
+
     if (historyProp.length === 0 && petId) {
       setLoading(true);
       const q = query(
@@ -487,27 +544,39 @@ export default function EMRDrawer({
     }
   }, [open, petId, historyProp.length]);
 
-  // Fetch departments for dynamic filter chips
   useEffect(() => {
     getDocs(collection(db, 'departments'))
       .then(snap => setDepartments(snap.docs.map(d => ({ id: d.id, ...d.data() }))))
       .catch(() => {});
+
+    const staffQuery = query(
+      collection(db, "users"),
+      where("role", "in", ["veterinarian", "staff", "admin", "groomer"])
+    );
+    getDocs(staffQuery).then(snap => {
+      setStaffList(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(u => !u.disabled));
+    });
   }, []);
 
-  // Reset all filter state when drawer closes
   useEffect(() => {
     if (!open) {
       setSearchText('');
-      setTypeFilter('all');
-      setDateRange('all');
+      setTypeFilters(['all']);
+      setStaffFilters(['all']);
+      setDateRangeType('all');
+      setCustomStart('');
+      setCustomEnd('');
       setFetchedRecords([]);
+      setPetData(null);
+      setOwnerData(null);
+      setDeptAnchorEl(null);
+      setStaffAnchorEl(null);
+      setDateAnchorEl(null);
     }
   }, [open]);
 
-  // Unified record source: prop-loaded takes precedence over fetched
   const records = historyProp.length > 0 ? historyProp : fetchedRecords;
 
-  // Step 1: keyword search across clinical content fields
   const searchFiltered = useMemo(() => {
     if (!searchText.trim()) return records;
     const q = searchText.toLowerCase().trim();
@@ -521,32 +590,70 @@ export default function EMRDrawer({
     );
   }, [records, searchText]);
 
-  // Step 2: type + date range filters applied on top of search
   const filteredRecords = useMemo(() => {
     let result = searchFiltered;
 
-    if (typeFilter !== 'all') {
+    // Department / Category Filter
+    if (!typeFilters.includes('all')) {
       result = result.filter(r => {
         const hasVax = r.vaccineAdministrations?.length > 0 || !!r.vaccineData;
-        if (typeFilter === 'vaccination') return hasVax;
         const sType = (r.serviceType || r.primaryService || r.department || '').toLowerCase();
-        return sType.includes(typeFilter);
+        return typeFilters.some(f => {
+          if (f === 'vaccination') return hasVax;
+          return sType.includes(f);
+        });
       });
     }
 
-    if (dateRange !== 'all') {
+    // Staff / Clinician Filter
+    if (!staffFilters.includes('all')) {
+      result = result.filter(r => {
+        const vetName = (r.vetName || '').toLowerCase();
+        const attributions = (r.serviceAttribution || []).map(a => a.staffName?.toLowerCase());
+        return staffFilters.some(f => {
+          const filterName = f.toLowerCase();
+          return vetName.includes(filterName) || attributions.some(attr => attr?.includes(filterName));
+        });
+      });
+    }
+
+    // Temporal Hub Filtering Logic
+    if (dateRangeType !== 'all') {
       const now = new Date();
-      const cutoff = new Date();
-      if (dateRange === '6mo') cutoff.setMonth(now.getMonth() - 6);
-      else if (dateRange === '1yr') cutoff.setFullYear(now.getFullYear() - 1);
+      let start = null;
+      let end = null;
+
+      if (dateRangeType === 'today') {
+        start = new Date(now.setHours(0,0,0,0));
+        end = new Date(now.setHours(23,59,59,999));
+      } else if (dateRangeType === '30d') {
+        start = new Date();
+        start.setDate(now.getDate() - 30);
+      } else if (dateRangeType === '6mo') {
+        start = new Date();
+        start.setMonth(now.getMonth() - 6);
+      } else if (dateRangeType === '1yr') {
+        start = new Date();
+        start.setFullYear(now.getFullYear() - 1);
+      } else if (dateRangeType === 'custom') {
+        if (customStart) start = new Date(customStart);
+        if (customEnd) {
+          end = new Date(customEnd);
+          end.setHours(23,59,59,999);
+        }
+      }
+
       result = result.filter(r => {
         const d = resolveRecordDate(r);
-        return !isNaN(d.getTime()) && d >= cutoff;
+        if (isNaN(d.getTime())) return false;
+        const afterStart = start ? d >= start : true;
+        const beforeEnd = end ? d <= end : true;
+        return afterStart && beforeEnd;
       });
     }
 
     return result;
-  }, [searchFiltered, typeFilter, dateRange]);
+  }, [searchFiltered, typeFilters, staffFilters, dateRangeType, customStart, customEnd]);
 
   const handlePrintFullEMR = () => {
     if (records.length === 0) return;
@@ -624,6 +731,19 @@ export default function EMRDrawer({
     openPrintWindow(html);
   };
 
+  const getDateLabel = () => {
+    if (dateRangeType === 'all') return 'ALL TIME';
+    if (dateRangeType === 'today') return 'TODAY';
+    if (dateRangeType === '30d') return 'LAST 30D';
+    if (dateRangeType === '6mo') return '6 MONTHS';
+    if (dateRangeType === '1yr') return '1 YEAR';
+    if (dateRangeType === 'custom') {
+      if (customStart && customEnd) return `${customStart.split('-').slice(1).join('/')} - ${customEnd.split('-').slice(1).join('/')}`;
+      return 'CUSTOM RANGE';
+    }
+    return 'DATE RANGE';
+  };
+
   return (
     <Drawer
       anchor="right"
@@ -633,9 +753,9 @@ export default function EMRDrawer({
       sx={{ zIndex: 1400 }}
       PaperProps={{
         sx: {
-          width: '35vw',
-          minWidth: 400,
-          maxWidth: 650,
+          width: '45vw',
+          minWidth: 500,
+          maxWidth: 800,
           borderRadius: 0,
           border: `3px solid ${COLORS.brand}`,
           borderRight: 'none',
@@ -645,128 +765,239 @@ export default function EMRDrawer({
         },
       }}
     >
-      {/* Header */}
+      {/* Header — Unified Forensic Patient Banner */}
       <Box
         sx={{
           flexShrink: 0,
           px: 3, py: 2,
           bgcolor: COLORS.brand,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
           borderBottom: `3px solid ${COLORS.brand}`,
         }}
       >
-        <Box>
-          <Typography sx={{ fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', letterSpacing: 1.5, color: '#FFF8E1', fontFamily: FONT }}>
-            EMR HISTORY
-          </Typography>
-          <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, color: '#D7CCC8', mt: 0.25 }}>
-            {petName || 'Unknown Patient'}
-            {petSpecies ? ` · ${petSpecies.toUpperCase()}` : ''}
-            {' · '}
-            <span style={{ color: '#A5D6A7' }}>
-              {records.length} record{records.length !== 1 ? 's' : ''}
-            </span>
-          </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 1.5 }}>
+          {/* Top Row: Identity */}
+          <Box>
+            <Tooltip title={`SYSTEM ID: ${petId || 'NEW'}`} arrow>
+              <Typography sx={{ fontWeight: 900, fontSize: '1.3rem', textTransform: 'uppercase', letterSpacing: 1.5, color: '#FFF8E1', fontFamily: FONT, lineHeight: 1.1, cursor: 'help' }}>
+                {petName?.toUpperCase() || 'UNKNOWN PATIENT'}
+              </Typography>
+            </Tooltip>
+            <Tooltip title={`OWNER: ${ownerData?.fullName?.toUpperCase() || 'UNKNOWN'} | PHONE: ${ownerData?.phone || '—'} | EMAIL: ${ownerData?.email || '—'}`} arrow>
+              <Typography sx={{ fontSize: '0.8rem', fontWeight: 800, color: '#A5D6A7', textTransform: 'uppercase', mt: 0.25, cursor: 'help' }}>
+                {ownerData?.fullName?.toUpperCase() || petData?.ownerName?.toUpperCase() || 'UNKNOWN OWNER'}
+                {ownerData?.phone && ` · ${ownerData.phone}`}
+              </Typography>
+            </Tooltip>
+          </Box>
+
+          {/* Right: Records & Action Cluster */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Box sx={{ textAlign: 'right', mr: 1 }}>
+              <Typography sx={{ fontSize: '1.1rem', fontWeight: 900, color: '#FFF8E1', fontFamily: FONT, lineHeight: 1 }}>
+                {records.length}
+              </Typography>
+              <Typography sx={{ fontSize: '0.6rem', fontWeight: 900, color: '#D7CCC8', letterSpacing: 1.5 }}>
+                RECORDS
+              </Typography>
+            </Box>
+            <Box sx={{ width: '2px', height: 32, bgcolor: 'rgba(255,255,255,0.1)' }} />
+            <Tooltip title="Print Full EMR">
+              <span>
+                <IconButton onClick={handlePrintFullEMR} size="small" disabled={records.length === 0} sx={{ color: '#FFF8E1', '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' } }}>
+                  <PrintIcon sx={{ fontSize: 24 }} />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <IconButton onClick={onClose} size="small" sx={{ color: '#FFF8E1', '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' } }}>
+              <CloseIcon sx={{ fontSize: 26 }} />
+            </IconButton>
+          </Box>
         </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          <Tooltip title="Print Full EMR">
-            <span>
-              <IconButton
-                onClick={handlePrintFullEMR}
-                size="small"
-                disabled={records.length === 0}
-                sx={{ color: '#FFF8E1', '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' }, '&.Mui-disabled': { color: 'rgba(255,255,255,0.3)' } }}
-              >
-                <PrintIcon sx={{ fontSize: 18 }} />
-              </IconButton>
-            </span>
-          </Tooltip>
-          <IconButton onClick={onClose} size="small" sx={{ color: '#FFF8E1', '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' } }}>
-            <CloseIcon sx={{ fontSize: 20 }} />
-          </IconButton>
+
+        {/* Bottom Row: Clinical Metadata (1:1 Parity with Dashboard) */}
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 3, rowGap: 1, pt: 1, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+          
+          {/* Species & Breed */}
+          <Box>
+            <Typography sx={{ fontSize: '0.55rem', fontWeight: 900, color: '#D7CCC8', textTransform: 'uppercase', letterSpacing: 1 }}>SPECIES / BREED</Typography>
+            <Tooltip title={`LINEAGE: ${petSpecies?.toUpperCase() || '—'} · ${petData?.breed?.toUpperCase() || 'UNKNOWN BREED'}`} arrow>
+              <Typography sx={{ fontSize: '0.85rem', fontWeight: 800, color: 'white', textTransform: 'uppercase', cursor: 'help' }}>
+                {petSpecies?.toUpperCase() || petData?.species?.toUpperCase() || '—'}
+                {` · ${petData?.breed?.toUpperCase() || 'UNKNOWN BREED'}`}
+              </Typography>
+            </Tooltip>
+          </Box>
+
+          {/* Sex & Status */}
+          <Box>
+            <Typography sx={{ fontSize: '0.55rem', fontWeight: 900, color: '#D7CCC8', textTransform: 'uppercase', letterSpacing: 1 }}>SEX & STATUS</Typography>
+            <Tooltip title={(() => {
+              const gender = petData?.gender || petData?.sex;
+              const isNeutered = petData?.isNeutered || petData?.spayed || petData?.neutered;
+              return `REPRODUCTIVE STATUS: ${gender?.toUpperCase() || 'UNKNOWN'} (${isNeutered ? (gender === 'Female' ? 'SPAYED' : 'NEUTERED') : 'INTACT'})`;
+            })()} arrow>
+              <Typography sx={{ fontSize: '0.85rem', fontWeight: 800, color: 'white', display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'help' }}>
+                {(() => {
+                  const gender = petData?.gender || petData?.sex;
+                  const isNeutered = petData?.isNeutered || petData?.spayed || petData?.neutered;
+                  if (gender === 'Female') return <><FemaleIcon sx={{ fontSize: 13, color: '#F48FB1' }} /> {`FEMALE (${isNeutered ? 'SPAYED' : 'INTACT'})`}</>;
+                  if (gender === 'Male') return <><MaleIcon sx={{ fontSize: 13, color: '#90CAF9' }} /> {`MALE (${isNeutered ? 'NEUTERED' : 'INTACT'})`}</>;
+                  return '—';
+                })()}
+              </Typography>
+            </Tooltip>
+          </Box>
+
+          {/* Age */}
+          <Box>
+            <Typography sx={{ fontSize: '0.55rem', fontWeight: 900, color: '#D7CCC8', textTransform: 'uppercase', letterSpacing: 1 }}>CURRENT AGE</Typography>
+            <Tooltip title={`DATE OF BIRTH: ${formatDate(petData?.dob || petData?.birthDate)}`} arrow>
+              <Typography sx={{ fontSize: '0.85rem', fontWeight: 800, color: '#FFF8E1', cursor: 'help' }}>
+                {calculatePetAge(petData?.dob || petData?.birthDate).toUpperCase()}
+              </Typography>
+            </Tooltip>
+          </Box>
+
+          {/* Weight */}
+          <Box>
+            <Typography sx={{ fontSize: '0.55rem', fontWeight: 900, color: '#D7CCC8', textTransform: 'uppercase', letterSpacing: 1 }}>WEIGHT</Typography>
+            <Tooltip title={`LAST RECORDED WEIGHT: ${petData?.lastWeight || '—'} KG`} arrow>
+              <Typography sx={{ fontSize: '0.85rem', fontWeight: 800, color: 'white', cursor: 'help' }}>
+                {petData?.lastWeight ? `${petData.lastWeight} KG` : '—'}
+              </Typography>
+            </Tooltip>
+          </Box>
+
+          {/* Allergies */}
+          <Box>
+            <Typography sx={{ fontSize: '0.55rem', fontWeight: 900, color: '#D7CCC8', textTransform: 'uppercase', letterSpacing: 1 }}>ALLERGIES</Typography>
+            {(() => {
+              const allg = (petData?.petAllergies || petData?.allergies || '').trim();
+              const hasA = allg.length > 0 && !['None', 'None recorded', 'none', 'nka'].includes(allg.toLowerCase());
+              if (hasA) {
+                return (
+                  <Tooltip title={`CONTRAINDICATIONS: ${allg.toUpperCase()}`} arrow>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, bgcolor: COLORS.surgery, px: 1, py: 0.25, cursor: 'help' }}>
+                      <ShieldIcon sx={{ fontSize: 12, color: 'white' }} />
+                      <Typography sx={{ fontSize: '0.7rem', fontWeight: 900, color: 'white', textTransform: 'uppercase' }}>{allg}</Typography>
+                    </Box>
+                  </Tooltip>
+                );
+              }
+              return (
+                <Tooltip title="SAFETY CONFIRMATION: NO KNOWN ALLERGIES" arrow>
+                  <Typography sx={{ fontSize: '0.85rem', fontWeight: 900, color: '#A5D6A7', cursor: 'help' }}>NKA</Typography>
+                </Tooltip>
+              );
+            })()}
+          </Box>
         </Box>
       </Box>
 
       {/* Body */}
       <Box sx={{ flex: 1, overflowY: 'auto', px: 3, py: 2, minHeight: 0 }}>
 
-        {/* Search field */}
-        <TextField
-          placeholder="Search diagnosis, vet, plan..."
-          value={searchText}
-          onChange={(e) => setSearchText(e.target.value)}
-          size="small"
-          fullWidth
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon sx={{ fontSize: 18, color: COLORS.textMuted }} />
-              </InputAdornment>
-            ),
-          }}
-          sx={{
-            mb: 1,
-            '& .MuiOutlinedInput-root': {
-              borderRadius: 0,
-              fontFamily: FONT,
-              fontSize: '0.8rem',
-              bgcolor: COLORS.surfaceHover,
-              '& fieldset': { borderColor: COLORS.border },
-            },
-          }}
-        />
+        {/* UNIFIED SEARCH & FILTER HUB */}
+        <Box sx={{
+          border: `1px solid ${COLORS.border}`,
+          bgcolor: COLORS.surfaceHover,
+          mb: 2,
+          '&:focus-within': { borderColor: COLORS.brand },
+          transition: 'border-color 0.15s ease',
+          position: 'relative',
+          zIndex: 1,
+        }}>
+          {/* Search Input */}
+          <TextField
+            placeholder="Search diagnosis, vet, plan..."
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            size="small"
+            fullWidth
+            autoComplete="off"
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon sx={{ fontSize: 18, color: COLORS.textMuted }} />
+                </InputAdornment>
+              ),
+              sx: {
+                '& fieldset': { border: 'none' },
+                fontFamily: FONT,
+                fontSize: '0.8rem',
+                cursor: 'text',
+              }
+            }}
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                padding: '2px 8px',
+              }
+            }}
+          />
 
-        {/* Filter chips */}
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1.5, alignItems: 'center' }}>
-          {[
-            { key: 'all', label: 'All' },
-            ...departments.map(d => ({ key: d.name.toLowerCase(), label: d.name })),
-            { key: 'vaccination', label: 'Vaccination' },
-          ].map(f => (
-            <Chip
-              key={f.key}
-              label={f.label}
-              size="small"
-              onClick={() => setTypeFilter(f.key)}
+          <Divider sx={{ borderColor: `${COLORS.border}33` }} />
+
+          {/* Integrated Filter Hub */}
+          <Box sx={{ px: 1.5, py: 1, display: 'flex', gap: 0.75, alignItems: 'center', flexWrap: 'wrap' }}>
+            
+            {/* Dept Multi-Select */}
+            <Button
+              onClick={handleDeptClick}
+              endIcon={<FilterListIcon sx={{ fontSize: 13 }} />}
               sx={{
-                height: 22, fontSize: '0.6rem', fontWeight: 900, borderRadius: 0, fontFamily: FONT,
-                bgcolor: typeFilter === f.key ? COLORS.brand : COLORS.surfaceHover,
-                color: typeFilter === f.key ? '#FFF8E1' : COLORS.accent,
-                border: `1px solid ${typeFilter === f.key ? COLORS.brand : COLORS.border}`,
-                cursor: 'pointer',
-                '&:hover': { bgcolor: typeFilter === f.key ? COLORS.accent : COLORS.borderLight },
+                height: 24, px: 1,
+                bgcolor: typeFilters.includes('all') ? 'transparent' : COLORS.brand,
+                color: typeFilters.includes('all') ? COLORS.textMuted : 'white',
+                border: `1px solid ${typeFilters.includes('all') ? COLORS.border : COLORS.brand}`,
+                borderRadius: 0, fontFamily: FONT, fontWeight: 900, fontSize: '0.52rem',
+                letterSpacing: 0.5,
+                '&:hover': { bgcolor: typeFilters.includes('all') ? COLORS.borderLight : COLORS.accent }
               }}
-            />
-          ))}
-          <Box sx={{ width: '1px', height: 16, bgcolor: COLORS.border, mx: 0.5 }} />
-          {[
-            { key: 'all', label: 'All time' },
-            { key: '6mo', label: '6 months' },
-            { key: '1yr', label: '1 year' },
-          ].map(f => (
-            <Chip
-              key={f.key}
-              label={f.label}
-              size="small"
-              onClick={() => setDateRange(f.key)}
+            >
+              {typeFilters.includes('all') ? 'DEPTS' : `${typeFilters.length} DEPTS`}
+            </Button>
+
+            {/* Staff Multi-Select */}
+            <Button
+              onClick={handleStaffClick}
+              endIcon={<PersonIcon sx={{ fontSize: 13 }} />}
               sx={{
-                height: 22, fontSize: '0.6rem', fontWeight: 900, borderRadius: 0, fontFamily: FONT,
-                bgcolor: dateRange === f.key ? COLORS.medical : COLORS.surfaceHover,
-                color: dateRange === f.key ? 'white' : COLORS.textMuted,
-                border: `1px solid ${dateRange === f.key ? COLORS.medical : COLORS.border}`,
-                cursor: 'pointer',
-                '&:hover': { bgcolor: dateRange === f.key ? COLORS.info : COLORS.borderLight },
+                height: 24, px: 1,
+                bgcolor: staffFilters.includes('all') ? 'transparent' : COLORS.brand,
+                color: staffFilters.includes('all') ? COLORS.textMuted : 'white',
+                border: `1px solid ${staffFilters.includes('all') ? COLORS.border : COLORS.brand}`,
+                borderRadius: 0, fontFamily: FONT, fontWeight: 900, fontSize: '0.52rem',
+                letterSpacing: 0.5,
+                '&:hover': { bgcolor: staffFilters.includes('all') ? COLORS.borderLight : COLORS.accent }
               }}
-            />
-          ))}
-          <Typography sx={{
-            ml: 'auto', fontSize: '0.6rem', fontWeight: 900, color: COLORS.textMuted,
-            fontFamily: FONT, letterSpacing: 0.5,
-          }}>
-            {filteredRecords.length} record{filteredRecords.length !== 1 ? 's' : ''}
-          </Typography>
+            >
+              {staffFilters.includes('all') ? 'STAFF' : `${staffFilters.length} STAFF`}
+            </Button>
+
+            {/* Date Range Hub */}
+            <Button
+              onClick={handleDateClick}
+              endIcon={<CalendarIcon sx={{ fontSize: 13 }} />}
+              sx={{
+                height: 24, px: 1,
+                bgcolor: dateRangeType === 'all' ? 'transparent' : COLORS.medical,
+                color: dateRangeType === 'all' ? COLORS.textMuted : 'white',
+                border: `1px solid ${dateRangeType === 'all' ? COLORS.border : COLORS.medical}`,
+                borderRadius: 0, fontFamily: FONT, fontWeight: 900, fontSize: '0.52rem',
+                letterSpacing: 0.5,
+                '&:hover': { bgcolor: dateRangeType === 'all' ? COLORS.borderLight : COLORS.info }
+              }}
+            >
+              {getDateLabel()}
+            </Button>
+
+            <Typography sx={{
+              ml: 'auto', fontSize: '0.52rem', fontWeight: 900, color: COLORS.textMuted,
+              fontFamily: FONT, letterSpacing: 0.8, opacity: 0.8
+            }}>
+              {filteredRecords.length} REC
+            </Typography>
+          </Box>
         </Box>
 
         {/* Record list */}
@@ -821,12 +1052,142 @@ export default function EMRDrawer({
         )}
       </Box>
 
-      {/* Footer */}
-      <Box sx={{ flexShrink: 0, px: 3, py: 1.5, bgcolor: '#F5F0E8', borderTop: `2px solid ${COLORS.brand}` }}>
-        <Typography sx={{ fontSize: '0.6rem', fontWeight: 700, color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 0.8 }}>
-          Read-only view · Changes must be made via amendment
-        </Typography>
-      </Box>
+      {/* Dept Menu */}
+      <Menu
+        anchorEl={deptAnchorEl}
+        open={Boolean(deptAnchorEl)}
+        onClose={handleDeptClose}
+        sx={{ zIndex: 3000 }}
+        disableScrollLock
+        PaperProps={{
+          sx: {
+            borderRadius: 0, border: `2px solid ${COLORS.brand}`,
+            mt: 0.5, boxShadow: `4px 4px 0 ${COLORS.brand}`,
+            minWidth: 200,
+          }
+        }}
+      >
+        <MenuItem 
+          onClick={() => toggleTypeFilter('all')}
+          sx={{ py: 0.5, px: 1.5, bgcolor: typeFilters.includes('all') ? `${COLORS.brand}12` : 'transparent' }}
+        >
+          <Checkbox size="small" checked={typeFilters.includes('all')} sx={{ p: 0.5, color: COLORS.brand }} />
+          <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 800, color: COLORS.brand }}>ALL DEPARTMENTS</Typography>
+        </MenuItem>
+        <Divider sx={{ my: 0.5 }} />
+        {[
+          ...departments.map(d => ({ key: d.name.toLowerCase(), label: d.name.toUpperCase() })),
+          { key: 'vaccination', label: 'VACCINATION' },
+        ].map(f => (
+          <MenuItem 
+            key={f.key} 
+            onClick={() => toggleTypeFilter(f.key)}
+            sx={{ py: 0.5, px: 1.5 }}
+          >
+            <Checkbox size="small" checked={typeFilters.includes(f.key)} sx={{ p: 0.5, color: COLORS.brand }} />
+            <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 700, color: COLORS.textPrimary }}>{f.label}</Typography>
+          </MenuItem>
+        ))}
+      </Menu>
+
+      {/* Staff Menu */}
+      <Menu
+        anchorEl={staffAnchorEl}
+        open={Boolean(staffAnchorEl)}
+        onClose={handleStaffClose}
+        sx={{ zIndex: 3000 }}
+        disableScrollLock
+        PaperProps={{
+          sx: {
+            borderRadius: 0, border: `2px solid ${COLORS.brand}`,
+            mt: 0.5, boxShadow: `4px 4px 0 ${COLORS.brand}`,
+            minWidth: 200,
+          }
+        }}
+      >
+        <MenuItem 
+          onClick={() => toggleStaffFilter('all')}
+          sx={{ py: 0.5, px: 1.5, bgcolor: staffFilters.includes('all') ? `${COLORS.brand}12` : 'transparent' }}
+        >
+          <Checkbox size="small" checked={staffFilters.includes('all')} sx={{ p: 0.5, color: COLORS.brand }} />
+          <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 800, color: COLORS.brand }}>ALL STAFF</Typography>
+        </MenuItem>
+        <Divider sx={{ my: 0.5 }} />
+        {staffList.map(s => (
+          <MenuItem 
+            key={s.id} 
+            onClick={() => toggleStaffFilter(s.fullName)}
+            sx={{ py: 0.5, px: 1.5 }}
+          >
+            <Checkbox size="small" checked={staffFilters.includes(s.fullName)} sx={{ p: 0.5, color: COLORS.brand }} />
+            <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 700, color: COLORS.textPrimary }}>{s.fullName.toUpperCase()}</Typography>
+          </MenuItem>
+        ))}
+      </Menu>
+
+      {/* Temporal Hub Menu */}
+      <Menu
+        anchorEl={dateAnchorEl}
+        open={Boolean(dateAnchorEl)}
+        onClose={handleDateClose}
+        sx={{ zIndex: 3000 }}
+        disableScrollLock
+        PaperProps={{
+          sx: {
+            borderRadius: 0, border: `2px solid ${COLORS.brand}`,
+            mt: 0.5, boxShadow: `4px 4px 0 ${COLORS.brand}`,
+            minWidth: 260, p: 1
+          }
+        }}
+      >
+        <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 900, color: COLORS.textMuted, mb: 1.5, letterSpacing: 1 }}>PRESET RANGES</Typography>
+        <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+          <Button variant="outlined" size="small" onClick={() => { setDateRangeType('all'); handleDateClose(); }} sx={{ flex: 1, fontFamily: FONT, fontSize: '0.6rem', fontWeight: 800, borderRadius: 0, color: COLORS.brand, borderColor: COLORS.brand }}>ALL</Button>
+          <Button variant="outlined" size="small" onClick={() => { setDateRangeType('today'); handleDateClose(); }} sx={{ flex: 1, fontFamily: FONT, fontSize: '0.6rem', fontWeight: 800, borderRadius: 0, color: COLORS.brand, borderColor: COLORS.brand }}>TODAY</Button>
+          <Button variant="outlined" size="small" onClick={() => { setDateRangeType('30d'); handleDateClose(); }} sx={{ flex: 1, fontFamily: FONT, fontSize: '0.6rem', fontWeight: 800, borderRadius: 0, color: COLORS.brand, borderColor: COLORS.brand }}>30D</Button>
+        </Stack>
+        <Stack direction="row" spacing={1} sx={{ mb: 3 }}>
+          <Button variant="outlined" size="small" onClick={() => { setDateRangeType('6mo'); handleDateClose(); }} sx={{ flex: 1, fontFamily: FONT, fontSize: '0.6rem', fontWeight: 800, borderRadius: 0, color: COLORS.brand, borderColor: COLORS.brand }}>6 MO</Button>
+          <Button variant="outlined" size="small" onClick={() => { setDateRangeType('1yr'); handleDateClose(); }} sx={{ flex: 1, fontFamily: FONT, fontSize: '0.6rem', fontWeight: 800, borderRadius: 0, color: COLORS.brand, borderColor: COLORS.brand }}>1 YR</Button>
+        </Stack>
+
+        <Divider sx={{ mb: 2 }} />
+
+        <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 900, color: COLORS.textMuted, mb: 1.5, letterSpacing: 1 }}>CUSTOM RANGE</Typography>
+        <Stack spacing={1.5}>
+          <Box>
+            <Typography sx={{ fontFamily: FONT, fontSize: '0.6rem', fontWeight: 800, color: COLORS.brand, mb: 0.5 }}>START DATE</Typography>
+            <TextField 
+              type="date" 
+              size="small" 
+              fullWidth 
+              value={customStart}
+              onChange={(e) => { setCustomStart(e.target.value); setDateRangeType('custom'); }}
+              InputProps={{ sx: { borderRadius: 0, fontFamily: FONT, fontSize: '0.75rem' } }} 
+            />
+          </Box>
+          <Box>
+            <Typography sx={{ fontFamily: FONT, fontSize: '0.6rem', fontWeight: 800, color: COLORS.brand, mb: 0.5 }}>END DATE</Typography>
+            <TextField 
+              type="date" 
+              size="small" 
+              fullWidth 
+              value={customEnd}
+              onChange={(e) => { setCustomEnd(e.target.value); setDateRangeType('custom'); }}
+              InputProps={{ sx: { borderRadius: 0, fontFamily: FONT, fontSize: '0.75rem' } }} 
+            />
+          </Box>
+          <Button 
+            fullWidth 
+            variant="contained" 
+            onClick={handleDateClose}
+            sx={{ bgcolor: COLORS.brand, borderRadius: 0, fontFamily: FONT, fontSize: '0.7rem', fontWeight: 900, mt: 1 }}
+          >
+            APPLY RANGE
+          </Button>
+        </Stack>
+      </Menu>
+
     </Drawer>
   );
 }

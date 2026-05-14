@@ -175,6 +175,7 @@ export const PRINT_STYLES = `
     font-size: 12px;
     border-bottom: 1px solid #E0D6CC;
     color: #3E2723;
+    word-break: break-word;
   }
   tr:nth-child(even) {
     background-color: #FAF8F5;
@@ -188,7 +189,23 @@ export const PRINT_STYLES = `
     border-top: 2px solid #E0D6CC;
     padding-top: 16px;
   }
+  /* Legacy/Passport Styles */
+  .clinic-header { text-align: center; margin-bottom: 24px; border-bottom: 2px solid #3E2723; padding-bottom: 16px; }
+  .clinic-header .clinic-name { font-size: 20px; font-weight: 900; color: #3E2723; margin: 0; text-transform: uppercase; }
+  .clinic-header .clinic-address { font-size: 11px; color: #8D6E63; margin: 2px 0 0; }
+  .clinic-header .doc-title { font-size: 16px; font-weight: 900; color: #3E2723; text-transform: uppercase; margin-top: 12px; letter-spacing: 2px; }
+  
+  .info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 24px;
+    margin-bottom: 32px;
+  }
+  .info-grid div { display: flex; justify-content: space-between; border-bottom: 1px solid #F5F5F5; padding: 4px 0; }
+  .info-grid .label { font-size: 10px; font-weight: 900; color: #8D6E63; text-transform: uppercase; letter-spacing: 1px; }
+  .info-grid .value { font-size: 12px; font-weight: 700; color: #3E2723; text-align: right; word-break: break-word; }
   @media print {
+    @page { margin: 0; }
     body { margin: 0; padding: 10mm; }
     .soap-block { break-inside: avoid; }
     table { break-inside: avoid; }
@@ -219,7 +236,7 @@ export const UNIFIED_PRINT_STYLES = `
   }
   .memo-row { display: contents; }
   .memo-label { font-size: 10px; font-weight: 900; color: #888; padding: 4px 0; text-transform: uppercase; letter-spacing: 1px; }
-  .memo-value { font-size: 13px; font-weight: 700; color: #1A1A1A; padding: 4px 0; }
+  .memo-value { font-size: 13px; font-weight: 700; color: #1A1A1A; padding: 4px 0; word-break: break-word; }
   
   .allergy-alert-bar { 
     background: #FFEBEE; 
@@ -250,7 +267,7 @@ export const UNIFIED_PRINT_STYLES = `
 
   .data-table { width: 100%; border-collapse: collapse; margin: 12px 0; border: 1px solid #EEE; }
   .data-table th { background: #F9F9F9; color: #888; font-size: 10px; font-weight: 900; text-transform: uppercase; padding: 8px 12px; text-align: left; border-bottom: 2px solid #1A1A1A; }
-  .data-table td { padding: 10px 12px; font-size: 12px; border-bottom: 1px solid #F0F0F0; color: #1A1A1A; }
+  .data-table td { padding: 10px 12px; font-size: 12px; border-bottom: 1px solid #EEE; color: #1A1A1A; word-break: break-word; }
   .data-table tr:last-child td { border-bottom: none; }
 
   .signature-area { margin-top: 60px; display: flex; flex-direction: column; align-items: flex-end; }
@@ -262,6 +279,7 @@ export const UNIFIED_PRINT_STYLES = `
   .reg-footer { margin-top: 40px; border-top: 1px solid #E5E5E5; padding-top: 12px; display: flex; justify-content: space-between; font-size: 9px; color: #AAA; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
   
   @media print {
+    @page { margin: 0; }
     body { margin: 0; padding: 10mm; }
     .section-anchor, .vitals-table, .data-table { break-inside: avoid; }
   }

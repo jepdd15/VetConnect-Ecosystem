@@ -130,7 +130,6 @@ export default function NewClientModal({ open, onClose }) {
         referredBy: referral.referredBy || null,
         role: 'pet_owner',
         accountStatus: 'admin_registered',   // no Firebase Auth account — guest-client pattern
-        accountStanding: 'Good Standing',
         staffNotes: [],
         emergencyContacts: emergencyContacts.filter((c, i) => i === 0 || c.name?.trim() || c.phone?.trim()),
         emergencyName: emergencyContacts[0]?.name?.trim() || null,

@@ -2083,8 +2083,8 @@ export default function PatientDashboard() {
                               <Typography sx={{ fontFamily: FONT, fontSize: '1.1rem', fontWeight: 900, color: COLORS.brand }}>
                                 {rec.dischargeSummary.vetName?.toUpperCase() || 'ATTENDING VETERINARIAN'}
                               </Typography>
-                              <Box sx={{ height: 1, bgcolor: COLORS.brand, mt: 1, mb: 0.5, width: '100%' }} />
-                              <Typography sx={{ fontFamily: FONT, fontSize: '0.6rem', fontWeight: 900, color: COLORS.textMuted, letterSpacing: 1 }}>AUTHORIZED SIGNATURE</Typography>
+                              <Box sx={{ height: 1.5, bgcolor: COLORS.brand, mt: 1, mb: 0.5, width: '100%' }} />
+                              <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 900, color: COLORS.textMuted, letterSpacing: 1.5 }}>ATTENDING VETERINARIAN</Typography>
                             </Box>
                           </Stack>
                         </Box>

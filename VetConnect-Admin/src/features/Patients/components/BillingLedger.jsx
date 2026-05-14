@@ -21,30 +21,30 @@ export default function BillingLedger({ transactions }) {
 
   const columns = [
     {
-      field: 'date', headerName: 'Date', width: 100,
+      field: 'date', headerName: 'DATE', width: 100,
       renderCell: (p) => {
         const d = p.value?.toDate?.() ?? (p.value?.seconds ? new Date(p.value.seconds * 1000) : new Date(p.value));
-        return <Typography sx={{ fontFamily: FONT, ...TYPE.meta }}>{d.toLocaleDateString()}</Typography>;
+        return <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', fontWeight: 800, color: COLORS.textPrimary }}>{d.toLocaleDateString()}</Typography>;
       }
     },
     {
-      field: 'receiptNumber', headerName: 'Receipt #', width: 150,
+      field: 'receiptNumber', headerName: 'RECEIPT #', width: 150,
       renderCell: (p) => (
-        <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 700, color: COLORS.accent, letterSpacing: 0.3 }}>
+        <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 900, color: COLORS.brand, letterSpacing: 0.5 }}>
           {p.value || '—'}
         </Typography>
       )
     },
     {
-      field: 'petName', headerName: 'Patient', flex: 1, minWidth: 90,
+      field: 'petName', headerName: 'PATIENT', flex: 1, minWidth: 90,
       renderCell: (p) => (
-        <Typography sx={{ fontFamily: FONT, fontWeight: 'bold', color: COLORS.textPrimary }} variant="body2">
+        <Typography sx={{ fontFamily: FONT, fontWeight: 800, color: COLORS.textPrimary, textTransform: 'uppercase', fontSize: '0.75rem' }}>
           {p.value || 'Counter Sale'}
         </Typography>
       )
     },
     {
-      field: 'items', headerName: 'Items', flex: 1, minWidth: 100,
+      field: 'items', headerName: 'ITEMS', flex: 1.5, minWidth: 150,
       renderCell: (p) => {
         const items = p.value || [];
         if (items.length === 0) return <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', color: COLORS.textMuted, fontStyle: 'italic' }}>—</Typography>;
@@ -54,7 +54,7 @@ export default function BillingLedger({ transactions }) {
         const fullText = items.map(i => `${i.qty || 1}× ${i.name}`).join(', ');
         return (
           <Tooltip title={fullText} placement="top-start">
-            <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', fontWeight: 700, color: COLORS.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', fontWeight: 600, color: COLORS.textSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {preview}
             </Typography>
           </Tooltip>
@@ -62,39 +62,39 @@ export default function BillingLedger({ transactions }) {
       }
     },
     {
-      field: 'total', headerName: 'Total', width: 100,
+      field: 'total', headerName: 'TOTAL', width: 110,
       renderCell: (p) => (
-        <Typography sx={{ fontFamily: FONT, fontWeight: 'bold' }}>
-          ₱{parseFloat(p.value || 0).toFixed(2)}
+        <Typography sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.brand, fontSize: '0.9rem' }}>
+          ₱{parseFloat(p.value || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
         </Typography>
       )
     },
     {
-      field: 'paid', headerName: 'Paid', width: 100,
+      field: 'paid', headerName: 'PAID', width: 110,
       renderCell: (p) => {
         const total = parseFloat(p.row.total || 0);
         const balance = parseFloat(p.row.balanceRemaining || 0);
         const paid = Math.max(0, total - balance);
         return (
-          <Typography sx={{ fontFamily: FONT, color: COLORS.success, fontWeight: 'bold' }}>
-            ₱{paid.toFixed(2)}
+          <Typography sx={{ fontFamily: FONT, color: COLORS.success, fontWeight: 900, fontSize: '0.9rem' }}>
+            ₱{paid.toLocaleString(undefined, { minimumFractionDigits: 2 })}
           </Typography>
         );
       }
     },
     {
-      field: 'balanceRemaining', headerName: 'Balance', width: 90,
+      field: 'balanceRemaining', headerName: 'BALANCE', width: 110,
       renderCell: (p) => {
         const bal = parseFloat(p.value || 0);
         const status = p.row.status || '';
         if (status === 'refunded' || status === 'voided' || bal <= 0) {
-          return <Typography sx={{ fontFamily: FONT, color: COLORS.textMuted, fontWeight: 'bold' }} variant="body2">₱0.00</Typography>;
+          return <Typography sx={{ fontFamily: FONT, color: COLORS.textMuted, fontWeight: 800, fontSize: '0.85rem' }}>₱0.00</Typography>;
         }
-        return <Typography sx={{ fontFamily: FONT, color: COLORS.danger, fontWeight: 'bold' }} variant="body2">₱{bal.toFixed(2)}</Typography>;
+        return <Typography sx={{ fontFamily: FONT, color: COLORS.danger, fontWeight: 900, fontSize: '0.9rem' }}>₱{bal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Typography>;
       }
     },
     {
-      field: 'paymentMethod', headerName: 'Method', width: 100,
+      field: 'paymentMethod', headerName: 'METHOD', width: 120,
       renderCell: (p) => {
         const method = p.value || 'Cash';
         const tenders = p.row.paymentTenders;
@@ -102,9 +102,25 @@ export default function BillingLedger({ transactions }) {
         const { icon, color } = getMethodStyle(method);
         return (
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', height: '100%' }}>
-            <Chip icon={icon} label={method} size="small" sx={{ borderRadius: 0, bgcolor: COLORS.cardBg, color, border: `1px solid ${color}`, fontWeight: 900, fontSize: '0.6rem', height: 22, '& .MuiChip-icon': { color } }} />
+            <Chip 
+              icon={icon} 
+              label={method.toUpperCase()} 
+              size="small" 
+              sx={{ 
+                borderRadius: 0, 
+                bgcolor: color, 
+                color: '#fff', 
+                border: `2px solid ${COLORS.brand}`, 
+                fontWeight: 900, 
+                fontSize: '0.6rem', 
+                height: 24, 
+                px: 1,
+                '& .MuiChip-icon': { color: '#fff !important' },
+                boxShadow: `2px 2px 0px ${COLORS.brand}22`
+              }} 
+            />
             {isSplit && (
-              <Typography variant="caption" sx={{ fontSize: '0.55rem', fontWeight: 900, color: COLORS.sky, letterSpacing: 0.3 }}>
+              <Typography variant="caption" sx={{ fontSize: '0.55rem', fontWeight: 900, color: COLORS.brand, letterSpacing: 0.5, mt: 0.25 }}>
                 SPLIT ({tenders.length})
               </Typography>
             )}
@@ -113,7 +129,7 @@ export default function BillingLedger({ transactions }) {
       }
     },
     {
-      field: 'status', headerName: 'Status', width: 90, align: 'center', headerAlign: 'center',
+      field: 'status', headerName: 'STATUS', width: 110, align: 'center', headerAlign: 'center',
       renderCell: (p) => {
         const bal = parseFloat(p.row.balanceRemaining || 0);
         const rawStatus = p.row.status || '';
@@ -123,14 +139,27 @@ export default function BillingLedger({ transactions }) {
         else if (bal > 0) finalStatus = 'unpaid';
         else finalStatus = 'paid';
 
-        const chipColor = finalStatus === 'paid' ? 'success' : finalStatus === 'refunded' || finalStatus === 'voided' ? 'error' : 'warning';
-        const chipVariant = finalStatus === 'paid' ? 'outlined' : 'filled';
+        const chipBg = finalStatus === 'paid' ? COLORS.success : finalStatus === 'refunded' || finalStatus === 'voided' ? COLORS.danger : COLORS.warning;
 
         return (
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 0.3 }}>
-            <Chip label={finalStatus.toUpperCase()} color={chipColor} size="small" variant={chipVariant} sx={{ fontFamily: FONT, fontWeight: 'bold', fontSize: '0.6rem' }} />
+            <Chip 
+              label={finalStatus.toUpperCase()} 
+              size="small" 
+              sx={{ 
+                fontFamily: FONT, 
+                fontWeight: 900, 
+                fontSize: '0.6rem', 
+                borderRadius: 0,
+                bgcolor: chipBg,
+                color: '#fff',
+                border: `2px solid ${COLORS.brand}`,
+                width: 80,
+                boxShadow: `3px 3px 0px ${COLORS.brand}22`
+              }} 
+            />
             {finalStatus === 'refunded' && p.row.refundedAt && (
-              <Typography variant="caption" sx={{ fontSize: '0.5rem', color: COLORS.danger, fontWeight: 700 }}>
+              <Typography variant="caption" sx={{ fontSize: '0.55rem', color: COLORS.danger, fontWeight: 900 }}>
                 {new Date(p.row.refundedAt?.seconds ? p.row.refundedAt.seconds * 1000 : p.row.refundedAt).toLocaleDateString()}
               </Typography>
             )}
@@ -142,30 +171,63 @@ export default function BillingLedger({ transactions }) {
 
   return (
     <Box sx={{ p: 4, bgcolor: 'transparent', flexGrow: 1 }}>
-      <Typography variant="h6" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.accent, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+      <Typography variant="h6" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.accent, mb: 3, display: 'flex', alignItems: 'center', gap: 1.5, textTransform: 'uppercase', letterSpacing: 1 }}>
         <ReceiptLongIcon sx={{ color: COLORS.accentWarm }} /> Billing History & Ledger
       </Typography>
 
       {(!transactions || transactions.length === 0) ? (
-        <Box sx={{ width: '100%', textAlign: 'center', py: 8, color: COLORS.textMuted, bgcolor: 'rgba(255,255,255,0.6)', borderRadius: 0, border: `1px dashed ${COLORS.border}` }}>
-          <ReceiptLongIcon sx={{ fontSize: 60, mb: 1, opacity: 0.5, color: COLORS.timelineRail }} />
-          <Typography sx={{ fontFamily: FONT, fontStyle: 'italic', color: COLORS.textMuted }}>No financial transactions found.</Typography>
+        <Box sx={{ 
+          width: '100%', textAlign: 'center', py: 12, 
+          color: COLORS.textMuted, 
+          bgcolor: COLORS.cream, 
+          borderRadius: 0, 
+          border: `2px dashed ${COLORS.brand}`,
+          boxShadow: `6px 6px 0px ${COLORS.brand}11`
+        }}>
+          <ReceiptLongIcon sx={{ fontSize: 64, mb: 2, opacity: 0.2, color: COLORS.brand }} />
+          <Typography sx={{ fontFamily: FONT, fontWeight: 800, textTransform: 'uppercase', fontSize: '0.85rem', color: COLORS.brand }}>
+            No financial transactions found.
+          </Typography>
         </Box>
       ) : (
-        <Paper elevation={0} sx={{ height: 'calc(100vh - 280px)', minHeight: 400, width: '100%', border: `1px solid ${COLORS.borderLight}`, ...PANEL.elevated, overflow: 'hidden' }}>
+        <Paper elevation={0} sx={{ 
+          height: 'calc(100vh - 280px)', minHeight: 450, width: '100%', 
+          borderRadius: 0,
+          border: `2px solid ${COLORS.brand}`, 
+          bgcolor: COLORS.cardBg,
+          boxShadow: `8px 8px 0px ${COLORS.brand}11`,
+          overflow: 'hidden' 
+        }}>
           <DataGrid
             rows={transactions}
             columns={columns}
             initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
             pageSizeOptions={[10, 25, 50]}
             disableRowSelectionOnClick
-            rowHeight={60}
+            rowHeight={70}
             sx={{
                 border: 'none',
                 fontFamily: FONT,
-                bgcolor: 'transparent',
-                '& .MuiDataGrid-columnHeaders': { bgcolor: COLORS.panelBg, color: COLORS.accent, fontWeight: 'bold', fontFamily: FONT },
-                '& .MuiDataGrid-cell': { display: 'flex', alignItems: 'center', borderBottom: `1px solid ${COLORS.borderLight}` },
+                '& .MuiDataGrid-columnHeaders': { 
+                  bgcolor: COLORS.panelBg, 
+                  color: COLORS.brand,
+                  fontWeight: 900, 
+                  borderBottom: `3px solid ${COLORS.brand}`,
+                  '& .MuiDataGrid-columnHeaderTitle': { fontWeight: 900, letterSpacing: 0.5 }
+                },
+                '& .MuiDataGrid-cell': { 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  borderBottom: `1px solid ${COLORS.borderLight}`,
+                  fontWeight: 600
+                },
+                '& .MuiDataGrid-row:hover': {
+                  bgcolor: `${COLORS.panelBg}44`
+                },
+                '& .MuiDataGrid-footerContainer': {
+                  borderTop: `2px solid ${COLORS.brand}`,
+                  bgcolor: COLORS.cream
+                }
             }}
           />
         </Paper>

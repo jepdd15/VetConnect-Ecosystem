@@ -214,7 +214,7 @@ export function generateInternalRecordHTML({
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Clinical Record — ${esc(pet?.name || 'Patient')}</title>
+  <title></title>
   <style>${PRINT_STYLES}</style>
 </head>
 <body>

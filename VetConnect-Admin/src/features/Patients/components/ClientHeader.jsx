@@ -149,13 +149,9 @@ export default function ClientHeader({ client, balance, isEditing, onEdit, onCan
               <Typography variant="h5" sx={{ fontFamily: FONT, color: hasDebt ? COLORS.danger : COLORS.success, fontWeight: 900, letterSpacing: -0.5 }}>
                   ₱{balance.toFixed(2)}
               </Typography>
-              {hasDebt ? (
+              {hasDebt && (
                   <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.danger, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 0.5, justifyContent: 'flex-end' }}>
                       <WarningAmberIcon sx={{fontSize: 16}}/> Payment Due
-                  </Typography>
-              ) : (
-                  <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.success, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 0.5, justifyContent: 'flex-end' }}>
-                      <CheckCircleOutlineIcon sx={{fontSize: 16}}/> Good Standing
                   </Typography>
               )}
           </Box>

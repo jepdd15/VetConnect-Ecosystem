@@ -35,7 +35,6 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
     govIdNumber: '',
     dpaConsent: false,
     waiverSigned: false,
-    accountStanding: 'Good Standing',
     // Step 5.4 (T3.5): Versioned consent fields — display-only.
     // These are read from Firestore and surfaced in ClientDetails for the
     // consent status cards. They are NEVER written via handleSaveProfile;
@@ -223,7 +222,6 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
     const cleanClient = {
       ...client,
       dob: formatFirestoreDate(client.dob),
-      accountStanding: client.accountStanding || 'Good Standing',
       dpaConsent: client.dpaConsent || false,
       waiverSigned: client.waiverSigned || false,
       emergencyContacts: reps,
@@ -276,7 +274,6 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
         govIdType: editForm.govIdType || null,
         govIdNumber: editForm.govIdNumber || null,
         seniorId: editForm.seniorId,
-        accountStanding: editForm.accountStanding || 'Good Standing',
         dpaConsent: derivedDpaConsent,
         waiverSigned: derivedWaiverSigned,
         referral: {

@@ -112,11 +112,13 @@ const PASSPORT_STYLES = `
     font-size: 13px;
     font-weight: 700;
     color: #3E2723;
+    word-break: break-word;
   }
   .vaccine-card-detail {
     font-size: 11px;
     color: #5D4037;
     margin-top: 3px;
+    word-break: break-word;
   }
   .status-badge {
     display: inline-block;

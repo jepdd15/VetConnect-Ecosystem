@@ -1,6 +1,26 @@
 import { UNIFIED_PRINT_STYLES, formatPrintDate, esc, calculatePetAge } from './printUtils';
 import { resolveVitals } from './resolveVitals';
 import { resolveObjectiveText } from './examUtils';
+import { Timestamp } from 'firebase/firestore';
+
+/**
+ * Formats a duration in milliseconds into a human-readable string.
+ */
+function formatDuration(ms) {
+  const totalMins = Math.round(ms / 60000);
+  if (!Number.isFinite(totalMins) || totalMins <= 0) return '';
+  if (totalMins < 60) return `${totalMins} min`;
+  const hours = Math.floor(totalMins / 60);
+  const mins = totalMins % 60;
+  return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+}
+
+function resolveTimestampMs(ts) {
+  if (!ts) return null;
+  if (typeof ts.toDate === 'function') return ts.toDate().getTime();
+  const parsed = new Date(ts).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
 /**
  * Renders the persistent stippled vitals table.
@@ -220,13 +240,20 @@ export function renderServicesSection(record) {
   const services = record.services || [];
   if (services.length < 2) return '';
 
-  const rows = services.map(svc => `
-    <tr>
-      <td><b>${esc(svc.name || '—')}</b></td>
-      <td>${svc.staffName || '—'}</td>
-      <td style="text-align: right; font-weight: 700;">&#x20B1;${Number(svc.price || 0).toLocaleString()}</td>
-    </tr>
-  `).join('');
+  const rows = services.map(svc => {
+    const startMs = resolveTimestampMs(svc.serviceStartedAt);
+    const endMs = resolveTimestampMs(svc.serviceCompletedAt);
+    const duration = (startMs != null && endMs != null) ? formatDuration(endMs - startMs) : '—';
+
+    return `
+      <tr>
+        <td><b>${esc(svc.name || '—')}</b></td>
+        <td style="color: #666;">${esc(duration)}</td>
+        <td>${svc.staffName || '—'}</td>
+        <td style="text-align: right; font-weight: 900; font-family: monospace;">&#x20B1;${Number(svc.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+      </tr>
+    `;
+  }).join('');
 
   return `
     <div class="section-anchor">Services Performed</div>
@@ -234,6 +261,7 @@ export function renderServicesSection(record) {
       <thead>
         <tr>
           <th>Service Item</th>
+          <th>Duration</th>
           <th>Staff</th>
           <th style="text-align: right;">Price</th>
         </tr>
@@ -351,7 +379,7 @@ export function generateVisitSummaryHTML({ record, pet, owner, clinicName, clini
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Visit Summary — ${petName}</title>
+  <title></title>
   <style>${UNIFIED_PRINT_STYLES}</style>
 </head>
 <body>
@@ -359,7 +387,7 @@ export function generateVisitSummaryHTML({ record, pet, owner, clinicName, clini
     <div class="clinic-info">
       <h1 class="clinic-name">${esc(clinicName || 'Veterinary Clinic')}</h1>
       <p class="clinic-meta">${esc(clinicAddress || '')}</p>
-      <p class="clinic-meta">T: ${esc(clinicPhone || '—')} | E: ${esc(clinicEmail || '—')}</p>
+      <p class="clinic-meta">TEL: ${esc(clinicPhone || '—')} &middot; EMAIL: ${esc(clinicEmail || '—')}</p>
     </div>
   </div>
 
@@ -376,9 +404,9 @@ export function generateVisitSummaryHTML({ record, pet, owner, clinicName, clini
       <div class="memo-label">Age</div>
       <div class="memo-value">${ageLabel}</div>
     </div>
-    <div class="memo-row">
-      <div class="memo-label">Allergies</div>
-      <div class="memo-value" style="grid-column: span 3;">${allergyList || 'None Recorded'}</div>
+    <div style="grid-column: span 4; border-top: 1px dashed #EEE; padding: 8px 0; margin-top: 4px;">
+      <div class="memo-label" style="margin-bottom: 2px;">Allergies</div>
+      <div class="memo-value" style="font-size: 14px; color: #1A1A1A;">${allergyList || 'None Recorded'}</div>
     </div>
     <div class="memo-row">
       <div class="memo-label">Owner</div>
@@ -395,7 +423,7 @@ export function generateVisitSummaryHTML({ record, pet, owner, clinicName, clini
   </div>
 
   ${soap.subjective ? `
-    <div class="section-anchor">Subjective / Chief Complaint</div>
+    <div class="section-anchor">Reason for Visit</div>
     <p class="content-text" style="margin-bottom: 24px;">${esc(soap.subjective)}</p>
   ` : ''}
 
@@ -421,11 +449,13 @@ export function generateVisitSummaryHTML({ record, pet, owner, clinicName, clini
   ${renderServicesSection(rec)}
 
   ${renderDischargeSection(rec.dischargeSummary, soap.prognosis)}
+  ${renderAttachmentsSection(rec.attachments)}
 
   <div class="signature-area">
-    <div class="sig-line"></div>
-    <div class="sig-title">Attending Veterinarian Signature</div>
-    <div class="sig-name" style="margin-top: 4px;">${vetName}</div>
+    <div style="font-size: 9px; font-weight: 900; color: #888; text-transform: uppercase; margin-bottom: 2px;">Signed by</div>
+    <div class="sig-name">${vetName}</div>
+    <div class="sig-line" style="margin-top: 8px;"></div>
+    <div class="sig-title">Attending Veterinarian</div>
   </div>
 
   <div class="reg-footer">

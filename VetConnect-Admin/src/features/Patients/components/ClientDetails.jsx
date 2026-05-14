@@ -216,8 +216,8 @@ const DataField = ({ label, value, isEditing, onChange, select, children, type="
       <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1, minHeight: 20 }}>
         <Typography variant="body2" sx={{ 
             fontFamily: FONT,
-            color: type === 'switch' ? (value ? COLORS.success : COLORS.danger) : (label === 'Account Standing' ? (value === 'Good Standing' ? COLORS.success : COLORS.danger) : COLORS.textPrimary), 
-            fontWeight: type === 'switch' || label === 'Account Standing' ? 900 : 600,
+            color: type === 'switch' ? (value ? COLORS.success : COLORS.danger) : COLORS.textPrimary, 
+            fontWeight: type === 'switch' ? 900 : 600,
             fontSize: '0.85rem'
         }}>
           {type === 'switch' ? (value ? 'YES' : 'NO') : (value || <Typography component="span" variant="caption" sx={{ fontFamily: FONT, fontStyle: 'italic', color: COLORS.textMuted }}>Not provided</Typography>)}
@@ -272,11 +272,6 @@ export default function ClientDetails({ editForm, setEditForm, isEditing, calcul
              <MenuItem value="Male">Male</MenuItem>
              <MenuItem value="Female">Female</MenuItem>
              <MenuItem value="Decline">Decline to state</MenuItem>
-         </DataField>
-         <DataField label="Account Standing" select value={editForm.accountStanding} isEditing={isEditing} onChange={(val)=>setEditForm({...editForm, accountStanding: val})}>
-             <MenuItem value="Good Standing"><Box sx={{ color: COLORS.success, fontWeight: 'bold' }}>Good Standing</Box></MenuItem>
-             <MenuItem value="Financial Warning"><Box sx={{ color: COLORS.warning, fontWeight: 'bold' }}>Financial Warning</Box></MenuItem>
-             <MenuItem value="Banned / Do Not Service"><Box sx={{ color: COLORS.danger, fontWeight: 'bold' }}>Banned / Do Not Service</Box></MenuItem>
          </DataField>
       </Grid>
 

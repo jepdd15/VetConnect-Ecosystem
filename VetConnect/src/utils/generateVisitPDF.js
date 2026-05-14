@@ -104,8 +104,9 @@ const renderLabResultsSection = (labResults) => {
         <tr>
           <th>Test Name</th>
           <th style="text-align: right;">Result</th>
+          <th>Ref. Range</th>
           <th>Status</th>
-          <th>Reference Range</th>
+          <th>Notes</th>
         </tr>
       </thead>
       <tbody>
@@ -113,8 +114,9 @@ const renderLabResultsSection = (labResults) => {
           <tr>
             <td><b>${esc(lab.testName || lab.name)}</b></td>
             <td style="text-align: right; font-family: monospace; font-weight: 700;">${esc(lab.result)} ${esc(lab.unit || '')}</td>
-            <td><span class="status-badge status-${(lab.status || 'normal').toLowerCase()}">${esc((lab.status || 'NORMAL').toUpperCase())}</span></td>
             <td style="color: #888; font-size: 11px;">${esc(lab.referenceRange || '—')}</td>
+            <td><span class="status-badge status-${(lab.status || 'normal').toLowerCase()}">${esc((lab.status || 'NORMAL').toUpperCase())}</span></td>
+            <td style="color: #666; font-size: 11px;">${esc(lab.notes || '—')}</td>
           </tr>
         `).join('')}
       </tbody>
@@ -133,6 +135,7 @@ const renderVaccineSection = (vaccines) => {
         <tr>
           <th>Vaccine</th>
           <th>Dose</th>
+          <th>Route</th>
           <th>Lot / Batch</th>
           <th style="text-align: right;">Next Due</th>
         </tr>
@@ -142,6 +145,7 @@ const renderVaccineSection = (vaccines) => {
           <tr>
             <td><b>${esc(v.vaccineName || v.name)}</b><br/><small style="color:#888">${esc(v.manufacturer || '')}</small></td>
             <td>${esc(v.doseNumber ? 'Dose ' + v.doseNumber : '—')}</td>
+            <td>${esc(v.route || '—')}</td>
             <td style="font-family: monospace;">${esc(v.lotNumber || '—')}</td>
             <td style="text-align: right; font-weight: 700;">${v.dueDate ? esc(formatDisplayDate(v.dueDate)) : '—'}</td>
           </tr>
@@ -157,14 +161,26 @@ const renderPrescriptionsSection = (prescriptions) => {
 
   return `
     <div class="section-anchor">Prescriptions</div>
-    <div class="bullet-list">
-      ${meds.map(rx => `
-        <div class="bullet-item">
-          <div style="font-size: 13px; font-weight: 700;">${esc(rx.name)} ${rx.qty ? `(${esc(rx.qty)})` : ''}</div>
-          <div style="font-size: 12px; color: #444; font-style: italic;">Sig: ${esc(rx.instructions || 'Use as directed')}</div>
-        </div>
-      `).join('')}
-    </div>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th style="width: 30px; text-align: center;">#</th>
+          <th>Item / Medication</th>
+          <th style="width: 50px; text-align: center;">Qty</th>
+          <th>Instructions</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${meds.map((rx, i) => `
+          <tr>
+            <td style="text-align: center;">${i + 1}</td>
+            <td><b>${esc(rx.name)}</b></td>
+            <td style="text-align: center;">x${rx.qty ?? 1}</td>
+            <td>${esc(rx.instructions || 'Use as directed')}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
   `;
 };
 
@@ -193,7 +209,7 @@ const renderServicesSection = (record, services) => {
               <td><b>${esc(svc.name || '—')}</b></td>
               <td style="color: #666;">${esc(duration)}</td>
               <td>${esc(svc.staffName || '—')}</td>
-              <td style="text-align: right; font-weight: 700;">&#x20B1;${Number(svc.price || 0).toLocaleString()}</td>
+              <td style="text-align: right; font-weight: 900; font-family: monospace;">&#x20B1;${Number(svc.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
             </tr>
           `;
         }).join('')}
@@ -230,6 +246,26 @@ const renderDischargeSection = (discharge, soapPrognosis) => {
     <div style="border-top: 1px solid #EEE; padding-top: 12px; display: flex; justify-content: space-between; align-items: center;">
       <span style="font-size: 9px; font-weight: 900; color: #888; text-transform: uppercase;">Follow-up / Recheck</span>
       <span style="font-size: 13px; font-weight: 700;">${esc(discharge?.nextVisit ? formatDisplayDate(discharge.nextVisit) : (discharge?.recheckIn || 'None scheduled'))}</span>
+    </div>
+  `;
+};
+
+const renderAttachmentsSection = (attachments) => {
+  if (!attachments?.length) return '';
+  return `
+    <div class="section-anchor">Reference Attachments</div>
+    <div class="bullet-list">
+      ${attachments.map(att => {
+        const isImg = /\.(jpg|jpeg|png|gif|webp)$/i.test(att.name);
+        const icon = isImg ? '📷' : '📄';
+        return `
+          <div class="bullet-item">
+            <span style="margin-right:8px;">${icon}</span>
+            <span style="font-weight:700;">${esc(att.name)}</span>
+            <span style="color:#888; font-size:11px;">(${esc(att.type || 'Attachment')})</span>
+          </div>
+        `;
+      }).join('')}
     </div>
   `;
 };
@@ -285,7 +321,7 @@ export async function generateVisitPDF({ record, pet, owner, services, clinicSet
         }
         .sig-row { display: contents; }
         .sig-label { font-size: 9px; font-weight: 900; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; padding: 4px 0; }
-        .sig-value { font-size: 13px; font-weight: 700; color: #1A1A1A; padding: 4px 0; }
+        .sig-value { font-size: 13px; font-weight: 700; color: #1A1A1A; padding: 4px 0; word-break: break-word; }
 
         /* Sections */
         .section-anchor { font-size: 10px; font-weight: 900; color: #888; text-transform: uppercase; letter-spacing: 1.5px; margin: 24px 0 10px 0; border-bottom: 1px solid #EEE; padding-bottom: 4px; }
@@ -300,9 +336,9 @@ export async function generateVisitPDF({ record, pet, owner, services, clinicSet
         .vitals-label { font-size: 10px; font-weight: 900; color: #888; padding: 8px 0; text-transform: uppercase; }
         .vitals-value { font-size: 13px; font-weight: 700; text-align: right; padding: 8px 0; font-family: monospace; }
         
-        .data-table { width: 100%; border-collapse: collapse; margin-top: 5px; }
-        .data-table th { font-size: 9px; font-weight: 900; color: #888; text-transform: uppercase; text-align: left; padding: 8px; border-bottom: 2px solid #1A1A1A; }
-        .data-table td { font-size: 12px; padding: 8px; border-bottom: 1px solid #EEE; vertical-align: middle; }
+        .data-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+        .data-table th { font-size: 10px; font-weight: 900; color: #888; text-transform: uppercase; text-align: left; padding: 8px; border-bottom: 2px solid #1A1A1A; background: #F9F9F9; }
+        .data-table td { font-size: 12px; padding: 10px 8px; border-bottom: 1px solid #EEE; word-break: break-word; vertical-align: middle; }
         
         .status-badge { padding: 2px 6px; font-size: 9px; font-weight: 900; border-radius: 0; text-transform: uppercase; }
         .status-normal { background: #E8F5E9; color: #2E7D32; }
@@ -327,7 +363,6 @@ export async function generateVisitPDF({ record, pet, owner, services, clinicSet
           <p class="clinic-meta">${clinicAddress}</p>
           <p class="clinic-meta">TEL: ${clinicPhone} &middot; EMAIL: ${clinicEmail}</p>
         </div>
-        <div class="doc-badge">Visit Summary</div>
       </div>
 
       <div class="signalment-grid">
@@ -345,9 +380,9 @@ export async function generateVisitPDF({ record, pet, owner, services, clinicSet
           <div class="sig-label">Age</div>
           <div class="sig-value">${esc(pet?.dob ? calculateAge(pet.dob) : '—')}</div>
         </div>
-        <div class="sig-row">
-          <div class="sig-label">Allergies</div>
-          <div class="sig-value" style="grid-column: span 3;">${esc(pet?.allergies || 'None Recorded')}</div>
+        <div style="grid-column: span 4; border-top: 1px dashed #EEE; padding: 8px 0; margin-top: 4px;">
+          <div class="sig-label" style="margin-bottom: 2px;">Allergies</div>
+          <div class="sig-value" style="font-size: 14px; color: #1A1A1A;">${esc(pet?.allergies || 'None Recorded')}</div>
         </div>
         <div class="sig-row">
           <div class="sig-label">Owner</div>
@@ -364,7 +399,7 @@ export async function generateVisitPDF({ record, pet, owner, services, clinicSet
       </div>
 
       ${record.soap?.subjective ? `
-        <div class="section-anchor">Subjective / Chief Complaint</div>
+        <div class="section-anchor">Reason for Visit</div>
         <p class="content-text">${esc(record.soap.subjective)}</p>
       ` : ''}
 
@@ -380,12 +415,14 @@ export async function generateVisitPDF({ record, pet, owner, services, clinicSet
       ${renderPrescriptionsSection(record.prescriptions || record.dispensedProducts)}
       ${renderServicesSection(record, services)}
       ${renderDischargeSection(record.dischargeSummary, record.soap?.prognosis)}
+      ${renderAttachmentsSection(record.attachments)}
 
       <div class="footer-area">
         <div class="signature-block">
-          <div class="sig-line"></div>
-          <div class="sig-label">Attending Veterinarian Signature</div>
-          <div style="font-size: 13px; font-weight: 700; margin-top: 4px;">${esc(record.vetName || 'Authorized Clinician')}</div>
+          <div style="font-size: 9px; font-weight: 900; color: #888; text-transform: uppercase; margin-bottom: 2px;">Signed by</div>
+          <div style="font-size: 13px; font-weight: 700; color: #1A1A1A;">${esc(record.vetName || 'Authorized Clinician')}</div>
+          <div class="sig-line" style="margin-top: 8px;"></div>
+          <div class="sig-label">Attending Veterinarian</div>
         </div>
       </div>
 

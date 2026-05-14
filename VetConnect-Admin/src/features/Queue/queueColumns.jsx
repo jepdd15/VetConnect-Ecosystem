@@ -93,17 +93,17 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
             <Stack spacing={1.2}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5 }}>SPECIES</Typography>
-                    <Typography sx={{ color: '#1A1A1A', fontWeight: '900', fontSize: '0.85rem' }}>{p.row.petSpecies?.toUpperCase()}</Typography>
+                    <Typography sx={{ color: '#1A1A1A', fontWeight: '900', fontSize: '0.85rem' }}>{p.row.petSpecies || 'Unknown'}</Typography>
                 </Box>
 
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5 }}>GENDER</Typography>
-                    <Typography sx={{ color: '#1A1A1A', fontWeight: '900', fontSize: '0.85rem' }}>{p.row.petGender?.toUpperCase() || 'UNKNOWN'}</Typography>
+                    <Typography sx={{ color: '#1A1A1A', fontWeight: '900', fontSize: '0.85rem' }}>{p.row.petGender || 'Unknown'}</Typography>
                 </Box>
                 
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5 }}>AGE</Typography>
-                    <Typography sx={{ color: p.row.petBirthdate ? '#1A1A1A' : '#D32F2F', fontWeight: '900', fontSize: '0.85rem' }}>
+                    <Typography sx={{ color: '#1A1A1A', fontWeight: '900', fontSize: '0.85rem' }}>
                         {petAge}
                     </Typography>
                 </Box>
@@ -114,8 +114,10 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                 </Box>
                 
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pt: 0.5 }}>
-                    <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5 }}>SURGICAL</Typography>
-                    <Chip size="small" label={p.row.petIsNeutered ? 'FIXED' : 'INTACT'} sx={{ height: 18, fontSize: '0.6rem', fontWeight: '1000', bgcolor: p.row.petIsNeutered ? '#E8F5E9' : '#FFF3E0', color: p.row.petIsNeutered ? '#2E7D32' : '#E65100', borderRadius: '4px' }} />
+                    <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5 }}>SURGICAL STATUS</Typography>
+                    <Typography sx={{ color: '#1A1A1A', fontWeight: '900', fontSize: '0.82rem' }}>
+                        {p.row.petIsNeutered ? 'Fixed' : 'Intact'}
+                    </Typography>
                 </Box>
                 
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -133,7 +135,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5 }}>ALLERGIES</Typography>
                     <Typography sx={{ color: hasSpecificAllergies ? '#D32F2F' : '#1A1A1A', fontWeight: '900', fontSize: '0.82rem', maxWidth: 120, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {hasSpecificAllergies ? petAllergies.toUpperCase() : 'NONE DISCLOSED'}
+                        {hasSpecificAllergies ? petAllergies : 'None Disclosed'}
                     </Typography>
                 </Box>
                 
@@ -143,7 +145,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                     </Typography>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem' }}>NAME</Typography>
-                        <Typography sx={{ color: '#1A1A1A', fontWeight: '900', fontSize: '0.82rem', textTransform: 'uppercase' }}>
+                        <Typography sx={{ color: '#1A1A1A', fontWeight: '900', fontSize: '0.82rem' }}>
                             {p.row.ownerName || 'Unknown Owner'}
                         </Typography>
                     </Box>

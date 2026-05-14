@@ -1588,10 +1588,14 @@ export default function PatientDashboard() {
               bgcolor: COLORS.surfaceAlt, borderBottom: `1px solid ${COLORS.border}`,
               display: 'flex', alignItems: 'center', px: 2, py: 0.75, gap: 1,
               boxShadow: 'inset 0 -2px 4px rgba(0,0,0,0.02)',
-              justifyContent: 'flex-end'
+              justifyContent: 'space-between'
             }}>
-              <Typography sx={{ fontFamily: FONT, fontSize: '0.62rem', fontWeight: 900, color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em', mr: 1 }}>
-                Filters:
+              <Typography sx={{ 
+                fontFamily: FONT, fontSize: '0.68rem', fontWeight: 1000, 
+                color: COLORS.textPrimary, textTransform: 'uppercase', 
+                letterSpacing: '0.1em', mr: 1 
+              }}>
+                Filters
               </Typography>
               
               <Stack direction="row" spacing={1} sx={{ overflowX: 'auto', py: 0.5, '&::-webkit-scrollbar': { height: 0 } }}>

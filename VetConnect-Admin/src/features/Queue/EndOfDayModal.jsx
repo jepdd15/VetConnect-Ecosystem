@@ -230,23 +230,25 @@ const AuditPatientCard = React.memo(({
         const voidedIds = new Set(combinedPulse.filter(p => p.correctedEventId).map(p => p.correctedEventId));
 
         if (filteredPulse.length === 0 && activeCaseDay === 0) {
-            // FALLBACK: If Day 1 Pulse is missing, use basic static milestones
+            // FALLBACK: If Day 1 Pulse is missing, use basic static milestones (Synced with Queue.jsx)
             return [
-                { id: 'booked', label: 'BOOKED', val: patient.createdAt },
-                { id: 'scheduled', label: 'SCHED', val: patient.jsScheduled },
-                { id: 'arrived', label: 'ARRIVED', val: patient.timeArrived, by: patient.arrivedBy },
-                { id: 'started', label: 'STARTED', val: patient.timeStarted, by: patient.startedBy }
+                { id: 'booked', label: patient.ticketPrefix ? 'INTAKE CREATED' : 'BOOKED (ONLINE)', val: patient.createdAt },
+                { id: 'scheduled', label: patient.ticketPrefix ? 'QUEUE POSITION' : 'APPOINTMENT SLOT', val: patient.jsScheduled },
+                { id: 'arrived', label: 'ARRIVED (CHECK-IN)', val: patient.timeArrived, by: patient.arrivedBy },
+                { id: 'started', label: 'CONSULT STARTED', val: patient.timeStarted, by: patient.startedBy }
             ].filter(m => m.val);
         }
         return filteredPulse.map(p => ({
             id: p.eventId,
-            label: p.toStatus ? p.toStatus.toUpperCase()
+            label: p.type === 'INCEPTION' ? 'INCEPTION (CARRY-OVER)' 
+                : p.toStatus ? p.toStatus.toUpperCase()
                 : (p.serviceName && (p.type === 'SERVICE_STARTED' || p.type === 'SERVICE_COMPLETED'))
                   ? `${p.serviceName}: ${p.type === 'SERVICE_STARTED' ? 'STARTED' : 'COMPLETED'}`
                   : (p.type || 'EVENT'),
             val: p.timestamp,
             by: p.staffName,
             isVoided: voidedIds.has(p.eventId),
+            isCorrection: p.isCorrection || p.type === 'CORRECTION',
             type: p.type,
             note: p.note
         })).filter(m => m.val != null);
@@ -320,54 +322,96 @@ const AuditPatientCard = React.memo(({
             )}
             {/* 1. PATIENT IDENTITY (280px) */}
             <Box sx={{ width: 280, borderRight: `1px solid ${clinicalBorder}`, p: 2, bgcolor: '#FFF', display: 'flex', flexDirection: 'column' }}>
-                <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1.5 }}>
-                    <Box sx={{ width: 56, height: 56, borderRadius: 1.2, border: `2px solid ${forensicColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#FFF', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-                        {getSpeciesIcon(patient.petSpecies)}
-                    </Box>
-                    <Box sx={{ minWidth: 0 }}>
-                        <Typography variant="h6" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: -0.5, lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{patient.petName}</Typography>
-                        <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', textTransform: 'uppercase', fontSize: '0.62rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
-                            {patient.petSpecies || 'UNK'} • {patient.petBreed || 'MIXED'} 
-                            {patient.petColor ? ` • ${patient.petColor.toUpperCase()}` : ''}
-                        </Typography>
-                        <Typography
-                            variant="caption"
-                            onClick={(e) => onGenderOpen(e, patient.id)}
-                            sx={{
-                                fontWeight: '1000', color: petGenderColor, textTransform: 'uppercase', fontSize: '0.62rem',
-                                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 0.5, mt: -0.2,
-                                cursor: 'pointer', '&:hover': { opacity: 0.7, textDecoration: 'underline' }
-                            }}
-                        >
-                            {isFemale ? <FemaleIcon sx={{ fontSize: 13, color: '#E91E63' }} /> : isMale ? <MaleIcon sx={{ fontSize: 13, color: '#1976D2' }} /> : <HelpCenterIcon sx={{ fontSize: 13, color: '#D32F2F' }} />}
-                            {petGenderLabel} • {petFixedStr} {patient.petWeight ? ` • ${patient.petWeight}kg` : ''}
-                        </Typography>
-                    </Box>
+                <Typography variant="h5" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: -1, lineHeight: 1, mb: 1.5 }}>
+                    {patient.petName?.toUpperCase()}
+                </Typography>
+
+                <Stack spacing={0.8} sx={{ mb: 2 }}>
+                    {[
+                        { label: 'SPECIES', val: patient.petSpecies || 'UNKNOWN' },
+                        { label: 'BREED', val: patient.petBreed || 'MIXED' },
+                        { label: 'AGE', val: (() => {
+                            if (!patient.petBirthdate) return "UNKNOWN";
+                            const birthDate = patient.petBirthdate.toDate ? patient.petBirthdate.toDate() : new Date(patient.petBirthdate);
+                            const now = new Date();
+                            let years = now.getFullYear() - birthDate.getFullYear();
+                            let months = now.getMonth() - birthDate.getMonth();
+                            if (months < 0) { years--; months += 12; }
+                            const ageBase = years > 0 ? `${years}y ${months}m` : `${months}m`;
+                            return patient.isAgeExact === false ? `${ageBase} (EST)` : ageBase;
+                        })() },
+                        { 
+                            label: 'SEX', 
+                            val: (
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end', color: petGenderColor }}>
+                                    {isFemale ? <FemaleIcon sx={{ fontSize: 12 }} /> : isMale ? <MaleIcon sx={{ fontSize: 12 }} /> : <HelpCenterIcon sx={{ fontSize: 12 }} />}
+                                    {petGenderLabel}
+                                </Box>
+                            ) 
+                        },
+                        { label: 'SURGICAL', val: patient.petIsNeutered ? 'FIXED' : 'INTACT' },
+                        { label: 'WEIGHT', val: patient.petWeight ? `${patient.petWeight} KG` : 'WEIGH REQ.' },
+                        { label: 'MARKINGS', val: patient.petColor?.toUpperCase() || 'NONE' },
+                        { 
+                            label: 'ALLERGIES', 
+                            val: patient.petAllergies || 'NONE DISCLOSED',
+                            isWarning: (patient.petAllergies && patient.petAllergies.toUpperCase() !== 'NONE')
+                        }
+                    ].map((row, idx) => (
+                        <Box key={idx} sx={{ display: 'flex', alignItems: 'flex-start', borderBottom: '1px solid #F5F5F5', pb: 0.4 }}>
+                            <Typography sx={{ color: '#9E9E9E', fontWeight: '1000', fontSize: '0.7rem', width: 85, flexShrink: 0, pt: 0.1 }}>
+                                {row.label}
+                            </Typography>
+                            <Typography sx={{ color: row.isWarning ? '#D32F2F' : '#1A1A1A', fontWeight: '1000', fontSize: '0.85rem', flexGrow: 1, textAlign: 'right', lineHeight: 1.2 }}>
+                                {row.val}
+                            </Typography>
+                        </Box>
+                    ))}
                 </Stack>
 
                 <Divider sx={{ mb: 1.5, borderBottomWidth: 2, borderStyle: 'dashed' }} />
 
                 <Box sx={{ mb: 1 }}>
-                    <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', display: 'block', mb: 0.3, letterSpacing: 0.8, fontSize: '0.6rem' }}>OWNER IDENTITY</Typography>
-                    <Typography variant="subtitle2" sx={{ fontWeight: '1000', color: '#1A1A1A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{patient.ownerName?.toUpperCase()}</Typography>
-                    <Stack spacing={0.3} sx={{ mt: 0.5 }}>
-                        {patient.ownerPhone || patient.ownerEmail ? (
-                            <>
-                                {patient.ownerPhone && (
-                                    <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: '#5D4037', fontWeight: '800', fontSize: '0.6rem' }}>
-                                        <SmartphoneIcon sx={{ fontSize: 12 }} /> {patient.ownerPhone}
-                                    </Typography>
-                                )}
-                                {patient.ownerEmail && (
-                                    <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: '#5D4037', fontWeight: '800', opacity: 0.8, fontSize: '0.6rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                        <AlternateEmailIcon sx={{ fontSize: 12 }} /> {patient.ownerEmail}
-                                    </Typography>
-                                )}
-                            </>
-                        ) : (
-                            <Typography variant="caption" sx={{ fontWeight: '1000', color: '#D32F2F', fontSize: '0.6rem', fontStyle: 'italic', opacity: 0.8 }}>
-                                NO CONTACT REGISTERED
-                            </Typography>
+                    <Typography variant="h5" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: -1, lineHeight: 1, mb: 1.5 }}>
+                        {patient.ownerName?.toUpperCase() || 'UNKNOWN OWNER'}
+                    </Typography>
+                    
+                    <Stack spacing={0.8}>
+                        {[
+                            { label: 'PHONE', val: patient.ownerPhone || 'NO CONTACT', color: '#1976D2' },
+                            { label: 'ADDRESS', val: (patient.ownerAddress || patient.ownerCity) ? `${patient.ownerAddress}${patient.ownerAddress && patient.ownerCity ? ', ' : ''}${patient.ownerCity}` : null }
+                        ].filter(r => r.val).map((row, idx) => (
+                            <Box key={idx} sx={{ display: 'flex', alignItems: 'flex-start', borderBottom: '1px solid #F5F5F5', pb: 0.4 }}>
+                                <Typography sx={{ color: '#9E9E9E', fontWeight: '1000', fontSize: '0.7rem', width: 85, flexShrink: 0, pt: 0.1 }}>
+                                    {row.label}
+                                </Typography>
+                                <Typography sx={{ color: row.color || '#1A1A1A', fontWeight: '1000', fontSize: '0.85rem', flexGrow: 1, textAlign: 'right', lineHeight: 1.2 }}>
+                                    {row.val}
+                                </Typography>
+                            </Box>
+                        ))}
+
+                        {patient.emergencyContacts && patient.emergencyContacts.length > 0 && (
+                            <Box sx={{ mt: 1.5 }}>
+                                <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1, fontSize: '0.65rem', opacity: 0.8, display: 'block', mb: 0.8 }}>
+                                    EMERGENCY CONTACTS
+                                </Typography>
+                                {patient.emergencyContacts.map((contact, idx) => (
+                                    <Box key={idx} sx={{ mb: 0.8, pb: 0.8, borderBottom: idx === patient.emergencyContacts.length - 1 ? 'none' : '1px dashed #D7CCC8' }}>
+                                        <Typography sx={{ color: '#1A1A1A', fontWeight: '1000', fontSize: '0.85rem', lineHeight: 1.1, mb: 0.4 }}>
+                                            {contact.name?.toUpperCase()}
+                                        </Typography>
+                                        <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
+                                            <Typography sx={{ color: '#795548', fontWeight: '1000', fontSize: '0.65rem', width: 85, flexShrink: 0 }}>
+                                                {contact.relation?.toUpperCase() || 'CONTACT'}
+                                            </Typography>
+                                            <Typography sx={{ color: '#1976D2', fontWeight: '1000', fontSize: '0.8rem', flexGrow: 1, textAlign: 'right' }}>
+                                                {contact.phone}
+                                            </Typography>
+                                        </Box>
+                                    </Box>
+                                ))}
+                            </Box>
                         )}
                     </Stack>
                 </Box>
@@ -457,22 +501,22 @@ const AuditPatientCard = React.memo(({
                             <ListItem key={i} sx={{ px: 1.2, py: 0.8, borderLeft: `6px solid ${bColor}`, borderBottom: '1px solid #eee', display: 'block' }}>
                                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                                     <Stack direction="row" alignItems="baseline" spacing={0.5} sx={{ flex: 1, pr: 1, overflow: 'hidden' }}>
-                                        <Typography variant="caption" sx={{ fontWeight: '1000', textTransform: 'uppercase', fontSize: '0.62rem', lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                        <Typography variant="caption" sx={{ fontWeight: '1000', textTransform: 'uppercase', fontSize: '0.85rem', lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#1A1A1A' }}>
                                             {svc.name}
                                         </Typography>
                                         {isAdded && (
-                                            <Typography variant="caption" sx={{ fontSize: '0.5rem', color: COLORS.textMuted, fontStyle: 'italic' }}>(added)</Typography>
+                                            <Typography variant="caption" sx={{ fontSize: '0.65rem', color: COLORS.textMuted, fontStyle: 'italic', fontWeight: '1000' }}>(ADDED)</Typography>
                                         )}
                                     </Stack>
-                                    <Typography variant="caption" sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '0.6rem', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                                        ({durationDisplay}{isPriorDay ? ' · Day 1' : ''} • ₱{Number(svc.price || 0).toLocaleString()})
+                                    <Typography variant="caption" sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '0.75rem', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                        ({durationDisplay}{isPriorDay ? ' · DAY 1' : ''} • ₱{Number(svc.price || 0).toLocaleString()})
                                     </Typography>
                                 </Stack>
-                                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 0.2 }}>
-                                    <Typography variant="caption" sx={{ color: svc.staffName ? '#5D4037' : COLORS.textMuted, fontWeight: '900', fontSize: '0.55rem', display: 'flex', alignItems: 'center', gap: 0.3 }}>
-                                        {svc.staffName ? `👤 ${svc.staffName}` : 'Unassigned'}
+                                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 0.5 }}>
+                                    <Typography variant="caption" sx={{ color: svc.staffName ? '#5D4037' : COLORS.textMuted, fontWeight: '1000', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                        {svc.staffName ? `👤 ${svc.staffName?.toUpperCase()}` : 'UNASSIGNED'}
                                     </Typography>
-                                    <Typography variant="caption" sx={{ fontWeight: '800', color: '#9E9E9E', fontSize: '0.55rem', textTransform: 'uppercase' }}>
+                                    <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', fontSize: '0.7rem', textTransform: 'uppercase' }}>
                                         {svc.department || 'GEN'}
                                     </Typography>
                                 </Stack>
@@ -481,11 +525,12 @@ const AuditPatientCard = React.memo(({
                                     label={(svc.serviceStatus || 'pending').toUpperCase().replace('-', ' ')}
                                     size="small"
                                     sx={{
-                                        mt: 0.3,
-                                        height: 16,
-                                        fontSize: '0.5rem',
-                                        fontWeight: 900,
+                                        mt: 0.8,
+                                        height: 20,
+                                        fontSize: '0.65rem',
+                                        fontWeight: 1000,
                                         borderRadius: 0,
+                                        border: '1px solid rgba(0,0,0,0.1)',
                                         bgcolor: svc.serviceStatus === 'completed' ? COLORS.success
                                                : svc.serviceStatus === 'in-progress' ? COLORS.medical
                                                : COLORS.warning,
@@ -498,23 +543,23 @@ const AuditPatientCard = React.memo(({
                 </List>
                 <Box sx={{ mt: 'auto', p: 1.5, borderTop: `1px solid ${clinicalBorder}`, bgcolor: '#FFF', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <Box>
-                        <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', fontSize: '0.52rem', display: 'block' }}>{totalActualMins > 0 ? 'ACTUAL' : 'EST. TIME'}</Typography>
-                        <Typography sx={{ fontWeight: '1000', fontSize: '0.75rem', color: '#5D4037' }}>{totalActualMins > 0 ? totalActualMins : totalEstMins}M</Typography>
+                        <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', fontSize: '0.65rem', display: 'block' }}>{totalActualMins > 0 ? 'ACTUAL' : 'EST. TIME'}</Typography>
+                        <Typography sx={{ fontWeight: '1000', fontSize: '0.95rem', color: '#5D4037' }}>{totalActualMins > 0 ? totalActualMins : totalEstMins}M</Typography>
                     </Box>
                     {/* T3.69: Service completion fraction */}
                     <Box sx={{ textAlign: 'center' }}>
-                        <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', fontSize: '0.52rem', display: 'block' }}>PROGRESS</Typography>
+                        <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', fontSize: '0.65rem', display: 'block' }}>PROGRESS</Typography>
                         <Typography sx={{
                             fontWeight: '1000',
-                            fontSize: '0.75rem',
+                            fontSize: '0.95rem',
                             color: completedCount === svcTotal ? COLORS.success : COLORS.brand,
                         }}>
                             {completedCount}/{svcTotal}
                         </Typography>
                     </Box>
                     <Box sx={{ textAlign: 'right' }}>
-                        <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', fontSize: '0.52rem', display: 'block' }}>TOTAL VALUE</Typography>
-                        <Typography sx={{ fontWeight: '1000', fontSize: '0.75rem', color: '#1B5E20' }}>₱{totalPrice.toLocaleString()}</Typography>
+                        <Typography variant="caption" sx={{ fontWeight: '1000', color: '#9E9E9E', fontSize: '0.65rem', display: 'block' }}>TOTAL VALUE</Typography>
+                        <Typography sx={{ fontWeight: '1000', fontSize: '0.95rem', color: '#1B5E20' }}>₱{totalPrice.toLocaleString()}</Typography>
                     </Box>
                 </Box>
             </Box>
@@ -549,38 +594,39 @@ const AuditPatientCard = React.memo(({
                     <Box sx={{ position: 'absolute', left: 8, top: 4, bottom: 4, width: '2px', borderLeft: '2px dashed #D7CCC8' }} />
                     {(ancestorData?.milestones || milestones).map((m, idx) => {
                         if (!m.val) return null;
-                        const date = m.val.toDate ? m.val.toDate() : new Date(m.val);
+                        const date = (m.val && typeof m.val.toDate === 'function') ? m.val.toDate() : new Date(m.val || 0);
                         const isLast = idx === (ancestorData?.milestones || milestones).length - 1;
 
                         let metricLabel = null;
                         if (m.id === 'arrived') {
                             const schVal = patient.jsScheduled;
                             if (schVal) {
-                                const schD = schVal.toDate ? schVal.toDate() : new Date(schVal);
+                                const schD = (schVal && typeof schVal.toDate === 'function') ? schVal.toDate() : new Date(schVal);
                                 const diff = Math.floor((date - schD) / 60000);
                                 metricLabel = `Punctuality: ${formatDuration(diff)} ${diff > 0 ? 'Late' : 'Early'}`;
                             }
                         } else if (m.id === 'started') {
                             const arr = (ancestorData?.milestones || milestones).find(i => i.id === 'arrived');
                             if (arr) {
-                                const arrD = arr.val.toDate ? arr.val.toDate() : new Date(arr.val);
+                                const arrD = (arr.val && typeof arr.val.toDate === 'function') ? arr.val.toDate() : new Date(arr.val);
                                 metricLabel = `Lobby Wait: ${formatDuration(Math.floor((date - arrD) / 60000))}`;
                             }
                         }
 
                         return (
                             <Box key={m.id || idx} sx={{ position: 'relative', opacity: m.isVoided ? 0.4 : 1 }}>
-                                <Box sx={{ position: 'absolute', left: -20, top: 4, width: 8, height: 8, borderRadius: '50%', bgcolor: m.isVoided ? '#BDBDBD' : (isLast ? '#2E7D32' : '#9E9E9E'), border: '2px solid white' }} />
+                                <Box sx={{ position: 'absolute', left: -20, top: 4, width: 8, height: 8, borderRadius: '50%', bgcolor: m.isCorrection ? '#1976D2' : (m.isVoided ? '#BDBDBD' : (isLast ? '#2E7D32' : '#9E9E9E')), border: '2px solid white' }} />
                                 <Typography variant="caption" sx={{ 
                                     fontWeight: '1000', 
-                                    color: m.isVoided ? '#BDBDBD' : (isLast ? '#2E7D32' : '#9E9E9E'), 
+                                    color: m.isCorrection ? '#1976D2' : (m.isVoided ? '#BDBDBD' : (isLast ? '#2E7D32' : '#9E9E9E')), 
                                     fontSize: '0.58rem', 
                                     display: 'flex', 
                                     alignItems: 'center', 
                                     gap: 0.5, 
                                     letterSpacing: 0.3 
                                 }}>
-                                    {m.label}
+                                    {m.isCorrection ? `↺ CORRECTION TO ${m.label}` : m.label}
+                                    {m.isCorrection && <Chip label="CORRECTION" size="small" sx={{ height: 12, fontSize: '0.45rem', fontWeight: 1000, bgcolor: '#C8E6C9', color: '#2E7D32', borderRadius: 0.5 }} />}
                                     {m.isVoided && <Chip label="REVERTED" size="small" sx={{ height: 12, fontSize: '0.45rem', fontWeight: 1000, bgcolor: '#FFEBEE', color: '#D32F2F', borderRadius: 0.5 }} />}
                                 </Typography>
                                 <Typography sx={{ 
@@ -589,7 +635,7 @@ const AuditPatientCard = React.memo(({
                                     color: m.isVoided ? '#9E9E9E' : '#1A1A1A',
                                     textDecoration: m.isVoided ? 'line-through' : 'none'
                                 }}>
-                                    {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                                     {m.by && <span style={{ fontWeight: '1000', marginLeft: '6px', fontSize: '0.75rem', color: m.isVoided ? '#9E9E9E' : '#1A1A1A' }}>● {m.by}</span>}
                                 </Typography>
                                 {m.note && (
@@ -606,8 +652,8 @@ const AuditPatientCard = React.memo(({
                                         mt: 0.5,
                                         cursor: 'pointer'
                                     }} onClick={() => toggleNote(m.id)}>
-                                        ↳ {(!expandedNotes[m.id] && m.note.length > 60) ? `${m.note.substring(0, 57)}...` : m.note}
-                                        {m.note.length > 60 && <span style={{ color: '#1976D2', marginLeft: '4px', fontWeight: '1000' }}>[{expandedNotes[m.id] ? 'LESS' : 'MORE'}]</span>}
+                                        ↳ {(!expandedNotes[m.id] && String(m.note).length > 60) ? `${String(m.note).substring(0, 57)}...` : String(m.note)}
+                                        {String(m.note).length > 60 && <span style={{ color: '#1976D2', marginLeft: '4px', fontWeight: '1000' }}>[{expandedNotes[m.id] ? 'LESS' : 'MORE'}]</span>}
                                     </Typography>
                                 )}
                                 {metricLabel && !m.isVoided && (
@@ -1552,10 +1598,7 @@ const EndOfDayModal = React.memo(({
                     {/* THE CENTRAL CENSUS SHIELD: MOVED TO MAIN CONTAINER FOR CENTERING */}
 
                     <Typography variant="caption" sx={{ fontWeight: '1000', color: isForced ? '#D32F2F' : '#9E9E9E', maxWidth: '400px', lineHeight: 1.3, fontSize: '0.72rem' }}>
-                        {isForced
-                            ? "MANDATORY RECOVERY: System detected unresolved cases. Forensic sign-off required."
-                            : "RECOVERY PROTOCOL: Resolved records will be transitioned to the permanent clinical archive."
-                        }
+                        {isForced && "MANDATORY RECOVERY: System detected unresolved cases. Forensic sign-off required."}
                     </Typography>
 
                     <Stack direction="row" spacing={2}>
@@ -1567,9 +1610,12 @@ const EndOfDayModal = React.memo(({
                                     else handleExitClick();
                                 }}
                                 sx={{
-                                    borderRadius: 1.5, borderColor: '#5D4037', color: '#5D4037',
+                                    borderRadius: 0, 
+                                    border: '2px solid #5D4037 !important', 
+                                    color: '#5D4037',
+                                    bgcolor: 'white',
                                     fontWeight: '1000', px: 3,
-                                    '&:hover': { bgcolor: '#F5F5F5', borderColor: '#3E2723' }
+                                    '&:hover': { bgcolor: '#F5F5F5', borderColor: '#000' }
                                 }}
                             >
                                 {isConfirming ? "GO BACK & EDIT" : (exitConfirm ? "CANCEL EXIT" : "EXIT AUDIT")}
@@ -1581,13 +1627,15 @@ const EndOfDayModal = React.memo(({
                             onClick={handleProcessClick}
                             disabled={isGateLocked}
                             sx={{
-                                borderRadius: 1.5,
-                                bgcolor: isGateLocked ? '#BDBDBD' : (isConfirming ? '#E65100' : '#D32F2F'),
-                                color: 'white', fontWeight: '1000', px: 5, py: 1.2,
+                                borderRadius: 0,
+                                border: isGateLocked ? '2px solid #BDBDBD' : '2px solid #000',
+                                bgcolor: isGateLocked ? '#F5F5F5' : (isConfirming ? '#E65100' : '#D32F2F'),
+                                color: isGateLocked ? '#9E9E9E' : 'white', 
+                                fontWeight: '1000', px: 5, py: 1.2,
                                 '&:hover': { bgcolor: isConfirming ? '#BF360C' : '#B71C1C' },
-                                boxShadow: isGateLocked ? 'none' : (isConfirming ? '0 8px 24px rgba(230, 81, 0, 0.4)' : '0 8px 16px rgba(211, 47, 47, 0.3)'),
+                                boxShadow: isGateLocked ? 'none' : '4px 4px 0px rgba(0,0,0,0.2)',
                                 letterSpacing: 1.5, fontSize: '0.9rem',
-                                '&.Mui-disabled': { bgcolor: '#BDBDBD', color: 'rgba(255,255,255,0.7)', border: '2px solid rgba(0,0,0,0.1)' }
+                                '&.Mui-disabled': { bgcolor: '#F5F5F5', color: '#9E9E9E', border: '2px solid #BDBDBD' }
                             }}
                         >
                             {isGateLocked ? `🔒 ${pendingTriageCount} RECORD(S) PENDING AUDIT` : (isConfirming ? "⚠️ CONFIRM TRIAGE SIGN-OFF" : "PROCESS & UNLOCK QUEUE")}

@@ -3119,13 +3119,13 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
 
                                 return events
                                 .sort((a,b) => {
-                                    const dateA = a.val && a.val.toDate ? a.val.toDate() : new Date(a.val || 0);
-                                    const dateB = b.val && b.val.toDate ? b.val.toDate() : new Date(b.val || 0);
+                                    const dateA = (a.val && typeof a.val.toDate === 'function') ? a.val.toDate() : new Date(a.val || 0);
+                                    const dateB = (b.val && typeof b.val.toDate === 'function') ? b.val.toDate() : new Date(b.val || 0);
                                     return dateA - dateB;
                                 })
                                 .map((item, idx) => {
                                     const isLatestTotal = item.id === events[events.length - 1]?.id;
-                                    const date = item.val && item.val.toDate ? item.val.toDate() : new Date(item.val || 0);
+                                    const date = (item.val && typeof item.val.toDate === 'function') ? item.val.toDate() : new Date(item.val || 0);
                                     const color = item.isCorrection ? '#1976D2' : (item.isVoided ? '#BDBDBD' : (isLatestTotal ? '#2E7D32' : '#9E9E9E'));
                                     const isExpanded = expandedPulseId === item.id;
                                     
@@ -3170,10 +3170,10 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                                                         opacity: item.isVoided ? 0.6 : 1,
                                                         whiteSpace: 'pre-wrap'
                                                     }}>
-                                                        ↳ {(!isExpanded && item.note.length > 50) 
-                                                            ? `${item.note.substring(0, 47)}...` 
-                                                            : item.note}
-                                                        {!isExpanded && item.note.length > 50 && (
+                                                        ↳ {(!isExpanded && String(item.note).length > 50) 
+                                                            ? `${String(item.note).substring(0, 47)}...` 
+                                                            : String(item.note)}
+                                                        {!isExpanded && String(item.note).length > 50 && (
                                                             <span style={{ color: "#1976D2", marginLeft: "4px", fontWeight: "1000", cursor: "pointer" }}>
                                                                 [MORE]
                                                             </span>

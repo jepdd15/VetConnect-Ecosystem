@@ -3063,7 +3063,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                                 <IconButton 
                                     size="small" 
                                     disabled={safeActiveDay === 0} 
-                                    onClick={() => setActiveCaseDay(prev => Math.max(0, prev - 1))}
+                                    onClick={() => setActiveCaseDay(safeActiveDay - 1)}
                                     sx={{ p: 0.2, color: '#5D4037' }}
                                 >
                                     <ArrowBackIosNewIcon sx={{ fontSize: 10 }} />
@@ -3074,7 +3074,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                                 <IconButton 
                                     size="small" 
                                     disabled={safeActiveDay === allDates.length - 1} 
-                                    onClick={() => setActiveCaseDay(prev => Math.min(allDates.length - 1, prev + 1))}
+                                    onClick={() => setActiveCaseDay(safeActiveDay + 1)}
                                     sx={{ p: 0.2, color: '#5D4037' }}
                                 >
                                     <ArrowForwardIosIcon sx={{ fontSize: 10 }} />

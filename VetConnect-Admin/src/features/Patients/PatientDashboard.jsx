@@ -1499,8 +1499,8 @@ export default function PatientDashboard() {
               ),
               endAdornment: (
                 <InputAdornment position="end">
-                  <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, fontWeight: 900, textTransform: 'uppercase', opacity: 0.8 }}>
-                    {processedHistory.length} items
+                  <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', color: COLORS.brand, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    {processedHistory.length} RECORDS
                   </Typography>
                 </InputAdornment>
               )

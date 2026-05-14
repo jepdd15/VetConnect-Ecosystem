@@ -1595,10 +1595,10 @@ export default function EMRDrawer({
             )}
 
             <Typography sx={{
-              ml: 'auto', fontSize: '0.65rem', fontWeight: 900, color: COLORS.brand,
-              fontFamily: FONT, letterSpacing: 1, opacity: 1
+              ml: 'auto', fontSize: '0.7rem', fontWeight: 900, color: COLORS.brand,
+              fontFamily: FONT, letterSpacing: 1, opacity: 1, textTransform: 'uppercase'
             }}>
-              {filteredRecords.length} REC
+              {filteredRecords.length} RECORDS
             </Typography>
           </Box>
         </Box>

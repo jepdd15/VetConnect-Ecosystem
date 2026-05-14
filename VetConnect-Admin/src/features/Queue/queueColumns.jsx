@@ -178,7 +178,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                   </Typography>
                 </>
               ) : (
-                  <LocalHospitalIcon sx={{ fontSize: 24, color: '#BDBDBD', opacity: 0.8 }} />
+                  null
               )}
             </Box>
 
@@ -200,15 +200,11 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
 
                   {/* LINE 3: THE WAITING ROOM ANCHOR (HUMAN) */}
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, mt: 0.2 }}>
-                      {isWalkIn ? <DirectionsWalkIcon sx={{ fontSize: 13, color: 'rgba(0,0,0,0.4)' }} /> : <SmartphoneIcon sx={{ fontSize: 13, color: '#1976D2' }} />}
+                      {/* Icons removed per user request */}
                       <Typography variant="caption" sx={{ fontSize: '0.85rem', fontWeight: '800', color: '#5D4037', textTransform: 'uppercase', letterSpacing: '0.01rem', lineHeight: 1 }}>
                           {p.row.ownerName || 'Online Client'}
                       </Typography>
-                      {hasSpecificAllergies && (
-                          <Tooltip title={`Allergies: ${petAllergies}`}>
-                              <WarningIcon sx={{ fontSize: 14, color: '#D32F2F' }} />
-                          </Tooltip>
-                      )}
+                      {/* Allergy warning icon removed per user request */}
                   </Box>
               </Box>
 

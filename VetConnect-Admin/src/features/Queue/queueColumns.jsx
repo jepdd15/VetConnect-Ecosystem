@@ -34,7 +34,7 @@ const calculateAgeString = (dob, isAgeExact) => {
 
 export const getQueueColumns = (tabValue, currentTime, actions, isToday, departments, isTomorrow) => [
   { 
-    field: 'identity', headerName: 'Patient Identity', flex: 1, minWidth: 180,
+    field: 'identity', headerName: 'Patient Identity', flex: 0.8, minWidth: 170,
     resizable: false, sortable: false, disableColumnMenu: true,
     renderCell: (p) => {
       const isWalkIn = p.row.isWalkIn === true || p.row.ownerId === 'WALK_IN_USER' || String(p.row.ownerId).includes('GUEST_') || p.row.ticketPrefix === 'W' || p.row.ticketPrefix === 'E';
@@ -699,7 +699,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
     }
   },
   {
-    field: 'actions', headerName: 'Command Action', width: 240, sortable: false, disableColumnMenu: true,
+    field: 'actions', headerName: 'Command Action', flex: 1.1, minWidth: 280, sortable: false, disableColumnMenu: true,
     align: 'center', headerAlign: 'center', resizable: false,
     renderCell: (params) => {
         if (!isToday && !isTomorrow) {

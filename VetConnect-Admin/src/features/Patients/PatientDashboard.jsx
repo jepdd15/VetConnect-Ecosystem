@@ -1594,7 +1594,7 @@ export default function PatientDashboard() {
                 {[
                   { label: 'Depts', icon: <FilterListIcon sx={{ fontSize: 13 }} />, anchor: deptAnchor, setAnchor: setDeptAnchor, active: !deptFilters.includes('all'), color: COLORS.brand },
                   { label: 'Staff', icon: <PersonIcon sx={{ fontSize: 13 }} />, anchor: staffAnchor, setAnchor: setStaffAnchor, active: !staffFilters.includes('all'), color: COLORS.brand },
-                  { label: 'Meds', icon: <MedicationIcon sx={{ fontSize: 13 }} />, anchor: medAnchor, setAnchor: setMedAnchor, active: !medFilters.includes('all'), color: COLORS.brand },
+                  { label: 'Meds', icon: <MedicationIcon sx={{ fontSize: 13 }} />, anchor: medAnchor, setAnchor: setMedAnchor, active: !medFilters.includes('all'), color: COLORS.danger },
                   { label: 'Supplies', icon: <InventoryIcon sx={{ fontSize: 13 }} />, anchor: supplyAnchor, setAnchor: setSupplyAnchor, active: !supplyFilters.includes('all'), color: COLORS.info },
                   { label: 'Retail', icon: <ShoppingBagIcon sx={{ fontSize: 13 }} />, anchor: retailAnchor, setAnchor: setRetailAnchor, active: !retailFilters.includes('all'), color: COLORS.success },
                   { label: 'Diagnoses', icon: <AssignmentIcon sx={{ fontSize: 13 }} />, anchor: diagAnchor, setAnchor: setDiagAnchor, active: !diagnosisFilters.includes('all'), color: COLORS.brand },

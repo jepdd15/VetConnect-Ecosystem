@@ -1468,13 +1468,13 @@ export default function EMRDrawer({
               endIcon={<ExpandMoreIcon sx={{ fontSize: 14 }} />}
               sx={{
                 height: 36, px: 1.5,
-                bgcolor: medFilters.includes('all') ? 'white' : COLORS.brand,
-                color: medFilters.includes('all') ? COLORS.brand : 'white',
-                border: `2px solid ${COLORS.brand}`,
-                boxShadow: `2px 2px 0 ${COLORS.brand}`,
+                bgcolor: medFilters.includes('all') ? 'white' : COLORS.danger,
+                color: medFilters.includes('all') ? COLORS.danger : 'white',
+                border: `2px solid ${medFilters.includes('all') ? COLORS.brand : COLORS.danger}`,
+                boxShadow: `2px 2px 0 ${medFilters.includes('all') ? COLORS.brand : COLORS.danger}`,
                 borderRadius: 0, fontFamily: FONT, fontWeight: 900, fontSize: '0.62rem',
                 letterSpacing: 0.5,
-                '&:hover': { bgcolor: medFilters.includes('all') ? COLORS.borderLight : COLORS.accent, boxShadow: 'none', transform: 'translate(1px, 1px)' }
+                '&:hover': { bgcolor: medFilters.includes('all') ? COLORS.borderLight : COLORS.danger, opacity: 0.85, boxShadow: 'none', transform: 'translate(1px, 1px)' }
               }}
             >
               {medFilters.includes('all') ? 'MEDS' : `${medFilters.length} MEDS`}

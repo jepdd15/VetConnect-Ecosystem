@@ -558,7 +558,6 @@ export default function ChatbotScreen({ navigation }) {
             <Text style={styles.headerText}>Starbarks Chatbot</Text>
             <Text style={styles.subText}>🟢 Online</Text>
           </View>
-          {/* NEW CHAT button (T3.67): only visible once a conversation has started */}
           {conversationHistory.length > 0 && (
             <View style={styles.headerActions}>
               <TouchableOpacity style={styles.clearBtn} onPress={handleClearConversation}>
@@ -567,6 +566,13 @@ export default function ChatbotScreen({ navigation }) {
             </View>
           )}
         </View>
+      </View>
+
+      {/* Disclaimer Bar (Admin Parity) */}
+      <View style={styles.disclaimerBar}>
+        <Text style={styles.disclaimerText}>
+          AI-generated — verify information against clinical records.
+        </Text>
       </View>
 
       {/* Persistent quick-action chips (T3.65) */}
@@ -630,6 +636,14 @@ export default function ChatbotScreen({ navigation }) {
               </View>
             )}
             <View style={styles.bubbleColumn}>
+              {/* Sender Label (Admin Parity) */}
+              <Text style={[
+                styles.senderLabel,
+                { textAlign: msg.type === "user" ? "right" : "left" }
+              ]}>
+                {msg.type === "user" ? "YOU" : "STARBARKS"}
+              </Text>
+
               <View
                 style={[
                   styles.bubble,
@@ -766,27 +780,44 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.cream },
   chatArea: { flex: 1, padding: 15 },
 
-  // Header (T3.67: headerTitleRow accommodates NEW CHAT button on same row)
+  // Header
   header: {
-    backgroundColor: COLORS.accent,
+    backgroundColor: COLORS.brand,
     padding: 20,
     paddingTop: Platform.OS === "ios" ? 50 : 40,
-    elevation: 4,
+    elevation: 0, // Flat neubrutalist
   },
   backBtn: { marginBottom: 15 },
-  backBtnText: { color: COLORS.borderLight, fontSize: 16, fontWeight: "bold" },
+  backBtnText: { color: COLORS.cream, fontSize: 16, fontWeight: "bold" },
   headerTitleRow: { flexDirection: "row", alignItems: "center" },
   botAvatarHeader: {
     width: 44,
     height: 44,
-    borderRadius: 0, // Phase 7: was 22
-    backgroundColor: "#EFEBE9",
+    borderRadius: 0,
+    backgroundColor: "rgba(255,255,255,0.1)",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 15,
   },
-  headerText: { color: COLORS.white, fontSize: 18, fontWeight: "bold" },
-  subText: { color: "#A5D6A7", fontSize: 12, fontWeight: "bold", marginTop: 2 },
+  headerText: { color: COLORS.white, fontSize: 18, fontWeight: "bold", textTransform: 'uppercase', letterSpacing: 1 },
+  subText: { color: COLORS.success, fontSize: 11, fontWeight: "bold", marginTop: 2, textTransform: 'uppercase' },
+
+  // Disclaimer Bar
+  disclaimerBar: {
+    backgroundColor: COLORS.cream,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderBottomWidth: 2,
+    borderBottomColor: COLORS.brand,
+  },
+  disclaimerText: {
+    fontFamily: FONTS.regular,
+    fontSize: 10,
+    color: COLORS.brand,
+    fontWeight: '700',
+    fontStyle: 'italic',
+    textAlign: 'center',
+  },
   headerActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
@@ -874,39 +905,48 @@ const styles = StyleSheet.create({
   botAvatarBubble: {
     width: 32,
     height: 32,
-    borderRadius: 0, // Phase 7: was 16
-    backgroundColor: "#E0E0E0",
+    borderRadius: 0,
+    backgroundColor: COLORS.panelBg,
     alignItems: "center",
     justifyContent: "center",
     marginRight: 8,
-    marginTop: 4,
+    marginTop: 18, // Aligned with label
+    borderWidth: 1,
+    borderColor: COLORS.brand,
   },
-  bubbleColumn: { flexShrink: 1 },
+  bubbleColumn: { flexShrink: 1, marginBottom: 5 },
+  senderLabel: {
+    fontSize: 9,
+    fontFamily: FONTS.bold,
+    color: COLORS.textMuted,
+    marginBottom: 4,
+    letterSpacing: 1,
+  },
   bubble: {
     padding: 14,
-    borderRadius: 0, // Phase 7: was 18
-    elevation: 1,
+    borderRadius: 0,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
   },
   userBubble: {
-    // Phase 7: sky blue user bubbles per spec
-    backgroundColor: COLORS.sky,
-    borderWidth: 2,
-    borderColor: COLORS.brand,
+    backgroundColor: COLORS.panelBg,
   },
   botBubble: {
-    // Phase 7: cream bot bubbles, brand border
-    backgroundColor: COLORS.cream,
-    borderWidth: 2,
-    borderColor: COLORS.brand,
+    backgroundColor: COLORS.white,
+    shadowColor: COLORS.brand,
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4, // Android shadow fallback
   },
   // Error bot bubble: warm orange tint (T3.64)
   errorBubble: {
     backgroundColor: '#FFF3E0',
-    borderColor: COLORS.warning,
-    borderWidth: 2,
+    borderColor: COLORS.danger,
+    shadowColor: COLORS.danger,
   },
-  messageText: { fontSize: 15, lineHeight: 22 },
-  userText: { color: COLORS.brand }, // Phase 7: dark on sky blue for contrast
+  messageText: { fontSize: 14, lineHeight: 22, fontFamily: FONTS.regular },
+  userText: { color: COLORS.brand },
   botText: { color: COLORS.textPrimary },
   actionBtn: {
     marginTop: 15,

@@ -29,6 +29,9 @@ import {
   WarningAmber as WarningIcon,
   Biotech as BiotechIcon,
   Assignment as AssignmentIcon,
+  Medication as MedicationIcon,
+  Inventory as InventoryIcon,
+  ShoppingBag as ShoppingIcon,
 } from '@mui/icons-material';
 import { collection, query, where, orderBy, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
@@ -82,6 +85,11 @@ const calculatePetAge = (dob) => {
   } catch {
     return '—';
   }
+};
+
+// Internal utility for classification resolution
+const resolveProductClass = (rx) => {
+  return rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : rx.productClassOverride || 'retail');
 };
 
 // ─── Single expanded record card ─────────────────────────────────────────────
@@ -325,11 +333,10 @@ const RecordCard = ({ record, appointmentId }) => {
               </Typography>
               {(() => {
                 const allRx = record.dispensedProducts || record.prescriptions || [];
-                const resolvePC = (rx) => rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail');
                 const groups = [
-                  { label: 'MEDICATIONS', items: allRx.filter(rx => resolvePC(rx) === 'medicine'), color: COLORS.brand },
-                  { label: 'MEDICAL SUPPLIES', items: allRx.filter(rx => resolvePC(rx) === 'medical_supply'), color: COLORS.brand },
-                  { label: 'RETAIL & OTHER', items: allRx.filter(rx => !['medicine', 'medical_supply'].includes(resolvePC(rx))), color: COLORS.brand },
+                  { label: 'MEDICATIONS', items: allRx.filter(rx => resolveProductClass(rx) === 'medicine'), color: COLORS.brand },
+                  { label: 'MEDICAL SUPPLIES', items: allRx.filter(rx => resolveProductClass(rx) === 'medical_supply'), color: COLORS.brand },
+                  { label: 'RETAIL & OTHER', items: allRx.filter(rx => !['medicine', 'medical_supply'].includes(resolveProductClass(rx))), color: COLORS.brand },
                 ];
                 return (
                   <Stack spacing={2.5}>
@@ -470,6 +477,11 @@ export default function EMRDrawer({
   const [labFilters, setLabFilters] = useState(['all']);
   const [diagnosisFilters, setDiagnosisFilters] = useState(['all']);
   
+  // GRANULAR ITEM FILTERS (Dropdown Checklist Registries)
+  const [medFilters, setMedFilters] = useState(['all']);
+  const [supplyFilters, setSupplyFilters] = useState(['all']);
+  const [retailFilters, setRetailFilters] = useState(['all']);
+  
   // Date Range Hub States
   const [dateRangeType, setDateRangeType] = useState('all');
   const [customStart, setCustomStart] = useState('');
@@ -483,6 +495,11 @@ export default function EMRDrawer({
   const [dateAnchorEl, setDateAnchorEl] = useState(null);
   const [labAnchorEl, setLabAnchorEl] = useState(null);
   const [diagnosisAnchorEl, setDiagnosisAnchorEl] = useState(null);
+  
+  // Item Menu Anchors
+  const [medAnchorEl, setMedAnchorEl] = useState(null);
+  const [supplyAnchorEl, setSupplyAnchorEl] = useState(null);
+  const [retailAnchorEl, setRetailAnchorEl] = useState(null);
 
   const handleDeptClick = (e) => { e.stopPropagation(); setDeptAnchorEl(e.currentTarget); };
   const handleDeptClose = () => setDeptAnchorEl(null);
@@ -498,6 +515,15 @@ export default function EMRDrawer({
 
   const handleDiagnosisClick = (e) => { e.stopPropagation(); setDiagnosisAnchorEl(e.currentTarget); };
   const handleDiagnosisClose = () => setDiagnosisAnchorEl(null);
+
+  const handleMedClick = (e) => { e.stopPropagation(); setMedAnchorEl(e.currentTarget); };
+  const handleMedClose = () => setMedAnchorEl(null);
+
+  const handleSupplyClick = (e) => { e.stopPropagation(); setSupplyAnchorEl(e.currentTarget); };
+  const handleSupplyClose = () => setSupplyAnchorEl(null);
+
+  const handleRetailClick = (e) => { e.stopPropagation(); setRetailAnchorEl(e.currentTarget); };
+  const handleRetailClose = () => setRetailAnchorEl(null);
 
   const toggleTypeFilter = (key) => {
     if (key === 'all') {
@@ -543,12 +569,48 @@ export default function EMRDrawer({
     }
   };
 
+  const toggleMedFilter = (key) => {
+    if (key === 'all') {
+      setMedFilters(['all']);
+    } else {
+      const newFilters = medFilters.includes(key)
+        ? medFilters.filter(f => f !== key)
+        : [...medFilters.filter(f => f !== 'all'), key];
+      setMedFilters(newFilters.length === 0 ? ['all'] : newFilters);
+    }
+  };
+
+  const toggleSupplyFilter = (key) => {
+    if (key === 'all') {
+      setSupplyFilters(['all']);
+    } else {
+      const newFilters = supplyFilters.includes(key)
+        ? supplyFilters.filter(f => f !== key)
+        : [...supplyFilters.filter(f => f !== 'all'), key];
+      setSupplyFilters(newFilters.length === 0 ? ['all'] : newFilters);
+    }
+  };
+
+  const toggleRetailFilter = (key) => {
+    if (key === 'all') {
+      setRetailFilters(['all']);
+    } else {
+      const newFilters = retailFilters.includes(key)
+        ? retailFilters.filter(f => f !== key)
+        : [...retailFilters.filter(f => f !== 'all'), key];
+      setRetailFilters(newFilters.length === 0 ? ['all'] : newFilters);
+    }
+  };
+
   const handleClearAll = () => {
     setSearchText('');
     setTypeFilters(['all']);
     setStaffFilters(['all']);
     setLabFilters(['all']);
     setDiagnosisFilters(['all']);
+    setMedFilters(['all']);
+    setSupplyFilters(['all']);
+    setRetailFilters(['all']);
     setDateRangeType('all');
     setCustomStart('');
     setCustomEnd('');
@@ -560,8 +622,11 @@ export default function EMRDrawer({
            !staffFilters.includes('all') ||
            !labFilters.includes('all') ||
            !diagnosisFilters.includes('all') ||
+           !medFilters.includes('all') ||
+           !supplyFilters.includes('all') ||
+           !retailFilters.includes('all') ||
            dateRangeType !== 'all';
-  }, [searchText, typeFilters, staffFilters, labFilters, diagnosisFilters, dateRangeType]);
+  }, [searchText, typeFilters, staffFilters, labFilters, diagnosisFilters, medFilters, supplyFilters, retailFilters, dateRangeType]);
 
   useEffect(() => {
     if (!open) return;
@@ -624,6 +689,9 @@ export default function EMRDrawer({
       setDateAnchorEl(null);
       setLabAnchorEl(null);
       setDiagnosisAnchorEl(null);
+      setMedAnchorEl(null);
+      setSupplyAnchorEl(null);
+      setRetailAnchorEl(null);
     }
   }, [open]);
 
@@ -653,6 +721,31 @@ export default function EMRDrawer({
       }
     });
     return Array.from(dxs).sort();
+  }, [records]);
+
+  // Dynamic discovery of specific items per classification
+  const itemCatalogs = useMemo(() => {
+    const meds = new Set();
+    const supplies = new Set();
+    const retail = new Set();
+    
+    records.forEach(r => {
+      const allRx = [...(r.dispensedProducts || []), ...(r.prescriptions || [])];
+      allRx.forEach(rx => {
+        const name = (rx.name || rx.itemName || '').toUpperCase();
+        if (!name) return;
+        const pClass = resolveProductClass(rx);
+        if (pClass === 'medicine') meds.add(name);
+        else if (pClass === 'medical_supply') supplies.add(name);
+        else retail.add(name);
+      });
+    });
+    
+    return {
+      meds: Array.from(meds).sort(),
+      supplies: Array.from(supplies).sort(),
+      retail: Array.from(retail).sort()
+    };
   }, [records]);
 
   const searchFiltered = useMemo(() => {
@@ -715,6 +808,35 @@ export default function EMRDrawer({
       });
     }
 
+    // GRANULAR ITEM CLASSIFICATION FILTERS
+    
+    // Medicines Checklist
+    if (!medFilters.includes('all')) {
+      result = result.filter(r => {
+        const allRx = [...(r.dispensedProducts || []), ...(r.prescriptions || [])];
+        const recordMeds = allRx.filter(rx => resolveProductClass(rx) === 'medicine').map(rx => (rx.name || rx.itemName || '').toUpperCase());
+        return medFilters.some(f => recordMeds.includes(f.toUpperCase()));
+      });
+    }
+
+    // Supplies Checklist
+    if (!supplyFilters.includes('all')) {
+      result = result.filter(r => {
+        const allRx = [...(r.dispensedProducts || []), ...(r.prescriptions || [])];
+        const recordSupplies = allRx.filter(rx => resolveProductClass(rx) === 'medical_supply').map(rx => (rx.name || rx.itemName || '').toUpperCase());
+        return supplyFilters.some(f => recordSupplies.includes(f.toUpperCase()));
+      });
+    }
+
+    // Retail Checklist
+    if (!retailFilters.includes('all')) {
+      result = result.filter(r => {
+        const allRx = [...(r.dispensedProducts || []), ...(r.prescriptions || [])];
+        const recordRetail = allRx.filter(rx => !['medicine', 'medical_supply'].includes(resolveProductClass(rx))).map(rx => (rx.name || rx.itemName || '').toUpperCase());
+        return retailFilters.some(f => recordRetail.includes(f.toUpperCase()));
+      });
+    }
+
     // Temporal Hub Filtering Logic
     if (dateRangeType !== 'all') {
       const now = new Date();
@@ -751,7 +873,7 @@ export default function EMRDrawer({
     }
 
     return result;
-  }, [searchFiltered, typeFilters, staffFilters, diagnosisFilters, labFilters, dateRangeType, customStart, customEnd]);
+  }, [searchFiltered, typeFilters, staffFilters, diagnosisFilters, labFilters, medFilters, supplyFilters, retailFilters, dateRangeType, customStart, customEnd]);
 
   const handlePrintFullEMR = () => {
     if (records.length === 0) return;
@@ -853,7 +975,7 @@ export default function EMRDrawer({
         sx: {
           width: '45vw',
           minWidth: 500,
-          maxWidth: 800,
+          maxWidth: 950, // Expanded for tri-checklist hub
           borderRadius: 0,
           border: `3px solid ${COLORS.brand}`,
           borderRight: 'none',
@@ -1039,21 +1161,21 @@ export default function EMRDrawer({
 
           <Divider sx={{ borderColor: COLORS.brand, borderWidth: 1 }} />
 
-          {/* Integrated Filter Hub */}
-          <Box sx={{ px: 2, py: 1.5, display: 'flex', gap: 1.25, alignItems: 'center', flexWrap: 'wrap', bgcolor: COLORS.cream }}>
+          {/* Integrated Filter Hub — Tri-Class Checklist Hub */}
+          <Box sx={{ px: 2, py: 1.5, display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', bgcolor: COLORS.cream }}>
             
             {/* Dept Multi-Select */}
             <Button
               onClick={handleDeptClick}
               endIcon={<FilterListIcon sx={{ fontSize: 16 }} />}
               sx={{
-                height: 36, px: 2,
+                height: 36, px: 1.5,
                 bgcolor: typeFilters.includes('all') ? 'white' : COLORS.brand,
                 color: typeFilters.includes('all') ? COLORS.brand : 'white',
                 border: `2px solid ${COLORS.brand}`,
                 boxShadow: `2px 2px 0 ${COLORS.brand}`,
-                borderRadius: 0, fontFamily: FONT, fontWeight: 900, fontSize: '0.65rem',
-                letterSpacing: 1,
+                borderRadius: 0, fontFamily: FONT, fontWeight: 900, fontSize: '0.62rem',
+                letterSpacing: 0.5,
                 '&:hover': { bgcolor: typeFilters.includes('all') ? COLORS.borderLight : COLORS.accent, boxShadow: 'none', transform: 'translate(1px, 1px)' }
               }}
             >
@@ -1065,31 +1187,94 @@ export default function EMRDrawer({
               onClick={handleStaffClick}
               endIcon={<PersonIcon sx={{ fontSize: 16 }} />}
               sx={{
-                height: 36, px: 2,
+                height: 36, px: 1.5,
                 bgcolor: staffFilters.includes('all') ? 'white' : COLORS.brand,
                 color: staffFilters.includes('all') ? COLORS.brand : 'white',
                 border: `2px solid ${COLORS.brand}`,
                 boxShadow: `2px 2px 0 ${COLORS.brand}`,
-                borderRadius: 0, fontFamily: FONT, fontWeight: 900, fontSize: '0.65rem',
-                letterSpacing: 1,
+                borderRadius: 0, fontFamily: FONT, fontWeight: 900, fontSize: '0.62rem',
+                letterSpacing: 0.5,
                 '&:hover': { bgcolor: staffFilters.includes('all') ? COLORS.borderLight : COLORS.accent, boxShadow: 'none', transform: 'translate(1px, 1px)' }
               }}
             >
               {staffFilters.includes('all') ? 'STAFF' : `${staffFilters.length} STAFF`}
             </Button>
 
+            <Divider orientation="vertical" flexItem sx={{ mx: 0.5, borderColor: `${COLORS.brand}33` }} />
+
+            {/* GRANULAR ITEM CHECKLIST REGISTRIES */}
+            
+            {/* MEDS Checklist */}
+            <Button
+              onClick={handleMedClick}
+              startIcon={<MedicationIcon sx={{ fontSize: 16 }} />}
+              endIcon={<ExpandMoreIcon sx={{ fontSize: 14 }} />}
+              sx={{
+                height: 36, px: 1.5,
+                bgcolor: medFilters.includes('all') ? 'white' : COLORS.brand,
+                color: medFilters.includes('all') ? COLORS.brand : 'white',
+                border: `2px solid ${COLORS.brand}`,
+                boxShadow: `2px 2px 0 ${COLORS.brand}`,
+                borderRadius: 0, fontFamily: FONT, fontWeight: 900, fontSize: '0.62rem',
+                letterSpacing: 0.5,
+                '&:hover': { bgcolor: medFilters.includes('all') ? COLORS.borderLight : COLORS.accent, boxShadow: 'none', transform: 'translate(1px, 1px)' }
+              }}
+            >
+              {medFilters.includes('all') ? 'MEDS' : `${medFilters.length} MEDS`}
+            </Button>
+
+            {/* SUPPLIES Checklist */}
+            <Button
+              onClick={handleSupplyClick}
+              startIcon={<InventoryIcon sx={{ fontSize: 16 }} />}
+              endIcon={<ExpandMoreIcon sx={{ fontSize: 14 }} />}
+              sx={{
+                height: 36, px: 1.5,
+                bgcolor: supplyFilters.includes('all') ? 'white' : COLORS.info,
+                color: supplyFilters.includes('all') ? COLORS.info : 'white',
+                border: `2px solid ${supplyFilters.includes('all') ? COLORS.brand : COLORS.info}`,
+                boxShadow: `2px 2px 0 ${supplyFilters.includes('all') ? COLORS.brand : COLORS.info}`,
+                borderRadius: 0, fontFamily: FONT, fontWeight: 900, fontSize: '0.62rem',
+                letterSpacing: 0.5,
+                '&:hover': { bgcolor: supplyFilters.includes('all') ? COLORS.borderLight : COLORS.info, opacity: 0.85, boxShadow: 'none', transform: 'translate(1px, 1px)' }
+              }}
+            >
+              {supplyFilters.includes('all') ? 'SUPPLIES' : `${supplyFilters.length} SUP`}
+            </Button>
+
+            {/* RETAIL Checklist */}
+            <Button
+              onClick={handleRetailClick}
+              startIcon={<ShoppingIcon sx={{ fontSize: 16 }} />}
+              endIcon={<ExpandMoreIcon sx={{ fontSize: 14 }} />}
+              sx={{
+                height: 36, px: 1.5,
+                bgcolor: retailFilters.includes('all') ? 'white' : COLORS.success,
+                color: retailFilters.includes('all') ? COLORS.success : 'white',
+                border: `2px solid ${retailFilters.includes('all') ? COLORS.brand : COLORS.success}`,
+                boxShadow: `2px 2px 0 ${retailFilters.includes('all') ? COLORS.brand : COLORS.success}`,
+                borderRadius: 0, fontFamily: FONT, fontWeight: 900, fontSize: '0.62rem',
+                letterSpacing: 0.5,
+                '&:hover': { bgcolor: retailFilters.includes('all') ? COLORS.borderLight : COLORS.success, opacity: 0.85, boxShadow: 'none', transform: 'translate(1px, 1px)' }
+              }}
+            >
+              {retailFilters.includes('all') ? 'RETAIL' : `${retailFilters.length} RET`}
+            </Button>
+
+            <Divider orientation="vertical" flexItem sx={{ mx: 0.5, borderColor: `${COLORS.brand}33` }} />
+
             {/* Diagnosis Multi-Select */}
             <Button
               onClick={handleDiagnosisClick}
               endIcon={<AssignmentIcon sx={{ fontSize: 16 }} />}
               sx={{
-                height: 36, px: 2,
+                height: 36, px: 1.5,
                 bgcolor: diagnosisFilters.includes('all') ? 'white' : COLORS.brand,
                 color: diagnosisFilters.includes('all') ? COLORS.brand : 'white',
                 border: `2px solid ${COLORS.brand}`,
                 boxShadow: `2px 2px 0 ${COLORS.brand}`,
-                borderRadius: 0, fontFamily: FONT, fontWeight: 900, fontSize: '0.65rem',
-                letterSpacing: 1,
+                borderRadius: 0, fontFamily: FONT, fontWeight: 900, fontSize: '0.62rem',
+                letterSpacing: 0.5,
                 '&:hover': { bgcolor: diagnosisFilters.includes('all') ? COLORS.borderLight : COLORS.accent, boxShadow: 'none', transform: 'translate(1px, 1px)' }
               }}
             >
@@ -1101,13 +1286,13 @@ export default function EMRDrawer({
               onClick={handleLabClick}
               endIcon={<BiotechIcon sx={{ fontSize: 16 }} />}
               sx={{
-                height: 36, px: 2,
+                height: 36, px: 1.5,
                 bgcolor: labFilters.includes('all') ? 'white' : COLORS.info,
                 color: labFilters.includes('all') ? COLORS.info : 'white',
                 border: `2px solid ${labFilters.includes('all') ? COLORS.brand : COLORS.info}`,
                 boxShadow: `2px 2px 0 ${labFilters.includes('all') ? COLORS.brand : COLORS.info}`,
-                borderRadius: 0, fontFamily: FONT, fontWeight: 900, fontSize: '0.65rem',
-                letterSpacing: 1,
+                borderRadius: 0, fontFamily: FONT, fontWeight: 900, fontSize: '0.62rem',
+                letterSpacing: 0.5,
                 '&:hover': { bgcolor: labFilters.includes('all') ? COLORS.borderLight : COLORS.info, boxShadow: 'none', transform: 'translate(1px, 1px)' }
               }}
             >
@@ -1119,13 +1304,13 @@ export default function EMRDrawer({
               onClick={handleDateClick}
               endIcon={<CalendarIcon sx={{ fontSize: 16 }} />}
               sx={{
-                height: 36, px: 2,
+                height: 36, px: 1.5,
                 bgcolor: dateRangeType === 'all' ? 'white' : COLORS.medical,
                 color: dateRangeType === 'all' ? COLORS.medical : 'white',
                 border: `2px solid ${dateRangeType === 'all' ? COLORS.brand : COLORS.medical}`,
                 boxShadow: `2px 2px 0 ${dateRangeType === 'all' ? COLORS.brand : COLORS.medical}`,
-                borderRadius: 0, fontFamily: FONT, fontWeight: 900, fontSize: '0.65rem',
-                letterSpacing: 1,
+                borderRadius: 0, fontFamily: FONT, fontWeight: 900, fontSize: '0.62rem',
+                letterSpacing: 0.5,
                 '&:hover': { bgcolor: dateRangeType === 'all' ? COLORS.borderLight : COLORS.medical, boxShadow: 'none', transform: 'translate(1px, 1px)' }
               }}
             >
@@ -1138,13 +1323,13 @@ export default function EMRDrawer({
                 onClick={handleClearAll}
                 startIcon={<FilterListOffIcon sx={{ fontSize: 16 }} />}
                 sx={{
-                  height: 36, px: 2,
+                  height: 36, px: 1.5,
                   bgcolor: COLORS.danger,
                   color: 'white',
                   border: `2px solid ${COLORS.brand}`,
                   boxShadow: `2px 2px 0 ${COLORS.brand}`,
-                  borderRadius: 0, fontFamily: FONT, fontWeight: 900, fontSize: '0.65rem',
-                  letterSpacing: 1,
+                  borderRadius: 0, fontFamily: FONT, fontWeight: 900, fontSize: '0.62rem',
+                  letterSpacing: 0.5,
                   '&:hover': { bgcolor: COLORS.danger, opacity: 0.85, boxShadow: 'none', transform: 'translate(1px, 1px)' }
                 }}
               >
@@ -1284,6 +1469,117 @@ export default function EMRDrawer({
             <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 700, color: COLORS.textPrimary }}>{s.fullName.toUpperCase()}</Typography>
           </MenuItem>
         ))}
+      </Menu>
+
+      {/* MEDS Menu */}
+      <Menu
+        anchorEl={medAnchorEl}
+        open={Boolean(medAnchorEl)}
+        onClose={handleMedClose}
+        sx={{ zIndex: 3000 }}
+        disableScrollLock
+        PaperProps={{
+          sx: {
+            borderRadius: 0, border: `2px solid ${COLORS.brand}`,
+            mt: 0.5, boxShadow: `4px 4px 0 ${COLORS.brand}`,
+            minWidth: 220, maxHeight: 400
+          }
+        }}
+      >
+        <MenuItem 
+          onClick={() => toggleMedFilter('all')}
+          sx={{ py: 0.5, px: 1.5, bgcolor: medFilters.includes('all') ? `${COLORS.brand}12` : 'transparent' }}
+        >
+          <Checkbox size="small" checked={medFilters.includes('all')} sx={{ p: 0.5, color: COLORS.brand }} />
+          <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 800, color: COLORS.brand }}>ALL MEDICINES</Typography>
+        </MenuItem>
+        <Divider sx={{ my: 0.5 }} />
+        {itemCatalogs.meds.length === 0 ? (
+          <MenuItem disabled sx={{ py: 1, px: 1.5 }}>
+            <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', color: COLORS.textMuted, fontStyle: 'italic' }}>NO MEDICINES IN HISTORY</Typography>
+          </MenuItem>
+        ) : (
+          itemCatalogs.meds.map(t => (
+            <MenuItem key={t} onClick={() => toggleMedFilter(t)} sx={{ py: 0.5, px: 1.5 }}>
+              <Checkbox size="small" checked={medFilters.includes(t)} sx={{ p: 0.5, color: COLORS.brand }} />
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 700, color: COLORS.textPrimary }}>{t}</Typography>
+            </MenuItem>
+          ))
+        )}
+      </Menu>
+
+      {/* SUPPLIES Menu */}
+      <Menu
+        anchorEl={supplyAnchorEl}
+        open={Boolean(supplyAnchorEl)}
+        onClose={handleSupplyClose}
+        sx={{ zIndex: 3000 }}
+        disableScrollLock
+        PaperProps={{
+          sx: {
+            borderRadius: 0, border: `2px solid ${COLORS.info}`,
+            mt: 0.5, boxShadow: `4px 4px 0 ${COLORS.info}`,
+            minWidth: 220, maxHeight: 400
+          }
+        }}
+      >
+        <MenuItem 
+          onClick={() => toggleSupplyFilter('all')}
+          sx={{ py: 0.5, px: 1.5, bgcolor: supplyFilters.includes('all') ? `${COLORS.info}12` : 'transparent' }}
+        >
+          <Checkbox size="small" checked={supplyFilters.includes('all')} sx={{ p: 0.5, color: COLORS.info }} />
+          <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 800, color: COLORS.info }}>ALL SUPPLIES</Typography>
+        </MenuItem>
+        <Divider sx={{ my: 0.5 }} />
+        {itemCatalogs.supplies.length === 0 ? (
+          <MenuItem disabled sx={{ py: 1, px: 1.5 }}>
+            <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', color: COLORS.textMuted, fontStyle: 'italic' }}>NO SUPPLIES IN HISTORY</Typography>
+          </MenuItem>
+        ) : (
+          itemCatalogs.supplies.map(t => (
+            <MenuItem key={t} onClick={() => toggleSupplyFilter(t)} sx={{ py: 0.5, px: 1.5 }}>
+              <Checkbox size="small" checked={supplyFilters.includes(t)} sx={{ p: 0.5, color: COLORS.info }} />
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 700, color: COLORS.textPrimary }}>{t}</Typography>
+            </MenuItem>
+          ))
+        )}
+      </Menu>
+
+      {/* RETAIL Menu */}
+      <Menu
+        anchorEl={retailAnchorEl}
+        open={Boolean(retailAnchorEl)}
+        onClose={handleRetailClose}
+        sx={{ zIndex: 3000 }}
+        disableScrollLock
+        PaperProps={{
+          sx: {
+            borderRadius: 0, border: `2px solid ${COLORS.success}`,
+            mt: 0.5, boxShadow: `4px 4px 0 ${COLORS.success}`,
+            minWidth: 220, maxHeight: 400
+          }
+        }}
+      >
+        <MenuItem 
+          onClick={() => toggleRetailFilter('all')}
+          sx={{ py: 0.5, px: 1.5, bgcolor: retailFilters.includes('all') ? `${COLORS.success}12` : 'transparent' }}
+        >
+          <Checkbox size="small" checked={retailFilters.includes('all')} sx={{ p: 0.5, color: COLORS.success }} />
+          <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 800, color: COLORS.success }}>ALL RETAIL ITEMS</Typography>
+        </MenuItem>
+        <Divider sx={{ my: 0.5 }} />
+        {itemCatalogs.retail.length === 0 ? (
+          <MenuItem disabled sx={{ py: 1, px: 1.5 }}>
+            <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', color: COLORS.textMuted, fontStyle: 'italic' }}>NO RETAIL DATA IN HISTORY</Typography>
+          </MenuItem>
+        ) : (
+          itemCatalogs.retail.map(t => (
+            <MenuItem key={t} onClick={() => toggleRetailFilter(t)} sx={{ py: 0.5, px: 1.5 }}>
+              <Checkbox size="small" checked={retailFilters.includes(t)} sx={{ p: 0.5, color: COLORS.success }} />
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 700, color: COLORS.textPrimary }}>{t}</Typography>
+            </MenuItem>
+          ))
+        )}
       </Menu>
 
       {/* Diagnosis Menu */}

@@ -59,6 +59,14 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import OpenInFullIcon from '@mui/icons-material/OpenInFull';
 import PushPinIcon from '@mui/icons-material/PushPin';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
+import FilterListIcon from '@mui/icons-material/FilterList';
+import FilterListOffIcon from '@mui/icons-material/FilterListOff';
+import TodayIcon from '@mui/icons-material/Today';
+import BiotechIcon from '@mui/icons-material/Biotech';
+import InventoryIcon from '@mui/icons-material/Inventory';
+import ShoppingBagIcon from '@mui/icons-material/ShoppingBag';
+import Checkbox from '@mui/material/Checkbox';
+import Badge from '@mui/material/Badge';
 
 // Charting
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
@@ -104,6 +112,17 @@ const SPECIES_VITAL_RANGES = {
   rr:   { canine: [10, 30],     feline: [20, 42]      },
   crt:  { canine: [1.0, 2.0],   feline: [1.0, 2.0]    },
   bcs:  { canine: [4, 5],       feline: [4, 5]         },
+};
+
+// Internal utility for classification resolution
+const resolveProductClass = (rx) => {
+  return rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : rx.productClassOverride || 'retail');
+};
+
+const resolveRecordDate = (record) => {
+  const raw = record.createdAt || record.date;
+  if (!raw) return new Date(NaN);
+  return raw?.toDate ? raw.toDate() : new Date(raw);
 };
 
 // T4.112: Chart configuration registry for 7 vitals — drives sidebar widgets + zoom dialog.
@@ -187,8 +206,32 @@ export default function PatientDashboard() {
   const [expandedObjectives, setExpandedObjectives] = useState(new Set());
   const [expandedServiceChips, setExpandedServiceChips] = useState(new Set());
   const [timelineSearch, setTimelineSearch] = useState('');
-  const [timelineFilter, setTimelineFilter] = useState('All');
-  const [timelineSort, setTimelineSort] = useState('desc');
+  const [timelineSort, setTimelineSort] = useState('newest');
+
+  // --- CLINICAL FILTER RIBBON STATE ---
+  const [showFilterRibbon, setShowFilterRibbon] = useState(false);
+  const [deptFilters, setDeptFilters] = useState(['all']);
+  const [staffFilters, setStaffFilters] = useState(['all']);
+  const [medFilters, setMedFilters] = useState(['all']);
+  const [supplyFilters, setSupplyFilters] = useState(['all']);
+  const [retailFilters, setRetailFilters] = useState(['all']);
+  const [diagnosisFilters, setDiagnosisFilters] = useState(['all']);
+  const [labFilters, setLabFilters] = useState(['all']);
+
+  // Temporal Hub State
+  const [dateRangeType, setDateRangeType] = useState('all');
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
+
+  // Anchor Els for Ribbon Menus
+  const [deptAnchor, setDeptAnchor] = useState(null);
+  const [staffAnchor, setStaffAnchor] = useState(null);
+  const [medAnchor, setMedAnchor] = useState(null);
+  const [supplyAnchor, setSupplyAnchor] = useState(null);
+  const [retailAnchor, setRetailAnchor] = useState(null);
+  const [diagAnchor, setDiagAnchor] = useState(null);
+  const [labAnchor, setLabAnchor] = useState(null);
+  const [dateAnchor, setDateAnchor] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeRecordIndex, setActiveRecordIndex] = useState(0);
   const [collapsedYears, setCollapsedYears] = useState(new Set());
@@ -499,63 +542,233 @@ export default function PatientDashboard() {
     return d === 0 ? 'Today' : d === 1 ? 'Yesterday' : d < 30 ? `${d}d ago` : d < 365 ? `${Math.floor(d/30)}mo ago` : `${Math.floor(d/365)}y ago`;
   }, [history]);
 
-  const availableFilters = useMemo(() => {
-    // Dynamic department names from Firestore departments collection.
-    // Falls back to legacy values if departments haven't loaded yet.
-    if (!deptsList.length) return ['medical', 'grooming'];
-    return deptsList.map(d => d.name);
-  }, [deptsList]);
+  // --- DYNAMIC DISCOVERY ENGINE ---
 
-  useEffect(() => {
-    const allOptions = ['All', ...availableFilters, 'Vaccination'];
-    if (timelineFilter !== 'All' && !allOptions.includes(timelineFilter)) {
-      setTimelineFilter('All');
+  const availableDepts = useMemo(() => {
+    const set = new Set();
+    history.forEach(r => {
+      const dept = resolveDepartmentForRecord(r, deptsList);
+      if (dept) set.add(dept);
+      if (r.vaccineAdministrations?.length > 0 || r.vaccineData) set.add('Vaccination');
+    });
+    return Array.from(set).sort();
+  }, [history, deptsList]);
+
+  const availableStaff = useMemo(() => {
+    const set = new Set();
+    history.forEach(r => {
+      if (r.vetName) set.add(r.vetName);
+      (r.serviceAttribution || []).forEach(a => { if (a.staffName) set.add(a.staffName); });
+    });
+    return Array.from(set).sort();
+  }, [history]);
+
+  const availableMeds = useMemo(() => {
+    const set = new Set();
+    history.forEach(r => {
+      const allRx = [...(r.dispensedProducts || []), ...(r.prescriptions || [])];
+      allRx.forEach(rx => {
+        if (resolveProductClass(rx) === 'medicine') set.add(rx.name || rx.itemName);
+      });
+    });
+    return Array.from(set).filter(Boolean).sort();
+  }, [history]);
+
+  const availableSupplies = useMemo(() => {
+    const set = new Set();
+    history.forEach(r => {
+      const allRx = [...(r.dispensedProducts || []), ...(r.prescriptions || [])];
+      allRx.forEach(rx => {
+        if (resolveProductClass(rx) === 'medical_supply') set.add(rx.name || rx.itemName);
+      });
+    });
+    return Array.from(set).filter(Boolean).sort();
+  }, [history]);
+
+  const availableRetail = useMemo(() => {
+    const set = new Set();
+    history.forEach(r => {
+      const allRx = [...(r.dispensedProducts || []), ...(r.prescriptions || [])];
+      allRx.forEach(rx => {
+        const pc = resolveProductClass(rx);
+        if (pc !== 'medicine' && pc !== 'medical_supply') set.add(rx.name || rx.itemName);
+      });
+    });
+    return Array.from(set).filter(Boolean).sort();
+  }, [history]);
+
+  const availableDiagnoses = useMemo(() => {
+    const set = new Set();
+    history.forEach(r => {
+      (r.diagnoses || []).forEach(d => set.add(d.name));
+      if (r.diagnosis && r.diagnosis !== '—') set.add(r.diagnosis);
+    });
+    return Array.from(set).filter(Boolean).sort();
+  }, [history]);
+
+  const availableLabs = useMemo(() => {
+    const set = new Set();
+    history.forEach(r => {
+      (r.labResults || []).forEach(l => { if (l.testName) set.add(l.testName); });
+    });
+    return Array.from(set).filter(Boolean).sort();
+  }, [history]);
+
+  const handleToggleRegistry = (setter, current, val) => {
+    if (val === 'all') { setter(['all']); return; }
+    let next = current.includes('all') ? [] : [...current];
+    if (next.includes(val)) {
+      next = next.filter(v => v !== val);
+      if (next.length === 0) next = ['all'];
+    } else {
+      next.push(val);
     }
-  }, [availableFilters, timelineFilter]);
+    setter(next);
+  };
+
+  const handleClearAllFilters = () => {
+    setDeptFilters(['all']); setStaffFilters(['all']); setMedFilters(['all']);
+    setSupplyFilters(['all']); setRetailFilters(['all']); setDiagnosisFilters(['all']);
+    setLabFilters(['all']); setDateRangeType('all'); setTimelineSearch('');
+  };
+
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (!deptFilters.includes('all')) count += deptFilters.length;
+    if (!staffFilters.includes('all')) count += staffFilters.length;
+    if (!medFilters.includes('all')) count += medFilters.length;
+    if (!supplyFilters.includes('all')) count += supplyFilters.length;
+    if (!retailFilters.includes('all')) count += retailFilters.length;
+    if (!diagnosisFilters.includes('all')) count += diagnosisFilters.length;
+    if (!labFilters.includes('all')) count += labFilters.length;
+    if (dateRangeType !== 'all') count += 1;
+    return count;
+  }, [deptFilters, staffFilters, medFilters, supplyFilters, retailFilters, diagnosisFilters, labFilters, dateRangeType]);
+
 
   const handleActionsClick = (event) => setActionMenuAnchor(event.currentTarget);
   const handleActionsClose = () => setActionMenuAnchor(null);
 
   const processedHistory = useMemo(() => {
-    let f = [...(history || [])];
-    if (timelineSearch) {
-      const q = timelineSearch.toLowerCase();
-      f = f.filter(r => {
-        // Core SOAP fields
-        const textFields = [
-          r.diagnoses?.map(d => d.name).join(' '),
-          r.diagnosis, r.vetName, r.treatment,
-          r.soap?.subjective, resolveObjectiveText(r),
-          r.soap?.assessment, r.soap?.plan,
-        ];
-        if (textFields.some(v => v?.toLowerCase().includes(q))) return true;
+    let result = [...history];
 
-        // T2.130: Prescriptions — search item names
-        if ((r.dispensedProducts || r.prescriptions)?.some(rx => rx.name?.toLowerCase().includes(q))) return true;
-
-        // T2.462: Lab results — handle both string and array shapes
-        // T4.120: Also search lr.unit so "mg/dL" queries find matching records
-        if (typeof r.labResults === 'string' && r.labResults.toLowerCase().includes(q)) return true;
-        if (Array.isArray(r.labResults) && r.labResults.some(lr =>
-          (lr.testName || lr.name || lr.result || lr.unit || '').toLowerCase().includes(q)
-        )) return true;
-
-        // T2.462: Vaccine data
-        if (r.vaccineData?.vaccineName?.toLowerCase().includes(q)) return true;
-
-        return false;
+    // 1. Depts (Drawer Logic: Partial Matching)
+    if (!deptFilters.includes('all')) {
+      result = result.filter(r => {
+        const hasVax = r.vaccineAdministrations?.length > 0 || !!r.vaccineData;
+        const sType = (r.serviceType || r.primaryService || r.department || '').toLowerCase();
+        return deptFilters.some(f => {
+          if (f.toLowerCase() === 'vaccination') return hasVax;
+          return sType.includes(f.toLowerCase());
+        });
       });
     }
-    if (timelineFilter !== 'All') {
-      if (timelineFilter === 'Vaccination') {
-        f = f.filter(r => r.vaccineAdministrations?.length > 0 || !!r.vaccineData);
-      } else {
-        f = f.filter(r => resolveDepartmentForRecord(r, deptsList) === timelineFilter);
+
+    // 2. Staff (Drawer Logic: Lead + Attributions + Partial)
+    if (!staffFilters.includes('all')) {
+      result = result.filter(r => {
+        const vetName = (r.vetName || '').toLowerCase();
+        const attributions = (r.serviceAttribution || []).map(a => (a.staffName || '').toLowerCase());
+        return staffFilters.some(f => {
+          const filterName = f.toLowerCase();
+          return vetName.includes(filterName) || attributions.some(attr => attr.includes(filterName));
+        });
+      });
+    }
+
+    // 3. Diagnosis (Drawer Logic: DX Array + Assessment Field)
+    if (!diagnosisFilters.includes('all')) {
+      result = result.filter(r => {
+        const recordDxs = [
+          ...(r.diagnoses?.map(d => d.name.toUpperCase()) || []),
+          (r.diagnosis || r.assessment || '').toUpperCase()
+        ].filter(Boolean);
+        return diagnosisFilters.some(f => {
+          const filterName = f.toUpperCase();
+          return recordDxs.some(dx => dx.includes(filterName));
+        });
+      });
+    }
+
+    // 4. Lab Tests
+    if (!labFilters.includes('all')) {
+      result = result.filter(r => {
+        if (!r.labResults?.length) return false;
+        const recordTests = r.labResults.map(l => (l.testName || '').toUpperCase());
+        return labFilters.some(f => {
+          const filterName = f.toUpperCase();
+          return recordTests.some(t => t.includes(filterName));
+        });
+      });
+    }
+
+    // 5. Granular Item Classes (Drawer Logic: Partial ID/Name matching)
+    if (!medFilters.includes('all')) {
+      result = result.filter(r => {
+        const allRx = [...(r.dispensedProducts || []), ...(r.prescriptions || [])];
+        const recordMeds = allRx.filter(rx => resolveProductClass(rx) === 'medicine').map(rx => (rx.name || rx.itemName || '').toUpperCase());
+        return medFilters.some(f => {
+          const filterName = f.toUpperCase();
+          return recordMeds.some(m => m.includes(filterName));
+        });
+      });
+    }
+    if (!supplyFilters.includes('all')) {
+      result = result.filter(r => {
+        const allRx = [...(r.dispensedProducts || []), ...(r.prescriptions || [])];
+        const recordSupplies = allRx.filter(rx => resolveProductClass(rx) === 'medical_supply').map(rx => (rx.name || rx.itemName || '').toUpperCase());
+        return supplyFilters.some(f => {
+          const filterName = f.toUpperCase();
+          return recordSupplies.some(s => s.includes(filterName));
+        });
+      });
+    }
+    if (!retailFilters.includes('all')) {
+      result = result.filter(r => {
+        const allRx = [...(r.dispensedProducts || []), ...(r.prescriptions || [])];
+        const recordRetail = allRx.filter(rx => !['medicine', 'medical_supply'].includes(resolveProductClass(rx))).map(rx => (rx.name || rx.itemName || '').toUpperCase());
+        return retailFilters.some(f => {
+          const filterName = f.toUpperCase();
+          return recordRetail.some(ret => ret.includes(filterName));
+        });
+      });
+    }
+
+    // 6. Temporal Hub
+    if (dateRangeType !== 'all') {
+      const now = new Date();
+      let start = null; let end = null;
+      if (dateRangeType === 'today') { start = new Date(now.setHours(0,0,0,0)); end = new Date(now.setHours(23,59,59,999)); }
+      else if (dateRangeType === '30d') { start = new Date(now.setDate(now.getDate() - 30)); }
+      else if (dateRangeType === '6mo') { start = new Date(now.setMonth(now.getMonth() - 6)); }
+      else if (dateRangeType === '1yr') { start = new Date(now.setFullYear(now.getFullYear() - 1)); }
+      else if (dateRangeType === 'custom' && customStart && customEnd) { start = new Date(customStart); end = new Date(customEnd); end.setHours(23,59,59,999); }
+
+      if (start) {
+        result = result.filter(r => {
+          const d = resolveRecordDate(r);
+          if (isNaN(d.getTime())) return false;
+          return d >= start && (!end || d <= end);
+        });
       }
     }
-    f.sort((a, b) => { const dA = a.date?.seconds||0, dB = b.date?.seconds||0; return timelineSort === 'desc' ? dB-dA : dA-dB; });
-    return f;
-  }, [history, timelineSearch, timelineFilter, timelineSort, deptsList]);
+
+    if (timelineSearch) {
+      const q = timelineSearch.toLowerCase();
+      result = result.filter(r => 
+        (r.subjective || '').toLowerCase().includes(q) ||
+        (r.diagnosis || '').toLowerCase().includes(q) ||
+        (r.assessment || '').toLowerCase().includes(q) ||
+        (r.plan || '').toLowerCase().includes(q) ||
+        (r.treatment || '').toLowerCase().includes(q) ||
+        (r.serviceType || '').toLowerCase().includes(q) ||
+        (r.vetName || '').toLowerCase().includes(q)
+      );
+    }
+
+    if (timelineSort === 'oldest') return result.sort((a,b) => resolveRecordDate(a) - resolveRecordDate(b));
+    return result.sort((a,b) => resolveRecordDate(b) - resolveRecordDate(a));
+  }, [history, timelineSearch, timelineSort, deptFilters, staffFilters, diagnosisFilters, labFilters, medFilters, supplyFilters, retailFilters, dateRangeType, customStart, customEnd, deptsList]);
 
   // Visit frequency data (visits per month, last 6 months)
   const visitFreqData = useMemo(() => {
@@ -877,7 +1090,7 @@ export default function PatientDashboard() {
     [history]
   );
 
-  useEffect(() => { setExpandedRecords(new Set([0])); }, [timelineSearch, timelineFilter, timelineSort]);
+  useEffect(() => { setExpandedRecords(new Set([0])); }, [timelineSearch, timelineSort, deptFilters, staffFilters, medFilters, supplyFilters, retailFilters, diagnosisFilters, labFilters, dateRangeType]);
 
   const toggleRecord = (i) => setExpandedRecords(p => { const n = new Set(p); n.has(i) ? n.delete(i) : n.add(i); return n; });
   const toggleObjective = (index) => {
@@ -1257,7 +1470,7 @@ export default function PatientDashboard() {
           </Box>
         </Box>
 
-        {/* Unified Command Bar (T4.118: Integrated Search & Filter Hub) */}
+        {/* Unified Command Bar: Integrated Toggle */}
         <Box sx={{ display: 'flex', alignItems: 'center', px: 2, borderLeft: `1px solid ${COLORS.borderLight}`, borderRight: `1px solid ${COLORS.borderLight}`, py: 1.5 }}>
           <TextField
             size="small"
@@ -1267,29 +1480,21 @@ export default function PatientDashboard() {
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start" sx={{ ml: -1 }}>
-                  <FormControl size="small" variant="standard">
-                    <Select
-                      value={timelineFilter}
-                      onChange={(e) => setTimelineFilter(e.target.value)}
-                      disableUnderline
-                      sx={{
-                        fontFamily: FONT, fontWeight: 800, fontSize: '0.72rem',
-                        color: COLORS.brand, height: 36, px: 1,
-                        textTransform: 'uppercase', letterSpacing: '0.04em',
-                        borderRight: `1px solid ${COLORS.borderLight}`,
-                        '& .MuiSelect-select': { py: '0 !important', display: 'flex', alignItems: 'center' }
+                  <Tooltip title={showFilterRibbon ? "Hide Filters" : "Show Filters"}>
+                    <IconButton 
+                      onClick={() => setShowFilterRibbon(!showFilterRibbon)}
+                      sx={{ 
+                        color: showFilterRibbon ? COLORS.brand : COLORS.textMuted,
+                        borderRight: `1px solid ${COLORS.borderLight}`, borderRadius: 0, mr: 1,
+                        bgcolor: showFilterRibbon ? COLORS.surfaceAlt : 'transparent'
                       }}
                     >
-                      <MenuItem value="All" sx={{ fontSize: '0.75rem', fontWeight: 700 }}>All Depts</MenuItem>
-                      <Divider />
-                      {availableFilters.map(f => (
-                        <MenuItem key={f} value={f} sx={{ fontSize: '0.75rem', fontWeight: 700 }}>{f}</MenuItem>
-                      ))}
-                      <Divider />
-                      <MenuItem value="Vaccination" sx={{ fontSize: '0.75rem', fontWeight: 700 }}>Vaccination</MenuItem>
-                    </Select>
-                  </FormControl>
-                  <SearchIcon sx={{ color: COLORS.textMuted, fontSize: 16, ml: 1.5 }} />
+                      <Badge badgeContent={activeFilterCount} color="error" sx={{ '& .MuiBadge-badge': { fontSize: '0.6rem', height: 16, minWidth: 16 } }}>
+                        <FilterListIcon sx={{ fontSize: 18 }} />
+                      </Badge>
+                    </IconButton>
+                  </Tooltip>
+                  <SearchIcon sx={{ color: COLORS.textMuted, fontSize: 16, ml: 0.5 }} />
                 </InputAdornment>
               ),
               endAdornment: (
@@ -1373,6 +1578,232 @@ export default function PatientDashboard() {
           )}
         </Box>
       </Box>
+
+          {/* CLINICAL FILTER RIBBON (T4.118: Expandable Toolbar) */}
+          <Collapse in={showFilterRibbon}>
+            <Box sx={{ 
+              bgcolor: COLORS.surfaceAlt, borderBottom: `1px solid ${COLORS.border}`,
+              display: 'flex', alignItems: 'center', px: 2, py: 0.75, gap: 1,
+              boxShadow: 'inset 0 -2px 4px rgba(0,0,0,0.02)'
+            }}>
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.62rem', fontWeight: 900, color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em', mr: 1 }}>
+                Filters:
+              </Typography>
+              
+              <Stack direction="row" spacing={1} sx={{ flex: 1, overflowX: 'auto', py: 0.5, '&::-webkit-scrollbar': { height: 0 } }}>
+                {[
+                  { label: 'Depts', icon: <FilterListIcon sx={{ fontSize: 13 }} />, anchor: deptAnchor, setAnchor: setDeptAnchor, active: !deptFilters.includes('all'), color: COLORS.brand },
+                  { label: 'Staff', icon: <PersonIcon sx={{ fontSize: 13 }} />, anchor: staffAnchor, setAnchor: setStaffAnchor, active: !staffFilters.includes('all'), color: COLORS.brand },
+                  { label: 'Meds', icon: <MedicationIcon sx={{ fontSize: 13 }} />, anchor: medAnchor, setAnchor: setMedAnchor, active: !medFilters.includes('all'), color: COLORS.brand },
+                  { label: 'Supplies', icon: <InventoryIcon sx={{ fontSize: 13 }} />, anchor: supplyAnchor, setAnchor: setSupplyAnchor, active: !supplyFilters.includes('all'), color: COLORS.info },
+                  { label: 'Retail', icon: <ShoppingBagIcon sx={{ fontSize: 13 }} />, anchor: retailAnchor, setAnchor: setRetailAnchor, active: !retailFilters.includes('all'), color: COLORS.success },
+                  { label: 'Diagnoses', icon: <AssignmentIcon sx={{ fontSize: 13 }} />, anchor: diagAnchor, setAnchor: setDiagAnchor, active: !diagnosisFilters.includes('all'), color: COLORS.brand },
+                  { label: 'Labs', icon: <BiotechIcon sx={{ fontSize: 13 }} />, anchor: labAnchor, setAnchor: setLabAnchor, active: !labFilters.includes('all'), color: COLORS.info },
+                  { label: 'Time', icon: <TodayIcon sx={{ fontSize: 13 }} />, anchor: dateAnchor, setAnchor: setDateAnchor, active: dateRangeType !== 'all', color: COLORS.medical },
+                ].map((reg) => (
+                  <Button
+                    key={reg.label}
+                    size="small"
+                    startIcon={reg.icon}
+                    onClick={(e) => reg.setAnchor(e.currentTarget)}
+                    sx={{
+                      fontFamily: FONT, fontSize: '0.62rem', fontWeight: 900, textTransform: 'uppercase',
+                      px: 1.5, py: 0.5, borderRadius: 0, whiteSpace: 'nowrap',
+                      border: `2px solid ${reg.active ? reg.color : COLORS.brand}`,
+                      bgcolor: reg.active ? reg.color : 'white',
+                      color: reg.active ? 'white' : reg.color,
+                      boxShadow: `2px 2px 0 ${reg.active ? reg.color : COLORS.brand}`,
+                      letterSpacing: '0.05em',
+                      transition: 'all 0.1s ease',
+                      '&:hover': { 
+                        bgcolor: reg.active ? reg.color : COLORS.surfaceAlt, 
+                        transform: 'translate(1px, 1px)',
+                        boxShadow: 'none'
+                      }
+                    }}
+                  >
+                    {reg.label}
+                  </Button>
+                ))}
+              </Stack>
+
+              <Button 
+                size="small" 
+                variant="outlined"
+                startIcon={<FilterListOffIcon sx={{ fontSize: 13 }} />}
+                onClick={handleClearAllFilters}
+                sx={{ 
+                  fontFamily: FONT, fontSize: '0.62rem', fontWeight: 900, 
+                  color: COLORS.danger, textTransform: 'uppercase', ml: 1,
+                  border: `2px solid ${COLORS.brand}`, borderRadius: 0,
+                  boxShadow: `2px 2px 0 ${COLORS.brand}`,
+                  bgcolor: 'white',
+                  '&:hover': { bgcolor: COLORS.danger, color: 'white', transform: 'translate(1px, 1px)', boxShadow: 'none' }
+                }}
+              >
+                Clear All
+              </Button>
+            </Box>
+          </Collapse>
+
+          {/* MENUS (Shared for Ribbon) */}
+          <Menu anchorEl={deptAnchor} open={Boolean(deptAnchor)} onClose={() => setDeptAnchor(null)} PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.brand}`, boxShadow: `4px 4px 0 ${COLORS.brand}`, mt: 0.5 } }}>
+            <MenuItem onClick={() => handleToggleRegistry(setDeptFilters, deptFilters, 'all')} sx={{ py: 0.5, px: 1.5, bgcolor: deptFilters.includes('all') ? `${COLORS.brand}12` : 'transparent' }}>
+              <Checkbox size="small" checked={deptFilters.includes('all')} sx={{ color: COLORS.brand }} />
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 800, color: COLORS.brand }}>ALL DEPARTMENTS</Typography>
+            </MenuItem>
+            <Divider />
+            {availableDepts.map(d => (
+              <MenuItem key={d} onClick={() => handleToggleRegistry(setDeptFilters, deptFilters, d)} sx={{ py: 0.5, px: 1.5 }}>
+                <Checkbox size="small" checked={deptFilters.includes(d)} sx={{ color: COLORS.brand }} />
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 700 }}>{d.toUpperCase()}</Typography>
+              </MenuItem>
+            ))}
+          </Menu>
+
+          <Menu anchorEl={staffAnchor} open={Boolean(staffAnchor)} onClose={() => setStaffAnchor(null)} PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.brand}`, boxShadow: `4px 4px 0 ${COLORS.brand}`, mt: 0.5 } }}>
+            <MenuItem onClick={() => handleToggleRegistry(setStaffFilters, staffFilters, 'all')} sx={{ py: 0.5, px: 1.5, bgcolor: staffFilters.includes('all') ? `${COLORS.brand}12` : 'transparent' }}>
+              <Checkbox size="small" checked={staffFilters.includes('all')} sx={{ color: COLORS.brand }} />
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 800, color: COLORS.brand }}>ALL CLINICIANS</Typography>
+            </MenuItem>
+            <Divider />
+            {availableStaff.map(s => (
+              <MenuItem key={s} onClick={() => handleToggleRegistry(setStaffFilters, staffFilters, s)} sx={{ py: 0.5, px: 1.5 }}>
+                <Checkbox size="small" checked={staffFilters.includes(s)} sx={{ color: COLORS.brand }} />
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 700 }}>{s.toUpperCase()}</Typography>
+              </MenuItem>
+            ))}
+          </Menu>
+
+          <Menu anchorEl={medAnchor} open={Boolean(medAnchor)} onClose={() => setMedAnchor(null)} PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.brand}`, boxShadow: `4px 4px 0 ${COLORS.brand}`, maxHeight: 400, mt: 0.5 } }}>
+            <MenuItem onClick={() => handleToggleRegistry(setMedFilters, medFilters, 'all')} sx={{ py: 0.5, px: 1.5, bgcolor: medFilters.includes('all') ? `${COLORS.brand}12` : 'transparent' }}>
+              <Checkbox size="small" checked={medFilters.includes('all')} sx={{ color: COLORS.brand }} />
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 800, color: COLORS.brand }}>ALL MEDICINES</Typography>
+            </MenuItem>
+            <Divider />
+            {availableMeds.map(m => (
+              <MenuItem key={m} onClick={() => handleToggleRegistry(setMedFilters, medFilters, m)} sx={{ py: 0.5, px: 1.5 }}>
+                <Checkbox size="small" checked={medFilters.includes(m)} sx={{ color: COLORS.brand }} />
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 700 }}>{m.toUpperCase()}</Typography>
+              </MenuItem>
+            ))}
+          </Menu>
+
+          <Menu anchorEl={supplyAnchor} open={Boolean(supplyAnchor)} onClose={() => setSupplyAnchor(null)} PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.info}`, boxShadow: `4px 4px 0 ${COLORS.info}`, maxHeight: 400, mt: 0.5 } }}>
+            <MenuItem onClick={() => handleToggleRegistry(setSupplyFilters, supplyFilters, 'all')} sx={{ py: 0.5, px: 1.5, bgcolor: supplyFilters.includes('all') ? `${COLORS.info}12` : 'transparent' }}>
+              <Checkbox size="small" checked={supplyFilters.includes('all')} sx={{ color: COLORS.info }} />
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 800, color: COLORS.info }}>ALL SUPPLIES</Typography>
+            </MenuItem>
+            <Divider />
+            {availableSupplies.map(s => (
+              <MenuItem key={s} onClick={() => handleToggleRegistry(setSupplyFilters, supplyFilters, s)} sx={{ py: 0.5, px: 1.5 }}>
+                <Checkbox size="small" checked={supplyFilters.includes(s)} sx={{ color: COLORS.info }} />
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 700 }}>{s.toUpperCase()}</Typography>
+              </MenuItem>
+            ))}
+          </Menu>
+
+          <Menu anchorEl={retailAnchor} open={Boolean(retailAnchor)} onClose={() => setRetailAnchor(null)} PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.success}`, boxShadow: `4px 4px 0 ${COLORS.success}`, maxHeight: 400, mt: 0.5 } }}>
+            <MenuItem onClick={() => handleToggleRegistry(setRetailFilters, retailFilters, 'all')} sx={{ py: 0.5, px: 1.5, bgcolor: retailFilters.includes('all') ? `${COLORS.success}12` : 'transparent' }}>
+              <Checkbox size="small" checked={retailFilters.includes('all')} sx={{ color: COLORS.success }} />
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 800, color: COLORS.success }}>ALL RETAIL ITEMS</Typography>
+            </MenuItem>
+            <Divider />
+            {availableRetail.map(r => (
+              <MenuItem key={r} onClick={() => handleToggleRegistry(setRetailFilters, retailFilters, r)} sx={{ py: 0.5, px: 1.5 }}>
+                <Checkbox size="small" checked={retailFilters.includes(r)} sx={{ color: COLORS.success }} />
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 700 }}>{r.toUpperCase()}</Typography>
+              </MenuItem>
+            ))}
+          </Menu>
+
+          <Menu anchorEl={diagAnchor} open={Boolean(diagAnchor)} onClose={() => setDiagAnchor(null)} PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.brand}`, boxShadow: `4px 4px 0 ${COLORS.brand}`, maxHeight: 400, mt: 0.5 } }}>
+            <MenuItem onClick={() => handleToggleRegistry(setDiagnosisFilters, diagnosisFilters, 'all')} sx={{ py: 0.5, px: 1.5, bgcolor: diagnosisFilters.includes('all') ? `${COLORS.brand}12` : 'transparent' }}>
+              <Checkbox size="small" checked={diagnosisFilters.includes('all')} sx={{ color: COLORS.brand }} />
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 800, color: COLORS.brand }}>ALL DIAGNOSES</Typography>
+            </MenuItem>
+            <Divider />
+            {availableDiagnoses.map(d => (
+              <MenuItem key={d} onClick={() => handleToggleRegistry(setDiagnosisFilters, diagnosisFilters, d)} sx={{ py: 0.5, px: 1.5 }}>
+                <Checkbox size="small" checked={diagnosisFilters.includes(d)} sx={{ color: COLORS.brand }} />
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 700 }}>{d.toUpperCase()}</Typography>
+              </MenuItem>
+            ))}
+          </Menu>
+
+          <Menu anchorEl={labAnchor} open={Boolean(labAnchor)} onClose={() => setLabAnchor(null)} PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.info}`, boxShadow: `4px 4px 0 ${COLORS.info}`, maxHeight: 400, mt: 0.5 } }}>
+            <MenuItem onClick={() => handleToggleRegistry(setLabFilters, labFilters, 'all')} sx={{ py: 0.5, px: 1.5, bgcolor: labFilters.includes('all') ? `${COLORS.info}12` : 'transparent' }}>
+              <Checkbox size="small" checked={labFilters.includes('all')} sx={{ color: COLORS.info }} />
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 800, color: COLORS.info }}>ALL LAB TESTS</Typography>
+            </MenuItem>
+            <Divider />
+            {availableLabs.map(l => (
+              <MenuItem key={l} onClick={() => handleToggleRegistry(setLabFilters, labFilters, l)} sx={{ py: 0.5, px: 1.5 }}>
+                <Checkbox size="small" checked={labFilters.includes(l)} sx={{ color: COLORS.info }} />
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 700 }}>{l.toUpperCase()}</Typography>
+              </MenuItem>
+            ))}
+          </Menu>
+
+          <Menu 
+            anchorEl={dateAnchor} 
+            open={Boolean(dateAnchor)} 
+            onClose={() => setDateAnchor(null)} 
+            PaperProps={{ 
+              sx: { 
+                borderRadius: 0, border: `2px solid ${COLORS.brand}`, 
+                boxShadow: `4px 4px 0 ${COLORS.brand}`, p: 1.5, mt: 0.5,
+                minWidth: 260
+              } 
+            }}
+          >
+            <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 900, color: COLORS.textMuted, mb: 1.5, letterSpacing: 1 }}>PRESET RANGES</Typography>
+            <Stack direction="row" spacing={1} sx={{ mb: 1.5 }}>
+              <Button variant="outlined" size="small" onClick={() => { setDateRangeType('all'); setDateAnchor(null); }} sx={{ flex: 1, fontFamily: FONT, fontSize: '0.6rem', fontWeight: 800, borderRadius: 0, color: COLORS.brand, borderColor: COLORS.brand }}>ALL</Button>
+              <Button variant="outlined" size="small" onClick={() => { setDateRangeType('today'); setDateAnchor(null); }} sx={{ flex: 1, fontFamily: FONT, fontSize: '0.6rem', fontWeight: 800, borderRadius: 0, color: COLORS.brand, borderColor: COLORS.brand }}>TODAY</Button>
+              <Button variant="outlined" size="small" onClick={() => { setDateRangeType('30d'); setDateAnchor(null); }} sx={{ flex: 1, fontFamily: FONT, fontSize: '0.6rem', fontWeight: 800, borderRadius: 0, color: COLORS.brand, borderColor: COLORS.brand }}>30D</Button>
+            </Stack>
+            <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+              <Button variant="outlined" size="small" onClick={() => { setDateRangeType('6mo'); setDateAnchor(null); }} sx={{ flex: 1, fontFamily: FONT, fontSize: '0.6rem', fontWeight: 800, borderRadius: 0, color: COLORS.brand, borderColor: COLORS.brand }}>6 MO</Button>
+              <Button variant="outlined" size="small" onClick={() => { setDateRangeType('1yr'); setDateAnchor(null); }} sx={{ flex: 1, fontFamily: FONT, fontSize: '0.6rem', fontWeight: 800, borderRadius: 0, color: COLORS.brand, borderColor: COLORS.brand }}>1 YR</Button>
+            </Stack>
+
+            <Divider sx={{ mb: 2 }} />
+
+            <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 900, color: COLORS.textMuted, mb: 1.5, letterSpacing: 1 }}>CUSTOM RANGE</Typography>
+            <Stack spacing={1.5}>
+              <Box>
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.6rem', fontWeight: 800, color: COLORS.brand, mb: 0.5 }}>START DATE</Typography>
+                <TextField 
+                  type="date" 
+                  size="small" 
+                  fullWidth 
+                  value={customStart}
+                  onChange={(e) => { setCustomStart(e.target.value); setDateRangeType('custom'); }}
+                  InputProps={{ sx: { borderRadius: 0, fontFamily: FONT, fontSize: '0.75rem' } }} 
+                />
+              </Box>
+              <Box>
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.6rem', fontWeight: 800, color: COLORS.brand, mb: 0.5 }}>END DATE</Typography>
+                <TextField 
+                  type="date" 
+                  size="small" 
+                  fullWidth 
+                  value={customEnd}
+                  onChange={(e) => { setCustomEnd(e.target.value); setDateRangeType('custom'); }}
+                  InputProps={{ sx: { borderRadius: 0, fontFamily: FONT, fontSize: '0.75rem' } }} 
+                />
+              </Box>
+              <Button 
+                fullWidth 
+                variant="contained" 
+                onClick={() => setDateAnchor(null)}
+                sx={{ bgcolor: COLORS.brand, borderRadius: 0, fontFamily: FONT, fontSize: '0.7rem', fontWeight: 900, mt: 1 }}
+              >
+                APPLY RANGE
+              </Button>
+            </Stack>
+          </Menu>
 
       {/* ═══ RA 10173 ERASURE BANNER ═══ */}
       {isErased && (

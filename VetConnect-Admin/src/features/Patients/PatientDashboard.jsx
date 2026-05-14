@@ -1977,7 +1977,7 @@ export default function PatientDashboard() {
                                             • {it.name.toUpperCase()} {it.qty ? `[x${it.qty}]` : ''}
                                           </Typography>
                                           <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', color: COLORS.textSecondary, flex: 1 }}>
-                                            {it.instructions || 'USE AS DIRECTED'}
+                                            {it.instructions || '—'}
                                           </Typography>
                                         </Box>
                                       ))}

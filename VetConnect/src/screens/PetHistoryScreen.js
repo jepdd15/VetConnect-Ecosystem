@@ -1935,7 +1935,7 @@ export default function PetHistoryScreen({ route, navigation }) {
                         {rx.name}{rx.qty ? ` x${rx.qty}` : ''}
                       </Text>
                       <Text style={styles.rxSig}>
-                        {rx.instructions || rx.sig || "Use as directed"}
+                        {rx.instructions || rx.sig || "—"}
                       </Text>
                     </View>
                   ))}
@@ -2083,7 +2083,7 @@ export default function PetHistoryScreen({ route, navigation }) {
                             • {med.name}{med.qty ? ` x${med.qty}` : ''}
                           </Text>
                           <Text style={[styles.dischargeMedMeta, { marginLeft: 14, marginTop: 1 }]}>
-                            {med.instructions || 'Use as directed'}
+                            {med.instructions || '—'}
                           </Text>
                         </View>
                       ))}

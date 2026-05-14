@@ -36,6 +36,11 @@ import {
 import { collection, query, where, orderBy, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { FONT, COLORS, TYPE, STATUS_COLORS } from '../theme/designTokens';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import EMRAIConsole from './EMRAIConsole';
+import { useVaccineCatalog } from '../hooks/useVaccineCatalog';
+import { useLLMConfig } from '../hooks/useLLMConfig';
+import { getVaccineAdministrations, resolveVaccineFromName } from '../utils/vaccineConstants';
 import { resolveVitals } from '../utils/resolveVitals';
 import { resolveObjectiveText, hasExamData, examSummaryLine } from '../utils/examUtils';
 import { openPrintWindow, UNIFIED_PRINT_STYLES, formatPrintDate, esc } from '../utils/printUtils';
@@ -511,15 +516,12 @@ const RecordCard = ({ record, appointmentId, onPrint }) => {
 
 // ─── Main drawer ─────────────────────────────────────────────────────────────
 
-export default function EMRDrawer({
-  open,
-  onClose,
-  history: historyProp = [],
-  petName,
-  petSpecies,
-  appointmentId,
-  petId,
+export default function EMRDrawer({ 
+  open, onClose, history: historyProp = [], petName, petSpecies, petId, appointmentId
 }) {
+  const clinicSettings = useClinicSettings();
+  const vaccineCatalog = useVaccineCatalog();
+  const llmConfig = useLLMConfig();
   const [fetchedRecords, setFetchedRecords] = useState([]);
   const [petData, setPetData] = useState(null);
   const [ownerData, setOwnerData] = useState(null);
@@ -554,8 +556,9 @@ export default function EMRDrawer({
   const [supplyAnchorEl, setSupplyAnchorEl] = useState(null);
   const [retailAnchorEl, setRetailAnchorEl] = useState(null);
   const [fullPrintAnchorEl, setFullPrintAnchorEl] = useState(null);
+  
+  const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
 
-  const clinicSettings = useClinicSettings();
 
   const handlePrintRecord = async (rec, mode) => {
     if (!rec) return;
@@ -721,6 +724,77 @@ export default function EMRDrawer({
     setCustomStart('');
     setCustomEnd('');
   };
+
+  const vaccinationStatus = useMemo(() => {
+    const recs = historyProp.length > 0 ? historyProp : fetchedRecords;
+    if (!recs || recs.length === 0) return [];
+
+    const sp = (petData?.species || petSpecies || '').toLowerCase();
+    const spKey = sp.includes('cat') || sp.includes('feline') ? 'cat' : 'dog';
+
+    return vaccineCatalog.filter(v => v.species?.includes(spKey)).map(catalogVax => {
+      let structuredMatch = null;
+      let matchedAdmin = null;
+      let bestTime = 0;
+      for (const r of recs) {
+        const admins = getVaccineAdministrations(r);
+        const admin = admins.find(a => {
+          const resolved = resolveVaccineFromName(a.vaccineName, vaccineCatalog);
+          return resolved?.id === catalogVax.id;
+        });
+        if (admin) {
+          const rTime = resolveRecordDate(r).getTime();
+          if (rTime >= bestTime) { structuredMatch = r; matchedAdmin = admin; bestTime = rTime; }
+        }
+      }
+
+      if (structuredMatch && matchedAdmin) {
+        const sd = matchedAdmin;
+        const lastDate = resolveRecordDate(structuredMatch);
+        if (isNaN(lastDate.getTime())) return {
+          name: catalogVax.name, id: catalogVax.id, intervalDays: catalogVax.intervalDays,
+          status: 'unknown', lastDate: null, daysUntilDue: null, lotNumber: sd.lotNumber || null,
+        };
+
+        const explicitDue = sd.dueDate ? new Date(sd.dueDate) : null;
+        const intervalDays = sd.intervalDays || catalogVax.intervalDays;
+        const daysUntilDue = explicitDue
+          ? Math.floor((explicitDue.getTime() - Date.now()) / 86400000)
+          : intervalDays - Math.floor((Date.now() - lastDate.getTime()) / 86400000);
+
+        const status = daysUntilDue < 0 ? 'overdue' : daysUntilDue <= 30 ? 'due_soon' : 'current';
+        return {
+          name: catalogVax.name, id: catalogVax.id, intervalDays: catalogVax.intervalDays,
+          status, lastDate, daysUntilDue,
+          lotNumber: sd.lotNumber || null,
+          manufacturer: sd.manufacturer || null,
+          routeOfAdmin: sd.routeOfAdmin || null,
+        };
+      }
+
+      const keywordMatches = recs.filter(r => {
+        const text = [r.diagnosis, r.treatment, r.soap?.subjective, resolveObjectiveText(r)]
+          .filter(Boolean).join(' ').toLowerCase();
+        return catalogVax.keywords.some(kw => text.includes(kw));
+      });
+
+      if (keywordMatches.length === 0) return {
+        name: catalogVax.name, id: catalogVax.id, intervalDays: catalogVax.intervalDays,
+        status: 'unknown', lastDate: null, daysUntilDue: null,
+      };
+
+      const latest = keywordMatches.reduce((a, b) => {
+        const aTime = resolveRecordDate(a).getTime();
+        const bTime = resolveRecordDate(b).getTime();
+        return aTime >= bTime ? a : b;
+      });
+      const lastDate = resolveRecordDate(latest);
+      return {
+        name: catalogVax.name, id: catalogVax.id, intervalDays: catalogVax.intervalDays,
+        status: 'unknown', lastDate: isNaN(lastDate.getTime()) ? null : lastDate, daysUntilDue: null,
+      };
+    });
+  }, [historyProp, fetchedRecords, petData, petSpecies, vaccineCatalog]);
 
   const hasActiveFilters = useMemo(() => {
     return searchText.trim() !== '' ||
@@ -1076,15 +1150,16 @@ export default function EMRDrawer({
       sx={{ zIndex: 1400 }}
       PaperProps={{
         sx: {
-          width: '45vw',
-          minWidth: 500,
-          maxWidth: 950, // Expanded for tri-checklist hub
+          width: aiDrawerOpen ? '85vw' : '45vw',
+          minWidth: aiDrawerOpen ? 900 : 500,
+          maxWidth: '98vw',
           borderRadius: 0,
           border: `3px solid ${COLORS.brand}`,
           borderRight: 'none',
           boxShadow: `-6px 0 0 ${COLORS.brand}`,
           display: 'flex',
           flexDirection: 'column',
+          transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
         },
       }}
     >
@@ -1136,6 +1211,25 @@ export default function EMRDrawer({
                 </IconButton>
               </span>
             </Tooltip>
+
+            {/* AI Assistant Trigger */}
+            {llmConfig.enabled && llmConfig.workerUrl && (
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => setAiDrawerOpen(true)}
+                startIcon={<AutoAwesomeIcon sx={{ fontSize: 16 }} />}
+                sx={{
+                  fontFamily: FONT, fontWeight: 900, fontSize: '0.65rem',
+                  color: COLORS.grooming, borderColor: COLORS.grooming, borderRadius: 0,
+                  bgcolor: 'white', px: 2, height: 32, mr: 1,
+                  boxShadow: `3px 3px 0 ${COLORS.grooming}`,
+                  '&:hover': { borderColor: COLORS.grooming, bgcolor: `${COLORS.grooming}10`, transform: 'translate(1px, 1px)', boxShadow: 'none' }
+                }}
+              >
+                AI ASSISTANT
+              </Button>
+            )}
 
             <Menu
               anchorEl={fullPrintAnchorEl}
@@ -1267,8 +1361,18 @@ export default function EMRDrawer({
         </Box>
       </Box>
 
-      {/* Body */}
-      <Box sx={{ flex: 1, overflowY: 'auto', px: 3, py: 2, minHeight: 0 }}>
+      {/* Body Area with Split Intelligence Console */}
+      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'row', overflow: 'hidden', minHeight: 0 }}>
+        
+        {/* Left Panel: Raw Clinical History */}
+        <Box sx={{ 
+          flex: 1, 
+          overflowY: 'auto', 
+          px: 3, py: 2, 
+          minHeight: 0,
+          borderRight: aiDrawerOpen ? `3px solid ${COLORS.brand}` : 'none',
+          transition: 'all 0.3s ease'
+        }}>
 
         {/* UNIFIED SEARCH & FILTER HUB */}
         <Box sx={{
@@ -1553,7 +1657,7 @@ export default function EMRDrawer({
             });
           })()
         )}
-      </Box>
+        </Box>
 
       {/* Dept Menu */}
       <Menu
@@ -1883,6 +1987,23 @@ export default function EMRDrawer({
           </Button>
         </Stack>
       </Menu>
+
+
+        {/* Right Panel: AI Intelligence Console */}
+        {aiDrawerOpen && (
+          <Box sx={{ width: '400px', flexShrink: 0, borderLeft: `2px solid ${COLORS.brand}`, bgcolor: COLORS.surfaceAlt }}>
+            <EMRAIConsole 
+              pet={petData || { name: petName, species: petSpecies }}
+              owner={ownerData}
+              records={historyProp.length > 0 ? historyProp : fetchedRecords}
+              vaccinations={vaccinationStatus}
+              workerUrl={llmConfig.workerUrl}
+              onClose={() => setAiDrawerOpen(false)}
+            />
+          </Box>
+        )}
+      </Box>
+
     </Drawer>
   );
 }

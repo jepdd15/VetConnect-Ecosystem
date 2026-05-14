@@ -18,6 +18,7 @@ import {
   Vaccines as VaccinesIcon,
   AttachFile as AttachFileIcon,
   FilterList as FilterListIcon,
+  FilterListOff as FilterListOffIcon,
   Pets as PetsIcon,
   Person as PersonIcon,
   Today as TodayIcon,
@@ -26,6 +27,8 @@ import {
   Male as MaleIcon,
   Scale as ScaleIcon,
   WarningAmber as WarningIcon,
+  Biotech as BiotechIcon,
+  Assignment as AssignmentIcon,
 } from '@mui/icons-material';
 import { collection, query, where, orderBy, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
@@ -464,6 +467,8 @@ export default function EMRDrawer({
   const [searchText, setSearchText] = useState('');
   const [typeFilters, setTypeFilters] = useState(['all']);
   const [staffFilters, setStaffFilters] = useState(['all']);
+  const [labFilters, setLabFilters] = useState(['all']);
+  const [diagnosisFilters, setDiagnosisFilters] = useState(['all']);
   
   // Date Range Hub States
   const [dateRangeType, setDateRangeType] = useState('all');
@@ -476,6 +481,8 @@ export default function EMRDrawer({
   const [deptAnchorEl, setDeptAnchorEl] = useState(null);
   const [staffAnchorEl, setStaffAnchorEl] = useState(null);
   const [dateAnchorEl, setDateAnchorEl] = useState(null);
+  const [labAnchorEl, setLabAnchorEl] = useState(null);
+  const [diagnosisAnchorEl, setDiagnosisAnchorEl] = useState(null);
 
   const handleDeptClick = (e) => { e.stopPropagation(); setDeptAnchorEl(e.currentTarget); };
   const handleDeptClose = () => setDeptAnchorEl(null);
@@ -485,6 +492,12 @@ export default function EMRDrawer({
 
   const handleDateClick = (e) => { e.stopPropagation(); setDateAnchorEl(e.currentTarget); };
   const handleDateClose = () => setDateAnchorEl(null);
+
+  const handleLabClick = (e) => { e.stopPropagation(); setLabAnchorEl(e.currentTarget); };
+  const handleLabClose = () => setLabAnchorEl(null);
+
+  const handleDiagnosisClick = (e) => { e.stopPropagation(); setDiagnosisAnchorEl(e.currentTarget); };
+  const handleDiagnosisClose = () => setDiagnosisAnchorEl(null);
 
   const toggleTypeFilter = (key) => {
     if (key === 'all') {
@@ -507,6 +520,48 @@ export default function EMRDrawer({
       setStaffFilters(newFilters.length === 0 ? ['all'] : newFilters);
     }
   };
+
+  const toggleLabFilter = (key) => {
+    if (key === 'all') {
+      setLabFilters(['all']);
+    } else {
+      const newFilters = labFilters.includes(key)
+        ? labFilters.filter(f => f !== key)
+        : [...labFilters.filter(f => f !== 'all'), key];
+      setLabFilters(newFilters.length === 0 ? ['all'] : newFilters);
+    }
+  };
+
+  const toggleDiagnosisFilter = (key) => {
+    if (key === 'all') {
+      setDiagnosisFilters(['all']);
+    } else {
+      const newFilters = diagnosisFilters.includes(key)
+        ? diagnosisFilters.filter(f => f !== key)
+        : [...diagnosisFilters.filter(f => f !== 'all'), key];
+      setDiagnosisFilters(newFilters.length === 0 ? ['all'] : newFilters);
+    }
+  };
+
+  const handleClearAll = () => {
+    setSearchText('');
+    setTypeFilters(['all']);
+    setStaffFilters(['all']);
+    setLabFilters(['all']);
+    setDiagnosisFilters(['all']);
+    setDateRangeType('all');
+    setCustomStart('');
+    setCustomEnd('');
+  };
+
+  const hasActiveFilters = useMemo(() => {
+    return searchText.trim() !== '' ||
+           !typeFilters.includes('all') ||
+           !staffFilters.includes('all') ||
+           !labFilters.includes('all') ||
+           !diagnosisFilters.includes('all') ||
+           dateRangeType !== 'all';
+  }, [searchText, typeFilters, staffFilters, labFilters, diagnosisFilters, dateRangeType]);
 
   useEffect(() => {
     if (!open) return;
@@ -560,22 +615,45 @@ export default function EMRDrawer({
 
   useEffect(() => {
     if (!open) {
-      setSearchText('');
-      setTypeFilters(['all']);
-      setStaffFilters(['all']);
-      setDateRangeType('all');
-      setCustomStart('');
-      setCustomEnd('');
+      handleClearAll();
       setFetchedRecords([]);
       setPetData(null);
       setOwnerData(null);
       setDeptAnchorEl(null);
       setStaffAnchorEl(null);
       setDateAnchorEl(null);
+      setLabAnchorEl(null);
+      setDiagnosisAnchorEl(null);
     }
   }, [open]);
 
   const records = historyProp.length > 0 ? historyProp : fetchedRecords;
+
+  // Dynamic discovery of unique lab tests present in this pet's history
+  const availableLabTests = useMemo(() => {
+    const tests = new Set();
+    records.forEach(r => {
+      if (r.labResults?.length > 0) {
+        r.labResults.forEach(l => {
+          if (l.testName) tests.add(l.testName.toUpperCase());
+        });
+      }
+    });
+    return Array.from(tests).sort();
+  }, [records]);
+
+  // Dynamic discovery of unique diagnoses present in this pet's history
+  const availableDiagnoses = useMemo(() => {
+    const dxs = new Set();
+    records.forEach(r => {
+      if (r.diagnoses?.length > 0) {
+        r.diagnoses.forEach(d => { if (d.name) dxs.add(d.name.toUpperCase()); });
+      } else if (r.diagnosis || r.assessment) {
+        dxs.add((r.diagnosis || r.assessment).toUpperCase());
+      }
+    });
+    return Array.from(dxs).sort();
+  }, [records]);
 
   const searchFiltered = useMemo(() => {
     if (!searchText.trim()) return records;
@@ -617,6 +695,26 @@ export default function EMRDrawer({
       });
     }
 
+    // Diagnosis Filter
+    if (!diagnosisFilters.includes('all')) {
+      result = result.filter(r => {
+        const recordDxs = [
+          ...(r.diagnoses?.map(d => d.name.toUpperCase()) || []),
+          (r.diagnosis || r.assessment || '').toUpperCase()
+        ].filter(Boolean);
+        return diagnosisFilters.some(f => recordDxs.includes(f.toUpperCase()));
+      });
+    }
+
+    // Lab Test Filter
+    if (!labFilters.includes('all')) {
+      result = result.filter(r => {
+        if (!r.labResults || r.labResults.length === 0) return false;
+        const recordTests = r.labResults.map(l => l.testName?.toUpperCase());
+        return labFilters.some(f => recordTests.includes(f.toUpperCase()));
+      });
+    }
+
     // Temporal Hub Filtering Logic
     if (dateRangeType !== 'all') {
       const now = new Date();
@@ -653,7 +751,7 @@ export default function EMRDrawer({
     }
 
     return result;
-  }, [searchFiltered, typeFilters, staffFilters, dateRangeType, customStart, customEnd]);
+  }, [searchFiltered, typeFilters, staffFilters, diagnosisFilters, labFilters, dateRangeType, customStart, customEnd]);
 
   const handlePrintFullEMR = () => {
     if (records.length === 0) return;
@@ -899,17 +997,17 @@ export default function EMRDrawer({
 
         {/* UNIFIED SEARCH & FILTER HUB */}
         <Box sx={{
-          border: `1px solid ${COLORS.border}`,
+          border: `2px solid ${COLORS.brand}`,
           bgcolor: COLORS.surfaceHover,
-          mb: 2,
-          '&:focus-within': { borderColor: COLORS.brand },
-          transition: 'border-color 0.15s ease',
+          mb: 3,
+          '&:focus-within': { borderColor: COLORS.accent },
+          transition: 'all 0.15s ease',
           position: 'relative',
           zIndex: 1,
         }}>
           {/* Search Input */}
           <TextField
-            placeholder="Search diagnosis, vet, plan..."
+            placeholder="SEARCH CLINICAL RECORDS..."
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
             size="small"
@@ -918,40 +1016,45 @@ export default function EMRDrawer({
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <SearchIcon sx={{ fontSize: 18, color: COLORS.textMuted }} />
+                  <SearchIcon sx={{ fontSize: 20, color: COLORS.brand }} />
                 </InputAdornment>
               ),
               sx: {
                 '& fieldset': { border: 'none' },
                 fontFamily: FONT,
-                fontSize: '0.8rem',
+                fontSize: '0.85rem',
+                fontWeight: 800,
+                color: COLORS.brand,
+                letterSpacing: 1,
                 cursor: 'text',
+                '& ::placeholder': { color: `${COLORS.brand}99`, opacity: 1 }
               }
             }}
             sx={{
               '& .MuiOutlinedInput-root': {
-                padding: '2px 8px',
+                padding: '6px 12px',
               }
             }}
           />
 
-          <Divider sx={{ borderColor: `${COLORS.border}33` }} />
+          <Divider sx={{ borderColor: COLORS.brand, borderWidth: 1 }} />
 
           {/* Integrated Filter Hub */}
-          <Box sx={{ px: 1.5, py: 1, display: 'flex', gap: 0.75, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Box sx={{ px: 2, py: 1.5, display: 'flex', gap: 1.25, alignItems: 'center', flexWrap: 'wrap', bgcolor: COLORS.cream }}>
             
             {/* Dept Multi-Select */}
             <Button
               onClick={handleDeptClick}
-              endIcon={<FilterListIcon sx={{ fontSize: 13 }} />}
+              endIcon={<FilterListIcon sx={{ fontSize: 16 }} />}
               sx={{
-                height: 24, px: 1,
-                bgcolor: typeFilters.includes('all') ? 'transparent' : COLORS.brand,
-                color: typeFilters.includes('all') ? COLORS.textMuted : 'white',
-                border: `1px solid ${typeFilters.includes('all') ? COLORS.border : COLORS.brand}`,
-                borderRadius: 0, fontFamily: FONT, fontWeight: 900, fontSize: '0.52rem',
-                letterSpacing: 0.5,
-                '&:hover': { bgcolor: typeFilters.includes('all') ? COLORS.borderLight : COLORS.accent }
+                height: 36, px: 2,
+                bgcolor: typeFilters.includes('all') ? 'white' : COLORS.brand,
+                color: typeFilters.includes('all') ? COLORS.brand : 'white',
+                border: `2px solid ${COLORS.brand}`,
+                boxShadow: `2px 2px 0 ${COLORS.brand}`,
+                borderRadius: 0, fontFamily: FONT, fontWeight: 900, fontSize: '0.65rem',
+                letterSpacing: 1,
+                '&:hover': { bgcolor: typeFilters.includes('all') ? COLORS.borderLight : COLORS.accent, boxShadow: 'none', transform: 'translate(1px, 1px)' }
               }}
             >
               {typeFilters.includes('all') ? 'DEPTS' : `${typeFilters.length} DEPTS`}
@@ -960,40 +1063,98 @@ export default function EMRDrawer({
             {/* Staff Multi-Select */}
             <Button
               onClick={handleStaffClick}
-              endIcon={<PersonIcon sx={{ fontSize: 13 }} />}
+              endIcon={<PersonIcon sx={{ fontSize: 16 }} />}
               sx={{
-                height: 24, px: 1,
-                bgcolor: staffFilters.includes('all') ? 'transparent' : COLORS.brand,
-                color: staffFilters.includes('all') ? COLORS.textMuted : 'white',
-                border: `1px solid ${staffFilters.includes('all') ? COLORS.border : COLORS.brand}`,
-                borderRadius: 0, fontFamily: FONT, fontWeight: 900, fontSize: '0.52rem',
-                letterSpacing: 0.5,
-                '&:hover': { bgcolor: staffFilters.includes('all') ? COLORS.borderLight : COLORS.accent }
+                height: 36, px: 2,
+                bgcolor: staffFilters.includes('all') ? 'white' : COLORS.brand,
+                color: staffFilters.includes('all') ? COLORS.brand : 'white',
+                border: `2px solid ${COLORS.brand}`,
+                boxShadow: `2px 2px 0 ${COLORS.brand}`,
+                borderRadius: 0, fontFamily: FONT, fontWeight: 900, fontSize: '0.65rem',
+                letterSpacing: 1,
+                '&:hover': { bgcolor: staffFilters.includes('all') ? COLORS.borderLight : COLORS.accent, boxShadow: 'none', transform: 'translate(1px, 1px)' }
               }}
             >
               {staffFilters.includes('all') ? 'STAFF' : `${staffFilters.length} STAFF`}
             </Button>
 
+            {/* Diagnosis Multi-Select */}
+            <Button
+              onClick={handleDiagnosisClick}
+              endIcon={<AssignmentIcon sx={{ fontSize: 16 }} />}
+              sx={{
+                height: 36, px: 2,
+                bgcolor: diagnosisFilters.includes('all') ? 'white' : COLORS.brand,
+                color: diagnosisFilters.includes('all') ? COLORS.brand : 'white',
+                border: `2px solid ${COLORS.brand}`,
+                boxShadow: `2px 2px 0 ${COLORS.brand}`,
+                borderRadius: 0, fontFamily: FONT, fontWeight: 900, fontSize: '0.65rem',
+                letterSpacing: 1,
+                '&:hover': { bgcolor: diagnosisFilters.includes('all') ? COLORS.borderLight : COLORS.accent, boxShadow: 'none', transform: 'translate(1px, 1px)' }
+              }}
+            >
+              {diagnosisFilters.includes('all') ? 'DIAGNOSIS' : `${diagnosisFilters.length} DX`}
+            </Button>
+
+            {/* Lab Multi-Select */}
+            <Button
+              onClick={handleLabClick}
+              endIcon={<BiotechIcon sx={{ fontSize: 16 }} />}
+              sx={{
+                height: 36, px: 2,
+                bgcolor: labFilters.includes('all') ? 'white' : COLORS.info,
+                color: labFilters.includes('all') ? COLORS.info : 'white',
+                border: `2px solid ${labFilters.includes('all') ? COLORS.brand : COLORS.info}`,
+                boxShadow: `2px 2px 0 ${labFilters.includes('all') ? COLORS.brand : COLORS.info}`,
+                borderRadius: 0, fontFamily: FONT, fontWeight: 900, fontSize: '0.65rem',
+                letterSpacing: 1,
+                '&:hover': { bgcolor: labFilters.includes('all') ? COLORS.borderLight : COLORS.info, boxShadow: 'none', transform: 'translate(1px, 1px)' }
+              }}
+            >
+              {labFilters.includes('all') ? 'LABS' : `${labFilters.length} LABS`}
+            </Button>
+
             {/* Date Range Hub */}
             <Button
               onClick={handleDateClick}
-              endIcon={<CalendarIcon sx={{ fontSize: 13 }} />}
+              endIcon={<CalendarIcon sx={{ fontSize: 16 }} />}
               sx={{
-                height: 24, px: 1,
-                bgcolor: dateRangeType === 'all' ? 'transparent' : COLORS.medical,
-                color: dateRangeType === 'all' ? COLORS.textMuted : 'white',
-                border: `1px solid ${dateRangeType === 'all' ? COLORS.border : COLORS.medical}`,
-                borderRadius: 0, fontFamily: FONT, fontWeight: 900, fontSize: '0.52rem',
-                letterSpacing: 0.5,
-                '&:hover': { bgcolor: dateRangeType === 'all' ? COLORS.borderLight : COLORS.info }
+                height: 36, px: 2,
+                bgcolor: dateRangeType === 'all' ? 'white' : COLORS.medical,
+                color: dateRangeType === 'all' ? COLORS.medical : 'white',
+                border: `2px solid ${dateRangeType === 'all' ? COLORS.brand : COLORS.medical}`,
+                boxShadow: `2px 2px 0 ${dateRangeType === 'all' ? COLORS.brand : COLORS.medical}`,
+                borderRadius: 0, fontFamily: FONT, fontWeight: 900, fontSize: '0.65rem',
+                letterSpacing: 1,
+                '&:hover': { bgcolor: dateRangeType === 'all' ? COLORS.borderLight : COLORS.medical, boxShadow: 'none', transform: 'translate(1px, 1px)' }
               }}
             >
               {getDateLabel()}
             </Button>
 
+            {/* Atomic Reset Button */}
+            {hasActiveFilters && (
+              <Button
+                onClick={handleClearAll}
+                startIcon={<FilterListOffIcon sx={{ fontSize: 16 }} />}
+                sx={{
+                  height: 36, px: 2,
+                  bgcolor: COLORS.danger,
+                  color: 'white',
+                  border: `2px solid ${COLORS.brand}`,
+                  boxShadow: `2px 2px 0 ${COLORS.brand}`,
+                  borderRadius: 0, fontFamily: FONT, fontWeight: 900, fontSize: '0.65rem',
+                  letterSpacing: 1,
+                  '&:hover': { bgcolor: COLORS.danger, opacity: 0.85, boxShadow: 'none', transform: 'translate(1px, 1px)' }
+                }}
+              >
+                CLEAR
+              </Button>
+            )}
+
             <Typography sx={{
-              ml: 'auto', fontSize: '0.52rem', fontWeight: 900, color: COLORS.textMuted,
-              fontFamily: FONT, letterSpacing: 0.8, opacity: 0.8
+              ml: 'auto', fontSize: '0.65rem', fontWeight: 900, color: COLORS.brand,
+              fontFamily: FONT, letterSpacing: 1, opacity: 1
             }}>
               {filteredRecords.length} REC
             </Typography>
@@ -1125,6 +1286,88 @@ export default function EMRDrawer({
         ))}
       </Menu>
 
+      {/* Diagnosis Menu */}
+      <Menu
+        anchorEl={diagnosisAnchorEl}
+        open={Boolean(diagnosisAnchorEl)}
+        onClose={handleDiagnosisClose}
+        sx={{ zIndex: 3000 }}
+        disableScrollLock
+        PaperProps={{
+          sx: {
+            borderRadius: 0, border: `2px solid ${COLORS.brand}`,
+            mt: 0.5, boxShadow: `4px 4px 0 ${COLORS.brand}`,
+            minWidth: 240, maxHeight: 400
+          }
+        }}
+      >
+        <MenuItem 
+          onClick={() => toggleDiagnosisFilter('all')}
+          sx={{ py: 0.5, px: 1.5, bgcolor: diagnosisFilters.includes('all') ? `${COLORS.brand}12` : 'transparent' }}
+        >
+          <Checkbox size="small" checked={diagnosisFilters.includes('all')} sx={{ p: 0.5, color: COLORS.brand }} />
+          <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 800, color: COLORS.brand }}>ALL PATHOLOGIES</Typography>
+        </MenuItem>
+        <Divider sx={{ my: 0.5 }} />
+        {availableDiagnoses.length === 0 ? (
+          <MenuItem disabled sx={{ py: 1, px: 1.5 }}>
+            <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', color: COLORS.textMuted, fontStyle: 'italic' }}>NO DIAGNOSES IN HISTORY</Typography>
+          </MenuItem>
+        ) : (
+          availableDiagnoses.map(t => (
+            <MenuItem 
+              key={t} 
+              onClick={() => toggleDiagnosisFilter(t)}
+              sx={{ py: 0.5, px: 1.5 }}
+            >
+              <Checkbox size="small" checked={diagnosisFilters.includes(t)} sx={{ p: 0.5, color: COLORS.brand }} />
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 700, color: COLORS.textPrimary }}>{t}</Typography>
+            </MenuItem>
+          ))
+        )}
+      </Menu>
+
+      {/* Lab Menu */}
+      <Menu
+        anchorEl={labAnchorEl}
+        open={Boolean(labAnchorEl)}
+        onClose={handleLabClose}
+        sx={{ zIndex: 3000 }}
+        disableScrollLock
+        PaperProps={{
+          sx: {
+            borderRadius: 0, border: `2px solid ${COLORS.info}`,
+            mt: 0.5, boxShadow: `4px 4px 0 ${COLORS.info}`,
+            minWidth: 220,
+          }
+        }}
+      >
+        <MenuItem 
+          onClick={() => toggleLabFilter('all')}
+          sx={{ py: 0.5, px: 1.5, bgcolor: labFilters.includes('all') ? `${COLORS.info}12` : 'transparent' }}
+        >
+          <Checkbox size="small" checked={labFilters.includes('all')} sx={{ p: 0.5, color: COLORS.info }} />
+          <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 800, color: COLORS.info }}>ALL DIAGNOSTICS</Typography>
+        </MenuItem>
+        <Divider sx={{ my: 0.5 }} />
+        {availableLabTests.length === 0 ? (
+          <MenuItem disabled sx={{ py: 1, px: 1.5 }}>
+            <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', color: COLORS.textMuted, fontStyle: 'italic' }}>NO LAB DATA IN HISTORY</Typography>
+          </MenuItem>
+        ) : (
+          availableLabTests.map(t => (
+            <MenuItem 
+              key={t} 
+              onClick={() => toggleLabFilter(t)}
+              sx={{ py: 0.5, px: 1.5 }}
+            >
+              <Checkbox size="small" checked={labFilters.includes(t)} sx={{ p: 0.5, color: COLORS.info }} />
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 700, color: COLORS.textPrimary }}>{t}</Typography>
+            </MenuItem>
+          ))
+        )}
+      </Menu>
+
       {/* Temporal Hub Menu */}
       <Menu
         anchorEl={dateAnchorEl}
@@ -1187,7 +1430,6 @@ export default function EMRDrawer({
           </Button>
         </Stack>
       </Menu>
-
     </Drawer>
   );
 }

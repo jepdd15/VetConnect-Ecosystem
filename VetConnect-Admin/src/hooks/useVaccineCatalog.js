@@ -94,7 +94,7 @@ function mapProductToCatalogEntry(product) {
 
   return {
     id:                  product.id,
-    name:                product.itemName,
+    name:                product.itemName || '',
     species:             vc.species             || ['dog', 'cat'],
     intervalDays:        vc.intervalDays        || 365,
     defaultRoute:        vc.defaultRoute        || 'SQ',
@@ -108,7 +108,7 @@ function mapProductToCatalogEntry(product) {
     // Full inventory doc — available for cart/batch operations (Day 2)
     _product: product,
     // Legacy keyword compat: name-derived keyword + known synonyms
-    keywords: [nameLower, ...legacyKws],
+    keywords: [nameLower, ...legacyKws].filter(Boolean),
   };
 }
 

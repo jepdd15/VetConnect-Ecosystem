@@ -440,6 +440,7 @@ export const DiagnosticBridge = React.memo(function DiagnosticBridge({
 const CUSTOM_TEST_SENTINEL = { id: '__custom__', name: '+ Add Custom Test', category: '__action__' };
 
 export default function ClinicalWorkspace({ open, onClose, patient, inventoryList, servicesList, departments, vetsList }) {
+  console.log("[ClinicalWorkspace] Mounting/Updating:", { open, patientId: patient?.id, status: patient?.status, caseDay: patient?.caseDay });
   const clinicSettings = useClinicSettings();
   const vaccineCatalog = useVaccineCatalog();
   const { profile: cwProfile } = useUser();
@@ -542,7 +543,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           for (const admin of admins) {
             const resolved = vaccineCatalog.find(v => {
               const lower = (admin.vaccineName || '').toLowerCase();
-              return v.name.toLowerCase() === lower ||
+              const vName = (v.name || '').toLowerCase();
+              return vName === lower ||
                 (v.keywords || []).some(kw => lower.includes(kw));
             });
             if (!resolved) continue;
@@ -594,7 +596,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         if (!vax.vaccineName) return vax;
         const resolved = vaccineCatalog.find(v => {
           const lower = (vax.vaccineName || '').toLowerCase();
-          return v.name.toLowerCase() === lower ||
+          const vName = (v.name || '').toLowerCase();
+          return vName === lower ||
             (v.keywords || []).some(kw => lower.includes(kw));
         });
         if (!resolved) return vax;
@@ -1000,8 +1003,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 if (updated[0]) {
                     const resolvedVaxEntry = vaccineCatalog.find(v => {
                         const lower = (firstVaccineLinkedItem.itemName || '').toLowerCase();
-                        return v.name.toLowerCase() === lower ||
-                          (v.keywords || []).some(kw => lower.includes(kw));
+                        return (v?.name || '').toLowerCase() === lower ||
+                          ((v?.keywords || []).some(kw => lower.includes(kw)));
                     });
                     const autoDetect = resolvedVaxEntry
                       ? doseAutoDetectMap.get(resolvedVaxEntry.id)
@@ -1588,8 +1591,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         // Resolve catalog entry for dose auto-detection
         const resolvedCatalogEntry = vaccineCatalog.find(v => {
             const lower = (item.itemName || item.name || '').toLowerCase();
-            return v.name.toLowerCase() === lower ||
-              (v.keywords || []).some(kw => lower.includes(kw));
+            return (v?.name || '').toLowerCase() === lower ||
+              ((v?.keywords || []).some(kw => lower.includes(kw)));
         });
         const autoDetect = resolvedCatalogEntry
           ? doseAutoDetectMap.get(resolvedCatalogEntry.id)
@@ -3043,8 +3046,9 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         // T4.200: Resolve catalog entry for this vaccine row to determine multi-dose UI
         const resolvedCatalogVax = vaccineCatalog.find(v => {
           const lower = (vax.vaccineName || '').toLowerCase();
-          return v.name.toLowerCase() === lower ||
-            (v.keywords || []).some(kw => lower.includes(kw));
+          const vName = (v?.name || '').toLowerCase();
+          return vName === lower ||
+            ((v?.keywords || []).some(kw => lower.includes(kw)));
         });
         const totalDosesForRow = resolvedCatalogVax?.doses || 1;
         const doseIntervalsForRow = resolvedCatalogVax?.doseIntervalDays || [];
@@ -3406,7 +3410,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                 filterOptions={(opts, state) => {
                   // Always include the sentinel; filter the rest by the input value
                   const q = state.inputValue.toLowerCase();
-                  const filtered = opts.filter(o => o.id === '__custom__' || o.name.toLowerCase().includes(q));
+                  const filtered = opts.filter(o => o.id === '__custom__' || (o.name || '').toLowerCase().includes(q));
                   return filtered;
                 }}
                 onChange={(_, selected) => {

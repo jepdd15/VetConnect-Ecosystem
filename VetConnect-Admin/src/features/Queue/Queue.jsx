@@ -93,6 +93,8 @@ export default function Queue() {
   const[isTomorrowView, setIsTomorrowView] = useState(false);
   const[currentTime, setCurrentTime] = useState(new Date());
 
+  console.log("[Queue] Rendering - filterDate:", filterDate);
+
   // T4.151: EOD close status — passed to POSModal so it can tag post-close sales.
   const todayStr = new Date().toISOString().split('T')[0];
   const { isDayClosed, closingData } = useClosingStatus(todayStr);
@@ -1455,13 +1457,11 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       return {
         id: docSnapshot.id,
         ...data,
-        // Normalize legacy status aliases (e.g. 'dispense' -> 'dispensing') for
-        // backward compatibility with old Firestore documents.
         status: normalizeStatus(data.status),
-        jsScheduled: data.scheduledDate?.toDate(),
-        jsArrived: data.timeArrived?.toDate(),
-        jsStarted: data.timeStarted?.toDate(),
-        jsCompleted: data.timeCompleted?.toDate(),
+        jsScheduled: data.scheduledDate?.toDate ? data.scheduledDate.toDate() : (data.scheduledDate ? new Date(data.scheduledDate) : null),
+        jsArrived: data.timeArrived?.toDate ? data.timeArrived.toDate() : (data.timeArrived ? new Date(data.timeArrived) : null),
+        jsStarted: data.timeStarted?.toDate ? data.timeStarted.toDate() : (data.timeStarted ? new Date(data.timeStarted) : null),
+        jsCompleted: data.timeCompleted?.toDate ? data.timeCompleted.toDate() : (data.timeCompleted ? new Date(data.timeCompleted) : null),
       };
     };
 
@@ -1476,7 +1476,8 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       // Pending appointments: route by triageDate (not scheduledDate) so
       // online inbox requests always land in the correct shift silo.
       if (appt.status === 'pending') {
-        const triageDate = appt.triageDate || appt.createdAt?.toDate()?.toISOString().split('T')[0] || filterDateStr;
+        const createdAtDate = appt.createdAt?.toDate ? appt.createdAt.toDate() : (appt.createdAt ? new Date(appt.createdAt) : new Date());
+        const triageDate = appt.triageDate || createdAtDate.toISOString().split('T')[0] || filterDateStr;
         return triageDate === filterDateStr;
       }
 

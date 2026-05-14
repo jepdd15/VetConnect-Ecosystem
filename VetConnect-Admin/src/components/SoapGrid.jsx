@@ -73,6 +73,7 @@ export default function SoapGrid({
   patientSpecies = '',
   onAddCustomDiagnosis,
 }) {
+  console.log("[SoapGrid] Rendering:", { hasSoapData: !!soapData, subjectiveLen: soapData?.subjective?.length });
   const textFieldSx = { flex: 1, '& .MuiInputBase-root': { height: '100%', alignItems: 'flex-start' } };
   const inputPropsSx = { disableUnderline: true, sx: { fontFamily: FONT, fontSize: '1.25rem', color: COLORS.brand, lineHeight: 1.6 } };
 

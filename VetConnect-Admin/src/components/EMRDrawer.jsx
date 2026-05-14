@@ -1696,10 +1696,10 @@ export default function EMRDrawer({
                       </Typography>
                     </Box>
                   )}
-                  <RecordCard 
-                    key={rec.id} 
-                    record={rec} 
-                    appointmentId={appointmentId} 
+                  <RecordCard
+                    key={record.id}
+                    record={record}
+                    appointmentId={appointmentId}
                     onPrint={handlePrintRecord}
                     caseDayMap={caseDayMap}
                   />

@@ -170,6 +170,8 @@ function AppShell() {
     && !profile.disabled
     && (STAFF_ROLES.includes(profile.role) || STAFF_ROLES.includes(profile.accessLevel));
 
+  console.log("[AppShell] Render - user:", !!user, "profile:", !!profile, "isValidStaff:", isValidStaff, "location:", location.pathname);
+
   return (
     <>
       {/* T4.138 — Deactivation Snackbar: rendered outside isValidStaff so it survives

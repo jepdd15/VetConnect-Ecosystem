@@ -195,7 +195,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
 
                   {/* LINE 2: THE SEMANTIC ANCHOR (SPECIES * BREED) */}
                   <Typography variant="caption" sx={{ color: '#795548', fontWeight: '900', fontSize: '0.75rem', textTransform: 'uppercase', lineHeight: 1.3, letterSpacing: '0.02rem' }}>
-                      {String(p.row.petSpecies || 'PET')} ★ {String(p.row.petBreed || 'Mixed Breed')}
+                      {String(p.row.petSpecies || 'PET')} ({String(p.row.petBreed || 'Mixed Breed')})
                   </Typography>
 
                   {/* LINE 3: THE WAITING ROOM ANCHOR (HUMAN) */}

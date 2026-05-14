@@ -3095,7 +3095,8 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                                 if (filteredPulse.length > 0) {
                                     events = filteredPulse.map(p => ({
                                         id: p.eventId,
-                                        label: p.toStatus ? p.toStatus.toUpperCase()
+                                        label: p.type === 'INCEPTION' ? 'INCEPTION (CARRY-OVER)' 
+                                            : p.toStatus ? p.toStatus.toUpperCase()
                                             : (p.serviceName && (p.type === 'SERVICE_STARTED' || p.type === 'SERVICE_COMPLETED'))
                                               ? `${p.serviceName}: ${p.type === 'SERVICE_STARTED' ? 'STARTED' : 'COMPLETED'}`
                                               : (p.type || 'EVENT'),
@@ -3141,7 +3142,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                                         >
                                             <Box sx={{ position: 'absolute', left: -26, top: 4, width: 8, height: 8, borderRadius: '50%', bgcolor: color, zIndex: 5, border: item.isCorrection ? '2px solid #BBDEFB' : 'none' }} />
                                             <Typography variant="caption" sx={{ fontWeight: '1000', color: color, letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 1, fontSize: '0.65rem' }}>
-                                                {item.isCorrection ? '↺ CLINICAL CORRECTION' : item.label}
+                                                {item.isCorrection ? `↺ CORRECTION TO ${item.label}` : item.label}
                                                 {item.isCorrection && <Chip label="CORRECTION" size="small" sx={{ height: 14, fontSize: '0.5rem', fontWeight: 1000, bgcolor: '#C8E6C9', color: '#2E7D32' }} />}
                                                 {item.isVoided && <Chip label="REVERTED" size="small" sx={{ height: 14, fontSize: '0.5rem', fontWeight: 1000, bgcolor: '#FFEBEE', color: '#D32F2F' }} />}
                                             </Typography>

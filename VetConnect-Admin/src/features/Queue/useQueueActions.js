@@ -162,8 +162,8 @@ export function useQueueActions() {
           staffId: profile?.id || 'unknown',
           staffName: staffSignature,
           note: wasTerminal
-              ? `TERMINAL REVERSAL: ${row.revertReason || "Manual Status Reversion"} (seal cleared)`
-              : `REVERSION: ${row.revertReason || "Manual Status Reversion"}`,
+              ? `TERMINAL REVERSAL TO ${prevStatus?.toUpperCase()}: ${row.revertReason || "Manual Status Reversion"} (seal cleared)`
+              : `REVERSION TO ${prevStatus?.toUpperCase()}: ${row.revertReason || "Manual Status Reversion"}`,
           correctedEventId: correctedId, // THE DNA LINK — passed via ...extra spread
           isCorrection: true,
       });

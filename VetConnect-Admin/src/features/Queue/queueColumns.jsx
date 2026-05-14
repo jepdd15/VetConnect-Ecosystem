@@ -113,7 +113,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                     <Typography sx={{ color: '#1A1A1A', fontWeight: '900', fontSize: '0.82rem' }}>{p.row.petBreed || 'Mixed Breed'}</Typography>
                 </Box>
                 
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pt: 0.5, borderTop: '1px dashed #D7CCC8' }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pt: 0.5 }}>
                     <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5 }}>SURGICAL</Typography>
                     <Chip size="small" label={p.row.petIsNeutered ? 'FIXED' : 'INTACT'} sx={{ height: 18, fontSize: '0.6rem', fontWeight: '1000', bgcolor: p.row.petIsNeutered ? '#E8F5E9' : '#FFF3E0', color: p.row.petIsNeutered ? '#2E7D32' : '#E65100', borderRadius: '4px' }} />
                 </Box>
@@ -127,6 +127,13 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                     <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5 }}>COLOR / MARKINGS</Typography>
                     <Typography sx={{ color: '#1A1A1A', fontWeight: '900', fontSize: '0.82rem', maxWidth: 120, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {p.row.color || p.row.petColor || 'NOT RECORDED'}
+                    </Typography>
+                </Box>
+                
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5 }}>ALLERGIES</Typography>
+                    <Typography sx={{ color: hasSpecificAllergies ? '#D32F2F' : '#1A1A1A', fontWeight: '900', fontSize: '0.82rem', maxWidth: 120, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {hasSpecificAllergies ? petAllergies.toUpperCase() : 'NONE DISCLOSED'}
                     </Typography>
                 </Box>
                 
@@ -147,29 +154,6 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                         </Typography>
                     </Box>
                 </Box>
-
-                {/* 🧬 FORENSIC ALLERGY HARDENING: THE VERIFIED NEGATIVE */}
-                {/* 🧬 FORENSIC ALLERGY HARDENING: THE ATOMIC ALERT */}
-                {hasSpecificAllergies ? (
-                     <Box sx={{ mt: 1, p: 0.8, bgcolor: 'rgba(211, 47, 47, 0.05)', borderRadius: 1, border: '1.5px solid #D32F2F' }}>
-                        <Typography variant="caption" sx={{ color: '#D32F2F', fontWeight: '1000', fontSize: '0.65rem', display: 'block', mb: 1 }}>
-                            CRITICAL MEDICAL ALERTS:
-                        </Typography>
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                            {petAllergies.split(',').map((allergy, index) => (
-                                <Box key={index} sx={{ bgcolor: '#D32F2F', color: 'white', px: 0.8, py: 0.2, borderRadius: '4px', fontSize: '0.65rem', fontWeight: '1000', textTransform: 'uppercase' }}>
-                                    {allergy.trim()}
-                                </Box>
-                            ))}
-                        </Box>
-                     </Box>
-                ) : (
-                    <Box sx={{ mt: 1, p: 0.8, bgcolor: '#F5F5F5', borderRadius: 1, border: '1px solid #E0E0E0', opacity: 0.8 }}>
-                        <Typography variant="caption" sx={{ color: '#757575', fontWeight: '1000', fontSize: '0.62rem' }}>
-                            ALLERGIES: NONE DISCLOSED
-                        </Typography>
-                    </Box>
-                )}
             </Stack>
         </Box>
       );

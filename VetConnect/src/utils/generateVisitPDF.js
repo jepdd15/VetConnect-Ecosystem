@@ -175,7 +175,7 @@ const renderPrescriptionsSection = (items, title = 'Prescriptions') => {
             <td style="text-align: center;">${i + 1}</td>
             <td><b>${esc(rx.name)}</b></td>
             <td style="text-align: center;">x${rx.qty ?? 1}</td>
-            <td>${esc(rx.instructions || 'Use as directed')}</td>
+            <td>${esc(rx.instructions || '—')}</td>
           </tr>
         `).join('')}
       </tbody>

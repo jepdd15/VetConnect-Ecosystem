@@ -2234,7 +2234,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           disableColumnResize
           disableColumnReorder
           disableColumnMenu
-          rowHeight={110} 
+          rowHeight={140} 
           columnHeaderHeight={48}
           getRowClassName={(params) => {
             const classes = [];

@@ -44,51 +44,13 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
 
       const PassportCard = (
         <Box sx={{ p: 1, minWidth: 220 }}>
-            <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1.5, display: 'block', mb: 1, opacity: 0.8 }}>
-                CLINICAL PASSPORT
+            <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1, fontSize: '0.6rem', opacity: 0.8, display: 'block', mb: 0.5 }}>
+                PET
             </Typography>
             <Typography variant="h6" sx={{ fontWeight: '1000', color: '#1A1A1A', mb: 2, fontSize: '1.2rem', lineHeight: 1 }}>
-                {p.row.petName?.toUpperCase()}
+                {p.row.petName}
             </Typography>
 
-            {/* STATUS BADGES: self check-in, client confirmed */}
-            {(p.row.selfCheckedIn || p.row.confirmedByClient) && (
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1.5, pb: 1.5, borderBottom: `1px solid ${COLORS.borderLight}` }}>
-                {p.row.selfCheckedIn && (
-                  <Chip
-                    label="SELF CHECK-IN"
-                    size="small"
-                    sx={{ height: 18, fontSize: '0.6rem', fontWeight: 900, bgcolor: '#E8F5E9', color: COLORS.success, border: `1px solid ${COLORS.success}`, borderRadius: 0 }}
-                  />
-                )}
-                {p.row.confirmedByClient && (
-                  <Chip
-                    label="CLIENT CONFIRMED"
-                    size="small"
-                    sx={{ height: 18, fontSize: '0.6rem', fontWeight: 900, bgcolor: '#E8F5E9', color: COLORS.success, border: `1px solid ${COLORS.success}`, borderRadius: 0 }}
-                  />
-                )}
-              </Box>
-            )}
-
-            {/* T4.147: Outstanding balance badge — shown for completed appointments with partial payment */}
-            {p.row.status === 'completed' && (p.row.balanceRemaining || 0) > 0 && (
-              <Box sx={{ mb: 1.5, pb: 1.5, borderBottom: `1px solid ${COLORS.borderLight}` }}>
-                <Chip
-                  label={`BALANCE DUE: ₱${(p.row.balanceRemaining || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
-                  size="small"
-                  sx={{
-                    height: 20,
-                    fontSize: '0.62rem',
-                    fontWeight: 900,
-                    borderRadius: 0,
-                    bgcolor: COLORS.warningSurface,
-                    color: COLORS.warning,
-                    border: `1px solid ${COLORS.warning}`,
-                  }}
-                />
-              </Box>
-            )}
 
             <Stack spacing={1.2}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -108,9 +70,9 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                     </Typography>
                 </Box>
                 
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5 }}>BREED</Typography>
-                    <Typography sx={{ color: '#1A1A1A', fontWeight: '900', fontSize: '0.82rem' }}>{p.row.petBreed || 'Mixed Breed'}</Typography>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2 }}>
+                    <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5, mt: 0.3 }}>BREED</Typography>
+                    <Typography sx={{ color: '#1A1A1A', fontWeight: '900', fontSize: '0.82rem', textAlign: 'right' }}>{p.row.petBreed || 'Mixed Breed'}</Typography>
                 </Box>
                 
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pt: 0.5 }}>
@@ -125,36 +87,98 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                     <Typography sx={{ color: '#1A1A1A', fontWeight: '900', fontSize: '0.85rem' }}>{p.row.petWeight ? `${p.row.petWeight} KG` : 'WEIGH REQUIRED'}</Typography>
                 </Box>
 
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5 }}>COLOR / MARKINGS</Typography>
-                    <Typography sx={{ color: '#1A1A1A', fontWeight: '900', fontSize: '0.82rem', maxWidth: 120, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2 }}>
+                    <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5, mt: 0.3 }}>COLOR / MARKINGS</Typography>
+                    <Typography sx={{ color: '#1A1A1A', fontWeight: '900', fontSize: '0.82rem', textAlign: 'right' }}>
                         {p.row.color || p.row.petColor || 'NOT RECORDED'}
                     </Typography>
                 </Box>
                 
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5 }}>ALLERGIES</Typography>
-                    <Typography sx={{ color: hasSpecificAllergies ? '#D32F2F' : '#1A1A1A', fontWeight: '900', fontSize: '0.82rem', maxWidth: 120, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2 }}>
+                    <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5, mt: 0.3 }}>ALLERGIES</Typography>
+                    <Typography sx={{ color: '#1A1A1A', fontWeight: '900', fontSize: '0.82rem', textAlign: 'right' }}>
                         {hasSpecificAllergies ? petAllergies : 'None Disclosed'}
                     </Typography>
+                </Box>
+
+                {/* NEW FORENSIC STATUS ROWS */}
+                <Box sx={{ mt: 1, pt: 1, borderTop: `1px dashed ${COLORS.borderLight}` }}>
+                    {p.row.isEmergency && (
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.8 }}>
+                          <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5 }}>VISIT PRIORITY</Typography>
+                          <Typography sx={{ color: '#1A1A1A', fontWeight: '1000', fontSize: '0.75rem' }}>EMERGENCY</Typography>
+                      </Box>
+                    )}
+
+                    {p.row.systemChips && p.row.systemChips.filter(c => c !== 'QUICK-ADMIT' && c !== 'EMERGENCY').map((tag, i) => (
+                      <Box key={i} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.8 }}>
+                          <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5 }}>QUEUE STATUS</Typography>
+                          <Typography sx={{ color: '#1A1A1A', fontWeight: '1000', fontSize: '0.75rem' }}>{tag}</Typography>
+                      </Box>
+                    ))}
+
+                    {(p.row.selfCheckedIn || p.row.confirmedByClient) && (
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.8 }}>
+                          <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5 }}>CHECK-IN METHOD</Typography>
+                          <Typography sx={{ color: '#1A1A1A', fontWeight: '1000', fontSize: '0.75rem' }}>
+                              {p.row.selfCheckedIn ? 'SELF CHECK-IN' : 'CLIENT CONFIRMED'}
+                          </Typography>
+                      </Box>
+                    )}
+
+                    {(p.row.balanceRemaining || 0) > 0 && (
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', letterSpacing: 0.5 }}>FINANCIAL STATUS</Typography>
+                          <Typography sx={{ color: '#1A1A1A', fontWeight: '1000', fontSize: '0.75rem' }}>
+                              BALANCE DUE: ₱{(p.row.balanceRemaining || 0).toLocaleString()}
+                          </Typography>
+                      </Box>
+                    )}
                 </Box>
                 
                 <Box sx={{ mt: 1.5, pt: 1, borderTop: '1px solid #D7CCC8' }}>
                     <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1, fontSize: '0.6rem', opacity: 0.8, display: 'block', mb: 0.5 }}>
-                        OWNER ENGAGEMENT
+                        PET OWNER
                     </Typography>
+                    
+                    <Typography sx={{ fontSize: '1.2rem', fontWeight: '1000', color: '#1A1A1A', lineHeight: 1.2, mb: 0.5 }}>
+                        {p.row.ownerName || 'Unknown Owner'}
+                    </Typography>
+
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem' }}>NAME</Typography>
-                        <Typography sx={{ color: '#1A1A1A', fontWeight: '900', fontSize: '0.82rem' }}>
-                            {p.row.ownerName || 'Unknown Owner'}
-                        </Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem' }}>PHONE</Typography>
+                        <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem' }}>CONTACT PHONE</Typography>
                         <Typography sx={{ color: '#1976D2', fontWeight: '1000', fontSize: '0.82rem' }}>
                             {p.row.ownerPhone || 'No Contact'}
                         </Typography>
                     </Box>
+
+                    {(p.row.ownerAddress || p.row.ownerCity) && (
+                      <Box sx={{ mt: 1 }}>
+                          <Typography variant="caption" sx={{ color: '#5D4037', fontWeight: '1000', fontSize: '0.65rem', display: 'block' }}>PRIMARY ADDRESS</Typography>
+                          <Typography sx={{ color: '#1A1A1A', fontWeight: '900', fontSize: '0.75rem', lineHeight: 1.3 }}>
+                              {p.row.ownerAddress}{p.row.ownerAddress && p.row.ownerCity ? ', ' : ''}{p.row.ownerCity}
+                          </Typography>
+                      </Box>
+                    )}
+
+                    {p.row.emergencyContacts && p.row.emergencyContacts.length > 0 && (
+                      <Box sx={{ mt: 1.5 }}>
+                          <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1, fontSize: '0.55rem', opacity: 0.8, display: 'block', mb: 0.5 }}>
+                              EMERGENCY CONTACTS
+                          </Typography>
+                          {p.row.emergencyContacts.map((contact, idx) => (
+                            <Box key={idx} sx={{ mb: 0.8, pb: 0.8, borderBottom: idx === p.row.emergencyContacts.length - 1 ? 'none' : '1px dashed #D7CCC8' }}>
+                                <Typography sx={{ color: '#1A1A1A', fontWeight: '1000', fontSize: '0.78rem', lineHeight: 1 }}>
+                                    {contact.name}
+                                </Typography>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 0.2 }}>
+                                    <Typography variant="caption" sx={{ color: '#795548', fontWeight: '900', fontSize: '0.6rem' }}>{contact.relation?.toUpperCase() || 'CONTACT'}</Typography>
+                                    <Typography sx={{ color: '#1976D2', fontWeight: '900', fontSize: '0.75rem' }}>{contact.phone}</Typography>
+                                </Box>
+                            </Box>
+                          ))}
+                      </Box>
+                    )}
                 </Box>
             </Stack>
         </Box>
@@ -193,7 +217,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                   sx={{ display: 'flex', flexDirection: 'column', width: '100%', cursor: 'zoom-in', gap: 0 }}
               >
                   {/* LINE 1: THE PATIENT HERO */}
-                  <Typography sx={{ fontSize: '1.25rem', fontWeight: '1000', color: '#1A1A1A', lineHeight: 1.1, letterSpacing: '-0.02rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <Typography sx={{ fontSize: '1.25rem', fontWeight: '1000', color: '#1A1A1A', lineHeight: 1.1, letterSpacing: '-0.01rem' }}>
                       {p.row.petName}
                   </Typography>
 
@@ -203,49 +227,18 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                   </Typography>
 
                   {/* LINE 3: THE WAITING ROOM ANCHOR (HUMAN) */}
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, mt: 0.2 }}>
-                      {/* Icons removed per user request */}
-                      <Typography variant="caption" sx={{ fontSize: '0.85rem', fontWeight: '800', color: '#5D4037', textTransform: 'uppercase', letterSpacing: '0.01rem', lineHeight: 1 }}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', mt: 0.5 }}>
+                      <Typography component="div" sx={{ fontSize: '1.25rem', fontWeight: '1000', color: '#1A1A1A', lineHeight: 1.1, letterSpacing: '-0.01rem' }}>
                           {p.row.ownerName || 'Online Client'}
                       </Typography>
-                      {/* Allergy warning icon removed per user request */}
+                      {p.row.ownerPhone && (
+                        <Typography component="div" sx={{ fontSize: '0.85rem', fontWeight: '900', color: '#1976D2', lineHeight: 1.3, mt: 0.3 }}>
+                            {p.row.ownerPhone}
+                        </Typography>
+                      )}
                   </Box>
               </Box>
 
-              {/* System status chips — relocated from notes column (Fix 3) */}
-              {(() => {
-                const systemChips = p.row.systemChips || [];
-                // QUICK-ADMIT is audit-only — hidden from display (Fix 7)
-                const visibleChips = systemChips.filter(c => c !== 'QUICK-ADMIT');
-                if (visibleChips.length === 0) return null;
-
-                const chipColor = (tag) => {
-                  if (tag === 'EMERGENCY' || tag === 'CONFINED') return { bg: COLORS.kpiRedBg, border: COLORS.danger, color: COLORS.danger };
-                  if (tag === 'CARRY-OVER' || tag === 'DEFERRED') return { bg: COLORS.kpiOrangeBg, border: COLORS.warning, color: COLORS.warning };
-                  if (tag.startsWith('NO-SHOW')) return { bg: COLORS.kpiOrangeBg, border: COLORS.warning, color: COLORS.warning };
-                  return { bg: COLORS.cream, border: COLORS.border, color: COLORS.accent };
-                };
-
-                return (
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.3, mt: 0.3 }}>
-                    {visibleChips.map((tag, i) => {
-                      const c = chipColor(tag);
-                      return (
-                        <Chip
-                          key={i}
-                          label={tag}
-                          size="small"
-                          sx={{
-                            height: 16, fontSize: '0.5rem', fontWeight: 900, borderRadius: 0,
-                            bgcolor: c.bg, color: c.color, border: `1px solid ${c.border}`,
-                            '& .MuiChip-label': { px: 0.5 },
-                          }}
-                        />
-                      );
-                    })}
-                  </Box>
-                );
-              })()}
             </Box>
           </Box>
         </Box>
@@ -371,7 +364,8 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
             display: 'flex',
             flexDirection: 'column',
             width: '100%',
-            pt: 1,
+            height: '100%',
+            justifyContent: 'center',
             cursor: 'zoom-in',
             gap: 0.4,
             '&:hover': { bgcolor: 'rgba(139, 69, 19, 0.04)' },

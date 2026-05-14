@@ -78,6 +78,8 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
   const [guestName, setGuestName] = useState('');
   const [guestPhone, setGuestPhone] = useState('');
   const [guestEmail, setGuestEmail] = useState('');
+  const [guestAddress, setGuestAddress] = useState('');
+  const [guestCity, setGuestCity] = useState('');
 
   // --- PET ENTRIES ---
   // Each entry represents one pet being registered in this walk-in.
@@ -189,6 +191,8 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
     setGuestName('');
     setGuestPhone('');
     setGuestEmail('');
+    setGuestAddress('');
+    setGuestCity('');
     setPetEntries([BLANK_PET_DATA()]);
     setNoShowMap({});
     setShowConfirmQueue(false);
@@ -218,7 +222,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
 
   // --- APPOINTMENT PAYLOAD BUILDER: Pure function, no side effects ---
   const buildAppointmentPayload = ({
-    ownerId, ownerName, ownerPhone, ownerEmail, petId, petName, petSpecies, petBreed, petGender, petColor,
+    ownerId, ownerName, ownerPhone, ownerEmail, ownerAddress, ownerCity, emergencyContacts, petId, petName, petSpecies, petBreed, petGender, petColor,
     petIsNeutered, petBirthdate, isAgeExact, petWeight, petAllergies,
     mappedServices, triageNotes, isEmergency, queueNumber, noShowData,
   }) => {
@@ -243,6 +247,9 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
 
     return {
       ownerId, ownerName, ownerPhone, ownerEmail: ownerEmail || null,
+      ownerAddress: ownerAddress || null,
+      ownerCity: ownerCity || null,
+      emergencyContacts: emergencyContacts || [],
       petId, petName, petSpecies,
       petBreed: petBreed || 'Mixed Breed',
       petGender,
@@ -332,7 +339,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
         // ONE queue number for the entire group (shared ticket — Option C)
         const sharedNumber = queueDoc.exists() ? (queueDoc.data().lastNumberIssued || 0) + 1 : 1;
 
-        let finalOwnerId, finalOwnerName, finalOwnerPhone, finalOwnerEmail;
+        let finalOwnerId, finalOwnerName, finalOwnerPhone, finalOwnerEmail, finalOwnerAddress, finalOwnerCity, finalEmergencyContacts;
 
         // Shared timestamp for all writes within this transaction
         const txNow = Timestamp.now();
@@ -354,6 +361,8 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
             name: guestName || 'Guest Client',
             phone: normalizePhone(guestPhone) || guestPhone,
             email: guestEmail || null,
+            address: guestAddress || null,
+            city: guestCity || null,
             role: 'pet_owner',
             accountStatus: 'unclaimed_guest',
             createdAt: txNow,
@@ -362,11 +371,17 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
           finalOwnerName = guestName || 'Guest Client';
           finalOwnerPhone = normalizePhone(guestPhone) || guestPhone || 'No Contact';
           finalOwnerEmail = guestEmail || null;
+          finalOwnerAddress = guestAddress || null;
+          finalOwnerCity = guestCity || null;
+          finalEmergencyContacts = [];
         } else {
           finalOwnerId = selectedClient.id;
           finalOwnerName = selectedClient.fullName || selectedClient.displayName || 'Existing Client';
           finalOwnerPhone = selectedClient.phone || 'No Contact';
           finalOwnerEmail = selectedClient.email || null;
+          finalOwnerAddress = selectedClient.address || null;
+          finalOwnerCity = selectedClient.city || null;
+          finalEmergencyContacts = selectedClient.emergencyContacts || [];
         }
 
         // Increment the queue counter once (shared number)
@@ -463,6 +478,9 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
             ownerName: finalOwnerName,
             ownerPhone: finalOwnerPhone,
             ownerEmail: finalOwnerEmail,
+            ownerAddress: finalOwnerAddress,
+            ownerCity: finalOwnerCity,
+            emergencyContacts: finalEmergencyContacts,
             petId,
             petName,
             petSpecies,
@@ -920,8 +938,22 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
                     </Grid>
                     <Grid size={{ xs: 12, md: 3 }}>
                       <TextField size="small" label="EMAIL (OPTIONAL)" variant="outlined" fullWidth
-                        value={guestEmail} onChange={e => setGuestEmail(e.target.value)}
-                        inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
+                        value={guestEmail}
+                        onChange={e => setGuestEmail(e.target.value)}
+                        sx={sxField}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, md: 6 }}>
+                      <TextField size="small" label="STREET / BARANGAY" variant="outlined" fullWidth
+                        value={guestAddress}
+                        onChange={e => setGuestAddress(e.target.value)}
+                        sx={sxField}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, md: 3 }}>
+                      <TextField size="small" label="CITY / MUNICIPALITY" variant="outlined" fullWidth
+                        value={guestCity}
+                        onChange={e => setGuestCity(e.target.value)}
                         sx={sxField}
                       />
                     </Grid>

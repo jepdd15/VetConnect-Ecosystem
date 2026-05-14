@@ -111,6 +111,9 @@ export default function BookAppointment({ navigation, route }) {
   const [ownerName, setOwnerName] = useState("");
   const [ownerPhone, setOwnerPhone] = useState("");
   const [ownerEmail, setOwnerEmail] = useState("");
+  const [ownerAddress, setOwnerAddress] = useState("");
+  const [ownerCity, setOwnerCity] = useState("");
+  const [emergencyContacts, setEmergencyContacts] = useState([]);
   const [petSearch, setPetSearch] = useState(""); // THE FIX: Searchable Pets!
   
   // --- DEPARTMENT EXPLORER MODAL STATES ---
@@ -656,6 +659,9 @@ export default function BookAppointment({ navigation, route }) {
           setOwnerName(userData.fullName || auth.currentUser.email);
           setOwnerPhone(userData.phone || '');
           setOwnerEmail(userData.email || auth.currentUser.email || '');
+          setOwnerAddress(userData.address || '');
+          setOwnerCity(userData.city || '');
+          setEmergencyContacts(userData.emergencyContacts || []);
 
           const hasEmergency = userData.emergencyContacts?.[0]?.name || userData.emergencyName;
           if (!userData.address || !hasEmergency) {
@@ -998,6 +1004,9 @@ export default function BookAppointment({ navigation, route }) {
           ownerName: ownerName,
           ownerPhone: ownerPhone || null,
           ownerEmail: ownerEmail || null,
+          ownerAddress: ownerAddress || null,
+          ownerCity: ownerCity || null,
+          emergencyContacts: emergencyContacts || [],
           petId: pet.id,
           petName: pet.name,
           petSpecies: pet.species,

@@ -209,7 +209,7 @@ export default function PatientDashboard() {
   const [timelineSort, setTimelineSort] = useState('newest');
 
   // --- CLINICAL FILTER RIBBON STATE ---
-  const [showFilterRibbon, setShowFilterRibbon] = useState(false);
+  const [showFilterRibbon, setShowFilterRibbon] = useState(true);
   const [deptFilters, setDeptFilters] = useState(['all']);
   const [staffFilters, setStaffFilters] = useState(['all']);
   const [medFilters, setMedFilters] = useState(['all']);
@@ -1584,13 +1584,14 @@ export default function PatientDashboard() {
             <Box sx={{ 
               bgcolor: COLORS.surfaceAlt, borderBottom: `1px solid ${COLORS.border}`,
               display: 'flex', alignItems: 'center', px: 2, py: 0.75, gap: 1,
-              boxShadow: 'inset 0 -2px 4px rgba(0,0,0,0.02)'
+              boxShadow: 'inset 0 -2px 4px rgba(0,0,0,0.02)',
+              justifyContent: 'flex-end'
             }}>
               <Typography sx={{ fontFamily: FONT, fontSize: '0.62rem', fontWeight: 900, color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em', mr: 1 }}>
                 Filters:
               </Typography>
               
-              <Stack direction="row" spacing={1} sx={{ flex: 1, overflowX: 'auto', py: 0.5, '&::-webkit-scrollbar': { height: 0 } }}>
+              <Stack direction="row" spacing={1} sx={{ overflowX: 'auto', py: 0.5, '&::-webkit-scrollbar': { height: 0 } }}>
                 {[
                   { label: 'Depts', icon: <FilterListIcon sx={{ fontSize: 13 }} />, anchor: deptAnchor, setAnchor: setDeptAnchor, active: !deptFilters.includes('all'), color: COLORS.brand },
                   { label: 'Staff', icon: <PersonIcon sx={{ fontSize: 13 }} />, anchor: staffAnchor, setAnchor: setStaffAnchor, active: !staffFilters.includes('all'), color: COLORS.brand },

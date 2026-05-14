@@ -102,7 +102,7 @@ const resolveProductClass = (rx) => {
 
 // ─── Single expanded record card ─────────────────────────────────────────────
 
-const RecordCard = ({ record, appointmentId, onPrint }) => {
+const RecordCard = ({ record, appointmentId, onPrint, caseDayMap }) => {
   const [expanded, setExpanded] = useState(false);
   const [printAnchor, setPrintAnchor] = useState(null);
 
@@ -150,15 +150,15 @@ const RecordCard = ({ record, appointmentId, onPrint }) => {
         </Typography>
 
         {/* Case-day badge */}
-        {record.caseDay && (
+        {caseDayMap[record.id] && (caseDayMap[record.id].caseDay > 1 || caseDayMap[record.id].totalDays > 1) && (
           <Box sx={{ 
             px: 1, py: 0.25, 
-            bgcolor: record.caseDay === 1 ? COLORS.chipBlueBg : COLORS.warningSurface,
-            border: `1px solid ${record.caseDay === 1 ? COLORS.medical : COLORS.warning}`,
+            bgcolor: caseDayMap[record.id].caseDay === 1 ? COLORS.chipBlueBg : COLORS.warningSurface,
+            border: `1px solid ${caseDayMap[record.id].caseDay === 1 ? COLORS.medical : COLORS.warning}`,
             flexShrink: 0 
           }}>
-            <Typography sx={{ fontFamily: FONT, fontSize: '0.62rem', fontWeight: 900, color: record.caseDay === 1 ? COLORS.medical : COLORS.warning, textTransform: 'uppercase' }}>
-              DAY {record.caseDay}
+            <Typography sx={{ fontFamily: FONT, fontSize: '0.62rem', fontWeight: 900, color: caseDayMap[record.id].caseDay === 1 ? COLORS.medical : COLORS.warning, textTransform: 'uppercase' }}>
+              DAY {caseDayMap[record.id].caseDay}
             </Typography>
           </Box>
         )}
@@ -531,6 +531,7 @@ export default function EMRDrawer({
   const [staffFilters, setStaffFilters] = useState(['all']);
   const [labFilters, setLabFilters] = useState(['all']);
   const [diagnosisFilters, setDiagnosisFilters] = useState(['all']);
+  const [caseDayMap, setCaseDayMap] = useState({});
   
   // GRANULAR ITEM FILTERS (Dropdown Checklist Registries)
   const [medFilters, setMedFilters] = useState(['all']);
@@ -834,8 +835,56 @@ export default function EMRDrawer({
         orderBy('date', 'desc')
       );
       getDocs(q)
-        .then(snap => {
-          setFetchedRecords(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        .then(async (snap) => {
+          const apptCache = {};
+          const historyData = await Promise.all(snap.docs.map(async (docSnap) => {
+            const rec = { id: docSnap.id, ...docSnap.data() };
+            if (rec.appointmentId) {
+              try {
+                const apptDoc = await getDoc(doc(db, "appointments", rec.appointmentId));
+                if (apptDoc.exists()) {
+                  const apptData = apptDoc.data();
+                  apptCache[rec.appointmentId] = {
+                    caseDay: apptData.caseDay || 1,
+                    originApptId: apptData.originApptId || null,
+                  };
+                }
+              } catch (e) {
+                console.warn('[EMRDrawer] Appointment join failed:', e);
+              }
+            }
+            return rec;
+          }));
+
+          const cdMap = {};
+          historyData.forEach(r => {
+            if (!r.appointmentId || !apptCache[r.appointmentId]) return;
+            const cached = apptCache[r.appointmentId];
+            let rootId = r.appointmentId;
+            let walked = apptCache[rootId];
+            const seen = new Set();
+            while (walked?.originApptId && apptCache[walked.originApptId] && !seen.has(rootId)) {
+              seen.add(rootId);
+              rootId = walked.originApptId;
+              walked = apptCache[rootId];
+            }
+            const chainMembers = Object.entries(apptCache).filter(([aid]) => {
+              let cur = aid;
+              let curData = apptCache[cur];
+              const visited = new Set();
+              while (curData?.originApptId && apptCache[curData.originApptId] && !visited.has(cur)) {
+                visited.add(cur);
+                cur = curData.originApptId;
+                curData = apptCache[cur];
+              }
+              return cur === rootId;
+            });
+            const totalDays = Math.max(...chainMembers.map(([, d]) => d.caseDay), cached.caseDay);
+            cdMap[r.id] = { caseDay: cached.caseDay, totalDays };
+          });
+
+          setCaseDayMap(cdMap);
+          setFetchedRecords(historyData);
         })
         .catch((err) => {
           console.error('[EMRDrawer] petId fetch failed:', err);
@@ -1648,9 +1697,11 @@ export default function EMRDrawer({
                     </Box>
                   )}
                   <RecordCard 
-                    record={record} 
+                    key={rec.id} 
+                    record={rec} 
                     appointmentId={appointmentId} 
                     onPrint={handlePrintRecord}
+                    caseDayMap={caseDayMap}
                   />
                 </React.Fragment>
               );

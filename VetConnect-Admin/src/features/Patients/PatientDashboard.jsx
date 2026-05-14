@@ -2140,7 +2140,7 @@ export default function PatientDashboard() {
                     </Typography>
 
                     {/* T2.457: Case-day badge for multi-day cases */}
-                    {caseDayMap[rec.id] && (
+                    {caseDayMap[rec.id] && (caseDayMap[rec.id].caseDay > 1 || caseDayMap[rec.id].totalDays > 1) && (
                       <Box sx={{ 
                         px: 1, py: 0.25, 
                         bgcolor: caseDayMap[rec.id].caseDay === 1 ? COLORS.chipBlueBg : COLORS.warningSurface,

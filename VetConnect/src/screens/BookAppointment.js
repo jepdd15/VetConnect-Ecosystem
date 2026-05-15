@@ -122,7 +122,8 @@ export default function BookAppointment({ navigation, route }) {
   // --- DEPARTMENT EXPLORER MODAL STATES ---
   const [isDeptModalVisible, setIsDeptModalVisible] = useState(false);
   const [deptModalSearch, setDeptModalSearch] = useState("");
-  const [deptSortOrder, setDeptSortOrder] = useState("name"); // "name" (A-Z) or "count" (high to low)
+  const [deptSortOrder, setDeptSortOrder] = useState("name"); // Sorting of depts in list
+  const [serviceSortOrder, setServiceSortOrder] = useState("name-asc"); // Sorting of actual services
 
   // --- NO-SHOW DETECTION ---
   // Populated after pet selection. Shown as an informational warning banner.
@@ -134,6 +135,8 @@ export default function BookAppointment({ navigation, route }) {
 
   // T4.206: AI Booking Advisor
   const [aiSheetVisible, setAiSheetVisible]   = useState(false);
+  const [pressedBtn, setPressedBtn]           = useState(null); // 'back' or 'next'
+  const [isBundleModalVisible, setIsBundleModalVisible] = useState(false);
   const [workerUrl, setWorkerUrl]             = useState('');
   const [bookingContext, setBookingContext]    = useState('');
   const [customBookingPrompt, setCustomBookingPrompt] = useState('');
@@ -445,14 +448,16 @@ export default function BookAppointment({ navigation, route }) {
         if (clinicSettings) {
           lines.push('');
           lines.push('=== CLINIC INFO ===');
+          
+          const fmt = h => {
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            const display = h > 12 ? h - 12 : h === 0 ? 12 : h;
+            return `${display}:00 ${ampm}`;
+          };
+
           const openH = clinicSettings.openHour;
           const closeH = clinicSettings.closeHour;
           if (openH != null && closeH != null) {
-            const fmt = h => {
-              const ampm = h >= 12 ? 'PM' : 'AM';
-              const display = h > 12 ? h - 12 : h === 0 ? 12 : h;
-              return `${display}:00 ${ampm}`;
-            };
             lines.push(`Hours: ${fmt(openH)} - ${fmt(closeH)}`);
           }
           if (clinicSettings.workingDays) {
@@ -633,8 +638,23 @@ export default function BookAppointment({ navigation, route }) {
         s.name.toLowerCase().includes(serviceSearch.toLowerCase())
       );
     }
+    // 3. Sorting Step
+    list = [...list].sort((a, b) => {
+        const petWeight = parseFloat(selectedPet?.lastVitals?.weight ?? selectedPet?.weight ?? selectedPet?.lastWeight) || null;
+        const priceA = resolveTieredPrice(a, petWeight);
+        const priceB = resolveTieredPrice(b, petWeight);
+
+        switch (serviceSortOrder) {
+            case "name-asc": return a.name.localeCompare(b.name);
+            case "name-desc": return b.name.localeCompare(a.name);
+            case "price-asc": return priceA - priceB;
+            case "price-desc": return priceB - priceA;
+            default: return 0;
+        }
+    });
+
     return list;
-  }, [services, selectedDepartment, serviceSearch, selectedPet]);
+  }, [services, selectedDepartment, serviceSearch, selectedPet, serviceSortOrder]);
 
   // --- INITIALIZATION ---
   useEffect(() => {
@@ -1180,24 +1200,31 @@ export default function BookAppointment({ navigation, route }) {
         ListHeaderComponent={
           <View>
             <Text style={styles.stepHeader}>Who is visiting?</Text>
-            <Text style={styles.subText}>
-              Select a pet for this appointment.
-            </Text>
+            <Text style={styles.subText}>Select a pet for this appointment.</Text>
             
-            {/* THE SEARCH & QUICK-ADD HUB */}
-            <View style={styles.searchAndLinkRow}>
-                <TextInput
-                    style={[styles.searchInput, { flex: 1, marginBottom: 0 }]}
-                    placeholder="🔍 Search pets..."
-                    placeholderTextColor={COLORS.textMuted}
-                    value={petSearch}
-                    onChangeText={setPetSearch}
-                />
+            <View style={styles.hubSearchRow}>
+                <View style={styles.hubSearchWrapper}>
+                    <View style={styles.hubShadowSmall} />
+                    <View style={styles.hubSearchContainer}>
+                        <MaterialIcons name="search" size={20} color={COLORS.accent} style={{ marginLeft: 12 }} />
+                        <TextInput
+                            style={styles.hubSearchInput}
+                            placeholder="Search pets..."
+                            placeholderTextColor={COLORS.textMuted}
+                            value={petSearch}
+                            onChangeText={setPetSearch}
+                        />
+                    </View>
+                </View>
+
                 <TouchableOpacity 
-                    style={styles.inlineAddBtn}
+                    style={styles.hubAddPetBtn}
                     onPress={() => navigation.navigate("AddPet")}
                 >
-                    <Text style={styles.inlineAddText}>+</Text>
+                    <View style={styles.hubShadowSmall} />
+                    <View style={styles.hubAddPetBtnContent}>
+                        <MaterialIcons name="add" size={24} color={COLORS.white} />
+                    </View>
                 </TouchableOpacity>
             </View>
             
@@ -1211,23 +1238,33 @@ export default function BookAppointment({ navigation, route }) {
           return (
             <TouchableOpacity
               key={pet.id}
-              style={[
-                styles.card,
-                isSelected ? styles.selectedCard : styles.unselectedCard,
-              ]}
+              style={styles.petCardWrapper}
               onPress={() => selectPet(pet)}
             >
-              {isSelected && (
-                <View style={styles.checkBadge}>
-                  <Text style={{ color: COLORS.white, fontSize: 12, fontWeight: "900" }}>✓</Text>
+              <View style={[styles.hubShadowSmall, isSelected && { backgroundColor: COLORS.success }]} />
+              <View style={[
+                styles.compactPetCard,
+                isSelected && styles.selectedPetCard
+              ]}>
+                <View style={styles.petCardIconBox}>
+                    <Text style={{ fontSize: 28 }}>
+                        {pet.species === "Canine" || pet.species === "Dog" ? "🐶" : "🐱"}
+                    </Text>
                 </View>
-              )}
-              <Text style={{ fontSize: 32, marginBottom: 8 }}>
-                {pet.species === "Canine" || pet.species === "Dog" ? "🐶" : "🐱"}
-              </Text>
-              <Text style={[styles.cardText, isSelected && styles.selectedTextBold]} numberOfLines={1}>
-                {pet.name}
-              </Text>
+                <View style={styles.petCardInfo}>
+                    <Text style={[styles.petCardName, isSelected && { color: COLORS.white }]} numberOfLines={1}>
+                        {pet.name}
+                    </Text>
+                    <Text style={[styles.petCardMeta, isSelected && { color: COLORS.white }]} numberOfLines={1}>
+                        {pet.breed || pet.species}
+                    </Text>
+                </View>
+                {isSelected && (
+                    <View style={styles.petCardBadge}>
+                        <MaterialIcons name="check-circle" size={16} color={COLORS.white} />
+                    </View>
+                )}
+              </View>
             </TouchableOpacity>
           );
         }}
@@ -1235,25 +1272,124 @@ export default function BookAppointment({ navigation, route }) {
     </View>
   );
 
+  // --- BUNDLE CALCULATIONS ---
+  const bundleTotals = useMemo(() => {
+    return selectedServices.reduce(
+      (acc, s) => ({
+        price: acc.price + (parseFloat(s.price) || 0),
+        duration: acc.duration + (parseInt(s.duration) || 0),
+      }),
+      { price: 0, duration: 0 }
+    );
+  }, [selectedServices]);
+
+  const renderBundleModal = () => (
+    <Modal
+      visible={isBundleModalVisible}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setIsBundleModalVisible(false)}
+    >
+      <TouchableOpacity 
+        style={styles.receiptOverlay}
+        activeOpacity={1}
+        onPress={() => setIsBundleModalVisible(false)}
+      >
+        <View style={styles.receiptWrapper}>
+          <TouchableOpacity 
+              activeOpacity={1} 
+              style={styles.receiptContainer}
+          >
+            <View style={styles.receiptHeaderBox}>
+              <View style={styles.receiptHeaderStamp}>
+                  <Text style={styles.receiptHeaderTitle}>VISIT BUNDLE PREVIEW</Text>
+              </View>
+              <TouchableOpacity 
+                  style={styles.receiptCloseBtn}
+                  onPress={() => setIsBundleModalVisible(false)}
+              >
+                  <MaterialIcons name="close" size={24} color={COLORS.brand} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView 
+                style={styles.receiptScroll} 
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingHorizontal: 20 }}
+            >
+              {selectedServices.map((s, idx) => (
+                <View key={`${s.id}-${idx}`} style={styles.receiptLineItem}>
+                  <View style={styles.receiptItemInfo}>
+                    <Text style={styles.receiptItemName}>{s.name.toUpperCase()}</Text>
+                    <Text style={styles.receiptItemMeta}>{s.duration} MINS</Text>
+                  </View>
+                  <Text style={styles.receiptItemPrice}>₱{s.price}</Text>
+                </View>
+              ))}
+              
+              {selectedServices.length === 0 && (
+                  <Text style={styles.emptyText}>No services selected yet.</Text>
+              )}
+              
+              <View style={{ height: 40 }} />
+            </ScrollView>
+
+            <View style={styles.receiptFooter}>
+              <View style={styles.receiptFooterContent}>
+                  <View style={styles.receiptFooterSilo}>
+                      <Text style={styles.receiptSiloLabel}>ESTIMATED TOTAL</Text>
+                      <Text style={styles.receiptGrandTotal}>₱{bundleTotals.price}</Text>
+                  </View>
+                  
+                  <View style={styles.receiptSiloDivider} />
+
+                  <View style={styles.receiptFooterSilo}>
+                      <Text style={styles.receiptSiloLabel}>TOTAL TIME</Text>
+                      <Text style={styles.receiptMetaTotal}>{bundleTotals.duration} MINS</Text>
+                  </View>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+
   // --- STEP 2 RENDER: SERVICES ---
   const renderStep2 = () => {
     const renderServiceRow = (s, isSelected, onToggle) => (
       <TouchableOpacity
         key={s.id}
-        style={[styles.serviceRow, isSelected && styles.selectedServiceRow]}
+        style={styles.serviceCardWrapper}
         onPress={() => onToggle(s)}
+        activeOpacity={0.8}
       >
-        <View style={{ flex: 1 }}>
-          <Text style={styles.serviceName}>{s.name}</Text>
-          <Text style={styles.serviceDuration}>⏱️ {s.duration} mins</Text>
-        </View>
-        <View style={{ alignItems: 'flex-end' }}>
-          <Text style={styles.servicePrice}>₱{s.price}</Text>
-          {isSelected && (
-            <View style={[styles.checkBadge, { position: 'relative', top: 5, right: 0 }]}>
-              <Text style={{ color: COLORS.white, fontSize: 10, fontWeight: '900' }}>✓</Text>
+        <View style={[
+            styles.hubShadowSky, 
+            { top: 4, left: 4, right: -4, bottom: -4, width: '100%' },
+            isSelected && { top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'transparent' }
+        ]} />
+        <View style={[
+            styles.hubServiceCard,
+            isSelected && styles.hubSelectedServiceCard
+        ]}>
+            <View style={styles.serviceIdentitySilo}>
+                <Text style={styles.hubServiceName} numberOfLines={1}>
+                    {s.name}
+                </Text>
             </View>
-          )}
+
+            <View style={styles.serviceValueSilo}>
+                <View style={{ alignItems: 'center' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Text style={[styles.hubPriceHero, { color: COLORS.white }]}>₱{s.price}</Text>
+                        {isSelected && (
+                            <MaterialIcons name="check-circle" size={16} color={COLORS.sky} />
+                        )}
+                    </View>
+                    <Text style={[styles.hubDurationMeta, { color: 'rgba(255,255,255,0.7)' }]}>{s.duration} MINS</Text>
+                </View>
+            </View>
         </View>
       </TouchableOpacity>
     );
@@ -1271,63 +1407,67 @@ export default function BookAppointment({ navigation, route }) {
           ListHeaderComponent={
             <View>
               <Text style={styles.stepHeader}>What do they need?</Text>
-              <Text style={styles.subText}>
-                You can select multiple services to bundle them into one visit.
-              </Text>
-              {/* SEARCH HUB */}
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search for a service..."
-                placeholderTextColor={COLORS.textMuted}
-                value={serviceSearch}
-                onChangeText={setServiceSearch}
-              />
-              {/* TRIGGER FOR DEPARTMENT EXPLORER */}
-              <TouchableOpacity
-                style={styles.deptTriggerBtn}
-                onPress={() => setIsDeptModalVisible(true)}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ fontSize: 18, marginRight: 8 }}>🏷️</Text>
-                  <View>
-                    <Text style={styles.deptTriggerLabel}>Filter by Department</Text>
-                    <Text style={styles.deptTriggerSub}>Currently: {selectedDepartment}</Text>
-                  </View>
-                </View>
-                <Text style={styles.deptTriggerArrow}>❯</Text>
-              </TouchableOpacity>
-              {/* Bundle pill strip */}
-              {selectedServices.length > 0 && (
-                <View style={styles.bundleBox}>
-                  <Text style={styles.bundleTitle}>
-                    Selected Bundle ({selectedServices.length}):
-                  </Text>
-                  <View style={styles.bundleScrollContainer}>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.bundlePillScroll}
+              
+              {/* UNIFIED COMMAND HUB */}
+              <View style={[styles.hubUnifiedWrapper, { height: 50, marginBottom: 20 }]}>
+                <View style={[styles.hubShadowSky, { top: 4, left: 4, right: -4, bottom: -4 }]} />
+                <View style={[styles.hubUnifiedBar, { borderWidth: 2 }]}>
+                    <TextInput
+                        style={[styles.hubUnifiedInput, { paddingLeft: 16 }]}
+                        placeholder="Search services..."
+                        placeholderTextColor={COLORS.textMuted}
+                        value={serviceSearch}
+                        onChangeText={setServiceSearch}
+                    />
+                    <TouchableOpacity
+                        style={[styles.hubFilterSilo, { borderLeftWidth: 2 }]}
+                        onPress={() => setIsDeptModalVisible(true)}
                     >
-                      {selectedServices.map((s) => (
-                        <TouchableOpacity
-                          key={s.id}
-                          style={styles.bundlePill}
-                          onPress={() => toggleService(s)}
-                        >
-                          <Text style={styles.bundlePillText}>{s.name}</Text>
-                          <Text style={styles.bundlePillRemove}>✕</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
+                        <MaterialIcons name="tune" size={18} color={COLORS.brand} />
+                        <Text style={[styles.hubFilterText, { fontSize: 10 }]}>
+                            FILTER
+                        </Text>
+                    </TouchableOpacity>
                 </View>
+              </View>
+
+              {/* BUNDLE CHIP-SET (CLICKABLE) */}
+              {selectedServices.length > 0 && (
+                <TouchableOpacity 
+                    style={styles.hubBundleContainer}
+                    onPress={() => setIsBundleModalVisible(true)}
+                    activeOpacity={0.8}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <Text style={styles.hubLabel}>SELECTED BUNDLE ({selectedServices.length})</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={[styles.hubLabel, { color: COLORS.brand, marginBottom: 0 }]}>VIEW LEDGER</Text>
+                        <MaterialIcons name="receipt" size={14} color={COLORS.brand} />
+                    </View>
+                  </View>
+                  <ScrollView
+                    horizontal
+                    pointerEvents="none"
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.hubBundleScroll}
+                  >
+                    {selectedServices.map((s) => (
+                      <View
+                        key={s.id}
+                        style={styles.hubBundleChip}
+                      >
+                        <Text style={styles.hubBundleChipText} numberOfLines={1}>{s.name}</Text>
+                        <MaterialIcons name="close" size={14} color={COLORS.brand} />
+                      </View>
+                    ))}
+                  </ScrollView>
+                </TouchableOpacity>
               )}
             </View>
           }
-          renderItem={({ item: s }) => {
-            const isSelected = selectedServices.some(serv => serv.id === s.id);
-            return renderServiceRow(s, isSelected, toggleService);
-          }}
+          renderItem={({ item }) =>
+            renderServiceRow(item, selectedServices.some((s) => s.id === item.id), toggleService)
+          }
         />
       </View>
     );
@@ -1541,78 +1681,118 @@ export default function BookAppointment({ navigation, route }) {
     );
   };
 
-  // --- NEW: THE DEPARTMENT EXPLORER MODAL ---
-  const renderDepartmentModal = () => (
-    <Modal
-      visible={isDeptModalVisible}
-      animationType="slide"
-      transparent={true}
-      onRequestClose={() => setIsDeptModalVisible(false)}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalSheet}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Visit Department</Text>
-            <TouchableOpacity onPress={() => setIsDeptModalVisible(false)}>
-              <Text style={styles.modalCloseText}>Done</Text>
-            </TouchableOpacity>
-          </View>
+  // --- NEW: THE UNIFIED CLINICAL FILTER HUB ---
+  const renderDepartmentModal = () => {
+    const isNameActive = serviceSortOrder.startsWith('name');
+    const isPriceActive = serviceSortOrder.startsWith('price');
+    
+    const toggleSort = (type) => {
+        if (type === 'name') {
+            setServiceSortOrder(serviceSortOrder === 'name-asc' ? 'name-desc' : 'name-asc');
+        } else {
+            setServiceSortOrder(serviceSortOrder === 'price-asc' ? 'price-desc' : 'price-asc');
+        }
+    };
 
-          {/* SEARCH & SORT TOOLS */}
-          <TextInput
-            style={styles.modalSearchInput}
-            placeholder="Search departments..."
-            placeholderTextColor={COLORS.textMuted}
-            value={deptModalSearch}
-            onChangeText={setDeptModalSearch}
-          />
-          
-          <View style={styles.sortOptionsRow}>
-            <TouchableOpacity 
-                style={[styles.sortChip, deptSortOrder === 'name' && styles.sortChipActive]}
-                onPress={() => setDeptSortOrder('name')}
-            >
-                <Text style={[styles.sortChipText, deptSortOrder === 'name' && styles.sortChipTextActive]}>A-Z</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-                style={[styles.sortChip, deptSortOrder === 'count' && styles.sortChipActive]}
-                onPress={() => setDeptSortOrder('count')}
-            >
-                <Text style={[styles.sortChipText, deptSortOrder === 'count' && styles.sortChipTextActive]}>By Volume</Text>
-            </TouchableOpacity>
-          </View>
+    const getIcon = (type) => {
+        const order = type === 'name' ? (serviceSortOrder.includes('desc') ? 'arrow-downward' : 'arrow-upward')
+                                      : (serviceSortOrder.includes('desc') ? 'arrow-downward' : 'arrow-upward');
+        return order;
+    };
 
-          <FlatList
-            data={[{ name: 'All', count: services.length }, ...departmentStats]}
-            keyExtractor={item => item.name}
-            showsVerticalScrollIndicator={false}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={[
-                    styles.deptModalRow,
-                    selectedDepartment === item.name && styles.deptModalRowSelected
-                ]}
-                onPress={() => {
-                  setSelectedDepartment(item.name);
-                  setIsDeptModalVisible(false);
-                }}
-              >
-                <Text style={[
-                    styles.deptModalName,
-                    selectedDepartment === item.name && styles.deptModalTextSelected
-                ]}>
-                    {item.name}
-                </Text>
-                <View style={styles.deptCountBadge}>
-                  <Text style={styles.deptCountText}>{item.count}</Text>
+    return (
+        <Modal
+          visible={isDeptModalVisible}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => setIsDeptModalVisible(false)}
+        >
+          <TouchableOpacity 
+            style={styles.filterOverlay} 
+            activeOpacity={1} 
+            onPress={() => setIsDeptModalVisible(false)}
+          >
+            <View style={styles.filterSheet} onStartShouldSetResponder={() => true}>
+              <View style={styles.filterSheetHandle} />
+              
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 16 }}>
+                <Text style={styles.filterSheetTitle}>FILTER & SORT</Text>
+                <TouchableOpacity onPress={() => setIsDeptModalVisible(false)}>
+                  <Text style={{ fontSize: 12, fontWeight: '900', color: COLORS.sky, textTransform: 'uppercase' }}>Done</Text>
+                </TouchableOpacity>
+              </View>
+    
+              <ScrollView style={styles.filterSheetScroll} showsVerticalScrollIndicator={false}>
+                {/* SORT RIBBON SECTION */}
+                <Text style={styles.filterSheetSection}>SORT BY</Text>
+                <View style={styles.sortRibbon}>
+                    <TouchableOpacity 
+                        style={[styles.sortToggleButton, isNameActive && styles.sortToggleButtonActive]}
+                        onPress={() => toggleSort('name')}
+                    >
+                        <Text style={[styles.sortToggleText, isNameActive && styles.sortToggleTextActive]}>NAME</Text>
+                        <MaterialIcons 
+                            name={getIcon('name')} 
+                            size={16} 
+                            color={isNameActive ? COLORS.white : COLORS.brand} 
+                        />
+                    </TouchableOpacity>
+    
+                    <TouchableOpacity 
+                        style={[styles.sortToggleButton, isPriceActive && styles.sortToggleButtonActive]}
+                        onPress={() => toggleSort('price')}
+                    >
+                        <Text style={[styles.sortToggleText, isPriceActive && styles.sortToggleTextActive]}>PRICE</Text>
+                        <MaterialIcons 
+                            name={getIcon('price')} 
+                            size={16} 
+                            color={isPriceActive ? COLORS.white : COLORS.brand} 
+                        />
+                    </TouchableOpacity>
                 </View>
-              </TouchableOpacity>
-            )}
-          />
-        </View>
-      </View>
-    </Modal>
-  );
+    
+                {/* DEPARTMENT SECTION */}
+                <Text style={[styles.filterSheetSection, { marginTop: 10 }]}>DEPARTMENTS</Text>
+                {[{ name: 'All', count: services.length }, ...departmentStats].map((item) => {
+                  const isSelected = selectedDepartment === item.name;
+                  return (
+                    <TouchableOpacity
+                      key={item.name}
+                      style={styles.filterSheetRow}
+                      onPress={() => setSelectedDepartment(item.name)}
+                    >
+                      <MaterialIcons
+                        name={isSelected ? 'radio-button-checked' : 'radio-button-unchecked'}
+                        size={22}
+                        color={isSelected ? COLORS.sky : COLORS.textMuted}
+                      />
+                      <Text style={[styles.filterSheetLabel, isSelected && styles.filterSheetLabelActive]}>
+                        {item.name}
+                      </Text>
+                      <Text style={styles.filterSheetCount}>({item.count})</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+                <View style={{ height: 40 }} />
+              </ScrollView>
+    
+              <View style={styles.filterSheetActions}>
+                <TouchableOpacity
+                  style={styles.filterSheetClearBtn}
+                  onPress={() => {
+                    setServiceSearch("");
+                    setSelectedDepartment("All");
+                    setServiceSortOrder("name-asc");
+                  }}
+                >
+                  <Text style={styles.filterSheetClearText}>RESET ALL FILTERS</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      );
+  };
 
   // --- RESCHEDULE CONFIRM RENDER (replaces Step 4 in reschedule mode) ---
   // Shows original vs new date/time comparison and requires a reschedule reason (Amendment 2).
@@ -1629,42 +1809,69 @@ export default function BookAppointment({ navigation, route }) {
         style={styles.stepContainer}
       >
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-          <Text style={styles.stepHeader}>Confirm Reschedule</Text>
+          <Text style={styles.stepHeader}>Reschedule</Text>
+          <Text style={styles.subText}>Review your updated appointment timing.</Text>
 
-          <View style={styles.summaryBox}>
-            <Text style={styles.summaryTitle}>Schedule Change</Text>
-            <Text style={styles.summaryText}>
-              Patient: {rescheduleAppointment?.petName}
-            </Text>
-            <Text style={styles.summaryText}>
-              Service: {rescheduleAppointment?.serviceType}
-            </Text>
-            <Text style={[styles.summaryText, { textDecorationLine: 'line-through', color: COLORS.textMuted }]}>
-              Original: {formatDisplayDate(originalDate)} at {formatDisplayTime(originalDate)}
-            </Text>
-            <Text style={[styles.summaryText, { color: COLORS.success, fontWeight: '900' }]}>
-              New: {formatDisplayDate(date)} at {selectedSlot}
-            </Text>
+          <View style={styles.hubSection}>
+            <View style={styles.hubShadow} />
+            <View style={styles.hubCard}>
+                <View style={styles.hubIconContainer}>
+                    <MaterialIcons name="event-repeat" size={24} color={COLORS.white} />
+                </View>
+                <View style={styles.hubCardContent}>
+                    <Text style={styles.hubLabel}>PATIENT</Text>
+                    <Text style={styles.hubValueMajor}>{rescheduleAppointment?.petName}</Text>
+                    <Text style={styles.hubValueMeta}>{rescheduleAppointment?.serviceType}</Text>
+                </View>
+            </View>
           </View>
 
-          <Text style={styles.inputLabel}>
-            Reason for rescheduling{' '}
-            <Text style={{ color: COLORS.danger }}>*</Text>
-          </Text>
-          <TextInput
-            style={styles.notesInput}
-            placeholder="e.g. Schedule conflict, feeling unwell..."
-            placeholderTextColor={COLORS.textMuted}
-            multiline
-            numberOfLines={3}
-            value={rescheduleReason}
-            onChangeText={setRescheduleReason}
-          />
-          {isReasonEmpty && (
-            <Text style={{ color: COLORS.danger, fontSize: 11, marginTop: 4, fontWeight: '700' }}>
-              A reason is required before confirming.
+          <View style={styles.hubSection}>
+            <View style={styles.hubShadow} />
+            <View style={styles.hubCard}>
+                <View style={styles.scheduleRow}>
+                    <View style={styles.scheduleCol}>
+                        <Text style={styles.hubLabel}>PREVIOUS</Text>
+                        <Text style={[styles.hubValueMeta, { textDecorationLine: 'line-through' }]}>
+                          {formatDisplayDate(originalDate)} • {formatDisplayTime(originalDate)}
+                        </Text>
+                    </View>
+                    <View style={styles.scheduleDivider} />
+                    <View style={styles.scheduleCol}>
+                        <Text style={styles.hubLabel}>NEW SLOT</Text>
+                        <Text style={[styles.hubValueMajor, { fontSize: 18, color: COLORS.success }]}>
+                          {formatDisplayDate(date)}
+                        </Text>
+                        <Text style={[styles.hubValueMajor, { fontSize: 18, color: COLORS.success }]}>
+                          at {selectedSlot}
+                        </Text>
+                    </View>
+                </View>
+            </View>
+          </View>
+
+          <View style={styles.notesContainer}>
+            <Text style={styles.hubLabel}>
+              REASON FOR RESCHEDULING <Text style={{ color: COLORS.danger }}>*</Text>
             </Text>
-          )}
+            <View style={styles.notesInputWrapper}>
+              <View style={styles.hubShadowSmall} />
+              <TextInput
+                style={styles.hubNotesInput}
+                placeholder="e.g. Schedule conflict, feeling unwell..."
+                placeholderTextColor={COLORS.textMuted}
+                multiline
+                numberOfLines={3}
+                value={rescheduleReason}
+                onChangeText={setRescheduleReason}
+              />
+            </View>
+            {isReasonEmpty && (
+              <Text style={{ color: COLORS.danger, fontSize: 11, marginTop: 12, fontWeight: '700', textTransform: 'uppercase' }}>
+                A reason is required before confirming.
+              </Text>
+            )}
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     );
@@ -1674,12 +1881,6 @@ export default function BookAppointment({ navigation, route }) {
   const renderStep4 = () => {
     // Reschedule mode hijacks Step 4 with its own summary + required reason UI.
     if (rescheduleMode) return renderRescheduleConfirm();
-
-    // RESILIENT HINTS (Safety check stays for surgery warnings)
-    const hasSurgery = selectedServices.some(s =>
-        (s.department || s.category || '').toLowerCase().includes('surg') ||
-        (s.name || '').toLowerCase().includes('surg')
-    );
 
     // MAXIMUM RESILIENCE: Use generic labels that work for ANY visit type
     const notesTitle = "Comments / Special Instructions";
@@ -1700,59 +1901,92 @@ export default function BookAppointment({ navigation, route }) {
         style={styles.stepContainer}
       >
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-            <Text style={styles.stepHeader}>Final Details</Text>
+            <Text style={styles.stepHeader}>Review Booking</Text>
+            <Text style={styles.subText}>Please verify your appointment details below.</Text>
 
-            <View style={styles.summaryBox}>
-                <Text style={styles.summaryTitle}>Booking Summary</Text>
-
-                <Text style={{ fontSize: 13, fontWeight: 'bold', color: COLORS.textSecondary, marginBottom: 8 }}>🐾 Patient:</Text>
-                <View style={styles.summaryPetsContainer}>
-                  {selectedPet && (
-                    <View style={styles.summaryPetChip}>
-                      <Text style={styles.summaryPetName}>{selectedPet.name}</Text>
+            {/* SECTION 1: THE PATIENT */}
+            <View style={styles.hubSection}>
+                <View style={styles.hubShadow} />
+                <View style={styles.hubCard}>
+                    <View style={styles.hubCardContent}>
+                        <Text style={styles.hubValueMajor}>{selectedPet?.name}</Text>
+                        <Text style={styles.hubValueMeta}>{selectedPet?.species} • {selectedPet?.breed || 'Mixed'}</Text>
                     </View>
-                  )}
                 </View>
-
-                {/* Service list */}
-                <Text style={{ fontWeight: 'bold', fontSize: 13, color: COLORS.textSecondary, marginTop: 15, marginBottom: 4 }}>Selected Services:</Text>
-                <View style={styles.summaryServiceScroll}>
-                    <ScrollView nestedScrollEnabled={true}>
-                        {selectedServices.map(s => (
-                            <Text key={s.id} style={{ fontSize: 13, color: COLORS.textSecondary, marginBottom: 4 }}>
-                                {'•'} {toTitleCase(s.name)} ({'₱'}{resolveTieredPrice(s, petWeight)})
-                            </Text>
-                        ))}
-                    </ScrollView>
-                </View>
-
-                <Text style={styles.summaryText}>
-                    🕒 Time: {formatDisplayDate(date)} at {selectedSlot}
-                </Text>
-                <Text style={styles.summaryTotalBig}>
-                    Est. Total: {'₱'}{grandTotal.toLocaleString()}
-                </Text>
             </View>
 
-            <Text style={styles.inputLabel}>{notesTitle}</Text>
-            <TextInput
-                style={styles.notesInput}
-                placeholder={notesPlaceholder}
-                placeholderTextColor={COLORS.textMuted}
-                multiline
-                numberOfLines={4}
-                value={notes}
-                onChangeText={setNotes}
-            />
-
-            {hasSurgery && (
-                <View style={styles.warningBox}>
-                    <Text style={styles.warningTitle}>⚠️ SURGICAL REQUIREMENT</Text>
-                    <Text style={styles.warningText}>
-                        Strict fasting required: NO food or water for 8-12 hours prior to the visit.
-                    </Text>
+            {/* SECTION 2: THE SCHEDULE */}
+            <View style={styles.hubSection}>
+                <View style={styles.hubShadow} />
+                <View style={styles.hubCard}>
+                    <View style={styles.scheduleRow}>
+                        <View style={styles.scheduleCol}>
+                            <Text style={styles.hubLabel}>DATE</Text>
+                            <View style={styles.scheduleDetailRow}>
+                                <MaterialIcons name="calendar-today" size={18} color={COLORS.accent} />
+                                <Text style={styles.hubValue}>{formatDisplayDate(date)}</Text>
+                            </View>
+                        </View>
+                        <View style={styles.scheduleDivider} />
+                        <View style={styles.scheduleCol}>
+                            <Text style={styles.hubLabel}>TIME</Text>
+                            <View style={styles.scheduleDetailRow}>
+                                <MaterialIcons name="access-time" size={18} color={COLORS.accent} />
+                                <Text style={styles.hubValue}>{selectedSlot}</Text>
+                            </View>
+                        </View>
+                    </View>
                 </View>
-            )}
+            </View>
+
+            {/* SECTION 3: THE SERVICES (LEDGER) */}
+            <View style={styles.hubSection}>
+                <View style={styles.hubShadow} />
+                <View style={styles.ledgerCard}>
+                    <Text style={styles.hubLabel}>SELECTED SERVICES ({selectedServices.length})</Text>
+                    <View style={styles.ledgerList}>
+                        {selectedServices.map((s, idx) => (
+                            <View key={s.id} style={styles.ledgerItem}>
+                                <Text style={styles.ledgerItemName}>
+                                    {idx + 1}. {toTitleCase(s.name)}
+                                </Text>
+                                <Text style={styles.ledgerItemPrice}>
+                                    ₱{resolveTieredPrice(s, petWeight).toLocaleString()}
+                                </Text>
+                            </View>
+                        ))}
+                    </View>
+                    <View style={styles.ledgerTotalRow}>
+                        <Text style={styles.ledgerTotalLabel}>EST. TOTAL</Text>
+                        <Text style={styles.ledgerTotalValue}>
+                            ₱{grandTotal.toLocaleString()}
+                        </Text>
+                    </View>
+                    <View style={[styles.ledgerTotalRow, { borderTopWidth: 0, paddingTop: 4 }]}>
+                        <Text style={[styles.ledgerTotalLabel, { fontSize: 9, color: COLORS.textMuted }]}>EST. DURATION</Text>
+                        <Text style={[styles.ledgerTotalValue, { fontSize: 14, color: COLORS.accent }]}>
+                            {selectedServices.reduce((sum, s) => sum + (parseInt(s.duration) || 0), 0)} MINS
+                        </Text>
+                    </View>
+                </View>
+            </View>
+
+            {/* SECTION 4: CLINICAL NOTES */}
+            <View style={styles.notesContainer}>
+                <Text style={styles.hubLabel}>REASON FOR VISIT / NOTES</Text>
+                <View style={styles.notesInputWrapper}>
+                    <View style={styles.hubShadowSmall} />
+                    <TextInput
+                        style={styles.hubNotesInput}
+                        placeholder={notesPlaceholder}
+                        placeholderTextColor={COLORS.textMuted}
+                        multiline
+                        numberOfLines={4}
+                        value={notes}
+                        onChangeText={setNotes}
+                    />
+                </View>
+            </View>
         </ScrollView>
       </KeyboardAvoidingView>
     );
@@ -1828,63 +2062,77 @@ export default function BookAppointment({ navigation, route }) {
         </View>
       )}
 
-      {/* SAFE AREA STICKY FOOTER */}
-      <View
-        style={[
-          styles.stickyFooter,
-          { paddingBottom: Math.max(insets.bottom, 20) },
-        ]}
-      >
-        <View style={styles.footerRow}>
-          <TouchableOpacity
-            style={styles.backBtn}
-            onPress={handleBack}
-            disabled={loading}
-          >
-            <Text style={styles.backBtnText}>
-              {rescheduleMode ? (step === 3 ? "Cancel" : "Back") : (step === 1 ? "Cancel" : "Back")}
-            </Text>
-          </TouchableOpacity>
+      {/* FLOATING TACTICAL NAVIGATION HUB */}
+      <View style={styles.footer}>
+        {/* BACK BUTTON HUB */}
+        <View style={styles.navBtnWrapper}>
+          <View style={styles.navBtnShadow} />
           <TouchableOpacity
             style={[
-              styles.nextBtn,
+              styles.navBtn,
+              styles.navBtnBack,
+              pressedBtn === 'back' && styles.navBtnPressed
+            ]}
+            onPressIn={() => setPressedBtn('back')}
+            onPressOut={() => setPressedBtn(null)}
+            onPress={handleBack}
+            disabled={loading}
+            activeOpacity={1}
+          >
+            <Text style={styles.navBtnTextBack}>Back</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* CONTINUE BUTTON HUB */}
+        <View style={[styles.navBtnWrapper, { flex: 1.5 }]}>
+          <View style={styles.navBtnShadow} />
+          <TouchableOpacity
+            style={[
+              styles.navBtn,
+              styles.navBtnNext,
               (loading ||
                 (!isConnected && step === 4 && !rescheduleMode) ||
                 (step === 1 && !selectedPet) ||
                 (step === 2 && !hasServices) ||
                 (step === 3 && !selectedSlot) ||
                 (rescheduleMode && step === 4 && rescheduleReason.trim() === '')) &&
-                styles.disabledNextBtn,
+                styles.navBtnDisabled,
+              pressedBtn === 'next' && styles.navBtnPressed
             ]}
+            onPressIn={() => setPressedBtn('next')}
+            onPressOut={() => setPressedBtn(null)}
             onPress={handleNext}
             disabled={
               loading ||
               (!isConnected && step === 4 && !rescheduleMode) ||
               (rescheduleMode && step === 4 && rescheduleReason.trim() === '')
             }
+            activeOpacity={1}
           >
             {loading ? (
               <ActivityIndicator color={COLORS.white} />
             ) : (
               <Text
                 style={[
-                  styles.nextBtnText,
+                  styles.navBtnTextNext,
                   (loading ||
                     (!isConnected && step === 4 && !rescheduleMode) ||
                     (step === 1 && !selectedPet) ||
                     (step === 2 && !hasServices) ||
                     (step === 3 && !selectedSlot) ||
-                    (rescheduleMode && step === 4 && rescheduleReason.trim() === '')) && { color: COLORS.textMuted },
+                    (rescheduleMode && step === 4 && rescheduleReason.trim() === '')) && { color: 'rgba(255,255,255,0.5)' },
                 ]}
               >
                 {!isConnected && step === 4 && !rescheduleMode
-                  ? "OFFLINE — CONNECT TO BOOK"
+                  ? "OFFLINE — CONNECT"
                   : getButtonText()}
               </Text>
             )}
           </TouchableOpacity>
         </View>
       </View>
+
+      {renderBundleModal()}
       {renderDepartmentModal()}
 
       {/* T4.206: AI Booking Advisor FAB -- feature-gated on workerUrl, hidden in reschedule mode */}
@@ -1917,7 +2165,7 @@ export default function BookAppointment({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  rootContainer: { flex: 1, backgroundColor: COLORS.cream },
+  rootContainer: { flex: 1, backgroundColor: COLORS.white },
   wizardHeader: {
     padding: 20,
     paddingTop: Platform.OS === "ios" ? 10 : 20,
@@ -2129,42 +2377,433 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
-  // --- THE FIX: Increased Padding for Android Navbar Clearance ---
-  scrollContent: { padding: 20, paddingBottom: 160 },
-  stickyFooter: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
+  // --- CONFIRMATION HUB STYLES ---
+  hubSection: {
+    marginBottom: 20,
+  },
+  hubShadow: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    right: -6,
+    bottom: -6,
+    backgroundColor: COLORS.brand,
+  },
+  hubShadowSmall: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    right: -4,
+    bottom: -4,
+    backgroundColor: COLORS.brand,
+  },
+  hubShadowSky: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    right: -8,
+    bottom: -8,
+    backgroundColor: COLORS.sky,
+  },
+  hubCard: {
     backgroundColor: COLORS.white,
-    paddingHorizontal: 20,
-    paddingTop: 15,
-    borderTopWidth: 2,
-    borderTopColor: COLORS.brand,
+    borderWidth: 3,
+    borderColor: COLORS.brand,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  hubIconContainer: {
+    width: 50,
+    height: 50,
+    backgroundColor: COLORS.brand,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  hubCardContent: {
+    flex: 1,
+  },
+  hubLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: COLORS.accent,
+    letterSpacing: 1,
+    marginBottom: 2,
+    textTransform: 'uppercase',
+  },
+  hubValueMajor: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: COLORS.brand,
+    lineHeight: 28,
+  },
+  hubValueMeta: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  hubValue: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: COLORS.brand,
+    marginLeft: 8,
+  },
+  scheduleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  scheduleCol: {
+    flex: 1,
+  },
+  scheduleDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  scheduleDivider: {
+    width: 2,
+    height: '100%',
+    backgroundColor: COLORS.borderLight,
+    marginHorizontal: 16,
+  },
+  ledgerCard: {
+    backgroundColor: COLORS.white,
+    borderWidth: 3,
+    borderColor: COLORS.brand,
+    padding: 20,
+  },
+  ledgerList: {
+    marginTop: 12,
+    borderBottomWidth: 2,
+    borderBottomColor: COLORS.borderLight,
+    paddingBottom: 12,
+  },
+  ledgerItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  ledgerItemName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    flex: 1,
+  },
+  ledgerItemPrice: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: COLORS.brand,
+    marginLeft: 10,
+  },
+  ledgerTotalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 15,
+  },
+  ledgerTotalLabel: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: COLORS.brand,
+  },
+  ledgerTotalValue: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: COLORS.success,
+  },
+  notesContainer: {
+    marginTop: 10,
+    marginBottom: 30,
+  },
+  notesInputWrapper: {
+    position: 'relative',
+    marginTop: 8,
+  },
+  hubNotesInput: {
+    backgroundColor: COLORS.white,
+    borderWidth: 3,
+    borderColor: COLORS.brand,
+    padding: 16,
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    minHeight: 100,
+    textAlignVertical: 'top',
   },
 
-  footerRow: { flexDirection: "row", justifyContent: "space-between", gap: 15 },
-  backBtn: {
+  // --- STEP 1 HUB STYLES ---
+  hubSearchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    marginTop: 10,
+    height: 54,
+  },
+  hubSearchWrapper: {
     flex: 1,
-    padding: 18,
-    borderRadius: 0,
-    alignItems: "center",
+    height: '100%',
+    marginRight: 12,
+    position: 'relative',
+  },
+  hubSearchContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.white,
+    borderWidth: 3,
+    borderColor: COLORS.brand,
+    height: '100%',
+  },
+  hubSearchInput: {
+    flex: 1,
+    paddingVertical: 0,
+    paddingHorizontal: 12,
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  hubAddPetBtn: {
+    width: 54,
+    height: 54,
+    position: 'relative',
+  },
+  hubAddPetBtnContent: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: COLORS.brand,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: COLORS.brand,
+  },
+  petCardWrapper: {
+    width: '47%',
+    margin: 6,
+    position: 'relative',
+    height: 120, // Reduced from legacy 140+
+  },
+  compactPetCard: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+    borderWidth: 3,
+    borderColor: COLORS.brand,
+    padding: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  selectedPetCard: {
+    backgroundColor: COLORS.brand,
+  },
+  petCardIconBox: {
+    marginBottom: 6,
+  },
+  petCardInfo: {
+    alignItems: 'center',
+  },
+  petCardName: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: COLORS.brand,
+  },
+  petCardMeta: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+    textTransform: 'uppercase',
+  },
+  petCardBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+  },
+
+  // --- STEP 2 HUB STYLES (CYBER REFINEMENT) ---
+  hubUnifiedWrapper: {
+    marginBottom: 24,
+    position: 'relative',
+    height: 56,
+    marginHorizontal: 4,
+  },
+  hubUnifiedBar: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.white,
+    borderWidth: 3,
+    borderColor: COLORS.brand,
+  },
+  hubSearchIconBox: {
+    width: 50,
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRightWidth: 3,
+    borderRightColor: COLORS.brand,
+  },
+  hubUnifiedInput: {
+    flex: 1,
+    height: '100%',
+    paddingHorizontal: 12,
+    fontSize: 15,
+    fontWeight: '800',
+    color: COLORS.brand,
+  },
+  hubFilterSilo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: '100%',
+    paddingHorizontal: 12,
+    backgroundColor: COLORS.borderLight,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.brand,
+    gap: 6,
+  },
+  hubFilterText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.brand,
+  },
+  hubBundleContainer: {
+    marginBottom: 20,
+    marginHorizontal: 4,
+  },
+  hubBundleScroll: {
+    paddingTop: 8,
+    gap: 8,
+  },
+  hubBundleChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.white,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    borderStyle: 'dashed',
+    gap: 6,
+  },
+  hubBundleChipText: {
+    color: COLORS.brand,
+    fontSize: 12,
+    fontWeight: '900',
+    maxWidth: 150,
+  },
+  serviceCardWrapper: {
+    marginBottom: 16,
+    width: '95%',
+    alignSelf: 'flex-start',
+    marginLeft: 4,
+    position: 'relative',
+  },
+  hubServiceCard: {
+    flexDirection: 'row',
     backgroundColor: COLORS.white,
     borderWidth: 2,
     borderColor: COLORS.brand,
+    borderStyle: 'solid',
+    height: 64,
   },
-  backBtnText: { color: COLORS.textSecondary, fontWeight: "800", fontSize: 16 },
-  nextBtn: {
-    flex: 2,
-    padding: 18,
-    borderRadius: 0,
-    alignItems: "center",
-    backgroundColor: COLORS.sky,
+  hubSelectedServiceCard: {
+    backgroundColor: '#FAFAFA', // Technical Parchment
+    borderStyle: 'dashed',
+    borderWidth: 2,
+  },
+  serviceIdentitySilo: {
+    flex: 1,
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+  },
+  hubServiceName: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: COLORS.brand,
+  },
+  serviceValueSilo: {
+    width: 100,
+    backgroundColor: COLORS.brand,
+    borderLeftWidth: 2,
+    borderLeftColor: COLORS.brand,
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 4,
+  },
+  hubPriceHero: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: COLORS.success,
+  },
+  hubDurationMeta: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: COLORS.textMuted,
+    marginTop: 1,
+  },
+
+  // --- THE FIX: Increased Padding for Android Navbar Clearance ---
+  scrollContent: { padding: 20, paddingBottom: 160 },
+  footer: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 30,
+    backgroundColor: COLORS.white,
+    gap: 16,
+  },
+  navBtnWrapper: {
+    flex: 1,
+    position: 'relative',
+    height: 56,
+  },
+  navBtnShadow: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    right: -4,
+    bottom: -4,
+    backgroundColor: COLORS.brand,
+  },
+  navBtn: {
+    flex: 1,
+    height: 56,
     borderWidth: 2,
     borderColor: COLORS.brand,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.white,
   },
-  disabledNextBtn: { backgroundColor: COLORS.borderLight },
-  nextBtnText: { color: COLORS.white, fontWeight: "900", fontSize: 16 },
+  navBtnPressed: {
+    transform: [{ translateX: 2 }, { translateY: 2 }],
+  },
+  navBtnBack: {
+    backgroundColor: COLORS.white,
+  },
+  navBtnNext: {
+    backgroundColor: COLORS.success, // Clinical Green
+  },
+  navBtnDisabled: {
+    backgroundColor: COLORS.borderLight,
+    borderColor: COLORS.textMuted,
+  },
+  navBtnTextBack: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: COLORS.brand,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  navBtnTextNext: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: COLORS.white,
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
+  },
 
   // --- THE SCALABILITY FIX: NEW STYLES ---
   columnWrapper: { justifyContent: "space-between", marginBottom: 15 },
@@ -2475,5 +3114,244 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textTransform: 'uppercase',
     letterSpacing: 1,
+  },
+
+  // --- FORENSIC RECEIPT MODAL ---
+  receiptOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  receiptWrapper: {
+    width: '90%',
+    maxHeight: '70%',
+    position: 'relative',
+  },
+  receiptContainer: {
+    backgroundColor: '#FAFAFA', // Technical Parchment
+    width: '100%',
+    height: '100%',
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    overflow: 'hidden',
+  },
+  receiptShadowSky: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    right: -4,
+    bottom: -4,
+    backgroundColor: COLORS.sky,
+  },
+  receiptHeaderBox: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 20,
+    borderBottomWidth: 2,
+    borderBottomColor: COLORS.brand,
+    borderStyle: 'dashed',
+    backgroundColor: COLORS.white,
+  },
+  receiptHeaderStamp: {
+    flex: 1,
+  },
+  receiptHeaderTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: COLORS.brand,
+    letterSpacing: 1,
+  },
+  receiptCloseBtn: {
+    padding: 4,
+  },
+  receiptScroll: {
+    flex: 1,
+    backgroundColor: '#FAFAFA',
+  },
+  receiptLineItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.1)',
+    borderStyle: 'dashed',
+  },
+  receiptItemInfo: {
+    flex: 1,
+  },
+  receiptItemName: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: COLORS.brand,
+  },
+  receiptItemMeta: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+    marginTop: 4,
+  },
+  receiptItemPrice: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: COLORS.brand,
+  },
+  receiptFooter: {
+    backgroundColor: COLORS.brand,
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+  },
+  receiptFooterContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  receiptFooterSilo: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  receiptSiloDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    borderStyle: 'dashed',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  receiptSiloLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: COLORS.sky,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  receiptGrandTotal: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: COLORS.white,
+  },
+  receiptMetaTotal: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: COLORS.white,
+  },
+
+  // --- UNIFIED FILTER HUB STYLES ---
+  filterOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  filterSheet: {
+    backgroundColor: COLORS.cream,
+    borderTopWidth: 3,
+    borderTopColor: COLORS.brand,
+    paddingBottom: 40,
+    height: '65%', // Locked for UI stability
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+  },
+  filterSheetHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: COLORS.borderLight,
+    alignSelf: 'center',
+    marginTop: 10,
+    marginBottom: 20,
+    borderRadius: 2,
+  },
+  filterSheetTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: COLORS.brand,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  filterSheetScroll: {
+    paddingHorizontal: 0,
+  },
+  filterSheetSection: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: COLORS.textMuted,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    paddingHorizontal: 20,
+    marginBottom: 8,
+  },
+  filterSheetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+    borderStyle: 'dashed',
+  },
+  filterSheetLabel: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.accent,
+  },
+  filterSheetLabelActive: {
+    color: COLORS.brand,
+    fontWeight: '900',
+  },
+  filterSheetCount: {
+    fontSize: 12,
+    color: COLORS.accent, // Hardened from Muted
+    fontWeight: '900', // Hardened weight
+  },
+  filterSheetActions: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+  },
+  sortRibbon: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    gap: 12,
+    marginBottom: 16,
+    marginTop: 8,
+  },
+  sortToggleButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    gap: 8,
+  },
+  sortToggleButtonActive: {
+    backgroundColor: COLORS.brand,
+  },
+  sortToggleText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: COLORS.brand,
+  },
+  sortToggleTextActive: {
+    color: COLORS.white,
+  },
+  filterSheetClearBtn: {
+    paddingVertical: 16,
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterSheetClearText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: COLORS.brand,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
 });

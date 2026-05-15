@@ -31,6 +31,7 @@ import { makePulseEventId } from '../utils/pulseUtils';
 import { sendPushNotification } from '../utils/sendPushNotification';
 import { printViaIframe, downloadHtmlAsFile, emailReceiptToOwner } from '../utils/receiptUtils';
 import { computeSingleOwnerBalanceReminder } from '../utils/computeBalanceReminderQueue';
+import { formatDosage } from '../constants/dosageUnits';
 
 // T4.149: Mandatory reason options for custom bill discounts — enforces audit accountability.
 const DISCOUNT_REASONS = [
@@ -440,17 +441,19 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
   const generateReceiptHTML = (transactionId, receiptNumber) => {
     const today = new Date().toLocaleString();
 
-    const itemsHTML = cart.map(item => `
+    const itemsHTML = cart.map(item => {
+      const strength = formatDosage(item.dosageValue, item.dosageUnit, item.dosageUnitCustom) || item.dosage || '';
+      return `
       <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px;">
         <div style="flex: 1; padding-right: 10px;">
-          <div style="font-weight: 700;">${esc(item.name)} ${item.isDiscountable ? '' : '<span style="color:#d32f2f; font-size:10px;">(No SC/PWD)</span>'}</div>
+          <div style="font-weight: 700;">${esc(item.name)} ${strength ? `(${esc(strength)})` : ''} ${item.isDiscountable ? '' : '<span style="color:#d32f2f; font-size:10px;">(No SC/PWD)</span>'}</div>
           <div style="color: #666;">${item.qty} x ₱${item.price.toFixed(2)}</div>
         </div>
         <div style="font-weight: 900; text-align: right; font-family: 'JetBrains Mono', monospace;">
           ₱${(item.price * item.qty).toFixed(2)}
         </div>
       </div>
-    `).join('');
+    `; }).join('');
 
     const patientLabel = `${patient.petName} (${patient.ownerName || 'Walk-In'})`;
 
@@ -550,17 +553,19 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
 
   const generateRetailReceiptHTML = (transactionId, receiptNumber, clientInfo) => {
     const today = new Date().toLocaleString();
-    const itemsHTML = cart.map(item => `
+    const itemsHTML = cart.map(item => {
+      const strength = formatDosage(item.dosageValue, item.dosageUnit, item.dosageUnitCustom) || item.dosage || '';
+      return `
       <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px;">
         <div style="flex: 1; padding-right: 10px;">
-          <div style="font-weight: 700;">${item.name}</div>
-          <div style="color: #666;">${item.qty} x P${item.price.toFixed(2)}</div>
+          <div style="font-weight: 700;">${esc(item.name)} ${strength ? `(${esc(strength)})` : ''}</div>
+          <div style="color: #666;">${item.qty} x ₱${item.price.toFixed(2)}</div>
         </div>
         <div style="font-weight: 900; text-align: right; font-family: 'JetBrains Mono', monospace;">
-          P${(item.price * item.qty).toFixed(2)}
+          ₱${(item.price * item.qty).toFixed(2)}
         </div>
       </div>
-    `).join('');
+    `; }).join('');
 
     const customerLabel = clientInfo?.fullName
       ? `${clientInfo.fullName}${clientInfo.phone ? ` (${clientInfo.phone})` : ''}`

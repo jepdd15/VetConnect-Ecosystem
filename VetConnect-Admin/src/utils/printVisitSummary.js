@@ -2,6 +2,7 @@ import { UNIFIED_PRINT_STYLES, formatPrintDate, esc, calculatePetAge } from './p
 import { resolveVitals } from './resolveVitals';
 import { resolveObjectiveText } from './examUtils';
 import { Timestamp } from 'firebase/firestore';
+import { formatDosage } from '../constants/dosageUnits';
 
 /**
  * Formats a duration in milliseconds into a human-readable string.
@@ -82,7 +83,7 @@ export function renderPrescriptionsSection(items, title = 'Medications') {
       <tr>
         <td style="width:30px; text-align:center;">${i + 1}</td>
         <td>
-          <b style="font-size:13px;">${esc(rx.name || '—')}</b>
+          <b style="font-size:13px;">${esc(rx.name || '—')} ${rx.dosage ? `(${esc(rx.dosage)})` : (formatDosage(rx.dosageValue, rx.dosageUnit, rx.dosageUnitCustom) ? `(${esc(formatDosage(rx.dosageValue, rx.dosageUnit, rx.dosageUnitCustom))})` : '')}</b>
           ${sigLine}
         </td>
         <td style="text-align:center;">x${rx.qty ?? 1}</td>

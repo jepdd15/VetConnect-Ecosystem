@@ -135,7 +135,7 @@ const calculateAge = (dob) => {
  * @param {{ dose?: string, unit?: string, frequency?: string, duration?: string, route?: string }} sig
  * @returns {string}
  */
-const buildInstructionsFromSig = (sig) => {
+const buildInstructionsFromSig = (sig, dosageLabel) => {
   if (!sig) return '';
   const freqMap = {
     SID: 'once daily',
@@ -151,7 +151,22 @@ const buildInstructionsFromSig = (sig) => {
   const duration = sig.duration || '1';
   const route = sig.route || '';
   const routeStr = route ? ` (${route})` : '';
-  return `${dose} ${unit} ${freq} for ${duration} day${duration !== '1' ? 's' : ''}${routeStr}`;
+  // T4.202: Inject dosage/strength into instructions when available
+  const strengthStr = dosageLabel ? ` (${dosageLabel})` : '';
+  return `${dose} ${unit}${strengthStr} ${freq} for ${duration} day${duration !== '1' ? 's' : ''}${routeStr}`;
+};
+
+/**
+ * T4.201: Clinical frequency multipliers for inventory quantity auto-calculation.
+ * Mapping of Signa abbreviations to their numeric daily frequency equivalent.
+ */
+const SIG_MULTIPLIERS = {
+  SID: 1,
+  BID: 2,
+  TID: 3,
+  QID: 4,
+  EOD: 0.5,
+  PRN: 1, // Default to 1 for stock reservation purposes
 };
 
 // ---------------------------------------------------------------------------
@@ -973,6 +988,11 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                     productClass: linkedInv.productClass || (linkedInv.isMedicine ? 'medicine' : 'retail'),
                     isBase: false, isAutoBundled: true, instructions: '',
                     category: (linkedInv.category || '').toLowerCase(), // T4.117: enables category-based detection
+                    // T4.202: Carry structured dosage through auto-bundle pipeline
+                    dosageValue: linkedInv.dosageValue ?? null,
+                    dosageUnit: linkedInv.dosageUnit ?? null,
+                    dosageUnitCustom: linkedInv.dosageUnitCustom ?? null,
+                    dosage: linkedInv.dosage || '',
                     sourceServiceId: svc.id,       // T4.201: link to parent service for grouping
                     sourceServiceName: svc.name,   // T4.201: human-readable label for group headers
                 });
@@ -1534,6 +1554,11 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       isDispensed: false, // Default to Clinic Admin
       // T4.117: Carry inventory category so category-based vaccine detection works
       category: itemCategory,
+      // T4.202: Carry structured dosage fields through the cart pipeline
+      dosageValue: item.dosageValue ?? null,
+      dosageUnit: item.dosageUnit ?? null,
+      dosageUnitCustom: item.dosageUnitCustom ?? null,
+      dosage: item.dosage || '',
       // T4.117: Flag zero-stock vaccine adds — stock deduction is skipped for these,
       // and the flag is persisted to the medical record for audit purposes.
       noStockDeduction: itemCategory === 'vaccine' && netAvailableForItem <= 0,
@@ -1544,11 +1569,14 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       sourceServiceName: null,
     };
 
+    // T4.202: Compute dosage label for injection into instructions
+    const dosageLabel = item.dosage || '';
+
     // Step 4 (T3.110): Auto-populate instructions for drug items from sig defaults.
-    // Gives the vet a readable starting point (e.g. "1 unit once daily for 1 day (SQ)")
+    // Gives the vet a readable starting point (e.g. "1 unit (50mg) once daily for 1 day (SQ)")
     // that they can overwrite before signing off.
     if (resolvedPC === 'medicine') {
-      itemObj.instructions = buildInstructionsFromSig(itemObj.sig);
+      itemObj.instructions = buildInstructionsFromSig(itemObj.sig, dosageLabel);
     }
 
     setTreatmentCart(prev => [...prev, itemObj]);
@@ -1711,12 +1739,51 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
    * Updates a single sig field on a medicine cart item and auto-regenerates
    * the instructions string so both remain in sync.
    */
-  const handleUpdateSigField = (index, field, value) => {
+  const handleUpdateSigField = async (index, field, value) => {
     const newCart = [...treatmentCart];
     const item = newCart[index];
+    const oldQty = item.qty || 1;
+
     const newSig = { ...(item.sig || {}), [field]: value };
     item.sig = newSig;
-    item.instructions = buildInstructionsFromSig(newSig);
+    // T4.202: Pass dosage label into instructions builder so strength appears on labels
+    const dosageLabel = item.dosage || '';
+    item.instructions = buildInstructionsFromSig(newSig, dosageLabel);
+
+    // T4.201: Auto-calculate quantity for medicine items (Dose * Multiplier * Duration)
+    const dose = parseFloat(newSig.dose) || 0;
+    const duration = parseInt(newSig.duration) || 0;
+    const multiplier = SIG_MULTIPLIERS[newSig.frequency] || 1;
+    
+    // Ensure quantity is at least 1 for valid prescriptions, or 0 if missing data
+    const rawCalculated = dose * multiplier * duration;
+    const calculatedQty = rawCalculated > 0 ? Math.ceil(rawCalculated) : 1;
+
+    if (calculatedQty !== oldQty) {
+      item.qty = calculatedQty;
+
+      // Sync Inventory Reservation logic
+      if (item.type === 'product' && !item.noStockDeduction) {
+        try {
+          if (calculatedQty > oldQty) {
+            const diff = calculatedQty - oldQty;
+            const invItem = inventoryList.find(i => i.id === item.id);
+            const netAvailable = invItem ? (invItem.stock - invItem.reserved) : 0;
+            
+            if (netAvailable < diff) {
+              showToast(`Stock warning: ${item.name} requires ${calculatedQty} units, but only ${netAvailable + oldQty} are available.`, "warning");
+            }
+            if (reserveStock) await reserveStock(item.id, diff);
+          } else {
+            const diff = oldQty - calculatedQty;
+            if (releaseStock) await releaseStock(item.id, diff);
+          }
+        } catch (e) {
+          console.error(`[ClinicalWorkspace] Dosage-Quantity sync failed:`, e);
+        }
+      }
+    }
+
     setTreatmentCart(newCart);
     setIsDirty(true);
   };
@@ -4878,13 +4945,27 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                                     )}
                                   </Box>
                                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#F5F5F5', borderRadius: 0, px: 0.5 }}>
-                                      <IconButton size="small" onClick={() => handleUpdateQty(cartIdx, -1)} sx={{ p: 0.5 }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#F5F5F5', borderRadius: 0, px: 0.5, position: 'relative' }}>
+                                      {/* T4.201: Quantity is derived from sig for medications */}
+                                      <IconButton 
+                                        size="small" 
+                                        onClick={() => (rx.productClass || (rx.isDrug ? 'medicine' : 'retail')) === 'medicine' ? showToast("Quantity is derived from dosage instructions.", "info") : handleUpdateQty(cartIdx, -1)} 
+                                        sx={{ p: 0.5, opacity: (rx.productClass || (rx.isDrug ? 'medicine' : 'retail')) === 'medicine' ? 0.4 : 1 }}
+                                      >
                                         <ContentCutIcon sx={{ fontSize: 14, rotate: '90deg' }} />
                                       </IconButton>
-                                      <Typography sx={{ fontWeight: 1000, fontSize: '0.85rem' }}>{rx.qty}</Typography>
-                                      <IconButton size="small" onClick={() => handleUpdateQty(cartIdx, 1)} sx={{ p: 0.5 }}>
-                                        <AddCircleIcon sx={{ fontSize: 14, color: COLORS.brand }} />
+                                      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                        <Typography sx={{ fontWeight: 1000, fontSize: '0.85rem' }}>{rx.qty}</Typography>
+                                        {(rx.productClass || (rx.isDrug ? 'medicine' : 'retail')) === 'medicine' && (
+                                          <Typography sx={{ fontSize: '0.45rem', fontWeight: 900, color: COLORS.accent, mt: -0.5, letterSpacing: 0.2 }}>DERIVED</Typography>
+                                        )}
+                                      </Box>
+                                      <IconButton 
+                                        size="small" 
+                                        onClick={() => (rx.productClass || (rx.isDrug ? 'medicine' : 'retail')) === 'medicine' ? showToast("Quantity is derived from dosage instructions.", "info") : handleUpdateQty(cartIdx, 1)} 
+                                        sx={{ p: 0.5, opacity: (rx.productClass || (rx.isDrug ? 'medicine' : 'retail')) === 'medicine' ? 0.4 : 1 }}
+                                      >
+                                        <AddCircleIcon sx={{ fontSize: 14, color: (rx.productClass || (rx.isDrug ? 'medicine' : 'retail')) === 'medicine' ? COLORS.textMuted : COLORS.brand }} />
                                       </IconButton>
                                     </Box>
                                     <Typography sx={{ fontWeight: 1000, fontSize: '0.9rem', color: COLORS.brand }}>₱{(rx.price * rx.qty).toLocaleString()}</Typography>

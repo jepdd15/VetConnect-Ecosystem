@@ -12,6 +12,7 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import HistoryIcon from '@mui/icons-material/History';
 import UnarchiveIcon from '@mui/icons-material/Unarchive';
 import { FONT, COLORS } from '../../../theme/designTokens';
+import { formatDosage } from '../../../constants/dosageUnits';
 
 export default function InventoryTable({ data, loading, onEdit, onAdjust, onDelete, onLog, showArchived, onRestore }) {
   
@@ -168,7 +169,7 @@ const getExpiryStatus = (expiryDate) => {
                 <TableCell sx={{ pl: 3 }}>
                    <Typography variant="body2" fontWeight="bold" color={COLORS.brand}>
                      {row.itemName} 
-                     {row.dosage && <Typography component="span" variant="caption" color="textSecondary" sx={{ ml: 0.5, fontWeight: 'bold' }}>({row.dosage})</Typography>}
+                     {(formatDosage(row.dosageValue, row.dosageUnit, row.dosageUnitCustom) || row.dosage) && <Typography component="span" variant="caption" color="textSecondary" sx={{ ml: 0.5, fontWeight: 'bold' }}>({formatDosage(row.dosageValue, row.dosageUnit, row.dosageUnitCustom) || row.dosage})</Typography>}
                    </Typography>
                    {row.sku && <Typography variant="caption" color="#9E9E9E" sx={{ display: 'block', fontSize: '0.65rem' }}>SKU: {row.sku}</Typography>}  {/* keep #9E9E9E — neutral disabled text */}
                    {/* Expiry Badge */}

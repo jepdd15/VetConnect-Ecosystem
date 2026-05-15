@@ -102,6 +102,7 @@ import SendNotificationDialog from '../../components/SendNotificationDialog';
 import PetHistoryAIDrawer from './components/PetHistoryAIDrawer';
 import { resolveDepartmentForRecord } from '../../utils/resolveDepartmentForRecord';
 import { computeSingleOwnerBalanceReminder } from '../../utils/computeBalanceReminderQueue';
+import { formatDosage } from '../../constants/dosageUnits';
 
 // ── Species-normal vital reference ranges ────────────────────────
 // Sourced from standard veterinary references.
@@ -814,7 +815,9 @@ export default function PatientDashboard() {
         const shortDate = ms
           ? new Date(ms).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
           : '';
-        const existing = rxMap.get(rx.name);
+        const strength = formatDosage(rx.dosageValue, rx.dosageUnit, rx.dosageUnitCustom) || rx.dosage || '';
+        const rxDisplayName = rx.name + (strength ? ` (${strength})` : '');
+        const existing = rxMap.get(rxDisplayName);
         if (existing) {
           existing.count += 1;
           existing.lastDate = dateStr;
@@ -822,8 +825,8 @@ export default function PatientDashboard() {
           existing.lastShort = shortDate;
           // firstDate/firstShort stays as first occurrence
         } else {
-          rxMap.set(rx.name, {
-            name: rx.name,
+          rxMap.set(rxDisplayName, {
+            name: rxDisplayName,
             count: 1,
             lastDate: dateStr,
             firstDate: dateStr,
@@ -831,6 +834,7 @@ export default function PatientDashboard() {
             lastShort: shortDate,
             lastRawMs: ms,
             lastInstructions: rx.instructions || '',
+            lastDuration: parseInt(rx.sig?.duration || rx.duration) || 0,
           });
         }
       });
@@ -838,6 +842,7 @@ export default function PatientDashboard() {
 
     const all = Array.from(rxMap.values()).sort((a, b) => b.count - a.count);
     const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
+    const MS_PER_DAY = 24 * 60 * 60 * 1000;
     const now = Date.now();
     const pinned = pet?.pinnedMedications || [];
 
@@ -846,10 +851,15 @@ export default function PatientDashboard() {
     all.forEach(rx => {
       const isRecent = (now - rx.lastRawMs) <= NINETY_DAYS_MS;
       const isPinned = pinned.includes(rx.name);
+
+      // T4.205: Compute if the course duration has lapsed
+      const durationMs = (rx.lastDuration || 0) * MS_PER_DAY;
+      const hasLapsed = durationMs > 0 && (now - rx.lastRawMs) > durationMs;
+
       if (isRecent || isPinned) {
-        active.push({ ...rx, isPinned });
+        active.push({ ...rx, isPinned, hasLapsed });
       } else {
-        historical.push({ ...rx, isPinned: false });
+        historical.push({ ...rx, isPinned: false, hasLapsed });
       }
     });
 
@@ -2410,16 +2420,19 @@ export default function PatientDashboard() {
                                       {g.label}
                                     </Typography>
                                     <Stack spacing={1}>
-                                      {g.items.map((it, ii) => (
-                                        <Box key={ii} sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
-                                          <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', fontWeight: 800, color: COLORS.textPrimary, minWidth: 200 }}>
-                                            • {it.name.toUpperCase()} {it.qty ? `[x${it.qty}]` : ''}
-                                          </Typography>
-                                          <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', color: COLORS.textSecondary, flex: 1 }}>
-                                            {it.instructions || '—'}
-                                          </Typography>
-                                        </Box>
-                                      ))}
+                                      {g.items.map((it, ii) => {
+                                        const strength = formatDosage(it.dosageValue, it.dosageUnit, it.dosageUnitCustom) || it.dosage || '';
+                                        return (
+                                          <Box key={ii} sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+                                            <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', fontWeight: 800, color: COLORS.textPrimary, minWidth: 200 }}>
+                                              • {it.name.toUpperCase()} {strength ? `(${strength})` : ''} {it.qty ? `[x${it.qty}]` : ''}
+                                            </Typography>
+                                            <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', color: COLORS.textSecondary, flex: 1 }}>
+                                              {it.instructions || '—'}
+                                            </Typography>
+                                          </Box>
+                                        );
+                                      })}
                                     </Stack>
                                   </Box>
                                 ))}
@@ -2455,11 +2468,13 @@ export default function PatientDashboard() {
                                     MEDICATIONS
                                   </Typography>
                                   <Stack spacing={1.5}>
-                                    {medItems.map((it, ii) => (
-                                      <Box key={ii}>
-                                        <Typography sx={{ fontFamily: FONT, fontSize: '0.9rem', fontWeight: 900, color: COLORS.textPrimary }}>
-                                          • {it.name.toUpperCase()} {it.qty ? `x${it.qty}` : ''}
-                                        </Typography>
+                                      {medItems.map((it, ii) => {
+                                        const strength = formatDosage(it.dosageValue, it.dosageUnit, it.dosageUnitCustom) || it.dosage || '';
+                                        return (
+                                          <Box key={ii}>
+                                            <Typography sx={{ fontFamily: FONT, fontSize: '0.9rem', fontWeight: 900, color: COLORS.textPrimary }}>
+                                              • {it.name.toUpperCase()} {strength ? `(${strength})` : ''} {it.qty ? `x${it.qty}` : ''}
+                                            </Typography>
 
                                         {/* T4.117: Structured Sig Order Tags (Smart Parity) */}
                                         {it.sig && (it.sig.dose || it.sig.frequency || it.sig.route) && (
@@ -2492,7 +2507,8 @@ export default function PatientDashboard() {
                                           </Box>
                                         )}
                                       </Box>
-                                    ))}
+                                        );
+                                      })}
                                   </Stack>
                                 </Box>
                               );
@@ -3124,6 +3140,18 @@ export default function PatientDashboard() {
                         )}
                       </Box>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0, ml: 1 }}>
+                        {rx.hasLapsed && !rx.isPinned && (
+                          <Chip
+                            label="PAST DURATION"
+                            size="small"
+                            sx={{
+                              fontFamily: FONT, fontSize: '0.62rem', fontWeight: 900,
+                              height: 18, bgcolor: `${COLORS.danger}11`, color: COLORS.danger,
+                              border: `1px solid ${COLORS.danger}33`,
+                              borderRadius: 0,
+                            }}
+                          />
+                        )}
                         <Chip
                           label={`${rx.count}x`}
                           size="small"

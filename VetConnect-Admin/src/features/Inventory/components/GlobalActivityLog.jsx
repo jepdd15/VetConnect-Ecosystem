@@ -210,12 +210,52 @@ export default function GlobalActivityLog() {
             size="small"
             value={filterAction}
             onChange={e => setFilterAction(e.target.value)}
-            sx={{ minWidth: 130, '& .MuiOutlinedInput-root': { borderRadius: 0, fontSize: '0.75rem', fontWeight: 'bold' } }}
+            sx={{ 
+              minWidth: 150, 
+              '& .MuiOutlinedInput-root': { borderRadius: 0, fontSize: '0.75rem', fontWeight: 'bold' },
+              '& .MuiSelect-select': { py: '6px !important', display: 'flex', alignItems: 'center' }
+            }}
+            SelectProps={{
+              renderValue: (selected) => {
+                if (selected === 'ALL') return 'ALL ACTIONS';
+                const cfg = ACTION_CONFIG[selected];
+                if (!cfg) return selected;
+                const ActionIcon = cfg.Icon;
+                return (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <ActionIcon sx={{ fontSize: 14, color: cfg.color }} />
+                    <Typography sx={{ fontSize: '0.65rem', fontWeight: 900, color: cfg.color, letterSpacing: 0.5 }}>
+                      {cfg.label.toUpperCase()}
+                    </Typography>
+                  </Box>
+                );
+              }
+            }}
           >
-            <MenuItem value="ALL">All Actions</MenuItem>
-            {ACTION_TYPES.map(a => (
-              <MenuItem key={a} value={a}>{ACTION_CONFIG[a].label}</MenuItem>
-            ))}
+            <MenuItem value="ALL" sx={{ fontWeight: 900, fontSize: '0.75rem' }}>ALL ACTIONS</MenuItem>
+            {ACTION_TYPES.map(a => {
+              const cfg = ACTION_CONFIG[a];
+              const ActionIcon = cfg.Icon;
+              return (
+                <MenuItem key={a} value={a} sx={{ py: 1 }}>
+                  <Chip
+                    icon={<ActionIcon sx={{ fontSize: '12px !important', color: `${cfg.color} !important` }} />}
+                    label={cfg.label}
+                    size="small"
+                    sx={{
+                      bgcolor: cfg.bg,
+                      color: cfg.color,
+                      fontWeight: '900',
+                      fontSize: '0.65rem',
+                      letterSpacing: 0.5,
+                      borderRadius: 0,
+                      cursor: 'pointer',
+                      '& .MuiChip-icon': { ml: '4px' },
+                    }}
+                  />
+                </MenuItem>
+              );
+            })}
           </TextField>
 
           {/* T3.26: Secondary filter — only visible when action = ADJUSTED */}

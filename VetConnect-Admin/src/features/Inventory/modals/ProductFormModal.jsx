@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Button, MenuItem, Box, InputAdornment, Divider, Typography, Grid, Paper,
-  Chip, Stack, ToggleButton, ToggleButtonGroup
+  Chip, Stack, ToggleButton, ToggleButtonGroup, ListSubheader
 } from '@mui/material';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import InsightsIcon from '@mui/icons-material/Insights';
@@ -13,6 +13,7 @@ import { db } from '../../../firebaseConfig';
 import MedicationIcon from '@mui/icons-material/Medication';
 import { formatCategory } from '../Inventory';
 import { FONT, COLORS } from '../../../theme/designTokens';
+import { DOSAGE_UNITS, formatDosage, parseLegacyDosage } from '../../../constants/dosageUnits';
 
 const PRODUCT_CLASS_OPTIONS = [
   {
@@ -38,6 +39,14 @@ const PRODUCT_CLASS_OPTIONS = [
 export default function ProductFormModal({ open, onClose, item, onSave, categories, showToast }) {
   const isEditing = Boolean(item);
 
+  // T4.202: Hydrate structured dosage fields, falling back to legacy parser
+  const hydratedDosage = useMemo(() => {
+    if (item?.dosageValue != null && item?.dosageUnit) {
+      return { value: item.dosageValue, unit: item.dosageUnit };
+    }
+    return parseLegacyDosage(item?.dosage);
+  }, [item?.dosageValue, item?.dosageUnit, item?.dosage]);
+
   const [formData, setFormData] = useState({
     itemName:     item?.itemName     || '',
     category:     item?.category     || '',
@@ -45,7 +54,9 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
     costPrice:    item?.costPrice?.toString() || '',
     minStock:     item?.minStock?.toString()  || '10',
     sku:          item?.sku      || '',
-    dosage:       item?.dosage   || '',
+    dosageValue:  hydratedDosage.value?.toString() || '',
+    dosageUnit:   hydratedDosage.unit || '',
+    dosageUnitCustom: item?.dosageUnitCustom || '',
     unit:         item?.unit     || '',
     location:     item?.location || '',
     supplier:     item?.supplier || '',
@@ -119,6 +130,12 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
     }
     setErrors({});
 
+    // T4.202: Build structured dosage fields + backward-compat string
+    const dosageVal = formData.dosageValue ? Number(formData.dosageValue) : null;
+    const dosageUnitVal = formData.dosageUnit || null;
+    const dosageCustom = formData.dosageUnit === 'other' ? formData.dosageUnitCustom.trim() : null;
+    const dosageString = formatDosage(dosageVal, dosageUnitVal, dosageCustom);
+
     onSave({
       itemName:     formData.itemName.trim(),
       category:     formData.category.toLowerCase().trim(),
@@ -126,7 +143,11 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
       costPrice:    Number(formData.costPrice) || 0,
       minStock:     Number(formData.minStock)  || 0,
       sku:          formData.sku.trim(),
-      dosage:       formData.dosage.trim(),
+      // T4.202: Structured dosage fields
+      dosageValue:      dosageVal,
+      dosageUnit:       dosageUnitVal,
+      dosageUnitCustom: dosageCustom,
+      dosage:           dosageString,   // backward-compat computed string
       unit:         formData.unit.trim(),
       location:     formData.location.trim(),
       supplier:     formData.supplier.trim(),
@@ -250,10 +271,6 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
                       return (
                         <MenuItem key={cat.name} value={cat.name} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           {formatCategory(cat.name)}
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, ml: 1 }}>
-                            <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: dotColor }} />
-                            {cat.name === 'vaccine' && <VaccinesIcon sx={{ fontSize: 16, color: COLORS.success, ml: 0.5 }} />}
-                          </Box>
                         </MenuItem>
                       );
                     })}
@@ -276,10 +293,44 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
                 </Grid>
                 {resolvedProductClass === 'medicine' && (
                   <Grid size={{ xs: 12, sm: 4 }}>
-                    <TextField
-                      label="Dosage / Strength" placeholder="e.g. 50mg, 10ml" fullWidth
-                      value={formData.dosage} onChange={set('dosage')} sx={sxField}
-                    />
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      <TextField
+                        label="Dosage Value" placeholder="e.g. 50" fullWidth
+                        type="number"
+                        value={formData.dosageValue}
+                        onChange={(e) => setFormData(prev => ({ ...prev, dosageValue: e.target.value }))}
+                        sx={{ ...sxField, flex: 1 }}
+                        inputProps={{ min: 0, step: 'any' }}
+                      />
+                      <TextField
+                        select label="Unit" fullWidth
+                        value={formData.dosageUnit}
+                        onChange={(e) => setFormData(prev => ({ ...prev, dosageUnit: e.target.value }))}
+                        sx={{ ...sxField, flex: 1 }}
+                      >
+                        <MenuItem value="" disabled><em>Select unit</em></MenuItem>
+                        {(() => {
+                          const items = [];
+                          let lastCat = '';
+                          DOSAGE_UNITS.forEach(u => {
+                            if (u.category !== lastCat) {
+                              items.push(<ListSubheader key={`hdr-${u.category}`} sx={{ fontWeight: 900, fontSize: '0.65rem', color: COLORS.accent, textTransform: 'uppercase', letterSpacing: 0.5 }}>{u.category}</ListSubheader>);
+                              lastCat = u.category;
+                            }
+                            items.push(<MenuItem key={u.value} value={u.value}>{u.label}</MenuItem>);
+                          });
+                          return items;
+                        })()}
+                      </TextField>
+                    </Box>
+                    {formData.dosageUnit === 'other' && (
+                      <TextField
+                        label="Custom Unit" placeholder="e.g. mg/cm²" fullWidth
+                        value={formData.dosageUnitCustom}
+                        onChange={(e) => setFormData(prev => ({ ...prev, dosageUnitCustom: e.target.value }))}
+                        sx={{ ...sxField, mt: 1 }}
+                      />
+                    )}
                   </Grid>
                 )}
 
@@ -298,7 +349,6 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
                     {PRODUCT_CLASS_OPTIONS.map(opt => (
                       <MenuItem key={opt.value} value={opt.value}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: opt.color }} />
                           {opt.label}
                         </Box>
                       </MenuItem>
@@ -327,7 +377,6 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
                       value={formData.lotNumber}
                       onChange={set('lotNumber')}
                       sx={sxField}
-                      helperText="Found on the product's packaging or CoA."
                     />
                   </Grid>
                   <Grid size={{ xs: 12, sm: 6 }}>
@@ -339,7 +388,6 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
                       onChange={set('expiryDate')}
                       InputLabelProps={{ shrink: true }}
                       sx={sxField}
-                      helperText="Required for medications and biologicals."
                     />
                   </Grid>
                 </Grid>

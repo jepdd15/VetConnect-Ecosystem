@@ -9,6 +9,8 @@
  * interpolated into HTML. Never skip esc() for any Firestore-sourced field.
  */
 
+import { formatDosage } from '../constants/dosageUnits';
+
 /** Escapes HTML special characters to prevent XSS injection in print templates. */
 const esc = (s) =>
   String(s ?? '')
@@ -61,7 +63,7 @@ function buildLabelsHTML(items, patient, clinicSettings) {
     .filter(item => item.type !== 'service' && !item.isBase) // Physical products only
     .map(item => {
       const medName = esc(item.name);
-      const dosage = esc(item.dosage || item.sig?.dose || '');
+      const dosage = esc(formatDosage(item.dosageValue, item.dosageUnit, item.dosageUnitCustom) || item.dosage || item.sig?.dose || '');
       const sig = esc(item.instructions || '');
       const qty = esc(String(item.qty ?? 1));
       const batch = esc(item.batchNumber || item.lotNumber || '');

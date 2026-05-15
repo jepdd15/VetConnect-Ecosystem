@@ -33,6 +33,15 @@ import { db } from '../../firebaseConfig';
 import { COLORS } from '../theme/mobileTokens';
 import { formatDisplayDate } from '../utils/helpers';
 
+// T4.202: Inline dosage formatter (mirrors Admin dosageUnits.js to avoid cross-package import)
+const formatDosageMobile = (value, unit, customUnit) => {
+  if (value == null || value === '' || unit == null || unit === '') return '';
+  const resolvedUnit = unit === 'other' ? (customUnit || '') : unit;
+  if (!resolvedUnit) return String(value);
+  const needsSpace = resolvedUnit.length > 2 || resolvedUnit === 'IU';
+  return `${value}${needsSpace ? ' ' : ''}${resolvedUnit}`;
+};
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 /**
@@ -228,12 +237,11 @@ const EncounterSummary = ({
                   const lineTotal = (item.price ?? 0) * (item.qty ?? 1);
                   const instructions = resolveInstructions(item);
                   const pc = item.productClass || (item.isDrug ? 'medicine' : 'retail');
-                  const emoji = pc === 'medicine' ? '💊' : pc === 'medical_supply' ? '🩹' : '📦';
                   return (
                     <View key={`prod-${idx}`}>
                       <View style={styles.itemRow}>
                         <Text style={styles.itemName} numberOfLines={2}>
-                          {emoji} {item.name}
+                          {item.name}
                           {item.qty > 1 ? ` ×${item.qty}` : ''}
                         </Text>
                         <Text style={styles.itemPrice}>₱{lineTotal.toLocaleString()}</Text>
@@ -273,12 +281,11 @@ const EncounterSummary = ({
                 const lineTotal = (item.price ?? 0) * (item.qty ?? 1);
                 const instructions = resolveInstructions(item);
                 const pc = item.productClass || (item.isDrug ? 'medicine' : 'retail');
-                const emoji = pc === 'medicine' ? '💊' : pc === 'medical_supply' ? '🩹' : '📦';
                 return (
                   <View key={`gp-${idx}`}>
                     <View style={[styles.itemRow, styles.indentedItem]}>
                       <Text style={styles.itemName} numberOfLines={2}>
-                        {emoji} {item.name}{item.qty > 1 ? ` ×${item.qty}` : ''}
+                        {item.name}{item.qty > 1 ? ` ×${item.qty}` : ''}
                       </Text>
                       <Text style={styles.itemPrice}>₱{lineTotal.toLocaleString()}</Text>
                     </View>
@@ -314,12 +321,11 @@ const EncounterSummary = ({
               const lineTotal = (item.price ?? 0) * (item.qty ?? 1);
               const instructions = resolveInstructions(item);
               const pc = item.productClass || (item.isDrug ? 'medicine' : 'retail');
-              const emoji = pc === 'medicine' ? '💊' : pc === 'medical_supply' ? '🩹' : '📦';
               return (
                 <View key={`other-${idx}`}>
                   <View style={[styles.itemRow, styles.indentedItem]}>
                     <Text style={styles.itemName} numberOfLines={2}>
-                      {emoji} {item.name}{item.qty > 1 ? ` ×${item.qty}` : ''}
+                      {item.name}{item.qty > 1 ? ` ×${item.qty}` : ''}
                     </Text>
                     <Text style={styles.itemPrice}>₱{lineTotal.toLocaleString()}</Text>
                   </View>
@@ -361,9 +367,10 @@ const EncounterSummary = ({
 
           {drugs.map((drug, idx) => {
             const instructions = resolveInstructions(drug);
+            const strength = formatDosageMobile(drug.dosageValue, drug.dosageUnit, drug.dosageUnitCustom) || drug.dosage || '';
             return (
               <View key={`drug-${idx}`} style={styles.drugItem}>
-                <Text style={styles.itemName}>💊 {drug.name}</Text>
+                <Text style={styles.itemName}>{drug.name}{strength ? ` (${strength})` : ''}</Text>
                 {instructions ? (
                   <Text style={styles.sigLine}>{instructions}</Text>
                 ) : null}

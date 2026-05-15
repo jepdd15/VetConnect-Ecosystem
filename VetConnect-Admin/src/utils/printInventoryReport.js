@@ -63,6 +63,7 @@ export function generateInventoryReportHTML(items, clinicSettings = {}, filterSu
         ${esc(item.itemName || '—')}
         ${item.sku ? `<br><small style="color:#999;font-size:10px">${esc(item.sku)}</small>` : ''}
       </td>
+      <td>${esc(item.dosage || '')}</td>
       <td>${esc(formatCategory(item.category))}</td>
       <td style="text-align:center;${statusStyle}">${stock}</td>
       <td style="text-align:center">${min}</td>
@@ -113,9 +114,9 @@ export function generateInventoryReportHTML(items, clinicSettings = {}, filterSu
   </div>
   <div class="doc-title">INVENTORY REPORT</div>
   <p style="text-align:center;font-size:11px;color:#A1887F;">Generated: ${generated}</p>
-
+ 
   ${filterSummary ? `<p class="filter-note">Filters: ${esc(filterSummary)}</p>` : ''}
-
+ 
   <div class="summary-bar">
     <div>
       <span class="kpi-label">Total Items</span>
@@ -134,12 +135,13 @@ export function generateInventoryReportHTML(items, clinicSettings = {}, filterSu
       <span class="kpi-val" style="color:#D32F2F">${outOfStock}</span>
     </div>
   </div>
-
+ 
   <table>
     <thead>
       <tr>
-        <th>Product</th>
-        <th>Category</th>
+        <th style="text-align:left">Product</th>
+        <th style="text-align:left">Dosage</th>
+        <th style="text-align:left">Category</th>
         <th style="text-align:center">Stock</th>
         <th style="text-align:center">Min</th>
         <th style="text-align:right">Cost</th>

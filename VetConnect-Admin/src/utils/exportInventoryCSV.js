@@ -32,6 +32,7 @@ function escCSV(val) {
 export function exportInventoryCSV(items, filename = 'inventory_export.csv') {
   const headers = [
     'Product Name',
+    'Dosage',
     'SKU',
     'Category',
     'Stock',
@@ -62,6 +63,7 @@ export function exportInventoryCSV(items, filename = 'inventory_export.csv') {
 
     return [
       item.itemName,
+      item.dosage || '',
       item.sku || '',
       formatCategory(item.category),
       stock,

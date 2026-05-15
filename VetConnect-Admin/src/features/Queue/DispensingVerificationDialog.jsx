@@ -5,6 +5,7 @@ import {
   Alert, Chip, Stack, Paper,
   FormControl, InputLabel, Select, MenuItem, TextField,
 } from '@mui/material';
+import { formatDosage } from '../../constants/dosageUnits';
 import WarningIcon from '@mui/icons-material/Warning';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import LocalPharmacyIcon from '@mui/icons-material/LocalPharmacy';
@@ -407,11 +408,11 @@ export default function DispensingVerificationDialog({
                       )}
                     </Box>
 
-                    {item.dosage && (
+                    {(formatDosage(item.dosageValue, item.dosageUnit, item.dosageUnitCustom) || item.dosage) && (
                       <Typography variant="caption" color="textSecondary"
                         fontWeight="800" display="block" sx={{ mt: 0.25 }}
                       >
-                        {item.dosage}{item.concentration ? ` / ${item.concentration}` : ''}
+                        {formatDosage(item.dosageValue, item.dosageUnit, item.dosageUnitCustom) || item.dosage}{item.concentration ? ` / ${item.concentration}` : ''}
                       </Typography>
                     )}
                     {item.instructions && (

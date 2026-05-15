@@ -57,6 +57,15 @@ import { generateVisitPDF } from '../utils/generateVisitPDF';
 import { getNormalRange } from '../utils/speciesVitalRanges';
 import { fetchVaccineCatalog, buildVaccinationStatus } from '../utils/vaccineHelpers';
 
+// T4.202: Inline dosage formatter (mirrors Admin dosageUnits.js to avoid cross-package import)
+const formatDosageMobile = (value, unit, customUnit) => {
+  if (value == null || value === '' || unit == null || unit === '') return '';
+  const resolvedUnit = unit === 'other' ? (customUnit || '') : unit;
+  if (!resolvedUnit) return String(value);
+  const needsSpace = resolvedUnit.length > 2 || resolvedUnit === 'IU';
+  return `${value}${needsSpace ? ' ' : ''}${resolvedUnit}`;
+};
+
 // ---------------------------------------------------------------------------
 // Enable LayoutAnimation on Android (required for Hermes/React Native)
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -1037,7 +1046,9 @@ export default function PetHistoryScreen({ route, navigation }) {
         const shortDate = ms
           ? new Date(ms).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
           : '';
-        const existing = rxMap.get(rx.name);
+        const strength = formatDosageMobile(rx.dosageValue, rx.dosageUnit, rx.dosageUnitCustom) || rx.dosage || '';
+        const rxDisplayName = rx.name + (strength ? ` (${strength})` : '');
+        const existing = rxMap.get(rxDisplayName);
         if (existing) {
           existing.count += 1;
           existing.lastDate = dateStr;
@@ -1045,8 +1056,8 @@ export default function PetHistoryScreen({ route, navigation }) {
           existing.lastShort = shortDate;
           existing.lastInstructions = rx.instructions || existing.lastInstructions;
         } else {
-          rxMap.set(rx.name, {
-            name: rx.name,
+          rxMap.set(rxDisplayName, {
+            name: rxDisplayName,
             count: 1,
             lastDate: dateStr,
             firstDate: dateStr,
@@ -1931,9 +1942,14 @@ export default function PetHistoryScreen({ route, navigation }) {
                   <Text style={styles.rxTitle}>MEDICATIONS</Text>
                   {meds.map((rx, idx) => (
                     <View key={idx} style={styles.rxItem}>
-                      <Text style={styles.rxName}>
-                        {rx.name}{rx.qty ? ` x${rx.qty}` : ''}
-                      </Text>
+                      {(() => {
+                        const strength = formatDosageMobile(rx.dosageValue, rx.dosageUnit, rx.dosageUnitCustom) || rx.dosage || '';
+                        return (
+                          <Text style={styles.rxName}>
+                            {rx.name}{strength ? ` (${strength})` : ''}{rx.qty ? ` x${rx.qty}` : ''}
+                          </Text>
+                        );
+                      })()}
                       <Text style={styles.rxSig}>
                         {rx.instructions || rx.sig || "—"}
                       </Text>

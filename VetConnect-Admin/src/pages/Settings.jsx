@@ -5,6 +5,7 @@ import {
   Divider, Stack, Chip, ListItemText, ToggleButton, ToggleButtonGroup,
   Dialog, DialogTitle, DialogContent, DialogActions, IconButton,
   LinearProgress, CircularProgress, Tooltip, Tabs, Tab, Slider,
+  TableContainer, Table, TableHead, TableBody, TableRow, TableCell,
 } from '@mui/material';
 import Grid from '@mui/material/Grid'; // MUI v6 Standard
 
@@ -16,6 +17,8 @@ import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import SaveIcon from '@mui/icons-material/Save';
 import DomainIcon from '@mui/icons-material/Domain';
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import CircleIcon from '@mui/icons-material/Circle';
 import BlockIcon from '@mui/icons-material/Block';
@@ -23,6 +26,7 @@ import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import FlagIcon from '@mui/icons-material/Flag';
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
 import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
 import CloseIcon from '@mui/icons-material/Close';
 import QRCode from 'react-qr-code';
 import GavelIcon from '@mui/icons-material/Gavel';
@@ -115,7 +119,8 @@ export default function Settings() {
   const [newDepartmentName, setNewDepartmentName] = useState('');
   const [newDepartmentColor, setNewDepartmentColor] = useState('#1565C0'); // Valid default
   const [deptSearch, setDeptSearch] = useState('');
-  const[deptSort, setDeptSort] = useState('asc'); // THE FIX: Sort state for Departments
+  const [deptSort, setDeptSort] = useState({ key: 'name', dir: 'asc' });
+  const [isAddDeptModalOpen, setIsAddDeptModalOpen] = useState(false);
 
   // --- CLOSED DATES STATE ---
   const [newClosedDate, setNewClosedDate] = useState('');
@@ -477,6 +482,15 @@ export default function Settings() {
     finally { setLoading(false); }
   };
 
+  const handleDeptSort = (key) => {
+    setDeptSort(prev => {
+        if (prev.key === key) {
+            return { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
+        }
+        return { key, dir: 'asc' };
+    });
+  };
+
   // --- DEPARTMENT CRUD ---
   const handleAddDepartment = async () => {
     if (!newDepartmentName.trim()) return setToast({ open: true, message: 'Department name is required.', severity: 'warning' });
@@ -487,6 +501,7 @@ export default function Settings() {
         await logSettingsEvent('CREATE', 'department', newDepartmentName.trim(), { color: newDepartmentColor });
         await refreshUsageCounts();
         setNewDepartmentName('');
+        setIsAddDeptModalOpen(false);
         setToast({ open: true, message: 'Department Added.', severity: 'success' });
     } catch (e) { setToast({ open: true, message: e.message, severity: 'error' }); }
   };
@@ -1318,7 +1333,7 @@ export default function Settings() {
             <EventBusyIcon /> Booking Rules
           </Typography>
           <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mt: 0.5 }}>
-            Protects the clinic from schedule hoarding and last-minute bookings.
+            Protects the clinic from last-minute bookings.
           </Typography>
         </Box>
         <Box sx={{ p: 3, bgcolor: COLORS.cardBg }}>
@@ -1428,25 +1443,54 @@ export default function Settings() {
       <Grid container spacing={4}>
         <Grid size={{ xs: 12 }}>
           <Paper elevation={0} sx={{ ...clinicalFlatStyle, overflow: 'hidden' }}>
-            <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}` }}>
-              <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
-                <DomainIcon /> Clinic Departments / Categories
-              </Typography>
-              <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mt: 0.5 }}>
-                These departments drive the Skill-Based Routing Engine and the color-coding system across the app.
-              </Typography>
+            <Box sx={{ bgcolor: COLORS.cream, px: 3, py: 2, borderBottom: `2px solid ${COLORS.accent}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Box>
+                <Typography variant="subtitle1" sx={{ color: COLORS.accent, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
+                  <DomainIcon /> Clinic Departments / Categories
+                </Typography>
+              </Box>
+              <Button
+                variant="contained"
+                onClick={() => setIsAddDeptModalOpen(true)}
+                startIcon={<AddCircleOutlineIcon />}
+                sx={{
+                  bgcolor: COLORS.accent, fontWeight: 900, px: 3, py: 1, borderRadius: 0,
+                  border: `2px solid ${COLORS.brand}`,
+                  boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
+                  '&:hover': { bgcolor: COLORS.brand }
+                }}
+              >
+                Add Department
+              </Button>
             </Box>
-            <Box sx={{ p: 3, bgcolor: COLORS.cardBg }}>
 
-              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 3, alignItems: { xs: 'stretch', md: 'center' } }}>
+            {/* Add Department Modal */}
+            <Dialog 
+              open={isAddDeptModalOpen} 
+              onClose={() => setIsAddDeptModalOpen(false)}
+              maxWidth="xs"
+              fullWidth
+              PaperProps={{ sx: { borderRadius: 0, border: `4px solid ${COLORS.accent}`, boxShadow: '8px 8px 0px rgba(0,0,0,0.1)' } }}
+            >
+              <Box sx={{ bgcolor: COLORS.cream, p: 2, borderBottom: `2px solid ${COLORS.accent}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Typography sx={{ fontWeight: 900, color: COLORS.accent, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <AddCircleOutlineIcon /> NEW DEPARTMENT
+                </Typography>
+                <IconButton size="small" onClick={() => setIsAddDeptModalOpen(false)} sx={{ color: COLORS.accent }}>
+                  <CloseIcon />
+                </IconButton>
+              </Box>
+              <DialogContent sx={{ p: 3, pt: 4, display: 'flex', flexDirection: 'column', gap: 3 }}>
                 <TextField
-                  label="New Department Name" size="small" value={newDepartmentName}
+                  label="Department Name" fullWidth autoFocus
+                  value={newDepartmentName}
                   onChange={(e) => setNewDepartmentName(e.target.value)}
-                  sx={{ flexGrow: 1, bgcolor: 'white', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddDepartment()}
+                  sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.accent}33` } }}
                   inputProps={{ spellCheck: 'false', style: { fontWeight: 900 } }}
                 />
 
-                <FormControl size="small" sx={{ minWidth: 220, bgcolor: 'white' }}>
+                <FormControl fullWidth>
                   <InputLabel sx={{ fontWeight: 900 }}>Color Tag</InputLabel>
                   <Select
                     value={newDepartmentColor}
@@ -1460,77 +1504,153 @@ export default function Settings() {
                       </Box>
                     )}
                   >
-                    {COLOR_PALETTE.map(c => <MenuItem key={c.value} value={c.value}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                        <CircleIcon sx={{ color: c.value }} /> <ListItemText primary={c.label} />
-                      </Box>
-                    </MenuItem>)}
+                    {COLOR_PALETTE.map(c => (
+                      <MenuItem key={c.value} value={c.value}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                          <CircleIcon sx={{ color: c.value }} /> <ListItemText primary={c.label} />
+                        </Box>
+                      </MenuItem>
+                    ))}
                   </Select>
                 </FormControl>
-
-                <Button
+              </DialogContent>
+              <DialogActions sx={{ p: 3, pt: 1 }}>
+                <Button onClick={() => setIsAddDeptModalOpen(false)} sx={{ fontWeight: 900, color: COLORS.textMuted }}>CANCEL</Button>
+                <Button 
                   variant="contained" onClick={handleAddDepartment}
-                  startIcon={<AddCircleOutlineIcon />}
-                  sx={{
-                    bgcolor: COLORS.accent, fontWeight: 900, px: 4, py: 1,
-                    borderRadius: 0, border: `2px solid ${COLORS.brand}`,
-                    boxShadow: '4px 4px 0px rgba(93, 64, 55, 0.1)',
-                    '&:hover': { bgcolor: COLORS.brand }
-                  }}
+                  sx={{ bgcolor: COLORS.accent, fontWeight: 900, borderRadius: 0, px: 4, '&:hover': { bgcolor: COLORS.brand } }}
                 >
-                  Add
+                  CREATE DEPARTMENT
                 </Button>
-              </Stack>
+              </DialogActions>
+            </Dialog>
 
-              <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+            <Box sx={{ p: 3, bgcolor: COLORS.cardBg }}>
+
+              <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center' }}>
                 <TextField
                   placeholder="🔍 Quick find department..." size="small" fullWidth
                   value={deptSearch} onChange={(e) => setDeptSearch(e.target.value)}
                   sx={{ bgcolor: 'rgba(255,255,255,0.9)', '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, borderColor: COLORS.borderInput } }}
                   inputProps={{ style: { fontWeight: 900 } }}
                 />
-                <FormControl size="small" sx={{ width: 140, bgcolor: 'rgba(255,255,255,0.9)' }}>
-                  <Select
-                    value={deptSort} onChange={e => setDeptSort(e.target.value)}
-                    displayEmpty sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.borderInput}` }, fontWeight: 900, color: '#555' }}
+                <Stack direction="row" spacing={1} sx={{ bgcolor: COLORS.cream, p: 0.5, border: `1px solid ${COLORS.accent}22` }}>
+                  <Button
+                    size="small"
+                    variant={deptSort.key === 'name' ? 'contained' : 'text'}
+                    onClick={() => handleDeptSort('name')}
+                    startIcon={deptSort.key === 'name' ? (deptSort.dir === 'asc' ? <ArrowUpwardIcon sx={{ fontSize: '14px !important' }} /> : <ArrowDownwardIcon sx={{ fontSize: '14px !important' }} />) : null}
+                    sx={{
+                      borderRadius: 0, fontWeight: 900, fontSize: '0.7rem', letterSpacing: 1, px: 2,
+                      bgcolor: deptSort.key === 'name' ? COLORS.accent : 'transparent',
+                      color: deptSort.key === 'name' ? 'white' : COLORS.textMuted,
+                      '&:hover': { bgcolor: deptSort.key === 'name' ? COLORS.brand : 'rgba(0,0,0,0.05)' }
+                    }}
                   >
-                    <MenuItem value="asc">A - Z</MenuItem>
-                    <MenuItem value="desc">Z - A</MenuItem>
-                  </Select>
-                </FormControl>
+                    Name
+                  </Button>
+                  <Button
+                    size="small"
+                    variant={deptSort.key === 'staff' ? 'contained' : 'text'}
+                    onClick={() => handleDeptSort('staff')}
+                    startIcon={deptSort.key === 'staff' ? (deptSort.dir === 'asc' ? <ArrowUpwardIcon sx={{ fontSize: '14px !important' }} /> : <ArrowDownwardIcon sx={{ fontSize: '14px !important' }} />) : null}
+                    sx={{
+                      borderRadius: 0, fontWeight: 900, fontSize: '0.7rem', letterSpacing: 1, px: 2,
+                      bgcolor: deptSort.key === 'staff' ? COLORS.accent : 'transparent',
+                      color: deptSort.key === 'staff' ? 'white' : COLORS.textMuted,
+                      '&:hover': { bgcolor: deptSort.key === 'staff' ? COLORS.brand : 'rgba(0,0,0,0.05)' }
+                    }}
+                  >
+                    Staff
+                  </Button>
+                  <Button
+                    size="small"
+                    variant={deptSort.key === 'services' ? 'contained' : 'text'}
+                    onClick={() => handleDeptSort('services')}
+                    startIcon={deptSort.key === 'services' ? (deptSort.dir === 'asc' ? <ArrowUpwardIcon sx={{ fontSize: '14px !important' }} /> : <ArrowDownwardIcon sx={{ fontSize: '14px !important' }} />) : null}
+                    sx={{
+                      borderRadius: 0, fontWeight: 900, fontSize: '0.7rem', letterSpacing: 1, px: 2,
+                      bgcolor: deptSort.key === 'services' ? COLORS.accent : 'transparent',
+                      color: deptSort.key === 'services' ? 'white' : COLORS.textMuted,
+                      '&:hover': { bgcolor: deptSort.key === 'services' ? COLORS.brand : 'rgba(0,0,0,0.05)' }
+                    }}
+                  >
+                    Services
+                  </Button>
+                </Stack>
               </Box>
 
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, p: 2.5, bgcolor: 'rgba(250,250,250,0.8)', borderRadius: 0, border: '1px inset rgba(0,0,0,0.1)', minHeight: 220, alignContent: 'flex-start' }}>
-                {[...departments]
-                  .sort((a, b) => deptSort === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name))
-                  .filter(d => d.name.toLowerCase().includes(deptSearch.toLowerCase()))
-                  .map(dept => {
-                    const staffU = allStaff.filter(u => u.role === 'staff' && (Array.isArray(u.departments) ? u.departments.includes(dept.name) : u.department === dept.name)).length;
-                    const serviceU = allServices.filter(s => !s.isArchived && (s.department || s.category) === dept.name).length;
-                    const totalU = staffU + serviceU;
+              <TableContainer sx={{ maxHeight: 400, border: `1px solid ${COLORS.accent}22` }}>
+                <Table size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ bgcolor: COLORS.cream, fontWeight: 900, textTransform: 'uppercase', fontSize: '0.7rem', color: COLORS.accent, borderBottom: `2px solid ${COLORS.accent}`, width: 60 }}>Color</TableCell>
+                      <TableCell sx={{ bgcolor: COLORS.cream, fontWeight: 900, textTransform: 'uppercase', fontSize: '0.7rem', color: COLORS.accent, borderBottom: `2px solid ${COLORS.accent}` }}>Department Name</TableCell>
+                      <TableCell align="center" sx={{ bgcolor: COLORS.cream, fontWeight: 900, textTransform: 'uppercase', fontSize: '0.7rem', color: COLORS.accent, borderBottom: `2px solid ${COLORS.accent}` }}>Staff</TableCell>
+                      <TableCell align="center" sx={{ bgcolor: COLORS.cream, fontWeight: 900, textTransform: 'uppercase', fontSize: '0.7rem', color: COLORS.accent, borderBottom: `2px solid ${COLORS.accent}` }}>Services</TableCell>
+                      <TableCell align="right" sx={{ bgcolor: COLORS.cream, fontWeight: 900, textTransform: 'uppercase', fontSize: '0.7rem', color: COLORS.accent, borderBottom: `2px solid ${COLORS.accent}`, width: 100 }}>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {[...departments]
+                      .sort((a, b) => {
+                        const dir = deptSort.dir === 'asc' ? 1 : -1;
+                        if (deptSort.key === 'name') {
+                          return dir * a.name.localeCompare(b.name);
+                        } else if (deptSort.key === 'staff') {
+                          const staffA = allStaff.filter(u => u.role === 'staff' && (Array.isArray(u.departments) ? u.departments.includes(a.name) : u.department === a.name)).length;
+                          const staffB = allStaff.filter(u => u.role === 'staff' && (Array.isArray(u.departments) ? u.departments.includes(b.name) : u.department === b.name)).length;
+                          return dir * (staffA - staffB);
+                        } else {
+                          // Sort by services
+                          const serviceA = allServices.filter(s => !s.isArchived && (s.department || s.category) === a.name).length;
+                          const serviceB = allServices.filter(s => !s.isArchived && (s.department || s.category) === b.name).length;
+                          return dir * (serviceA - serviceB);
+                        }
+                      })
+                      .filter(d => d.name.toLowerCase().includes(deptSearch.toLowerCase()))
+                      .map(dept => {
+                        const staffU = allStaff.filter(u => u.role === 'staff' && (Array.isArray(u.departments) ? u.departments.includes(dept.name) : u.department === dept.name)).length;
+                        const serviceU = allServices.filter(s => !s.isArchived && (s.department || s.category) === dept.name).length;
+                        const totalU = staffU + serviceU;
 
-                    return (
-                      <Chip
-                        key={dept.id}
-                        label={`${dept.name} (${totalU})`}
-                        onDelete={() => handleDeleteDepartment(dept.id, dept.name)}
-                        sx={{
-                          fontWeight: 900, color: 'white', bgcolor: dept.color || '#616161',
-                          borderRadius: 0,
-                          border: totalU > 0 ? '2px solid rgba(255,255,255,0.4)' : '1px solid rgba(0,0,0,0.1)',
-                          fontSize: '0.75rem', py: 2.2, px: 1,
-                          '& .MuiChip-deleteIcon': { color: 'rgba(255,255,255,0.7)', '&:hover': { color: 'white' } }
-                        }}
-                        title={`Assigned to ${staffU} staff and ${serviceU} services`}
-                      />
-                    );
-                  })}
-                {departments.filter(d => d.name.toLowerCase().includes(deptSearch.toLowerCase())).length === 0 && (
-                  <Typography variant="body2" color="textSecondary" sx={{ width: '100%', textAlign: 'center', mt: 4, fontStyle: 'italic' }}>
-                    No departments match your search.
-                  </Typography>
-                )}
-              </Box>
+                        return (
+                          <TableRow key={dept.id} hover sx={{ '&:hover': { bgcolor: 'rgba(0,0,0,0.02)' } }}>
+                            <TableCell>
+                              <CircleIcon sx={{ color: dept.color || '#616161', fontSize: 20 }} />
+                            </TableCell>
+                            <TableCell sx={{ fontWeight: 900, color: COLORS.textPrimary }}>
+                              {dept.name}
+                            </TableCell>
+                            <TableCell align="center" sx={{ fontWeight: 700, color: staffU > 0 ? COLORS.accent : COLORS.textMuted }}>
+                              {staffU}
+                            </TableCell>
+                            <TableCell align="center" sx={{ fontWeight: 700, color: serviceU > 0 ? COLORS.accent : COLORS.textMuted }}>
+                              {serviceU}
+                            </TableCell>
+                            <TableCell align="right">
+                              <IconButton
+                                size="small"
+                                onClick={() => handleDeleteDepartment(dept.id, dept.name)}
+                                sx={{ color: totalU > 0 ? COLORS.textMuted : COLORS.danger }}
+                                title={totalU > 0 ? `In use by ${totalU} entities` : 'Delete Department'}
+                              >
+                                <DeleteIcon sx={{ fontSize: 18 }} />
+                              </IconButton>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    {departments.filter(d => d.name.toLowerCase().includes(deptSearch.toLowerCase())).length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5} align="center" sx={{ py: 4, fontStyle: 'italic', color: COLORS.textMuted }}>
+                          No departments match your search.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
             </Box>
           </Paper>
         </Grid>

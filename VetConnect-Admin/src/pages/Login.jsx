@@ -7,7 +7,7 @@ import {
 } from '@mui/material';
 import { COLORS, PANEL } from '../theme/designTokens';
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 
 // Icons
@@ -58,6 +58,21 @@ export default function Login() {
             setError('Access Denied. Admin credentials required.');
             return;
         }
+
+        // --- SESSION AUDIT: Log successful login ---
+        await addDoc(collection(db, 'auth_logs'), {
+          userId: uid,
+          userName: userData.fullName || 'Unknown',
+          userEmail: trimmedEmail,
+          userRole: userData.role || userData.accessLevel || 'staff',
+          action: 'LOGIN_SUCCESS',
+          timestamp: serverTimestamp(),
+          metadata: {
+            userAgent: navigator.userAgent,
+            platform: 'VetConnect-Admin'
+          }
+        }).catch(e => console.error('[LoginAudit] Write failed:', e));
+
       } else {
         await auth.signOut();
         setError('User profile not found.');

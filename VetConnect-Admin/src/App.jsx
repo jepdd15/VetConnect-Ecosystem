@@ -11,7 +11,7 @@ import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import LockResetIcon from '@mui/icons-material/LockReset';
 import { FONT, COLORS } from './theme/designTokens';
 import { signOut, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from './firebaseConfig';
 
 // --- COMPONENTS ---
@@ -93,7 +93,23 @@ function AppShell() {
   // T4.138 — Deactivation sign-out state
   const [deactivatedMsg, setDeactivatedMsg] = React.useState('');
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // --- SESSION AUDIT: Log intentional logout ---
+    if (user && profile) {
+      await addDoc(collection(db, 'auth_logs'), {
+        userId: user.uid,
+        userName: profile.fullName || 'Unknown',
+        userEmail: user.email,
+        userRole: profile.role || profile.accessLevel || 'staff',
+        action: 'LOGOUT',
+        timestamp: serverTimestamp(),
+        metadata: {
+          userAgent: navigator.userAgent,
+          platform: 'VetConnect-Admin'
+        }
+      }).catch(e => console.error('[LogoutAudit] Write failed:', e));
+    }
+
     signOut(auth).catch((error) => {
       console.error("Logout Error:", error);
     });

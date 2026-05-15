@@ -194,11 +194,16 @@ export default function GlobalActivityLog() {
               Clinic-Wide Inventory Audit Trail
             </Typography>
           </Box>
-          <Chip
-            label={`${filteredLogs.length} event${filteredLogs.length !== 1 ? 's' : ''}${hasMore ? '+' : ''}`}
-            size="small"
-            sx={{ bgcolor: COLORS.panelBg, color: COLORS.accent, fontWeight: '900', fontSize: '0.68rem', borderRadius: 0 }}
-          />
+          <Box sx={{ 
+            bgcolor: COLORS.accent, color: 'white', px: 2, py: 0.5, 
+            border: `2px solid ${COLORS.brand}`, 
+            boxShadow: '4px 4px 0px rgba(0,0,0,0.1)',
+            display: 'flex', alignItems: 'center', gap: 1
+          }}>
+            <Typography variant="caption" sx={{ fontWeight: 1000, fontSize: '0.85rem', letterSpacing: 1, textTransform: 'uppercase' }}>
+              {filteredLogs.length} event{filteredLogs.length !== 1 ? 's' : ''}{hasMore ? '+' : ''}
+            </Typography>
+          </Box>
         </Box>
 
         {/* Filter row */}
@@ -476,8 +481,14 @@ export default function GlobalActivityLog() {
                       )}
                       <Typography
                         variant="body2"
-                        color="textSecondary"
-                        sx={{ fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        sx={{ 
+                          fontSize: '0.85rem', 
+                          fontWeight: 700,
+                          color: COLORS.textPrimary,
+                          overflow: 'hidden', 
+                          textOverflow: 'ellipsis', 
+                          whiteSpace: 'nowrap' 
+                        }}
                         title={log.reason}
                       >
                         {log.reason || '—'}

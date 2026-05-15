@@ -1,5 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { Box, Typography, Paper, Button, TextField, InputAdornment, Snackbar, Alert, MenuItem, Dialog, DialogTitle, DialogContent, DialogActions, IconButton } from '@mui/material';
+import { 
+  Box, Typography, Paper, Button, TextField, InputAdornment, 
+  Snackbar, Alert, MenuItem, Dialog, DialogTitle, DialogContent, 
+  DialogActions, IconButton, Tabs, Tab 
+} from '@mui/material';
 
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import SearchIcon from '@mui/icons-material/Search';
@@ -11,6 +15,7 @@ import { FONT, COLORS } from '../../theme/designTokens';
 // Logic & Components
 import { useStaffManager } from './hooks/useStaffManager';
 import StaffTable from './components/StaffTable';
+import StaffActivityLog from './components/StaffActivityLog';
 import StaffFormModal from './modals/StaffFormModal';
 import ConfirmRevokeModal from './modals/ConfirmRevokeModal';
 
@@ -18,6 +23,7 @@ export default function Staff() {
   const { staffList, departments, getWorkload, activeAppointments, loading, saveStaff, removeStaff } = useStaffManager();
 
   // UI STATES
+  const [tab, setTab] = useState(0);
   const [searchText, setSearchText] = useState('');
   const [open, setOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
@@ -90,56 +96,86 @@ export default function Staff() {
             Staff
           </Typography>
 
-          {/* Search */}
-          <TextField
-            variant="outlined"
-            size="small"
-            placeholder="Search staff..."
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            InputProps={{
-              startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: COLORS.textMuted }} /></InputAdornment>,
-              style: { color: COLORS.textPrimary, fontWeight: 'bold', fontFamily: FONT, fontSize: '0.9rem' },
-            }}
-            sx={{
-              flex: 1, maxWidth: 350, minWidth: 180, flexShrink: 0,
-              '& .MuiOutlinedInput-root': {
-                borderRadius: 0, bgcolor: COLORS.formBg,
-                '& fieldset': { borderColor: COLORS.border },
-                '&:hover fieldset': { borderColor: COLORS.accent },
-                '&.Mui-focused fieldset': { borderColor: COLORS.accent },
-              },
-            }}
-          />
+          {tab === 0 && (
+            <>
+              {/* Search */}
+              <TextField
+                variant="outlined"
+                size="small"
+                placeholder="Search staff..."
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                InputProps={{
+                  startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: COLORS.textMuted }} /></InputAdornment>,
+                  style: { color: COLORS.textPrimary, fontWeight: 'bold', fontFamily: FONT, fontSize: '0.9rem' },
+                }}
+                sx={{
+                  flex: 1, maxWidth: 350, minWidth: 180, flexShrink: 0,
+                  '& .MuiOutlinedInput-root': {
+                    borderRadius: 0, bgcolor: COLORS.formBg,
+                    '& fieldset': { borderColor: COLORS.border },
+                    '&:hover fieldset': { borderColor: COLORS.accent },
+                    '&.Mui-focused fieldset': { borderColor: COLORS.accent },
+                  },
+                }}
+              />
 
-          {/* Filters grouped */}
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-            <TextField select size="small" value={filterDept} onChange={(e) => setFilterDept(e.target.value)} sx={{ minWidth: 160, bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33` } }}>
-              <MenuItem value="All">All Departments</MenuItem>
-              {departments.map(d => <MenuItem key={d.id} value={d.name}>{d.name}</MenuItem>)}
-            </TextField>
+              {/* Filters grouped */}
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                <TextField select size="small" value={filterDept} onChange={(e) => setFilterDept(e.target.value)} sx={{ minWidth: 160, bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33` } }}>
+                  <MenuItem value="All">All Departments</MenuItem>
+                  {departments.map(d => <MenuItem key={d.id} value={d.name}>{d.name}</MenuItem>)}
+                </TextField>
+              </Box>
 
-
-          </Box>
-
-          <Typography variant="body2" sx={{ fontFamily: FONT, color: COLORS.accent, fontWeight: 900, whiteSpace: 'nowrap', flexShrink: 0, fontStyle: 'italic', ml: 1 }}>
-            {filteredStaff.length} Records
-          </Typography>
+              <Typography variant="body2" sx={{ fontFamily: FONT, color: COLORS.accent, fontWeight: 900, whiteSpace: 'nowrap', flexShrink: 0, fontStyle: 'italic', ml: 1 }}>
+                {filteredStaff.length} Records
+              </Typography>
+            </>
+          )}
 
           <Box sx={{ flexGrow: 1 }} />
 
-          <Button
-            variant="contained" startIcon={<PersonAddIcon />}
-            sx={{ bgcolor: COLORS.sky, fontFamily: FONT, fontWeight: 900, boxShadow: '4px 4px 0px rgba(58, 190, 249, 0.15)', textTransform: 'uppercase', letterSpacing: 1, px: 3, py: 1, borderRadius: 0, border: `2px solid ${COLORS.skyHover}`, '&:hover': { bgcolor: COLORS.skyHover } }}
-            onClick={() => { setSelectedItem(null); setOpen(true); }}
-          >
-            Authorize Staff
-          </Button>
+          {tab === 0 && (
+            <Button
+              variant="contained" startIcon={<PersonAddIcon />}
+              sx={{ bgcolor: COLORS.sky, fontFamily: FONT, fontWeight: 900, boxShadow: '4px 4px 0px rgba(58, 190, 249, 0.15)', textTransform: 'uppercase', letterSpacing: 1, px: 3, py: 1, borderRadius: 0, border: `2px solid ${COLORS.skyHover}`, '&:hover': { bgcolor: COLORS.skyHover } }}
+              onClick={() => { setSelectedItem(null); setOpen(true); }}
+            >
+              Authorize Staff
+            </Button>
+          )}
         </Paper>
       </Box>
 
-      {/* 2. BOXED TABLE AREA (FLEX: 1) */}
-      <StaffTable data={filteredStaff} getWorkload={getWorkload} onEdit={(row) => { setSelectedItem(row); setOpen(true); }} onDelete={handleDelete} departments={departments} loading={loading} />
+      {/* 2. TABS SECTION */}
+      <Box sx={{ borderBottom: `2px solid ${COLORS.accent}`, bgcolor: COLORS.cream, flexShrink: 0 }}>
+        <Tabs
+          value={tab}
+          onChange={(_, v) => setTab(v)}
+          sx={{
+            px: 4,
+            '& .MuiTab-root': {
+              fontFamily: FONT, fontWeight: 900, fontSize: '0.8rem', color: COLORS.textMuted,
+              minHeight: 48, letterSpacing: 1, px: 4,
+            },
+            '& .MuiTab-root.Mui-selected': { color: COLORS.accent, bgcolor: 'rgba(93, 64, 55, 0.05)' },
+            '& .MuiTabs-indicator': { height: 4, bgcolor: COLORS.accent },
+          }}
+        >
+          <Tab label="Staff Table" />
+          <Tab label="Activity Log" />
+        </Tabs>
+      </Box>
+
+      {/* 3. CONTENT AREA (FLEX: 1) */}
+      <Box sx={{ flexGrow: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        {tab === 0 ? (
+          <StaffTable data={filteredStaff} getWorkload={getWorkload} onEdit={(row) => { setSelectedItem(row); setOpen(true); }} onDelete={handleDelete} departments={departments} loading={loading} />
+        ) : (
+          <StaffActivityLog />
+        )}
+      </Box>
 
       {/* THE MODAL */}
       {open && (

@@ -151,7 +151,7 @@ export default function AddPetScreen({ navigation }) {
   return (
     // THE FIX: Keyboard Avoiding Wrapper
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior="padding"
       style={styles.container}
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>

@@ -1,11 +1,15 @@
 import React, { useState } from 'react';
-import { Drawer, List, ListItemButton, ListItemIcon, ListItemText, Box, Typography, Divider, Button, Badge, IconButton } from '@mui/material';
+import { Drawer, List, ListItemButton, ListItemIcon, ListItemText, Box, Typography, Divider, Button, Badge, IconButton, Avatar, Paper } from '@mui/material';
 import { useMediaQuery, useTheme } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 // Design Tokens
 import { FONT, COLORS } from '../theme/designTokens';
+
+// Context
+import { useUser } from '../context/UserContext';
+
 
 // Icons
 import DashboardIcon from '@mui/icons-material/Dashboard';
@@ -49,6 +53,9 @@ export default function Sidebar({ onLogout, lowStockCount = 0 }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const { profile } = useUser();
+
 
   // T4.154: All staff see all menu items — no filtering needed.
   const visibleMenuItems = menuItems;
@@ -152,8 +159,41 @@ export default function Sidebar({ onLogout, lowStockCount = 0 }) {
           </Button>
         </Box>
 
+        {/* ACTIVE SESSION IDENTITY (T4.154: Identity Visibility) */}
+        {profile && (
+          <Box sx={{ p: 2, px: 3, mt: 1 }}>
+            <Paper elevation={0} sx={{ 
+              p: 1.5, 
+              bgcolor: 'rgba(255,255,255,0.08)', 
+              borderRadius: 0, 
+              border: '1px solid rgba(255,255,255,0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1.5
+            }}>
+              <Avatar sx={{ 
+                width: 32, height: 32, fontSize: '0.8rem', fontWeight: 900,
+                bgcolor: COLORS.cream, color: COLORS.brand, border: `1px solid ${COLORS.accent}`
+              }}>
+                {(profile.fullName || '?')[0]}
+              </Avatar>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography noWrap sx={{ fontWeight: 800, fontSize: '0.85rem', color: 'white', letterSpacing: 0.5 }}>
+                  {profile.fullName}
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: COLORS.success }} />
+                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1 }}>
+                    Staff
+                  </Typography>
+                </Box>
+              </Box>
+            </Paper>
+          </Box>
+        )}
+
         {/* THE LOGOUT BUTTON */}
-        <Box sx={{ p: 3 }}>
+        <Box sx={{ p: 3, pt: profile ? 0 : 3 }}>
           <Button
             fullWidth
             variant="contained"

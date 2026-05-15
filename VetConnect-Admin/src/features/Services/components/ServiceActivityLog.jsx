@@ -156,11 +156,16 @@ export default function ServiceActivityLog() {
               Clinic-Wide Service Configuration Audit Trail
             </Typography>
           </Box>
-          <Chip
-            label={`${filteredLogs.length} event${filteredLogs.length !== 1 ? 's' : ''}${hasMore ? '+' : ''}`}
-            size="small"
-            sx={{ bgcolor: COLORS.panelBg, color: COLORS.accent, fontWeight: '900', fontSize: '0.68rem', borderRadius: 0 }}
-          />
+          <Box sx={{ 
+            bgcolor: COLORS.accent, color: 'white', px: 2, py: 0.5, 
+            border: `2px solid ${COLORS.brand}`, 
+            boxShadow: '4px 4px 0px rgba(0,0,0,0.1)',
+            display: 'flex', alignItems: 'center', gap: 1
+          }}>
+            <Typography variant="caption" sx={{ fontWeight: 1000, fontSize: '0.85rem', letterSpacing: 1, textTransform: 'uppercase' }}>
+              {filteredLogs.length} event{filteredLogs.length !== 1 ? 's' : ''}{hasMore ? '+' : ''}
+            </Typography>
+          </Box>
         </Box>
 
         {/* Filter row */}
@@ -172,12 +177,51 @@ export default function ServiceActivityLog() {
             size="small"
             value={filterAction}
             onChange={e => setFilterAction(e.target.value)}
-            sx={{ minWidth: 130, '& .MuiOutlinedInput-root': { borderRadius: 0, fontSize: '0.75rem', fontWeight: 'bold' } }}
+            sx={{ minWidth: 150, '& .MuiOutlinedInput-root': { borderRadius: 0, fontSize: '0.75rem', fontWeight: 'bold' } }}
+            SelectProps={{
+              renderValue: (selected) => {
+                if (selected === 'ALL') return <Typography variant="caption" sx={{ fontWeight: 900, color: COLORS.textMuted, textTransform: 'uppercase' }}>All Actions</Typography>;
+                const cfg = SERVICE_ACTION_CONFIG[selected];
+                const ActionIcon = cfg.Icon;
+                return (
+                  <Chip
+                    icon={<ActionIcon sx={{ fontSize: '13px !important', color: `${cfg.color} !important` }} />}
+                    label={cfg.label}
+                    size="small"
+                    sx={{
+                      bgcolor: cfg.bg, color: cfg.color,
+                      fontWeight: '900', fontSize: '0.65rem', letterSpacing: 0.5, borderRadius: 0,
+                      '& .MuiChip-icon': { ml: '6px' },
+                    }}
+                  />
+                );
+              }
+            }}
           >
-            <MenuItem value="ALL">All Actions</MenuItem>
-            {ACTION_TYPES.map(a => (
-              <MenuItem key={a} value={a}>{SERVICE_ACTION_CONFIG[a].label}</MenuItem>
-            ))}
+            <MenuItem value="ALL">
+              <Typography variant="caption" sx={{ fontWeight: 900, color: COLORS.textMuted, textTransform: 'uppercase' }}>
+                All Actions
+              </Typography>
+            </MenuItem>
+            {ACTION_TYPES.map(a => {
+              const cfg = SERVICE_ACTION_CONFIG[a];
+              const ActionIcon = cfg.Icon;
+              return (
+                <MenuItem key={a} value={a} sx={{ py: 1 }}>
+                  <Chip
+                    icon={<ActionIcon sx={{ fontSize: '13px !important', color: `${cfg.color} !important` }} />}
+                    label={cfg.label}
+                    size="small"
+                    sx={{
+                      bgcolor: cfg.bg, color: cfg.color,
+                      fontWeight: '900', fontSize: '0.65rem', letterSpacing: 0.5, borderRadius: 0,
+                      pointerEvents: 'none',
+                      '& .MuiChip-icon': { ml: '6px' },
+                    }}
+                  />
+                </MenuItem>
+              );
+            })}
           </TextField>
 
           <TextField
@@ -321,8 +365,15 @@ export default function ServiceActivityLog() {
 
                   <TableCell sx={{ maxWidth: 300 }}>
                     <Typography
-                      variant="body2" color="textSecondary"
-                      sx={{ fontSize: '0.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                      variant="body2"
+                      sx={{ 
+                        fontSize: '0.85rem', 
+                        fontWeight: 700,
+                        color: COLORS.textPrimary,
+                        overflow: 'hidden', 
+                        textOverflow: 'ellipsis', 
+                        whiteSpace: 'nowrap' 
+                      }}
                       title={log.changes || log.reason}
                     >
                       {log.changes || log.reason || '—'}

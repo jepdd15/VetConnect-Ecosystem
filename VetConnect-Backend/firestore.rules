@@ -254,6 +254,13 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // ─── AUTH LOGS (T4.154: Session Auditing) ───────────────────
+    match /auth_logs/{logId} {
+      allow read: if isStaff();
+      allow create: if isAuth(); // Login.jsx writes before full validation
+      allow update, delete: if false;
+    }
+
     // ─── SYSTEM PROMPTS (AI clinical reasoning + chatbot) ────────
     // Everyone reads (mobile chatbot + admin ClinicalWorkspace).
     // Only admin can modify (Settings Pillar 11).

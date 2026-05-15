@@ -8,6 +8,8 @@ import {
   collection, onSnapshot, addDoc, deleteDoc, doc, getDocs, query, where, Timestamp,
   writeBatch, getDoc,
 } from 'firebase/firestore';
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import { db } from '../../../firebaseConfig';
 import { useUser } from '../../../context/UserContext';
 import { COLORS, FONT, TYPE } from '../../../theme/designTokens';
@@ -56,7 +58,7 @@ export default function InventoryCategoryManager({ inventory = [] }) {
   const [newCatName, setNewCatName]         = useState('');
   const [newCatProductClass, setNewCatProductClass] = useState('retail');
   const [catSearch, setCatSearch]           = useState('');
-  const [catSort, setCatSort]               = useState('asc');
+  const [catSort, setCatSort]               = useState({ key: 'name', dir: 'asc' });
   const [confirmDelete, setConfirmDelete]   = useState({ open: false, id: '', name: '' });
   const [editDialog, setEditDialog]         = useState({ open: false, id: '', name: '', productClass: 'retail', isDefault: false });
   const [toast, setToast]                   = useState({ open: false, message: '', severity: 'success' });
@@ -116,13 +118,36 @@ export default function InventoryCategoryManager({ inventory = [] }) {
   }, [inventory]);
 
   // ── Derived display list ─────────────────────────────────────────────────
-  const visibleCategories = [...categories]
-    .filter((c) => c.name?.toLowerCase().includes(catSearch.toLowerCase()))
-    .sort((a, b) =>
-      catSort === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name)
-    );
+  const visibleCategories = useMemo(() => {
+    return [...categories]
+      .filter((c) => c.name?.toLowerCase().includes(catSearch.toLowerCase()))
+      .sort((a, b) => {
+        const key = catSort.key;
+        const dir = catSort.dir;
+
+        if (key === 'name') {
+          const nameA = a.name.toLowerCase();
+          const nameB = b.name.toLowerCase();
+          return dir === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+        } else {
+          // Sort by item counts
+          const countA = itemCounts[a.name] || 0;
+          const countB = itemCounts[b.name] || 0;
+          return dir === 'asc' ? countA - countB : countB - countA;
+        }
+      });
+  }, [categories, catSearch, catSort, itemCounts]);
 
   // ── Handlers ─────────────────────────────────────────────────────────────
+
+  const handleSort = (key) => {
+    setCatSort(prev => {
+      if (prev.key === key) {
+        return { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
+      }
+      return { key, dir: 'asc' };
+    });
+  };
 
   const handleAddCategory = async () => {
     const trimmed = newCatName.trim();
@@ -301,7 +326,7 @@ export default function InventoryCategoryManager({ inventory = [] }) {
           </Stack>
 
           {/* Search + sort row */}
-          <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+          <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center' }}>
             <TextField
               placeholder="Quick find category..."
               size="small"
@@ -309,24 +334,55 @@ export default function InventoryCategoryManager({ inventory = [] }) {
               value={catSearch}
               onChange={(e) => setCatSearch(e.target.value)}
               sx={{
-                bgcolor: 'rgba(255,255,255,0.9)',
-                '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, borderColor: COLORS.borderInput },
+                bgcolor: 'white',
+                '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, borderColor: `${COLORS.accent}33` },
               }}
-              inputProps={{ style: { fontWeight: 900 } }}
+              inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
             />
-            <FormControl size="small" sx={{ width: 140, bgcolor: 'rgba(255,255,255,0.9)' }}>
-              <Select
-                value={catSort}
-                onChange={(e) => setCatSort(e.target.value)}
+            
+            <Stack direction="row" spacing={1} sx={{ bgcolor: COLORS.cream, p: 0.5, border: `1px solid ${COLORS.accent}22` }}>
+              {/* SORT BY NAME */}
+              <Button
+                size="small"
+                variant={catSort.key === 'name' ? 'contained' : 'text'}
+                onClick={() => handleSort('name')}
+                startIcon={catSort.key === 'name' ? (catSort.dir === 'asc' ? <ArrowUpwardIcon sx={{ fontSize: '14px !important' }} /> : <ArrowDownwardIcon sx={{ fontSize: '14px !important' }} />) : null}
                 sx={{
-                  '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `1px solid ${COLORS.borderInput}` },
-                  fontWeight: 900, color: '#555',
+                  borderRadius: 0,
+                  fontWeight: 900,
+                  fontSize: '0.7rem',
+                  letterSpacing: 1,
+                  px: 2,
+                  bgcolor: catSort.key === 'name' ? COLORS.accent : 'transparent',
+                  color: catSort.key === 'name' ? 'white' : COLORS.textMuted,
+                  border: catSort.key === 'name' ? `1px solid ${COLORS.brand}` : '1px solid transparent',
+                  '&:hover': { bgcolor: catSort.key === 'name' ? COLORS.brand : 'rgba(0,0,0,0.05)' }
                 }}
               >
-                <MenuItem value="asc">A - Z</MenuItem>
-                <MenuItem value="desc">Z - A</MenuItem>
-              </Select>
-            </FormControl>
+                Name
+              </Button>
+
+              {/* SORT BY ITEMS */}
+              <Button
+                size="small"
+                variant={catSort.key === 'items' ? 'contained' : 'text'}
+                onClick={() => handleSort('items')}
+                startIcon={catSort.key === 'items' ? (catSort.dir === 'asc' ? <ArrowUpwardIcon sx={{ fontSize: '14px !important' }} /> : <ArrowDownwardIcon sx={{ fontSize: '14px !important' }} />) : null}
+                sx={{
+                  borderRadius: 0,
+                  fontWeight: 900,
+                  fontSize: '0.7rem',
+                  letterSpacing: 1,
+                  px: 2,
+                  bgcolor: catSort.key === 'items' ? COLORS.accent : 'transparent',
+                  color: catSort.key === 'items' ? 'white' : COLORS.textMuted,
+                  border: catSort.key === 'items' ? `1px solid ${COLORS.brand}` : '1px solid transparent',
+                  '&:hover': { bgcolor: catSort.key === 'items' ? COLORS.brand : 'rgba(0,0,0,0.05)' }
+                }}
+              >
+                Items
+              </Button>
+            </Stack>
           </Box>
 
           {/* Category table */}

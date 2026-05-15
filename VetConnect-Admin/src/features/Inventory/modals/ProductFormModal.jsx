@@ -54,8 +54,6 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
     openingStock: '',   // Only used when creating — ignored on edit
   });
 
-  const [showQuickAdd, setShowQuickAdd] = useState(false);
-  const [newCatName, setNewCatName]     = useState('');
   const [errors, setErrors]             = useState({});
 
   // T2.175: Allergen tags — stored as a string array on the product document.
@@ -164,33 +162,6 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
     'ointment', 'injectable', 'serum', 'anthelmintic', 'antimicrobial',
   ];
 
-  // ── Quick-add category ──────────────────────────────────────────────────
-  const handleQuickAddCategory = async () => {
-    if (!newCatName.trim()) return;
-    try {
-      const lowerName = newCatName.trim().toLowerCase();
-      // T2.162: Dedup guard — select existing instead of creating a duplicate
-      if (categories.some(c => c.name === lowerName)) {
-        setFormData(prev => ({ ...prev, category: lowerName }));
-        setShowQuickAdd(false);
-        setNewCatName('');
-        showToast(`Category "${formatCategory(lowerName)}" already exists. Selected.`, 'info');
-        return;
-      }
-      const autoMedicine = MEDICINE_KEYWORDS.some(kw => lowerName.includes(kw));
-      await addDoc(collection(db, 'inventory_categories'), {
-        name: lowerName,
-        isMedicine: autoMedicine,
-        productClass: autoMedicine ? 'medicine' : 'retail',
-      });
-      setFormData(prev => ({ ...prev, category: lowerName }));
-      setShowQuickAdd(false);
-      setNewCatName('');
-      showToast(`Category "${formatCategory(lowerName)}" created.`, 'success');
-    } catch (e) {
-      showToast(e.message, 'error');
-    }
-  };
 
   const sxField = {
     bgcolor: COLORS.cardBg,
@@ -258,11 +229,8 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
                     select label="Category" fullWidth
                     value={formData.category}
                     onChange={e => {
-                      if (e.target.value === 'ADD_NEW') setShowQuickAdd(true);
-                      else {
-                        setFormData(prev => ({ ...prev, category: e.target.value }));
-                        setProductClass(null);
-                      }
+                      setFormData(prev => ({ ...prev, category: e.target.value }));
+                      setProductClass(null);
                     }}
                     error={!!errors.category}
                     helperText={
@@ -289,10 +257,6 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
                         </MenuItem>
                       );
                     })}
-                    <Divider />
-                    <MenuItem value="ADD_NEW" sx={{ color: COLORS.cta, fontWeight: 'bold' }}>
-                      <AddCircleIcon sx={{ mr: 1, fontSize: 18 }} /> Quick Add Category
-                    </MenuItem>
                   </TextField>
                 </Grid>
 
@@ -755,26 +719,6 @@ export default function ProductFormModal({ open, onClose, item, onSave, categori
         </DialogActions>
       </Dialog>
 
-      {/* ── Quick-Add Category micro-modal ── */}
-      <Dialog open={showQuickAdd} onClose={() => setShowQuickAdd(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.accent}`, boxShadow: '8px 8px 0px rgba(0,0,0,0.1)' } }}>
-        <DialogTitle sx={{ bgcolor: COLORS.cta, color: COLORS.cardBg, fontWeight: 900, letterSpacing: 1, textTransform: 'uppercase', fontSize: '1rem', borderBottom: `2px solid ${COLORS.ctaHover}` }}>
-          Quick Add Category
-        </DialogTitle>
-        <DialogContent sx={{ p: 4, bgcolor: COLORS.formBg }}>
-          <TextField
-            autoFocus label="Category Name" fullWidth
-            sx={{ mt: 1, '& .MuiOutlinedInput-root': { borderRadius: 0, bgcolor: 'white' } }}
-            value={newCatName} onChange={e => setNewCatName(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleQuickAddCategory()}
-          />
-        </DialogContent>
-        <DialogActions sx={{ p: 2, bgcolor: COLORS.cream, borderTop: `2px solid ${COLORS.accent}` }}>
-          <Button onClick={() => setShowQuickAdd(false)} sx={{ fontWeight: 900, color: COLORS.accent, border: `1px solid ${COLORS.accent}`, borderRadius: 0 }}>CANCEL</Button>
-          <Button onClick={handleQuickAddCategory} variant="contained" sx={{ bgcolor: COLORS.cta, fontWeight: 900, borderRadius: 0, border: `1px solid ${COLORS.ctaHover}`, boxShadow: '2px 2px 0px rgba(0,0,0,0.1)' }}>
-            CREATE & SELECT
-          </Button>
-        </DialogActions>
-      </Dialog>
     </>
   );
 }

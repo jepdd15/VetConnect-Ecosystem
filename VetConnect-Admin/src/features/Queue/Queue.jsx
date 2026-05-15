@@ -540,7 +540,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                      timestamp: Timestamp.now(), // CLIENT-SIDE CLOCK — see W1 in pulseUtils.js
                      staffId: user?.uid || 'system',
                      staffName: staffSignature,
-                     note: `Generated via Triage ${actionLabel} from Appt ${patient.id}${depositEntry ? ` — Deposit: ₱${depositEntry.amount} (${depositEntry.method})` : ''}`
+                     note: `Generated via Triage ${actionLabel} from ${patient.queueNumber ? `Ticket ${patient.ticketPrefix}-${patient.queueNumber}` : 'Previous Record'}${depositEntry ? ` — Deposit: ₱${depositEntry.amount} (${depositEntry.method})` : ''}`
                    }
                 ]
              });
@@ -1224,7 +1224,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
               timestamp: Timestamp.now(), // CLIENT-SIDE CLOCK — see W1 in pulseUtils.js
               staffId: profile?.id || user?.uid || 'unknown',
               staffName: staffSignature,
-              note: `Generated via Inline Carry-Over from Appt ${selectedRow.id} — Wait: ${additionalWaitMins}m (Reason: ${auditReason})`
+              note: `Generated via Inline Carry-Over from ${selectedRow.queueNumber ? `Ticket ${selectedRow.ticketPrefix}-${selectedRow.queueNumber}` : 'Previous Record'} — Wait: ${additionalWaitMins}m (Reason: ${auditReason})`
             }
           ],
         });

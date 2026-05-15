@@ -1486,13 +1486,13 @@ const EndOfDayModal = React.memo(({
                                     }:
                                 </Typography>
                                 <TextField
-                                    fullWidth
                                     size="small"
                                     placeholder="Enter universal clinical justification..."
                                     variant="standard"
                                     value={bulkReason}
                                     onChange={(e) => setBulkReason(e.target.value)}
                                     InputProps={{ disableUnderline: true, sx: { fontSize: '0.75rem', fontWeight: 900 } }}
+                                    sx={{ flex: 1, minWidth: 200 }}
                                     autoFocus
                                 />
                                 
@@ -1514,10 +1514,19 @@ const EndOfDayModal = React.memo(({
                                 {stagedBulkAction === 'cancel' && activeTab === 2 && (
                                     <TextField
                                         size="small"
-                                        placeholder='Type "CANCEL" to confirm'
+                                        placeholder='Type "CANCEL"'
                                         value={cancelConfirmText}
                                         onChange={(e) => setCancelConfirmText(e.target.value)}
-                                        sx={{ width: 180, bgcolor: '#FFF', '& .MuiOutlinedInput-root': { fontSize: '0.72rem', fontWeight: 900, borderRadius: 0 } }}
+                                        sx={{ 
+                                            width: 140, 
+                                            bgcolor: '#FFF', 
+                                            '& .MuiOutlinedInput-root': { 
+                                                fontSize: '0.7rem', 
+                                                fontWeight: 900, 
+                                                borderRadius: 0,
+                                                '& input': { py: 0.5, px: 1 }
+                                            } 
+                                        }}
                                     />
                                 )}
 
@@ -1598,7 +1607,7 @@ const EndOfDayModal = React.memo(({
                     {/* THE CENTRAL CENSUS SHIELD: MOVED TO MAIN CONTAINER FOR CENTERING */}
 
                     <Typography variant="caption" sx={{ fontWeight: '1000', color: isForced ? '#D32F2F' : '#9E9E9E', maxWidth: '400px', lineHeight: 1.3, fontSize: '0.72rem' }}>
-                        {isForced && "MANDATORY RECOVERY: System detected unresolved cases. Forensic sign-off required."}
+                        {isForced && "MANDATORY RECOVERY: System detected unresolved cases."}
                     </Typography>
 
                     <Stack direction="row" spacing={2}>

@@ -2669,7 +2669,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                   timestamp: commitTimestamp,
                   staffId: vetUid,
                   staffName: vetName,
-                  note: `Follow-up created from sign-off of appointment ${patient.id}.`,
+                  note: `Follow-up created from sign-off of ${patient.queueNumber ? `Ticket ${patient.ticketPrefix}-${patient.queueNumber}` : 'Previous Record'}.`,
               }],
           });
       }

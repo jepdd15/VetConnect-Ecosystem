@@ -29,7 +29,7 @@ import {
   View,
 } from "react-native";
 import { auth, db } from "../../firebaseConfig";
-import { COLORS } from '../theme/mobileTokens';
+import { COLORS, SHADOW, FONTS } from '../theme/mobileTokens';
 import { isValidPHPhone } from "../utils/phoneValidation";
 
 // THE FIX: Notice we added `route` to the props to catch the secret flag!
@@ -87,6 +87,7 @@ export default function UserProfileScreen({ navigation, route }) {
   const [whatsappOptIn, setWhatsappOptIn] = useState(false);
   const [waiverSigned, setWaiverSigned] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState({});
+  const [activeRelationPickerIndex, setActiveRelationPickerIndex] = useState(null);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -585,9 +586,7 @@ export default function UserProfileScreen({ navigation, route }) {
               </Text>
             </View>
             <Text style={styles.emailText}>{auth.currentUser?.email || ""}</Text>
-            <View style={styles.roleBadge}>
-              <Text style={styles.roleText}>Pet Owner</Text>
-            </View>
+
           </View>
 
           {isBookingRedirect && (
@@ -600,124 +599,133 @@ export default function UserProfileScreen({ navigation, route }) {
             </View>
           )}
 
-          <TouchableOpacity onPress={() => toggleSection("personal")}>
+          <TouchableOpacity onPress={() => toggleSection("personal")} activeOpacity={0.7}>
             <View style={styles.sectionHeaderRow}>
+              <View style={styles.sectionAnchor} />
               <Text style={styles.sectionHeader}>👤 Personal Information</Text>
               <MaterialIcons
                 name={collapsedSections.personal ? "expand-more" : "expand-less"}
-                size={24}
-                color={COLORS.accentLight}
+                size={22}
+                color={COLORS.brand}
               />
             </View>
           </TouchableOpacity>
           {!collapsedSections.personal && (
-            <View style={styles.card}>
-              <Text style={styles.label}>Full Name *</Text>
-              <TextInput
-                style={[styles.input, getHighlightStyle(fullName)]}
-                value={fullName}
-                onChangeText={setFullName}
-              />
-
-              <Text style={styles.label}>Mobile Number *</Text>
-              <TextInput
-                style={[styles.input, getHighlightStyle(phone)]}
-                value={phone}
-                onChangeText={setPhone}
-                keyboardType="phone-pad"
-                maxLength={11}
-                placeholder="09xxxxxxxxx"
-              />
-
-              <Text style={styles.label}>Email Address</Text>
-              <TextInput
-                style={styles.input}
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                placeholder="name@example.com"
-              />
-
-              <Text style={styles.label}>Secondary Phone</Text>
-              <TextInput
-                style={styles.input}
-                value={secondaryPhone}
-                onChangeText={setSecondaryPhone}
-                keyboardType="phone-pad"
-                maxLength={11}
-                placeholder="09xxxxxxxxx (Optional)"
-              />
-
-              <Text style={styles.label}>
-                Date of Birth (For SC/PWD Verification)
-              </Text>
-              <TouchableOpacity
-                style={styles.dateBtn}
-                onPress={() => setShowDatePicker(true)}
-              >
-                <Text style={[styles.dateBtnText, !dob && { color: COLORS.muted }]}>
-                  {dob ? dob.toLocaleDateString() : "Tap to select date"}
-                </Text>
-              </TouchableOpacity>
-              {showDatePicker && (
-                <DateTimePicker
-                  value={dob || new Date(1990, 0, 1)}
-                  mode="date"
-                  display="default"
-                  maximumDate={new Date()}
-                  onChange={(e, d) => {
-                    setShowDatePicker(Platform.OS === "ios");
-                    if (d) setDob(d);
-                  }}
+            <View style={styles.shadowContainer}>
+              <View style={SHADOW.card} />
+              <View style={styles.card}>
+                <Text style={styles.label}>Full Name *</Text>
+                <TextInput
+                  style={[styles.input, getHighlightStyle(fullName)]}
+                  value={fullName}
+                  onChangeText={setFullName}
                 />
-              )}
+
+                <Text style={styles.label}>Mobile Number *</Text>
+                <TextInput
+                  style={[styles.input, styles.monospaceInput, getHighlightStyle(phone)]}
+                  value={phone}
+                  onChangeText={setPhone}
+                  keyboardType="phone-pad"
+                  maxLength={11}
+                  placeholder="09xxxxxxxxx"
+                />
+
+                <Text style={styles.label}>Email Address</Text>
+                <TextInput
+                  style={styles.input}
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  placeholder="name@example.com"
+                />
+
+                <Text style={styles.label}>Secondary Phone</Text>
+                <TextInput
+                  style={[styles.input, styles.monospaceInput]}
+                  value={secondaryPhone}
+                  onChangeText={setSecondaryPhone}
+                  keyboardType="phone-pad"
+                  maxLength={11}
+                  placeholder="09xxxxxxxxx (Optional)"
+                />
+
+                <Text style={styles.label}>
+                  Date of Birth
+                </Text>
+                <TouchableOpacity
+                  style={styles.dateBtn}
+                  onPress={() => setShowDatePicker(true)}
+                >
+                  <Text style={[styles.dateBtnText, !dob && { color: COLORS.muted }]}>
+                    {dob ? dob.toLocaleDateString() : "Tap to select date"}
+                  </Text>
+                </TouchableOpacity>
+                {showDatePicker && (
+                  <DateTimePicker
+                    value={dob || new Date(1990, 0, 1)}
+                    mode="date"
+                    display="default"
+                    maximumDate={new Date()}
+                    onChange={(e, d) => {
+                      setShowDatePicker(Platform.OS === "ios");
+                      if (d) setDob(d);
+                    }}
+                  />
+                )}
+              </View>
             </View>
           )}
 
-          <TouchableOpacity onPress={() => toggleSection("address")}>
+          <TouchableOpacity onPress={() => toggleSection("address")} activeOpacity={0.7}>
             <View style={styles.sectionHeaderRow}>
+              <View style={styles.sectionAnchor} />
               <Text style={styles.sectionHeader}>🏡 Address</Text>
               <MaterialIcons
                 name={collapsedSections.address ? "expand-more" : "expand-less"}
-                size={24}
-                color={COLORS.accentLight}
+                size={22}
+                color={COLORS.brand}
               />
             </View>
           </TouchableOpacity>
           {!collapsedSections.address && (
-            <View style={styles.card}>
-              <Text style={styles.label}>Street / Subdivision / Barangay *</Text>
-              <TextInput
-                style={[styles.input, getHighlightStyle(address)]}
-                value={address}
-                onChangeText={setAddress}
-                placeholder="e.g. 123 Main St, Brgy. Poblacion"
-              />
-              <Text style={styles.label}>City / Municipality *</Text>
-              <TextInput
-                style={[styles.input, getHighlightStyle(city)]}
-                value={city}
-                onChangeText={setCity}
-                placeholder="e.g. Dagupan City"
-              />
+            <View style={styles.shadowContainer}>
+              <View style={SHADOW.card} />
+              <View style={styles.card}>
+                <Text style={styles.label}>Street / Subdivision / Barangay *</Text>
+                <TextInput
+                  style={[styles.input, getHighlightStyle(address)]}
+                  value={address}
+                  onChangeText={setAddress}
+                  placeholder="e.g. 123 Main St, Brgy. Poblacion"
+                />
+                <Text style={styles.label}>City / Municipality *</Text>
+                <TextInput
+                  style={[styles.input, getHighlightStyle(city)]}
+                  value={city}
+                  onChangeText={setCity}
+                  placeholder="e.g. Dagupan City"
+                />
+              </View>
             </View>
           )}
 
-          <TouchableOpacity onPress={() => toggleSection("emergency")}>
+          <TouchableOpacity onPress={() => toggleSection("emergency")} activeOpacity={0.7}>
             <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionHeader}>
-                🚨 Emergency & Identifications
-              </Text>
+              <View style={styles.sectionAnchor} />
+              <Text style={styles.sectionHeader}>🚨 Emergency & IDs</Text>
               <MaterialIcons
                 name={collapsedSections.emergency ? "expand-more" : "expand-less"}
-                size={24}
-                color={COLORS.accentLight}
+                size={22}
+                color={COLORS.brand}
               />
             </View>
           </TouchableOpacity>
           {!collapsedSections.emergency && (
-            <View style={styles.card}>
+            <View style={styles.shadowContainer}>
+              <View style={SHADOW.card} />
+              <View style={styles.card}>
             {/* DYNAMIC EMERGENCY CONTACTS ARRAY */}
             {emergencyContacts.map((contact, index) => (
               <View
@@ -773,17 +781,42 @@ export default function UserProfileScreen({ navigation, route }) {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.label}>Relation</Text>
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
-                      {['Spouse', 'Parent', 'Sibling', 'Child', 'Relative', 'Friend', 'Caretaker', 'Other'].map(r => (
-                        <TouchableOpacity key={r} onPress={() => updateEmergencyContact(index, 'relation', r)}
-                          style={{ paddingHorizontal: 8, paddingVertical: 5, borderWidth: 1.5,
-                            borderColor: contact.relation === r ? COLORS.sky : '#ccc',
-                            backgroundColor: contact.relation === r ? COLORS.sky + '15' : '#fff' }}>
-                          <Text style={{ fontSize: 11, fontWeight: contact.relation === r ? '900' : '600',
-                            color: contact.relation === r ? COLORS.sky : '#666' }}>{r}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
+                    <TouchableOpacity
+                      style={styles.dropdownBtn}
+                      activeOpacity={0.7}
+                      onPress={() => setActiveRelationPickerIndex(activeRelationPickerIndex === index ? null : index)}
+                    >
+                      <Text style={styles.dropdownBtnText}>
+                        {contact.relation || "SELECT..."}
+                      </Text>
+                      <MaterialIcons
+                        name={activeRelationPickerIndex === index ? "expand-less" : "expand-more"}
+                        size={20}
+                        color={COLORS.brand}
+                      />
+                    </TouchableOpacity>
+
+                    {activeRelationPickerIndex === index && (
+                      <View style={styles.dropdownList}>
+                        {['Spouse', 'Parent', 'Sibling', 'Child', 'Relative', 'Friend', 'Caretaker', 'Other'].map(r => (
+                          <TouchableOpacity
+                            key={r}
+                            style={styles.dropdownItem}
+                            onPress={() => {
+                              updateEmergencyContact(index, 'relation', r);
+                              setActiveRelationPickerIndex(null);
+                            }}
+                          >
+                            <Text style={[
+                              styles.dropdownItemText,
+                              contact.relation === r && { fontWeight: '900', color: COLORS.sky }
+                            ]}>
+                              {r.toUpperCase()}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    )}
                   </View>
                 </View>
               </View>
@@ -810,9 +843,7 @@ export default function UserProfileScreen({ navigation, route }) {
               onChangeText={setSeniorId}
               placeholder="ID Number (Optional)"
             />
-            <Text style={styles.helperText}>
-              Used to automatically apply legal discounts on eligible services.
-            </Text>
+
 
             <View style={styles.divider} />
 
@@ -855,21 +886,25 @@ export default function UserProfileScreen({ navigation, route }) {
                 />
               </>
             )}
-          </View>
+              </View>
+            </View>
           )}
 
-          <TouchableOpacity onPress={() => toggleSection("legal")}>
+          <TouchableOpacity onPress={() => toggleSection("legal")} activeOpacity={0.7}>
             <View style={styles.sectionHeaderRow}>
+              <View style={styles.sectionAnchor} />
               <Text style={styles.sectionHeader}>⚖️ Legal & Privacy</Text>
               <MaterialIcons
                 name={collapsedSections.legal ? "expand-more" : "expand-less"}
-                size={24}
-                color={COLORS.accentLight}
+                size={22}
+                color={COLORS.brand}
               />
             </View>
           </TouchableOpacity>
           {!collapsedSections.legal && (
-            <View style={styles.card}>
+            <View style={styles.shadowContainer}>
+              <View style={SHADOW.card} />
+              <View style={styles.card}>
             {/* --- DPA CONSENT STATUS --- */}
             {consentVersion != null ? (
               <View>
@@ -884,9 +919,7 @@ export default function UserProfileScreen({ navigation, route }) {
                         Signed on {formatConsentDate(consentGrantedAt)}
                       </Text>
                     )}
-                    <Text style={[styles.checkboxDesc, { marginTop: 4 }]}>
-                      View your consent records in the clinic admin portal.
-                    </Text>
+
                   </View>
                 </View>
                 {/* RA 10173 §18 — right to withdraw consent */}
@@ -1107,21 +1140,26 @@ export default function UserProfileScreen({ navigation, route }) {
                 </View>
               </View>
             )}
-          </View>
+              </View>
+            </View>
           )}
 
-          <TouchableOpacity
-            style={[
-              styles.saveBtn,
-              (!(consentVersion != null || dpaConsent) || saving) && { backgroundColor: COLORS.muted },
-            ]}
-            onPress={handleUpdate}
-            disabled={saving}
-          >
-            <Text style={styles.saveBtnText}>
-              {saving ? "Processing..." : "Update Profile"}
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.shadowContainer}>
+            <View style={SHADOW.button} />
+            <TouchableOpacity
+              style={[
+                styles.saveBtn,
+                (!(consentVersion != null || dpaConsent) || saving) && { backgroundColor: COLORS.muted },
+              ]}
+              onPress={handleUpdate}
+              disabled={saving}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.saveBtnText}>
+                {saving ? "PROCESSING..." : "UPDATE PROFILE"}
+              </Text>
+            </TouchableOpacity>
+          </View>
 
           <TouchableOpacity
             style={styles.deleteBtn}
@@ -1136,36 +1174,38 @@ export default function UserProfileScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FAFAFA" },
+  container: { flex: 1, backgroundColor: COLORS.cream },
   scrollContent: { flexGrow: 1, padding: 20, paddingBottom: 40 },
   headerBox: { alignItems: "center", marginBottom: 20, marginTop: 10 },
   avatar: {
     width: 80,
     height: 80,
-    borderRadius: 40,
-    backgroundColor: COLORS.accent,
+    borderRadius: 0,
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 10,
-    elevation: 4,
   },
-  avatarText: { color: COLORS.white, fontSize: 36, fontWeight: "900" },
+  avatarText: { color: COLORS.brand, fontSize: 36, fontWeight: "900" },
   emailText: {
-    fontSize: 16,
-    color: COLORS.textSecondary,
+    fontSize: 14,
+    color: COLORS.accentLight,
     marginBottom: 5,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
     fontWeight: "bold",
   },
   roleBadge: {
-    backgroundColor: "#EFEBE9",
+    backgroundColor: COLORS.white,
     paddingHorizontal: 12,
     paddingVertical: 4,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
+    borderRadius: 0,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
   },
   roleText: {
-    color: COLORS.accent,
+    color: COLORS.brand,
     fontWeight: "900",
     fontSize: 11,
     textTransform: "uppercase",
@@ -1173,9 +1213,9 @@ const styles = StyleSheet.create({
 
   warningBanner: {
     flexDirection: "row",
-    backgroundColor: "#FFEBEE",
+    backgroundColor: COLORS.dangerBg,
     padding: 15,
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 2,
     borderColor: COLORS.danger,
     alignItems: "center",
@@ -1191,52 +1231,62 @@ const styles = StyleSheet.create({
   missingFieldHighlight: {
     borderColor: COLORS.danger,
     borderWidth: 2,
-    backgroundColor: "#FFEBEE",
+    backgroundColor: COLORS.dangerBg,
   },
 
   sectionHeader: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "900",
-    color: COLORS.accentLight,
-    marginBottom: 8,
-    marginLeft: 5,
-    marginTop: 10,
+    color: COLORS.brand,
     textTransform: "uppercase",
+    letterSpacing: 1,
   },
   sectionHeaderRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
     marginTop: 10,
-    marginBottom: 8,
-    marginHorizontal: 5,
+    marginBottom: 12,
+    gap: 8,
+  },
+  sectionAnchor: {
+    width: 8,
+    height: 18,
+    backgroundColor: COLORS.brand,
+  },
+  shadowContainer: {
+    position: 'relative',
+    marginBottom: 20,
   },
   card: {
     backgroundColor: COLORS.white,
     padding: 20,
-    borderRadius: 16,
-    marginBottom: 20,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: "#EEEEEE",
+    borderRadius: 0,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
   },
 
   label: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: COLORS.accent,
+    fontSize: 12,
+    fontWeight: "900",
+    color: COLORS.brand,
     marginBottom: 6,
     marginTop: 5,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   input: {
-    backgroundColor: "#F5F5F5",
-    borderWidth: 1,
-    borderColor: "#E0E0E0",
-    borderRadius: 10,
-    padding: 15,
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    borderRadius: 0,
+    padding: 12,
     fontSize: 16,
     marginBottom: 15,
     color: COLORS.textPrimary,
+  },
+  monospaceInput: {
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    fontWeight: 'bold',
   },
   helperText: {
     fontSize: 11,
@@ -1248,20 +1298,21 @@ const styles = StyleSheet.create({
   },
 
   dateBtn: {
-    backgroundColor: "#F5F5F5",
-    borderWidth: 1,
-    borderColor: "#E0E0E0",
-    borderRadius: 10,
-    padding: 15,
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    borderRadius: 0,
+    padding: 12,
     marginBottom: 15,
   },
-  dateBtnText: { fontSize: 16, color: COLORS.textPrimary, fontWeight: "500" },
+  dateBtnText: { fontSize: 16, color: COLORS.textPrimary, fontWeight: "bold" },
 
   extraContactBox: {
     marginTop: 10,
     paddingTop: 15,
-    borderTopWidth: 1,
-    borderTopColor: "#eee",
+    borderTopWidth: 2,
+    borderStyle: 'dashed',
+    borderTopColor: COLORS.borderLight,
   },
   contactHeader: {
     flexDirection: "row",
@@ -1269,19 +1320,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 10,
   },
-  contactTitle: { fontSize: 13, fontWeight: "bold", color: COLORS.info },
+  contactTitle: { fontSize: 12, fontWeight: "900", color: COLORS.brand, textTransform: 'uppercase' },
   addContactBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    padding: 10,
-    backgroundColor: "#E3F2FD",
-    borderRadius: 10,
+    padding: 12,
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    borderRadius: 0,
     marginTop: 5,
   },
-  addContactText: { color: COLORS.info, fontWeight: "bold", marginLeft: 5 },
+  addContactText: { color: COLORS.brand, fontWeight: "900", textTransform: 'uppercase', fontSize: 12 },
 
-  divider: { height: 1, backgroundColor: "#EEEEEE", marginVertical: 15 },
+  divider: { height: 2, backgroundColor: COLORS.borderLight, marginVertical: 15, borderStyle: 'dashed' },
 
   consentStatusRow: {
     flexDirection: "row",
@@ -1291,14 +1344,50 @@ const styles = StyleSheet.create({
   signNowBtn: {
     marginTop: 8,
     alignSelf: "flex-start",
-    backgroundColor: COLORS.danger,
+    backgroundColor: COLORS.sky,
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderWidth: 2,
     borderColor: COLORS.brand,
+    borderRadius: 0,
+  },
+  dropdownBtn: {
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    padding: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  dropdownBtnText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: COLORS.brand,
+    textTransform: 'uppercase',
+  },
+  dropdownList: {
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    borderTopWidth: 0,
+    marginTop: -12,
+    marginBottom: 15,
+  },
+  dropdownItem: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+  },
+  dropdownItemText: {
+    fontSize: 12,
+    color: COLORS.brand,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   signNowBtnText: {
-    color: COLORS.white,
+    color: COLORS.textOnSky,
     fontWeight: "900",
     fontSize: 12,
     textTransform: "uppercase",
@@ -1310,52 +1399,53 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   checkboxTitle: {
-    fontSize: 14,
-    fontWeight: "bold",
-    color: COLORS.textPrimary,
+    fontSize: 13,
+    fontWeight: "900",
+    color: COLORS.brand,
     marginBottom: 3,
+    textTransform: 'uppercase',
   },
   checkboxDesc: { fontSize: 12, color: COLORS.textMuted, lineHeight: 18 },
 
   toggleGroup: {
     flexDirection: "row",
-    borderRadius: 10,
+    borderRadius: 0,
     overflow: "hidden",
-    borderWidth: 1,
-    borderColor: COLORS.accent,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
   },
   toggleBtn: {
     flex: 1,
-    padding: 12,
+    padding: 10,
     alignItems: "center",
     backgroundColor: COLORS.white,
   },
-  activeToggle: { backgroundColor: COLORS.accent },
-  toggleText: { color: COLORS.accent, fontWeight: "bold", fontSize: 13 },
+  activeToggle: { backgroundColor: COLORS.brand },
+  toggleText: { color: COLORS.brand, fontWeight: "900", fontSize: 12, textTransform: 'uppercase' },
   activeText: { color: COLORS.white },
 
   saveBtn: {
     backgroundColor: COLORS.success,
     padding: 18,
-    borderRadius: 14,
+    borderRadius: 0,
+    borderWidth: 3,
+    borderColor: COLORS.brand,
     alignItems: "center",
-    marginTop: 10,
-    elevation: 3,
   },
-  saveBtnText: { color: COLORS.white, fontWeight: "900", fontSize: 18 },
+  saveBtnText: { color: COLORS.white, fontWeight: "900", fontSize: 18, letterSpacing: 2 },
   deleteBtn: { marginTop: 30, alignItems: "center", padding: 10 },
   deleteBtnText: {
     color: COLORS.danger,
-    fontWeight: "bold",
-    fontSize: 14,
+    fontWeight: "900",
+    fontSize: 12,
+    textTransform: 'uppercase',
     textDecorationLine: "underline",
   },
 
-  // RA 10173 §18 — Consent withdrawal link (Step 6.1)
   withdrawConsentLink: {
     alignSelf: 'flex-start',
     marginTop: 10,
-    marginLeft: 34, // aligns under the text, past the icon (24px icon + 10px margin)
+    marginLeft: 34,
     paddingVertical: 4,
   },
   withdrawConsentText: {
@@ -1367,19 +1457,19 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
 
-  // RA 10173 Step 4.1 — erased account read-only notice styles
   erasedContainer: {
     flex: 1,
-    backgroundColor: "#FAFAFA",
+    backgroundColor: COLORS.cream,
     padding: 24,
     justifyContent: "center",
   },
   erasedCard: {
-    backgroundColor: "#FFEBEE",
-    borderWidth: 2,
+    backgroundColor: COLORS.dangerBg,
+    borderWidth: 3,
     borderColor: COLORS.danger,
     padding: 24,
     marginBottom: 24,
+    borderRadius: 0,
   },
   erasedHeader: {
     fontSize: 22,
@@ -1395,9 +1485,12 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   erasedLogoutBtn: {
-    backgroundColor: COLORS.accent,
+    backgroundColor: COLORS.brand,
     padding: 18,
     alignItems: "center",
+    borderRadius: 0,
+    borderWidth: 3,
+    borderColor: COLORS.brand,
   },
   erasedLogoutText: {
     color: COLORS.white,

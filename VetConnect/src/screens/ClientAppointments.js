@@ -36,6 +36,7 @@ import {
 } from "react-native";
 import { MaterialIcons } from '@expo/vector-icons';
 import QRCode from "react-native-qrcode-svg";
+import Svg, { Polygon } from "react-native-svg";
 import { auth, db } from "../../firebaseConfig";
 import { findFirstBookableDate } from "../hooks/useBookingEngine";
 import { isActiveStatus } from "../utils/statusLabels";
@@ -702,7 +703,7 @@ const ClientAppointments = ({ navigation }) => {
   };
 
 
-  const renderItem = ({ item }) => {
+  const renderItem = ({ item, index }) => {
     if (item._isCaseWrapper) {
       return (
         <CaseDayCard
@@ -722,10 +723,17 @@ const ClientAppointments = ({ navigation }) => {
 
     const isHistory = tab === 'history';
 
+    const stackRotation = !isHistory ? (index % 2 === 0 ? '-0.5deg' : '0.5deg') : '0deg';
+
     return (
-      <View style={styles.cardOuter}>
+      <View style={[styles.cardOuter, !isHistory && { transform: [{ rotate: stackRotation }] }]}>
         <View style={styles.cardShadow} />
-        <View style={[styles.card, isHistory && styles.historyCard]}>
+        {!isHistory && <ZigZagEdgeTop />}
+        <View style={[
+          styles.card, 
+          isHistory && styles.historyCard,
+          !isHistory && { borderTopWidth: 0, marginTop: -2 }
+        ]}>
           <AppointmentCardContent
             appointment={item}
             isUpcoming={!isHistory}
@@ -1732,5 +1740,20 @@ const styles = StyleSheet.create({
   },
 
 });
+
+function ZigZagEdgeTop() {
+  return (
+    <View style={{ width: '100%', height: 10, overflow: 'hidden', marginBottom: 0, zIndex: 5 }}>
+      <Svg height="10" width="100%" preserveAspectRatio="none" viewBox="0 0 100 10">
+        <Polygon
+          points="0,5 5,0 10,5 15,0 20,5 25,0 30,5 35,0 40,5 45,0 50,5 55,0 60,5 65,0 70,5 75,0 80,5 85,0 90,5 95,0 100,5 100,10 0,10"
+          fill={COLORS.white}
+          stroke={COLORS.brand}
+          strokeWidth="0.5"
+        />
+      </Svg>
+    </View>
+  );
+}
 
 export default ClientAppointments;

@@ -17,7 +17,7 @@ export default function EditPetModal({ open, onClose, pet }) {
   const [form, setForm] = useState({
     name: '', breed: '', species: 'Canine', gender: 'Male',
     dob: '', color: '', isNeutered: false,
-    allergies: 'None', microchip: '', lastWeight: '',
+    allergies: 'None', lastWeight: '',
     // DOB 3-mode fields
     dobMode: 'exact', estYears: '', estMonths: '',
     // Allergy tag array fields
@@ -76,7 +76,6 @@ export default function EditPetModal({ open, onClose, pet }) {
         showAllergyInput: hasAllergies,
         allergyArray: parsedAllergyArray,
         currentAllergyInput: '',
-        microchip: pet.microchip || '',
         lastWeight: pet.lastWeight || '',
       });
       setError('');
@@ -130,7 +129,6 @@ export default function EditPetModal({ open, onClose, pet }) {
         isNeutered: form.isNeutered,
         petAllergies: resolvedAllergies,
         allergies: resolvedAllergies,
-        microchip: form.microchip.trim(),
         weight: form.lastWeight ? parseFloat(form.lastWeight) : null,
         lastWeight: form.lastWeight ? parseFloat(form.lastWeight) : null,
         updatedAt: Timestamp.now(),
@@ -166,268 +164,510 @@ export default function EditPetModal({ open, onClose, pet }) {
   };
 
   return (
-    <Dialog open={open} onClose={() => onClose(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 0, overflow: 'hidden' } }}>
-      <DialogTitle sx={{ bgcolor: COLORS.accent, color: 'white', fontFamily: FONT, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1 }}>
-        <PetsIcon /> Edit Patient Profile
+    <Dialog 
+      open={open} 
+      onClose={() => onClose(false)} 
+      maxWidth="sm" 
+      fullWidth 
+      PaperProps={{ 
+        sx: { 
+          borderRadius: 0, 
+          overflow: 'hidden', 
+          border: `2px solid ${COLORS.textPrimary}`,
+          bgcolor: '#F5F5F5', 
+          boxShadow: `4px 4px 0px #000, 8px 8px 0px #FFF, 12px 12px 0px #000`
+        } 
+      }}
+    >
+      <DialogTitle sx={{ bgcolor: COLORS.accent, color: 'white', fontFamily: FONT, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1.5, borderBottom: `2px solid ${COLORS.textPrimary}`, py: 2.5 }}>
+        <PetsIcon /> EDIT PATIENT PROFILE: {form.name.toUpperCase()}
       </DialogTitle>
-      <DialogContent dividers sx={{ bgcolor: COLORS.surface, p: 3 }}>
+      
+      <DialogContent sx={{ p: 4 }}>
         <Box sx={{ mt: 1 }}>
-          <Grid container spacing={2}>
-            {/* Row 1: Name + Species */}
-            <Grid size={{ xs: 12, md: 8 }}>
-              <TextField autoFocus label="Pet Name" fullWidth size="small" required
-                value={form.name} onChange={(e) => setForm({...form, name: e.target.value})}
-                error={!!error && !form.name.trim()} helperText={!form.name.trim() && error ? error : ''}
-                sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }} />
-            </Grid>
-            <Grid size={{ xs: 12, md: 4 }}>
-              <TextField select label="Species" fullWidth size="small"
-                value={form.species} onChange={(e) => setForm({...form, species: e.target.value, breed: ''})}
-                sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }}>
-                <MenuItem value="Canine">🐶 Canine</MenuItem>
-                <MenuItem value="Feline">🐱 Feline</MenuItem>
-              </TextField>
-            </Grid>
-
-            {/* Row 2: Breed + Color */}
-            <Grid size={{ xs: 12, md: 6 }}>
-              <Autocomplete
-                freeSolo
-                options={BREED_CATALOG[form.species] || []}
-                value={form.breed || ''}
-                onChange={(_, v) => setForm({...form, breed: v || ''})}
-                onInputChange={(_, v, reason) => { if (reason === 'input') setForm({...form, breed: v}); }}
-                componentsProps={{ paper: { sx: { borderRadius: 0, border: `1px solid ${COLORS.accent}` } } }}
-                renderInput={(params) => (
-                  <TextField {...params} label="Breed" fullWidth size="small"
-                    sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT, borderRadius: 0 } }} />
-                )}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, md: 6 }}>
-              <TextField label="Color / Markings" fullWidth size="small"
-                value={form.color} onChange={(e) => setForm({...form, color: e.target.value})}
-                sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }} />
-            </Grid>
-
-            {/* Row 3: Sex */}
-            <Grid size={{ xs: 12, md: 6 }}>
-              <Typography variant="caption" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.textPrimary, mb: 0.5, display: 'block' }}>SEX</Typography>
-              <ToggleButtonGroup
-                id="sex-select"
-                value={form.gender}
-                exclusive
-                fullWidth
-                size="small"
-                onChange={(e, v) => v && setForm({...form, gender: v})}
-                sx={{
-                  '& .MuiToggleButton-root': {
-                    borderRadius: 0,
-                    border: `2px solid ${COLORS.textPrimary}`,
-                    fontFamily: FONT,
-                    fontWeight: 900,
-                    bgcolor: 'white',
-                    color: COLORS.textPrimary,
-                    '&.Mui-selected': { 
-                      color: 'white',
-                      boxShadow: 'inset 4px 4px 0px rgba(0,0,0,0.1)',
-                    }
-                  }
-                }}
-              >
-                <ToggleButton 
-                  value="Male"
-                  sx={{ 
-                    '&.Mui-selected': { 
-                      bgcolor: '#90CAF9!important', 
-                      '&:hover': { bgcolor: '#42A5F5!important' } 
-                    } 
-                  }}
-                >
-                  MALE
-                </ToggleButton>
-                <ToggleButton 
-                  value="Female"
-                  sx={{ 
-                    '&.Mui-selected': { 
-                      bgcolor: '#F48FB1!important', 
-                      '&:hover': { bgcolor: '#EC407A!important' } 
-                    } 
-                  }}
-                >
-                  FEMALE
-                </ToggleButton>
-              </ToggleButtonGroup>
-
-              <Box sx={{ mt: 1.5, p: 1, border: `2px solid ${COLORS.textPrimary}`, display: 'inline-flex', alignItems: 'center', bgcolor: form.isNeutered ? `${COLORS.success}22` : 'white', width: '100%' }}>
-                <FormControlLabel
-                  control={<Switch size="small" checked={form.isNeutered} onChange={(e) => setForm({...form, isNeutered: e.target.checked})} sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.success }, '& .MuiSwitch-switchBase.Mui-checked+.MuiSwitch-track': { bgcolor: COLORS.success } }} />}
-                  label={
-                    <Typography sx={{ fontFamily: FONT, fontWeight: 900, textTransform: 'uppercase', fontSize: '0.75rem', color: form.isNeutered ? COLORS.success : COLORS.textPrimary }}>
-                      {form.gender === 'Female' ? 'SPAYED STATUS' : 'NEUTERED STATUS'}
-                    </Typography>
-                  }
-                  sx={{ ml: 0 }}
-                />
-              </Box>
-
-              <TextField 
-                label="BODY WEIGHT" 
-                fullWidth size="small" type="number"
-                value={form.lastWeight} onChange={(e) => setForm({...form, lastWeight: e.target.value})}
-                InputProps={{ 
-                  endAdornment: <InputAdornment position="end"><Typography sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.8rem', color: COLORS.textPrimary }}>KG</Typography></InputAdornment> 
-                }}
-                sx={{ 
-                  mt: 1.5,
-                  bgcolor: COLORS.cardBg, 
-                  '& .MuiOutlinedInput-root': { 
-                    fontFamily: FONT, borderRadius: 0, fontWeight: 900,
-                    '& fieldset': { border: `2px solid ${COLORS.textPrimary}` }
-                  } 
-                }} 
-              />
-            </Grid>
-
-            {/* Row 3b: DOB 3-mode selector (Item 5) */}
+          <Grid container spacing={4}>
+            {/* IDENTITY BLOCK */}
             <Grid size={{ xs: 12 }}>
-              <Box sx={{ p: 1, border: `1px dashed ${COLORS.borderLight}`, bgcolor: 'transparent' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 1 }}>
-                  <CakeIcon sx={{ fontSize: 18, color: COLORS.accent }} />
-                  <Typography sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.75rem', color: COLORS.accent }}>BIRTHDATE / AGE MODE</Typography>
+              <Box sx={{ 
+                p: 3, 
+                border: `2px solid ${COLORS.textPrimary}`, 
+                bgcolor: '#FDFCF0', 
+                transform: 'rotate(-0.4deg)', 
+                position: 'relative',
+                boxShadow: `4px 4px 0px ${COLORS.borderInput}`
+              }}>
+                <Box sx={{ position: 'absolute', top: 12, left: 12, width: 8, height: 8, borderRadius: '50%', border: `1.5px solid ${COLORS.textPrimary}`, bgcolor: '#F5F5F5' }} />
+                
+                <Box sx={{ 
+                  display: 'inline-block', 
+                  bgcolor: COLORS.textPrimary, 
+                  color: 'white', 
+                  px: 1.5, 
+                  py: 0.25, 
+                  mb: 2, 
+                  ml: -3.2,
+                  border: `2px solid ${COLORS.textPrimary}`,
+                  borderLeft: 'none'
+                }}>
+                  <Typography variant="caption" sx={{ fontFamily: FONT, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1 }}>
+                    01 IDENTITY
+                  </Typography>
+                </Box>
+                
+                <Grid container spacing={2}>
+                  <Grid size={{ xs: 12 }}>
+                    <TextField 
+                      autoFocus 
+                      label="PET NAME" 
+                      fullWidth 
+                      size="small" 
+                      required
+                      value={form.name} 
+                      onChange={(e) => setForm({...form, name: e.target.value})}
+                      error={!!error && !form.name.trim()}
+                      sx={{ 
+                        bgcolor: 'white', 
+                        '& .MuiOutlinedInput-root': { 
+                          fontFamily: FONT, borderRadius: 0, fontWeight: 900,
+                          '& fieldset': { border: `2px solid ${COLORS.textPrimary}` },
+                          '&:hover fieldset': { borderColor: COLORS.textPrimary },
+                          '&.Mui-focused fieldset': { borderColor: COLORS.textPrimary, boxShadow: `4px 4px 0px ${COLORS.textPrimary}` },
+                          transition: 'all 0.1s'
+                        } 
+                      }} 
+                    />
+                  </Grid>
+                  
+                  <Grid size={{ xs: 12, md: 6 }}>
+                    <Typography variant="caption" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.textPrimary, mb: 0.5, display: 'block' }}>SPECIES</Typography>
+                    <ToggleButtonGroup
+                      value={form.species}
+                      exclusive
+                      fullWidth
+                      size="small"
+                      onChange={(e, v) => v && setForm({...form, species: v, breed: ''})}
+                      sx={{
+                        '& .MuiToggleButton-root': {
+                          borderRadius: 0,
+                          border: `2px solid ${COLORS.textPrimary}`,
+                          fontFamily: FONT,
+                          fontWeight: 900,
+                          height: 40,
+                          bgcolor: 'white',
+                          '&.Mui-selected': { bgcolor: '#FF9100', color: COLORS.textPrimary, '&:hover': { bgcolor: '#FFAB40' } }
+                        }
+                      }}
+                    >
+                      <ToggleButton value="Canine">DOG</ToggleButton>
+                      <ToggleButton value="Feline">CAT</ToggleButton>
+                    </ToggleButtonGroup>
+                  </Grid>
+
+                  <Grid size={{ xs: 12, md: 6 }}>
+                    <Typography variant="caption" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.textPrimary, mb: 0.5, display: 'block' }}>BREED</Typography>
+                    <Autocomplete
+                      freeSolo
+                      options={BREED_CATALOG[form.species] || []}
+                      value={form.breed || ''}
+                      onChange={(_, v) => setForm({...form, breed: v || ''})}
+                      onInputChange={(_, v, reason) => { if (reason === 'input') setForm({...form, breed: v}); }}
+                      componentsProps={{ paper: { sx: { borderRadius: 0, border: `2px solid ${COLORS.textPrimary}`, boxShadow: `6px 6px 0px ${COLORS.borderInput}` } } }}
+                      renderInput={(params) => (
+                        <TextField 
+                          {...params} 
+                          label="" 
+                          placeholder="Select or type breed"
+                          fullWidth 
+                          size="small"
+                          sx={{ 
+                            bgcolor: 'white', 
+                            '& .MuiOutlinedInput-root': { 
+                              fontFamily: FONT, borderRadius: 0, fontWeight: 900, height: 40,
+                              '& fieldset': { border: `2px solid ${COLORS.textPrimary}` }
+                            } 
+                          }} 
+                        />
+                      )}
+                    />
+                  </Grid>
+
+                  <Grid size={{ xs: 12 }}>
+                    <TextField 
+                      label="COLOR / MARKINGS" 
+                      fullWidth 
+                      size="small"
+                      value={form.color} 
+                      onChange={(e) => setForm({...form, color: e.target.value})}
+                      sx={{ 
+                        bgcolor: 'white', 
+                        '& .MuiOutlinedInput-root': { 
+                          fontFamily: FONT, borderRadius: 0, fontWeight: 900,
+                          '& fieldset': { border: `2px solid ${COLORS.textPrimary}` }
+                        } 
+                      }} 
+                    />
+                  </Grid>
+                  
+                  <Grid size={{ xs: 12 }}>
+                    <Typography variant="caption" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.textPrimary, mb: 0.5, display: 'block' }}>SEX</Typography>
+                    <ToggleButtonGroup
+                      value={form.gender}
+                      exclusive
+                      fullWidth
+                      size="small"
+                      onChange={(e, v) => v && setForm({...form, gender: v})}
+                      sx={{
+                        '& .MuiToggleButton-root': {
+                          borderRadius: 0,
+                          border: `2px solid ${COLORS.textPrimary}`,
+                          fontFamily: FONT,
+                          fontWeight: 900,
+                          bgcolor: 'white',
+                          color: COLORS.textPrimary,
+                          '&.Mui-selected': { 
+                            color: 'white',
+                            boxShadow: 'inset 4px 4px 0px rgba(0,0,0,0.1)',
+                          }
+                        }
+                      }}
+                    >
+                      <ToggleButton 
+                        value="Male"
+                        sx={{ 
+                          '&.Mui-selected': { 
+                            bgcolor: '#90CAF9!important', 
+                            '&:hover': { bgcolor: '#42A5F5!important' } 
+                          } 
+                        }}
+                      >
+                        MALE
+                      </ToggleButton>
+                      <ToggleButton 
+                        value="Female"
+                        sx={{ 
+                          '&.Mui-selected': { 
+                            bgcolor: '#F48FB1!important', 
+                            '&:hover': { bgcolor: '#EC407A!important' } 
+                          } 
+                        }}
+                      >
+                        FEMALE
+                      </ToggleButton>
+                    </ToggleButtonGroup>
+
+                    <Box sx={{ mt: 1.5, p: 1, border: `2px solid ${COLORS.textPrimary}`, display: 'inline-flex', alignItems: 'center', bgcolor: form.isNeutered ? `${COLORS.success}22` : 'white', width: '100%' }}>
+                      <FormControlLabel
+                        control={<Switch size="small" checked={form.isNeutered} onChange={(e) => setForm({...form, isNeutered: e.target.checked})} sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.success }, '& .MuiSwitch-switchBase.Mui-checked+.MuiSwitch-track': { bgcolor: COLORS.success } }} />}
+                        label={
+                          <Typography sx={{ fontFamily: FONT, fontWeight: 900, textTransform: 'uppercase', fontSize: '0.75rem', color: form.isNeutered ? COLORS.success : COLORS.textPrimary }}>
+                            {form.gender === 'Female' ? 'SPAYED STATUS' : 'NEUTERED STATUS'}
+                          </Typography>
+                        }
+                        sx={{ ml: 0 }}
+                      />
+                    </Box>
+
+                    <Box sx={{ mt: 1.5 }}>
+                      <TextField 
+                        label="BODY WEIGHT" 
+                        fullWidth size="small" type="number"
+                        value={form.lastWeight || ''} 
+                        onChange={(e) => setForm({...form, lastWeight: e.target.value})}
+                        InputProps={{ 
+                          endAdornment: <InputAdornment position="end"><Typography sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.8rem', color: COLORS.textPrimary }}>KG</Typography></InputAdornment> 
+                        }}
+                        sx={{ 
+                          bgcolor: 'white', 
+                          '& .MuiOutlinedInput-root': { 
+                            fontFamily: FONT, borderRadius: 0, fontWeight: 900,
+                            '& fieldset': { border: `2px solid ${COLORS.textPrimary}` }
+                          } 
+                        }} 
+                      />
+                    </Box>
+                  </Grid>
+                </Grid>
+              </Box>
+            </Grid>
+
+            {/* TEMPORAL BLOCK */}
+            <Grid size={{ xs: 12 }}>
+              <Box sx={{ 
+                p: 3, 
+                border: `2px solid ${COLORS.textPrimary}`, 
+                bgcolor: '#FDFCF0', 
+                transform: 'rotate(0.3deg)', 
+                position: 'relative',
+                boxShadow: `4px 4px 0px ${COLORS.borderInput}`
+              }}>
+                <Box sx={{ position: 'absolute', top: 12, left: 12, width: 8, height: 8, borderRadius: '50%', border: `1.5px solid ${COLORS.textPrimary}`, bgcolor: '#F5F5F5' }} />
+                
+                <Box sx={{ 
+                  display: 'inline-block', 
+                  bgcolor: COLORS.accent, 
+                  color: 'white', 
+                  px: 1.5, 
+                  py: 0.25, 
+                  mb: 2, 
+                  ml: -3.2,
+                  border: `2px solid ${COLORS.textPrimary}`,
+                  borderLeft: 'none'
+                }}>
+                  <Typography variant="caption" sx={{ fontFamily: FONT, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1 }}>
+                    02 AGE
+                  </Typography>
+                </Box>
+                
+                <Box sx={{ mb: 2 }}>
                   <ToggleButtonGroup
                     size="small"
                     value={form.dobMode}
                     exclusive
+                    fullWidth
                     onChange={(_, val) => val && setForm({ ...form, dobMode: val })}
-                    sx={{ ml: 'auto', height: 26 }}
+                    sx={{ 
+                      height: 40,
+                      '& .MuiToggleButton-root': {
+                        borderRadius: 0,
+                        border: `2px solid ${COLORS.textPrimary}`,
+                        fontFamily: FONT,
+                        fontWeight: 900,
+                        px: 2,
+                        bgcolor: 'white',
+                        '&.Mui-selected': { bgcolor: '#FF9100', color: COLORS.textPrimary, '&:hover': { bgcolor: '#FFAB40' } }
+                      }
+                    }}
                   >
-                    <ToggleButton value="exact" sx={{ fontSize: '0.65rem', fontWeight: 900, px: 2, borderRadius: 0 }}>EXACT</ToggleButton>
-                    <ToggleButton value="approximate" sx={{ fontSize: '0.65rem', fontWeight: 900, px: 2, borderRadius: 0 }}>ESTIMATE</ToggleButton>
-                    <ToggleButton value="unknown" sx={{ fontSize: '0.65rem', fontWeight: 900, px: 2, borderRadius: 0 }}>UNKNOWN</ToggleButton>
+                    <ToggleButton value="exact">EXACT</ToggleButton>
+                    <ToggleButton value="approximate">ESTIMATE</ToggleButton>
+                    <ToggleButton value="unknown">UNKNOWN</ToggleButton>
                   </ToggleButtonGroup>
                 </Box>
+                
                 {form.dobMode === 'exact' && (
-                  <TextField size="small" type="date" label="PET BIRTHDAY" fullWidth
+                  <TextField 
+                    size="small" type="date" label="PET BIRTHDAY" fullWidth
                     InputLabelProps={{ shrink: true }}
                     inputProps={{ max: new Date().toISOString().split('T')[0] }}
                     value={form.dob}
                     onChange={(e) => setForm({ ...form, dob: e.target.value })}
-                    sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }}
+                    sx={{ 
+                      bgcolor: 'white', 
+                      '& .MuiOutlinedInput-root': { 
+                        fontFamily: FONT, borderRadius: 0, fontWeight: 900,
+                        '& fieldset': { border: `2px solid ${COLORS.textPrimary}` }
+                      } 
+                    }}
                   />
                 )}
+                
                 {form.dobMode === 'approximate' && (
-                  <Box sx={{ display: 'flex', gap: 1 }}>
-                    <TextField size="small" label="YEARS" type="number" fullWidth
+                  <Box sx={{ display: 'flex', gap: 2 }}>
+                    <TextField 
+                      size="small" label="YEARS" type="number" fullWidth
                       value={form.estYears}
                       onChange={(e) => setForm({ ...form, estYears: e.target.value })}
-                      sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }}
+                      sx={{ 
+                        bgcolor: 'white', 
+                        '& .MuiOutlinedInput-root': { 
+                          fontFamily: FONT, borderRadius: 0, fontWeight: 900,
+                          '& fieldset': { border: `2px solid ${COLORS.textPrimary}` }
+                        } 
+                      }}
                     />
-                    <TextField size="small" label="MONTHS" type="number" fullWidth
+                    <TextField 
+                      size="small" label="MONTHS" type="number" fullWidth
                       value={form.estMonths}
                       onChange={(e) => setForm({ ...form, estMonths: e.target.value })}
-                      sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }}
+                      sx={{ 
+                        bgcolor: 'white', 
+                        '& .MuiOutlinedInput-root': { 
+                          fontFamily: FONT, borderRadius: 0, fontWeight: 900,
+                          '& fieldset': { border: `2px solid ${COLORS.textPrimary}` }
+                        } 
+                      }}
                     />
                   </Box>
                 )}
+                
                 {form.dobMode === 'unknown' && (
-                  <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.textMuted, fontStyle: 'italic', fontWeight: 700 }}>
-                    Age will be determined by the veterinarian during the physical exam.
-                  </Typography>
-                )}
-              </Box>
-            </Grid>
-
-
-            {/* Row 5: Allergy tag array (Item 6) */}
-            <Grid size={{ xs: 12 }}>
-              <Box sx={{ p: 1, border: '1.2px solid', borderColor: form.showAllergyInput ? COLORS.danger : COLORS.borderLight, bgcolor: 'transparent' }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: form.showAllergyInput ? 1.5 : 0 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <WarningIcon sx={{ color: form.showAllergyInput ? COLORS.danger : COLORS.borderLight, fontSize: 18 }} />
-                    <Typography sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.78rem', color: form.showAllergyInput ? COLORS.danger : COLORS.textMuted }}>
-                      RECORD MEDICAL ALLERGIES?
+                  <Box sx={{ p: 1.5, border: `2px dashed ${COLORS.textMuted}`, bgcolor: 'white' }}>
+                    <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.textPrimary, fontWeight: 900, textTransform: 'uppercase' }}>
+                      Clinical verification required during physical examination.
                     </Typography>
                   </Box>
-                  <Switch
-                    size="small"
-                    color="error"
-                    checked={form.showAllergyInput}
-                    onChange={(e) => setForm({
-                      ...form,
-                      showAllergyInput: e.target.checked,
-                      allergyArray: e.target.checked ? form.allergyArray : [],
-                    })}
-                  />
-                </Box>
-                {form.showAllergyInput && (
-                  <>
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1.5 }}>
-                      {form.allergyArray.map((allergy, i) => (
-                        <Chip
-                          key={i}
-                          label={allergy.toUpperCase()}
-                          onDelete={() => setForm({
-                            ...form,
-                            allergyArray: form.allergyArray.filter((_, idx) => idx !== i),
-                          })}
-                          sx={{ bgcolor: COLORS.danger, color: 'white', fontWeight: 900, fontSize: '0.7rem', borderRadius: 0, '& .MuiChip-deleteIcon': { color: 'white!important', opacity: 0.8 } }}
-                        />
-                      ))}
-                      {form.allergyArray.length === 0 && (
-                        <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.danger, fontStyle: 'italic', fontWeight: 800 }}>
-                          No allergens added yet...
-                        </Typography>
-                      )}
-                    </Box>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      <TextField
-                        fullWidth size="small"
-                        placeholder="Type allergy (e.g. Chicken, Amoxicillin)"
-                        value={form.currentAllergyInput}
-                        onChange={(e) => setForm({ ...form, currentAllergyInput: e.target.value })}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && form.currentAllergyInput.trim()) {
-                            e.preventDefault();
-                            setForm({
-                              ...form,
-                              allergyArray: [...form.allergyArray, form.currentAllergyInput.trim()],
-                              currentAllergyInput: '',
-                            });
-                          }
-                        }}
-                        sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }}
-                      />
-                      <Button
-                        variant="contained"
-                        color="error"
-                        disabled={!form.currentAllergyInput.trim()}
-                        onClick={() => setForm({
-                          ...form,
-                          allergyArray: [...form.allergyArray, form.currentAllergyInput.trim()],
-                          currentAllergyInput: '',
-                        })}
-                        sx={{ fontFamily: FONT, fontWeight: 900, minWidth: 40, borderRadius: 0 }}
-                      >+</Button>
-                    </Box>
-                  </>
                 )}
               </Box>
             </Grid>
 
+            {/* VITALS & RISK BLOCK */}
+            <Grid size={{ xs: 12 }}>
+              <Box sx={{ 
+                p: 3, 
+                border: `2px solid ${COLORS.textPrimary}`, 
+                bgcolor: '#FDFCF0', 
+                transform: 'rotate(-0.2deg)', 
+                position: 'relative',
+                boxShadow: `4px 4px 0px ${COLORS.borderInput}`
+              }}>
+                <Box sx={{ position: 'absolute', top: 12, left: 12, width: 8, height: 8, borderRadius: '50%', border: `1.5px solid ${COLORS.textPrimary}`, bgcolor: '#F5F5F5' }} />
+                
+                <Box sx={{ 
+                  display: 'inline-block', 
+                  bgcolor: COLORS.brand, 
+                  color: 'white', 
+                  px: 1.5, 
+                  py: 0.25, 
+                  mb: 2, 
+                  ml: -3.2,
+                  border: `2px solid ${COLORS.textPrimary}`,
+                  borderLeft: 'none'
+                }}>
+                  <Typography variant="caption" sx={{ fontFamily: FONT, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1 }}>
+                    03 MEDICAL ALLERGIES
+                  </Typography>
+                </Box>
+                
+                <Grid container spacing={2}>
+                  {/* DANGER ZONE: ALLERGIES */}
+                  <Grid size={{ xs: 12 }}>
+                    <Box sx={{ 
+                      p: 2, 
+                      border: `2px solid ${form.showAllergyInput ? COLORS.danger : COLORS.textPrimary}`, 
+                      bgcolor: form.showAllergyInput ? COLORS.dangerSurface : 'white',
+                      transition: 'all 0.2s'
+                    }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: form.showAllergyInput ? 2 : 0 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <WarningIcon sx={{ color: form.showAllergyInput ? COLORS.danger : COLORS.textPrimary, fontSize: 18 }} />
+                          <Typography sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.8rem', color: form.showAllergyInput ? COLORS.danger : COLORS.textPrimary, textTransform: 'uppercase' }}>
+                            RECORD MEDICAL ALLERGIES?
+                          </Typography>
+                        </Box>
+                        <Switch
+                          size="small"
+                          color="error"
+                          checked={form.showAllergyInput}
+                          onChange={(e) => setForm({
+                            ...form,
+                            showAllergyInput: e.target.checked,
+                            allergyArray: e.target.checked ? form.allergyArray : [],
+                          })}
+                        />
+                      </Box>
+                      {form.showAllergyInput && (
+                        <>
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                            {form.allergyArray.map((allergy, i) => (
+                              <Chip
+                                key={i}
+                                label={allergy.toUpperCase()}
+                                onDelete={() => setForm({
+                                  ...form,
+                                  allergyArray: form.allergyArray.filter((_, idx) => idx !== i),
+                                })}
+                                sx={{ 
+                                  bgcolor: COLORS.danger, 
+                                  color: 'white', 
+                                  fontWeight: 900, 
+                                  fontSize: '0.75rem', 
+                                  borderRadius: 0, 
+                                  border: `2px solid ${COLORS.textPrimary}`,
+                                  '& .MuiChip-deleteIcon': { color: 'white!important', opacity: 1 } 
+                                }}
+                              />
+                            ))}
+                            {form.allergyArray.length === 0 && (
+                              <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.danger, fontWeight: 900, textTransform: 'uppercase' }}>
+                                NO ALLERGENS RECORDED
+                              </Typography>
+                            )}
+                          </Box>
+                          <Box sx={{ display: 'flex', gap: 1 }}>
+                            <TextField
+                              fullWidth size="small"
+                              placeholder="Type allergy (e.g. Chicken, Amoxicillin)"
+                              value={form.currentAllergyInput}
+                              onChange={(e) => setForm({ ...form, currentAllergyInput: e.target.value })}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && form.currentAllergyInput.trim()) {
+                                  e.preventDefault();
+                                  setForm({
+                                    ...form,
+                                    allergyArray: [...form.allergyArray, form.currentAllergyInput.trim()],
+                                    currentAllergyInput: '',
+                                  });
+                                }
+                              }}
+                              sx={{ 
+                                bgcolor: 'white', 
+                                '& .MuiOutlinedInput-root': { 
+                                  fontFamily: FONT, borderRadius: 0, fontWeight: 900,
+                                  '& fieldset': { border: `2px solid ${COLORS.textPrimary}` }
+                                } 
+                              }}
+                            />
+                            <Button
+                              variant="contained"
+                              disabled={!form.currentAllergyInput.trim()}
+                              onClick={() => setForm({
+                                ...form,
+                                allergyArray: [...form.allergyArray, form.currentAllergyInput.trim()],
+                                currentAllergyInput: '',
+                              })}
+                              sx={{ 
+                                fontFamily: FONT, fontWeight: 900, minWidth: 48, borderRadius: 0, 
+                                bgcolor: COLORS.danger, border: `2px solid ${COLORS.textPrimary}`,
+                                boxShadow: `3px 3px 0px ${COLORS.textPrimary}`,
+                                '&:hover': { bgcolor: COLORS.dangerHover, transform: 'translate(-1px, -1px)', boxShadow: `4px 4px 0px ${COLORS.textPrimary}` }
+                              }}
+                            >+</Button>
+                          </Box>
+                        </>
+                      )}
+                    </Box>
+                  </Grid>
+                </Grid>
+              </Box>
+            </Grid>
           </Grid>
-
-          {error && form.name.trim() && (
-            <Typography sx={{ fontFamily: FONT, color: COLORS.danger, fontSize: '0.8rem', mt: 2, fontWeight: 600 }}>{error}</Typography>
-          )}
         </Box>
       </DialogContent>
-      <DialogActions sx={{ p: 2, bgcolor: COLORS.surfaceAlt, gap: 1 }}>
-        <Button onClick={() => onClose(false)} sx={{ fontFamily: FONT, color: COLORS.textMuted }}>Cancel</Button>
-        <Button onClick={handleSave} variant="contained" disabled={saving} startIcon={<SaveIcon />}
-          sx={{ fontFamily: FONT, bgcolor: COLORS.accent, fontWeight: 'bold', px: 3, '&:hover': { bgcolor: COLORS.brand } }}>
-          {saving ? 'Saving...' : 'Save Changes'}
-        </Button>
+      
+      <DialogActions sx={{ p: 3, bgcolor: COLORS.surfaceAlt, gap: 2, borderTop: `2px solid ${COLORS.textPrimary}` }}>
+          <Button 
+            onClick={() => onClose(false)} 
+            sx={{ 
+              fontFamily: FONT, 
+              color: COLORS.textPrimary, 
+              fontWeight: 900,
+              borderRadius: 0,
+              border: `2px solid ${COLORS.textPrimary}`,
+              px: 3,
+              '&:hover': { bgcolor: COLORS.borderLight }
+            }}
+          >
+            CANCEL
+          </Button>
+          <Button 
+            onClick={handleSave} 
+            variant="contained" 
+            disabled={saving}
+            startIcon={<SaveIcon />}
+            sx={{ 
+              fontFamily: FONT, 
+              bgcolor: '#FF9100', 
+              color: COLORS.textPrimary,
+              fontWeight: 900, 
+              px: 4, 
+              borderRadius: 0,
+              border: `2px solid ${COLORS.textPrimary}`,
+              boxShadow: `4px 4px 0px ${COLORS.textPrimary}`,
+              '&:hover': { bgcolor: '#FFAB40', transform: 'translate(-1px, -1px)', boxShadow: `6px 6px 0px ${COLORS.textPrimary}` } 
+            }}
+          >
+            {saving ? 'SAVING...' : 'SAVE CHANGES'}
+          </Button>
       </DialogActions>
     </Dialog>
   );

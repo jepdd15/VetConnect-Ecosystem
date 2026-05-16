@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,6 +18,7 @@ import {
   Vibration,
   View,
 } from "react-native";
+import Svg, { Polygon } from 'react-native-svg';
 import { auth, db } from "../../firebaseConfig";
 import { COLORS, FONTS, TYPE, SPACING, SHADOW } from "../theme/mobileTokens";
 import { useNetwork } from "../context/NetworkContext";
@@ -447,7 +449,8 @@ export default function QueueScreen() {
   const deptColor = myDeptObj?.color || COLORS.sky;
 
   return (
-    <ScrollView contentContainerStyle={[styles.container, { paddingBottom: Math.max(insets.bottom, 20) + 40 }]}>
+    <View style={{ flex: 1, backgroundColor: COLORS.cream }}>
+      <ScrollView contentContainerStyle={[styles.container, { flexGrow: 1, paddingBottom: 20 }]}>
       {/* Green banner when number is called -- T2.487 */}
       {turnAlert && (
         <View style={styles.turnBanner}>
@@ -457,9 +460,13 @@ export default function QueueScreen() {
 
       {/* --- PERSONAL TICKET HERO --- */}
       {myTicket ? (
-        <View style={styles.myTicketBox}>
+        <View style={styles.ticketWrapper}>
+          <View style={[SHADOW.card, { backgroundColor: COLORS.brand }]} />
+          <View style={[styles.myTicketBox, !myTicket.queueNumber && { flex: 1, justifyContent: 'center' }]}>
+            <View style={styles.cutoutLeft} />
+            <View style={styles.cutoutRight} />
           {!myTicket.queueNumber ? (
-            <View style={{ alignItems: "center" }}>
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
               <Text style={styles.ticketLabel}>Appointment Confirmed</Text>
               <Text style={styles.subText}>
                 Scan the clinic QR code to check in and receive your ticket.
@@ -755,8 +762,10 @@ export default function QueueScreen() {
             </>
           )}
         </View>
+        <ZigZagEdge />
+      </View>
       ) : (
-        <View style={styles.noTicketBox}>
+        <View style={[styles.noTicketBox, { flex: 1, justifyContent: 'center' }]}>
           <Text style={styles.noTicketText}>You are not in the queue.</Text>
           <Text style={styles.noTicketSub}>
             Book an appointment to get started.
@@ -773,35 +782,38 @@ export default function QueueScreen() {
           </View>
         </View>
       )}
+      </ScrollView>
 
-      {/* --- PER-DEPARTMENT NOW SERVING --- */}
-      <View style={styles.nowServingSection}>
+      {/* --- PER-DEPARTMENT NOW SERVING (FOOTER) --- */}
+      <View style={[styles.nowServingSection, { paddingBottom: Math.max(insets.bottom, 20) }]}>
         <Text style={styles.nowServingHeader}>NOW SERVING</Text>
         <View style={[styles.statusBadge, queueData.status === "active" ? styles.active : styles.paused]}>
           <Text style={styles.statusText}>
             {(queueData.status || "unknown").toUpperCase()}
           </Text>
         </View>
-        {Object.keys(nowServingByDept).length > 0 ? (
-          Object.entries(nowServingByDept).map(([dept, patients]) => {
-            const deptObj = departments.find(
-              d => d.name?.toLowerCase() === dept.toLowerCase()
-            );
-            const color = deptObj?.color || COLORS.sky;
-            const firstServing = patients[0];
-            return (
-              <View key={dept} style={styles.nowServingRow}>
-                <View style={[styles.deptDot, { backgroundColor: color }]} />
-                <Text style={styles.nowServingDept}>{dept.toUpperCase()}</Text>
-                <Text style={styles.nowServingTicket}>
-                  {formatTicket(firstServing.ticketPrefix, firstServing.queueNumber)}
-                </Text>
-              </View>
-            );
-          })
-        ) : (
-          <Text style={styles.nowServingEmpty}>Waiting for next patient</Text>
-        )}
+        <ScrollView style={{ maxHeight: 120, width: '100%' }} contentContainerStyle={{ alignItems: 'center' }}>
+          {Object.keys(nowServingByDept).length > 0 ? (
+            Object.entries(nowServingByDept).map(([dept, patients]) => {
+              const deptObj = departments.find(
+                d => d.name?.toLowerCase() === dept.toLowerCase()
+              );
+              const color = deptObj?.color || COLORS.sky;
+              const firstServing = patients[0];
+              return (
+                <View key={dept} style={styles.nowServingRow}>
+                  <View style={[styles.deptDot, { backgroundColor: color }]} />
+                  <Text style={styles.nowServingDept}>{dept.toUpperCase()}</Text>
+                  <Text style={styles.nowServingTicket}>
+                    {formatTicket(firstServing.ticketPrefix, firstServing.queueNumber)}
+                  </Text>
+                </View>
+              );
+            })
+          ) : (
+            <Text style={styles.nowServingEmpty}>Waiting for next patient</Text>
+          )}
+        </ScrollView>
       </View>
 
       {/* Offline staleness indicator */}
@@ -810,7 +822,7 @@ export default function QueueScreen() {
           LAST UPDATED: {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </Text>
       )}
-    </ScrollView>
+    </View>
   );
 }
 
@@ -824,12 +836,12 @@ const styles = StyleSheet.create({
   nowServingSection: {
     width: '100%',
     backgroundColor: COLORS.white,
-    borderWidth: 2,
+    borderTopWidth: 3,
     borderColor: COLORS.brand,
     padding: SPACING.cardPadding,
-    marginTop: 20,
-    marginBottom: 8,
+    paddingTop: 20,
     alignItems: 'center',
+    zIndex: 10,
   },
   nowServingHeader: {
     fontFamily: FONTS.black,
@@ -898,11 +910,40 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
 
+  ticketWrapper: {
+    width: '100%',
+    marginBottom: 20,
+    transform: [{ rotate: '-1deg' }],
+  },
+  cutoutLeft: {
+    position: 'absolute',
+    left: -10,
+    top: '50%',
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: COLORS.cream,
+    borderRightWidth: 2,
+    borderColor: COLORS.brand,
+    zIndex: 10,
+  },
+  cutoutRight: {
+    position: 'absolute',
+    right: -10,
+    top: '50%',
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: COLORS.cream,
+    borderLeftWidth: 2,
+    borderColor: COLORS.brand,
+    zIndex: 10,
+  },
   myTicketBox: {
     width: "100%",
     alignItems: "center",
     padding: SPACING.cardPadding,
-    backgroundColor: COLORS.cream,
+    backgroundColor: COLORS.white,
     borderRadius: 0,
     borderWidth: 2,
     borderColor: COLORS.brand,
@@ -910,10 +951,12 @@ const styles = StyleSheet.create({
   },
   ticketLabel: { fontSize: 18, color: COLORS.accent, fontWeight: "bold", textTransform: "uppercase", letterSpacing: 1 },
   ticketNumber: {
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
     fontSize: 60,
     fontWeight: "bold",
     color: COLORS.info,
     marginVertical: 10,
+    letterSpacing: -2,
   },
   heroSubtitle: {
     fontFamily: FONTS.bold,
@@ -982,7 +1025,8 @@ const styles = StyleSheet.create({
     width: "100%",
     alignItems: "center",
     paddingTop: 15,
-    borderTopWidth: 1,
+    borderTopWidth: 2,
+    borderStyle: 'dashed',
     borderTopColor: COLORS.borderLight,
   },
   readyText: {
@@ -1017,7 +1061,13 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     fontWeight: "bold",
   },
-  estTime: { fontSize: 22, color: COLORS.danger, fontWeight: "bold", marginTop: 2 },
+  estTime: { 
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    fontSize: 22, 
+    color: COLORS.danger, 
+    fontWeight: "bold", 
+    marginTop: 2 
+  },
 
   // Historical average -- T2.488
   avgWaitText: {
@@ -1290,3 +1340,18 @@ const styles = StyleSheet.create({
     lineHeight: 15,
   },
 });
+
+function ZigZagEdge() {
+  return (
+    <View style={{ width: '100%', height: 10, overflow: 'hidden', marginTop: -2, zIndex: 5 }}>
+      <Svg height="10" width="100%" preserveAspectRatio="none" viewBox="0 0 100 10">
+        <Polygon
+          points="0,-5 100,-5 100,5 95,10 90,5 85,10 80,5 75,10 70,5 65,10 60,5 55,10 50,5 45,10 40,5 35,10 30,5 25,10 20,5 15,10 10,5 5,10 0,5"
+          fill={COLORS.white}
+          stroke={COLORS.brand}
+          strokeWidth="0.5"
+        />
+      </Svg>
+    </View>
+  );
+}

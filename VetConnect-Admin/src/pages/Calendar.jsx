@@ -1688,6 +1688,7 @@ export default function Calendar() {
       staff_availability: 'Show me staff availability and workload for the current view period. Who is busiest? Who has capacity?',
       week_summary:      "Summarize this week's schedule — total appointments by day, busiest departments, notable patterns, and any gaps.",
       conflicts:         'Detect any scheduling conflicts, overbooking, understaffing, or large gaps in the current view. Flag anything that needs attention.',
+      burnout_radar:     'Review the schedule for the next 3 days and flag any staff members who are back-to-back with high-stress appointments (e.g., multiple surgeries, critical care) with insufficient breaks.',
     };
     const query = queries[chipType] || chipType;
     if (!calAIOpen) setCalAIOpen(true);

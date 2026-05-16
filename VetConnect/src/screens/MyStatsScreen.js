@@ -161,7 +161,6 @@ const TAB_CONFIG = [
   { key: 'overview', label: 'OVERVIEW', icon: 'dashboard'                  },
   { key: 'visits',   label: 'VISITS',   icon: 'event'                      },
   { key: 'spending', label: 'SPENDING', icon: 'account-balance-wallet'     },
-  { key: 'pets',     label: 'PETS',     icon: 'pets'                       },
   { key: 'health',   label: 'HEALTH',   icon: 'favorite'                   },
 ];
 
@@ -684,7 +683,7 @@ export default function MyStatsScreen({ route, navigation }) {
             style={styles.exportButton}
             activeOpacity={0.7}
           >
-            <MaterialIcons name="share" size={18} color={COLORS.accentLight} />
+            <MaterialIcons name="file-download" size={18} color={COLORS.accentLight} />
           </TouchableOpacity>
         </View>
 
@@ -870,7 +869,7 @@ export default function MyStatsScreen({ route, navigation }) {
             style={styles.exportButton}
             activeOpacity={0.7}
           >
-            <MaterialIcons name="share" size={18} color={COLORS.accentLight} />
+            <MaterialIcons name="file-download" size={18} color={COLORS.accentLight} />
           </TouchableOpacity>
         </View>
 
@@ -1290,7 +1289,7 @@ export default function MyStatsScreen({ route, navigation }) {
             style={styles.exportButton}
             activeOpacity={0.7}
           >
-            <MaterialIcons name="share" size={18} color={COLORS.accentLight} />
+            <MaterialIcons name="file-download" size={18} color={COLORS.accentLight} />
           </TouchableOpacity>
         </View>
 
@@ -1594,45 +1593,7 @@ export default function MyStatsScreen({ route, navigation }) {
       </>
       )}
 
-      {/* ══════════════════════════════════════════════════════════════════
-          PETS TAB (Step 8 — PetCardSlim)
-          ════════════════════════════════════════════════════════════════ */}
-      {activeTab === 'pets' && (
-      <>
-      <View style={styles.section}>
-        <View style={styles.sectionHeaderRow}>
-          <SectionHeader
-            title={`YOUR PETS${petCards.length > 0 ? ` (${petCards.length})` : ''}`}
-            style={styles.sectionHeaderNoMargin}
-          />
-          <TouchableOpacity
-            onPress={() => handleExportTab('pets')}
-            style={styles.exportButton}
-            activeOpacity={0.7}
-          >
-            <MaterialIcons name="share" size={18} color={COLORS.accentLight} />
-          </TouchableOpacity>
-        </View>
 
-        {petCards.length === 0 ? (
-          <Text style={styles.emptyState}>
-            No pets registered yet. Add a pet profile to see health cards here.
-          </Text>
-        ) : (
-          petCards.map(petCard => (
-            <PetCardSlim
-              key={petCard.id}
-              petCard={petCard}
-              onWeightZoom={() => setWeightZoomPet(petCard)}
-              onViewChart={() =>
-                navigation.navigate('PetHistory', { petId: petCard.id, petName: petCard.name })
-              }
-            />
-          ))
-        )}
-      </View>
-      </>
-      )}
 
       {/* ══════════════════════════════════════════════════════════════════
           HEALTH TAB
@@ -1648,7 +1609,7 @@ export default function MyStatsScreen({ route, navigation }) {
             style={styles.exportButton}
             activeOpacity={0.7}
           >
-            <MaterialIcons name="share" size={18} color={COLORS.accentLight} />
+            <MaterialIcons name="file-download" size={18} color={COLORS.accentLight} />
           </TouchableOpacity>
         </View>
 

@@ -38,6 +38,10 @@ const QUICK_ACTIONS = [
     label: 'Vaccines',
     prompt: "When is my pet's next vaccination due? Are any overdue?",
   },
+  {
+    label: 'What to Watch For',
+    prompt: "Based on my pet's recent diagnosis and discharge notes, what specific symptoms or changes in behavior should I watch out for at home over the next few days?",
+  },
 ];
 
 // ---------------------------------------------------------------------------

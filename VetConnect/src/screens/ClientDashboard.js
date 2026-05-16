@@ -805,7 +805,43 @@ const ClientDashboard = ({ navigation }) => {
   };
 
   return (
-    <ScrollView contentContainerStyle={[styles.container, { paddingBottom: Math.max(insets.bottom, 20) + 40 }]}>
+    <View style={{ flex: 1, backgroundColor: "#FFF8E1" }}>
+      {/* NEUBRUTALIST HEADER — extracted for stickiness */}
+      <View style={[styles.headerBox, { paddingTop: Math.max(insets.top, 60), paddingHorizontal: 20 }]}>
+        <Text style={styles.dashboardTitle}>DASHBOARD</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          {/* NOTIFICATION BELL */}
+          <TouchableOpacity
+            style={styles.bellSquare}
+            onPress={() => navigation.navigate('NotificationHistory')}
+          >
+            <View style={styles.bellShadow} />
+            <View style={styles.bellInner}>
+              <MaterialIcons name="notifications" size={24} color={COLORS.brand} />
+              {unreadCount > 0 && (
+                <View style={styles.bellBadge}>
+                  <Text style={styles.bellBadgeText}>
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+
+          {/* PROFILE BUTTON */}
+          <TouchableOpacity
+            style={styles.profileSquare}
+            onPress={() => navigation.navigate("UserProfile")}
+          >
+            <View style={styles.profileShadow} />
+            <View style={styles.profileInner}>
+              <Text style={{ fontSize: 24 }}>👤</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <ScrollView contentContainerStyle={[styles.scrollContainer, { paddingBottom: Math.max(insets.bottom, 20) + 40 }]}>
       {/* WAIVER ADVISORY BANNER — non-blocking, dismissible */}
       {needsWaiver && waiverBannerVisible && !needsConsent && (
         <View style={styles.waiverBannerContainer}>
@@ -861,40 +897,7 @@ const ClientDashboard = ({ navigation }) => {
         </Animated.View>
       )}
 
-      {/* NEUBRUTALIST HEADER — title + bell + profile button inline */}
-      <View style={styles.headerBox}>
-        <Text style={styles.dashboardTitle}>DASHBOARD</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          {/* NOTIFICATION BELL */}
-          <TouchableOpacity
-            style={styles.bellSquare}
-            onPress={() => navigation.navigate('NotificationHistory')}
-          >
-            <View style={styles.bellShadow} />
-            <View style={styles.bellInner}>
-              <MaterialIcons name="notifications" size={24} color={COLORS.brand} />
-              {unreadCount > 0 && (
-                <View style={styles.bellBadge}>
-                  <Text style={styles.bellBadgeText}>
-                    {unreadCount > 99 ? '99+' : unreadCount}
-                  </Text>
-                </View>
-              )}
-            </View>
-          </TouchableOpacity>
 
-          {/* PROFILE BUTTON */}
-          <TouchableOpacity
-            style={styles.profileSquare}
-            onPress={() => navigation.navigate("UserProfile")}
-          >
-            <View style={styles.profileShadow} />
-            <View style={styles.profileInner}>
-              <Text style={{ fontSize: 24 }}>👤</Text>
-            </View>
-          </TouchableOpacity>
-        </View>
-      </View>
 
       {/* --- LOADING / OFFLINE STATE --- */}
       {loading && (
@@ -1126,11 +1129,13 @@ const ClientDashboard = ({ navigation }) => {
       </View>
 
     </ScrollView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flexGrow: 1, padding: 20, backgroundColor: "#FFF8E1", paddingTop: 60 },
+  scrollContainer: { flexGrow: 1, paddingHorizontal: 20, paddingBottom: 20 },
 
   headerBox: {
     flexDirection: "row",

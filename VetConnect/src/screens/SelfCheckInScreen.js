@@ -449,7 +449,7 @@ export default function SelfCheckInScreen({ navigation }) {
       <View style={styles.headerBox}>
         <Text style={styles.title}>SCAN TO CHECK IN</Text>
         <Text style={styles.subtitle}>
-          Point your camera at the clinic QR code displayed at the front desk.
+          Point your camera at the clinic QR code.
         </Text>
       </View>
 
@@ -469,12 +469,7 @@ export default function SelfCheckInScreen({ navigation }) {
         </View>
       </View>
 
-      {/* Instruction footer */}
-      <View style={styles.instructionBox}>
-        <Text style={styles.instructionText}>
-          The QR code is displayed in the lobby. Staff can also show it to you.
-        </Text>
-      </View>
+
     </ScrollView>
   );
 }
@@ -547,22 +542,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
 
-  // Instruction
-  instructionBox: {
-    width: '100%',
-    padding: 16,
-    backgroundColor: COLORS.white,
-    borderWidth: 2,
-    borderColor: COLORS.borderLight,
-  },
-  instructionText: {
-    fontFamily: FONTS.bold,
-    fontSize: 12,
-    color: COLORS.accentLight,
-    textAlign: 'center',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
 
   // Shared shadow layer (neubrutalism)
   shadow: {

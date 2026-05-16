@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Alert, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Linking, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { collection, getDocs, limit, query, where } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 import { COLORS } from '../theme/mobileTokens';
@@ -79,13 +79,13 @@ const StatusBadge = ({ appointment, isUpcoming }) => {
     if (status === 'confirmed') {
       if (confirmedByClient) {
         return (
-          <View style={[styles.statusBadge, { backgroundColor: COLORS.successBg }]}>
+          <View style={[styles.statusBadge, { borderColor: COLORS.success }]}>
             <Text style={[styles.statusText, { color: COLORS.success }]}>CONFIRMED</Text>
           </View>
         );
       }
       return (
-        <View style={[styles.statusBadge, { backgroundColor: COLORS.warningBg }]}>
+        <View style={[styles.statusBadge, { borderColor: COLORS.warning }]}>
           <Text style={[styles.statusText, { color: COLORS.warning }]}>CONFIRM?</Text>
         </View>
       );
@@ -94,7 +94,7 @@ const StatusBadge = ({ appointment, isUpcoming }) => {
     if (ACTIVE_CLINIC_STATUSES.has(status)) {
       const colors = getClientStatusColor(status);
       return (
-        <View style={[styles.statusBadge, { backgroundColor: colors.backgroundColor }]}>
+        <View style={[styles.statusBadge, { borderColor: colors.color }]}>
           <Text style={[styles.statusText, { color: colors.color }]}>
             {getClientStatusIcon(status)} {getClientStatusLabel(status).toUpperCase()}
           </Text>
@@ -109,7 +109,7 @@ const StatusBadge = ({ appointment, isUpcoming }) => {
 
   const colors = getClientStatusColor(status);
   return (
-    <View style={[styles.statusBadge, { backgroundColor: colors.backgroundColor }]}>
+    <View style={[styles.statusBadge, { borderColor: colors.color }]}>
       <Text style={[styles.statusText, { color: colors.color }]}>
         {getClientStatusIcon(status)} {getClientStatusLabel(status).toUpperCase()}
       </Text>
@@ -220,6 +220,37 @@ const AppointmentCardContent = ({
     (i) => (i.productClass || (i.isDrug ? 'medicine' : 'retail')) === 'medicine',
   );
 
+  const upcomingServices = useMemo(() => {
+    if (!isUpcoming) return [];
+    if (appointment.services && appointment.services.length > 0) {
+      return appointment.services;
+    }
+    return [{
+      name: appointment.serviceType || appointment.primaryService || 'Visit',
+      price: appointment.servicePrice || 0,
+      duration: appointment.duration || appointment.serviceDuration || 0,
+      serviceCategory: appointment.serviceCategory || 'General',
+    }];
+  }, [isUpcoming, appointment]);
+
+  const upcomingDeptTally = useMemo(() => {
+    if (!isUpcoming) return null;
+    return upcomingServices.reduce((acc, s) => {
+      const cat = s.serviceCategory || s.category || appointment.serviceCategory || 'General';
+      acc[cat] = (acc[cat] || 0) + 1;
+      return acc;
+    }, {});
+  }, [isUpcoming, upcomingServices, appointment]);
+
+  const upcomingTotals = useMemo(() => {
+    if (!isUpcoming) return { price: 0, duration: 0 };
+    return upcomingServices.reduce((acc, s) => {
+      acc.price += (s.price || 0);
+      acc.duration += (s.duration || 0);
+      return acc;
+    }, { price: 0, duration: 0 });
+  }, [isUpcoming, upcomingServices]);
+
   return (
     <View>
       {isCaseDayPage && (
@@ -239,7 +270,7 @@ const AppointmentCardContent = ({
       </View>
 
       <Text style={styles.servicesSubtitle}>
-        {appointment.petName} · {isHistory && diagnosisStr ? diagnosisStr : servicesList}
+        {appointment.petName}{isHistory ? ` · ${diagnosisStr ? diagnosisStr : servicesList}` : ''}
       </Text>
 
       {isHistory && diagnosisStr ? (
@@ -248,18 +279,44 @@ const AppointmentCardContent = ({
 
       {isUpcoming && (
         <View style={styles.contextSection}>
-          {appointment.clientNotes ? (
-            <Text style={styles.contextNote}>
-              You mentioned: "{appointment.clientNotes}"
+          <View style={styles.upcomingServicesList}>
+            {upcomingServices.map((svc, idx) => (
+              <View key={idx} style={styles.upcomingServiceItem}>
+                <Text style={styles.upcomingServiceName}>
+                  {idx + 1}. {svc.name || svc.serviceName || 'Service'}
+                </Text>
+                {(svc.price > 0 || svc.duration > 0) && (
+                  <Text style={styles.upcomingServiceDetails}>
+                    [ {svc.price > 0 ? `Est. P${svc.price.toLocaleString()}` : ''}
+                    {svc.price > 0 && svc.duration > 0 ? ' | ' : ''}
+                    {svc.duration > 0 ? `~${svc.duration} min` : ''} ]
+                  </Text>
+                )}
+              </View>
+            ))}
+
+            {(upcomingTotals.price > 0 || upcomingTotals.duration > 0) && upcomingServices.length > 1 && (
+              <View style={styles.upcomingServiceTotalRow}>
+                <Text style={styles.upcomingServiceTotalLabel}>TOTAL:</Text>
+                <Text style={styles.upcomingServiceTotalValue}>
+                  [ {upcomingTotals.price > 0 ? `Est. P${upcomingTotals.price.toLocaleString()}` : ''}
+                  {upcomingTotals.price > 0 && upcomingTotals.duration > 0 ? ' | ' : ''}
+                  {upcomingTotals.duration > 0 ? `~${upcomingTotals.duration} min` : ''} ]
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {upcomingDeptTally && Object.keys(upcomingDeptTally).length > 0 ? (
+            <Text style={styles.contextMeta}>
+              Department(s): {Object.entries(upcomingDeptTally).map(([dept, count]) => `${dept} (${count})`).join(', ')}
             </Text>
           ) : null}
 
-          {hasAllergies ? (
-            <View style={styles.allergyBadge}>
-              <Text style={styles.allergyText}>
-                Allergies: {appointment.petAllergies}
-              </Text>
-            </View>
+          {appointment.clientNotes ? (
+            <Text style={styles.contextNote}>
+              You mentioned: &quot;{appointment.clientNotes}&quot;
+            </Text>
           ) : null}
 
           {isEmergency ? (
@@ -268,22 +325,12 @@ const AppointmentCardContent = ({
             </View>
           ) : null}
 
-          {appointment.serviceCategory ? (
-            <Text style={styles.contextMeta}>
-              Department: {appointment.serviceCategory}
-            </Text>
-          ) : null}
-
           {appointment.assignedVet && appointment.assignedVet !== 'Unassigned' ? (
             <Text style={styles.contextMeta}>Vet: {appointment.assignedVet}</Text>
           ) : null}
 
           {(appointment.isFollowUp || appointment.originApptId) ? (
             <Text style={styles.contextMeta}>Follow-up visit</Text>
-          ) : null}
-
-          {appointment.servicePrice > 0 ? (
-            <Text style={styles.contextPrice}>Est. P{appointment.servicePrice}</Text>
           ) : null}
 
           {appointment.status === 'confined' && (
@@ -551,7 +598,7 @@ const AppointmentCardContent = ({
                 onPress={() => onConfirmAttendance && onConfirmAttendance(appointment.id)}
               >
                 <Text style={[styles.btnText, { color: COLORS.success }]}>
-                  Confirm I'm Coming
+                  Confirm I&apos;m Coming
                 </Text>
               </TouchableOpacity>
             ) : null}
@@ -568,6 +615,15 @@ const AppointmentCardContent = ({
                 onPress={() => onShowQR && onShowQR(appointment.qrCode)}
               >
                 <Text style={styles.btnText}>QR Code</Text>
+              </TouchableOpacity>
+            ) : null}
+
+            {showCalendarButton ? (
+              <TouchableOpacity
+                style={[styles.btn, styles.calendarBtn]}
+                onPress={() => Linking.openURL(calendarUrl).catch(() => Alert.alert('Error', 'Could not open calendar link.'))}
+              >
+                <Text style={[styles.btnText, { color: COLORS.sky }]}>Calendar</Text>
               </TouchableOpacity>
             ) : null}
           </>
@@ -626,15 +682,6 @@ const AppointmentCardContent = ({
         ) : null}
       </View>
 
-      {showCalendarButton ? (
-        <TouchableOpacity
-          style={[styles.btn, styles.calendarBtn]}
-          onPress={() => Linking.openURL(calendarUrl).catch(() => Alert.alert('Error', 'Could not open calendar link.'))}
-        >
-          <Text style={[styles.btnText, { color: COLORS.sky }]}>Add to Calendar</Text>
-        </TouchableOpacity>
-      ) : null}
-
       {cancelReason ? (
         <Text style={styles.reasonText}>{cancelReason}</Text>
       ) : null}
@@ -661,13 +708,15 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   dateHero: {
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
     fontSize: 15,
     fontWeight: '900',
     color: COLORS.brand,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: -0.5,
   },
   timeDisplay: {
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
     fontSize: 13,
     color: COLORS.textMuted,
     marginTop: 2,
@@ -677,20 +726,24 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 0,
+    borderRadius: 4,
+    borderWidth: 2,
+    backgroundColor: 'transparent',
     marginLeft: 8,
+    transform: [{ rotate: '-3deg' }],
   },
   statusText: {
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
     fontWeight: '900',
-    fontSize: 10,
+    fontSize: 11,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
 
   servicesSubtitle: {
-    fontSize: 14,
-    color: COLORS.accent,
-    fontWeight: '700',
+    fontSize: 18,
+    color: COLORS.brand,
+    fontWeight: '900',
     marginBottom: 8,
   },
 
@@ -703,17 +756,44 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
     fontStyle: 'italic',
   },
-  allergyBadge: {
-    backgroundColor: COLORS.dangerBg,
-    borderRadius: 0,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    alignSelf: 'flex-start',
+  upcomingServicesList: {
+    marginBottom: 6,
+    gap: 4,
   },
-  allergyText: {
-    fontSize: 12,
+  upcomingServiceItem: {
+    marginBottom: 2,
+  },
+  upcomingServiceName: {
+    fontSize: 14,
+    color: COLORS.brand,
     fontWeight: '700',
-    color: COLORS.danger,
+  },
+  upcomingServiceDetails: {
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    fontSize: 12,
+    color: COLORS.accent,
+    fontWeight: '700',
+  },
+  upcomingServiceTotalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+    borderStyle: 'dashed',
+    marginTop: 4,
+    paddingTop: 4,
+  },
+  upcomingServiceTotalLabel: {
+    fontSize: 12,
+    color: COLORS.brand,
+    fontWeight: '900',
+  },
+  upcomingServiceTotalValue: {
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    fontSize: 12,
+    color: COLORS.brand,
+    fontWeight: '700',
   },
   emergencyBadge: {
     backgroundColor: COLORS.danger,
@@ -732,11 +812,6 @@ const styles = StyleSheet.create({
   contextMeta: {
     fontSize: 13,
     color: COLORS.textMuted,
-  },
-  contextPrice: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: COLORS.accent,
   },
 
   divider: {
@@ -767,23 +842,28 @@ const styles = StyleSheet.create({
 
   actionRow: {
     flexDirection: 'row',
-    marginTop: 10,
-    justifyContent: 'flex-end',
-    flexWrap: 'wrap',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 2,
+    borderStyle: 'dashed',
+    borderTopColor: COLORS.borderLight,
+    justifyContent: 'space-between',
     gap: 8,
-    alignItems: 'center',
+    alignItems: 'stretch',
   },
   btn: {
-    paddingHorizontal: 12,
+    flex: 1,
     paddingVertical: 8,
+    paddingHorizontal: 4,
     borderRadius: 0,
     borderWidth: 2,
     borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   cancelBtn: {
     backgroundColor: COLORS.dangerBg,
     borderColor: COLORS.danger,
-    marginRight: 'auto',
   },
   rescheduleBtn: {
     borderColor: COLORS.sky,
@@ -809,15 +889,15 @@ const styles = StyleSheet.create({
     borderColor: COLORS.accent,
   },
   calendarBtn: {
-    marginTop: 6,
     borderColor: COLORS.sky,
     backgroundColor: COLORS.infoBg,
-    alignSelf: 'flex-end',
   },
   btnText: {
     color: COLORS.white,
-    fontWeight: 'bold',
-    fontSize: 12,
+    fontWeight: '900',
+    fontSize: 10,
+    textTransform: 'uppercase',
+    textAlign: 'center',
   },
 
   reasonText: {

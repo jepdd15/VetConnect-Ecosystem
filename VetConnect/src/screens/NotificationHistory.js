@@ -16,7 +16,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  ActivityIndicator, Pressable, SectionList, StyleSheet, Text,
+  ActivityIndicator, Pressable, ScrollView, SectionList, StyleSheet, Text,
   TouchableOpacity, View,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -249,7 +249,7 @@ export default function NotificationHistory({ navigation }) {
         <MaterialIcons name="notifications-none" size={64} color={COLORS.muted} />
         <Text style={styles.emptyTitle}>NO NOTIFICATIONS YET</Text>
         <Text style={styles.emptyBody}>
-          You'll see appointment updates and messages here.
+          You&apos;ll see appointment updates and messages here.
         </Text>
       </View>
     );
@@ -269,21 +269,27 @@ export default function NotificationHistory({ navigation }) {
   return (
     <View style={styles.screen}>
       {/* FILTER CHIPS */}
-      <View style={styles.chipRow}>
-        {FILTER_CHIPS.map((chip) => {
-          const isActive = activeFilter === chip.key;
-          return (
-            <Pressable
-              key={chip.key}
-              onPress={() => setActiveFilter(chip.key)}
-              style={[styles.chip, isActive && styles.chipActive]}
-            >
-              <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
-                {chip.label}
-              </Text>
-            </Pressable>
-          );
-        })}
+      <View style={styles.chipRowContainer}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chipRowContent}
+        >
+          {FILTER_CHIPS.map((chip) => {
+            const isActive = activeFilter === chip.key;
+            return (
+              <Pressable
+                key={chip.key}
+                onPress={() => setActiveFilter(chip.key)}
+                style={[styles.chip, isActive && styles.chipActive]}
+              >
+                <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
+                  {chip.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
       </View>
 
       {/* LOADING STATE */}
@@ -321,14 +327,16 @@ const styles = StyleSheet.create({
   },
 
   // Filter chips
-  chipRow: {
+  chipRowContainer: {
+    backgroundColor: COLORS.cream,
+    borderBottomWidth: 2,
+    borderBottomColor: COLORS.borderLight,
+  },
+  chipRowContent: {
     flexDirection: 'row',
     paddingHorizontal: SPACING.screenPadding,
     paddingVertical: 12,
     gap: 8,
-    backgroundColor: COLORS.cream,
-    borderBottomWidth: 2,
-    borderBottomColor: COLORS.borderLight,
   },
   chip: {
     paddingHorizontal: 14,

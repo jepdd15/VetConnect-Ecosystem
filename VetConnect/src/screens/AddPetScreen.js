@@ -20,6 +20,7 @@ import {
 import { auth, db } from "../../firebaseConfig";
 import { BREED_CATALOG } from '../constants/breedConstants';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { COLORS, SHADOW, FONTS } from '../theme/mobileTokens';
 
 export default function AddPetScreen({ navigation }) {
   const insets = useSafeAreaInsets();
@@ -33,7 +34,7 @@ export default function AddPetScreen({ navigation }) {
   const [showAllergyToggle, setShowAllergyToggle] = useState(false);
   const [allergyArray, setAllergyArray] = useState([]);
   const [currentAllergy, setCurrentAllergy] = useState("");
-  const [microchip, setMicrochip] = useState("");
+
 
   // THE FIX: Cleaned up Age/DOB Logic
   const [dobMode, setDobMode] = useState("exact"); // 'exact' or 'approximate'
@@ -42,8 +43,8 @@ export default function AddPetScreen({ navigation }) {
   const [estYears, setEstYears] = useState("");
   const [estMonths, setEstMonths] = useState("");
 
-  const [showBreedModal, setShowBreedModal] = useState(false);
   const [searchText, setSearchText] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const filteredBreeds = (BREED_CATALOG[species] || []).filter((item) =>
@@ -131,7 +132,6 @@ export default function AddPetScreen({ navigation }) {
         isNeutered,
         weight: parseFloat(weight) || null,
         lastWeight: parseFloat(weight) || null,
-        microchip: microchip.trim() || "N/A",
         petAllergies: showAllergyToggle && allergyArray.length > 0 ? allergyArray.join(", ") : "None",
         dob: finalDob,
         isAgeExact,
@@ -159,14 +159,16 @@ export default function AddPetScreen({ navigation }) {
           contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom, 20) + 40 }]}
           showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.header}>New Patient Profile 🐾</Text>
-          <Text style={styles.subHeader}>
-            Register your pet to access medical history and online booking.
-          </Text>
+
 
           {/* 1. BASIC INFO */}
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>1. Basic Info</Text>
+          <View style={styles.shadowContainer}>
+            <View style={SHADOW.card} />
+            <View style={styles.card}>
+              <View style={styles.sectionHeaderRow}>
+                <View style={styles.sectionAnchor} />
+                <Text style={styles.sectionTitle}>1. BASIC INFO</Text>
+              </View>
 
             <Text style={styles.label}>Patient Name (*)</Text>
             <TextInput
@@ -247,15 +249,38 @@ export default function AddPetScreen({ navigation }) {
             </View>
 
             <Text style={styles.label}>Breed (*)</Text>
-            <TouchableOpacity
-              style={styles.selectBtn}
-              onPress={() => setShowBreedModal(true)}
-            >
-              <Text style={{ color: breed ? "#333" : "#aaa" }}>
-                {breed || "Select breed..."}
-              </Text>
-              <Text style={{ color: "#8B4513", fontWeight: "900" }}>▼</Text>
-            </TouchableOpacity>
+            <View style={{ position: 'relative', zIndex: 1000 }}>
+              <TextInput
+                style={[styles.input, { marginBottom: showSuggestions ? 0 : 15 }]}
+                value={breed}
+                onChangeText={(val) => {
+                  setBreed(val);
+                  setSearchText(val);
+                  setShowSuggestions(true);
+                }}
+                onFocus={() => setShowSuggestions(true)}
+                placeholder="Start typing breed..."
+                placeholderTextColor={COLORS.muted}
+              />
+              {showSuggestions && searchText.length > 0 && filteredBreeds.length > 0 && (
+                <View style={styles.dropdownList}>
+                  {filteredBreeds.slice(0, 5).map((item) => (
+                    <TouchableOpacity
+                      key={item}
+                      style={styles.dropdownItem}
+                      onPress={() => {
+                        setBreed(item);
+                        setSearchText("");
+                        setShowSuggestions(false);
+                        Keyboard.dismiss();
+                      }}
+                    >
+                      <Text style={styles.dropdownItemText}>{item.toUpperCase()}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
 
             <Text style={styles.label}>Primary Color / Markings (*)</Text>
             <TextInput
@@ -266,23 +291,27 @@ export default function AddPetScreen({ navigation }) {
               placeholderTextColor="#aaa"
             />
 
-            <Text style={styles.label}>Current Weight (kg) (Optional)</Text>
-            <TextInput
-              style={styles.input}
-              value={weight}
-              onChangeText={setWeight}
-              placeholder="e.g. 12.5"
-              keyboardType="numeric"
-              placeholderTextColor="#aaa"
-            />
+              <Text style={styles.label}>Current Weight (kg) (Optional)</Text>
+              <TextInput
+                style={[styles.input, styles.monospaceInput]}
+                value={weight}
+                onChangeText={setWeight}
+                placeholder="e.g. 12.5"
+                keyboardType="numeric"
+                placeholderTextColor={COLORS.muted}
+              />
+            </View>
           </View>
 
           {/* 2. AGE / DOB SECTION */}
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>2. Age & Birthdate</Text>
-            <Text style={styles.helperText}>
-              This helps veterinarians determine required care.
-            </Text>
+          <View style={styles.shadowContainer}>
+            <View style={SHADOW.card} />
+            <View style={styles.card}>
+              <View style={styles.sectionHeaderRow}>
+                <View style={styles.sectionAnchor} />
+                <Text style={styles.sectionTitle}>2. AGE & BIRTHDATE</Text>
+              </View>
+
 
             <View style={[styles.toggleRow, { marginBottom: 20 }]}>
               <TouchableOpacity
@@ -352,38 +381,31 @@ export default function AddPetScreen({ navigation }) {
             )}
 
             {dobMode === "approximate" && (
-              <View style={styles.row}>
-                <View style={{ flex: 1, marginRight: 5 }}>
-                  <Text style={styles.label}>Years</Text>
-                  <TextInput
-                    style={styles.input}
-                    keyboardType="numeric"
-                    placeholder="0"
-                    value={estYears}
-                    onChangeText={setEstYears}
-                  />
+                <View style={styles.row}>
+                  <View style={{ flex: 1, marginRight: 5 }}>
+                    <Text style={styles.label}>Years</Text>
+                    <TextInput
+                      style={[styles.input, styles.monospaceInput]}
+                      keyboardType="numeric"
+                      placeholder="0"
+                      value={estYears}
+                      onChangeText={setEstYears}
+                    />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 5 }}>
+                    <Text style={styles.label}>Months</Text>
+                    <TextInput
+                      style={[styles.input, styles.monospaceInput]}
+                      keyboardType="numeric"
+                      placeholder="0"
+                      value={estMonths}
+                      onChangeText={setEstMonths}
+                    />
+                  </View>
                 </View>
-                <View style={{ flex: 1, marginLeft: 5 }}>
-                  <Text style={styles.label}>Months</Text>
-                  <TextInput
-                    style={styles.input}
-                    keyboardType="numeric"
-                    placeholder="0"
-                    value={estMonths}
-                    onChangeText={setEstMonths}
-                  />
-                </View>
-              </View>
-            )}
+              )}
 
-            {dobMode === "unknown" && (
-              <View style={styles.noticeBox}>
-                <Text style={styles.noticeText}>
-                  No problem! Our veterinarian will estimate your pet&apos;s age
-                  during their first physical exam.
-                </Text>
-              </View>
-            )}
+
 
             {showPicker && dobMode === "exact" && (
               <DateTimePicker
@@ -397,11 +419,17 @@ export default function AddPetScreen({ navigation }) {
                 maximumDate={new Date()}
               />
             )}
+            </View>
           </View>
 
           {/* 3. MEDICAL */}
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>3. Medical History</Text>
+          <View style={styles.shadowContainer}>
+            <View style={SHADOW.card} />
+            <View style={styles.card}>
+              <View style={styles.sectionHeaderRow}>
+                <View style={styles.sectionAnchor} />
+                <Text style={styles.sectionTitle}>3. MEDICAL HISTORY</Text>
+              </View>
 
             <View style={styles.switchRow}>
               <Text style={styles.switchLabel}>
@@ -488,77 +516,33 @@ export default function AddPetScreen({ navigation }) {
               )}
             </View>
 
-            <Text style={styles.label}>Microchip ID</Text>
-            <TextInput
-              style={styles.input}
-              value={microchip}
-              onChangeText={setMicrochip}
-              placeholder="e.g. 900123... (Optional)"
-              keyboardType="numeric"
-              placeholderTextColor="#aaa"
-            />
+
+            </View>
           </View>
 
-          <TouchableOpacity
-            style={[styles.saveBtn, loading && { opacity: 0.7 }]}
-            onPress={handleAddPet}
-            disabled={loading}
-          >
-            <Text style={styles.saveText}>
-              {loading ? "Processing..." : "Register Patient"}
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.shadowContainer}>
+            <View style={SHADOW.button} />
+            <TouchableOpacity
+              style={[styles.saveBtn, loading && { backgroundColor: COLORS.muted }]}
+              onPress={handleAddPet}
+              disabled={loading}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.saveText}>
+                {loading ? "PROCESSING..." : "REGISTER PET"}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </ScrollView>
       </TouchableWithoutFeedback>
 
-      {/* BREED MODAL */}
-      <Modal visible={showBreedModal} transparent={true} animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>
-              Select {species === "Canine" ? "Dog" : "Cat"} Breed
-            </Text>
-            <TextInput
-              style={styles.modalSearch}
-              placeholder="🔍 Search breed..."
-              value={searchText}
-              onChangeText={setSearchText}
-              autoFocus
-            />
-            <FlatList
-              data={filteredBreeds}
-              keyExtractor={(item) => item}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.modalItem}
-                  onPress={() => {
-                    setBreed(item);
-                    setShowBreedModal(false);
-                    setSearchText("");
-                  }}
-                >
-                  <Text style={styles.modalItemText}>{item}</Text>
-                </TouchableOpacity>
-              )}
-            />
-            <TouchableOpacity
-              style={styles.closeBtn}
-              onPress={() => {
-                setShowBreedModal(false);
-                setSearchText("");
-              }}
-            >
-              <Text style={styles.closeText}>CANCEL</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FAFAFA" },
+  container: { flex: 1, backgroundColor: COLORS.cream },
   scrollContent: {
     flexGrow: 1,
     padding: 20,
@@ -566,67 +550,93 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === "ios" ? 20 : 40,
   },
   header: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: "900",
-    color: "#3E2723",
+    color: COLORS.brand,
     textAlign: "center",
-    marginBottom: 5,
+    marginBottom: 8,
+    textTransform: 'uppercase',
   },
   subHeader: {
     fontSize: 14,
-    color: "#757575",
+    color: COLORS.accentLight,
     textAlign: "center",
-    marginBottom: 25,
-    paddingHorizontal: 10,
+    marginBottom: 30,
+    paddingHorizontal: 20,
+    fontWeight: '700',
   },
 
-  card: {
-    backgroundColor: "white",
-    padding: 20,
-    borderRadius: 16,
+  shadowContainer: {
+    position: 'relative',
     marginBottom: 20,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: "#EEEEEE",
+  },
+  modalShadowContainer: {
+    width: '100%',
+    position: 'relative',
+  },
+  card: {
+    backgroundColor: COLORS.white,
+    padding: 20,
+    borderRadius: 0,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+  },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 15,
+    gap: 8,
+  },
+  sectionAnchor: {
+    width: 8,
+    height: 18,
+    backgroundColor: COLORS.brand,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "900",
-    color: "#8B4513",
-    marginBottom: 15,
+    color: COLORS.brand,
     textTransform: "uppercase",
+    letterSpacing: 1,
   },
   label: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: "#5D4037",
+    fontSize: 12,
+    fontWeight: "900",
+    color: COLORS.brand,
     marginBottom: 6,
-    marginTop: 5,
+    marginTop: 8,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   helperText: {
-    fontSize: 12,
-    color: "#888",
+    fontSize: 11,
+    color: COLORS.textMuted,
     fontStyle: "italic",
     marginBottom: 15,
     marginTop: -10,
+    lineHeight: 16,
   },
 
   input: {
-    backgroundColor: "#F5F5F5",
-    padding: 15,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#E0E0E0",
+    backgroundColor: COLORS.white,
+    padding: 12,
+    borderRadius: 0,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
     fontSize: 16,
-    color: "#333",
+    color: COLORS.textPrimary,
     marginBottom: 15,
   },
+  monospaceInput: {
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    fontWeight: 'bold',
+  },
   selectBtn: {
-    backgroundColor: "#F5F5F5",
-    padding: 15,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#E0E0E0",
+    backgroundColor: COLORS.white,
+    padding: 12,
+    borderRadius: 0,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
@@ -636,30 +646,30 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", justifyContent: "space-between" },
   toggleRow: {
     flexDirection: "row",
-    borderRadius: 10,
+    borderRadius: 0,
     overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "#8B4513",
+    borderWidth: 2,
+    borderColor: COLORS.brand,
   },
   toggleBtn: {
     flex: 1,
     padding: 12,
     alignItems: "center",
-    backgroundColor: "#FFF",
+    backgroundColor: COLORS.white,
   },
-  activeBtn: { backgroundColor: "#8B4513" },
-  toggleText: { color: "#8B4513", fontWeight: "bold", fontSize: 13 },
-  activeText: { color: "white" },
+  activeBtn: { backgroundColor: COLORS.brand },
+  toggleText: { color: COLORS.brand, fontWeight: "900", fontSize: 13, textTransform: 'uppercase' },
+  activeText: { color: COLORS.white },
 
   dateBtn: {
-    backgroundColor: "#EFEBE9",
+    backgroundColor: COLORS.white,
     padding: 15,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#D7CCC8",
+    borderRadius: 0,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
     alignItems: "center",
   },
-  dateText: { color: "#5D4037", fontWeight: "900", fontSize: 16 },
+  dateText: { color: COLORS.brand, fontWeight: "900", fontSize: 16 },
 
   switchRow: {
     flexDirection: "row",
@@ -667,89 +677,113 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 15,
   },
-  switchLabel: { fontSize: 15, color: "#333", fontWeight: "700" },
+  switchLabel: { fontSize: 14, color: COLORS.brand, fontWeight: "900", textTransform: 'uppercase' },
 
   saveBtn: {
-    backgroundColor: "#2E7D32",
+    backgroundColor: COLORS.success,
     padding: 18,
-    borderRadius: 14,
+    borderRadius: 0,
+    borderWidth: 3,
+    borderColor: COLORS.brand,
     alignItems: "center",
-    elevation: 3,
-    marginTop: 10,
   },
-  saveText: { color: "white", fontWeight: "900", fontSize: 18 },
+  saveText: { color: COLORS.white, fontWeight: "900", fontSize: 20, letterSpacing: 2 },
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: "rgba(0,0,0,0.7)",
     justifyContent: "center",
     alignItems: "center",
+    padding: 20,
   },
   modalContent: {
-    backgroundColor: "white",
-    width: "90%",
+    backgroundColor: COLORS.white,
     maxHeight: "80%",
-    borderRadius: 20,
+    borderRadius: 0,
     padding: 20,
-    elevation: 10,
+    borderWidth: 3,
+    borderColor: COLORS.brand,
   },
   modalTitle: {
     fontSize: 20,
     fontWeight: "900",
-    color: "#3E2723",
+    color: COLORS.brand,
     marginBottom: 15,
     textAlign: "center",
+    textTransform: 'uppercase',
   },
   modalSearch: {
-    backgroundColor: "#F5F5F5",
+    backgroundColor: COLORS.white,
     padding: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#ddd",
+    borderRadius: 0,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
     marginBottom: 15,
     fontSize: 16,
   },
   modalItem: {
     paddingVertical: 15,
     borderBottomWidth: 1,
-    borderBottomColor: "#eee",
+    borderBottomColor: COLORS.borderLight,
   },
-  modalItemText: { fontSize: 16, color: "#333", fontWeight: "500" },
+  modalItemText: { fontSize: 16, color: COLORS.brand, fontWeight: "bold" },
   closeBtn: {
     marginTop: 15,
     alignItems: "center",
     padding: 15,
-    backgroundColor: "#FFEBEE",
-    borderRadius: 10,
+    backgroundColor: COLORS.dangerBg,
+    borderRadius: 0,
+    borderWidth: 2,
+    borderColor: COLORS.danger,
   },
-  closeText: { color: "#D32F2F", fontWeight: "900", fontSize: 16 },
+  closeText: { color: COLORS.danger, fontWeight: "900", fontSize: 16 },
+  dropdownList: {
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    borderTopWidth: 0,
+    marginTop: 0,
+    marginBottom: 15,
+  },
+  dropdownItem: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+  },
+  dropdownItemText: {
+    fontSize: 12,
+    color: COLORS.brand,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
   noticeBox: {
-    backgroundColor: "#E3F2FD",
+    backgroundColor: COLORS.infoBg,
     padding: 15,
-    borderRadius: 10,
-    borderLeftWidth: 4,
-    borderLeftColor: "#1565C0",
+    borderRadius: 0,
+    borderWidth: 2,
+    borderColor: COLORS.info,
+    borderLeftWidth: 8,
   },
   noticeText: {
-    color: "#1565C0",
-    fontWeight: "600",
-    fontSize: 14,
-    lineHeight: 20,
+    color: COLORS.info,
+    fontWeight: "900",
+    fontSize: 12,
+    lineHeight: 18,
+    textTransform: 'uppercase',
   },
   
-  // --- ATOMIC ALLERGY STYLES ---
   allergyContainer: {
-    backgroundColor: "#F5F5F5",
+    backgroundColor: COLORS.white,
     padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#E0E0E0",
+    borderRadius: 0,
+    borderWidth: 2,
+    borderColor: COLORS.borderLight,
     marginTop: 10,
     marginBottom: 20,
   },
   allergyContainerActive: {
-    borderColor: "#D32F2F",
-    backgroundColor: "#FFF8F8",
+    borderColor: COLORS.danger,
+    backgroundColor: COLORS.dangerBg,
   },
   tagCloud: {
     flexDirection: "row",
@@ -758,12 +792,14 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   tag: {
-    backgroundColor: "#D32F2F",
+    backgroundColor: COLORS.danger,
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 0,
+    borderWidth: 1,
+    borderColor: COLORS.brand,
   },
   tagText: {
     color: "white",
@@ -773,19 +809,22 @@ const styles = StyleSheet.create({
   },
   tagClose: { color: "white", fontSize: 12, fontWeight: "900" },
   emptyTags: {
-    fontSize: 12,
-    color: "#D32F2F",
+    fontSize: 11,
+    color: COLORS.danger,
     fontStyle: "italic",
-    fontWeight: "600",
+    fontWeight: "900",
+    textTransform: 'uppercase',
   },
   inputRow: { flexDirection: "row", gap: 10, alignItems: "center" },
   addBtn: {
-    backgroundColor: "#D32F2F",
-    width: 40,
-    height: 40,
-    borderRadius: 8,
+    backgroundColor: COLORS.danger,
+    width: 44,
+    height: 44,
+    borderRadius: 0,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
     justifyContent: "center",
     alignItems: "center",
   },
-  addBtnText: { color: "white", fontSize: 24, fontWeight: "900" },
+  addBtnText: { color: "white", fontSize: 28, fontWeight: "900" },
 });

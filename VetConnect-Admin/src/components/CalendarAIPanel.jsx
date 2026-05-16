@@ -29,6 +29,7 @@ const QUICK_ACTIONS = [
   { type: 'staff_availability', label: 'Staff Availability',  Icon: PeopleIcon      },
   { type: 'week_summary',      label: 'This Week Summary',    Icon: ViewWeekIcon    },
   { type: 'conflicts',         label: 'Conflicts & Gaps',     Icon: WarningAmberIcon },
+  { type: 'burnout_radar',     label: 'Staff Burnout Radar',  Icon: WarningAmberIcon },
 ];
 
 // ─── Component ────────────────────────────────────────────────────────────────

@@ -2532,7 +2532,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: COLORS.textPrimary,
-    minHeight: 100,
+    minHeight: 160,
     textAlignVertical: 'top',
   },
 

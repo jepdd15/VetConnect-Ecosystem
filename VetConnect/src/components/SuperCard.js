@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Animated, FlatList, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from "react-native";
+import { Animated, FlatList, Linking, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { COLORS, SHADOW } from '../theme/mobileTokens';
 import { getClientStatusColor, getClientStatusIcon, getClientStatusLabel } from "../utils/statusLabels";
@@ -138,8 +138,6 @@ export default function SuperCard({
       (dayAppt.encounterItems || []).reduce((sum, i) => sum + (Number(i.price) || 0) * (Number(i.qty) || 1), 0);
     const dayDepositPaid = dayAppt.depositPaid || 0;
     const dayBalanceDue = Math.max(0, dayEstimatedTotal - dayDepositPaid);
-    const dayPetAllergies = dayAppt.petAllergies || '';
-    const dayHasAllergies = dayPetAllergies.trim().length > 0 && dayPetAllergies.toUpperCase() !== 'NONE';
     const dayWhatsNext = getWhatsNext(daySvcStatus, dayAppt.caseDay);
     const dayTimeLabel = daySvcStatus === 'arrived' ? 'Checked in at'
       : daySvcStatus === 'in-consult' ? 'Consult started at'
@@ -163,30 +161,33 @@ export default function SuperCard({
 
     return (
       <View style={[styles.superCardBody, isMultiDay && { width: pageWidth }]}>
-        {(dayAppt.serviceType || dayAppt.primaryService) ? (
-          <Text style={styles.serviceTypeBody} numberOfLines={1}>
-            {dayAppt.serviceType || dayAppt.primaryService}
-          </Text>
-        ) : null}
-        {dayTicketLabel ? (
-          <Text style={styles.infoLine}>🎫 {dayTicketLabel}</Text>
-        ) : null}
-        {dayAppt.serviceCategory ? (
-          <Text style={styles.infoLine}>🏥 {dayAppt.serviceCategory}</Text>
-        ) : null}
+
+        <View style={styles.metaAnchorBox}>
+          {dayTicketLabel ? (
+            <View style={styles.metaAnchorRow}>
+              <Text style={styles.metaAnchorLabel}>QUEUE #:</Text>
+              <Text style={styles.metaAnchorValue}>{dayTicketLabel}</Text>
+            </View>
+          ) : null}
+          {dayAppt.serviceCategory ? (
+            <View style={styles.metaAnchorRow}>
+              <Text style={styles.metaAnchorLabel}>DEPARTMENTS:</Text>
+              <Text style={styles.metaAnchorValue}>{dayAppt.serviceCategory.toUpperCase()}</Text>
+            </View>
+          ) : null}
+        </View>
         {dayHasAssignedVet ? (
           <Text style={styles.infoLine}>👨‍⚕️ {dayAppt.assignedVet}</Text>
         ) : null}
-        {dayStartedTime ? (
+        {dayStartedTime && daySvcStatus !== 'arrived' ? (
           <Text style={styles.infoLine}>🕐 {dayTimeLabel} {dayStartedTime}</Text>
         ) : null}
         {dayAppt.scheduledDate && dayAppt.timeArrived ? (
-          <Text style={styles.infoLineSmall}>
-            Appointment: {formatFirestoreTime(dayAppt.scheduledDate)} · Arrived: {formatFirestoreTime(dayAppt.timeArrived)}
-          </Text>
-        ) : null}
-        {dayAppt.petWeight ? (
-          <Text style={styles.infoLine}>⚖️ Weight: {dayAppt.petWeight} kg</Text>
+          <View style={styles.arrivalAnchorBox}>
+            <Text style={styles.arrivalAnchorText}>
+              APPT: {formatFirestoreTime(dayAppt.scheduledDate).toUpperCase()}  ·  ARRIVED: {formatFirestoreTime(dayAppt.timeArrived).toUpperCase()}
+            </Text>
+          </View>
         ) : null}
         {dayAppt.isFollowUp ? (
           <Text style={styles.infoLineSmall}>🔄 Follow-up visit</Text>
@@ -194,14 +195,9 @@ export default function SuperCard({
         {dayAppt.caseDay > 1 ? (
           <Text style={styles.infoLine}>📅 Day {dayAppt.caseDay} of care</Text>
         ) : null}
-        {dayHasAllergies ? (
-          <View style={styles.allergyBadge}>
-            <Text style={styles.allergyText}>⚠ Allergies: {dayPetAllergies}</Text>
-          </View>
-        ) : null}
         {dayAppt.clientNotes ? (
           <View style={styles.notesEcho}>
-            <Text style={styles.notesEchoText}>📝 You mentioned: "{dayAppt.clientNotes}"</Text>
+            <Text style={styles.notesEchoText}>📝 You mentioned: &quot;{dayAppt.clientNotes}&quot;</Text>
           </View>
         ) : null}
         {dayWhatsNext ? (
@@ -671,16 +667,45 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
 
-  allergyBadge: {
-    backgroundColor: '#FFEBEE',
+  arrivalAnchorBox: {
+    backgroundColor: COLORS.cream,
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 6,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.brand,
     marginBottom: 6,
   },
-  allergyText: {
+  arrivalAnchorText: {
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.brand,
+    letterSpacing: 0.5,
+  },
+  metaAnchorBox: {
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.accentLight,
+    paddingLeft: 10,
+    marginBottom: 10,
+    marginTop: 4,
+  },
+  metaAnchorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  metaAnchorLabel: {
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
     fontSize: 12,
-    color: COLORS.danger,
-    fontWeight: 'bold',
+    fontWeight: '900',
+    color: COLORS.accentLight,
+    width: 100,
+  },
+  metaAnchorValue: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: COLORS.accent,
+    letterSpacing: -0.5,
   },
 
   notesEcho: {

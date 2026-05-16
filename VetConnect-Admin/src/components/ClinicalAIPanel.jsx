@@ -52,6 +52,11 @@ const QUICK_ACTIONS = [
     icon: <AutoFixHighIcon sx={{ fontSize: 14 }} />,
     prompt: "Critically review my current 'Plan' against the 'Assessment.' Flag any missing standard-of-care steps or potential conflicts.",
   },
+  {
+    label: 'Philippine Endemic Risk Check',
+    icon: <PsychologyIcon sx={{ fontSize: 14 }} />,
+    prompt: "Cross-reference the findings against common endemic diseases in the Philippines (e.g., Leptospirosis, Ehrlichia, Heartworm) considering the local climate and seasonal risks.",
+  },
 ];
 
 /**

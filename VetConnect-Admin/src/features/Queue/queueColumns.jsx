@@ -755,7 +755,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
               }}
               onClick={() => actions.handleOpenAssign(params.row)}
             >
-              {isTomorrow ? 'Locked' : (params.row.caseDay > 1 ? '🗂️ RE-ARRIVE & RESUME' : 'Check In')}
+              {isTomorrow ? 'Locked' : (params.row.caseDay > 1 ? 'RE-ARRIVE & RESUME' : 'Check In')}
             </Button>
             <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)} sx={{ border: '1px solid rgba(0,0,0,0.1)', color: '#5D4037', flexShrink: 0 }}>
               <MoreVertIcon fontSize="small" />
@@ -778,7 +778,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                 }} 
                 onClick={() => actions.handleStatusChange(params.row, 'in-consult')}
             >
-                {params.row.caseDay > 1 ? '🔥 RESUME' : 'START CONSULT'}
+                {params.row.caseDay > 1 ? 'RESUME' : 'START CONSULT'}
             </Button>
             <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)} sx={{ color: '#5D4037' }}><MoreVertIcon fontSize="small" /></IconButton>
           </Box>
@@ -801,7 +801,7 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
                 }} 
                 onClick={() => actions.handleOpenConsult(params.row)}
             >
-                {isResuming ? '🔥 RESUME' : 'WORKSPACE'}
+                {isResuming ? 'RESUME' : 'WORKSPACE'}
             </Button>
             <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)} sx={{ color: '#5D4037' }}><MoreVertIcon fontSize="small" /></IconButton>
           </Box>

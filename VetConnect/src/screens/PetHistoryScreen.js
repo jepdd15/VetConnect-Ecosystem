@@ -56,6 +56,7 @@ import { resolveVitals } from '../utils/resolveVitals';
 import { generateVisitPDF } from '../utils/generateVisitPDF';
 import { getNormalRange } from '../utils/speciesVitalRanges';
 import { fetchVaccineCatalog, buildVaccinationStatus } from '../utils/vaccineHelpers';
+import { hasExamData, examToText } from '../utils/examUtils';
 
 // T4.202: Inline dosage formatter (mirrors Admin dosageUnits.js to avoid cross-package import)
 const formatDosageMobile = (value, unit, customUnit) => {
@@ -1820,6 +1821,23 @@ export default function PetHistoryScreen({ route, navigation }) {
                   </View>
                 )}
 
+                {/* INTAKE NOTES — Positioned after Reason for Visit for context flow */}
+                {(item.intakeContext?.clientNotes || item.intakeContext?.staffNotes) && (
+                  <View style={{ marginBottom: 16 }}>
+                    <Text style={styles.sectionAnchorLabel}>Intake notes</Text>
+                    {item.intakeContext.clientNotes ? (
+                      <Text style={{ fontSize: 15, color: COLORS.brand, fontWeight: '700' }}>
+                        {item.intakeContext.clientNotes}
+                      </Text>
+                    ) : null}
+                    {item.intakeContext.staffNotes ? (
+                      <Text style={{ fontSize: 13, color: COLORS.textMuted, fontWeight: '700', fontStyle: 'italic', marginTop: 4 }}>
+                        Staff: {item.intakeContext.staffNotes}
+                      </Text>
+                    ) : null}
+                  </View>
+                )}
+
             {!isGrooming && (() => {
               const dxList = (item.diagnoses?.length > 0
                 ? item.diagnoses
@@ -1865,23 +1883,18 @@ export default function PetHistoryScreen({ route, navigation }) {
             {/* Reason for Visit integrated at top — old box removed */}
 
 
-            {(item.intakeContext?.clientNotes || item.intakeContext?.staffNotes) && (
-              <View style={styles.intakeContextBox}>
-                <Text style={styles.intakeContextLabel}>INTAKE NOTES</Text>
-                {item.intakeContext.clientNotes ? (
-                  <Text style={styles.intakeClientText}>
-                    CLIENT: {item.intakeContext.clientNotes}
-                  </Text>
-                ) : null}
-                {item.intakeContext.staffNotes ? (
-                  <Text style={styles.intakeStaffText}>
-                    STAFF TRIAGE: {item.intakeContext.staffNotes}
-                  </Text>
-                ) : null}
-              </View>
-            )}
 
             {/* Internal Vet's Notes (Assessments) removed for client privacy */}
+
+            {/* PHYSICAL EXAM — Structured 10-system checklist rendered as narrative */}
+            {!isGrooming && hasExamData(item.objectiveExam) && (
+              <View style={styles.examCard}>
+                <Text style={styles.examHeader}>PHYSICAL EXAM</Text>
+                <Text style={styles.examText}>
+                  {examToText(item.objectiveExam)}
+                </Text>
+              </View>
+            )}
 
 
             {!isGrooming && (() => {
@@ -1931,6 +1944,71 @@ export default function PetHistoryScreen({ route, navigation }) {
               );
             })()}
 
+            {/* LAB RESULTS — Moved here (above Discharge Notes) to follow clinical narrative order */}
+            {item.labResults?.length > 0 && (
+              <View style={styles.labCard}>
+                <Text style={styles.labHeader}>LAB RESULTS</Text>
+                {item.labResults.map((lab, i) => {
+                  const statusKey = (lab.status || 'normal').toLowerCase();
+                  const statusColor =
+                    statusKey === 'critical' ? COLORS.danger :
+                    statusKey === 'abnormal' ? COLORS.warning :
+                    COLORS.success;
+                  const statusBg =
+                    statusKey === 'critical' ? '#FFEBEE' :
+                    statusKey === 'abnormal' ? '#FFF3E0' :
+                    '#E8F5E9';
+
+                  const chipLabel = lab.resultType === 'positive-negative'
+                    ? (statusKey === 'normal' ? 'NEGATIVE' : statusKey === 'critical' ? 'CRITICAL' : 'POSITIVE')
+                    : statusKey.toUpperCase();
+
+                  const refRangeNode = (() => {
+                    const range = lab.referenceRange || null;
+                    if (!range) return null;
+                    const speciesKey = petSpecies.toLowerCase().includes('cat') ? 'feline' : 'canine';
+                    const resolved = range[speciesKey] || range;
+                    if (Array.isArray(resolved) && resolved.length === 2) {
+                      return (
+                        <Text style={styles.labRefRange}>
+                          {`Ref: ${resolved[0]} \u2013 ${resolved[1]}${lab.unit ? ` ${lab.unit}` : ''}`}
+                        </Text>
+                      );
+                    }
+                    return null;
+                  })();
+
+                  return (
+                    <View key={i} style={styles.labRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.labTestName}>{lab.testName}</Text>
+                        <Text style={styles.labResult}>
+                          {lab.result}{lab.unit ? ` ${lab.unit}` : ''}
+                        </Text>
+                        {refRangeNode}
+                        {lab.notes ? (
+                          <Text style={styles.labNotes}>{lab.notes}</Text>
+                        ) : null}
+                        {lab.attachmentUrl ? (
+                          <TouchableOpacity
+                            style={styles.labAttachmentLink}
+                            onPress={() => Linking.openURL(lab.attachmentUrl).catch(() =>
+                              Alert.alert('Error', 'Cannot open this attachment.')
+                            )}
+                          >
+                            <MaterialIcons name="attach-file" size={12} color={COLORS.sky} />
+                            <Text style={styles.labAttachmentText}>View attachment</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                      <Text style={[styles.labStatusPill, { color: statusColor, backgroundColor: statusBg }]}>
+                        {chipLabel}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
 
             {/* T2.8: Show discharge instructions (client-safe) instead of raw SOAP plan */}
             {!item.dischargeSummary && (
@@ -2233,75 +2311,7 @@ export default function PetHistoryScreen({ route, navigation }) {
               </View>
             )}
 
-            {/* LAB RESULTS */}
-            {item.labResults?.length > 0 && (
-              <View style={styles.labCard}>
-                <Text style={styles.labHeader}>LAB RESULTS</Text>
-                {item.labResults.map((lab, i) => {
-                  const statusKey = (lab.status || 'normal').toLowerCase();
-                  const statusColor =
-                    statusKey === 'critical' ? COLORS.danger :
-                    statusKey === 'abnormal' ? COLORS.warning :
-                    COLORS.success;
-                  const statusBg =
-                    statusKey === 'critical' ? '#FFEBEE' :
-                    statusKey === 'abnormal' ? '#FFF3E0' :
-                    '#E8F5E9';
-
-                  // Amendment 1: derive display label from resultType for positive-negative tests
-                  const chipLabel = lab.resultType === 'positive-negative'
-                    ? (statusKey === 'normal' ? 'NEGATIVE' : statusKey === 'critical' ? 'CRITICAL' : 'POSITIVE')
-                    : statusKey.toUpperCase();
-
-                  // Species-resolved reference range — petSpecies is available in component scope
-                  const refRangeNode = (() => {
-                    const range = lab.referenceRange || null;
-                    if (!range) return null;
-                    const speciesKey = petSpecies.toLowerCase().includes('cat') ? 'feline' : 'canine';
-                    const resolved = range[speciesKey] || range;
-                    if (Array.isArray(resolved) && resolved.length === 2) {
-                      return (
-                        <Text style={styles.labRefRange}>
-                          {`Ref: ${resolved[0]} – ${resolved[1]}${lab.unit ? ` ${lab.unit}` : ''}`}
-                        </Text>
-                      );
-                    }
-                    return null;
-                  })();
-
-                  return (
-                    <View key={i} style={styles.labRow}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.labTestName}>{lab.testName}</Text>
-                        <Text style={styles.labResult}>
-                          {lab.result}{lab.unit ? ` ${lab.unit}` : ''}
-                        </Text>
-                        {refRangeNode}
-                        {/* T4.155 Day 2: Gap 5 — lab notes */}
-                        {lab.notes ? (
-                          <Text style={styles.labNotes}>{lab.notes}</Text>
-                        ) : null}
-                        {/* T4.155 Day 2: Gap 6 — lab attachment URL */}
-                        {lab.attachmentUrl ? (
-                          <TouchableOpacity
-                            style={styles.labAttachmentLink}
-                            onPress={() => Linking.openURL(lab.attachmentUrl).catch(() =>
-                              Alert.alert('Error', 'Cannot open this attachment.')
-                            )}
-                          >
-                            <MaterialIcons name="attach-file" size={12} color={COLORS.sky} />
-                            <Text style={styles.labAttachmentText}>View attachment</Text>
-                          </TouchableOpacity>
-                        ) : null}
-                      </View>
-                      <Text style={[styles.labStatusPill, { color: statusColor, backgroundColor: statusBg }]}>
-                        {chipLabel}
-                      </Text>
-                    </View>
-                  );
-                })}
-              </View>
-            )}
+            {/* LAB RESULTS — Moved above Discharge Notes (see after Vitals section) */}
 
             {/* T3.90: Amendments history */}
             {item.amendments?.length > 0 && (
@@ -3950,6 +3960,33 @@ const styles = StyleSheet.create({
     textAlign: "center",
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+
+  // --- Physical Exam card ---
+  examCard: {
+    marginTop: 12,
+    marginBottom: 16,
+    padding: 12,
+    backgroundColor: COLORS.cream,
+    borderRadius: 0,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.brand,
+  },
+  examHeader: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.brand,
+    letterSpacing: 1.2,
+    marginBottom: 10,
+    textTransform: 'uppercase',
+  },
+  examText: {
+    fontSize: 13,
+    color: COLORS.textPrimary,
+    lineHeight: 20,
+    fontWeight: '600',
   },
 
   // --- Lab results card (B4) ---

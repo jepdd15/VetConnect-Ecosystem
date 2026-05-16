@@ -755,7 +755,7 @@ const AuditPatientCard = React.memo(({
 
             {/* 4. RECOMMENDATION & VERDICT (FLEX - EXPANDS ON TRIAGE) */}
             <Box sx={{ flex: 1, p: 2, display: 'flex', flexDirection: 'column', pb: resolution ? 4 : 2 }}>
-                <Box sx={{ p: 1.5, bgcolor: !resolution ? '#F5F5F5' : (isHighStakes ? '#FFF9C4' : (resolution === 'reschedule' || resolution === 'carryover' ? '#FFF9C4' : resolution === 'no-show' ? '#FFEBEE' : '#F5F5F5')), border: `2px solid ${forensicColor}`, borderRadius: 1.2, mb: 1.5, transition: 'all 0.2s ease-out' }}>
+                <Box sx={{ p: 1.5, bgcolor: !resolution ? '#F5F5F5' : (isHighStakes ? '#FFF9C4' : (resolution === 'reschedule' || resolution === 'carryover' ? '#FFF9C4' : resolution === 'no-show' ? '#FFEBEE' : '#F5F5F5')), border: `2px solid ${clinicalBorder}`, borderRadius: 0, mb: 1.5, transition: 'all 0.2s ease-out' }}>
                     {(() => {
                         const scenarioMap = {
                             'in-consult': "Patient is mid-consult and requires record closing.",
@@ -825,9 +825,9 @@ const AuditPatientCard = React.memo(({
                             onResolutionChange(patient.id, newAction, targetDate, targetTime);
                         }}
                         sx={{
-                            width: '100%', gap: 0.8,
+                            width: '100%', gap: 1,
                             '& .MuiToggleButton-root': {
-                                borderRadius: 1.2, border: `2px solid ${forensicColor} !important`, flex: 1, height: '36px',
+                                borderRadius: 0, border: `2px solid ${clinicalBorder} !important`, flex: 1, height: '36px',
                                 fontWeight: '1000', textTransform: 'uppercase', letterSpacing: 1.2, fontSize: '0.68rem',
                                 bgcolor: '#FFF',
                                 '&.Mui-selected': { bgcolor: forensicColor, color: 'white', '&:hover': { bgcolor: '#E65100' } }
@@ -857,9 +857,9 @@ const AuditPatientCard = React.memo(({
 
                     {/* UNIVERSAL REASON FOR EVERY RESOLUTION */}
                     {resolution && (
-                        <Box sx={{ mt: 1.5, p: 1, border: `2px solid ${forensicColor}`, borderRadius: 1.2, bgcolor: isHighStakes ? '#FFF9C4' : '#FAFAFA', animation: 'slideIn 0.2s ease-out' }}>
+                        <Box sx={{ mt: 1.5, p: 1, border: `2px solid ${clinicalBorder}`, borderRadius: 0, bgcolor: isHighStakes ? '#FFF9C4' : '#FAFAFA', animation: 'slideIn 0.2s ease-out' }}>
                             <Typography variant="caption" sx={{ fontWeight: '1000', color: forensicColor, display: 'block', mb: 0.8, fontSize: '0.6rem', letterSpacing: 0.5 }}>
-                                ✍️ MANDATORY FORENSIC JUSTIFICATION
+                                REASON
                             </Typography>
                             <TextField
                                 fullWidth
@@ -870,8 +870,8 @@ const AuditPatientCard = React.memo(({
                                 onChange={(e) => handleReasonChange(e.target.value)}
                                 sx={{
                                     '& .MuiOutlinedInput-root': {
-                                        fontWeight: '900', fontSize: '0.75rem', bgcolor: 'white',
-                                        '& fieldset': { borderColor: !auditReason ? '#D32F2F' : forensicColor }
+                                        fontWeight: '900', fontSize: '0.75rem', bgcolor: 'white', borderRadius: 0,
+                                        '& fieldset': { borderColor: !auditReason ? '#D32F2F' : clinicalBorder, borderRadius: 0 }
                                     }
                                 }}
                             />
@@ -885,10 +885,10 @@ const AuditPatientCard = React.memo(({
 
                     {/* 🗓️ SMART-SHIFT CALENDAR (Prescriptive Scheduling) */}
                     {(resolution === 'reschedule' || resolution === 'carryover' || resolution === 'defer' || resolution === 'hospitalize') && (
-                        <Box sx={{ mt: 1.2, p: 1, border: `2px solid ${forensicColor}`, borderRadius: 1.2, bgcolor: '#FFF6E0', animation: 'slideIn 0.2s ease-out' }}>
+                        <Box sx={{ mt: 1.2, p: 1, border: `2px solid ${clinicalBorder}`, borderRadius: 0, bgcolor: '#FFF6E0', animation: 'slideIn 0.2s ease-out' }}>
                             <style>{`@keyframes slideIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }`}</style>
                             <Typography variant="caption" sx={{ fontWeight: '1000', color: '#5D4037', display: 'block', mb: 0.8, fontSize: '0.6rem', letterSpacing: 0.5 }}>
-                                🗓️ PRESCRIPTIVE SHIFT SCHEDULING
+                                SELECT SCHEDULE
                             </Typography>
                             <Stack spacing={1}>
                                 <Stack direction="row" spacing={0.5}>
@@ -903,18 +903,18 @@ const AuditPatientCard = React.memo(({
                                                 variant={isActive ? "contained" : "outlined"}
                                                 onClick={() => onResolutionChange(patient.id, resolution, dateStr, targetTime || settings?.openingTime || "08:00")}
                                                 sx={{
-                                                    flex: 1, fontSize: '0.55rem', fontWeight: '1000', py: 0.2,
+                                                    flex: 1, fontSize: '0.55rem', fontWeight: '1000', py: 0.2, borderRadius: 0,
                                                     bgcolor: isActive ? forensicColor : 'transparent',
                                                     color: isActive ? 'white' : forensicColor,
-                                                    borderColor: forensicColor,
-                                                    '&:hover': { bgcolor: isActive ? '#E65100' : 'rgba(255, 160, 0, 0.05)', borderColor: forensicColor }
+                                                    borderColor: clinicalBorder,
+                                                    '&:hover': { bgcolor: isActive ? '#E65100' : 'rgba(255, 160, 0, 0.05)', borderColor: clinicalBorder }
                                                 }}
                                             >
                                                 {label}
                                             </Button>
                                         );
                                     })}
-                                    <Box sx={{ flex: 2, display: 'flex', alignItems: 'center', gap: 0.2, border: `1px solid ${forensicColor}`, borderRadius: '4px', px: 0.5, bgcolor: 'white' }}>
+                                    <Box sx={{ flex: 2, display: 'flex', alignItems: 'center', gap: 0.2, border: `1px solid ${clinicalBorder}`, borderRadius: 0, px: 0.5, bgcolor: 'white' }}>
                                         <input
                                             type="date"
                                             value={targetDate || getSmartShiftDate(0, settings?.openHour || 8).dateStr}
@@ -942,12 +942,12 @@ const AuditPatientCard = React.memo(({
                         Amount written to the new appointment as depositPaid so POSModal
                         can deduct it as "Less Deposit" on the next visit. */}
                     {resolution === 'carryover' && tabMode === 2 && (
-                        <Box sx={{ mt: 1.2, p: 1, border: '2px solid #1976D2', borderRadius: 1.2, bgcolor: '#E3F2FD', animation: 'slideIn 0.2s ease-out' }}>
+                        <Box sx={{ mt: 1.2, p: 1, border: `2px solid ${clinicalBorder}`, borderRadius: 0, bgcolor: '#E3F2FD', animation: 'slideIn 0.2s ease-out' }}>
                             <Typography variant="caption" sx={{ fontWeight: '1000', color: '#1565C0', display: 'block', mb: 0.8, fontSize: '0.6rem', letterSpacing: 0.5 }}>
                                 COLLECT DEPOSIT (OPTIONAL)
                             </Typography>
                             <Stack direction="row" spacing={0.5} alignItems="center">
-                                <Box sx={{ display: 'flex', alignItems: 'center', border: '1px solid #1976D2', borderRadius: '4px', px: 0.5, bgcolor: 'white', flex: 1 }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', border: `1px solid ${clinicalBorder}`, borderRadius: 0, px: 0.5, bgcolor: 'white', flex: 1 }}>
                                     <Typography sx={{ fontSize: '0.65rem', fontWeight: 900, color: '#1565C0', mr: 0.3 }}>₱</Typography>
                                     <input
                                         type="number"
@@ -966,9 +966,9 @@ const AuditPatientCard = React.memo(({
                                     value={depositMethod || 'cash'}
                                     onChange={(e) => onDepositChange(patient.id, 'method', e.target.value)}
                                     style={{
-                                        border: '1px solid #1976D2', background: 'white', fontSize: '0.6rem',
+                                        border: `1px solid ${clinicalBorder}`, background: 'white', fontSize: '0.6rem',
                                         fontWeight: '900', color: '#1565C0', outline: 'none', padding: '2px 4px',
-                                        cursor: 'pointer', borderRadius: '4px'
+                                        cursor: 'pointer', borderRadius: 0
                                     }}
                                 >
                                     <option value="cash">CASH</option>
@@ -1312,7 +1312,7 @@ const EndOfDayModal = React.memo(({
                     }}>
                         <style>{`@keyframes centerPop { from { opacity: 0; transform: translate(-50%, -40%) scale(0.9); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }`}</style>
                         <Typography variant="overline" sx={{ fontWeight: 1000, letterSpacing: 4, textAlign: 'center', display: 'block', mb: 3, color: '#FFD180', fontSize: '1rem' }}>
-                            🛡️ FINAL CLINICAL TRIAGE SIGN-OFF
+                            TRIAGE SIGN-OFF
                         </Typography>
 
                         <Stack direction="row" spacing={3} justifyContent="center" sx={{ bgcolor: 'rgba(0,0,0,0.3)', p: 3, borderRadius: 2, mb: 3 }}>
@@ -1346,12 +1346,6 @@ const EndOfDayModal = React.memo(({
                                 <Typography variant="caption" sx={{ fontWeight: 900, opacity: 0.9, letterSpacing: 1.5 }}>CANCEL</Typography>
                             </Box>
                         </Stack>
-
-                        <Typography variant="body2" sx={{ textAlign: 'center', opacity: 0.8, fontWeight: '800', fontStyle: 'italic', fontSize: '0.9rem' }}>
-                            Verifying 100% forensic resolution for <strong>{leftoverPatients.length} medical records</strong>.
-                            <br />
-                            This action will permanently archive all resolved sessions.
-                        </Typography>
                     </Box>
                 )}
 

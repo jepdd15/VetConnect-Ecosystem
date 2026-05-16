@@ -78,7 +78,7 @@ export const ForensicMetricGrid = ({ pulse = [], settings = {}, createdAt, targe
   };
 
   return (
-    <Box sx={{ bgcolor: 'rgba(93, 64, 55, 0.03)', border: '1px solid rgba(93, 64, 55, 0.1)', borderRadius: 1.5, overflow: 'hidden' }}>
+    <Box sx={{ bgcolor: 'rgba(93, 64, 55, 0.03)', border: '1px solid #000', borderRadius: 0, overflow: 'hidden' }}>
       <Grid container>
         {/* ROW 1: THE CURRENT SHIFT FOCUS */}
         <Grid size={{ xs: 4 }} sx={{ borderRight: '1px solid rgba(0,0,0,0.05)', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>

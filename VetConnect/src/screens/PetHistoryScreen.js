@@ -80,6 +80,15 @@ const SCREEN_W = Dimensions.get('window').width;
 // T4.194 Item 10: Vaccine urgency sort order — overdue first, unknown last
 const URGENCY_ORDER = { overdue: 0, due_soon: 1, unknown: 2, current: 3 };
 
+const VAC_STATUS_MAP = {
+  overdue:   { dot: '🔴', label: 'Overdue',   color: COLORS.danger },
+  due_soon:  { dot: '🟡', label: 'Due soon',  color: COLORS.warning },
+  current:   { dot: '🟢', label: 'Current',   color: COLORS.success },
+  unknown:   { dot: '⚪', label: 'No record', color: COLORS.textMuted },
+  incomplete: { dot: '🟠', label: 'Incomplete', color: COLORS.warning },
+};
+
+
 // ---------------------------------------------------------------------------
 // VACCINATION PASSPORT — HTML TEMPLATE
 // Self-contained: no imports from admin utils. Mirrors the admin passport
@@ -492,7 +501,7 @@ function generateMobileVaccinationPassport({ petName, ownerName, clinicName, cli
       </div>
       <div class="cover-field">
         <div class="cover-field-label">Sex / Age</div>
-        <div class="cover-field-value">${escHtml(pet.gender || 'N/A')}${pet.isNeutered ? ' (Desexed)' : ''} — ${escHtml(pet.age || 'N/A')}</div>
+        <div class="cover-field-value">${escHtml(pet.gender || 'N/A')} (${pet.isNeutered ? (pet.gender === 'Female' ? 'Spayed' : 'Neutered') : 'Intact'}) — ${escHtml(pet.age || 'N/A')}</div>
       </div>
       <div class="cover-field">
         <div class="cover-field-label">Weight</div>
@@ -578,13 +587,13 @@ function generateMobileVaccinationPassport({ petName, ownerName, clinicName, cli
 // ---------------------------------------------------------------------------
 
 const VITALS_CONFIG = {
-  weight: { label: 'Weight Trend',     unit: 'kg',  color: COLORS.info,    refKey: null    },
-  temp:   { label: 'Temperature',      unit: '°C',  color: COLORS.danger,  refKey: 'temp'  },
-  hr:     { label: 'Heart Rate',       unit: 'bpm', color: COLORS.success, refKey: 'hr'    },
-  rr:     { label: 'Respiratory Rate', unit: 'brpm', color: '#7B1FA2',      refKey: 'rr'    },
-  crt:    { label: 'Capillary Refill', unit: 's',   color: '#00838F',      refKey: 'crt'   },
-  bcs:    { label: 'Body Condition',   unit: '/9',  color: '#EF6C00',      refKey: 'bcs'   },
-  pain:   { label: 'Pain Score',       unit: '/10', color: COLORS.danger,  refKey: null    },
+  weight: { label: 'Weight Trend',     unit: 'kg',  color: COLORS.brand, refKey: null,   curved: true  },
+  temp:   { label: 'Temperature',      unit: '°C',  color: COLORS.brand, refKey: 'temp', curved: true  },
+  hr:     { label: 'Heart Rate',       unit: 'bpm', color: COLORS.brand, refKey: 'hr',   curved: true  },
+  rr:     { label: 'Respiratory Rate', unit: 'brpm', color: COLORS.brand, refKey: 'rr',   curved: true  },
+  crt:    { label: 'Capillary Refill', unit: 's',   color: COLORS.brand, refKey: 'crt',  curved: false },
+  bcs:    { label: 'Body Condition',   unit: '/9',  color: COLORS.brand, refKey: 'bcs',  curved: false },
+  pain:   { label: 'Pain Score',       unit: '/10', color: COLORS.brand, refKey: null,   curved: false },
 };
 
 /**
@@ -784,7 +793,7 @@ export default function PetHistoryScreen({ route, navigation }) {
     { key: 'records',  label: 'RECORDS'  },
     { key: 'vitals',   label: 'VITALS'   },
     { key: 'vaccines', label: 'VACCINES' },
-    { key: 'overview', label: 'OVERVIEW' },
+    { key: 'overview', label: 'SUMMARY'  },
   ];
 
   // T4.97: AI Pet History Assistant — pet doc, worker URL, and sheet visibility
@@ -1055,6 +1064,7 @@ export default function PetHistoryScreen({ route, navigation }) {
           existing.lastRawMs = ms;
           existing.lastShort = shortDate;
           existing.lastInstructions = rx.instructions || existing.lastInstructions;
+          existing.lastDuration = parseInt(rx.duration) || existing.lastDuration || 0;
         } else {
           rxMap.set(rxDisplayName, {
             name: rxDisplayName,
@@ -1065,6 +1075,7 @@ export default function PetHistoryScreen({ route, navigation }) {
             lastShort: shortDate,
             lastRawMs: ms,
             lastInstructions: rx.instructions || '',
+            lastDuration: parseInt(rx.duration) || 0,
           });
         }
       });
@@ -1080,10 +1091,15 @@ export default function PetHistoryScreen({ route, navigation }) {
     all.forEach(rx => {
       const isRecent = (now - rx.lastRawMs) <= NINETY_DAYS_MS;
       const isPinned = pinned.includes(rx.name);
+
+      const durationMs = rx.lastDuration * 24 * 60 * 60 * 1000;
+      const hasLapsed = durationMs > 0 && (now - rx.lastRawMs) > durationMs;
+      const daysSinceEnd = durationMs > 0 ? Math.floor((now - (rx.lastRawMs + durationMs)) / (24 * 60 * 60 * 1000)) : 0;
+
       if (isRecent || isPinned) {
-        active.push({ ...rx, isPinned });
+        active.push({ ...rx, isPinned, hasLapsed, daysSinceEnd });
       } else {
-        historical.push({ ...rx, isPinned: false });
+        historical.push({ ...rx, isPinned: false, hasLapsed, daysSinceEnd });
       }
     });
 
@@ -1405,6 +1421,14 @@ export default function PetHistoryScreen({ route, navigation }) {
     ),
     [vaccinationStatuses],
   );
+
+  const speciesEmoji = useMemo(() => {
+    const sp = (petSpecies || '').toLowerCase();
+    if (sp.includes('cat') || sp.includes('feline')) return '🐱';
+    if (sp.includes('dog') || sp.includes('canine')) return '🐶';
+    return '🐾';
+  }, [petSpecies]);
+
 
   // ---------------------------------------------------------------------------
 
@@ -2690,29 +2714,37 @@ export default function PetHistoryScreen({ route, navigation }) {
                             const b = parseInt(hex.slice(5, 7), 16);
                             return `rgba(${r},${g},${b},${op})`;
                           };
-                          const vitalHex = cfg.color || '#3ABEF9';
+                          const vitalHex = COLORS.brand;
                           return (
                             <GiftedLineChart
-                              data={chartData.map((d, i) => ({
-                                value: d.value,
-                                label: i % Math.ceil(chartData.length / 5) === 0
-                                  ? (d.label ?? '') : '',
-                                dataPointColor: range
-                                  ? (d.value >= range.low && d.value <= range.high
-                                      ? COLORS.success : COLORS.danger)
-                                  : vitalHex,
-                              }))}
+                              data={chartData.map((d, i) => {
+                                const isLatest = i === chartData.length - 1;
+                                let dpColor = COLORS.brand;
+                                if (key === 'pain') {
+                                  dpColor = d.value > 0 ? COLORS.danger : COLORS.success;
+                                } else if (range) {
+                                  dpColor = (d.value >= range.low && d.value <= range.high) ? COLORS.success : COLORS.danger;
+                                }
+                                return {
+                                  value: d.value,
+                                  label: i % Math.ceil(chartData.length / 5) === 0 ? (d.label ?? '') : '',
+                                  dataPointColor: dpColor,
+                                  dataPointRadius: isLatest ? 8 : 5,
+                                  dataPointStrokeWidth: isLatest ? 2 : 0,
+                                  dataPointStrokeColor: COLORS.white,
+                                };
+                              })}
                               width={SCREEN_W - 80}
                               height={180}
                               initialSpacing={15}
                               overflowTop={20}
-                              curved
-                              thickness={2}
+                              curved={cfg.curved}
+                              thickness={3}
+                              minValue={(key === 'hr' || key === 'rr') ? 0 : undefined}
                               yAxisLabelWidth={55}
                               formatYLabel={v => `${parseFloat(v).toFixed(1)}${cfg.unit || ''}`}
                               yAxisTextStyle={{ fontSize: 10, color: COLORS.accent }}
                               xAxisLabelTextStyle={{ fontSize: 9, color: COLORS.accentLight }}
-                              dataPointsRadius={5}
                               rulesType="solid"
                               rulesColor="rgba(0,0,0,0.05)"
                               xAxisColor={COLORS.borderLight}
@@ -2796,22 +2828,32 @@ export default function PetHistoryScreen({ route, navigation }) {
                         )}
                       </View>
                       <GiftedLineChart
-                        data={chartData.map((d, i) => ({
-                          value: d.value,
-                          label: chartData.length > 5
-                            ? (i % Math.ceil(chartData.length / 5) === 0 ? d.label : '')
-                            : d.label,
-                          dataPointColor: range
-                            ? (d.value >= range.low && d.value <= range.high
-                                ? COLORS.success : COLORS.danger)
-                            : vitalColor,
-                        }))}
+                        data={chartData.map((d, i) => {
+                          const isLatest = i === chartData.length - 1;
+                          let dpColor = COLORS.brand;
+                          if (key === 'pain') {
+                            dpColor = d.value > 0 ? COLORS.danger : COLORS.success;
+                          } else if (range) {
+                            dpColor = (d.value >= range.low && d.value <= range.high) ? COLORS.success : COLORS.danger;
+                          }
+                          return {
+                            value: d.value,
+                            label: chartData.length > 5
+                              ? (i % Math.ceil(chartData.length / 5) === 0 ? d.label : '')
+                              : d.label,
+                            dataPointColor: dpColor,
+                            dataPointRadius: isLatest ? 8 : 5,
+                            dataPointStrokeWidth: isLatest ? 2 : 0,
+                            dataPointStrokeColor: COLORS.white,
+                          };
+                        })}
                         width={SCREEN_W - 80}
                         height={160}
                         initialSpacing={15}
                         overflowTop={20}
-                        color={vitalColor}
-                        thickness={2}
+                        color={COLORS.brand}
+                        thickness={3}
+                        curved={false}
                         yAxisLabelWidth={45}
                         stepValue={key === 'pain' ? 2 : 1}
                         roundToDigits={0}
@@ -2820,7 +2862,6 @@ export default function PetHistoryScreen({ route, navigation }) {
                         formatYLabel={val => `${parseFloat(val).toFixed(0)}${cfg.unit}`}
                         yAxisTextStyle={{ fontSize: 10, color: COLORS.accent }}
                         xAxisLabelTextStyle={{ fontSize: 9, color: COLORS.accentLight }}
-                        dataPointsRadius={5}
                         rulesType="solid"
                         rulesColor="rgba(0,0,0,0.05)"
                         xAxisColor={COLORS.borderLight}
@@ -2905,7 +2946,6 @@ export default function PetHistoryScreen({ route, navigation }) {
                 contentContainerStyle={styles.tabScrollContent}
                 showsVerticalScrollIndicator={false}
               >
-                <Text style={styles.tabSectionTitle}>AT A GLANCE</Text>
 
                 {/* Latest Vitals Chips */}
                 {latestVitals && (
@@ -2956,40 +2996,92 @@ export default function PetHistoryScreen({ route, navigation }) {
                   )}
                 </View>
 
-                {/* Active Medications */}
-                <View style={styles.overviewCard}>
-                  <Text style={styles.overviewCardTitle}>
-                    ACTIVE MEDICATIONS ({activeRx.length})
-                  </Text>
-                  {activeRx.length > 0 ? (
-                    activeRx.slice(0, 3).map((rx, i) => (
-                      <Text key={i} style={styles.overviewMedText}>• {rx.name}</Text>
-                    ))
-                  ) : (
-                    <Text style={styles.overviewEmptyText}>No active medications</Text>
-                  )}
-                  {activeRx.length > 3 && (
-                    <Text style={styles.overviewMoreText}>+{activeRx.length - 3} more</Text>
-                  )}
-                </View>
 
-                {/* Vaccine Completeness */}
+                {/* T4.118: High-fidelity Vaccination Status Card ported from MyStatsScreen.js */}
                 {vaccineCompleteness && (
-                  <View style={styles.overviewCard}>
-                    <Text style={styles.overviewCardTitle}>VACCINATION STATUS</Text>
-                    <Text style={styles.overviewStatText}>
-                      {vaccineCompleteness.administered}/{vaccineCompleteness.total} current ({vaccineCompleteness.percentage}%)
-                    </Text>
-                    <View style={styles.overviewProgressTrack}>
-                      <View style={[styles.overviewProgressFill, {
-                        width: `${vaccineCompleteness.percentage}%`,
-                        backgroundColor: vaccineCompleteness.percentage >= 75 ? COLORS.success
+                  <View style={styles.vacStatusPetBlock}>
+                    {/* Header: Emoji + Pet Name + Progress + Download Shortcut */}
+                    <View style={styles.vacStatusHeader}>
+                      <Text style={styles.vacStatusPetName}>
+                        {speciesEmoji} {petName}
+                      </Text>
+                      <View style={styles.vacStatusBarTrack}>
+                        <View style={[styles.vacStatusBarFill, {
+                          width: `${vaccineCompleteness.percentage}%`,
+                          backgroundColor: vaccineCompleteness.percentage >= 75 ? COLORS.success
+                            : vaccineCompleteness.percentage >= 50 ? COLORS.warning
+                            : COLORS.danger,
+                        }]} />
+                      </View>
+                      <Text style={[styles.vacStatusFraction, {
+                        color: vaccineCompleteness.percentage >= 75 ? COLORS.success
                           : vaccineCompleteness.percentage >= 50 ? COLORS.warning
                           : COLORS.danger,
-                      }]} />
+                      }]}>
+                        {vaccineCompleteness.administered}/{vaccineCompleteness.total} ({vaccineCompleteness.percentage}%)
+                      </Text>
+                      
+                      {/* T4.194 Item 17: Direct passport download shortcut */}
+                      <TouchableOpacity 
+                        style={styles.vacDownloadBtn} 
+                        onPress={handleDownloadPassport}
+                        activeOpacity={0.7}
+                      >
+                        <MaterialIcons name="verified" size={18} color={COLORS.accent} />
+                      </TouchableOpacity>
                     </View>
+
+                    {/* Vaccine List: Status dots + detailed labels */}
+                    {sortedStatuses.map((vax, idx) => {
+                      const cfg = VAC_STATUS_MAP[vax.status] || VAC_STATUS_MAP.unknown;
+                      const timeLabel = vax.daysUntilDue != null
+                        ? (vax.daysUntilDue < 0 ? `(${Math.abs(vax.daysUntilDue)}d overdue)`
+                           : vax.daysUntilDue === 0 ? '(Today)'
+                           : `(in ${vax.daysUntilDue}d)`)
+                        : '';
+
+                      return (
+                        <View key={idx} style={styles.vacStatusLine}>
+                          <Text style={styles.vacStatusDot}>{cfg.dot}</Text>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.vacStatusName} numberOfLines={1}>{vax.name}</Text>
+                            {vax.dosesRequired > 1 && (
+                              <View style={styles.vacDoseRow}>
+                                {Array.from({ length: vax.dosesRequired }, (_, i) => (
+                                  <Text key={i} style={{
+                                    fontSize: 10,
+                                    color: i < vax.dosesGiven ? COLORS.success : COLORS.borderLight,
+                                  }}>
+                                    {i < vax.dosesGiven ? '●' : '○'}
+                                  </Text>
+                                ))}
+                                <Text style={{ fontSize: 9, color: COLORS.accentLight, marginLeft: 4 }}>
+                                  Dose {vax.dosesGiven}/{vax.dosesRequired}
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                          <Text style={[styles.vacStatusDetail, { color: cfg.color }]}>
+                            {cfg.label} {timeLabel}
+                          </Text>
+                        </View>
+                      );
+                    })}
+
+                    {/* Item 13: 0% completeness CTA — Encourage immunization */}
+                    {vaccineCompleteness.percentage === 0 && (
+                      <TouchableOpacity
+                        style={styles.vacBookCta}
+                        onPress={() => navigation.navigate('BookAppointment', { prefillPetId: petId })}
+                        activeOpacity={0.85}
+                      >
+                        <MaterialIcons name="event" size={14} color={COLORS.white} />
+                        <Text style={styles.vacBookCtaText}>BOOK FIRST VACCINATION</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 )}
+
 
                 {/* Last Visit + Next Recheck */}
                 <View style={styles.overviewCard}>
@@ -3031,31 +3123,46 @@ export default function PetHistoryScreen({ route, navigation }) {
                 {(activeRx.length > 0 || historicalRx.length > 0) && (
                   <View style={styles.overviewCard}>
                     <Text style={styles.overviewCardTitle}>
-                      ALL MEDICATIONS ({activeRx.length + historicalRx.length})
+                      MEDICATIONS ({activeRx.length + historicalRx.length})
                     </Text>
                     {activeRx.length > 0 && (
                       <>
                         <Text style={styles.overviewSubLabel}>ACTIVE</Text>
-                        {activeRx.map((rx, i) => (
-                          <View key={i} style={styles.overviewMedRow}>
-                            <Text style={styles.overviewMedName}>{rx.name}</Text>
-                            {rx.lastInstructions ? (
-                              <Text style={styles.overviewMedSig}>{rx.lastInstructions}</Text>
-                            ) : null}
-                            <Text style={styles.overviewMedTenure}>
-                              {rx.firstShort !== rx.lastShort
-                                ? `${rx.firstShort} → ${rx.lastShort}`
-                                : rx.lastDate}
-                            </Text>
-                          </View>
-                        ))}
+                        {activeRx.map((rx, i) => {
+                          const status = rx.isPinned ? 'ONGOING' : (rx.hasLapsed ? 'PAST DUE' : 'IN PROGRESS');
+                          const badgeColor = rx.isPinned ? COLORS.warning : (rx.hasLapsed ? COLORS.textMuted : COLORS.success);
+                          const bgOpacity = rx.isPinned ? '11' : (rx.hasLapsed ? '08' : '11');
+
+                          return (
+                            <View key={i} style={[styles.overviewMedRow, rx.hasLapsed && !rx.isPinned && { borderLeftColor: COLORS.borderLight }]}>
+                              <Text style={styles.overviewMedName}>{rx.name}</Text>
+                              
+                              <View style={[styles.medBadge, { backgroundColor: `${badgeColor}${bgOpacity}`, borderColor: `${badgeColor}44` }]}>
+                                <Text style={[styles.medBadgeText, { color: badgeColor }]}>{status}</Text>
+                              </View>
+
+                              {rx.hasLapsed && !rx.isPinned && rx.daysSinceEnd > 0 && (
+                                <Text style={styles.medLapsedText}>Course ended {rx.daysSinceEnd} day{rx.daysSinceEnd !== 1 ? 's' : ''} ago</Text>
+                              )}
+
+                              {rx.lastInstructions ? (
+                                <Text style={styles.overviewMedSig}>{rx.lastInstructions}</Text>
+                              ) : null}
+                              <Text style={styles.overviewMedTenure}>
+                                {rx.firstShort !== rx.lastShort
+                                  ? `${rx.firstShort} → ${rx.lastShort}`
+                                  : rx.lastDate}
+                              </Text>
+                            </View>
+                          );
+                        })}
                       </>
                     )}
                     {historicalRx.length > 0 && (
                       <>
                         <Text style={[styles.overviewSubLabel, { marginTop: 10 }]}>HISTORICAL</Text>
                         {historicalRx.map((rx, i) => (
-                          <View key={i} style={[styles.overviewMedRow, { opacity: 0.65 }]}>
+                          <View key={i} style={[styles.overviewMedRow, { opacity: 0.65, borderLeftColor: COLORS.borderLight }]}>
                             <Text style={styles.overviewMedName}>{rx.name}</Text>
                             <Text style={styles.overviewMedTenure}>
                               {rx.firstShort !== rx.lastShort
@@ -4465,6 +4572,98 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
 
+  // --- T4.118: Ported Vaccination Status Styles ---
+  vacStatusPetBlock: {
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    borderRadius: 0,
+    padding: 12,
+    marginBottom: 16,
+  },
+  vacStatusHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 8,
+  },
+  vacStatusPetName: {
+    fontFamily: FONTS.black,
+    fontSize: 13,
+    color: COLORS.brand,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    minWidth: 80,
+  },
+  vacStatusBarTrack: {
+    flex: 1,
+    height: 6,
+    backgroundColor: COLORS.borderLight,
+    borderRadius: 0,
+    overflow: 'hidden',
+  },
+  vacStatusBarFill: {
+    height: '100%',
+    borderRadius: 0,
+  },
+  vacStatusFraction: {
+    fontFamily: FONTS.bold,
+    fontSize: 11,
+    minWidth: 65,
+    textAlign: 'right',
+  },
+  vacDownloadBtn: {
+    padding: 4,
+    marginLeft: 4,
+  },
+  vacStatusLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+    gap: 8,
+  },
+  vacDoseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    marginTop: 1,
+  },
+  vacStatusDot: {
+    fontSize: 12,
+    width: 18,
+    textAlign: 'center',
+  },
+  vacStatusName: {
+    fontFamily: FONTS.bold,
+    fontSize: 12,
+    color: COLORS.brand,
+    flex: 1,
+  },
+  vacStatusDetail: {
+    fontFamily: FONTS.bold,
+    fontSize: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    textAlign: 'right',
+  },
+  vacBookCta: {
+    backgroundColor: COLORS.brand,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    gap: 8,
+    marginTop: 12,
+  },
+  vacBookCtaText: {
+    fontFamily: FONTS.black,
+    fontSize: 11,
+    color: COLORS.white,
+    letterSpacing: 1,
+  },
+
   // ---------------------------------------------------------------------------
   // T4.194 Item 20: OVERVIEW tab cards
   // ---------------------------------------------------------------------------
@@ -4600,5 +4799,27 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: COLORS.textMuted,
     letterSpacing: 0.3,
+  },
+  medBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderRadius: 0,
+    alignSelf: 'flex-start',
+    marginTop: 2,
+    marginBottom: 2,
+  },
+  medBadgeText: {
+    fontSize: 9,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  medLapsedText: {
+    fontSize: 10,
+    color: COLORS.textMuted,
+    fontStyle: 'italic',
+    marginTop: 2,
+    marginBottom: 4,
   },
 });

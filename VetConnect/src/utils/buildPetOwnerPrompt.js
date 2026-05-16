@@ -117,7 +117,7 @@ export function buildPetOwnerPrompt({ pet, records, vaccinations }) {
   if (pet?.species) lines.push(`Species: ${pet.species}`);
   if (pet?.breed) lines.push(`Breed: ${pet.breed}`);
   if (pet?.gender) {
-    const neuterStatus = pet.isNeutered ? ' (neutered/spayed)' : '';
+    const neuterStatus = pet.isNeutered ? ` (${pet.gender === 'Female' ? 'spayed' : 'neutered'})` : ' (intact)';
     lines.push(`Sex: ${pet.gender}${neuterStatus}`);
   }
   if (pet?.dob) lines.push(`Age: ${calculatePetAge(pet.dob)}`);

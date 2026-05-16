@@ -66,10 +66,11 @@ import BiotechIcon from '@mui/icons-material/Biotech';
 import TodayIcon from '@mui/icons-material/Today';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import Checkbox from '@mui/material/Checkbox';
+import HistoryIcon from '@mui/icons-material/History';
 import Badge from '@mui/material/Badge';
 
 // Charting
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine, ReferenceArea } from 'recharts';
 
 // ── Design Tokens (shared across all VetConnect pages) ─────────
 import { FONT, TYPE, COLORS, getRecordColor, getInitialColor } from '../../theme/designTokens';
@@ -127,40 +128,90 @@ const resolveRecordDate = (record) => {
 };
 
 // T4.112: Chart configuration registry for 7 vitals — drives sidebar widgets + zoom dialog.
-// stroke: null means the render site resolves the color from runtime design tokens.
 // refLines: false = no reference lines; string = key into SPECIES_VITAL_RANGES.
 const VITALS_CHART_CONFIG = {
-  weight: { label: 'Weight Trend',         dataKey: 'weight', unit: 'kg',   stroke: null,      yDomain: ['dataMin - 1', 'dataMax + 1'], refLines: false },
-  temp:   { label: 'Temperature',          dataKey: 'temp',   unit: '°C',   stroke: '#EF6C00', yDomain: [37, 41],                      refLines: 'temp' },
-  hr:     { label: 'Heart Rate',           dataKey: 'hr',     unit: 'bpm',  stroke: '#E53935', yDomain: ['dataMin - 10', 'dataMax + 10'], refLines: 'hr' },
-  rr:     { label: 'Resp. Rate',           dataKey: 'rr',     unit: 'bpm',  stroke: '#0288D1', yDomain: [10, 50],                      refLines: 'rr' },
-  crt:    { label: 'Cap. Refill Time',     dataKey: 'crt',    unit: 's',    stroke: '#00838F', yDomain: [0, 5],                        refLines: 'crt' },
-  bcs:    { label: 'Body Condition Score', dataKey: 'bcs',    unit: '/9',   stroke: null,      yDomain: [1, 9],  yTicks: [1, 3, 5, 7, 9], refLines: 'bcs' },
-  pain:   { label: 'Pain Scale',           dataKey: 'pain',   unit: '/10',  stroke: '#D84315', yDomain: [0, 10], yTicks: [0, 2, 4, 6, 8, 10], refLines: false },
+  weight: { label: 'Weight Trend',         dataKey: 'weight', unit: 'kg',   stroke: COLORS.brand, yDomain: ['dataMin - 1', 'dataMax + 1'], refLines: false, isScore: false },
+  temp:   { label: 'Temperature',          dataKey: 'temp',   unit: '°C',   stroke: COLORS.brand, yDomain: [37, 41],                      refLines: 'temp',  isScore: false },
+  hr:     { label: 'Heart Rate',           dataKey: 'hr',     unit: 'bpm',  stroke: COLORS.brand, yDomain: [0, 'auto'],                   refLines: 'hr',    isScore: false },
+  rr:     { label: 'Resp. Rate',           dataKey: 'rr',     unit: 'bpm',  stroke: COLORS.brand, yDomain: [0, 'auto'],                   refLines: 'rr',    isScore: false },
+  crt:    { label: 'Cap. Refill Time',     dataKey: 'crt',    unit: 's',    stroke: COLORS.brand, yDomain: [0, 5],                        yTicks: [0, 1, 2, 3, 4, 5], refLines: 'crt',   isScore: true },
+  bcs:    { label: 'Body Condition Score', dataKey: 'bcs',    unit: '/9',   stroke: COLORS.brand, yDomain: [1, 9],  yTicks: [1, 2, 3, 4, 5, 6, 7, 8, 9], refLines: 'bcs',   isScore: true },
+  pain:   { label: 'Pain Scale',           dataKey: 'pain',   unit: '/10',  stroke: COLORS.brand, yDomain: [0, 10], yTicks: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], refLines: false, isScore: true },
 };
 
-/**
- * T4.112: Render a delta annotation between the last two readings of a vitals array.
- * Returns JSX showing "↑/↓ ±X.X unit since last visit", or null if insufficient data.
- * Color is always neutral (textMuted) — clinical interpretation is context-dependent.
- * Weight keeps its own inline green/red delta and does NOT use this function.
- */
 const renderVitalsDelta = (data, dataKey, unit) => {
   if (!data || data.length < 2) return null;
-  const last = data[data.length - 1]?.[dataKey];
-  const prev = data[data.length - 2]?.[dataKey];
+  const last = data[data.length - 1][dataKey];
+  const prev = data[data.length - 2][dataKey];
   if (last == null || prev == null) return null;
   const delta = last - prev;
   if (delta === 0) return null;
   const arrow = delta > 0 ? '↑' : '↓';
-  const sign = delta > 0 ? '+' : '';
   const decimals = Number.isInteger(last) && Number.isInteger(prev) ? 0 : 1;
   return (
-    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 0.5 }}>
-      <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', fontWeight: 700, color: COLORS.textMuted }}>
-        {arrow} {sign}{delta.toFixed(decimals)} {unit} since last visit
+    <Box sx={{ display: 'flex', justifyContent: 'center', mt: 0.5 }}>
+      <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', color: COLORS.textSecondary, letterSpacing: '0.01em' }}>
+        <span style={{ fontWeight: 900, color: COLORS.brand }}>{arrow} {Math.abs(delta).toFixed(decimals)} {unit}</span>
+        <span style={{ fontWeight: 600, opacity: 0.85 }}> since last visit</span>
       </Typography>
     </Box>
+  );
+};
+
+// T4.112: Dynamic vital point component — handles Green/Red clinical status & pulse highlight.
+const VitalsDot = (props) => {
+  const { cx, cy, payload, dataKey, index, totalPoints, species, rangeKey, isZoomed } = props;
+  if (cx == null || cy == null) return null;
+
+  const isLatest = index === totalPoints - 1;
+  const baseR = isZoomed ? 5.5 : 3.5;
+  const latestR = isZoomed ? 8.5 : 5.5;
+  
+  let fill = COLORS.brand; // Default for Weight or items without ranges
+
+  // Clinical Status Coloring (Applied to ALL points if range exists)
+  if (dataKey === 'weight') {
+    fill = COLORS.brand;
+  } else if (dataKey === 'pain') {
+    fill = (payload[dataKey] > 0) ? COLORS.danger : COLORS.success;
+  } else if (rangeKey && SPECIES_VITAL_RANGES[rangeKey]) {
+    const sKey = (species || '').toLowerCase().includes('cat') ? 'feline' : 'canine';
+    const range = SPECIES_VITAL_RANGES[rangeKey][sKey];
+    const val = payload[dataKey];
+    if (val < range[0] || val > range[1]) {
+      fill = COLORS.danger;
+    } else {
+      fill = COLORS.success;
+    }
+  }
+
+  return (
+    <circle 
+      cx={cx} cy={cy} 
+      r={isLatest ? latestR : baseR} 
+      fill={fill} 
+      stroke={isLatest ? COLORS.cardBg : 'none'} 
+      strokeWidth={isLatest ? (isZoomed ? 3 : 2) : 0} 
+      style={{ transition: 'all 0.2s ease' }}
+    />
+  );
+};
+
+// T4.112: Background "Safe Zone" shading component.
+const SafeZone = ({ rangeKey, species }) => {
+  if (!rangeKey || !SPECIES_VITAL_RANGES[rangeKey]) return null;
+  const sKey = (species || '').toLowerCase().includes('cat') ? 'feline' : 'canine';
+  const range = SPECIES_VITAL_RANGES[rangeKey][sKey];
+  return (
+    <ReferenceArea 
+      y1={range[0]} 
+      y2={range[1]} 
+      fill="#E8F5E9" 
+      fillOpacity={0.7} 
+      stroke="#2E7D32"
+      strokeDasharray="4 4"
+      strokeWidth={1}
+    />
   );
 };
 
@@ -294,6 +345,13 @@ export default function PatientDashboard() {
   // T4.120: Lab results zoom dialog
   const [labZoom, setLabZoom] = useState(false);
   const [labZoomFilter, setLabZoomFilter] = useState('All');
+
+  const [vaxZoom, setVaxZoom] = useState(false);
+  // T4.13: Clinical Problem List zoom modal state
+  const [problemZoomOpen, setProblemZoomOpen] = useState(false);
+  const [problemZoomTab, setProblemZoomTab] = useState('active'); // 'active' | 'resolved'
+  const [vaxZoomFilter, setVaxZoomFilter] = useState('All');
+  const [vaxStaffFilter, setVaxStaffFilter] = useState('All');
 
   // T4.116: Other Pets widget — collapsed by default
   const [siblingExpanded, setSiblingExpanded] = useState(false);
@@ -1094,14 +1152,51 @@ export default function PatientDashboard() {
   // Records that contain structured vaccine data — used by the vaccination
   // record printable. Sorted ascending so the document reads oldest-to-newest.
   // Uses getVaccineAdministrations() to handle both new and legacy formats.
-  const vaccineRecords = useMemo(() =>
-    (history || [])
+  const vaccineRecords = useMemo(() => {
+    return (history || [])
       .filter(r => getVaccineAdministrations(r).length > 0)
-      .sort((a, b) => (a.date?.seconds || 0) - (b.date?.seconds || 0)),
-    [history]
-  );
+      .sort((a, b) => (a.date?.seconds || 0) - (b.date?.seconds || 0));
+  }, [history]);
 
-  useEffect(() => { setExpandedRecords(new Set([0])); }, [timelineSearch, timelineSort, deptFilters, staffFilters, medFilters, supplyFilters, retailFilters, diagnosisFilters, labFilters, dateRangeType]);
+  // Flattened vaccination timeline for the zoom modal
+  const vaxTimeline = useMemo(() => {
+    const entries = [];
+    (history || []).forEach(rec => {
+      const ms = rec.date?.seconds ? rec.date.seconds * 1000 : 0;
+      const dateStr = ms
+        ? new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        : '—';
+      
+      const admins = getVaccineAdministrations(rec);
+      admins.forEach(v => {
+        entries.push({
+          name: v.vaccineName,
+          date: dateStr,
+          ms,
+          lotNumber: v.lotNumber || '—',
+          manufacturer: v.manufacturer || '—',
+          route: v.routeOfAdmin || '—',
+          doseNumber: v.doseNumber || 1,
+          staff: rec.signedBy?.name || rec.vetName || rec.attendingVet || 'Unknown',
+        });
+      });
+    });
+    return entries.sort((a, b) => b.ms - a.ms); // Newest first for the modal
+  }, [history]);
+
+  const vaxUniqueNames = useMemo(() => {
+    const set = new Set(vaxTimeline.map(e => e.name));
+    return Array.from(set).sort();
+  }, [vaxTimeline]);
+
+  const vaxUniqueStaff = useMemo(() => {
+    const set = new Set(vaxTimeline.map(e => e.staff));
+    return Array.from(set).sort();
+  }, [vaxTimeline]);
+
+  useEffect(() => {
+    setExpandedRecords(new Set([0]));
+  }, [timelineSearch, timelineSort, deptFilters, staffFilters, medFilters, supplyFilters, retailFilters, diagnosisFilters, labFilters, dateRangeType]);
 
   const toggleRecord = (i) => setExpandedRecords(p => { const n = new Set(p); n.has(i) ? n.delete(i) : n.add(i); return n; });
   const toggleObjective = (index) => {
@@ -1951,139 +2046,9 @@ export default function PatientDashboard() {
         {/* ── CENTER: Clinical Records (60%) ── */}
         <Box ref={timelineScrollRef} sx={{ flex: 7, overflowY: 'auto', bgcolor: COLORS.surface, borderRight: `1px solid ${COLORS.borderLight}` }}>
           <Box sx={{ py: 2, px: 3 }}>
+            {/* T4.13: Clinical Records Timeline — records appear here after sign-off */}
 
-            {/* T4.13: ACTIVE PROBLEMS — persistent section above timeline.
-                 Renders only when the pet has active/monitoring conditions.
-                 Shows severity, diagnosis date, severity progression, and resolved history. */}
-            {petActiveProblems.length > 0 && (
-              <Box sx={{
-                bgcolor: COLORS.kpiOrangeBg,
-                border: `1px solid ${COLORS.kpiOrangeBorder}`,
-                borderRadius: 0,
-                mb: 2,
-                overflow: 'hidden',
-              }}>
-                <Box sx={{
-                  display: 'flex', alignItems: 'center', gap: 1,
-                  px: 2, py: 1,
-                  borderBottom: `1px solid ${COLORS.kpiOrangeBorder}`,
-                  bgcolor: COLORS.kpiOrangeBg,
-                }}>
-                  <WarningAmberIcon sx={{ fontSize: 14, color: COLORS.warning }} />
-                  <Typography sx={{
-                    fontFamily: FONT, ...TYPE.label,
-                    color: COLORS.warning, flex: 1,
-                  }}>
-                    Active Problems ({petActiveProblems.length})
-                  </Typography>
-                  {petResolvedProblems.length > 0 && (
-                    <Typography
-                      onClick={() => setShowProblemHistory((prev) => !prev)}
-                      sx={{
-                        fontFamily: FONT, fontSize: '0.68rem', fontWeight: 700,
-                        color: COLORS.textMuted, cursor: 'pointer',
-                        '&:hover': { color: COLORS.accent },
-                      }}
-                    >
-                      {showProblemHistory ? 'Hide history' : `${petResolvedProblems.length} resolved`}
-                    </Typography>
-                  )}
-                </Box>
-                <Box sx={{ px: 2, py: 1.5 }}>
-                  {petActiveProblems.map((p) => {
-                    const sinceDate = p.diagnosedAt?.toDate
-                      ? p.diagnosedAt.toDate().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
-                      : '';
-                    const hasHistory = (p.severityHistory || []).length > 1;
-                    return (
-                      <Box key={p.id} sx={{
-                        display: 'flex', alignItems: 'flex-start', gap: 1, py: 0.75,
-                        borderBottom: `1px solid ${COLORS.borderLight}`,
-                        '&:last-child': { borderBottom: 'none' },
-                      }}>
-                        <Box sx={{ flex: 1 }}>
-                          <Typography sx={{
-                            fontFamily: FONT, fontSize: '0.85rem', fontWeight: 700, color: COLORS.brand,
-                          }}>
-                            {p.name}
-                            {p.severity && (
-                              <Typography component="span" sx={{
-                                fontFamily: FONT, fontSize: '0.75rem', fontWeight: 600,
-                                color: COLORS.warning, ml: 1,
-                              }}>
-                                ({p.severity})
-                              </Typography>
-                            )}
-                          </Typography>
-                          <Typography sx={{
-                            fontFamily: FONT, fontSize: '0.72rem', fontWeight: 600,
-                            color: COLORS.textMuted,
-                          }}>
-                            Since {sinceDate}
-                            {p.status === 'monitoring' && (
-                              <Chip
-                                label="MONITORING"
-                                size="small"
-                                sx={{
-                                  fontFamily: FONT, fontWeight: 700, fontSize: '0.6rem',
-                                  bgcolor: COLORS.kpiBlueBg, color: COLORS.info,
-                                  borderRadius: 0, height: 16, ml: 1,
-                                }}
-                              />
-                            )}
-                          </Typography>
-                          {/* Severity progression timeline — shown when more than one entry */}
-                          {hasHistory && (
-                            <Box sx={{ mt: 0.5 }}>
-                              {(p.severityHistory || []).map((sh, i) => {
-                                const shDate = sh.date?.toDate
-                                  ? sh.date.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                                  : '';
-                                return (
-                                  <Typography key={i} sx={{
-                                    fontFamily: FONT, fontSize: '0.65rem', fontWeight: 600,
-                                    color: COLORS.textMuted, fontStyle: 'italic',
-                                  }}>
-                                    {sh.severity} — {shDate}
-                                  </Typography>
-                                );
-                              })}
-                            </Box>
-                          )}
-                        </Box>
-                      </Box>
-                    );
-                  })}
 
-                  {/* Resolved problems — behind toggle */}
-                  {showProblemHistory && petResolvedProblems.length > 0 && (
-                    <Box sx={{ mt: 1.5, pt: 1, borderTop: `1px dashed ${COLORS.borderLight}` }}>
-                      <Typography sx={{
-                        fontFamily: FONT, fontSize: '0.65rem', fontWeight: 800,
-                        color: COLORS.textMuted, textTransform: 'uppercase',
-                        letterSpacing: '0.06em', mb: 0.5,
-                      }}>
-                        Resolved
-                      </Typography>
-                      {petResolvedProblems.map((p) => {
-                        const resolvedDate = p.resolvedAt?.toDate
-                          ? p.resolvedAt.toDate().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
-                          : '';
-                        return (
-                          <Typography key={p.id} sx={{
-                            fontFamily: FONT, fontSize: '0.78rem', fontWeight: 600,
-                            color: COLORS.textMuted, textDecoration: 'line-through',
-                            py: 0.25,
-                          }}>
-                            {p.name} — resolved {resolvedDate}
-                          </Typography>
-                        );
-                      })}
-                    </Box>
-                  )}
-                </Box>
-              </Box>
-            )}
 
             {processedHistory.length > 0 && (
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
@@ -2896,41 +2861,78 @@ export default function PatientDashboard() {
             '&::-webkit-scrollbar-thumb': { bgcolor: COLORS.timelineRail, borderRadius: 2 } 
           }}>
 
+          {/* T4.13: Clinical Problems Summary Widget */}
+          <Widget 
+            title="Clinical Problems" 
+            icon={<AssignmentIcon sx={{ fontSize: 14, color: COLORS.warning }} />}
+            onExpand={(petActiveProblems.length > 0 || petResolvedProblems.length > 0) ? () => setProblemZoomOpen(true) : undefined}
+          >
+            {petActiveProblems.length > 0 ? (
+              <Stack spacing={1}>
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.68rem', fontWeight: 900, color: COLORS.warning, letterSpacing: 1, mb: 0.5 }}>
+                  {petActiveProblems.length} ACTIVE CONDITION{petActiveProblems.length > 1 ? 'S' : ''}
+                </Typography>
+                {petActiveProblems.slice(0, 3).map((p) => (
+                  <Box key={p.id} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                    <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', fontWeight: 700, color: COLORS.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {p.name}
+                    </Typography>
+                    <Chip 
+                      label={(p.severity || 'Stable').toUpperCase()} 
+                      size="small" 
+                      sx={{ 
+                        height: 16, fontSize: '0.5rem', fontWeight: 900, borderRadius: 0,
+                        bgcolor: (p.severity || '').toLowerCase() === 'critical' ? COLORS.danger : (p.severity || '').toLowerCase() === 'stable' ? COLORS.success : COLORS.warning,
+                        color: '#fff' 
+                      }} 
+                    />
+                  </Box>
+                ))}
+                {petActiveProblems.length > 3 && (
+                  <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, fontStyle: 'italic', mt: 0.5 }}>
+                    + {petActiveProblems.length - 3} more active...
+                  </Typography>
+                )}
+              </Stack>
+            ) : (
+              <Box sx={{ textAlign: 'center', py: 1, color: COLORS.textMuted }}>
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.78rem', fontStyle: 'italic' }}>No active problems</Typography>
+              </Box>
+            )}
+          </Widget>
+
           {/* Weight Trend — T2.460: 1-point display + delta annotation */}
-          <Widget title="Weight Trend" icon={<ScaleIcon sx={{ fontSize: 14, color: COLORS.accentLight }} />} onExpand={vitalsData.length > 1 ? () => setVitalsZoom({ open: true, key: 'weight' }) : undefined}>
+          <Widget title="Weight Trend" icon={<ScaleIcon sx={{ fontSize: 14, color: COLORS.brand }} />} onExpand={vitalsData.length > 1 ? () => setVitalsZoom({ open: true, key: 'weight' }) : undefined}>
             {vitalsData.length > 1 ? (
               <>
-                <Box sx={{ width: '100%', height: 140, minWidth: 50 }}>
+                <Box sx={{ width: '100%', height: 140, minWidth: 50, overflow: 'hidden' }}>
                   <ResponsiveContainer width="100%" height={140}>
-                    <LineChart data={vitalsData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                    <LineChart data={vitalsData.slice(-15)} margin={{ top: 10, right: 6, left: 6, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
                       <XAxis dataKey="ts" type="number" scale="time" domain={['dataMin', 'dataMax']} tickFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} tick={{ fontSize: 10, fontFamily: FONT }} />
-                      <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={['dataMin - 1', 'dataMax + 1']} />
-                      <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 0, border: `1px solid ${COLORS.border}` }} labelFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} />
-                      <Line type="monotone" dataKey="weight" stroke={COLORS.accentLight} strokeWidth={2.5} dot={{ r: 3.5, fill: COLORS.accentLight }} activeDot={{ r: 6 }} />
+                      <YAxis hide={true} domain={['dataMin - 1', 'dataMax + 1']} />
+                      <RechartsTooltip 
+                        contentStyle={{ backgroundColor: COLORS.cardBg, border: `2px solid ${COLORS.border}`, borderRadius: 0, boxShadow: `3px 3px 0px ${COLORS.brand}`, padding: '8px 12px' }}
+                        itemStyle={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 900, color: COLORS.brand, textTransform: 'uppercase' }}
+                        labelStyle={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 600, color: COLORS.textSecondary, marginBottom: '4px', borderBottom: `1px solid ${COLORS.borderLight}`, paddingBottom: '4px' }}
+                        labelFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} 
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey="weight" 
+                        stroke={COLORS.brand} 
+                        strokeWidth={2.5} 
+                        dot={(props) => <VitalsDot {...props} totalPoints={vitalsData.slice(-15).length} dataKey="weight" />} 
+                        activeDot={{ r: 6 }} 
+                      />
                     </LineChart>
                   </ResponsiveContainer>
                 </Box>
-                {/* Delta annotation between last two readings */}
-                {(() => {
-                  const last = vitalsData[vitalsData.length - 1]?.weight;
-                  const prev = vitalsData[vitalsData.length - 2]?.weight;
-                  if (last == null || prev == null) return null;
-                  const delta = last - prev;
-                  const sign = delta > 0 ? '+' : '';
-                  const color = delta > 0 ? COLORS.success : delta < 0 ? COLORS.danger : COLORS.textMuted;
-                  return (
-                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 0.5 }}>
-                      <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', fontWeight: 700, color }}>
-                        {sign}{delta.toFixed(1)} kg since last visit
-                      </Typography>
-                    </Box>
-                  );
-                })()}
+                {renderVitalsDelta(vitalsData, 'weight', 'kg')}
               </>
             ) : vitalsData.length === 1 ? (
               <Box sx={{ textAlign: 'center', py: 2 }}>
-                <Typography sx={{ fontFamily: FONT, fontSize: '1.8rem', fontWeight: 900, color: COLORS.accentLight }}>
+                <Typography sx={{ fontFamily: FONT, fontSize: '1.8rem', fontWeight: 900, color: COLORS.brand }}>
                   {vitalsData[0].weight} <span style={{ fontSize: '0.9rem', fontWeight: 600, color: COLORS.textMuted }}>kg</span>
                 </Typography>
                 <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', color: COLORS.textMuted }}>
@@ -2949,19 +2951,23 @@ export default function PatientDashboard() {
           </Widget>
 
           {/* Temperature Trend */}
-          <Widget title="Temperature" icon={<ThermostatIcon sx={{ fontSize: 14, color: '#EF6C00' }} />} onExpand={tempData.length > 1 ? () => setVitalsZoom({ open: true, key: 'temp' }) : undefined}>
+          <Widget title="Temperature" icon={<ThermostatIcon sx={{ fontSize: 14, color: COLORS.brand }} />} onExpand={tempData.length > 1 ? () => setVitalsZoom({ open: true, key: 'temp' }) : undefined}>
             {tempData.length > 1 ? (
               <>
-                <Box sx={{ width: '100%', height: 110, minWidth: 50 }}>
+                <Box sx={{ width: '100%', height: 110, minWidth: 50, overflow: 'hidden' }}>
                   <ResponsiveContainer width="100%" height={110}>
-                    <LineChart data={tempData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                    <LineChart data={tempData.slice(-15)} margin={{ top: 10, right: 6, left: 6, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
                       <XAxis dataKey="ts" type="number" scale="time" domain={['dataMin', 'dataMax']} tickFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} tick={{ fontSize: 10, fontFamily: FONT }} />
-                      <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={[37, 41]} />
-                      <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 0, border: `1px solid ${COLORS.border}` }} labelFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} />
-                      <ReferenceLine y={SPECIES_VITAL_RANGES.temp[speciesKey][0]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'Low', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
-                      <ReferenceLine y={SPECIES_VITAL_RANGES.temp[speciesKey][1]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'High', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
-                      <Line type="monotone" dataKey="temp" stroke="#EF6C00" strokeWidth={2} dot={{ r: 3, fill: '#EF6C00' }} />
+                      <YAxis hide={true} domain={[37, 41]} />
+                      <RechartsTooltip 
+                        contentStyle={{ backgroundColor: COLORS.cardBg, border: `2px solid ${COLORS.border}`, borderRadius: 0, boxShadow: `3px 3px 0px ${COLORS.brand}`, padding: '8px 12px' }}
+                        itemStyle={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 900, color: COLORS.brand, textTransform: 'uppercase' }}
+                        labelStyle={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 600, color: COLORS.textSecondary, marginBottom: '4px', borderBottom: `1px solid ${COLORS.borderLight}`, paddingBottom: '4px' }}
+                        labelFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} 
+                      />
+                      <SafeZone rangeKey="temp" species={pet?.species} />
+                      <Line type="monotone" dataKey="temp" stroke={COLORS.brand} strokeWidth={2.5} dot={(props) => <VitalsDot {...props} totalPoints={tempData.slice(-15).length} dataKey="temp" species={pet?.species} rangeKey="temp" />} />
                     </LineChart>
                   </ResponsiveContainer>
                 </Box>
@@ -2973,19 +2979,23 @@ export default function PatientDashboard() {
           </Widget>
 
           {/* Heart Rate Trend */}
-          <Widget title="Heart Rate" icon={<FavoriteIcon sx={{ fontSize: 14, color: '#E53935' }} />} onExpand={hrData.length > 1 ? () => setVitalsZoom({ open: true, key: 'hr' }) : undefined}>
+          <Widget title="Heart Rate" icon={<FavoriteIcon sx={{ fontSize: 14, color: COLORS.brand }} />} onExpand={hrData.length > 1 ? () => setVitalsZoom({ open: true, key: 'hr' }) : undefined}>
             {hrData.length > 1 ? (
               <>
-                <Box sx={{ width: '100%', height: 110, minWidth: 50 }}>
+                <Box sx={{ width: '100%', height: 110, minWidth: 50, overflow: 'hidden' }}>
                   <ResponsiveContainer width="100%" height={110}>
-                    <LineChart data={hrData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                    <LineChart data={hrData.slice(-15)} margin={{ top: 10, right: 6, left: 6, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
                       <XAxis dataKey="ts" type="number" scale="time" domain={['dataMin', 'dataMax']} tickFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} tick={{ fontSize: 10, fontFamily: FONT }} />
-                      <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={['dataMin - 10', 'dataMax + 10']} />
-                      <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 0, border: `1px solid ${COLORS.border}` }} labelFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} />
-                      <ReferenceLine y={SPECIES_VITAL_RANGES.hr[speciesKey][0]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'Low', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
-                      <ReferenceLine y={SPECIES_VITAL_RANGES.hr[speciesKey][1]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'High', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
-                      <Line type="monotone" dataKey="hr" stroke="#E53935" strokeWidth={2} dot={{ r: 3, fill: '#E53935' }} />
+                      <YAxis hide={true} domain={[0, 'auto']} />
+                      <RechartsTooltip 
+                        contentStyle={{ backgroundColor: COLORS.cardBg, border: `2px solid ${COLORS.border}`, borderRadius: 0, boxShadow: `3px 3px 0px ${COLORS.brand}`, padding: '8px 12px' }}
+                        itemStyle={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 900, color: COLORS.brand, textTransform: 'uppercase' }}
+                        labelStyle={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 600, color: COLORS.textSecondary, marginBottom: '4px', borderBottom: `1px solid ${COLORS.borderLight}`, paddingBottom: '4px' }}
+                        labelFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} 
+                      />
+                      <SafeZone rangeKey="hr" species={pet?.species} />
+                      <Line type="monotone" dataKey="hr" stroke={COLORS.brand} strokeWidth={2.5} dot={(props) => <VitalsDot {...props} totalPoints={hrData.slice(-15).length} dataKey="hr" species={pet?.species} rangeKey="hr" />} />
                     </LineChart>
                   </ResponsiveContainer>
                 </Box>
@@ -2997,19 +3007,23 @@ export default function PatientDashboard() {
           </Widget>
 
           {/* Respiratory Rate Trend — T2.467 */}
-          <Widget title="Resp. Rate" icon={<AccessTimeIcon sx={{ fontSize: 14, color: '#0288D1' }} />} onExpand={rrData.length > 1 ? () => setVitalsZoom({ open: true, key: 'rr' }) : undefined}>
+          <Widget title="Resp. Rate" icon={<AccessTimeIcon sx={{ fontSize: 14, color: COLORS.brand }} />} onExpand={rrData.length > 1 ? () => setVitalsZoom({ open: true, key: 'rr' }) : undefined}>
             {rrData.length > 1 ? (
               <>
-                <Box sx={{ width: '100%', height: 110, minWidth: 50 }}>
+                <Box sx={{ width: '100%', height: 110, minWidth: 50, overflow: 'hidden' }}>
                   <ResponsiveContainer width="100%" height={110}>
-                    <LineChart data={rrData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                    <LineChart data={rrData.slice(-15)} margin={{ top: 10, right: 6, left: 6, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
                       <XAxis dataKey="ts" type="number" scale="time" domain={['dataMin', 'dataMax']} tickFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} tick={{ fontSize: 10, fontFamily: FONT }} />
-                      <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={[10, 50]} />
-                      <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 0, border: `1px solid ${COLORS.border}` }} labelFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} />
-                      <ReferenceLine y={SPECIES_VITAL_RANGES.rr[speciesKey][0]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'Low', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
-                      <ReferenceLine y={SPECIES_VITAL_RANGES.rr[speciesKey][1]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'High', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
-                      <Line type="monotone" dataKey="rr" stroke="#0288D1" strokeWidth={2} dot={{ r: 3, fill: '#0288D1' }} />
+                      <YAxis hide={true} domain={[0, 'auto']} />
+                      <RechartsTooltip 
+                        contentStyle={{ backgroundColor: COLORS.cardBg, border: `2px solid ${COLORS.border}`, borderRadius: 0, boxShadow: `3px 3px 0px ${COLORS.brand}`, padding: '8px 12px' }}
+                        itemStyle={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 900, color: COLORS.brand, textTransform: 'uppercase' }}
+                        labelStyle={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 600, color: COLORS.textSecondary, marginBottom: '4px', borderBottom: `1px solid ${COLORS.borderLight}`, paddingBottom: '4px' }}
+                        labelFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} 
+                      />
+                      <SafeZone rangeKey="rr" species={pet?.species} />
+                      <Line type="monotone" dataKey="rr" stroke={COLORS.brand} strokeWidth={2.5} dot={(props) => <VitalsDot {...props} totalPoints={rrData.slice(-15).length} dataKey="rr" species={pet?.species} rangeKey="rr" />} />
                     </LineChart>
                   </ResponsiveContainer>
                 </Box>
@@ -3021,19 +3035,23 @@ export default function PatientDashboard() {
           </Widget>
 
           {/* CRT Trend */}
-          <Widget title="Cap. Refill Time" icon={<AccessTimeIcon sx={{ fontSize: 14, color: '#00838F' }} />} onExpand={crtData.length > 1 ? () => setVitalsZoom({ open: true, key: 'crt' }) : undefined}>
+          <Widget title="Cap. Refill Time" icon={<AccessTimeIcon sx={{ fontSize: 14, color: COLORS.brand }} />} onExpand={crtData.length > 1 ? () => setVitalsZoom({ open: true, key: 'crt' }) : undefined}>
             {crtData.length > 1 ? (
               <>
-                <Box sx={{ width: '100%', height: 110, minWidth: 50 }}>
+                <Box sx={{ width: '100%', height: 110, minWidth: 50, overflow: 'hidden' }}>
                   <ResponsiveContainer width="100%" height={110}>
-                    <LineChart data={crtData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                    <LineChart data={crtData.slice(-15)} margin={{ top: 10, right: 6, left: 6, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
                       <XAxis dataKey="ts" type="number" scale="time" domain={['dataMin', 'dataMax']} tickFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} tick={{ fontSize: 10, fontFamily: FONT }} />
-                      <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={[0, 5]} />
-                      <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 0, border: `1px solid ${COLORS.border}` }} labelFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} />
-                      <ReferenceLine y={SPECIES_VITAL_RANGES.crt[speciesKey][0]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'Low', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
-                      <ReferenceLine y={SPECIES_VITAL_RANGES.crt[speciesKey][1]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'High', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
-                      <Line type="monotone" dataKey="crt" stroke="#00838F" strokeWidth={2} dot={{ r: 3, fill: '#00838F' }} />
+                      <YAxis hide={true} domain={[0, 5]} />
+                      <RechartsTooltip 
+                        contentStyle={{ backgroundColor: COLORS.cardBg, border: `2px solid ${COLORS.border}`, borderRadius: 0, boxShadow: `3px 3px 0px ${COLORS.brand}`, padding: '8px 12px' }}
+                        itemStyle={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 900, color: COLORS.brand, textTransform: 'uppercase' }}
+                        labelStyle={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 600, color: COLORS.textSecondary, marginBottom: '4px', borderBottom: `1px solid ${COLORS.borderLight}`, paddingBottom: '4px' }}
+                        labelFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} 
+                      />
+                      <SafeZone rangeKey="crt" species={pet?.species} />
+                      <Line type="linear" dataKey="crt" stroke={COLORS.brand} strokeWidth={2.5} dot={(props) => <VitalsDot {...props} totalPoints={crtData.slice(-15).length} dataKey="crt" species={pet?.species} rangeKey="crt" />} />
                     </LineChart>
                   </ResponsiveContainer>
                 </Box>
@@ -3045,19 +3063,23 @@ export default function PatientDashboard() {
           </Widget>
 
           {/* BCS Trend — T2.468 */}
-          <Widget title="Body Condition Score" icon={<ScaleIcon sx={{ fontSize: 14, color: COLORS.grooming }} />} onExpand={bcsData.length > 1 ? () => setVitalsZoom({ open: true, key: 'bcs' }) : undefined}>
+          <Widget title="Body Condition Score" icon={<ScaleIcon sx={{ fontSize: 14, color: COLORS.brand }} />} onExpand={bcsData.length > 1 ? () => setVitalsZoom({ open: true, key: 'bcs' }) : undefined}>
             {bcsData.length > 1 ? (
               <>
-                <Box sx={{ width: '100%', height: 110, minWidth: 50 }}>
+                <Box sx={{ width: '100%', height: 110, minWidth: 50, overflow: 'hidden' }}>
                   <ResponsiveContainer width="100%" height={110}>
-                    <LineChart data={bcsData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                    <LineChart data={bcsData.slice(-15)} margin={{ top: 10, right: 6, left: 6, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
                       <XAxis dataKey="ts" type="number" scale="time" domain={['dataMin', 'dataMax']} tickFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} tick={{ fontSize: 10, fontFamily: FONT }} />
-                      <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={[1, 9]} ticks={[1, 3, 5, 7, 9]} />
-                      <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 0, border: `1px solid ${COLORS.border}` }} labelFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} />
-                      <ReferenceLine y={SPECIES_VITAL_RANGES.bcs[speciesKey][0]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'Low', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
-                      <ReferenceLine y={SPECIES_VITAL_RANGES.bcs[speciesKey][1]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'High', fill: '#66BB6A', fontSize: 9, position: 'right' }} />
-                      <Line type="monotone" dataKey="bcs" stroke={COLORS.grooming} strokeWidth={2} dot={{ r: 3, fill: COLORS.grooming }} />
+                      <YAxis hide={true} domain={[1, 9]} ticks={[1, 3, 5, 7, 9]} />
+                      <RechartsTooltip 
+                        contentStyle={{ backgroundColor: COLORS.cardBg, border: `2px solid ${COLORS.border}`, borderRadius: 0, boxShadow: `3px 3px 0px ${COLORS.brand}`, padding: '8px 12px' }}
+                        itemStyle={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 900, color: COLORS.brand, textTransform: 'uppercase' }}
+                        labelStyle={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 600, color: COLORS.textSecondary, marginBottom: '4px', borderBottom: `1px solid ${COLORS.borderLight}`, paddingBottom: '4px' }}
+                        labelFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} 
+                      />
+                      <SafeZone rangeKey="bcs" species={pet?.species} />
+                      <Line type="linear" dataKey="bcs" stroke={COLORS.brand} strokeWidth={2.5} dot={(props) => <VitalsDot {...props} totalPoints={bcsData.slice(-15).length} dataKey="bcs" species={pet?.species} rangeKey="bcs" />} />
                     </LineChart>
                   </ResponsiveContainer>
                 </Box>
@@ -3069,17 +3091,22 @@ export default function PatientDashboard() {
           </Widget>
 
           {/* Pain Scale Trend — T2.469 */}
-          <Widget title="Pain Scale" icon={<WarningAmberIcon sx={{ fontSize: 14, color: '#D84315' }} />} onExpand={painData.length > 1 ? () => setVitalsZoom({ open: true, key: 'pain' }) : undefined}>
+          <Widget title="Pain Scale" icon={<WarningAmberIcon sx={{ fontSize: 14, color: COLORS.brand }} />} onExpand={painData.length > 1 ? () => setVitalsZoom({ open: true, key: 'pain' }) : undefined}>
             {painData.length > 1 ? (
               <>
-                <Box sx={{ width: '100%', height: 110, minWidth: 50 }}>
+                <Box sx={{ width: '100%', height: 110, minWidth: 50, overflow: 'hidden' }}>
                   <ResponsiveContainer width="100%" height={110}>
-                    <LineChart data={painData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                    <LineChart data={painData.slice(-15)} margin={{ top: 10, right: 6, left: 6, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
                       <XAxis dataKey="ts" type="number" scale="time" domain={['dataMin', 'dataMax']} tickFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} tick={{ fontSize: 10, fontFamily: FONT }} />
-                      <YAxis tick={{ fontSize: 10, fontFamily: FONT }} domain={[0, 10]} ticks={[0, 2, 4, 6, 8, 10]} />
-                      <RechartsTooltip contentStyle={{ fontSize: 11, fontFamily: FONT, borderRadius: 0, border: `1px solid ${COLORS.border}` }} labelFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} />
-                      <Line type="monotone" dataKey="pain" stroke="#D84315" strokeWidth={2} dot={{ r: 3, fill: '#D84315' }} />
+                      <YAxis hide={true} domain={[0, 10]} ticks={[0, 2, 4, 6, 8, 10]} />
+                      <RechartsTooltip 
+                        contentStyle={{ backgroundColor: COLORS.cardBg, border: `2px solid ${COLORS.border}`, borderRadius: 0, boxShadow: `3px 3px 0px ${COLORS.borderLight}`, padding: '8px 12px' }}
+                        itemStyle={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 900, color: COLORS.brand, textTransform: 'uppercase' }}
+                        labelStyle={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 600, color: COLORS.textSecondary, marginBottom: '4px', borderBottom: `1px solid ${COLORS.borderLight}`, paddingBottom: '4px' }}
+                        labelFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} 
+                      />
+                      <Line type="linear" dataKey="pain" stroke={COLORS.brand} strokeWidth={2.5} dot={(props) => <VitalsDot {...props} totalPoints={painData.slice(-15).length} dataKey="pain" />} />
                     </LineChart>
                   </ResponsiveContainer>
                 </Box>
@@ -3243,7 +3270,11 @@ export default function PatientDashboard() {
           </Widget>
 
           {/* Vaccination Tracker */}
-          <Widget title="Vaccination Status" icon={<VaccinesIcon sx={{ fontSize: 14, color: COLORS.success }} />}>
+          <Widget 
+            title="Vaccination Status" 
+            icon={<VaccinesIcon sx={{ fontSize: 14, color: COLORS.success }} />}
+            onExpand={() => setVaxZoom(true)}
+          >
             {/* T2.465: Completeness bar — species-relevant vaccines only */}
             {vaccineCompleteness && (
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1, pb: 1, borderBottom: `1px solid ${COLORS.borderLight}` }}>
@@ -3832,11 +3863,11 @@ export default function PatientDashboard() {
               <DialogTitle sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '1rem', color: COLORS.brand, borderBottom: `2px solid ${COLORS.border}`, display: 'flex', alignItems: 'center', gap: 1 }}>
                 {cfg.label}{pet?.name ? ` — ${pet.name}` : ''}
               </DialogTitle>
-              <DialogContent sx={{ py: 3, px: 3 }}>
+              <DialogContent sx={{ py: 4, px: 3 }}>
                 {data.length > 1 ? (
-                  <Box sx={{ width: '100%', height: 380 }}>
+                  <Box sx={{ width: '100%', height: 380, mt: 1, overflow: 'hidden' }}>
                     <ResponsiveContainer width="100%" height={380}>
-                      <LineChart data={data} margin={{ top: 10, right: 30, left: 10, bottom: 10 }}>
+                      <LineChart data={data} margin={{ top: 25, right: 30, left: 10, bottom: 10 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.borderLight} />
                         <XAxis
                           dataKey="ts"
@@ -3845,6 +3876,8 @@ export default function PatientDashboard() {
                           domain={['dataMin', 'dataMax']}
                           tickFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                           tick={{ fontSize: 11, fontFamily: FONT }}
+                          interval="preserveStartEnd"
+                          minTickGap={50}
                         />
                         <YAxis
                           tick={{ fontSize: 11, fontFamily: FONT }}
@@ -3852,19 +3885,30 @@ export default function PatientDashboard() {
                           {...(cfg.yTicks ? { ticks: cfg.yTicks } : {})}
                         />
                         <RechartsTooltip
-                          contentStyle={{ fontSize: 12, fontFamily: FONT, borderRadius: 0, border: `1px solid ${COLORS.border}` }}
+                          contentStyle={{ backgroundColor: COLORS.cardBg, border: `2px solid ${COLORS.border}`, borderRadius: 0, boxShadow: `4px 4px 0px ${COLORS.brand}`, padding: '10px 16px' }}
+                          itemStyle={{ fontFamily: FONT, fontSize: '0.85rem', fontWeight: 900, color: COLORS.brand, textTransform: 'uppercase' }}
+                          labelStyle={{ fontFamily: FONT, fontSize: '0.7rem', fontWeight: 600, color: COLORS.textSecondary, marginBottom: '6px', borderBottom: `1px solid ${COLORS.borderLight}`, paddingBottom: '6px' }}
                           formatter={(value) => [`${value} ${cfg.unit}`, cfg.label]}
                           labelFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
                         />
+                        <SafeZone rangeKey={cfg.refLines} species={pet?.species} />
                         {rangeKey && SPECIES_VITAL_RANGES[rangeKey] && (
                           <>
-                            <ReferenceLine y={SPECIES_VITAL_RANGES[rangeKey][speciesKey][0]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'Low', fill: '#66BB6A', fontSize: 10, position: 'right' }} />
-                            <ReferenceLine y={SPECIES_VITAL_RANGES[rangeKey][speciesKey][1]} stroke="#66BB6A" strokeDasharray="4 4" label={{ value: 'High', fill: '#66BB6A', fontSize: 10, position: 'right' }} />
+                            <ReferenceLine y={SPECIES_VITAL_RANGES[rangeKey][speciesKey][0]} stroke="#66BB6A" strokeDasharray="4 4" />
+                            <ReferenceLine y={SPECIES_VITAL_RANGES[rangeKey][speciesKey][1]} stroke="#66BB6A" strokeDasharray="4 4" />
                           </>
                         )}
-                        <Line type="monotone" dataKey={cfg.dataKey} stroke={strokeColor} strokeWidth={2.5} dot={{ r: 4, fill: strokeColor }} activeDot={{ r: 7 }} />
+                        <Line 
+                          type={cfg.isScore ? "linear" : "monotone"} 
+                          dataKey={cfg.dataKey} 
+                          stroke={COLORS.brand} 
+                          strokeWidth={4.0} 
+                          dot={(props) => <VitalsDot {...props} isZoomed={true} totalPoints={data.length} dataKey={cfg.dataKey} species={pet?.species} rangeKey={cfg.refLines} />} 
+                          activeDot={{ r: 9 }} 
+                        />
                       </LineChart>
                     </ResponsiveContainer>
+
                   </Box>
                 ) : (
                   <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', color: COLORS.textMuted, fontStyle: 'italic', textAlign: 'center', py: 4 }}>
@@ -3873,9 +3917,37 @@ export default function PatientDashboard() {
                 )}
                 {renderVitalsDelta(data, cfg.dataKey, cfg.unit)}
               </DialogContent>
-              <DialogActions sx={{ px: 2.5, pb: 2, borderTop: `1px solid ${COLORS.borderLight}` }}>
-                <Button onClick={() => setVitalsZoom({ open: false, key: null })} sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textSecondary, borderRadius: 0 }}>
-                  Close
+              <DialogActions sx={{ px: 3, py: 2, borderTop: `2px solid ${COLORS.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 2, sm: 3 } }}>
+                  {cfg.refLines && (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box sx={{ width: 12, height: 12, bgcolor: '#E8F5E9', border: '1px dashed #2E7D32', borderRadius: '2px' }} />
+                      <Typography sx={{ fontFamily: FONT, fontSize: '0.68rem', fontWeight: 800, color: COLORS.textSecondary, textTransform: 'uppercase' }}>Normal Range</Typography>
+                    </Box>
+                  )}
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: COLORS.success }} />
+                    <Typography sx={{ fontFamily: FONT, fontSize: '0.68rem', fontWeight: 800, color: COLORS.textSecondary, textTransform: 'uppercase' }}>Normal</Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: COLORS.danger }} />
+                    <Typography sx={{ fontFamily: FONT, fontSize: '0.68rem', fontWeight: 800, color: COLORS.textSecondary, textTransform: 'uppercase' }}>Abnormal</Typography>
+                  </Box>
+                </Box>
+                <Button 
+                  onClick={() => setVitalsZoom({ open: false, key: null })} 
+                  sx={{ 
+                    fontFamily: FONT, 
+                    fontWeight: 900, 
+                    fontSize: '0.75rem', 
+                    color: COLORS.brand, 
+                    border: `2px solid ${COLORS.brand}`,
+                    borderRadius: 0,
+                    px: 3,
+                    '&:hover': { bgcolor: COLORS.brand, color: COLORS.cardBg }
+                  }}
+                >
+                  CLOSE
                 </Button>
               </DialogActions>
             </>
@@ -4157,6 +4229,291 @@ export default function PatientDashboard() {
             onClick={() => { setLabZoom(false); setLabZoomFilter('All'); }}
             sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textSecondary, borderRadius: 0 }}
           >
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+      {/* Vaccination History Zoom Dialog */}
+      <Dialog
+        open={vaxZoom}
+        onClose={() => { setVaxZoom(false); setVaxZoomFilter('All'); setVaxStaffFilter('All'); }}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.border}` } }}
+      >
+        <DialogTitle sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '1rem', color: COLORS.brand, borderBottom: `2px solid ${COLORS.border}`, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <VaccinesIcon sx={{ fontSize: 18 }} /> Vaccination History{pet?.name ? ` — ${pet.name}` : ''}
+        </DialogTitle>
+        <DialogContent sx={{ py: 2, px: 3 }}>
+          {/* Filter chips for Vaccine Names */}
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 1.5, alignItems: 'center' }}>
+            <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 900, color: COLORS.textMuted, textTransform: 'uppercase', width: '100%', mb: 0.5 }}>
+              Filter by Vaccine
+            </Typography>
+            <Chip
+              label="All"
+              size="small"
+              onClick={() => setVaxZoomFilter('All')}
+              sx={{
+                fontFamily: FONT, fontSize: '0.7rem', fontWeight: vaxZoomFilter === 'All' ? 800 : 500,
+                bgcolor: vaxZoomFilter === 'All' ? COLORS.brand : COLORS.formBg,
+                color: vaxZoomFilter === 'All' ? COLORS.cardBg : COLORS.textSecondary,
+                border: `1px solid ${vaxZoomFilter === 'All' ? COLORS.brand : COLORS.borderLight}`,
+                borderRadius: 0, cursor: 'pointer',
+              }}
+            />
+            {vaxUniqueNames.map(name => (
+              <Chip
+                key={name}
+                label={name}
+                size="small"
+                onClick={() => setVaxZoomFilter(name)}
+                sx={{
+                  fontFamily: FONT, fontSize: '0.7rem', fontWeight: vaxZoomFilter === name ? 800 : 500,
+                  bgcolor: vaxZoomFilter === name ? COLORS.success : COLORS.formBg,
+                  color: vaxZoomFilter === name ? COLORS.cardBg : COLORS.success,
+                  border: `1px solid ${vaxZoomFilter === name ? COLORS.success : COLORS.borderLight}`,
+                  borderRadius: 0, cursor: 'pointer',
+                }}
+              />
+            ))}
+          </Box>
+
+          {/* Filter chips for Staff */}
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 2.5, alignItems: 'center' }}>
+            <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 900, color: COLORS.textMuted, textTransform: 'uppercase', width: '100%', mb: 0.5 }}>
+              Filter by Staff
+            </Typography>
+            <Chip
+              label="All Staff"
+              size="small"
+              onClick={() => setVaxStaffFilter('All')}
+              sx={{
+                fontFamily: FONT, fontSize: '0.7rem', fontWeight: vaxStaffFilter === 'All' ? 800 : 500,
+                bgcolor: vaxStaffFilter === 'All' ? COLORS.textSecondary : COLORS.formBg,
+                color: vaxStaffFilter === 'All' ? COLORS.cardBg : COLORS.textSecondary,
+                border: `1px solid ${vaxStaffFilter === 'All' ? COLORS.textSecondary : COLORS.borderLight}`,
+                borderRadius: 0, cursor: 'pointer',
+              }}
+            />
+            {vaxUniqueStaff.map(staff => (
+              <Chip
+                key={staff}
+                label={staff}
+                size="small"
+                onClick={() => setVaxStaffFilter(staff)}
+                sx={{
+                  fontFamily: FONT, fontSize: '0.7rem', fontWeight: vaxStaffFilter === staff ? 800 : 500,
+                  bgcolor: vaxStaffFilter === staff ? COLORS.brand : COLORS.formBg,
+                  color: vaxStaffFilter === staff ? COLORS.cardBg : COLORS.brand,
+                  border: `1px solid ${vaxStaffFilter === staff ? COLORS.brand : COLORS.borderLight}`,
+                  borderRadius: 0, cursor: 'pointer',
+                }}
+              />
+            ))}
+          </Box>
+
+          {/* Chronological timeline entries */}
+          <Stack spacing={1.5} sx={{ maxHeight: 450, overflow: 'auto' }}>
+            <Box sx={{ display: 'flex', gap: 2, px: 1, borderBottom: `2px solid ${COLORS.borderLight}`, pb: 1 }}>
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 900, color: COLORS.textMuted, minWidth: 100 }}>DATE</Typography>
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 900, color: COLORS.textMuted, flex: 1 }}>VACCINE & DOSE</Typography>
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 900, color: COLORS.textMuted, width: 150 }}>PRODUCT DETAIL</Typography>
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 900, color: COLORS.textMuted, width: 120 }}>STAFF</Typography>
+            </Box>
+            {vaxTimeline
+              .filter(e => vaxZoomFilter === 'All' || e.name === vaxZoomFilter)
+              .filter(e => vaxStaffFilter === 'All' || e.staff === vaxStaffFilter)
+              .map((e, i) => (
+                <Box key={i} sx={{ display: 'flex', gap: 2, py: 1, px: 1, borderBottom: `1px solid ${COLORS.borderLight}`, alignItems: 'flex-start' }}>
+                  <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, minWidth: 100, flexShrink: 0 }}>{e.date}</Typography>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography sx={{ fontFamily: FONT, ...TYPE.bodyBold, color: COLORS.success }}>{e.name}</Typography>
+                    <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 800, color: COLORS.textMuted, mt: 0.25 }}>
+                      [ Dose: {e.doseNumber === 1 ? 'Initial' : e.doseNumber === 99 ? 'Booster' : `${e.doseNumber}`} ]
+                    </Typography>
+                  </Box>
+                  <Box sx={{ width: 150, flexShrink: 0 }}>
+                    <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', color: COLORS.textSecondary, fontWeight: 700 }}>#{e.lotNumber}</Typography>
+                    <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted }}>{e.manufacturer} ({e.route})</Typography>
+                  </Box>
+                  <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', color: COLORS.textSecondary, fontWeight: 700, width: 120, flexShrink: 0 }}>{e.staff}</Typography>
+                </Box>
+              ))
+            }
+            {vaxTimeline
+              .filter(e => vaxZoomFilter === 'All' || e.name === vaxZoomFilter)
+              .filter(e => vaxStaffFilter === 'All' || e.staff === vaxStaffFilter)
+              .length === 0 && (
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', color: COLORS.textMuted, fontStyle: 'italic', textAlign: 'center', py: 4 }}>
+                No matching vaccination records
+              </Typography>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 2.5, pb: 2, borderTop: `1px solid ${COLORS.borderLight}` }}>
+          <Button
+            onClick={() => { setVaxZoom(false); setVaxZoomFilter('All'); setVaxStaffFilter('All'); }}
+            sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textSecondary, borderRadius: 0 }}
+          >
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+      {/* T4.13: Clinical Problem List Zoom Modal */}
+      <Dialog
+        open={problemZoomOpen}
+        onClose={() => setProblemZoomOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.border}` } }}
+      >
+        <DialogTitle sx={{ 
+          fontFamily: FONT, fontWeight: 900, fontSize: '1rem', color: COLORS.brand, 
+          borderBottom: `2px solid ${COLORS.border}`, display: 'flex', alignItems: 'center', gap: 1 
+        }}>
+          <AssignmentIcon sx={{ fontSize: 18 }} /> Clinical Problem List{pet?.name ? ` — ${pet.name}` : ''}
+        </DialogTitle>
+        <DialogContent sx={{ p: 0 }}>
+          {/* Tab Switcher (Neubrutalist Style) */}
+          <Box sx={{ display: 'flex', borderBottom: `1px solid ${COLORS.borderLight}` }}>
+            {['active', 'resolved'].map((tab) => (
+              <Box
+                key={tab}
+                onClick={() => setProblemZoomTab(tab)}
+                sx={{
+                  flex: 1, py: 1.5, textAlign: 'center', cursor: 'pointer',
+                  fontFamily: FONT, fontSize: '0.75rem', fontWeight: 900, letterSpacing: 1,
+                  textTransform: 'uppercase',
+                  bgcolor: problemZoomTab === tab ? COLORS.surfaceAlt : 'transparent',
+                  color: problemZoomTab === tab ? COLORS.brand : COLORS.textMuted,
+                  borderBottom: problemZoomTab === tab ? `3px solid ${COLORS.brand}` : 'none',
+                  transition: 'all 0.2s ease',
+                  '&:hover': { bgcolor: COLORS.panelBg }
+                }}
+              >
+                {tab} {tab === 'active' ? `(${petActiveProblems.length})` : `(${petResolvedProblems.length})`}
+              </Box>
+            ))}
+          </Box>
+
+          <Box sx={{ p: 3, maxHeight: 500, overflowY: 'auto' }}>
+            {problemZoomTab === 'active' ? (
+              <Stack spacing={0}>
+                {petActiveProblems.length > 0 ? (
+                  petActiveProblems.map((p, idx) => {
+                    const sinceDate = p.diagnosedAt?.toDate
+                      ? p.diagnosedAt.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                      : 'Unknown Date';
+                    
+                    // T4.13: "Time Since" logic
+                    const msSince = p.diagnosedAt?.seconds ? (Date.now() - p.diagnosedAt.seconds * 1000) : 0;
+                    const monthsSince = Math.floor(msSince / (1000 * 60 * 60 * 24 * 30.44));
+                    const yearsSince = Math.floor(monthsSince / 12);
+                    const timeSinceStr = yearsSince > 0 
+                      ? `${yearsSince}y ${monthsSince % 12}m ago`
+                      : monthsSince > 0 ? `${monthsSince}m ago` : 'recently';
+
+                    return (
+                      <Box key={p.id} sx={{ 
+                        py: 2, 
+                        borderBottom: idx < petActiveProblems.length - 1 ? `1px dashed ${COLORS.border}` : 'none' 
+                      }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                          <Box>
+                            <Typography sx={{ fontFamily: FONT, fontSize: '1rem', fontWeight: 800, color: COLORS.brand }}>
+                              {p.name}
+                            </Typography>
+                            <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', color: COLORS.textMuted, fontWeight: 700 }}>
+                              DIAGNOSED: {sinceDate} ({timeSinceStr})
+                            </Typography>
+                          </Box>
+                          <Chip 
+                            label={(p.severity || 'Stable').toUpperCase()} 
+                            size="small" 
+                            sx={{ 
+                              height: 20, fontSize: '0.6rem', fontWeight: 900, borderRadius: 0,
+                              bgcolor: (p.severity || '').toLowerCase() === 'critical' ? COLORS.danger : (p.severity || '').toLowerCase() === 'stable' ? COLORS.success : COLORS.warning,
+                              color: '#fff' 
+                            }} 
+                          />
+                        </Box>
+                        
+                        {/* Per-Diagnosis Notes (Strategic Requirement) */}
+                        {p.notes ? (
+                          <Box sx={{ bgcolor: COLORS.surfaceAlt, p: 1.5, borderLeft: `3px solid ${COLORS.brand}`, mt: 1 }}>
+                            <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', color: COLORS.textPrimary, whiteSpace: 'pre-wrap', fontStyle: 'italic' }}>
+                              "{p.notes}"
+                            </Typography>
+                          </Box>
+                        ) : (
+                          <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textMuted, fontStyle: 'italic', mt: 1 }}>
+                            No specific clinical notes for this condition.
+                          </Typography>
+                        )}
+                      </Box>
+                    );
+                  })
+                ) : (
+                  <Box sx={{ textAlign: 'center', py: 6, opacity: 0.5 }}>
+                    <CheckCircleOutlineIcon sx={{ fontSize: 48, color: COLORS.success, mb: 1 }} />
+                    <Typography sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textSecondary }}>No Active Problems</Typography>
+                  </Box>
+                )}
+              </Stack>
+            ) : (
+              <Stack spacing={0}>
+                {petResolvedProblems.length > 0 ? (
+                  petResolvedProblems.map((p, idx) => {
+                    const diagDate = p.diagnosedAt?.toDate ? p.diagnosedAt.toDate() : null;
+                    const resDate = p.resolvedAt?.toDate ? p.resolvedAt.toDate() : null;
+                    
+                    const diagStr = diagDate ? diagDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : 'Unknown';
+                    const resStr = resDate ? resDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : 'Present';
+
+                    // Total Duration Logic
+                    let durationStr = '';
+                    if (diagDate && resDate) {
+                      const diffMs = resDate - diagDate;
+                      const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                      if (days > 365) durationStr = `${(days / 365).toFixed(1)} years`;
+                      else if (days > 30) durationStr = `${Math.floor(days / 30.44)} months`;
+                      else durationStr = `${days} days`;
+                    }
+
+                    return (
+                      <Box key={p.id} sx={{ 
+                        py: 2, 
+                        borderBottom: idx < petResolvedProblems.length - 1 ? `1px dashed ${COLORS.border}` : 'none' 
+                      }}>
+                        <Typography sx={{ fontFamily: FONT, fontSize: '0.95rem', fontWeight: 800, color: COLORS.textMuted, textDecoration: 'line-through' }}>
+                          {p.name}
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 2, mt: 0.5 }}>
+                          <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', color: COLORS.textSecondary, fontWeight: 700 }}>
+                            RESOLVED: {resStr}
+                          </Typography>
+                          {durationStr && (
+                            <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', color: COLORS.success, fontWeight: 900 }}>
+                              DURATION: {durationStr.toUpperCase()}
+                            </Typography>
+                          )}
+                        </Box>
+                      </Box>
+                    );
+                  })
+                ) : (
+                  <Box sx={{ textAlign: 'center', py: 6, opacity: 0.5 }}>
+                    <HistoryIcon sx={{ fontSize: 48, color: COLORS.textMuted, mb: 1 }} />
+                    <Typography sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textSecondary }}>No Resolved History</Typography>
+                  </Box>
+                )}
+              </Stack>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 2.5, pb: 2, borderTop: `1px solid ${COLORS.borderLight}` }}>
+          <Button onClick={() => setProblemZoomOpen(false)} sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textSecondary, borderRadius: 0 }}>
             Close
           </Button>
         </DialogActions>

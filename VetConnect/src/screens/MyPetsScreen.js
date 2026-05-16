@@ -185,29 +185,39 @@ export default function MyPetsScreen({ navigation }) {
   };
 
   const getVaccineStatus = (item) => {
-    const dueDates = item.vaccineDueDates;
-    if (!dueDates || dueDates.length === 0) return null;
+    // T4.118: Use the forensic engine to resolve status against the vaccine catalog.
+    // This allows detecting missing mandatory vaccines (like Rabies) even if no 
+    // explicit dueDate was previously recorded.
+    if (!vaccineCatalog.length || !item._medicalRecords) return null;
 
-    const now = new Date();
-    const thirtyDaysFromNow = new Date(now);
-    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+    const { statuses } = buildVaccinationStatus(
+      item._medicalRecords, 
+      vaccineCatalog, 
+      item.species
+    );
 
-    const overdueNames = [];
-    const dueSoonNames = [];
+    // Priority 1: Overdue vaccinations take precedence
+    const overdue = statuses.filter(s => s.status === 'overdue');
+    if (overdue.length > 0) {
+      return { status: "Overdue", names: overdue.map(v => v.name) };
+    }
 
-    dueDates.forEach((entry) => {
-      const raw = entry?.dueDate || entry;
-      const name = entry?.name || 'Vaccine';
-      const dueDate = typeof raw === "string" ? new Date(raw) : raw?.toDate ? raw.toDate() : raw?.seconds ? new Date(raw.seconds * 1000) : new Date(raw);
-      if (isNaN(dueDate.getTime())) return;
-      if (dueDate < now) overdueNames.push(name);
-      else if (dueDate < thirtyDaysFromNow) dueSoonNames.push(name);
-    });
+    // Priority 2: Due Soon or Incomplete series
+    // Map 'incomplete' (missing doses in a series) to 'Due Soon' for dashboard simplicity.
+    const dueSoon = statuses.filter(s => s.status === 'due_soon' || s.status === 'incomplete');
+    if (dueSoon.length > 0) {
+      return { status: "Due Soon", names: dueSoon.map(v => v.name) };
+    }
 
-    if (overdueNames.length > 0) return { status: "Overdue", names: overdueNames };
-    if (dueSoonNames.length > 0) return { status: "Due Soon", names: dueSoonNames };
-    return { status: "Current", names: [] };
+    // Priority 3: Current / Up to Date
+    const current = statuses.filter(s => s.status === 'current');
+    if (current.length > 0) {
+      return { status: "Current", names: [] };
+    }
+
+    return null;
   };
+
 
   // ── Count helpers for bottom sheet option lists ─────────────────
 
@@ -345,7 +355,7 @@ export default function MyPetsScreen({ navigation }) {
     const weightText = weight != null ? `${weight} kg` : "—";
 
     const sexText = item.gender
-      ? `${item.gender} · ${item.isNeutered ? "FIXED" : "INTACT"}`
+      ? `${item.gender} (${item.isNeutered ? (item.gender === 'Female' ? 'Spayed' : 'Neutered') : 'Intact'})`
       : "—";
 
     const allergyVal = item.petAllergies || item.allergies;

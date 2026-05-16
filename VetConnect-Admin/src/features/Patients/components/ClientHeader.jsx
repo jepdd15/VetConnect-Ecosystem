@@ -61,10 +61,31 @@ export default function ClientHeader({ client, balance, isEditing, onEdit, onCan
             
             <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                 {/* Row 1: Name and Tags */}
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 0.5 }}>
-                  <Typography variant="h5" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.textPrimary, letterSpacing: -0.5, lineHeight: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+                  <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.textPrimary, letterSpacing: -1, lineHeight: 1 }}>
                       {client.fullName}
                   </Typography>
+                  {!isEditing && (
+                    <Button 
+                      onClick={onEdit} 
+                      size="small"
+                      startIcon={<EditIcon sx={{ fontSize: '14px !important' }} />}
+                      sx={{ 
+                        fontFamily: FONT, 
+                        fontWeight: 900, 
+                        fontSize: '0.65rem',
+                        color: COLORS.accent, 
+                        borderColor: COLORS.borderLight,
+                        borderRadius: 0,
+                        height: 24,
+                        px: 1.5,
+                        '&:hover': { bgcolor: COLORS.surfaceAlt, borderColor: COLORS.accent }
+                      }}
+                      variant="outlined"
+                    >
+                      EDIT PROFILE
+                    </Button>
+                  )}
                   {client.seniorId && <Chip label="SC/PWD" size="small" sx={{fontFamily: FONT, fontWeight: 'bold', height: 22, fontSize: '0.7rem', bgcolor: COLORS.kpiPurpleBg, color: COLORS.grooming}} />}
                   {/* T4.208: Referral chip — dual-read referral object with legacy scalar fallbacks */}
                   {(() => {
@@ -82,20 +103,16 @@ export default function ClientHeader({ client, balance, isEditing, onEdit, onCan
                   })()}
                 </Box>
 
-                {/* T2.134: Engagement KPIs row */}
+                {/* T2.134: Engagement KPIs secondary info row */}
                 {!isEditing && engagementKPIs && (
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5, mt: 0.25, mb: 0.25 }}>
-                    <Typography variant="caption" sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textSecondary, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <TrendingUpIcon sx={{ fontSize: 13 }} />
-                      {engagementKPIs.totalVisits} visit{engagementKPIs.totalVisits !== 1 ? 's' : ''}
-                    </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5, mb: 0.5 }}>
                     {engagementKPIs.lastVisitDate && (
-                      <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.textMuted }}>
+                      <Typography variant="caption" sx={{ fontFamily: FONT, fontWeight: 800, color: COLORS.textPrimary, textTransform: 'uppercase' }}>
                         Last: {engagementKPIs.lastVisitDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                       </Typography>
                     )}
                     {engagementKPIs.avgDaysBetween != null && (
-                      <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.textMuted }}>
+                      <Typography variant="caption" sx={{ fontFamily: FONT, fontWeight: 800, color: COLORS.textPrimary, textTransform: 'uppercase' }}>
                         ~{engagementKPIs.avgDaysBetween}d between visits
                       </Typography>
                     )}
@@ -112,15 +129,12 @@ export default function ClientHeader({ client, balance, isEditing, onEdit, onCan
 
                 {/* Row 2: Contacts */}
                 {!isEditing && (
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5, color: COLORS.textSecondary, mt: 0.5 }}>
-                    <Typography variant="body2" sx={{ fontFamily: FONT, display: 'flex', alignItems: 'center', gap: 0.5, fontWeight: 600 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5, color: COLORS.textPrimary, mt: 0.5 }}>
+                    <Typography variant="body2" sx={{ fontFamily: FONT, display: 'flex', alignItems: 'center', gap: 0.5, fontWeight: 700 }}>
                       <PhoneIcon sx={{fontSize: 16, color: COLORS.accent}}/> {client.phone}
                     </Typography>
-                    <Typography variant="body2" sx={{ fontFamily: FONT, display: 'flex', alignItems: 'center', gap: 0.5, color: COLORS.textMuted }}>
-                      <EmailIcon sx={{fontSize: 16, color: COLORS.textMuted}}/> {client.email || 'No email provided'}
-                    </Typography>
-                    <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.textMuted, ml: 1, fontStyle: 'italic', borderLeft: `1px solid ${COLORS.border}`, pl: 2.5 }}>
-                      Client Since: {client.createdAt ? new Date(client.createdAt?.seconds ? client.createdAt.seconds * 1000 : client.createdAt).toLocaleDateString() : 'N/A'}
+                    <Typography variant="body2" sx={{ fontFamily: FONT, display: 'flex', alignItems: 'center', gap: 0.5, fontWeight: 700 }}>
+                      <EmailIcon sx={{fontSize: 16, color: COLORS.accent}}/> {client.email || 'No email provided'}
                     </Typography>
                   </Box>
                 )}
@@ -165,13 +179,22 @@ export default function ClientHeader({ client, balance, isEditing, onEdit, onCan
                   <Button variant="outlined" onClick={onCancel} sx={{ fontFamily: FONT, fontWeight: 'bold', py: 1, color: COLORS.danger, borderColor: COLORS.danger }} startIcon={<CancelIcon />}>Cancel</Button>
               </Stack>
               ) : (
-              <Stack direction="row" spacing={1} alignItems="center">
-                <Button variant="outlined" startIcon={<EditIcon />} onClick={onEdit} sx={{fontFamily: FONT, borderColor: COLORS.border, color: COLORS.textSecondary, '&:hover':{borderColor: COLORS.accentWarm, color: COLORS.accentWarm, bgcolor: COLORS.panelBg}, bgcolor: COLORS.cardBg, fontWeight: 'bold', py: 1, px: 2}}>
-                    Edit Profile
-                </Button>
-                {/* RA 10173: Generic deletion-request erasure button.
-                    Suppressed when the consent-withdrawal banner is shown —
-                    that banner carries its own "Process Erasure" button. */}
+              <Stack direction="row" spacing={2.5} alignItems="center">
+                {!isEditing && engagementKPIs && (
+                  <Box sx={{ textAlign: 'right' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, justifyContent: 'flex-end' }}>
+                      <TrendingUpIcon sx={{ fontSize: 24, color: COLORS.accent }} />
+                      <Typography variant="h5" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.brand, lineHeight: 1, letterSpacing: -0.5 }}>
+                        {engagementKPIs.totalVisits} <Typography component="span" sx={{ fontSize: '0.85rem', fontWeight: 900, color: COLORS.textSecondary, letterSpacing: 0 }}>RESOLVED VISITS</Typography>
+                      </Typography>
+                    </Box>
+                    <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.textMuted, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, mt: 0.5, display: 'block' }}>
+                      CLIENT SINCE: {client.createdAt ? new Date(client.createdAt?.seconds ? client.createdAt.seconds * 1000 : client.createdAt).toLocaleDateString() : 'N/A'}
+                    </Typography>
+                  </Box>
+                )}
+
+                {/* RA 10173: Generic deletion-request erasure button. */}
                 {client.deletionRequested && !showConsentWithdrawalBanner && (
                   <Button
                     variant="contained"

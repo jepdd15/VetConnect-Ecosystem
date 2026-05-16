@@ -2116,7 +2116,6 @@ const URGENCY_ICON = {
   vaccine_overdue: 'warning',
   vaccine_due_soon: 'schedule',
   recheck: 'event-note',
-  milestone: 'cake',
 };
 
 const URGENCY_ACCENT_COLOR = (urgency, colors) => {

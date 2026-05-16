@@ -317,12 +317,9 @@ export default function NewClientModal({ open, onClose }) {
           {(dpaPolicy || waiverPolicy) && (
             <>
               <Box sx={{ my: 2.5, borderTop: `2px solid ${COLORS.borderLight}` }} />
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <GavelIcon sx={{ fontSize: 16, color: COLORS.accent }} />
                 <Typography sx={{ fontFamily: FONT, fontWeight: 800, color: COLORS.accent, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                  Legal Consent
+                  Consent (Optional)
                 </Typography>
-              </Box>
               <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', color: COLORS.textMuted, mb: 1, fontStyle: 'italic' }}>
                 Staff witnesses client consent during registration. Formal signed consent can be recorded later via the client profile.
               </Typography>
@@ -369,13 +366,6 @@ export default function NewClientModal({ open, onClose }) {
                     <MenuItem value="SMS" sx={{ fontWeight: 700 }}>SMS</MenuItem>
                     <MenuItem value="Email" sx={{ fontWeight: 700 }}>Email</MenuItem>
                   </TextField>
-                </Box>
-              )}
-              {!dpaConsent && !waiverConsent && (
-                <Box sx={{ bgcolor: COLORS.kpiBlueBg, border: `1px solid ${COLORS.kpiBlueBorder}`, borderRadius: 0, px: 2, py: 1, mt: 1 }}>
-                  <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', color: COLORS.info }}>
-                    Consent is optional during registration. Use "Record Consent" on the client profile for formal signed consent if needed.
-                  </Typography>
                 </Box>
               )}
             </>

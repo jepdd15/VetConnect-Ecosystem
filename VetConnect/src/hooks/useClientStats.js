@@ -205,37 +205,12 @@ export function useClientStats({ allAppointments, userPets, petRecords, salesDat
       }
     });
 
-    // Age milestones — pets turning 7+ this calendar month (senior screening)
-    const ageMilestones = [];
-    userPets.forEach(pet => {
-      if (!pet.dob) return;
-      const dob = pet.dob?.toDate ? pet.dob.toDate()
-        : pet.dob?.seconds    ? new Date(pet.dob.seconds * 1000)
-        : typeof pet.dob === 'string' ? new Date(pet.dob)
-        : null;
-      if (!dob || isNaN(dob.getTime())) return;
-
-      const ageYears        = now.getFullYear() - dob.getFullYear();
-      const birthdayThisYear = new Date(now.getFullYear(), dob.getMonth(), dob.getDate());
-      const isThisMonth = birthdayThisYear.getMonth() === now.getMonth()
-        && birthdayThisYear.getFullYear() === now.getFullYear();
-
-      if (isThisMonth && ageYears >= 7) {
-        ageMilestones.push({
-          petName: pet.name,
-          age: ageYears,
-          message: `${pet.name} turns ${ageYears} this month — senior screening recommended`,
-        });
-      }
-    });
-
     return {
       petCount: userPets.length,
       petBreakdown,
       vaccinationCompliance,
       urgentAlert,
       weightTrends,
-      ageMilestones,
     };
   }, [userPets, petRecords, vaccineAlerts]);
 

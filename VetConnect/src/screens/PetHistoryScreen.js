@@ -777,9 +777,27 @@ export default function PetHistoryScreen({ route, navigation }) {
   const [appointmentServicesMap, setAppointmentServicesMap] = useState({});
   // T3.94: Search and filter state
   const [searchText, setSearchText] = useState('');
-  const [activeFilters, setActiveFilters] = useState(new Set());
-  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
-  const [pendingFilters, setPendingFilters] = useState(new Set());
+  const [activeFilters, setActiveFilters] = useState({
+    depts:     new Set(),
+    staff:     new Set(),
+    meds:      new Set(),
+    supplies:  new Set(),
+    retail:    new Set(),
+    diagnoses: new Set(),
+    labs:      new Set(),
+    time:      'all', // all, 7d, 30d, 1y
+  });
+
+  const [pendingFilters, setPendingFilters] = useState({
+    depts:     new Set(),
+    staff:     new Set(),
+    meds:      new Set(),
+    supplies:  new Set(),
+    retail:    new Set(),
+    diagnoses: new Set(),
+    labs:      new Set(),
+    time:      'all',
+  });
   const [highlightedId, setHighlightedId] = useState(null);
   const scrollPerformed = useRef(false);
   // T4.107: Departments — one-shot fetch for dynamic filter chips
@@ -811,10 +829,6 @@ export default function PetHistoryScreen({ route, navigation }) {
   // T4.118: Vaccine catalog — one-shot fetch from inventory, falls back to defaults.
   const [vaccineCatalog, setVaccineCatalog] = useState([]);
 
-  // T4.194 Item 18: Per-vaccine push reminder preferences — Set of disabled vaccine IDs.
-  // Fetched from vaccine_preferences/{petId} (ROOT collection). Default: all enabled (empty set).
-  const [disabledVaccines, setDisabledVaccines] = useState(new Set());
-
   // T4.194 Item 19: Services price map — name→price Map for cost estimates.
   // One-shot fetch; silently empty if Firestore rules block client access.
   const [servicesPriceMap, setServicesPriceMap] = useState(new Map());
@@ -831,10 +845,7 @@ export default function PetHistoryScreen({ route, navigation }) {
   // T4.107: Dynamic filter options — department names from Firestore, with
   // 'Vaccination' pinned at the end as a special cross-department filter.
   // Falls back to hardcoded values while the fetch is in-flight or if it fails.
-  const filterOptions = useMemo(() => {
-    if (!departments.length) return ['All', 'medical', 'grooming', 'Vaccination'];
-    return ['All', ...departments.map(d => d.name), 'Vaccination'];
-  }, [departments]);
+  // T4.107: filterOptions legacy memo deleted.
 
   // T4.107: One-shot departments fetch — sufficient since departments rarely
   // change mid-session. Mirrors the LLM config fetch pattern from T4.97.
@@ -849,15 +860,7 @@ export default function PetHistoryScreen({ route, navigation }) {
 
   // T4.107: Defensive reset — if any active filters no longer exist in the
   // updated options (e.g., after a successful departments fetch), clear them.
-  useEffect(() => {
-    if (activeFilters.size > 0) {
-      const validOptions = new Set(filterOptions.filter(o => o !== 'All'));
-      const cleaned = new Set([...activeFilters].filter(f => validOptions.has(f)));
-      if (cleaned.size !== activeFilters.size) {
-        setActiveFilters(cleaned);
-      }
-    }
-  }, [filterOptions]);
+  // T4.107: Departments fetch moved to discovery engine logic below.
 
   // T4.97: One-shot fetch for pet profile — provides species/breed/age/allergies to the AI prompt.
   // Falls back gracefully if the doc is missing; the AI just gets less context.
@@ -923,26 +926,6 @@ export default function PetHistoryScreen({ route, navigation }) {
     return () => { cancelled = true; };
   }, []);
 
-  // T4.194 Item 18: Fetch vaccine reminder preferences for this pet.
-  // Path: vaccine_preferences/{petId} — ROOT collection (public read rule).
-  // Non-critical: if the doc doesn't exist or rules block it, we default to all-enabled.
-  useEffect(() => {
-    if (!petId) return;
-    let cancelled = false;
-    getDoc(doc(db, 'vaccine_preferences', petId))
-      .then(snap => {
-        if (cancelled) return;
-        if (snap.exists()) {
-          const disabled = snap.data().disabledVaccines || [];
-          setDisabledVaccines(new Set(disabled));
-        }
-      })
-      .catch(() => {
-        // Non-critical — defaults to all reminders enabled
-      });
-    return () => { cancelled = true; };
-  }, [petId]);
-
   // T4.194 Item 19: One-shot services fetch for vaccination cost estimates.
   // Silently empty if Firestore rules block client-side access (staff-only collection).
   useEffect(() => {
@@ -995,19 +978,138 @@ export default function PetHistoryScreen({ route, navigation }) {
     [petDoc, petName, history, vaccineRecords],
   );
 
-  // T3.94: Derived list after applying type filter and search text.
-  // history is always the source of truth; filteredHistory is read-only derived state.
+  // --- DYNAMIC DISCOVERY ENGINE (1:1 Admin Parity) ---
+  
+  const discovery = useMemo(() => {
+    const depts = new Set();
+    const staff = new Set();
+    const meds  = new Set();
+    const supplies = new Set();
+    const retail = new Set();
+    const diagnoses = new Set();
+    const labs = new Set();
+
+    history.forEach(r => {
+      // Depts
+      const dept = resolveDepartmentForRecord(r, departments);
+      if (dept) depts.add(dept);
+      if (r.vaccineAdministrations?.length > 0 || r.vaccineData) depts.add('Vaccination');
+
+      // Staff
+      if (r.vetName) staff.add(r.vetName);
+      (r.serviceAttribution || []).forEach(a => { if (a.staffName) staff.add(a.staffName); });
+
+      // Products (Meds, Supplies, Retail)
+      const allProducts = [...(r.dispensedProducts || []), ...(r.prescriptions || [])];
+      allProducts.forEach(p => {
+        const pc = p.productClass || (p.isDrug || p.isMedicine ? 'medicine' : 'retail');
+        const name = p.name || p.itemName;
+        if (!name) return;
+        if (pc === 'medicine') meds.add(name);
+        else if (pc === 'medical_supply') supplies.add(name);
+        else retail.add(name);
+      });
+
+      // Diagnoses
+      (r.diagnoses || []).forEach(d => { if (d.name) diagnoses.add(d.name); });
+      if (r.diagnosis && r.diagnosis !== '—') diagnoses.add(r.diagnosis);
+
+      // Labs
+      (r.labResults || []).forEach(l => { if (l.testName) labs.add(l.testName); });
+    });
+
+    return {
+      depts: Array.from(depts).sort(),
+      staff: Array.from(staff).sort(),
+      meds:  Array.from(meds).sort(),
+      supplies: Array.from(supplies).sort(),
+      retail: Array.from(retail).sort(),
+      diagnoses: Array.from(diagnoses).sort(),
+      labs: Array.from(labs).sort(),
+    };
+  }, [history, departments]);
+
   const filteredHistory = useMemo(() => {
     let result = history;
 
-    if (activeFilters.size > 0) {
+    // 1. Multi-Dimensional Filter Intersections
+    const af = activeFilters;
+
+    if (af.depts.size > 0) {
       result = result.filter(r => {
         const dept = resolveDepartmentForRecord(r, departments);
         const isVax = r.vaccineAdministrations?.length > 0 || !!r.vaccineData;
-        return activeFilters.has(dept) || (isVax && activeFilters.has('Vaccination'));
+        return af.depts.has(dept) || (isVax && af.depts.has('Vaccination'));
       });
     }
 
+    if (af.staff.size > 0) {
+      result = result.filter(r => {
+        const vetName = (r.vetName || '').toLowerCase();
+        const attributions = (r.serviceAttribution || []).map(a => (a.staffName || '').toLowerCase());
+        return Array.from(af.staff).some(f => {
+          const filterName = f.toLowerCase();
+          return vetName.includes(filterName) || attributions.some(attr => attr.includes(filterName));
+        });
+      });
+    }
+
+    if (af.diagnoses.size > 0) {
+      result = result.filter(r => {
+        const recordDxs = [
+          ...(r.diagnoses?.map(d => d.name.toLowerCase()) || []),
+          (r.diagnosis || '').toLowerCase()
+        ].filter(Boolean);
+        return Array.from(af.diagnoses).some(f => recordDxs.some(dx => dx.includes(f.toLowerCase())));
+      });
+    }
+
+    if (af.labs.size > 0) {
+      result = result.filter(r => {
+        const recordTests = (r.labResults || []).map(l => (l.testName || '').toLowerCase());
+        return Array.from(af.labs).some(f => recordTests.some(t => t.includes(f.toLowerCase())));
+      });
+    }
+
+    if (af.meds.size > 0) {
+      result = result.filter(r => {
+        const allRx = [...(r.dispensedProducts || []), ...(r.prescriptions || [])];
+        const recordMeds = allRx.filter(rx => (rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail')) === 'medicine').map(rx => (rx.name || rx.itemName || '').toLowerCase());
+        return Array.from(af.meds).some(f => recordMeds.some(m => m.includes(f.toLowerCase())));
+      });
+    }
+
+    if (af.supplies.size > 0) {
+      result = result.filter(r => {
+        const allRx = [...(r.dispensedProducts || []), ...(r.prescriptions || [])];
+        const recordSupplies = allRx.filter(rx => rx.productClass === 'medical_supply').map(rx => (rx.name || rx.itemName || '').toLowerCase());
+        return Array.from(af.supplies).some(f => recordSupplies.some(s => s.includes(f.toLowerCase())));
+      });
+    }
+
+    if (af.retail.size > 0) {
+      result = result.filter(r => {
+        const allRx = [...(r.dispensedProducts || []), ...(r.prescriptions || [])];
+        const recordRetail = allRx.filter(rx => !['medicine', 'medical_supply'].includes(rx.productClass || (rx.isDrug || rx.isMedicine ? 'medicine' : 'retail'))).map(rx => (rx.name || rx.itemName || '').toLowerCase());
+        return Array.from(af.retail).some(f => recordRetail.some(ret => ret.includes(f.toLowerCase())));
+      });
+    }
+
+    // 2. Temporal Hub (Time Range)
+    if (af.time !== 'all') {
+      const now = Date.now();
+      let threshold = 0;
+      if (af.time === '7d') threshold = now - (7 * 86400000);
+      else if (af.time === '30d') threshold = now - (30 * 86400000);
+      else if (af.time === '1y') threshold = now - (365 * 86400000);
+
+      result = result.filter(r => {
+        const ms = r.date?.seconds ? r.date.seconds * 1000 : 0;
+        return ms >= threshold;
+      });
+    }
+
+    // 3. Global Text Search
     if (searchText.trim()) {
       const q = searchText.toLowerCase().trim();
       result = result.filter(r =>
@@ -1022,17 +1124,12 @@ export default function PetHistoryScreen({ route, navigation }) {
     return result;
   }, [history, activeFilters, searchText, departments]);
 
-  const departmentCounts = useMemo(() => {
-    const counts = new Map();
-    history.forEach(r => {
-      const dept = resolveDepartmentForRecord(r, departments);
-      counts.set(dept, (counts.get(dept) || 0) + 1);
-      if (r.vaccineAdministrations?.length > 0 || r.vaccineData) {
-        counts.set('Vaccination', (counts.get('Vaccination') || 0) + 1);
-      }
-    });
-    return counts;
-  }, [history, departments]);
+  const getDepartmentCount = (dept) => {
+    return history.filter(r => {
+      const d = resolveDepartmentForRecord(r, departments);
+      return d === dept || (dept === 'Vaccination' && (r.vaccineAdministrations?.length > 0 || r.vaccineData));
+    }).length;
+  };
 
   // T4.122: Active/historical prescription split — matches admin PatientDashboard pattern.
   // Active = prescribed in last 90 days OR pinned by the vet. Historical = older, not pinned.
@@ -1485,29 +1582,6 @@ export default function PetHistoryScreen({ route, navigation }) {
     }
   };
 
-  /**
-   * T4.194 Item 18: Toggles a per-vaccine push reminder preference.
-   * Optimistically updates local state, then persists to Firestore.
-   * Writes { disabledVaccines: [...] } with merge:true so other fields are preserved.
-   */
-  const handleToggleReminder = useCallback((vaccineId, enabled) => {
-    setDisabledVaccines(prev => {
-      const next = new Set(prev);
-      if (enabled) {
-        next.delete(vaccineId);
-      } else {
-        next.add(vaccineId);
-      }
-
-      if (petId) {
-        const prefRef = doc(db, 'vaccine_preferences', petId);
-        setDoc(prefRef, { disabledVaccines: [...next] }, { merge: true })
-          .catch(err => console.warn('[PetHistoryScreen.handleToggleReminder]:', err.message));
-      }
-
-      return next;
-    });
-  }, [petId]);
 
   // T4.194 Item 1d: listHeader useMemo deleted.
   // Health cards (snapshot, vitals, vaccines, meds, labs) now live in tab conditionals.
@@ -2933,8 +3007,6 @@ export default function PetHistoryScreen({ route, navigation }) {
                   history={history}
                   catalog={vaccineCatalog}
                   navigation={navigation}
-                  vaccinePreferences={disabledVaccines}
-                  onToggleReminder={handleToggleReminder}
                   servicesPriceMap={servicesPriceMap}
                 />
                 {vaccinationStatuses.length === 0 && vaccineRecords.length === 0 && (
@@ -3247,31 +3319,86 @@ export default function PetHistoryScreen({ route, navigation }) {
         <TouchableOpacity style={styles.filterOverlay} activeOpacity={1} onPress={() => setFilterSheetOpen(false)}>
           <View style={styles.filterSheet} onStartShouldSetResponder={() => true}>
             <View style={styles.filterSheetHandle} />
-            <Text style={styles.filterSheetTitle}>FILTER BY DEPARTMENT</Text>
+            <Text style={styles.filterSheetTitle}>CLINICAL FILTER HUB</Text>
+            
             <ScrollView style={styles.filterSheetScroll}>
-              {filterOptions.filter(o => o !== 'All').map(opt => {
-                const isChecked = pendingFilters.has(opt);
-                const count = departmentCounts.get(opt) || 0;
-                return (
-                  <TouchableOpacity key={opt} style={styles.filterSheetRow} onPress={() => {
-                    setPendingFilters(prev => {
-                      const next = new Set(prev);
-                      if (next.has(opt)) next.delete(opt); else next.add(opt);
-                      return next;
-                    });
-                  }}>
-                    <MaterialIcons name={isChecked ? 'check-box' : 'check-box-outline-blank'} size={22} color={isChecked ? COLORS.sky : COLORS.textMuted} />
-                    <Text style={styles.filterSheetLabel}>{opt}</Text>
-                    <Text style={styles.filterSheetCount}>({count})</Text>
-                  </TouchableOpacity>
-                );
-              })}
+              {/* 1. Temporal Hub (Time Range) */}
+              <View style={styles.filterSection}>
+                <Text style={styles.filterSectionTitle}>TIME RANGE</Text>
+                <View style={styles.timeRangeRow}>
+                  {[
+                    { id: 'all', label: 'All Time' },
+                    { id: '7d',  label: '7d' },
+                    { id: '30d', label: '30d' },
+                    { id: '1y',  label: '1y' },
+                  ].map(t => (
+                    <TouchableOpacity 
+                      key={t.id} 
+                      onPress={() => setPendingFilters(prev => ({ ...prev, time: t.id }))}
+                      style={[styles.timeChip, pendingFilters.time === t.id && styles.timeChipActive]}
+                    >
+                      <Text style={[styles.timeChipText, pendingFilters.time === t.id && styles.timeChipTextActive]}>
+                        {t.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* 2. Dynamic Categories */}
+              {[
+                { id: 'depts',     label: 'DEPARTMENTS',  options: ['Vaccination', ...departments.map(d => d.name)] },
+                { id: 'staff',     label: 'STAFF',        options: discovery.staff },
+                { id: 'meds',      label: 'MEDICATIONS',  options: discovery.meds },
+                { id: 'supplies',  label: 'SUPPLIES',     options: discovery.supplies },
+                { id: 'retail',    label: 'RETAIL',       options: discovery.retail },
+                { id: 'diagnoses', label: 'DIAGNOSES',    options: discovery.diagnoses },
+                { id: 'labs',      label: 'LABS',         options: discovery.labs },
+              ].filter(sec => sec.options.length > 0).map(sec => (
+                <View key={sec.id} style={styles.filterSection}>
+                  <Text style={styles.filterSectionTitle}>{sec.label}</Text>
+                  {sec.options.map(opt => {
+                    const isChecked = pendingFilters[sec.id].has(opt);
+                    return (
+                      <TouchableOpacity 
+                        key={opt} 
+                        style={styles.filterSheetRow} 
+                        onPress={() => {
+                          setPendingFilters(prev => {
+                            const nextSet = new Set(prev[sec.id]);
+                            if (nextSet.has(opt)) nextSet.delete(opt); else nextSet.add(opt);
+                            return { ...prev, [sec.id]: nextSet };
+                          });
+                        }}
+                      >
+                        <MaterialIcons 
+                          name={isChecked ? 'check-box' : 'check-box-outline-blank'} 
+                          size={22} 
+                          color={isChecked ? COLORS.sky : COLORS.textMuted} 
+                        />
+                        <Text style={styles.filterSheetLabel}>{opt.toUpperCase()}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ))}
             </ScrollView>
+
             <View style={styles.filterSheetActions}>
-              <TouchableOpacity onPress={() => setPendingFilters(new Set())} style={styles.filterSheetClearBtn}>
+              <TouchableOpacity 
+                onPress={() => setPendingFilters({
+                  depts: new Set(), staff: new Set(), meds: new Set(), 
+                  supplies: new Set(), retail: new Set(), diagnoses: new Set(), 
+                  labs: new Set(), time: 'all'
+                })} 
+                style={styles.filterSheetClearBtn}
+              >
                 <Text style={styles.filterSheetClearText}>CLEAR ALL</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => { setActiveFilters(new Set(pendingFilters)); setFilterSheetOpen(false); }} style={styles.filterSheetApplyBtn}>
+              <TouchableOpacity 
+                onPress={() => { setActiveFilters({ ...pendingFilters }); setFilterSheetOpen(false); }} 
+                style={styles.filterSheetApplyBtn}
+              >
                 <Text style={styles.filterSheetApplyText}>APPLY FILTER</Text>
               </TouchableOpacity>
             </View>
@@ -4311,48 +4438,94 @@ const styles = StyleSheet.create({
   },
   filterSheet: {
     backgroundColor: COLORS.cream,
-    borderTopWidth: 2,
-    borderTopColor: COLORS.border,
-    paddingBottom: 30,
-    maxHeight: '60%',
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    paddingTop: 12,
+    paddingBottom: 24,
+    height: '80%',
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    borderBottomWidth: 0,
   },
   filterSheetHandle: {
     width: 40,
     height: 4,
-    backgroundColor: COLORS.borderLight,
+    backgroundColor: COLORS.border,
+    borderRadius: 0,
     alignSelf: 'center',
-    marginTop: 10,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   filterSheetTitle: {
-    fontSize: 12,
+    fontFamily: FONT,
+    fontSize: 16,
     fontWeight: '900',
-    color: COLORS.accent,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    paddingHorizontal: 20,
-    marginBottom: 12,
+    color: COLORS.brand,
+    textAlign: 'center',
+    marginBottom: 20,
+    letterSpacing: 1.5,
   },
   filterSheetScroll: {
     paddingHorizontal: 20,
   },
+  filterSection: {
+    marginBottom: 24,
+  },
+  filterSectionTitle: {
+    fontFamily: FONT,
+    fontSize: 12,
+    fontWeight: '900',
+    color: COLORS.accent,
+    marginBottom: 12,
+    letterSpacing: 1,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+    paddingBottom: 4,
+  },
+  timeRangeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  timeChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
+  },
+  timeChipActive: {
+    backgroundColor: COLORS.brand,
+    borderColor: COLORS.brand,
+  },
+  timeChipText: {
+    fontFamily: FONT,
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+  },
+  timeChipTextActive: {
+    color: COLORS.cream,
+  },
   filterSheetRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
     paddingVertical: 12,
+    gap: 12,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
+    borderBottomColor: 'rgba(0,0,0,0.03)',
   },
   filterSheetLabel: {
-    flex: 1,
-    fontSize: 14,
+    fontFamily: FONT,
+    fontSize: 13,
     fontWeight: '700',
-    color: COLORS.brand,
+    color: COLORS.textPrimary,
+    flex: 1,
   },
   filterSheetCount: {
+    fontFamily: FONT,
     fontSize: 12,
     color: COLORS.textMuted,
+    fontWeight: '600',
   },
   filterSheetActions: {
     flexDirection: 'row',

@@ -1131,20 +1131,6 @@ export function useMyStats({
       }
     });
 
-    // Age milestones from the aggregate stats hook.
-    (aggregateStats.petOverview?.ageMilestones ?? []).forEach(ms => {
-      items.push({
-        type: 'milestone',
-        urgency: 3,
-        petName: ms.petName,
-        petId: null,
-        label: ms.message,
-        detail: null,
-        cta: null,
-        ctaNav: null,
-      });
-    });
-
     // Sort by urgency ascending (lowest number = highest priority).
     items.sort((a, b) => a.urgency - b.urgency);
 

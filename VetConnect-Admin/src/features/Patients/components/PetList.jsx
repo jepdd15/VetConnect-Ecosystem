@@ -88,35 +88,59 @@ export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePet
     <Box sx={{ p: 4, bgcolor: 'transparent', flexGrow: 1 }}>
       
       {/* COMMAND CENTER HEADER */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4, flexWrap: 'wrap', gap: 2 }}>
         <Stack direction="row" spacing={2} alignItems="center">
           <Typography variant="h5" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.textPrimary, display: 'flex', alignItems: 'center' }}>
-            Registered Patients <Chip label={activePets.length} sx={{ ml: 1.5, fontFamily: FONT, fontWeight: 'bold', bgcolor: COLORS.cta, color: COLORS.cardBg }} />
+            Pets <Chip label={activePets.length} sx={{ ml: 1.5, fontFamily: FONT, fontWeight: 900, borderRadius: 0, border: `2px solid ${COLORS.textPrimary}`, bgcolor: '#FF9100', color: COLORS.textPrimary }} />
           </Typography>
           <Button 
             variant="contained" size="small" startIcon={<PetsIcon />} 
             onClick={onRegisterPet} 
-            sx={{ bgcolor: COLORS.cta, color: COLORS.cardBg, fontFamily: FONT, fontWeight: 'bold', borderRadius: 0, boxShadow: `0 4px 12px ${COLORS.cta}33`, '&:hover': {bgcolor: COLORS.ctaHover} }}
+            sx={{ 
+              bgcolor: '#FF9100', 
+              color: COLORS.textPrimary, 
+              fontFamily: FONT, 
+              fontWeight: 900, 
+              borderRadius: 0, 
+              border: `2px solid ${COLORS.textPrimary}`,
+              boxShadow: `4px 4px 0px ${COLORS.textPrimary}`,
+              '&:hover': { bgcolor: '#FFAB40', transform: 'translate(-1px, -1px)', boxShadow: `6px 6px 0px ${COLORS.textPrimary}` } 
+            }}
           >
-            Register Pet
+            REGISTER PET
           </Button>
         </Stack>
 
-        <Stack direction="row" spacing={1.5} alignItems="center">
+        <Stack direction="row" spacing={2} alignItems="center">
           {/* SORT DROPDOWN */}
           <TextField 
             select 
+            id="pet-sort-selector"
+            name="petSort"
             value={sort} 
             onChange={(e) => setSort(e.target.value)} 
             size="small" 
-            sx={{ minWidth: 200, fontFamily: FONT, bgcolor: COLORS.cardBg, borderRadius: 0, '& fieldset': { borderColor: COLORS.borderInput } }}
-            InputProps={{ startAdornment: <InputAdornment position="start"><SortIcon fontSize="small" sx={{ color: COLORS.textMuted }}/></InputAdornment> }}
+            sx={{ 
+              minWidth: 220, 
+              fontFamily: FONT, 
+              bgcolor: COLORS.cardBg, 
+              borderRadius: 0,
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 0,
+                '& fieldset': { border: `2px solid ${COLORS.textPrimary}` },
+                '&:hover fieldset': { borderColor: COLORS.textPrimary },
+                '&.Mui-focused fieldset': { borderColor: COLORS.textPrimary },
+                fontWeight: 900,
+                boxShadow: `4px 4px 0px ${COLORS.borderInput}`
+              }
+            }}
+            InputProps={{ startAdornment: <InputAdornment position="start"><SortIcon fontSize="small" sx={{ color: COLORS.textPrimary }}/></InputAdornment> }}
           >
-            <MenuItem value="name_asc">Sort: Name (A-Z)</MenuItem>
-            <MenuItem value="age_desc">Sort: Age (Oldest First)</MenuItem>
-            <MenuItem value="age_asc">Sort: Age (Youngest First)</MenuItem>
-            <MenuItem value="last_visit_desc">Sort: Last Visit (Longest Ago)</MenuItem>
-            <MenuItem value="last_visit_asc">Sort: Last Visit (Most Recent)</MenuItem>
+            <MenuItem value="name_asc" sx={{ fontFamily: FONT, fontWeight: 700 }}>Sort: Name (A-Z)</MenuItem>
+            <MenuItem value="age_desc" sx={{ fontFamily: FONT, fontWeight: 700 }}>Sort: Age (Oldest First)</MenuItem>
+            <MenuItem value="age_asc" sx={{ fontFamily: FONT, fontWeight: 700 }}>Sort: Age (Youngest First)</MenuItem>
+            <MenuItem value="last_visit_desc" sx={{ fontFamily: FONT, fontWeight: 700 }}>Sort: Last Visit (Longest Ago)</MenuItem>
+            <MenuItem value="last_visit_asc" sx={{ fontFamily: FONT, fontWeight: 700 }}>Sort: Last Visit (Most Recent)</MenuItem>
           </TextField>
           
           {/* FILTER POPOVER BUTTON */}
@@ -124,9 +148,20 @@ export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePet
             variant="outlined" 
             startIcon={<FilterListIcon/>} 
             onClick={(e) => setFilterAnchorEl(e.currentTarget)} 
-            sx={{ fontFamily: FONT, color: COLORS.accent, borderColor: COLORS.timelineRail, bgcolor: COLORS.cardBg, fontWeight: 'bold', py: 0.8 }}
+            sx={{ 
+              fontFamily: FONT, 
+              color: COLORS.textPrimary, 
+              border: `2px solid ${COLORS.textPrimary}`, 
+              bgcolor: COLORS.cardBg, 
+              fontWeight: 900, 
+              py: 0.8, 
+              px: 3,
+              borderRadius: 0,
+              boxShadow: `4px 4px 0px ${COLORS.borderInput}`,
+              '&:hover': { bgcolor: COLORS.surfaceAlt, borderColor: COLORS.textPrimary, transform: 'translate(-1px, -1px)', boxShadow: `6px 6px 0px ${COLORS.textPrimary}` }
+            }}
           >
-            Filters
+            FILTERS
           </Button>
         </Stack>
       </Box>
@@ -145,10 +180,24 @@ export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePet
           return (
             <Grid size={{ xs: 12, md: 6, lg: 6, xl: 4 }} key={pet.id}>
               <Card sx={{
-                borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: `1px solid ${COLORS.borderLight}`,
+                borderRadius: 0, 
+                border: `1px solid ${COLORS.borderLight}`,
                 bgcolor: COLORS.cardBg,
-                display: 'flex', flexDirection: 'column', height: '100%', transition: 'transform 0.2s, box-shadow 0.2s',
-                '&:hover': { transform: 'translateY(-4px)', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' }
+                display: 'flex', flexDirection: 'column', height: '100%', 
+                transition: 'all 0.2s',
+                boxShadow: pet.gender === 'Male' 
+                  ? `6px 6px 0px #90CAF9` 
+                  : pet.gender === 'Female' 
+                    ? `6px 6px 0px #F48FB1` 
+                    : `6px 6px 0px ${COLORS.borderLight}`,
+                '&:hover': { 
+                  transform: 'translate(-2px, -2px)', 
+                  boxShadow: pet.gender === 'Male' 
+                    ? `8px 8px 0px #42A5F5` 
+                    : pet.gender === 'Female' 
+                      ? `8px 8px 0px #EC407A` 
+                      : `8px 8px 0px ${COLORS.textMuted}` 
+                }
               }}>
                 
                 {hasAllergies && (
@@ -159,40 +208,60 @@ export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePet
                 )}
 
                 <Box sx={{ p: 3, pb: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
-                    <Avatar sx={{ width: 64, height: 64, bgcolor: COLORS.panelBg, mr: 2, border: `2px solid ${COLORS.borderInput}`, fontSize: '2rem', boxShadow: 1 }}>
-                      {(pet.species === 'Canine' || pet.species === 'Dog') ? '🐶' : '🐱'}
-                    </Avatar>
-                    
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                     <Box sx={{ flexGrow: 1, overflow: 'hidden' }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                          <Typography variant="h5" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.textPrimary, textTransform: 'capitalize' }} noWrap>{pet.name}</Typography>
-                          <IconButton size="small" onClick={(e) => handleMenuClick(e, pet)} sx={{ mt: -0.5, mr: -1 }}><MoreVertIcon /></IconButton>
-                      </Box>
-                      {(pet.breed && pet.breed !== 'Unknown Breed') ? (
-                          <Typography variant="body2" sx={{ fontFamily: FONT, color: COLORS.textSecondary, fontWeight: 700 }} noWrap>{pet.breed}</Typography>
-                      ) : (
-                          <Typography variant="body2" sx={{ fontFamily: FONT, color: COLORS.cta, cursor: 'pointer', fontWeight: 'bold' }} onClick={() => onEditPet(pet)}>+ Add Breed</Typography>
-                      )}
-                      <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.textMuted, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
-                        {pet.gender === 'Male' ? (pet.isNeutered ? 'Male (Neutered)' : 'Male (Intact)') : (pet.gender === 'Female' ? (pet.isNeutered ? 'Female (Spayed)' : 'Female (Intact)') : 'Unknown Sex')} 
-                        {displayAge !== 'Age Unknown' ? ` • ${displayAge}` : <span style={{color: COLORS.cta, cursor:'pointer', fontWeight:'bold'}} onClick={() => onEditPet(pet)}> • + Add Age</span>}
+                      <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.textPrimary, textTransform: 'capitalize', letterSpacing: -1, lineHeight: 1, mb: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {pet.name}
                       </Typography>
+                      
+                      <Stack spacing={0.6} sx={{ mt: 1 }}>
+                        {(pet.breed && pet.breed !== 'Unknown Breed') ? (
+                            <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.textPrimary, fontWeight: 800, letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: COLORS.accent, flexShrink: 0 }} />
+                              Breed: {pet.breed}
+                            </Typography>
+                        ) : (
+                            <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.cta, cursor: 'pointer', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1 }} onClick={() => onEditPet(pet)}>
+                              <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: COLORS.cta, flexShrink: 0 }} />
+                              + Add Breed
+                            </Typography>
+                        )}
+                        
+                        <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.textPrimary, fontWeight: 800, letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: COLORS.accent, flexShrink: 0 }} />
+                          Sex: {pet.gender === 'Male' ? (pet.isNeutered ? 'Male (Neutered)' : 'Male (Intact)') : (pet.gender === 'Female' ? (pet.isNeutered ? 'Female (Spayed)' : 'Female (Intact)') : 'Unknown Sex')}
+                        </Typography>
+
+                        <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.textPrimary, fontWeight: 800, letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: COLORS.accent, flexShrink: 0 }} />
+                          Age: {displayAge !== 'Age Unknown' ? displayAge : 'TBD'} 
+                          {pet.dob && ` (${(pet.dob?.toDate?.() ?? new Date(pet.dob)).toLocaleDateString()})`}
+                        </Typography>
+
+                        {pet.lastWeight && (
+                          <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.textPrimary, fontWeight: 800, letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: COLORS.accent, flexShrink: 0 }} />
+                            Weight: {pet.lastWeight} KG
+                          </Typography>
+                        )}
+                        
+                        <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.textPrimary, fontWeight: 800, letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: COLORS.accent, flexShrink: 0 }} />
+                          Microchip: {pet.microchip || 'N/A'}
+                        </Typography>
+                      </Stack>
                     </Box>
+
+                    <Stack direction="row" spacing={0.5} alignItems="flex-start" sx={{ ml: 2, flexShrink: 0 }}>
+                      <Avatar sx={{ width: 64, height: 64, bgcolor: COLORS.panelBg, border: `2px solid ${COLORS.borderInput}`, fontSize: '2rem', boxShadow: 1 }}>
+                        {(pet.species === 'Canine' || pet.species === 'Dog') ? '🐶' : '🐱'}
+                      </Avatar>
+                      <IconButton size="small" onClick={(e) => handleMenuClick(e, pet)} sx={{ mt: -0.5, mr: -1 }}>
+                        <MoreVertIcon />
+                      </IconButton>
+                    </Stack>
                   </Box>
                   
-                  <Box>
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.8, mb: 1.5 }}>
-                      {pet.lastWeight && <Chip icon={<ScaleIcon fontSize="small"/>} label={`${pet.lastWeight} kg`} size="small" sx={{ fontFamily: FONT, bgcolor: COLORS.kpiOrangeBg, color: COLORS.warning, fontWeight: 'bold', border: `1px solid ${COLORS.kpiOrangeBorder}` }} />}
-                      {pet.microchip && <Chip label="Microchipped" size="small" sx={{ fontFamily: FONT, bgcolor: COLORS.kpiBlueBg, color: COLORS.medical, fontWeight: 'bold', height: 24 }} />}
-                    </Box>
-                    <Paper variant="outlined" sx={{ bgcolor: COLORS.surfaceAlt, p: 1, borderRadius: 0, display: 'flex', alignItems: 'center', gap: 1, borderColor: COLORS.borderLight }}>
-                      <EventNoteIcon fontSize="small" sx={{ color: COLORS.textMuted }} />
-                      <Typography variant="caption" sx={{ fontFamily: FONT, fontWeight: 'bold', color: COLORS.textSecondary }}>
-                        Last Visit: {pet.lastVisit ? (pet.lastVisit?.toDate?.() ?? new Date(pet.lastVisit)).toLocaleDateString() : 'No history'}
-                      </Typography>
-                    </Paper>
-                  </Box>
                 </Box>
 
                 <Box sx={{ p: 2, bgcolor: COLORS.surfaceAlt, borderTop: `1px solid ${COLORS.borderLight}`, mt: 'auto' }}>
@@ -239,21 +308,117 @@ export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePet
       </Menu>
 
       {/* FILTER POPOVER */}
-      <Popover open={Boolean(filterAnchorEl)} anchorEl={filterAnchorEl} onClose={() => setFilterAnchorEl(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} transformOrigin={{ vertical: 'top', horizontal: 'right' }} PaperProps={{ sx: { borderRadius: 0, boxShadow: '0 8px 32px rgba(0,0,0,0.12)', mt: 1 } }}>
-        <Box sx={{ p: 3, width: 280 }}>
-          <Typography variant="h6" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.textPrimary, mb: 2, borderBottom: `1px solid ${COLORS.borderLight}`, pb: 1 }}>Filter Patients</Typography>
-          <Typography variant="caption" sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 1, display: 'block' }}>By Species</Typography>
-          <ToggleButtonGroup value={filter.species} exclusive size="small" fullWidth onChange={(e,v)=>setFilter({...filter, species:v||'all'})} sx={{ mb: 3 }}><ToggleButton value="all" sx={{ fontFamily: FONT, fontWeight: 'bold' }}>All</ToggleButton><ToggleButton value="canine" sx={{ fontFamily: FONT, fontWeight: 'bold' }}>Canine</ToggleButton><ToggleButton value="feline" sx={{ fontFamily: FONT, fontWeight: 'bold' }}>Feline</ToggleButton></ToggleButtonGroup>
-          <Typography variant="caption" sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 1, display: 'block' }}>By Sex</Typography>
-          <ToggleButtonGroup value={filter.sex} exclusive size="small" fullWidth onChange={(e,v)=>setFilter({...filter, sex:v||'all'})} sx={{ mb: 3 }}><ToggleButton value="all" sx={{ fontFamily: FONT, fontWeight: 'bold' }}>All</ToggleButton><ToggleButton value="male" sx={{ fontFamily: FONT, fontWeight: 'bold' }}>Male</ToggleButton><ToggleButton value="female" sx={{ fontFamily: FONT, fontWeight: 'bold' }}>Female</ToggleButton></ToggleButtonGroup>
-          <Typography variant="caption" sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 1, display: 'block' }}>By Medical Status</Typography>
-          <ToggleButtonGroup orientation="vertical" value={filter.status} exclusive size="small" fullWidth onChange={(e,v)=>setFilter({...filter, status:v||'all'})}>
-            <ToggleButton value="all" sx={{ fontFamily: FONT, fontWeight: 'bold' }}>All Statuses</ToggleButton>
-            <ToggleButton value="intact" sx={{ fontFamily: FONT, fontWeight: 'bold', color: COLORS.medical }}>Intact (Not Neutered)</ToggleButton>
-            <ToggleButton value="needs_vaccine" sx={{ fontFamily: FONT, fontWeight: 'bold', color: COLORS.danger }}>No Recent Visits</ToggleButton>
-            <ToggleButton value="has_allergy" sx={{ fontFamily: FONT, fontWeight: 'bold', color: COLORS.warning }}>Has Listed Allergy</ToggleButton>
+      <Popover 
+        open={Boolean(filterAnchorEl)} 
+        anchorEl={filterAnchorEl} 
+        onClose={() => setFilterAnchorEl(null)} 
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} 
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }} 
+        PaperProps={{ 
+          sx: { 
+            borderRadius: 0, 
+            boxShadow: `8px 8px 0px ${COLORS.textPrimary}`, 
+            mt: 1.5,
+            border: `2px solid ${COLORS.textPrimary}`
+          } 
+        }}
+      >
+        <Box sx={{ p: 3, width: 320 }}>
+          <Typography variant="h6" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.textPrimary, mb: 3, textTransform: 'uppercase', letterSpacing: 1, borderBottom: `2px solid ${COLORS.textPrimary}`, pb: 1 }}>
+            FILTER PATIENTS
+          </Typography>
+          
+          <Typography variant="caption" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.textPrimary, mb: 1, display: 'block', textTransform: 'uppercase' }}>BY SPECIES</Typography>
+          <ToggleButtonGroup 
+            value={filter.species} 
+            exclusive 
+            size="small" 
+            fullWidth 
+            onChange={(e,v)=>setFilter({...filter, species:v||'all'})} 
+            sx={{ 
+              mb: 3,
+              '& .MuiToggleButton-root': {
+                borderRadius: 0,
+                border: `2px solid ${COLORS.textPrimary}`,
+                fontFamily: FONT,
+                fontWeight: 900,
+                '&.Mui-selected': { bgcolor: '#FF9100', color: COLORS.textPrimary, '&:hover': { bgcolor: '#FFAB40' } }
+              }
+            }}
+          >
+            <ToggleButton value="all">ALL</ToggleButton>
+            <ToggleButton value="canine">CANINE</ToggleButton>
+            <ToggleButton value="feline">FELINE</ToggleButton>
           </ToggleButtonGroup>
-          <Button fullWidth variant="text" sx={{ mt: 2, fontFamily: FONT, color: COLORS.textMuted, fontWeight: 'bold' }} onClick={() => { setFilter({species: 'all', sex: 'all', status: 'all'}); setFilterAnchorEl(null); }}>Clear Filters</Button>
+
+          <Typography variant="caption" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.textPrimary, mb: 1, display: 'block', textTransform: 'uppercase' }}>BY SEX</Typography>
+          <ToggleButtonGroup 
+            value={filter.sex} 
+            exclusive 
+            size="small" 
+            fullWidth 
+            onChange={(e,v)=>setFilter({...filter, sex:v||'all'})} 
+            sx={{ 
+              mb: 3,
+              '& .MuiToggleButton-root': {
+                borderRadius: 0,
+                border: `2px solid ${COLORS.textPrimary}`,
+                fontFamily: FONT,
+                fontWeight: 900,
+                '&.Mui-selected': { bgcolor: '#FF9100', color: COLORS.textPrimary, '&:hover': { bgcolor: '#FFAB40' } }
+              }
+            }}
+          >
+            <ToggleButton value="all">ALL</ToggleButton>
+            <ToggleButton value="male">MALE</ToggleButton>
+            <ToggleButton value="female">FEMALE</ToggleButton>
+          </ToggleButtonGroup>
+
+          <Typography variant="caption" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.textPrimary, mb: 1, display: 'block', textTransform: 'uppercase' }}>BY MEDICAL STATUS</Typography>
+          <ToggleButtonGroup 
+            orientation="vertical" 
+            value={filter.status} 
+            exclusive 
+            size="small" 
+            fullWidth 
+            onChange={(e,v)=>setFilter({...filter, status:v||'all'})}
+            sx={{
+              '& .MuiToggleButton-root': {
+                borderRadius: 0,
+                border: `2px solid ${COLORS.textPrimary}`,
+                fontFamily: FONT,
+                fontWeight: 900,
+                textAlign: 'left',
+                justifyContent: 'flex-start',
+                px: 2,
+                '&.Mui-selected': { bgcolor: '#FF9100', color: COLORS.textPrimary, '&:hover': { bgcolor: '#FFAB40' } }
+              }
+            }}
+          >
+            <ToggleButton value="all">ALL STATUSES</ToggleButton>
+            <ToggleButton value="intact" sx={{ color: COLORS.textPrimary }}>INTACT (NOT NEUTERED)</ToggleButton>
+            <ToggleButton value="needs_vaccine" sx={{ color: COLORS.danger }}>NO RECENT VISITS</ToggleButton>
+            <ToggleButton value="has_allergy" sx={{ color: COLORS.warning }}>HAS LISTED ALLERGY</ToggleButton>
+          </ToggleButtonGroup>
+
+          <Button 
+            fullWidth 
+            variant="contained" 
+            sx={{ 
+              mt: 3, 
+              fontFamily: FONT, 
+              bgcolor: COLORS.surfaceAlt,
+              color: COLORS.textPrimary, 
+              fontWeight: 900, 
+              borderRadius: 0, 
+              border: `2px solid ${COLORS.textPrimary}`,
+              boxShadow: `4px 4px 0px ${COLORS.textPrimary}`,
+              '&:hover': { bgcolor: COLORS.borderLight, transform: 'translate(-1px, -1px)', boxShadow: `6px 6px 0px ${COLORS.textPrimary}` }
+            }} 
+            onClick={() => { setFilter({species: 'all', sex: 'all', status: 'all'}); setFilterAnchorEl(null); }}
+          >
+            CLEAR FILTERS
+          </Button>
         </Box>
       </Popover>
 

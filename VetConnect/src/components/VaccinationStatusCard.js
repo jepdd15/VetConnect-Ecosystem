@@ -24,19 +24,6 @@ const STATUS_LABELS = {
   incomplete: 'INCOMPLETE',
 };
 
-/**
- * Philippine vaccination classification per RA 9482 and common clinical practice.
- * Vaccines not in this map default to 'RECOMMENDED'.
- */
-const VACCINE_CLASSIFICATION = {
-  rabies:        'REQUIRED',    // RA 9482 Anti-Rabies Act of 2007
-  dhpp:          'CORE',
-  fvrcp:         'CORE',
-  bordetella:    'LIFESTYLE',
-  leptospirosis: 'LIFESTYLE',
-  felv:          'LIFESTYLE',
-};
-
 // ---------------------------------------------------------------------------
 // INTERNAL HELPERS
 // ---------------------------------------------------------------------------
@@ -127,16 +114,10 @@ function VaccineCard({
     ? getVaccineHistory(vax.id, history, catalog)
     : [];
 
-  // Item 16: Resolve REQUIRED / CORE / LIFESTYLE / RECOMMENDED classification
-  const classification = VACCINE_CLASSIFICATION[vax.id?.toLowerCase()] || 'RECOMMENDED';
-
   // Item 19: Cost estimate from services price map (optional prop — graceful fallback)
   const estimatedCost = servicesPriceMap
     ? (servicesPriceMap.get(vax.name?.toLowerCase()) ?? null)
     : null;
-
-  // Item 18: Reminder opt-in state (default: enabled)
-  const reminderEnabled = disabledVaccines ? !disabledVaccines.has(vax.id) : true;
 
   return (
     <View style={[styles.vaxCard, { borderColor: st.borderColor }]}>
@@ -153,30 +134,6 @@ function VaccineCard({
           </Text>
         </View>
       </TouchableOpacity>
-
-      {/* Item 16: Classification badge row */}
-      <View style={styles.classificationRow}>
-        <View style={[
-          styles.classificationBadge,
-          {
-            backgroundColor:
-              classification === 'REQUIRED' ? COLORS.dangerBg
-              : COLORS.cream,
-          },
-        ]}>
-          <Text style={[
-            styles.classificationBadgeText,
-            {
-              color:
-                classification === 'REQUIRED' ? COLORS.danger
-                : classification === 'CORE'   ? COLORS.accent
-                : COLORS.textMuted,
-            },
-          ]}>
-            {classification}
-          </Text>
-        </View>
-      </View>
 
       {/* Dose dots row — only shown for multi-dose vaccines */}
       {vax.dosesRequired > 1 && (
@@ -249,19 +206,6 @@ function VaccineCard({
       {/* Item 19: Cost estimate */}
       {estimatedCost != null && (
         <Text style={styles.costEstimate}>Estimated cost: ₱{estimatedCost}</Text>
-      )}
-
-      {/* Item 18: Push reminder toggle */}
-      {onToggleReminder && (
-        <View style={styles.reminderRow}>
-          <Text style={styles.reminderLabel}>Remind me when due</Text>
-          <Switch
-            value={reminderEnabled}
-            onValueChange={(val) => onToggleReminder(vax.id, val)}
-            trackColor={{ false: COLORS.borderLight, true: COLORS.sky }}
-            thumbColor={reminderEnabled ? COLORS.sky : COLORS.textMuted}
-          />
-        </View>
       )}
 
       {/* Item 11: Only show expand toggle when the vaccine has actual record evidence */}
@@ -640,23 +584,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  // --- Item 16: Classification badge ---
-  classificationRow: {
-    flexDirection: 'row',
-    marginBottom:  4,
-  },
-  classificationBadge: {
-    paddingHorizontal: 6,
-    paddingVertical:   2,
-    borderRadius:      0,
-  },
-  classificationBadgeText: {
-    fontSize:      9,
-    fontWeight:    '900',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-
   // --- Dose dots row (multi-dose vaccines only) ---
   doseDotsRow: {
     flexDirection: 'row',
@@ -727,22 +654,6 @@ const styles = StyleSheet.create({
     color:     COLORS.textMuted,
     fontStyle: 'italic',
     marginTop: 4,
-  },
-
-  // --- Item 18: Reminder toggle row ---
-  reminderRow: {
-    flexDirection:  'row',
-    alignItems:     'center',
-    justifyContent: 'space-between',
-    marginTop:      8,
-    paddingTop:     8,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.borderLight,
-  },
-  reminderLabel: {
-    fontSize:   12,
-    color:      COLORS.textMuted,
-    fontWeight: '600',
   },
 
   expandToggle: {

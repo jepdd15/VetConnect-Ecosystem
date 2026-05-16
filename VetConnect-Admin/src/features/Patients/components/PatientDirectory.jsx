@@ -10,8 +10,24 @@ const PatientDirectory = React.memo(function PatientDirectory({ owners, selected
   return (
     <Paper square sx={{ width: 320, display: 'flex', flexDirection: 'column', borderRight: `1px solid ${COLORS.border}`, bgcolor: COLORS.surfaceAlt, zIndex: 1, boxShadow: '2px 0 5px rgba(0,0,0,0.02)' }}>
       <Box sx={{ p: 2.5, borderBottom: `1px solid ${COLORS.border}`, bgcolor: COLORS.cardBg }}>
-         <Button variant="contained" startIcon={<PersonAddIcon />} fullWidth sx={{ mb: 2, bgcolor: COLORS.sky, '&:hover': { bgcolor: COLORS.skyHover }, fontFamily: FONT, fontWeight: 'bold', py: 1.5, boxShadow: '4px 4px 0px rgba(58, 190, 249, 0.15)', borderRadius: 0 }} onClick={onNewClient}>
-             New Client
+         <Button 
+           variant="contained" 
+           startIcon={<PersonAddIcon />} 
+           fullWidth 
+           sx={{ 
+             mb: 2, 
+             bgcolor: COLORS.accent, 
+             '&:hover': { bgcolor: COLORS.accentHover }, 
+             fontFamily: FONT, 
+             fontWeight: 900, 
+             textTransform: 'uppercase',
+             py: 1.5, 
+             boxShadow: `4px 4px 0px rgba(121, 85, 72, 0.2)`, 
+             borderRadius: 0 
+           }} 
+           onClick={onNewClient}
+         >
+             NEW CLIENT
          </Button>
          <TextField variant="outlined" fullWidth placeholder="Search owner, pet, or phone..." size="small" value={searchText} onChange={onSearchChange} sx={{bgcolor: COLORS.surface, '& fieldset': {borderColor: COLORS.borderInput}, borderRadius: 0}} InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: COLORS.textMuted }}/></InputAdornment>, spellCheck: 'false', style: { fontFamily: FONT } }} />
       </Box>

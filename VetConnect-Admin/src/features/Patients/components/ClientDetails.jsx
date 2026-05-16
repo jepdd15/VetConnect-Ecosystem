@@ -35,7 +35,6 @@ import ConsentRecordDialog from '../modals/ConsentRecordDialog';
  *   - admin_registered + no consent → neutral muted chip (no mobile account, admin-record path only)
  */
 function ConsentStatusCard({ label, clientId, clientName, clientVersion, clientGrantedAt, activeVersion, activeVersionDocId, consentType, accountStatus, onConsentRecorded }) {
-  const [sigDialogOpen, setSigDialogOpen] = useState(false);
   const [recordDialogOpen, setRecordDialogOpen] = useState(false);
 
   const formatDate = (ts) => {
@@ -97,23 +96,6 @@ function ConsentStatusCard({ label, clientId, clientName, clientVersion, clientG
         }}
       />
 
-      {/* View signature button — only when a signature might exist */}
-      {hasConsent && (
-        <Tooltip title="View consent record details">
-          <IconButton
-            size="small"
-            onClick={() => setSigDialogOpen(true)}
-            sx={{
-              color: COLORS.textMuted,
-              width: 22,
-              height: 22,
-              '&:hover': { color: COLORS.accent, bgcolor: COLORS.panelBg },
-            }}
-          >
-            <VisibilityIcon sx={{ fontSize: 14 }} />
-          </IconButton>
-        </Tooltip>
-      )}
 
       {/* Record Consent button — only when no consent or outdated */}
       {(!hasConsent || isOutdated) && (
@@ -138,39 +120,6 @@ function ConsentStatusCard({ label, clientId, clientName, clientVersion, clientG
         </Button>
       )}
 
-      {/* ── Consent record info dialog ── */}
-      <Dialog
-        open={sigDialogOpen}
-        onClose={() => setSigDialogOpen(false)}
-        maxWidth="xs"
-        fullWidth
-        PaperProps={{ sx: { borderRadius: 0 } }}
-      >
-        <DialogTitle sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.95rem', color: COLORS.brand, bgcolor: COLORS.cream, borderBottom: `1px solid ${COLORS.border}` }}>
-          {label} Consent — v{clientVersion}
-        </DialogTitle>
-        <DialogContent sx={{ pt: 2 }}>
-          <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary }}>
-            Signed: <span style={{ fontWeight: 700, color: COLORS.textPrimary }}>{formatDate(clientGrantedAt)}</span>
-          </Typography>
-          <Typography sx={{ fontFamily: FONT, ...TYPE.meta, color: COLORS.textSecondary, mt: 0.5 }}>
-            Version: <span style={{ fontWeight: 700, color: COLORS.textPrimary }}>v{clientVersion}</span>
-            {isOutdated && (
-              <span style={{ color: COLORS.warning, marginLeft: 8 }}>
-                (Current policy: v{activeVersion} — re-consent required)
-              </span>
-            )}
-          </Typography>
-          <Typography sx={{ fontFamily: FONT, ...TYPE.tiny, color: COLORS.textMuted, mt: 1.5, fontStyle: 'italic' }}>
-            View full signature history and details in the Consent Audit Log below.
-          </Typography>
-        </DialogContent>
-        <DialogActions sx={{ px: 2, pb: 1.5 }}>
-          <Button onClick={() => setSigDialogOpen(false)} sx={{ fontFamily: FONT, fontWeight: 700, textTransform: 'none', color: COLORS.textSecondary }}>
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
 
       {/* ── ConsentRecordDialog — record consent on behalf of client ── */}
       <ConsentRecordDialog
